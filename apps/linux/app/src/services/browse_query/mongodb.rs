@@ -26,6 +26,7 @@ pub(super) fn value_query(
         ),
         params: pk_values.to_vec(),
         projected_columns: None,
+        reverse_rows: false,
     })
 }
 

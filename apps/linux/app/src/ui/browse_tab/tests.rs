@@ -139,6 +139,83 @@ fn spin_for(context: &relm4::gtk::glib::MainContext, duration: std::time::Durati
 
 #[test]
 #[ignore = "requires isolated GTK display"]
+fn deep_previous_page_uses_the_first_row_as_its_reverse_keyset_anchor() {
+    relm4::gtk::init().unwrap();
+    let (output_sender, output_receiver) = relm4::channel::<BrowseTabOutput>();
+    relm4::spawn_local(async move { while output_receiver.recv().await.is_some() {} });
+    let mut controller = BrowseTab::builder()
+        .launch(BrowseTabInit {
+            tab_id: Uuid::new_v4(),
+            schema: Some("public".into()),
+            table: "items".into(),
+            driver_id: "postgres".into(),
+            connection_id: None,
+            read_only: false,
+            page_size: 100,
+            initial_offset: 20_000,
+            initial_sort: None,
+            persistence: crate::services::persistence_stores::PersistenceStores {
+                column_widths: None,
+                filter_settings: None,
+                csv_import_mappings: None,
+                named_filter_presets: None,
+            },
+            database: std::sync::Arc::new(crate::services::database_service::DatabaseService::new_isolated()),
+        })
+        .forward(&output_sender, |output| output);
+    let context = relm4::gtk::glib::MainContext::default();
+    controller
+        .sender()
+        .send(BrowseTabInput::ColumnsLoaded(vec![column("id", "integer", true)]))
+        .unwrap();
+    spin_until(&context, || controller.model().current_columns.len() == 1);
+    let request = controller.model().page_requests.begin(20_000);
+    controller
+        .sender()
+        .send(BrowseTabInput::RowsLoaded {
+            request,
+            result: QueryResult {
+                columns: Vec::new(),
+                rows: vec![vec![Value::Int(20_001)], vec![Value::Int(21_000)]],
+                truncated: false,
+            },
+            projected_columns: None,
+        })
+        .unwrap();
+    spin_until(&context, || controller.model().current_result.is_some());
+
+    controller.sender().send(BrowseTabInput::PrevPage).unwrap();
+    spin_until(&context, || controller.model().current_offset == 19_900);
+
+    assert!(controller.model().reverse_page());
+    assert_eq!(
+        controller.model().keyset_before_cursor(),
+        Some(&[Value::Int(20_001)][..])
+    );
+    assert_deep_last_page_selection(&mut controller, &context);
+    controller.detach_runtime();
+}
+
+fn assert_deep_last_page_selection<T: ComponentController<BrowseTab>>(
+    controller: &mut T,
+    context: &relm4::gtk::glib::MainContext,
+) {
+    let count_request = controller.model().row_count_requests.begin();
+    controller
+        .sender()
+        .send(BrowseTabInput::RowCountLoaded {
+            request: count_request,
+            count: 30_000,
+        })
+        .unwrap();
+    spin_until(context, || controller.model().current_total_rows == Some(30_000));
+    controller.sender().send(BrowseTabInput::LastPage).unwrap();
+    spin_until(context, || controller.model().last_page());
+    assert_eq!(controller.model().current_offset, 29_900);
+}
+
+#[test]
+#[ignore = "requires isolated GTK display"]
 fn browse_next_page_is_disabled_when_known_total_matches_page_end() {
     use relm4::gtk::prelude::WidgetExt;
     relm4::gtk::init().unwrap();

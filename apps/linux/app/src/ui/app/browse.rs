@@ -122,7 +122,7 @@ impl App {
     /// dialect-specific. Past `KEYSET_OFFSET_THRESHOLD`, sequential Next
     /// uses a primary-key seek when PKs and a cursor are available.
     pub(super) fn fetch_browse_page(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
-        let (schema, table, request, limit, sort, filter, columns, driver_id, keyset_cursor) = {
+        let (schema, table, request, limit, sort, filter, columns, driver_id, keyset_cursor, reverse_page, last_page) = {
             let tabs = self.workspace_tabs.borrow();
             let Some(controller) = tabs.get(&tab_id).and_then(|t| t.browse_controller()) else {
                 return;
@@ -137,7 +137,13 @@ impl App {
                 model.current_filter().clone(),
                 model.columns().to_vec(),
                 model.driver_id().to_string(),
-                model.keyset_cursor().map(|v| v.to_vec()),
+                if model.reverse_page() {
+                    model.keyset_before_cursor().map(|v| v.to_vec())
+                } else {
+                    model.keyset_cursor().map(|v| v.to_vec())
+                },
+                model.reverse_page(),
+                model.last_page(),
             )
         };
 
@@ -171,7 +177,11 @@ impl App {
             hidden_columns: Some(&hidden_columns),
         };
         let row_id_order = self.relation_is_ordinary_table(schema.as_deref(), &table);
-        let page = if row_id_order {
+        let page = if reverse_page {
+            target.page_before(offset, limit, sort, keyset_cursor.as_deref())
+        } else if last_page {
+            target.page_last(offset, limit, sort)
+        } else if row_id_order {
             target.page_by_row_id(offset, limit, sort, keyset_cursor.as_deref())
         } else {
             target.page(offset, limit, sort, keyset_cursor.as_deref())
@@ -194,6 +204,7 @@ impl App {
             crate::services::operation_control::timeout_for(&self.preferences, &self.database, self.connection_id);
         let token = self.read_scopes.borrow_mut().start(tab_id, ReadScope::Page);
         let sender_clone = sender.clone();
+        let reverse_rows = matches!(&query, PageQuery::Sql(bound) if bound.reverse_rows);
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
@@ -213,7 +224,10 @@ impl App {
                         }
                     };
                     match result {
-                        Ok(query_result) => {
+                        Ok(mut query_result) => {
+                            if reverse_rows {
+                                query_result.rows.reverse();
+                            }
                             sender_clone.input(AppMsg::RowsLoaded(tab_id, request, query_result, projected_columns))
                         }
                         Err(_) if control.cancellation_token().is_cancelled() => {}

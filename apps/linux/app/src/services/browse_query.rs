@@ -1,5 +1,3 @@
-//! Pure SQL planning shared by browse page and count requests.
-//! Native unfiltered fetches stay available for non-SQL drivers.
 use std::collections::HashSet;
 
 use tablepro_core::{ColumnInfo, FilterSet, KEYSET_OFFSET_THRESHOLD, Value, build_filter_where, keyset_where_clause};
@@ -24,12 +22,20 @@ pub(crate) struct BoundQuery {
     pub sql: String,
     pub params: Vec<Value>,
     pub projected_columns: Option<Vec<usize>>,
+    pub reverse_rows: bool,
 }
 
 #[derive(Debug)]
 pub(crate) enum PageQuery {
     Native,
     Sql(BoundQuery),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PageDirection {
+    Forward,
+    Before,
+    Last,
 }
 
 impl BrowseTarget<'_> {
@@ -44,6 +50,7 @@ impl BrowseTarget<'_> {
             sql: format!("SELECT {projection} FROM {target}"),
             params: Vec::new(),
             projected_columns: None,
+            reverse_rows: false,
         };
         if let Some((clause, params)) = filter {
             query.sql.push_str(" WHERE ");
@@ -77,6 +84,7 @@ impl BrowseTarget<'_> {
             sql,
             params,
             projected_columns: None,
+            reverse_rows: false,
         })
     }
 
@@ -87,7 +95,21 @@ impl BrowseTarget<'_> {
         sort: Option<(usize, bool)>,
         cursor: Option<&[Value]>,
     ) -> Result<PageQuery, String> {
-        self.page_with(offset, limit, sort, cursor, false)
+        self.page_with(offset, limit, sort, cursor, false, PageDirection::Forward)
+    }
+
+    pub fn page_before(
+        &self,
+        offset: u64,
+        limit: u64,
+        sort: Option<(usize, bool)>,
+        cursor: Option<&[Value]>,
+    ) -> Result<PageQuery, String> {
+        self.page_with(offset, limit, sort, cursor, false, PageDirection::Before)
+    }
+
+    pub fn page_last(&self, offset: u64, limit: u64, sort: Option<(usize, bool)>) -> Result<PageQuery, String> {
+        self.page_with(offset, limit, sort, None, false, PageDirection::Last)
     }
 
     pub fn page_by_row_id(
@@ -97,7 +119,7 @@ impl BrowseTarget<'_> {
         sort: Option<(usize, bool)>,
         cursor: Option<&[Value]>,
     ) -> Result<PageQuery, String> {
-        self.page_with(offset, limit, sort, cursor, true)
+        self.page_with(offset, limit, sort, cursor, true, PageDirection::Forward)
     }
 
     fn page_with(
@@ -107,6 +129,7 @@ impl BrowseTarget<'_> {
         sort: Option<(usize, bool)>,
         cursor: Option<&[Value]>,
         row_id_order: bool,
+        direction: PageDirection,
     ) -> Result<PageQuery, String> {
         let (projection, projected) = self.projection();
         let mut query = self.filtered_query(&projection)?;
@@ -125,17 +148,24 @@ impl BrowseTarget<'_> {
             .filter(|c| c.primary_key)
             .map(|c| c.name.as_str())
             .collect();
-        let cursor = cursor.filter(|c| {
-            offset >= KEYSET_OFFSET_THRESHOLD && sort.is_none() && !keys.is_empty() && c.len() == keys.len()
-        });
-        let actual_offset = if let Some(cursor) = cursor {
-            let (clause, params) =
-                keyset_where_clause(self.driver_id, &keys, cursor, query.params.len()).map_err(|e| e.to_string())?;
-            query
-                .sql
-                .push_str(if self.filter.is_empty() { " WHERE " } else { " AND " });
-            query.sql.push_str(&clause);
-            query.params.extend(params);
+        let before_is_supported = direction != PageDirection::Before || supports_reverse_keyset(self.driver_id);
+        let cursor = valid_keyset_cursor(cursor, offset, sort, &keys).filter(|_| before_is_supported);
+        let seek_last = direction == PageDirection::Last
+            && offset >= KEYSET_OFFSET_THRESHOLD
+            && sort.is_none()
+            && !keys.is_empty()
+            && supports_reverse_keyset(self.driver_id);
+        let before = direction == PageDirection::Before;
+        let cursor_applied = !seek_last
+            && append_keyset_clause(
+                &mut query,
+                self.driver_id,
+                &keys,
+                cursor,
+                before,
+                self.filter.is_empty(),
+            )?;
+        let actual_offset = if seek_last || cursor_applied {
             0
         } else {
             if self.filter.is_empty() && order.is_none() {
@@ -143,6 +173,7 @@ impl BrowseTarget<'_> {
             }
             offset
         };
+        let order = page_order(self.driver_id, &keys, order, (before && cursor_applied) || seek_last);
         query
             .sql
             .push_str(&tablepro_core::sql_dialect::build_order_and_pagination(
@@ -151,6 +182,7 @@ impl BrowseTarget<'_> {
                 limit,
                 actual_offset,
             ));
+        query.reverse_rows = (before && cursor_applied) || seek_last;
         Ok(PageQuery::Sql(query))
     }
 
@@ -188,6 +220,55 @@ impl BrowseTarget<'_> {
     }
 }
 
+fn valid_keyset_cursor<'a>(
+    cursor: Option<&'a [Value]>,
+    offset: u64,
+    sort: Option<(usize, bool)>,
+    keys: &[&str],
+) -> Option<&'a [Value]> {
+    cursor.filter(|values| {
+        offset >= KEYSET_OFFSET_THRESHOLD && sort.is_none() && !keys.is_empty() && values.len() == keys.len()
+    })
+}
+
+fn supports_reverse_keyset(driver_id: &str) -> bool {
+    matches!(driver_id, "postgres" | "mysql" | "sqlite" | "mssql" | "clickhouse")
+}
+
+fn page_order(driver_id: &str, keys: &[&str], order: Option<String>, reverse: bool) -> Option<String> {
+    if !reverse {
+        return order;
+    }
+    tablepro_core::keyset_order_by_before(driver_id, keys)
+        .trim()
+        .strip_prefix("ORDER BY")
+        .map(str::trim)
+        .map(str::to_owned)
+}
+
+fn append_keyset_clause(
+    query: &mut BoundQuery,
+    driver_id: &str,
+    keys: &[&str],
+    cursor: Option<&[Value]>,
+    before: bool,
+    filter_is_empty: bool,
+) -> Result<bool, String> {
+    let Some(cursor) = cursor else {
+        return Ok(false);
+    };
+    let (clause, params) = if before {
+        tablepro_core::keyset_before_where_clause(driver_id, keys, cursor, query.params.len())
+    } else {
+        keyset_where_clause(driver_id, keys, cursor, query.params.len())
+    }
+    .map_err(|error| error.to_string())?;
+    query.sql.push_str(if filter_is_empty { " WHERE " } else { " AND " });
+    query.sql.push_str(&clause);
+    query.params.extend(params);
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,6 +278,8 @@ mod tests {
     mod mongodb_value;
     #[path = "redis_value.rs"]
     mod redis_value;
+    #[path = "reverse_paging.rs"]
+    mod reverse_paging;
     #[path = "stable_order.rs"]
     mod stable_order;
 
@@ -417,61 +500,6 @@ mod tests {
     }
 
     #[test]
-    fn invalid_filter_refuses_both_page_and_count() {
-        let filter = FilterSet {
-            rules: vec![FilterRule {
-                column: "missing".into(),
-                op: FilterOp::Eq,
-                value: Some(FilterValue::Single("x".into())),
-            }],
-            ..Default::default()
-        };
-        let target = BrowseTarget {
-            driver_id: "postgres",
-            schema: None,
-            table: "items",
-            columns: &[],
-            filter: &filter,
-            hidden_columns: None,
-        };
-        assert!(target.count().unwrap_err().contains("missing"));
-        assert!(target.page(0, 100, None, None).unwrap_err().contains("missing"));
-    }
-
-    #[test]
-    fn page_and_count_share_filter_and_keyset_parameters_follow_it() {
-        let columns = vec![column("id", true), column("name", false)];
-        let filter = FilterSet {
-            rules: vec![FilterRule {
-                column: "name".into(),
-                op: FilterOp::Eq,
-                value: Some(FilterValue::Single("Ada".into())),
-            }],
-            ..Default::default()
-        };
-        let target = BrowseTarget {
-            driver_id: "postgres",
-            schema: Some("odd\"schema"),
-            table: "items",
-            columns: &columns,
-            filter: &filter,
-            hidden_columns: None,
-        };
-        let count = target.count().unwrap();
-        let PageQuery::Sql(page) = target.page(10_000, 100, None, Some(&[Value::Int(50)])).unwrap() else {
-            panic!("expected SQL")
-        };
-        assert_eq!(
-            count.sql,
-            "SELECT COUNT(*) FROM \"odd\"\"schema\".\"items\" WHERE \"name\" = $1"
-        );
-        assert!(page.sql.contains("\"name\" = $1 AND \"id\" > $2"));
-        assert!(!page.sql.contains("10000"));
-        assert_eq!(page.params, vec![Value::Text("Ada".into()), Value::Int(50)]);
-        assert_eq!(count.params, vec![Value::Text("Ada".into())]);
-    }
-
-    #[test]
     fn value_query_fetches_one_column_by_primary_key() {
         let columns = vec![column("tenant", true), column("id", true), column("payload", false)];
         let target = BrowseTarget {
@@ -491,82 +519,6 @@ mod tests {
             "SELECT \"payload\" FROM \"app\".\"records\" WHERE \"tenant\" = $1 AND \"id\" = $2 ORDER BY \"tenant\" ASC, \"id\" ASC LIMIT 2 OFFSET 0"
         );
         assert_eq!(query.params, vec![Value::Text("acme".into()), Value::Int(7)]);
-    }
-
-    #[test]
-    fn explicit_sort_ignores_a_keyset_cursor_and_keeps_offset_pagination() {
-        let columns = vec![column("id", true), column("rank", false)];
-        let target = BrowseTarget {
-            driver_id: "postgres",
-            schema: None,
-            table: "items",
-            columns: &columns,
-            filter: &FilterSet::default(),
-            hidden_columns: None,
-        };
-        let PageQuery::Sql(page) = target
-            .page(KEYSET_OFFSET_THRESHOLD, 25, Some((1, true)), Some(&[Value::Int(5)]))
-            .unwrap()
-        else {
-            panic!("expected offset SQL")
-        };
-        assert!(page.sql.contains("ORDER BY \"rank\" ASC, \"id\" ASC"));
-        assert!(
-            page.sql
-                .ends_with(&format!("LIMIT 25 OFFSET {KEYSET_OFFSET_THRESHOLD}"))
-        );
-        assert!(!page.sql.contains(" > "));
-        assert!(page.params.is_empty());
-    }
-
-    #[test]
-    fn incomplete_composite_cursor_is_ignored_and_keeps_offset_pagination() {
-        let columns = vec![column("tenant", true), column("id", true), column("name", false)];
-        let target = BrowseTarget {
-            driver_id: "postgres",
-            schema: None,
-            table: "items",
-            columns: &columns,
-            filter: &FilterSet::default(),
-            hidden_columns: None,
-        };
-        let PageQuery::Sql(page) = target
-            .page(KEYSET_OFFSET_THRESHOLD, 25, None, Some(&[Value::Int(5)]))
-            .unwrap()
-        else {
-            panic!("expected offset SQL")
-        };
-        assert!(
-            page.sql
-                .ends_with(&format!("LIMIT 25 OFFSET {KEYSET_OFFSET_THRESHOLD}"))
-        );
-        assert!(!page.sql.contains(" > "));
-        assert!(page.params.is_empty());
-    }
-
-    #[test]
-    fn keyset_cursor_is_ignored_when_the_table_has_no_primary_key() {
-        let columns = vec![column("name", false)];
-        let filter = FilterSet::default();
-        let target = BrowseTarget {
-            driver_id: "postgres",
-            schema: None,
-            table: "items",
-            columns: &columns,
-            filter: &filter,
-            hidden_columns: None,
-        };
-        let PageQuery::Sql(page) = target
-            .page_by_row_id(KEYSET_OFFSET_THRESHOLD, 25, None, Some(&[Value::Int(5)]))
-            .unwrap()
-        else {
-            panic!("PostgreSQL unkeyed browse pages require ordered SQL")
-        };
-        assert!(
-            page.sql
-                .ends_with(&format!("ORDER BY ctid ASC LIMIT 25 OFFSET {KEYSET_OFFSET_THRESHOLD}"))
-        );
-        assert!(page.params.is_empty());
     }
 
     #[test]

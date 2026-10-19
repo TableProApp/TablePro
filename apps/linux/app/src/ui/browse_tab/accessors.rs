@@ -37,6 +37,18 @@ impl BrowseTab {
         self.keyset_cursor.as_deref()
     }
 
+    pub fn keyset_before_cursor(&self) -> Option<&[tablepro_core::Value]> {
+        self.keyset_before_cursor.as_deref()
+    }
+
+    pub fn reverse_page(&self) -> bool {
+        self.reverse_page
+    }
+
+    pub fn last_page(&self) -> bool {
+        self.last_page
+    }
+
     pub fn driver_id(&self) -> &str {
         &self.driver_id
     }

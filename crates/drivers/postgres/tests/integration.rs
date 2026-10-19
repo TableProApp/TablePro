@@ -71,18 +71,18 @@ mod wide_numeric_contract;
 #[path = "support/interval_contract.rs"]
 mod interval_contract;
 
+#[path = "support/enum_contract.rs"]
+mod enum_contract;
+#[path = "support/native_oracle_contract.rs"]
+mod native_oracle_contract;
 #[path = "support/query_budget_contract.rs"]
 mod query_budget_contract;
 #[path = "support/query_cursor.rs"]
 mod query_cursor;
+#[path = "support/reverse_keyset_paging.rs"]
+mod reverse_keyset_paging;
 #[path = "support/value_contracts.rs"]
 mod value_contracts;
-
-#[path = "support/native_oracle_contract.rs"]
-mod native_oracle_contract;
-
-#[path = "support/enum_contract.rs"]
-mod enum_contract;
 
 #[path = "support/enum_parameter_context_contract.rs"]
 mod enum_parameter_context_contract;

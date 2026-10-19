@@ -368,7 +368,7 @@ impl BrowseTab {
         // user isn't stranded on offset N where N might be
         // beyond the new filtered total.
         self.current_offset = 0;
-        self.keyset_cursor = None;
+        self.reset_keyset_navigation();
         self.refresh_filter_chrome();
         if let Some(strip) = self.filter_strip.as_ref() {
             strip.update_filter(set);
@@ -512,7 +512,22 @@ pub(super) fn extract_keyset_cursor(
     result: &QueryResult,
     projected_columns: Option<&[usize]>,
 ) -> Option<Vec<tablepro_core::Value>> {
-    let last_row = result.rows.last()?;
+    extract_keyset_boundary(columns, result.rows.last()?, projected_columns)
+}
+
+pub(super) fn extract_first_keyset_cursor(
+    columns: &[ColumnInfo],
+    result: &QueryResult,
+    projected_columns: Option<&[usize]>,
+) -> Option<Vec<tablepro_core::Value>> {
+    extract_keyset_boundary(columns, result.rows.first()?, projected_columns)
+}
+
+fn extract_keyset_boundary(
+    columns: &[ColumnInfo],
+    row: &[tablepro_core::Value],
+    projected_columns: Option<&[usize]>,
+) -> Option<Vec<tablepro_core::Value>> {
     let pk_indexes: Vec<usize> = columns
         .iter()
         .enumerate()
@@ -528,7 +543,7 @@ pub(super) fn extract_keyset_cursor(
             Some(projection) => projection.iter().position(|projected| *projected == idx)?,
             None => idx,
         };
-        values.push(last_row.get(result_index)?.clone());
+        values.push(row.get(result_index)?.clone());
     }
     Some(values)
 }
@@ -592,7 +607,7 @@ pub(super) fn bind_inspector(
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_keyset_cursor, format_thousands};
+    use super::{extract_first_keyset_cursor, extract_keyset_cursor, format_thousands};
     use tablepro_core::{ColumnInfo, QueryResult, Value};
 
     #[test]
@@ -600,11 +615,18 @@ mod tests {
         let columns = vec![column("name", false), column("id", true), column("flag", false)];
         let result = QueryResult {
             columns: vec![column("id", true), column("name", false)],
-            rows: vec![vec![Value::Int(7), Value::Text("Ada".into())]],
+            rows: vec![
+                vec![Value::Int(7), Value::Text("Ada".into())],
+                vec![Value::Int(8), Value::Text("Bea".into())],
+            ],
             truncated: false,
         };
         assert_eq!(
             extract_keyset_cursor(&columns, &result, Some(&[1, 0])),
+            Some(vec![Value::Int(8)])
+        );
+        assert_eq!(
+            extract_first_keyset_cursor(&columns, &result, Some(&[1, 0])),
             Some(vec![Value::Int(7)])
         );
         assert_eq!(extract_keyset_cursor(&columns, &result, Some(&[0])), None);

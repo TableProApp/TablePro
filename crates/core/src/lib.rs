@@ -52,7 +52,10 @@ pub use operation::{
     CANCELLATION_DISPATCH_TIMEOUT, CANCELLATION_GRACE, CONTROL_SETUP_TIMEOUT, Interruption, OperationControl,
     check_pre_dispatch, run_controlled_setup, run_server_cancellable,
 };
-pub use pagination::{KEYSET_OFFSET_THRESHOLD, KeysetError, keyset_order_by, keyset_where_clause};
+pub use pagination::{
+    KEYSET_OFFSET_THRESHOLD, KeysetError, keyset_before_where_clause, keyset_order_by, keyset_order_by_before,
+    keyset_where_clause,
+};
 pub use params::{NamedParameters, ParameterKind, extract_named_parameters, parse_parameter_value};
 pub use query::{
     ColumnInfo, ExecResult, ForeignKeyInfo, IndexInfo, MAX_QUERY_CURSOR_PAGE_ROWS, MAX_QUERY_RESULT_BYTES,

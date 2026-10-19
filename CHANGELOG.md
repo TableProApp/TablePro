@@ -5,6 +5,7 @@
 Source version **0.2.0** (`apps/linux/app/Cargo.toml`). This section is the user-facing map for the completed 0.2.0 delivery since the last tagged package, [0.1.5](#015---2026-09-27). Compare: [`linux-v0.1.5...linux`](https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux). Entries stay here until the next tagged release.
 
 ### Added
+- Unsorted keyed table browsing can move backward through deep pages and jump to the last page using primary-key seeks while keeping rows in ascending key order.
 - Arch packages include a build-input manifest with source and dependency archive checksums, package versions, and toolchain details.
 - The Arch package includes generated license texts and versioned attributions for the Rust dependencies used by its application binaries.
 - Preferences has **Reuse one tab when opening tables**. Turn it off to give every table opened from the sidebar its own tab; an already-open table is still selected instead of duplicated.

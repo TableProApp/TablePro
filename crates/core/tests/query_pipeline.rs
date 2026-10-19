@@ -9,7 +9,7 @@ use tablepro_core::sql_lex::{split_statements, statement_at_cursor};
 use tablepro_core::sql_literal::build_insert_literal;
 use tablepro_core::{
     ColumnInfo, Combinator, FilterOp, FilterRule, FilterSet, FilterValue, Value, build_filter_where,
-    extract_named_parameters, keyset_order_by, keyset_where_clause,
+    extract_named_parameters, keyset_before_where_clause, keyset_order_by, keyset_where_clause,
 };
 
 const DIALECTS: [&str; 5] = ["postgres", "mysql", "sqlite", "mssql", "clickhouse"];
@@ -126,6 +126,40 @@ fn a_keyset_page_continues_the_placeholder_run_the_filter_started() {
             build_order_and_pagination(driver_id, order_inner, 100, 0)
         );
 
+        let seen = placeholders_in(driver_id, &sql);
+        assert_eq!(seen.len(), params.len(), "{driver_id} produced {sql}");
+        if driver_id == "postgres" || driver_id == "mssql" {
+            let expected: Vec<String> = (0..params.len()).map(|i| placeholder_for(driver_id, i)).collect();
+            assert_eq!(
+                seen, expected,
+                "{driver_id} numbered its placeholders out of order: {sql}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_previous_keyset_page_continues_the_filter_placeholder_run_for_every_dialect() {
+    let columns = schema();
+    let set = FilterSet {
+        combinator: Combinator::And,
+        rules: vec![FilterRule {
+            column: "age".into(),
+            op: FilterOp::GtEq,
+            value: Some(FilterValue::Single("21".into())),
+        }],
+        extra_sql: None,
+    };
+
+    for driver_id in DIALECTS {
+        let (where_sql, mut params) = build_filter_where(driver_id, &columns, &set)
+            .expect("the filter must build")
+            .expect("one rule must produce a clause");
+        let (before_sql, before_params) =
+            keyset_before_where_clause(driver_id, &["id"], &[Value::Int(500)], params.len())
+                .expect("the reverse keyset clause must build");
+        params.extend(before_params);
+        let sql = format!("SELECT * FROM people WHERE {where_sql} AND {before_sql}");
         let seen = placeholders_in(driver_id, &sql);
         assert_eq!(seen.len(), params.len(), "{driver_id} produced {sql}");
         if driver_id == "postgres" || driver_id == "mssql" {

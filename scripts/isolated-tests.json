@@ -250,6 +250,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::browse_tab::tests::deep_previous_page_uses_the_first_row_as_its_reverse_keyset_anchor"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::browse_tab::tests::browse_page_fetch_waits_until_the_new_columns_are_applied"
     ],
     [

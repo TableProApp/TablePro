@@ -87,6 +87,10 @@ pub struct BrowseTab {
     /// Last row's primary-key values from the most recent page. Used
     /// for keyset seek when offset exceeds `KEYSET_OFFSET_THRESHOLD`.
     keyset_cursor: Option<Vec<tablepro_core::Value>>,
+    keyset_first_cursor: Option<Vec<tablepro_core::Value>>,
+    keyset_before_cursor: Option<Vec<tablepro_core::Value>>,
+    reverse_page: bool,
+    last_page: bool,
     current_selection: Option<gtk::MultiSelection>,
     current_total_rows: Option<u64>,
     page_requests: PageRequestTracker,
@@ -201,6 +205,14 @@ pub(crate) use value_parse::mysql_enum_set_labels;
 use value_parse::*;
 
 impl BrowseTab {
+    fn reset_keyset_navigation(&mut self) {
+        self.keyset_cursor = None;
+        self.keyset_first_cursor = None;
+        self.keyset_before_cursor = None;
+        self.reverse_page = false;
+        self.last_page = false;
+    }
+
     pub(super) fn save_in_flight(&self) -> bool {
         self.save_in_flight.get()
     }
@@ -598,6 +610,10 @@ impl SimpleComponent for BrowseTab {
             current_result: None,
             current_projection: None,
             keyset_cursor: None,
+            keyset_first_cursor: None,
+            keyset_before_cursor: None,
+            reverse_page: false,
+            last_page: false,
             current_selection: None,
             current_total_rows: None,
             page_requests: PageRequestTracker::default(),
@@ -708,6 +724,11 @@ impl SimpleComponent for BrowseTab {
                 self.current_columns = columns_for_browse_page(&self.driver_id, &self.current_columns, Some(&result));
                 self.keyset_cursor =
                     extract_keyset_cursor(&self.current_columns, &result, projected_columns.as_deref());
+                self.keyset_first_cursor =
+                    extract_first_keyset_cursor(&self.current_columns, &result, projected_columns.as_deref());
+                self.keyset_before_cursor = None;
+                self.reverse_page = false;
+                self.last_page = false;
                 self.current_projection = projected_columns;
                 self.current_result = Some(std::sync::Arc::new(result));
                 // Defer rendering until columns are also loaded — the
@@ -832,7 +853,7 @@ impl SimpleComponent for BrowseTab {
             BrowseTabInput::FirstPage => {
                 if self.current_offset > 0 {
                     self.current_offset = 0;
-                    self.keyset_cursor = None;
+                    self.reset_keyset_navigation();
                     self.emit_fetch_page(&sender);
                     let _ = sender.output(BrowseTabOutput::StateChanged);
                 }
@@ -840,9 +861,18 @@ impl SimpleComponent for BrowseTab {
             BrowseTabInput::PrevPage => {
                 if self.current_offset >= self.page_size {
                     self.current_offset -= self.page_size;
-                    // Reverse keyset is not implemented; clear cursor so
-                    // the fetch falls back to OFFSET for this page.
-                    self.keyset_cursor = None;
+                    self.reverse_page = self.current_offset >= tablepro_core::KEYSET_OFFSET_THRESHOLD
+                        && self.current_sort.is_none()
+                        && self.keyset_first_cursor.is_some();
+                    self.last_page = false;
+                    self.keyset_before_cursor = if self.reverse_page {
+                        self.keyset_first_cursor.clone()
+                    } else {
+                        None
+                    };
+                    if !self.reverse_page {
+                        self.keyset_cursor = None;
+                    }
                     self.emit_fetch_page(&sender);
                     let _ = sender.output(BrowseTabOutput::StateChanged);
                 }
@@ -861,6 +891,9 @@ impl SimpleComponent for BrowseTab {
                     return;
                 }
                 self.current_offset += self.page_size;
+                self.keyset_before_cursor = None;
+                self.reverse_page = false;
+                self.last_page = false;
                 self.emit_fetch_page(&sender);
                 let _ = sender.output(BrowseTabOutput::StateChanged);
             }
@@ -877,7 +910,10 @@ impl SimpleComponent for BrowseTab {
                 let last_page_offset = (total - 1) / self.page_size * self.page_size;
                 if self.current_offset != last_page_offset {
                     self.current_offset = last_page_offset;
-                    self.keyset_cursor = None;
+                    self.reset_keyset_navigation();
+                    self.last_page = last_page_offset >= tablepro_core::KEYSET_OFFSET_THRESHOLD
+                        && self.current_sort.is_none()
+                        && self.current_columns.iter().any(|column| column.primary_key);
                     self.emit_fetch_page(&sender);
                     let _ = sender.output(BrowseTabOutput::StateChanged);
                 }
@@ -895,7 +931,7 @@ impl SimpleComponent for BrowseTab {
                 }
                 self.current_sort = Some(next);
                 self.current_offset = 0;
-                self.keyset_cursor = None;
+                self.reset_keyset_navigation();
                 self.capture_focus_for_restore();
                 self.emit_fetch_page(&sender);
                 let _ = sender.output(BrowseTabOutput::StateChanged);
@@ -906,7 +942,7 @@ impl SimpleComponent for BrowseTab {
                 }
                 self.page_size = size;
                 self.current_offset = 0;
-                self.keyset_cursor = None;
+                self.reset_keyset_navigation();
                 self.emit_fetch_page(&sender);
                 let _ = sender.output(BrowseTabOutput::StateChanged);
             }

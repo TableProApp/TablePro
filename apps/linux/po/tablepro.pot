@@ -300,45 +300,45 @@ msgstr ""
 msgid "PostgreSQL backups"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/browse.rs:472
+#: apps/linux/app/src/ui/app/browse.rs:486
 #: apps/linux/app/src/ui/history_dialog.rs:141
 msgid "Failed"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/browse.rs:479
-#: apps/linux/app/src/ui/app/browse.rs:483
-#: apps/linux/app/src/ui/app/browse.rs:494
-#: apps/linux/app/src/ui/app/browse.rs:503
-#: apps/linux/app/src/ui/app/browse.rs:590
+#: apps/linux/app/src/ui/app/browse.rs:493
+#: apps/linux/app/src/ui/app/browse.rs:497
+#: apps/linux/app/src/ui/app/browse.rs:508
+#: apps/linux/app/src/ui/app/browse.rs:517
+#: apps/linux/app/src/ui/app/browse.rs:604
 msgid "Nothing to export"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/browse.rs:501
+#: apps/linux/app/src/ui/app/browse.rs:515
 msgid "Show hidden columns and reload before exporting this page."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/browse.rs:528
+#: apps/linux/app/src/ui/app/browse.rs:542
 msgid "The connection for this result is no longer available."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/browse.rs:629
+#: apps/linux/app/src/ui/app/browse.rs:643
 msgid "Open a table to filter rows."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/browse.rs:653
+#: apps/linux/app/src/ui/app/browse.rs:667
 msgid "Saving changes. Refresh after the save finishes."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/browse.rs:658
+#: apps/linux/app/src/ui/app/browse.rs:672
 #: apps/linux/app/src/ui/app/connection.rs:169
 msgid "Discard pending changes?"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/browse.rs:660
+#: apps/linux/app/src/ui/app/browse.rs:674
 msgid "Refreshing reloads the table from the database and drops every unsaved edit on this tab."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/browse.rs:663
+#: apps/linux/app/src/ui/app/browse.rs:677
 #: apps/linux/app/src/ui/app/connection.rs:174
 #: apps/linux/app/src/ui/app/connection.rs:348
 #: apps/linux/app/src/ui/app/editor_files.rs:105
@@ -376,17 +376,17 @@ msgstr ""
 msgid "Cancel"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/browse.rs:664
+#: apps/linux/app/src/ui/app/browse.rs:678
 msgid "Discard and refresh"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/browse.rs:714
+#: apps/linux/app/src/ui/app/browse.rs:728
 msgid "The table columns changed before the value could be fetched."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/browse.rs:729
-#: apps/linux/app/src/ui/app/browse.rs:732
-#: apps/linux/app/src/ui/app/browse.rs:735
+#: apps/linux/app/src/ui/app/browse.rs:743
+#: apps/linux/app/src/ui/app/browse.rs:746
+#: apps/linux/app/src/ui/app/browse.rs:749
 msgid "The row key did not identify exactly one cell."
 msgstr ""
 
@@ -631,8 +631,8 @@ msgid "The connection was deleted, but some stored credentials could not be remo
 msgstr ""
 
 #: apps/linux/app/src/ui/app/database_switcher.rs:113
-#: apps/linux/app/src/ui/browse_tab/mod.rs:307
-#: apps/linux/app/src/ui/browse_tab/mod.rs:805
+#: apps/linux/app/src/ui/browse_tab/mod.rs:319
+#: apps/linux/app/src/ui/browse_tab/mod.rs:826
 #: apps/linux/app/src/ui/catalog_dialog.rs:133
 msgid "Loading…"
 msgstr ""
@@ -728,7 +728,7 @@ msgid "Finishing the cell edit timed out. Try again."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/grid_close.rs:141
-#: apps/linux/app/src/ui/browse_tab/mod.rs:682
+#: apps/linux/app/src/ui/browse_tab/mod.rs:698
 msgid "Finish or cancel the current cell edit and try again."
 msgstr ""
 
@@ -1043,7 +1043,7 @@ msgid "This column belongs to more than one foreign key."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/row_ops.rs:142
-#: apps/linux/app/src/ui/browse_tab/mod.rs:962
+#: apps/linux/app/src/ui/browse_tab/mod.rs:998
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:509
 msgid "Some row values were not fetched. Show hidden columns and reload before copying or exporting."
 msgstr ""
@@ -1686,17 +1686,17 @@ msgstr ""
 msgid "The database returned rows that do not match the table columns."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/mod.rs:308
-#: apps/linux/app/src/ui/browse_tab/mod.rs:806
+#: apps/linux/app/src/ui/browse_tab/mod.rs:320
+#: apps/linux/app/src/ui/browse_tab/mod.rs:827
 #, rust-format
 msgid "Fetching rows from {table}"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/mod.rs:340
+#: apps/linux/app/src/ui/browse_tab/mod.rs:352
 msgid "Read-only connection. Editing disabled."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/mod.rs:345
+#: apps/linux/app/src/ui/browse_tab/mod.rs:357
 msgid "This table has no primary key. Row order is not stable; use the SQL editor to modify rows."
 msgstr ""
 

@@ -22,14 +22,48 @@ pub fn keyset_where_clause(
     last_values: &[Value],
     placeholder_start: usize,
 ) -> Result<(String, Vec<Value>), KeysetError> {
+    keyset_where_comparison(driver_id, pk_columns, last_values, placeholder_start, ">")
+}
+
+pub fn keyset_before_where_clause(
+    driver_id: &str,
+    pk_columns: &[&str],
+    first_values: &[Value],
+    placeholder_start: usize,
+) -> Result<(String, Vec<Value>), KeysetError> {
+    keyset_where_comparison(driver_id, pk_columns, first_values, placeholder_start, "<")
+}
+
+fn keyset_where_comparison(
+    driver_id: &str,
+    pk_columns: &[&str],
+    boundary_values: &[Value],
+    placeholder_start: usize,
+    comparison: &str,
+) -> Result<(String, Vec<Value>), KeysetError> {
     if pk_columns.is_empty() {
         return Err(KeysetError::EmptyKeys);
     }
-    if pk_columns.len() != last_values.len() {
+    if pk_columns.len() != boundary_values.len() {
         return Err(KeysetError::LengthMismatch {
             columns: pk_columns.len(),
-            values: last_values.len(),
+            values: boundary_values.len(),
         });
+    }
+    if driver_id == "postgres"
+        && pk_columns.len() > 1
+        && boundary_values.iter().all(|value| !matches!(value, Value::Null))
+    {
+        let columns = pk_columns
+            .iter()
+            .map(|column| quote_ident(driver_id, column))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let values = (placeholder_start..placeholder_start + boundary_values.len())
+            .map(|index| placeholder_for(driver_id, index))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Ok((format!("({columns}) {comparison} ({values})"), boundary_values.to_vec()));
     }
 
     // (a, b, c) > (x, y, z) expands to:
@@ -45,25 +79,28 @@ pub fn keyset_where_clause(
     let mut placeholder_idx = placeholder_start;
 
     for depth in 0..pk_columns.len() {
-        if matches!(last_values[depth], Value::Null) {
+        if matches!(boundary_values[depth], Value::Null) {
             continue;
         }
         let mut and_parts: Vec<String> = Vec::with_capacity(depth + 1);
         for eq_i in 0..depth {
             let ident = quote_ident(driver_id, pk_columns[eq_i]);
-            if matches!(last_values[eq_i], Value::Null) {
+            if matches!(boundary_values[eq_i], Value::Null) {
                 and_parts.push(format!("{ident} IS NULL"));
             } else {
                 and_parts.push(format!("{ident} = {}", placeholder_for(driver_id, placeholder_idx)));
                 placeholder_idx += 1;
-                params.push(last_values[eq_i].clone());
+                params.push(boundary_values[eq_i].clone());
             }
         }
 
         let ident = quote_ident(driver_id, pk_columns[depth]);
-        and_parts.push(format!("{ident} > {}", placeholder_for(driver_id, placeholder_idx)));
+        and_parts.push(format!(
+            "{ident} {comparison} {}",
+            placeholder_for(driver_id, placeholder_idx)
+        ));
         placeholder_idx += 1;
-        params.push(last_values[depth].clone());
+        params.push(boundary_values[depth].clone());
 
         if let [only] = and_parts.as_slice() {
             or_arms.push(only.clone());
@@ -87,12 +124,21 @@ pub fn keyset_where_clause(
 /// ORDER BY clause for keyset paging (ascending PK order), including
 /// the leading space. Empty when `pk_columns` is empty.
 pub fn keyset_order_by(driver_id: &str, pk_columns: &[&str]) -> String {
+    keyset_order_by_direction(driver_id, pk_columns, false)
+}
+
+pub fn keyset_order_by_before(driver_id: &str, pk_columns: &[&str]) -> String {
+    keyset_order_by_direction(driver_id, pk_columns, true)
+}
+
+fn keyset_order_by_direction(driver_id: &str, pk_columns: &[&str], descending: bool) -> String {
     if pk_columns.is_empty() {
         return String::new();
     }
+    let direction = if descending { "DESC" } else { "ASC" };
     let parts: Vec<String> = pk_columns
         .iter()
-        .map(|c| format!("{} ASC", quote_ident(driver_id, c)))
+        .map(|c| format!("{} {direction}", quote_ident(driver_id, c)))
         .collect();
     format!(" ORDER BY {}", parts.join(", "))
 }
@@ -134,6 +180,29 @@ mod tests {
     }
 
     #[test]
+    fn previous_keyset_uses_strict_less_than_and_preserves_composite_tie_breakers() {
+        let (sql, params) =
+            keyset_before_where_clause("postgres", &["tenant_id", "id"], &[Value::Int(7), Value::Int(42)], 2).unwrap();
+
+        assert_eq!(sql, r#"("tenant_id", "id") < ($3, $4)"#);
+        assert_eq!(params, vec![Value::Int(7), Value::Int(42)]);
+    }
+
+    #[test]
+    fn previous_keyset_keeps_null_prefixes_as_is_null() {
+        let (sql, params) = keyset_before_where_clause(
+            "mysql",
+            &["a", "b", "c"],
+            &[Value::Int(1), Value::Null, Value::Int(3)],
+            0,
+        )
+        .unwrap();
+
+        assert_eq!(sql, "(`a` < ? OR (`a` = ? AND `b` IS NULL AND `c` < ?))");
+        assert_eq!(params, vec![Value::Int(1), Value::Int(1), Value::Int(3)]);
+    }
+
+    #[test]
     fn composite_pk_mysql() {
         let (sql, params) =
             keyset_where_clause("mysql", &["a", "b"], &[Value::Int(1), Value::Text("x".into())], 0).unwrap();
@@ -163,5 +232,9 @@ mod tests {
     fn order_by_dialect() {
         assert_eq!(keyset_order_by("postgres", &["id"]), " ORDER BY \"id\" ASC");
         assert_eq!(keyset_order_by("mysql", &["a", "b"]), " ORDER BY `a` ASC, `b` ASC");
+        assert_eq!(
+            keyset_order_by_before("postgres", &["tenant_id", "id"]),
+            " ORDER BY \"tenant_id\" DESC, \"id\" DESC"
+        );
     }
 }

@@ -27,6 +27,7 @@ pub(super) fn value_query(
         sql: format!("SELECT \"Value\" FROM \"{}\" WHERE \"Key\" = ?", target.table),
         params: pk_values.to_vec(),
         projected_columns: None,
+        reverse_rows: false,
     })
 }
 
