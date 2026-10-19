@@ -9,6 +9,104 @@ Unreleased changes are files in `changelog.d/`.
 
 <!-- towncrier release notes start -->
 
+## [0.82.0](https://github.com/TableProApp/TablePro/releases/tag/v0.82.0) - 2026-10-19
+
+Solarized, GitHub, Catppuccin, Gruvbox, Tokyo Night and One Dark themes, VS Code theme import, and a Theme Editor with live preview.
+Custom themes sync over iCloud. Appearance is set per Mac, and a Mac on an older version that syncs settings switches to System.
+Set Value generates UUIDs and applies to every selected cell. Add Row, Duplicate Row and Paste fill a UUID primary key with no default.
+Queries run on ClickHouse 23.8.0 to 23.8.8, read-only profiles connect, and servers before 22.3 load indexes, views and functions.
+Get beta updates in Settings > General. Registry plugins update after a TablePro update instead of from an Update button.
+SAP HANA plugin 1.0.0 to 1.0.3 shipped a helper without the Go crypto/tls fix for GO-2026-6607. It updates with TablePro.
+
+### Added
+
+- New UUID in a UUID primary key the server does not fill, on Add Row, Duplicate Row and Paste. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- Edit > Set Value in the menu bar, with rows in Settings > Keyboard. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- Generate UUID and Generate UUIDv7 in Set Value, the row inspector and Fill Column, a new value for each cell. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- VS Code color theme import in Settings > Appearance, from the theme's `.json` file. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Theme Editor window with a live preview, undo and Revert Changes. Open windows show each edit as you make it. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- iCloud sync of custom themes, with Settings on in Settings > Sync. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Theme import by dropping files on the Themes list, and export by dragging a theme to Finder. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Solarized, GitHub, Catppuccin, Gruvbox and Tokyo Night themes in light and dark, plus One Dark and One Light. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Get beta updates in Settings > General. Every update now comes from a signed feed at updates.tablepro.app. ([#3501](https://github.com/TableProApp/TablePro/pull/3501))
+- Drag the line beside the connections strip to widen it and read long connection and database names. ([#3526](https://github.com/TableProApp/TablePro/pull/3526))
+
+### Changed
+
+- Set Value applies to every selected cell, or to the clicked column across the selected rows. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- Text typed into a column that is not a date or time saved as typed, even when it reads like `now()`. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- Set NULL and Set DEFAULT in the row inspector shown only where the column takes them, as in the data grid. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- Default only on new rows on SQLite, libSQL, Turso, D1, ClickHouse, Databend, Snowflake, Trino, Cassandra and ScyllaDB. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- SQL functions in Set Value and the row inspector listed per database and only where they fit the column. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- UUID functions in SQL Functions replaced by Generate UUID, which writes the value itself. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- Pending SQL functions in the data grid drawn like a pending default. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- Server Dashboard sessions and slow queries shown as data grids, with Cancel Query and Terminate Session in the header. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Appearance (System, Light or Dark) kept per Mac instead of syncing. Older versions that sync settings switch to System. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- SQL previews in history, filters, maintenance and review sheets highlighted as in the editor, in the editor font. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- SQL aliases and parameters drawn in the editor text color instead of the NULL color. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Compare & Sync status bar shows the target connection's icon instead of a colored dot. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Terminate Session and Cancel Query confirmations name the session's process ID and user. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Data Files, Compare & Sync and Open in Window value windows show the theme in the titlebar on macOS 26 and later. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Editor tab strip over a themed window on macOS 26 and later drawn in a system fill instead of the theme color. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Themes move to the Trash instead of being deleted. Undo reverts a trash, rename, duplicate or import. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Plugin download progress shown as the bytes arrive instead of jumping to full at the end. ([#3491](https://github.com/TableProApp/TablePro/pull/3491))
+- Welcome window and What's New show the build number after the version. ([#3497](https://github.com/TableProApp/TablePro/pull/3497))
+- Registry drivers such as Oracle, SQL Server and MongoDB load on first use instead of at launch. ([#3502](https://github.com/TableProApp/TablePro/pull/3502))
+- Registry plugins update after a TablePro update, not from an Update button; a loaded one updates at the next launch. ([#3507](https://github.com/TableProApp/TablePro/pull/3507))
+
+### Removed
+
+- The `com.TablePro.customRegistryURL` setting for a custom plugin registry. ([#3515](https://github.com/TableProApp/TablePro/pull/3515))
+
+### Fixed
+
+- Every ClickHouse query after connecting failing with `UNKNOWN_SETTING` on 23.8.0 to 23.8.8. ([#3445](https://github.com/TableProApp/TablePro/pull/3445))
+- SQL Server 2016 RTM offered a `CREATE OR ALTER VIEW` template it cannot run, and Azure SQL a drop-and-create one. ([#3445](https://github.com/TableProApp/TablePro/pull/3445))
+- ClickHouse SQL export writing the current database's table structure for a table in another database. ([#3445](https://github.com/TableProApp/TablePro/pull/3445))
+- ClickHouse users with a read-only profile unable to connect. ([#3445](https://github.com/TableProApp/TablePro/pull/3445))
+- ClickHouse indexes, view definitions, functions, table comments and sizes failing to load on servers before 22.3. ([#3445](https://github.com/TableProApp/TablePro/pull/3445))
+- Opening a ClickHouse executable function's definition showing a syntax error. ([#3445](https://github.com/TableProApp/TablePro/pull/3445))
+- A ClickHouse query that failed partway showing its partial rows and the error text as a row instead of the error. ([#3445](https://github.com/TableProApp/TablePro/pull/3445))
+- A ClickHouse query with a `FORMAT` clause showing garbled rows in the grid and in an export. ([#3445](https://github.com/TableProApp/TablePro/pull/3445))
+- Stored text such as `CURRENT_DATE` turning into today's date on Duplicate Row or Restore Previous Values. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- MariaDB `uuid` columns read as `CHAR`. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- SQLite's `datetime('now')` offered on DuckDB and `gen_random_uuid()` on Redshift. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- Empty field in the multi-row inspector after the selected rows were given different values. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- `NOW()` offered on SQLite, Oracle, Cassandra and MongoDB, where it fails or saves the text. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- Default on a saved row storing the text `__DEFAULT__` on Teradata and DynamoDB. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- Copy as INSERT and Copy as UPDATE quoting a staged SQL function. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- SQL functions saved as text on SQL Server, Teradata, Spanner and BigQuery. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- SQL Functions such as SQLite's `datetime('now')` and ClickHouse's `today()` saved as quoted text. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- Date functions and a date picker offered on Cassandra and ScyllaDB `timeuuid` columns. ([#3446](https://github.com/TableProApp/TablePro/pull/3446))
+- Translucent theme selection, as in Dracula and Nord, in a different shade on rows, row numbers and column headers. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Theme editor bringing back a theme file deleted in Finder on the next change. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Inline cell editor, the array editor's Edit as Text, and the inspector's hex dump and map pane ignoring the theme. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Edit as Text in the array editor turning straight quotes and dashes into curly quotes and long dashes. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Selected row text in white over a theme's selection color, or in the theme's color over the system selection. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Theme files with a JSON syntax error reported without the line and column. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Connecting and Not connected panes, and Agent mode, in the system window color under a theme before macOS 26. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Selected text in SQL previews, such as query history, ignoring the theme's selection color. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Changes to a theme file made outside TablePro not shown until Settings > Appearance was opened. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Server Dashboard lists and the Query Insights chart ignoring the theme. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- No-match, invalid and NULL states in the JSON, PHP and array viewers drawn without the theme's background. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Agent result states and proposed SQL ignoring the theme. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Compare & Sync row states and Data Files loading and failure states drawn without the theme's grid background. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Shapes in the result Map view keeping the previous Accent color after it changes. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Structure and Create Table code placeholders, Startup SQL in a link and the tunnel command preview ignoring the theme. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- System-colored alternate rows, header and booleans in a theme that sets only the grid background and text. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Bars in query, history, filter, structure, plan, compare and other panes drawing a system band over a themed window. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- System header band on the data grid and the Query Plan and Users & Roles trees under a theme with header colors. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- Two themes with the same name impossible to tell apart in the theme pickers. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- No outline around a selected cell range in Dracula and Nord. ([#3452](https://github.com/TableProApp/TablePro/pull/3452))
+- No warning on a connection in the Welcome window whose driver plugin failed to load or is out of date. ([#3478](https://github.com/TableProApp/TablePro/pull/3478))
+- Snowflake, Kafka and GitHub Copilot saw every TablePro build as version 1.0.0. ([#3517](https://github.com/TableProApp/TablePro/pull/3517))
+- Object browser squeezed below its minimum width after the connections strip slid in. ([#3526](https://github.com/TableProApp/TablePro/pull/3526))
+
+### Security
+
+- SAP HANA plugin 1.0.0 to 1.0.3 shipping a helper built with Go 1.27.1, without the crypto/tls fix for GO-2026-6607. ([#3513](https://github.com/TableProApp/TablePro/pull/3513))
+
+
 ## [0.81.0] - 2026-10-16
 
 Cloud Firestore, Firebase Realtime Database and Google Cloud Bigtable connect through new registry plugins.
