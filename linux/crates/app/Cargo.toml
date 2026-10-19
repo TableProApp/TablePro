@@ -85,7 +85,7 @@ relm4.workspace = true
 rustix = { workspace = true, features = ["time"] }
 secrecy.workspace = true
 tokio.workspace = true
-tokio-util = { workspace = true, features = ["rt"] }
+tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
@@ -101,7 +101,7 @@ tablepro-session = { workspace = true, features = ["fakes"] }
 tablepro-test-fixtures.workspace = true
 tablepro-test-support.workspace = true
 tempfile.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
+tokio = { workspace = true, features = ["rt", "test-util"] }
 # tokio-postgres logs through `log`, so the logging tests drive that
 # bridge the way it does.
 log = "0.4"

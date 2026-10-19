@@ -13,7 +13,7 @@ futures.workspace = true
 rustix = { workspace = true, features = ["fs", "process"] }
 secrecy.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["io-util", "process", "net", "time", "sync", "fs"] }
+tokio = { workspace = true, features = ["io-util", "fs"] }
 tokio-util.workspace = true
 tracing.workspace = true
 uuid.workspace = true
@@ -23,7 +23,7 @@ zeroize.workspace = true
 tablepro-test-support.workspace = true
 tempfile.workspace = true
 testcontainers.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
+tokio = { workspace = true, features = ["rt", "test-util"] }
 
 [lints]
 workspace = true

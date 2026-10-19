@@ -1,4 +1,5 @@
-//! The connection conformance suite against MySQL 8.4 and MariaDB 11.4.
+//! The connection conformance suite against MySQL and MariaDB, on the
+//! releases `TABLEPRO_TEST_MYSQL` and `TABLEPRO_TEST_MARIADB` pick.
 
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -23,15 +24,15 @@ pub trait Server: Send + Sync + 'static {
     const FLAVOUR: MysqlFlavour;
 }
 
-pub struct Mysql84;
+pub struct MysqlServer;
 
-impl Server for Mysql84 {
+impl Server for MysqlServer {
     const FLAVOUR: MysqlFlavour = MysqlFlavour::Mysql;
 }
 
-pub struct Mariadb114;
+pub struct MariadbServer;
 
-impl Server for Mariadb114 {
+impl Server for MariadbServer {
     const FLAVOUR: MysqlFlavour = MysqlFlavour::Mariadb;
 }
 
@@ -200,7 +201,7 @@ impl<S: Server> ConformanceDdlEngine for MySqlEngine<S> {
 /// MariaDB's `max_statement_time` stops a CREATE ... SELECT as it stops a
 /// SELECT. MySQL's `max_execution_time` bounds only read-only SELECTs, so
 /// it has no bounded DDL to lift and runs without this case.
-impl BoundedDdlEngine for MySqlEngine<Mariadb114> {
+impl BoundedDdlEngine for MySqlEngine<MariadbServer> {
     fn schema_change_exceeding_sql(&self, table: &TableRef, duration: Duration) -> String {
         format!(
             "CREATE TABLE {} AS SELECT SLEEP({}) AS id",
@@ -236,10 +237,10 @@ impl<S: Server> LargeTableEngine for MySqlEngine<S> {
 }
 
 mod mysql_suite {
-    use super::{MySqlEngine, Mysql84};
+    use super::{MySqlEngine, MysqlServer};
 
     tablepro_test_support::connection_conformance_suite! {
-        engine: MySqlEngine<Mysql84>,
+        engine: MySqlEngine<MysqlServer>,
         docker: true,
         endpoint: network,
         pool: pooled,
@@ -249,20 +250,20 @@ mod mysql_suite {
     }
 
     tablepro_test_support::ddl_conformance_suite! {
-        engine: MySqlEngine<Mysql84>,
+        engine: MySqlEngine<MysqlServer>,
         docker: true,
     }
 
     tablepro_test_support::large_table_conformance_suite! {
-        engine: MySqlEngine<Mysql84>,
+        engine: MySqlEngine<MysqlServer>,
     }
 }
 
 mod mariadb_suite {
-    use super::{Mariadb114, MySqlEngine};
+    use super::{MariadbServer, MySqlEngine};
 
     tablepro_test_support::connection_conformance_suite! {
-        engine: MySqlEngine<Mariadb114>,
+        engine: MySqlEngine<MariadbServer>,
         docker: true,
         endpoint: network,
         pool: pooled,
@@ -272,11 +273,11 @@ mod mariadb_suite {
     }
 
     tablepro_test_support::ddl_conformance_suite! {
-        engine: MySqlEngine<Mariadb114>,
+        engine: MySqlEngine<MariadbServer>,
         docker: true,
     }
 
     tablepro_test_support::large_table_conformance_suite! {
-        engine: MySqlEngine<Mariadb114>,
+        engine: MySqlEngine<MariadbServer>,
     }
 }

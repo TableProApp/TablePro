@@ -14,6 +14,12 @@ pub enum FixtureError {
         status: ExitStatus,
         stderr: String,
     },
+    #[error("{variable}={value} names no release a fixture pins; it pins {known}")]
+    UnknownRelease {
+        variable: &'static str,
+        value: String,
+        known: String,
+    },
     #[error("{service} did not accept connections within {seconds} seconds")]
     NotReady { service: &'static str, seconds: u64 },
     #[error("{service} came back on host port {after}, not {before}")]

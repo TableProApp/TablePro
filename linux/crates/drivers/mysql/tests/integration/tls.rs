@@ -18,7 +18,7 @@ use tablepro_test_support::conformance::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::conformance_engine::{Mariadb114, Mysql84, Server};
+use crate::conformance_engine::{MariadbServer, MysqlServer, Server};
 use crate::support::{FLAVOURS, direct, options_over, password, run_ok, session, start_with, text};
 
 /// The name to dial so the certificate's `localhost` matches: the
@@ -89,12 +89,12 @@ impl<S: Server> TlsConformanceEngine for MySqlTlsEngine<S> {
     }
 
     /// The password user is created REQUIRE SSL. MySQL checks that with
-    /// the credentials and answers 1045; MariaDB checks
+    /// the credentials and answers 1045; MariaDB from 11.2 checks
     /// `require_secure_transport` first and answers 3159.
     fn plaintext_rejection_category(&self) -> ErrorCategory {
         match S::FLAVOUR {
-            MysqlFlavour::Mysql => ErrorCategory::Authentication,
-            MysqlFlavour::Mariadb => ErrorCategory::Tls,
+            MysqlFlavour::Mariadb if !answers_as_a_password(&self.fixture) => ErrorCategory::Tls,
+            _ => ErrorCategory::Authentication,
         }
     }
 
@@ -120,19 +120,19 @@ impl<S: Server> ClientIdentityEngine for MySqlTlsEngine<S> {
 }
 
 mod mysql_suite {
-    use super::{MySqlTlsEngine, Mysql84};
+    use super::{MySqlTlsEngine, MysqlServer};
 
     tablepro_test_support::tls_conformance_suite! {
-        engine: MySqlTlsEngine<Mysql84>,
+        engine: MySqlTlsEngine<MysqlServer>,
         client_identity: true,
     }
 }
 
 mod mariadb_suite {
-    use super::{Mariadb114, MySqlTlsEngine};
+    use super::{MariadbServer, MySqlTlsEngine};
 
     tablepro_test_support::tls_conformance_suite! {
-        engine: MySqlTlsEngine<Mariadb114>,
+        engine: MySqlTlsEngine<MariadbServer>,
         client_identity: true,
     }
 }
@@ -299,8 +299,16 @@ async fn disabled_mode_uses_rsa_not_cleartext() {
     connection.close().await.expect("a close");
 }
 
+/// MariaDB before 11.2 refuses a plaintext login under
+/// `require_secure_transport` with 1045, Access denied, as it refuses a
+/// wrong password, rather than 3159 (MDEV-30178).
+fn answers_as_a_password(fixture: &MysqlFixture) -> bool {
+    fixture.flavour() == MysqlFlavour::Mariadb && fixture.server_version() < (11, 2)
+}
+
 /// A login with no TLS requirement of its own meets the server's
-/// `require_secure_transport`, which both servers report as 3159.
+/// `require_secure_transport`, which both servers report as 3159, but
+/// MariaDB before 11.2 as a refused password.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn disabled_against_require_secure_transport() {
@@ -318,17 +326,19 @@ async fn disabled_against_require_secure_transport() {
 
         let outcome = MysqlDriver.connect(options, CancellationToken::new()).await;
 
-        assert!(
-            matches!(
-                &outcome,
-                Err(DriverError::Tls {
-                    failure: TlsFailure::ServerRequiresTls,
-                    ..
-                })
-            ),
-            "{flavour:?}: {:?}",
-            outcome.err()
+        let refused_for_tls = matches!(
+            &outcome,
+            Err(DriverError::Tls {
+                failure: TlsFailure::ServerRequiresTls,
+                ..
+            })
         );
+        let refused_as_a_password = matches!(&outcome, Err(DriverError::Auth { .. }));
+        let expected = match answers_as_a_password(&fixture) {
+            true => refused_as_a_password,
+            false => refused_for_tls,
+        };
+        assert!(expected, "{flavour:?}: {:?}", outcome.err());
     }
 }
 

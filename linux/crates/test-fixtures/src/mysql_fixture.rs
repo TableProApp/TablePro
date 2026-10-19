@@ -22,6 +22,7 @@ pub struct MysqlFixture {
     host: String,
     port: u16,
     network_alias: Option<String>,
+    server_version: (u32, u32),
 }
 
 impl MysqlFixture {
@@ -44,10 +45,11 @@ impl MysqlFixture {
         let certificate_password = FixtureCredentials::generate_password();
         let flavour = options.flavour;
         let prefix = flavour.environment_prefix();
+        let (release, server_version) = flavour.selected()?;
         let image = flavour
             .ready_conditions()
             .into_iter()
-            .fold(flavour.image().generic(), GenericImage::with_wait_for)
+            .fold(release.generic(), GenericImage::with_wait_for)
             .with_exposed_port(Self::CONTAINER_PORT.tcp());
         let mut request = image
             .with_env_var(format!("{prefix}_ROOT_PASSWORD"), &root_password)
@@ -74,6 +76,7 @@ impl MysqlFixture {
             host,
             port,
             network_alias,
+            server_version,
         })
     }
 
@@ -125,6 +128,11 @@ impl MysqlFixture {
 
     pub fn options(&self) -> &MysqlOptions {
         &self.options
+    }
+
+    /// The major and minor version of the release the fixture started.
+    pub fn server_version(&self) -> (u32, u32) {
+        self.server_version
     }
 
     pub fn host(&self) -> &str {

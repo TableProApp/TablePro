@@ -239,6 +239,30 @@ meson and distro builds use cargo test, which works too:
 cargo test -p tablepro-driver-postgres -- --ignored --test-threads=1
 ```
 
+### Server releases
+
+A fixture starts its engine's default release unless the engine's variable names another:
+
+| Variable | Releases | Default |
+|---|---|---|
+| `TABLEPRO_TEST_POSTGRES` | 13, 14, 17, 18 | 17 |
+| `TABLEPRO_TEST_MYSQL` | 8.0, 8.4, 9.7 | 8.4 |
+| `TABLEPRO_TEST_MARIADB` | 10.11, 11.4, 12.3 | 11.4 |
+| `TABLEPRO_TEST_MSSQL` | 2017, 2019, 2022, 2025 | 2022 |
+| `TABLEPRO_TEST_CLICKHOUSE` | 26.3, 26.8 | 26.8 |
+
+`crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
+
+The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, and ClickHouse 26.3. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`), never from a literal, so it holds on every release.
+
+Locally, set the variables for the run:
+
+```bash
+TABLEPRO_TEST_MYSQL=8.0 TABLEPRO_TEST_MARIADB=10.11 cargo nextest run -p tablepro-driver-mysql --run-ignored only
+```
+
+A new release gets its image in `fixture_image.rs`, a variant in its version type, a matrix entry in `.github/workflows/build-linux.yml` and a row in the README table. A release past its vendor's end of life loses all four.
+
 ### Docker or Podman
 
 Upstream CI uses Docker. Fedora ships Podman instead, and on Debian it is the easier install; either way, point testcontainers at Podman's rootless socket:
@@ -385,7 +409,7 @@ The tests in `crates/app/src/ui/editor/script_runner.rs` drive `run_batches` und
 GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runners. It runs on a pull request, and on a push to `main`, `linux`, `linux/**` or `feat/linux-**`, that touches `linux/` or one of the three Linux workflows: `build-linux.yml`, `linux-packages.yml` and `release-linux.yml`. It also runs every Monday and by hand. Every action is pinned by commit SHA and every tool by version.
 
 1. **Fast checks**: `meson setup`, `cargo fmt --all -- --check`, the source greps (no `thread_local!` in services, no blocking file I/O under `ui`, no action group inserted as `win`, no `set_qdata`, no em dash in user-facing text), `scripts/check-doc-symbols.sh` over the docs that name code, clippy with and without default features, `meson compile`, `xvfb-run -a dbus-run-session -- meson test --print-errorlogs`, a Secret Service step under `gnome-keyring-daemon`, then `meson dist`. Runs in an `ubuntu:26.04` container, which ships GLib 2.88 plus the meson, appstream and desktop-file-utils packages. A failed run keeps `_build/meson-logs/testlog.txt` as the `meson-testlog` artifact. [CONTRIBUTING.md](../CONTRIBUTING.md#fast-job-commands) lists the same commands.
-2. **Docker tests** (`integration`, `integration-session`, `integration-app`): runs after fast checks pass, and keeps each package's JUnit report as a `junit-<package>` artifact. One matrix entry per package with docker tests (the PostgreSQL driver with PgBouncer, the MySQL driver with MariaDB, the SQL Server and ClickHouse drivers, all four with their TLS suites, `tablepro-ssh` against an OpenSSH server container, and `tablepro-test-fixtures` for the fixtures themselves) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker, one test at a time per package. `tablepro-session` builds storage, which needs GLib 2.88, so its job runs in the fast job's `ubuntu:26.04` image with the host's Docker socket mounted. The app's docker tests (`crates/app/tests/tracker_save_postgres.rs`) run the same way, since the app links GTK; that job names its test targets, because the app's `startup` test needs Meson. The SQLite driver needs no container: its suites run in the fast job.
+2. **Docker tests** (`integration`, `integration-session`, `integration-app`): runs after fast checks pass, and keeps each package's JUnit report as a `junit-<package>` artifact, `junit-<package>-<release>` for a release entry. One matrix entry per package with docker tests (the PostgreSQL driver with PgBouncer, the MySQL driver with MariaDB, the SQL Server and ClickHouse drivers, all four with their TLS suites, `tablepro-ssh` against an OpenSSH server container, and `tablepro-test-fixtures` for the fixtures themselves) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker, one test at a time per package. The driver packages have an entry more for each older or newer server release ([Server releases](#server-releases)). `tablepro-session` builds storage, which needs GLib 2.88, so its job runs in the fast job's `ubuntu:26.04` image with the host's Docker socket mounted. The app's docker tests (`crates/app/tests/tracker_save_postgres.rs`) run the same way, since the app links GTK; that job names its test targets, because the app's `startup` test needs Meson. The SQLite driver needs no container: its suites run in the fast job.
 3. **Supply chain**: `cargo deny check` against `deny.toml` (advisories, bans, licenses and sources, with every feature, both Linux targets and the dev-dependencies), `cargo shear` for unused or misplaced dependencies, and `build-aux/update-third-party-licenses.sh`, failing when `data/licenses`, `build-aux/debian/copyright` or the spec's `License` tag differ from what it writes. Then `zizmor` over the three Linux workflows.
 4. **Translations**: in `ubuntu:26.10`, whose gettext 1.0 reads path-qualified Rust calls such as `crate::i18n::gettext(...)`. `po/POTFILES.in` must match `git ls-files`, `meson setup --fatal-meson-warnings` must pass, and `po/tablepro.pot` must match a fresh `meson compile -C _build tablepro-pot` in everything but its creation date. Regenerating it locally needs gettext 1.0 or newer (`po/README.md`). A failed run keeps the template it wrote as the `tablepro-pot` artifact.
 5. **Documentation links**: lychee, offline, over every Markdown file under `linux/`, with heading anchors checked.

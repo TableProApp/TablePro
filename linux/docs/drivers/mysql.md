@@ -1,6 +1,6 @@
 # MySQL and MariaDB
 
-Driver id `mysql`, crate `crates/drivers/mysql`. One driver serves both servers through sqlx 0.9 (`mysql`, `mysql-rsa`, `tls-rustls-aws-lc-rs`) with a deadpool 0.13 pool. `MySqlFlavour` tells them apart from `VERSION()` (MariaDB says so in it), because they name their timeouts, error numbers and catalogue columns differently. The integration suite runs against MySQL 8.4 and MariaDB 11.4. The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `mysql`, crate `crates/drivers/mysql`. One driver serves both servers through sqlx 0.9 (`mysql`, `mysql-rsa`, `tls-rustls-aws-lc-rs`) with a deadpool 0.13 pool. `MySqlFlavour` tells them apart from `VERSION()` (MariaDB says so in it), because they name their timeouts, error numbers and catalogue columns differently. The integration suite runs against MySQL 8.4 and MariaDB 11.4, and CI runs it again on MySQL 8.0 with MariaDB 10.11 and on MySQL 9.7 with MariaDB 12.3 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 A connection needs a database name (`database_required`).
 
@@ -64,7 +64,7 @@ A save or a schema change runs in the server's own zone, `@@GLOBAL.time_zone`, a
 
 ## TLS
 
-- `Disable` connects without TLS. A server with `require_secure_transport` answers with error 3159, reported as `ServerRequiresTls`.
+- `Disable` connects without TLS. A server with `require_secure_transport` answers with error 3159, reported as `ServerRequiresTls`. MariaDB before 11.2 answers 1045, Access denied, as it does for a wrong password ([MDEV-30178](https://jira.mariadb.org/browse/MDEV-30178)), so on 10.11 the refusal reads as an authentication failure.
 - `Require` encrypts without checking the certificate. A server that does not offer TLS is reported as `ServerRefusedTls`.
 - `VerifyFull` is sqlx's `VerifyIdentity`. It trusts the system's CA store and the connection's CA file, which sqlx takes only as PEM, so the driver hands it both as one bundle; sqlx adds the Mozilla roots compiled into it ([Trust](../../ARCHITECTURE.md#trust)). `Require` checks no certificate, so it loads neither.
 - The name checked is the host sqlx dials, so a server name override works only through an SSH forward, where the dial goes to a socket path (`ServerNameOverride::SshForwardOnly`).
@@ -110,7 +110,7 @@ Whether a write can be undone depends on the table's storage engine, not on the 
 
 - An exact row guard relies on `CLIENT_FOUND_ROWS`, which sqlx turns on: an `UPDATE` reports the rows it matched, also the ones it left unchanged.
 - On a non-transactional table, a statement whose connection drops before its answer may have run, so it is reported as unknown, not as refused.
-- A trigger on an InnoDB table can write into a non-transactional one. A `ROLLBACK` then leaves those rows, and the server says so with warning 1196. The driver reads `SHOW WARNINGS` after every rollback, and a 1196 makes the outcome `PartiallyApplied` instead of `RolledBack`.
+- A trigger on an InnoDB table can write into a non-transactional one. A `ROLLBACK` then leaves those rows, and the server says so with warning 1196. The driver reads `SHOW WARNINGS` after every rollback, and a 1196 makes the outcome `PartiallyApplied` instead of `RolledBack`. A MySQL server that enforces GTID consistency, as 9.7 does by default, refuses such a save with 1785 before anything lands, and it reads as `RolledBack`.
 - MariaDB's `max_statement_time` would stop a long `ALTER` the way it stops a `SELECT`, so a schema change on MariaDB lifts it for the batch and puts it back after. A connection where it cannot be put back is closed. MySQL's bound covers only `SELECT`.
 - Every step is prepared, also one with no parameters, so a stray `;` in generated SQL fails instead of running a second statement. The prepared statement is closed after it runs. A step with no parameters that the server cannot prepare (error 1295, such as `CREATE TRIGGER`) is sent again over the text protocol.
 - MySQL cannot suspend foreign keys for one batch, so a batch that asks for it is refused before anything is sent.

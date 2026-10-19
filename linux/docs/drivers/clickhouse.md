@@ -1,6 +1,6 @@
 # ClickHouse
 
-Driver id `clickhouse`, crate `crates/drivers/clickhouse`. It speaks ClickHouse's HTTP interface through the official `clickhouse` crate 0.15 with its default features off, on a hyper-util client whose connector dials through the transport and whose TLS is hyper-rustls with the driver's own rustls config. The integration suite runs against ClickHouse 25.8. The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `clickhouse`, crate `crates/drivers/clickhouse`. It speaks ClickHouse's HTTP interface through the official `clickhouse` crate 0.15 with its default features off, on a hyper-util client whose connector dials through the transport and whose TLS is hyper-rustls with the driver's own rustls config. The integration suite runs against ClickHouse 26.8, and CI runs it again on 26.3 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 The default port is 8123, the plain HTTP port. With TLS on, use the server's HTTPS port (8443 by default); a TLS connect to the HTTP port fails.
 
@@ -74,6 +74,8 @@ ClickHouse has no transactions: `WriteAtomicity::StatementByStatement` for row a
 The grid names a ClickHouse row by its sorting key (`RowIdentity::SortingKey`), which may match several rows. So a save proves its row with a probe before the mutation, and a batch with an exact affected-row guard is refused with `GuardUnsupported`: a mutation reports no row count. An `INSERT` reports its written rows; a mutation reports none, which is "not known", not zero. A table with no sorting key is read-only in the grid. The row-count estimate is `system.tables.total_rows`, which MergeTree keeps exact.
 
 A failed statement is sorted by whether it can have landed. A server error that refused it (a syntax error, an unknown column) did not apply. A cancel, a timeout, an unfinished mutation wait (341), a network error, or a body with no error code may have applied, so the outcome comes from the `WriteLedger`, with a `CommitToken::ClickHouseQuery` of every statement's query id.
+
+A column made non-nullable in the structure tab is written as `MODIFY COLUMN name T DEFAULT <default>`: from 25.12 the server refuses the change without a DEFAULT to put in the column's NULLs. The draft's default fills them; with none, `defaultValueOfTypeName` does, as older servers did on their own, and a `REMOVE DEFAULT` after it leaves the column with no default.
 
 ### Resolving an unknown outcome
 

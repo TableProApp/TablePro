@@ -12,7 +12,7 @@ tempfile.workspace = true
 testcontainers.workspace = true
 testcontainers-modules = { workspace = true, features = ["postgres", "mssql_server"] }
 thiserror.workspace = true
-tokio = { workspace = true, features = ["fs", "io-util", "process"] }
+tokio = { workspace = true, features = ["fs", "io-util"] }
 uuid.workspace = true
 
 [dev-dependencies]

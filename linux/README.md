@@ -6,6 +6,23 @@ Native Linux database client, the Linux sibling of the macOS TablePro app. The t
 
 It connects to five engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse and SQLite. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
 
+## Supported servers
+
+TablePro supports the server releases their vendors still support. CI runs each driver's whole Docker suite on every release in the second column ([docs/testing.md](docs/testing.md#server-releases)).
+
+| Engine | Tested releases | Not supported |
+|---|---|---|
+| PostgreSQL | 14, 17 and 18 | 13 and older, past end of life (13 on 2025-11-13). 19 until it is released |
+| MySQL | 8.0, 8.4 and 9.7 | 8.1 to 9.6, innovation releases past end of life. 5.7 and older |
+| MariaDB | 10.11, 11.4 and 12.3 | 10.6 and older, past end of life (10.6 on 2026-07-06). Rolling releases such as 13.0 |
+| SQL Server | 2017, 2019, 2022 and 2025 | 2016 and older, past extended support (2016 on 2026-07-14) |
+| ClickHouse | 26.3 and 26.8 | Monthly releases between long-term ones. 25.8 and older long-term releases, past end of life (25.8 on 2026-08-29) |
+| SQLite | the system library, 3.37.0 or newer | older libraries, which the driver refuses when it opens a file |
+
+- PostgreSQL 14 reaches end of life on 2026-11-12.
+- MySQL 8.0 reached end of life on 2026-04-30, but Amazon RDS keeps 8.0 instances under paid Extended Support until 2029-07-31, so it stays tested.
+- MariaDB 11.8 and PostgreSQL 15 and 16 are supported between the tested releases, which bound them.
+
 ## Install
 
 These commands work from the first release, 0.1.0, on amd64 and arm64.

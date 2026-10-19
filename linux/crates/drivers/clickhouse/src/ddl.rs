@@ -132,14 +132,32 @@ impl DdlDialect for ClickHouseDialect {
             let draft = &alteration.draft;
             let name = self.quote_identifier(&draft.name);
             let changed = alteration.changed;
+            let mut default_written = false;
             if changed.column_type || changed.nullability {
                 let resolved = draft.column_type.resolve(self, &draft.name)?;
-                statements.push(alter(format!(
-                    "MODIFY COLUMN {name} {}",
-                    with_nullability(&resolved.sql, draft.nullable)
-                )));
+                let declaration = with_nullability(&resolved.sql, draft.nullable);
+                // From 25.12 the server refuses to make a column non-nullable
+                // without a DEFAULT to put in its NULLs. With none in the
+                // draft, the type's own default fills them, as older servers
+                // did, and is removed again.
+                let fills_nulls = alteration.original.info.nullable && !draft.nullable;
+                match default_sql(self, &draft.name, &draft.default, &resolved.column_type)? {
+                    Some(default) if fills_nulls => {
+                        statements.push(alter(format!("MODIFY COLUMN {name} {declaration} DEFAULT {default}")));
+                        default_written = true;
+                    }
+                    None if fills_nulls => {
+                        statements.push(alter(format!(
+                            "MODIFY COLUMN {name} {declaration} DEFAULT defaultValueOfTypeName({})",
+                            self.string_literal(&declaration)
+                        )));
+                        statements.push(alter(format!("MODIFY COLUMN {name} REMOVE DEFAULT")));
+                        default_written = true;
+                    }
+                    _ => statements.push(alter(format!("MODIFY COLUMN {name} {declaration}"))),
+                }
             }
-            if changed.default {
+            if changed.default && !default_written {
                 let column_type = draft.column_type.column_type(self, &draft.name)?;
                 statements.push(alter(
                     match default_sql(self, &draft.name, &draft.default, &column_type)? {
@@ -189,7 +207,11 @@ impl ClickHouseDialect {
     }
 
     fn comment(&self, text: Option<&str>) -> String {
-        let value = Value::Text(text.unwrap_or_default().to_owned());
+        self.string_literal(text.unwrap_or_default())
+    }
+
+    fn string_literal(&self, text: &str) -> String {
+        let value = Value::Text(text.to_owned());
         SqlDialect::literal(self, &value, &ColumnType::untyped_text("String")).unwrap_or_else(|_| "''".to_owned())
     }
 }
@@ -417,9 +439,34 @@ mod tests {
             [
                 "ALTER TABLE `analytics`.`events` RENAME COLUMN `note` TO `remark`",
                 "ALTER TABLE `analytics`.`events` MODIFY COLUMN `label` REMOVE DEFAULT",
-                "ALTER TABLE `analytics`.`events` MODIFY COLUMN `remark` String",
+                "ALTER TABLE `analytics`.`events` MODIFY COLUMN `remark` String DEFAULT defaultValueOfTypeName('String')",
+                "ALTER TABLE `analytics`.`events` MODIFY COLUMN `remark` REMOVE DEFAULT",
                 "ALTER TABLE `analytics`.`events` ADD COLUMN `tag` Nullable(String)",
             ]
+        );
+    }
+
+    #[test]
+    fn a_column_made_non_nullable_fills_its_nulls_with_the_drafts_default() {
+        let plan = alter(&events(), |draft| {
+            let note = &mut draft.columns[2];
+            note.nullable = false;
+            note.default = ColumnDefault::Literal(Value::Text("none".to_owned()));
+        });
+
+        assert_eq!(
+            sql(plan),
+            ["ALTER TABLE `analytics`.`events` MODIFY COLUMN `note` String DEFAULT 'none'"]
+        );
+    }
+
+    #[test]
+    fn a_column_made_nullable_needs_no_default() {
+        let plan = alter(&events(), |draft| draft.columns[1].nullable = true);
+
+        assert_eq!(
+            sql(plan),
+            ["ALTER TABLE `analytics`.`events` MODIFY COLUMN `label` Nullable(String)"]
         );
     }
 

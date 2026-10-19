@@ -131,19 +131,19 @@ fn common() -> Vec<CorpusColumn> {
 }
 
 mod mysql_suite {
-    use crate::conformance_engine::{MySqlEngine, Mysql84};
+    use crate::conformance_engine::{MySqlEngine, MysqlServer};
 
     tablepro_test_support::value_corpus_suite! {
-        engine: MySqlEngine<Mysql84>,
+        engine: MySqlEngine<MysqlServer>,
         docker: true,
     }
 }
 
 mod mariadb_suite {
-    use crate::conformance_engine::{Mariadb114, MySqlEngine};
+    use crate::conformance_engine::{MariadbServer, MySqlEngine};
 
     tablepro_test_support::value_corpus_suite! {
-        engine: MySqlEngine<Mariadb114>,
+        engine: MySqlEngine<MariadbServer>,
         docker: true,
     }
 }

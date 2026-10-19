@@ -1,6 +1,6 @@
 # SQL Server
 
-Driver id `mssql`, crate `crates/drivers/mssql`. It runs on tiberius 0.13.0 from crates.io (`tds73`, `rustls`, `chrono`, and `integrated-auth-gssapi` behind the crate's `kerberos` feature) with a deadpool 0.13 pool. The integration suite runs against SQL Server 2022. The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `mssql`, crate `crates/drivers/mssql`. It runs on tiberius 0.13.0 from crates.io (`tds73`, `rustls`, `chrono`, and `integrated-auth-gssapi` behind the crate's `kerberos` feature) with a deadpool 0.13 pool. The integration suite runs against SQL Server 2022, and CI runs it again on 2017, 2019 and 2025 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 The driver needs SQL Server 2016 or later: every column read joins `sys.masked_columns`, and dropping a table uses `DROP TABLE IF EXISTS`.
 

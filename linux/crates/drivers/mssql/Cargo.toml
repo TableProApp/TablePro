@@ -18,15 +18,15 @@ deadpool.workspace = true
 futures-util.workspace = true
 secrecy.workspace = true
 tiberius.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
-tokio-util = { workspace = true, features = ["compat", "rt"] }
+tokio = { workspace = true, features = ["rt"] }
+tokio-util = { workspace = true, features = ["compat"] }
 tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
 tablepro-test-fixtures.workspace = true
 tablepro-test-support.workspace = true
-tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "test-util"] }
+tokio = { workspace = true, features = ["io-util", "test-util"] }
 
 [lints]
 workspace = true

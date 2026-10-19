@@ -16,7 +16,7 @@ futures.workspace = true
 libsqlite3-sys.workspace = true
 sqlparser.workspace = true
 sqlx = { workspace = true, features = ["sqlite-unbundled"] }
-tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tokio = { workspace = true, features = ["rt"] }
 tokio-util.workspace = true
 tracing.workspace = true
 uuid.workspace = true

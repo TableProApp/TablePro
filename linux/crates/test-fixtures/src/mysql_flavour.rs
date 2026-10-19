@@ -1,6 +1,6 @@
 use testcontainers::core::WaitFor;
 
-use crate::FixtureImage;
+use crate::{FixtureError, FixtureImage, MariadbVersion, MysqlVersion, ServerVersion};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MysqlFlavour {
@@ -9,11 +9,19 @@ pub enum MysqlFlavour {
 }
 
 impl MysqlFlavour {
-    pub fn image(self) -> FixtureImage {
-        match self {
-            Self::Mysql => FixtureImage::MYSQL,
-            Self::Mariadb => FixtureImage::MARIADB,
-        }
+    /// The image of the release the flavour's variable picks, and the
+    /// major and minor version that release reports.
+    pub fn selected(self) -> Result<(FixtureImage, (u32, u32)), FixtureError> {
+        Ok(match self {
+            Self::Mysql => {
+                let version = MysqlVersion::selected()?;
+                (version.image(), version.reported())
+            }
+            Self::Mariadb => {
+                let version = MariadbVersion::selected()?;
+                (version.image(), version.reported())
+            }
+        })
     }
 
     pub fn environment_prefix(self) -> &'static str {

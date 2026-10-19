@@ -6,7 +6,9 @@ use testcontainers_modules::mssql_server::MssqlServer;
 use uuid::Uuid;
 
 use crate::container_file::with_files;
-use crate::{ContainerFile, ExecOutput, FixtureCredentials, FixtureError, FixtureImage, PkiFile, TestPki};
+use crate::{
+    ContainerFile, ExecOutput, FixtureCredentials, FixtureError, MssqlVersion, PkiFile, ServerVersion, TestPki,
+};
 
 const CONTAINER_PORT: u16 = 1433;
 const ADMIN_USER: &str = "sa";
@@ -19,6 +21,7 @@ pub struct MssqlFixture {
     password: String,
     host: String,
     port: u16,
+    version: MssqlVersion,
 }
 
 impl MssqlFixture {
@@ -27,11 +30,13 @@ impl MssqlFixture {
     pub async fn start() -> Result<Self, FixtureError> {
         let pki = TestPki::generate()?;
         let password = format!("Tp1!{}", Uuid::new_v4().simple());
+        let version = MssqlVersion::selected()?;
+        let image = version.image();
         let request = MssqlServer::default()
             .with_accept_eula()
             .with_sa_password(&password)
-            .with_name(FixtureImage::MSSQL.name)
-            .with_tag(FixtureImage::MSSQL.tag)
+            .with_name(image.name)
+            .with_tag(image.tag)
             .with_startup_timeout(STARTUP_TIMEOUT)
             // SQL Server otherwise takes 80% of the host's memory, and a
             // container left behind by a killed test keeps all of it.
@@ -45,6 +50,7 @@ impl MssqlFixture {
             password,
             host,
             port,
+            version,
         })
     }
 
@@ -70,6 +76,10 @@ impl MssqlFixture {
 
     pub fn port(&self) -> u16 {
         self.port
+    }
+
+    pub fn version(&self) -> MssqlVersion {
+        self.version
     }
 
     pub fn pki(&self) -> &TestPki {
