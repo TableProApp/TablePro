@@ -28,17 +28,32 @@ public extension TextView {
     /// Replaces each range with its own string as one edit: one text change notification, one undo mutation per
     /// range, and the selection carried through every replacement. Ranges are in the coordinates of the text before
     /// the edit and must not overlap.
+    ///
+    /// An input method's composition still open is accepted first, as `NSTextView` does, so the history holds the
+    /// composed text before this edit. Accepting it moves no text, so the ranges stay valid.
     /// - Parameters:
     ///   - replacements: The ranges to replace and what to put in each.
     ///   - skipUpdateSelection: Skips the selection update step
     func replaceCharacters(_ replacements: [TextReplacement], skipUpdateSelection: Bool = false) {
+        acceptComposition()
+        replaceCharacters(replacements, skipUpdateSelection: skipUpdateSelection, asksDelegate: true)
+    }
+
+    /// `asksDelegate` is false for an input method's own edits: the delegate's `shouldReplaceContentsIn` is where the
+    /// editor runs its typing filters, and a composition is not typing until it is committed.
+    internal func replaceCharacters(
+        _ replacements: [TextReplacement],
+        skipUpdateSelection: Bool,
+        asksDelegate: Bool
+    ) {
         guard isEditable else { return }
         NotificationCenter.default.post(name: Self.textWillChangeNotification, object: self)
         textStorage.beginEditing()
 
         func valid(range: NSRange, string: String) -> Bool {
-            (!range.isEmpty || !string.isEmpty) &&
-            (delegate?.textView(self, shouldReplaceContentsIn: range, with: string) ?? true)
+            guard !range.isEmpty || !string.isEmpty else { return false }
+            guard asksDelegate else { return true }
+            return delegate?.textView(self, shouldReplaceContentsIn: range, with: string) ?? true
         }
 
         // Can't insert an empty string into an empty range. One must be not empty
