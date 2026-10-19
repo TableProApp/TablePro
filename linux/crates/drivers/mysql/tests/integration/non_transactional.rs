@@ -5,7 +5,7 @@ use tablepro_core::statement::GuardedStatement;
 use tablepro_core::{DriverError, ForeignKeyMode, StatementOutcome, WriteBatch, WriteKind};
 use tablepro_test_fixtures::MysqlFlavour;
 
-use crate::support::{CALL, FLAVOURS, connect, count, setup, start, statement, table, within};
+use crate::support::{CALL, FLAVOURS, connect, count, scalar, setup, start, statement, table, text, within};
 
 fn guarded(sql: &str, rows: u64) -> GuardedStatement {
     GuardedStatement::affecting_exactly(statement(sql), rows)
@@ -190,7 +190,9 @@ async fn aria_table_uses_statement_by_statement() {
 }
 
 /// An InnoDB save rolls back, but what its trigger wrote into a MyISAM
-/// table stays, and the server's warning 1196 says so.
+/// table stays, and the server's warning 1196 says so. MySQL refuses
+/// the save with 1785 before anything lands where it enforces GTID
+/// consistency, as 9.7 does by default.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn innodb_trigger_into_myisam_rollback_warning_1196_partially_applied() {
@@ -207,6 +209,9 @@ async fn innodb_trigger_into_myisam_rollback_warning_1196_partially_applied() {
         )
         .await;
 
+        let enforces_gtid_consistency = flavour == MysqlFlavour::Mysql
+            && text(&scalar(connection.as_ref(), "SELECT @@GLOBAL.enforce_gtid_consistency").await) == "ON";
+
         let outcome = connection
             .write_batch(
                 &batch(
@@ -220,19 +225,26 @@ async fn innodb_trigger_into_myisam_rollback_warning_1196_partially_applied() {
             )
             .await;
 
-        assert!(
-            matches!(
-                outcome,
-                Err(DriverError::PartiallyApplied {
-                    applied: 1,
-                    statement_index: 1,
-                    ..
-                })
+        let (expected, audited) = match enforces_gtid_consistency {
+            true => (
+                matches!(outcome, Err(DriverError::RolledBack { statement_index: 0, .. })),
+                0,
             ),
-            "{flavour:?}: {outcome:?}"
-        );
+            false => (
+                matches!(
+                    outcome,
+                    Err(DriverError::PartiallyApplied {
+                        applied: 1,
+                        statement_index: 1,
+                        ..
+                    })
+                ),
+                1,
+            ),
+        };
+        assert!(expected, "{flavour:?}: {outcome:?}");
         assert_eq!(count(connection.as_ref(), "SELECT COUNT(*) FROM source").await, 0);
-        assert_eq!(count(connection.as_ref(), "SELECT COUNT(*) FROM audit").await, 1);
+        assert_eq!(count(connection.as_ref(), "SELECT COUNT(*) FROM audit").await, audited);
         connection.close().await.expect("a close");
     }
 }

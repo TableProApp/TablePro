@@ -110,7 +110,7 @@ Whether a write can be undone depends on the table's storage engine, not on the 
 
 - An exact row guard relies on `CLIENT_FOUND_ROWS`, which sqlx turns on: an `UPDATE` reports the rows it matched, also the ones it left unchanged.
 - On a non-transactional table, a statement whose connection drops before its answer may have run, so it is reported as unknown, not as refused.
-- A trigger on an InnoDB table can write into a non-transactional one. A `ROLLBACK` then leaves those rows, and the server says so with warning 1196. The driver reads `SHOW WARNINGS` after every rollback, and a 1196 makes the outcome `PartiallyApplied` instead of `RolledBack`.
+- A trigger on an InnoDB table can write into a non-transactional one. A `ROLLBACK` then leaves those rows, and the server says so with warning 1196. The driver reads `SHOW WARNINGS` after every rollback, and a 1196 makes the outcome `PartiallyApplied` instead of `RolledBack`. A MySQL server that enforces GTID consistency, as 9.7 does by default, refuses such a save with 1785 before anything lands, and it reads as `RolledBack`.
 - MariaDB's `max_statement_time` would stop a long `ALTER` the way it stops a `SELECT`, so a schema change on MariaDB lifts it for the batch and puts it back after. A connection where it cannot be put back is closed. MySQL's bound covers only `SELECT`.
 - Every step is prepared, also one with no parameters, so a stray `;` in generated SQL fails instead of running a second statement. The prepared statement is closed after it runs. A step with no parameters that the server cannot prepare (error 1295, such as `CREATE TRIGGER`) is sent again over the text protocol.
 - MySQL cannot suspend foreign keys for one batch, so a batch that asks for it is refused before anything is sent.
