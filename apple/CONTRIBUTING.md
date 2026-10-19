@@ -6,7 +6,7 @@ This file covers the macOS and iOS apps in `apple/`, and every command in it run
 
 | Software | Version | Notes |
 |---|---|---|
-| Xcode | 27.1 | What CI selects in `.github/actions/setup-xcode`. Code that needs the macOS 27 SDK sits behind `SDK_MACOS_27` (`Configs/Base.xcconfig`) so Xcode 26 can still build, though nothing on CI builds with 26. Newer SDK symbols sit behind `#available`; the deployment target is macOS 13.0 |
+| Xcode | 27.1 | What CI selects in `.github/actions/setup-xcode`. Code that needs the macOS 27 SDK sits behind `SDK_MACOS_27` (`Configs/Base.xcconfig`) so Xcode 26 can still build, though nothing on CI builds with 26. Symbols newer than the deployment target ([`AGENTS.md`](AGENTS.md)) sit behind `#available` |
 | XcodeGen | 2.46.0 exactly | The generated project differs between versions, so `scripts/generate-project.sh` warns on any other |
 | SwiftLint | 0.65.1 | The version CI runs |
 | GitHub CLI | any | Optional: `scripts/download-libs.sh` falls back to `curl` |

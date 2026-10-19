@@ -45,7 +45,7 @@ apple/scripts/generate-project.sh [both|macos|ios]  # after a project.yml or Con
 
 - `verify.sh --help` lists every step. When each runs: `.claude/skills/fix-issue/references/platform-apple.md`, Verify. Verdicts, test names and red CI checks: `.claude/skills/fix-issue/references/verification-apple.md`.
 - A raw `xcodebuild` runs in `apple/` with `-skipPackagePluginValidation`, plus `-testPlan Unit` or `UI` for macOS tests (`CONTRIBUTING.md`, Tests).
-- Never add `-parallel-testing-enabled`, `-test-iterations` or `-retry-tests-on-failure` to a macOS run, except to reproduce a flake: the plans own those. iOS tests pass `-parallel-testing-enabled NO`.
+- Never add `-parallel-testing-enabled`, `-test-iterations` or `-retry-tests-on-failure` to a macOS run, except to reproduce a flake: the plans own those. iOS test flags: `.claude/rules/tests.md`, Plans.
 - Never run `swiftlint --fix`. Formatting SwiftLint leaves open: `CONTRIBUTING.md`, Code style.
 - Releases: `RELEASING.md` and the `release` skill.
 

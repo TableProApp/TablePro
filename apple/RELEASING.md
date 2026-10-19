@@ -152,7 +152,7 @@ gh workflow run withdraw.yml --ref v<newest tag> -f version=X.Y.Z
 
 ## Static libraries
 
-The `.a` files under `Libs/` and the xcframeworks under `Libs/ios/` live on the immutable `libs-<n>` GitHub release that `Libs/release` names, not in git; `scripts/download-libs.sh` fetches it and verifies every file against the checksums at `HEAD`. `scripts/publish-libs.sh` takes every library you rebuilt, added or removed, verifies the others against `HEAD`, creates the next `libs-<n>` and rewrites `Libs/release` and both checksum files (`--dry-run` only prints). A published `libs-<n>` never changes: a fix is the next `<n>`. Each library is built by a `build-*.sh` in `scripts/` or `scripts/ios/`.
+The `.a` files under `Libs/` and the xcframeworks under `Libs/ios/` live on the immutable `libs-<n>` GitHub release that `Libs/release` names, not in git; `scripts/download-libs.sh` fetches it and verifies every file against the checksums at `HEAD`. `scripts/publish-libs.sh` takes every library you rebuilt, added or removed, verifies the others against `HEAD`, creates the next `libs-<n>` and rewrites `Libs/release` and both checksum files, which nothing else edits (`--dry-run` only prints). A published `libs-<n>` never changes: a fix is the next `<n>`, and `libs-v1` stays for older commits. Each library is built by a `build-*.sh` in `scripts/` or `scripts/ios/`.
 
 ```bash
 apple/scripts/publish-libs.sh libmongoc_arm64.a libmongoc_x86_64.a libmongoc_universal.a libmongoc.a
