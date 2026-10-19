@@ -27,7 +27,7 @@ struct ResultChartSelectionCallout: View {
                 Text(xAxisLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(selection.rawX)
+                Text(selection.xLabel)
                     .font(.callout)
                     .bold()
                     .lineLimit(2)
@@ -69,6 +69,6 @@ struct ResultChartSelectionCallout: View {
 
     private func valueLabel(for point: ResultChartProjection.Point) -> String {
         guard seriesLabel != nil, let series = point.series else { return yAxisLabel }
-        return series.displayName
+        return series.label
     }
 }

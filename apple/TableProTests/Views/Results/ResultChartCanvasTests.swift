@@ -179,6 +179,181 @@ struct ResultChartCanvasTests {
         #expect(widest - narrowest <= 4)
     }
 
+    /// The first series to appear used to take the first colour, so a panel where only the second
+    /// series has rows drew it blue while the panel beside it drew it green.
+    @Test("A series keeps its colour in a panel where it appears alone")
+    func seriesKeepsItsColourAcrossPanels() throws {
+        let projection = ResultChartProjection(
+            points: [
+                facetPoint(index: 0, x: "Jan", y: 10, series: "Online", facet: "East"),
+                facetPoint(index: 1, x: "Jan", y: 12, series: "Retail", facet: "East"),
+                facetPoint(index: 2, x: "Jan", y: 14, series: "Retail", facet: "West"),
+            ],
+            xAxisKind: .category,
+            limits: [],
+            loadedRowCount: 3,
+            skippedRowCount: 0,
+            xAxisLabel: "Month",
+            yAxisLabel: "Revenue",
+            seriesLabel: "Channel",
+            facetLabel: "Region"
+        )
+        let west = try #require(projection.panels.first { $0.facet?.label == "West" })
+        let view = ResultChartCanvas(projection: projection, panel: west, chartType: .bar, showsLegend: false)
+            .frame(width: 640, height: 360)
+        let image = try #require(render(view, colorScheme: .light))
+
+        let green = matchingPixelCount(in: image) { Self.hue(of: $0, isWithin: 120...160) }
+        let blue = matchingPixelCount(in: image) { Self.hue(of: $0, isWithin: 195...225) }
+        #expect(green > 200)
+        #expect(blue == 0)
+    }
+
+    /// Swift Charts orders bar slots by first appearance in each chart, so a panel whose rows name
+    /// the later series first used to draw the two bars the other way round from its neighbour.
+    @Test("A panel puts each series' bar where the other panels do")
+    func barOrderMatchesAcrossPanels() throws {
+        let projection = ResultChartProjection(
+            points: [
+                facetPoint(index: 0, x: "Jan", y: 10, series: "Online", facet: "East"),
+                facetPoint(index: 1, x: "Jan", y: 12, series: "Retail", facet: "East"),
+                facetPoint(index: 2, x: "Jan", y: 14, series: "Retail", facet: "West"),
+                facetPoint(index: 3, x: "Jan", y: 16, series: "Online", facet: "West"),
+            ],
+            xAxisKind: .category,
+            limits: [],
+            loadedRowCount: 4,
+            skippedRowCount: 0,
+            xAxisLabel: "Month",
+            yAxisLabel: "Revenue",
+            seriesLabel: "Channel",
+            facetLabel: "Region"
+        )
+        let west = try #require(projection.panels.first { $0.facet?.label == "West" })
+        let view = ResultChartCanvas(projection: projection, panel: west, chartType: .bar, showsLegend: false)
+            .frame(width: 640, height: 360)
+        let image = try #require(render(view, colorScheme: .light))
+
+        let online = try #require(firstColumn(in: image) { Self.hue(of: $0, isWithin: 195...225) })
+        let retail = try #require(firstColumn(in: image) { Self.hue(of: $0, isWithin: 120...160) })
+        #expect(online < retail)
+    }
+
+    @Test("A panel missing a series keeps its other bars at the width and place they have elsewhere")
+    func sparsePanelBarsKeepTheirSlot() throws {
+        let projection = ResultChartProjection(
+            points: [
+                facetPoint(index: 0, x: "Jan", y: 10, series: "Online", facet: "East"),
+                facetPoint(index: 1, x: "Jan", y: 12, series: "Retail", facet: "East"),
+                facetPoint(index: 2, x: "Jan", y: 14, series: "Retail", facet: "West"),
+            ],
+            xAxisKind: .category,
+            limits: [],
+            loadedRowCount: 3,
+            skippedRowCount: 0,
+            xAxisLabel: "Month",
+            yAxisLabel: "Revenue",
+            seriesLabel: "Channel",
+            facetLabel: "Region"
+        )
+        func retailColumns(in facet: String) throws -> ClosedRange<Int> {
+            let panel = try #require(projection.panels.first { $0.facet?.label == facet })
+            let view = ResultChartCanvas(projection: projection, panel: panel, chartType: .bar, showsLegend: false)
+                .frame(width: 640, height: 360)
+            let image = try #require(render(view, colorScheme: .light))
+            let first = try #require(firstColumn(in: image) { Self.hue(of: $0, isWithin: 120...160) })
+            let last = try #require(lastColumn(in: image) { Self.hue(of: $0, isWithin: 120...160) })
+            return first...last
+        }
+
+        let east = try retailColumns(in: "East")
+        let west = try retailColumns(in: "West")
+        #expect(abs(east.lowerBound - west.lowerBound) <= 1)
+        #expect(abs(east.upperBound - west.upperBound) <= 1)
+    }
+
+    private func lastColumn(in image: CGImage, where matches: (NSColor) -> Bool) -> Int? {
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        for x in (0 ..< bitmap.pixelsWide).reversed() {
+            for y in 0 ..< bitmap.pixelsHigh {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                if matches(color) { return x }
+            }
+        }
+        return nil
+    }
+
+    private func firstColumn(in image: CGImage, where matches: (NSColor) -> Bool) -> Int? {
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        for x in 0 ..< bitmap.pixelsWide {
+            for y in 0 ..< bitmap.pixelsHigh {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                if matches(color) { return x }
+            }
+        }
+        return nil
+    }
+
+    @Test("A faceted grid draws every panel in both appearances", arguments: [ColorScheme.light, .dark])
+    func facetGridRendersEveryPanel(colorScheme: ColorScheme) throws {
+        let projection = ResultChartProjection(
+            points: ["East", "North", "West"].enumerated().flatMap { offset, region in
+                [
+                    facetPoint(index: offset * 2, x: "Jan", y: 10 + offset, series: "Online", facet: region),
+                    facetPoint(index: offset * 2 + 1, x: "Feb", y: 20 + offset, series: "Online", facet: region),
+                ]
+            },
+            xAxisKind: .category,
+            limits: [],
+            loadedRowCount: 6,
+            skippedRowCount: 0,
+            xAxisLabel: "Month",
+            yAxisLabel: "Revenue",
+            seriesLabel: "Channel",
+            facetLabel: "Region"
+        )
+        let layout = ResultChartFacetLayout(panelCount: projection.panels.count, size: CGSize(width: 960, height: 400))
+        let view = ResultChartFacetPanels(projection: projection, chartType: .bar, layout: layout, revision: 0)
+            .frame(width: 960, height: 400)
+            .environment(\.colorScheme, colorScheme)
+        let image = try #require(render(view, colorScheme: colorScheme))
+        let bitmap = NSBitmapImageRep(cgImage: image)
+
+        var columns: [Int] = []
+        for x in 0 ..< bitmap.pixelsWide {
+            for y in 0 ..< bitmap.pixelsHigh {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB),
+                      Self.hue(of: color, isWithin: 195...225)
+                else {
+                    continue
+                }
+                columns.append(x)
+                break
+            }
+        }
+        #expect(projection.panels.count == 3)
+        #expect(contiguousRuns(in: columns).count >= 6)
+    }
+
+    private static func hue(of color: NSColor, isWithin degrees: ClosedRange<CGFloat>) -> Bool {
+        color.saturationComponent > 0.35 && color.brightnessComponent > 0.25 && color.alphaComponent > 0.5
+            && degrees.contains(color.hueComponent * 360)
+    }
+
+    private func facetPoint(index: Int, x: String, y: Int, series: String, facet: String) -> ResultChartProjection.Point {
+        ResultChartProjection.Point(
+            sourceIndex: index,
+            x: .category(x),
+            y: Double(y),
+            rawX: x,
+            rawY: String(y),
+            series: .init(.value(series)),
+            facet: .init(.value(facet)),
+            barGroup: series == "Online" ? 0 : 1,
+            lineGroup: 0
+        )
+    }
+
     @Test("The plot stands in for the grid: its background under a theme, its own wash by default")
     func plotTakesTheGridBackground() throws {
         try ThemeTestFixture.preservingEngine {
@@ -302,7 +477,7 @@ struct ResultChartCanvasTests {
             y: Double(y),
             rawX: x,
             rawY: String(y),
-            series: .value(series),
+            series: .init(.value(series)),
             barGroup: index,
             lineGroup: series == "First" ? 0 : 1
         )

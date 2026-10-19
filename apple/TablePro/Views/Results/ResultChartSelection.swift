@@ -7,7 +7,7 @@ import Foundation
 
 struct ResultChartSelection: Equatable {
     let x: ResultChartProjection.XValue
-    let rawX: String
+    let xLabel: String
     let points: [ResultChartProjection.Point]
 }
 
@@ -18,15 +18,15 @@ struct ResultChartSelectionIndex {
     private let numbers: [(value: Double, selection: ResultChartSelection)]
     private let dates: [(value: Date, selection: ResultChartSelection)]
 
-    init(projection: ResultChartProjection) {
+    init(points: [ResultChartProjection.Point]) {
         var order: [ResultChartProjection.XValue] = []
         var grouped: [ResultChartProjection.XValue: [ResultChartProjection.Point]] = [:]
-        var raw: [ResultChartProjection.XValue: String] = [:]
+        var labels: [ResultChartProjection.XValue: String] = [:]
 
-        for point in projection.points {
+        for point in points {
             if grouped[point.x] == nil {
                 order.append(point.x)
-                raw[point.x] = point.rawX
+                labels[point.x] = point.xLabel
             }
             grouped[point.x, default: []].append(point)
         }
@@ -38,7 +38,7 @@ struct ResultChartSelectionIndex {
         for value in order {
             let selection = ResultChartSelection(
                 x: value,
-                rawX: raw[value] ?? "",
+                xLabel: labels[value] ?? "",
                 points: grouped[value] ?? []
             )
             switch value {

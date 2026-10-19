@@ -14,17 +14,20 @@ struct ResultChartConfiguration: Equatable, Hashable, Sendable {
     var xColumn: ResultChartColumnID?
     var yColumn: ResultChartColumnID?
     var seriesColumn: ResultChartColumnID?
+    var facetColumn: ResultChartColumnID?
 
     init(
         chartType: ResultChartType = .bar,
         xColumn: ResultChartColumnID? = nil,
         yColumn: ResultChartColumnID? = nil,
-        seriesColumn: ResultChartColumnID? = nil
+        seriesColumn: ResultChartColumnID? = nil,
+        facetColumn: ResultChartColumnID? = nil
     ) {
         self.chartType = chartType
         self.xColumn = xColumn
         self.yColumn = yColumn
         self.seriesColumn = seriesColumn
+        self.facetColumn = facetColumn
     }
 
     /// The first numeric column that is not part of the primary key. A leading auto-increment key
@@ -42,7 +45,8 @@ struct ResultChartConfiguration: Equatable, Hashable, Sendable {
             chartType: chartType,
             xColumn: columns.first { $0.id == xColumn && $0.xAxisKind != nil },
             yColumn: resolvedY,
-            seriesColumn: columns.first { $0.id == seriesColumn && $0.supportsSeries }
+            seriesColumn: columns.first { $0.id == seriesColumn && $0.supportsSeries },
+            facetColumn: columns.first { $0.id == facetColumn && $0.supportsSeries }
         )
     }
 
@@ -51,10 +55,25 @@ struct ResultChartConfiguration: Equatable, Hashable, Sendable {
         let xColumn: ResultChartColumn?
         let yColumn: ResultChartColumn
         let seriesColumn: ResultChartColumn?
+        let facetColumn: ResultChartColumn?
 
         /// No X column means the row number, which is a numeric axis.
         var xAxisKind: ResultChartColumn.AxisKind {
             xColumn?.xAxisKind ?? .number
         }
+
+        /// Every column the projection reads, and nothing else. The projection key holds this
+        /// rather than its own list, so a new axis cannot be left out of the key and leave a stale
+        /// projection on screen.
+        var columnIDs: ColumnIDs {
+            ColumnIDs(x: xColumn?.id, y: yColumn.id, series: seriesColumn?.id, facet: facetColumn?.id)
+        }
+    }
+
+    struct ColumnIDs: Hashable, Sendable {
+        let x: ResultChartColumnID?
+        let y: ResultChartColumnID
+        let series: ResultChartColumnID?
+        let facet: ResultChartColumnID?
     }
 }

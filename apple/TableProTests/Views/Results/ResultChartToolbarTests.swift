@@ -36,9 +36,27 @@ struct ResultChartToolbarTests {
                 == "Showing the first \(grouped(20)) series"
         )
         #expect(
+            ResultChartToolbar.noticeText(for: .facets(limit: 12), loadedRowCount: 100)
+                == "Showing the first \(grouped(12)) facets"
+        )
+        #expect(
             ResultChartToolbar.noticeText(for: .inspectedRows(limit: 50_000), loadedRowCount: 90_000)
                 == "Charting the first \(grouped(50_000)) of \(grouped(90_000)) loaded rows"
         )
+    }
+
+    @Test("A stored column this result lacks shows as the pop-up's none item")
+    func missingSelectionShowsNone() {
+        let columns = ResultChartColumn.columns(in: TableRows.from(
+            queryRows: [],
+            columns: ["name"],
+            columnTypes: [.text(rawType: nil)]
+        ))
+        let stored = ResultChartColumnID(name: "revenue", occurrence: 1)
+
+        #expect(ResultChartAxisPicker.shownSelection(stored, in: columns) == nil)
+        #expect(ResultChartAxisPicker.shownSelection(stored, in: []) == nil)
+        #expect(ResultChartAxisPicker.shownSelection(columns[0].id, in: columns) == columns[0].id)
     }
 
     @Test("The point cap names the cap first and the loaded total second")

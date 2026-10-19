@@ -7,12 +7,21 @@ import SwiftUI
 import TableProGeometry
 import TableProPluginKit
 
-struct ResultMapProjectionKey: Hashable {
+struct ResultMapProjectionKey: ResultPaneProjectionKey {
     let tabId: UUID
     let resultSetId: UUID
     let dataRevision: Int
     let displayRevision: Int
     let geometryColumn: SpatialColumnID?
+
+    struct Subject: Hashable {
+        let tabId: UUID
+        let geometryColumn: SpatialColumnID?
+    }
+
+    var subject: Subject {
+        Subject(tabId: tabId, geometryColumn: geometryColumn)
+    }
 }
 
 struct ResultMapView: View {
@@ -27,15 +36,7 @@ struct ResultMapView: View {
     let displayRevision: Int
     let onSelectRow: (Int?) -> Void
 
-    /// Every state the pane can be in has a branch below, so there is no combination that renders
-    /// nothing. Projection is cancellable but cannot otherwise fail, which its signature enforces.
-    /// A loaded projection carries the key it was built for, so the two cannot disagree.
-    private enum LoadState: Equatable {
-        case loading
-        case loaded(ResultMapProjection, key: ResultMapProjectionKey)
-    }
-
-    @State private var state: LoadState = .loading
+    @State private var state = ResultPaneProjectionState<ResultMapProjection, ResultMapProjectionKey>()
     @State private var fitToken = 0
 
     private var resolved: SpatialColumn? {
@@ -52,9 +53,9 @@ struct ResultMapView: View {
         )
     }
 
-    private var loadedProjection: ResultMapProjection? {
-        guard case .loaded(let projection, _) = state else { return nil }
-        return projection
+    private var shownProjection: ResultMapProjection? {
+        guard resolved != nil else { return nil }
+        return state.projection(for: projectionKey)
     }
 
     var body: some View {
@@ -63,8 +64,8 @@ struct ResultMapView: View {
                 configuration: $configuration,
                 columns: columns,
                 resolved: resolved,
-                status: loadedProjection?.diagnostics.statusText ?? "",
-                canFit: !(loadedProjection?.isEmpty ?? true),
+                status: shownProjection?.diagnostics.statusText ?? "",
+                canFit: !(shownProjection?.isEmpty ?? true),
                 onFit: { fitToken &+= 1 }
             )
             Divider()
@@ -73,9 +74,6 @@ struct ResultMapView: View {
         }
         .task(id: projectionKey) {
             await rebuild(for: projectionKey)
-        }
-        .onChange(of: projectionKey) { _ in
-            fitToken &+= 1
         }
     }
 
@@ -93,29 +91,35 @@ struct ResultMapView: View {
                 systemImage: "map",
                 description: Text(String(localized: "A map needs a geometry or geography column. This result has none."))
             )
-        } else {
-            switch state {
-            case .loading:
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel(String(localized: "Building map"))
-            case .loaded(let projection, _) where projection.isEmpty:
+        } else if let projection = shownProjection {
+            if projection.isEmpty {
                 UnavailableStateView {
                     Label(String(localized: "Nothing to Draw"), systemImage: "map")
                 } description: {
                     Text(projection.diagnostics.emptyReason)
                 }
-            case .loaded(let projection, _):
+            } else {
+                /// While a rebuild runs the old shapes stay up. The token names the key they were
+                /// built for, so the new shapes still read as new, and their row ids index the old
+                /// rows, so they take no click and show no selection until the new shapes land.
+                let isCurrent = state.isCurrent(for: projectionKey)
                 ResultMapCanvas(
                     projection: projection,
-                    projectionToken: projectionKey.hashValue,
-                    selectedRowIDs: selectedRowIDs(in: projection),
+                    projectionToken: state.key.hashValue,
+                    selectedRowIDs: isCurrent ? selectedRowIDs(in: projection) : [],
                     fitToken: fitToken,
-                    onSelect: select(rowID:)
+                    onSelect: { rowID in
+                        guard isCurrent else { return }
+                        select(rowID: rowID)
+                    }
                 )
                 .accessibilityIdentifier("result-map")
                 .accessibilityLabel(accessibilityLabel(for: projection))
             }
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel(String(localized: "Building map"))
         }
     }
 
@@ -171,20 +175,20 @@ struct ResultMapView: View {
     // MARK: - Projection
 
     /// A connection switch re-parents the pane and SwiftUI re-runs `task(id:)` with an unchanged
-    /// key. Rebuilding then would enter `.loading`, which unmounts the canvas and loses the user's
-    /// zoom and pan, so a projection already built for that key is kept. A cancelled projection
-    /// commits nothing; the replacement task, or the next appearance, owns the state from its
-    /// first line.
+    /// key; rebuilding then would replace the drawing and lose the user's zoom and pan, so a
+    /// projection already built for that key is kept. `task(id:)` cancels the previous task when
+    /// the key changes, and a cancelled projection commits nothing. New shapes are fitted once they
+    /// are drawn, not when the key changes, so the fit frames them rather than the old ones.
     private func rebuild(for expectedKey: ResultMapProjectionKey) async {
-        if case .loaded(_, let key) = state, key == expectedKey { return }
+        if state.isCurrent(for: expectedKey) { return }
         guard let column = resolved else { return }
-        state = .loading
         let output = await SpatialResultProjector.shared.project(
             tableRows: tableRows,
             displayIDs: displayIDs,
             column: column
         )
-        guard !Task.isCancelled, projectionKey == expectedKey else { return }
-        state = .loaded(output, key: expectedKey)
+        guard !Task.isCancelled else { return }
+        state.commit(output, for: expectedKey)
+        fitToken &+= 1
     }
 }

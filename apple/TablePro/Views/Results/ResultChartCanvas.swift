@@ -8,17 +8,15 @@ import SwiftUI
 import TableProTheme
 
 struct ResultChartCanvas: View {
-    /// Solid first, then patterns that stay legible in monochrome and to a colour-blind reader,
-    /// because colour alone does not distinguish a series.
-    private static let seriesDashPatterns: [[CGFloat]] = [
-        [], [6, 3], [2, 3], [8, 3, 2, 3], [1, 3], [10, 4],
-    ]
-
     let projection: ResultChartProjection
     let chartType: ResultChartType
 
+    private let panel: ResultChartProjection.Panel
+    private let slotSeeds: [Int]
+    private let showsLegend: Bool
+    private let accessibilityIdentifier: String
     private let selectionIndex: ResultChartSelectionIndex
-    private let seriesNames: [String]
+    private let seriesStyle: ResultChartSeriesStyle
 
     @State private var selectedCategory: String?
     @State private var selectedNumber: Double?
@@ -26,11 +24,26 @@ struct ResultChartCanvas: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared
     @Environment(\.colorSchemeContrast) private var contrast
 
-    init(projection: ResultChartProjection, chartType: ResultChartType) {
+    /// Draws one panel of the projection, every panel when it is not faceted. The axes, colours,
+    /// symbols and dashes come from the whole projection, so the panels of one grid line up.
+    init(
+        projection: ResultChartProjection,
+        panel: ResultChartProjection.Panel? = nil,
+        chartType: ResultChartType,
+        showsLegend: Bool = true,
+        accessibilityIdentifier: String = "result-chart"
+    ) {
         self.projection = projection
         self.chartType = chartType
-        selectionIndex = ResultChartSelectionIndex(projection: projection)
-        seriesNames = Self.orderedSeriesNames(in: projection)
+        let panel = panel ?? ResultChartProjection.Panel(facet: nil, points: projection.points)
+        self.panel = panel
+        slotSeeds = chartType == .bar && projection.isFaceted
+            ? Array(Set(projection.points.map(\.barGroup))).sorted()
+            : []
+        self.showsLegend = showsLegend
+        self.accessibilityIdentifier = accessibilityIdentifier
+        selectionIndex = ResultChartSelectionIndex(points: panel.points)
+        seriesStyle = ResultChartSeriesStyle(series: projection.series)
     }
 
     var body: some View {
@@ -61,6 +74,11 @@ struct ResultChartCanvas: View {
                     .foregroundStyle(Color(nsColor: .secondaryLabelColor))
             }
         }
+        .modifier(SharedAxes(
+            domain: projection.domain,
+            xAxisKind: projection.xAxisKind,
+            sharesXAxis: projection.sharesXAxis
+        ))
         .chartPlotStyle { plotArea in
             plotArea
                 .themeBackground(
@@ -71,7 +89,7 @@ struct ResultChartCanvas: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilitySummary)
-        .accessibilityIdentifier("result-chart")
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 
     /// The chart stands where the grid would, so its plot takes the grid's background and lines.
@@ -91,7 +109,10 @@ struct ResultChartCanvas: View {
     private var categoricalChart: some View {
         let selection = selectionIndex.selection(forCategory: selectedCategory)
         return legend(Chart {
-            ForEach(projection.points) { point in
+            if case .category(let x)? = panel.points.first?.x {
+                ForEach(slotSeeds, id: \.self) { slotSeed($0, x: x) }
+            }
+            ForEach(panel.points) { point in
                 if case .category(let x) = point.x {
                     mark(for: point, x: x)
                 }
@@ -106,7 +127,10 @@ struct ResultChartCanvas: View {
     private var numericChart: some View {
         let selection = selectionIndex.selection(nearestNumber: selectedNumber)
         return legend(Chart {
-            ForEach(projection.points) { point in
+            if case .number(let x)? = panel.points.first?.x {
+                ForEach(slotSeeds, id: \.self) { slotSeed($0, x: x) }
+            }
+            ForEach(panel.points) { point in
                 if case .number(let x) = point.x {
                     mark(for: point, x: x)
                 }
@@ -121,7 +145,10 @@ struct ResultChartCanvas: View {
     private var dateChart: some View {
         let selection = selectionIndex.selection(nearestDate: selectedDate)
         return legend(Chart {
-            ForEach(projection.points) { point in
+            if case .date(let x)? = panel.points.first?.x {
+                ForEach(slotSeeds, id: \.self) { slotSeed($0, x: x) }
+            }
+            ForEach(panel.points) { point in
                 if case .date(let x) = point.x {
                     mark(for: point, x: x)
                 }
@@ -133,35 +160,29 @@ struct ResultChartCanvas: View {
         .chartXSelectionCompat(value: $selectedDate)
     }
 
-    /// The per-series stroke lives on the chart's line-style scale, not on the mark: a constant
+    /// Every scale takes its domain from the whole projection: a panel infers its own otherwise, so
+    /// one series would change colour between panels, and every series whenever the rows are
+    /// re-sorted. The per-series stroke lives on the line-style scale, not on the mark: a constant
     /// `lineStyle` applied after `lineStyle(by:)` replaces it, which leaves colour as the only thing
     /// telling two series apart.
     @ViewBuilder
     private func legend(_ chart: some View) -> some View {
         let styled = chart
-            .chartLegend(projection.seriesLabel == nil ? .hidden : .visible)
+            .chartLegend(showsLegend && projection.seriesLabel != nil ? .visible : .hidden)
             .chartLegend(position: .bottom, alignment: .leading, spacing: 10)
-        if seriesNames.isEmpty {
+        if seriesStyle.isEmpty {
             styled
         } else {
-            styled.chartLineStyleScale(range: seriesStrokeStyles)
-        }
-    }
-
-    private var seriesStrokeStyles: [StrokeStyle] {
-        seriesNames.indices.map { index in
-            StrokeStyle(
-                lineWidth: 2,
-                lineCap: .round,
-                lineJoin: .round,
-                dash: Self.seriesDashPatterns[index % Self.seriesDashPatterns.count]
-            )
+            styled
+                .chartForegroundStyleScale(domain: seriesStyle.names, range: seriesStyle.colors)
+                .chartSymbolScale(domain: seriesStyle.names, range: seriesStyle.symbols)
+                .chartLineStyleScale(domain: seriesStyle.names, range: seriesStyle.strokes)
         }
     }
 
     @ChartContentBuilder
     private func mark<X: Plottable>(for point: ResultChartProjection.Point, x: X) -> some ChartContent {
-        let series = point.series?.displayName
+        let series = point.series?.label
         switch chartType {
         case .bar: barMark(for: point, x: x, series: series)
         case .line: lineMark(for: point, x: x, series: series)
@@ -172,14 +193,33 @@ struct ResultChartCanvas: View {
 
     /// The grouping dimension is a slot, so its value has to be discrete. Swift Charts reads an
     /// `Int` as a continuous offset, which drops a repeated category's second bar into the next
-    /// category's band; the scale orders discrete slots by first appearance, so the ordinal's
-    /// string keeps them in order.
+    /// category's band. The scale orders discrete slots by first appearance in the chart's marks,
+    /// which the projection numbers in that order; a faceted panel names every slot up front
+    /// (`slotSeed`), so a panel whose rows name a later series first still puts each where the
+    /// other panels do.
     private func slot(_ point: ResultChartProjection.Point) -> PlottableValue<String> {
         .value(String(localized: "Row"), String(point.barGroup))
     }
 
     private func seriesValue(_ series: String) -> PlottableValue<String> {
         .value(projection.seriesLabel ?? String(localized: "Series"), series)
+    }
+
+    /// `position(by:)` divides each band among the slots this chart's marks name, in the order they
+    /// first appear, and has no domain to pass. A panel missing a series, or naming a later one
+    /// first, would draw its bars wider or swapped, so every slot of the whole projection is named
+    /// once, in order, by an invisible zero-height bar ahead of the real ones. Measured: a sparse
+    /// panel's bars then land at the full panel's positions and widths.
+    @ChartContentBuilder
+    private func slotSeed<X: Plottable>(_ slot: Int, x: X) -> some ChartContent {
+        BarMark(
+            x: .value(projection.xAxisLabel, x),
+            y: .value(projection.yAxisLabel, 0),
+            stacking: .unstacked
+        )
+        .position(by: .value(String(localized: "Row"), String(slot)))
+        .opacity(0)
+        .accessibilityHidden(true)
     }
 
     @ChartContentBuilder
@@ -360,16 +400,8 @@ struct ResultChartCanvas: View {
         )
     }
 
-    static func orderedSeriesNames(in projection: ResultChartProjection) -> [String] {
-        var seen: Set<ResultChartProjection.SeriesValue> = []
-        return projection.points.compactMap { point in
-            guard let series = point.series, seen.insert(series).inserted else { return nil }
-            return series.displayName
-        }
-    }
-
     private func pointAccessibilityLabel(_ point: ResultChartProjection.Point, series: String?) -> String {
-        var components = ["\(projection.xAxisLabel): \(point.rawX)"]
+        var components = ["\(projection.xAxisLabel): \(point.xLabel)"]
         if let seriesLabel = projection.seriesLabel, let series {
             components.append("\(seriesLabel): \(series)")
         }
@@ -386,8 +418,53 @@ struct ResultChartCanvas: View {
             chartType.displayName,
             projection.yAxisLabel,
             projection.xAxisLabel,
-            projection.points.count
+            panel.points.count
         )
+    }
+}
+
+/// The panels of a faceted chart are separate charts, so each is given the extent of every panel's
+/// data instead of inferring its own. Numbers keep Swift Charts' own rounding and zero baseline:
+/// the shared extent is appended to what it infers, which a single chart already contains.
+private struct SharedAxes: ViewModifier {
+    let domain: ResultChartProjection.Domain
+    let xAxisKind: ResultChartColumn.AxisKind
+    let sharesXAxis: Bool
+
+    func body(content: Content) -> some View {
+        sharedX(content).chartYScale(domain: Self.including(domain.y))
+    }
+
+    @ViewBuilder
+    private func sharedX(_ content: Content) -> some View {
+        if !sharesXAxis {
+            content
+        } else {
+            sharedDomainX(content)
+        }
+    }
+
+    @ViewBuilder
+    private func sharedDomainX(_ content: Content) -> some View {
+        switch xAxisKind {
+        case .category:
+            content.chartXScale(domain: domain.categories)
+        case .number:
+            content.chartXScale(domain: Self.including(domain.numbers))
+        case .date:
+            if let dates = domain.dates, dates.lowerBound < dates.upperBound {
+                content.chartXScale(domain: dates)
+            } else {
+                content
+            }
+        }
+    }
+
+    private static func including(_ extent: ClosedRange<Double>?) -> AutomaticScaleDomain {
+        guard let extent else { return .automatic }
+        return .automatic(dataType: Double.self) { inferred in
+            inferred.append(contentsOf: [extent.lowerBound, extent.upperBound])
+        }
     }
 }
 
@@ -434,7 +511,7 @@ private struct ResultChartPreview: View {
                 y: Double(value.1),
                 rawX: value.0,
                 rawY: String(value.1),
-                series: .value(value.2),
+                series: .init(.value(value.2)),
                 barGroup: value.2 == "Online" ? 0 : 1,
                 lineGroup: value.2 == "Online" ? 0 : 1
             )
@@ -465,7 +542,7 @@ private struct ResultChartPreview: View {
                 y: Double(value.1),
                 rawX: String(value.0),
                 rawY: String(value.1),
-                series: .value(value.2),
+                series: .init(.value(value.2)),
                 barGroup: value.2 == "Online" ? 0 : 1,
                 lineGroup: value.2 == "Online" ? 0 : 1
             )

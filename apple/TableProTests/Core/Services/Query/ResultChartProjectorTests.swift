@@ -242,7 +242,7 @@ struct ResultChartProjectorTests {
         )
         let projection = try await project(rows, y: "value", series: "status")
 
-        #expect(projection.points.map(\.series) == [.missing, .missing, .value("paid")])
+        #expect(projection.points.map(\.series?.value) == [.missing, .missing, .value("paid")])
     }
 
     @Test("Passing the point cap truncates and says so instead of discarding the chart")
@@ -329,6 +329,138 @@ struct ResultChartProjectorTests {
         #expect(projection.points[0].lineGroup == 0)
     }
 
+    @Test("A facet draws one panel per value, in the order the rows name them")
+    func facetPanels() async throws {
+        let rows = makeSalesRows([
+            ("Jan", "West", "Online", "10"),
+            ("Jan", nil, "Online", "4"),
+            ("Jan", "East", "Online", "12"),
+            ("Feb", "West", "Online", "14"),
+        ])
+        let projection = try await project(rows, x: "month", y: "revenue", facet: "region")
+
+        #expect(projection.isFaceted)
+        #expect(projection.facetLabel == "region")
+        #expect(projection.panels.map(\.id) == ["West", "No value", "East"])
+        #expect(projection.panels.map { $0.points.map(\.rawY) } == [["10", "14"], ["4"], ["12"]])
+        #expect(projection.skippedRowCount == 0)
+        #expect(projection.sharesXAxis)
+    }
+
+    @Test("Past twelve facets the later rows are dropped and noted, not counted as skipped")
+    func facetCap() async throws {
+        let rows = makeSalesRows((0..<14).map { ("Jan", "region-\($0)", "Online", String($0)) })
+        let projection = try await project(rows, x: "month", y: "revenue", facet: "region")
+
+        #expect(projection.panels.count == ResultChartProjector.maximumFacetCount)
+        #expect(projection.limits == [.facets(limit: ResultChartProjector.maximumFacetCount)])
+        #expect(projection.skippedRowCount == 0)
+        #expect(!projection.points.contains { $0.facet?.label == "region-12" })
+    }
+
+    @Test("A row a capped series drops does not take a facet slot")
+    func seriesCapLeavesFacetSlotsAlone() async throws {
+        var values = (0..<ResultChartProjector.maximumSeriesCount).map { ("Jan", "East", "series-\($0)", "1") }
+        values.append(("Jan", "West", "series-over", "1"))
+        values.append(("Jan", "North", "series-0", "1"))
+        let projection = try await project(makeSalesRows(values), x: "month", y: "revenue", series: "product", facet: "region")
+
+        #expect(projection.panels.map(\.id) == ["East", "North"])
+        #expect(projection.limits == [.series(limit: ResultChartProjector.maximumSeriesCount)])
+    }
+
+    @Test("A series keeps its bar slot in every panel")
+    func barSlotsAreSharedAcrossPanels() async throws {
+        let rows = makeSalesRows([
+            ("Jan", "East", "Online", "1"),
+            ("Jan", "East", "Retail", "2"),
+            ("Jan", "West", "Online", "3"),
+            ("Jan", "West", "Retail", "4"),
+            ("Jan", "West", "Retail", "5"),
+        ])
+        let projection = try await project(rows, x: "month", y: "revenue", series: "product", facet: "region")
+        let groups = projection.points.map(\.barGroup)
+
+        #expect(groups[0] == groups[2])
+        #expect(groups[1] == groups[3])
+        #expect(groups[3] != groups[4])
+    }
+
+    @Test("A skipped row breaks the line of its own panel only")
+    func skippedRowBreaksOnlyItsFacet() async throws {
+        let rows = makeSalesRows([
+            ("Jan", "East", "Online", "1"),
+            ("Jan", "West", "Online", "2"),
+            ("Feb", "East", "Online", nil),
+            ("Mar", "East", "Online", "3"),
+            ("Mar", "West", "Online", "4"),
+        ])
+        let projection = try await project(rows, x: "month", y: "revenue", series: "product", facet: "region")
+        let lines = projection.points.map(\.lineGroup)
+
+        #expect(projection.skippedRowCount == 1)
+        #expect(lines[0] != lines[2])
+        #expect(lines[1] == lines[3])
+    }
+
+    @Test("A row whose facet cannot be read breaks every line")
+    func unreadableFacetBreaksEveryLine() async throws {
+        let rows = TableRows.from(
+            queryRows: [
+                [.text("Jan"), .text("East"), .text("1")],
+                [.text("Jan"), .text("West"), .text("2")],
+                [.text("Feb"), .bytes(Data([0x01])), .text("9")],
+                [.text("Mar"), .text("East"), .text("3")],
+                [.text("Mar"), .text("West"), .text("4")],
+            ],
+            columns: ["month", "region", "revenue"],
+            columnTypes: [.text(rawType: nil), .text(rawType: nil), .integer(rawType: nil)]
+        )
+        let projection = try await project(rows, x: "month", y: "revenue", facet: "region")
+        let lines = projection.points.map(\.lineGroup)
+
+        #expect(projection.skippedRowCount == 1)
+        #expect(lines[0] != lines[2])
+        #expect(lines[1] != lines[3])
+    }
+
+    @Test("Row numbers are not shared across panels, so each panel spans its own rows")
+    func rowNumberAxisIsPerPanel() async throws {
+        let rows = makeSalesRows([("Jan", "East", "Online", "1"), ("Jan", "West", "Online", "2")])
+        let projection = try await project(rows, y: "revenue", facet: "region")
+
+        #expect(!projection.sharesXAxis)
+    }
+
+    @Test("Empty text reads as Empty, and NULL stays apart from a literal No value")
+    func emptyAndMissingLabels() async throws {
+        let rows = makeSalesRows([
+            ("", "East", "", "1"),
+            ("Feb", "East", nil, "2"),
+            ("Mar", "East", "No value", "3"),
+        ])
+        let projection = try await project(rows, x: "month", y: "revenue", series: "product")
+
+        #expect(projection.series.map(\.value) == [.value(""), .missing, .value("No value")])
+        #expect(projection.series.map(\.label) == ["Empty", "No value (2)", "No value (1)"])
+        #expect(projection.points[0].xLabel == "Empty")
+        #expect(projection.points[0].rawX.isEmpty)
+    }
+
+    @Test("The shared domain spans every panel")
+    func sharedDomainSpansPanels() async throws {
+        let rows = makeSalesRows([
+            ("Feb", "West", "Online", "-5"),
+            ("Jan", "East", "Online", "40"),
+            ("Mar", "East", "Online", "7"),
+        ])
+        let projection = try await project(rows, x: "month", y: "revenue", facet: "region")
+
+        #expect(projection.domain.categories == ["Feb", "Jan", "Mar"])
+        #expect(projection.domain.y == -5...40)
+        #expect(projection.panels.map { $0.points.count } == [1, 2])
+    }
+
     @Test("A cancelled projection stops before publishing points")
     func cancellation() async throws {
         let rows = makeNumericRows(count: 10_000)
@@ -347,12 +479,14 @@ struct ResultChartProjectorTests {
         _ rows: TableRows,
         x: String? = nil,
         y: String,
-        series: String? = nil
+        series: String? = nil,
+        facet: String? = nil
     ) throws -> ResultChartConfiguration.Resolved {
         let configuration = ResultChartConfiguration(
             xColumn: x.map { ResultChartColumnID(name: $0, occurrence: 1) },
             yColumn: ResultChartColumnID(name: y, occurrence: 1),
-            seriesColumn: series.map { ResultChartColumnID(name: $0, occurrence: 1) }
+            seriesColumn: series.map { ResultChartColumnID(name: $0, occurrence: 1) },
+            facetColumn: facet.map { ResultChartColumnID(name: $0, occurrence: 1) }
         )
         return try #require(configuration.resolved(in: ResultChartColumn.columns(in: rows)))
     }
@@ -361,10 +495,20 @@ struct ResultChartProjectorTests {
         _ rows: TableRows,
         x: String? = nil,
         y: String,
-        series: String? = nil
+        series: String? = nil,
+        facet: String? = nil
     ) async throws -> ResultChartProjection {
-        let configuration = try resolve(rows, x: x, y: y, series: series)
+        let configuration = try resolve(rows, x: x, y: y, series: series, facet: facet)
         return try await ResultChartProjector.shared.project(tableRows: rows, configuration: configuration)
+    }
+
+    private func makeSalesRows(_ values: [(String, String?, String?, String?)]) -> TableRows {
+        func cell(_ value: String?) -> PluginCellValue { value.map(PluginCellValue.text) ?? .null }
+        return makeRows(
+            values: values.map { [.text($0.0), cell($0.1), cell($0.2), cell($0.3)] },
+            columns: ["month", "region", "product", "revenue"],
+            types: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil), .integer(rawType: nil)]
+        )
     }
 
     private func makeNumericRows(count: Int) -> TableRows {

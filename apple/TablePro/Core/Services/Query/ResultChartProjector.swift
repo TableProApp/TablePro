@@ -10,10 +10,10 @@ actor ResultChartProjector {
     static let shared = ResultChartProjector()
     static let maximumPointCount = 2_000
     static let maximumSeriesCount = 20
+    static let maximumFacetCount = 12
     static let maximumInspectedRowCount = 50_000
     static let maximumLabelLength = 512
     static let maximumNumericLength = 256
-
 
     private enum XOccurrenceKey: Hashable {
         case category(String)
@@ -21,19 +21,52 @@ actor ResultChartProjector {
         case date(Date)
     }
 
-    private struct GroupKey: Hashable {
-        let series: Int
-        let occurrence: Int
-    }
-
     private struct BarOccurrenceKey: Hashable {
+        let facet: Int
         let x: XOccurrenceKey
         let series: Int
     }
 
-    private enum LineSeriesKey: Hashable {
+    /// Not keyed by facet: a series keeps the same slot in every panel, so its bars sit in the same
+    /// place wherever it appears.
+    private struct BarGroupKey: Hashable {
+        let series: Int
+        let occurrence: Int
+    }
+
+    private struct LineKey: Hashable {
+        let facet: ResultChartProjection.GroupValue?
+        let series: ResultChartProjection.GroupValue?
+    }
+
+    private struct LineGroupKey: Hashable {
+        let facet: Int
+        let series: Int
+        let generation: Int
+    }
+
+    /// Which group of one column a row belongs to, if it can be told.
+    private enum Attribution {
         case ungrouped
-        case series(ResultChartProjection.SeriesValue)
+        case group(ResultChartProjection.GroupValue)
+        case unreadable
+
+        /// Nil when the cell cannot be read; `.some(nil)` when the chart does not group by it.
+        var groupValue: ResultChartProjection.GroupValue?? {
+            switch self {
+            case .ungrouped: return .some(nil)
+            case .group(let value): return value
+            case .unreadable: return nil
+            }
+        }
+
+        func couldOwn(_ line: ResultChartProjection.GroupValue?) -> Bool {
+            switch self {
+            case .ungrouped: return line == nil
+            case .group(let value): return line == value
+            case .unreadable: return true
+            }
+        }
     }
 
     private struct RowValues {
@@ -43,19 +76,48 @@ actor ResultChartProjector {
         let rawY: String
     }
 
+    /// A point before labels exist. Labels have to be unique across the whole projection, so they
+    /// are assigned once every group is known.
+    private struct PendingPoint {
+        let sourceIndex: Int
+        let values: RowValues
+        let series: ResultChartProjection.GroupValue?
+        let facet: ResultChartProjection.GroupValue?
+        let barGroup: Int
+        let lineGroup: Int
+    }
+
+    private struct Ordinals {
+        private(set) var values: [ResultChartProjection.GroupValue: Int] = [:]
+        let limit: Int
+
+        /// Nil when the value is new and the cap is reached. Nothing is recorded until `commit`, so
+        /// a row dropped by another cap does not use up a slot here.
+        func ordinal(for value: ResultChartProjection.GroupValue) -> Int? {
+            if let ordinal = values[value] { return ordinal }
+            return values.count < limit ? values.count : nil
+        }
+
+        mutating func commit(_ value: ResultChartProjection.GroupValue, as ordinal: Int) {
+            values[value] = ordinal
+        }
+    }
+
     /// Cancellation is the only failure this can report, and saying so in the signature keeps it
     /// that way: a caller cannot be handed an error state that never arrives.
     func project(
         tableRows: TableRows,
         configuration: ResultChartConfiguration.Resolved
     ) async throws(CancellationError) -> ResultChartProjection {
-        var points: [ResultChartProjection.Point] = []
-        points.reserveCapacity(min(tableRows.rows.count, Self.maximumPointCount))
-        var seriesOrdinals: [ResultChartProjection.SeriesValue: Int] = [:]
+        var pending: [PendingPoint] = []
+        pending.reserveCapacity(min(tableRows.rows.count, Self.maximumPointCount))
+        var seriesOrdinals = Ordinals(limit: Self.maximumSeriesCount)
+        var facetOrdinals = Ordinals(limit: Self.maximumFacetCount)
         var xOccurrences: [BarOccurrenceKey: Int] = [:]
-        var barGroupOrdinals: [GroupKey: Int] = [:]
-        var lineGroupOrdinals: [GroupKey: Int] = [:]
-        var lineBreakGenerations: [LineSeriesKey: Int] = [:]
+        var barGroupOrdinals: [BarGroupKey: Int] = [:]
+        var lineGroupOrdinals: [LineGroupKey: Int] = [:]
+        var lineBreakGenerations: [LineKey: Int] = [:]
+        var drawnLines: Set<LineKey> = []
         var limits: [ResultChartProjection.Limit] = []
         var skippedRowCount = 0
 
@@ -68,85 +130,115 @@ actor ResultChartProjector {
                 throw CancellationError()
             }
 
-            guard let values = rowValues(in: row, sourceIndex: sourceIndex, configuration: configuration) else {
+            let facet = attribution(of: row, column: configuration.facetColumn)
+            let series = attribution(of: row, column: configuration.seriesColumn)
+            guard let values = rowValues(in: row, sourceIndex: sourceIndex, configuration: configuration),
+                  let facetValue = facet.groupValue,
+                  let seriesValue = series.groupValue
+            else {
                 skippedRowCount += 1
-                recordLineBreak(
-                    for: row,
-                    seriesColumn: configuration.seriesColumn,
-                    seriesOrdinals: seriesOrdinals,
-                    generations: &lineBreakGenerations
-                )
+                recordLineBreak(facet: facet, series: series, drawnLines: drawnLines, generations: &lineBreakGenerations)
                 continue
             }
 
-            let series: ResultChartProjection.SeriesValue?
-            let seriesOrdinal: Int
-            if let seriesColumn = configuration.seriesColumn {
-                guard let cell = cell(in: row, at: seriesColumn.index),
-                      let value = seriesValue(from: cell)
-                else {
-                    skippedRowCount += 1
-                    recordLineBreak(
-                        for: row,
-                        seriesColumn: seriesColumn,
-                        seriesOrdinals: seriesOrdinals,
-                        generations: &lineBreakGenerations
-                    )
+            var facetOrdinal = 0
+            if let facetValue {
+                guard let ordinal = facetOrdinals.ordinal(for: facetValue) else {
+                    appendOnce(.facets(limit: Self.maximumFacetCount), to: &limits)
                     continue
                 }
-                series = value
-                if let ordinal = seriesOrdinals[value] {
-                    seriesOrdinal = ordinal
-                } else {
-                    guard seriesOrdinals.count < Self.maximumSeriesCount else {
-                        appendOnce(.series(limit: Self.maximumSeriesCount), to: &limits)
-                        continue
-                    }
-                    seriesOrdinal = seriesOrdinals.count
-                    seriesOrdinals[value] = seriesOrdinal
+                facetOrdinal = ordinal
+            }
+            var seriesOrdinal = 0
+            if let seriesValue {
+                guard let ordinal = seriesOrdinals.ordinal(for: seriesValue) else {
+                    appendOnce(.series(limit: Self.maximumSeriesCount), to: &limits)
+                    continue
                 }
-            } else {
-                series = nil
-                seriesOrdinal = 0
+                seriesOrdinal = ordinal
             }
 
-            if points.count == Self.maximumPointCount {
+            if pending.count == Self.maximumPointCount {
                 limits.append(.points(limit: Self.maximumPointCount))
                 break rows
             }
+            if let facetValue { facetOrdinals.commit(facetValue, as: facetOrdinal) }
+            if let seriesValue { seriesOrdinals.commit(seriesValue, as: seriesOrdinal) }
 
-            let xKey = stableXKey(values.x, raw: values.rawX)
-            let occurrenceKey = BarOccurrenceKey(x: xKey, series: seriesOrdinal)
+            let occurrenceKey = BarOccurrenceKey(
+                facet: facetOrdinal,
+                x: stableXKey(values.x, raw: values.rawX),
+                series: seriesOrdinal
+            )
             xOccurrences[occurrenceKey, default: 0] += 1
             let occurrence = xOccurrences[occurrenceKey, default: 1]
-            let barGroupKey = GroupKey(series: seriesOrdinal, occurrence: occurrence)
-            let lineSeriesKey = series.map(LineSeriesKey.series) ?? .ungrouped
-            let lineGroupKey = GroupKey(
+            let lineKey = LineKey(facet: facetValue, series: seriesValue)
+            drawnLines.insert(lineKey)
+            let lineGroupKey = LineGroupKey(
+                facet: facetOrdinal,
                 series: seriesOrdinal,
-                occurrence: lineBreakGenerations[lineSeriesKey, default: 0]
+                generation: lineBreakGenerations[lineKey, default: 0]
             )
-            points.append(ResultChartProjection.Point(
+            pending.append(PendingPoint(
                 sourceIndex: sourceIndex,
-                x: values.x,
-                y: values.y,
-                rawX: values.rawX,
-                rawY: values.rawY,
-                series: series,
-                barGroup: ordinal(for: barGroupKey, in: &barGroupOrdinals),
+                values: values,
+                series: seriesValue,
+                facet: facetValue,
+                barGroup: ordinal(for: BarGroupKey(series: seriesOrdinal, occurrence: occurrence), in: &barGroupOrdinals),
                 lineGroup: ordinal(for: lineGroupKey, in: &lineGroupOrdinals)
             ))
         }
 
         return ResultChartProjection(
-            points: points,
+            points: labeledPoints(pending),
             xAxisKind: configuration.xAxisKind,
             limits: limits,
             loadedRowCount: tableRows.rows.count,
             skippedRowCount: skippedRowCount,
             xAxisLabel: configuration.xColumn?.displayName ?? String(localized: "Row Number"),
             yAxisLabel: configuration.yColumn.displayName,
-            seriesLabel: configuration.seriesColumn?.displayName
+            seriesLabel: configuration.seriesColumn?.displayName,
+            facetLabel: configuration.facetColumn?.displayName,
+            sharesXAxis: configuration.xColumn != nil
         )
+    }
+
+    private func labeledPoints(_ pending: [PendingPoint]) -> [ResultChartProjection.Point] {
+        let series = groups(pending.compactMap(\.series))
+        let facets = groups(pending.compactMap(\.facet))
+        var categories: [String] = []
+        var seenCategories: Set<String> = []
+        for point in pending {
+            if case .category(let raw) = point.values.x, seenCategories.insert(raw).inserted {
+                categories.append(raw)
+            }
+        }
+        let categoryLabels = Dictionary(uniqueKeysWithValues: zip(
+            categories,
+            ResultChartProjection.Group.labeled(categories.map { .value($0) }).map(\.label)
+        ))
+
+        return pending.map { point in
+            var x = point.values.x
+            if case .category(let raw) = x { x = .category(categoryLabels[raw] ?? raw) }
+            return ResultChartProjection.Point(
+                sourceIndex: point.sourceIndex,
+                x: x,
+                y: point.values.y,
+                rawX: point.values.rawX,
+                rawY: point.values.rawY,
+                series: point.series.flatMap { series[$0] },
+                facet: point.facet.flatMap { facets[$0] },
+                barGroup: point.barGroup,
+                lineGroup: point.lineGroup
+            )
+        }
+    }
+
+    private func groups(
+        _ values: [ResultChartProjection.GroupValue]
+    ) -> [ResultChartProjection.GroupValue: ResultChartProjection.Group] {
+        Dictionary(uniqueKeysWithValues: ResultChartProjection.Group.labeled(Array(Set(values))).map { ($0.value, $0) })
     }
 
     private func appendOnce(
@@ -246,7 +338,15 @@ actor ResultChartProjector {
         return "\(isNegative ? "-" : "")\(String(digits))e\(exponent)"
     }
 
-    private func seriesValue(from cell: PluginCellValue) -> ResultChartProjection.SeriesValue? {
+    private func attribution(of row: Row, column: ResultChartColumn?) -> Attribution {
+        guard let column else { return .ungrouped }
+        guard let cell = cell(in: row, at: column.index), let value = groupValue(from: cell) else {
+            return .unreadable
+        }
+        return .group(value)
+    }
+
+    private func groupValue(from cell: PluginCellValue) -> ResultChartProjection.GroupValue? {
         switch cell {
         case .null:
             return .missing
@@ -259,28 +359,22 @@ actor ResultChartProjector {
     }
 
     /// A skipped row is a hole in the line, so the next point starts a new segment rather than the
-    /// line being drawn straight through it. When the series cell is the unreadable one the row
-    /// cannot be attributed, so every series seen so far breaks: the alternative is drawing over a
+    /// line being drawn straight through it. When a group cell is the unreadable one the row cannot
+    /// be attributed, so every line it could belong to breaks: the alternative is drawing over a
     /// discontinuity in whichever line it really belonged to.
     private func recordLineBreak(
-        for row: Row,
-        seriesColumn: ResultChartColumn?,
-        seriesOrdinals: [ResultChartProjection.SeriesValue: Int],
-        generations: inout [LineSeriesKey: Int]
+        facet: Attribution,
+        series: Attribution,
+        drawnLines: Set<LineKey>,
+        generations: inout [LineKey: Int]
     ) {
-        guard let seriesColumn else {
-            generations[.ungrouped, default: 0] += 1
+        if let facetValue = facet.groupValue, let seriesValue = series.groupValue {
+            generations[LineKey(facet: facetValue, series: seriesValue), default: 0] += 1
             return
         }
-        guard let cell = cell(in: row, at: seriesColumn.index),
-              let series = seriesValue(from: cell)
-        else {
-            for value in seriesOrdinals.keys {
-                generations[.series(value), default: 0] += 1
-            }
-            return
+        for line in drawnLines where facet.couldOwn(line.facet) && series.couldOwn(line.series) {
+            generations[line, default: 0] += 1
         }
-        generations[.series(series), default: 0] += 1
     }
 
     private func cell(in row: Row, at index: Int) -> PluginCellValue? {
@@ -296,7 +390,7 @@ actor ResultChartProjector {
         }
     }
 
-    private func ordinal(for key: GroupKey, in ordinals: inout [GroupKey: Int]) -> Int {
+    private func ordinal<Key: Hashable>(for key: Key, in ordinals: inout [Key: Int]) -> Int {
         if let ordinal = ordinals[key] { return ordinal }
         let ordinal = ordinals.count
         ordinals[key] = ordinal

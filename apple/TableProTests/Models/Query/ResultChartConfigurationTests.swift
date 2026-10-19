@@ -48,6 +48,32 @@ struct ResultChartConfigurationTests {
         #expect(resolved.yColumn.name == "TrackId")
     }
 
+    @Test("A facet resolves only for a column that can name a group")
+    func facetNeedsAGroupColumn() throws {
+        let columns = ResultChartColumn.columns(in: makeRows(
+            columns: ["region", "year", "amount"],
+            types: [.text(rawType: nil), .integer(rawType: nil), .decimal(rawType: nil)]
+        ))
+        let byRegion = ResultChartConfiguration(facetColumn: columns[0].id).resolved(in: columns)
+        let byYear = ResultChartConfiguration(facetColumn: columns[1].id).resolved(in: columns)
+
+        #expect(byRegion?.facetColumn?.name == "region")
+        #expect(byYear?.facetColumn == nil)
+    }
+
+    @Test("Changing the facet changes the columns a projection is keyed by")
+    func facetIsPartOfTheProjectionKey() throws {
+        let columns = ResultChartColumn.columns(in: makeRows(
+            columns: ["region", "amount"],
+            types: [.text(rawType: nil), .decimal(rawType: nil)]
+        ))
+        let plain = try #require(ResultChartConfiguration().resolved(in: columns))
+        let faceted = try #require(ResultChartConfiguration(facetColumn: columns[0].id).resolved(in: columns))
+
+        #expect(plain.columnIDs != faceted.columnIDs)
+        #expect(faceted.columnIDs.facet == columns[0].id)
+    }
+
     @Test("A tab keeps its chart choices when the result set is replaced")
     func configurationSurvivesResultReplacement() {
         var tab = QueryTab(title: "Query", tabType: .query)

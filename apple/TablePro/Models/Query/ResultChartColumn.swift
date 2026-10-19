@@ -61,21 +61,18 @@ struct ResultChartColumn: Identifiable, Equatable, Sendable {
 
     static func columns(in tableRows: TableRows, primaryKeyColumns: Set<String> = []) -> [ResultChartColumn] {
         var occurrences: [String: Int] = [:]
-        let totals = tableRows.columns.reduce(into: [String: Int]()) { result, name in
-            result[name, default: 0] += 1
-        }
+        let displayNames = ResultChartLabels.unique(tableRows.columns)
 
         return tableRows.columns.enumerated().map { index, name in
             occurrences[name, default: 0] += 1
             let occurrence = occurrences[name, default: 1]
-            let displayName = totals[name, default: 0] > 1 ? "\(name) (\(occurrence))" : name
             let type = index < tableRows.columnTypes.count
                 ? tableRows.columnTypes[index]
                 : .text(rawType: nil)
             return ResultChartColumn(
                 id: ResultChartColumnID(name: name, occurrence: occurrence),
                 index: index,
-                displayName: displayName,
+                displayName: displayNames[index],
                 type: type,
                 isPrimaryKey: primaryKeyColumns.contains(name)
             )

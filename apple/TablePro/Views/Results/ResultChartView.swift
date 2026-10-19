@@ -5,13 +5,11 @@
 
 import SwiftUI
 
-struct ResultChartProjectionKey: Hashable {
+struct ResultChartProjectionKey: ResultPaneProjectionKey {
     let tabId: UUID
     let resultSetId: UUID
     let dataRevision: Int
-    let xColumn: ResultChartColumnID?
-    let yColumn: ResultChartColumnID?
-    let seriesColumn: ResultChartColumnID?
+    let columns: ResultChartConfiguration.ColumnIDs?
     let isUnlocked: Bool
 
     init(
@@ -24,10 +22,18 @@ struct ResultChartProjectionKey: Hashable {
         self.tabId = tabId
         self.resultSetId = resultSetId
         self.dataRevision = dataRevision
-        xColumn = resolved?.xColumn?.id
-        yColumn = resolved?.yColumn.id
-        seriesColumn = resolved?.seriesColumn?.id
+        columns = resolved?.columnIDs
         self.isUnlocked = isUnlocked
+    }
+
+    struct Subject: Hashable {
+        let tabId: UUID
+        let columns: ResultChartConfiguration.ColumnIDs?
+        let isUnlocked: Bool
+    }
+
+    var subject: Subject {
+        Subject(tabId: tabId, columns: columns, isUnlocked: isUnlocked)
     }
 }
 
@@ -40,15 +46,7 @@ struct ResultChartView: View {
     let dataRevision: Int
     let isUnlocked: Bool
 
-    /// Every state the pane can be in has a branch below, so there is no combination that renders
-    /// nothing. Projection is cancellable but cannot otherwise fail, which its signature enforces.
-    /// A loaded projection carries the key it was built for, so the two cannot disagree.
-    private enum LoadState: Equatable {
-        case loading
-        case loaded(ResultChartProjection, key: ResultChartProjectionKey)
-    }
-
-    @State private var state: LoadState = .loading
+    @State private var state = ResultPaneProjectionState<ResultChartProjection, ResultChartProjectionKey>()
 
     private var columns: [ResultChartColumn] {
         ResultChartColumn.columns(in: tableRows, primaryKeyColumns: primaryKeyColumns)
@@ -68,6 +66,13 @@ struct ResultChartView: View {
         )
     }
 
+    /// Nothing is shown for a result with no numeric column, so its notices cannot come from the
+    /// last result that had one.
+    private var shownProjection: ResultChartProjection? {
+        guard resolved != nil else { return nil }
+        return state.projection(for: projectionKey)
+    }
+
     var body: some View {
         Group {
             if isUnlocked {
@@ -76,7 +81,7 @@ struct ResultChartView: View {
                         configuration: $configuration,
                         columns: columns,
                         resolved: resolved,
-                        projection: loadedProjection
+                        projection: shownProjection
                     )
                     Divider()
                     content
@@ -90,11 +95,6 @@ struct ResultChartView: View {
         .task(id: projectionKey) {
             await rebuild(for: projectionKey)
         }
-    }
-
-    private var loadedProjection: ResultChartProjection? {
-        guard case .loaded(let projection, _) = state else { return nil }
-        return projection
     }
 
     @ViewBuilder
@@ -111,42 +111,54 @@ struct ResultChartView: View {
                 systemImage: "slider.horizontal.3",
                 description: Text(String(localized: "Charts need a numeric column for the Y axis. This result has none."))
             )
-        } else {
-            switch state {
-            case .loading:
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel(String(localized: "Building chart"))
-            case .loaded(let projection, _) where projection.points.isEmpty:
+        } else if let projection = shownProjection {
+            if projection.points.isEmpty {
                 UnavailableStateView(
                     String(localized: "No Chartable Rows"),
                     systemImage: "chart.bar.xaxis",
                     description: Text(String(localized: "The selected axes contain only null, binary, or invalid values."))
                 )
-            case .loaded(let projection, _):
-                ResultChartCanvas(projection: projection, chartType: configuration.chartType)
-                    .id(projectionKey)
+            } else {
+                chart(projection)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
             }
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel(String(localized: "Building chart"))
+        }
+    }
+
+    /// A new projection resets the charts' hover through `.id`, keyed by the key it was built for,
+    /// so the reset lands with the new drawing rather than while the old one is still up.
+    @ViewBuilder
+    private func chart(_ projection: ResultChartProjection) -> some View {
+        if projection.isFaceted {
+            ResultChartFacetGrid(
+                projection: projection,
+                chartType: configuration.chartType,
+                revision: AnyHashable(state.key)
+            )
+        } else {
+            ResultChartCanvas(projection: projection, chartType: configuration.chartType)
+                .id(state.key)
         }
     }
 
     /// A connection switch re-parents the pane and SwiftUI re-runs `task(id:)` with an unchanged
-    /// key, so a projection already built for that key is kept rather than blanked and rebuilt.
-    /// A cancelled projection commits nothing; the replacement task, or the next appearance, owns
-    /// the state from its first line.
+    /// key, so a projection already built for that key is kept rather than rebuilt. `task(id:)`
+    /// cancels the previous task when the key changes, and a cancelled projection commits nothing.
     private func rebuild(for expectedKey: ResultChartProjectionKey) async {
-        if case .loaded(_, let key) = state, key == expectedKey { return }
+        if state.isCurrent(for: expectedKey) { return }
         guard expectedKey.isUnlocked, let configuration = resolved else { return }
-        state = .loading
         guard let output = try? await ResultChartProjector.shared.project(
             tableRows: tableRows,
             configuration: configuration
         ) else {
             return
         }
-        guard !Task.isCancelled, projectionKey == expectedKey else { return }
-        state = .loaded(output, key: expectedKey)
+        guard !Task.isCancelled else { return }
+        state.commit(output, for: expectedKey)
     }
 }

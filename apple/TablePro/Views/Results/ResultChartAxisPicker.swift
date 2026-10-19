@@ -17,7 +17,7 @@ struct ResultChartAxisPicker: View {
     let accessibilityIdentifier: String
 
     var body: some View {
-        Picker(title, selection: $selection) {
+        Picker(title, selection: shownSelection) {
             if allowsNone || columns.isEmpty {
                 Text(noneLabel).tag(ResultChartColumnID?.none)
             }
@@ -26,5 +26,23 @@ struct ResultChartAxisPicker: View {
             }
         }
         .accessibilityIdentifier(accessibilityIdentifier)
+    }
+
+    /// A pop-up shows nothing at all for a selection none of its items carries. A stored column
+    /// missing from this result is kept for when it comes back, but the pop-up reads as the none
+    /// item meanwhile, which is also what the chart is plotting.
+    static func shownSelection(
+        _ selection: ResultChartColumnID?,
+        in columns: [ResultChartColumn]
+    ) -> ResultChartColumnID? {
+        guard let selection, columns.contains(where: { $0.id == selection }) else { return nil }
+        return selection
+    }
+
+    private var shownSelection: Binding<ResultChartColumnID?> {
+        Binding(
+            get: { Self.shownSelection(selection, in: columns) },
+            set: { selection = $0 }
+        )
     }
 }

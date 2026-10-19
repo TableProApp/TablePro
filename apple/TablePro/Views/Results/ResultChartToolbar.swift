@@ -28,7 +28,7 @@ struct ResultChartToolbar: View {
                     Divider()
                         .frame(height: 22)
 
-                    axisPickers { $0.frame(width: 170) }
+                    axisPickers { $0.frame(width: 150) }
                 }
                 .fixedSize(horizontal: true, vertical: false)
 
@@ -52,6 +52,7 @@ struct ResultChartToolbar: View {
                     .fixedSize(horizontal: true, vertical: false)
                 }
                 .scrollBounceBasedOnSize(axes: .horizontal)
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("result-chart-data-scope")
 
                 Image(systemName: "info.circle")
@@ -93,6 +94,15 @@ struct ResultChartToolbar: View {
             allowsNone: true,
             accessibilityIdentifier: "result-chart-series-picker"
         ))
+        sized(ResultChartAxisPicker(
+            title: String(localized: "Facet"),
+            selection: facetColumnBinding,
+            columns: seriesColumns,
+            noneLabel: String(localized: "None"),
+            allowsNone: true,
+            accessibilityIdentifier: "result-chart-facet-picker"
+        ))
+        .help(String(localized: "Draws one chart for each value of this column."))
     }
 
     /// What the chart itself has to say. The row count and the controls that load more rows belong
@@ -117,6 +127,8 @@ struct ResultChartToolbar: View {
             )
         case .series(let limit):
             return String(format: String(localized: "Showing the first %@ series"), grouped(limit))
+        case .facets(let limit):
+            return String(format: String(localized: "Showing the first %@ facets"), grouped(limit))
         case .inspectedRows(let limit):
             return String(
                 format: String(localized: "Charting the first %1$@ of %2$@ loaded rows"),
@@ -140,8 +152,8 @@ struct ResultChartToolbar: View {
     /// The pickers show what the chart is actually plotting, which is the resolved column rather
     /// than the stored preference: a choice whose column is missing from this result is kept so it
     /// comes back, but it is not what the reader is looking at. With no numeric column there is no
-    /// resolution to echo, so the stored preference is shown instead of snapping back to a
-    /// placeholder the user did not pick.
+    /// resolution to echo, so the stored preference is passed on, and a pop-up that does not list
+    /// it shows its none item (`ResultChartAxisPicker.shownSelection`).
     private var xColumnBinding: Binding<ResultChartColumnID?> {
         Binding(
             get: { resolved.map { $0.xColumn?.id } ?? configuration.xColumn },
@@ -160,6 +172,13 @@ struct ResultChartToolbar: View {
         Binding(
             get: { resolved.map { $0.seriesColumn?.id } ?? configuration.seriesColumn },
             set: { configuration.seriesColumn = $0 }
+        )
+    }
+
+    private var facetColumnBinding: Binding<ResultChartColumnID?> {
+        Binding(
+            get: { resolved.map { $0.facetColumn?.id } ?? configuration.facetColumn },
+            set: { configuration.facetColumn = $0 }
         )
     }
 }
