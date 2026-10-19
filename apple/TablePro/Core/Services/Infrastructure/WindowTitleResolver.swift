@@ -160,6 +160,11 @@ enum WindowTitleResolver {
                 return explicitTitle
             }
             return QueryTabManager.versionHistoryFallbackTitle
+        case .tableListing:
+            if let explicitTitle, !explicitTitle.isBlank {
+                return explicitTitle
+            }
+            return String(localized: "Tables")
         default:
             break
         }

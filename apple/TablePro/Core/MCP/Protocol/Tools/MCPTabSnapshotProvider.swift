@@ -167,6 +167,7 @@ private extension TabType {
         case .usersRoles: "usersRoles"
         case .objectSource: "objectSource"
         case .versionHistory: "versionHistory"
+        case .tableListing: "tableListing"
         }
     }
 }

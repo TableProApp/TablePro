@@ -37,6 +37,18 @@ struct WindowTitleResolverPayloadTitleTests {
         #expect(title == String(localized: "Create Table"))
     }
 
+    @Test("A listing payload takes its tab title, and a blank one falls back to Tables")
+    func tableListingLabel() {
+        let named = EditorTabPayload(connectionId: UUID(), tabType: .tableListing, tabTitle: "Tables: sales")
+        let blank = EditorTabPayload(connectionId: UUID(), tabType: .tableListing, tabTitle: " ")
+        #expect(WindowTitleResolver.resolveTitle(
+            payload: named, databaseType: .postgresql, queryLanguageName: "PostgreSQL"
+        ) == "Tables: sales")
+        #expect(WindowTitleResolver.resolveTitle(
+            payload: blank, databaseType: .postgresql, queryLanguageName: "PostgreSQL"
+        ) == String(localized: "Tables"))
+    }
+
     @Test("A history payload takes its tab title, and a blank one falls back to History")
     func versionHistoryLabel() {
         let named = EditorTabPayload(

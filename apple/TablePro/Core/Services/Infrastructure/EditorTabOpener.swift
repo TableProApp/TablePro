@@ -99,6 +99,12 @@ internal enum EditorTabOpener {
         case .versionHistory:
             guard let subject = payload.versionHistorySubject else { return }
             tabManager.addVersionHistoryTab(subject: subject, title: payload.tabTitle ?? QueryTabManager.versionHistoryFallbackTitle)
+        case .tableListing:
+            tabManager.addTableListingTab(
+                title: payload.tabTitle ?? String(localized: "Tables"),
+                databaseName: payload.databaseName ?? openingDatabaseName,
+                schemaName: payload.schemaName
+            )
         }
     }
 

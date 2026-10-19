@@ -560,6 +560,27 @@ struct PersistedTabRoundTripTests {
         }
     }
 
+    /// A listing saves its container and nothing to run: its statement is built from the plugin each
+    /// time it loads, so a restored tab never runs text read back from disk.
+    @Test("A table listing round-trips its container and saves no statement")
+    func tableListingRoundTripsItsContainer() throws {
+        var tab = QueryTab(title: "Tables: sales", tabType: .tableListing)
+        tab.tableContext.databaseName = "shop"
+        tab.tableContext.schemaName = "sales"
+        tab.tableContext.isEditable = false
+
+        let persisted = tab.toPersistedTab()
+        let decoded = try JSONDecoder().decode(PersistedTab.self, from: try JSONEncoder().encode(persisted))
+        let restored = QueryTab(from: decoded, defaultPageSize: 1_000)
+
+        #expect(persisted.query.isEmpty)
+        #expect(restored.tabType == .tableListing)
+        #expect(restored.title == "Tables: sales")
+        #expect(restored.tableContext.databaseName == "shop")
+        #expect(restored.tableContext.schemaName == "sales")
+        #expect(restored.tableContext.isEditable == false)
+    }
+
     @Test("A tab written before history tabs existed decodes with no subject")
     func olderTabHasNoHistorySubject() throws {
         let json = #"{"id":"\#(UUID().uuidString)","title":"Query 1","query":"SELECT 1","tabType":{"query":{}}}"#

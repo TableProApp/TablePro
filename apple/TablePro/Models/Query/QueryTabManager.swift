@@ -581,6 +581,36 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = newTab.id
     }
 
+    /// One listing per database and schema, so asking again for the same tables returns to the tab
+    /// already showing them, the way opening the same table does.
+    @discardableResult
+    func addTableListingTab(title: String, databaseName: String, schemaName: String?) -> UUID {
+        let schemaName = schemaName.flatMap { $0.isEmpty ? nil : $0 }
+        if let existing = tabs.first(where: {
+            $0.tabType == .tableListing
+                && $0.tableContext.databaseName == databaseName
+                && $0.tableContext.schemaName == schemaName
+        }) {
+            selectedTabId = existing.id
+            return existing.id
+        }
+        var newTab = QueryTab(title: title, tabType: .tableListing)
+        newTab.tableContext.isEditable = false
+        newTab.tableContext.databaseName = databaseName
+        newTab.tableContext.schemaName = schemaName
+        newTab.hasUserInteraction = true
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+        return newTab.id
+    }
+
+    /// The sidebar section's own name for the kind, qualified by the schema on an engine that lists
+    /// tables per schema, where two listings in one database would otherwise share a label.
+    static func tableListingTitle(kindTitle: String, schemaName: String?) -> String {
+        guard let schemaName, !schemaName.isEmpty else { return kindTitle }
+        return String(format: String(localized: "%@: %@"), kindTitle, schemaName)
+    }
+
     static var versionHistoryFallbackTitle: String {
         String(localized: "History")
     }
@@ -822,7 +852,7 @@ extension QueryTabManager {
     /// Server-wide tabs answer for the whole connection, so they belong to every entry.
     private static func bindsToContainer(_ type: TabType) -> Bool {
         switch type {
-        case .query, .table, .createTable, .erDiagram, .objectSource:
+        case .query, .table, .createTable, .erDiagram, .objectSource, .tableListing:
             return true
         case .serverDashboard, .usersRoles, .insights, .versionHistory:
             return false

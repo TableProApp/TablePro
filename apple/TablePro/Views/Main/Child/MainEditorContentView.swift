@@ -80,6 +80,7 @@ struct MainEditorContentView: View {
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
     @State private var usersRolesViewModels: [UUID: UsersRolesViewModel] = [:]
     @State private var queryInsightsViewModels: [UUID: QueryInsightsViewModel] = [:]
+    @State private var tableListingModels = TableListingModelStore()
     @State private var dataTabDelegate = DataTabGridDelegate()
 
     @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
@@ -191,6 +192,7 @@ struct MainEditorContentView: View {
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
             usersRolesViewModels = usersRolesViewModels.filter { openTabIds.contains($0.key) }
             queryInsightsViewModels = queryInsightsViewModels.filter { openTabIds.contains($0.key) }
+            tableListingModels.retainTabs(openTabIds)
             SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
         }
         .onChange(of: tabManager.selectedTabId) { _ in
@@ -248,7 +250,30 @@ struct MainEditorContentView: View {
             objectSourceContent(tab: tab)
         case .versionHistory:
             versionHistoryContent(tab: tab)
+        case .tableListing:
+            tableListingContent(tab: tab)
         }
+    }
+
+    // MARK: - Table Listing Tab Content
+
+    private func tableListingContent(tab: QueryTab) -> some View {
+        let model = tableListingModels.model(forTab: tab.id) {
+            TableListingViewModel(
+                tabId: tab.id,
+                scope: DatabaseScope(
+                    connectionId: connection.id,
+                    database: tab.tableContext.databaseName,
+                    schema: tab.tableContext.schemaName
+                ),
+                loader: TableListingLoader(
+                    databaseType: connection.type,
+                    slot: EngineNamespaceSlot(databaseType: connection.type)
+                )
+            )
+        }
+        return TableListingTabView(model: model, databaseType: connection.type)
+            .id(tab.id)
     }
 
     // MARK: - Version History Tab Content
