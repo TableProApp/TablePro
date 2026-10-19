@@ -24,6 +24,16 @@ Read-only inspection found:
 
 No SMART/endurance conclusion is possible: device access was denied and noninteractive sudo requires a password. A maintainer can read `sudo nvme smart-log /dev/nvme0n1` locally. Retain health counters privately; record only a sanitized interpretation in public evidence. Useful counters are critical warnings, percentage used, spare capacity, temperature, media errors and data units written. Compare deltas across a measured workload instead of assuming compile time measures drive wear.
 
+## GTK prerequisites for the inspected desktop
+
+The follow-up prerequisite check found `xvfb-run` and the Python `pyatspi` module missing. AT-SPI introspection and the existing D-Bus tools are available. On the inspected Arch/Omarchy installation, the official package names are `xorg-server-xvfb` and `python-atspi`; the latter provides the module imported by the GTK safety harness. The maintainer can install them with:
+
+```bash
+omarchy pkg add xorg-server-xvfb python-atspi
+```
+
+Installation has not been observed. Recheck the commands/module before starting a GTK test. Rust, nextest, sccache, Docker/buildx, mold and Clang are already present; installing another copy does not improve artifact reuse. Configure and measure the cache strategy below instead.
+
 ## Cache and artifact policy
 
 1. Keep one long-lived target tree per active build owner and compatible configuration. Use the current warm target for its current checkout. A worktree that changes source is a separate build owner; share compiler-cache objects, not concurrent writes to one target tree. Do not create a new target for every test filter or new commit.
