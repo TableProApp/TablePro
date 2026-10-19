@@ -1,11 +1,13 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use std::sync::Arc;
 use std::time::Duration;
 
-use tablepro_core::{ConnectOptions, Connection, DatabaseDriver, Value};
+use tablepro_core::{ConnectOptions, Connection, DatabaseDriver, OperationControl, Value};
 use testcontainers::core::WaitFor;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
+use tokio_util::sync::CancellationToken;
 
 use crate::start_pg;
 
@@ -139,6 +141,133 @@ async fn pgbouncer_in_transaction_mode_without_prepared_statements_explains_itse
         outcomes.iter().any(|line| line.contains("max_prepared_statements")),
         "the pooler symptom must come with a hint: {outcomes:#?}"
     );
+}
+
+async fn query_is_active(observer: &dyn Connection, marker: &str) -> bool {
+    let result = observer
+        .query(&format!(
+            "SELECT count(*)::bigint FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND state = 'active' AND query LIKE '%{marker}%'"
+        ))
+        .await
+        .unwrap();
+    matches!(result.rows.first().and_then(|row| row.first()), Some(Value::Int(count)) if *count > 0)
+}
+
+async fn wait_for_query_state(observer: &dyn Connection, marker: &str, active: bool) {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if query_is_active(observer, marker).await == active {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
+async fn check_pool_cancellation(pool_mode: &'static str, target_sql: &'static str, marker: &'static str, write: bool) {
+    let (_server, upstream) = start_pg().await;
+    let (_bouncer, options) = start_pgbouncer(&upstream, pool_mode, 200).await;
+    let observer = drivers_postgres::PgDriver.connect(upstream).await.unwrap();
+    if write {
+        observer
+            .execute("CREATE TABLE pgbouncer_cancelled_write (id int PRIMARY KEY)")
+            .await
+            .unwrap();
+    }
+    let target_connection = drivers_postgres::PgDriver.connect(options.clone()).await.unwrap();
+    let mut target = target_connection.open_session().await.unwrap();
+    let blocker: Arc<dyn Connection> = drivers_postgres::PgDriver.connect(options).await.unwrap().into();
+    let blocker_token = CancellationToken::new();
+    let blocker_control = OperationControl::new(blocker_token.clone(), None);
+    let blocker_task = tokio::spawn(async move {
+        blocker
+            .query_controlled("SELECT pg_sleep(30) /* bookie_pgbouncer_blocker */", &blocker_control)
+            .await
+    });
+    wait_for_query_state(observer.as_ref(), "bookie_pgbouncer_blocker", true).await;
+
+    let target_token = CancellationToken::new();
+    let target_control = OperationControl::new(target_token.clone(), None);
+    let target_task = tokio::spawn(async move {
+        let result = target.query_params_controlled(target_sql, &[], &target_control).await;
+        (target, result)
+    });
+    wait_for_query_state(observer.as_ref(), marker, true).await;
+    target_token.cancel();
+    let (mut target, target_result) = tokio::time::timeout(Duration::from_secs(10), target_task)
+        .await
+        .unwrap()
+        .unwrap();
+    let blocker_kept_running = query_is_active(observer.as_ref(), "bookie_pgbouncer_blocker").await;
+    blocker_token.cancel();
+    let blocker_result = tokio::time::timeout(Duration::from_secs(10), blocker_task)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert!(
+        blocker_kept_running,
+        "cancelling one client stopped the other client's query"
+    );
+    assert!(
+        matches!(target_result, Err(tablepro_core::DriverError::Cancelled)),
+        "{target_result:?}"
+    );
+    assert!(
+        matches!(blocker_result, Err(tablepro_core::DriverError::Cancelled)),
+        "{blocker_result:?}"
+    );
+    assert!(target.is_usable());
+    let clean_query = target
+        .query_params_controlled("SELECT 1", &[], &crate::no_timeout())
+        .await
+        .unwrap();
+    assert_eq!(clean_query.rows, vec![vec![Value::Int(1)]]);
+    if write {
+        let stored = observer
+            .query("SELECT count(*)::bigint FROM pgbouncer_cancelled_write")
+            .await
+            .unwrap();
+        assert_eq!(stored.rows, vec![vec![Value::Int(0)]]);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn transaction_pool_cancellation_does_not_stop_another_clients_query() {
+    check_pool_cancellation(
+        "transaction",
+        "SELECT pg_sleep(30) /* bookie_pgbouncer_target */",
+        "bookie_pgbouncer_target",
+        false,
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn transaction_pool_cancellation_does_not_stop_another_clients_write() {
+    check_pool_cancellation(
+        "transaction",
+        "WITH pause AS MATERIALIZED (SELECT pg_sleep(30)) INSERT INTO pgbouncer_cancelled_write SELECT 1 FROM pause RETURNING id /* bookie_pgbouncer_write */",
+        "bookie_pgbouncer_write",
+        true,
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn session_pool_cancellation_stops_its_query_without_stopping_another_client() {
+    check_pool_cancellation(
+        "session",
+        "SELECT pg_sleep(30) /* bookie_pgbouncer_target */",
+        "bookie_pgbouncer_target",
+        false,
+    )
+    .await;
 }
 
 async fn forward_ipv6_loopback_to(upstream_port: u16) -> Option<u16> {

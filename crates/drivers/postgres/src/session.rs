@@ -7,7 +7,7 @@ use tablepro_core::{
     check_pre_dispatch,
 };
 
-use crate::{CONTROL_SETUP_TIMEOUT, backend_pid, controlled_execute, controlled_query, map_sqlx_error};
+use crate::{CONTROL_SETUP_TIMEOUT, controlled_execute, controlled_query, map_sqlx_error};
 
 struct ActiveCursor {
     id: QueryCursorId,
@@ -18,15 +18,10 @@ struct ActiveCursor {
 pub(crate) struct PgSession {
     connection: Option<PoolConnection<Postgres>>,
     pool: Pool<Postgres>,
-    cancellation_pool: Pool<Postgres>,
-    backend_pid: i32,
     active_cursor: Option<ActiveCursor>,
 }
 
-pub(crate) async fn open(
-    options: &PgConnectOptions,
-    cancellation_pool: Pool<Postgres>,
-) -> Result<Box<dyn tablepro_core::Session>, DriverError> {
+pub(crate) async fn open(options: &PgConnectOptions) -> Result<Box<dyn tablepro_core::Session>, DriverError> {
     let pool = PgPoolOptions::new()
         .max_connections(1)
         .acquire_timeout(CONTROL_SETUP_TIMEOUT)
@@ -36,14 +31,9 @@ pub(crate) async fn open(
         .map_err(|_| DriverError::TimedOut)?
         .map_err(map_sqlx_error)?;
     connection.close_on_drop();
-    let backend_pid = tokio::time::timeout(CONTROL_SETUP_TIMEOUT, backend_pid(&mut connection))
-        .await
-        .map_err(|_| DriverError::TimedOut)??;
     Ok(Box::new(PgSession {
         connection: Some(connection),
         pool,
-        cancellation_pool,
-        backend_pid,
         active_cursor: None,
     }))
 }
@@ -84,16 +74,7 @@ impl tablepro_core::Session for PgSession {
             .connection
             .take()
             .ok_or_else(|| DriverError::Internal("the session's connection was lost".into()))?;
-        let (connection, result) = controlled_execute(
-            connection,
-            &self.cancellation_pool,
-            self.backend_pid,
-            &statement,
-            params,
-            false,
-            control,
-        )
-        .await;
+        let (connection, result) = controlled_execute(connection, &statement, params, false, control).await;
         self.connection = connection;
         if let Err(error) = result {
             if !matches!(error, DriverError::Query { .. }) {
@@ -181,16 +162,7 @@ impl tablepro_core::Session for PgSession {
             .connection
             .take()
             .ok_or_else(|| DriverError::Internal("the session's connection was lost".into()))?;
-        let (connection, result) = controlled_execute(
-            connection,
-            &self.cancellation_pool,
-            self.backend_pid,
-            "CLOSE bookie_cursor",
-            &[],
-            false,
-            control,
-        )
-        .await;
+        let (connection, result) = controlled_execute(connection, "CLOSE bookie_cursor", &[], false, control).await;
         self.connection = connection;
         if result.is_err() {
             self.retire_cursor_session();
@@ -225,16 +197,7 @@ impl PgSession {
             .connection
             .take()
             .ok_or_else(|| DriverError::Internal("the session's connection was lost".into()))?;
-        let (connection, result) = controlled_query(
-            connection,
-            &self.cancellation_pool,
-            self.backend_pid,
-            sql,
-            params,
-            true,
-            control,
-        )
-        .await;
+        let (connection, result) = controlled_query(connection, sql, params, true, control).await;
         self.connection = connection;
         if matches!(result, Err(DriverError::Disconnected)) {
             // A lost backend also loses session-local state. Do not let the
@@ -254,16 +217,7 @@ impl PgSession {
             .connection
             .take()
             .ok_or_else(|| DriverError::Internal("the session's connection was lost".into()))?;
-        let (connection, result) = controlled_query(
-            connection,
-            &self.cancellation_pool,
-            self.backend_pid,
-            sql,
-            &[],
-            false,
-            control,
-        )
-        .await;
+        let (connection, result) = controlled_query(connection, sql, &[], false, control).await;
         self.connection = connection;
         result
     }

@@ -16,10 +16,15 @@ index f08e213..8ceccd6 100755
  impl PgConnection {
      /// Check whether EXPLAIN statements are supported by the current connection
 diff --git a/src/connection/establish.rs b/src/connection/establish.rs
-index 3c2f516..6ff0353 100755
+index 3c2f516..8c1f9a0 100755
 --- a/src/connection/establish.rs
 +++ b/src/connection/establish.rs
-@@ -142,6 +142,7 @@ impl PgConnection {
+@@ -138,10 +138,12 @@ impl PgConnection {
+         Ok(PgConnection {
+             inner: Box::new(PgConnectionInner {
+                 stream,
++                cancel_options: options.clone().password(""),
+                 process_id,
                  secret_key,
                  transaction_status,
                  transaction_depth: 0,
@@ -63,7 +68,7 @@ index e0f4c3d..fd892bc 100755
              // Query will trigger a ReadyForQuery
              self.queue_simple_query(sql)?;
 diff --git a/src/connection/mod.rs b/src/connection/mod.rs
-index d594585..5b28433 100755
+index d594585..b3a30ca 100755
 --- a/src/connection/mod.rs
 +++ b/src/connection/mod.rs
 @@ -16,7 +16,7 @@ use crate::message::{
@@ -75,7 +80,15 @@ index d594585..5b28433 100755
  
  pub(crate) use sqlx_core::connection::*;
  use sqlx_core::sql_str::SqlSafeStr;
-@@ -75,6 +75,8 @@ pub struct PgConnectionInner {
+@@ -44,6 +44,7 @@ pub struct PgConnectionInner {
+     // wrapped in a potentially TLS stream,
+     // wrapped in a buffered stream
+     pub(crate) stream: PgStream,
++    cancel_options: PgConnectOptions,
+ 
+     // process id of this backend
+     // used to send cancel requests
+@@ -75,9 +76,28 @@ pub struct PgConnectionInner {
      transaction_status: TransactionStatus,
      pub(crate) transaction_depth: usize,
  
@@ -84,10 +97,38 @@ index d594585..5b28433 100755
      log_settings: LogSettings,
  }
  
-@@ -85,6 +87,10 @@ pub(crate) struct TableData {
++#[derive(Clone)]
++pub struct PgCancelToken {
++    options: PgConnectOptions,
++    process_id: u32,
++    secret_key: u32,
++}
++
++impl PgCancelToken {
++    pub async fn cancel(&self) -> Result<(), sqlx_core::Error> {
++        let mut stream = PgStream::connect(&self.options).await?;
++        stream
++            .send_cancel_request(self.process_id, self.secret_key)
++            .await?;
++        Ok(())
++    }
++}
++
+ pub(crate) struct TableData {
+     table_name: Arc<str>,
+     /// Attribute number -> name.
+@@ -85,6 +105,18 @@ pub(crate) struct TableData {
  }
  
  impl PgConnection {
++    pub fn cancel_token(&self) -> PgCancelToken {
++        PgCancelToken {
++            options: self.inner.cancel_options.clone(),
++            process_id: self.inner.process_id,
++            secret_key: self.inner.secret_key,
++        }
++    }
++
 +    pub fn set_next_query_result_format(&mut self, query: &str, format: PgValueFormat) {
 +        self.inner.next_query_result_format = Some((query.to_owned(), format));
 +    }
@@ -198,6 +239,41 @@ index 157e121..9c1cb1e 100755
      let mut mac = HmacReset::<Sha256>::new_from_slice(s.as_bytes()).map_err(Error::protocol)?;
  
      mac.update(salt);
+diff --git a/src/connection/stream.rs b/src/connection/stream.rs
+index e8a1aed..77882a9 100755
+--- a/src/connection/stream.rs
++++ b/src/connection/stream.rs
+@@ -62,6 +62,17 @@ impl PgStream {
+         self.write(EncodeMessage(message))
+     }
+ 
++    pub(crate) async fn send_cancel_request(&mut self, process_id: u32, secret_key: u32) -> Result<(), Error> {
++        let mut request = Vec::with_capacity(16);
++        request.extend_from_slice(&16_u32.to_be_bytes());
++        request.extend_from_slice(&80_877_102_u32.to_be_bytes());
++        request.extend_from_slice(&process_id.to_be_bytes());
++        request.extend_from_slice(&secret_key.to_be_bytes());
++        self.inner.write_buffer_mut().put_slice(&request);
++        self.inner.shutdown().await?;
++        Ok(())
++    }
++
+     pub(crate) async fn send<T>(&mut self, message: T) -> Result<(), Error>
+     where
+         T: FrontendMessage,
+diff --git a/src/lib.rs b/src/lib.rs
+index f68c928..c59eb43 100755
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -50,7 +50,7 @@ pub use advisory_lock::{PgAdvisoryLock, PgAdvisoryLockGuard, PgAdvisoryLockKey};
+ pub use arguments::{PgArgumentBuffer, PgArguments};
+ pub use bind_iter::PgBindIterExt;
+ pub use column::PgColumn;
+-pub use connection::PgConnection;
++pub use connection::{PgCancelToken, PgConnection};
+ pub use copy::{PgCopyIn, PgPoolCopyExt};
+ pub use database::Postgres;
+ pub use error::{PgDatabaseError, PgErrorPosition};
 diff --git a/src/types/array.rs b/src/types/array.rs
 index 692771c..3d44a7b 100755
 --- a/src/types/array.rs

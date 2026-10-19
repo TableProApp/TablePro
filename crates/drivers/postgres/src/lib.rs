@@ -3,13 +3,13 @@ use std::time::Duration;
 use async_trait::async_trait;
 use secrecy::ExposeSecret;
 use sqlx::pool::PoolConnection;
-use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use sqlx::postgres::{PgCancelToken, PgConnectOptions, PgPoolOptions};
 use sqlx::{Connection as SqlxConnection, Pool, Postgres, Row};
 
 use tablepro_core::{
-    CONTROL_SETUP_TIMEOUT, ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult,
-    ForeignKeyInfo, IndexInfo, MAX_QUERY_ROWS, OperationControl, QualifiedTypeName, QueryResult, TableInfo, Transport,
-    Value, check_pre_dispatch, run_controlled_setup, run_server_cancellable,
+    CANCELLATION_DISPATCH_TIMEOUT, CONTROL_SETUP_TIMEOUT, ColumnInfo, ConnectOptions, Connection, DatabaseDriver,
+    DriverError, ExecResult, ForeignKeyInfo, IndexInfo, MAX_QUERY_ROWS, OperationControl, QualifiedTypeName,
+    QueryResult, TableInfo, Transport, Value, check_pre_dispatch, run_controlled_setup, run_server_cancellable,
 };
 
 mod array;
@@ -123,7 +123,6 @@ impl DatabaseDriver for PgDriver {
             pg_opts = pg_opts.options([("default_transaction_read_only", "on")]);
         }
         pg_opts = pg_opts.statement_cache_capacity(0);
-        let cancellation_options = pg_opts.clone();
         let session_options = pg_opts.clone();
         let pool = PgPoolOptions::new()
             .max_connections(4)
@@ -131,19 +130,7 @@ impl DatabaseDriver for PgDriver {
             .connect_with(pg_opts)
             .await
             .map_err(map_sqlx_connect_error)?;
-        // Lazy: a saved connection with a failed-login lockout policy
-        // must not see two authentication attempts for one Connect
-        // click. The real dial happens only when a cancel is actually
-        // requested.
-        let cancellation_pool = PgPoolOptions::new()
-            .max_connections(1)
-            .acquire_timeout(Duration::from_secs(5))
-            .connect_lazy_with(cancellation_options);
-        Ok(Box::new(PgConnection {
-            pool,
-            cancellation_pool,
-            session_options,
-        }))
+        Ok(Box::new(PgConnection { pool, session_options }))
     }
 }
 
@@ -167,7 +154,6 @@ fn postgres_connect_options(opts: &ConnectOptions) -> Result<PgConnectOptions, D
 
 struct PgConnection {
     pool: Pool<Postgres>,
-    cancellation_pool: Pool<Postgres>,
     session_options: PgConnectOptions,
 }
 
@@ -390,28 +376,16 @@ impl Connection for PgConnection {
     }
 
     async fn query_controlled(&self, sql: &str, control: &OperationControl) -> Result<QueryResult, DriverError> {
-        let mut connection = acquire_controlled(&self.pool, control).await?;
-        let backend_pid = backend_pid_controlled(&mut connection, control).await?;
-        let (connection, result) = controlled_query(
-            connection,
-            &self.cancellation_pool,
-            backend_pid,
-            sql,
-            &[],
-            true,
-            control,
-        )
-        .await;
+        let connection = acquire_controlled(&self.pool, control).await?;
+        let (connection, result) = controlled_query(connection, sql, &[], true, control).await;
         drop(connection);
         result
     }
 
     async fn query_params(&self, sql: &str, params: &[Value]) -> Result<QueryResult, DriverError> {
         let mut connection = self.pool.acquire().await.map_err(map_sqlx_error)?;
-        let backend_pid = backend_pid(&mut connection).await?;
         let stop = Some(QueryStop {
-            pool: &self.cancellation_pool,
-            backend_pid,
+            cancel_token: connection.cancel_token(),
         });
         query_connection(&mut connection, sql, params, stop).await
     }
@@ -422,18 +396,8 @@ impl Connection for PgConnection {
         params: &[Value],
         control: &OperationControl,
     ) -> Result<QueryResult, DriverError> {
-        let mut connection = acquire_controlled(&self.pool, control).await?;
-        let backend_pid = backend_pid_controlled(&mut connection, control).await?;
-        let (connection, result) = controlled_query(
-            connection,
-            &self.cancellation_pool,
-            backend_pid,
-            sql,
-            params,
-            true,
-            control,
-        )
-        .await;
+        let connection = acquire_controlled(&self.pool, control).await?;
+        let (connection, result) = controlled_query(connection, sql, params, true, control).await;
         drop(connection);
         result
     }
@@ -444,18 +408,8 @@ impl Connection for PgConnection {
     }
 
     async fn execute_controlled(&self, sql: &str, control: &OperationControl) -> Result<ExecResult, DriverError> {
-        let mut connection = acquire_controlled(&self.pool, control).await?;
-        let backend_pid = backend_pid_controlled(&mut connection, control).await?;
-        let (connection, result) = controlled_execute(
-            connection,
-            &self.cancellation_pool,
-            backend_pid,
-            sql,
-            &[],
-            true,
-            control,
-        )
-        .await;
+        let connection = acquire_controlled(&self.pool, control).await?;
+        let (connection, result) = controlled_execute(connection, sql, &[], true, control).await;
         drop(connection);
         result
     }
@@ -471,18 +425,8 @@ impl Connection for PgConnection {
         params: &[Value],
         control: &OperationControl,
     ) -> Result<ExecResult, DriverError> {
-        let mut connection = acquire_controlled(&self.pool, control).await?;
-        let backend_pid = backend_pid_controlled(&mut connection, control).await?;
-        let (connection, result) = controlled_execute(
-            connection,
-            &self.cancellation_pool,
-            backend_pid,
-            sql,
-            params,
-            true,
-            control,
-        )
-        .await;
+        let connection = acquire_controlled(&self.pool, control).await?;
+        let (connection, result) = controlled_execute(connection, sql, params, true, control).await;
         drop(connection);
         result
     }
@@ -660,7 +604,7 @@ impl Connection for PgConnection {
     }
 
     async fn open_session(&self) -> Result<Box<dyn tablepro_core::Session>, DriverError> {
-        session::open(&self.session_options, self.cancellation_pool.clone()).await
+        session::open(&self.session_options).await
     }
 
     async fn begin(&self) -> Result<Box<dyn tablepro_core::Transaction>, DriverError> {
@@ -668,17 +612,14 @@ impl Connection for PgConnection {
             .await
             .map_err(|_| DriverError::TimedOut)?
             .map_err(map_sqlx_error)?;
-        let backend_pid = tokio::time::timeout(CONTROL_SETUP_TIMEOUT, backend_pid(&mut connection))
-            .await
-            .map_err(|_| DriverError::TimedOut)??;
+        let cancel_token = connection.cancel_token();
         sqlx::query("BEGIN")
             .execute(&mut *connection)
             .await
             .map_err(map_sqlx_error)?;
         Ok(Box::new(PgTransaction {
             connection: Some(connection),
-            cancellation_pool: self.cancellation_pool.clone(),
-            backend_pid,
+            cancel_token,
         }))
     }
 
@@ -693,7 +634,6 @@ impl Connection for PgConnection {
 
     async fn close(self: Box<Self>) -> Result<(), DriverError> {
         self.pool.close().await;
-        self.cancellation_pool.close().await;
         Ok(())
     }
 }
@@ -718,8 +658,7 @@ async fn transaction_failure(
 
 struct PgTransaction {
     connection: Option<PoolConnection<Postgres>>,
-    cancellation_pool: Pool<Postgres>,
-    backend_pid: i32,
+    cancel_token: PgCancelToken,
 }
 
 impl Drop for PgTransaction {
@@ -733,10 +672,8 @@ impl Drop for PgTransaction {
 #[async_trait]
 impl tablepro_core::Transaction for PgTransaction {
     async fn query(&mut self, sql: &str) -> Result<QueryResult, DriverError> {
-        let (pool, backend_pid) = (self.cancellation_pool.clone(), self.backend_pid);
         let stop = Some(QueryStop {
-            pool: &pool,
-            backend_pid,
+            cancel_token: self.cancel_token.clone(),
         });
         let connection = self.connection_mut()?;
         query_connection_once(connection, sql, &[], stop).await
@@ -747,10 +684,8 @@ impl tablepro_core::Transaction for PgTransaction {
     }
 
     async fn query_params(&mut self, sql: &str, params: &[Value]) -> Result<QueryResult, DriverError> {
-        let (pool, backend_pid) = (self.cancellation_pool.clone(), self.backend_pid);
         let stop = Some(QueryStop {
-            pool: &pool,
-            backend_pid,
+            cancel_token: self.cancel_token.clone(),
         });
         let connection = self.connection_mut()?;
         query_connection_once(connection, sql, params, stop).await
@@ -765,14 +700,9 @@ impl tablepro_core::Transaction for PgTransaction {
         check_pre_dispatch(control)?;
         let connection = self.take_connection()?;
         let (connection, result) = controlled_query(
-            connection,
-            &self.cancellation_pool,
-            self.backend_pid,
-            sql,
-            params,
+            connection, sql, params,
             // An error aborts an explicit transaction; the caller must roll it back.
-            false,
-            control,
+            false, control,
         )
         .await;
         self.connection = connection;
@@ -802,14 +732,9 @@ impl tablepro_core::Transaction for PgTransaction {
         check_pre_dispatch(control)?;
         let connection = self.take_connection()?;
         let (connection, result) = controlled_execute(
-            connection,
-            &self.cancellation_pool,
-            self.backend_pid,
-            sql,
-            params,
+            connection, sql, params,
             // An error aborts an explicit transaction; the caller must roll it back.
-            false,
-            control,
+            false, control,
         )
         .await;
         self.connection = connection;
@@ -860,32 +785,16 @@ async fn acquire_controlled(
         .map_err(map_sqlx_error)
 }
 
-async fn backend_pid_controlled(
-    connection: &mut PoolConnection<Postgres>,
-    control: &OperationControl,
-) -> Result<i32, DriverError> {
-    run_controlled_setup(backend_pid(connection), control).await?
-}
-
-pub(crate) async fn backend_pid(connection: &mut PoolConnection<Postgres>) -> Result<i32, DriverError> {
-    sqlx::query_scalar("SELECT pg_backend_pid()")
-        .fetch_one(&mut **connection)
-        .await
-        .map_err(map_sqlx_error)
-}
-
 async fn controlled_query(
     mut connection: PoolConnection<Postgres>,
-    cancellation_pool: &Pool<Postgres>,
-    backend_pid: i32,
     sql: &str,
     params: &[Value],
     retry_stale_type_cache: bool,
     control: &OperationControl,
 ) -> (Option<PoolConnection<Postgres>>, Result<QueryResult, DriverError>) {
+    let cancel_token = connection.cancel_token();
     let stop = Some(QueryStop {
-        pool: cancellation_pool,
-        backend_pid,
+        cancel_token: cancel_token.clone(),
     });
     let result = run_server_cancellable(
         async {
@@ -895,7 +804,7 @@ async fn controlled_query(
                 query_connection_once(&mut connection, sql, params, stop).await
             }
         },
-        request_cancellation(cancellation_pool, backend_pid),
+        request_cancellation(cancel_token),
         confirms_cancellation,
         control,
     )
@@ -905,13 +814,12 @@ async fn controlled_query(
 
 async fn controlled_execute(
     mut connection: PoolConnection<Postgres>,
-    cancellation_pool: &Pool<Postgres>,
-    backend_pid: i32,
     sql: &str,
     params: &[Value],
     retry_stale_type_cache: bool,
     control: &OperationControl,
 ) -> (Option<PoolConnection<Postgres>>, Result<ExecResult, DriverError>) {
+    let cancel_token = connection.cancel_token();
     let result = run_server_cancellable(
         async {
             if retry_stale_type_cache {
@@ -920,7 +828,7 @@ async fn controlled_execute(
                 execute_connection_once(&mut connection, sql, params).await
             }
         },
-        request_cancellation(cancellation_pool, backend_pid),
+        request_cancellation(cancel_token),
         confirms_cancellation,
         control,
     )
@@ -1005,38 +913,11 @@ async fn finish_connection<T>(
     (Some(connection), result)
 }
 
-/// `run_server_cancellable` wraps this future in its own dispatch
-/// timeout and moves on without it if that elapses. Run the actual
-/// round trip in a spawned task instead of inline, so giving up on it
-/// here can never drop it mid-response and return a protocol-desynced
-/// connection to the single-slot cancellation pool -- the task always
-/// finishes and explicitly closes the connection on failure rather than
-/// trusting an implicit pool return.
-pub(crate) async fn request_cancellation(pool: &Pool<Postgres>, backend_pid: i32) -> Result<(), DriverError> {
-    let pool = pool.clone();
-    let task = tokio::spawn(async move {
-        let mut conn = pool.acquire().await.map_err(map_sqlx_error)?;
-        let outcome: Result<bool, DriverError> = sqlx::query_scalar("SELECT pg_cancel_backend($1)")
-            .bind(backend_pid)
-            .fetch_one(&mut *conn)
-            .await
-            .map_err(map_sqlx_error);
-        if outcome.is_err() {
-            let _ = conn.detach().close_hard().await;
-        }
-        outcome
-    });
-    let cancelled = match task.await {
-        Ok(result) => result?,
-        Err(_) => return Err(DriverError::Cancelled),
-    };
-    if cancelled {
-        Ok(())
-    } else {
-        Err(DriverError::Internal(
-            "PostgreSQL rejected the cancellation request".into(),
-        ))
-    }
+pub(crate) async fn request_cancellation(cancel_token: PgCancelToken) -> Result<(), DriverError> {
+    tokio::time::timeout(CANCELLATION_DISPATCH_TIMEOUT, cancel_token.cancel())
+        .await
+        .map_err(|_| DriverError::TimedOut)?
+        .map_err(map_sqlx_error)
 }
 
 fn quote_ident(name: &str) -> String {

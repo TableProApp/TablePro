@@ -44,6 +44,7 @@ pub struct PgConnectionInner {
     // wrapped in a potentially TLS stream,
     // wrapped in a buffered stream
     pub(crate) stream: PgStream,
+    cancel_options: PgConnectOptions,
 
     // process id of this backend
     // used to send cancel requests
@@ -80,6 +81,23 @@ pub struct PgConnectionInner {
     log_settings: LogSettings,
 }
 
+#[derive(Clone)]
+pub struct PgCancelToken {
+    options: PgConnectOptions,
+    process_id: u32,
+    secret_key: u32,
+}
+
+impl PgCancelToken {
+    pub async fn cancel(&self) -> Result<(), sqlx_core::Error> {
+        let mut stream = PgStream::connect(&self.options).await?;
+        stream
+            .send_cancel_request(self.process_id, self.secret_key)
+            .await?;
+        Ok(())
+    }
+}
+
 pub(crate) struct TableData {
     table_name: Arc<str>,
     /// Attribute number -> name.
@@ -87,6 +105,14 @@ pub(crate) struct TableData {
 }
 
 impl PgConnection {
+    pub fn cancel_token(&self) -> PgCancelToken {
+        PgCancelToken {
+            options: self.inner.cancel_options.clone(),
+            process_id: self.inner.process_id,
+            secret_key: self.inner.secret_key,
+        }
+    }
+
     pub fn set_next_query_result_format(&mut self, query: &str, format: PgValueFormat) {
         self.inner.next_query_result_format = Some((query.to_owned(), format));
     }

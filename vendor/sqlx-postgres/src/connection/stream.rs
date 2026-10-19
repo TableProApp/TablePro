@@ -62,6 +62,17 @@ impl PgStream {
         self.write(EncodeMessage(message))
     }
 
+    pub(crate) async fn send_cancel_request(&mut self, process_id: u32, secret_key: u32) -> Result<(), Error> {
+        let mut request = Vec::with_capacity(16);
+        request.extend_from_slice(&16_u32.to_be_bytes());
+        request.extend_from_slice(&80_877_102_u32.to_be_bytes());
+        request.extend_from_slice(&process_id.to_be_bytes());
+        request.extend_from_slice(&secret_key.to_be_bytes());
+        self.inner.write_buffer_mut().put_slice(&request);
+        self.inner.shutdown().await?;
+        Ok(())
+    }
+
     pub(crate) async fn send<T>(&mut self, message: T) -> Result<(), Error>
     where
         T: FrontendMessage,

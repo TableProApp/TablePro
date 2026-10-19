@@ -138,6 +138,7 @@ impl PgConnection {
         Ok(PgConnection {
             inner: Box::new(PgConnectionInner {
                 stream,
+                cancel_options: options.clone().password(""),
                 process_id,
                 secret_key,
                 transaction_status,

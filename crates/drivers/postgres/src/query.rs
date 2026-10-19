@@ -2,7 +2,7 @@ use std::{collections::HashMap, iter};
 
 use futures::stream::StreamExt;
 use sqlx::pool::PoolConnection;
-use sqlx::postgres::{PgRow, PgTypeInfo, PgTypeKind};
+use sqlx::postgres::{PgCancelToken, PgRow, PgTypeInfo, PgTypeKind};
 use sqlx::{Column, Connection, Executor, Pool, Postgres, Row, SqlSafeStr, Statement, TypeInfo, ValueRef};
 use tablepro_core::{
     ColumnInfo, DriverError, ExecResult, MAX_QUERY_ROWS, QualifiedTypeName, QueryResult, QueryResultBudget, Value,
@@ -11,20 +11,19 @@ use tablepro_core::{
 use super::params::{bind_pg_params, describe_query_parameters, needs_text_type_inference, pg_parameter_type_infos};
 use super::{array, decode, map_sqlx_error, numeric, temporal};
 
-#[derive(Clone, Copy)]
-pub(super) struct QueryStop<'a> {
-    pub pool: &'a Pool<Postgres>,
-    pub backend_pid: i32,
+#[derive(Clone)]
+pub(super) struct QueryStop {
+    pub cancel_token: PgCancelToken,
 }
 
-async fn stop_server_query<S>(stop: Option<QueryStop<'_>>, stream: &mut S)
+async fn stop_server_query<S>(stop: Option<QueryStop>, stream: &mut S)
 where
     S: futures::Stream<Item = Result<PgRow, sqlx::Error>> + Unpin,
 {
     let Some(stop) = stop else {
         return;
     };
-    if let Err(error) = super::request_cancellation(stop.pool, stop.backend_pid).await {
+    if let Err(error) = super::request_cancellation(stop.cancel_token).await {
         tracing::warn!(%error, "the server was not told to stop a capped query");
         return;
     }
@@ -35,9 +34,9 @@ pub(super) async fn query_connection(
     connection: &mut PoolConnection<Postgres>,
     sql: &str,
     params: &[Value],
-    stop: Option<QueryStop<'_>>,
+    stop: Option<QueryStop>,
 ) -> Result<QueryResult, DriverError> {
-    let result = query_attempt(connection, sql, params, stop).await;
+    let result = query_attempt(connection, sql, params, stop.clone()).await;
     if result.as_ref().is_err_and(is_stale_type_cache_error) {
         connection.clear_cached_statements().await.map_err(map_sqlx_error)?;
         return query_connection_once(connection, sql, params, stop).await;
@@ -49,7 +48,7 @@ pub(super) async fn query_connection_once(
     connection: &mut PoolConnection<Postgres>,
     sql: &str,
     params: &[Value],
-    stop: Option<QueryStop<'_>>,
+    stop: Option<QueryStop>,
 ) -> Result<QueryResult, DriverError> {
     query_attempt(connection, sql, params, stop)
         .await
@@ -60,7 +59,7 @@ async fn query_attempt(
     connection: &mut PoolConnection<Postgres>,
     sql: &str,
     params: &[Value],
-    stop: Option<QueryStop<'_>>,
+    stop: Option<QueryStop>,
 ) -> Result<QueryResult, QueryFailure> {
     let description = if needs_text_type_inference(params) {
         Some(describe_query_parameters(connection, sql, params).await?)
@@ -209,12 +208,13 @@ pub(super) async fn stream_into_result(
     limit: usize,
 ) -> Result<QueryResult, DriverError> {
     let mut connection = pool.acquire().await.map_err(map_sqlx_error)?;
-    let backend_pid = super::backend_pid(&mut connection).await?;
-    let stop = Some(QueryStop { pool, backend_pid });
-    let result = stream_into_result_once(&mut connection, sql, limit, stop).await;
+    let stop = Some(QueryStop {
+        cancel_token: connection.cancel_token(),
+    });
+    let result = stream_into_result_once(&mut connection, sql, limit, stop.clone()).await;
     if result.as_ref().is_err_and(is_stale_type_cache_error) {
         connection.clear_cached_statements().await.map_err(map_sqlx_error)?;
-        return stream_into_result_once(&mut connection, sql, limit, stop)
+        return stream_into_result_once(&mut connection, sql, limit, stop.clone())
             .await
             .map_err(QueryFailure::into_driver);
     }
@@ -225,7 +225,7 @@ async fn stream_into_result_once(
     connection: &mut PoolConnection<Postgres>,
     sql: &str,
     limit: usize,
-    stop: Option<QueryStop<'_>>,
+    stop: Option<QueryStop>,
 ) -> Result<QueryResult, QueryFailure> {
     let statement = connection.prepare(sqlx::AssertSqlSafe(sql).into_sql_str()).await?;
     if statement
