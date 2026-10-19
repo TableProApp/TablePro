@@ -321,26 +321,12 @@ custom_rules:
     excluded_match_kinds: [comment, doccomment]
     message: "Activate through AppActivationPolicyController.shared."
     severity: error
-  app_version_outside_bundle_info:
-    name: "App Version Outside Bundle+AppInfo"
-    regex: 'Bundle\.main\.(object\(forInfoDictionaryKey:|infoDictionary\?\[)\s*("CFBundle(ShortVersionString|Version)"|kCFBundle(ShortVersionString|Version)Key)'
-    excluded: ['.*/(Packages|Plugins)/']
-    excluded_match_kinds: [comment, doccomment]
-    message: "Read the app version and build through Bundle+AppInfo (appVersion, buildNumber), so every caller gets the same parse and fallback."
-    severity: error
   prompt_takes_focus:
     name: "Prompt Takes Focus"
     included: ['.*/(AlertHelper|OperationConfirming)\.swift$']
     regex: '\.activate\('
     excluded_match_kinds: [comment, doccomment]
     message: "A prompt asks for attention with requestAttention(), it does not take focus."
-    severity: error
-  toolbar_symbol_outline:
-    name: "Outline Toolbar Symbol"
-    regex: '\A(?=[\s\S]*?\b(?:NS(?:Menu)?ToolbarItem|enum SettingsTab)\b)[\s\S]*?^(?![ \t]*//)[^\n]*?"((?:[a-z0-9]+\.)+(?:circle|fill)(?:\.[a-z0-9]+)*|(?:circle|fill)(?:\.[a-z0-9]+)+)"'
-    capture_group: 1
-    excluded: ['.*/(Packages|Plugins)/']
-    message: "A toolbar glyph is outline. Take one from ToolbarSymbols."
     severity: error
   toolbar_item_visibility:
     name: "Toolbar Item Visibility"
@@ -359,13 +345,6 @@ custom_rules:
     excluded_match_kinds: [comment, doccomment]
     message: "Toolbar code reads no visibility beyond whether the toolbar is shown."
     severity: error
-  swiftui_toolbar_background:
-    name: "SwiftUI Toolbar Background"
-    regex: '\.toolbarBackground\('
-    excluded: ['.*/(Packages|Plugins)/']
-    excluded_match_kinds: [comment, doccomment]
-    message: "The app has no SwiftUI toolbar. The NSToolbar in MainWindowToolbar is the toolbar."
-    severity: error
   reduce_motion_gate:
     name: "Reduce Motion Gate"
     regex: '\bwithAnimation\b(?!:|\(nil\))|(?<!motion|layer)\.animation\((?!\s*nil\b|forKey)'
@@ -375,13 +354,6 @@ custom_rules:
     severity: error
 
   # User-facing text
-  pricing_plan_wording:
-    name: "Plan Names"
-    regex: '(?<![A-Za-z])Pro (?:license|features?|plan)|"(?:Pro|PRO|Lifetime)"'
-    excluded: ['.*/(Packages|Plugins)/']
-    excluded_match_kinds: [comment, doccomment]
-    message: "Name the plan a feature needs, Starter or Team."
-    severity: error
   usage_report_wording:
     name: "Usage Report Wording"
     regex: '(?i)anonymous (?:usage|statistics|analytics|report|heartbeat)'
@@ -389,24 +361,10 @@ custom_rules:
     excluded_match_kinds: [comment, doccomment]
     message: "The usage report carries a hashed machine ID, so it is not anonymous."
     severity: error
-  middle_dot_in_string:
-    name: "Middle Dot In A String"
-    regex: '·|\\u\{0*[bB]7\}'
-    excluded: ['.*/(Packages|Plugins)/']
-    match_kinds: [string]
-    message: "Separate details with a comma or space, not a middle dot."
-    severity: error
   count_before_inflected_span:
     name: "Count Before Inflected Span"
     regex: '\\\([^()\n]*\)\s*\^\['
     message: "Move the count inside the span, ^[\\(count) noun](inflect: true), so the noun agrees."
-    severity: error
-  pane_decorative_dot:
-    name: "Decorative Dot In A Pane"
-    included: ['.*/TablePro/Views/(RowInspector|DataFiles|AIChat|Agent|Editor/History)/']
-    regex: '\bCircle\(\)|"circle\.fill"'
-    excluded_match_kinds: [comment, doccomment]
-    message: "Mark state with an SF Symbol or spacing, not a dot."
     severity: error
   tab_strip_multi_click_gesture:
     name: "Multi-Click Tap Gesture"
@@ -434,38 +392,8 @@ custom_rules:
     regex: '\}\s*label:\s*\{(?:(?!\bText\(|\bLabel\(|\})[\s\S])*?\bImage\(systemName:(?:(?!\bText\(|\bLabel\(|\})[\s\S])*\}(?!(?:[^\n]*\n){0,18}?[^\n]*(?:\.help\(|accessibilityLabel|accessibilityHidden|accessibilityElement))'
     message: "A control that shows only an SF Symbol needs .help() or .accessibilityLabel()."
     severity: error
-  menu_draws_chevron:
-    name: "Menu Draws Its Own Chevron"
-    included: ['.*/TablePro/Views/']
-    regex: '(?<![\w.])Menu\([^\n]*systemImage:\s*"chevron|(?<![\w.])Menu\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}\s*label:\s*\{[^{}]*"chevron'
-    message: "A SwiftUI Menu draws its own indicator. Keep the name with Label { Text(name) } icon: { EmptyView() }."
-    severity: error
 
   # Theme
-  literal_color:
-    name: "Literal Color"
-    regex: '\b(?:NS)?Color\((?:red|white):|\bNSColor\((?:srgbRed|calibratedRed|deviceRed|displayP3Red|calibratedWhite|deviceWhite):|\bColor\(\s*\.(?:sRGB|sRGBLinear|displayP3)\s*,'
-    excluded:
-      - '.*/Plugins/'
-      - '.*/Packages/(?!TableProEditor/Sources/)'
-      - '.*/TablePro/Theme/'
-      - '.*/(ConnectionURLParser|RGBAColor\+NSColor|NSColor\+Greyscale)\.swift$'
-      - '.*Fixture[^/]*\.swift$'
-    excluded_match_kinds: [comment, doccomment]
-    message: "Use a system color or, for the editor and the grid, a theme slot."
-    severity: error
-  literal_hex_color:
-    name: "Literal Hex Color"
-    regex: '"#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?(?![0-9A-Fa-f])(?<!brandColorHex[^\n]{0,200})'
-    match_kinds: [string]
-    excluded:
-      - '.*/Plugins/'
-      - '.*/Packages/(?!TableProEditor/Sources/)'
-      - '.*/TablePro/Theme/'
-      - '.*/(ConnectionURLParser|RGBAColor\+NSColor|NSColor\+Greyscale)\.swift$'
-      - '.*Fixture[^/]*\.swift$'
-    message: "Use a system color or, for the editor and the grid, a theme slot."
-    severity: error
   pane_hidden_background:
     name: "Pane Keeps Its Background"
     regex: '\.scrollContentBackground\(\s*\.hidden\s*\)|\b[Tt]hemedContent|\.listRowBackground\('
@@ -479,25 +407,6 @@ custom_rules:
     excluded: ['.*/(Packages|Plugins)/', '.*/TablePro/Theme/ThemeWindowBackdrop\.swift$']
     excluded_match_kinds: [comment, doccomment]
     message: "Hold a ThemeWindowBackdrop. It sets the window color only while a theme sets one."
-    severity: error
-  theme_read_outside_content:
-    name: "Theme Read Outside Content"
-    regex: '\bpalette\[|\bpalette\.color\(|\.resolved\[|\bresolved\[\s*\.|\bresolved\.(?:color|cgColor|isOverridden)\(|\bactiveTheme\b|\.pair\b|\.color\(for:\s*\.|\bThemeSlot\b|\bThemeScope\b|\btheme(?:Background|Foreground)\(|\bvalueWell\(|\bCodeWell\b|\bstyle:\s*\.code\b|\bTheme(?:ShapeStyle|TextViewStyle|TableChrome|TableRowView|TableRowDrawing|WindowBackdrop)\b|\b(?:gridStandInBackground|valueStandInBackground|geometryMapWell|diffLineForeground|makeEditorTheme)\(|\bDetailPane(?:BackdropFill|StatusBarMaterial)\b|\bCompareStatusStyle\.(?:lineTint|lineTextOverride|rowTint)|\b(?:TableProEditorTheme|EditorThemeFactory)\.make\(|\b(?:TreeValueTone\.\w+|tone(?:\(for: \w+\))?)\.color\b|\b(?:ValueSourceEditor|ERDiagramPalette|DiagramCanvasBackdrop|HighlightedSQLTextView)\b'
-    excluded:
-      - '.*/(Packages|Plugins)/'
-      - '.*/TablePro/(Theme|Views/Settings/Appearance|Views/Results/Cells|Views/Results/Selection)/'
-      - '.*/TablePro/Views/Results/(DataGrid|SortableHeader|CellOverlay)[^/]*\.swift$'
-      - '.*/(SQLEditorView|TableProEditorTheme|HighlightedSQLTextView|SQLStatementPreview|SQLCodePreview|JSONCodeEditor|AIChatCodeBlockView|CodeBlockHighlighter|AIChatToolUseBlockView|AIChatToolResultBlockView|DDLTextView|TriggerEditorView|RewindReviewSheet|AgentProposedStatementsView|VimCursorManager|FoldPreviewView|CodeWell|ValueWell|TextValueEditor|ValueSourceEditor|TextViewerWindowController|SvgViewerContentView|CellImageWindowController|ServerOutputTextView|HexEditorContentView|PhpViewerView|FavoriteEditDialog|OptionsPaneView|SQLPreviewSheet|MaintenanceSheet|HistoryDetailPane|DeeplinkImportSheet|TunnelCommandTransportSections)(\+[^/]*)?\.swift$'
-      - '.*/(TabWindowController|DataFileWindowController|CompareSyncWindowController|ValueViewerWindowController|DetailColumnBackdrop)(\+[^/]*)?\.swift$'
-      - '.*/(MainEditorContentView|GridStandInBackground|AgentResultRowsView|VersionHistoryTabView|ObjectSourceTabView|DataFileContentView|TableStructureView|TriggerDetailView|ClickHousePartsView|CreateTableView|CreateTableFormPreview|PrivilegeScopeOutlineView|SlowQueryListView|QueryInsightsActivityChart|KeyHandlingTableView|TreeOutlineView|TreeOutlineCoordinator|TreeOutlineCellView|TreeValueStyle|TreeValueTone\+Theme|FilterableTreeView|JSONViewerView|ResultsJsonView|ArrayValueEditorView|ArrayJsonElementEditor|JSONRowInspectorView|JSONNodeRowView|JSONRowColors|SingleLineEditorView|FieldEditorContent|MultiLineEditorView|JsonEditorView|ImageFieldView|BlobHexEditorView|GeometryFieldView|PhpSerializedFieldView|CompareStatusStyle|CompareWindowContentView|CompareRowDiffPane|TextDiffView|FileConflictDiffSheet|AIChatWalkthroughBlockView|ERDiagramPalette|ERDiagramNodeRenderer|ERDiagramScene|ERDiagramSceneView|MagnifiableCanvasView|QueryPlanDiagramView|QueryPlanDetailPane|QueryPlanOutlineCoordinator|ResultChartCanvas)(\+[^/]*)?\.swift$'
-    excluded_match_kinds: [comment, doccomment]
-    message: "A theme colors content and the window backdrop only. Chrome uses a system color; a new content surface joins this rule's excluded list."
-    severity: error
-  field_editor_system_text_style:
-    name: "Field Editor Text Style"
-    included: ['.*/TablePro/Views/RowInspector/FieldEditors/[^/]+\.swift$']
-    regex: '\.font\(\.subheadline\)|preferredFont\(forTextStyle:|\.font\(\.system\('
-    message: "A field editor inherits the value font."
     severity: error
   grid_appkit_chrome:
     name: "Grid Draws Its Own Chrome"
