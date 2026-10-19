@@ -169,6 +169,33 @@ async fn cancelling_a_pending_approval_records_a_terminal_cancelled_outcome() {
 }
 
 #[tokio::test]
+async fn pre_dispatch_write_cancellation_records_one_terminal_outcome_without_execution() {
+    let executions = Arc::new(AtomicUsize::new(0));
+    let audit = Arc::new(SequenceAuditSink::new(vec![]));
+    let guard = gui_guard(
+        connection(executions.clone(), Arc::new(AtomicUsize::new(0))),
+        audit.clone(),
+        Arc::new(AuditState::new()),
+    );
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    cancellation.cancel();
+    let control = OperationControl::new(cancellation, None);
+
+    let error = guard
+        .execute_controlled("INSERT INTO jobs(id) VALUES (1)", &control)
+        .await
+        .expect_err("pre-dispatch cancellation must stop the governed write");
+
+    assert!(matches!(error, DriverError::Cancelled));
+    assert_eq!(executions.load(Ordering::SeqCst), 0);
+    let events = audit.events.lock().expect("audit events");
+    assert_eq!(events.len(), 1, "cancellation records exactly one terminal event");
+    assert_eq!(events[0].phase, AuditRecordPhase::Outcome);
+    assert_eq!(events[0].terminal_status, AuditTerminalStatus::Cancelled);
+    assert_eq!(events[0].error_category, Some(AuditErrorCategory::Cancelled));
+}
+
+#[tokio::test]
 async fn dropped_write_future_poisons_shared_state() {
     let state = Arc::new(AuditState::new());
     let dispatched = Arc::new(Notify::new());
