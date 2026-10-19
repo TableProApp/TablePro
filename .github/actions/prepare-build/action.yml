@@ -3,7 +3,7 @@ description: Installs XcodeGen, downloads the static libraries, generates apple/
 
 inputs:
   restore-cache:
-    description: false skips the restore and points build.sh at an empty folder under RUNNER_TEMP, so a release job builds from no cache another run wrote, nor from the ~/.spm-cache the self-hosted Mac keeps.
+    description: false skips the restore and points build.sh at an empty folder under RUNNER_TEMP, so a release job restores no Actions cache and skips the ~/.spm-cache the self-hosted Mac keeps.
     required: false
     default: "true"
 
