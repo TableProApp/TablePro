@@ -3,7 +3,6 @@ set -euo pipefail
 
 # Usage: build.sh app|plugins [--unsigned]
 # VERSION and BUILD, when set, become MARKETING_VERSION and CURRENT_PROJECT_VERSION.
-# SPM_PACKAGES_DIR, when set, holds the Swift package checkouts instead of ~/.spm-cache.
 # Writes build/release/TablePro.app and its archive, or build/release/plugins and plugins-dSYMs.
 
 usage() {
@@ -68,7 +67,7 @@ xcodebuild_project() {
     shift
     run_xcodebuild "$name" -project TablePro.xcodeproj -configuration Release \
         -destination 'generic/platform=macOS' -derivedDataPath "$DERIVED" \
-        -clonedSourcePackagesDirPath "${SPM_PACKAGES_DIR:-$HOME/.spm-cache}" -skipPackagePluginValidation \
+        -clonedSourcePackagesDirPath "$HOME/.spm-cache" -skipPackagePluginValidation \
         "$@" "${SETTINGS[@]}"
 }
 

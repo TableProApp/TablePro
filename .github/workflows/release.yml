@@ -2,7 +2,6 @@ name: Release
 
 # A v* tag builds, signs and notarizes the app and every registry plugin, publishes the GitHub
 # release, then adds it to the gh-pages branch and deploys that to updates.tablepro.app.
-# App and Plugins run on the self-hosted Mac, or on xcode-27 when MAC_RUNNER is github.
 
 on:
   push:
@@ -86,7 +85,7 @@ jobs:
   app:
     name: App
     needs: verify
-    runs-on: ${{ vars.MAC_RUNNER == 'github' && 'xcode-27' || fromJSON('["self-hosted", "macOS", "ARM64", "tablepro-release"]') }}
+    runs-on: xcode-27
     environment: signing
     # The unsigned archive alone has taken up to 123 minutes in Release Build; signing and two notarizations come on top.
     timeout-minutes: 180
@@ -116,8 +115,6 @@ jobs:
         run: printf 'ANALYTICS_HMAC_SECRET = %s\n' "$ANALYTICS_HMAC_SECRET" > Configs/Secrets.xcconfig
 
       - uses: ./.github/actions/prepare-build
-        with:
-          restore-cache: "false"
 
       - uses: ./.github/actions/apple-signing
         with:
@@ -147,18 +144,10 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Remove Secrets.xcconfig
-        if: always()
-        run: rm -f Configs/Secrets.xcconfig
-
-      - name: Remove the signing material
-        if: always()
-        uses: ./.github/actions/apple-signing/cleanup
-
   plugins:
     name: Plugins
     needs: verify
-    runs-on: ${{ vars.MAC_RUNNER == 'github' && 'xcode-27' || fromJSON('["self-hosted", "macOS", "ARM64", "tablepro-release"]') }}
+    runs-on: xcode-27
     environment: signing
     timeout-minutes: 90
     permissions:
@@ -177,8 +166,6 @@ jobs:
           require-release: ${{ needs.verify.outputs.channel == 'stable' }}
 
       - uses: ./.github/actions/prepare-build
-        with:
-          restore-cache: "false"
 
       - name: Set up Go for the SAP HANA helper
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -215,10 +202,6 @@ jobs:
           path: apple/dist/
           if-no-files-found: error
           retention-days: 30
-
-      - name: Remove the signing material
-        if: always()
-        uses: ./.github/actions/apple-signing/cleanup
 
   github-release:
     name: GitHub release
@@ -293,8 +276,6 @@ jobs:
   feed:
     name: Feed
     needs: [verify, github-release]
-    # Hosted whatever MAC_RUNNER says: the Sparkle key cannot rotate, and a process on the Mac can
-    # read a job's environment. Feed needs neither Xcode nor the signing keychain.
     runs-on: macos-latest
     environment: release
     timeout-minutes: 20

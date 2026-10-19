@@ -3,7 +3,6 @@ set -euo pipefail
 
 # Usage: package.sh app|plugins [--unsigned]
 # Turns what scripts/release/build.sh wrote to build/release into the release assets in dist/, named by VERSION.
-# SIGNING_KEYCHAIN, when set, is the only keychain the disk image's signing identity comes from.
 
 usage() {
     echo "Usage: package.sh app|plugins [--unsigned]" >&2
@@ -38,7 +37,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 package_app() {
     local app="$OUT/TablePro.app" dsyms="$OUT/TablePro.xcarchive/dSYMs"
-    local dmg="$DIST/TablePro-$VERSION.dmg" update="$DIST/TablePro-$VERSION.tar.xz" keychain
+    local dmg="$DIST/TablePro-$VERSION.dmg" update="$DIST/TablePro-$VERSION.tar.xz"
     local symbols="$DIST/TablePro-$VERSION-dSYMs.zip" extracted="$WORK/extracted"
     [ -d "$app" ] || die "no $app; run scripts/release/build.sh app first"
     [ -d "$dsyms" ] || die "no $dsyms; run scripts/release/build.sh app first"
@@ -49,12 +48,7 @@ package_app() {
     ditto "$app" "$WORK/dmg/TablePro.app"
     ln -s /Applications "$WORK/dmg/Applications"
     diskutil image create from "$WORK/dmg" "$dmg" --volumeName "TablePro $VERSION"
-    if [ "$SIGNED" = true ]; then
-        # The self-hosted Mac's login keychain holds a Developer ID Application identity too.
-        keychain=()
-        [ -z "${SIGNING_KEYCHAIN:-}" ] || keychain=(--keychain "$SIGNING_KEYCHAIN")
-        codesign --sign "Developer ID Application" ${keychain[@]+"${keychain[@]}"} --timestamp "$dmg"
-    fi
+    [ "$SIGNED" = false ] || codesign --sign "Developer ID Application" --timestamp "$dmg"
 
     # tar keeps the framework symlinks codesign seals; a signed bundle needs no extended attributes.
     /usr/bin/tar --no-mac-metadata --no-xattrs --uid 0 --gid 0 \
