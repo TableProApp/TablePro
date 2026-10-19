@@ -18,9 +18,15 @@ pub(super) fn secret_message(error: &tablepro_core::credentials::SecretError) ->
             crate::i18n::gettext("The stored password is not readable text. Enter it again to replace it.")
         }
         SecretError::Backend {
-            service_message: Some(message),
-            ..
-        } => crate::i18n::gettext_f("The keyring reported: {detail}", &[("detail", message)]),
-        SecretError::Backend { .. } => crate::i18n::gettext("The keyring failed without giving a reason."),
+            detail,
+            service_message,
+        } => {
+            // oo7's text is never shown, so the log is the only place it goes.
+            tracing::warn!(%detail, "the keyring failed");
+            match service_message {
+                Some(message) => crate::i18n::gettext_f("The keyring reported: {detail}", &[("detail", message)]),
+                None => crate::i18n::gettext("The keyring failed without giving a reason."),
+            }
+        }
     }
 }

@@ -422,6 +422,19 @@ fn a_backend_error_shows_the_services_words_and_never_oo7s() {
 }
 
 #[test]
+fn oo7s_words_for_a_backend_error_go_to_the_log() {
+    let lines = crate::test_support::LogLines::default();
+    let _logging = tracing::subscriber::set_default(lines.subscriber(tracing::Level::WARN));
+
+    secret_message(&SecretError::Backend {
+        detail: "DBus error Item/Collection was deleted, can no longer be used".to_owned(),
+        service_message: None,
+    });
+
+    assert!(lines.text().contains("Item/Collection was deleted"), "{}", lines.text());
+}
+
+#[test]
 fn a_retryable_error_says_to_try_again() {
     assert!(secret_message(&SecretError::Locked).contains("try again"));
 }

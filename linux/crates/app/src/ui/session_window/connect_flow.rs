@@ -110,6 +110,9 @@ pub(super) async fn connect_saved(
     let pending = unless_cancelled(pending, &cancel).await?;
     let kept: Vec<SecretKind> = remember.iter().map(|save| save.kind).collect();
     let refused = credentials.remember(remember).await;
+    for (kind, error) in &refused {
+        tracing::warn!(?kind, %error, "the keyring did not keep a typed secret");
+    }
     let session_only = typed
         .into_iter()
         .filter(|kind| !kept.contains(kind) || refused.iter().any(|(failed, _)| failed == kind))
@@ -516,6 +519,8 @@ mod tests {
     async fn a_password_the_keyring_refused_to_keep_is_the_sessions_own() {
         use tablepro_core::credentials::PromptReply;
 
+        let lines = crate::test_support::LogLines::default();
+        let _logging = tracing::subscriber::set_default(lines.subscriber(tracing::Level::WARN));
         let saved = connection(Uuid::new_v4());
         let vault = Arc::new(FakeSecretVault::new());
         vault.fail_store(SecretKind::DatabasePassword, SecretError::Locked);
@@ -541,6 +546,11 @@ mod tests {
 
         assert_eq!(login.refused.len(), 1);
         assert_eq!(login.session_only, [SecretKind::DatabasePassword]);
+        let logged = lines.text();
+        assert!(
+            logged.contains("the keyring did not keep a typed secret") && logged.contains("DatabasePassword"),
+            "{logged}"
+        );
         let _closed = login.pending.discard().await;
     }
 
