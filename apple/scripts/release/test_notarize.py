@@ -12,8 +12,14 @@ STUBS = {
     "xcrun": r"""#!/usr/bin/env bash
 set -euo pipefail
 case "$1 $2" in
-    "notarytool submit") echo '{"status":"Accepted","id":"stub-id","message":"Processing complete"}' ;;
-    "notarytool log") echo '{}' ;;
+    "notarytool submit")
+        echo "$*" >> "$STUB_STATE/notary"
+        echo '{"status":"Accepted","id":"stub-id","message":"Processing complete"}'
+        ;;
+    "notarytool log")
+        echo "$*" >> "$STUB_STATE/notary"
+        echo '{}'
+        ;;
     "stapler staple")
         name="$(basename "$3")"
         echo "staple $name" >> "$STUB_STATE/calls"
@@ -49,7 +55,7 @@ echo "sleep $1" >> "$STUB_STATE/calls"
 }
 
 
-class StapleTests(unittest.TestCase):
+class NotarizeCase(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -58,6 +64,9 @@ class StapleTests(unittest.TestCase):
         self.state = self.root / "state"
         self.bin.mkdir()
         self.state.mkdir()
+        self.key = self.root / "AuthKey_KEYID.p8"
+        self.key.write_text("key\n", encoding="utf-8")
+        self.credentials = {"NOTARY_KEY": str(self.key), "NOTARY_KEY_ID": "KEYID", "NOTARY_ISSUER": "ISSUER"}
         for name, body in STUBS.items():
             stub = self.bin / name
             stub.write_text(body, encoding="utf-8")
@@ -69,14 +78,18 @@ class StapleTests(unittest.TestCase):
         (self.state / f"staple-{name}").write_text("".join(f"{code}\n" for code in staple_exits), encoding="utf-8")
         return path
 
-    def notarize(self, *paths):
-        env = {**os.environ, "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}", "STUB_STATE": str(self.state)}
+    def notarize(self, *paths, credentials=None):
+        env = {key: value for key, value in os.environ.items() if not key.startswith("NOTARY_")}
+        env.update(self.credentials if credentials is None else credentials)
+        env.update({"PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}", "STUB_STATE": str(self.state)})
         return subprocess.run(["bash", str(SCRIPT), *map(str, paths)], env=env, capture_output=True, text=True)
 
-    def calls(self):
-        calls = self.state / "calls"
+    def calls(self, name="calls"):
+        calls = self.state / name
         return calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
 
+
+class StapleTests(NotarizeCase):
     def test_a_late_ticket_is_stapled_on_a_retry(self):
         late = self.bundle("Late.tableplugin", [65, 68])
         ready = self.bundle("Ready.tableplugin")
@@ -108,6 +121,32 @@ class StapleTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual(self.calls(), ["staple Unsigned.tableplugin"])
         self.assertIn("stapling Unsigned.tableplugin failed (stapler exit 66)", result.stderr)
+
+
+class CredentialTests(NotarizeCase):
+    def test_every_notarytool_call_passes_the_api_key(self):
+        bundle = self.bundle("Ready.tableplugin")
+        result = self.notarize(bundle)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.calls("notary")
+        self.assertEqual([call.split()[1] for call in calls], ["submit", "log"])
+        for call in calls:
+            self.assertIn(f"--key {self.key} --key-id KEYID --issuer ISSUER", call)
+            self.assertNotIn("--keychain-profile", call)
+
+    def test_missing_credentials_fail_before_submitting(self):
+        bundle = self.bundle("Ready.tableplugin")
+        result = self.notarize(bundle, credentials={"NOTARY_KEY": str(self.key), "NOTARY_ISSUER": "ISSUER"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("NOTARY_KEY_ID is not set", result.stderr)
+        self.assertEqual(self.calls("notary"), [])
+
+    def test_a_missing_key_file_fails_before_submitting(self):
+        bundle = self.bundle("Ready.tableplugin")
+        result = self.notarize(bundle, credentials={**self.credentials, "NOTARY_KEY": str(self.root / "gone.p8")})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no notary key at", result.stderr)
+        self.assertEqual(self.calls("notary"), [])
 
 
 if __name__ == "__main__":

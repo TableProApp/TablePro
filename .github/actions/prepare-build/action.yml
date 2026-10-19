@@ -1,6 +1,12 @@
 name: Prepare build
 description: Installs XcodeGen, downloads the static libraries, generates apple/TablePro.xcodeproj and restores the Swift package checkouts.
 
+inputs:
+  restore-cache:
+    description: false skips the restore and points build.sh at an empty folder under RUNNER_TEMP, so a release job builds from no cache another run wrote, nor from the ~/.spm-cache the self-hosted Mac keeps.
+    required: false
+    default: "true"
+
 outputs:
   cache-hit:
     description: The restore step's cache-hit output.
@@ -27,8 +33,19 @@ runs:
     # macos-tests.yml saves this cache.
     - name: Restore Swift package checkouts
       id: spm
+      if: inputs.restore-cache != 'false'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.spm-cache
         key: spm-${{ runner.os }}-${{ hashFiles('apple/TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
         restore-keys: spm-${{ runner.os }}-
+
+    - name: Use an empty Swift package folder
+      if: inputs.restore-cache == 'false'
+      shell: bash
+      run: |
+        set -euo pipefail
+        packages="$RUNNER_TEMP/spm-packages"
+        rm -rf "$packages"
+        mkdir -p "$packages"
+        echo "SPM_PACKAGES_DIR=$packages" >> "$GITHUB_ENV"

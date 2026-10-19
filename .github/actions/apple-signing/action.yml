@@ -1,5 +1,5 @@
 name: Apple signing
-description: Imports the Developer ID certificate, stores the notary credentials as the TablePro profile, and installs the provisioning profile.
+description: Imports the Developer ID certificate into a keychain of its own, writes the notary key notarize.sh reads, and installs the provisioning profile. apple-signing/cleanup removes all of it.
 
 inputs:
   certificate-p12:
@@ -22,6 +22,8 @@ inputs:
     description: Contents of that key's .p8 file.
     required: true
 
+# Everything but the provisioning profile goes under RUNNER_TEMP/apple-signing. The self-hosted Mac keeps
+# its home folder and keychain search list between jobs, so apple-signing/cleanup removes it all.
 runs:
   using: composite
   steps:
@@ -31,21 +33,36 @@ runs:
         CERTIFICATES_P12: ${{ inputs.certificate-p12 }}
         CERTIFICATES_PASSWORD: ${{ inputs.certificate-password }}
       # A keychain of its own, unlocked with an empty password and given a six hour lock timeout,
-      # so a long notarization wait cannot relock it mid-run. The runner is thrown away afterwards.
+      # so a long notarization wait cannot relock it mid-run.
       run: |
         set -euo pipefail
-        KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+        dir="$RUNNER_TEMP/apple-signing"
+        KEYCHAIN_PATH="$dir/signing.keychain-db"
+        mkdir -p "$dir"
+        chmod 700 "$dir"
+
+        # A runner killed mid-job leaves its deleted keychain on the list, so only existing files are kept.
+        security list-keychains -d user | sed -e 's/^[[:space:]]*"//' -e 's/"$//' > "$dir/listed"
+        saved=()
+        while IFS= read -r keychain; do
+          if [ -e "$keychain" ]; then
+            saved+=("$keychain")
+          fi
+        done < "$dir/listed"
+        printf '%s\n' ${saved[@]+"${saved[@]}"} > "$dir/search-list"
+
         security create-keychain -p "" "$KEYCHAIN_PATH"
         security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
         security unlock-keychain -p "" "$KEYCHAIN_PATH"
-        echo "$CERTIFICATES_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-        security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATES_PASSWORD" \
+        echo "$CERTIFICATES_P12" | base64 --decode > "$dir/certificate.p12"
+        security import "$dir/certificate.p12" -P "$CERTIFICATES_PASSWORD" \
           -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-        rm -f "$RUNNER_TEMP/certificate.p12"
+        rm -f "$dir/certificate.p12"
         security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
-        security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+        security list-keychains -d user -s "$KEYCHAIN_PATH" ${saved[@]+"${saved[@]}"}
+        echo "SIGNING_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
-        certificate="$RUNNER_TEMP/certificate.pem"
+        certificate="$dir/certificate.pem"
         security find-certificate -c "Developer ID Application" -p "$KEYCHAIN_PATH" > "$certificate"
         expiry="$(openssl x509 -noout -enddate -in "$certificate" | sed 's/^notAfter=//')"
         if ! openssl x509 -noout -checkend $((60 * 24 * 3600)) -in "$certificate" > /dev/null; then
@@ -54,22 +71,24 @@ runs:
         rm -f "$certificate"
         echo "Developer ID Application certificate valid until $expiry"
 
-    - name: Store the notary credentials
+    - name: Write the notary key
       shell: bash
       env:
         ASC_KEY_ID: ${{ inputs.asc-key-id }}
         ASC_ISSUER_ID: ${{ inputs.asc-issuer-id }}
         ASC_KEY_P8: ${{ inputs.asc-key-p8 }}
-      # notarytool copies the key into the keychain item, so the file can go at once.
+      # notarize.sh passes the key to every notarytool call, so no notary profile goes into a keychain.
+      # history checks the key now rather than after the build.
       run: |
         set -euo pipefail
-        key="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+        key="$RUNNER_TEMP/apple-signing/AuthKey_$ASC_KEY_ID.p8"
         (umask 077 && printf '%s\n' "$ASC_KEY_P8" > "$key")
-        status=0
-        xcrun notarytool store-credentials "TablePro" --key "$key" --key-id "$ASC_KEY_ID" \
-          --issuer "$ASC_ISSUER_ID" || status=$?
-        rm -f "$key"
-        exit "$status"
+        xcrun notarytool history --key "$key" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" > /dev/null
+        {
+          echo "NOTARY_KEY=$key"
+          echo "NOTARY_KEY_ID=$ASC_KEY_ID"
+          echo "NOTARY_ISSUER=$ASC_ISSUER_ID"
+        } >> "$GITHUB_ENV"
 
     - name: Install provisioning profile
       if: inputs.provisioning-profile != ''

@@ -3,10 +3,9 @@ set -euo pipefail
 
 # Usage: notarize.sh <path>...
 # One notary submission for every path, then on each: a stapled ticket and spctl.
-# A path is a bundle, or a single disk image on its own. Credentials come from the TablePro keychain
-# profile that .github/actions/apple-signing stores.
-
-PROFILE="TablePro"
+# A path is a bundle, or a single disk image on its own. Every notarytool call authenticates with the
+# App Store Connect API key in NOTARY_KEY (the .p8 path), NOTARY_KEY_ID and NOTARY_ISSUER, which
+# .github/actions/apple-signing exports.
 
 usage() {
     echo "Usage: notarize.sh <path>..." >&2
@@ -39,6 +38,11 @@ staple() {
 }
 
 [ $# -gt 0 ] || usage
+for name in NOTARY_KEY NOTARY_KEY_ID NOTARY_ISSUER; do
+    [ -n "${!name:-}" ] || die "$name is not set"
+done
+[ -f "$NOTARY_KEY" ] || die "no notary key at $NOTARY_KEY"
+CREDENTIALS=(--key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER")
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -68,7 +72,7 @@ fi
 echo "Submitting $(basename "$submission") (${#PATHS[@]} item(s)) for notarization"
 result="$WORK/result.json"
 status=0
-xcrun notarytool submit "$submission" --keychain-profile "$PROFILE" --wait --timeout 30m \
+xcrun notarytool submit "$submission" "${CREDENTIALS[@]}" --wait --timeout 30m \
     --output-format json > "$result" || status=$?
 cat "$result"
 echo
@@ -76,7 +80,7 @@ id="$(plutil -extract id raw -o - "$result" 2> /dev/null || true)"
 state="$(plutil -extract status raw -o - "$result" 2> /dev/null || true)"
 if [ -n "$id" ]; then
     echo "Notary log for $id:"
-    xcrun notarytool log "$id" --keychain-profile "$PROFILE" || true
+    xcrun notarytool log "$id" "${CREDENTIALS[@]}" || true
 fi
 # notarytool has exited 0 on a rejected submission, so the status is read as well.
 [ "$status" -eq 0 ] && [ "$state" = "Accepted" ] || die "the submission ended '${state:-without a status}' (notarytool exit $status)"
