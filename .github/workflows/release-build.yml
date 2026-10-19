@@ -7,8 +7,7 @@ name: Release Build
 on:
   schedule:
     - cron: '0 19 * * *'
-    # Weekly on the hosted runner, so the MAC_RUNNER fallback stays tested. The changes job and
-    # runs-on below match this string.
+    # Always hosted, so the MAC_RUNNER fallback stays tested. runs-on matches this string.
     - cron: '0 7 * * 0'
   workflow_dispatch:
     inputs:
@@ -22,44 +21,8 @@ permissions:
   contents: read
 
 jobs:
-  changes:
-    name: Changes (Release)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      actions: read
-      contents: read
-    outputs:
-      run: ${{ steps.decide.outputs.run }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      # A nightly diffs against the last scheduled run that ended green, built or skipped: main up to
-      # that commit is covered.
-      - name: Decide whether the Release build runs
-        id: decide
-        env:
-          EVENT: ${{ github.event_name }}
-          SCHEDULE: ${{ github.event.schedule }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ "$EVENT" = workflow_dispatch ] || [ "$SCHEDULE" = '0 7 * * 0' ]; then
-            run=true
-          else
-            base=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release-build.yml/runs?event=schedule&status=success&per_page=1" \
-              --jq '.workflow_runs[0].head_sha // ""')
-            run=$(scripts/ci/detect-changed-paths.sh --base "$base" release)
-          fi
-          echo "run=$run" >> "$GITHUB_OUTPUT"
-
-  # Reads "not false" so a failed changes job builds instead of passing.
   build:
     name: Release Build
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     # The dispatch input wins, then the weekly schedule, then MAC_RUNNER; unset is the Mac.
     runs-on: ${{ (inputs.runner == 'github' || (inputs.runner != 'self-hosted' && (github.event.schedule == '0 7 * * 0' || vars.MAC_RUNNER == 'github'))) && 'xcode-27' || fromJSON('["self-hosted", "macOS", "ARM64", "tablepro-release"]') }}
     timeout-minutes: 150
