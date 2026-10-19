@@ -81,7 +81,7 @@ class FakeGitHub:
     def releases(self):
         return self._releases
 
-    def push_runs(self, workflow, sha):
+    def commit_runs(self, workflow, sha):
         self.run_queries.append((workflow, sha))
         snapshots = self._runs.get((workflow, sha), [[]])
         return snapshots.pop(0) if len(snapshots) > 1 else snapshots[0]
@@ -108,7 +108,12 @@ class FixtureRepository:
         return subprocess.run(["git", "-C", str(self.path), *args], env=GIT_ENV, check=True,
                               capture_output=True, text=True).stdout.strip()
 
-    def commit(self, message: str, changelog: str = None, fragment: str = None) -> str:
+    def commit(self, message: str, changelog: str = None, fragment: str = None, source: str = None) -> str:
+        if source is not None:
+            path = self.path / source
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(message + "\n", encoding="utf-8")
+            self.git("add", str(path))
         if changelog is not None:
             (self.path / "CHANGELOG.md").write_text(changelog, encoding="utf-8")
             self.git("add", "CHANGELOG.md")
@@ -288,6 +293,7 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(errors, ["v0.82.0-beta.1, the previous tag on 0.82, is not an ancestor of v0.82.0-beta.2"])
 
     def test_a_stable_needs_a_published_beta(self):
+        self.repo.git("tag", "v0.82.0-beta.1", self.cut)
         release_commit = self.repo.commit("chore(release): v0.82.0", MAIN_CHANGELOG.replace(
             "## [0.81.0]", "## [0.82.0](https://example.com) - 2026-10-20\n\n### Added\n\n- New.\n\n## [0.81.0]"))
         self.repo.line("0.82", release_commit)
@@ -299,6 +305,88 @@ class CheckTests(unittest.TestCase):
         runs, jobs = green_on(release_commit)
         published = FakeGitHub(releases=[("v0.81.0", False), ("v0.82.0-beta.1", False)], runs=runs, jobs=jobs)
         self.assertEqual(self.check("v0.82.0", published), [])
+
+    def test_a_stable_refuses_a_change_after_its_newest_published_beta(self):
+        self.repo.git("tag", "v0.82.0-beta.1", self.cut)
+        beta = self.repo.commit("fix: first pick", source="TablePro/First.swift")
+        self.repo.git("tag", "v0.82.0-beta.2", beta)
+        unpublished = self.repo.commit("fix: second pick", source="TablePro/Second.swift")
+        self.repo.git("tag", "v0.82.0-beta.3", unpublished)
+        self.repo.commit("fix: third pick", source="Plugins/Third.swift")
+        release_commit = self.repo.commit("chore(release): v0.82.0", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.0] - 2026-10-26\n\n## [0.81.0]"))
+        self.repo.line("0.82", release_commit)
+        self.repo.git("tag", "v0.82.0", release_commit)
+        releases = [("v0.81.0", False), ("v0.82.0-beta.1", False), ("v0.82.0-beta.2", False),
+                    ("v0.82.0-beta.3", True)]
+        github = FakeGitHub(releases=releases)
+        self.assertEqual(self.check("v0.82.0", github),
+                         ["v0.82.0 differs from v0.82.0-beta.2, the newest published beta, in "
+                          "Plugins/Third.swift, TablePro/Second.swift: revert them on release/0.82, "
+                          "then tag the next number"])
+        self.assertEqual(github.run_queries, [])
+
+    def test_the_next_number_after_a_refused_stable_is_held_to_the_beta(self):
+        self.repo.git("tag", "v0.82.0-beta.1", self.cut)
+        pick = self.repo.commit("fix: late pick", source="TablePro/Late.swift")
+        refused = self.repo.commit("chore(release): v0.82.0", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.0] - 2026-10-26\n\n## [0.81.0]"))
+        self.repo.git("tag", "v0.82.0", refused)
+        patch = self.repo.commit("chore(release): v0.82.1", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.1] - 2026-10-27\n\n## [0.81.0]"))
+        self.repo.git("tag", "v0.82.1", patch)
+        self.repo.git("revert", "--no-edit", pick)
+        reverted = self.repo.commit("chore(release): v0.82.2", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.2] - 2026-10-28\n\n## [0.81.0]"))
+        self.repo.git("tag", "v0.82.2", reverted)
+        self.repo.line("0.82", reverted)
+        releases = [("v0.81.0", False), ("v0.82.0-beta.1", False)]
+        runs, jobs = green_on(reverted)
+        self.assertEqual(self.check("v0.82.1", FakeGitHub(releases=releases)),
+                         ["v0.82.1 differs from v0.82.0-beta.1, the newest published beta, in "
+                          "TablePro/Late.swift: revert them on release/0.82, then tag the next number"])
+        self.assertEqual(self.check("v0.82.2", FakeGitHub(releases=releases, runs=runs, jobs=jobs)), [])
+
+    def test_a_fix_after_a_stable_tag_that_matched_the_beta_is_a_patch(self):
+        self.repo.git("tag", "v0.82.0-beta.1", self.cut)
+        stable = self.repo.commit("chore(release): v0.82.0", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.0] - 2026-10-26\n\n## [0.81.0]"))
+        self.repo.git("tag", "v0.82.0", stable)
+        self.repo.commit("ci: select a GA Xcode", source=".github/actions/setup-xcode/action.yml")
+        release_commit = self.repo.commit("chore(release): v0.82.1", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.1] - 2026-10-27\n\n## [0.81.0]"))
+        self.repo.line("0.82", release_commit)
+        self.repo.git("tag", "v0.82.1", release_commit)
+        runs, jobs = green_on(release_commit)
+        releases = [("v0.81.0", False), ("v0.82.0-beta.1", False), ("v0.82.0", True)]
+        self.assertEqual(self.check("v0.82.1", FakeGitHub(releases=releases, runs=runs, jobs=jobs)), [])
+
+    def test_a_stable_may_differ_from_its_newest_beta_in_the_changelog_only(self):
+        beta = self.repo.commit("fix: a fix", fragment="3610.fixed.md")
+        self.repo.git("tag", "v0.82.0-beta.1", beta)
+        self.repo.commit("docs(changelog): reword a fragment", fragment="3611.fixed.md")
+        self.repo.git("rm", "--quiet", "-r", "changelog.d")
+        release_commit = self.repo.commit("chore(release): v0.82.0", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.0] - 2026-10-26\n\n## [0.81.0]"))
+        self.repo.line("0.82", release_commit)
+        self.repo.git("tag", "v0.82.0", release_commit)
+        runs, jobs = green_on(release_commit)
+        github = FakeGitHub(releases=[("v0.81.0", False), ("v0.82.0-beta.1", False)], runs=runs, jobs=jobs)
+        self.assertEqual(self.check("v0.82.0", github), [])
+
+    def test_a_patch_is_not_held_to_the_beta_tree(self):
+        self.repo.git("tag", "v0.82.0-beta.1", self.cut)
+        stable = self.repo.commit("chore(release): v0.82.0", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.0] - 2026-10-26\n\n## [0.81.0]"))
+        self.repo.git("tag", "v0.82.0", stable)
+        self.repo.commit("fix: a crash", source="TablePro/Crash.swift")
+        release_commit = self.repo.commit("chore(release): v0.82.1", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.1] - 2026-10-27\n\n## [0.82.0] - 2026-10-26\n\n## [0.81.0]"))
+        self.repo.line("0.82", release_commit)
+        self.repo.git("tag", "v0.82.1", release_commit)
+        runs, jobs = green_on(release_commit)
+        releases = [("v0.81.0", False), ("v0.82.0-beta.1", False), ("v0.82.0", False)]
+        self.assertEqual(self.check("v0.82.1", FakeGitHub(releases=releases, runs=runs, jobs=jobs)), [])
 
     def test_a_patch_needs_no_beta(self):
         changelog = MAIN_CHANGELOG.replace(
@@ -390,7 +478,8 @@ class GitHubTests(unittest.TestCase):
             path = command[command.index("--jq") - 1]
             outputs = {
                 "/releases": "v0.82.0\tfalse\nplugin-oracle-v1.0.0\ttrue\n",
-                "/runs?": "11\tcompleted\tsuccess\n12\tin_progress\t\n",
+                "/runs?": ("11\tcompleted\tsuccess\tpush\n12\tin_progress\t\tschedule\n"
+                           "13\tcompleted\tsuccess\tworkflow_dispatch\n14\tcompleted\tfailure\tpull_request\n"),
                 "/jobs?": "success\n\n",
             }
             output = next(text for key, text in outputs.items() if key in path)
@@ -398,11 +487,11 @@ class GitHubTests(unittest.TestCase):
 
         github = version.GitHub("Owner/Repo", run=run)
         self.assertEqual(github.releases(), [("v0.82.0", False), ("plugin-oracle-v1.0.0", True)])
-        self.assertEqual(github.push_runs("macos-tests.yml", "abc"),
-                         [("11", "completed", "success"), ("12", "in_progress", "")])
+        self.assertEqual(github.commit_runs("macos-tests.yml", "abc"),
+                         [("11", "completed", "success"), ("12", "in_progress", ""), ("13", "completed", "success")])
         self.assertEqual(github.job_conclusions("11", "macOS Tests"), ["success", ""])
         self.assertIn("--paginate", calls[0])
-        self.assertIn("repos/Owner/Repo/actions/workflows/macos-tests.yml/runs?head_sha=abc&event=push&per_page=100",
+        self.assertIn("repos/Owner/Repo/actions/workflows/macos-tests.yml/runs?head_sha=abc&per_page=100",
                       calls[1])
 
     def test_a_gh_failure_is_raised(self):

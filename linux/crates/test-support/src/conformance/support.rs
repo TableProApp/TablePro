@@ -103,12 +103,22 @@ pub(crate) async fn apply(
     kind: WriteKind,
     statements: Vec<String>,
 ) -> Result<WriteReport, DriverError> {
+    apply_within(connection, table, kind, statements, CALL_DEADLINE).await
+}
+
+pub(crate) async fn apply_within(
+    connection: &dyn Connection,
+    table: &TableRef,
+    kind: WriteKind,
+    statements: Vec<String>,
+    limit: Duration,
+) -> Result<WriteReport, DriverError> {
     let steps = statements
         .iter()
         .map(|sql| GuardedStatement::unguarded(statement(sql)))
         .collect();
     let batch = WriteBatch::new(kind, table.clone(), steps, ForeignKeyMode::Enforced);
-    connection.write_batch(&batch, within(CALL_DEADLINE)).await
+    connection.write_batch(&batch, within(limit)).await
 }
 
 pub(crate) async fn create_scratch_table<E: ConformanceEngine>(

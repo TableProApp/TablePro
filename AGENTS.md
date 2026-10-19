@@ -119,7 +119,7 @@ scripts/generate-project.sh [both|macos|ios]  # needs the libs; rerun after edit
 
 ## CI
 
-- A PR into `main` or `release/*` merges on five green checks: macOS Tests, iOS and Package Tests, SwiftLint, Repo Hygiene and PR title. Nothing bypasses them.
+- A PR into `main` or `release/*` merges on green macOS Tests, iOS and Package Tests, SwiftLint, Repo Hygiene, PR title and Linux. Nothing bypasses them.
 - Read why a CI check failed before any re-run.
 - Workflows: `.claude/rules/ci.md`. Red checks: `.claude/skills/fix-issue/references/verification-apple.md`, Reading CI.
 

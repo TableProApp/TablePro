@@ -13,10 +13,16 @@ pub(crate) fn not_saved_message(error: &SecretError) -> String {
         SecretError::Locked | SecretError::UnlockDismissed => crate::i18n::gettext(
             "The keyring stayed locked, so the password was not saved. It will be asked for next time.",
         ),
-        SecretError::Backend { detail } => {
-            crate::i18n::gettext_f("The keyring did not save the password: {reason}", &[("reason", detail)])
+        SecretError::Backend {
+            service_message: Some(message),
+            ..
+        } => crate::i18n::gettext_f(
+            "The keyring did not save the password: {reason}",
+            &[("reason", message)],
+        ),
+        SecretError::Backend { .. } | SecretError::InvalidEncoding => {
+            crate::i18n::gettext("The keyring did not save the password.")
         }
-        SecretError::InvalidEncoding => crate::i18n::gettext("The keyring did not save the password."),
     }
 }
 
@@ -28,12 +34,17 @@ mod tests {
     fn the_message_says_what_happened_in_words_not_the_error_text() {
         let locked = not_saved_message(&SecretError::UnlockDismissed);
         let backend = not_saved_message(&SecretError::Backend {
-            detail: "org.freedesktop.Secret.Error.NoSuchObject".to_owned(),
+            detail: "DBus error service error org.freedesktop.Secret.Error.NoSuchObject".to_owned(),
+            service_message: Some("No such collection".to_owned()),
+        });
+        let silent = not_saved_message(&SecretError::Backend {
+            detail: "DBus error Item/Collection was deleted, can no longer be used".to_owned(),
+            service_message: None,
         });
 
         assert!(locked.contains("password was not saved"), "{locked}");
         assert!(!locked.contains(&SecretError::UnlockDismissed.to_string()), "{locked}");
-        assert!(backend.contains("NoSuchObject"), "{backend}");
-        assert!(!backend.contains("the secret service reported"), "{backend}");
+        assert_eq!(backend, "The keyring did not save the password: No such collection");
+        assert_eq!(silent, "The keyring did not save the password.");
     }
 }

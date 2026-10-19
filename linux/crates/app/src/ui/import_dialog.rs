@@ -265,7 +265,13 @@ impl ImportCsvDialog {
         }
 
         let choices: Vec<String> = std::iter::once(crate::i18n::gettext("Skip"))
-            .chain(self.sheet.headers.iter().cloned())
+            .chain(
+                self.sheet
+                    .headers
+                    .iter()
+                    .enumerate()
+                    .map(|(index, header)| field_label(index, header)),
+            )
             .collect();
         let choice_refs: Vec<&str> = choices.iter().map(String::as_str).collect();
         // One list for every row: each row keeps its own selection, and
@@ -369,14 +375,25 @@ pub(crate) fn import_error_text(error: &ImportError) -> String {
             "The file isn't UTF-8 text from byte {offset} on. Save it as UTF-8 and import it again.",
             &[("offset", &offset.to_string())],
         ),
-        ImportError::Malformed(detail) => {
-            crate::i18n::gettext_f("The file couldn't be read as CSV: {error}", &[("error", detail)])
-        }
+        ImportError::Malformed { line: Some(line) } => crate::i18n::gettext_f(
+            "The file couldn't be read as CSV at line {line}.",
+            &[("line", &line.to_string())],
+        ),
+        ImportError::Malformed { line: None } => crate::i18n::gettext("The file couldn't be read as CSV."),
         ImportError::NoColumns => crate::i18n::gettext("The file has no columns."),
         ImportError::TooManyFields { line, limit } => crate::i18n::gettext_f(
             "Line {line} has more than {limit} fields, more than any table holds. Check the delimiter.",
             &[("line", &line.to_string()), ("limit", &limit.to_string())],
         ),
+    }
+}
+
+/// A field as the mapping offers it: its header, or its position when
+/// the file names none.
+fn field_label(index: usize, header: &str) -> String {
+    match header.trim().is_empty() {
+        true => crate::i18n::gettext_f("Column {n}", &[("n", &(index + 1).to_string())]),
+        false => header.to_owned(),
     }
 }
 
@@ -452,6 +469,25 @@ mod tests {
         assert_eq!(qualified(Some("public"), "orders"), "public.orders");
         assert_eq!(qualified(None, "orders"), "orders");
     }
+
+    #[test]
+    fn a_file_the_csv_reader_refused_says_where_in_the_apps_words() {
+        assert_eq!(
+            import_error_text(&ImportError::Malformed { line: Some(12) }),
+            "The file couldn't be read as CSV at line 12."
+        );
+        assert_eq!(
+            import_error_text(&ImportError::Malformed { line: None }),
+            "The file couldn't be read as CSV."
+        );
+    }
+
+    #[test]
+    fn a_field_with_no_name_is_offered_by_its_position() {
+        assert_eq!(field_label(0, ""), "Column 1");
+        assert_eq!(field_label(2, "  "), "Column 3");
+        assert_eq!(field_label(1, "city"), "city");
+    }
 }
 
 #[cfg(test)]
@@ -525,9 +561,20 @@ mod dialog_tests {
         dialog.model().header_row.set_active(false);
         crate::test_support::drain_main_context();
 
-        // "Column 1" and "Column 2" match no table column, so every row
-        // falls back to Skip and the header line reads as data.
+        // Fields with no name match no table column, so every row falls
+        // back to Skip and the header line reads as data.
         assert_eq!(dialog.model().mapping(), vec![None, None, None]);
+        let offered: Vec<String> = (0..3)
+            .map(|index| {
+                dialog.model().mapping_rows.borrow()[0]
+                    .model()
+                    .and_downcast::<gtk::StringList>()
+                    .and_then(|list| list.string(index))
+                    .map(|text| text.to_string())
+                    .unwrap_or_default()
+            })
+            .collect();
+        assert_eq!(offered, vec!["Skip", "Column 1", "Column 2"]);
     }
 
     #[gtk4::test]

@@ -3,8 +3,10 @@ use tablepro_core::{
     TransportError,
 };
 
+use super::files::{certificate_problem_text, file_io_message};
 use super::ssh::ssh_failure_message;
 use super::tls::tls_message;
+use super::unsupported::unsupported_message;
 
 pub fn driver_message(error: &DriverError) -> String {
     // An SSH failure carries its own category and its own next step.
@@ -16,13 +18,13 @@ pub fn driver_message(error: &DriverError) -> String {
         ErrorCategory::Network => network_message(error),
         ErrorCategory::Tls => match error {
             DriverError::Tls { failure, detail } => tls_message(*failure, detail),
-            other => detail_sentence(crate::i18n::gettext("The secure connection failed."), other),
+            _ => crate::i18n::gettext("The secure connection failed."),
         },
         ErrorCategory::Authentication => authentication_message(error),
         ErrorCategory::ReadOnly => read_only_message(error),
         ErrorCategory::Server => match error {
             DriverError::Server(diagnostics) => server_message(diagnostics),
-            other => detail_sentence(crate::i18n::gettext("The server refused the request."), other),
+            _ => crate::i18n::gettext("The server refused the request."),
         },
         ErrorCategory::Interrupted => crate::i18n::gettext("Stopped."),
         ErrorCategory::Timeout => timeout_message(error),
@@ -39,19 +41,11 @@ pub fn driver_message(error: &DriverError) -> String {
     }
 }
 
-/// A category sentence followed by what the error itself says, for a
-/// variant this build has no sentence of its own for.
-fn detail_sentence(sentence: String, error: &DriverError) -> String {
-    format!("{sentence} {error}")
-}
-
 fn configuration_message(error: &DriverError) -> String {
     match error {
         DriverError::Config(config) => config_message(config),
-        DriverError::Unsupported { feature } => {
-            crate::i18n::gettext_f("This database has no {feature}.", &[("feature", feature)])
-        }
-        other => detail_sentence(crate::i18n::gettext("The connection settings cannot be used."), other),
+        DriverError::Unsupported { feature } => unsupported_message(*feature),
+        _ => crate::i18n::gettext("The connection settings cannot be used."),
     }
 }
 
@@ -73,11 +67,17 @@ pub fn config_message(error: &ConfigError) -> String {
         }
         ConfigError::CaFile { path, problem } => crate::i18n::gettext_f(
             "The CA certificate {path} cannot be used: {problem}",
-            &[("path", &path.display().to_string()), ("problem", &problem.to_string())],
+            &[
+                ("path", &path.display().to_string()),
+                ("problem", &certificate_problem_text(problem)),
+            ],
         ),
         ConfigError::ClientIdentityFile { path, problem } => crate::i18n::gettext_f(
             "The client certificate {path} cannot be used: {problem}",
-            &[("path", &path.display().to_string()), ("problem", &problem.to_string())],
+            &[
+                ("path", &path.display().to_string()),
+                ("problem", &certificate_problem_text(problem)),
+            ],
         ),
         ConfigError::InvalidServerName => {
             crate::i18n::gettext("The TLS server name is not a valid host name or IP address.")
@@ -105,7 +105,7 @@ fn network_message(error: &DriverError) -> String {
             "Could not reach {host}:{port}.",
             &[("host", endpoint.host()), ("port", &endpoint.port().to_string())],
         ),
-        other => detail_sentence(crate::i18n::gettext("The server could not be reached."), other),
+        _ => crate::i18n::gettext("The server could not be reached."),
     }
 }
 
@@ -182,7 +182,7 @@ fn timeout_message(error: &DriverError) -> String {
             server_cancelled,
         } => (*phase, *server_cancelled),
         DriverError::Transport(TransportError::Timeout { phase }) => (*phase, false),
-        other => return detail_sentence(crate::i18n::gettext("The server took too long to answer."), other),
+        _ => return crate::i18n::gettext("The server took too long to answer."),
     };
     match phase {
         TimeoutPhase::Connect => crate::i18n::gettext("The server did not answer the connection in time."),
@@ -253,27 +253,25 @@ fn file_message(error: &DriverError) -> String {
             "{path} is not a database file.",
             &[("path", &path.display().to_string())],
         ),
-        DriverError::FileIo { path, kind } => crate::i18n::gettext_f(
-            "Could not write {path}: {reason}",
-            &[("path", &path.display().to_string()), ("reason", &kind.to_string())],
-        ),
-        other => detail_sentence(crate::i18n::gettext("The database file cannot be used."), other),
+        DriverError::FileIo { path, kind } => file_io_message(path, *kind),
+        _ => crate::i18n::gettext("The database file cannot be used."),
     }
 }
 
+/// The detail of an internal error is the driver's or its client
+/// library's English, about our side rather than anything the user can
+/// change, so it goes to the log at the wire-detail level instead.
 fn internal_message(error: &DriverError) -> String {
+    tracing::trace!(%error, "shown as an internal driver error");
     match error {
         DriverError::GuardUnsupported { .. } => crate::i18n::gettext(
             "This database does not report how many rows a statement changed, so the save cannot be checked. Use a table with a primary key.",
         ),
-        DriverError::Decode { column, detail } => crate::i18n::gettext_f(
-            "Could not read column {column}: {detail}",
-            &[("column", column), ("detail", detail)],
+        DriverError::Decode { column, .. } => crate::i18n::gettext_f(
+            "The driver could not read a value in column {column}.",
+            &[("column", column)],
         ),
-        DriverError::Protocol(detail) => crate::i18n::gettext_f(
-            "The driver could not read the server's reply: {detail}",
-            &[("detail", detail)],
-        ),
-        other => detail_sentence(crate::i18n::gettext("The driver hit an internal error."), other),
+        DriverError::Protocol(_) => crate::i18n::gettext("The driver could not read the server's reply."),
+        _ => crate::i18n::gettext("The driver hit an internal error."),
     }
 }

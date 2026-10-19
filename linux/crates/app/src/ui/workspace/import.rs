@@ -447,7 +447,7 @@ fn import_rows(import: &CsvImport) -> Result<Vec<Vec<CellInput>>, String> {
                     &[
                         ("line", &error.line.to_string()),
                         ("column", &error.column),
-                        ("reason", &error.reason),
+                        ("reason", &crate::ui::error_text::edit_parse_message(&error.reason)),
                         ("text", &error.text),
                     ],
                 )
@@ -667,8 +667,10 @@ mod tests {
 
         let message = import_rows(&bad).unwrap_err();
 
-        assert!(message.contains('2'), "{message}");
-        assert!(message.contains("London"), "{message}");
+        assert_eq!(
+            message,
+            "Line 2, column city: Enter a whole number (the value was “London”)"
+        );
     }
 
     fn read(path: &std::path::Path) -> Result<Vec<u8>, String> {

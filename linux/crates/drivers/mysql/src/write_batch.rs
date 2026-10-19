@@ -324,7 +324,7 @@ fn acknowledged(request: &StopRequest) -> DriverError {
 #[cfg(test)]
 mod tests {
     use tablepro_core::meta::TableRef;
-    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, StopReason, TimeoutPhase};
+    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, StopReason, TimeoutPhase, UnsupportedFeature};
 
     use super::*;
 
@@ -346,7 +346,7 @@ mod tests {
         assert_eq!(
             precheck(&batch(suspended), false),
             Err(DriverError::Unsupported {
-                feature: "foreign key suspension"
+                feature: UnsupportedFeature::ForeignKeySuspension
             })
         );
         assert_eq!(

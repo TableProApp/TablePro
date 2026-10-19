@@ -21,10 +21,24 @@ where
     C: FnOnce(E) -> F,
     F: Future<Output = Result<(), ConformanceFailure>>,
 {
+    run_case_within(name, CASE_LIMIT, start, case).await
+}
+
+/// `run_case` for a case that needs longer than `CASE_LIMIT`.
+pub async fn run_case_within<E, C, F>(
+    name: &'static str,
+    limit: Duration,
+    start: impl Future<Output = Result<E, ConformanceFailure>>,
+    case: C,
+) -> Result<(), ConformanceFailure>
+where
+    C: FnOnce(E) -> F,
+    F: Future<Output = Result<(), ConformanceFailure>>,
+{
     let engine = start.await?;
-    tokio::time::timeout(CASE_LIMIT, case(engine))
+    tokio::time::timeout(limit, case(engine))
         .await
-        .map_err(|_| unexpected(name, format!("did not finish within {CASE_LIMIT:?}")))?
+        .map_err(|_| unexpected(name, format!("did not finish within {limit:?}")))?
 }
 
 #[cfg(test)]

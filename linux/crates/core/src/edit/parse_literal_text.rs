@@ -95,7 +95,7 @@ fn strict_value(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Va
         ColumnKind::Text { .. } | ColumnKind::Enum { .. } | ColumnKind::Xml => Ok(Value::Text(input.to_owned())),
         ColumnKind::Json { .. } => JsonText::parse(input.to_owned())
             .map(Value::Json)
-            .map_err(|error| EditParseError::InvalidJson(error.to_string())),
+            .map_err(EditParseError::InvalidJson),
         ColumnKind::Uuid => trimmed
             .parse()
             .map(Value::Uuid)

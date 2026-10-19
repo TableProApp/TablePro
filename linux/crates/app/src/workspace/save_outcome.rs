@@ -55,8 +55,8 @@ impl SaveOutcome {
 
 #[cfg(test)]
 mod tests {
+    use tablepro_core::ddl::BuildDdlError;
     use tablepro_core::dml::BuildSqlError;
-    use tablepro_core::statement::SqlBuildError;
     use tablepro_core::{CommitToken, LossPhase, ReadOnlyRefusal, StatementOutcome, TimeoutPhase, TransportError};
     use tablepro_session::runtime::TaskPanic;
 
@@ -157,8 +157,8 @@ mod tests {
             assert!(rolled_back(&driver(refused.clone())), "{refused:?}");
         }
         assert_eq!(
-            SaveOutcome::classify(Err(OperationError::Sql(SqlBuildError::Ddl("no".to_owned())))),
-            SaveOutcome::RolledBack(RollbackCause::Sql(SqlBuildError::Ddl("no".to_owned())))
+            SaveOutcome::classify(Err(OperationError::Sql(BuildDdlError::NotAsReviewed.into()))),
+            SaveOutcome::RolledBack(RollbackCause::Sql(BuildDdlError::NotAsReviewed.into()))
         );
         assert_eq!(
             SaveOutcome::classify(Err(OperationError::Build(BuildSqlError::NoRowIdentity))),

@@ -1,5 +1,6 @@
 use tablepro_core::column::IntegerKind;
 use tablepro_core::edit::{EditParseError, ReadOnlyReason};
+use tablepro_core::value::JsonTextError;
 
 use crate::i18n::{gettext, gettext_f, ngettext_f};
 
@@ -33,7 +34,11 @@ pub fn edit_parse_message(error: &EditParseError) -> String {
         ),
         EditParseError::InvalidBoolean => gettext("Enter true or false"),
         EditParseError::InvalidUuid => gettext("Enter a UUID"),
-        EditParseError::InvalidJson(detail) => gettext_f("Enter valid JSON: {detail}", &[("detail", detail)]),
+        EditParseError::InvalidJson(JsonTextError::Incomplete) => gettext("Enter valid JSON: it ends too early"),
+        EditParseError::InvalidJson(JsonTextError::Invalid { line, column }) => gettext_f(
+            "Enter valid JSON: check line {line}, column {column}",
+            &[("line", &line.to_string()), ("column", &column.to_string())],
+        ),
         EditParseError::InvalidDate => gettext("Enter a date as YYYY-MM-DD"),
         EditParseError::InvalidTime => gettext("Enter a time as HH:MM:SS"),
         EditParseError::TimeOutOfRange => gettext("This time is outside the range the column can hold"),
@@ -84,7 +89,7 @@ mod tests {
 
     use tablepro_core::column::{IntegerKind, IntegerWidth};
     use tablepro_core::edit::{EditParseError, ReadOnlyReason};
-    use tablepro_core::value::DecimalParseError;
+    use tablepro_core::value::{DecimalParseError, JsonTextError};
 
     use super::{edit_parse_message, integer_range};
 
@@ -104,7 +109,8 @@ mod tests {
             EditParseError::ScaleExceeded { scale: 2 },
             EditParseError::InvalidBoolean,
             EditParseError::InvalidUuid,
-            EditParseError::InvalidJson("expected value at line 1 column 1".to_owned()),
+            EditParseError::InvalidJson(JsonTextError::Incomplete),
+            EditParseError::InvalidJson(JsonTextError::Invalid { line: 2, column: 7 }),
             EditParseError::InvalidDate,
             EditParseError::InvalidTime,
             EditParseError::TimeOutOfRange,
@@ -123,6 +129,7 @@ mod tests {
         let distinct: HashSet<&String> = messages.iter().collect();
         assert_eq!(distinct.len(), messages.len(), "{messages:?}");
         assert_eq!(messages[2], "Enter a whole number from -32768 to 32767");
+        assert_eq!(messages[10], "Enter valid JSON: check line 2, column 7");
     }
 
     #[test]

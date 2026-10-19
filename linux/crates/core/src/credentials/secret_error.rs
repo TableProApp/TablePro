@@ -17,8 +17,14 @@ pub enum SecretError {
     UnlockDismissed,
     #[error("the stored secret is not valid UTF-8")]
     InvalidEncoding,
+    /// A failure the app has no step for. `detail` is oo7's English text
+    /// for the log; `service_message` is what the Secret Service itself
+    /// answered, when the failure is its reply.
     #[error("the secret service reported: {detail}")]
-    Backend { detail: String },
+    Backend {
+        detail: String,
+        service_message: Option<String>,
+    },
 }
 
 impl SecretError {

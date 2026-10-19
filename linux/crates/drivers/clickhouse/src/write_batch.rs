@@ -172,7 +172,7 @@ async fn count(calls: &CallClient, probe: &Statement) -> Result<u64, DriverError
 mod tests {
     use tablepro_core::meta::TableRef;
     use tablepro_core::statement::{GuardedStatement, StatementBuilder};
-    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, WriteKind};
+    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, UnsupportedFeature, WriteKind};
 
     use super::*;
 
@@ -208,7 +208,7 @@ mod tests {
         assert!(matches!(
             precheck(&batch(Vec::new(), suspended), false),
             Err(DriverError::Unsupported {
-                feature: "foreign key suspension"
+                feature: UnsupportedFeature::ForeignKeySuspension
             })
         ));
         assert!(precheck(&batch(Vec::new(), ForeignKeyMode::Enforced), false).is_ok());

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tablepro_core::{
     ConnectOptions, ConnectTarget, Connection, DatabaseDriver, DriverCapabilities, DriverError, TimeoutPhase,
+    UnsupportedFeature,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -39,7 +40,7 @@ impl DatabaseDriver for SqliteDriver {
     ) -> Result<Arc<dyn Connection>, DriverError> {
         let ConnectTarget::File(endpoint) = &options.target else {
             return Err(DriverError::Unsupported {
-                feature: "network connections",
+                feature: UnsupportedFeature::NetworkConnection,
             });
         };
         let opening = SqliteConnection::open(endpoint, options.workspace_settings, options.liveness);

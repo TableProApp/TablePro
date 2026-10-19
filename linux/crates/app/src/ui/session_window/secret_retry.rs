@@ -179,6 +179,7 @@ mod tests {
             kind: SecretKind::SshPassword,
             error: tablepro_core::credentials::SecretError::Backend {
                 detail: "broken".to_owned(),
+                service_message: None,
             },
         });
 

@@ -106,6 +106,7 @@ crates/app/src/test_support/focus_thief.rs
 crates/app/src/test_support/icon_buttons.rs
 crates/app/src/test_support/key_injection_error.rs
 crates/app/src/test_support/key_injector.rs
+crates/app/src/test_support/log_lines.rs
 crates/app/src/test_support/main_loop.rs
 crates/app/src/test_support/memory_settings.rs
 crates/app/src/test_support/mod.rs
@@ -229,15 +230,19 @@ crates/app/src/ui/editor_font_provider.rs
 crates/app/src/ui/error_text/ddl.rs
 crates/app/src/ui/error_text/driver.rs
 crates/app/src/ui/error_text/edit.rs
+crates/app/src/ui/error_text/files.rs
 crates/app/src/ui/error_text/mod.rs
 crates/app/src/ui/error_text/operation.rs
 crates/app/src/ui/error_text/saved_connection.rs
 crates/app/src/ui/error_text/script.rs
 crates/app/src/ui/error_text/secret.rs
 crates/app/src/ui/error_text/ssh.rs
+crates/app/src/ui/error_text/statement.rs
+crates/app/src/ui/error_text/syntax.rs
 crates/app/src/ui/error_text/tests.rs
 crates/app/src/ui/error_text/tls.rs
 crates/app/src/ui/error_text/tls_remedy.rs
+crates/app/src/ui/error_text/unsupported.rs
 crates/app/src/ui/export/dialog.rs
 crates/app/src/ui/export/document_sink.rs
 crates/app/src/ui/export/encoding_sink.rs

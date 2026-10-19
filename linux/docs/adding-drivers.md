@@ -357,7 +357,7 @@ The layout every driver follows:
 - `tests/integration/main.rs` with one module per topic: `support.rs` (start a fixture, connect, run), `conformance_engine.rs`, `tls.rs` for a network engine, and the engine's own behaviour (`metadata.rs`, `write_batch.rs`, `cancellation.rs` and so on). A network engine's test starts its own container and is `#[ignore = "requires docker"]`.
 - A container fixture in `crates/test-fixtures` for anything the default image cannot do: TLS from the generated PKI, a second principal that logs in with a client certificate.
 
-The conformance suites are the contract's own tests. The driver's `conformance_engine.rs` invokes the connection and DDL suites, its `value_corpus.rs` the value corpus, and a network engine's `tls.rs` the TLS suite. [testing.md](testing.md#conformance) has the adapter traits, the flags and the cases, with the [DDL](testing.md#ddl-conformance), [value corpus](testing.md#value-corpus) and [TLS](testing.md#tls-conformance) suites after them.
+The conformance suites are the contract's own tests. The driver's `conformance_engine.rs` invokes the connection and DDL suites, plus the large-table suite for a network engine, its `value_corpus.rs` the value corpus, and a network engine's `tls.rs` the TLS suite. [testing.md](testing.md#conformance) has the adapter traits, the flags and the cases, with the [DDL](testing.md#ddl-conformance), [large-table](testing.md#large-table-conformance), [value corpus](testing.md#value-corpus) and [TLS](testing.md#tls-conformance) suites after them.
 
 Behaviour the suites do not cover gets a test of its own against the real engine: the engine's stop, its error mapping, what a pooler does to it, each write outcome the ledger can produce.
 
@@ -375,7 +375,7 @@ A new package with Docker tests also needs its nextest group and CI matrix entry
 - [ ] Errors map to `DriverError` by the engine's code ([error-handling.md](error-handling.md)).
 - [ ] The client library's log target is in `SILENCED_LIBRARIES` in `crates/app/src/logging.rs`, so no statement text reaches the journal ([error-handling.md](error-handling.md#logging)).
 - [ ] Registered in `build_registry`; added to the workspace and to `crates/app/Cargo.toml`.
-- [ ] The connection, DDL, value corpus and TLS conformance suites run; the CI matrix and nextest groups include the package.
+- [ ] The connection, DDL, large-table, value corpus and TLS conformance suites run; the CI matrix and nextest groups include the package.
 - [ ] `build-aux/update-third-party-licenses.sh` ran and its output is committed; `cargo deny check` passes.
 - [ ] A page in `docs/drivers/` covers timeouts, stops, the server codes the driver maps, read-only, writes, trust and the engine's limits.
 - [ ] `meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings` passes, and again with `--no-default-features`.

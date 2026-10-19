@@ -13,7 +13,7 @@ use tablepro_test_fixtures::{MysqlFixture, MysqlFlavour, MysqlOptions};
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::{
     BoundedDdlEngine, ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine,
-    NetworkConformanceEngine, PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
+    LargeTableEngine, NetworkConformanceEngine, PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
 };
 
 use crate::support::{direct, options_over, password};
@@ -210,6 +210,31 @@ impl BoundedDdlEngine for MySqlEngine<Mariadb114> {
     }
 }
 
+/// One spelling for both servers: MySQL has no row generator, and its
+/// recursive CTE stops at 1,000 levels unless a hint lifts the limit.
+impl<S: Server> LargeTableEngine for MySqlEngine<S> {
+    fn fill_scratch_table_sql(&self, table: &TableRef, rows: u64, label_width: usize) -> Vec<String> {
+        let digits = (0..10)
+            .map(|digit| format!("SELECT {digit} AS d"))
+            .collect::<Vec<_>>()
+            .join(" UNION ALL ");
+        let places = rows.saturating_sub(1).to_string().len();
+        let number = (0..places)
+            .map(|place| format!("p{place}.d * {}", 10_u64.pow(place as u32)))
+            .collect::<Vec<_>>()
+            .join(" + ");
+        let product = (0..places)
+            .map(|place| format!("({digits}) AS p{place}"))
+            .collect::<Vec<_>>()
+            .join(" CROSS JOIN ");
+        vec![format!(
+            "INSERT INTO {} (id, label) SELECT n, LPAD(n, {label_width}, '0') \
+             FROM (SELECT {number} + 1 AS n FROM {product}) AS numbers WHERE n <= {rows}",
+            qualified(table)
+        )]
+    }
+}
+
 mod mysql_suite {
     use super::{MySqlEngine, Mysql84};
 
@@ -226,6 +251,10 @@ mod mysql_suite {
     tablepro_test_support::ddl_conformance_suite! {
         engine: MySqlEngine<Mysql84>,
         docker: true,
+    }
+
+    tablepro_test_support::large_table_conformance_suite! {
+        engine: MySqlEngine<Mysql84>,
     }
 }
 
@@ -245,5 +274,9 @@ mod mariadb_suite {
     tablepro_test_support::ddl_conformance_suite! {
         engine: MySqlEngine<Mariadb114>,
         docker: true,
+    }
+
+    tablepro_test_support::large_table_conformance_suite! {
+        engine: MySqlEngine<Mariadb114>,
     }
 }

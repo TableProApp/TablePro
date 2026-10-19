@@ -36,9 +36,9 @@
 use chrono::NaiveDateTime;
 use sqlx::mysql::MySqlConnection;
 use sqlx::{AssertSqlSafe, Executor as _, Row as _};
-use tablepro_core::DriverError;
 use tablepro_core::statement::{BoundParam, GuardedStatement};
 use tablepro_core::value::{Temporal, Value};
+use tablepro_core::{DriverError, UnsupportedFeature};
 
 use crate::decode::decode_row;
 use crate::errors::map_error;
@@ -54,9 +54,6 @@ pub(crate) const READ_ZONE_STATEMENT: &str = "SET SESSION time_zone = '+00:00'";
 
 /// A TIMESTAMP parameter, bound as UTC wall time.
 pub(crate) const TIMESTAMP_PLACEHOLDER: &str = "CONVERT_TZ(?, '+00:00', @@session.time_zone)";
-
-/// How the refusal reads: "This database has no {feature}."
-const REPEATED_HOUR: &str = "single instant for a TIMESTAMP in the hour its time zone repeats";
 
 /// Instants checked per round trip. Each is bound twice, far inside
 /// the server's 65,535 placeholders.
@@ -105,7 +102,9 @@ pub(crate) async fn repeated_instant(
 
 /// The refusal for a batch [`repeated_instant`] found a step in.
 pub(crate) fn repeated_hour() -> DriverError {
-    DriverError::Unsupported { feature: REPEATED_HOUR }
+    DriverError::Unsupported {
+        feature: UnsupportedFeature::TimestampInRepeatedHour,
+    }
 }
 
 /// Every finite instant a step binds, its probe's included.

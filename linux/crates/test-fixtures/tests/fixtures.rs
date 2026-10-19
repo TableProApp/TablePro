@@ -507,6 +507,28 @@ async fn postgres_fixture_runs_the_requested_major() -> TestResult {
 
 #[tokio::test]
 #[ignore = "requires docker"]
+async fn postgres_restartable_fixture_comes_back_on_its_port_with_its_data() -> TestResult {
+    let fixture = PostgresFixture::start_restartable(HbaMode::Password).await?;
+    let port = fixture.port();
+    let psql = |sql: &'static str| ["psql", "-U", "tablepro", "-d", "tablepro", "-tAc", sql];
+    let created = fixture
+        .exec(&psql("CREATE TABLE kept (n integer); INSERT INTO kept VALUES (7)"))
+        .await?;
+    assert!(created.succeeded(), "{}", created.stderr_text());
+
+    fixture.stop().await?;
+    assert!(!fixture.container().is_running().await?);
+    fixture.start_again().await?;
+
+    let read = fixture.exec(&psql("SELECT n FROM kept")).await?;
+    assert_eq!(read.stdout_text().trim(), "7", "{}", read.stderr_text());
+    assert_eq!(fixture.container().get_host_port_ipv4(5432).await?, port);
+    TcpStream::connect((fixture.host(), port)).await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
 async fn openssh_fixture_on_a_network_forwards_to_postgres_by_alias() -> TestResult {
     let network = TestNetwork::new();
     let database = PostgresFixture::start_in(HbaMode::Password, &network).await?;

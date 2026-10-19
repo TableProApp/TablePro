@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use tablepro_core::{CallOptions, DriverError, ErrorCategory};
+use tablepro_core::{CallOptions, DriverError, ErrorCategory, LossPhase};
 use tokio::sync::watch;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -136,6 +136,13 @@ impl OperationRunner {
         let error = match error {
             OperationError::Driver(DriverError::Cancelled) if cancel.is_cancelled() => OperationError::Cancelled,
             OperationError::Driver(DriverError::Cancelled) if self.cancel.is_cancelled() => OperationError::Closed,
+            // Nobody here asked for the stop: a reconnect retired the
+            // connection, and closing it stopped the call.
+            OperationError::Driver(DriverError::Cancelled) if self.link.generation() > generation => {
+                OperationError::Driver(DriverError::ConnectionLost {
+                    during: LossPhase::Statement,
+                })
+            }
             other => other,
         };
         if error.category() == Some(ErrorCategory::ConnectionLost) {
@@ -158,7 +165,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
-    use tablepro_core::{LivenessPolicy, LossPhase, WriteKind};
+    use tablepro_core::{LivenessPolicy, WriteKind};
     use tablepro_test_support::{ConnectionScript, FakeConnection, FakeReply};
 
     use super::*;
@@ -266,6 +273,38 @@ mod tests {
 
         assert_eq!(outcome, Ok(LinkGeneration::FIRST.next()));
         assert_eq!(calls, 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_read_its_retired_connection_stopped_replays_on_the_new_one() {
+        let harness = harness();
+        let stopped = OperationError::Driver(DriverError::Cancelled);
+
+        let (read, read_calls) = run_failing_after_replace(&harness, OperationKind::Count, stopped.clone()).await;
+        let (save, save_calls) =
+            run_failing_after_replace(&harness, OperationKind::Save(WriteKind::RowChanges), stopped).await;
+
+        assert_eq!(read, Ok(LinkGeneration::FIRST.next()));
+        assert_eq!(read_calls, 2);
+        assert_eq!(save, Err(lost()), "the save was not told its connection went away");
+        assert_eq!(save_calls, 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stop_on_the_current_connection_is_not_replayed() {
+        let harness = harness();
+        let calls = AtomicUsize::new(0);
+
+        let outcome = harness
+            .runner
+            .run_cancellable(OperationKind::Page, &CancellationToken::new(), |_, _| {
+                calls.fetch_add(1, Ordering::SeqCst);
+                async { Err::<(), _>(OperationError::Driver(DriverError::Cancelled)) }
+            })
+            .await;
+
+        assert_eq!(outcome, Err(OperationError::Driver(DriverError::Cancelled)));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test(start_paused = true)]

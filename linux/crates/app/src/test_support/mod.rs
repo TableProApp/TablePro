@@ -8,6 +8,7 @@ mod focus_thief;
 mod icon_buttons;
 mod key_injection_error;
 mod key_injector;
+mod log_lines;
 mod main_loop;
 mod memory_settings;
 mod owned_window;
@@ -32,6 +33,7 @@ pub(crate) use icon_buttons::{
 };
 pub(crate) use key_injection_error::KeyInjectionError;
 pub(crate) use key_injector::KeyInjector;
+pub(crate) use log_lines::LogLines;
 pub(crate) use main_loop::{after_next_frame, drain_main_context, finish_on_main, wait_until};
 pub(crate) use memory_settings::MemorySettings;
 pub(crate) use owned_window::{OwnedWindow, drop_focus};
