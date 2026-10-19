@@ -124,9 +124,10 @@ jobs:
         id: native
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          hana=$(scripts/ci/detect-changed-paths.sh --base "$BASE" hana)
+          hana=$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" hana)
           echo "hana=$hana" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go

@@ -32,10 +32,11 @@ jobs:
         id: decide
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          run=$(scripts/ci/detect-changed-paths.sh --base "$BASE" macos)
-          plugins=$(scripts/ci/detect-changed-paths.sh --base "$BASE" plugins)
+          run=$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" macos)
+          plugins=$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" plugins)
           { echo "run=$run"; echo "plugins=$plugins"; } >> "$GITHUB_OUTPUT"
 
   # The required check. A job skipped by its if: reports success, so no gate job is needed. The

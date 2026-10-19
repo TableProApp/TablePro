@@ -50,10 +50,14 @@ class DetectChangedPathsTests(unittest.TestCase):
         self.git("commit", "-q", "-m", "change")
         return self.git("rev-parse", "HEAD")
 
-    def detect(self, suite, base=None):
+    def detect(self, suite, base=None, head=None, ref=None):
         args = ["bash", "scripts/ci/detect-changed-paths.sh"]
         if base is not None:
             args += ["--base", base]
+        if head is not None:
+            args += ["--head", head]
+        if ref is not None:
+            args += ["--ref", ref]
         result = subprocess.run(args + [suite], cwd=self.repo, env=self.env, capture_output=True, text=True)
         return result.returncode, result.stdout.strip()
 
@@ -90,7 +94,7 @@ class DetectChangedPathsTests(unittest.TestCase):
                 self.assertEqual(self.verdict_after("linux", path), "false")
 
     def test_unknown_flag_exits_2(self):
-        self.assertEqual(self.detect("--head")[0], 2)
+        self.assertEqual(self.detect("--since")[0], 2)
 
     def test_no_base_runs_the_suite(self):
         self.assertEqual(self.detect("release"), (0, "true"))
@@ -205,8 +209,58 @@ class DetectChangedPathsTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("plugins", path), "false")
 
+    def test_shipped_is_the_release_build_without_its_ci(self):
+        for path in [
+            "apple/TablePro/App.swift",
+            "apple/Plugins/OracleDriverPlugin/OraclePlugin.swift",
+            "apple/Packages/TableProCore/Sources/Core.swift",
+            "apple/project.yml",
+            ".github/plugin-registry.json",
+            "apple/scripts/release/build.sh",
+            "apple/scripts/release/version.py",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("shipped", path), "true")
+        for path in [
+            ".github/workflows/release-build.yml",
+            ".github/workflows/release.yml",
+            ".github/actions/setup-xcode/action.yml",
+            ".github/actions/prepare-build/action.yml",
+            "apple/Plugins/MySQLDriverTests/MySQLTests.swift",
+            "apple/Packages/TableProCore/Tests/CoreTests.swift",
+            "apple/TableProTests/AppTests.swift",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("shipped", path), "false")
+
+    def test_a_release_branch_runs_every_suite(self):
+        # The ios suite reads its shared paths out of the iOS project spec.
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
+        base = self.commit([])
+        self.git("update-ref", "refs/remotes/origin/main", base)
+        self.commit(["apple/CHANGELOG.md"])
+        for suite in ["macos", "plugins", "ios", "oracle", "hana", "release", "linux"]:
+            with self.subTest(suite=suite):
+                self.assertEqual(self.detect(suite, base), (0, "false"))
+                self.assertEqual(self.detect(suite, base, ref="refs/heads/release/0.83"), (0, "true"))
+                self.assertEqual(self.detect(suite, ZERO, ref="refs/heads/release/0.83"), (0, "true"))
+
+    def test_main_and_pull_request_refs_keep_the_path_filter(self):
+        self.commit(["apple/CHANGELOG.md"])
+        for ref in ["refs/heads/main", "refs/pull/12/merge", "refs/heads/backport/12-0.83"]:
+            with self.subTest(ref=ref):
+                self.assertEqual(self.detect("macos", self.seed, ref=ref), (0, "false"))
+
+    def test_head_ends_the_diff(self):
+        change = self.commit(["apple/TablePro/App.swift"])
+        self.git("checkout", "-q", "--detach", self.seed)
+        self.assertEqual(self.detect("macos", self.seed), (0, "false"))
+        self.assertEqual(self.detect("macos", self.seed, head=change), (0, "true"))
+
     def test_changelog_files_run_no_suite(self):
-        for suite in ["macos", "plugins", "oracle", "hana", "release"]:
+        for suite in ["macos", "plugins", "oracle", "hana", "release", "shipped"]:
             for path in ["apple/CHANGELOG.md", "apple/changelog.d/3500.added.md", "apple/towncrier.toml", "appcast.xml"]:
                 with self.subTest(suite=suite, path=path):
                     self.assertEqual(self.verdict_after(suite, path), "false")

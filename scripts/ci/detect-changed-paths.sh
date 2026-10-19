@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Prints "true" when a suite has to run for the changes since <base>, "false" when it can skip.
-# Usage: detect-changed-paths.sh [--base <sha>] macos|plugins|ios|oracle|hana|release|linux
+# Prints "true" when a suite has to run for the changes from <base> to <head>, "false" when it can skip.
+# Usage: detect-changed-paths.sh [--base <sha>] [--head <rev>] [--ref <git ref>] <suite>
+# Suites: macos, plugins, ios, oracle, hana, release, shipped, linux.
 
 BASE=""
+HEAD_REV="HEAD"
+REF=""
 SUITE=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --base) BASE="${2:-}"; shift 2 ;;
+        --head) HEAD_REV="${2:-}"; shift 2 ;;
+        --ref) REF="${2:-}"; shift 2 ;;
         -*) echo "detect-changed-paths.sh: unknown flag $1" >&2; exit 2 ;;
         *) SUITE="$1"; shift ;;
     esac
@@ -53,7 +58,7 @@ case "$SUITE" in
             '\.github/actions/setup-xcode/' '\.github/workflows/ios-tests\.yml$') ;;
     hana)
         PATTERNS=('apple/Native/HanaBridge/' '\.github/workflows/repo-hygiene\.yml$') ;;
-    release)
+    release|shipped)
         # A Release build compiles no test target, so the test folders under Plugins/ and
         # Packages/ are skipped too.
         PATTERNS=('apple/TablePro/' 'apple/Plugins/' 'apple/Packages/' 'apple/Native/' 'apple/Configs/' 'apple/Libs/'
@@ -65,18 +70,37 @@ case "$SUITE" in
             'apple/scripts/release/(notes|registry|version)\.py$'
             'apple/scripts/ci/verify-plugin-loads\.sh$' 'scripts/ci/detect-changed-paths\.sh$'
             '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/release-build\.yml$')
-        SKIP='apple/Plugins/[^/]+Tests/|apple/Packages/[^/]+/Tests/' ;;
+        SKIP='apple/Plugins/[^/]+Tests/|apple/Packages/[^/]+/Tests/'
+        # shipped is what an X.Y.0 may not change after its newest beta: the release build minus its CI.
+        if [ "$SUITE" = shipped ]; then
+            KEPT=()
+            for pattern in "${PATTERNS[@]}"; do
+                case "$pattern" in
+                    '\.github/workflows/'* | '\.github/actions/'*) ;;
+                    *) KEPT+=("$pattern") ;;
+                esac
+            done
+            PATTERNS=("${KEPT[@]}")
+        fi ;;
     linux)
         PATTERNS=('linux/' 'scripts/ci/detect-changed-paths\.sh$'
             '\.github/workflows/(build-linux|linux-packages|release-linux)\.yml$') ;;
     *)
-        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release or linux, got '$SUITE'" >&2
+        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release, shipped or linux, got '$SUITE'" >&2
         exit 2 ;;
+esac
+
+# Every suite runs on a release line: a tag's verify needs its commit's own runs, and a release PR
+# changes only the changelog.
+case "$REF" in
+    refs/heads/release/*)
+        echo "true"
+        exit 0 ;;
 esac
 
 # A new branch has no previous commit, so it is compared with the point where it left main.
 if [ -n "$BASE" ] && [ -z "${BASE//0/}" ]; then
-    BASE="$(git merge-base HEAD origin/main 2> /dev/null || true)"
+    BASE="$(git merge-base "$HEAD_REV" origin/main 2> /dev/null || true)"
 fi
 
 if [ -z "$BASE" ]; then
@@ -89,7 +113,7 @@ fi
 CHANGED="$(mktemp)"
 RELEVANT="$(mktemp)"
 trap 'rm -f "$CHANGED" "$RELEVANT"' EXIT
-git -c core.quotePath=false diff --no-renames --name-only -z "$BASE" HEAD > "$CHANGED"
+git -c core.quotePath=false diff --no-renames --name-only -z "$BASE" "$HEAD_REV" > "$CHANGED"
 if [ -n "$SKIP" ]; then
     LC_ALL=C grep -zvE "^($SKIP)" "$CHANGED" > "$RELEVANT" || [ $? -eq 1 ]
 else

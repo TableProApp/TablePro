@@ -66,10 +66,10 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 
 ## Release Build (`release-build.yml`)
 
-- Nightly at 19:00 UTC on main, push to `release/**`, and dispatch; never a PR. Never cancelled. Not a required check.
-- `Changes (Release)` outputs `run`. A dispatch always builds. A nightly runs the `release` detector against the head of the last nightly that ended green, read with `gh api`, so a quiet day builds nothing. A `release/**` push diffs `github.event.before`, and builds when the push created the branch.
-- `Release Build` runs on the self-hosted Mac, or on `xcode-27` when a dispatch picks `runner: github` or, for a push or nightly, the repository variable `RELEASE_BUILD_RUNNER` is `github`. It has a 150-minute limit and VERSION 0.0.0-dev and BUILD 9999999, so build.sh passes the version settings a tag passes.
-- While the Mac is offline a run waits for it, and GitHub cancels a job still queued after 24 hours. The tag gate refuses a commit with any red run, and a `runner: github` dispatch on the same commit does not replace it: `apple/RELEASING.md`, When a run fails.
+- Nightly at 19:00 UTC on main and dispatch; never a PR or a push. Never cancelled. Not a required check, and no tag waits for it.
+- `Changes (Release)` outputs `run`. A dispatch always builds. A nightly runs the `release` detector against the head of the last nightly that ended green, read with `gh api`, so a quiet day builds nothing.
+- `Release Build` runs on the self-hosted Mac, or on `xcode-27` when a dispatch picks `runner: github` or, for a nightly, the repository variable `RELEASE_BUILD_RUNNER` is `github`. It has a 150-minute limit and VERSION 0.0.0-dev and BUILD 9999999, so build.sh passes the version settings a tag passes.
+- While the Mac is offline a run waits for it, and GitHub cancels a job still queued after 24 hours. `gh variable set RELEASE_BUILD_RUNNER --body github` sends nightlies to `xcode-27` until `gh variable delete RELEASE_BUILD_RUNNER`.
 - Setup as macOS Tests up to the SPM restore, which it never saves; then Go, `build-dameng.sh both` and `build-hana.sh both`.
 - `apple/scripts/release/build.sh app --unsigned` archives the `TablePro` scheme; `build.sh plugins --unsigned` builds `RegistryPlugins` and copies the publish set, the targets `apple/scripts/release/registry.py targets` reads from `.github/plugin-registry.json`, to `apple/build/release/plugins`. Both build universal. They run `lipo -verify_arch` once per arch (arm64, x86_64), since Xcode 27's `lipo` takes one arch per call, then `verify-plugin-loads.sh`.
 - `apple/scripts/release/package.sh app --unsigned` writes the release assets: the DMG, the `.tar.xz` (extracted and compared with the app) and the dSYMs zip; `package.sh plugins` writes one zip per plugin and the plugin dSYMs zip.
@@ -117,13 +117,15 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 
 ## Change detector (`scripts/ci/detect-changed-paths.sh`)
 
-- `detect-changed-paths.sh [--base <sha>] macos|plugins|ios|oracle|hana|release` prints `true` or `false`. An unknown suite or flag exits 2.
-- A PR passes its base SHA, a push `github.event.before`. No base prints true. The all-zero SHA of a new ref diffs against `git merge-base HEAD origin/main`, so a branch cut from main skips what main already ran; with no merge base it prints true.
+- `detect-changed-paths.sh [--base <sha>] [--head <rev>] [--ref <git ref>] <suite>` prints `true` or `false` for `macos`, `plugins`, `ios`, `oracle`, `hana`, `release`, `shipped` or `linux`. An unknown suite or flag exits 2.
+- A PR passes its base SHA, a push `github.event.before`; `--head` defaults to `HEAD`. No base prints true. The all-zero SHA of a new ref diffs against `git merge-base <head> origin/main`, so a branch cut from main skips what main already ran; with no merge base it prints true.
+- macOS Tests, iOS and Package Tests and Repo Hygiene pass `--ref` with `github.ref`, and `refs/heads/release/*` prints true for every suite: a tag's `verify` needs the line head's own runs, and a release PR changes only the changelog.
 - `macos` watches the app, test, plugin, package, native, config and libs folders, `apple/TestPlans/`, `apple/project.yml`, the app's `Package.resolved`, the build scripts and CI scripts it runs, the setup actions and its workflow. `apple/Packages/` covers TableProMacCore.
 - `plugins` watches `apple/Plugins/`, `apple/Packages/TableProCore/`, `apple/Packages/TableProOracle/`, `apple/Native/`, `apple/Libs/`, `apple/Configs/`, `apple/project.yml`, the app's `Package.resolved`, the project, libs and bridge scripts, `verify-plugin-loads.sh`, `apple/scripts/check-pluginkit-abi.sh` and the setup actions.
 - `ios` watches `apple/TableProMobile/`, `apple/Libs/`, `apple/Plugins/TableProPluginKit/` (the package target is a symlink to it), and every `../` path it reads out of `apple/TableProMobile/project.yml`.
 - `oracle` watches `apple/Packages/TableProOracle/`; `hana` watches `apple/Native/HanaBridge/`. Each suite also watches its own workflow.
 - `release` watches what the Release build reads: the app, plugin, package, native, config and libs folders, `apple/project.yml`, the app's `Package.resolved`, `.github/plugin-registry.json`, the release scripts it runs (`build.sh`, `package.sh`, `registry.py`, `version.py`, `notes.py`), the build and CI scripts it runs and the setup actions. It skips `apple/Plugins/*Tests/` and `apple/Packages/*/Tests/`.
+- `shipped` is `release` without its `.github/workflows/` and `.github/actions/` entries. `version.py check` reads it for a stable's diff from its newest beta (`apple/RELEASING.md`, What a tag runs).
 - `linux` watches `linux/`, the detector itself and the three Linux workflows.
 - A path a suite newly reads joins that suite's pattern in the same change, or the suite skips on it.
 - `apple/CHANGELOG.md` and `apple/changelog.d/` are on no suite's pattern: the What's New phase writes nothing at `0.0.0-dev`, and Repo Hygiene renders every fragment and section instead.
@@ -131,7 +133,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 ## What runs where
 
 - A pull request: both changes jobs; macOS Tests and iOS and Package Tests unless their detector says false (Oracle only when its detector is not false); SwiftLint; Repo Hygiene; PR title. `AllPlugins` only when the `plugins` detector is not false.
-- A push to main or `release/**`: the same minus PR title; never cancelled, the SPM cache saved on a miss. Every code push runs both plans in full; a docs-only or changelog-only push skips the suites through the detector. A `release/**` push also runs Release Build; main gets it nightly.
+- A push to main or `release/**`: the same minus PR title; never cancelled, the SPM cache saved on a miss. Every code push runs both plans in full. On main a docs-only or changelog-only push skips the suites through the detector; a `release/**` push runs every suite (Change detector). Release Build runs nightly on main and by dispatch only.
 - A `v*` tag runs only `release.yml`, and a `linux-v*` tag only `release-linux.yml`, which calls `linux-packages.yml`. The test workflows never run on a tag.
 - `workflow_dispatch` exists on every workflow except `pr-title.yml` and `release.yml`.
 - `build-linux.yml` builds and tests the Linux app, and `linux-packages.yml` builds its packages (`linux/docs/testing.md`, CI). What starts each is in its `on:` and job `if:` lines. Flatpak Devel and Minimum Rust version never run on a PR or push, and `linux-packages.yml` never on a push.

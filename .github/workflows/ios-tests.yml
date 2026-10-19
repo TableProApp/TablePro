@@ -30,10 +30,11 @@ jobs:
         id: decide
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          run=$(scripts/ci/detect-changed-paths.sh --base "$BASE" ios)
-          oracle=$(scripts/ci/detect-changed-paths.sh --base "$BASE" oracle)
+          run=$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" ios)
+          oracle=$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" oracle)
           { echo "run=$run"; echo "oracle=$oracle"; } >> "$GITHUB_OUTPUT"
 
   # The required check, with no gate job: see macos-tests.yml. TableProCore and TableProOracle run

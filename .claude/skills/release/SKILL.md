@@ -36,7 +36,7 @@ Before any decision, gather:
 
 The days, the gate and the patch bar live in `apple/RELEASING.md`, Schedule.
 
-- **Promote to X.Y.0**: Monday, when the gate passes: the line's age, the newest beta's age and nothing but changelog changes after it (section 2), no open `regression` issue, and the storage check (section 4).
+- **Promote to X.Y.0**: Monday, when the gate passes: the line's age, the newest beta's age and no shipped source after it (section 2), no open `regression` issue, and the storage check (section 4).
 - **beta.1 of X.(Y+1)**: the same Monday, after X.Y.0's forward-port merges (section 9). The tag refuses to build until `main` has `## [X.Y.0]`.
 - **beta.N**: Tuesday to Thursday, when the line has picks since its last beta.
 - **Patch X.Y.Z**: Tuesday to Thursday, when the stable line has a fix past the patch bar.
