@@ -248,6 +248,6 @@ async fn opening_an_exclusively_locked_file_fails_as_locked() {
     release(holder).await;
 
     assert_eq!(opened.err(), Some(locked()));
-    let reopened = connect(file.endpoint(), settings()).await;
-    assert!(reopened.is_ok(), "the file stayed locked");
+    let reopened = connect(file.endpoint(), settings()).await.unwrap();
+    reopened.close().await.unwrap();
 }

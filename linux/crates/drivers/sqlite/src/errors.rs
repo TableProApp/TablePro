@@ -81,7 +81,7 @@ fn server_error(sqlite: &SqliteError) -> DriverError {
     classify(primary_code(sqlite), diagnostics_of(sqlite))
 }
 
-/// `SQLITE_LOCKED` stays the server's error: without a shared cache it
+/// `SQLITE_LOCKED` is the server's own error: without a shared cache it
 /// is a conflict inside one connection, which no other program causes.
 fn classify(primary: i32, diagnostics: ServerDiagnostics) -> DriverError {
     match primary {
