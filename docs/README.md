@@ -84,6 +84,8 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 ## Client research (October 2026)
 
+- [Upstream main analysis, October 20](archive/upstream-main-analysis-2026-10-20.md): pinned Linux and Apple changes, current adoption status, transferable regression cases and integration costs.
+
 - [Upstream Linux adoption and development workflow](archive/upstream-linux-adoption-2026-10-18.md), with the [movement/source audit](archive/upstream-linux-movement-2026-10-18.md): code, CI, infrastructure, conventions and post-0.2.0 tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149).
 - [0.2.0 completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md): maintainer completion statement, publication boundary and previous scope/sprint snapshots.
 
