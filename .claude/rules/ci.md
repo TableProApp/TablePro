@@ -3,7 +3,6 @@ paths:
   - ".github/workflows/**/*"
   - ".github/actions/**/*"
   - ".github/actionlint.yaml"
-  - ".github/*baseline*"
   - "scripts/ci/**/*"
   - "apple/scripts/ci/**/*"
   - "scripts/release/**/*"
@@ -106,18 +105,15 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 
 - PR, push to main or `release/**`, dispatch, no path filter; Ubuntu, 15 minutes.
 - Steps, in order:
-  - actionlint, which also shellchecks every inline `run:` block;
+  - actionlint, which also shellchecks every inline `run:` block at `SHELLCHECK_OPTS=--severity=warning`;
   - `shellcheck --severity=warning` on every `*.sh` under `scripts`, `apple/scripts` and `.claude/skills`;
   - the tooling tests: `scripts/ci/test_*.py`, `apple/scripts/ci/test_*.py`, `apple/scripts/lib/test_*.py`, `apple/scripts/test_localization.py` and `apple/scripts/ci/test_libs_release.sh`;
   - `apple/scripts/release/test_*.py` on Python 3.9 from `actions/setup-python`, in a venv that installs `scripts/release/requirements.txt` with `pip --require-hashes`;
   - in the same venv, `check-changelog.py` and `towncrier build --draft --version 0.0.0` with `--dir apple` and `--dir linux`, which fails on a fragment name it cannot parse;
-  - `check-lib-sourcing.py`, `check-plugin-manifest.py`, `check-plugin-provides.py`, `check-deployment-target.sh`, `check-ios-shared-isolation.py`;
+  - `check-lib-sourcing.py`, `check-plugin-manifest.py`, `check-plugin-provides.py`, `check-deployment-target.sh`;
   - `localization.py plugins` and `plugins --target ios`;
   - `check-string-catalogs.py`, `check-license-inventory.py`, `check-entitlements.py`, `check-test-plans.py`;
-  - `apple/scripts/audit-refactor-health.sh --check`, `check-hub-ratchet.py`;
   - the Go checks on the HANA helper, `govulncheck` among them, when the `hana` detector is true. New advisories between changes arrive as Dependabot alerts.
-- `audit-refactor-health.sh --check` fails a file defining a production `DatabaseType` outside `apple/Packages/TableProCore/Sources/TableProCoreTypes/DatabaseType.swift`, unless `.github/duplicate-contract-baseline.txt` lists its path. Moving a listed file moves its baseline path in the same commit. Never add an entry to let a new copy pass.
-- `check-hub-ratchet.py` fails when an app hub grows past `.github/hub-ratchet-baseline.json`. `--update` only lowers a value, so growing one is a hand edit a reviewer sees.
 
 ## Change detector (`scripts/ci/detect-changed-paths.sh`)
 

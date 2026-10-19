@@ -54,7 +54,7 @@ Claude Code loads a rule when it reads or edits a file the rule covers. Under Co
 | --- | --- |
 | `ai-mcp-security.md` | `apple/TablePro/Core/AI`, `apple/TablePro/Core/MCP`, `apple/Packages/TableProMacCore/Sources/TableProMCP` |
 | `changelog.md` | `**/CHANGELOG.md`, `**/changelog.d`, `**/towncrier.toml` |
-| `ci.md` | `.github/workflows`, `.github/actions`, `.github/actionlint.yaml`, `.github/*baseline*`, `scripts/ci`, `apple/scripts/ci`, `scripts/release`, `apple/scripts/release`, `apple/.swiftlint.yml`, `**/.swiftlint.yml` |
+| `ci.md` | `.github/workflows`, `.github/actions`, `.github/actionlint.yaml`, `scripts/ci`, `apple/scripts/ci`, `scripts/release`, `apple/scripts/release`, `apple/.swiftlint.yml`, `**/.swiftlint.yml` |
 | `connection-window.md` | `apple/TablePro/Core/Services/Infrastructure`, `apple/TablePro/Models/Connection`, `apple/TablePro/Core/Database/DatabaseManager*.swift`, `apple/Packages/TableProCore/Sources/TableProDatabase`, `apple/TablePro/Views/Main` |
 | `data-grid.md` | `apple/TablePro/Views/Results`, `apple/TablePro/Core/DataGrid`, `apple/TableProTests/Views/Results` |
 | `data-sync-storage.md` | `apple/TablePro/Core/**/*Storage*.swift`, `apple/TablePro/Core/**/*Sync*.swift`, `apple/TablePro/Core/Database`, `apple/TablePro/Core/Plugins/PluginMetadataRegistry*.swift`, `apple/TablePro/Core/Services/Query`, `apple/Packages/TableProCore/Sources/TableProSyncTransport`, `apple/CloudKit` |

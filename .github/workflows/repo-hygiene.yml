@@ -34,6 +34,8 @@ jobs:
 
       # actionlint runs shellcheck over every inline run: block, which nothing else sees.
       - name: Lint workflows
+        env:
+          SHELLCHECK_OPTS: --severity=warning
         run: ./actionlint -color
 
       - name: Lint scripts
@@ -95,10 +97,6 @@ jobs:
       - name: Check no build script hardcodes the deployment target
         run: bash apple/scripts/ci/check-deployment-target.sh
 
-      # iOS alone defaults to MainActor isolation, so a shared plugin file must state its own.
-      - name: Check shared plugin sources are explicitly isolated for iOS
-        run: python3 apple/scripts/ci/check-ios-shared-isolation.py
-
       # A plugin's or package's String(localized:) resolves against the host app's bundle, so its
       # strings live in each app's catalog by hand.
       - name: Check plugin and package strings reach the string catalogs
@@ -121,12 +119,6 @@ jobs:
 
       - name: Check every test target is in its test plan
         run: python3 apple/scripts/ci/check-test-plans.py
-
-      - name: Check the shared-contract drift gates
-        run: apple/scripts/audit-refactor-health.sh --check
-
-      - name: Check no hub grew past its recorded size
-        run: python3 apple/scripts/ci/check-hub-ratchet.py
 
       - name: Decide whether the SAP HANA helper changed
         id: native

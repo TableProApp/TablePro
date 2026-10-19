@@ -76,7 +76,7 @@ apple/scripts/generate-project.sh [both|macos|ios]  # needs the libs; rerun afte
 - **Storage resolves through `AppStorageEnvironment.shared`** (stores, defaults suite, keychain); the `storage_environment_*` SwiftLint rules fail other Application Support or standard-defaults use.
 - **An AppKit autosave name** (split view, window frame, table) **goes through `SplitViewAutosaveName.current(_:)`**: AppKit writes the record to the real defaults domain, which the sandbox does not redirect.
 - **No new test-only branch in production code**: tests use injection or `TABLEPRO_UI_TEST_SANDBOX`.
-- **macOS files the iOS app compiles** (listed in `TableProMobile/project.yml`) give each top-level declaration explicit isolation, usually `nonisolated`, since iOS defaults to `MainActor` (`scripts/ci/check-ios-shared-isolation.py`).
+- **macOS files the iOS app compiles** (listed in `TableProMobile/project.yml`) give each top-level declaration explicit isolation, usually `nonisolated`, since iOS defaults to `MainActor`. The iOS build is the check.
 - **No package product in a macOS binary depends on the `TableProPluginKit` package**: a plugin would carry its own PluginKit types (`.claude/rules/plugin-system.md`).
 - **A source-text rule is a SwiftLint rule or a `scripts/ci` check**, never a test reading source.
 

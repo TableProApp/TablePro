@@ -4,7 +4,7 @@
 //
 //  Compiled into the macOS app and, by file reference, into the iOS app, which defaults to
 //  MainActor isolation. Every top-level declaration states its own isolation for that reason;
-//  scripts/ci/check-ios-shared-isolation.py holds it.
+//  the iOS build is the check.
 //
 
 import Foundation
