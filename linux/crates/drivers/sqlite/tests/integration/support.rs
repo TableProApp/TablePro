@@ -6,8 +6,6 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use sqlx::Connection as _;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
 use tablepro_core::meta::TableRef;
 use tablepro_core::statement::{GuardedStatement, Statement, StatementBuilder};
 use tablepro_core::{
@@ -20,6 +18,8 @@ use tablepro_test_support::conformance::test_liveness;
 use tempfile::TempDir;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
+
+use crate::sqlite_engine::create_database;
 
 /// A database file in a directory of its own, removed with it.
 pub struct TestFile {
@@ -46,13 +46,6 @@ impl TestFile {
     pub async fn open(&self) -> Arc<dyn Connection> {
         connect(self.endpoint(), writable()).await.unwrap()
     }
-}
-
-/// Make an empty database the way another program would, so the
-/// driver only ever opens a file that exists.
-pub async fn create_database(path: &Path) -> Result<(), sqlx::Error> {
-    let options = SqliteConnectOptions::new().filename(path).create_if_missing(true);
-    SqliteConnection::connect_with(&options).await?.close().await
 }
 
 pub fn writable() -> WorkspaceSettings {

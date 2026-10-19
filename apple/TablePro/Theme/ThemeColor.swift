@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 import TableProTheme
 
 internal extension ThemeColor {
@@ -24,10 +23,6 @@ internal extension ThemeColor {
         var alpha: CGFloat = 0
         converted.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
         self.init(red: Self.byte(red), green: Self.byte(green), blue: Self.byte(blue), alpha: Self.byte(alpha))
-    }
-
-    var swiftUIColor: Color {
-        Color(nsColor: nsColor)
     }
 
     private static func byte(_ component: CGFloat) -> UInt8 {

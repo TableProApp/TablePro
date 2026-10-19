@@ -1,7 +1,7 @@
 use tablepro_core::browse::BrowseSqlError;
 use tablepro_core::dml::BuildSqlError;
 use tablepro_core::statement::SqlBuildError;
-use tablepro_session::runtime::TaskFailure;
+use tablepro_session::runtime::{TaskFailure, TaskPanic};
 use tablepro_session::{ConnectError, OperationError};
 use tablepro_storage::KeyringError;
 
@@ -17,10 +17,7 @@ pub fn operation_error_message(error: &OperationError) -> String {
         OperationError::Sql(error) => sql_build_message(error),
         OperationError::Browse(error) => browse_message(error),
         OperationError::Build(error) => build_message(error),
-        OperationError::Panicked(panic) => crate::i18n::gettext_f(
-            "TablePro hit an internal error: {detail}",
-            &[("detail", panic.message())],
-        ),
+        OperationError::Panicked(panic) => panic_message(panic),
         OperationError::Cancelled => crate::i18n::gettext("Stopped."),
         OperationError::Closed => crate::i18n::gettext("The connection is closed."),
     }
@@ -38,22 +35,23 @@ pub fn connect_error_message(error: &ConnectError) -> String {
             crate::i18n::gettext_f("This build of TablePro has no {driver} driver.", &[("driver", driver)])
         }
         ConnectError::Cancelled => crate::i18n::gettext("The connection was cancelled."),
-        ConnectError::Panicked(panic) => crate::i18n::gettext_f(
-            "TablePro hit an internal error: {detail}",
-            &[("detail", panic.message())],
-        ),
+        ConnectError::Panicked(panic) => panic_message(panic),
     }
 }
 
 /// What to tell the user when the work itself died rather than failed.
 pub fn task_failure_message(failure: &TaskFailure) -> String {
     match failure {
-        TaskFailure::Panicked(panic) => crate::i18n::gettext_f(
-            "TablePro hit an internal error: {detail}",
-            &[("detail", panic.message())],
-        ),
+        TaskFailure::Panicked(panic) => panic_message(panic),
         TaskFailure::Aborted => crate::i18n::gettext("Stopped."),
     }
+}
+
+/// The panic's text is about the code, in English, and the panic hook
+/// has already written it to the journal.
+fn panic_message(panic: &TaskPanic) -> String {
+    tracing::debug!(%panic, "shown as an internal error");
+    crate::i18n::gettext("TablePro hit an internal error.")
 }
 
 fn sql_build_message(error: &SqlBuildError) -> String {

@@ -37,8 +37,7 @@ internal class ContentWindow: NSWindow {
 
     // The full-screen hooks run either side of the style mask flipping, so they name the state they move to.
     internal func applyTitlebarPolicy(isFullScreen: Bool? = nil) {
-        // Before macOS 26 a transparent titlebar swaps its material for a flat fill, which would fill chrome.
-        guard #available(macOS 26.0, *) else { return }
+        guard ThemeWindowBackdrop.canReachChrome else { return }
         titlebarAppearsTransparent = Self.titlebarIsTransparent(
             isFullScreen: isFullScreen ?? styleMask.contains(.fullScreen),
             toolbarVisible: toolbar?.isVisible ?? false

@@ -128,7 +128,6 @@ final class SyncTestEnvironment {
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
             syncTracker: tracker,
-            themeEngine: live.themeEngine,
             welcomeRouter: live.welcomeRouter
         )
         return SyncCoordinator(

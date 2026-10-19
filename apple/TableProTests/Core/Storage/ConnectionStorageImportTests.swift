@@ -82,7 +82,6 @@ struct ConnectionStorageImportTests {
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
             syncTracker: SyncChangeTracker(metadataStorage: metadata),
-            themeEngine: live.themeEngine,
             welcomeRouter: live.welcomeRouter
         )
     }

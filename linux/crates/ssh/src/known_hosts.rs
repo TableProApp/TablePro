@@ -3,7 +3,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use tablepro_core::SshFailure;
+use tablepro_core::{SshDestinationPart, SshDestinationProblem, SshFailure};
 use tokio::process::Command;
 
 use crate::route::{lookup, trace_route};
@@ -88,9 +88,10 @@ pub(crate) async fn forget_known_host(
     known_hosts: &Path,
 ) -> Result<(), SshFailure> {
     if lookup.trim().is_empty() {
-        return Err(SshFailure::InvalidDestination {
-            detail: "no host to remove from known_hosts".to_owned(),
-        });
+        return Err(SshDestinationProblem::Empty {
+            part: SshDestinationPart::Host,
+        }
+        .into());
     }
     let keygen_args: Vec<OsString> = vec![
         "-R".into(),
@@ -343,7 +344,14 @@ mod tests {
 
         let refused = forget_known_host(&services(dir.path()), " ", &known_hosts).await;
 
-        assert!(matches!(refused, Err(SshFailure::InvalidDestination { .. })));
+        assert_eq!(
+            refused,
+            Err(SshFailure::InvalidDestination {
+                problem: SshDestinationProblem::Empty {
+                    part: SshDestinationPart::Host
+                }
+            })
+        );
     }
 
     #[test]

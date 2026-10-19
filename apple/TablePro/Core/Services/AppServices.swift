@@ -1,8 +1,3 @@
-//
-//  AppServices.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProSyncTransport
 
@@ -38,7 +33,6 @@ struct AppServices {
     let copilotService: CopilotService
     let mcpServerManager: MCPServerManager
     let syncTracker: SyncChangeTracker
-    let themeEngine: ThemeEngine
     let welcomeRouter: WelcomeRouter
 
     static let live = AppServices(
@@ -72,7 +66,6 @@ struct AppServices {
         copilotService: .shared,
         mcpServerManager: .shared,
         syncTracker: .shared,
-        themeEngine: .shared,
         welcomeRouter: .shared
     )
 }

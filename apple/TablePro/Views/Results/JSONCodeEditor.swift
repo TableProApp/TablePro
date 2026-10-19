@@ -63,7 +63,7 @@ internal struct JSONCodeEditor: View {
     private static func makeConfiguration(isEditable: Bool) -> SourceEditorConfiguration {
         SourceEditorConfiguration(
             appearance: .init(
-                theme: TableProEditorTheme.make(),
+                theme: ThemeEngine.shared.makeEditorTheme(),
                 font: ThemeEngine.shared.editorFonts.font,
                 wrapLines: true
             ),

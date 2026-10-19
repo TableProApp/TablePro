@@ -79,6 +79,35 @@ struct IMEInputTests {
         #expect(caret.range == NSRange(location: 8, length: 0))
     }
 
+    @Test("A commit over part of the composition keeps the rest as typed text")
+    func commitOverPartOfTheCompositionKeepsTheRest() {
+        let textView = makeLaidOutTextView("alpha")
+        textView.selectionManager.setSelectedRange(NSRange(location: 5, length: 0))
+
+        typeMarkedCeshi(on: textView)
+        textView.insertText("测", replacementRange: NSRange(location: 5, length: 2))
+
+        #expect(textView.string == "alpha测shi")
+        #expect(textView.hasMarkedText() == false)
+
+        while textView.undoManager?.canUndo == true {
+            textView.undoManager?.undo()
+        }
+        #expect(textView.string == "alpha")
+    }
+
+    @Test("A commit range that names no position replaces the composition")
+    func commitWithAnUnusableRangeReplacesTheComposition() {
+        let textView = makeLaidOutTextView("alpha")
+        textView.selectionManager.setSelectedRange(NSRange(location: 5, length: 0))
+
+        typeMarkedCeshi(on: textView)
+        textView.insertText("测试", replacementRange: NSRange(location: 3, length: Int.max))
+
+        #expect(textView.string == "alpha测试")
+        #expect(textView.hasMarkedText() == false)
+    }
+
     @Test("Marked-text state is cleared after a commit")
     func markedTextStateClearedAfterCommit() {
         let textView = makeLaidOutTextView("alpha\n\nbeta")

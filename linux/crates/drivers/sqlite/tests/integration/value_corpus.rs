@@ -4,7 +4,7 @@
 
 use tablepro_test_support::conformance::{CorpusColumn, ValueCorpusEngine};
 
-use crate::conformance_engine::SqliteEngine;
+use crate::sqlite_engine::SqliteEngine;
 
 impl ValueCorpusEngine for SqliteEngine {
     fn value_corpus(&self) -> Vec<CorpusColumn> {

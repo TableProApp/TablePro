@@ -179,7 +179,6 @@ struct SyncCoordinatorSQLFavoritePullTests {
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
             syncTracker: tracker,
-            themeEngine: live.themeEngine,
             welcomeRouter: live.welcomeRouter
         )
         return SyncCoordinator(services: services, recordCache: recordCache)

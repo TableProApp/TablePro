@@ -1,8 +1,3 @@
-//
-//  AIChatCodeBlockView.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 import TableProGrammars
@@ -106,12 +101,12 @@ struct AIChatCodeBlockView: View, Equatable {
         }
         return Text(code.isEmpty ? AttributedString(" ") : marked ?? AttributedString(code))
             .font(Font(font))
-            .foregroundStyle(themeEngine.palette.color(.editorText))
+            .themeForeground(.editorText, native: Color(nsColor: .textColor))
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(8)
-            .background(themeEngine.palette.color(.editorBackground))
+            .themeBackground(.editorBackground, native: Color(nsColor: .textBackgroundColor))
             .task(id: key) {
                 guard let key, marked == nil else { return }
                 let text = await CodeBlockHighlighter.highlightedCode(

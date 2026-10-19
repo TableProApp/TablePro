@@ -64,7 +64,7 @@ struct DDLTextView: View {
         let font = NSFont.monospacedSystemFont(ofSize: CGFloat(fontSize), weight: .regular)
         return SourceEditorConfiguration(
             appearance: .init(
-                theme: TableProEditorTheme.make(),
+                theme: ThemeEngine.shared.makeEditorTheme(),
                 font: font,
                 wrapLines: false
             ),

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-use crate::ErrorCategory;
+use crate::{ErrorCategory, SshDestinationProblem};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[non_exhaustive]
@@ -13,8 +13,8 @@ pub enum SshFailure {
     #[error("the askpass helper {} was not found", .program.display())]
     AskpassHelperMissing { program: PathBuf },
 
-    #[error("invalid SSH destination: {detail}")]
-    InvalidDestination { detail: String },
+    #[error("invalid SSH destination: {problem}")]
+    InvalidDestination { problem: SshDestinationProblem },
 
     #[error("ssh rejected the configuration: {detail}")]
     ConfigRejected { detail: String },
@@ -98,6 +98,12 @@ impl SshFailure {
     }
 }
 
+impl From<SshDestinationProblem> for SshFailure {
+    fn from(problem: SshDestinationProblem) -> Self {
+        Self::InvalidDestination { problem }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,7 +128,9 @@ mod tests {
                 ErrorCategory::Configuration,
             ),
             (
-                SshFailure::InvalidDestination { detail: detail() },
+                SshFailure::InvalidDestination {
+                    problem: SshDestinationProblem::PortZero,
+                },
                 ErrorCategory::Configuration,
             ),
             (

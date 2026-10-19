@@ -66,7 +66,7 @@ struct SQLStatementPreview: View {
     static func makeConfiguration() -> SourceEditorConfiguration {
         SourceEditorConfiguration(
             appearance: .init(
-                theme: TableProEditorTheme.make(),
+                theme: ThemeEngine.shared.makeEditorTheme(),
                 font: ThemeEngine.shared.editorFonts.font,
                 wrapLines: true
             ),

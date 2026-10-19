@@ -10,7 +10,6 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
-import TableProTheme
 import UniformTypeIdentifiers
 
 // MARK: - Schema Operations
@@ -189,7 +188,6 @@ extension TableStructureView {
     }
 }
 
-// Stands in for the DDL text view, so under a theme it keeps the editor's background.
 internal struct StructureDDLUnavailableView: View {
     internal var body: some View {
         VStack(spacing: 8) {
@@ -201,6 +199,6 @@ internal struct StructureDDLUnavailableView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .themeBackground(.editorBackground, native: Color.clear, ignoresSafeAreaEdges: [])
+        .valueStandInBackground()
     }
 }

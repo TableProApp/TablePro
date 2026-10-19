@@ -25,7 +25,7 @@ struct FoldCommandBehaviourTests {
     ) -> TextViewController {
         let configuration = SourceEditorConfiguration(
             appearance: .init(
-                theme: TableProEditorTheme.make(),
+                theme: ThemeEngine.shared.makeEditorTheme(),
                 font: .monospacedSystemFont(ofSize: 12, weight: .regular),
                 wrapLines: false
             ),

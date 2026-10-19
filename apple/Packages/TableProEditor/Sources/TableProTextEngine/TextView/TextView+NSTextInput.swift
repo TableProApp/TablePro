@@ -13,7 +13,7 @@ import AppKit
 /// then e again to insert the é character.
 ///
 /// The text view needs to maintain a range of marked text and apply attributes indicating the text is marked. When
-/// selection is updated, the marked text range can be discarded if the cursor leaves the marked text range.
+/// the selection leaves the marked text range, the composition is accepted as typed text.
 ///
 /// ## Notes for multiple cursors
 ///
@@ -73,15 +73,6 @@ extension TextView: NSTextInputClient {
     /// - Parameters:
     ///   - string: The text to insert, either an NSString or NSAttributedString instance.
     ///   - replacementRange: The range of content to replace in the receiver’s text storage.
-    ///
-    /// IME commits arrive here with `replacementRange` either set to `NSNotFound` (replace the
-    /// marked range(s)) or to the explicit range to replace. Calling `unmarkText()` first would
-    /// wipe the marked text via `replaceCharacters(_:with: "")` and then `_insertText` would
-    /// replace a now-stale range, either eating unrelated content or hitting an out-of-bounds
-    /// range that lands the caret at `documentLength`. Resolve the effective range(s) first,
-    /// then clear marked-text bookkeeping without touching the storage, so the actual replacement
-    /// is a single edit. Multi-cursor IME duplicates the marked range across every cursor; the
-    /// `NSNotFound` path replaces all of them in one pass.
     @objc public func insertText(_ string: Any, replacementRange: NSRange) {
         guard isEditable, let insertString = typedText(from: string) else { return }
         commitText(insertString, replacementRange: replacementRange)
@@ -95,28 +86,46 @@ extension TextView: NSTextInputClient {
         return typed
     }
 
+    /// Commits a composition, or inserts typed text when there is none.
+    ///
+    /// The composed text being replaced comes out first, unrecorded and unfiltered like every step of the
+    /// composition, and the committed string goes in where it was as typed text. The typing filters then see what a
+    /// keyboard without dead keys sends: an accent and Space commit `'` as an insertion of `'`, not as a quote
+    /// replacing a one-character selection, which the pair filter would wrap.
+    ///
+    /// An explicit `replacementRange` replaces only the composed text inside it; the rest is accepted as typed. A
+    /// range that names no position in the document replaces the whole composition, as `NSNotFound` does.
     func commitText(_ insertString: String, replacementRange: NSRange) {
-        layoutManager.markedTextManager.resolveRanges(inDocumentOfLength: textStorage.length)
-        let markedRanges = layoutManager.markedTextManager.markedRanges
-        let hadMarkedText = !markedRanges.isEmpty
-
-        if hadMarkedText {
-            layoutManager.markedTextManager.removeAll()
-            layoutManager.setNeedsLayout()
-            needsLayout = true
-            inputContext?.discardMarkedText()
-        }
-
-        if replacementRange.location != NSNotFound {
+        let explicitRange = replacementRange.resolved(inDocumentOfLength: textStorage.length)
+        guard let composedRanges = endComposition() else {
             _insertText(insertString: insertString, replacementRange: replacementRange)
-        } else if hadMarkedText {
-            _insertText(insertString: insertString, replacementRanges: markedRanges)
-        } else {
-            _insertText(
-                insertString: insertString,
-                replacementRange: NSRange(location: NSNotFound, length: 0)
-            )
+            return
         }
+        guard let target = explicitRange ?? (composedRanges.count == 1 ? composedRanges[0] : nil) else {
+            commitInPlace(insertString, at: composedRanges)
+            return
+        }
+        let replaced = composedRanges.compactMap { $0.overlap(with: target) }
+        let kept = composedRanges.flatMap { $0.subtracting(target) }
+        replaceComposedCharacters(in: replaced, with: "")
+        editorUndoManager?.registerInsertions(in: kept.map { $0.removing(replaced) })
+        _insertText(insertString: insertString, replacementRanges: [target.removing(replaced)])
+    }
+
+    /// Commits a composition held at several carets by turning each one into the committed string, accepted as typed.
+    ///
+    /// The typing filters read and set one caret (`TextInterface.selectedRange`), so they cannot serve several. Taking
+    /// the compositions out first would also merge carets whose compositions touch, and lose a commit with them.
+    private func commitInPlace(_ insertString: String, at composedRanges: [NSRange]) {
+        replaceComposedCharacters(in: composedRanges, with: insertString)
+        let length = (insertString as NSString).length
+        var shift = 0
+        let committed = composedRanges.map { range in
+            defer { shift += length - range.length }
+            return NSRange(location: range.location + shift, length: length)
+        }
+        editorUndoManager?.registerInsertions(in: committed)
+        selectionManager.textSelections.forEach { $0.suggestedXPos = nil }
     }
 
     override public func insertText(_ insertString: Any) {
@@ -127,8 +136,8 @@ extension TextView: NSTextInputClient {
 
     /// Sets up marked text for a marking session. See ``MarkedTextManager`` for more details.
     ///
-    /// Decides whether or not to insert/replace text. Then updates the current marked ranges and updates cursor
-    /// positions.
+    /// The composition is provisional: its keystrokes skip the typing filters and the undo history, and only what
+    /// it ends as is recorded. The text it replaces when it begins is recorded as deleted.
     ///
     /// - Parameters:
     ///   - string: The string to insert. Can be either an NSString or NSAttributedString instance.
@@ -136,37 +145,77 @@ extension TextView: NSTextInputClient {
     ///   - replacementRange: The range to replace, computed from the beginning of the marked text.
     @objc public func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
         guard isEditable, let insertString = typedText(from: string) else { return }
-        // Needs to insert text, but not notify the undo manager.
-        editorUndoManager?.disable()
-        layoutManager.markedTextManager.resolveRanges(inDocumentOfLength: textStorage.length)
-        let shouldInsert = layoutManager.markedTextManager.markedRanges.isEmpty
+        let markedTextManager = layoutManager.markedTextManager
+        markedTextManager.resolveRanges(inDocumentOfLength: textStorage.length)
 
-        // Copy the text selections *before* we modify them.
-        let selectionCopies = selectionManager.textSelections.map(\.range)
-
-        if shouldInsert {
-            _insertText(insertString: insertString, replacementRange: replacementRange)
-        } else {
-            replaceCharacters(in: layoutManager.markedTextManager.markedRanges, with: insertString)
-        }
-        layoutManager.markedTextManager.updateMarkedRanges(
+        let composedRanges = markedTextManager.hasMarkedText
+            ? markedTextManager.markedRanges
+            : removeTextReplacedByComposition(replacementRange)
+        replaceComposedCharacters(in: composedRanges, with: insertString)
+        markedTextManager.updateMarkedRanges(
             insertLength: (insertString as NSString).length,
-            textSelections: selectionCopies
+            replacedRanges: composedRanges
         )
 
-        // Reset the selected ranges to reflect the replaced text.
-        selectionManager.setSelectedRanges(layoutManager.markedTextManager.markedRanges.map({
+        selectionManager.setSelectedRanges(markedTextManager.markedRanges.map({
             NSRange(location: $0.max, length: 0)
         }))
 
         if insertString.isEmpty {
-            layoutManager.markedTextManager.removeAll()
+            markedTextManager.removeAll()
         }
-
-        editorUndoManager?.enable()
     }
 
-    /// Unmarks text and causes layout if needed after a selection update.
+    /// Takes out what a new composition replaces: the selections, or the range the input method names. Nothing was
+    /// typed yet, so the filters stay out, but the removal is the user's edit and is recorded.
+    /// - Returns: Where the composition goes, ascending.
+    private func removeTextReplacedByComposition(_ replacementRange: NSRange) -> [NSRange] {
+        let targets = replacementRange.location == NSNotFound
+            ? selectionManager.textSelections.map(\.range)
+            : [replacementRange]
+        let ranges = resolvedReplacementRanges(targets).sorted { $0.location < $1.location }
+        let replaced = ranges.filter { !$0.isEmpty }
+        if !replaced.isEmpty {
+            replaceCharacters(
+                replaced.map { TextReplacement(range: $0, string: "") },
+                skipUpdateSelection: false,
+                asksDelegate: false
+            )
+        }
+        return ranges.map { NSRange(location: $0.location, length: 0).removing(replaced) }
+    }
+
+    private func replaceComposedCharacters(in ranges: [NSRange], with string: String) {
+        editorUndoManager?.disable()
+        defer { editorUndoManager?.enable() }
+        replaceCharacters(
+            ranges.map { TextReplacement(range: $0, string: string) },
+            skipUpdateSelection: false,
+            asksDelegate: false
+        )
+    }
+
+    /// Ends the composition and returns the ranges it held, ascending, or `nil` when there was none.
+    private func endComposition() -> [NSRange]? {
+        let markedTextManager = layoutManager.markedTextManager
+        markedTextManager.resolveRanges(inDocumentOfLength: textStorage.length)
+        let composedRanges = markedTextManager.markedRanges.sorted { $0.location < $1.location }
+        guard !composedRanges.isEmpty else { return nil }
+        markedTextManager.removeAll()
+        layoutManager.setNeedsLayout()
+        needsLayout = true
+        inputContext?.discardMarkedText()
+        return composedRanges
+    }
+
+    /// Ends the composition and keeps its text where it is, recorded as typed: what `NSTextInputClient` asks of
+    /// `unmarkText`, and what `NSTextView` does when a click, an edit or an undo interrupts a composition.
+    func acceptComposition() {
+        guard let composedRanges = endComposition() else { return }
+        editorUndoManager?.registerInsertions(in: composedRanges)
+    }
+
+    /// Accepts the composition once a selection change leaves it.
     func unmarkTextIfNeeded() {
         guard layoutManager.markedTextManager.hasMarkedText,
               layoutManager.markedTextManager.updateForNewSelections(
@@ -174,11 +223,7 @@ extension TextView: NSTextInputClient {
               ) else {
             return
         }
-
-        layoutManager.markedTextManager.removeAll()
-        layoutManager.setNeedsLayout()
-        needsLayout = true
-        inputContext?.discardMarkedText()
+        acceptComposition()
     }
 
     /// Unmarks the marked text.
@@ -187,16 +232,7 @@ extension TextView: NSTextInputClient {
     /// The text view should accept the marked text as if it had been inserted normally.
     /// If there is no marked text, the invocation of this method has no effect.
     @objc public func unmarkText() {
-        if layoutManager.markedTextManager.hasMarkedText {
-            editorUndoManager?.disable()
-            layoutManager.markedTextManager.resolveRanges(inDocumentOfLength: textStorage.length)
-            replaceCharacters(in: layoutManager.markedTextManager.markedRanges, with: "")
-            editorUndoManager?.enable()
-            layoutManager.markedTextManager.removeAll()
-            layoutManager.setNeedsLayout()
-            needsLayout = true
-            inputContext?.discardMarkedText()
-        }
+        acceptComposition()
     }
 
     /// Returns the range of selected text.

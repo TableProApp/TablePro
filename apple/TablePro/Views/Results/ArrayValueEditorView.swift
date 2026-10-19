@@ -1,10 +1,3 @@
-//
-//  ArrayValueEditorView.swift
-//  TablePro
-//
-//  Ordered per-element editor for PostgreSQL array columns.
-//
-
 import SwiftUI
 import TableProPluginKit
 
@@ -144,18 +137,17 @@ struct ArrayValueEditorView: View {
     @ViewBuilder
     private func scalarField(for row: ArrayEditorRow) -> some View {
         let element = binding(for: row.id)
-        TextField(
-            "",
+        ValueTextField(
             text: Binding(
                 get: {
                     guard case .value(let value) = element.wrappedValue else { return "" }
                     return value
                 },
                 set: { element.wrappedValue = .value($0) }
-            )
+            ),
+            font: themeEngine.valueFont
         )
-        .textFieldStyle(.roundedBorder)
-        .font(themeEngine.valueFontSwiftUI)
+        .valueWell()
         .disabled(element.wrappedValue == .null)
         Toggle("NULL", isOn: Binding(
             get: { element.wrappedValue == .null },

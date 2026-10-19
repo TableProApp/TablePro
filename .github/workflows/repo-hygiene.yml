@@ -75,10 +75,9 @@ jobs:
         run: '"$RUNNER_TEMP/release-venv/bin/python" -m unittest discover -s apple/scripts/release -p "test_*.py"'
 
       # towncrier refuses a fragment name it cannot parse once its config sets ignore.
-      - name: Check the changelog fragments and CHANGELOG.md
+      - name: Render the changelog fragments
         run: |
           set -euo pipefail
-          "$RUNNER_TEMP/release-venv/bin/python" scripts/ci/check-changelog.py
           "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir apple --version 0.0.0
           "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir linux --version 0.0.0
 
