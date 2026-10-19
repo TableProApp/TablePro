@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "13 14 * * 1"
+    - cron: "13 14 * * *"
   workflow_dispatch:
 
 permissions:
@@ -105,6 +105,22 @@ jobs:
             xvfb \
             xauth \
             dbus-daemon
+      # On the bare checkout: the glob ignores .gitignore, so once Cargo
+      # fills _build it would read every crate's Markdown too.
+      - name: Install lychee
+        run: |
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/lychee.tar.gz" \
+            "https://github.com/lycheeverse/lychee/releases/download/lychee-v$LYCHEE_VERSION/lychee-x86_64-unknown-linux-gnu.tar.gz"
+          echo "$LYCHEE_SHA256  $RUNNER_TEMP/lychee.tar.gz" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/lychee"
+          tar -xzf "$RUNNER_TEMP/lychee.tar.gz" -C "$RUNNER_TEMP/lychee" --strip-components=1 \
+            lychee-x86_64-unknown-linux-gnu/lychee
+          echo "$RUNNER_TEMP/lychee" >> "$GITHUB_PATH"
+      - name: Links and anchors in the Linux docs resolve
+        # Offline, so only links to files and headings in the tree are
+        # checked: the ones a rename or a move breaks.
+        working-directory: .
+        run: lychee --offline --include-fragments --no-progress 'linux/**/*.md'
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
@@ -227,8 +243,8 @@ jobs:
   # compiler and not with rustup's.
   msrv:
     name: Minimum Rust version
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
+    # Nightly and by hand only, to keep a pull request under GitHub Free's 20 concurrent jobs.
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     container:
@@ -259,30 +275,6 @@ jobs:
         run: |
           "cargo-$RUST_VERSION" check --workspace --all-targets --locked
           "cargo-$RUST_VERSION" check --workspace --all-targets --locked --no-default-features
-
-  docs:
-    name: Documentation links
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Install lychee
-        run: |
-          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/lychee.tar.gz" \
-            "https://github.com/lycheeverse/lychee/releases/download/lychee-v$LYCHEE_VERSION/lychee-x86_64-unknown-linux-gnu.tar.gz"
-          echo "$LYCHEE_SHA256  $RUNNER_TEMP/lychee.tar.gz" | sha256sum --check --strict
-          mkdir "$RUNNER_TEMP/lychee"
-          tar -xzf "$RUNNER_TEMP/lychee.tar.gz" -C "$RUNNER_TEMP/lychee" --strip-components=1 \
-            lychee-x86_64-unknown-linux-gnu/lychee
-          echo "$RUNNER_TEMP/lychee" >> "$GITHUB_PATH"
-      - name: Links and anchors in the Linux docs resolve
-        # Offline, so only links to files and headings in the tree are
-        # checked: the ones a rename or a move breaks.
-        run: lychee --offline --include-fragments --no-progress 'linux/**/*.md'
 
   supply-chain:
     name: Supply chain
@@ -395,8 +387,8 @@ jobs:
 
   flatpak-devel:
     name: Flatpak Devel (${{ matrix.arch }})
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
+    # Nightly and by hand only, to keep a pull request under GitHub Free's 20 concurrent jobs.
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     strategy:
       fail-fast: false
       matrix:
@@ -440,6 +432,8 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
+      # GitHub Free runs 20 jobs at once across the account.
+      max-parallel: 3
       matrix:
         package:
           - tablepro-driver-postgres
@@ -653,11 +647,12 @@ jobs:
           name: junit-tablepro
           path: linux/target/nextest/ci/junit.xml
 
-  # The one check a branch rule requires: a job skipped by a path decision
-  # reports success, and this fails when any Linux job failed or was cancelled.
+  # The one check a branch rule requires: a job skipped by a path or event
+  # decision reports success, and this fails when any Linux job failed or was
+  # cancelled.
   linux:
     name: Linux
-    needs: [changes, fast, msrv, docs, supply-chain, i18n, flatpak-devel, integration, integration-session, integration-app]
+    needs: [changes, fast, msrv, supply-chain, i18n, flatpak-devel, integration, integration-session, integration-app]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

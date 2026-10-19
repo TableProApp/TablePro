@@ -8,7 +8,7 @@ name: Linux packages
 # fedora:44 with only its BuildRequires. Each package is then installed in
 # another fresh container with only its runtime dependencies and started.
 # release-linux.yml calls this workflow and uploads the source packages.
-# A run by hand can add arm64, which pushes and pull requests leave out.
+# A run by hand can add arm64, which the nightly and pull requests leave out.
 # Given a release tag, it packages that release's tarballs instead, with
 # the packaging from this checkout, for a PPA upload with a new revision.
 
@@ -26,13 +26,11 @@ on:
       - "linux/data/**/meson.build"
       - "linux/po/meson.build"
       - ".github/workflows/linux-packages.yml"
-  # After a merge every change runs, so a failure only one distribution's
-  # build shows turns up then and not at tag time.
-  push:
-    branches: [main]
-    paths:
-      - "linux/**"
-      - ".github/workflows/linux-packages.yml"
+  # Nightly on main, so a failure only one distribution's build shows turns
+  # up before tag time. Three hours after build-linux.yml's nightly, so the
+  # two do not share the account's 20 concurrent jobs.
+  schedule:
+    - cron: "13 17 * * *"
   workflow_dispatch:
     inputs:
       arm64:

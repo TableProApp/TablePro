@@ -135,7 +135,8 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 - A push to main or `release/**`: the same minus PR title; never cancelled, the SPM cache saved on a miss. Every code push runs both plans in full; a docs-only or changelog-only push skips the suites through the detector. A `release/**` push also runs Release Build; main gets it nightly.
 - A `v*` tag runs only `release.yml`, and a `linux-v*` tag only `release-linux.yml`, which calls `linux-packages.yml`. The test workflows never run on a tag.
 - `workflow_dispatch` exists on every workflow except `pr-title.yml` and `release.yml`.
-- `build-linux.yml` builds and tests the Linux app (`linux/docs/testing.md`, CI). Its `Changes (Linux)` job skips the rest when nothing under `linux/` or the scripts and workflows it reads changed, and its `Linux` job gates on all of them.
+- `build-linux.yml` builds and tests the Linux app, and `linux-packages.yml` builds its packages (`linux/docs/testing.md`, CI). What starts each is in its `on:` and job `if:` lines. Flatpak Devel and Minimum Rust version never run on a PR or push, and `linux-packages.yml` never on a push.
+- `Changes (Linux)` skips the other build-linux jobs when nothing under `linux/` or the scripts and workflows they read changed, and the `Linux` job gates on all of them.
 
 ## Caches and runner budget
 

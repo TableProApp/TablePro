@@ -61,8 +61,8 @@ tarballs: `tablepro-X.Y.Z.tar.xz` from `meson dist`, and
 --versioned-dirs` and the source replacement it printed. They build
 offline and run every Meson suite during the build, the gtk suite under
 `xvfb-run` and `dbus-run-session`. `linux-packages.yml` builds them the
-same way before a release, on pull requests that touch the packaging and
-on pushes to `linux` (`docs/testing.md`, CI).
+same way before a release and on the events its `on:` lists
+(`docs/testing.md`, CI).
 
 `debian/copyright` and the spec's `License` tag come from
 `data/licenses/third-party.json`, the cargo-about output the About
