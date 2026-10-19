@@ -1,8 +1,3 @@
-//
-//  BlobHexEditorView.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProTheme
 
@@ -60,7 +55,7 @@ internal struct BlobHexEditorView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxHeight: 120)
-        .modifier(ThemedDumpWell(isEnabled: drawsWell))
+        .modifier(DumpWell(isEnabled: drawsWell))
     }
 
     /// A value past the cap shows the dump it can show, selectable, rather than a disabled field.
@@ -72,11 +67,13 @@ internal struct BlobHexEditorView: View {
             if isTruncated {
                 readOnlyHexView
             } else {
-                TextField("Hex bytes", text: $hexEditText, axis: .vertical)
-                    .font(themeEngine.valueFontSwiftUI)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(3...8)
-                    .autocorrectionDisabled(true)
+                ValueTextField(
+                    text: $hexEditText,
+                    placeholder: String(localized: "Hex bytes"),
+                    font: themeEngine.valueFont,
+                    lineLimit: 3...8
+                )
+                    .modifier(FieldWell(isEnabled: drawsWell))
                     .focused($isFocused)
                     .onChange(of: isFocused) { _ in
                         if !isFocused {
@@ -145,23 +142,32 @@ internal struct BlobHexEditorView: View {
     }
 }
 
-/// The dump sits straight on the inspector natively. Under a theme it takes the well every other
-/// value there sits in, so it does not read as system text beside the theme's wells.
-private struct ThemedDumpWell: ViewModifier {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
-    @Environment(\.colorSchemeContrast) private var contrast
-
+/// The well every other value sits in, except inside a pane that is already one.
+private struct DumpWell: ViewModifier {
     let isEnabled: Bool
 
-    private static let shape = RoundedRectangle(cornerRadius: 5)
-
+    @ViewBuilder
     func body(content: Content) -> some View {
-        let fill = isEnabled
-            ? ThemeShapeStyle.override(.editorBackground, engine: themeEngine, contrast: contrast)
-            : nil
-        content
-            .padding(fill == nil ? 0 : 6)
-            .background(fill ?? Color.clear, in: Self.shape)
-            .overlay(Self.shape.strokeBorder(fill == nil ? Color.clear : Color(nsColor: .separatorColor)))
+        if isEnabled {
+            content
+                .valueWellPadding()
+                .valueWell()
+        } else {
+            content
+        }
+    }
+}
+
+/// The editable field draws its own text inset, so its well adds no padding.
+private struct FieldWell: ViewModifier {
+    let isEnabled: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.valueWell()
+        } else {
+            content
+        }
     }
 }

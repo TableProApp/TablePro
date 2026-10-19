@@ -19,8 +19,7 @@ internal enum EditorTabStripPalette {
 
     /// The track sits in the titlebar, which shows the theme's window color only where `ThemeWindowBackdrop` sets it.
     internal static var followsWindowBackdrop: Bool {
-        if #available(macOS 26.0, *) { return true }
-        return false
+        ThemeWindowBackdrop.canReachChrome
     }
 
     @MainActor

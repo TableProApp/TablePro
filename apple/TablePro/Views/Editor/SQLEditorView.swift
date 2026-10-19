@@ -252,7 +252,7 @@ struct SQLEditorView: View {
     private static func makeConfiguration() -> SourceEditorConfiguration {
         SourceEditorConfiguration(
             appearance: .init(
-                theme: TableProEditorTheme.make(),
+                theme: ThemeEngine.shared.makeEditorTheme(),
                 font: ThemeEngine.shared.editorFonts.font,
                 wrapLines: AppSettingsManager.shared.editor.wordWrap,
                 tabWidth: AppSettingsManager.shared.editor.clampedTabWidth

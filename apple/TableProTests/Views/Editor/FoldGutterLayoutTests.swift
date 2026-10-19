@@ -30,7 +30,7 @@ struct FoldGutterLayoutTests {
     private func gutterInset(peripherals: SourceEditorConfiguration.Peripherals, text: String) -> CGFloat {
         let configuration = SourceEditorConfiguration(
             appearance: .init(
-                theme: TableProEditorTheme.make(),
+                theme: ThemeEngine.shared.makeEditorTheme(),
                 font: .monospacedSystemFont(ofSize: 12, weight: .regular),
                 wrapLines: false
             ),

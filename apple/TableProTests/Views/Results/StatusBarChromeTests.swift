@@ -29,32 +29,29 @@ struct StatusBarChromeTests {
         Text(verbatim: "1 row").statusBarChrome()
     }
 
-    @Test("A bar draws its material by default")
+    @Test("A bar draws its material under the default pair")
     func materialByDefault() {
-        #expect(Self.drawsMaterial(Self.host(Self.bar)))
-    }
-
-    @Test("A bar whose host paints the backdrop draws no material")
-    func noMaterialOverAPaintedBackdrop() {
-        #expect(!Self.drawsMaterial(Self.host(Self.bar.statusBarDrawsMaterial(false))))
-    }
-
-    @Test("A bar outside the detail pane keeps its material under a window theme")
-    func otherBarsKeepTheirMaterial() throws {
-        try ThemeTestFixture.adopting([.windowBackdrop: ThemeTestFixture.windowHex], appearance: .dark) {
+        ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
             #expect(Self.drawsMaterial(Self.host(Self.bar)))
         }
     }
 
-    @Test("The result bar drops its material while the window slot themes the detail backdrop, and gets it back after")
-    func resultBarFollowsTheDetailBackdrop() throws {
+    @Test("A bar over a themed backdrop draws no material")
+    func noMaterialOverAThemedBackdrop() throws {
+        try ThemeTestFixture.adopting([.windowBackdrop: ThemeTestFixture.windowHex], appearance: .dark) {
+            #expect(!Self.drawsMaterial(Self.host(Self.bar)))
+        }
+    }
+
+    @Test("A bar drops its material while the window slot themes the backdrop, and gets it back after")
+    func barFollowsTheBackdrop() throws {
         let window = try ThemeTestFixture.pair([.windowBackdrop: ThemeTestFixture.windowHex], on: .dark)
         let content = try ThemeTestFixture.pair([
             .editorBackground: ThemeTestFixture.editorHex,
             .gridBackground: ThemeTestFixture.gridHex,
         ], on: .dark)
-        try ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
-            let host = Self.host(Self.bar.modifier(DetailPaneStatusBarMaterial()))
+        ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
+            let host = Self.host(Self.bar)
             #expect(Self.drawsMaterial(host), "default pair")
 
             ThemeTestFixture.adopt(window, appearance: .dark)
@@ -68,10 +65,10 @@ struct StatusBarChromeTests {
         }
     }
 
-    @Test("The result bar keeps its material under Increase Contrast, where the backdrop stays native")
+    @Test("A bar keeps its material under Increase Contrast, where the backdrop stays native")
     func increaseContrastKeepsTheMaterial() throws {
         try ThemeTestFixture.adopting([.windowBackdrop: ThemeTestFixture.windowHex], appearance: .dark) {
-            #expect(!DetailPaneBackdrop.isThemed(contrast: .increased))
+            #expect(!ThemeBackdropState.isThemed(highContrast: true))
         }
     }
 }

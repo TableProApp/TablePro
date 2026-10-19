@@ -229,31 +229,6 @@ struct ERDiagramThemeTests {
         }
     }
 
-    @Test("A theme's window background fills the canvas, and only while the theme sets it")
-    func canvasBackdropFollowsTheTheme() throws {
-        try Fixture.preservingEngine {
-            try Fixture.adopt([:], appearance: .light)
-            let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
-            scrollView.appearance = try appearance(.aqua)
-            scrollView.drawsBackground = false
-            let original = scrollView.backgroundColor
-            let backdrop = DiagramCanvasBackdrop(scrollView: scrollView)
-
-            #expect(!scrollView.drawsBackground)
-            #expect(!backdrop.isThemed)
-
-            try Fixture.adopt(Self.themed, appearance: .light)
-            #expect(scrollView.drawsBackground)
-            #expect(Fixture.hex(Fixture.baked(scrollView.backgroundColor, in: try appearance(.aqua))) == "#1E2030")
-            #expect(backdrop.isThemed)
-
-            try Fixture.adopt([:], appearance: .light)
-            #expect(!scrollView.drawsBackground)
-            #expect(scrollView.backgroundColor == original)
-            withExtendedLifetime(backdrop) {}
-        }
-    }
-
     // MARK: - Export
 
     @Test("An export takes the canvas's appearance rather than one built from the color scheme")

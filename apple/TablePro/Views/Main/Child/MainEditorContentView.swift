@@ -1162,7 +1162,6 @@ struct MainEditorContentView: View {
             onStructureAdd: { coordinator.structureActions?.addRow?() },
             onStructureRemove: { coordinator.structureActions?.removeRow?() }
         )
-        .modifier(DetailPaneStatusBarMaterial())
     }
 
     /// Empty unless the resolver says the chooser is on screen, so the bar and the pane agree on

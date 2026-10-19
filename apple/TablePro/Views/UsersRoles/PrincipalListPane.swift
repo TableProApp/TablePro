@@ -26,7 +26,7 @@ struct PrincipalListPane: View {
                 .padding(.vertical, 8)
                 Divider()
             }
-            .background(Color(nsColor: .controlBackgroundColor))
+            .paneBarBackground(Color(nsColor: .controlBackgroundColor))
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
@@ -46,7 +46,7 @@ struct PrincipalListPane: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
             }
-            .background(Color(nsColor: .controlBackgroundColor))
+            .paneBarBackground(Color(nsColor: .controlBackgroundColor))
         }
     }
 

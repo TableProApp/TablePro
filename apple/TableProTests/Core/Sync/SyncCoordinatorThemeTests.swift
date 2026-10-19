@@ -62,7 +62,7 @@ struct SyncCoordinatorThemeTests {
             let base = environment.makeCoordinator(transport: transport)
             let columnLayouts = environment.columnLayouts
             coordinator = SyncCoordinator(
-                services: base.services.replacing(appSettings: settings, storage: storage, themeEngine: engine),
+                services: base.services.replacing(appSettings: settings, storage: storage),
                 recordCache: environment.recordCache,
                 transport: transport,
                 makeNetworkMonitor: { nil },
@@ -414,7 +414,7 @@ private final class ThemeSyncChangeTokenArchive: NSObject, NSSecureCoding {
 
 @MainActor
 private extension AppServices {
-    func replacing(appSettings: AppSettingsManager, storage: AppSettingsStorage, themeEngine: ThemeEngine) -> AppServices {
+    func replacing(appSettings: AppSettingsManager, storage: AppSettingsStorage) -> AppServices {
         AppServices(
             appEvents: appEvents,
             appSettings: appSettings,
@@ -446,7 +446,6 @@ private extension AppServices {
             copilotService: copilotService,
             mcpServerManager: mcpServerManager,
             syncTracker: syncTracker,
-            themeEngine: themeEngine,
             welcomeRouter: welcomeRouter
         )
     }

@@ -29,7 +29,7 @@ struct TreeValueToneThemeTests {
             language: .json,
             configuration: SourceEditorConfiguration(
                 appearance: .init(
-                    theme: TableProEditorTheme.make(),
+                    theme: ThemeEngine.shared.makeEditorTheme(),
                     font: .monospacedSystemFont(ofSize: 12, weight: .regular),
                     wrapLines: true
                 )
@@ -78,7 +78,7 @@ struct TreeValueToneThemeTests {
         try ThemeTestFixture.adopting(themed ? TreeOutlineFixture.tones : [:], appearance: .light) {
             #expect(ThemeTestFixture.hex(TreeValueTone.serialized.color) == ThemeTestFixture.hex(try textViewColor("type")))
             #expect(ThemeTestFixture.hex(TreeValueTone.reference.color) == ThemeTestFixture.hex(try textViewColor("comment")))
-            let lineNumber = try #require(TableProEditorTheme.make().lineNumber)
+            let lineNumber = try #require(ThemeEngine.shared.makeEditorTheme().lineNumber)
             #expect(ThemeTestFixture.hex(TreeValueTone.muted.color) == ThemeTestFixture.hex(lineNumber))
         }
     }

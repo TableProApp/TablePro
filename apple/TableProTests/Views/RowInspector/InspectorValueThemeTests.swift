@@ -7,8 +7,10 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 @testable import TablePro
+import TableProTestSupport
 import TableProTheme
 import Testing
 
@@ -69,6 +71,239 @@ struct InspectorValueThemeTests {
             #expect(ThemeTestFixture.matches(value, themed), "\(value) against \(themed)")
             #expect(ThemeTestFixture.matches(pending, themed), "\(pending) against \(themed)")
         }
+    }
+
+    // MARK: - Editable values
+
+    private func editableField(_ value: Binding<String>, kind: FieldEditorKind) -> FieldEditorContent {
+        let context = FieldEditorContext(
+            columnName: "note",
+            columnType: .text(rawType: "TEXT"),
+            isLongText: false,
+            value: value,
+            originalValue: value.wrappedValue,
+            valueState: .value(value.wrappedValue),
+            isReadOnly: false
+        )
+        return FieldEditorContent(context: context, kind: kind, databaseType: .sqlite)
+    }
+
+    private func editableField(_ value: String, kind: FieldEditorKind = .singleLine) -> FieldEditorContent {
+        editableField(.constant(value), kind: kind)
+    }
+
+    /// `ImageRenderer` draws a placeholder for an AppKit view, so these render the hosting window.
+    private func hostedWellPixel(_ view: some View, size: CGSize = wellSize) throws -> NSColor {
+        let window = ThemeTestFixture.host(view, size: NSSize(width: size.width, height: size.height))
+        let rep = try #require(ThemeTestFixture.snapshot(window))
+        let scale = CGFloat(rep.pixelsWide) / size.width
+        let x = rep.pixelsWide - Int((12 * scale).rounded())
+        return try #require(ThemeTestFixture.pixel(rep, x: x, y: rep.pixelsHigh / 2))
+    }
+
+    private static func valueFields(in view: NSView?) -> [ValueTextFieldView] {
+        guard let view else { return [] }
+        if let field = view as? ValueTextFieldView { return [field] }
+        return view.subviews.flatMap { valueFields(in: $0) }
+    }
+
+    private func hostedValueField(_ view: some View) throws -> (NSWindow, ValueTextFieldView) {
+        let window = ThemeTestFixture.host(view, size: NSSize(width: Self.wellSize.width, height: Self.wellSize.height))
+        return (window, try #require(Self.valueFields(in: window.contentView).first))
+    }
+
+    @Test("Under the default pair an editable value sits in the same native well as a read-only one")
+    func editableValueDefaultSitsInTheNativeWell() throws {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
+            let native = try ThemeTestFixture.filled(.textBackgroundColor, colorScheme: .light)
+            let drawn = try hostedWellPixel(editableField("a"))
+            #expect(ThemeTestFixture.matches(drawn, native), "\(drawn) against \(native)")
+        }
+    }
+
+    @Test("Under a theme an editable value sits on the editor background, not a system bezel")
+    func editableValueTakesTheEditorBackground() throws {
+        try ThemeTestFixture.adopting([.editorBackground: Self.editorBackground], appearance: .light) {
+            let themed = try ThemeTestFixture.filled(hex: Self.editorBackground, colorScheme: .light)
+            let drawn = try hostedWellPixel(editableField("a"))
+            #expect(ThemeTestFixture.matches(drawn, themed), "\(drawn) against \(themed)")
+        }
+    }
+
+    @Test("An editable binary value sits on the editor background under a theme")
+    func editableHexTakesTheEditorBackground() throws {
+        try ThemeTestFixture.adopting([.editorBackground: Self.editorBackground], appearance: .light) {
+            let themed = try ThemeTestFixture.filled(hex: Self.editorBackground, colorScheme: .light)
+            let drawn = try hostedWellPixel(editableField("Hello", kind: .blobHex), size: Self.dumpSize)
+            #expect(ThemeTestFixture.matches(drawn, themed), "\(drawn) against \(themed)")
+        }
+    }
+
+    @Test("An editable value draws the system text color under the default pair and the editor text under a theme")
+    func editableValueTextFollowsTheTheme() throws {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
+            let (window, valueField) = try hostedValueField(editableField("a"))
+            #expect(ThemeTestFixture.hex(valueField.textColor) == ThemeTestFixture.hex(NSColor.textColor))
+            withExtendedLifetime(window) {}
+        }
+        try ThemeTestFixture.adopting([.editorText: "#657B83"], appearance: .light) {
+            let (window, valueField) = try hostedValueField(editableField("a"))
+            #expect(ThemeTestFixture.hex(valueField.textColor) == "#657B83")
+            withExtendedLifetime(window) {}
+        }
+    }
+
+    @Test("An editable value edits in a field editor of its own, on the theme's caret and selection, with no substitutions")
+    func editableValueHasItsOwnThemedFieldEditor() throws {
+        try ThemeTestFixture.adopting([.editorCursor: "#D33682", .editorSelection: "#EEE8D5"], appearance: .light) {
+            let (window, valueField) = try hostedValueField(editableField("a"))
+            #expect(window.makeFirstResponder(valueField))
+            let editor = try #require(valueField.currentEditor() as? NSTextView)
+
+            #expect(editor === valueField.ownFieldEditor)
+            #expect(ThemeTestFixture.hex(editor.insertionPointColor) == "#D33682")
+            #expect(ThemeTestFixture.hex(editor.selectedTextAttributes[.backgroundColor] as? NSColor) == "#EEE8D5")
+            #expect(!editor.isAutomaticTextReplacementEnabled)
+            #expect(!editor.isAutomaticQuoteSubstitutionEnabled)
+        }
+    }
+
+    @Test("The theme's caret stays in the value field: a stock field in the same window keeps the system editor")
+    func editableValueCaretDoesNotLeak() throws {
+        try ThemeTestFixture.adopting([.editorCursor: "#D33682"], appearance: .light) {
+            let (window, valueField) = try hostedValueField(editableField("a"))
+            let stock = NSTextField(string: "stock")
+            window.contentView?.addSubview(stock)
+
+            #expect(window.makeFirstResponder(valueField))
+            #expect(window.makeFirstResponder(stock))
+            let stockEditor = try #require(stock.currentEditor() as? NSTextView)
+            #expect(stockEditor !== valueField.ownFieldEditor)
+            #expect(ThemeTestFixture.hex(stockEditor.insertionPointColor) != "#D33682")
+        }
+    }
+
+    @Test("Typing in an editable value reaches its binding on every keystroke")
+    func editableValueWritesThrough() throws {
+        final class Box { var value = "a" }
+        let box = Box()
+        let binding = Binding(get: { box.value }, set: { box.value = $0 })
+        let (window, valueField) = try hostedValueField(editableField(binding, kind: .singleLine))
+        #expect(window.makeFirstResponder(valueField))
+        let editor = try #require(valueField.currentEditor() as? NSTextView)
+        editor.setSelectedRange(NSRange(location: 1, length: 0))
+        editor.insertText("b", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(box.value == "ab")
+    }
+
+    @Test("Typing undo lives in the editing session, so the window's undo stack holds nothing once the field lets go")
+    func editableValueUndoStaysInTheSession() throws {
+        let (window, valueField) = try hostedValueField(editableField("abc"))
+        #expect(window.makeFirstResponder(valueField))
+        let editor = try #require(valueField.currentEditor() as? NSTextView)
+        editor.setSelectedRange(NSRange(location: 3, length: 0))
+        editor.insertText("def", replacementRange: NSRange(location: NSNotFound, length: 0))
+
+        #expect(editor.undoManager !== window.undoManager)
+        #expect(editor.undoManager?.canUndo == true)
+        #expect(window.makeFirstResponder(nil))
+        #expect(window.undoManager?.canUndo != true)
+        #expect(editor.undoManager?.canUndo == false)
+    }
+
+    @Test("A value replaced from outside while the field is edited drops the typing undo recorded against the old text")
+    func externalReplacementDropsTypingUndo() async throws {
+        final class Model: ObservableObject { @Published var value = "abc" }
+        struct Host: View {
+            @ObservedObject var model: Model
+            var body: some View {
+                ValueTextField(text: $model.value, font: .systemFont(ofSize: 13)).valueWell()
+            }
+        }
+        let model = Model()
+        let (window, valueField) = try hostedValueField(Host(model: model))
+        #expect(window.makeFirstResponder(valueField))
+        let editor = try #require(valueField.currentEditor() as? NSTextView)
+        editor.setSelectedRange(NSRange(location: 3, length: 0))
+        editor.insertText("def", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(editor.undoManager?.canUndo == true)
+
+        model.value = ""
+        try await waitUntil { editor.string.isEmpty }
+        #expect(editor.undoManager?.canUndo == false)
+        withExtendedLifetime(window) {}
+    }
+
+    @Test("An editable value fills its well exactly, so the focus ring and the text inset match the read-only value")
+    func editableValueFillsItsWell() throws {
+        let (window, valueField) = try hostedValueField(editableField("a"))
+        #expect(abs(valueField.frame.width - Self.wellSize.width) < 0.5, "\(valueField.frame)")
+        #expect(valueField.frame.minX >= -0.5, "\(valueField.frame)")
+        withExtendedLifetime(window) {}
+    }
+
+    @Test("A disabled editable value takes no edits")
+    func disabledEditableValueIsNotEnabled() throws {
+        let (window, valueField) = try hostedValueField(editableField("a").disabled(true))
+        #expect(!valueField.isEnabled)
+        withExtendedLifetime(window) {}
+    }
+
+    @Test("An editable binary value inside the image field's own well draws no second one")
+    func editableHexInsideAWellDrawsNone() throws {
+        try ThemeTestFixture.adopting([.editorBackground: Self.editorBackground], appearance: .light) {
+            let context = FieldEditorContext(
+                columnName: "note",
+                columnType: .text(rawType: "TEXT"),
+                isLongText: false,
+                value: .constant("Hello"),
+                originalValue: "Hello",
+                valueState: .value("Hello"),
+                isReadOnly: false
+            )
+            let drawn = try hostedWellPixel(BlobHexEditorView(context: context, drawsWell: false), size: Self.dumpSize)
+            #expect(drawn.alphaComponent < 0.02, "drew \(drawn)")
+        }
+    }
+
+    /// SwiftUI reads a first responder change on a later pass of the run loop.
+    private func nextRunLoopTurn() async throws {
+        final class Flag { var isSet = false }
+        let flag = Flag()
+        DispatchQueue.main.async { flag.isSet = true }
+        try await waitUntil { flag.isSet }
+    }
+
+    @Test("An edited binary value commits once the field lets go of focus")
+    func editableHexCommitsOnBlur() async throws {
+        final class Box { var committed: Data? }
+        let box = Box()
+        let context = FieldEditorContext(
+            columnName: "payload",
+            columnType: .text(rawType: "TEXT"),
+            isLongText: false,
+            value: .constant("Hi"),
+            originalValue: "Hi",
+            valueState: .value("Hi"),
+            isReadOnly: false,
+            commitBytes: { box.committed = $0 }
+        )
+        let window = ThemeTestFixture.host(
+            BlobHexEditorView(context: context),
+            size: NSSize(width: Self.dumpSize.width, height: Self.dumpSize.height)
+        )
+        let valueField = try #require(Self.valueFields(in: window.contentView).first)
+
+        #expect(window.makeFirstResponder(valueField))
+        try await nextRunLoopTurn()
+        let editor = try #require(valueField.currentEditor() as? NSTextView)
+        editor.selectAll(nil)
+        editor.insertText("41 42", replacementRange: NSRange(location: NSNotFound, length: 0))
+        try await nextRunLoopTurn()
+
+        #expect(box.committed == nil)
+        #expect(window.makeFirstResponder(nil))
+        try await waitUntil { box.committed == Data([0x41, 0x42]) }
     }
 
     // MARK: - Multi-line
@@ -146,11 +381,12 @@ struct InspectorValueThemeTests {
         BlobHexEditorView(context: context("Hello, world"), drawsWell: drawsWell)
     }
 
-    @Test("Under the default pair a read-only binary dump sits straight on the inspector, with no well")
-    func dumpDefaultHasNoWell() throws {
+    @Test("Under the default pair a read-only binary dump sits in the native value well, like the values beside it")
+    func dumpDefaultSitsInTheNativeWell() throws {
         try ThemeTestFixture.adopting([:], appearance: .light) {
+            let native = try ThemeTestFixture.filled(.textBackgroundColor, colorScheme: .light)
             let margin = try dumpMarginPixel(dump())
-            #expect(margin.alphaComponent < 0.02, "drew \(margin)")
+            #expect(ThemeTestFixture.matches(margin, native), "\(margin) against \(native)")
         }
     }
 

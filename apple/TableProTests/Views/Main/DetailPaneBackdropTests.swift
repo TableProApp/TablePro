@@ -29,10 +29,15 @@ struct DetailPaneBackdropTests {
         try ThemeTestFixture.filled(.background, colorScheme: .dark)
     }
 
+    private static func containsMaterial(_ view: NSView) -> Bool {
+        view.subviews.contains { $0 is NSVisualEffectView || containsMaterial($0) }
+    }
+
     @Test("The toolbar takes the theme on macOS 26 and later only")
     func gateFollowsTheBackdropRelease() {
         let backdropRelease = OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
-        #expect(DetailPaneBackdrop.extendsUnderToolbar == ProcessInfo.processInfo.isOperatingSystemAtLeast(backdropRelease))
+        #expect(ThemeWindowBackdrop.canReachChrome == ProcessInfo.processInfo.isOperatingSystemAtLeast(backdropRelease))
+        #expect(DetailPaneBackdrop.extendsUnderToolbar == ThemeWindowBackdrop.canReachChrome)
     }
 
     @Test("The native backdrop always reaches every edge")
@@ -63,6 +68,32 @@ struct DetailPaneBackdropTests {
                 .gridBackground: ThemeTestFixture.gridHex,
             ], appearance: .dark)
             #expect(!DetailPaneBackdrop.isThemed(contrast: .standard))
+        }
+    }
+
+    @Test("A status bar on the detail backdrop draws its material exactly while the backdrop is unthemed")
+    func statusBarMaterialFollowsTheBackdrop() throws {
+        let window = try ThemeTestFixture.pair([.windowBackdrop: ThemeTestFixture.windowHex], on: .dark)
+        let content = try ThemeTestFixture.pair([
+            .editorBackground: ThemeTestFixture.editorHex,
+            .gridBackground: ThemeTestFixture.gridHex,
+        ], on: .dark)
+        ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
+            let host = ThemeTestFixture.hostingView(
+                VStack(spacing: 0) {
+                    Color.clear
+                    Text(verbatim: "1 row").statusBarChrome()
+                }
+                .modifier(DetailPaneBackdropFill()),
+                size: NSSize(width: 160, height: 80)
+            )
+            let cases = [("default", ThemePair.builtIn, false), ("window", window, true), ("content", content, false)]
+            for (name, theme, isThemed) in cases {
+                ThemeTestFixture.adopt(theme, appearance: .dark)
+                host.layoutSubtreeIfNeeded()
+                #expect(DetailPaneBackdrop.isThemed(contrast: .standard) == isThemed, "\(name) theme")
+                #expect(Self.containsMaterial(host) == !isThemed, "\(name) theme")
+            }
         }
     }
 

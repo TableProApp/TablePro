@@ -1,8 +1,3 @@
-//
-//  ValueWell.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProTheme
 
@@ -13,12 +8,24 @@ internal extension View {
     func valueWell(clipsContent: Bool = false) -> some View {
         modifier(ValueWell(clipsContent: clipsContent))
     }
+
+    /// The inset text takes inside the well, so a read-only value and `ValueTextField` line up.
+    func valueWellPadding() -> some View {
+        padding(.horizontal, ValueWellMetrics.textInset.width)
+            .padding(.vertical, ValueWellMetrics.textInset.height)
+    }
+}
+
+/// Shared with `ValueTextField`, whose focus ring has to hug the well's own shape.
+internal enum ValueWellMetrics {
+    static let cornerRadius: CGFloat = 5
+    static let textInset = CGSize(width: 6, height: 4)
 }
 
 private struct ValueWell: ViewModifier {
     let clipsContent: Bool
 
-    private static let shape = RoundedRectangle(cornerRadius: 5)
+    private static let shape = RoundedRectangle(cornerRadius: ValueWellMetrics.cornerRadius)
 
     @ViewBuilder
     func body(content: Content) -> some View {

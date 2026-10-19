@@ -72,7 +72,7 @@ struct FoldPreviewView: View {
     private static func makeConfiguration() -> SourceEditorConfiguration {
         SourceEditorConfiguration(
             appearance: .init(
-                theme: TableProEditorTheme.make(),
+                theme: ThemeEngine.shared.makeEditorTheme(),
                 font: ThemeEngine.shared.editorFonts.font,
                 wrapLines: false
             ),
