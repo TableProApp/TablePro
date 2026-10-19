@@ -57,7 +57,7 @@ The app scheme compiles only the plugins the app embeds. The `AllPlugins` aggreg
 xcodebuild build -project TablePro.xcodeproj -scheme AllPlugins -destination 'platform=macOS' -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO
 ```
 
-`scripts/release/build.sh plugins --unsigned` builds the registry plugins the way a release does, universal, into `build/release/plugins`: [`RELEASING.md`](RELEASING.md#reproducing-a-release-build).
+`scripts/release/build.sh plugins --unsigned` builds the registry plugins the way a release does, universal, into `build/release/plugins`, after `scripts/build-dameng.sh both` and `scripts/build-hana.sh both`. `VERSION=0.0.0-dev scripts/release/package.sh plugins --unsigned` then writes the zips to `dist/`.
 
 `scripts/install-plugin-dev.sh <Target>` copies a registry plugin you built in Debug into the user plugins folder.
 

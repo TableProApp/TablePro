@@ -1,93 +1,62 @@
 ---
 name: release
 description: >
-  Cuts a TablePro macOS release: a beta, a stable or a patch. Picks fixes onto a release/X.Y line,
-  curates the changelog fragments and the lead, decides whether a release is critical, opens the
-  release PR, hands the maintainer the tag command, watches the run and forward-ports the release.
-  Use whenever the user says "release", "cut a beta", "ship version", "tag a release", "promote the
-  beta", "backport", or gives a version number ("/release 0.82.0", "/release 0.82.0-beta.2"). Not for
-  the blog post, newsletter or X posts (the announce skill in TableProApp/web), and not for the iOS app.
+  Cuts a TablePro macOS release: a beta, a stable or a patch. Reads the release state, decides with
+  the maintainer what ships and whether it is critical, runs the storage check, picks fixes onto a
+  release/X.Y line, curates the notes in the release PR, tags, watches the run and forward-ports the
+  release. Use whenever the user says "release", "cut a beta", "ship version", "tag a release",
+  "promote the beta", "backport", or gives a version number ("/release 0.83.0", "/release
+  0.83.0-beta.2"). Not for the blog post, newsletter or X posts (the announce skill in
+  TableProApp/web), and not for the iOS app.
 ---
 
 # Release
 
-`apple/RELEASING.md` is the runbook and holds every command. This skill holds the judgment: each section is a decision, then names the runbook section that carries it out.
+`apple/RELEASING.md` holds every command and rule. This skill is the order of decisions.
 
-## 1. Ground rules
+When the maintainer says to release, you run every release command yourself: picks, the release PR, creating `release/X.Y`, pushing the tag, the forward-port and re-runs. The maintainer decides what ships and whether it is critical: say which and why in one line, then wait for a yes.
 
-- Never push a tag, never create or delete a `release/*` branch, never push to `main` or `release/*`. The maintainer runs every block you hand over, in their own terminal, and tells you when it landed.
-- A tag never moves. A fix after a tag is the next number.
-- Release PRs and backport PRs go through the required checks like any other PR.
+## 1. Read the state
 
-## 2. Read the state
+```bash
+git fetch origin --tags
+git -c versionsort.suffix=-beta tag -l 'v*' --sort=-v:refname | head
+git ls-remote --heads origin 'release/*'
+gh issue list --label regression --state open
+gh release view vX.Y.0-beta.N --json publishedAt -q .publishedAt
+gh run list --workflow ci.yml --branch main --event push --limit 5
+gh run list --workflow release-build.yml --branch main --limit 3
+gh api --paginate 'repos/TableProApp/TablePro/dependabot/alerts?state=open&per_page=100' -q '.[].security_advisory.summary'
+```
 
-Before any decision, gather:
+- `git grep -c '^## \[X.Y.Z\]' origin/main -- apple/CHANGELOG.md` finds the last stable's heading. Without it, the forward-port goes first.
+- A red Release Build is no gate, but the tag's `app` or `plugins` job likely fails the same way.
 
-- the tags, newest first: `git -c versionsort.suffix=-beta tag -l 'v*' --sort=-v:refname | head`;
-- the live lines: `git ls-remote --heads origin 'release/*'`;
-- open regressions: `gh issue list --label regression --state open`;
-- the newest beta's age, `gh release view v<X.Y>.0-beta.<N> --json publishedAt -q .publishedAt`, and the code on the line after it, `git log --oneline v<X.Y>.0-beta.<N>..origin/release/<X.Y> -- . ':!apple/changelog.d' ':!apple/CHANGELOG.md'`, without `apple/` on the 0.82 line;
-- open Dependabot alerts: `gh api --paginate 'repos/TableProApp/TablePro/dependabot/alerts?state=open&per_page=100' -q '.[].security_advisory.summary'`;
-- main's push runs: `gh run list --workflow ci.yml --branch main --event push --limit 10`, with its macOS Tests and iOS and Package Tests jobs green on the commit you would cut;
-- main's Release Builds: `gh run list --workflow release-build.yml --branch main --status success --limit 5`. The commit you would cut needs one, nightly or dispatched (`gh workflow run release-build.yml --ref main`);
-- whether `main` has the last stable's `## [X.Y.Z]` heading. If not, the forward-port is missing and the next tag will refuse to build: do that first (section 9).
+## 2. Decide what ships
 
-## 3. Decide what ships
+Apply `apple/RELEASING.md`, Train: a promotion, a beta.1, a beta.N for a line with new picks, a patch past the bar in Branches, or nothing. Ask about an X.0.0.
 
-The days, the gate and the patch bar live in `apple/RELEASING.md`, Schedule.
+- Pick candidates: `fix` PRs merged to `main` since the line was cut, for a bug the line has: `gh pr list --state merged --base main --search "merged:>=<cut date>" --limit 1000 --json number,title,files`.
+- Already picked: `gh pr list --base release/X.Y --state merged --limit 200`.
+- A pick conflict that needs more than a mechanical fix goes back to the maintainer.
 
-- **Promote to X.Y.0**: Monday, when the gate passes: the line's age, the newest beta's age and no shipped source after it (section 2), no open `regression` issue, and the storage check (section 4).
-- **beta.1 of X.(Y+1)**: the same Monday, after X.Y.0's forward-port merges (section 9). The tag refuses to build until `main` has `## [X.Y.0]`.
-- **beta.N**: Tuesday to Thursday, when the line has picks since its last beta.
-- **Patch X.Y.Z**: Tuesday to Thursday, when the stable line has a fix past the patch bar.
-- **Gate fails**: nothing is promoted or cut; the Schedule says when the next beta, the promotion and the next beta.1 go.
-- **Friday to Sunday**: nothing, except what the Schedule allows.
-- **X.0.0**: ask the maintainer.
+## 3. Storage check
 
-Say which and why in one line, then wait for the maintainer to agree. Run: `apple/RELEASING.md`, Cutting a beta, or Cutting a stable or patch.
+Before beta.1 and X.Y.0, run `apple/RELEASING.md`, Storage check, and read each commit it lists. A format the previous stable cannot read blocks the release.
 
-## 4. Storage check
+## 4. Critical
 
-Before beta.1 and before a promotion, list the commits that touch user data since the previous stable: `git log --oneline v<prev>..<sha> --` followed by every `paths:` entry of `.claude/rules/data-sync-storage.md`, and each again without `apple/` while the range reaches back before the move into `apple/` (0.82 and 0.83). Read each one for a changed storage or sync format. Sparkle never downgrades, so a format the previous stable cannot read blocks the release until it is fixed on `main`. Run: `apple/RELEASING.md`, Channels.
+For a stable or patch, name the fix and the reason, and ask. Only a security fix or data loss counts. An open Dependabot alert on a shipped dependency is a candidate.
 
-## 5. Critical or not
+## 5. Curate in the release PR
 
-What counts as critical: `apple/RELEASING.md`, Channels. Name the fix and the reason, and let the maintainer confirm. A critical stable gets ` [CRITICAL]` appended to its heading in the release PR. Run: `apple/RELEASING.md`, Cutting a stable or patch.
+- Every user-visible PR in the release has a fragment, and no fragment says more than its PR did (`.claude/rules/changelog.md`).
+- On `prep/vX.Y.Z`, add or reword fragments before `notes.py assemble`. For an X.Y.0, write the lead in the reader's words; a release of fixes only can go without one.
+- A beta's notes are the fragments as they stand: `.venv/bin/python apple/scripts/release/notes.py body X.Y.0-beta.N` on the line head previews them.
 
-## 6. Backport candidates
+## 6. Follow RELEASING
 
-- Candidates: merged `main` PRs labeled `backport release/<X.Y>`, plus `fix` PRs for a bug the line has.
-- Never a `feat` or a PluginKit bump (`.claude/rules/plugin-system.md`, ABI). On the stable line, only a fix past the patch bar (`apple/RELEASING.md`, Schedule). A closed line takes no picks (`apple/RELEASING.md`, Branches).
-- Already picked: `gh pr list --base release/<X.Y> --state merged --limit 200`. A pick's title keeps the original subject and its ` (#N)`.
-- One fix per pick PR, from `backport/<PR>-<X.Y>`. A conflict that needs more than a mechanical resolution goes back to the maintainer.
+Run `apple/RELEASING.md`: Cutting a beta, or Cutting a stable or patch, then Forward-port. On a failure, When a run fails or Withdrawing a release.
 
-Run: `apple/RELEASING.md`, Branches.
-
-## 7. Curate
-
-- Compare what merged with the fragments: `gh pr list --state merged --base main --search "merged:>=<date of the last X.Y.0 cut>" --limit 1000 --json number,title,files`. A user-visible PR with no fragment needs one; a fragment that says more than its PR did needs rewording.
-- Add or reword fragments through a PR to `main`, then pick it to the line. Entries change only through fragments; the lead and ` [CRITICAL]` are typed in the release PR.
-- For X.Y.0, write the lead per `apple/RELEASING.md`, Notes, in the reader's words. A release of fixes only can go without one.
-- Check every fragment against `.claude/rules/changelog.md` and `scripts/check-banned-words.sh`.
-
-Run: `apple/RELEASING.md`, Notes, then Cutting a stable or patch.
-
-## 8. Watch
-
-- Follow the run with `gh run list --workflow release.yml --limit 3` and `gh run watch <id>`.
-- Sort a failure into infrastructure (runner, network, notary service, an expired certificate) or code (a build, test or check the tag's commit fails). Infrastructure is a re-run; code is a fix on `main`, a pick, and the next number.
-- Confirm the result from the source, not the cached site: `gh api -H 'Accept: application/vnd.github.raw' 'repos/TableProApp/TablePro/contents/appcast.xml?ref=gh-pages' | grep -c '<sparkle:shortVersionString><version></sparkle:shortVersionString>'` prints 1, and `gh release view v<version> --json assets -q '.assets | length'`.
-
-Run: `apple/RELEASING.md`, What a tag runs, and When a run fails.
-
-## 9. After a stable or patch
-
-- Open the forward-port PR to `main` (and to a newer open line), and the docs changelog PR.
-- For an X.Y.0, name the `announce` skill in TableProApp/web as the next step.
-- Before the next stable, check `retainFromPluginKit` against the license dashboard.
-
-Run: `apple/RELEASING.md`, Cutting a stable or patch, and Plugins.
-
-## 10. Withdraw
-
-Only when a build loses data, fails to launch or breaks connecting, and the fix is more than minutes away. The fix ships as the next number, critical when data was lost. Run: `apple/RELEASING.md`, Withdrawing a release.
+- Watch the tag's run: `gh run list --workflow release.yml --limit 3`, then `gh run watch <id> --exit-status`.
+- After an X.Y.0, the `announce` skill in TableProApp/web is next.
