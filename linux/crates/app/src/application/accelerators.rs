@@ -159,6 +159,10 @@ pub const ACCELERATORS: &[Accelerator] = &[
     component(GridCell, "cell.toggle", &["space"], Listed(DataGrid)),
     component(GridCell, "cell.menu", &["Menu", "<Shift>F10"], Listed(DataGrid)),
     component(GridCell, "cell.set-null", &["<Primary>BackSpace"], Listed(DataGrid)),
+    // GtkTreeView's keys for its focused header. A column view's header
+    // takes no focus, so they act on the focused cell's column.
+    component(GridCell, "cell.widen-column", &["<Shift><Alt>Right"], Listed(DataGrid)),
+    component(GridCell, "cell.narrow-column", &["<Shift><Alt>Left"], Listed(DataGrid)),
     stock("text.activate", &["Return"], Listed(DataGrid)),
     component(CellEditor, "cell-editor.cancel", &["Escape"], Listed(DataGrid)),
     component(CellEditor, "cell-editor.next", &["Tab"], Listed(DataGrid)),
@@ -422,6 +426,8 @@ pub(crate) fn keypad_twins(key: gdk::Key) -> &'static [gdk::Key] {
         gdk::Key::Return => &[gdk::Key::ISO_Enter, gdk::Key::KP_Enter],
         gdk::Key::space => &[gdk::Key::KP_Space],
         gdk::Key::Delete => &[gdk::Key::KP_Delete],
+        gdk::Key::Left => &[gdk::Key::KP_Left],
+        gdk::Key::Right => &[gdk::Key::KP_Right],
         _ => &[],
     }
 }

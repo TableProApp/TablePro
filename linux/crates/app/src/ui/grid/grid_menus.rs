@@ -9,6 +9,7 @@ use tablepro_core::column::ResultColumn;
 use super::cell_edit::begin_edit;
 use super::cell_editor_kind::CellEditorKind;
 use super::cell_preset::cell_presets;
+use super::column_resize::{ColumnResize, resize_column};
 use super::context_menu::{CellContext, MenuTarget};
 use super::grid_columns::ShownColumn;
 use super::row_json_dialog::RowJsonRequest;
@@ -180,6 +181,14 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
         Some("cell.sort-descending"),
     );
     column_section.append(Some(&crate::i18n::gettext("Clear Sort")), Some("cell.clear-sort"));
+    column_section.append_item(&crate::application::menu_item(
+        &crate::i18n::gettext("Widen Column"),
+        "cell.widen-column",
+    ));
+    column_section.append_item(&crate::application::menu_item(
+        &crate::i18n::gettext("Narrow Column"),
+        "cell.narrow-column",
+    ));
     column_section.append(
         Some(&crate::i18n::gettext("Reset Column Width")),
         Some("cell.reset-width"),
@@ -321,8 +330,8 @@ impl CellActionKit {
         entries
     }
 
-    /// Sort by the cell's column, as a header click does, or reset the
-    /// width a header drag set.
+    /// Sort by the cell's column, as a header click does, or change the
+    /// width a header drag sets.
     fn column_entries(&self) -> Vec<CellEntry> {
         let sort = |name: &str, order: gtk::SortType| {
             let view = self.view.clone();
@@ -344,6 +353,14 @@ impl CellActionKit {
                 sink(GridMsg::SortCleared);
             })
         };
+        let resize = |name: &str, change: ColumnResize| {
+            let view = self.view.clone();
+            self.on_target(name, move |cell, _row, _rows| {
+                if let Some(cv) = view.upgrade() {
+                    resize_column(&cv, cell, change);
+                }
+            })
+        };
         let reset_width = {
             let view = self.view.clone();
             let tab = self.tab.clone();
@@ -353,6 +370,7 @@ impl CellActionKit {
                     return;
                 };
                 column.view_column.set_fixed_width(column.default_width.unwrap_or(-1));
+                column.view_column.set_expand(true);
                 if let (Some(widths), Some(info)) = (&tab.column_widths, columns.get(column.index)) {
                     widths.forget(&info.name);
                 }
@@ -362,6 +380,8 @@ impl CellActionKit {
             sort("sort-ascending", gtk::SortType::Ascending),
             sort("sort-descending", gtk::SortType::Descending),
             clear_sort,
+            resize("widen-column", ColumnResize::Wider),
+            resize("narrow-column", ColumnResize::Narrower),
             reset_width,
         ]
     }
@@ -524,7 +544,7 @@ fn install_empty_space_menu(column_view: &gtk::ColumnView) -> gtk::PopoverMenu {
 }
 
 /// The view's column that `cell` sits in.
-fn shown_column(view: &gtk::ColumnView, cell: &GridCell) -> Option<ShownColumn> {
+pub(super) fn shown_column(view: &gtk::ColumnView, cell: &GridCell) -> Option<ShownColumn> {
     cell.columns()?
         .shown(view)
         .into_iter()

@@ -2476,6 +2476,14 @@ msgstr ""
 msgid "Clear Sort"
 msgstr ""
 
+#: crates/app/src/ui/grid/grid_menus.rs data/resources/shortcuts-dialog.ui
+msgid "Widen Column"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs data/resources/shortcuts-dialog.ui
+msgid "Narrow Column"
+msgstr ""
+
 #: crates/app/src/ui/grid/grid_menus.rs
 msgid "Reset Column Width"
 msgstr ""

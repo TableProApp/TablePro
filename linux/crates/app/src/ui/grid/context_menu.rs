@@ -229,6 +229,25 @@ mod tests {
         assert_eq!(widths.width("name"), None);
     }
 
+    #[gtk4::test]
+    fn the_menu_widens_and_narrows_and_reset_lets_the_column_expand_again() {
+        use crate::ui::grid::column_resize::tests::{laid_out, shown_width, step};
+        let grid = laid_out(two_text_rows());
+        let before = shown_width(&grid, 1);
+
+        open_menu(&grid.cell_of(1, 1));
+        choose(&grid, &["cell.widen-column"]);
+        assert_eq!(grid.column(1).fixed_width(), before + step(&grid));
+        open_menu(&grid.cell_of(1, 1));
+        choose(&grid, &["cell.narrow-column"]);
+        assert_eq!(grid.column(1).fixed_width(), before);
+        open_menu(&grid.cell_of(1, 1));
+        choose(&grid, &["cell.reset-width"]);
+
+        assert_eq!(grid.column(1).fixed_width(), -1);
+        assert!(grid.column(1).expands(), "Reset left the column at its natural width");
+    }
+
     fn shown_menu(grid: &Grid) -> Option<gtk::PopoverMenu> {
         descendants(&grid.view)
             .into_iter()

@@ -4,6 +4,7 @@ use gtk4::{self as gtk, gdk, glib};
 use super::cell_edit::begin_edit;
 use super::cell_focus::focused_cell;
 use super::cell_preset::cell_presets;
+use super::column_resize::{ColumnResize, resize_column};
 use super::context_menu::prepare_menu;
 use super::grid_menus::GridMenus;
 use super::{CellPreset, GridCell, GridMsg, GridSink};
@@ -36,6 +37,14 @@ impl GridKeyboard {
             on_focused_cell(move |widget, cell| show_menu(widget, cell, &menus)),
         );
         add("cell.set-null", on_focused_cell(move |_, cell| set_null(cell, &sink)));
+        add(
+            "cell.widen-column",
+            on_focused_cell(|widget, cell| resize(widget, cell, ColumnResize::Wider)),
+        );
+        add(
+            "cell.narrow-column",
+            on_focused_cell(|widget, cell| resize(widget, cell, ColumnResize::Narrower)),
+        );
         column_view.add_controller(controller);
     }
 }
@@ -86,6 +95,14 @@ fn show_menu(widget: &gtk::Widget, cell: &GridCell, menus: &GridMenus) -> glib::
     });
     popover.set_pointing_to(bounds.as_ref());
     popover.popup();
+    glib::Propagation::Stop
+}
+
+fn resize(widget: &gtk::Widget, cell: &GridCell, change: ColumnResize) -> glib::Propagation {
+    let Some(column_view) = widget.downcast_ref::<gtk::ColumnView>() else {
+        return glib::Propagation::Proceed;
+    };
+    resize_column(column_view, cell, change);
     glib::Propagation::Stop
 }
 

@@ -168,7 +168,7 @@ fn widest<'a>(column_type: &ColumnType, values: impl Iterator<Item = &'a Value>)
 
 /// How wide `chars` digits are in tabular figures, which libadwaita's
 /// `numeric` class draws.
-fn digits_width(widget: &impl IsA<gtk::Widget>, chars: u32) -> i32 {
+pub(super) fn digits_width(widget: &impl IsA<gtk::Widget>, chars: u32) -> i32 {
     tabular_width(widget, &"0".repeat(usize::try_from(chars).unwrap_or_default()))
 }
 

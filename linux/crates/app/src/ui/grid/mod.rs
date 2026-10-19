@@ -11,6 +11,7 @@ mod cell_tooltip;
 mod column_drawing;
 mod column_factory;
 mod column_figures;
+mod column_resize;
 mod column_width_binding;
 mod context_menu;
 mod delete_availability;

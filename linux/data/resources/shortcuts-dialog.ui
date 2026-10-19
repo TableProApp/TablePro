@@ -217,6 +217,18 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="cell-widen-column">
+            <property name="title" translatable="yes">Widen Column</property>
+            <property name="accelerator">&lt;Shift&gt;&lt;Alt&gt;Right</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="cell-narrow-column">
+            <property name="title" translatable="yes">Narrow Column</property>
+            <property name="accelerator">&lt;Shift&gt;&lt;Alt&gt;Left</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="text-activate">
             <property name="title" translatable="yes">Finish Editing</property>
             <property name="accelerator">Return</property>
