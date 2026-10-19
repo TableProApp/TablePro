@@ -54,13 +54,14 @@ final class FindViewController: NSViewController {
             view = PlainControllerView.make()
         }
 
-        // Set up the `childView` as a subview of our view. Constrained to all edges, except the top is constrained to
-        // the find panel's bottom
-        // The find panel is constrained to the top of the view.
-        // The find panel's top anchor when hidden, is equal to it's negated height hiding it above the view's contents.
-        // When visible, it's set to 0.
-
-        view.clipsToBounds = false
+        /// The editor's outermost view, so the one place that keeps it inside its own frame. `NSView.clipsToBounds`
+        /// defaults to NO from macOS 14 (NSView.h), and nothing below this view clips on its own: AppKit moves the
+        /// gutter, a floating subview, into a `_NSScrollViewFloatingSubviewsContainerView` beside the clip view, and
+        /// neither that container nor `NSScrollView` clips. The gutter is document-tall, so the line numbers of rows
+        /// scrolled out of view painted over whatever the host stacked above the editor, and the find panel sliding
+        /// in from above and back out did the same. Clipping here also bounds the gutter's `visibleRect`, which
+        /// scopes its hover tracking and the ribbons' accessibility elements.
+        view.clipsToBounds = true
         view.addSubview(childView)
         // Ordered above the content so the panel wins hit-testing as well as drawing.
         // `zPosition` alone only affects drawing, which left clicks falling through to the
