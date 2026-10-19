@@ -68,5 +68,11 @@ fail-fast = false
 # holds the runner until the job dies with no report.
 slow-timeout = { period = "60s", terminate-after = 5 }
 
+# The large-table case prints the times and memory its bounds are set
+# from, so the job log keeps them for a passing run too.
+[[profile.ci.overrides]]
+filter = 'test(/a_million_row_table_pages_to_its_end_and_exports$/)'
+success-output = "final"
+
 [profile.ci.junit]
 path = "junit.xml"
