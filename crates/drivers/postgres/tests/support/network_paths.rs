@@ -36,6 +36,8 @@ async fn start_pgbouncer(
         .with_env_var("LISTEN_PORT", port.to_string())
         .with_env_var("MAX_PREPARED_STATEMENTS", prepared.to_string())
         .with_env_var("ADMIN_USERS", "postgres")
+        // Session mode pins one server connection per client connection; the driver pool may open 4.
+        .with_env_var("DEFAULT_POOL_SIZE", "5")
         .start()
         .await
         .expect("start pgbouncer");
