@@ -75,4 +75,13 @@ struct QueryTextInsertionTests {
         #expect(text == "SELECT 1;\n\nSELECT 2; SELECT 3;")
         #expect((text as NSString).substring(with: selection) == "SELECT 2; SELECT 3;")
     }
+
+    @Test("On SQL Server the query starts a batch of its own")
+    func sqlServerStartsABatch() {
+        let (text, _) = added("CREATE PROCEDURE p AS SELECT 1", to: "SELECT 1;", .mssql)
+        let (afterOpenEnd, _) = added("SELECT 2", to: "SELECT 1\n", .mssql)
+
+        #expect(text == "SELECT 1;\nGO\n\nCREATE PROCEDURE p AS SELECT 1;")
+        #expect(afterOpenEnd == "SELECT 1\n\n;\nGO\n\nSELECT 2;")
+    }
 }

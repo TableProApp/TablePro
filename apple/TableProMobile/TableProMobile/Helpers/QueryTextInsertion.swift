@@ -31,16 +31,23 @@ nonisolated enum QueryTextInsertion {
         ).execution
         let statement = endsInOpenStatement(added, grammar: grammar) ? added + ";" : added
         let length = (statement as NSString).length
+        // SQL Server needs a batch line: a CREATE PROCEDURE must start its batch, and one before would swallow the query.
+        let batchLine = databaseType == .mssql ? "GO\n" : ""
         // Appended, it would sit inside the string or comment the text leaves open, so it goes first instead.
         if endsInsideOpenSpan(text, grammar: grammar) {
             let start = NSRange(location: 0, length: 0)
             let target = NSRange(location: 0, length: length)
-            return Edit(range: start, text: statement + "\n\n", selection: selection(of: target, statement, grammar))
+            let inserted = statement + "\n" + batchLine + "\n"
+            return Edit(range: start, text: inserted, selection: selection(of: target, statement, grammar))
         }
         // On a line of its own, so a trailing line comment cannot swallow it.
         let closesLast = endsInOpenStatement(text, grammar: grammar) ? "\n;" : ""
-        let gap = closesLast.isEmpty && opensLine ? "\n" : "\n\n"
-        let lead = closesLast + gap
+        let lead: String
+        if batchLine.isEmpty {
+            lead = closesLast + (closesLast.isEmpty && opensLine ? "\n" : "\n\n")
+        } else {
+            lead = closesLast + (closesLast.isEmpty && opensLine ? "" : "\n") + batchLine + "\n"
+        }
         let target = NSRange(location: source.length + (lead as NSString).length, length: length)
         return Edit(range: end, text: lead + statement, selection: selection(of: target, statement, grammar))
     }

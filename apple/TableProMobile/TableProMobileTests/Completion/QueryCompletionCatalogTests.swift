@@ -389,6 +389,23 @@ struct QueryCompletionCatalogTests {
         #expect(await sessionSource.reads == ["customers"])
     }
 
+    @Test("a name the list does not hold, such as a temporary table, is read on the session when the catalog has none")
+    func temporaryTableReadsTheSession() async {
+        let catalogSource = CatalogColumnSource(["orders": [column("id")]])
+        let sessionSource = CatalogColumnSource(["scratch": [column("note")]])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders")], databaseType: .mysql, schema: nil,
+            readColumns: sessionSource.reader, readCatalogColumns: catalogSource.reader
+        )
+
+        let scratch = await catalog.columnCompletionItems(for: "scratch", schema: nil)
+        let orders = await catalog.columnCompletionItems(for: "orders", schema: nil)
+
+        #expect(labels(scratch) == ["note"])
+        #expect(labels(orders) == ["id"])
+        #expect(await sessionSource.reads == ["scratch"])
+    }
+
     @Test("a failed catalog read does not fall back to the session")
     func catalogFailureStays() async {
         let catalogSource = CatalogColumnSource(["orders": [column("id")]], failures: 1)

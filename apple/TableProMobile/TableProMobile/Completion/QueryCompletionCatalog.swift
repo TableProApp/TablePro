@@ -303,12 +303,14 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
 
         let generation = columnGeneration
         if let readCatalogColumns {
+            let listed = listedTable(named: key.table, schema: key.schema) != nil
             switch await read(key, with: readCatalogColumns, generation: generation) {
-            case .answered(let answer):
+            case .answered(let answer) where listed || !answer.isEmpty:
                 return answer
-            case .failed:
+            case .failed where listed:
                 return columns[key]?.columns ?? []
-            case .unavailable:
+            case .answered, .failed, .unavailable:
+                // A temporary table lives only on the session, the one place to read a name the list does not hold.
                 break
             }
         }
