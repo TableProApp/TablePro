@@ -498,7 +498,7 @@ final class ConnectionStorage {
     func duplicateConnection(_ connection: DatabaseConnection) -> DatabaseConnection? {
         let newId = UUID()
 
-        let duplicate = DatabaseConnection(
+        var duplicate = DatabaseConnection(
             id: newId,
             name: String(format: String(localized: "%@ (Copy)"), connection.name),
             host: connection.host,
@@ -531,6 +531,7 @@ final class ConnectionStorage {
             passwordSource: connection.passwordSource,
             additionalFields: connection.additionalFields.isEmpty ? nil : connection.additionalFields
         )
+        duplicate.sshRoute = connection.sshRoute
 
         var connections = loadConnections()
         let siblings = LibrarySorting.sorted(connections.filter { $0.groupId == connection.groupId }, mode: .manual)

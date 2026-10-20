@@ -41,7 +41,7 @@ enum ConnectionCoverageFixture {
         ]
         ssh.totpMode = .promptAtConnect
 
-        return DatabaseConnection(
+        var connection = DatabaseConnection(
             name: "Production",
             host: "db.example.com",
             port: 5_432,
@@ -77,6 +77,13 @@ enum ConnectionCoverageFixture {
             passwordSource: .env(variable: "PGPASSWORD"),
             additionalFields: ["schema": "public"]
         )
+        connection.sshRoute = PublishedSSHRoute(
+            publisher: UUID(),
+            input: ssh.publishedRouteInput,
+            hops: [PublishedSSHRoute.Hop(id: UUID(), alias: "jump", host: "10.0.0.2", port: 22, username: "hop")],
+            target: PublishedSSHRoute.Target(alias: "bastion", host: "10.0.0.3", port: 2_222, username: "deploy")
+        )
+        return connection
     }
 }
 

@@ -458,6 +458,7 @@ extension DatabaseConnection: Codable {
         case safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
         case redisDatabase, startupCommands, sortOrder, localOnly, isSample, isFavorite
         case passwordSource
+        case sshRoute
     }
 
     init(from decoder: Decoder) throws {
@@ -481,6 +482,7 @@ extension DatabaseConnection: Codable {
         }
         groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
         sshProfileId = try container.decodeIfPresent(UUID.self, forKey: .sshProfileId)
+        sshRoute = try container.decodeIfPresent(PublishedSSHRoute.self, forKey: .sshRoute)
         credentialMode = try container.decodeIfPresent(CredentialMode.self, forKey: .credentialMode) ?? .inline
         preferredSafeModeLevel = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) ?? .silent
         aiPolicy = try container.decodeIfPresent(AIConnectionPolicy.self, forKey: .aiPolicy)
@@ -534,6 +536,7 @@ extension DatabaseConnection: Codable {
         }
         try container.encodeIfPresent(groupId, forKey: .groupId)
         try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
+        try container.encodeIfPresent(sshRoute, forKey: .sshRoute)
         try container.encode(credentialMode, forKey: .credentialMode)
         try container.encode(sshTunnelMode, forKey: .sshTunnelMode)
         if case .inline = cloudflareTunnelMode {

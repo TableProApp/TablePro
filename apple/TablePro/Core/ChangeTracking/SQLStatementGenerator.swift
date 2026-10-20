@@ -382,7 +382,8 @@ struct SQLStatementGenerator {
                 let matched = rowMatchPolicy.matchExpression(
                     for: columnName, quoted: quoteIdentifierFn(columnName), value: value, databaseType: databaseType
                 )
-                terms.append(RowMatchTerm(matched: matched, value: value.isNull ? nil : value))
+                // Spelled out: a bare `nil` here is PluginCellValue's own nil literal, `.null`, which binds rather than reads IS NULL.
+                terms.append(RowMatchTerm(matched: matched, value: value.isNull ? Optional<PluginCellValue>.none : value))
             }
 
             guard !terms.isEmpty else { return nil }
