@@ -7,7 +7,7 @@ remote="${TABLEPRO_RC_REMOTE:-https://github.com/cozyGarage/BookiE.git}"
 version="${TABLEPRO_RC_VERSION:?Set TABLEPRO_RC_VERSION to the candidate package version}"
 release_date="${TABLEPRO_RC_DATE:?Set TABLEPRO_RC_DATE to the candidate release date (YYYY-MM-DD)}"
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-z]+[0-9]+)?$ ]]; then
-  echo "invalid candidate version: $version (use e.g. 0.1.1 or 0.1.1rc1)" >&2
+  echo "invalid candidate version: $version (use e.g. 0.2.0 or 0.2.0rc1)" >&2
   exit 1
 fi
 if [[ ! "$release_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || \
@@ -21,10 +21,13 @@ import sys
 import tomllib
 
 root = Path(sys.argv[1])
-versions = {
-    tomllib.loads((root / manifest).read_text())["package"]["version"]
-    for manifest in ("apps/linux/app/Cargo.toml", "crates/agentd/Cargo.toml")
-}
+def package_version(manifest):
+    version = tomllib.loads((root / manifest).read_text())["package"]["version"]
+    if isinstance(version, dict) and version.get("workspace") is True:
+        return tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
+    return version
+
+versions = {package_version(manifest) for manifest in ("apps/linux/app/Cargo.toml", "crates/agentd/Cargo.toml")}
 if len(versions) != 1:
     raise SystemExit("app and agentd package versions differ")
 print(versions.pop())

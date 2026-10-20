@@ -5,7 +5,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${DEB_OUT:-$ROOT/apps/linux/packaging/out}"
-VERSION="${DEB_VERSION:-0.1.5-1}"
+VERSION="${DEB_VERSION:-$(python3 "$ROOT/scripts/check-release-version.py" --print)-1}"
 ARCH="${DEB_ARCH:-amd64}"
 PKG_NAME="tablepro_${VERSION}_${ARCH}"
 mkdir -p "$OUT"

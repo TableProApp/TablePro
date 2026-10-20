@@ -17,8 +17,9 @@ def main():
         (root / "apps/linux/packaging/arch/PKGBUILD").write_text(
             "pkgname=bookie\ndepends=('gtk4')\nmakedepends=('rust')\ncheckdepends=('appstream')\n"
         )
-        (root / "apps/linux/app/Cargo.toml").write_text('[package]\nname = "tablepro-app"\nversion = "0.1.1"\n')
-        (root / "crates/agentd/Cargo.toml").write_text('[package]\nname = "tablepro-agentd"\nversion = "0.1.1"\n')
+        (root / "Cargo.toml").write_text('[workspace.package]\nversion = "0.1.1"\n')
+        (root / "apps/linux/app/Cargo.toml").write_text('[package]\nname = "tablepro-app"\nversion.workspace = true\n')
+        (root / "crates/agentd/Cargo.toml").write_text('[package]\nname = "tablepro-agentd"\nversion.workspace = true\n')
         shutil.copy(source / "scripts/build-arch-rc.sh", scripts)
         (scripts / "validate-arch-package.sh").write_text("#!/bin/sh\ntest -f \"$1\"\n")
         (scripts / "validate-arch-package.sh").chmod(0o755)

@@ -11,13 +11,15 @@ if [[ ! -f "$package" ]]; then
   exit 2
 fi
 
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+expected_version="${DEB_VERSION:-$(python3 "$root/scripts/check-release-version.py" --print)-1}"
 control="$(dpkg-deb -I "$package")"
 if ! grep -Eq '^[[:space:]]*Package: tablepro$' <<<"$control"; then
   echo "Debian package name must remain tablepro" >&2
   exit 1
 fi
-if ! grep -Eq '^[[:space:]]*Version: 0\.1\.5-1$' <<<"$control"; then
-  echo "Debian package version must be 0.1.5-1" >&2
+if [[ "$(dpkg-deb -f "$package" Version)" != "$expected_version" ]]; then
+  echo "Debian package version must be $expected_version" >&2
   exit 1
 fi
 

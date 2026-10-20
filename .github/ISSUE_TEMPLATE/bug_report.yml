@@ -67,7 +67,7 @@ body:
     id: tablepro_version
     attributes:
       label: BookiE version or commit
-      placeholder: "0.1.5 or commit SHA"
+      placeholder: "0.2.0 or commit SHA"
     validations:
       required: true
 

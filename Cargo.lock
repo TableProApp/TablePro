@@ -6272,7 +6272,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-app-services"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6299,7 +6299,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6320,7 +6320,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-driver-clickhouse"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6347,7 +6347,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-driver-duckdb"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6362,7 +6362,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-driver-mongodb"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6383,7 +6383,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-driver-mssql"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6403,7 +6403,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-driver-mysql"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6426,7 +6426,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-driver-postgres"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6451,7 +6451,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-driver-redis"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "redis",
@@ -6465,7 +6465,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-driver-sqlite"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6485,7 +6485,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-driver-tls-tests"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "secrecy",
  "tablepro-core",
@@ -6502,7 +6502,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-dump"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "secrecy",
  "tablepro-core",
@@ -6518,7 +6518,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-mcp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -6547,7 +6547,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-policy"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6577,7 +6577,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-release-tests"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "secrecy",
@@ -6596,7 +6596,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-ssh"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "libc",
@@ -6615,7 +6615,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-storage"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "argon2",
  "async-trait",
@@ -6642,7 +6642,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-transport"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "rustls",

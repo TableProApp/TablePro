@@ -23,6 +23,7 @@ members = [
     "crates/drivers/sqlite",
 ]
 [workspace.package]
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.98"
 license = "AGPL-3.0-or-later"
@@ -96,6 +97,7 @@ exclusions = [
     "ci/**",
     "scripts/check-ci-jobs.py",
     "scripts/tests/test_ci_workflow.py",
+    "scripts/tests/test_release_version.py",
     "scripts/tests/test_csv_import_chooser.py",
     "scripts/tests/test_change_contracts.py",
     "scripts/tests/test_check_crate_boundaries.py",

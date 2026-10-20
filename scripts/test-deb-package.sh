@@ -47,9 +47,11 @@ for base in "${images[@]}"; do
     echo keep > ~/.config/tablepro/connections.json
     echo keep > ~/.local/share/tablepro/history.db
     older=$deb
+    older_version=$(dpkg-deb -f "$older" Version)
+    newer_version="${older_version}+bookietest1"
     dpkg-deb -R "$older" /work/repack
-    sed -i "s/^Version: .*/Version: 0.1.5-2/" /work/repack/DEBIAN/control
-    newer=/work/out/tablepro_0.1.5-2_amd64.deb
+    sed -i "s/^Version: .*/Version: $newer_version/" /work/repack/DEBIAN/control
+    newer="/work/out/tablepro_${newer_version}_amd64.deb"
     dpkg-deb --root-owner-group --build /work/repack "$newer" >/dev/null
     installed_version() { dpkg-query -W -f="\${Version}" tablepro; }
     keeps_user_data() {
@@ -61,20 +63,20 @@ for base in "${images[@]}"; do
     apt-get install -y -qq --reinstall "$older" >/dev/null
     bash /src/scripts/check-installed-deb.sh
     apt-get install -y -qq "$newer" >/dev/null
-    test "$(installed_version)" = 0.1.5-2
+    test "$(installed_version)" = "$newer_version"
     bash /src/scripts/check-installed-deb.sh
     keeps_user_data
     apt-get install -y -qq --allow-downgrades "$older" >/dev/null
-    test "$(installed_version)" = 0.1.5-1
+    test "$(installed_version)" = "$older_version"
     bash /src/scripts/check-installed-deb.sh
     keeps_user_data
     if [ -n "${PREVIOUS_DEB_NAME:-}" ]; then
       apt-get purge -y -qq tablepro >/dev/null
       apt-get install -y -qq "/previous/$PREVIOUS_DEB_NAME" >/dev/null
-      test "$(installed_version)" = 0.1.5-1
+      test "$(installed_version)" = "$(dpkg-deb -f "/previous/$PREVIOUS_DEB_NAME" Version)"
       keeps_user_data
       apt-get install -y -qq "$newer" >/dev/null
-      test "$(installed_version)" = 0.1.5-2
+      test "$(installed_version)" = "$newer_version"
       bash /src/scripts/check-installed-deb.sh
       keeps_user_data
       echo "an upgrade from the released package keeps the user data"

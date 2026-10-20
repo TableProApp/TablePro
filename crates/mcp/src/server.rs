@@ -50,7 +50,7 @@ fn initialize_result(params: &JsonValue) -> Result<JsonValue, String> {
     Ok(json!({
         "protocolVersion": version,
         "capabilities": {"tools": {}},
-        "serverInfo": {"name": "tablepro", "version": "0.1.0"}
+        "serverInfo": {"name": "tablepro", "version": env!("CARGO_PKG_VERSION")}
     }))
 }
 
@@ -1063,6 +1063,7 @@ mod tests {
     fn the_advertised_protocol_revision_is_the_current_one() {
         let result = initialize_result(&json!({})).expect("no requested revision negotiates");
         assert_eq!(result["protocolVersion"], "2026-07-28");
+        assert_eq!(result["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
     }
 
     #[test]

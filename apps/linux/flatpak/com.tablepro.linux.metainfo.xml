@@ -48,6 +48,9 @@
   </keywords>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.2.0" type="development" date="2026-10-20">
+      <description><p>BookiE 0.2.0 development release for Linux, with governed database access, a native workspace, and headless MCP support.</p></description>
+    </release>
     <release version="0.1.5" date="2026-09-27">
       <description><p>Preserve exact values across the database drivers and exports: zero dates, negative and extended MySQL times, SQL Server time zone offsets, ClickHouse decimal scale and fractional seconds, PostgreSQL arrays and eras, and exact decimal parameters. CSV keeps empty text distinct from NULL.</p></description>
     </release>

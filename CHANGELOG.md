@@ -4,8 +4,7 @@
 
 - PostgreSQL query cancellation through PgBouncer without interrupting another client's work.
 
-Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the user-facing map for that development line since the last tagged package, [0.1.5](#015---2026-09-27). Compare: [`linux-v0.1.5...linux`](https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux). Entries stay here until the next tagged release.
-Source version **0.2.0** (`apps/linux/app/Cargo.toml`). This section is the user-facing map for the completed 0.2.0 delivery since the last tagged package, [0.1.5](#015---2026-09-27). Compare: [`linux-v0.1.5...linux`](https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux). Entries stay here until the next tagged release.
+Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). This section is the user-facing map for the completed 0.2.0 delivery since the last tagged package, [0.1.5](#015---2026-09-27). Compare: [`linux-v0.1.5...linux`](https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux). Entries stay here until the next tagged release.
 
 ### Added
 - Unsorted keyed table browsing can move backward through deep pages and jump to the last page using primary-key seeks while keeping rows in ascending key order.

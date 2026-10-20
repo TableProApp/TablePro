@@ -16,6 +16,15 @@ SPEC.loader.exec_module(TRANSLATIONS)
 
 
 class TranslationGenerationTests(unittest.TestCase):
+    def test_resolves_the_inherited_workspace_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "Cargo.toml").write_text('[workspace.package]\nversion = "0.2.0"\n')
+            manifest = root / "apps/linux/app/Cargo.toml"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text('[package]\nversion.workspace = true\n')
+            self.assertEqual(TRANSLATIONS.package_version(root), "0.2.0")
+
     def test_finds_qualified_calls_and_returns_sorted_paths(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

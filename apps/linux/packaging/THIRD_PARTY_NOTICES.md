@@ -10,21 +10,21 @@ Packages:
 
 - `tablepro-agentd 0.2.0`
 - `tablepro-app 0.2.0`
-- `tablepro-app-services 0.1.0`
-- `tablepro-core 0.1.0`
-- `tablepro-driver-clickhouse 0.1.0`
-- `tablepro-driver-mongodb 0.1.0`
-- `tablepro-driver-mssql 0.1.0`
-- `tablepro-driver-mysql 0.1.0`
-- `tablepro-driver-postgres 0.1.0`
-- `tablepro-driver-redis 0.1.0`
-- `tablepro-driver-sqlite 0.1.0`
-- `tablepro-dump 0.1.0`
-- `tablepro-mcp 0.1.0`
-- `tablepro-policy 0.1.0`
-- `tablepro-ssh 0.1.0`
-- `tablepro-storage 0.1.0`
-- `tablepro-transport 0.1.0`
+- `tablepro-app-services 0.2.0`
+- `tablepro-core 0.2.0`
+- `tablepro-driver-clickhouse 0.2.0`
+- `tablepro-driver-mongodb 0.2.0`
+- `tablepro-driver-mssql 0.2.0`
+- `tablepro-driver-mysql 0.2.0`
+- `tablepro-driver-postgres 0.2.0`
+- `tablepro-driver-redis 0.2.0`
+- `tablepro-driver-sqlite 0.2.0`
+- `tablepro-dump 0.2.0`
+- `tablepro-mcp 0.2.0`
+- `tablepro-policy 0.2.0`
+- `tablepro-ssh 0.2.0`
+- `tablepro-storage 0.2.0`
+- `tablepro-transport 0.2.0`
 
 ```text
 # License

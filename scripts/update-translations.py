@@ -54,7 +54,11 @@ def normalize_catalog(catalog):
 
 def package_version(root):
     manifest = tomllib.loads((root / "apps/linux/app/Cargo.toml").read_text(encoding="utf-8"))
-    return manifest["package"]["version"]
+    version = manifest["package"]["version"]
+    if isinstance(version, dict) and version.get("workspace") is True:
+        workspace = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
+        return workspace["workspace"]["package"]["version"]
+    return version
 
 
 def generate_catalog(root=ROOT):

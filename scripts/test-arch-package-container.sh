@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 released_url="${ARCH_RELEASED_URL:-https://github.com/cozyGarage/BookiE/releases/download/linux-v0.1.5/bookie-0.1.5-1-x86_64.pkg.tar.zst}"
-version="${ARCH_CANDIDATE_VERSION:-0.1.6}"
+version="${ARCH_CANDIDATE_VERSION:-$(python3 scripts/check-release-version.py --print)}"
 
 docker run --rm -v "$PWD:/src:ro" -e RELEASED_URL="$released_url" -e VERSION="$version" archlinux:latest bash -ceu '
   pacman -Syu --noconfirm --needed base-devel git rust pkgconf clang gettext sudo curl \
