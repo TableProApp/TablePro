@@ -14,7 +14,8 @@ import TableProPluginKit
 extension PluginMetadataRegistry {
     // The curated entry is a stub that answers before any plugin loads (84 PostgreSQL keywords against the plugin's
     // 559), so a variant takes the plugin's editor config and keeps only what the curated entry states on purpose:
-    // case-insensitive matching (Redshift) and the column types TiDB narrows and Databend replaces.
+    // case-insensitive matching (Redshift), the column types TiDB narrows and Databend replaces, and pagination,
+    // which Presto writes as a bare `LIMIT` where the Trino plugin pages with `OFFSET`/`FETCH`.
     // `SQLDialectDescriptor` is not `Equatable`, so each fact has a named adoption instead of a whole-value diff.
     static func adoptPluginEditorConfig(
         _ snapshot: inout PluginMetadataSnapshot,
@@ -35,15 +36,20 @@ extension PluginMetadataRegistry {
             )
         }
 
-        guard let curatedDialect,
-              let primaryDialect = curatedPrimary?.editor.sqlDialect,
-              curatedDialect.caseSensitivityStyle != primaryDialect.caseSensitivityStyle
-              || curatedDialect.caseFoldFunction != primaryDialect.caseFoldFunction
-        else { return }
-        snapshot.editor.sqlDialect = pluginDialect.withCaseSensitivityStyle(
-            curatedDialect.caseSensitivityStyle,
-            caseFoldFunction: curatedDialect.caseFoldFunction
-        )
+        guard let curatedDialect, let primaryDialect = curatedPrimary?.editor.sqlDialect else { return }
+        var dialect = pluginDialect
+        if curatedDialect.caseSensitivityStyle != primaryDialect.caseSensitivityStyle
+            || curatedDialect.caseFoldFunction != primaryDialect.caseFoldFunction {
+            dialect = dialect.withCaseSensitivityStyle(
+                curatedDialect.caseSensitivityStyle,
+                caseFoldFunction: curatedDialect.caseFoldFunction
+            )
+        }
+        if curatedDialect.paginationStyle != primaryDialect.paginationStyle
+            || curatedDialect.offsetFetchOrderBy != primaryDialect.offsetFetchOrderBy {
+            dialect = dialect.withPagination(of: curatedDialect)
+        }
+        snapshot.editor.sqlDialect = dialect
     }
 
     /// A plugin built before case-insensitive matching existed reports `.unsupported`,
@@ -108,5 +114,30 @@ extension PluginMetadataRegistry {
             && snapshot.supportsDatabaseSwitching
             && snapshot.capabilities.supportsSchemaSwitching
             && snapshot.schema.databaseGroupingStrategy == .bySchema
+    }
+}
+
+private extension SQLDialectDescriptor {
+    func withPagination(of source: SQLDialectDescriptor) -> SQLDialectDescriptor {
+        SQLDialectDescriptor(
+            identifierQuote: identifierQuote,
+            keywords: keywords,
+            functions: functions,
+            dataTypes: dataTypes,
+            tableOptions: tableOptions,
+            regexSyntax: regexSyntax,
+            booleanLiteralStyle: booleanLiteralStyle,
+            likeEscapeStyle: likeEscapeStyle,
+            paginationStyle: source.paginationStyle,
+            offsetFetchOrderBy: source.offsetFetchOrderBy,
+            requiresBackslashEscaping: requiresBackslashEscaping,
+            autoLimitStyle: autoLimitStyle,
+            caseSensitivityStyle: caseSensitivityStyle,
+            caseFoldFunction: caseFoldFunction,
+            operators: operators,
+            textCastTypeName: textCastTypeName,
+            functionNamesAreCaseInsensitive: functionNamesAreCaseInsensitive,
+            lexicalFeatures: lexicalFeatures
+        )
     }
 }

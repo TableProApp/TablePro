@@ -55,6 +55,18 @@ enum FileMenuBuilder {
                 String(localized: "Rename"),
                 action: #selector(WelcomeWindowController.renameConnectionListSelection(_:))
             ),
+            MenuItemFactory.item(
+                String(localized: "Copy Path"),
+                action: #selector(FavoritesNSOutlineView.copyPath(_:)),
+                shortcut: .copyPath,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Copy Relative Path"),
+                action: #selector(FavoritesNSOutlineView.copyRelativePath(_:)),
+                shortcut: .copyRelativePath,
+                keyboard: keyboard
+            ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Save"),

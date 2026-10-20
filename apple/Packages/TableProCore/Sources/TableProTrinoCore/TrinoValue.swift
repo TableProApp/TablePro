@@ -20,7 +20,21 @@ public enum TrinoValueDecoder {
             }
             return .text(json.scalarText ?? "")
         case .structured:
-            return .text(json.jsonText())
+            return .text(structuredText(json))
+        }
+    }
+
+    // Presto 0.299 sends array, map and row values as their JSON text rather than as JSON.
+    private static func structuredText(_ json: TrinoJSONValue) -> String {
+        guard case .string(let text) = json,
+              let parsed = try? JSONDecoder().decode(TrinoJSONValue.self, from: Data(text.utf8)) else {
+            return json.jsonText()
+        }
+        switch parsed {
+        case .array, .object:
+            return parsed.jsonText()
+        default:
+            return json.jsonText()
         }
     }
 }

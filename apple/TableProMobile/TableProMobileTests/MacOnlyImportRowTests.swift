@@ -39,7 +39,7 @@ struct MacOnlyImportRowTests {
         ImportSelection.defaults(for: preview).resolution(for: row.ref) != nil
     }
 
-    @Test("A Mac plugin type is recognized, preselected and marked Mac only", arguments: ["Elasticsearch", "SAP HANA", "Typesense", "PGlite"])
+    @Test("A Mac plugin type is recognized, preselected and marked Mac only", arguments: ["Elasticsearch", "SAP HANA", "Typesense", "PGlite", "Presto"])
     func macPluginTypeIsMarked(_ typeId: String) throws {
         let preview = try analyzed(type: typeId)
         let row = try #require(preview.connections.first)

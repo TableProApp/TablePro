@@ -290,4 +290,87 @@ struct LicensePresentationTests {
         #expect(failure.message == error.localizedDescription)
         #expect(failure.link == nil)
     }
+
+    // MARK: - What each plan includes
+
+    @Test("Without a license every plan is listed, lowest first, and nothing is marked included")
+    func noLicenseListsEveryPlan() {
+        let groups = LicensePresentation.featureGroups(status: .unlicensed, tier: .starter)
+        let tiers = groups.map { $0.tier }
+        let included = groups.map { $0.includedTier }
+        let access = groups.map { $0.access }
+
+        #expect(tiers == [.starter, .team])
+        #expect(included == [nil, .starter])
+        #expect(access == [.unlicensed, .unlicensed])
+    }
+
+    @Test("A Starter license includes the Starter plan and offers Team as an upgrade")
+    func starterLicenseOffersTheUpgrade() {
+        let groups = LicensePresentation.featureGroups(status: .active, tier: .starter)
+        let access = groups.map { $0.access }
+
+        #expect(access == [.available, .requiresUpgrade(.team)])
+    }
+
+    @Test("A Team license includes every plan")
+    func teamLicenseIncludesEveryPlan() {
+        let groups = LicensePresentation.featureGroups(status: .active, tier: .team)
+        let access = groups.map { $0.access }
+
+        #expect(access == [.available, .available])
+    }
+
+    @Test("A tier this build does not know yet includes every plan")
+    func unknownTierIncludesEveryPlan() {
+        let groups = LicensePresentation.featureGroups(status: .active, tier: .unknown("enterprise"))
+        let access = groups.map { $0.access }
+
+        #expect(access == [.available, .available])
+    }
+
+    @Test("A license that is not working marks nothing included and offers no upgrade")
+    func lapsedLicenseMarksNothing() {
+        let expected: [(LicenseStatus, ProFeatureAccess)] = [
+            (.expired, .expired),
+            (.validationFailed, .validationFailed),
+            (.suspended, .unlicensed),
+            (.deactivated, .unlicensed),
+        ]
+
+        for (status, access) in expected {
+            let groups = LicensePresentation.featureGroups(status: status, tier: .starter)
+            let resolved = groups.map { $0.access }
+            #expect(resolved == [access, access], "\(status.rawValue)")
+        }
+    }
+
+    @Test("Every paid feature is listed once, under the plan it requires")
+    func everyFeatureListedOnceUnderItsPlan() {
+        let groups = LicensePresentation.featureGroups(status: .unlicensed, tier: .starter)
+        let listed = groups.flatMap { $0.features }
+
+        #expect(listed.count == ProFeature.allCases.count)
+        #expect(Set(listed) == Set(ProFeature.allCases))
+        for group in groups {
+            let misplaced = group.features.filter { $0.requiredTier != group.tier }
+            #expect(misplaced.isEmpty, "\(misplaced) listed under \(group.tier.displayName)")
+        }
+    }
+
+    @Test("Plans follow tier order, not the order features are declared in")
+    func plansFollowTierOrder() {
+        let groups = LicensePresentation.featureGroups(
+            status: .unlicensed,
+            tier: .starter,
+            features: [.teamLibrary, .iCloudSync, .teamCatalog]
+        )
+        let tiers = groups.map { $0.tier }
+        let included = groups.map { $0.includedTier }
+        let teamFeatures = groups.last?.features
+
+        #expect(tiers == [.starter, .team])
+        #expect(included == [nil, .starter])
+        #expect(teamFeatures == [.teamLibrary, .teamCatalog])
+    }
 }

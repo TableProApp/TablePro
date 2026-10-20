@@ -152,6 +152,8 @@ struct DatabaseConnection: Identifiable, Hashable {
     static let connectTimeoutSecondsKey = "connectTimeoutSeconds"
     static let queryTimeoutSecondsKey = "queryTimeoutSeconds"
     static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
+    static let postDisconnectScriptKey = "postDisconnectScript"
+    static let scriptTimeoutSecondsKey = "scriptTimeoutSeconds"
 
     let id: UUID
     var name: String
@@ -251,6 +253,31 @@ struct DatabaseConnection: Identifiable, Hashable {
     var preConnectScript: String? {
         get { additionalFields["preConnectScript"]?.nilIfEmpty }
         set { additionalFields["preConnectScript"] = newValue ?? "" }
+    }
+
+    var postDisconnectScript: String? {
+        get { additionalFields[Self.postDisconnectScriptKey]?.nilIfEmpty }
+        set { additionalFields[Self.postDisconnectScriptKey] = newValue ?? "" }
+    }
+
+    var scriptTimeoutSeconds: Int? {
+        get {
+            guard let value = additionalFields[Self.scriptTimeoutSecondsKey].flatMap(Int.init),
+                  ConnectionScriptRunner.timeoutSecondsRange.contains(value)
+            else { return nil }
+            return value
+        }
+        set {
+            if let newValue, ConnectionScriptRunner.timeoutSecondsRange.contains(newValue) {
+                additionalFields[Self.scriptTimeoutSecondsKey] = String(newValue)
+            } else {
+                additionalFields.removeValue(forKey: Self.scriptTimeoutSecondsKey)
+            }
+        }
+    }
+
+    var effectiveScriptTimeoutSeconds: Int {
+        scriptTimeoutSeconds ?? ConnectionScriptRunner.defaultTimeoutSeconds
     }
 
     var connectTimeoutSeconds: Int? {
