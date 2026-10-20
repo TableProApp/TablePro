@@ -123,7 +123,7 @@ nonisolated extension DatabaseConnection {
             && isSample == other.isSample
     }
 
-    // A Preferred the Mac holds dials as Required here, so a change to that alone keeps the session.
+    // Compared as the driver dials, so a change that dials the same way keeps the session.
     private var sslDialed: DriverSSLConfiguration {
         DriverSSLConfiguration(sslEnabled: sslEnabled, configuration: sslConfiguration)
     }

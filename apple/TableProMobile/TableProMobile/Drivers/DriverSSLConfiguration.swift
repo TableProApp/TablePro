@@ -97,7 +97,7 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
     private var pluginMode: TableProPluginKit.SSLMode {
         switch mode {
         case .disable: return .disabled
-        case .require: return .required
+        case .require: return isPreferred ? .preferred : .required
         case .verifyCa: return .verifyCa
         case .verifyFull: return .verifyIdentity
         }

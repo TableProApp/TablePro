@@ -92,4 +92,10 @@ struct ClickHouseOnIOSTests {
             #expect(mapped.clientKeyPath == "/key.pem")
         }
     }
+
+    @Test("The Mac's Preferred reaches the plugin as Preferred, so the shared driver decides what it means")
+    func preferredMapsToPreferred() {
+        let ssl = DriverSSLConfiguration(mode: .require, isPreferred: true)
+        #expect(ssl.pluginConfiguration.mode == .preferred)
+    }
 }
