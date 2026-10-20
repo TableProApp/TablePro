@@ -238,7 +238,8 @@ public final class SQLContextAnalyzer {
         let path = "(\(quotedSegment)(?:\\.\(quotedSegment))*)"
         let alias = "(?:\\s+(?:AS\\s+)?(\(quotedSegment)))?"
         let patterns = [
-            "(?i)\\bJOIN\\s+\(path)\(alias)",
+            // MySQL's STRAIGHT_JOIN has no word boundary before JOIN.
+            "(?i)\\b(?:STRAIGHT_)?JOIN\\s+\(path)\(alias)",
             "(?i)\\bUPDATE\\s+\(path)\(alias)",
             "(?i)\\bINSERT\\s+INTO\\s+\(path)",
             "(?i)\\bCREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\w+\\s+ON\\s+\(path)"

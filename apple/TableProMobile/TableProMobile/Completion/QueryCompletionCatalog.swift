@@ -171,12 +171,14 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         if let known = schemaTables[key] { return known }
         if let pending = schemaTableReads[key] { return (try? await pending.value).flatMap { $0 } ?? [] }
         guard let readSchemaTables else { return [] }
+        let generation = columnGeneration
         let read = Task<[TableInfo]?, any Error> { try await readSchemaTables(schema) }
         schemaTableReads[key] = read
         defer { if schemaTableReads[key] == read { schemaTableReads[key] = nil } }
         do {
             guard let answer = try await read.value else { return [] }
-            schemaTables[key] = answer
+            // A run that ended during the read may have changed the schema, so the answer is not kept.
+            if generation == columnGeneration { schemaTables[key] = answer }
             return answer
         } catch {
             Self.logger.warning("Reading a schema's tables for completion failed: \(error.localizedDescription, privacy: .private)")

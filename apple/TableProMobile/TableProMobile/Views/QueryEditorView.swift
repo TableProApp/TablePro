@@ -83,8 +83,10 @@ struct QueryEditorView: View {
         let connectionId = connectionId
         let database = coordinator.supportsDatabaseSwitching ? coordinator.activeDatabase : ""
         let activeSchema = activeSchema
+        let coordinator = coordinator
         return { table, schema in
-            try await manager.readCatalog(for: connectionId, database: database) { driver in
+            guard await coordinator.catalogSeesSessionDDL else { return nil }
+            return try await manager.readCatalog(for: connectionId, database: database) { driver in
                 try await driver.fetchColumns(table: table, schema: schema ?? activeSchema)
             }
         }
@@ -95,9 +97,11 @@ struct QueryEditorView: View {
         let transactions = appState.sessionTransactions
         let connectionId = connectionId
         let database = coordinator.supportsDatabaseSwitching ? coordinator.activeDatabase : ""
+        let coordinator = coordinator
         return QueryCompletionController.schemaTableReader(
             catalog: { schema in
-                try await manager.readCatalog(for: connectionId, database: database) { driver in
+                guard await coordinator.catalogSeesSessionDDL else { return nil }
+                return try await manager.readCatalog(for: connectionId, database: database) { driver in
                     try await driver.fetchTables(schema: schema)
                 }
             },

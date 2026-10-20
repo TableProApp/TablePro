@@ -112,10 +112,14 @@ struct ConnectionCoordinatorCatalogTests {
         #expect(names(late) == ["orders"])
     }
 
-    @Test("With a transaction open, the reload reads the session, the one place its DDL shows")
+    @Test("With a PostgreSQL transaction open, the reload reads the session, the one place its DDL shows")
     func openTransactionReadsTheSession() async {
         let session = driver(tables: ["orders"])
-        let coordinator = await connected(session)
+        var postgres = connection
+        postgres.type = .postgresql
+        factory.queue(session)
+        let coordinator = ConnectionCoordinator(connection: postgres, appState: appState)
+        await coordinator.connect()
         session.scriptedTransactionState = .explicitTransaction
         await coordinator.refreshTransaction()
         factory.opensCatalogs = true
@@ -127,6 +131,22 @@ struct ConnectionCoordinatorCatalogTests {
 
         #expect(names(coordinator) == ["orders", "created_in_txn"])
         #expect(factory.dialed.count == 1)
+    }
+
+    @Test("On MySQL, whose DDL commits itself, a held transaction still reloads on the catalog connection")
+    func mysqlTransactionReadsTheCatalog() async {
+        let session = driver(tables: ["orders"])
+        let coordinator = await connected(session)
+        session.scriptedTransactionState = .implicitTransaction
+        await coordinator.refreshTransaction()
+        factory.opensCatalogs = true
+        factory.queue(driver(tables: ["orders", "invoices"]))
+
+        coordinator.noteCatalogChanged(.tables)
+        await coordinator.reloadChangedCatalog()
+
+        #expect(names(coordinator) == ["orders", "invoices"])
+        #expect(factory.dialed.count == 2)
     }
 
     @Test("A reload that would read a busy session waits until it is idle")

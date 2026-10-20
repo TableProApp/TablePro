@@ -430,6 +430,14 @@ final class ConnectionCoordinator {
         appState.sessionTransactions.hold(for: connection.id, on: session?.driver)
     }
 
+    // PostgreSQL, Redshift and SQL Server keep DDL inside the transaction that ran it, where only the session sees it.
+    var catalogSeesSessionDDL: Bool {
+        guard Self.transactionalDDLTypes.contains(connection.type) else { return true }
+        return transactionHold == nil
+    }
+
+    private static let transactionalDDLTypes: Set<DatabaseType> = [.postgresql, .redshift, .mssql]
+
     var transactionToken: SessionTransactionMonitor.HoldToken? {
         appState.sessionTransactions.token(for: connection.id, on: session?.driver)
     }
@@ -631,8 +639,8 @@ final class ConnectionCoordinator {
         let monitor = appState.sessionTransactions
 
         var snapshot: CatalogSnapshot?
-        // Only the session sees DDL its open transaction ran; elsewhere a read on it would replace ROW_COUNT().
-        if monitor.hold(for: connection.id, on: session.driver) == nil {
+        // On the session a read would replace ROW_COUNT() and the warnings, so it is only where the DDL is visible.
+        if catalogSeesSessionDDL {
             do {
                 snapshot = try await appState.connectionManager.readCatalog(for: connection.id, database: database) {
                     try await Self.readCatalog(kinds, schema: schema, from: $0)
