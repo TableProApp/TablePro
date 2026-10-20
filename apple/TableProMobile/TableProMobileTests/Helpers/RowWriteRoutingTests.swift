@@ -58,6 +58,21 @@ struct RowWriteRoutingTests {
         #expect(binary == nil)
     }
 
+    // With asterisk_include_materialized_columns a read holds MATERIALIZED values, which a save of their source changes.
+    @Test("Every-column identity leaves out generated columns, whose values follow their sources")
+    func everyColumnSkipsGeneratedColumns() {
+        let total = ColumnInfo(name: "total", typeName: "UInt64", ordinalPosition: 2, isGenerated: true)
+        let read = columns + [total]
+        let located = RowLocator.locate(
+            cells: [.text("1"), .text("signup"), .truncatedText(prefix: "9", totalBytes: 9_000, ref: nil)],
+            columns: read, columnDetails: read, identity: .everyColumn
+        )
+
+        #expect(located?.row == ["1", "signup"])
+        #expect(located?.columnNames(of: read) == ["id", "name"])
+        #expect(!RowLocator.canLocate(identity: .everyColumn, columns: [total], columnDetails: read))
+    }
+
     @Test("Key-column identity still needs a plain-text key, as before")
     func keyColumnsNeedTextKeys() {
         let located = RowLocator.locate(
