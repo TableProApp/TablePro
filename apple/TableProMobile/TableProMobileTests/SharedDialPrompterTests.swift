@@ -1,5 +1,6 @@
 import Foundation
 import TableProDatabase
+import TableProSSHTransport
 @testable import TableProMobile
 import Testing
 
@@ -49,5 +50,36 @@ struct SharedDialPrompterTests {
 
         #expect(await answer.value == false)
         #expect(second.current == nil)
+    }
+
+    @Test("A sign-in question the closing window was asked moves to the window still waiting, and a Cancel there ends it")
+    func challengeMovesToTheWaitingWindow() async throws {
+        let challenge = KeyboardInteractiveChallenge(
+            name: "",
+            instruction: "",
+            prompts: [KeyboardInteractivePrompt(text: "Verification code: ", echo: true)]
+        )
+        let starter = ConnectionPromptQueue()
+        let joiner = ConnectionPromptQueue()
+        let starterWindow = NSObject()
+        let joinerWindow = NSObject()
+        let shared = SharedDialPrompter()
+        shared.add(ObjectIdentifier(starterWindow), starter)
+        shared.add(ObjectIdentifier(joinerWindow), joiner)
+        #expect(shared.answersChallenges)
+
+        let answered = Task { await shared.answer(challenge) }
+        await waitForPrompt(on: starter)
+        starter.cancelAll()
+        shared.remove(ObjectIdentifier(starterWindow))
+        await waitForPrompt(on: joiner)
+        joiner.answer(try #require(joiner.current).id, accepted: true, typed: ["424242"])
+        #expect(await answered.value == ["424242"])
+
+        let cancelled = Task { await shared.answer(challenge) }
+        await waitForPrompt(on: joiner)
+        joiner.answer(try #require(joiner.current).id, accepted: false)
+        #expect(await cancelled.value == nil)
+        withExtendedLifetime(joinerWindow) {}
     }
 }

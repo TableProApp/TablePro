@@ -306,10 +306,10 @@ struct IOSConnectionExportServiceTests {
         let state = makeState()
         var ssh = SSHConfiguration(host: "db-1", username: "deploy", authMethod: .sshAgent)
         ssh.macAgentSocketPath = "~/.1password/agent.sock"
-        ssh.macTotpMode = "auto_generate"
-        ssh.macTotpAlgorithm = "SHA256"
-        ssh.macTotpDigits = 8
-        ssh.macTotpPeriod = 60
+        ssh.totpMode = "auto_generate"
+        ssh.totpAlgorithm = "SHA256"
+        ssh.totpDigits = 8
+        ssh.totpPeriod = 60
         ssh.macRemoteFilePath = "/srv/app.db"
         ssh.macRemoteFileAccess = "onServer"
         let connection = DatabaseConnection(
@@ -358,6 +358,35 @@ struct IOSConnectionExportServiceTests {
         let decrypted = try await ConnectionExportCrypto.decrypt(data: data, passphrase: "export-passphrase")
 
         #expect(try #require(String(data: decrypted, encoding: .utf8)).contains("profile-secret"))
+    }
+
+    @Test("An export with credentials carries the TOTP secret, and a plain export does not")
+    func exportCarriesTOTPSecret() async throws {
+        let store = MockSecureStore()
+        let state = makeState(secureStore: store)
+        var ssh = SSHConfiguration(host: "db-1", username: "deploy", authMethod: .keyboardInteractive)
+        ssh.totpMode = "auto_generate"
+        let connection = DatabaseConnection(name: "TOTP", type: .postgresql, host: "10.0.0.5", sshEnabled: true, sshConfiguration: ssh)
+        #expect(state.addConnection(connection))
+        store.seed("com.TablePro.totpsecret.\(connection.id.uuidString)", "JBSWY3DPEHPK3PXP")
+
+        let plain = try await IOSConnectionExportService.exportData(
+            connections: state.connections,
+            appState: state,
+            includeCredentials: false,
+            passphrase: nil
+        )
+        #expect(!(String(data: plain, encoding: .utf8) ?? "").contains("JBSWY3DPEHPK3PXP"))
+
+        let data = try await IOSConnectionExportService.exportData(
+            connections: state.connections,
+            appState: state,
+            includeCredentials: true,
+            passphrase: "export-passphrase"
+        )
+        let sealed = try await ConnectionBundleCodec.decode(data, passphrase: "export-passphrase")
+        let ref = try #require(sealed.connections.first?.ref)
+        #expect(sealed.credentials[ref]?.totpSecret == "JBSWY3DPEHPK3PXP")
     }
 
     @Test("Timeout overrides export explicitly and keep unrelated fields")

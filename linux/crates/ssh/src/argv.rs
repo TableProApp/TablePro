@@ -86,6 +86,8 @@ pub(crate) fn master_args(
             if let Some(path) = path {
                 args.push("-i".into());
                 args.push(path.as_os_str().to_owned());
+                // ssh offers the agent's other keys before a file-only key; MaxAuthTries can end the login first.
+                push_option(&mut args, "IdentitiesOnly=yes".into());
             }
         }
         SshAuth::Password { .. } => {
@@ -341,7 +343,7 @@ mod tests {
         );
         let joined = strings(&args).join(" ");
         assert!(
-            joined.contains(" -i /home/deploy/.ssh/id_ed25519 -- db-bastion"),
+            joined.contains(" -i /home/deploy/.ssh/id_ed25519 -o IdentitiesOnly=yes -- db-bastion"),
             "{joined}"
         );
 
@@ -357,6 +359,7 @@ mod tests {
             None,
         );
         assert!(!strings(&args).contains(&"-i"));
+        assert!(!strings(&args).contains(&"IdentitiesOnly=yes"));
     }
 
     #[test]

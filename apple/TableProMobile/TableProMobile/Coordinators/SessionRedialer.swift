@@ -2,6 +2,7 @@ import Foundation
 import os
 import TableProDatabase
 import TableProModels
+import TableProSSHTransport
 
 // Each scene has its own coordinator on the one shared session, so two windows coming back at once
 // would each dial, and the later attempt cancels the earlier one's.
@@ -124,5 +125,16 @@ final class SharedDialPrompter: ConnectionPrompter {
             guard let id = asker.id, !askers.contains(where: { $0.id == id }) else { return false }
         }
         return false
+    }
+
+    // Each window joins a dial with its own prompt queue, and a queue takes typed answers.
+    nonisolated var answersChallenges: Bool { true }
+
+    func answer(_ challenge: KeyboardInteractiveChallenge) async -> [String]? {
+        while let asker = askers.first(where: { $0.prompter.answersChallenges }) {
+            if let answers = await asker.prompter.answer(challenge) { return answers }
+            guard let id = asker.id, !askers.contains(where: { $0.id == id }) else { return nil }
+        }
+        return nil
     }
 }

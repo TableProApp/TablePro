@@ -8,6 +8,7 @@ import TableProConnectionLibrary
 import TableProImport
 import TableProPluginKit
 import TableProSSHConfig
+import TableProSSHTransport
 
 internal extension SSLMode {
     init(_ portable: PortableSSLMode) {

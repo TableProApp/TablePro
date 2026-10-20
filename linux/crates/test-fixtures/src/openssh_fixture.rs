@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 use crate::container_file::with_files;
 use crate::{
-    ContainerFile, ExecOutput, FixtureCredentials, FixtureError, FixtureImage, HostCertificate, SshAuthVariant,
-    TestNetwork,
+    ContainerFile, ExecOutput, FixtureCredentials, FixtureError, HostCertificate, OpenSshOptions, OpenSshVersion,
+    ServerVersion, SshAuthVariant, TestNetwork,
 };
 
 const USERNAME: &str = "tablepro";
@@ -22,6 +22,7 @@ const BANNER_RETRY: Duration = Duration::from_millis(250);
 pub struct OpenSshFixture {
     container: ContainerAsync<GenericImage>,
     variant: SshAuthVariant,
+    version: OpenSshVersion,
     host_certificate: Option<HostCertificate>,
     password: String,
     host: String,
@@ -35,23 +36,29 @@ impl OpenSshFixture {
     pub const CONTAINER_PORT: u16 = 2222;
 
     pub async fn start(variant: SshAuthVariant) -> Result<Self, FixtureError> {
-        Self::launch(variant, None).await
+        Self::start_with(variant, OpenSshOptions::selected()?, None).await
     }
 
     /// Start a server that reaches the network's other containers by
     /// alias. Each server gets its own alias, so a two-hop chain can put
     /// two of them on one network.
     pub async fn start_in(variant: SshAuthVariant, network: &TestNetwork) -> Result<Self, FixtureError> {
-        Self::launch(variant, Some(network)).await
+        Self::start_with(variant, OpenSshOptions::selected()?, Some(network)).await
     }
 
-    async fn launch(variant: SshAuthVariant, network: Option<&TestNetwork>) -> Result<Self, FixtureError> {
+    pub async fn start_with(
+        variant: SshAuthVariant,
+        options: OpenSshOptions,
+        network: Option<&TestNetwork>,
+    ) -> Result<Self, FixtureError> {
         let password = FixtureCredentials::generate_password();
         let host_certificate = match variant {
             SshAuthVariant::HostCertificate => Some(HostCertificate::generate().await?),
             SshAuthVariant::Password | SshAuthVariant::PublicKey(_) | SshAuthVariant::KeyboardInteractive => None,
         };
-        let mut request = FixtureImage::OPENSSH
+        let mut request = options
+            .version
+            .image()
             .generic()
             .with_exposed_port(Self::CONTAINER_PORT.tcp())
             .with_wait_for(WaitFor::message_on_stdout("[ls.io-init] done."))
@@ -64,7 +71,10 @@ impl OpenSshFixture {
         if let SshAuthVariant::PublicKey(key) = &variant {
             request = request.with_env_var("PUBLIC_KEY", key.public_key());
         }
-        let mut files = vec![ContainerFile::readable(Self::DROP_IN, Self::drop_in(&variant))];
+        let mut files = vec![ContainerFile::readable(
+            Self::DROP_IN,
+            Self::drop_in(&variant, &options),
+        )];
         if let Some(certificate) = &host_certificate {
             files.extend(certificate.files()?);
         }
@@ -82,6 +92,7 @@ impl OpenSshFixture {
         Ok(Self {
             container,
             variant,
+            version: options.version,
             host_certificate,
             password,
             host,
@@ -90,8 +101,10 @@ impl OpenSshFixture {
         })
     }
 
-    pub fn drop_in(variant: &SshAuthVariant) -> String {
-        let mut configuration = String::from("AllowTcpForwarding yes\n");
+    pub fn drop_in(variant: &SshAuthVariant, options: &OpenSshOptions) -> String {
+        // Every connection comes from one Docker gateway address, so a test's
+        // refused login must not lock out the next one.
+        let mut configuration = String::from("AllowTcpForwarding yes\nPerSourcePenalties no\n");
         match variant {
             SshAuthVariant::KeyboardInteractive => configuration.push_str(
                 "UsePAM yes\n\
@@ -104,6 +117,7 @@ impl OpenSshFixture {
             }
             SshAuthVariant::Password | SshAuthVariant::PublicKey(_) => {}
         }
+        configuration.push_str(&options.sshd_lines());
         configuration
     }
 
@@ -121,6 +135,10 @@ impl OpenSshFixture {
 
     pub fn variant(&self) -> &SshAuthVariant {
         &self.variant
+    }
+
+    pub fn version(&self) -> OpenSshVersion {
+        self.version
     }
 
     pub fn host_certificate(&self) -> Option<&HostCertificate> {
@@ -174,19 +192,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_variant_enables_tcp_forwarding_first() {
+    fn every_variant_enables_tcp_forwarding_first_and_the_options_last() {
         for variant in [
             SshAuthVariant::Password,
             SshAuthVariant::KeyboardInteractive,
             SshAuthVariant::HostCertificate,
         ] {
-            assert!(OpenSshFixture::drop_in(&variant).starts_with("AllowTcpForwarding yes\n"));
+            let drop_in = OpenSshFixture::drop_in(&variant, &OpenSshOptions::default().with_max_auth_tries(3));
+            assert!(drop_in.starts_with("AllowTcpForwarding yes\n"), "{drop_in}");
+            assert!(drop_in.ends_with("MaxAuthTries 3\n"), "{drop_in}");
         }
     }
 
     #[test]
     fn keyboard_interactive_turns_off_password_authentication() {
-        let drop_in = OpenSshFixture::drop_in(&SshAuthVariant::KeyboardInteractive);
+        let drop_in = OpenSshFixture::drop_in(&SshAuthVariant::KeyboardInteractive, &OpenSshOptions::default());
 
         assert!(drop_in.contains("UsePAM yes\n"));
         assert!(drop_in.contains("PasswordAuthentication no\n"));
@@ -202,6 +222,9 @@ mod tests {
             "ssh-keygen -q -s /tablepro/host_ca -h -I tablepro-test-host -n localhost,127.0.0.1 \
              /config/ssh_host_keys/ssh_host_ed25519_key.pub"
         ));
-        assert!(OpenSshFixture::drop_in(&SshAuthVariant::HostCertificate).contains(HostCertificate::CERTIFICATE));
+        assert!(
+            OpenSshFixture::drop_in(&SshAuthVariant::HostCertificate, &OpenSshOptions::default())
+                .contains(HostCertificate::CERTIFICATE)
+        );
     }
 }

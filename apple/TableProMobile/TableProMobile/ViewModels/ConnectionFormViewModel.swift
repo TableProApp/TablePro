@@ -47,9 +47,9 @@ final class ConnectionFormViewModel {
     var password = ""
     var database = ""
     var sslEnabled = false
-    var sslMode: SSLConfiguration.SSLMode = .disable
-    var mssqlSSLMode: SSLConfiguration.SSLMode = .disable
-    var oracleSSLMode: SSLConfiguration.SSLMode = .disable
+    var sslMode: SSLModeChoice = .disable
+    var mssqlSSLMode: SSLModeChoice = .disable
+    var oracleSSLMode: SSLModeChoice = .disable
 
     // Client certificates
     var certificateSummaries: [CertificateRole: String] = [:]
@@ -85,6 +85,13 @@ final class ConnectionFormViewModel {
     var sshKeyContent = ""
     var sshKeyPassphrase = ""
     var sshKeyInputMode: KeyInputMode = .file
+
+    // Two-factor sign-in, in the Mac's settings
+    var totpMode: TOTPMode = .none
+    var totpSecret = ""
+    var totpAlgorithm: TOTPAlgorithm = .sha1
+    var totpDigits = 6
+    var totpPeriod = 30
 
     // Jump hosts
     var jumpHosts: [JumpHostDraft] = []
@@ -150,12 +157,11 @@ final class ConnectionFormViewModel {
         username = conn.username
         database = conn.database
         sslEnabled = conn.sslEnabled
-        // Coerce verify modes to .require: the iOS driver encrypts without checking the certificate
-        // (DriverSSLConfiguration maps verify* to "require"). Matches what the driver actually does.
-        let storedMode = conn.sslConfiguration?.mode ?? .disable
+        let storedMode = conn.sslConfiguration.map { SSLModeChoice($0) } ?? (conn.sslEnabled ? .require : .disable)
+        // The iOS SQL Server driver checks no certificate, so a verify mode runs as Required.
         mssqlSSLMode = (storedMode == .verifyCa || storedMode == .verifyFull) ? .require : storedMode
         oracleSSLMode = storedMode
-        sslMode = conn.sslConfiguration?.mode ?? (conn.sslEnabled ? .require : .disable)
+        sslMode = storedMode
         oracleConnectionType = OracleConnectionOptions.identifierMode(from: conn.additionalFields)
         oracleServiceName = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] ?? ""
         oracleSID = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? ""
@@ -177,6 +183,10 @@ final class ConnectionFormViewModel {
                 sshKeyInputMode = .paste
             }
             jumpHosts = ssh.jumpHosts.map(JumpHostDraft.init(hop:))
+            totpMode = ssh.totpMode.flatMap(TOTPMode.init(rawValue:)) ?? .none
+            totpAlgorithm = ssh.totpAlgorithm.flatMap(TOTPAlgorithm.init(rawValue:)) ?? .sha1
+            totpDigits = ssh.totpDigits ?? 6
+            totpPeriod = ssh.totpPeriod ?? 30
             let typedHopIds = Set(ssh.jumpHosts.map(\.id))
             routeHops = (conn.sshRoute?.hops ?? [])
                 .filter { !typedHopIds.contains($0.id) }
@@ -222,10 +232,13 @@ final class ConnectionFormViewModel {
         return sshKeyContent
     }
 
+    // A Mac SSH profile owns its two-factor settings, as it owns the server.
+    var offersTwoFactor: Bool {
+        sshAuthMethod != .none && !sshFollowsMacProfile
+    }
+
     var sshAuthMethodNote: String? {
         switch sshAuthMethod {
-        case .keyboardInteractive:
-            String(localized: "Keyboard Interactive is set on the Mac and is not available on iPhone and iPad.")
         case .privateKey where existingConnection?.sshConfiguration?.authMethod == .sshAgent:
             String(localized: "Set to SSH Agent on the Mac. iPhone and iPad sign in with a private key.")
         default:
@@ -256,12 +269,30 @@ final class ConnectionFormViewModel {
         existingConnection?.sslConfiguration?.mode == .verifyCa
     }
 
+    static let oraclePreferredPlaintextMessage = String(
+        localized: "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database."
+    )
+
     var oracleSSLModeNote: String? {
-        guard type == .oracle, oracleSSLMode == .verifyCa else { return nil }
-        return DriverSSLConfiguration.oracleVerifyCaUnavailableMessage
+        guard type == .oracle else { return nil }
+        switch oracleSSLMode {
+        case .verifyCa: return DriverSSLConfiguration.oracleVerifyCaUnavailableMessage
+        case .preferred: return Self.oraclePreferredPlaintextMessage
+        case .disable, .require, .verifyFull: return nil
+        }
     }
 
-    private var effectiveSSLMode: SSLConfiguration.SSLMode? {
+    static let redisPreferredForcesTLSMessage = String(localized: """
+        Redis driver has no TLS fallback. Preferred and Required both force TLS. \
+        Use Required for Redis Cloud, Upstash, and AWS ElastiCache encrypted endpoints.
+        """)
+
+    var sslModeNote: String? {
+        guard type == .redis, sslMode == .preferred else { return nil }
+        return Self.redisPreferredForcesTLSMessage
+    }
+
+    private var effectiveSSLMode: SSLModeChoice? {
         switch type {
         case .sqlite, .duckdb: nil
         case .mssql: mssqlSSLMode
@@ -278,7 +309,13 @@ final class ConnectionFormViewModel {
             username: sshUsername,
             authMethod: sshAuthMethodToStore,
             privateKeyPath: sshKeyPath.isEmpty ? nil : sshKeyPath,
-            jumpHosts: jumpHosts.map(\.edit)
+            jumpHosts: jumpHosts.map(\.edit),
+            totp: ConnectionFormEdits.TOTPSettings(
+                mode: totpMode.rawValue,
+                algorithm: totpAlgorithm.rawValue,
+                digits: totpDigits,
+                period: totpPeriod
+            )
         )
     }
 
@@ -324,6 +361,10 @@ final class ConnectionFormViewModel {
             sshKeyContent = privateKey
             storedSecrets.privateKey = privateKey
             sshKeyInputMode = .paste
+        }
+        if let secret = Self.storedSecret(.totpSecret, for: conn.id, in: secureStore) {
+            totpSecret = secret
+            storedSecrets.totpSecret = secret
         }
         loadJumpHostCredentials(for: conn, in: secureStore)
         if let profileId = conn.sshProfileId {
@@ -534,6 +575,9 @@ final class ConnectionFormViewModel {
         }
         if let pastedPrivateKey {
             secrets[ConnectionSecretKind.sshPrivateKey.account(for: connectionId)] = pastedPrivateKey
+        }
+        if !totpSecret.isEmpty {
+            secrets[ConnectionSecretKind.totpSecret.account(for: connectionId)] = totpSecret
         }
         secrets.merge(sshProfileSecrets) { own, _ in own }
         let hopCredentials = jumpHostCredentials
@@ -749,6 +793,15 @@ final class ConnectionFormViewModel {
                 storedSecrets.sshKeyPassphrase = changed
             } catch {
                 Self.logger.error("Failed to store SSH key passphrase: \(error.localizedDescription, privacy: .public)")
+                storageFailed = true
+            }
+        }
+        if let changed = writes.totpSecret {
+            do {
+                try secureStore.store(changed, forKey: ConnectionSecretKind.totpSecret.account(for: connectionId))
+                storedSecrets.totpSecret = changed
+            } catch {
+                Self.logger.error("Failed to store TOTP secret: \(error.localizedDescription, privacy: .public)")
                 storageFailed = true
             }
         }

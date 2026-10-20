@@ -28,3 +28,13 @@ public enum TOTPAlgorithm: String, CaseIterable, Identifiable, Codable, Sendable
 
     public var id: String { rawValue }
 }
+
+public extension TOTPAlgorithm {
+    var toGeneratorAlgorithm: TOTPGenerator.Algorithm {
+        switch self {
+        case .sha1: return .sha1
+        case .sha256: return .sha256
+        case .sha512: return .sha512
+        }
+    }
+}

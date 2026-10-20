@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSSHTransport
 
 public enum SSHAuthMethod: String, CaseIterable, Identifiable, Codable, Sendable {
     case password = "Password"

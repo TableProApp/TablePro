@@ -69,6 +69,7 @@ struct ConnectionSecretsTests {
             "com.TablePro.keypassphrase.",
             "com.TablePro.sshkeydata.",
             "com.TablePro.jumphostkeys.",
+            "com.TablePro.totpsecret.",
             "com.TablePro.plugin.awsSecretAccessKey.",
             "com.TablePro.plugin.awsSessionToken.",
             "com.TablePro.plugin.gcpServiceAccountKey.",
@@ -132,6 +133,13 @@ struct ConnectionSecretsTests {
     @Test("The orphan sweep never takes jump host keys, which may be the only copy")
     func sweepSparesJumpHostKeys() {
         let account = ConnectionSecretKind.jumpHostKeys.account(for: UUID())
+
+        #expect(ConnectionSecretKind.orphanedAccounts([account], keeping: [UUID()]).isEmpty)
+    }
+
+    @Test("The orphan sweep never takes a TOTP secret, which may be the only copy")
+    func sweepSparesTOTPSecrets() {
+        let account = ConnectionSecretKind.totpSecret.account(for: UUID())
 
         #expect(ConnectionSecretKind.orphanedAccounts([account], keeping: [UUID()]).isEmpty)
     }

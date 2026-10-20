@@ -97,6 +97,7 @@ targets:
       # and cannot be, because a manifest cannot express the slice-dependent header path the
       # iOS xcframework needs. Both CLibSSH2 shims declare the same module and the same four
       # tablepro_* wrappers, so `import CLibSSH2` resolves on either platform.
+      - ../TablePro/Core/SSH/LibSSH2ChannelFree.swift
       - ../TablePro/Core/SSH/LibSSH2ChannelIO.swift
       - ../TablePro/Core/SSH/LibSSH2ForwardChannel.swift
       - ../TablePro/Core/SSH/LibSSH2JumpRelay.swift

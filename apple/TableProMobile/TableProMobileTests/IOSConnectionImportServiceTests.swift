@@ -501,11 +501,12 @@ struct IOSConnectionImportServiceTests {
     // The link makes this device send the Mac profile's password to whatever server the tunnel names.
     @Test("Replacing a profile-linked connection keeps the link only when the file names the same SSH server")
     func replaceKeepsTheProfileLinkOnlyForTheSameServer() async throws {
+        // Each case gets its own database host: a second connection on the same one would be the duplicate the file matches.
         for (host, keepsLink) in [("bastion.example.com", true), ("bastion.attacker.example", false)] {
             var existing = DatabaseConnection(
                 name: "Linked \(host)",
                 type: .postgresql,
-                host: "db.example.com",
+                host: "db.\(host)",
                 port: 5_432,
                 sshEnabled: true,
                 sshConfiguration: SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy", authMethod: .password)
@@ -577,6 +578,33 @@ struct IOSConnectionImportServiceTests {
         #expect(try store.retrieve(forKey: ConnectionSecretKind.password.account(for: id)) == "pw0")
         #expect(try store.retrieve(forKey: ConnectionSecretKind.sshPassword.account(for: id)) == "ssh0")
         #expect(try store.retrieve(forKey: ConnectionSecretKind.keyPassphrase.account(for: id)) == "key0")
+    }
+
+    @Test("An imported tunnel keeps its TOTP settings and restores the secret")
+    func importRestoresTOTP() async throws {
+        var builder = ConnectionBundleBuilder(appVersion: "Tests")
+        let tunnelSettings = settings(ssh: ExportableSSHConfig(
+            enabled: true, host: "bastion.example.com", port: 22, username: "deploy",
+            authMethod: "Keyboard Interactive", privateKeyPath: "", agentSocketPath: "", jumpHosts: nil,
+            totpMode: "auto_generate", totpAlgorithm: "SHA512", totpDigits: 8, totpPeriod: 60
+        ))
+        builder.addConnection(tunnelSettings, ref: "c1", credentials: ExportableCredentials(
+            password: nil, sshPassword: nil, keyPassphrase: nil,
+            sslClientKeyPassphrase: nil, totpSecret: "JBSWY3DPEHPK3PXP", pluginSecureFields: nil
+        ))
+        let sealed = try await ConnectionBundleCodec.encode(try builder.build(), passphrase: "correct horse")
+        let bundle = try await ConnectionBundleCodec.decode(sealed, passphrase: "correct horse")
+        let preview = try await IOSConnectionImportService.preview(of: bundle, fileName: "Tests.tablepro", appState: appState)
+
+        await apply(preview)
+
+        let imported = try #require(appState.connections.first)
+        #expect(imported.sshConfiguration?.authMethod == .keyboardInteractive)
+        #expect(imported.sshConfiguration?.totpMode == "auto_generate")
+        #expect(imported.sshConfiguration?.totpAlgorithm == "SHA512")
+        #expect(imported.sshConfiguration?.totpDigits == 8)
+        #expect(imported.sshConfiguration?.totpPeriod == 60)
+        #expect(try store.retrieve(forKey: ConnectionSecretKind.totpSecret.account(for: imported.id)) == "JBSWY3DPEHPK3PXP")
     }
 
     @Test("A connection the library refuses to save gets no Keychain item and is not counted")

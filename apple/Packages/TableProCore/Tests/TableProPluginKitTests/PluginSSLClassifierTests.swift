@@ -65,6 +65,24 @@ struct MariaDBClassifierTests {
         }
     }
 
+    @Test("A server without TLS refused under Required → serverRequiresPlaintext")
+    func serverWithoutTLS() {
+        let message = "TLS/SSL error: SSL is required, but the server does not support it"
+        guard case .serverRequiresPlaintext = MariaDBSSLClassifier.classifySSLError(code: 2_026, message: message) else {
+            Issue.record("Expected serverRequiresPlaintext")
+            return
+        }
+    }
+
+    @Test("A certificate for another name → hostnameMismatch")
+    func hostnameVerificationFailed() {
+        let message = "TLS/SSL error: Hostname verification failed"
+        guard case .hostnameMismatch = MariaDBSSLClassifier.classifySSLError(code: 2_026, message: message) else {
+            Issue.record("Expected hostnameMismatch")
+            return
+        }
+    }
+
     @Test("require_secure_transport → serverRejectedPlaintext")
     func testRequireSecureTransport() {
         let message = "Connections using insecure transport are prohibited while --require_secure_transport=ON"

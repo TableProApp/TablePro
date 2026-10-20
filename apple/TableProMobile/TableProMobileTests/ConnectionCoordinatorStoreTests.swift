@@ -88,8 +88,8 @@ struct ConnectionRedialTests {
         #expect(!verified.dialsTheSameWay(as: secured))
     }
 
-    @Test("The Mac's Preferred over a Required this device dials the same way keeps the session")
-    func macPreferredKeepsTheSession() {
+    @Test("The Mac's Preferred falls back to plaintext where Required refuses, so switching between them redials")
+    func macPreferredRedials() {
         var required = connection()
         required.sslEnabled = true
         required.sslConfiguration = SSLConfiguration(mode: .require)
@@ -97,7 +97,7 @@ struct ConnectionRedialTests {
         var preferred = required
         preferred.sslConfiguration = SSLConfiguration(mode: .require, isMacPreferred: true)
 
-        #expect(preferred.dialsTheSameWay(as: required))
+        #expect(!preferred.dialsTheSameWay(as: required))
     }
 }
 

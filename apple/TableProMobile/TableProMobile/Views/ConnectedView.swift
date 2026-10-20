@@ -90,6 +90,9 @@ struct ConnectedView: View {
                 Task { await coordinator?.reconnectIfNeeded() }
             }
         }
+        .onChange(of: appState.tunnelDeaths[connection.id]) {
+            Task { await coordinator?.reconnectIfNeeded() }
+        }
         .sensoryFeedback(.success, trigger: hapticSuccess)
         .sensoryFeedback(.error, trigger: hapticError)
     }

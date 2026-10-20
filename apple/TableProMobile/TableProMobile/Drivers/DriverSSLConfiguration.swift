@@ -9,6 +9,8 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
     let caCertificatePath: String?
     let clientCertificatePath: String?
     let clientKeyPath: String?
+    // The Mac's Preferred: TLS when the server offers it, plaintext when it does not.
+    let isPreferred: Bool
     // The name the certificate must carry when the dialed host is a tunnel's loopback.
     var serverName: String?
 
@@ -24,12 +26,14 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
         caCertificatePath: String? = nil,
         clientCertificatePath: String? = nil,
         clientKeyPath: String? = nil,
+        isPreferred: Bool = false,
         serverName: String? = nil
     ) {
         self.mode = mode
         self.caCertificatePath = caCertificatePath
         self.clientCertificatePath = clientCertificatePath
         self.clientKeyPath = clientKeyPath
+        self.isPreferred = isPreferred && mode == .require
         self.serverName = serverName
     }
 
@@ -39,12 +43,14 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
             caCertificatePath = nil
             clientCertificatePath = nil
             clientKeyPath = nil
+            isPreferred = false
             return
         }
         mode = configuration.mode
         caCertificatePath = configuration.caCertificatePath
         clientCertificatePath = configuration.clientCertificatePath
         clientKeyPath = configuration.clientKeyPath
+        isPreferred = configuration.isMacPreferred
     }
 
     func applying(_ materialized: MaterializedCertificates) -> DriverSSLConfiguration {
@@ -53,6 +59,7 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
             caCertificatePath: materialized.caCertificatePath ?? caCertificatePath,
             clientCertificatePath: materialized.clientCertificatePath ?? clientCertificatePath,
             clientKeyPath: materialized.clientKeyPath ?? clientKeyPath,
+            isPreferred: isPreferred,
             serverName: serverName
         )
     }
@@ -64,7 +71,7 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
     var postgresSSLMode: String {
         switch mode {
         case .disable: return "disable"
-        case .require: return "require"
+        case .require: return isPreferred ? "prefer" : "require"
         case .verifyCa: return "verify-ca"
         case .verifyFull: return "verify-full"
         }
@@ -73,7 +80,8 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
     var mssqlEncryptionLevel: MSSQLEncryptionLevel {
         switch mode {
         case .disable: return .request
-        case .require, .verifyCa, .verifyFull: return .require
+        case .require: return isPreferred ? .request : .require
+        case .verifyCa, .verifyFull: return .require
         }
     }
 
@@ -89,7 +97,7 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
     private var pluginMode: TableProPluginKit.SSLMode {
         switch mode {
         case .disable: return .disabled
-        case .require: return .required
+        case .require: return isPreferred ? .preferred : .required
         case .verifyCa: return .verifyCa
         case .verifyFull: return .verifyIdentity
         }
@@ -100,14 +108,16 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
             mode: oracleMode,
             caCertificatePath: caCertificatePath,
             clientCertificatePath: clientCertificatePath,
-            clientKeyPath: clientKeyPath
+            clientKeyPath: clientKeyPath,
+            serverName: serverName
         )
     }
 
+    // OracleNIO has no TLS-or-plaintext mode, so Preferred dials plain TCP as on the Mac.
     private var oracleMode: OracleTLSDescription.Mode {
         switch mode {
         case .disable: return .disabled
-        case .require: return .required
+        case .require: return isPreferred ? .disabled : .required
         case .verifyCa: return .verifyCA
         case .verifyFull: return .verifyIdentity
         }
