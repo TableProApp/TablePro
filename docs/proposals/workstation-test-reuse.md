@@ -32,7 +32,7 @@ The follow-up prerequisite check found `xvfb-run` and the Python `pyatspi` modul
 omarchy pkg add xorg-server-xvfb python-atspi
 ```
 
-The maintainer installed both packages, and the follow-up check confirmed `xvfb-run` resolves and `import pyatspi` succeeds. This verifies prerequisites, not GTK runtime acceptance. Rust, nextest, sccache, Docker/buildx, mold and Clang are already present; installing another copy does not improve artifact reuse. Configure and measure the cache strategy below instead.
+The maintainer installed both packages, and the follow-up check confirmed `xvfb-run` resolves and `import pyatspi` succeeds. The native Arch GTK widget tier then passed all 76 isolated cases under Xvfb. Its first invocation built the app test binary in 47.18 seconds; later Cargo invocations reported 0.22 seconds and reused it. Mesa printed a DRI3 acceleration warning under Xvfb, but no widget test failed. `python-atspi` is available for the separate installed-app accessibility tier; this widget run does not exercise that tier. Rust, nextest, sccache, Docker/buildx, mold and Clang are already present; installing another copy does not improve artifact reuse. Configure and measure the cache strategy below instead.
 
 ## Cache and artifact policy
 

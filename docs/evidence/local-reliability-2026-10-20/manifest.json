@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-20",
+  "source_commit": "c5eeb220f090e7638af00babd3f87d88ad8026d3",
+  "scope": "Local agentd forwarding regressions, exact no-op mutation checks and existing PostgreSQL recovery cases. Not Forgejo or release acceptance.",
+  "environment": {
+    "rustc": "1.98.1",
+    "nextest": "0.9.148",
+    "cargo_build_jobs": 6,
+    "focused_agentd_test_threads": 4,
+    "postgres_test_threads": 1,
+    "target_policy": "Existing persistent warm Cargo target; no clean; local incremental configuration retained"
+  },
+  "agentd": {
+    "unit_tests_passed": 24,
+    "ordinary_noop_mutation": {
+      "exit_code": 100,
+      "focused_tests_failed": 2
+    },
+    "controlled_noop_mutation": {
+      "exit_code": 100,
+      "focused_tests_failed": 2
+    },
+    "restored_unit_tests_passed": 24,
+    "production_source_restored": true
+  },
+  "preflight": {
+    "exit_code": 0,
+    "script_harness_tests_passed": 280,
+    "unit_tests_passed": 1821,
+    "sandbox_tests_passed": 1796,
+    "redis_cancellation_tests_passed": 1
+  },
+  "postgres": {
+    "fixture_image": "postgres:16-alpine",
+    "fixture_digest": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+    "tests": [
+      {
+        "selector": "disconnection::a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect",
+        "status": "passed",
+        "seconds": 6.943
+      },
+      {
+        "selector": "disconnection::a_restarted_postgres_server_restores_the_existing_pool",
+        "status": "passed",
+        "seconds": 12.348
+      },
+      {
+        "selector": "disconnection::controlled_cancel_stops_server_query_and_keeps_pool_usable",
+        "status": "passed",
+        "seconds": 1.295
+      }
+    ],
+    "summary_seconds": 20.587,
+    "other_tests_skipped": 282,
+    "containers_remaining": 0
+  },
+  "limits": [
+    "Existing PostgreSQL cases were selected, not the complete driver tier",
+    "No GTK suite, package build or Forgejo run was performed",
+    "No physical NVMe write delta or sccache hit-rate claim"
+  ]
+}
