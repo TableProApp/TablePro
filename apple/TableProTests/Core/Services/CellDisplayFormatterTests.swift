@@ -251,3 +251,22 @@ struct CellDisplayFormatterTests {
         }
     }
 }
+
+@MainActor
+struct CellDisplayFormatterVectorTests {
+    @Test("A vector cell draws its first elements and dimension count, not the whole literal")
+    func vectorSummary() {
+        let literal = "[" + (1...1_536).map { "0.\($0)" }.joined(separator: ",") + "]"
+        let result = CellDisplayFormatter.format(.text(literal), columnType: .vector(rawType: "vector(1536)"))
+        #expect(result == "[0.1, 0.2, 0.3, …] 1536 dims")
+    }
+
+    @Test("A display format left from the column's text days keeps the summary, and unreadable text its own display")
+    func formatAndUnreadable() {
+        let vector = ColumnType.vector(rawType: "vector(3)")
+        #expect(CellDisplayFormatter.format(.text("[1,2,3]"), columnType: vector, displayFormat: .raw) == "[1, 2, 3] 3 dims")
+        #expect(CellDisplayFormatter.format(.text("[1,2,3]"), columnType: vector, displayFormat: .json) == "[1, 2, 3] 3 dims")
+        #expect(CellDisplayFormatter.format(.text("not a vector"), columnType: vector) == "not a vector")
+        #expect(CellDisplayFormatter.format(.text("[1,2,3]"), columnType: .text(rawType: "text")) == "[1,2,3]")
+    }
+}

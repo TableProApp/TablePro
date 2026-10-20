@@ -37,6 +37,10 @@ internal enum FieldEditorResolver {
         displayFormatOverride: ValueDisplayFormat? = nil,
         isBinaryValue: Bool = false
     ) -> FieldEditorKind {
+        // Ahead of the display format, as in the grid: a vector column offers none to choose.
+        if type.isVectorType, let originalValue, VectorLiteral.isVectorText(originalValue) {
+            return .vector
+        }
         let structuredAllowed: Bool
         if let override = displayFormatOverride {
             switch override {
@@ -134,7 +138,7 @@ internal enum FieldEditorResolver {
         case .json:
             guard let originalValue, isGeoJSON(originalValue) else { return nil }
             return .geometry(GeometryFieldDescriptor(textEditor: .json, source: .jsonColumn))
-        case .text, .integer, .decimal, .date, .timestamp, .datetime, .boolean, .blob, .enumType, .set, .array:
+        case .text, .integer, .decimal, .date, .timestamp, .datetime, .boolean, .blob, .enumType, .set, .vector, .array:
             return nil
         }
     }

@@ -107,7 +107,7 @@ internal enum ValueComparisonKind: Hashable, Sendable {
             self = .numeric
         case .date, .timestamp, .datetime:
             self = .temporal
-        case .text, .boolean, .blob, .json, .enumType, .set, .spatial, .array:
+        case .text, .boolean, .blob, .json, .enumType, .set, .spatial, .vector, .array:
             self = .other
         }
     }

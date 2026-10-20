@@ -1243,27 +1243,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
                     if status == PGRES_SINGLE_TUPLE {
                         if !headerSent {
-                            let numFields = Int(PQnfields(result))
-                            var columns: [String] = []
-                            var columnTypeNames: [String] = []
-                            columns.reserveCapacity(numFields)
-                            columnOids.reserveCapacity(numFields)
-                            columnTypeNames.reserveCapacity(numFields)
-
-                            for i in 0..<numFields {
-                                if let namePtr = PQfname(result, Int32(i)) {
-                                    columns.append(String(cString: namePtr))
-                                } else {
-                                    columns.append("column_\(i)")
-                                }
-                                let oid = UInt32(PQftype(result, Int32(i)))
-                                columnOids.append(oid)
-                                columnTypeNames.append(typeNames.name(for: oid))
-                            }
+                            let metadata = readColumnMetadata(from: result)
+                            columnOids = metadata.columnOids
 
                             continuation.yield(.header(PluginStreamHeader(
-                                columns: columns,
-                                columnTypeNames: columnTypeNames,
+                                columns: metadata.columns,
+                                columnTypeNames: metadata.columnTypeNames,
                                 estimatedRowCount: nil
                             )))
                             headerSent = true

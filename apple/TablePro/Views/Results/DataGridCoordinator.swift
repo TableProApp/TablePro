@@ -1280,7 +1280,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         for i in 0..<columns.count {
             let name = columns[i]
             let columnType = i < types.count ? types[i] : nil
-            if columnType?.supportsElementEditing == true {
+            if columnType?.supportsElementEditing == true || columnType?.isVectorType == true {
                 enumSet.insert(i)
             } else if let values = enumValues[name], !values.isEmpty {
                 let isExcluded = columnType?.isJsonType == true

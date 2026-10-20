@@ -44,6 +44,8 @@ enum CellDisplayFormatter {
                     ) {
                         displayValue = formatted
                     }
+                } else if columnType.isVectorType {
+                    displayValue = VectorLiteral.summary(of: displayValue) ?? displayValue
                 } else if BlobFormattingService.shared.requiresFormatting(columnType: columnType) {
                     displayValue = BlobFormattingService.shared.formatIfNeeded(
                         displayValue, columnType: columnType, for: .grid

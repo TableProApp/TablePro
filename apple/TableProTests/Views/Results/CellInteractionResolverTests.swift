@@ -410,3 +410,39 @@ struct CellInteractionResolverImageTests {
         #expect(resolver.resolve(context) == .blocked)
     }
 }
+
+struct CellInteractionResolverVectorTests {
+    private let resolver = CellInteractionResolver()
+    private let vector = ColumnType.vector(rawType: "vector(3)")
+
+    @Test("A vector opens the vector viewer, editable where the cell is")
+    func vectorOpensViewer() {
+        #expect(resolver.resolve(ContextFactory.make(value: "[1,2,3]", columnType: vector, isTableEditable: true)) == .editVector)
+        #expect(resolver.resolve(ContextFactory.make(value: "[1,2,3]", columnType: vector)) == .viewVector)
+        #expect(
+            resolver.resolve(ContextFactory.make(value: "{1:2}/3", columnType: .vector(rawType: "sparsevec(3)"))) == .viewVector
+        )
+    }
+
+    @Test("NULL and text the viewer cannot list keep the text editor")
+    func unreadableValueKeepsTextEditor() {
+        #expect(resolver.resolve(ContextFactory.make(value: nil, columnType: vector, isTableEditable: true)) == .editInline(value: ""))
+        #expect(
+            resolver.resolve(ContextFactory.make(value: "oops", columnType: vector, isTableEditable: true)) == .editInline(value: "oops")
+        )
+    }
+
+    @Test("A display format left from the column's text days does not take the viewer away")
+    func staleFormatIgnored() {
+        let context = ContextFactory.make(
+            value: "[1,2,3]", columnType: vector, isTableEditable: true, displayFormatOverride: .json
+        )
+        #expect(resolver.resolve(context) == .editVector)
+    }
+
+    @Test("A bracketed value in a column that is no vector keeps the text editor")
+    func textColumnUnchanged() {
+        let context = ContextFactory.make(value: "[1,2,3]", columnType: .text(rawType: "text"), isTableEditable: true)
+        #expect(resolver.resolve(context) == .editInline(value: "[1,2,3]"))
+    }
+}
