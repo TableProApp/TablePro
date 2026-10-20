@@ -49,6 +49,9 @@ internal enum ConnectionFailureClassifier {
         if error is LoadableExtensionError {
             return canEditConnection ? .editConnection : nil
         }
+        if error is LocalNetworkAccessError {
+            return .openLocalNetworkSettings
+        }
         guard let pluginError = error as? PluginError else { return nil }
         switch pluginError {
         case .pluginNotInstalled:
@@ -75,6 +78,14 @@ internal enum ConnectionFailureClassifier {
     internal static func info(for error: Error) -> ConnectionFailureInfo {
         if error is SSLHandshakeError {
             return ConnectionFailureInfo(message: SSLHandshakeError.formatted(error))
+        }
+        if let refusal = error as? LocalNetworkAccessError {
+            return ConnectionFailureInfo(
+                title: String(localized: "Local Network Access Required"),
+                message: refusal.errorDescription ?? "",
+                recoverySuggestion: refusal.recoverySuggestion,
+                details: info(for: refusal.underlying).lines.joined(separator: "\n")
+            )
         }
         let nsError = error as NSError
         return ConnectionFailureInfo(

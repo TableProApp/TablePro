@@ -84,14 +84,7 @@ internal struct ConnectionUnavailableView: View {
     }
 
     private var headline: String {
-        switch reason {
-        case .notConnected, .cancelled:
-            return String(format: String(localized: "Not connected to %@"), connection.name)
-        case .disconnected, .disconnectedByUser:
-            return String(format: String(localized: "Disconnected from %@"), connection.name)
-        case .failed, .actionRequired:
-            return String(format: String(localized: "Could not connect to %@"), connection.name)
-        }
+        Self.headline(for: reason, connectionName: connection.name)
     }
 
     private var detailLines: [String] {
@@ -99,7 +92,7 @@ internal struct ConnectionUnavailableView: View {
             if case .disconnected = reason { return [String(localized: "The connection was closed.")] }
             return []
         }
-        return lines(from: failureInfo)
+        return failureInfo.lines
     }
 
     private var failureInfo: ConnectionFailureInfo? {
@@ -117,15 +110,20 @@ internal struct ConnectionUnavailableView: View {
     /// clipboard verbatim alongside enough context to identify the connection.
     private var copyableDetails: String? {
         guard let failureInfo else { return nil }
-        return ([headline, connection.connectionSubtitle] + lines(from: failureInfo))
+        return ([headline, connection.connectionSubtitle] + failureInfo.lines + [failureInfo.details ?? ""])
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
     }
 
-    private func lines(from info: ConnectionFailureInfo) -> [String] {
-        [info.message, info.failureReason, info.recoverySuggestion]
-            .compactMap { $0 }
-            .filter { !$0.isEmpty }
+    internal static func headline(for reason: ConnectionUnavailableReason, connectionName: String) -> String {
+        switch reason {
+        case .notConnected, .cancelled:
+            return String(format: String(localized: "Not connected to %@"), connectionName)
+        case .disconnected, .disconnectedByUser:
+            return String(format: String(localized: "Disconnected from %@"), connectionName)
+        case .failed(let info), .actionRequired(let info, _):
+            return info.title ?? String(format: String(localized: "Could not connect to %@"), connectionName)
+        }
     }
 
     internal static func primaryActionTitle(for reason: ConnectionUnavailableReason) -> String {

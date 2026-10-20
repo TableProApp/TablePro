@@ -21,6 +21,7 @@ final class DatabaseManager: ObservableObject {
     internal let pluginManager: PluginManager
     internal let aiAccessApprovals: AIAccessApprovals
     internal let preConnectScriptConsent: PreConnectScriptConsent
+    internal let localNetworkProbe: any LocalNetworkAccessProbing
     internal var historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
 
     /// Passwords the user has been asked for this launch, keyed by whatever answers for them: the
@@ -179,13 +180,15 @@ final class DatabaseManager: ObservableObject {
         appSettingsStorage: AppSettingsStorage = .shared,
         pluginManager: PluginManager = .shared,
         aiAccessApprovals: AIAccessApprovals = .shared,
-        preConnectScriptConsent: PreConnectScriptConsent = PreConnectScriptConsent()
+        preConnectScriptConsent: PreConnectScriptConsent = PreConnectScriptConsent(),
+        localNetworkProbe: any LocalNetworkAccessProbing = NetworkFrameworkLocalNetworkProbe()
     ) {
         self.connectionStorage = connectionStorage
         self.appSettingsStorage = appSettingsStorage
         self.pluginManager = pluginManager
         self.aiAccessApprovals = aiAccessApprovals
         self.preConnectScriptConsent = preConnectScriptConsent
+        self.localNetworkProbe = localNetworkProbe
         observeConnectionUpdates()
         observeHealthCheckSetting()
     }

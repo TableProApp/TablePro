@@ -103355,6 +103355,9 @@
         }
       }
     },
+    "Local Network Access Required" : {
+
+    },
     "Local Secondary Indexes" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -176594,6 +176597,18 @@
         }
       }
     },
+    "TablePro does not have Local Network access, so it cannot reach the SOCKS proxy at %@." : {
+
+    },
+    "TablePro does not have Local Network access, so it cannot reach the SSH jump host at %@." : {
+
+    },
+    "TablePro does not have Local Network access, so it cannot reach the SSH server at %@." : {
+
+    },
+    "TablePro does not have Local Network access, so it cannot reach the database at %@." : {
+
+    },
     "TablePro does not run a pre-connect script on its own." : {
 
     },
@@ -200093,6 +200108,9 @@
           }
         }
       }
+    },
+    "Turn on TablePro in System Settings > Privacy & Security > Local Network, then try again." : {
+
     },
     "Turn one table's structure into a runnable checklist of data quality queries" : {
       "localizations" : {
