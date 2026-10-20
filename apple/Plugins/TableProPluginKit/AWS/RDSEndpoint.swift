@@ -1,13 +1,8 @@
-//
-//  RDSEndpoint.swift
-//  TablePro
-//
-
 import Foundation
 
 enum RDSEndpoint {
     static func region(forHost host: String) -> String? {
-        let parts = host.split(separator: ".").map(String.init)
+        let parts = host.lowercased().split(separator: ".").map(String.init)
         guard let rdsIndex = parts.firstIndex(of: "rds"),
               rdsIndex > 0,
               parts.count > rdsIndex + 1,

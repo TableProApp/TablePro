@@ -7,6 +7,10 @@ nonisolated enum ConnectionSecretKind: CaseIterable, Sendable {
     case sshPrivateKey
     case jumpHostKeys
     case totpSecret
+    case awsSecretAccessKey
+    case awsSessionToken
+    case gcpServiceAccountKey
+    case deviceIAM
 
     var prefix: String {
         switch self {
@@ -16,18 +20,32 @@ nonisolated enum ConnectionSecretKind: CaseIterable, Sendable {
         case .sshPrivateKey: "com.TablePro.sshkeydata."
         case .jumpHostKeys: "com.TablePro.jumphostkeys."
         case .totpSecret: "com.TablePro.totpsecret."
+        case .awsSecretAccessKey: "com.TablePro.plugin.awsSecretAccessKey."
+        case .awsSessionToken: "com.TablePro.plugin.awsSessionToken."
+        case .gcpServiceAccountKey: "com.TablePro.plugin.gcpServiceAccountKey."
+        case .deviceIAM: "com.TablePro.deviceiam."
         }
     }
 
     var isSweptWhenOrphaned: Bool {
         switch self {
-        case .password, .sshPassword, .keyPassphrase: true
+        case .password, .sshPassword, .keyPassphrase,
+             .awsSecretAccessKey, .awsSessionToken, .gcpServiceAccountKey, .deviceIAM: true
         case .sshPrivateKey, .jumpHostKeys, .totpSecret: false
         }
     }
 
+    // A key added for this device only must never reach the Mac's copy of the connection.
+    var isDeviceOnly: Bool {
+        self == .deviceIAM
+    }
+
     func account(for connectionId: UUID) -> String {
         prefix + connectionId.uuidString
+    }
+
+    static func isDeviceOnly(account: String) -> Bool {
+        allCases.contains { $0.isDeviceOnly && account.hasPrefix($0.prefix) }
     }
 
     static func sweptConnectionId(inAccount account: String) -> UUID? {

@@ -1,14 +1,4 @@
-//
-//  RDSAuthTokenGenerator.swift
-//  TablePro
-//
-//  Builds an RDS IAM authentication token: a SigV4 presigned GET URL for the
-//  rds-db connect action, with the scheme stripped. The token is used as the
-//  database password and is valid for 15 minutes.
-//
-
 import Foundation
-import TableProPluginKit
 
 enum RDSAuthTokenGenerator {
     private static let service = "rds-db"
@@ -52,7 +42,9 @@ enum RDSAuthTokenGenerator {
             .map { "\($0.0)=\($0.1)" }
             .joined(separator: "&")
 
-        let canonicalHeaders = "host:\(host):\(port)\n"
+        // RDS checks the signature against its own endpoint name, which is lowercase.
+        let signedHost = host.lowercased()
+        let canonicalHeaders = "host:\(signedHost):\(port)\n"
         let signedHeaders = "host"
         let payloadHash = AWSSigV4.sha256Hex(Data())
 
@@ -80,7 +72,7 @@ enum RDSAuthTokenGenerator {
         )
         let signature = AWSSigV4.hmacHex(key: signingKey, data: Data(stringToSign.utf8))
 
-        let url = "https://\(host):\(port)/?\(canonicalQuery)&X-Amz-Signature=\(signature)"
+        let url = "https://\(signedHost):\(port)/?\(canonicalQuery)&X-Amz-Signature=\(signature)"
         return String(url.dropFirst("https://".count))
     }
 }

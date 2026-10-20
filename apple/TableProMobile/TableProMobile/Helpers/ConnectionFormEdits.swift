@@ -36,6 +36,15 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         var networkEncryption: OracleConnectionOptions.NetworkEncryption
     }
 
+    nonisolated struct IAMOptions: Equatable, Sendable {
+        var method: IAMSignIn?
+        var region: String
+        var accessKeyId: String
+        var profileName: String
+        var rdsEndpoint: String
+        var replicationGroupId: String
+    }
+
     var name: String
     var type: DatabaseType
     var host: String
@@ -49,6 +58,7 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
     var sslMode: SSLConfiguration.SSLMode?
     var sshTunnel: SSHTunnel?
     var oracle: OracleOptions?
+    var iam: IAMOptions?
 
     static func tagIds(selecting tagId: UUID?, over existing: [UUID]) -> [UUID] {
         let others = existing.dropFirst().filter { $0 != tagId }
@@ -78,6 +88,7 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.sslMode) { applySSLMode(to: &connection) }
         if changed(\.sshTunnel) { applySSHTunnel(to: &connection, changedSince: opening?.sshTunnel) }
         if changed(\.oracle) { applyOracleOptions(to: &connection, changedSince: opening?.oracle) }
+        if changed(\.iam) { applyIAMOptions(to: &connection, changedSince: opening?.iam) }
         return connection
     }
 
@@ -204,5 +215,29 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.networkEncryption) {
             connection.additionalFields[Key.networkEncryption] = oracle.networkEncryption.rawValue
         }
+    }
+
+    private func applyIAMOptions(to connection: inout DatabaseConnection, changedSince opening: IAMOptions?) {
+        guard let iam else { return }
+        func changed<Value: Equatable>(_ field: KeyPath<IAMOptions, Value>) -> Bool {
+            Self.differs(field, from: opening, to: iam)
+        }
+        func write(_ value: String, to key: String) {
+            connection.additionalFields[key] = value.isEmpty ? nil : value
+        }
+
+        typealias Field = IAMSignIn.Field
+        if changed(\.method) {
+            if let method = iam.method {
+                connection.additionalFields[Field.method] = method.pickerValue
+            } else if connection.additionalFields[Field.method] != nil {
+                connection.additionalFields[Field.method] = IAMSignIn.passwordPickerValue
+            }
+        }
+        if changed(\.region) { write(iam.region, to: Field.region) }
+        if changed(\.accessKeyId) { write(iam.accessKeyId, to: Field.accessKeyId) }
+        if changed(\.profileName) { write(iam.profileName, to: Field.profileName) }
+        if changed(\.rdsEndpoint) { write(iam.rdsEndpoint, to: Field.rdsEndpoint) }
+        if changed(\.replicationGroupId) { write(iam.replicationGroupId, to: Field.replicationGroupId) }
     }
 }

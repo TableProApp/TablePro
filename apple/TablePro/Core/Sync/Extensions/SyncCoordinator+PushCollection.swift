@@ -47,6 +47,12 @@ private struct CollectedRecords {
 }
 
 extension SyncCoordinator {
+    // iPhone and iPad dial the record's tunnel with a linked profile's password, so a linked connection goes up with
+    // the server the profile names now, as this Mac dials it, never an imported or stale copy of it.
+    static func syncedTunnel(of connection: DatabaseConnection, profiles: SSHProfileStorage) -> DatabaseConnection {
+        profiles.refreshingLinkedProfile(connection)
+    }
+
     func collectPushBatch(
         snapshot: SyncEditSnapshot,
         boundary: SyncBoundary,
@@ -56,13 +62,18 @@ extension SyncCoordinator {
 
         if boundary.includes(.connection) {
             let storage = services.connectionStorage
+            let profiles = services.sshProfileStorage
             await collectRecords(of: .connection, snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID) {
                 let connections = storage.loadConnections()
                 return storage.lastLoadFailed ? nil : connections
             } disposition: { (connection: DatabaseConnection) in
                 guard connection.participatesInSync else { return .drop }
                 let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
-                return .push(SyncRecordMapper.toCKRecord(connection, in: zoneID, base: recordCache.record(for: recordID)))
+                return .push(SyncRecordMapper.toCKRecord(
+                    Self.syncedTunnel(of: connection, profiles: profiles),
+                    in: zoneID,
+                    base: recordCache.record(for: recordID)
+                ))
             }
         }
 

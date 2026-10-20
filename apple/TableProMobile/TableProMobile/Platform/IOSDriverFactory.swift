@@ -12,15 +12,18 @@ nonisolated final class IOSDriverFactory: DriverFactory {
     private let bookmarkStore: FileBookmarkStore
     private let materializer: CertificateMaterializer
     private let localFiles: LocalDatabaseFileLocator
+    private let mint: IAMPasswordMint
 
     init(
         bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
         materializer: CertificateMaterializer = CertificateMaterializer(),
-        localFiles: LocalDatabaseFileLocator = .live
+        localFiles: LocalDatabaseFileLocator = .live,
+        mint: IAMPasswordMint = IAMPasswordMint()
     ) {
         self.bookmarkStore = bookmarkStore
         self.materializer = materializer
         self.localFiles = localFiles
+        self.mint = mint
     }
 
     private func sqliteSource(for connection: DatabaseConnection) throws -> LocalDatabaseFileSource {
@@ -70,17 +73,39 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         }
     }
 
-    private func ssl(for connection: DatabaseConnection) throws -> DriverSSLConfiguration {
+    func ssl(for connection: DatabaseConnection, serverName: String?) throws -> DriverSSLConfiguration {
         let declared = DriverSSLConfiguration(
             sslEnabled: connection.sslEnabled,
             configuration: connection.sslConfiguration
         )
-        let resolved = declared.applying(try materializer.materialize(for: connection.id))
+        var resolved = declared.applying(try materializer.materialize(for: connection.id))
         try CertificatePreflight.validate(resolved)
+        if connection.iamSignIn != nil, !resolved.isEnabled {
+            // A token is never sent in plaintext. SSL was off, so no certificate belongs to the raised mode.
+            resolved = DriverSSLConfiguration(mode: .require)
+        }
+        resolved.serverName = serverName
         return resolved
     }
 
+    func resolvePassword(
+        for connection: DatabaseConnection,
+        stored: String?,
+        secureStore: any SecureStore
+    ) async throws -> String? {
+        guard let method = connection.iamSignIn else { return stored }
+        return try await mint.password(for: connection, method: method, secureStore: secureStore)
+    }
+
     func createDriver(for connection: DatabaseConnection, password: String?) throws -> any DatabaseDriver {
+        try createDriver(for: connection, password: password, preTunnelHost: nil)
+    }
+
+    func createDriver(
+        for connection: DatabaseConnection,
+        password: String?,
+        preTunnelHost: String?
+    ) throws -> any DatabaseDriver {
         switch connection.type {
         case .sqlite where connection.isSample:
             return SQLiteDriver(source: .file(try SampleDatabaseInstaller.live.installIfNeeded()))
@@ -98,9 +123,10 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 user: connection.username,
                 password: password ?? "",
                 database: connection.database,
-                ssl: try ssl(for: connection),
+                ssl: try ssl(for: connection, serverName: preTunnelHost),
                 databaseType: connection.type,
-                connectionEncoding: MySQLConnectionEncoding(additionalFields: connection.additionalFields)
+                connectionEncoding: MySQLConnectionEncoding(additionalFields: connection.additionalFields),
+                signsInWithToken: connection.iamSignIn != nil
             )
         case .postgresql, .redshift:
             return PostgreSQLDriver(
@@ -109,7 +135,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 user: connection.username,
                 password: password ?? "",
                 database: connection.database,
-                ssl: try ssl(for: connection),
+                ssl: try ssl(for: connection, serverName: preTunnelHost),
                 databaseType: connection.type
             )
         case .redis:
@@ -123,7 +149,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 username: connection.username,
                 password: password,
                 database: dbIndex,
-                ssl: try ssl(for: connection)
+                ssl: try ssl(for: connection, serverName: preTunnelHost)
             )
         case .mssql:
             return MSSQLDriver(connection: connection, password: password)
