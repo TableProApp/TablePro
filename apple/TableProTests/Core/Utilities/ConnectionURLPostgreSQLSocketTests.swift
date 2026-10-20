@@ -56,6 +56,9 @@ struct ConnectionURLPostgreSQLSocketTests {
     @Test("An empty query port means the default port, and a bad one refuses the URL, as libpq does")
     func queryPortPresence() throws {
         #expect(try parsed("postgresql://dat@localhost:5433/app?host=/tmp&port=").resolvedPort == 5_432)
+        #expect(try parsed("postgresql://dat@:5433/app?host=db.example.com&port=").resolvedPort == 5_432)
+        #expect(try parsed("postgresql://dat@db.example.com:5433/app?port=").resolvedPort == 5_432)
+        #expect(try parsed("postgresql://dat@db.example.com:5433/app").resolvedPort == 5_433)
         for url in ["postgresql://dat@localhost:5433/app?host=/tmp&port=bad", "postgresql:///app?host=/tmp&port=70000"] {
             guard case .failure(let error) = ConnectionURLParser.parse(url) else {
                 Issue.record("Expected \(url) to fail"); continue

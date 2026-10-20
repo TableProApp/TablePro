@@ -354,7 +354,7 @@ struct ConnectionURLParser {
         }
         guard host.hasPrefix("/") else {
             guard !host.isEmpty else { return .failure(.missingHost) }
-            return .success((host, [:], port))
+            return .success((host, [:], port ?? type.defaultPort))
         }
         let socket = PostgreSQLLocalSocket.endpoint(path: host, port: port ?? type.defaultPort)
         if let issue = PostgreSQLLocalSocket.issue(for: socket) {
