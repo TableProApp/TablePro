@@ -64,7 +64,7 @@ struct ConnectionManagerCatalogTests {
         #expect(dialed.count == 2)
         #expect(dialed[1].sslEnabled == dialed[0].sslEnabled)
         #expect(dialed[1].sslEnabled == false)
-        #expect(dialed[1].additionalFields[DatabaseConnection.preTunnelHostKey] == "db.example.com")
+        #expect(factory.preTunnelHosts == ["db.example.com", "db.example.com"])
     }
 
     @Test("A hold closes the catalog connection and opens none until released")
@@ -303,6 +303,25 @@ private final class DialingDriverFactory: DriverFactory, @unchecked Sendable {
         let driver = MockDatabaseDriver()
         driver.shouldFailConnect = failsConnect
         return driver
+    }
+
+    private var recordedPreTunnelHosts: [String?] = []
+
+    var preTunnelHosts: [String?] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedPreTunnelHosts
+    }
+
+    func createDriver(
+        for connection: DatabaseConnection,
+        password: String?,
+        preTunnelHost: String?
+    ) throws -> any DatabaseDriver {
+        lock.lock()
+        recordedPreTunnelHosts.append(preTunnelHost)
+        lock.unlock()
+        return try createDriver(for: connection, password: password)
     }
 
     func supportedTypes() -> [DatabaseType] { [DatabaseType(rawValue: "mock")] }
