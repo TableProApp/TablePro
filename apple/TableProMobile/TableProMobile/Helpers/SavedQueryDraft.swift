@@ -67,6 +67,11 @@ nonisolated struct SavedQueryDraft: Equatable, Sendable {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    // Opened text leaves the caret at its end, where Run finds no statement past a trailing newline.
+    static func editorText(opening sql: String) -> String {
+        sql.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     static var sizeLimitMessage: String {
         String(
             format: String(localized: "Saved queries are limited to %@ so they fit in iCloud."),

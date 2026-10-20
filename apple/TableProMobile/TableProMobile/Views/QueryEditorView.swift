@@ -108,7 +108,7 @@ struct QueryEditorView: View {
                 route: route,
                 connectionId: connectionId,
                 expandedFolderIds: $savedQueryFolderExpansion
-            ) { coordinator.pendingQuery = $0 }
+            ) { coordinator.pendingQuery = SavedQueryDraft.editorText(opening: $0) }
         }
         .confirmationDialog(
             String(localized: "Clear Query"),
