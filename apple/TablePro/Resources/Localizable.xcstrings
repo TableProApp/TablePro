@@ -16693,6 +16693,9 @@
         }
       }
     },
+    "A test here has no connection to take the host, port and database from." : {
+
+    },
     "A text index cannot be unique." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -156881,6 +156884,9 @@
         }
       }
     },
+    "show a saved password" : {
+
+    },
     "Secret Access Key" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -160199,6 +160205,9 @@
           }
         }
       }
+    },
+    "Set in connections.json." : {
+
     },
     "Set Cells to Value" : {
       "localizations" : {
@@ -179014,6 +179023,9 @@
           }
         }
       }
+    },
+    "Test Source" : {
+
     },
     "Test the current connection settings" : {
       "localizations" : {
@@ -211677,6 +211689,9 @@
           }
         }
       }
+    },
+    "Your credential profiles file was changed outside TablePro, so this profile's password source was not run." : {
+
     },
     "Your database schema and query data will be sent to the AI provider for analysis. Allow for this connection?" : {
       "localizations" : {

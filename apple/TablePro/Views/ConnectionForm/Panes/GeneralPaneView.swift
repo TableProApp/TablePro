@@ -249,12 +249,7 @@ struct GeneralPaneView: View {
                         authFieldRow(field)
                     }
                     if !coordinator.auth.hidesPassword {
-                        PasswordPromptToggle(
-                            type: type,
-                            promptForPassword: $coordinator.auth.promptForPassword,
-                            password: $coordinator.auth.password,
-                            additionalFieldValues: $coordinator.auth.additionalFieldValues
-                        )
+                        PasswordPromptToggle(coordinator: coordinator)
                     }
                     ForEach(authFields.rest, id: \.id) { field in
                         authFieldRow(field)
