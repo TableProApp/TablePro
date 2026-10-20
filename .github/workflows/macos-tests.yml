@@ -14,8 +14,7 @@ permissions:
 jobs:
   macos:
     name: macOS Tests
-    # A pull request from a branch in this repository runs on the Mac, keeping the hosted macOS slots for main and tags.
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.MAC_RUNNER != 'github') && fromJSON('["self-hosted", "macOS", "ARM64", "tablepro-release"]') || 'xcode-27' }}
+    runs-on: xcode-27
     timeout-minutes: 120
     env:
       NSUnbufferedIO: "YES"
@@ -137,8 +136,7 @@ jobs:
         run: |
           mkdir -p app-diagnostics
           for dir in "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports; do
-            # The Mac's runner user is not an admin, so it cannot read the system reports.
-            [ -d "$dir" ] && [ -r "$dir" ] && [ -x "$dir" ] || continue
+            [ -d "$dir" ] || continue
             find "$dir" -maxdepth 2 -iname '*TablePro*' -exec cp {} app-diagnostics/ \;
           done
           log show --last 2h --style compact --info --predicate 'process == "TablePro"' \
