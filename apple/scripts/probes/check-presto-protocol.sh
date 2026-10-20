@@ -130,7 +130,10 @@ check("COMMENT ON TABLE is a syntax error", bool(run("COMMENT ON TABLE system.ru
 capability = run("SELECT 1", presto_headers({"X-Presto-Client-Capabilities": "PARAMETRIC_DATETIME"}))
 check("an unknown capability header is ignored", capability.get("rows") == [[1]], capability)
 
-typed = run("SELECT TIMESTAMP '2024-01-02 03:04:05.123456', CAST('ab' AS varbinary), ARRAY[1, 2], JSON '{\"a\":1}'")
+typed = run(
+    "SELECT TIMESTAMP '2024-01-02 03:04:05.123456', CAST('ab' AS varbinary), ARRAY[1, 2], JSON '{\"a\":1}', "
+    "MAP(ARRAY['k'], ARRAY[1]), CAST(ROW(1, 'x') AS ROW(a integer, b varchar)), ARRAY[ARRAY['y']]"
+)
 check("type names and values", not typed.get("error"), [typed.get("rows"), [c["type"] for c in typed.get("columns") or []]])
 
 session = run("SELECT 1", presto_headers({"X-Presto-Catalog": "system", "X-Presto-Schema": "runtime"}))
@@ -148,7 +151,7 @@ for _ in range(3):
 cancel_status, _, _ = request("DELETE", next_uri)
 state = {}
 for _ in range(20):
-    state = run(f"SELECT state, error_code FROM system.runtime.queries WHERE query_id = '{query_id}'")
+    state = run(f"SELECT state FROM system.runtime.queries WHERE query_id = '{query_id}'")
     if state.get("rows") and state["rows"][0][0] in ("FAILED", "FINISHED"):
         break
     time.sleep(1)
