@@ -71,7 +71,7 @@ impl App {
                     let result = conn
                         .query_params_controlled(&query.sql, &query.params, &control)
                         .await
-                        .map_err(|error| crate::ui::error_text::driver_message(&error))
+                        .map_err(|error| crate::services::error_text::driver_message(&error))
                         .and_then(single_cell_value);
                     reply.input(AppMsg::BrowseCellValueLoaded(
                         tab_id,
@@ -235,7 +235,7 @@ impl App {
                             Some(tab_id),
                             BrowseLoadFailure {
                                 request: Some(request),
-                                message: crate::ui::error_text::driver_message(&e),
+                                message: crate::services::error_text::driver_message(&e),
                             },
                         )),
                     }
@@ -276,7 +276,7 @@ impl App {
                             Some(tab_id),
                             BrowseLoadFailure {
                                 request: None,
-                                message: crate::ui::error_text::driver_message(&error),
+                                message: crate::services::error_text::driver_message(&error),
                             },
                         )),
                     }

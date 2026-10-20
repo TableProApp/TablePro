@@ -1,7 +1,38 @@
 use super::*;
 
+struct SequenceCall {
+    schema: Option<String>,
+    table: String,
+    columns: Vec<String>,
+    control: Option<OperationControl>,
+}
+
+#[derive(Default)]
 struct Marker {
     cancels: bool,
+    sequence_calls: Mutex<Vec<SequenceCall>>,
+    sequence_failure: bool,
+}
+
+impl Marker {
+    fn sequence_call(
+        &self,
+        schema: Option<&str>,
+        table: &str,
+        columns: &[String],
+        control: Option<OperationControl>,
+    ) -> Result<(), DriverError> {
+        self.sequence_calls.lock().unwrap().push(SequenceCall {
+            schema: schema.map(str::to_owned),
+            table: table.to_owned(),
+            columns: columns.to_vec(),
+            control,
+        });
+        if self.sequence_failure {
+            return Err(DriverError::ReadOnly);
+        }
+        Ok(())
+    }
 }
 
 fn tables() -> Vec<TableInfo> {
@@ -98,11 +129,21 @@ impl Connection for Marker {
 
     async fn synchronize_auto_increment_sequences(
         &self,
-        _: Option<&str>,
-        _: &str,
-        _: &[String],
+        schema: Option<&str>,
+        table: &str,
+        columns: &[String],
     ) -> Result<(), DriverError> {
-        Ok(())
+        self.sequence_call(schema, table, columns, None)
+    }
+
+    async fn synchronize_auto_increment_sequences_controlled(
+        &self,
+        schema: Option<&str>,
+        table: &str,
+        columns: &[String],
+        control: &OperationControl,
+    ) -> Result<(), DriverError> {
+        self.sequence_call(schema, table, columns, Some(control.clone()))
     }
 
     async fn server_version(&self) -> Result<Option<String>, DriverError> {
@@ -125,7 +166,10 @@ impl Connection for Marker {
 #[tokio::test]
 async fn the_session_returns_what_the_driver_returned_for_every_catalog_and_transaction_call() {
     let session = SessionConnection {
-        inner: Arc::new(Marker { cancels: true }),
+        inner: Arc::new(Marker {
+            cancels: true,
+            ..Default::default()
+        }),
         _tunnel: None,
     };
     let control = OperationControl::with_timeout(Duration::from_secs(1));
@@ -165,9 +209,71 @@ async fn the_session_returns_what_the_driver_returned_for_every_catalog_and_tran
     assert_eq!(session.server_version().await.unwrap().as_deref(), Some("marker 1.0"));
     assert!(session.supports_server_cancellation());
     let quiet = SessionConnection {
-        inner: Arc::new(Marker { cancels: false }),
+        inner: Arc::new(Marker::default()),
         _tunnel: None,
     };
     assert!(!quiet.supports_server_cancellation());
     assert!(matches!(session.ping().await, Err(DriverError::Disconnected)));
+}
+
+#[tokio::test]
+async fn sequence_synchronization_preserves_arguments_deadline_and_cancellation() {
+    let marker = Arc::new(Marker::default());
+    let session = SessionConnection {
+        inner: marker.clone(),
+        _tunnel: None,
+    };
+    let columns = vec!["id".to_owned(), "other_id".to_owned()];
+    let control = OperationControl::with_timeout(Duration::from_secs(5));
+
+    session
+        .synchronize_auto_increment_sequences(Some("tenant"), "items", &columns)
+        .await
+        .unwrap();
+    session
+        .synchronize_auto_increment_sequences_controlled(Some("tenant"), "items", &columns, &control)
+        .await
+        .unwrap();
+
+    let calls = marker.sequence_calls.lock().unwrap();
+    assert_eq!(calls.len(), 2);
+    for call in calls.iter() {
+        assert_eq!(call.schema.as_deref(), Some("tenant"));
+        assert_eq!(call.table, "items");
+        assert_eq!(call.columns, columns);
+    }
+    assert!(calls[0].control.is_none());
+    let forwarded = calls[1].control.as_ref().unwrap();
+    assert_eq!(forwarded.deadline(), control.deadline());
+    assert!(!forwarded.cancellation_token().is_cancelled());
+    control.cancellation_token().cancel();
+    assert!(forwarded.cancellation_token().is_cancelled());
+}
+
+#[tokio::test]
+async fn sequence_synchronization_preserves_driver_failures() {
+    let marker = Arc::new(Marker {
+        sequence_failure: true,
+        ..Default::default()
+    });
+    let session = SessionConnection {
+        inner: marker.clone(),
+        _tunnel: None,
+    };
+    let columns = vec!["id".to_owned()];
+    let control = OperationControl::with_timeout(Duration::from_secs(5));
+
+    assert!(matches!(
+        session
+            .synchronize_auto_increment_sequences(None, "items", &columns)
+            .await,
+        Err(DriverError::ReadOnly)
+    ));
+    assert!(matches!(
+        session
+            .synchronize_auto_increment_sequences_controlled(None, "items", &columns, &control)
+            .await,
+        Err(DriverError::ReadOnly)
+    ));
+    assert_eq!(marker.sequence_calls.lock().unwrap().len(), 2);
 }

@@ -7,7 +7,6 @@ mod connect_dialog;
 pub(crate) mod connection_bundle;
 mod connection_row;
 mod editor;
-pub(crate) mod error_text;
 mod explain_dialog;
 mod explain_tree;
 mod export_dialog;
@@ -36,6 +35,3 @@ mod welcome_view;
 
 pub use app::{App, AppInit};
 pub(crate) use ssh_prompt::GtkPrompter;
-
-#[cfg(test)]
-pub(crate) use editor::SchemaIndex;

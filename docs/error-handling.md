@@ -2,7 +2,7 @@
 
 This page settles how failures cross crate and UI boundaries. [AGENTS.md](../AGENTS.md) and [code conventions](code-conventions.md#errors) state the short rules; this document is the working guide. When advice from the wider Rust ecosystem conflicts with a rule here, follow this page.
 
-The ecosystem split is settled and matches this repository: **`thiserror` for library and domain APIs that callers match on; opaque application errors only where no caller branches on the failure mode.** BookiE keeps typed errors further into the app than a typical CLI, because the GTK layer selects recovery text from variants ([error_text](../apps/linux/app/src/ui/error_text.rs)).
+The ecosystem split is settled and matches this repository: **`thiserror` for library and domain APIs that callers match on; opaque application errors only where no caller branches on the failure mode.** BookiE keeps typed errors further into the app than a typical CLI, because the GTK layer selects recovery text from variants ([error_text](../apps/linux/app/src/services/error_text.rs)).
 
 ## Layer table
 
@@ -12,7 +12,7 @@ The ecosystem split is settled and matches this repository: **`thiserror` for li
 | `policy`, `storage`, `transport`, `ssh` | `thiserror` enums | Cross crate boundaries; need exhaustive matching. |
 | `drivers/<engine>` | Map the engine crate into `core::DriverError` | Native errors never leak past the driver. |
 | `mcp`, `agentd` | Protocol or tool outcomes built from the same typed guard/driver path | Scopes, allowlists and `PolicyGuard` stay typed; do not invent a parallel stringly API. |
-| `app` (UI handlers, services, glue) | Prefer the domain enum the caller already has; `Result<T, String>` only where [state-management](state-management.md) already does | The UI matches variants. Do not erase them into an opaque error before [error_text](../apps/linux/app/src/ui/error_text.rs). |
+| `app` (UI handlers, services, glue) | Prefer the domain enum the caller already has; `Result<T, String>` only where [state-management](state-management.md) already does | The UI matches variants. Do not erase them into an opaque error before [error_text](../apps/linux/app/src/services/error_text.rs). |
 | Tests | Domain `Result` or the shortest honest form | Prefer asserting a variant or observable outcome, not message text. |
 
 `anyhow` is listed in the workspace manifest for optional composition, but production crates and the app do not use it today. Do not introduce `anyhow::Error` at a public domain boundary. Inside a throwaway binary or a one-off tool that never matches variants, it is acceptable; that is not the GTK app's database path.
@@ -44,7 +44,7 @@ Rules that improve both human and agent debugging:
 | Common internet advice | BookiE choice |
 |---|---|
 | `#[non_exhaustive]` on every public error enum | **Do not** put it on `DriverError` or other enums the UI and policy match exhaustively. Adding a variant is a deliberate, compile-breaking change that forces the message layer to handle it. |
-| `anyhow` everywhere in the binary | Keep typed errors through assembly until [error_text](../apps/linux/app/src/ui/error_text.rs) (or an MCP/tool response). Opaque errors hide recovery. |
+| `anyhow` everywhere in the binary | Keep typed errors through assembly until [error_text](../apps/linux/app/src/services/error_text.rs) (or an MCP/tool response). Opaque errors hide recovery. |
 | `miette` / fancy diagnostics | Not used. GTK and MCP have their own surfaces. |
 | `Result<T, Box<dyn Error>>` at crate boundaries | Forbidden for public domain APIs. |
 | Return foreign crate errors (`sqlx::Error`, `russh::Error`) from workspace crates | Forbidden. Map at the driver or owning crate boundary. |
@@ -69,7 +69,7 @@ Transaction helpers:
 
 ## UI display
 
-`app` translates domain errors into recovery messages in [error_text](../apps/linux/app/src/ui/error_text.rs). Preserve typed categories through assembly and wrappers before selecting the user-facing message.
+`app` translates domain errors into recovery messages in [error_text](../apps/linux/app/src/services/error_text.rs). Preserve typed categories through assembly and wrappers before selecting the user-facing message.
 
 Do not display raw `Debug` or `Display` for domain errors. Always go through that layer (or the equivalent MCP/tool mapping). Exhaustive matches are required: a new variant without a message is a compile error, which is the point.
 

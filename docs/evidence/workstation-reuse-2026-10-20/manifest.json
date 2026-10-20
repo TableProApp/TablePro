@@ -17,6 +17,79 @@
     "lld",
     "mold"
   ],
+  "gtk_widget_tier": {
+    "source_commit": "c5eeb220f090e7638af00babd3f87d88ad8026d3",
+    "tests": 76,
+    "passed": 76,
+    "failed": 0,
+    "app_test_binary_sha256": "1cc74867fb95150fd0e826a3c87c9ae28c48d93136891947aa684a31cd47dcf0",
+    "app_test_binary_bytes": 200672400,
+    "first_build_seconds": 47.18,
+    "later_cargo_freshness_seconds": 0.22,
+    "mesa_dri3_warning": "Xvfb had no accelerated DRI3 device; all widget tests passed"
+  },
+  "gtk_accessibility_tier": {
+    "application_code_base": "7c4cb3929",
+    "app_binary_source_commit": "c5eeb220f090e7638af00babd3f87d88ad8026d3",
+    "app_source_matches_linux_base": true,
+    "test_source_base_commit": "7c4cb3929",
+    "test_source_commit": "d607031846d0ad866ba3002ff500d7f5a849d2cf",
+    "test_source_sha256": "270747c67ca35518835af5d68742e6a5bc28fba7c2f6a05e9a37fee07079c777",
+    "script": "bash scripts/test-gtk-safety.sh",
+    "release_build_seconds": 194,
+    "release_binary_sha256": "3e7990fef8b49f93526abbcac618c666a1b39929b469c7ac8ddfb54599c997cb",
+    "release_binary_bytes": 74945088,
+    "initial_full_smoke_exit_code": 1,
+    "initial_failed_scenarios": [
+      "import_refreshes_only_the_imported_table",
+      "failed_import_keeps_unrelated_edits",
+      "import_refreshes_every_open_tab_of_the_imported_table"
+    ],
+    "targeted_after_test_fix": {
+      "scenarios": 3,
+      "passed": 3,
+      "failed": 0,
+      "cargo_rebuild": false
+    },
+    "full_smoke_after_fix": {
+      "scenarios": 90,
+      "passed": 90,
+      "failed": 0,
+      "exit_code": 0,
+      "cargo_rebuild": false
+    },
+    "resource_observations": {
+      "target_tree_before_gib": 18,
+      "target_tree_after_gib": 20,
+      "available_disk_before_gib": 392,
+      "available_disk_after_gib": 391,
+      "available_memory_before_gib": 24,
+      "lowest_sampled_available_memory_gib": 22,
+      "swap_used_before_and_during_gib": 1.3
+    },
+    "nvme_write_delta_measured": false,
+    "full_accessibility_smoke_rerun_after_fix": true
+  },
+  "preflight": {
+    "source_commit": "7c4cb3929",
+    "script_harness_tests": 280,
+    "unit_tests": {
+      "passed": 1819,
+      "skipped": 15
+    },
+    "sandbox_tests": {
+      "passed": 1794,
+      "skipped": 62
+    },
+    "redis_cancellation_test": {
+      "passed": 1,
+      "skipped": 0
+    },
+    "guards_format_and_clippy": "passed",
+    "cargo_build_jobs": 6,
+    "nextest_test_threads": 4,
+    "result": "passed"
+  },
   "schema_version": 1,
   "source_commit": "adc2bfe1bd653220f033ab48df291b1e2dafbe4c",
   "core_tree": "2a54fef6ea62bb2b65eeabd3114caf2b7948fb19",
@@ -25,6 +98,22 @@
   "nextest": "0.9.148",
   "cargo_build_jobs": 6,
   "nextest_test_threads": 4,
+  "gtk_widget_tier": {
+    "date": "2026-10-20",
+    "source_commit": "c5eeb220f090e7638af00babd3f87d88ad8026d3",
+    "script": "bash scripts/test-gtk-widgets.sh",
+    "tests": 76,
+    "passed": 76,
+    "failed": 0,
+    "app_test_binary_build_seconds": 47.18,
+    "later_cargo_freshness_seconds": 0.22,
+    "app_test_binary": {
+      "sha256": "1cc74867fb95150fd0e826a3c87c9ae28c48d93136891947aa684a31cd47dcf0",
+      "bytes": 200672400
+    },
+    "xvfb": true,
+    "mesa_dri3_warning": "Xvfb had no accelerated DRI3 device; all tests passed"
+  },
   "build_seconds": 7.48,
   "first_run": {
     "tests": 640,
@@ -39,8 +128,9 @@
     "summary_seconds": 2.36
   },
   "limits": [
-    "Core unit tests only; no driver, GTK or Forgejo acceptance",
+    "Core and GTK widget tiers only; no broad driver tier or Forgejo acceptance"
     "Compiler/linker blockers apply to PATH commands; existing binaries were used through nextest metadata",
+    "Only the three failed GTK accessibility scenarios were rerun after the test fix",
     "NVMe physical write delta and sccache hit rate were not measured"
   ]
 }

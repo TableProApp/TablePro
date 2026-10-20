@@ -2,8 +2,6 @@ mod app_helpers;
 mod backup;
 mod browse;
 mod bundle;
-#[cfg(test)]
-mod close_after_save_tests;
 mod connection;
 mod database_switcher;
 mod editor_files;
@@ -78,24 +76,7 @@ pub struct AppInit {
     pub mcp_bridge: Option<Arc<tablepro_mcp::McpBridge>>,
 }
 
-/// Decrement a tab's pending-save counter in the close-after-save map.
-/// Returns `true` if the entry just dropped to zero (the caller should
-/// fire `WorkspaceTabClosed`); returns `false` if there's still another
-/// in-flight save for that tab, or if the entry was never present.
-///
-/// Used by both browse `SaveCompletedForTab` and structure
-/// `on_structure_save_completed` so a Table tab with both kinds of
-/// pending changes only closes after BOTH saves succeed.
-pub(super) fn dec_close_after_save(map: &mut std::collections::HashMap<Uuid, u32>, tab_id: &Uuid) -> bool {
-    if let Some(count) = map.get_mut(tab_id) {
-        *count = count.saturating_sub(1);
-        if *count == 0 {
-            map.remove(tab_id);
-            return true;
-        }
-    }
-    false
-}
+use tablepro_app_services::workspace::{CloseAfterSave, WorkspaceTabs};
 
 pub struct App {
     registry: Arc<DriverRegistry>,
@@ -164,7 +145,7 @@ pub struct App {
     /// Per-tab state. Each entry is either a Browse or Editor tab.
     /// HashMap for O(1) tab_id lookup; display order is read from
     /// `tab_view.pages()` since HashMap is unordered.
-    workspace_tabs: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, WorkspaceTab>>>,
+    workspace_tabs: std::rc::Rc<std::cell::RefCell<WorkspaceTabs<WorkspaceTab>>>,
     dialog: Option<Controller<ConnectDialog>>,
     favorites: Vec<tablepro_storage::SavedQuery>,
     favorites_order: crate::services::request_generation::LatestApplied,
@@ -214,17 +195,8 @@ pub struct App {
     /// connection switch. If cancellation makes a previously safe state
     /// ambiguous, the candidate is discarded and the old workspace remains.
     switch_cancel_audit_was_disabled: Option<bool>,
-    /// Tabs the user picked "Save" on in a close-confirmation dialog,
-    /// counted by remaining saves before the close fires. A Table tab
-    /// with both browse-dirty AND structure-dirty dispatches two saves
-    /// (one of each kind) so its entry starts at 2 — the first
-    /// completion decrements to 1 (no close yet), the second decrements
-    /// to 0 and finally fires `WorkspaceTabClosed`. A `SaveFailed`
-    /// removes the entry entirely (abort all close intents for that
-    /// tab so the user can fix the error and retry). See
-    /// `dec_close_after_save` for the decrement helper.
     grid_close: grid_close::GridCloseState,
-    close_after_save: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, u32>>>,
+    close_after_save: std::rc::Rc<std::cell::RefCell<CloseAfterSave>>,
     /// Set when the user picked "Save" on the *window*-close dialog.
     /// While true, the last `SaveCompletedForTab` that empties
     /// `close_after_save` triggers `window.close()`. A `SaveFailed`
@@ -580,7 +552,7 @@ impl SimpleComponent for App {
             recent_pages: std::cell::RefCell::default(),
             recent_walk: std::cell::RefCell::default(),
             workspace_root_added: std::cell::Cell::new(false),
-            workspace_tabs: std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new())),
+            workspace_tabs: std::rc::Rc::new(std::cell::RefCell::new(Default::default())),
             dialog: None,
             favorites: Vec::new(),
             favorites_order: crate::services::request_generation::LatestApplied::default(),
@@ -804,7 +776,7 @@ impl SimpleComponent for App {
                 // dialog, fire the close now that the commit succeeded.
                 // The counter ensures a tab with BOTH browse-dirty and
                 // structure-dirty waits for both saves before closing.
-                let drained = dec_close_after_save(&mut self.close_after_save.borrow_mut(), &tab_id);
+                let drained = self.close_after_save.borrow_mut().complete(&tab_id);
                 if drained {
                     self.request_workspace_tab_close(tab_id);
                 }
@@ -822,7 +794,7 @@ impl SimpleComponent for App {
                 // Abort any close-after-save intent: the commit failed,
                 // so we keep the tab open and let the user see the
                 // error and retry. Window-close intent is also cleared.
-                self.close_after_save.borrow_mut().remove(&tab_id);
+                self.close_after_save.borrow_mut().cancel(&tab_id);
                 self.close_window_after_save.set(false);
                 self.dispatch_to_tab(tab_id, BrowseTabInput::SaveFailed(message));
                 self.connection_switch_save_failed();

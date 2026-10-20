@@ -443,7 +443,7 @@ where
         }
         if !has_next_page {
             if let Err(error) = cursor.finish(true).await {
-                return ScriptRunResult::Streamed(StreamTerminal::Failed(crate::ui::error_text::driver_message(
+                return ScriptRunResult::Streamed(StreamTerminal::Failed(crate::services::error_text::driver_message(
                     &error,
                 )));
             }
@@ -475,7 +475,7 @@ fn failure_message(error: &DriverError, written: &str, sent: &str) -> String {
         DriverError::Query { position, .. } if sent == written => *position,
         _ => None,
     };
-    let message = crate::ui::error_text::driver_message(error);
+    let message = crate::services::error_text::driver_message(error);
     super::error_location::located_message(&message, sent, position)
 }
 

@@ -1,4 +1,5 @@
 use std::time::Duration;
+use tablepro_app_services::workspace::WorkspaceTabs;
 
 use relm4::ComponentController;
 use relm4::adw::prelude::*;
@@ -75,7 +76,7 @@ impl App {
 fn do_persist_workspace_state(
     workspace: &workspace_state::WorkspaceStore,
     connection_id: Option<Uuid>,
-    workspace_tabs: &std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, WorkspaceTab>>>,
+    workspace_tabs: &std::rc::Rc<std::cell::RefCell<WorkspaceTabs<WorkspaceTab>>>,
     tab_view: Option<&relm4::adw::TabView>,
     collapsed_groups: Vec<String>,
     hidden_schemas: Vec<String>,
@@ -111,7 +112,7 @@ fn do_persist_workspace_state(
                 }),
                 WorkspaceTab::Structure(_) => None,
                 WorkspaceTab::Table(s) if s.table.is_empty() => None,
-                WorkspaceTab::Table(s) => Some(table_record(s)),
+                WorkspaceTab::Table(s) => Some(table_record(s, tabs.is_preview(&id))),
             });
         kept.push(record.is_some());
         if let Some(record) = record {
@@ -130,7 +131,7 @@ fn do_persist_workspace_state(
     );
 }
 
-fn table_record(slot: &super::TableTabSlot) -> WorkspaceTabRecord {
+fn table_record(slot: &super::TableTabSlot, preview: bool) -> WorkspaceTabRecord {
     let model = slot.browse.model();
     let sort = model.current_sort();
     WorkspaceTabRecord::Table {
@@ -141,7 +142,7 @@ fn table_record(slot: &super::TableTabSlot) -> WorkspaceTabRecord {
         page_size: model.page_size(),
         sort_col: sort.map(|(column, _)| column),
         sort_asc: sort.map(|(_, ascending)| ascending),
-        preview: slot.preview,
+        preview,
     }
 }
 

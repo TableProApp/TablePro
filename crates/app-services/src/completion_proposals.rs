@@ -8,12 +8,12 @@ use tablepro_core::sql_syntax::script::{
 use super::completion::{SchemaIndex, Scope, candidate_sql, scope_at};
 use super::completion_identifiers::split_table_reference;
 
-pub(super) struct Candidates {
+pub struct Candidates {
     pub range: Range<usize>,
     pub values: Vec<(String, String)>,
 }
 
-pub(super) fn candidates(sql: &str, cursor: usize, index: &SchemaIndex) -> Candidates {
+pub fn candidates(sql: &str, cursor: usize, index: &SchemaIndex) -> Candidates {
     let grammar = index.grammar.unwrap_or(SqlGrammar::PostgreSql);
     let Some(mut range) = replacement_range(sql, cursor, grammar) else {
         return Candidates {
@@ -28,7 +28,7 @@ pub(super) fn candidates(sql: &str, cursor: usize, index: &SchemaIndex) -> Candi
     }
     let mut values = candidate_sql(sql, range.start, index);
     if !quoted && !matches!(scope, Scope::ColumnsOf(_)) {
-        values.extend(super::SQL_KEYWORDS.split_whitespace().map(str::to_string));
+        values.extend(super::completion::SQL_KEYWORDS.split_whitespace().map(str::to_string));
     }
     let prefix = normalized(&sql[range.start..cursor]);
     let values = values

@@ -10,6 +10,7 @@ pub mod connection_save_turn;
 pub mod connection_service;
 pub mod csv_import_mappings;
 pub mod database_service;
+pub(crate) mod error_text;
 pub mod export_pages;
 pub mod gtk_approval;
 pub mod mcp_service;
@@ -24,7 +25,6 @@ pub mod single_instance;
 
 pub mod window_registry;
 pub mod window_state;
-mod workspace_disk;
 pub mod workspace_state;
 
 pub(crate) mod browse_query;

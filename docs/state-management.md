@@ -75,6 +75,10 @@ Why centralise: connection lifecycles, retries, health pings, cancellation and p
 
 Some state outlives any single component: open connections, user preferences, query history, the workspace cache and the MCP bridge. The application owns these as `Arc`s and passes them explicitly into each window, tab and dialog that needs them. They were global singletons until the 0.2 sprint, and that is exactly what the `Arc` handles replaced.
 
+`tablepro-app-services::workspace` owns each window's tab membership, preview status, open-table decisions and save-before-close counters. The collection accepts app-owned payloads; it has no GUI dependency. The GTK adapter owns controllers, page order, dialogs and the `AdwTabView` close handshake. The app adapter writes the existing `services::workspace_state` record format and identifiers.
+
+Workspace serialization, restoration, draft files and the background writer live in `tablepro-app-services::workspace_state`. The app supplies configuration and draft-directory paths through its `workspace_state` adapter. GTK page ordering, snapshot collection and persistence timers remain in the app; the saved format and directory names are unchanged.
+
 Per-tab editing state is the deliberate exception. `change_tracker`, `structure_tracker` and `window_registry` keep a `thread_local!` registry keyed by tab or window id. That is sound because each is confined to the GTK main thread by the Relm4 contract, which is also why they use `RefCell` rather than `Mutex`. Threading a registry handle through every grid cell binding would cost more in the hot `connect_bind` path than it buys. Tests construct a fresh registry rather than sharing the thread-local one.
 
 ## Two persistence primitives, deliberately not one
@@ -109,6 +113,6 @@ Relm4 ships test helpers but they require a running GTK main loop, which is awkw
 
 ## September stabilization
 
-Browse SQL planning is pure and shared between counts and pages. A validation error clears the count through the existing request-generation failure path and surfaces the error; it cannot fall back to an unfiltered total. Delayed sidebar metadata is accepted only for the same connection allocation, so reconnecting the same saved UUID does not make an old response current. See the tests in `services/browse_query.rs` and `services/database_service.rs`.
+Browse SQL planning is pure and shared between counts and pages. A validation error clears the count through the existing request-generation failure path and surfaces the error; it cannot fall back to an unfiltered total. Delayed sidebar metadata is accepted only for the same connection allocation, so reconnecting the same saved UUID does not make an old response current. The planner and its pure tests live in `tablepro-app-services::browse_query`; real-database fixtures stay in the app test tier. Connection identity tests remain in `services/database_service.rs`.
 
 Completion identity and reconnect behavior are described in [architecture](../ARCHITECTURE.md) and constrained by ADR 0008.

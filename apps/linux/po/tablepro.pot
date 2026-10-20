@@ -22,6 +22,133 @@ msgstr ""
 msgid "The {driver} driver does not support Windows (Kerberos) authentication."
 msgstr ""
 
+#: apps/linux/app/src/services/error_text.rs:6
+msgid "This table has no primary key. Use the modal Edit dialog instead."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:7
+msgid "No changes to save."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:9
+#, rust-format
+msgid "Internal column count mismatch (expected {expected}, got {got})."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:14
+#, rust-format
+msgid "Column {column} contains a value that cannot be copied into a SQL statement."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:18
+#, rust-format
+msgid "Optimistic grid updates are not supported for {driver}."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:21
+msgid "This table's columns changed after you started editing (for example, in a Structure tab). Reload the page and reapply your changes."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:29
+msgid "Could not reach the database. Is it running?"
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:30
+msgid "Username or password is wrong."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:32
+#, rust-format
+msgid "TLS handshake failed: {detail}. If this server does not use TLS, such as a local container, set TLS to Disabled."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:39
+#, rust-format
+msgid "Query failed (SQLSTATE {sqlstate}): {message}"
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:42
+#, rust-format
+msgid "Query failed: {message}"
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:43
+msgid "The connection was closed, or all connections are busy with other queries. Try reconnecting."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:45
+msgid "This row changed in the database after you loaded it. Your edits are still available; reload the row and reapply them."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:48
+msgid "This connection is read-only. Reopen it without read-only mode to make changes."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:50
+#, rust-format
+msgid "Blocked by policy: {detail}"
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:52
+#, rust-format
+msgid "This driver does not support: {detail}"
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:54
+#, rust-format
+msgid "Internal driver error: {detail}"
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:55
+msgid "The operation was cancelled."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:56
+msgid "The operation timed out."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:58
+#, rust-format
+msgid "The operation was interrupted, but the database outcome could not be confirmed: {detail}"
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:62
+#, rust-format
+msgid "Kerberos login failed: {detail}. Check that klist shows a valid ticket, run kinit if it does not, and make sure the server's SPN matches the host you typed."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:77
+#, rust-format
+msgid "Save failed at statement {n}: {error}. The rollback request succeeded; session state and other non-transactional side effects may remain."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:85
+#, rust-format
+msgid "Save failed at statement {n}: {error}. This database cannot roll a save back, so the statements before it were applied. Refresh the table before saving again."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:94
+#, rust-format
+msgid "Save failed at statement {n}: {error}. Rollback also failed: {rollback_error}. Database changes may have been applied."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:107
+msgid "No keyring is running, so saved passwords can't be read. Start GNOME Keyring, KeePassXC with Secret Service, or another Secret Service provider, then try again."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:110
+msgid "The keyring is locked. Unlock it, for example by signing in again or opening Passwords and Keys, then try again."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:114
+msgid "Unlocking the keyring was cancelled, so the saved password was not read. Try again and unlock it when asked."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:118
+#, rust-format
+msgid "The keyring could not be used: {detail}"
+msgstr ""
+
 #: apps/linux/app/src/services/query_parameters.rs:21
 #, rust-format
 msgid "No value for parameter {name}"
@@ -131,7 +258,7 @@ msgid "Command"
 msgstr ""
 
 #: apps/linux/app/src/services/sidebar_tree.rs:102
-#: apps/linux/app/src/ui/app/mod.rs:393
+#: apps/linux/app/src/ui/app/mod.rs:365
 #: apps/linux/app/src/ui/app/workspace_chrome.rs:92
 msgid "Tables"
 msgstr ""
@@ -171,7 +298,7 @@ msgid "Connection closed."
 msgstr ""
 
 #: apps/linux/app/src/ui/activity_dialog.rs:111
-#: apps/linux/app/src/ui/editor/mod.rs:1000
+#: apps/linux/app/src/ui/editor/mod.rs:998
 msgid "Running…"
 msgstr ""
 
@@ -349,16 +476,16 @@ msgstr ""
 #: apps/linux/app/src/ui/app/referenced_row.rs:18
 #: apps/linux/app/src/ui/app/status_pages.rs:52
 #: apps/linux/app/src/ui/app/structure.rs:84
-#: apps/linux/app/src/ui/app/workspace_close.rs:43
-#: apps/linux/app/src/ui/app/workspace_close.rs:156
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:644
+#: apps/linux/app/src/ui/app/workspace_close.rs:29
+#: apps/linux/app/src/ui/app/workspace_close.rs:142
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:639
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:235
 #: apps/linux/app/src/ui/connect_dialog/mod.rs:922
 #: apps/linux/app/src/ui/connection_bundle/export.rs:70
 #: apps/linux/app/src/ui/connection_bundle/import.rs:26
 #: apps/linux/app/src/ui/connection_bundle/import.rs:105
 #: apps/linux/app/src/ui/connection_row.rs:204
-#: apps/linux/app/src/ui/editor/mod.rs:375
+#: apps/linux/app/src/ui/editor/mod.rs:373
 #: apps/linux/app/src/ui/editor/session_mode.rs:260
 #: apps/linux/app/src/ui/export_dialog/file.rs:121
 #: apps/linux/app/src/ui/grid/editing.rs:448
@@ -655,7 +782,7 @@ msgid "A reopened tab is no longer linked to its file: {reason}"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/editor_files.rs:76
-#: apps/linux/app/src/ui/app/mod.rs:799
+#: apps/linux/app/src/ui/app/mod.rs:771
 msgid "Saved"
 msgstr ""
 
@@ -704,7 +831,7 @@ msgstr ""
 #: apps/linux/app/src/ui/app/favorites.rs:54
 #: apps/linux/app/src/ui/app/init_window.rs:133
 #: apps/linux/app/src/ui/app/organization.rs:99
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:646
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:641
 #: apps/linux/app/src/ui/browse_tab/chrome.rs:250
 #: apps/linux/app/src/ui/grid/editing.rs:445
 #: apps/linux/app/src/ui/structure_tab/mod.rs:718
@@ -840,7 +967,7 @@ msgid "One or more tabs have unsaved changes. They will be permanently lost if y
 msgstr ""
 
 #: apps/linux/app/src/ui/app/init_window.rs:132
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:645
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:640
 #: apps/linux/app/src/ui/browse_tab/chrome.rs:243
 #: apps/linux/app/src/ui/structure_tab/mod.rs:714
 msgid "Discard"
@@ -867,63 +994,63 @@ msgstr ""
 msgid "Pick a table from the sidebar, or use the button below (Ctrl+T)."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:311
+#: apps/linux/app/src/ui/app/mod.rs:283
 msgid "New connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:318
+#: apps/linux/app/src/ui/app/mod.rs:290
 msgid "Open saved connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:328
+#: apps/linux/app/src/ui/app/mod.rs:300
 msgid "Switch database"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:339
+#: apps/linux/app/src/ui/app/mod.rs:311
 msgid "Production"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:340
+#: apps/linux/app/src/ui/app/mod.rs:312
 msgid "This is a production connection. Changes can affect live data."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:349
+#: apps/linux/app/src/ui/app/mod.rs:321
 msgid "Read-only"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:359
+#: apps/linux/app/src/ui/app/mod.rs:331
 msgid "Saving…"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:365
+#: apps/linux/app/src/ui/app/mod.rs:337
 msgid "Main menu"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:399 apps/linux/app/src/ui/app/mod.rs:479
+#: apps/linux/app/src/ui/app/mod.rs:371 apps/linux/app/src/ui/app/mod.rs:451
 msgid "Search tables"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:405
+#: apps/linux/app/src/ui/app/mod.rs:377
 msgid "Filter schemas"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:426
+#: apps/linux/app/src/ui/app/mod.rs:398
 msgid "Filter tables…"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:449
+#: apps/linux/app/src/ui/app/mod.rs:421
 msgid "Retry"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:960
+#: apps/linux/app/src/ui/app/mod.rs:932
 msgid "Saved as favorite"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:976 apps/linux/app/src/ui/app/mod.rs:983
+#: apps/linux/app/src/ui/app/mod.rs:948 apps/linux/app/src/ui/app/mod.rs:955
 msgid "Connect to a database first to run SQL."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:1055
+#: apps/linux/app/src/ui/app/mod.rs:1027
 msgid "Open a result grid to jump to a column."
 msgstr ""
 
@@ -1484,28 +1611,28 @@ msgid "Catalog refresh failed"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/structure.rs:827
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:325
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:321
 msgid "New Table"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:65
+#: apps/linux/app/src/ui/app/workspace_close.rs:51
 msgid "Close with open session transactions?"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:66
+#: apps/linux/app/src/ui/app/workspace_close.rs:52
 msgid "Open transactions will be rolled back before the window closes."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:67
-#: apps/linux/app/src/ui/app/workspace_close.rs:157
+#: apps/linux/app/src/ui/app/workspace_close.rs:53
+#: apps/linux/app/src/ui/app/workspace_close.rs:143
 msgid "Roll Back and Close"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:153
+#: apps/linux/app/src/ui/app/workspace_close.rs:139
 msgid "Close with an open transaction?"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:154
+#: apps/linux/app/src/ui/app/workspace_close.rs:140
 msgid "The transaction is rolled back when the tab closes."
 msgstr ""
 
@@ -1529,42 +1656,42 @@ msgstr ""
 msgid "New query (Ctrl+E)"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:195
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:407
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:559
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:191
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:403
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:554
 msgid "Row as JSON"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:431
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:427
 msgid "Preview tab. Use the tab menu to keep it open."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:639
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:634
 #, rust-format
 msgid "Save changes to “{name}”?"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:642
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:637
 msgid "Unsaved changes will be permanently lost if you discard them."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:928
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:924
 #: apps/linux/app/src/ui/editor/outcomes.rs:913
-#: apps/linux/app/src/ui/editor/schema.rs:27
+#: apps/linux/app/src/ui/editor/schema.rs:17
 #: apps/linux/app/src/ui/history_dialog.rs:1041
 msgid "Empty query"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:1000
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:996
 msgid "Structure"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:1004
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:1000
 #, rust-format
 msgid "Query {n}"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:1066
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:1062
 msgid "No recently closed tab"
 msgstr ""
 
@@ -2457,136 +2584,136 @@ msgstr ""
 msgid "The query ran for {seconds} seconds."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:314
+#: apps/linux/app/src/ui/editor/mod.rs:312
 msgid "Fold block"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:315
+#: apps/linux/app/src/ui/editor/mod.rs:313
 msgid "Fold the SQL block at the cursor"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:322
+#: apps/linux/app/src/ui/editor/mod.rs:320
 msgid "Unfold all"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:323
+#: apps/linux/app/src/ui/editor/mod.rs:321
 msgid "Show all folded SQL blocks"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:338
+#: apps/linux/app/src/ui/editor/mod.rs:336
 msgid "SQL warnings"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:339
+#: apps/linux/app/src/ui/editor/mod.rs:337
 msgid "Character suggestions; SQL is not changed"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:359
+#: apps/linux/app/src/ui/editor/mod.rs:357
 msgid "Runs the same query again. The saved query timeout does not change."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:366
+#: apps/linux/app/src/ui/editor/mod.rs:364
 #: apps/linux/app/src/ui/editor/pinned.rs:69
 msgid "Pin results"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:367
+#: apps/linux/app/src/ui/editor/mod.rs:365
 msgid "Keep these results above the results of the next run"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:376
+#: apps/linux/app/src/ui/editor/mod.rs:374
 msgid "Cancel running query (Esc)"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:384
+#: apps/linux/app/src/ui/editor/mod.rs:382
 #: apps/linux/app/src/ui/editor/session_mode.rs:279
 msgid "Session"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:385
+#: apps/linux/app/src/ui/editor/mod.rs:383
 msgid "Run this tab on its own connection, so settings, temporary tables and transactions carry over between runs"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:394
+#: apps/linux/app/src/ui/editor/mod.rs:392
 msgid "Explain"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:395
+#: apps/linux/app/src/ui/editor/mod.rs:393
 msgid "Explain query plan"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:402
+#: apps/linux/app/src/ui/editor/mod.rs:400
 msgid "Run"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:403
+#: apps/linux/app/src/ui/editor/mod.rs:401
 msgid "Run query (Ctrl+Return)"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:410
+#: apps/linux/app/src/ui/editor/mod.rs:408
 msgid "Split"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:411
+#: apps/linux/app/src/ui/editor/mod.rs:409
 msgid "Show or hide a second SQL editor pane"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:703
+#: apps/linux/app/src/ui/editor/mod.rs:701
 msgid "empty query"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:785
+#: apps/linux/app/src/ui/editor/mod.rs:783
 msgid "No statement at cursor"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:874
+#: apps/linux/app/src/ui/editor/mod.rs:872
 #: apps/linux/app/src/ui/editor/streaming.rs:154
 #: apps/linux/app/src/ui/history_dialog.rs:1054
 msgid "cancelled"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:876
+#: apps/linux/app/src/ui/editor/mod.rs:874
 #: apps/linux/app/src/ui/editor/outcomes.rs:630
 msgid "Query cancelled"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:877
+#: apps/linux/app/src/ui/editor/mod.rs:875
 msgid "The running query was stopped."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:893
+#: apps/linux/app/src/ui/editor/mod.rs:891
 #, rust-format
 msgid "Query exceeded the {n}s query timeout."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:900
+#: apps/linux/app/src/ui/editor/mod.rs:898
 #: apps/linux/app/src/ui/editor/streaming.rs:156
 msgid "timed out"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:903
+#: apps/linux/app/src/ui/editor/mod.rs:901
 #: apps/linux/app/src/ui/editor/outcomes.rs:70
 #: apps/linux/app/src/ui/editor/outcomes.rs:639
 #: apps/linux/app/src/ui/editor/streaming.rs:139
 msgid "Query timed out"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:952
+#: apps/linux/app/src/ui/editor/mod.rs:950
 msgid "Formatting is unavailable for this connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:976
+#: apps/linux/app/src/ui/editor/mod.rs:974
 msgid "Waiting for session to finish"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:983
-#: apps/linux/app/src/ui/editor/mod.rs:988
+#: apps/linux/app/src/ui/editor/mod.rs:981
+#: apps/linux/app/src/ui/editor/mod.rs:986
 #: apps/linux/app/src/ui/editor/session_mode.rs:338
 msgid "no active connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:1151
-#: apps/linux/app/src/ui/editor/mod.rs:1164
+#: apps/linux/app/src/ui/editor/mod.rs:1149
+#: apps/linux/app/src/ui/editor/mod.rs:1162
 msgid "query-results"
 msgstr ""
 
@@ -2870,133 +2997,6 @@ msgstr ""
 
 #: apps/linux/app/src/ui/editor/streaming.rs:178
 msgid "Waiting for result pages"
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:6
-msgid "This table has no primary key. Use the modal Edit dialog instead."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:7
-msgid "No changes to save."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:9
-#, rust-format
-msgid "Internal column count mismatch (expected {expected}, got {got})."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:14
-#, rust-format
-msgid "Column {column} contains a value that cannot be copied into a SQL statement."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:18
-#, rust-format
-msgid "Optimistic grid updates are not supported for {driver}."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:21
-msgid "This table's columns changed after you started editing (for example, in a Structure tab). Reload the page and reapply your changes."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:29
-msgid "Could not reach the database. Is it running?"
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:30
-msgid "Username or password is wrong."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:32
-#, rust-format
-msgid "TLS handshake failed: {detail}. If this server does not use TLS, such as a local container, set TLS to Disabled."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:39
-#, rust-format
-msgid "Query failed (SQLSTATE {sqlstate}): {message}"
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:42
-#, rust-format
-msgid "Query failed: {message}"
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:43
-msgid "The connection was closed, or all connections are busy with other queries. Try reconnecting."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:45
-msgid "This row changed in the database after you loaded it. Your edits are still available; reload the row and reapply them."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:48
-msgid "This connection is read-only. Reopen it without read-only mode to make changes."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:50
-#, rust-format
-msgid "Blocked by policy: {detail}"
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:52
-#, rust-format
-msgid "This driver does not support: {detail}"
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:54
-#, rust-format
-msgid "Internal driver error: {detail}"
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:55
-msgid "The operation was cancelled."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:56
-msgid "The operation timed out."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:58
-#, rust-format
-msgid "The operation was interrupted, but the database outcome could not be confirmed: {detail}"
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:62
-#, rust-format
-msgid "Kerberos login failed: {detail}. Check that klist shows a valid ticket, run kinit if it does not, and make sure the server's SPN matches the host you typed."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:77
-#, rust-format
-msgid "Save failed at statement {n}: {error}. The rollback request succeeded; session state and other non-transactional side effects may remain."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:85
-#, rust-format
-msgid "Save failed at statement {n}: {error}. This database cannot roll a save back, so the statements before it were applied. Refresh the table before saving again."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:94
-#, rust-format
-msgid "Save failed at statement {n}: {error}. Rollback also failed: {rollback_error}. Database changes may have been applied."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:107
-msgid "No keyring is running, so saved passwords can't be read. Start GNOME Keyring, KeePassXC with Secret Service, or another Secret Service provider, then try again."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:110
-msgid "The keyring is locked. Unlock it, for example by signing in again or opening Passwords and Keys, then try again."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:114
-msgid "Unlocking the keyring was cancelled, so the saved password was not read. Try again and unlock it when asked."
-msgstr ""
-
-#: apps/linux/app/src/ui/error_text.rs:118
-#, rust-format
-msgid "The keyring could not be used: {detail}"
 msgstr ""
 
 #: apps/linux/app/src/ui/explain_dialog.rs:25

@@ -2,12 +2,12 @@ use tablepro_core::sql_dialect::quote_ident;
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
 
-fn plan(text: &str, grammar: Option<SqlGrammar>) -> ScriptPlan {
+pub(super) fn plan(text: &str, grammar: Option<SqlGrammar>) -> ScriptPlan {
     let grammar = grammar.unwrap_or(SqlGrammar::Sqlite);
     ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar))
 }
 
-pub(crate) fn split_table_reference(text: &str, grammar: Option<SqlGrammar>) -> Option<(Option<String>, String)> {
+pub fn split_table_reference(text: &str, grammar: Option<SqlGrammar>) -> Option<(Option<String>, String)> {
     let plan = plan(text, grammar);
     if !plan.diagnostics().is_empty() {
         return None;
@@ -57,7 +57,7 @@ fn quoted_name(raw: &str, grammar: Option<SqlGrammar>) -> Option<String> {
     Some(name)
 }
 
-pub(crate) fn table_key(text: &str, grammar: Option<SqlGrammar>) -> Option<String> {
+pub fn table_key(text: &str, grammar: Option<SqlGrammar>) -> Option<String> {
     let grammar = Some(grammar.unwrap_or(SqlGrammar::PostgreSql));
     let (mut schema, mut table) = split_table_reference(text, grammar)?;
     if grammar != Some(SqlGrammar::PostgreSql) {
@@ -115,7 +115,7 @@ pub(super) fn words(text: &str, grammar: Option<SqlGrammar>) -> Vec<&str> {
     words
 }
 
-pub(crate) fn catalog_reference(driver: &str, schema: Option<&str>, table: &str) -> String {
+pub fn catalog_reference(driver: &str, schema: Option<&str>, table: &str) -> String {
     let table = quote_ident(driver, table);
     match schema {
         Some(schema) => format!("{}.{table}", quote_ident(driver, schema)),

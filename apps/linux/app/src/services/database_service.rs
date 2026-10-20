@@ -28,17 +28,7 @@ fn load_policy_file(path: &std::path::Path) -> Result<PolicyConfig, String> {
     load_from_path(path)
 }
 
-/// Opaque identity of the underlying session, independent of the fresh
-/// PolicyGuard allocated for each request. It grants no database access.
-#[derive(Debug, Clone)]
-pub struct ConnectionIdentity(std::sync::Weak<dyn Connection>);
-
-impl PartialEq for ConnectionIdentity {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.ptr_eq(&other.0)
-    }
-}
-impl Eq for ConnectionIdentity {}
+pub use tablepro_app_services::connection_identity::ConnectionIdentity;
 
 pub(super) struct EntryInner {
     pub(super) connection: Arc<dyn Connection>,
@@ -552,7 +542,7 @@ impl DatabaseService {
         });
         Some((
             PolicyGuard::new(inner.connection.clone(), ctx).with_fault_sink(fault),
-            ConnectionIdentity(Arc::downgrade(&inner.connection)),
+            ConnectionIdentity::from_connection(&inner.connection),
         ))
     }
 
@@ -572,7 +562,7 @@ impl DatabaseService {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let entry = entries.get(&id)?;
         let inner = entry.inner.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        Some(ConnectionIdentity(Arc::downgrade(&inner.connection)))
+        Some(ConnectionIdentity::from_connection(&inner.connection))
     }
 
     pub fn health(&self, id: Uuid) -> Option<ConnectionHealth> {
@@ -1158,7 +1148,7 @@ mod tests {
         };
         assert!(origin.matches(Some(id), Some(&second)));
         assert!(!origin.matches(Some(Uuid::new_v4()), Some(&second)));
-        let mut index = crate::ui::SchemaIndex::default();
+        let mut index = tablepro_app_services::completion::SchemaIndex::default();
         assert!(index.sync_connection(&first));
         index.set_columns("items", vec!["id".into()]);
         let request = index.request("items".into());

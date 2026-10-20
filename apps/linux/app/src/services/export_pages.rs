@@ -57,7 +57,7 @@ fn page_future(
             }
             PageQuery::Sql(query) => conn.query_params_controlled(&query.sql, &query.params, &control).await,
         }
-        .map_err(|error| ExportError::Source(crate::ui::error_text::driver_message(&error)))?;
+        .map_err(|error| ExportError::Source(crate::services::error_text::driver_message(&error)))?;
         if result.truncated {
             return Err(ExportError::Source("a page of rows exceeded the result limits".into()));
         }

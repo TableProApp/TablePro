@@ -121,7 +121,7 @@ impl App {
                 .register(async move {
                     let result = match tokio::time::timeout(timeout, connection.list_databases()).await {
                         Ok(Ok(names)) => Ok(names),
-                        Ok(Err(error)) => Err(crate::ui::error_text::driver_message(&error)),
+                        Ok(Err(error)) => Err(crate::services::error_text::driver_message(&error)),
                         Err(_) => Err(crate::tr!("Listing databases timed out.")),
                     };
                     reply.input(AppMsg::DatabasesLoaded {

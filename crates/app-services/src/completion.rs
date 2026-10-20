@@ -4,12 +4,22 @@ use tablepro_core::sql_syntax::SqlGrammar;
 
 use super::completion_identifiers::{bare_reference, table_key, words};
 
+pub const SQL_KEYWORDS: &str = "\
+SELECT FROM WHERE INSERT INTO VALUES UPDATE SET DELETE \
+JOIN INNER LEFT RIGHT FULL OUTER ON USING UNION INTERSECT EXCEPT \
+GROUP BY ORDER HAVING LIMIT OFFSET DISTINCT ALL AS WITH \
+CREATE TABLE INDEX VIEW DROP ALTER TRUNCATE \
+PRIMARY KEY FOREIGN REFERENCES UNIQUE NOT NULL DEFAULT CHECK \
+AND OR IS LIKE IN BETWEEN EXISTS ANY \
+COUNT SUM AVG MIN MAX CASE WHEN THEN ELSE END \
+TRUE FALSE ASC DESC RETURNING";
+
 #[derive(Default)]
 pub struct SchemaIndex {
     pub tables: Vec<String>,
     pub columns: HashMap<String, Vec<String>>,
     pub grammar: Option<SqlGrammar>,
-    connection: Option<crate::services::database_service::ConnectionIdentity>,
+    connection: Option<crate::connection_identity::ConnectionIdentity>,
     generation: u64,
 }
 
@@ -44,7 +54,7 @@ impl SchemaIndex {
         self.connection = None;
     }
 
-    pub fn sync_connection(&mut self, connection: &crate::services::database_service::ConnectionIdentity) -> bool {
+    pub fn sync_connection(&mut self, connection: &crate::connection_identity::ConnectionIdentity) -> bool {
         let unchanged = self.connection.as_ref() == Some(connection);
         if unchanged {
             return false;
@@ -201,7 +211,7 @@ fn statement_around(sql: &str, cursor_byte: usize, grammar: Option<SqlGrammar>) 
 }
 
 fn statement_range(sql: &str, cursor: usize, grammar: SqlGrammar) -> std::ops::Range<usize> {
-    let plan = super::statement_cursor::plan_for(sql, grammar);
+    let plan = super::completion_identifiers::plan(sql, Some(grammar));
     let statements = plan.statements();
     let following = statements.partition_point(|statement| statement.range.start <= cursor);
     let next_end = statements
@@ -315,7 +325,7 @@ fn trailing_qualifier(prefix: &str, grammar: Option<SqlGrammar>) -> Option<Strin
         return None;
     }
     let word = words(prefix, grammar).last().copied()?;
-    let plan = super::statement_cursor::plan_for(word, grammar.unwrap_or(SqlGrammar::Sqlite));
+    let plan = super::completion_identifiers::plan(word, Some(grammar.unwrap_or(SqlGrammar::Sqlite)));
     let dot = plan
         .tokens(0..word.len())
         .filter(|token| &word[token.range.clone()] == ".")

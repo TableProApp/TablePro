@@ -234,8 +234,8 @@ pub fn is_permanent_failure(error: &TransportError) -> bool {
 
 fn message(error: TransportError) -> String {
     match error {
-        TransportError::Driver(error) => crate::ui::error_text::driver_message(&error),
-        TransportError::Keyring(failure) => crate::ui::error_text::keyring_message(&failure),
+        TransportError::Driver(error) => crate::services::error_text::driver_message(&error),
+        TransportError::Keyring(failure) => crate::services::error_text::keyring_message(&failure),
         TransportError::IntegratedAuthUnsupported(driver_name) => {
             crate::tr!("The {driver} driver does not support Windows (Kerberos) authentication.")
                 .replace("{driver}", &driver_name)

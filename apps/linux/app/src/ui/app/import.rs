@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::services::csv_import_mappings::CsvMappingScope;
-use crate::ui::error_text;
+use crate::services::error_text;
 use crate::ui::import_dialog::{ImportChoice, ImportMode, ImportRequest};
 
 use super::browse::{RefreshDecision, refresh_decision};

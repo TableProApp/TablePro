@@ -193,7 +193,7 @@ async fn close_export_cursor_after_error(cursor: &mut Option<StatementCursor>, c
 fn export_driver_error(error: DriverError) -> ExportError {
     match error {
         DriverError::Cancelled => ExportError::Cancelled,
-        error => ExportError::Source(crate::ui::error_text::driver_message(&error)),
+        error => ExportError::Source(crate::services::error_text::driver_message(&error)),
     }
 }
 
