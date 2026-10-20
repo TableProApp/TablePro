@@ -53,8 +53,10 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
 
 final class MockDriverFactory: DriverFactory, @unchecked Sendable {
     var drivers: [String: any DatabaseDriver] = [:]
+    private(set) var createdFor: [DatabaseConnection] = []
 
     func createDriver(for connection: DatabaseConnection, password: String?) throws -> any DatabaseDriver {
+        createdFor.append(connection)
         guard let driver = drivers[connection.type.rawValue] else {
             throw ConnectionError.driverNotFound(connection.type.rawValue)
         }

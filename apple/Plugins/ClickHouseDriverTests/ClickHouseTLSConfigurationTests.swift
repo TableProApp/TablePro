@@ -37,6 +37,12 @@ struct ClickHouseTLSConfigurationTests {
         #expect(try ClickHouseTLSDelegate.make(for: configuration(.required)) != nil)
     }
 
+    @Test("Verify Identity with no CA certificate builds a delegate only when a server name is given")
+    func verifyIdentityWithoutCAAndAServerName() throws {
+        #expect(try ClickHouseTLSDelegate.make(for: configuration(.verifyIdentity), serverName: "clickhouse.internal") != nil)
+        #expect(try ClickHouseTLSDelegate.make(for: configuration(.verifyIdentity), serverName: nil) == nil)
+    }
+
     @Test("A CA path that does not load is refused in both verify modes rather than widened to the system roots")
     func unreadableCAIsRefused() throws {
         let missing = "/nonexistent/ca-\(UUID().uuidString).pem"
@@ -120,10 +126,10 @@ struct ClickHouseTLSConfigurationTests {
     private final class ServerTrustProtectionSpace: URLProtectionSpace, @unchecked Sendable {
         private let trust: SecTrust
 
-        init(trust: SecTrust) {
+        init(trust: SecTrust, host: String = "clickhouse.example.com") {
             self.trust = trust
             super.init(
-                host: "clickhouse.example.com",
+                host: host,
                 port: 8_443,
                 protocol: NSURLProtectionSpaceHTTPS,
                 realm: nil,
@@ -153,6 +159,14 @@ struct ClickHouseTLSConfigurationTests {
         )
         try #require(status == errSecSuccess)
         return try #require(trust)
+    }
+
+    private func policyNames(of trust: SecTrust) -> [String] {
+        var policies: CFArray?
+        SecTrustCopyPolicies(trust, &policies)
+        return ((policies as? [SecPolicy]) ?? []).compactMap { policy in
+            (SecPolicyCopyProperties(policy) as? [String: Any])?[kSecPolicyName as String] as? String
+        }
     }
 
     private func answer(
@@ -229,6 +243,40 @@ struct ClickHouseTLSConfigurationTests {
         #expect(
             answer(ServerTrustProtectionSpace(trust: trust), with: identityOnly).disposition == .performDefaultHandling
         )
+    }
+
+    @Test("Behind a tunnel, Verify Identity with no CA checks the system roots against the server name, not 127.0.0.1")
+    func systemTrustChecksTheServerName() throws {
+        let trust = try fixtureServerTrust()
+        let delegate = try #require(
+            try ClickHouseTLSDelegate.make(for: configuration(.verifyIdentity), serverName: "clickhouse.internal")
+        )
+
+        let answered = answer(ServerTrustProtectionSpace(trust: trust, host: "127.0.0.1"), with: delegate)
+
+        #expect(answered.disposition == .cancelAuthenticationChallenge)
+        #expect(delegate.recordedRefusal != nil)
+        #expect(policyNames(of: trust) == ["clickhouse.internal"])
+    }
+
+    @Test("Verify Identity with a CA checks the server name when one is given, else the host it dialed")
+    func anchoredVerifyIdentityChecksTheServerName() throws {
+        let caFile = FileManager.default.temporaryDirectory.appendingPathComponent("ca-\(UUID().uuidString).pem")
+        try Data(Self.caCertificatePEM.utf8).write(to: caFile)
+        defer { try? FileManager.default.removeItem(at: caFile) }
+        let ssl = configuration(.verifyIdentity, caPath: caFile.path)
+        let named = try #require(try ClickHouseTLSDelegate.make(for: ssl, serverName: "clickhouse.internal"))
+        let unnamed = try #require(try ClickHouseTLSDelegate.make(for: ssl))
+        let namedTrust = try fixtureServerTrust()
+        let unnamedTrust = try fixtureServerTrust()
+
+        let namedAnswer = answer(ServerTrustProtectionSpace(trust: namedTrust, host: "127.0.0.1"), with: named)
+        let unnamedAnswer = answer(ServerTrustProtectionSpace(trust: unnamedTrust, host: "127.0.0.1"), with: unnamed)
+
+        #expect(namedAnswer.disposition == .cancelAuthenticationChallenge)
+        #expect(unnamedAnswer.disposition == .cancelAuthenticationChallenge)
+        #expect(policyNames(of: namedTrust) == ["clickhouse.internal"])
+        #expect(policyNames(of: unnamedTrust) == ["127.0.0.1"])
     }
 
     @Test("A certificate challenge with no client identity configured is left to the system")

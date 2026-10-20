@@ -28,7 +28,7 @@ final class RowDetailViewModel {
     var operationError: AppError?
     private(set) var showSaveSuccess = false
 
-    @ObservationIgnored private var writeGate = ConfirmedWriteGate()
+    @ObservationIgnored private var writeGate = ConfirmedWriteGate<RowWriteBatch>()
 
     @ObservationIgnored let onSaved: (() -> Void)?
     @ObservationIgnored let loadFullValueProvider: ((CellRef) async throws -> String?)?
@@ -79,27 +79,15 @@ final class RowDetailViewModel {
     var canEdit: Bool {
         table != nil && session != nil && !columnDetails.isEmpty && allowsRowEditing
             && !safeModeLevel.blocksWrites
-            && currentPrimaryKeyValues != nil
+            && currentLocator != nil
     }
 
-    private var currentPrimaryKeyValues: [(column: String, value: String)]? {
-        Self.primaryKeyValues(cells: cells(at: currentIndex), columns: columns, columnDetails: columnDetails)
-    }
+    private var rowIdentity: RowIdentity { RowLocator.identity(of: session?.driver) }
 
-    // A binary or cut-off key cell holds placeholder text, which as a predicate matches no row, so the row has no key.
-    static func primaryKeyValues(
-        cells: [Cell], columns: [ColumnInfo], columnDetails: [ColumnInfo]
-    ) -> [(column: String, value: String)]? {
-        let keyColumns = columnDetails.filter(\.isPrimaryKey)
-        guard !keyColumns.isEmpty else { return nil }
-        var values: [(column: String, value: String)] = []
-        for key in keyColumns {
-            guard let index = columns.firstIndex(where: { $0.name == key.name }),
-                  index < cells.count,
-                  case .text(let value) = cells[index] else { return nil }
-            values.append((column: key.name, value: value))
-        }
-        return values
+    private var currentLocator: RowLocator? {
+        RowLocator.locate(
+            cells: cells(at: currentIndex), columns: columns, columnDetails: columnDetails, identity: rowIdentity
+        )
     }
 
     var supportsLazyLoading: Bool { loadFullValueProvider != nil }
@@ -259,7 +247,7 @@ final class RowDetailViewModel {
         pendingWriteConfirmation = false
         writeGate.cancel()
 
-        guard columnDetails.contains(where: { $0.isPrimaryKey }) else {
+        guard RowLocator.canLocate(identity: rowIdentity, columns: columns, columnDetails: columnDetails) else {
             operationError = AppError(
                 category: .config,
                 title: String(localized: "Cannot Save"),
@@ -270,11 +258,13 @@ final class RowDetailViewModel {
             return false
         }
 
-        guard let pkValues = currentPrimaryKeyValues else {
+        guard let locator = currentLocator else {
             operationError = AppError(
                 category: .config,
                 title: String(localized: "Cannot Save"),
-                message: String(localized: "This row's primary key is not plain text, so it cannot identify the row."),
+                message: rowIdentity == .everyColumn
+                    ? String(localized: "This row holds a value too long or binary to match exactly, so it cannot identify the row.")
+                    : String(localized: "This row's primary key is not plain text, so it cannot identify the row."),
                 recovery: nil,
                 underlying: nil
             )
@@ -289,34 +279,42 @@ final class RowDetailViewModel {
             return true
         }
 
-        let sql = SQLBuilder.buildUpdate(
-            table: table.name,
-            schema: schema,
-            type: databaseType,
-            driver: session.driver,
-            changes: changes,
-            primaryKeys: pkValues
-        )
+        let batch: RowWriteBatch
+        do {
+            guard let built = try RowWriteBatch.update(
+                table: table.name,
+                schema: schema,
+                type: databaseType,
+                driver: session.driver,
+                columns: columns.map(\.name),
+                locator: locator,
+                changes: changes
+            ) else { return false }
+            batch = built
+        } catch {
+            let context = ErrorContext(operation: "saveChanges", databaseType: databaseType)
+            operationError = ErrorClassifier.classify(error, context: context)
+            return false
+        }
 
-        switch writeGate.submit(sql, under: safeModeLevel) {
+        switch writeGate.submit(batch, under: safeModeLevel) {
         case .blocked:
             return false
         case .awaitConfirmation:
             pendingWriteConfirmation = true
             return false
-        case .run(let statement):
-            return await execute(sql: statement, session: session)
+        case .run(let batch):
+            return await execute(batch)
         }
     }
 
     func executePendingSave() async -> Bool {
         pendingWriteConfirmation = false
-        let confirmed = writeGate.confirm(under: safeModeLevel)
-        guard let session, let confirmed else { return false }
-        return await execute(sql: confirmed, session: session)
+        guard let confirmed = writeGate.confirm(under: safeModeLevel) else { return false }
+        return await execute(confirmed)
     }
 
-    private func execute(sql: String, session: ConnectionSession) async -> Bool {
+    private func execute(_ batch: RowWriteBatch) async -> Bool {
         isSaving = true
         defer { isSaving = false }
         let original = currentRow
@@ -326,7 +324,7 @@ final class RowDetailViewModel {
         })
 
         do {
-            try await session.driver.executeWrite([sql])
+            try await batch.run()
             guard currentIndex >= 0, currentIndex < rows.count else { return false }
             commitSavedCells(savedCells, toRow: currentIndex)
             isEditing = false

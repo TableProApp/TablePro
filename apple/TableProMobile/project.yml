@@ -67,6 +67,11 @@ targets:
       # through a socket.
       - ../Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
       - ../Plugins/Shared/PluginQueryTimeout.swift
+      # The ClickHouse plugin driver runs whole behind PluginBackedDriver, so every file of the plugin is compiled in.
+      - path: ../Plugins/ClickHouseDriverPlugin
+        excludes:
+          - Info.plist
+      - ../Plugins/Shared/PluginConnectTimeout.swift
       # The column default reading both apps show and the version floor that says which catalog
       # quotes its defaults. The DDL writers stay on macOS.
       - ../Plugins/MySQLDriverPlugin/MySQLCatalogDefault.swift
@@ -122,6 +127,7 @@ targets:
           - TableProModels
           - TableProMSSQLCore
           - TableProMySQLCore
+          - TableProNumberFormatting
           - TableProPluginKit
           - TableProPostgreSQLCore
           - TableProQuery
@@ -131,6 +137,7 @@ targets:
           - TableProSync
           - TableProSyncTransport
           - TableProTabularIO
+          - TableProTLSClientIdentity
       - package: TableProOracle
         product: TableProOracleCore
       - framework: ../Libs/ios/DuckDB.xcframework

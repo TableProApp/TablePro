@@ -70,6 +70,37 @@ struct ClickHouseParameterBindingTests {
         #expect(bound.params["p1"] == "x")
     }
 
+    @Test("A question mark inside a backquoted name is not a placeholder")
+    func questionMarkInsideABackquotedNameIsNotAPlaceholder() {
+        let bound = ClickHouseParameterBinding.bind(
+            query: "ALTER TABLE `orders` UPDATE `is_paid?` = ? WHERE `id` = ? AND `is_paid?` = ?",
+            parameters: [.text("1"), .text("7"), .text("0")]
+        )
+        #expect(bound.query == "ALTER TABLE `orders` UPDATE `is_paid?` = {p1:String} WHERE `id` = {p2:String} AND `is_paid?` = {p3:String}")
+        #expect(bound.params == ["p1": "1", "p2": "7", "p3": "0"])
+    }
+
+    @Test("A single quote inside a backquoted name does not open a string literal")
+    func singleQuoteInsideABackquotedNameIsOpaque() {
+        let bound = ClickHouseParameterBinding.bind(
+            query: "ALTER TABLE `orders` UPDATE `l'adresse` = ? WHERE `id` = ? AND `l'adresse` = ?",
+            parameters: [.text("NEW"), .text("7"), .text("OLD")]
+        )
+        #expect(bound.query == "ALTER TABLE `orders` UPDATE `l'adresse` = {p1:String} WHERE `id` = {p2:String} AND `l'adresse` = {p3:String}")
+        #expect(bound.params == ["p1": "NEW", "p2": "7", "p3": "OLD"])
+    }
+
+    @Test("Names quoted with escaped backquotes, backslashes or a leading combining mark stay opaque")
+    func escapedBackquotedNamesStayOpaque() {
+        let names = ["a`b?", "c\\", "\u{301}d'?"].map(clickHouseQuotedIdentifier)
+        let bound = ClickHouseParameterBinding.bind(
+            query: "ALTER TABLE \(names[0]) UPDATE \(names[1]) = ? WHERE \(names[2]) = ?",
+            parameters: [.text("x"), .text("y")]
+        )
+        #expect(bound.query == "ALTER TABLE \(names[0]) UPDATE \(names[1]) = {p1:String} WHERE \(names[2]) = {p2:String}")
+        #expect(bound.params == ["p1": "x", "p2": "y"])
+    }
+
     @Test("Extra placeholders past the parameter list are left alone")
     func extraPlaceholdersAreLeftAlone() {
         let bound = ClickHouseParameterBinding.bind(

@@ -75,6 +75,12 @@ final class DataBrowserViewModel {
     var activeFilterCount: Int { filters.filter { $0.isEnabled && $0.isValid }.count }
     var hasPrimaryKeys: Bool { columnDetails.contains(where: \.isPrimaryKey) }
 
+    var canLocateRows: Bool {
+        RowLocator.canLocate(identity: rowIdentity, columns: columns, columnDetails: columnDetails)
+    }
+
+    private var rowIdentity: RowIdentity { RowLocator.identity(of: session?.driver) }
+
     var showsPaginationBar: Bool {
         !legacyRows.isEmpty || hasActiveSearch || hasActiveFilters || isPageLoading
     }
@@ -188,7 +194,8 @@ final class DataBrowserViewModel {
                 columnDetails = fetched
             }
 
-            let pkColumns = columnDetails.filter(\.isPrimaryKey).map(\.name)
+            // A full value read by key would return another row's value where the key is not unique.
+            let pkColumns = rowIdentity == .keyColumns ? columnDetails.filter(\.isPrimaryKey).map(\.name) : []
             let lazyContext = pkColumns.isEmpty ? nil : LazyContext(table: table.name, primaryKeyColumns: pkColumns)
             let query = buildSelectQuery(table: table)
             let driver = session.driver
@@ -441,18 +448,18 @@ final class DataBrowserViewModel {
 
     // MARK: - Row Operations
 
-    func deleteRow(pkValues: [(column: String, value: String)]) async -> Bool {
-        guard let session, let table, !pkValues.isEmpty else { return false }
+    func deleteRow(_ locator: RowLocator) async -> Bool {
+        guard let session, let table else { return false }
         do {
-            try await session.driver.executeWrite([
-                SQLBuilder.buildDelete(
-                    table: table.name,
-                    schema: schema,
-                    type: databaseType,
-                    driver: session.driver,
-                    primaryKeys: pkValues
-                )
-            ])
+            guard let batch = try RowWriteBatch.delete(
+                table: table.name,
+                schema: schema,
+                type: databaseType,
+                driver: session.driver,
+                columns: columns.map(\.name),
+                locator: locator
+            ) else { return false }
+            try await batch.run()
             await load()
             return true
         } catch {
@@ -464,11 +471,11 @@ final class DataBrowserViewModel {
         }
     }
 
-    func primaryKeyValues(forRowAt index: Int) -> [(column: String, value: String)]? {
+    func rowLocator(forRowAt index: Int) -> RowLocator? {
         let rows = window.rows
         guard rows.indices.contains(index) else { return nil }
-        return RowDetailViewModel.primaryKeyValues(
-            cells: rows[index].cells, columns: columns, columnDetails: columnDetails
+        return RowLocator.locate(
+            cells: rows[index].cells, columns: columns, columnDetails: columnDetails, identity: rowIdentity
         )
     }
 

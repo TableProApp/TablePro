@@ -2,9 +2,10 @@ import Foundation
 import TableProModels
 import TableProMSSQLCore
 import TableProOracleCore
+import TableProPluginKit
 
 nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
-    let mode: SSLConfiguration.SSLMode
+    let mode: TableProModels.SSLConfiguration.SSLMode
     let caCertificatePath: String?
     let clientCertificatePath: String?
     let clientKeyPath: String?
@@ -17,7 +18,7 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
         """)
 
     init(
-        mode: SSLConfiguration.SSLMode,
+        mode: TableProModels.SSLConfiguration.SSLMode,
         caCertificatePath: String? = nil,
         clientCertificatePath: String? = nil,
         clientKeyPath: String? = nil
@@ -28,7 +29,7 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
         self.clientKeyPath = clientKeyPath
     }
 
-    init(sslEnabled: Bool, configuration: SSLConfiguration?) {
+    init(sslEnabled: Bool, configuration: TableProModels.SSLConfiguration?) {
         guard let configuration else {
             mode = sslEnabled ? .require : .disable
             caCertificatePath = nil
@@ -68,6 +69,24 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
         switch mode {
         case .disable: return .request
         case .require, .verifyCa, .verifyFull: return .require
+        }
+    }
+
+    var pluginConfiguration: TableProPluginKit.SSLConfiguration {
+        TableProPluginKit.SSLConfiguration(
+            mode: pluginMode,
+            caCertificatePath: caCertificatePath ?? "",
+            clientCertificatePath: clientCertificatePath ?? "",
+            clientKeyPath: clientKeyPath ?? ""
+        )
+    }
+
+    private var pluginMode: TableProPluginKit.SSLMode {
+        switch mode {
+        case .disable: return .disabled
+        case .require: return .required
+        case .verifyCa: return .verifyCa
+        case .verifyFull: return .verifyIdentity
         }
     }
 

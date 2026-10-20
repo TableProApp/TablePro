@@ -21,7 +21,7 @@ struct InsertRowView: View {
     @State private var operationError: AppError?
     @State private var showOperationError = false
     @State private var showInsertConfirmation = false
-    @State private var writeGate = ConfirmedWriteGate()
+    @State private var writeGate = ConfirmedWriteGate<RowWriteBatch>()
     @State private var hapticSuccess = false
     @State private var hapticError = false
 
@@ -30,7 +30,7 @@ struct InsertRowView: View {
 
     private var canSave: Bool {
         guard let driver = session?.driver else { return false }
-        return buildInsertSQL(driver: driver) != nil
+        return insertBatch(driver: driver) != nil
     }
 
     var body: some View {
@@ -259,26 +259,25 @@ struct InsertRowView: View {
     private func insertRow() async {
         guard let session else { return }
 
-        guard let sql = buildInsertSQL(driver: session.driver) else { return }
+        guard let batch = insertBatch(driver: session.driver) else { return }
 
-        switch writeGate.submit(sql, under: safeModeLevel()) {
+        switch writeGate.submit(batch, under: safeModeLevel()) {
         case .blocked:
             return
         case .awaitConfirmation:
             showInsertConfirmation = true
-        case .run(let statement):
-            await executeInsert(sql: statement, session: session)
+        case .run(let batch):
+            await executeInsert(batch)
         }
     }
 
     private func executePendingInsert() async {
-        let confirmed = writeGate.confirm(under: safeModeLevel())
-        guard let session, let confirmed else { return }
-        await executeInsert(sql: confirmed, session: session)
+        guard let confirmed = writeGate.confirm(under: safeModeLevel()) else { return }
+        await executeInsert(confirmed)
     }
 
-    private func buildInsertSQL(driver: any DatabaseDriver) -> String? {
-        try? RowInsertPlanner.statements(
+    private func insertBatch(driver: any DatabaseDriver) -> RowWriteBatch? {
+        try? RowInsertPlanner.batch(
             table: table.name,
             schema: schema,
             type: databaseType,
@@ -287,15 +286,15 @@ struct InsertRowView: View {
             rows: [PayloadRow(values: fields)],
             allowAllDefaults: true,
             dropsEmptyPrimaryKey: false
-        ).first
+        )
     }
 
-    private func executeInsert(sql: String, session: ConnectionSession) async {
+    private func executeInsert(_ batch: RowWriteBatch) async {
         isSaving = true
         defer { isSaving = false }
 
         do {
-            try await session.driver.executeWrite([sql])
+            try await batch.run()
             hapticSuccess.toggle()
             onInserted?()
             dismiss()
