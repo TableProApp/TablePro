@@ -180,6 +180,23 @@ The peak is the whole process's, so the case needs a process to itself. The Post
 
 SQLite passes `docker: false`, so the case runs in the unit suite, where `cargo test` runs the tests of one binary in one process. It is a test target of its own, `crates/drivers/sqlite/tests/large_table.rs`, which holds nothing else and includes the adapter from `tests/integration/sqlite_engine.rs`. A passing run there prints nothing; `cargo test -p tablepro-driver-sqlite --test large_table -- --nocapture` shows the numbers.
 
+### Large-catalog case
+
+`crates/app/src/ui/workspace/tests/large_catalog.rs` fills PostgreSQL with 100 schemas of 500 tables, the default schema among them, and MySQL with one database of 50,000. It puts the sidebar and a SQL editor on screen over a session the app's own connector opens:
+
+- The sidebar lists every schema's tables, read and indexed the way the workspace does, then its search takes `i`, `in` and an empty search.
+- The editor's completion opens after `FROM `, narrows as `i` is typed, and opens again after a schema's dot.
+- Each step has a time bound, from the action to its result on screen, and none may stall the main loop past 100 ms, which `StallProbe` (`crates/app/src/test_support/stall_probe.rs`) measures as the longest gap between runs of a high-priority timeout. The catalog may not raise the resident peak (`ResidentPeak`) past a memory bound. The bounds are constants at the top of the file.
+
+The report gives each step's time, its stall and the CPU time the GTK thread spent on it: on a loaded machine the stall stretches and the CPU time does not, which tells a slow step from a busy machine. MySQL creates a table in milliseconds, so its fill takes minutes, and the `ci` profile gives these cases 15 minutes rather than five.
+
+The cases are `#[gtk4::test]`s in the app's library, so they need a display. CI runs them in the `integration-app` job under `xvfb-run` with the gtk suite's environment, and the `ci` nextest profile prints their numbers for a passing run. Locally:
+
+```bash
+GSK_RENDERER=cairo GTK_A11Y=test GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- \
+  meson devenv -C _build cargo nextest run -p tablepro --lib --run-ignored only large_catalog
+```
+
 ### Value corpus
 
 `value_corpus_suite!` checks that real values read back as the grid shows them. Each driver's `crates/drivers/<engine>/tests/integration/value_corpus.rs` implements `ValueCorpusEngine` and invokes it:
@@ -225,7 +242,7 @@ CI runs one job per package with docker tests:
 cargo nextest run --locked --profile ci -p tablepro-driver-mssql --run-ignored only
 ```
 
-`.config/nextest.toml` puts each package that has Docker tests in a test group with one thread, and for the app only its integration targets, so the tests of one suite never compete for a container. Its default filter leaves out three SQL Server tests that need tiberius#459 ([sql-server.md](drivers/sql-server.md#stops-and-timeouts)). The `ci` profile writes a JUnit report to `target/nextest/ci/junit.xml` and kills a test that runs past five minutes, so a hang fails with the test's name.
+`.config/nextest.toml` puts each package that has Docker tests in a test group with one thread, and for the app only its integration targets and the large-catalog case, so the tests of one suite never compete for a container. Its default filter leaves out three SQL Server tests that need tiberius#459 ([sql-server.md](drivers/sql-server.md#stops-and-timeouts)). The `ci` profile writes a JUnit report to `target/nextest/ci/junit.xml` and kills a test that runs past five minutes, so a hang fails with the test's name.
 
 A new package with Docker tests gets a test group and an override in `.config/nextest.toml`, and an entry in the `integration` matrix of `.github/workflows/build-linux.yml`.
 

@@ -16,6 +16,7 @@ use super::catalog_read::{self, CatalogAnswer};
 use super::completion_scope::{self, CompletionScope};
 use super::fuzzy;
 use super::proposal_kind::ProposalKind;
+use super::proposal_list::{Candidate, ProposalList, Ranking};
 use super::sql_completion_provider_imp as imp;
 use super::sql_proposal::SqlProposal;
 use crate::services::active_session::ActiveSession;
@@ -46,87 +47,49 @@ impl SqlCompletionProvider {
     }
 
     /// The proposals for `word`, which starts at character `word_start`
-    /// of `buffer`.
+    /// of `buffer`. The catalog read, the candidates it gives and their
+    /// ranking run on the runtime, so a schema of 50,000 tables never
+    /// reaches the GTK thread as 50,000 objects.
     pub async fn proposals(&self, buffer: &gtk4::TextBuffer, word_start: i32, word: &str) -> gio::ListModel {
-        self.set_needle(word);
-        let store = gio::ListStore::new::<SqlProposal>();
-        let model = self.sorted(&store);
+        let needle = fuzzy::casefold(word);
+        let tasks = self.imp().deps.get().map(|deps| deps.tasks.clone());
         let Some(request) = self.request(buffer, word_start) else {
-            return model;
+            return ProposalList::new(Ranking::new(Arc::from([]), &needle), tasks).upcast();
         };
-        let answer = match (&request.session, self.imp().deps.get()) {
-            (Some(session), Some(deps)) => deps
-                .tasks
-                .spawn_task(catalog_read::read(session.clone(), request.scope.clone()))
-                .await
-                .unwrap_or_else(|failure| {
-                    tracing::warn!(%failure, "reading the catalog for completion failed");
-                    CatalogAnswer::default()
-                }),
-            _ => CatalogAnswer::default(),
+        let ranking = match (request.session.clone(), tasks.clone()) {
+            (Some(session), Some(tasks)) => {
+                let fallback = request.clone();
+                let ranked_for = needle.clone();
+                let blocking = tasks.clone();
+                tasks
+                    .spawn_task(async move {
+                        let answer = catalog_read::read(session, request.scope.clone()).await;
+                        blocking
+                            .spawn_blocking_task(move || Ranking::new(request.candidates(&answer).into(), &ranked_for))
+                            .await
+                    })
+                    .await
+                    .and_then(|ranking| ranking)
+                    .unwrap_or_else(|failure| {
+                        tracing::warn!(%failure, "reading the catalog for completion failed");
+                        Ranking::new(fallback.candidates(&CatalogAnswer::default()).into(), &needle)
+                    })
+            }
+            _ => Ranking::new(request.candidates(&CatalogAnswer::default()).into(), &needle),
         };
-        store.extend_from_slice(&request.proposals(&answer));
-        model
+        ProposalList::new(ranking, tasks).upcast()
     }
 
     /// Narrow the list to the word now typed.
     pub fn refilter(&self, word: &str, model: &gio::ListModel) {
-        self.set_needle(word);
-        let Some(sorted) = model.downcast_ref::<gtk4::SortListModel>() else {
-            return;
-        };
-        if let Some(filter) = sorted
-            .model()
-            .and_downcast::<gtk4::FilterListModel>()
-            .and_then(|filtered| filtered.filter())
-        {
-            filter.changed(gtk4::FilterChange::Different);
-        }
-        if let Some(sorter) = sorted.sorter() {
-            sorter.changed(gtk4::SorterChange::Different);
+        if let Some(list) = model.downcast_ref::<ProposalList>() {
+            list.set_needle(&fuzzy::casefold(word));
         }
     }
 
     pub(super) fn empty(&self) -> gio::ListModel {
-        self.sorted(&gio::ListStore::new::<SqlProposal>())
-    }
-
-    fn set_needle(&self, word: &str) {
-        self.imp().needle.replace(fuzzy::casefold(word));
-    }
-
-    /// The store filtered by the needle and sorted closest match first.
-    fn sorted(&self, store: &gio::ListStore) -> gio::ListModel {
-        let needle = self.imp().needle.clone();
-        let filter = gtk4::CustomFilter::new(move |item| {
-            let Some(proposal) = item.downcast_ref::<SqlProposal>() else {
-                return false;
-            };
-            let needle = needle.borrow();
-            // With nothing typed the matcher ranks by length alone,
-            // which would put every short keyword above the columns.
-            let priority = if needle.is_empty() {
-                Some(0)
-            } else {
-                fuzzy::fuzzy_match(proposal.label(), &needle)
-            };
-            match priority {
-                Some(priority) => {
-                    proposal.set_priority(priority);
-                    true
-                }
-                None => false,
-            }
-        });
-        let sorter =
-            gtk4::CustomSorter::new(
-                |a, b| match (a.downcast_ref::<SqlProposal>(), b.downcast_ref::<SqlProposal>()) {
-                    (Some(a), Some(b)) => a.compare(b).into(),
-                    _ => gtk4::Ordering::Equal,
-                },
-            );
-        let filtered = gtk4::FilterListModel::new(Some(store.clone()), Some(filter));
-        gtk4::SortListModel::new(Some(filtered), Some(sorter)).upcast()
+        let tasks = self.imp().deps.get().map(|deps| deps.tasks.clone());
+        ProposalList::new(Ranking::new(Arc::from([]), ""), tasks).upcast()
     }
 
     fn request(&self, buffer: &gtk4::TextBuffer, word_start: i32) -> Option<Request> {
@@ -152,6 +115,7 @@ impl SqlCompletionProvider {
 }
 
 /// One completion's question, read on the GTK thread.
+#[derive(Clone)]
 struct Request {
     scope: CompletionScope,
     grammar: SqlGrammar,
@@ -160,7 +124,7 @@ struct Request {
 }
 
 impl Request {
-    fn proposals(&self, answer: &CatalogAnswer) -> Vec<SqlProposal> {
+    fn candidates(&self, answer: &CatalogAnswer) -> Vec<Candidate> {
         let mut proposals = Vec::new();
         let mut columns: HashSet<&str> = HashSet::new();
         for (table, list) in &answer.columns {
@@ -173,13 +137,13 @@ impl Request {
                     data_type: column.column_type.name.clone(),
                     table: table.clone(),
                 };
-                proposals.push(SqlProposal::new(kind, &column.name, &self.identifier(&column.name)));
+                proposals.push(Candidate::new(kind, &column.name, &self.identifier(&column.name)));
             }
         }
         if matches!(self.scope, CompletionScope::Objects { schema: None }) {
             for schema in answer.schemas.iter().flat_map(|schemas| schemas.iter()) {
                 if !schema.is_system {
-                    proposals.push(SqlProposal::new(
+                    proposals.push(Candidate::new(
                         ProposalKind::Schema,
                         &schema.name,
                         &self.identifier(&schema.name),
@@ -194,19 +158,19 @@ impl Request {
             }
         }
         if general {
-            proposals.extend(self.grammar.keywords().map(SqlProposal::keyword));
+            proposals.extend(self.grammar.keywords().map(Candidate::keyword));
         }
         proposals
     }
 
     /// A relation anywhere a table goes; a function only where an
     /// expression can go.
-    fn object(&self, object: &ObjectInfo, general: bool) -> Option<SqlProposal> {
+    fn object(&self, object: &ObjectInfo, general: bool) -> Option<Candidate> {
         let kind = ProposalKind::for_object(object.kind)?;
         if kind == ProposalKind::Function && !general {
             return None;
         }
-        Some(SqlProposal::new(kind, &object.name, &self.identifier(&object.name)))
+        Some(Candidate::new(kind, &object.name, &self.identifier(&object.name)))
     }
 
     /// `name` as the connection's dialect writes it, quoted only when

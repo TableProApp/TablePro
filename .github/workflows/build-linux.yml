@@ -547,7 +547,8 @@ jobs:
     # The app links GTK 4.22 and libadwaita 1.9, which the host runner
     # cannot build, so this runs in the fast job's image like the
     # session job. Only the named test targets run: the app's startup
-    # test needs Meson and the fast job already covers it.
+    # test needs Meson and the fast job already covers it. The library's
+    # Docker tests put widgets on screen, so they run under Xvfb.
     name: Docker tests (tablepro)
     needs: fast
     if: ${{ !cancelled() && needs.fast.result == 'success' }}
@@ -572,19 +573,24 @@ jobs:
         with:
           persist-credentials: false
       - name: Install system dependencies
-        # The -dev packages the app links, as in the fast job.
+        # The -dev packages the app links, as in the fast job, and the
+        # display and session bus its widget tests run on.
         run: |
           apt-get install -y --no-install-recommends \
             build-essential \
             curl \
             pkgconf \
+            libglib2.0-bin \
             libgtk-4-dev \
             libadwaita-1-dev \
             libgtksourceview-5-dev \
             libsqlite3-dev \
             libkrb5-dev \
             clang \
-            libclang-dev
+            libclang-dev \
+            xvfb \
+            xauth \
+            dbus-daemon
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
@@ -599,7 +605,14 @@ jobs:
         # No Docker CLI in the image; the API answers on the socket.
         run: curl --fail --silent --show-error --unix-socket /var/run/docker.sock http://localhost/_ping
       - name: Docker tests
-        run: cargo nextest run --locked --profile ci -p tablepro --test tracker_save_postgres --run-ignored only
+        # The gtk suite's environment (docs/testing.md, Unit tests).
+        env:
+          GSK_RENDERER: cairo
+          GTK_A11Y: test
+          GDK_BACKEND: x11
+        run: |
+          xvfb-run -a dbus-run-session -- \
+            cargo nextest run --locked --profile ci -p tablepro --lib --test tracker_save_postgres --run-ignored only
       - name: Upload JUnit report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

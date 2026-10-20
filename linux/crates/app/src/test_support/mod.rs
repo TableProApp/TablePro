@@ -16,6 +16,7 @@ mod owned_window;
 pub(crate) mod settings_schema;
 pub(crate) mod shortcut_keys;
 mod signal_log;
+mod stall_probe;
 mod tests;
 mod unlabelled_widget;
 mod wait_timed_out;
@@ -38,6 +39,7 @@ pub(crate) use main_loop::{after_next_frame, drain_main_context, finish_on_main,
 pub(crate) use memory_settings::MemorySettings;
 pub(crate) use owned_window::{OwnedWindow, drop_focus};
 pub(crate) use signal_log::SignalLog;
+pub(crate) use stall_probe::StallProbe;
 pub(crate) use unlabelled_widget::UnlabelledWidget;
 pub(crate) use wait_timed_out::WaitTimedOut;
 pub(crate) use widget_lookup::{descendants, find_by_action_name, first_descendant_of_type, status_page_description};
