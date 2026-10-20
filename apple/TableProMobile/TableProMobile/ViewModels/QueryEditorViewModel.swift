@@ -21,6 +21,7 @@ final class QueryEditorViewModel {
         case nothing
         case applied(count: Int)
         case openTransaction
+        case abortedTransaction
         /// The session was in a transaction at some point, or cannot say, so whether earlier work stands is not known.
         case unknown
     }
@@ -173,6 +174,9 @@ final class QueryEditorViewModel {
         switch (interruption.standingWork, interruption.kind) {
         case (.openTransaction, _):
             return String(localized: "The transaction on this connection is still open. Commit or roll it back.")
+        // A COMMIT in an aborted PostgreSQL block rolls back without an error, so committing is not offered.
+        case (.abortedTransaction, _):
+            return String(localized: "The transaction on this connection can no longer be committed. Roll it back.")
         case (.unknown, _):
             return nil
         case (.nothing, _):
@@ -428,6 +432,7 @@ final class QueryEditorViewModel {
         observedStates: [DriverTransactionState],
         now: DriverTransactionState
     ) -> StandingWork {
+        if now == .abortedTransaction { return .abortedTransaction }
         if now == .explicitTransaction || now == .implicitTransaction { return .openTransaction }
         guard now == .idle, observedStates.allSatisfy({ $0 == .idle }) else { return .unknown }
         return position > 1 ? .applied(count: position - 1) : .nothing

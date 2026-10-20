@@ -132,6 +132,85 @@ struct OracleSessionTransactionTests {
         #expect(transaction.isOpen)
     }
 
+    @Test func testDataDefinitionOutsideATransactionCommitsAsItRuns() throws {
+        var transaction = OracleSessionTransaction()
+        #expect(try transaction.admit(.dataDefinition, on: 1))
+        transaction.statementSucceeded(.dataDefinition, on: 1)
+        #expect(!transaction.isOpen)
+    }
+
+    @Test func testDataDefinitionEndsTheTransactionOnceOracleRunsIt() throws {
+        var transaction = OracleSessionTransaction()
+        transaction.open()
+        _ = try transaction.admit(.other, on: 1)
+        #expect(!(try transaction.admit(.dataDefinition, on: 1)))
+        #expect(transaction.isOpen)
+
+        transaction.statementSucceeded(.dataDefinition, on: 1, serverHoldsTransaction: false)
+        #expect(!transaction.isOpen)
+        #expect(try transaction.admit(.other, on: 1))
+    }
+
+    @Test func testDataDefinitionTheServerRanInsideTheTransactionKeepsItOpen() throws {
+        var transaction = OracleSessionTransaction()
+        transaction.open()
+        _ = try transaction.admit(.other, on: 1)
+        _ = try transaction.admit(.dataDefinition, on: 1)
+
+        transaction.statementSucceeded(.dataDefinition, on: 1, serverHoldsTransaction: true)
+        #expect(transaction.isOpen)
+        #expect(!(try transaction.admit(.other, on: 1)))
+    }
+
+    @Test func testDataDefinitionWithNoConnectionToAskLeavesTheTransaction() throws {
+        var transaction = OracleSessionTransaction()
+        transaction.open()
+        _ = try transaction.admit(.other, on: 1)
+        _ = try transaction.admit(.dataDefinition, on: 1)
+
+        transaction.statementSucceeded(.dataDefinition, on: 1, serverHoldsTransaction: nil)
+        #expect(transaction.isOpen)
+    }
+
+    @Test func testRefusedDataDefinitionEndsTheTransactionWhenTheServerHoldsNone() throws {
+        var transaction = OracleSessionTransaction()
+        transaction.open()
+        _ = try transaction.admit(.other, on: 1)
+        _ = try transaction.admit(.dataDefinition, on: 1)
+        transaction.statementFailed(.dataDefinition, serverHoldsTransaction: false)
+        #expect(!transaction.isOpen)
+    }
+
+    @Test func testRefusedDataDefinitionLeavesTheTransactionOpenWhenTheServerStillHoldsIt() throws {
+        var transaction = OracleSessionTransaction()
+        transaction.open()
+        _ = try transaction.admit(.other, on: 1)
+        _ = try transaction.admit(.dataDefinition, on: 1)
+        transaction.statementFailed(.dataDefinition, serverHoldsTransaction: true)
+        #expect(transaction.isOpen)
+        #expect(!(try transaction.admit(.other, on: 1)))
+    }
+
+    @Test func testRefusedDataDefinitionWithNoConnectionToAskLeavesTheTransaction() throws {
+        var transaction = OracleSessionTransaction()
+        transaction.open()
+        _ = try transaction.admit(.other, on: 1)
+        _ = try transaction.admit(.dataDefinition, on: 1)
+        transaction.statementFailed(.dataDefinition, serverHoldsTransaction: nil)
+        #expect(transaction.isOpen)
+    }
+
+    @Test func testDataDefinitionOnAReplacedConnectionReportsTheTransactionLost() throws {
+        var transaction = OracleSessionTransaction()
+        transaction.open()
+        _ = try transaction.admit(.other, on: 1)
+
+        if let error = #expect(throws: (any Error).self, performing: { try transaction.admit(.dataDefinition, on: 2) }) {
+            #expect(error as? OracleCoreError == .transactionLost)
+        }
+        #expect(!transaction.isOpen)
+    }
+
     @Test func testOpeningAnOpenTransactionKeepsItsConnection() throws {
         var transaction = OracleSessionTransaction()
         transaction.open()

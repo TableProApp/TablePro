@@ -1,5 +1,6 @@
 import Foundation
 @testable import TableProAutocomplete
+import TableProSQLGrammar
 import Testing
 
 struct SQLTokenBoundaryTests {
@@ -86,8 +87,6 @@ struct SQLTokenBoundaryTests {
         #expect(range == NSRange(location: 7, length: 0))
     }
 
-    // MARK: - Match text
-
     @Test(
         "Match text drops the identifier quotes the segment carries",
         arguments: [
@@ -97,6 +96,8 @@ struct SQLTokenBoundaryTests {
             ("\"category\"", "category"),
             ("`", ""),
             ("\"", ""),
+            ("[ord", "ord"),
+            ("[", ""),
             ("cat", "cat"),
             ("", "")
         ]
@@ -105,7 +106,6 @@ struct SQLTokenBoundaryTests {
         #expect(SQLTokenBoundary.matchText(of: segment) == expected)
     }
 
-    /// The segment keeps its quote so the replacement covers it; only the match text drops it.
     @Test("Match text does not change what the segment covers")
     func matchTextLeavesTheSegmentAlone() {
         let text = "SELECT \"mess" as NSString
@@ -113,10 +113,7 @@ struct SQLTokenBoundaryTests {
         #expect(SQLTokenBoundary.matchText(of: text.substring(from: 7)) == "mess")
     }
 
-    // MARK: - Non-ASCII identifiers
-
-    /// The ASCII-only rule read these tokens as empty, so the replacement range collapsed to zero
-    /// length and accepting a suggestion inserted beside the typed text instead of replacing it.
+    // The ASCII-only rule read these as empty, so an accepted suggestion landed beside the typed text.
     @Test(
         "A non-ASCII token is replaced, not duplicated",
         arguments: [
@@ -169,8 +166,7 @@ struct SQLTokenBoundaryTests {
         }
     }
 
-    /// `$` opens a MongoDB pipeline stage, and `MongoContextAnalyzer` needs the token to start
-    /// there, so the wider rule must not adopt it.
+    // `MongoContextAnalyzer` needs the token to start at a pipeline stage's `$`.
     @Test("A dollar sign still ends the token")
     func dollarEndsSegment() {
         let text = "aggregate([{ $match" as NSString
@@ -182,5 +178,48 @@ struct SQLTokenBoundaryTests {
         #expect(SQLTokenBoundary.segmentStart(in: "SELECT mess" as NSString, endingAt: 11) == 7)
         #expect(SQLTokenBoundary.segmentStart(in: "SELECT users.na" as NSString, endingAt: 15) == 13)
         #expect(SQLTokenBoundary.segmentStart(in: "SELECT " as NSString, endingAt: 7) == 7)
+    }
+
+    @Test("An open bracket starts the segment on a bracket grammar", arguments: ["SQL Server", "SQLite"])
+    func openBracketStartsTheSegment(engine: String) {
+        let text = "SELECT * FROM [ord" as NSString
+        #expect(SQLTokenBoundary.segmentStart(in: text, endingAt: 18, grammar: .engine(engine)) == 14)
+    }
+
+    // An editor that closes the pair leaves the caret before the close, and the bare name goes between the quotes.
+    @Test(
+        "A closed quote pair starts the segment after the opening quote",
+        arguments: [
+            ("SQL Server", "SELECT * FROM [ord]", "SELECT * FROM [orders]"),
+            ("SQLite", "SELECT * FROM [ord]", "SELECT * FROM [orders]"),
+            ("PostgreSQL", "SELECT * FROM \"ord\"", "SELECT * FROM \"orders\""),
+            ("MySQL", "SELECT * FROM `ord`", "SELECT * FROM `orders`")
+        ]
+    )
+    func closedPairStartsAfterTheQuote(engine: String, typed: String, accepted: String) {
+        let text = typed as NSString
+        let start = SQLTokenBoundary.segmentStart(in: text, endingAt: 18, grammar: .engine(engine))
+        #expect(start == 15)
+        let range = NSRange(location: start, length: 18 - start)
+        #expect(text.replacingCharacters(in: range, with: "orders") == accepted)
+    }
+
+    @Test("A quote closed before the caret stays in the segment")
+    func quoteClosedBeforeTheCaret() {
+        let text = "SELECT * FROM `cat`" as NSString
+        #expect(SQLTokenBoundary.segmentStart(in: text, endingAt: text.length, grammar: .engine("MySQL")) == 14)
+    }
+
+    @Test("Standard SQL keeps an open quote and never treats a bracket as one")
+    func standardSQLSegments() {
+        #expect(SQLTokenBoundary.segmentStart(in: "SELECT \"mess" as NSString, endingAt: 12, grammar: .ansi) == 7)
+        #expect(SQLTokenBoundary.segmentStart(in: "SELECT * FROM [ord" as NSString, endingAt: 18, grammar: .ansi) == 15)
+        #expect(SQLTokenBoundary.segmentStart(in: "SELECT * FROM `ord" as NSString, endingAt: 18, grammar: .ansi) == 14)
+    }
+
+    @Test("An opening bracket ends the walk back", arguments: ["SQL Server", "SQLite"])
+    func bracketEndsTheWalk(engine: String) {
+        let text = "SELECT a[ord" as NSString
+        #expect(SQLTokenBoundary.segmentStart(in: text, endingAt: text.length, grammar: .engine(engine)) == 8)
     }
 }

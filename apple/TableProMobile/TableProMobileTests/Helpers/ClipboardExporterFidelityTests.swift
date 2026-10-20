@@ -87,6 +87,92 @@ struct ClipboardExporterFidelityTests {
         #expect(json(["1", nil, "x"]).contains("\"zip\": null"))
     }
 
+    @Test("control characters are escaped, so the JSON parses and keeps them")
+    func controlCharactersEscape() throws {
+        let values = ["form\u{0C}feed", "bell\u{07}", "esc\u{1B}[0m", "unit\u{1F}separator"]
+        for value in values {
+            let text = json(["1", value, "x"])
+            let data = try #require(text.data(using: .utf8))
+            let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            #expect(object["zip"] as? String == value)
+        }
+    }
+
+    // MARK: - Cells
+
+    @Test("a cut or binary cell throws and names its column, in every format")
+    func incompleteCellsThrow() {
+        let cells: [Cell] = [
+            .text("1"),
+            .truncatedText(prefix: "abc", totalBytes: 5_000, ref: nil),
+            .binary(byteCount: 16, ref: nil)
+        ]
+        for format in ExportFormat.allCases {
+            #expect(throws: ClipboardExporter.IncompleteValues(columns: ["zip", "note"])) {
+                try ClipboardExporter.exportRow(
+                    columns: columns, cells: cells, format: format,
+                    tableName: "t", databaseType: .postgresql, driver: nil
+                )
+            }
+        }
+    }
+
+    @Test("a cut cell that carries a ref still throws, since only its prefix is here")
+    func cutCellWithRefThrows() {
+        let ref = CellRef(table: "t", column: "note", primaryKey: [PrimaryKeyComponent(column: "id", value: "1")])
+        let cells: [Cell] = [.text("1"), .text("a"), .truncatedText(prefix: "abc", totalBytes: 5_000, ref: ref)]
+        #expect(ClipboardExporter.incompleteColumns(columns: columns, cells: cells) == ["note"])
+        #expect(throws: ClipboardExporter.IncompleteValues(columns: ["note"])) {
+            try ClipboardExporter.exportRow(
+                columns: columns, cells: cells, format: .sqlInsert,
+                tableName: "t", databaseType: .postgresql, driver: nil
+            )
+        }
+    }
+
+    @Test("rows name each incomplete column once, in column order")
+    func incompleteRowsNameColumnsOnce() {
+        let rows: [[Cell]] = [
+            [.text("1"), .text("a"), .binary(byteCount: 4, ref: nil)],
+            [.text("2"), .truncatedText(prefix: "a", totalBytes: 5_000, ref: nil), .binary(byteCount: 4, ref: nil)]
+        ]
+        #expect(throws: ClipboardExporter.IncompleteValues(columns: ["zip", "note"])) {
+            try ClipboardExporter.exportRows(
+                columns: columns, rows: rows, format: .csv,
+                tableName: "t", databaseType: .postgresql, driver: nil
+            )
+        }
+    }
+
+    @Test("the error message names the columns")
+    func incompleteValuesNamesColumns() throws {
+        let message = try #require(ClipboardExporter.IncompleteValues(columns: ["zip", "note"]).errorDescription)
+        #expect(message.contains("zip"))
+        #expect(message.contains("note"))
+    }
+
+    @Test("a loaded long value exports whole, with no size suffix")
+    func loadedValueExportsWhole() throws {
+        let long = String(repeating: "x", count: 5_000)
+        let cells: [Cell] = [.text("1"), .null, .text(long)]
+        #expect(ClipboardExporter.incompleteColumns(columns: columns, cells: cells).isEmpty)
+
+        let insert = try ClipboardExporter.exportRow(
+            columns: columns, cells: cells, format: .sqlInsert,
+            tableName: "t", databaseType: .postgresql, driver: nil
+        )
+        #expect(insert == "INSERT INTO \"t\" (\"id\", \"zip\", \"note\") VALUES ('1', NULL, '\(long)');")
+
+        let text = try ClipboardExporter.exportRows(
+            columns: columns, rows: [cells], format: .json,
+            tableName: "t", databaseType: .postgresql, driver: nil
+        )
+        let data = try #require(text.data(using: .utf8))
+        let objects = try #require(try JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        #expect(objects.first?["note"] as? String == long)
+        #expect(objects.first?["zip"] is NSNull)
+    }
+
     // MARK: - SQL INSERT
 
     @Test("identifiers are quoted for the dialect, not always ANSI")
