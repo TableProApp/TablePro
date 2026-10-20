@@ -70,6 +70,14 @@ struct SQLBuilderFilterLiteralTests {
         ) == "SELECT COUNT(*) FROM `files` WHERE `path` = 'C:\\\\temp\\\\'")
     }
 
+    // ClickHouse reads backslash escapes inside backticks, so a name ending in a backslash would leave the quote open.
+    @Test("A ClickHouse filter quotes its column the way the table and the writes do")
+    func clickHouseColumnEndingInABackslash() {
+        let filters = [TableFilter(columnName: "a\\", filterOperator: .equal, value: "x")]
+        let sql = SQLBuilder.buildFilteredCount(table: "t", schema: nil, type: .clickhouse, filters: filters, logicMode: .and)
+        #expect(sql.contains("WHERE `a\\\\` = 'x'"))
+    }
+
     private func count(_ type: DatabaseType, _ filter: TableFilter, _ column: ColumnInfo) -> String {
         SQLBuilder.buildFilteredCount(table: "t", schema: nil, type: type, filters: [filter], logicMode: .and, columns: [column])
     }

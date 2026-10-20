@@ -105,6 +105,10 @@ nonisolated enum SQLBuilder {
         }
     }
 
+    static func filterGenerator(dialect: SQLDialectDescriptor, type: DatabaseType) -> FilterSQLGenerator {
+        FilterSQLGenerator(dialect: dialect, databaseType: type, quoteIdentifier: { quoteIdentifier($0, for: type) })
+    }
+
     static func buildKeyMatchCount(
         table: String,
         schema: String?,
@@ -210,7 +214,7 @@ nonisolated enum SQLBuilder {
         limit: Int, offset: Int
     ) -> String {
         let dialect = dialectDescriptor(for: type)
-        let generator = FilterSQLGenerator(dialect: dialect, databaseType: type)
+        let generator = filterGenerator(dialect: dialect, type: type)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let pagination = paginationClause(orderBy: "", limit: limit, offset: offset, for: type)
@@ -228,7 +232,7 @@ nonisolated enum SQLBuilder {
         limit: Int, offset: Int
     ) -> String {
         let dialect = dialectDescriptor(for: type)
-        let generator = FilterSQLGenerator(dialect: dialect, databaseType: type)
+        let generator = filterGenerator(dialect: dialect, type: type)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         let orderBy = buildOrderByClause(sortState, for: type)
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
@@ -245,7 +249,7 @@ nonisolated enum SQLBuilder {
         columns: [ColumnInfo] = []
     ) -> String {
         let dialect = dialectDescriptor(for: type)
-        let generator = FilterSQLGenerator(dialect: dialect, databaseType: type)
+        let generator = filterGenerator(dialect: dialect, type: type)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         if whereClause.isEmpty {
@@ -319,7 +323,7 @@ nonisolated enum SQLBuilder {
         filters: [TableFilter], logicMode: FilterLogicMode, columns: [ColumnInfo], type: DatabaseType
     ) -> String? {
         let dialect = dialectDescriptor(for: type)
-        let generator = FilterSQLGenerator(dialect: dialect, databaseType: type)
+        let generator = filterGenerator(dialect: dialect, type: type)
         let clause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         guard !clause.isEmpty else { return nil }
         let wherePrefix = "WHERE "

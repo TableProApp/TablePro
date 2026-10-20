@@ -43957,6 +43957,12 @@
         }
       }
     },
+    "Commit" : {
+
+    },
+    "Commit the transaction" : {
+
+    },
     "Compact" : {
       "localizations" : {
         "fr" : {
@@ -51630,6 +51636,9 @@
           }
         }
       }
+    },
+    "Could Not End the Transaction" : {
+
     },
     "Could not export activity log" : {
       "localizations" : {
@@ -95412,6 +95421,9 @@
         }
       }
     },
+    "Its uncommitted changes are discarded." : {
+
+    },
     "Its WHERE clause is not supported here, so it covers every row." : {
       "localizations" : {
         "fr" : {
@@ -127124,6 +127136,9 @@
         }
       }
     },
+    "Other work ran on this connection before you confirmed. Check the transaction and try again." : {
+
+    },
     "Other…" : {
       "localizations" : {
         "fr" : {
@@ -149142,6 +149157,15 @@
           }
         }
       }
+    },
+    "Roll Back" : {
+
+    },
+    "Roll Back the Transaction?" : {
+
+    },
+    "Roll it back to continue." : {
+
     },
     "Roll the transaction back to discard them, or commit it to keep them." : {
       "localizations" : {
@@ -187483,6 +187507,9 @@
         }
       }
     },
+    "The session that held this transaction has ended." : {
+
+    },
     "The settings it was created with could not be read, so it gets the target's own." : {
 
     },
@@ -199014,6 +199041,30 @@
           }
         }
       }
+    },
+    "Transaction Failed" : {
+
+    },
+    "Transaction failed on %@. Roll it back to continue." : {
+
+    },
+    "Transaction failed on %1$@, %2$@. Roll it back to continue." : {
+
+    },
+    "transaction open" : {
+
+    },
+    "Transaction open" : {
+
+    },
+    "Transaction Open" : {
+
+    },
+    "Transaction open on %@" : {
+
+    },
+    "Transaction open on %1$@, %2$@" : {
+
     },
     "Transactions are not supported by Cloudflare D1" : {
       "extractionState" : "manual",

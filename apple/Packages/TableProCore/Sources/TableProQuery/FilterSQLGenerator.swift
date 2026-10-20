@@ -7,10 +7,18 @@ import TableProSQLGrammar
 public struct FilterSQLGenerator: Sendable {
     private let dialect: SQLDialectDescriptor
     private let databaseType: DatabaseType?
+    private let identifierQuoter: (@Sendable (String) -> String)?
 
-    public init(dialect: SQLDialectDescriptor, databaseType: DatabaseType? = nil) {
+    // A dialect names its quote character only; ClickHouse also reads backslash escapes inside backticks, so a caller
+    // that quotes per engine passes its own quoter.
+    public init(
+        dialect: SQLDialectDescriptor,
+        databaseType: DatabaseType? = nil,
+        quoteIdentifier: (@Sendable (String) -> String)? = nil
+    ) {
         self.dialect = dialect
         self.databaseType = databaseType
+        self.identifierQuoter = quoteIdentifier
     }
 
     public func generateWhereClause(
@@ -180,6 +188,7 @@ public struct FilterSQLGenerator: Sendable {
     }
 
     private func quoteIdentifier(_ name: String) -> String {
+        if let identifierQuoter { return identifierQuoter(name) }
         let open = dialect.identifierQuote
         let close = open == "[" ? "]" : open
         let escaped = name.replacingOccurrences(of: close, with: "\(close)\(close)")
