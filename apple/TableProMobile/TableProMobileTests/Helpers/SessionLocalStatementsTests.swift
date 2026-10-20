@@ -35,17 +35,33 @@ struct SessionLocalStatementsTests {
         )
 
         #expect(effect.temporaryTables.isEmpty)
-        #expect(!effect.switchesDatabase)
+        #expect(!effect.leavesCatalog)
     }
 
     @Test("USE moves the session to another database, quoted or inside a SQL Server batch")
-    func useSwitchesDatabase() {
-        #expect(SessionLocalStatements.effect(of: ["USE archive"], databaseType: .mysql).switchesDatabase)
-        #expect(SessionLocalStatements.effect(of: ["use `old shop`"], databaseType: .mysql).switchesDatabase)
+    func useLeavesTheCatalog() {
+        #expect(SessionLocalStatements.effect(of: ["USE archive"], databaseType: .mysql).leavesCatalog)
+        #expect(SessionLocalStatements.effect(of: ["use `old shop`"], databaseType: .mysql).leavesCatalog)
         #expect(
             SessionLocalStatements.effect(of: ["SELECT 1\nUSE [archive]\nSELECT 2"], databaseType: .mssql)
-                .switchesDatabase
+                .leavesCatalog
         )
+    }
+
+    @Test("A procedure call, dynamic SQL or an anonymous block may make a table only the session sees")
+    func opaqueStatementsLeaveTheCatalog() {
+        #expect(SessionLocalStatements.effect(of: ["CALL make_scratch()"], databaseType: .mysql).leavesCatalog)
+        #expect(SessionLocalStatements.effect(of: ["EXECUTE stmt"], databaseType: .mysql).leavesCatalog)
+        #expect(SessionLocalStatements.effect(of: ["EXEC dbo.make_scratch"], databaseType: .mssql).leavesCatalog)
+        #expect(
+            SessionLocalStatements.effect(of: ["DO $$ BEGIN PERFORM 1; END $$"], databaseType: .postgresql)
+                .leavesCatalog
+        )
+        let plain = SessionLocalStatements.effect(
+            of: ["SELECT 1", "INSERT INTO t VALUES (1)", "CREATE TABLE u (id int)", "SET @a = 1", "SHOW TABLES"],
+            databaseType: .mysql
+        )
+        #expect(!plain.leavesCatalog)
     }
 
     @Test("An index hint, a longer word, a comment or a string is not a USE")
@@ -61,6 +77,6 @@ struct SessionLocalStatementsTests {
             databaseType: .mysql
         )
 
-        #expect(!effect.switchesDatabase)
+        #expect(!effect.leavesCatalog)
     }
 }

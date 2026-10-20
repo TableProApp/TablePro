@@ -52,6 +52,14 @@ struct QueryTextInsertionTests {
         #expect(text == "SET a 1\nGET session:1")
     }
 
+    @Test("A Redis key's escaped trailing blank stays with it")
+    func redisKeepsAnEscapedTrailingBlank() {
+        let (empty, _) = added("DEL victim\\ ", to: "", .redis)
+        let (appended, _) = added("DEL victim\\ ", to: "GET a", .redis)
+        #expect(empty == "DEL victim\\ ")
+        #expect(appended == "GET a\nDEL victim\\ ")
+    }
+
     @Test("A semicolon inside a string does not count as the end")
     func semicolonInAStringIsNotTheEnd() {
         let (text, _) = added("SELECT 2", to: "SELECT ';'")

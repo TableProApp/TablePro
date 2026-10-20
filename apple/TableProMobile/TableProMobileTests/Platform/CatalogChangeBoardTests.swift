@@ -60,16 +60,16 @@ struct CatalogChangeBoardTests {
     }
 
     @Test("A USE leaves the session off the window's database until a switch, and a new session starts on it")
-    func sessionLeftDatabase() {
+    func sessionLeftCatalog() {
         let board = CatalogChangeBoard()
         let first = NSObject()
         let second = NSObject()
-        board.noteSessionEffect(.init(switchesDatabase: true), for: id, driver: ObjectIdentifier(first))
+        board.noteSessionEffect(.init(leavesCatalog: true), for: id, driver: ObjectIdentifier(first))
 
-        #expect(board.sessionLeftDatabase(for: id, driver: ObjectIdentifier(first)))
-        #expect(!board.sessionLeftDatabase(for: id, driver: ObjectIdentifier(second)))
-        #expect(!board.sessionLeftDatabase(for: UUID(), driver: ObjectIdentifier(first)))
+        #expect(board.sessionLeftCatalog(for: id, driver: ObjectIdentifier(first)))
+        #expect(!board.sessionLeftCatalog(for: id, driver: ObjectIdentifier(second)))
+        #expect(!board.sessionLeftCatalog(for: UUID(), driver: ObjectIdentifier(first)))
         board.noteSessionDatabaseSwitched(for: id)
-        #expect(!board.sessionLeftDatabase(for: id, driver: ObjectIdentifier(first)))
+        #expect(!board.sessionLeftCatalog(for: id, driver: ObjectIdentifier(first)))
     }
 }

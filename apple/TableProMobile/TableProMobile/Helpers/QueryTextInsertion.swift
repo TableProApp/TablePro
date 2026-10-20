@@ -1,5 +1,6 @@
 import Foundation
 import TableProModels
+import TableProQuery
 import TableProSQLGrammar
 
 // A template or a history entry added to the editor: it becomes the text of an empty editor and is appended to any
@@ -13,7 +14,10 @@ nonisolated enum QueryTextInsertion {
 
     static func edit(adding query: String, to text: String, databaseType: DatabaseType) -> Edit {
         let source = text as NSString
-        let added = StatementBlank.trimming(query)
+        // Redis-aware: a backslash there escapes a trailing blank that belongs to the last argument.
+        let added = databaseType == .redis
+            ? QueryScript.trimmed(query, databaseType: databaseType)
+            : StatementBlank.trimming(query)
         guard StatementBlank.hasContent(text) else {
             let whole = NSRange(location: 0, length: source.length)
             return Edit(range: whole, text: added, selection: caret(after: added, at: 0))

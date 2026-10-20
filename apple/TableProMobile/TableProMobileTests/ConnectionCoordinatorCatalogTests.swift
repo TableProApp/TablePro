@@ -220,7 +220,7 @@ struct ConnectionCoordinatorCatalogTests {
         #expect(coordinator.catalogMatchesSession)
 
         appState.catalogChanges.noteSessionEffect(
-            .init(switchesDatabase: true), for: connection.id, driver: ObjectIdentifier(session)
+            .init(leavesCatalog: true), for: connection.id, driver: ObjectIdentifier(session)
         )
         #expect(!coordinator.catalogMatchesSession)
 

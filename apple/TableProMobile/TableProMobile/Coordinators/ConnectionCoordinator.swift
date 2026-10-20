@@ -441,10 +441,11 @@ final class ConnectionCoordinator {
 
     private static let transactionalDDLTypes: Set<DatabaseType> = [.postgresql, .redshift, .mssql]
 
-    // Completion reads beside the session only while both see the same tables: same DDL, same database.
+    // Completion reads beside the session only while both see the same tables: same DDL, same database, no table
+    // only a procedure on the session made.
     var catalogMatchesSession: Bool {
         guard catalogSeesSessionDDL else { return false }
-        return !appState.catalogChanges.sessionLeftDatabase(
+        return !appState.catalogChanges.sessionLeftCatalog(
             for: connection.id, driver: session.map { ObjectIdentifier($0.driver) }
         )
     }

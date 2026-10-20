@@ -8,8 +8,9 @@ nonisolated enum SessionLocalStatements {
     nonisolated struct Effect: Equatable {
         // Kept after a DROP too: a failed script may never have reached it, and the session answers either way.
         var temporaryTables: Set<String> = []
-        // A `USE` moves the session off the database the catalog connection opens.
-        var switchesDatabase = false
+        // A `USE` moved the session off the database the catalog connection opens, or a procedure, dynamic SQL or an
+        // ATTACH may have made a table only the session sees.
+        var leavesCatalog = false
     }
 
     private static let identifier = #"(`(?:[^`]|``)+`|"(?:[^"]|"")+"|\[[^\]]+\]|[\w$#]+)"#
@@ -42,8 +43,9 @@ nonisolated enum SessionLocalStatements {
                 effect.temporaryTables.insert(name)
             }
             let range = NSRange(location: 0, length: (code as NSString).length)
-            if usePattern?.firstMatch(in: code, range: range) != nil {
-                effect.switchesDatabase = true
+            if usePattern?.firstMatch(in: code, range: range) != nil
+                || SQLCatalogEffectClassifier.effect(of: statement, grammar: grammar) == .opaque {
+                effect.leavesCatalog = true
             }
         }
         return effect

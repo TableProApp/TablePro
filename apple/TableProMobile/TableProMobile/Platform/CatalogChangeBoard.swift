@@ -49,14 +49,14 @@ final class CatalogChangeBoard {
     }
 
     func noteSessionEffect(_ effect: SessionLocalStatements.Effect, for connectionId: UUID, driver: ObjectIdentifier) {
-        if effect.switchesDatabase { movedSessions[connectionId] = driver }
+        if effect.leavesCatalog { movedSessions[connectionId] = driver }
         guard !effect.temporaryTables.isEmpty else { return }
         let names = temporaryTables(for: connectionId, driver: driver).union(effect.temporaryTables)
         temporary[connectionId] = SessionTables(driver: driver, names: names)
     }
 
     // Until a database switch puts the session back on the database the window shows.
-    func sessionLeftDatabase(for connectionId: UUID, driver: ObjectIdentifier?) -> Bool {
+    func sessionLeftCatalog(for connectionId: UUID, driver: ObjectIdentifier?) -> Bool {
         guard let driver else { return false }
         return movedSessions[connectionId] == driver
     }
