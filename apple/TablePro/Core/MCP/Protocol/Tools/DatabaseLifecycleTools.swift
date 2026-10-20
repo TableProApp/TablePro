@@ -53,6 +53,7 @@ public struct CreateDatabaseTool: MCPToolImplementation {
             sql: "CREATE DATABASE \(name)",
             meta: meta,
             allowsDestructive: false,
+            forcesUserConsent: true,
             operationLabel: String(localized: "creating a database"),
             context: context,
             services: services

@@ -54,6 +54,10 @@ enum MCPStatementGate {
         if allowsMultiStatement {
             capabilities.insert(.mayRunMultiStatement)
         }
+        // Elicited consent stands in for the Mac dialog only on an admin token, so the dialog asks everyone else.
+        if forcesUserConsent {
+            capabilities.insert(.confirmsWrites)
+        }
         capabilities.formUnion(consent.capabilities)
 
         try await services.authPolicy.checkSafeModeDialog(
