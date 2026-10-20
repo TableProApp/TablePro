@@ -172,7 +172,8 @@ public struct SSHChannelRelay {
     private func sendToLocal(_ buffer: UnsafeMutablePointer<CChar>, count: Int) -> Bool {
         var totalSent = 0
         while totalSent < count {
-            let sent = send(localFD, buffer.advanced(by: totalSent), count - totalSent, 0)
+            // Without the flag, a send to a peer that closed first raises SIGPIPE and kills the app.
+            let sent = send(localFD, buffer.advanced(by: totalSent), count - totalSent, MSG_NOSIGNAL)
             if sent <= 0 { return false }
             totalSent += sent
         }

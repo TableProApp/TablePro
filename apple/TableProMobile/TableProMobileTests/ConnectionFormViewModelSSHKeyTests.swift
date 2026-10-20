@@ -143,6 +143,63 @@ struct ConnectionFormViewModelSSHKeyTests {
         )
     }
 
+    @Test("An SSH Agent tunnel shows Private Key, stores a pasted key and keeps SSH Agent for the Mac")
+    func agentTunnelSignsInWithDeviceKey() throws {
+        var connection = makeTunnelledConnection()
+        connection.sshConfiguration?.authMethod = .sshAgent
+        let store = MockSecureStore()
+        let form = ConnectionFormViewModel(editing: connection)
+
+        #expect(form.sshAuthMethod == .privateKey)
+        #expect(form.sshKeyInputMode == .paste)
+        #expect(form.sshAuthMethodNote != nil)
+
+        form.sshKeyContent = pastedKey
+        try form.persistPrivateKey(secureStore: store)
+
+        #expect(try store.retrieve(forKey: keyAccount(connection.id)) == pastedKey)
+        #expect(form.applyingEdits(to: connection).sshConfiguration?.authMethod == .sshAgent)
+
+        form.sshAuthMethod = .password
+        form.sshAuthMethod = .privateKey
+        #expect(form.applyingEdits(to: connection).sshConfiguration?.authMethod == .sshAgent)
+
+        form.sshAuthMethod = .password
+        #expect(form.applyingEdits(to: connection).sshConfiguration?.authMethod == .password)
+        #expect(form.sshAuthMethodNote == nil)
+    }
+
+    @Test("Turning on a switched-off SSH Agent tunnel keeps SSH Agent for the Mac")
+    func enablingAgentTunnelKeepsAgent() {
+        var connection = makeTunnelledConnection()
+        connection.sshEnabled = false
+        connection.sshConfiguration?.authMethod = .sshAgent
+        let form = ConnectionFormViewModel(editing: connection)
+
+        form.sshEnabled = true
+        #expect(form.applyingEdits(to: connection).sshConfiguration?.authMethod == .sshAgent)
+
+        form.sshAuthMethod = .password
+        #expect(form.applyingEdits(to: connection).sshConfiguration?.authMethod == .password)
+    }
+
+    @Test("A Keyboard Interactive tunnel keeps its method and takes no pasted key")
+    func keyboardInteractiveKeepsItsMethod() {
+        var connection = makeTunnelledConnection()
+        connection.sshConfiguration?.authMethod = .keyboardInteractive
+        let form = ConnectionFormViewModel(editing: connection)
+
+        #expect(form.sshAuthMethod == .keyboardInteractive)
+        #expect(form.sshAuthMethodNote != nil)
+
+        form.sshKeyInputMode = .paste
+        form.sshKeyContent = pastedKey
+        form.sshPort = "2222"
+
+        #expect(form.pastedPrivateKey == nil)
+        #expect(form.applyingEdits(to: connection).sshConfiguration?.authMethod == .keyboardInteractive)
+    }
+
     @Test("Leaving the pasted key behind deletes it on save", arguments: PastedKeyAbandonment.allCases)
     func switchingAwayDeletesKey(_ change: PastedKeyAbandonment) async throws {
         let connection = makeTunnelledConnection()

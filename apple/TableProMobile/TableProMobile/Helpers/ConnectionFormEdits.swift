@@ -3,12 +3,20 @@ import TableProModels
 import TableProOracleCore
 
 nonisolated struct ConnectionFormEdits: Equatable, Sendable {
+    nonisolated struct JumpHostEdit: Equatable, Sendable, Identifiable {
+        var id: UUID
+        var host: String
+        var port: Int?
+        var username: String
+    }
+
     nonisolated struct SSHTunnel: Equatable, Sendable {
         var host: String
         var port: Int?
         var username: String
         var authMethod: SSHConfiguration.SSHAuthMethod
         var privateKeyPath: String?
+        var jumpHosts: [JumpHostEdit] = []
     }
 
     nonisolated struct OracleOptions: Equatable, Sendable {
@@ -111,13 +119,63 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.username) { configuration.username = sshTunnel.username }
         if changed(\.authMethod) { configuration.authMethod = sshTunnel.authMethod }
         if changed(\.privateKeyPath) { configuration.privateKeyPath = sshTunnel.privateKeyPath }
+        if changed(\.jumpHosts) {
+            configuration.jumpHosts = Self.rebuiltJumpHosts(
+                sshTunnel.jumpHosts,
+                over: configuration.jumpHosts,
+                changedSince: opening?.jumpHosts
+            )
+        }
+        // The Mac reads a missing `enabled` as off.
         if opening == nil {
             connection.sshEnabled = true
-            if configuration.macEnabled != nil {
-                configuration.macEnabled = true
-            }
+            configuration.macEnabled = true
+        } else if configuration.macEnabled == nil, connection.sshEnabled {
+            configuration.macEnabled = true
         }
         connection.sshConfiguration = configuration
+    }
+
+    // Each hop keeps the record's Mac credential fields and takes only the fields the form changed.
+    // Where the form left the chain alone, the record's chain wins, since another device may have
+    // saved it while the form was open: a field edit keeps the record's order, a hop removed there
+    // stays removed, and a hop added there keeps its place after the hop before it.
+    private static func rebuiltJumpHosts(
+        _ edits: [JumpHostEdit],
+        over current: [SSHJumpHost],
+        changedSince opening: [JumpHostEdit]?
+    ) -> [SSHJumpHost] {
+        let currentHops = Dictionary(current.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let openingHops = Dictionary((opening ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let editedHops = Dictionary(edits.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
+        func applyingEdit(to hop: SSHJumpHost) -> SSHJumpHost {
+            guard let edit = editedHops[hop.id] else { return hop }
+            var hop = hop
+            let opened = openingHops[hop.id]
+            if differs(\JumpHostEdit.host, from: opened, to: edit) { hop.host = edit.host }
+            if differs(\JumpHostEdit.port, from: opened, to: edit) { hop.port = edit.port }
+            if differs(\JumpHostEdit.username, from: opened, to: edit) { hop.username = edit.username }
+            return hop
+        }
+
+        if let opening, edits.map(\.id) == opening.map(\.id) {
+            return current.map(applyingEdit(to:))
+        }
+
+        var merged = edits.compactMap { edit -> SSHJumpHost? in
+            if let hop = currentHops[edit.id] { return applyingEdit(to: hop) }
+            guard openingHops[edit.id] == nil else { return nil }
+            return SSHJumpHost(id: edit.id, host: edit.host, port: edit.port, username: edit.username)
+        }
+        guard opening != nil else { return merged }
+        for (index, hop) in current.enumerated() where openingHops[hop.id] == nil && editedHops[hop.id] == nil {
+            let anchor = current[..<index].reversed().lazy
+                .compactMap { previous in merged.firstIndex { $0.id == previous.id } }
+                .first
+            merged.insert(hop, at: anchor.map { $0 + 1 } ?? 0)
+        }
+        return merged
     }
 
     private func applyOracleOptions(to connection: inout DatabaseConnection, changedSince opening: OracleOptions?) {

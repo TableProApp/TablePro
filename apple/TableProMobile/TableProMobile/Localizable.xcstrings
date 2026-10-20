@@ -1529,6 +1529,9 @@
         }
       }
     },
+    "Add Jump Host" : {
+
+    },
     "Add multiple rows to a table on a saved connection. Provide the rows as a JSON array, CSV text, or a file." : {
       "localizations" : {
         "ko" : {
@@ -3107,6 +3110,9 @@
 
     },
     "Check this connection's Authentication section." : {
+
+    },
+    "Check this jump host's address, port, username and key under Jump Hosts." : {
 
     },
     "Check your %@ username and password." : {
@@ -6519,6 +6525,12 @@
         }
       }
     },
+    "Edit the connection and enter the username under SSH Server or Jump Hosts." : {
+
+    },
+    "Edit the connection and set a key for this jump host under Jump Hosts." : {
+
+    },
     "Empty String" : {
       "localizations" : {
         "ko" : {
@@ -9638,6 +9650,18 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Jump Hosts" : {
+
+    },
+    "Jump host %1$@ failed: %2$@" : {
+
+    },
+    "Jump host %@ has no key on this device." : {
+
+    },
+    "Jump host %@ uses the SSH server's key, which is not on this device." : {
+
+    },
     "Jump host key not found: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -9667,6 +9691,9 @@
           }
         }
       }
+    },
+    "Jump hosts are connected in order before reaching the SSH server above." : {
+
     },
     "Keep Connections at the Top" : {
       "localizations" : {
@@ -9790,6 +9817,12 @@
 
     },
     "Key Not Found" : {
+
+    },
+    "Keyboard Interactive" : {
+
+    },
+    "Keyboard Interactive is set on the Mac and is not available on iPhone and iPad." : {
 
     },
     "Keychain Warning" : {
@@ -11123,6 +11156,9 @@
         }
       }
     },
+    "New Jump Host" : {
+
+    },
     "New Subgroup" : {
       "localizations" : {
         "ko" : {
@@ -11379,6 +11415,9 @@
           }
         }
       }
+    },
+    "No key on this device" : {
+
     },
     "No Foreign Keys" : {
       "localizations" : {
@@ -11661,6 +11700,9 @@
           }
         }
       }
+    },
+    "No SSH username is set for %@." : {
+
     },
     "No row found in %@ where %@ = '%@'" : {
       "localizations" : {
@@ -12804,6 +12846,9 @@
           }
         }
       }
+    },
+    "Own key" : {
+
     },
     "out-of-band check" : {
       "extractionState" : "manual",
@@ -15322,6 +15367,12 @@
         }
       }
     },
+    "Same Key as SSH Server" : {
+
+    },
+    "Same key as SSH server" : {
+
+    },
     "Sample Database" : {
       "localizations" : {
         "ko" : {
@@ -15949,6 +16000,9 @@
 
     },
     "Set the AWS Region in this connection's Authentication section." : {
+
+    },
+    "Set to SSH Agent on the Mac. iPhone and iPad sign in with a private key." : {
 
     },
     "Set up a new database connection" : {
@@ -18465,6 +18519,9 @@
         }
       }
     },
+    "That file is not a text private key." : {
+
+    },
     "That file is not a valid XLSX workbook." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -18947,6 +19004,12 @@
     "The IAM Identity Center sign-in on this device has expired." : {
 
     },
+    "The jump host keys on this device could not be read. Close the form and open it again to change them." : {
+
+    },
+    "The jump host keys on this device could not be read: %@" : {
+
+    },
     "The JSON array must contain only objects." : {
       "localizations" : {
         "ko" : {
@@ -19409,6 +19472,9 @@
           }
         }
       }
+    },
+    "The SSH server does not sign in with a private key, so this jump host needs its own key." : {
+
     },
     "The password is longer than the 128 bytes FreeTDS takes." : {
 
@@ -21315,6 +21381,9 @@
           }
         }
       }
+    },
+    "Try again. If it keeps failing, update TablePro on this device." : {
+
     },
     "Turn Off iCloud Sync" : {
 
