@@ -31,6 +31,7 @@ struct QueryEditorView: View {
     @State private var showClearConfirmation = false
     @State private var showShareSheet = false
     @State private var shareText = ""
+    @State private var resultsExportError: ClipboardExporter.IncompleteValues?
     @State private var hapticSuccess = false
     @State private var hapticError = false
     @State private var containerSize: CGSize = .zero
@@ -398,7 +399,7 @@ struct QueryEditorView: View {
                     resultRowCard(columns: viewModel.columns, row: row)
                 }
                 .contextMenu {
-                    resultRowContextMenu(columns: viewModel.columns, row: row)
+                    resultRowContextMenu(columns: viewModel.columns, rowIndex: rowIndex)
                 }
             }
         }
@@ -431,23 +432,27 @@ struct QueryEditorView: View {
     }
 
     @ViewBuilder
-    private func resultRowContextMenu(columns: [ColumnInfo], row: [String?]) -> some View {
-        if let firstValue = row.first, let value = firstValue {
+    private func resultRowContextMenu(columns: [ColumnInfo], rowIndex: Int) -> some View {
+        let rows = viewModel.window.rows
+        let cells = rows.indices.contains(rowIndex) ? rows[rowIndex].cells : []
+        if case .text(let value)? = cells.first {
             Button {
                 ClipboardExporter.copyToClipboard(value)
             } label: {
                 Label("Copy Value", systemImage: "doc.on.doc")
             }
         }
-        Menu("Copy Row") {
-            ForEach(ExportFormat.allCases) { format in
-                Button(format.rawValue) {
-                    let text = ClipboardExporter.exportRow(
-                        columns: columns, row: row,
-                        format: format,
-                        databaseType: databaseType, driver: coordinator.session?.driver
-                    )
-                    ClipboardExporter.copyToClipboard(text)
+        if ClipboardExporter.incompleteColumns(columns: columns, cells: cells).isEmpty {
+            Menu("Copy Row") {
+                ForEach(ExportFormat.allCases) { format in
+                    Button(format.rawValue) {
+                        guard let text = try? ClipboardExporter.exportRow(
+                            columns: columns, cells: cells,
+                            format: format,
+                            databaseType: databaseType, driver: coordinator.session?.driver
+                        ) else { return }
+                        ClipboardExporter.copyToClipboard(text)
+                    }
                 }
             }
         }
@@ -490,12 +495,16 @@ struct QueryEditorView: View {
                 Section("Share Results") {
                     ForEach(ExportFormat.allCases) { format in
                         Button {
-                            shareText = ClipboardExporter.exportRows(
-                                columns: viewModel.columns, rows: viewModel.legacyRows,
-                                format: format,
-                                databaseType: databaseType, driver: coordinator.session?.driver
-                            )
-                            showShareSheet = true
+                            do throws(ClipboardExporter.IncompleteValues) {
+                                shareText = try ClipboardExporter.exportRows(
+                                    columns: viewModel.columns, rows: viewModel.window.rows.map(\.cells),
+                                    format: format,
+                                    databaseType: databaseType, driver: coordinator.session?.driver
+                                )
+                                showShareSheet = true
+                            } catch {
+                                resultsExportError = error
+                            }
                         } label: {
                             Label(format.rawValue, systemImage: "square.and.arrow.up")
                         }
@@ -504,12 +513,16 @@ struct QueryEditorView: View {
                 Section("Copy Results") {
                     ForEach(ExportFormat.allCases) { format in
                         Button {
-                            let text = ClipboardExporter.exportRows(
-                                columns: viewModel.columns, rows: viewModel.legacyRows,
-                                format: format,
-                                databaseType: databaseType, driver: coordinator.session?.driver
-                            )
-                            ClipboardExporter.copyToClipboard(text)
+                            do throws(ClipboardExporter.IncompleteValues) {
+                                let text = try ClipboardExporter.exportRows(
+                                    columns: viewModel.columns, rows: viewModel.window.rows.map(\.cells),
+                                    format: format,
+                                    databaseType: databaseType, driver: coordinator.session?.driver
+                                )
+                                ClipboardExporter.copyToClipboard(text)
+                            } catch {
+                                resultsExportError = error
+                            }
                         } label: {
                             Label(format.rawValue, systemImage: "doc.on.clipboard")
                         }
@@ -528,6 +541,18 @@ struct QueryEditorView: View {
             Image(systemName: "ellipsis.circle")
                 .font(.body)
                 .foregroundStyle(.secondary)
+        }
+        .alert(
+            String(localized: "Cannot Export"),
+            isPresented: Binding(
+                get: { resultsExportError != nil },
+                set: { if !$0 { resultsExportError = nil } }
+            ),
+            presenting: resultsExportError
+        ) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { error in
+            Text(verbatim: error.localizedDescription)
         }
     }
 
@@ -616,7 +641,9 @@ struct QueryEditorView: View {
 
         let progressUpdater = startActivityProgressUpdater(token: token)
 
-        await viewModel.run(driver: session.driver, script: script)
+        await coordinator.track(failed: { _ in QueryExecutionOutcome(phase: viewModel.phase) == .failed }) {
+            await viewModel.run(driver: session.driver, script: script)
+        }
 
         progressUpdater.cancel()
         let phase = viewModel.phase

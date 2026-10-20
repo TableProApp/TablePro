@@ -98,19 +98,39 @@ struct RowInserterTests {
         #expect(!driver.didCommitTransaction)
     }
 
-    @Test("wraps and commits when autocommit is off, so the rows persist")
-    func implicitTransactionWraps() async throws {
+    @Test("joins the transaction autocommit off opened and commits it, so the rows persist")
+    func implicitTransactionIsCommitted() async throws {
         let driver = makeDriver(results: [ok(), ok()])
         driver.scriptedTransactionState = .implicitTransaction
         let rows = [
             PayloadRow(values: ["name": .text("Ada")]),
             PayloadRow(values: ["name": .text("Grace")])
         ]
-        _ = try await RowInserter.insert(
-            driver: driver, table: "people", type: .postgresql, schema: nil, qualifier: nil, rows: rows
+        let affected = try await RowInserter.insert(
+            driver: driver, table: "people", type: .mysql, schema: nil, qualifier: nil, rows: rows
         )
-        #expect(driver.beganTransactionModes == [.readWrite])
+        #expect(affected == 2)
+        #expect(!driver.didBeginTransaction)
         #expect(driver.didCommitTransaction)
+        #expect(!driver.didRollbackTransaction)
+    }
+
+    @Test("rolls back the autocommit-off transaction when a row fails")
+    func implicitTransactionRollsBackOnFailure() async throws {
+        let driver = makeDriver(results: [ok(), .failure(MockDatabaseDriver.MockError.scripted)])
+        driver.scriptedTransactionState = .implicitTransaction
+        let rows = [
+            PayloadRow(values: ["name": .text("Ada")]),
+            PayloadRow(values: ["name": .text("Grace")])
+        ]
+        await #expect(throws: (any Error).self) {
+            _ = try await RowInserter.insert(
+                driver: driver, table: "people", type: .mysql, schema: nil, qualifier: nil, rows: rows
+            )
+        }
+        #expect(!driver.didBeginTransaction)
+        #expect(!driver.didCommitTransaction)
+        #expect(driver.didRollbackTransaction)
     }
 
     @Test("does not open a transaction for a single row on a driver that cannot report its session")

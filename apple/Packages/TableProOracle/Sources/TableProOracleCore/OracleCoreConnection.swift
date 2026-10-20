@@ -579,14 +579,21 @@ public final class OracleCoreConnection: @unchecked Sendable {
         }
     }
 
-    private func recordSuccess(of role: OracleTransactionRole, on session: Int) {
-        state.withLock { $0.transaction.statementSucceeded(role, on: session) }
+    private func recordSuccess(of role: OracleTransactionRole, on session: Int) async {
+        var answer: Bool?
+        if role == .dataDefinition, holdsTransaction {
+            answer = await serverHoldsTransaction()
+        }
+        let serverHoldsTransaction = answer
+        state.withLock {
+            $0.transaction.statementSucceeded(role, on: session, serverHoldsTransaction: serverHoldsTransaction)
+        }
     }
 
     /// Called under the query gate, so the answer about the transaction comes from the connection the refused
-    /// `COMMIT` or `ROLLBACK` ran on.
+    /// statement ran on.
     private func recordFailure(of role: OracleTransactionRole) async {
-        guard role == .endsTransaction, holdsTransaction else { return }
+        guard role.mayEndTransactionWhenRefused, holdsTransaction else { return }
         let serverHoldsTransaction = await serverHoldsTransaction()
         state.withLock { $0.transaction.statementFailed(role, serverHoldsTransaction: serverHoldsTransaction) }
     }
@@ -765,7 +772,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 let zones = await sessionZones(on: connection)
                 return try await collectRows(statement, options: admitted.options, zones: zones, on: connection)
             }
-            recordSuccess(of: role, on: admitted.session)
+            await recordSuccess(of: role, on: admitted.session)
             forgetSessionZonesIfChanged(by: query)
             await queryGate.release()
             return result
@@ -872,7 +879,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 let zones = await sessionZones(on: connection)
                 try await streamRows(query, options: admitted.options, zones: zones, on: connection, continuation: continuation)
             }
-            recordSuccess(of: role, on: admitted.session)
+            await recordSuccess(of: role, on: admitted.session)
             forgetSessionZonesIfChanged(by: query)
             await queryGate.release()
             continuation.finish()

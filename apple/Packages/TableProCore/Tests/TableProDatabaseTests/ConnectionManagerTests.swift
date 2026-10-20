@@ -570,4 +570,72 @@ struct ConnectionManagerTests {
 
         #expect(ssh.tunnelledConnectionIds == [connection.id])
     }
+
+    @Test("A replaced or disconnected session reaches the observer with the driver it ended")
+    func sessionEndsReachTheObserver() async throws {
+        let factory = MockDriverFactory()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
+        let connection = DatabaseConnection(name: "Test", type: DatabaseType(rawValue: "mock"))
+        let ended = EndedSessions()
+        manager.observeSessionEnds { id, driver in
+            ended.record(id, driver, stillListed: false)
+        }
+
+        let first = MockDatabaseDriver()
+        factory.drivers["mock"] = first
+        _ = try await manager.connect(connection)
+        #expect(ended.records.isEmpty)
+
+        let second = MockDatabaseDriver()
+        factory.drivers["mock"] = second
+        _ = try await manager.connect(connection)
+        await manager.disconnect(connection.id)
+
+        let records = ended.records
+        let endedIds = records.map { $0.id }
+        #expect(endedIds == [connection.id, connection.id])
+        #expect(records.first?.driver === first)
+        #expect(records.last?.driver === second)
+    }
+
+    @Test("An observer that reads the manager back runs after the session is gone, outside the lock")
+    func observerCanReadTheManager() async throws {
+        let factory = MockDriverFactory()
+        factory.drivers["mock"] = MockDatabaseDriver()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
+        let connection = DatabaseConnection(name: "Test", type: DatabaseType(rawValue: "mock"))
+        let ended = EndedSessions()
+        manager.observeSessionEnds { id, driver in
+            ended.record(id, driver, stillListed: manager.session(for: id) != nil)
+        }
+
+        _ = try await manager.connect(connection)
+        await manager.disconnect(connection.id)
+
+        let stillListed = ended.records.map { $0.stillListed }
+        #expect(stillListed == [false])
+    }
+}
+
+private final class EndedSessions: @unchecked Sendable {
+    struct Record {
+        let id: UUID
+        let driver: any DatabaseDriver
+        let stillListed: Bool
+    }
+
+    private let lock = NSLock()
+    private var recorded: [Record] = []
+
+    var records: [Record] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
+
+    func record(_ id: UUID, _ driver: any DatabaseDriver, stillListed: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        recorded.append(Record(id: id, driver: driver, stillListed: stillListed))
+    }
 }
