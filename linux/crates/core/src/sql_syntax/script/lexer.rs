@@ -134,7 +134,12 @@ impl<'a> Lexer<'a> {
     }
 
     fn line_comment(&self, start: usize) -> LexedToken {
-        let end = find_byte(self.bytes, start, b'\n').unwrap_or(self.bytes.len());
+        let ends_at_cr = self.syntax.line_comment_ends_at_cr;
+        let end = self
+            .bytes
+            .get(start..)
+            .and_then(|rest| rest.iter().position(|&b| b == b'\n' || (ends_at_cr && b == b'\r')))
+            .map_or(self.bytes.len(), |offset| start + offset);
         self.plain(ScriptTokenKind::LineComment, end)
     }
 

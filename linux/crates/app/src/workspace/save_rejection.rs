@@ -28,8 +28,11 @@ pub enum SaveRejection {
     Blocked(SaveBlocker),
     /// The structure cannot be written as SQL for the review to show.
     Unplannable(BuildDdlError),
-    /// The user read the review of a structure save and kept it.
+    /// The user read the review of a save and kept it.
     ReviewDeclined,
+    /// The changes moved while Safe Mode asked about them, so what was
+    /// shown is not what would be saved.
+    ChangedDuringReview,
     /// A review of the same changes is open.
     InReview,
     NoConnection,
@@ -63,6 +66,9 @@ impl SaveRejection {
             Self::Blocked(blocker) => crate::ui::error_text::save_blocker_text(blocker),
             Self::Unplannable(error) => crate::ui::error_text::build_error_text(error),
             Self::ReviewDeclined => crate::i18n::gettext("The changes were not applied."),
+            Self::ChangedDuringReview => crate::i18n::gettext(
+                "The changes moved while you were asked about them, so nothing was saved. Save again to see them as they are now.",
+            ),
             Self::InReview => crate::i18n::gettext("The review of these changes is still open."),
             Self::NoConnection => crate::i18n::gettext("No active connection."),
             Self::FileNotSaved(message) => message.clone(),

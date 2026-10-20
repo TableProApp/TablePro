@@ -9,7 +9,6 @@ mod form_errors;
 mod form_field;
 mod imp;
 mod pem_validation;
-mod read_only_row;
 mod row_problem;
 mod sqlite_file_row;
 #[cfg(test)]
@@ -27,8 +26,8 @@ use libadwaita::prelude::*;
 use secrecy::SecretString;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::{
-    AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, TlsConfig, TransportClass,
-    WorkspaceSettings,
+    AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, SafeModeLevel, TlsConfig,
+    TransportClass, WorkspaceSettings,
 };
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tablepro_session::{ConnectError, ConnectRequest, ConnectionMetadata, Connector, CredentialSource, PendingSave};
@@ -132,6 +131,13 @@ impl ConnectDialog {
         drivers.sort_by(|a, b| a.display_name.cmp(&b.display_name));
         let names: Vec<&str> = drivers.iter().map(|entry| entry.display_name.as_str()).collect();
         imp.driver_names.splice(0, imp.driver_names.n_items(), &names);
+        let levels: Vec<String> = SafeModeLevel::ALL
+            .into_iter()
+            .map(crate::ui::safe_mode::label)
+            .collect();
+        let levels: Vec<&str> = levels.iter().map(String::as_str).collect();
+        imp.safe_mode_names.splice(0, imp.safe_mode_names.n_items(), &levels);
+        crate::ui::combo_value::show_whole_value(&imp.safe_mode_row);
         imp.file_row.set_tasks(init.tasks.clone());
         let _ = imp.services.set(DialogServices {
             connector: init.connector,
@@ -277,6 +283,12 @@ impl ConnectDialog {
             }
         });
         let weak = self.downgrade();
+        imp.safe_mode_row.connect_selected_notify(move |_| {
+            if let Some(dialog) = weak.upgrade() {
+                dialog.show_safe_mode_subtitle();
+            }
+        });
+        let weak = self.downgrade();
         imp.auth_mode_row.connect_selected_notify(move |_| {
             if let Some(dialog) = weak.upgrade()
                 && !dialog.imp().updating.get()
@@ -358,7 +370,10 @@ impl ConnectDialog {
             password: SecretString::from(imp.password_row.text().to_string()),
             remember_password: imp.remember_row.is_active(),
             tls: imp.tls_section.form_state(),
-            read_only: imp.read_only_row.is_active(),
+            safe_mode: SafeModeLevel::ALL
+                .get(imp.safe_mode_row.selected() as usize)
+                .copied()
+                .unwrap_or_default(),
             ssh: (!caps.is_file_based()).then(|| imp.ssh_section.form_state()).flatten(),
             file: imp.file_row.endpoint(),
         }
@@ -411,7 +426,11 @@ impl ConnectDialog {
             imp.password_row
                 .set_text(secrecy::ExposeSecret::expose_secret(&form.password));
         }
-        imp.read_only_row.set_active(form.read_only);
+        let level = SafeModeLevel::ALL
+            .iter()
+            .position(|level| *level == form.safe_mode)
+            .unwrap_or_default();
+        imp.safe_mode_row.set_selected(level as u32);
         if form.file.is_some() || imp.file_row.endpoint().is_some() {
             imp.file_row.set_endpoint(form.file.clone());
         }
@@ -441,14 +460,21 @@ impl ConnectDialog {
         imp.ssh_section.set_visible(!file_based);
         let tls = if file_based { None } else { caps.tls.as_ref() };
         imp.tls_section.apply(tls, self.route(), &form.tls);
-        imp.read_only_row
-            .set_subtitle(&read_only_row::read_only_subtitle(caps.read_only));
+        self.show_safe_mode_subtitle();
         self.show_auth_rows();
         self.set_title(&if imp.mode.borrow().editing().is_some() {
             crate::i18n::gettext("Edit Connection")
         } else {
             crate::i18n::gettext_f("Connect to {name}", &[("name", &entry.display_name)])
         });
+    }
+
+    fn show_safe_mode_subtitle(&self) {
+        let entry = self.current_entry();
+        let caps = entry.as_ref().map_or(&NO_DRIVER, DriverEntry::capabilities);
+        self.imp()
+            .safe_mode_row
+            .set_subtitle(&crate::ui::safe_mode::subtitle(self.form().safe_mode, caps.read_only));
     }
 
     fn show_auth_rows(&self) {
@@ -822,7 +848,8 @@ fn connect_request(
         },
         driver: entry.driver.clone(),
         target: valid.target.clone(),
-        workspace_settings: WorkspaceSettings::workspace(form.read_only),
+        workspace_settings: WorkspaceSettings::workspace(form.safe_mode.blocks_writes()),
+        safe_mode: form.safe_mode,
     }
 }
 

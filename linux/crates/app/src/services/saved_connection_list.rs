@@ -195,7 +195,7 @@ mod tests {
             database: "app".to_owned(),
             username: "postgres".to_owned(),
             tls: tablepro_core::TlsConfig::verify_full(),
-            read_only: false,
+            safe_mode: tablepro_core::SafeModeLevel::Off,
             auth_mode: tablepro_core::AuthMode::Password,
             ssh: None,
             last_opened_at: None,

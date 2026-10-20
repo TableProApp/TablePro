@@ -33,3 +33,10 @@ pub use sweep::sweep_stale_masters;
 pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
+
+// The panic hook has reported a panic, and a cancel comes only as the
+// runtime shuts down, so the error is logged, not shown.
+pub(crate) fn setup_task_failed(error: &tokio::task::JoinError) -> tablepro_core::SshFailure {
+    tracing::warn!(%error, "an SSH setup task stopped");
+    tablepro_core::SshFailure::Internal
+}

@@ -532,6 +532,44 @@ struct MainSplitViewControllerPaneSynchronizationTests {
         #expect(saved?.tabs.first?.query == "SELECT 1")
     }
 
+    @Test("A connection reopened without its connect stays not connected when its window activates")
+    func reopenedWithoutConnectStaysNotConnected() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        #expect(harness.controller.workspaces.selectedConnectionId == harness.foreground.connectionId)
+
+        harness.controller.startActivationConnectIfNeeded()
+
+        #expect(harness.foreground.phase == .idle)
+        #expect(harness.foreground.attemptToken == nil)
+        #expect(harness.foreground.resolvedPane == .unavailable(.notConnected))
+    }
+
+    @Test("A connect request leaves a workspace the user canceled alone")
+    func requestedConnectLeavesACanceledWorkspaceAlone() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.controller.transition(to: .unavailable(.cancelled), for: harness.foreground.connectionId)
+
+        harness.controller.startActivationConnectIfNeeded(requested: true)
+
+        #expect(harness.foreground.phase == .unavailable(.cancelled))
+        #expect(harness.foreground.attemptToken == nil)
+    }
+
+    @Test("A connect request reaches a reopened workspace that was not opened to dial")
+    func requestedConnectReachesAnIdleWorkspace() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.foreground.payloadConnection?.preConnectScript = "true"
+
+        harness.controller.startActivationConnectIfNeeded(requested: true)
+
+        // A script needs consent, so the request settles on Not Connected instead of dialing.
+        #expect(harness.foreground.phase == .unavailable(.notConnected))
+        #expect(harness.foreground.attemptToken == nil)
+    }
+
     @Test("Reconnecting only when idle shows a connecting connection and leaves its attempt alone")
     func reconnectIfIdleLeavesAConnectingWorkspaceAlone() throws {
         let harness = try Harness()

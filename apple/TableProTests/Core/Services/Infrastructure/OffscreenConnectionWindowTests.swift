@@ -69,9 +69,10 @@ internal struct OffscreenConnectionWindowTests {
 
         let fixture = try OffscreenConnectionWindow(size: Self.size, connectedTo: connection)
         let coordinator = try #require(fixture.workspace.sessionState?.coordinator)
-        #expect(coordinator.isActivated, "Only an activated coordinator puts its connection on the recovery list")
+        #expect(coordinator.isActivated, "Only an activated coordinator marks its connection to reconnect")
+        let recorded = LastOpenConnectionsStorage.shared.load().connections.map(\.id)
         #expect(
-            !LastOpenConnectionsStorage.shared.load().contains(connection.id),
+            !recorded.contains(connection.id),
             "The fixture's connection reached the user's recovery list"
         )
         fixture.setInspectorOpen(true)

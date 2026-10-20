@@ -153,14 +153,23 @@ pub(crate) fn host_key_dialog_spec(failure: &HostKeyFailure) -> HostKeyDialogSpe
             default: CANCEL,
             close: CANCEL,
         },
-        HostKeyFailureKind::Revoked { detail } => fixed_elsewhere(
-            crate::i18n::gettext("SSH Host Key Revoked"),
-            crate::i18n::gettext_f(
-                "The key “{host}” sent is revoked, so TablePro will not connect to it. Ask your server administrator for its current key. ssh reported: {detail}",
-                &[("host", host), ("detail", detail)],
-            ),
-        ),
+        HostKeyFailureKind::Revoked { detail } => {
+            fixed_elsewhere(crate::i18n::gettext("SSH Host Key Revoked"), revoked_body(host, detail))
+        }
     }
+}
+
+fn revoked_body(host: &str, detail: &str) -> String {
+    if detail.is_empty() {
+        return crate::i18n::gettext_f(
+            "The key “{host}” sent is revoked, so TablePro will not connect to it. Ask your server administrator for its current key.",
+            &[("host", host)],
+        );
+    }
+    crate::i18n::gettext_f(
+        "The key “{host}” sent is revoked, so TablePro will not connect to it. Ask your server administrator for its current key. ssh reported: {detail}",
+        &[("host", host), ("detail", detail)],
+    )
 }
 
 /// Only a change outside TablePro clears these, so the dialog offers the
@@ -246,6 +255,13 @@ mod tests {
 
     fn ids(spec: &HostKeyDialogSpec) -> Vec<&'static str> {
         spec.responses.iter().map(|response| response.id).collect()
+    }
+
+    #[test]
+    fn a_revoked_key_ssh_named_no_line_for_says_nothing_of_a_report() {
+        let revoked = host_key_dialog_spec(&failure(HostKeyFailureKind::Revoked { detail: String::new() }, ""));
+
+        assert!(revoked.body.ends_with("its current key."), "{}", revoked.body);
     }
 
     #[test]

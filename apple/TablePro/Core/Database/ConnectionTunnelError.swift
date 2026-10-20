@@ -28,3 +28,7 @@ enum ConnectionTunnelError: Error, LocalizedError, Equatable {
         }
     }
 }
+
+extension ConnectionTunnelError: ConnectionPreflightReporting {
+    var failedBeforeDialing: Bool { true }
+}

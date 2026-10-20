@@ -18,10 +18,19 @@ pub(super) fn tls_message(failure: TlsFailure, detail: &str) -> String {
             crate::i18n::gettext("The server requires TLS. Turn TLS on for this connection.")
         }
         TlsFailure::HandshakeRejected => {
-            crate::i18n::gettext_f("The server ended the secure handshake: {detail}", &[("detail", detail)])
+            log_library_text(failure, detail);
+            crate::i18n::gettext("The server ended the secure handshake.")
         }
         TlsFailure::CaFileInvalid => crate::i18n::gettext("The chosen CA certificate file could not be read."),
         TlsFailure::ClientIdentityInvalid => crate::i18n::gettext("The client certificate or key could not be read."),
-        TlsFailure::Other => crate::i18n::gettext_f("TLS failed: {detail}", &[("detail", detail)]),
+        TlsFailure::Other => {
+            log_library_text(failure, detail);
+            crate::i18n::gettext("The secure connection failed.")
+        }
     }
+}
+
+// The TLS library's text is English only, so the log is where it goes.
+fn log_library_text(failure: TlsFailure, detail: &str) {
+    tracing::warn!(?failure, %detail, "shown without the TLS library's text");
 }

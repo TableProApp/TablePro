@@ -36,7 +36,8 @@ pub(crate) fn classify(status: Option<i32>, stderr: &str, context: &ClassifyCont
         return error;
     }
     TransportError::Ssh(SshFailure::Protocol {
-        detail: protocol_detail(status, stderr),
+        status,
+        detail: stderr_tail(stderr).to_owned(),
     })
 }
 
@@ -49,7 +50,7 @@ fn host_key_failure(stderr: &str, context: &ClassifyContext<'_>) -> Option<SshFa
     }
     if stderr.contains("REVOKED HOST KEY DETECTED") {
         let host = between(stderr, " host key for ", " is marked as revoked.").unwrap_or(context.host);
-        let detail = line_containing(stderr, "is marked as revoked.").unwrap_or("the host key is revoked");
+        let detail = line_containing(stderr, "is marked as revoked.").unwrap_or_default();
         return Some(SshFailure::HostKeyRevoked {
             host: host.to_owned(),
             detail: detail.to_owned(),
@@ -187,17 +188,13 @@ fn network_error(stderr: &str) -> Option<TransportError> {
     })
 }
 
-fn protocol_detail(status: Option<i32>, stderr: &str) -> String {
+fn stderr_tail(stderr: &str) -> &str {
     let trimmed = stderr.trim();
     let mut start = trimmed.len().saturating_sub(PROTOCOL_DETAIL_LIMIT);
     while !trimmed.is_char_boundary(start) {
         start += 1;
     }
-    let tail = &trimmed[start..];
-    match status {
-        Some(code) => format!("ssh exited with status {code}: {tail}"),
-        None => format!("ssh ended without a status: {tail}"),
-    }
+    &trimmed[start..]
 }
 
 fn line_containing<'a>(text: &'a str, needle: &str) -> Option<&'a str> {
@@ -365,8 +362,26 @@ mod tests {
         assert_eq!(
             error,
             TransportError::Ssh(SshFailure::Protocol {
-                detail: "ssh exited with status 255: kex_exchange_identification: Connection closed by remote host"
-                    .to_owned()
+                status: Some(255),
+                detail: "kex_exchange_identification: Connection closed by remote host".to_owned()
+            })
+        );
+        assert_eq!(
+            classify(None, "", &CONTEXT),
+            TransportError::Ssh(SshFailure::Protocol {
+                status: None,
+                detail: String::new(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_revoked_key_without_its_line_carries_no_words_of_ours() {
+        assert_eq!(
+            fixture("@ WARNING: REVOKED HOST KEY DETECTED! @\n"),
+            TransportError::Ssh(SshFailure::HostKeyRevoked {
+                host: "bastion".to_owned(),
+                detail: String::new(),
             })
         );
     }

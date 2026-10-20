@@ -40,7 +40,7 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::AdwApplicationWindowExt;
 
-use tablepro_core::{DatabaseDriver, DriverError, TransportClass};
+use tablepro_core::{DatabaseDriver, DriverError, SafeModeLevel, TransportClass};
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::registry::FileIdentity;
 use tablepro_session::runtime::ProcessHold;
@@ -320,6 +320,8 @@ impl SessionWindow {
                     tracing::info!("disconnected");
                 }
             }
+            SessionWindowInput::SetSafeMode(level) => self.on_set_safe_mode(level),
+            SessionWindowInput::ReopenApproved(id) => self.on_reopen_approved(id),
             SessionWindowInput::CloseCurrent => self.on_close_current(),
             SessionWindowInput::Reconnect => {
                 if let SessionPage::Workspace { session, .. } = &*self.imp().page.borrow() {
@@ -998,7 +1000,9 @@ fn connect_saved(
     let interaction = context.attended();
     let saved = saved.clone();
     let mut opened = saved.clone();
-    opened.read_only |= read_only;
+    if read_only {
+        opened.safe_mode = SafeModeLevel::ReadOnly;
+    }
     let drivers = context.drivers.clone();
     let credentials = context.credentials_for(Some(&saved));
     let server_name_shown = crate::ui::connect_dialog::driver_shows_server_name(
@@ -1054,7 +1058,9 @@ fn connect_intent(
     let connector = context.connector.clone();
     let interaction = context.attended();
     let mut request = intent.request.clone();
-    request.workspace_settings.read_only |= read_only;
+    if read_only {
+        request.open_read_only();
+    }
     let server_name_shown = match &request.target {
         RequestTarget::Network { ssh, .. } => crate::ui::connect_dialog::driver_shows_server_name(
             Some(request.driver.capabilities()),

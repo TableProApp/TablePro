@@ -46,10 +46,11 @@ extension LibSSH2TunnelFactory {
                 }
             }
 
-            if connectResult != 0, errno != EINPROGRESS {
+            let connectErrno = errno
+            if connectResult != 0, connectErrno != EINPROGRESS {
                 attempt.unregisterTransportInterrupt(interruptId)
                 Darwin.close(descriptor)
-                lastError = "Connection to \(host):\(port) failed"
+                lastError = "Connection to \(host):\(port) failed: \(String(cString: strerror(connectErrno)))"
                 continue
             }
 
@@ -60,6 +61,7 @@ extension LibSSH2TunnelFactory {
                     1,
                     Int32(clamping: deadline.remainingMilliseconds)
                 )
+                let pollErrno = errno
 
                 if pollResult <= 0 {
                     attempt.unregisterTransportInterrupt(interruptId)
@@ -68,7 +70,7 @@ extension LibSSH2TunnelFactory {
                     if pollResult == 0 {
                         throw deadline.timeoutError(for: endpoint)
                     }
-                    lastError = "Connection to \(host):\(port) failed: \(String(cString: strerror(errno)))"
+                    lastError = "Connection to \(host):\(port) failed: \(String(cString: strerror(pollErrno)))"
                     continue
                 }
 

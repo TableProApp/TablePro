@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tablepro_core::{DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, WorkspaceSettings};
+use tablepro_core::{DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, SafeModeLevel, WorkspaceSettings};
 use tablepro_session::registry::FileIdentity;
 use tablepro_session::{ConnectError, ConnectRequest, ConnectionMetadata, RequestTarget};
 
@@ -26,7 +26,7 @@ pub(crate) fn file_request(
         .file_name()
         .map_or_else(|| identity.uri.clone(), |name| name.to_string_lossy().into_owned());
     let endpoint = FileEndpoint::open_existing(path).map_err(DriverError::from)?;
-    Ok(ConnectRequest {
+    let mut request = ConnectRequest {
         metadata: ConnectionMetadata {
             id: uuid::Uuid::new_v4(),
             name,
@@ -34,8 +34,13 @@ pub(crate) fn file_request(
         },
         driver,
         target: RequestTarget::File(endpoint),
-        workspace_settings: WorkspaceSettings::workspace(read_only),
-    })
+        workspace_settings: WorkspaceSettings::workspace(false),
+        safe_mode: SafeModeLevel::Off,
+    };
+    if read_only {
+        request.open_read_only();
+    }
+    Ok(request)
 }
 
 fn file_driver(drivers: &DriverRegistry) -> Option<Arc<dyn DatabaseDriver>> {
@@ -101,6 +106,7 @@ mod tests {
         assert!(matches!(request.target, RequestTarget::File(_)));
         assert!(!request.workspace_settings.read_only);
         assert!(read_only.workspace_settings.read_only);
+        assert_eq!(read_only.safe_mode, SafeModeLevel::ReadOnly);
         assert!(file_request(&identity, &DriverRegistry::new(), false).is_err());
     }
 }

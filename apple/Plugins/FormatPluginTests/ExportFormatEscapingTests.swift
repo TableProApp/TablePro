@@ -71,9 +71,35 @@ struct PluginRowWritersTests {
     func formulaLeadsAreNeutralised() {
         let options = PluginCsvWriteOptions.default
         #expect(PluginRowWriters.csvField("=1+1", options: options) == "\"'=1+1\"")
-        #expect(PluginRowWriters.csvField("+1", options: options) == "\"'+1\"")
-        #expect(PluginRowWriters.csvField("-1", options: options) == "\"'-1\"")
+        #expect(PluginRowWriters.csvField("+1-555-0100", options: options) == "\"'+1-555-0100\"")
+        #expect(PluginRowWriters.csvField("-2+3+cmd|' /C calc'!A0", options: options).hasPrefix("\"'-2+3"))
         #expect(PluginRowWriters.csvField("@SUM", options: options) == "\"'@SUM\"")
+        #expect(PluginRowWriters.csvField("-", options: options) == "\"'-\"")
+        #expect(PluginRowWriters.csvField("-1e", options: options) == "\"'-1e\"")
+    }
+
+    // The quote made every reader, a database import included, read `-5` as the text `'-5`.
+    @Test("A plain number is written as it is")
+    func plainNumbersAreNotNeutralised() {
+        let options = PluginCsvWriteOptions.default
+        for number in ["-1", "+1", "-2.25", "-.5", "+5.", "-1e-300", "-2.5E+3", "-9223372036854775808"] {
+            #expect(PluginRowWriters.csvField(number, options: options) == number)
+        }
+    }
+
+    // An unquoted `\r\n` split the row in two.
+    @Test("A value holding a Windows line break is quoted")
+    func windowsLineBreakIsQuoted() {
+        let options = PluginCsvWriteOptions.default
+        #expect(PluginRowWriters.csvField("crlf\r\nbreak", options: options) == "\"crlf\r\nbreak\"")
+        #expect(PluginRowWriters.csvField("\r\n=1+1", options: options).hasPrefix("\"'"))
+    }
+
+    @Test("A quote or a delimiter that a combining mark follows is still quoted")
+    func combiningMarkDoesNotHideAQuote() {
+        let options = PluginCsvWriteOptions.default
+        #expect(PluginRowWriters.csvField("a\"\u{301}b", options: options) == "\"a\"\"\u{301}b\"")
+        #expect(PluginRowWriters.csvField("a,\u{301}b", options: options) == "\"a,\u{301}b\"")
     }
 
     /// Excel strips a leading tab or carriage return before parsing the cell, so `\t=1+1` reaches

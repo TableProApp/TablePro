@@ -408,22 +408,41 @@ fn mysql_requires_database() {
 }
 
 #[gtk4::test]
-fn read_only_subtitle_follows_enforcement() {
+fn safe_mode_subtitle_follows_the_level_and_the_enforcement() {
     let harness = dialog();
+    let imp = harness.dialog.imp();
+    let shown = || imp.safe_mode_row.subtitle().map(|text| text.to_string());
     for driver_id in ["postgres", "mysql", "mssql", "clickhouse", "sqlite"] {
         select(&harness.dialog, driver_id);
+        for (index, level) in SafeModeLevel::ALL.into_iter().enumerate() {
+            imp.safe_mode_row.set_selected(index as u32);
 
-        assert_eq!(
-            harness
-                .dialog
-                .imp()
-                .read_only_row
-                .subtitle()
-                .map(|text| text.to_string()),
-            Some(read_only_row::read_only_subtitle(caps_of(driver_id).read_only)),
-            "{driver_id}"
-        );
+            assert_eq!(harness.dialog.form().safe_mode, level, "{driver_id}");
+            assert_eq!(
+                shown(),
+                Some(crate::ui::safe_mode::subtitle(level, caps_of(driver_id).read_only)),
+                "{driver_id} {level:?}"
+            );
+        }
     }
+}
+
+#[gtk4::test]
+fn an_edit_opens_on_the_saved_level_and_keeps_it() {
+    let saved = SavedConnection {
+        safe_mode: SafeModeLevel::ConfirmWrites,
+        ..shop()
+    };
+    let harness = open(Options {
+        saved: vec![saved.clone()],
+        mode: ConnectDialogMode::Edit(Box::new(saved)),
+        ..Options::default()
+    });
+
+    let imp = harness.dialog.imp();
+
+    assert_eq!(imp.safe_mode_row.selected(), 1);
+    assert_eq!(harness.dialog.form().safe_mode, SafeModeLevel::ConfirmWrites);
 }
 
 #[gtk4::test]
@@ -555,7 +574,7 @@ fn a_reopened_entry_keeps_its_id_after_the_host_changes() {
 #[gtk4::test]
 fn a_connect_from_new_connection_never_writes_over_a_saved_entry() {
     let saved = SavedConnection {
-        read_only: true,
+        safe_mode: tablepro_core::SafeModeLevel::ReadOnly,
         ..shop()
     };
     let harness = open(Options {
@@ -575,7 +594,7 @@ fn a_connect_from_new_connection_never_writes_over_a_saved_entry() {
     assert!(submitted.is_new, "the connect replaced the saved entry");
     assert_ne!(submitted.connection.id, saved.id);
     assert_eq!(submitted.connection.name, "Shop RW");
-    assert!(!submitted.connection.read_only);
+    assert_eq!(submitted.connection.safe_mode, SafeModeLevel::Off);
 }
 
 #[gtk4::test]
@@ -760,7 +779,7 @@ fn every_row_has_an_accessible_name() {
         imp.username_row.get().upcast(),
         imp.password_row.get().upcast(),
         imp.remember_row.get().upcast(),
-        imp.read_only_row.get().upcast(),
+        imp.safe_mode_row.get().upcast(),
         tls.encryption_row.get().upcast(),
         tls.certificates_row.get().upcast(),
         tls.ca_row.get().upcast(),

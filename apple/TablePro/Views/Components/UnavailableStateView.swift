@@ -24,22 +24,26 @@ internal struct UnavailableStateView<Label: View, Description: View, Actions: Vi
         self.actions = actions()
     }
 
+    // The width cap keeps text readable; a row of buttons under it truncated its own titles.
     internal var body: some View {
         VStack(spacing: 10) {
-            label
-                .labelStyle(UnavailableLabelStyle())
+            VStack(spacing: 10) {
+                label
+                    .labelStyle(UnavailableLabelStyle())
 
-            description
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+                description
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 32)
+            .frame(maxWidth: 420)
 
             actions
                 .padding(.top, 6)
+                .padding(.horizontal, 32)
         }
-        .padding(.horizontal, 32)
-        .frame(maxWidth: 420)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

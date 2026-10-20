@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tablepro_core::credentials::SecretKind;
-use tablepro_core::{AuthMode, TlsConfig};
+use tablepro_core::{AuthMode, SafeModeLevel, TlsConfig};
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -24,8 +24,9 @@ pub struct SavedConnection {
     /// TLS modes existed, and guessing a mode for it could silently
     /// connect in the clear.
     pub tls: TlsConfig,
-    #[serde(default)]
-    pub read_only: bool,
+    /// Required, with no default: guessing Off for a file that lost it
+    /// would drop a guard the user set.
+    pub safe_mode: SafeModeLevel,
     #[serde(default)]
     pub auth_mode: AuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -168,7 +169,45 @@ struct ConnectionsDocument {
 
 impl crate::document::VersionedDocument for ConnectionsDocument {
     const KIND: &'static str = "connections";
-    const VERSION: u32 = 1;
+    const VERSION: u32 = 2;
+    const UPGRADES: &'static [crate::document::Upgrade] = &[read_only_to_safe_mode];
+}
+
+/// Version 1 had a read-only switch, which became the Safe Mode level:
+/// on is Read-Only, off is Off.
+fn read_only_to_safe_mode(mut document: serde_json::Value) -> Result<serde_json::Value, String> {
+    let slot = document
+        .get_mut("connections")
+        .ok_or_else(|| "the file has no list of connections".to_owned())?;
+    let switches: Vec<ReadOnlySwitch> = serde_json::from_value(slot.take()).map_err(|error| error.to_string())?;
+    let levels: Vec<SafeModeLevelled> = switches
+        .into_iter()
+        .map(|connection| SafeModeLevelled {
+            safe_mode: match connection.read_only.unwrap_or(false) {
+                true => SafeModeLevel::ReadOnly,
+                false => SafeModeLevel::Off,
+            },
+            rest: connection.rest,
+        })
+        .collect();
+    *slot = serde_json::to_value(levels).map_err(|error| error.to_string())?;
+    Ok(document)
+}
+
+/// A version 1 connection: its switch, and everything else as it was.
+#[derive(Deserialize)]
+struct ReadOnlySwitch {
+    #[serde(default)]
+    read_only: Option<bool>,
+    #[serde(flatten)]
+    rest: serde_json::Value,
+}
+
+#[derive(Serialize)]
+struct SafeModeLevelled {
+    safe_mode: SafeModeLevel,
+    #[serde(flatten)]
+    rest: serde_json::Value,
 }
 
 /// What the store knows about the list right now.
@@ -550,7 +589,7 @@ mod tests {
             database: "app".to_owned(),
             username: "postgres".to_owned(),
             tls: TlsConfig::verify_full(),
-            read_only: false,
+            safe_mode: tablepro_core::SafeModeLevel::Off,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: Some(Utc::now()),
@@ -573,7 +612,7 @@ mod tests {
             database: "postgres".into(),
             username: "postgres".into(),
             tls: TlsConfig::disabled(),
-            read_only: false,
+            safe_mode: tablepro_core::SafeModeLevel::Off,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: None,
@@ -645,9 +684,9 @@ mod tests {
     }
 
     #[test]
-    fn f003_version_2_is_newer_and_never_written() {
+    fn f003_a_newer_version_is_never_written() {
         let root = TempDir::new().expect("tempdir");
-        let path = seed(&root, r#"{"version": 2, "connections": []}"#);
+        let path = seed(&root, r#"{"version": 3, "connections": []}"#);
         let before = std::fs::read(&path).expect("read");
         let store = store(&root);
 
@@ -683,6 +722,49 @@ mod tests {
 
         // Silently treating this as an empty list would lose every saved
         // connection the moment a newer auth mode appears.
+        assert!(
+            matches!(refused, Err(StorageError::DocumentUnavailable(_))),
+            "{refused:?}"
+        );
+    }
+
+    #[test]
+    fn a_version_1_entry_without_the_switch_reads_as_off() {
+        let root = TempDir::new().expect("tempdir");
+        seed(&root, &connections_json(None));
+
+        let list = store(&root).load_blocking().expect("load");
+
+        assert_eq!(list[0].safe_mode, SafeModeLevel::Off);
+    }
+
+    #[test]
+    fn a_version_1_switch_that_is_not_a_bool_is_refused() {
+        let root = TempDir::new().expect("tempdir");
+        seed(
+            &root,
+            r#"{"version": 1, "connections": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","tls":{"mode":"disable"},"read_only":"yes"}]}"#,
+        );
+
+        let refused = store(&root).load_blocking();
+
+        assert!(
+            matches!(refused, Err(StorageError::DocumentUnavailable(_))),
+            "{refused:?}"
+        );
+    }
+
+    #[test]
+    fn a_version_2_entry_without_a_level_is_refused() {
+        let root = TempDir::new().expect("tempdir");
+        seed(
+            &root,
+            r#"{"version": 2, "connections": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","tls":{"mode":"disable"}}]}"#,
+        );
+
+        let refused = store(&root).load_blocking();
+
+        // Guessing Off would drop a Read-Only the user set.
         assert!(
             matches!(refused, Err(StorageError::DocumentUnavailable(_))),
             "{refused:?}"
@@ -978,7 +1060,7 @@ mod tests {
 
         assert!(text.contains("production"), "{text}");
         assert!(text.contains("staging"), "{text}");
-        assert!(text.contains("\"version\": 1"), "{text}");
+        assert!(text.contains("\"version\": 2"), "{text}");
     }
 
     /// Every key in `value`, however deep, so a secret cannot be added

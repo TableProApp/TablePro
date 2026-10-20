@@ -120,7 +120,7 @@ fn saved_connection(database: &Path) -> SavedConnection {
         database: database.display().to_string(),
         username: String::new(),
         tls: TlsConfig::verify_full(),
-        read_only: false,
+        safe_mode: tablepro_core::SafeModeLevel::Off,
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,

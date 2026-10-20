@@ -4,7 +4,9 @@ use std::time::Duration;
 
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{ObjectInfo, ObjectScope, SchemaInfo};
-use tablepro_core::{CallOptions, ColumnInfo, EditorSession, EditorSessionOptions, TableRef, WorkspaceSettings};
+use tablepro_core::{
+    CallOptions, ColumnInfo, EditorSession, EditorSessionOptions, SafeModeLevel, TableRef, WorkspaceSettings,
+};
 use tokio::sync::watch;
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tokio_util::task::AbortOnDropHandle;
@@ -29,6 +31,7 @@ use crate::runtime::{TaskResult, Tasks};
 pub struct Session {
     metadata: ConnectionMetadata,
     workspace_settings: WorkspaceSettings,
+    safe_mode: Mutex<SafeModeLevel>,
     reachability: Arc<Mutex<ReachabilityTarget>>,
     last_rejection: Arc<Mutex<Option<Arc<ConnectError>>>>,
     trusted_host_key: Arc<Mutex<Option<ReviewedHostKey>>>,
@@ -104,6 +107,7 @@ impl Session {
         Arc::new(Session {
             metadata: parts.request.metadata,
             workspace_settings: parts.request.workspace_settings,
+            safe_mode: Mutex::new(parts.request.safe_mode),
             reachability,
             last_rejection,
             trusted_host_key,
@@ -139,6 +143,25 @@ impl Session {
 
     pub fn workspace_settings(&self) -> WorkspaceSettings {
         self.workspace_settings
+    }
+
+    /// The level every statement and save goes through. A connection
+    /// that opened read-only is Read-Only whatever was chosen since.
+    pub fn safe_mode(&self) -> SafeModeLevel {
+        match self.read_only() {
+            true => SafeModeLevel::ReadOnly,
+            false => *self.safe_mode.lock().unwrap_or_else(PoisonError::into_inner),
+        }
+    }
+
+    /// Move to `level` on the connection as it is. False when `level` is
+    /// on the other side of Read-Only, which takes a new connection.
+    pub fn set_safe_mode(&self, level: SafeModeLevel) -> bool {
+        if level.blocks_writes() != self.read_only() {
+            return false;
+        }
+        *self.safe_mode.lock().unwrap_or_else(PoisonError::into_inner) = level;
+        true
     }
 
     /// What the network must reach for this session, recomputed when a
@@ -436,10 +459,24 @@ mod tests {
         });
 
         assert!(session.read_only());
+        assert_eq!(session.safe_mode(), SafeModeLevel::ReadOnly);
+        assert!(!session.set_safe_mode(SafeModeLevel::ConfirmWrites));
+        assert_eq!(session.safe_mode(), SafeModeLevel::ReadOnly);
         assert!(session.current_dialect().is_some());
         assert_eq!(session.reachability(), ReachabilityTarget::Local);
         assert_eq!(*session.link_changes().borrow(), LinkGeneration::FIRST);
         assert_eq!(session.metadata().name, "Fake");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_writable_connection_moves_between_the_levels_that_write() {
+        let (session, _) = start(ConnectionScript::default());
+
+        assert_eq!(session.safe_mode(), SafeModeLevel::Off);
+        assert!(session.set_safe_mode(SafeModeLevel::ConfirmWrites));
+        assert_eq!(session.safe_mode(), SafeModeLevel::ConfirmWrites);
+        assert!(!session.set_safe_mode(SafeModeLevel::ReadOnly));
+        assert_eq!(session.safe_mode(), SafeModeLevel::ConfirmWrites);
     }
 
     #[tokio::test(start_paused = true)]

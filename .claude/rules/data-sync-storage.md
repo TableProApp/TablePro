@@ -39,3 +39,4 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | History drawer state | UserDefaults, device-local | `HistoryPanelPreferencesStorage` |
 | Trusted external links (loopback only) | UserDefaults | `ExternalConnectionTrustStore` |
 | Table load timings (no identifying data, never uploaded) | JSON lines | `TableLoadHistoryStore` |
+| Reopen Last Session list (`LastSession.json`, plus `LastOpenConnections.json` holding only the ids that reconnect, which older builds read) | JSON | `LastOpenConnectionsStorage` |

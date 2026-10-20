@@ -7,7 +7,9 @@ use futures::future::LocalBoxFuture;
 use gtk4 as gtk;
 use tablepro_core::ddl::{BuildDdlError, ChangeReview};
 use tablepro_core::save::{SavePlan, plan_save};
-use tablepro_core::{CommitResolution, DriverError, WriteKind, WriteReport};
+use tablepro_core::statement::Statement;
+use tablepro_core::value::same_value;
+use tablepro_core::{CommitResolution, DriverError, SafeModeLevel, WriteKind, WriteReport};
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tablepro_session::{OperationError, OperationKind, Session};
 use tablepro_storage::query_history::Outcome;
@@ -29,6 +31,7 @@ use crate::services::structure_tracker_handle::StructureTrackerHandle;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::ui::review_dialog::{self, ReviewDecision};
+use crate::ui::write_confirmation::{self, WriteConfirmation};
 
 /// What a window's workspace saves and closes with.
 pub struct WorkspaceDeps {
@@ -268,6 +271,12 @@ impl WorkspaceHandle {
 
     async fn save_tab(&self, parent: &gtk::Widget, tab: Uuid) -> SaveStart {
         if let Some(tracker) = self.0.deps.rows.get(tab) {
+            let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
+                return SaveStart::Rejected(SaveRejection::InReview);
+            };
+            if let Err(start) = self.confirm_rows(parent, &tracker).await {
+                return start;
+            }
             return self.save_rows(tab, &tracker);
         }
         if let Some(tracker) = self.0.deps.structures.get(tab) {
@@ -287,6 +296,32 @@ impl WorkspaceHandle {
                 Err(message) => SaveStart::Rejected(SaveRejection::FileNotSaved(message)),
             },
             None => SaveStart::NothingToSave,
+        }
+    }
+
+    /// On a connection that asks before every write, the row save's SQL
+    /// is shown first. What is saved has to be what was shown: the tab
+    /// can change while the question is open.
+    async fn confirm_rows(&self, parent: &gtk::Widget, tracker: &TabTrackerHandle) -> Result<(), SaveStart> {
+        let Some(session) = self
+            .0
+            .deps
+            .session
+            .get()
+            .filter(|session| session.safe_mode() == SafeModeLevel::ConfirmWrites)
+        else {
+            return Ok(());
+        };
+        let Some((table, shown)) = row_statements(&session, tracker)? else {
+            return Ok(());
+        };
+        let confirmation = WriteConfirmation::row_save(&session.metadata().name, &table, &shown);
+        if !write_confirmation::confirm(parent, &confirmation).await {
+            return Err(SaveStart::Rejected(SaveRejection::ReviewDeclined));
+        }
+        match row_statements(&session, tracker)? {
+            Some((_, now)) if same_statements(&now, &shown) => Ok(()),
+            _ => Err(SaveStart::Rejected(SaveRejection::ChangedDuringReview)),
         }
     }
 
@@ -415,8 +450,17 @@ impl WorkspaceHandle {
     ) -> Result<ChangeReview, SaveStart> {
         let (table, review) = self.plan_review(tracker)?;
         let engine = &self.0.deps.engine;
-        if review.requires_confirmation(engine.ddl_writes) {
-            if review_dialog::confirm(parent, &table, &review, engine).await == ReviewDecision::Cancel {
+        let asks_first = self
+            .0
+            .deps
+            .session
+            .get()
+            .filter(|session| session.safe_mode() == SafeModeLevel::ConfirmWrites)
+            .map(|session| session.metadata().name.clone());
+        if asks_first.is_some() || review.requires_confirmation(engine.ddl_writes) {
+            if review_dialog::confirm(parent, &table, &review, engine, asks_first.as_deref()).await
+                == ReviewDecision::Cancel
+            {
                 return Err(SaveStart::Rejected(SaveRejection::ReviewDeclined));
             }
             // The draft and the connection can still change while the
@@ -528,6 +572,45 @@ impl std::fmt::Debug for WorkspaceHandle {
             .field("ledger", &self.0.ledger)
             .finish_non_exhaustive()
     }
+}
+
+/// The table a row save writes to and its statements with their values,
+/// planned with the session's dialect, without taking the changes from
+/// the tab.
+fn row_statements(
+    session: &Session,
+    tracker: &TabTrackerHandle,
+) -> Result<Option<(String, Vec<Statement>)>, SaveStart> {
+    let Some((target, changes)) = tracker.preview_save().map_err(SaveStart::Rejected)? else {
+        return Ok(None);
+    };
+    let dialect = session
+        .current_dialect()
+        .ok_or(SaveStart::Rejected(SaveRejection::NoConnection))?;
+    let columns = &target.columns;
+    let plan = plan_save(
+        &*dialect,
+        &target.table,
+        columns,
+        &pk_identity(columns),
+        &changes.changes,
+    )
+    .map_err(|error| SaveStart::Rejected(SaveRejection::Build(error)))?;
+    let statements = plan.batch.steps.into_iter().map(|step| step.statement).collect();
+    Ok(Some((target.table.name, statements)))
+}
+
+/// Statement by statement, the same SQL binding the same values. A NaN
+/// is the same NaN, which `==` on floats would deny.
+fn same_statements(left: &[Statement], right: &[Statement]) -> bool {
+    left.len() == right.len()
+        && left.iter().zip(right).all(|(left, right)| {
+            left.sql() == right.sql()
+                && left.params().len() == right.params().len()
+                && left.params().iter().zip(right.params()).all(|(left, right)| {
+                    left.param_type() == right.param_type() && same_value(left.value(), right.value())
+                })
+        })
 }
 
 struct HistoryEntry {

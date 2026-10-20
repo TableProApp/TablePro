@@ -58,7 +58,9 @@ pub struct ConnectDialog {
     #[template_child]
     pub ssh_section: TemplateChild<SshSection>,
     #[template_child]
-    pub read_only_row: TemplateChild<adw::SwitchRow>,
+    pub safe_mode_row: TemplateChild<adw::ComboRow>,
+    #[template_child]
+    pub safe_mode_names: TemplateChild<gtk4::StringList>,
 
     pub(super) services: OnceCell<DialogServices>,
     pub(super) drivers: RefCell<Vec<DriverEntry>>,
