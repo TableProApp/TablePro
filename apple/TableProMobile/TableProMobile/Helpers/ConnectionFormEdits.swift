@@ -93,9 +93,10 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
     }
 
     private func applySSHTunnel(to connection: inout DatabaseConnection, changedSince opening: SSHTunnel?) {
+        // Switched off, not cleared: the Mac keeps a disabled tunnel's settings, and the record carries them.
         guard let sshTunnel else {
             connection.sshEnabled = false
-            connection.sshConfiguration = nil
+            connection.sshConfiguration?.macEnabled = false
             return
         }
         func changed<Value: Equatable>(_ field: KeyPath<SSHTunnel, Value>) -> Bool {

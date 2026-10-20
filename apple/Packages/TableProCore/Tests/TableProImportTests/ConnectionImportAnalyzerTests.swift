@@ -194,6 +194,38 @@ struct ConnectionImportAnalyzerTests {
         #expect(warnings.contains { $0.contains("Client key") })
     }
 
+    @Test("A device that never reads hop key files warns about the server key only")
+    func hopKeyPathsAreNotCheckedWhereUnread() throws {
+        var settings = Fixtures.settings()
+        settings.sshConfig = ExportableSSHConfig(
+            enabled: true,
+            host: "bastion",
+            port: nil,
+            username: "u",
+            authMethod: "privateKey",
+            privateKeyPath: "~/.ssh/missing_key",
+            agentSocketPath: "",
+            jumpHosts: [
+                ExportableJumpHost(host: "jump", port: nil, username: "u", authMethod: "privateKey", privateKeyPath: "~/.ssh/jump")
+            ],
+            totpMode: nil,
+            totpAlgorithm: nil,
+            totpDigits: nil,
+            totpPeriod: nil
+        )
+        let preview = Fixtures.makePreview(
+            try Fixtures.makeBundle(connections: [BundleConnection(ref: "c1", settings: settings)]),
+            environment: Fixtures.makeEnvironment(
+                rules: Fixtures.makeRules(readsJumpHostKeyFiles: false),
+                fileExists: { _ in false }
+            )
+        )
+
+        let warnings = try #require(preview.connections.first).warnings
+        #expect(warnings.count == 1)
+        #expect(warnings.contains { $0.contains("~/.ssh/missing_key") })
+    }
+
     @Test("An unrecognized SSL mode warns that the connection imports with SSL required")
     func unrecognizedSSLModeWarns() throws {
         var settings = Fixtures.settings()

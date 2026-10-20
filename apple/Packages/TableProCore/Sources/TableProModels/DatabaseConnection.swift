@@ -162,6 +162,7 @@ extension DatabaseConnection: Codable {
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
+        adoptConfigurationSwitches()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -191,6 +192,19 @@ extension DatabaseConnection: Codable {
         try container.encode(isFavorite, forKey: .isFavorite)
         if isSample {
             try container.encode(isSample, forKey: .isSample)
+        }
+    }
+}
+
+public extension DatabaseConnection {
+    // The Mac keeps both switches inside the configurations and never writes these two fields, so a configuration that
+    // carries a switch decides. A copy stored before this read them the other way and heals on load.
+    mutating func adoptConfigurationSwitches() {
+        if let enabled = sshConfiguration?.macEnabled {
+            sshEnabled = enabled
+        }
+        if let ssl = sslConfiguration {
+            sslEnabled = ssl.mode != .disable
         }
     }
 }

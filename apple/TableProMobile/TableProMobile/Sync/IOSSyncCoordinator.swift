@@ -214,6 +214,7 @@ final class IOSSyncCoordinator {
             Self.logger.info("Sync skipped: the library has not loaded")
             return
         }
+        await settleLegacySSLModes()
         let previousError = status.error
         let admission = SyncAdmission.decide(
             for: trigger,
@@ -545,6 +546,28 @@ final class IOSSyncCoordinator {
     }
 
     // MARK: - Apply
+
+    // A copy an older iOS build stored lost the Mac's Preferred, which only the cached server record still holds.
+    // A run can delete that cache (iCloud reset, account change) before anything pushes, so this goes first.
+    private func settleLegacySSLModes() async {
+        guard let connections = getCurrentState?()?.connections,
+              connections.contains(where: { $0.sslConfiguration?.isLegacyRequire == true }) else { return }
+        let zoneID = await currentTransport().currentZoneID
+        guard var settled = getCurrentState?()?.connections else { return }
+        var changed = false
+        for index in settled.indices {
+            guard let local = settled[index].sslConfiguration, local.isLegacyRequire else { continue }
+            let recordID = SyncRecordMapper.recordID(type: .connection, id: settled[index].id.uuidString, in: zoneID)
+            guard let cached = recordCache.record(for: recordID),
+                  let server = SyncRecordMapper.serverSSL(in: cached),
+                  local.agrees(withServer: server) else { continue }
+            settled[index].sslConfiguration?.settleLegacyRequire(asMacPreferred: server.isMacPreferred)
+            changed = true
+        }
+        if changed {
+            onConnectionsChanged?(settled)
+        }
+    }
 
     private func applyRemoteChanges(_ remote: PullChanges) -> Bool {
         guard let state = getCurrentState?() else { return false }

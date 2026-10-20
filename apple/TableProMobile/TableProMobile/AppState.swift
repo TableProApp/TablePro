@@ -564,7 +564,9 @@ private struct ConnectionPersistence {
 
     func save(_ connections: [DatabaseConnection], keepingPastedSSHKeys pastedSSHKeys: [UUID: String]) throws {
         guard let fileURL else { return }
-        let data = try PastedSSHKeyMigration.libraryFile(JSONEncoder().encode(connections), keeping: pastedSSHKeys)
+        let encoder = JSONEncoder()
+        encoder.userInfo[.deviceLibraryFile] = true
+        let data = try PastedSSHKeyMigration.libraryFile(encoder.encode(connections), keeping: pastedSSHKeys)
         try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 

@@ -16,7 +16,8 @@ enum IOSConnectionImportService {
             rules: ImportRules(
                 maximumGroupDepth: LibraryGroupGraph.maxNestingDepth,
                 supportsSavedQueries: false,
-                supportsCredentialProfiles: false
+                supportsCredentialProfiles: false,
+                readsJumpHostKeyFiles: false
             ),
             registeredTypeIds: recognizedTypeIds
         )

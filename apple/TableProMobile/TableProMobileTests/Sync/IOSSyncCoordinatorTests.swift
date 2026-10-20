@@ -886,6 +886,54 @@ struct IOSSyncCoordinatorTests {
         #expect(coordinator.status == .idle)
     }
 
+    private func legacyRequire() throws -> SSLConfiguration {
+        try JSONDecoder().decode(SSLConfiguration.self, from: Data(#"{"mode":"require"}"#.utf8))
+    }
+
+    private func cacheServerRecord(of connection: DatabaseConnection, ssl: SSLConfiguration) {
+        var server = connection
+        server.sslConfiguration = ssl
+        SyncRecordCache(directory: cacheDirectory, defaults: nil).store([SyncRecordMapper.toRecord(server, zoneID: zoneID)])
+    }
+
+    @Test("A Mac Preferred an older iOS build stored as require goes up as Preferred after an iCloud reset")
+    func legacyPreferredSurvivesReset() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Orders", type: .postgresql, sslEnabled: true, sslConfiguration: try legacyRequire())
+        box.connections = [local]
+        cacheServerRecord(of: local, ssl: SSLConfiguration(mode: .require, isMacPreferred: true))
+        metadata.lastAccountId = "account-a"
+        metadata.zoneState = .confirmed
+        let transport = FakeSyncTransport(remoteRecords: [], box: box)
+        await transport.failNextPulls(with: [CKError(.userDeletedZone)])
+        let coordinator = makeCoordinator(box: box, transport: transport)
+
+        await coordinator.sync()
+        #expect(coordinator.status == .error(.blocked(.dataDeletedFromICloud)))
+        await coordinator.uploadAgain()
+
+        #expect(box.connections.first?.sslConfiguration?.isMacPreferred == true)
+        let pushed = try #require(await transport.pushedRecords.first)
+        #expect(SyncRecordMapper.serverSSL(in: pushed)?.isMacPreferred == true)
+    }
+
+    @Test("An older copy settles to what the cached record holds, and stays unsettled without one")
+    func legacyCopiesSettleFromTheCache() async throws {
+        let box = LibraryStateBox()
+        let required = DatabaseConnection(name: "Required", type: .mysql, sslEnabled: true, sslConfiguration: try legacyRequire())
+        let uncached = DatabaseConnection(name: "Uncached", type: .mysql, sslEnabled: true, sslConfiguration: try legacyRequire())
+        box.connections = [required, uncached]
+        cacheServerRecord(of: required, ssl: SSLConfiguration(mode: .require))
+        let coordinator = makeCoordinator(box: box, transport: FakeSyncTransport(remoteRecords: [], box: box))
+
+        await coordinator.sync()
+
+        let settled = try #require(box.connections.first { $0.id == required.id }?.sslConfiguration)
+        #expect(!settled.isLegacyRequire)
+        #expect(!settled.isMacPreferred)
+        #expect(box.connections.first { $0.id == uncached.id }?.sslConfiguration?.isLegacyRequire == true)
+    }
+
     /// The block used to live only in memory, so a relaunch forgot it and the first run uploaded
     /// into a recreated zone without asking.
     @Test("Data removed from iCloud still waits for the person after a relaunch")
