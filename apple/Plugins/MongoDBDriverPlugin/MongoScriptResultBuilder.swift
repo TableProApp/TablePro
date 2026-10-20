@@ -6,7 +6,7 @@ import TableProPluginKit
 /// mongosh prints whatever the statement produced, so the rule here is the same one: documents
 /// become a grid, anything a script printed becomes a grid of its own when the statement produced
 /// no documents, and a bare value becomes one cell.
-enum MongoScriptResultBuilder {
+nonisolated enum MongoScriptResultBuilder {
     static func result(
         for outcome: MongoScriptStatementResult,
         startTime: Date,

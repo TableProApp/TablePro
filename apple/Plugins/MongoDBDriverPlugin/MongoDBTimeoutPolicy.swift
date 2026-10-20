@@ -5,7 +5,7 @@
 
 import Foundation
 
-struct MongoDBConnectTimeout: Equatable, Sendable {
+nonisolated struct MongoDBConnectTimeout: Equatable, Sendable {
     static let defaultMilliseconds = 10_000
     static let maximumMilliseconds = 3_600_000
 
@@ -44,7 +44,7 @@ struct MongoDBConnectTimeout: Equatable, Sendable {
     }
 }
 
-enum MongoDBServerErrorCode {
+nonisolated enum MongoDBServerErrorCode {
     static let badValue: UInt32 = 2
     static let indexNotFound: UInt32 = 27
     static let maxTimeMSExpired: UInt32 = 50
@@ -61,7 +61,7 @@ enum MongoDBServerErrorCode {
     ]
 }
 
-enum MongoDBTimeoutPolicy {
+nonisolated enum MongoDBTimeoutPolicy {
     static let backgroundMaxTimeMS: Int32 = 5_000
 
     static func queryTimeoutMilliseconds(seconds: Int) -> Int32 {

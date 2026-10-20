@@ -8,7 +8,7 @@ import os
 import TableProLogRedaction
 import TableProPluginKit
 
-final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private(set) var mongoConnection: MongoDBConnection?
     private var scriptRuntime: MongoScriptRuntime?
@@ -1128,12 +1128,12 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
 // MARK: - Error
 
-enum MongoDBPluginError: Error {
+nonisolated enum MongoDBPluginError: Error {
     case notConnected
     case viewNotFound(String)
 }
 
-extension MongoDBPluginError: PluginDriverError {
+nonisolated extension MongoDBPluginError: PluginDriverError {
     var pluginErrorMessage: String {
         switch self {
         case .notConnected: return String(localized: "Not connected to MongoDB")
@@ -1142,7 +1142,7 @@ extension MongoDBPluginError: PluginDriverError {
     }
 }
 
-private extension MongoScriptAccess {
+nonisolated private extension MongoScriptAccess {
     init(_ context: PluginStatementContext) {
         self = context.readOnly ? .read : .readWrite
     }

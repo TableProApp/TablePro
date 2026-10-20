@@ -1,7 +1,7 @@
 import Foundation
 import TableProPluginKit
 
-enum MongoDBNameValidationError: Error, Equatable {
+nonisolated enum MongoDBNameValidationError: Error, Equatable {
     case emptyDatabaseName
     case databaseNameTooLong
     case databaseNameInvalidCharacter(Character)
@@ -11,7 +11,7 @@ enum MongoDBNameValidationError: Error, Equatable {
     case namespaceTooLong
 }
 
-extension MongoDBNameValidationError: PluginDriverError {
+nonisolated extension MongoDBNameValidationError: PluginDriverError {
     var pluginErrorMessage: String {
         switch self {
         case .emptyDatabaseName:
@@ -47,7 +47,7 @@ extension MongoDBNameValidationError: PluginDriverError {
     }
 }
 
-enum MongoDBNameValidator {
+nonisolated enum MongoDBNameValidator {
     static let maxDatabaseNameBytes = 64
     static let maxNamespaceBytes = 255
     static let reservedCollectionPrefix = "system."

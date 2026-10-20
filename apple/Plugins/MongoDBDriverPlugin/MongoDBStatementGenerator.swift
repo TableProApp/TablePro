@@ -11,7 +11,7 @@ import os
 import TableProNumberFormatting
 import TableProPluginKit
 
-struct MongoDBStatementGenerator {
+nonisolated struct MongoDBStatementGenerator {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoDBStatementGenerator")
 
     let collectionName: String

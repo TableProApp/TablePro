@@ -6,7 +6,7 @@ import Foundation
 /// Generated here rather than left to the server so an insert can report the `insertedId` the way
 /// mongosh does. libmongoc adds the field to the document it sends without writing it back into the
 /// caller's, so reading it afterwards reports `null` for every document that did not carry one.
-enum MongoScriptObjectId {
+nonisolated enum MongoScriptObjectId {
     private final class Sequence: @unchecked Sendable {
         private let lock = NSLock()
         private var counter = UInt32.random(in: 0 ... 0xFF_FFFF)

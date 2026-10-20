@@ -17,7 +17,7 @@ import Foundation
 /// `j`. MongoDB 7.0.43 refuses a command whose write concern carries any other name
 /// (`IDLUnknownField`), and libmongoc 1.28.1 drops those names from an insert's options along with
 /// the connection's own write concern, so the insert goes out with neither.
-enum MongoScriptCommandBuilder {
+nonisolated enum MongoScriptCommandBuilder {
     struct BulkStatement {
         let kind: MongoWriteOperation
         let touchesMany: Bool

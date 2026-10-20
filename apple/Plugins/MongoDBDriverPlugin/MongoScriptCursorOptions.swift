@@ -7,7 +7,7 @@ import Foundation
 /// through `JSONSerialization`, which cannot read Extended JSON and reported failure by returning
 /// nil, so a sort the parser had accepted was dropped and the query ran unsorted while reporting
 /// success.
-struct MongoScriptCursorOptions: Equatable, Sendable {
+nonisolated struct MongoScriptCursorOptions: Equatable, Sendable {
     var sort: String?
     var projection: String?
     var skip: Int?

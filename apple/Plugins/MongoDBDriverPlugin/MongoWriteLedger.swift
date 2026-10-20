@@ -1,6 +1,6 @@
 import Foundation
 
-enum MongoWriteOperation: Equatable, Sendable {
+nonisolated enum MongoWriteOperation: Equatable, Sendable {
     case insert
     case update
     case delete
@@ -22,7 +22,7 @@ enum MongoWriteOperation: Equatable, Sendable {
 /// A failure that stopped a write before it was sent still counts what the reply says was written
 /// first. libmongoc sends a large `insertMany` in batches, and one that stops at a document it
 /// cannot send has already inserted the batches before it.
-struct MongoWriteLedger: Equatable, Sendable {
+nonisolated struct MongoWriteLedger: Equatable, Sendable {
     private(set) var changed = 0
     private(set) var mayHaveChangedMore = false
     private(set) var isWriting = false

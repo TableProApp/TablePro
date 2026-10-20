@@ -9,7 +9,7 @@ import Foundation
 /// The statement behind a cursor can still have run writes, or a `use`, before it built one, and the
 /// stream can fail after the evaluation has returned. So a cursor carries what the statement did,
 /// and a failed stream reports it the way a failed statement does.
-enum MongoScriptExport: Sendable {
+nonisolated enum MongoScriptExport: Sendable {
     case cursor(MongoScriptCursorPlan, databaseSwitch: String?, writes: MongoWriteLedger)
     case result(MongoScriptStatementResult)
 }

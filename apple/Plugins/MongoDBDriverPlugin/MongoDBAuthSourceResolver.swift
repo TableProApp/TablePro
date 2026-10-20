@@ -1,6 +1,6 @@
 import Foundation
 
-enum MongoDBAuthSourceResolver {
+nonisolated enum MongoDBAuthSourceResolver {
     static let defaultAuthSource = "admin"
 
     static func resolve(explicitAuthSource: String?, configuredDatabase: String, useSrv: Bool) -> String {

@@ -11,7 +11,7 @@ import os
 import TableProNumberFormatting
 import TableProPluginKit
 
-enum BsonValueKind: Hashable {
+nonisolated enum BsonValueKind: Hashable {
     case double
     case string
     case document
@@ -38,12 +38,12 @@ enum BsonValueKind: Hashable {
 /// Documents as Swift values beside the canonical Extended JSON each was read from. The
 /// dictionaries have lost the stored field order and which numeric type each number was; the text
 /// has not.
-struct MongoReadDocuments {
+nonisolated struct MongoReadDocuments {
     let dictionaries: [[String: Any]]
     let texts: [String]
 }
 
-struct BsonDocumentFlattener {
+nonisolated struct BsonDocumentFlattener {
     // MARK: - Public API
 
     /// Union of all field names across all documents.

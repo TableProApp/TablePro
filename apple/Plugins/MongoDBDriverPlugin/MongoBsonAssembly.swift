@@ -11,7 +11,7 @@ import Foundation
 /// member is handed to libbson as a document of its own, `{"key": value}`, where a key is never
 /// special. Every value that holds no such object is still read by libbson as written, wrappers
 /// such as `{"$oid": …}` included.
-enum MongoBsonAssembly: Equatable, Sendable {
+nonisolated enum MongoBsonAssembly: Equatable, Sendable {
     /// Text libbson reads as meant, which is nearly all of it.
     case whole(String)
     /// A document built from these parts, in order.

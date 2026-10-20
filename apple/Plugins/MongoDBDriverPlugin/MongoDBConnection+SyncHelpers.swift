@@ -12,7 +12,7 @@ import OSLog
 import TableProPluginKit
 
 #if canImport(CLibMongoc)
-extension MongoDBConnection {
+nonisolated extension MongoDBConnection {
     func bsonErrorMessage(_ error: inout bson_error_t) -> String {
         MongoBsonBuilder.errorMessage(&error)
     }

@@ -72,6 +72,13 @@ targets:
         excludes:
           - Info.plist
       - ../Plugins/Shared/PluginConnectTimeout.swift
+      # The MongoDB plugin driver runs behind PluginBackedDriver too; the iOS CLibMongoc bridge stands in for the
+      # plugin's own, and the principal class stays on the Mac.
+      - path: ../Plugins/MongoDBDriverPlugin
+        excludes:
+          - Info.plist
+          - MongoDBPlugin.swift
+          - CLibMongoc/**
       # The column default reading both apps show and the version floor that says which catalog
       # quotes its defaults. The DDL writers stay on macOS.
       - ../Plugins/MySQLDriverPlugin/MySQLCatalogDefault.swift
@@ -124,6 +131,7 @@ targets:
           - TableProDatabase
           - TableProGeometry
           - TableProImport
+          - TableProLogRedaction
           - TableProModels
           - TableProMSSQLCore
           - TableProMySQLCore
@@ -149,6 +157,10 @@ targets:
       - framework: ../Libs/ios/Hiredis.xcframework
         embed: false
       - framework: ../Libs/ios/LibPQ.xcframework
+        embed: false
+      - framework: ../Libs/ios/LibBson.xcframework
+        embed: false
+      - framework: ../Libs/ios/LibMongoc.xcframework
         embed: false
       - framework: ../Libs/ios/LibSSH2.xcframework
         embed: false
@@ -184,12 +196,13 @@ targets:
           - -lz
           - -liconv
           - -lc++
+          - -lresolv
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.TableProMobile
         PRODUCT_NAME: $(TARGET_NAME)
         SWIFT_APPROACHABLE_CONCURRENCY: YES
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
         SWIFT_EMIT_LOC_STRINGS: YES
-        SWIFT_INCLUDE_PATHS: $(SRCROOT)/TableProMobile/CBridges/CMariaDB $(SRCROOT)/TableProMobile/CBridges/CLibPQ $(SRCROOT)/TableProMobile/CBridges/CRedis $(SRCROOT)/TableProMobile/CBridges/CLibSSH2 $(SRCROOT)/TableProMobile/CBridges/CFreeTDS $(SRCROOT)/TableProMobile/CBridges/CDuckDB
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/TableProMobile/CBridges/CMariaDB $(SRCROOT)/TableProMobile/CBridges/CLibPQ $(SRCROOT)/TableProMobile/CBridges/CRedis $(SRCROOT)/TableProMobile/CBridges/CLibSSH2 $(SRCROOT)/TableProMobile/CBridges/CFreeTDS $(SRCROOT)/TableProMobile/CBridges/CDuckDB $(SRCROOT)/TableProMobile/CBridges/CLibMongoc
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
         TARGETED_DEVICE_FAMILY: "1,2"
 
@@ -247,7 +260,7 @@ targets:
         STRING_CATALOG_GENERATE_SYMBOLS: NO
         SWIFT_APPROACHABLE_CONCURRENCY: YES
         SWIFT_EMIT_LOC_STRINGS: NO
-        SWIFT_INCLUDE_PATHS: $(SRCROOT)/TableProMobile/CBridges/CMariaDB $(SRCROOT)/TableProMobile/CBridges/CLibPQ $(SRCROOT)/TableProMobile/CBridges/CRedis $(SRCROOT)/TableProMobile/CBridges/CLibSSH2 $(SRCROOT)/TableProMobile/CBridges/CFreeTDS $(SRCROOT)/TableProMobile/CBridges/CDuckDB
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/TableProMobile/CBridges/CMariaDB $(SRCROOT)/TableProMobile/CBridges/CLibPQ $(SRCROOT)/TableProMobile/CBridges/CRedis $(SRCROOT)/TableProMobile/CBridges/CLibSSH2 $(SRCROOT)/TableProMobile/CBridges/CFreeTDS $(SRCROOT)/TableProMobile/CBridges/CDuckDB $(SRCROOT)/TableProMobile/CBridges/CLibMongoc
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
         TARGETED_DEVICE_FAMILY: "1,2"
 

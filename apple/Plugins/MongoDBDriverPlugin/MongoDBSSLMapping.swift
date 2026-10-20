@@ -1,7 +1,7 @@
 import Foundation
 import TableProPluginKit
 
-enum MongoDBSSLMapping {
+nonisolated enum MongoDBSSLMapping {
     static func uriParameters(for ssl: SSLConfiguration) -> [String] {
         guard ssl.isEnabled else { return [] }
         var params: [String] = ["tls=true"]

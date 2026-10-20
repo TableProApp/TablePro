@@ -14,11 +14,11 @@ import os
 import OSLog
 import TableProPluginKit
 
-let logger = Logger(subsystem: "com.TablePro", category: "MongoDBConnection")
+nonisolated let logger = Logger(subsystem: "com.TablePro", category: "MongoDBConnection")
 
 // MARK: - Error Types
 
-struct MongoDBError: Error {
+nonisolated struct MongoDBError: Error {
     let code: UInt32
     let message: String
 
@@ -30,7 +30,7 @@ struct MongoDBError: Error {
     )
 }
 
-extension MongoDBError: PluginDriverError {
+nonisolated extension MongoDBError: PluginDriverError {
     var pluginErrorMessage: String { message }
     var pluginErrorCode: Int? { Int(code) }
 }
@@ -39,7 +39,7 @@ extension MongoDBError: PluginDriverError {
 
 /// Hands a BSON pointer or a decoded document between the serial queue and the awaiting caller.
 /// Only one of the two touches it at a time, which is what the compiler cannot see through `Any`.
-private struct QueueTransfer<Value>: @unchecked Sendable {
+nonisolated private struct QueueTransfer<Value>: @unchecked Sendable {
     let value: Value
 }
 
@@ -48,7 +48,7 @@ private struct QueueTransfer<Value>: @unchecked Sendable {
 /// Async entry points use `queue.async` + continuations. Synchronous entry points
 /// detect on-queue re-entry via `queueKey` and call sync helpers directly to
 /// avoid `dispatch_sync` deadlocks when an on-queue block re-enters a public API.
-final class MongoDBConnection: @unchecked Sendable {
+nonisolated final class MongoDBConnection: @unchecked Sendable {
     // MARK: - Properties
 
     #if canImport(CLibMongoc)
@@ -944,7 +944,7 @@ final class MongoDBConnection: @unchecked Sendable {
 }
 
 
-final class MongoStreamState: @unchecked Sendable {
+nonisolated final class MongoStreamState: @unchecked Sendable {
     var cursor: OpaquePointer?
     var collection: OpaquePointer?
     var drained = false
@@ -953,7 +953,7 @@ final class MongoStreamState: @unchecked Sendable {
 
 // MARK: - BSON Helpers
 
-extension MongoDBConnection {
+nonisolated extension MongoDBConnection {
     /// Convert a JSON string to a bson_t pointer. Caller must call bson_destroy on the result.
     ///
     /// An object opening with `$type`, `$regex` or `$options` becomes the document it is written as,
@@ -973,7 +973,7 @@ extension MongoDBConnection {
 // so they must be gated at the extension level.
 // Internal (not private) so tests can access unwrapExtendedJson.
 #if canImport(CLibMongoc)
-extension MongoDBConnection {
+nonisolated extension MongoDBConnection {
     func bsonToDict(_ bson: OpaquePointer?) -> [String: Any] {
         guard let bson = bson, let jsonStr = bsonToJson(bson),
               let data = jsonStr.data(using: .utf8),

@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-extension MongoDBPluginDriver {
+nonisolated extension MongoDBPluginDriver {
     func documentWriteStatement(_ write: PluginDocumentWrite) throws -> String? {
         try documentWritePlan(write)?.statement
     }

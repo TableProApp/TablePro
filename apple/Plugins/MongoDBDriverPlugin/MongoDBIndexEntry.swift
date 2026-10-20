@@ -9,7 +9,7 @@ import TableProPluginKit
 /// DDL wrote them alphabetically, with the TTL, partial filter and collation left out. Each value
 /// stays canonical until the statement is written, so a partial filter's Int64 and whole Double
 /// keep their types.
-struct MongoDBIndexEntry {
+nonisolated struct MongoDBIndexEntry {
     static let primaryIndexName = "_id_"
 
     /// Members that describe the catalog entry rather than the index, so `createIndex` is not sent them.
@@ -77,7 +77,7 @@ struct MongoDBIndexEntry {
 }
 
 /// What an index's key makes it, in the index type names the app's structure editor uses.
-enum MongoDBIndexKind: Equatable {
+nonisolated enum MongoDBIndexKind: Equatable {
     case btree
     case hashed
     case text
@@ -116,7 +116,7 @@ enum MongoDBIndexKind: Equatable {
 /// The server reports the ICU `version` it built the collation with, and a server with a different
 /// ICU build refuses a statement naming that version with code 161. Left out, the server that runs
 /// the statement fills in its own, which on the same server is the same one.
-enum MongoDBCollation {
+nonisolated enum MongoDBCollation {
     static func portable(_ collationJson: String) -> String {
         MongoDBJsonLayout.object(MongoScriptJson.members(of: collationJson).filter { $0.key != "version" })
     }

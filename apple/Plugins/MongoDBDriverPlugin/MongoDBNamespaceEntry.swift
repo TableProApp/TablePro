@@ -5,7 +5,7 @@ import Foundation
 /// libmongoc's name listing keeps each entry's `name` and drops its `type`, so every view reached
 /// the app as a collection and was offered edits, Rename and Truncate that the server refuses with
 /// CommandNotSupportedOnView.
-struct MongoDBNamespaceEntry {
+nonisolated struct MongoDBNamespaceEntry {
     static let systemPrefix = "system."
 
     let name: String
@@ -90,7 +90,7 @@ struct MongoDBNamespaceEntry {
 /// A view's header reads `// View:` so MQL export, which appends whatever follows a
 /// `// Collection:` line after a collection's documents, never writes a `createView` after the
 /// documents it exported from that view.
-enum MongoDBNamespaceDDL {
+nonisolated enum MongoDBNamespaceDDL {
     static func text(name: String, entry: MongoDBNamespaceEntry?, indexes: [MongoDBIndexEntry]) -> String {
         if let entry, entry.isView {
             return [MongoDBShellText.comment("View: \(name)"), entry.createViewStatement()]

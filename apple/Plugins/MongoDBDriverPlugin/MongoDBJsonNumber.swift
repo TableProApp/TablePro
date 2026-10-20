@@ -6,7 +6,7 @@
 import Foundation
 import TableProNumberFormatting
 
-enum MongoDBJsonNumber {
+nonisolated enum MongoDBJsonNumber {
     static func isValid(_ value: String) -> Bool {
         NumberText.isJSONNumber(value)
     }

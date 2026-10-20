@@ -9,7 +9,7 @@
 import Foundation
 import TableProPluginKit
 
-struct MongoDBQueryBuilder {
+nonisolated struct MongoDBQueryBuilder {
     /// A filter row whose column is this sentinel carries a whole filter document as its value,
     /// typed by the user, instead of a field name and an operator.
     static let rawFilterColumn = "__RAW__"

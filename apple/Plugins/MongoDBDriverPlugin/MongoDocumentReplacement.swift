@@ -5,7 +5,7 @@ import Foundation
 /// A whole-document replace is the only write that keeps the written order: `$set` adds new fields
 /// in lexicographic order and reads a dotted name as a path. The stored `_id` goes first and cannot
 /// change, and one the user left out is put back rather than read as a request to drop it.
-struct MongoDocumentReplacement: Equatable, Sendable {
+nonisolated struct MongoDocumentReplacement: Equatable, Sendable {
     let document: MongoDocumentText
     let changesDocument: Bool
 

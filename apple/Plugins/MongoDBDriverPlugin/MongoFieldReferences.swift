@@ -20,7 +20,7 @@ import Foundation
 /// at a field that is gone. An expression handed the whole document, as `$$ROOT` and `$$CURRENT`
 /// hand it to `$objectToArray`, can reach any field by a name it builds at run time, so it reads
 /// every field too; `MongoWholeDocumentReads` decides that for validators and views alike.
-enum MongoFieldPath {
+nonisolated enum MongoFieldPath {
     /// Whether a dotted path is the field or a path under it.
     static func reaches(_ path: String, field: String) -> Bool {
         path == field || path.hasPrefix(field + ".")
@@ -34,7 +34,7 @@ enum MongoFieldPath {
     }
 }
 
-enum MongoJsonValue {
+nonisolated enum MongoJsonValue {
     static func parse(_ text: String) -> Any? {
         guard let data = text.data(using: .utf8) else { return nil }
         return try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
@@ -61,7 +61,7 @@ enum MongoJsonValue {
     }
 }
 
-enum MongoExpressionFieldReferences {
+nonisolated enum MongoExpressionFieldReferences {
     private static let opaqueOperators: Set<String> = ["$function", "$accumulator", "$where"]
     private static let fieldOperators: Set<String> = ["$getField", "$setField", "$unsetField"]
 
@@ -141,7 +141,7 @@ enum MongoExpressionFieldReferences {
 /// `$switch`, `$ifNull` or `$let`. There a later stage can reach it only as `$$ROOT` again, which this
 /// rule reads where it stands. A `$getField` with a literal field name reads that one field, which the
 /// walkers name as they name any other.
-enum MongoWholeDocumentReads {
+nonisolated enum MongoWholeDocumentReads {
     private enum Use {
         case readNames
         case passedOn
@@ -253,7 +253,7 @@ enum MongoWholeDocumentReads {
     }
 }
 
-enum MongoQueryFieldReferences {
+nonisolated enum MongoQueryFieldReferences {
     private static let logicalOperators: Set<String> = ["$and", "$or", "$nor"]
     private static let fieldlessOperators: Set<String> = [
         "$comment", "$text", "$alwaysTrue", "$alwaysFalse", "$sampleRate"
@@ -297,7 +297,7 @@ enum MongoQueryFieldReferences {
     }
 }
 
-enum MongoJsonSchemaFieldReferences {
+nonisolated enum MongoJsonSchemaFieldReferences {
     private static let combinators = ["allOf", "anyOf", "oneOf"]
 
     /// A `$jsonSchema` names a document's fields at its own level: `properties`, `required`,
@@ -381,7 +381,7 @@ enum MongoJsonSchemaFieldReferences {
     }
 }
 
-enum MongoIndexFieldReferences {
+nonisolated enum MongoIndexFieldReferences {
     private static let projectionKeys = ["wildcardProjection", "columnstoreProjection"]
 
     /// An index reads a field through its key, a text index's `weights` and `language_override`,
@@ -407,7 +407,7 @@ enum MongoIndexFieldReferences {
     }
 }
 
-enum MongoPipelineFieldReferences {
+nonisolated enum MongoPipelineFieldReferences {
     private static let opaqueOperators: Set<String> = ["$function", "$accumulator", "$where"]
     private static let fieldOperators: Set<String> = ["$getField", "$setField", "$unsetField"]
 
@@ -454,7 +454,7 @@ enum MongoPipelineFieldReferences {
 /// Whether an Atlas Search or Vector Search index definition names a field. A definition names one
 /// as a key under `mappings.fields`, as a `path` string or list, and in `storedSource`, and every
 /// key and every string in it counts, for the same reason a view's do.
-enum MongoSearchDefinitionFieldReferences {
+nonisolated enum MongoSearchDefinitionFieldReferences {
     static func reaches(_ value: Any, field: String) -> Bool {
         if let text = value as? String {
             return MongoFieldPath.mayBeNamed(by: text, field: field)

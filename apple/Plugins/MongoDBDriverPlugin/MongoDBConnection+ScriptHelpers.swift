@@ -8,7 +8,7 @@ import TableProPluginKit
 /// `ObjectId`, `Date` and the rest. Keeping the canonical text is the only representation both can
 /// be derived from without losing a type on the way, so a document that is never read from
 /// JavaScript costs one conversion rather than two.
-struct MongoScriptDocumentBatch: Sendable {
+nonisolated struct MongoScriptDocumentBatch: Sendable {
     var json: [String]
     var isTruncated: Bool
 
@@ -38,7 +38,7 @@ struct MongoScriptDocumentBatch: Sendable {
 import CLibMongoc
 import os
 
-extension MongoDBConnection {
+nonisolated extension MongoDBConnection {
     func scriptRunCommand(client: OpaquePointer, command: String, database: String?) throws -> String {
         let result = try sendCommand(client: client, command: command, database: database)
         try checkCancelled()

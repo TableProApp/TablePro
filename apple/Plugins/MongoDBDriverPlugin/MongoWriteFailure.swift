@@ -19,7 +19,7 @@ import Foundation
 /// It is also the error the host throws for a failed write, and the stage crosses into the script
 /// with it. That is how the driver tells a write's failure from a read's when both carry the same
 /// code and message: a script can catch one and go on to fail on the other.
-struct MongoWriteFailure: Error, LocalizedError, Equatable, Sendable {
+nonisolated struct MongoWriteFailure: Error, LocalizedError, Equatable, Sendable {
     enum Stage: String, Equatable, Sendable {
         case document
         case unconfirmed
@@ -94,7 +94,7 @@ struct MongoWriteFailure: Error, LocalizedError, Equatable, Sendable {
     }
 }
 
-extension MongoWriteFailure {
+nonisolated extension MongoWriteFailure {
     /// The failure as the script host answers a write, with its stage, so the exception a script
     /// lets escape still says it was a write's failure and how far the write got.
     var scriptReplyJson: String {
@@ -106,7 +106,7 @@ extension MongoWriteFailure {
 
 /// One write's reply, kept whether or not the write failed, because a failed write can still have
 /// changed documents and the reply is the only record of how many.
-struct MongoWriteOutcome: Sendable {
+nonisolated struct MongoWriteOutcome: Sendable {
     let replyJson: String
     let failure: MongoWriteFailure?
 }

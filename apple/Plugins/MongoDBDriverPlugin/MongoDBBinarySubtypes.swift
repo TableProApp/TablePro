@@ -14,7 +14,7 @@ import TableProPluginKit
 /// driver remembers are overwritten by whichever result it built last, which may be another tab's.
 /// Keying by the field and a digest of the bytes ties the subtype to the value the user copied or
 /// edited, and a value seen with two subtypes answers nothing rather than a guess.
-struct MongoDBBinarySubtypes: Sendable {
+nonisolated struct MongoDBBinarySubtypes: Sendable {
     private var subtypesByField: [String: [Data: Set<UInt8>]] = [:]
     private(set) var count = 0
 

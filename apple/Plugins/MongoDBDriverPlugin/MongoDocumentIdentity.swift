@@ -8,7 +8,7 @@ import Foundation
 /// the document is found again by comparing that text byte for byte, never by what a query matches.
 /// A query is lenient: `{_id: 1}` finds a stored double `1`, and a collection's collation finds
 /// `"ABC"` for `"abc"`.
-struct MongoDocumentIdentity: Equatable, Sendable {
+nonisolated struct MongoDocumentIdentity: Equatable, Sendable {
     static let field = "_id"
 
     let locator: String

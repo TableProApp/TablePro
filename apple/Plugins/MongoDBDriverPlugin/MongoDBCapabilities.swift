@@ -5,7 +5,7 @@
 
 import Foundation
 
-struct MongoDBCapabilities: Sendable, Equatable {
+nonisolated struct MongoDBCapabilities: Sendable, Equatable {
     let major: Int
     let minor: Int
 

@@ -11,7 +11,7 @@ import Foundation
 /// `$match` became an unknown `$regularExpression` operator there. Only a value mongosh has no way
 /// to write at all, a DBPointer, `undefined` or a date past JavaScript's range, keeps its wrapper,
 /// which TablePro's shell sends to the server as it is.
-enum MongoDBShellLiteral {
+nonisolated enum MongoDBShellLiteral {
     private static let millisecondsPerDay: Int64 = 86_400_000
     private static let javaScriptDateLimit: Int64 = 8_640_000_000_000_000
     private static let decimalPattern = #"^([+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?|NaN|-?Infinity)$"#

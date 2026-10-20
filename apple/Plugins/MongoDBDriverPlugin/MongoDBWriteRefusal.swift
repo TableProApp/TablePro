@@ -11,7 +11,7 @@ import TableProPluginKit
 /// Each one used to be left out of the statement, or written as something else, while the save
 /// reported success. The generator throws it instead, and it reaches the user as the reason the
 /// save was refused.
-enum MongoDBWriteRefusal: Error, Equatable {
+nonisolated enum MongoDBWriteRefusal: Error, Equatable {
     case binarySubtypeUnknown(field: String)
     case binaryNeedsBytes(field: String)
     case truncatedValue(field: String)

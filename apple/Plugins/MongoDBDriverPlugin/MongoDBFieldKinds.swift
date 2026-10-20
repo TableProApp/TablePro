@@ -13,7 +13,7 @@ import TableProPluginKit
 /// strings shows a document in every cell that opens with `{`; one that has held both cannot say
 /// which a cell holds. Added to rather than replaced, like the binary subtypes, so a string read on
 /// an earlier page is not forgotten when a later page holds only documents.
-struct MongoDBFieldKinds: Sendable {
+nonisolated struct MongoDBFieldKinds: Sendable {
     private var kindsByField: [String: Set<BsonValueKind>]
 
     static let empty = MongoDBFieldKinds([:])

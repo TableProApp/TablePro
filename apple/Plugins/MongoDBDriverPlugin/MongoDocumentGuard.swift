@@ -19,7 +19,7 @@ import Foundation
 /// document holding one is refused rather than guarded: every NaN equals every other whatever its
 /// sign and payload, and a JavaScript scope is compared the way a query compares, so `1` equals
 /// `NumberLong(1)` inside it (both measured on MongoDB 7.0).
-enum MongoDocumentGuard {
+nonisolated enum MongoDocumentGuard {
     /// The deepest document whose filter libbson still reads. Its JSON reader stops at 98 levels
     /// and the signature spends three of them on each level of the document, so a 28-level
     /// document's filter reads and a 29-level one's does not (measured on libbson 1.28.1).

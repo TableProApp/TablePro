@@ -25,7 +25,7 @@ import TableProPluginKit
 /// It can also loop forever, and JavaScriptCore's public API cannot interrupt it. Like
 /// `MongoScriptRuntime`, the context runs on a queue of its own: a document that misses the
 /// deadline is answered `nil` and the context is abandoned with the queue it wedged.
-final class MongoDBRawFilterNormalizer: Sendable {
+nonisolated final class MongoDBRawFilterNormalizer: Sendable {
     private static let deadline: TimeInterval = 2
 
     private final class Engine: @unchecked Sendable {
@@ -97,7 +97,7 @@ final class MongoDBRawFilterNormalizer: Sendable {
 }
 
 /// Replies to the prelude's value ops that need no server, as JSON text.
-enum MongoScriptValueEncoding {
+nonisolated enum MongoScriptValueEncoding {
     static func base64(hex: String) -> String? {
         MongoScriptObjectId.data(fromHex: hex).map { MongoScriptJson.jsonString($0.base64EncodedString()) }
     }
