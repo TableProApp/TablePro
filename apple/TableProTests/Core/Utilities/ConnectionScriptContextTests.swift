@@ -62,7 +62,7 @@ struct ConnectionScriptContextTests {
     @Test("A value is never run as code, inside a command substitution or a here-document either", arguments: [
         ("printf '%s' \"$(printf '%s' {database})\"", "x; printf INJECTED $(echo pwned)"),
         ("printf '%s' `printf '%s' {database}`", "x;printfINJECTED$(echopwned)"),
-        ("cat <<EOF\n{database}\nEOF", "\"x; printf INJECTED $(echo pwned)\"")
+        ("cat <<EOF\n{database}\nEOF", "x; printf INJECTED $(echo pwned)")
     ])
     func nestedContextsStayLiteral(command: String, expected: String) async throws {
         let context = ConnectionScriptContext(
@@ -84,6 +84,24 @@ struct ConnectionScriptContextTests {
             for: Self.context()
         )
         #expect(output == "db.example.com")
+    }
+
+    @Test("A quote inside a here-document does not change how a later placeholder is quoted")
+    func hereDocumentsDoNotChangeQuoting() async throws {
+        let output = try await PasswordSourceResolver.resolve(
+            .command(shell: "cat <<'NOTE' >/dev/null\nJohn's token\nNOTE\nprintf '%s' {host}"),
+            for: Self.context()
+        )
+        #expect(output == "db.example.com")
+    }
+
+    @Test("A here-string and a shift are not here-documents")
+    func hereStringsAndShifts() async throws {
+        let output = try await PasswordSourceResolver.resolve(
+            .command(shell: "cat <<< {host}; echo $(( 1 << 2 ))\nprintf '%s' {user}"),
+            for: Self.context()
+        )
+        #expect(output == "db.example.com\n4\napp")
     }
 
     @Test("A shell variable and an unknown name stay as written")

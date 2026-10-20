@@ -1,5 +1,6 @@
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import TableProTestSupport
 import Testing
 
@@ -215,6 +216,34 @@ struct PasswordSourceResolverTests {
         #expect(try await PasswordSourceResolver.resolve(shorter, for: context, cache: cache) == "4")
     }
 
+    @MainActor
+    @Test("A sign-in the server rejects, pooled ones included, drops the reused output")
+    func rejectedSignInForgetsReusedOutput() async throws {
+        let counter = FileManager.default.temporaryDirectory.appendingPathComponent("tablepro-runs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: counter) }
+        let connection = DatabaseConnection(name: "Pooled", host: "db.example.com", type: .mysql)
+        let context = ConnectionScriptContext(connection: connection)
+        let source = PasswordSource.command(
+            shell: "echo run >> '\(counter.path)'; wc -l < '\(counter.path)' | tr -d ' '",
+            reuseSeconds: 600
+        )
+        #expect(try await PasswordSourceResolver.resolve(source, for: context) == "1")
+        #expect(try await PasswordSourceResolver.resolve(source, for: context) == "1")
+
+        let adapter = PluginDriverAdapter(
+            connection: connection,
+            pluginDriver: RejectingPluginDriver(),
+            deadline: ConnectionDeadline(configuredSeconds: 5),
+            timeoutEndpoint: .database("db.example.com")
+        )
+        await #expect(throws: (any Error).self) {
+            try await adapter.connect()
+        }
+
+        #expect(try await PasswordSourceResolver.resolve(source, for: context) == "2")
+        PasswordCommandCache.shared.forget(connectionId: connection.id)
+    }
+
     @Test("Without a lifetime the command runs on every connect")
     func commandWithoutLifetimeRunsEachTime() async throws {
         let counter = FileManager.default.temporaryDirectory.appendingPathComponent("tablepro-runs-\(UUID().uuidString)")
@@ -335,5 +364,13 @@ private final class LockedDuration: @unchecked Sendable {
     var value: Duration {
         get { lock.withLock { stored } }
         set { lock.withLock { stored = newValue } }
+    }
+}
+
+private final class RejectingPluginDriver: PluginDriverStub, @unchecked Sendable {
+    struct Rejected: Error {}
+
+    func connect() async throws {
+        throw Rejected()
     }
 }

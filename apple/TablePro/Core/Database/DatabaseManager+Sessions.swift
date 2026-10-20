@@ -352,8 +352,6 @@ extension DatabaseManager {
         if attempt.map({ connectionAttempts.isCurrent($0, for: connectionId) }) ?? true {
             clearConnectionStage(for: connectionId)
         }
-        // The next attempt reruns the password command rather than retrying the output that just failed.
-        PasswordCommandCache.shared.forget(connectionId: connectionId)
         guard !cancelled else { return }
         if let error, let reason = ConnectionFailureClassifier.endReason(
             for: error,

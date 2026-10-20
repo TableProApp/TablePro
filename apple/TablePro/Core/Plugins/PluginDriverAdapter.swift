@@ -184,6 +184,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
                 let adopted = gate.resume(with: .success(()))
                 finishConnect(generation: generation, succeeded: true, adopted: adopted, error: nil)
             } catch {
+                // Every sign-in fails here, pooled and per-database ones included, so a rejected reused password goes.
+                PasswordCommandCache.shared.forget(connectionId: connection.id)
                 let adopted = gate.resume(with: .failure(error))
                 finishConnect(generation: generation, succeeded: false, adopted: adopted, error: error)
             }

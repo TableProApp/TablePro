@@ -544,7 +544,6 @@ extension DatabaseManager {
                 return (candidate, passwordOverride)
             } catch {
                 driver?.disconnect()
-                PasswordCommandCache.shared.forget(connectionId: session.connection.id)
                 let reportedError = await Self.preferredTunnelFailure(replacing: error) {
                     await self.attributedTunnelFailure(for: session.connection)
                 }
