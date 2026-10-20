@@ -151,6 +151,26 @@ struct SessionTransactionMonitorTests {
         #expect(monitor.hold(for: id) == .open)
     }
 
+    @Test("Work that runs while Commit reads the session's state refuses the Commit")
+    func workDuringTheCommitReadRefusesIt() async throws {
+        let driver = attach(.explicitTransaction)
+        await monitor.refresh(id)
+        let token = try #require(monitor.token(for: id, on: driver))
+        let gate = TestGate()
+        driver.beforeTransactionState = { await gate.enter() }
+
+        let commit = Task { try await monitor.commit(id, as: token) }
+        await gate.waitUntilEntered()
+        driver.beforeTransactionState = nil
+        await monitor.track(id) {}
+        await gate.open()
+
+        await #expect(throws: TransactionActionError.transactionChanged) {
+            try await commit.value
+        }
+        #expect(!driver.didCommitTransaction)
+    }
+
     @Test("Only a Roll Back that went through counts")
     func rollBackCountsOnlySuccess() async throws {
         let driver = attach(.explicitTransaction)

@@ -88,10 +88,15 @@ final class SessionTransactionMonitor {
     func commit(_ connectionId: UUID, as token: HoldToken) async throws {
         let driver = try actionDriver(for: connectionId, token: token)
         try await track(connectionId) {
-            if await driver.sessionTransactionState() == .abortedTransaction {
-                if liveDriver(connectionId) === driver {
-                    entries[connectionId] = Entry(driver: driver, hold: .aborted)
-                }
+            let generation = workGenerations[connectionId, default: 0]
+            let state = await driver.sessionTransactionState()
+            guard liveDriver(connectionId) === driver else { throw TransactionActionError.sessionReplaced }
+            // Work another window ran during the read may have ended this transaction and opened another.
+            guard workGenerations[connectionId, default: 0] == generation else {
+                throw TransactionActionError.transactionChanged
+            }
+            if state == .abortedTransaction {
+                entries[connectionId] = Entry(driver: driver, hold: .aborted)
                 throw TransactionActionError.cannotCommit
             }
             try await driver.commitTransaction()
@@ -104,6 +109,11 @@ final class SessionTransactionMonitor {
             try await driver.rollbackTransaction()
             rollBackCounts[connectionId, default: 0] += 1
         }
+    }
+
+    // Rows a view read inside a transaction its session lost are as stale as after a Roll Back.
+    func transactionLost(_ connectionId: UUID) {
+        rollBackCounts[connectionId, default: 0] += 1
     }
 
     func sessionEnded(_ connectionId: UUID, driver: any DatabaseDriver) {

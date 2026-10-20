@@ -291,6 +291,7 @@ final class ConnectionCoordinator {
             guard attemptToken == token else { return false }
             await takeSession(outcome.session, token: token, dialedHere: outcome.dialedHere)
             guard attemptToken == token, heldTransaction else { return false }
+            appState.sessionTransactions.transactionLost(connection.id)
             let settledLoss: SessionLoss = workWasRunning || statementFailedDuringCheck ? .duringWork : loss
             if let message = Self.lostTransactionMessage(settledLoss, connectionName: displayName) {
                 failureAlertMessage = message

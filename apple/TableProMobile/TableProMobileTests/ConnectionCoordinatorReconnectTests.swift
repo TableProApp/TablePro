@@ -144,6 +144,7 @@ struct ConnectionCoordinatorReconnectTests {
 
         #expect(!coordinator.showFailureAlert)
         #expect(isConnected(coordinator))
+        #expect(monitor.rollBackCount(for: connection.id) == 0)
     }
 
     @Test("A Commit whose reply is lost redials and says its outcome is not known")
@@ -201,6 +202,8 @@ struct ConnectionCoordinatorReconnectTests {
 
         #expect(coordinator.session?.driver === second)
         #expect(!coordinator.showFailureAlert)
+        // Row screens and grids leave or reload on this, as after a Roll Back that went through.
+        #expect(monitor.rollBackCount(for: connection.id) == 1)
     }
 
     @Test("A window left on a replaced session shows no hold, and its Commit refuses rather than commit the newer one")
