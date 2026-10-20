@@ -14,8 +14,7 @@ use tablepro_policy::AuditState;
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 const TUNNEL_POLL_INTERVAL: Duration = Duration::from_secs(1);
-const BACKOFF_INITIAL: Duration = Duration::from_secs(5);
-const BACKOFF_MAX: Duration = Duration::from_secs(60);
+use tablepro_app_services::reconnect::{BACKOFF_INITIAL, next_delay};
 
 pub(super) async fn run(
     inner: Arc<Mutex<EntryInner>>,
@@ -148,10 +147,6 @@ async fn reconnect_loop(
             }
         }
     }
-}
-
-fn next_delay(prev: Duration) -> Duration {
-    std::cmp::min(prev.saturating_mul(2), BACKOFF_MAX)
 }
 
 async fn try_reconnect(
@@ -511,26 +506,5 @@ mod tests {
         ));
         cancel.cancel();
         let _ = monitor.await;
-    }
-
-    #[test]
-    fn backoff_doubles_until_capped() {
-        let mut d = BACKOFF_INITIAL;
-        assert_eq!(d, Duration::from_secs(5));
-        d = next_delay(d);
-        assert_eq!(d, Duration::from_secs(10));
-        d = next_delay(d);
-        assert_eq!(d, Duration::from_secs(20));
-        d = next_delay(d);
-        assert_eq!(d, Duration::from_secs(40));
-        d = next_delay(d);
-        assert_eq!(d, BACKOFF_MAX);
-        d = next_delay(d);
-        assert_eq!(d, BACKOFF_MAX);
-    }
-
-    #[test]
-    fn backoff_saturates_without_overflow() {
-        assert_eq!(next_delay(Duration::MAX), BACKOFF_MAX);
     }
 }

@@ -4,6 +4,8 @@ The `tablepro-app` crate (`apps/linux/app`) uses [Relm4](https://relm4.org) on t
 
 GTK-free service modules are moving incrementally into `tablepro-app-services` under [ADR 0018](decisions/0018-headless-app-services-crate.md). The app re-exports those modules from `services` so callers keep their paths; services that own GTK or application wiring stay in the app.
 
+Scoped filter presets and import mappings, preference data, quick-switcher ranking and reconnect classification/backoff also live in app-services. GSettings access, style application, translated labels, registered actions and connection-monitor runtime wiring stay in the app.
+
 ## When to use which component flavour
 
 | Flavour | Use when |

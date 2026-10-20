@@ -99,7 +99,7 @@ pub fn present(
         let preferences = preferences.clone();
         move |row| {
             let scheme = ColorSchemePref::from_index(row.selected());
-            adw::StyleManager::default().set_color_scheme(scheme.style());
+            adw::StyleManager::default().set_color_scheme(crate::services::preferences::color_scheme_style(scheme));
             if let Err(error) = preferences.update(|prefs| prefs.color_scheme = scheme) {
                 tracing::warn!(%error, "preferences: color scheme rejected");
             }

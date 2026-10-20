@@ -491,7 +491,9 @@ impl SimpleComponent for App {
                     WelcomeViewOutput::Delete(id) => AppMsg::DeleteConnection(id),
                 });
 
-        adw::StyleManager::default().set_color_scheme(preferences.load().color_scheme.style());
+        adw::StyleManager::default().set_color_scheme(crate::services::preferences::color_scheme_style(
+            preferences.load().color_scheme,
+        ));
         crate::ui::grid::set_null_display(preferences.load().null_display);
         let default_page_size = preferences.load().default_page_size;
         let mut model = App {

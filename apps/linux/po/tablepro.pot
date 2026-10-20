@@ -17,7 +17,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: apps/linux/app/src/services/connection_service.rs:240
+#: apps/linux/app/src/services/connection_service.rs:205
 #, rust-format
 msgid "The {driver} driver does not support Windows (Kerberos) authentication."
 msgstr ""
@@ -159,101 +159,101 @@ msgstr ""
 msgid "{name}: {reason}"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:33
+#: apps/linux/app/src/services/quick_switcher.rs:5
 #: apps/linux/app/src/ui/structure_tab_dialogs.rs:206
 msgid "Table"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:34
+#: apps/linux/app/src/services/quick_switcher.rs:5
 msgid "View"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:53
+#: apps/linux/app/src/services/quick_switcher.rs:10
 msgid "New SQL tab"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:54
+#: apps/linux/app/src/services/quick_switcher.rs:11
 msgid "New window"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:55
+#: apps/linux/app/src/services/quick_switcher.rs:12
 #: apps/linux/app/src/ui/preferences.rs:141
 msgid "Query history"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:56
+#: apps/linux/app/src/services/quick_switcher.rs:13
 msgid "Catalog objects"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:57
+#: apps/linux/app/src/services/quick_switcher.rs:14
 #: apps/linux/app/src/ui/activity_dialog.rs:43
 #: apps/linux/app/src/ui/app/shortcuts.rs:27
 msgid "Server activity"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:58
+#: apps/linux/app/src/services/quick_switcher.rs:15
 #: apps/linux/app/src/ui/app/shortcuts.rs:29
 #: apps/linux/app/src/ui/explain_dialog.rs:24
 #: apps/linux/app/src/ui/explain_dialog.rs:52
 msgid "Explain query"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:59
+#: apps/linux/app/src/services/quick_switcher.rs:16
 msgid "Jump to column"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:60
+#: apps/linux/app/src/services/quick_switcher.rs:17
 #: apps/linux/app/src/ui/app/shortcuts.rs:208
 msgid "Filter rows"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:61
+#: apps/linux/app/src/services/quick_switcher.rs:18
 msgid "Refresh the current page"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:62
+#: apps/linux/app/src/services/quick_switcher.rs:19
 msgid "Save changes"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:63
+#: apps/linux/app/src/services/quick_switcher.rs:20
 msgid "Undo change"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:64
+#: apps/linux/app/src/services/quick_switcher.rs:21
 msgid "Redo change"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:65
+#: apps/linux/app/src/services/quick_switcher.rs:22
 msgid "Reopen closed tab"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:66
+#: apps/linux/app/src/services/quick_switcher.rs:23
 msgid "Export results as CSV"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:67
+#: apps/linux/app/src/services/quick_switcher.rs:24
 msgid "Export results as JSON"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:68
+#: apps/linux/app/src/services/quick_switcher.rs:25
 msgid "Export all rows as CSV"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:69
+#: apps/linux/app/src/services/quick_switcher.rs:26
 msgid "Export all rows as JSON"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:70
+#: apps/linux/app/src/services/quick_switcher.rs:27
 #: apps/linux/app/src/ui/app/shortcuts.rs:32
 #: apps/linux/app/src/ui/preferences.rs:36
 msgid "Preferences"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:71
+#: apps/linux/app/src/services/quick_switcher.rs:28
 msgid "Keyboard shortcuts"
 msgstr ""
 
-#: apps/linux/app/src/services/quick_switcher.rs:81
+#: apps/linux/app/src/services/quick_switcher.rs:38
 msgid "Command"
 msgstr ""
 
@@ -782,7 +782,7 @@ msgid "A reopened tab is no longer linked to its file: {reason}"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/editor_files.rs:76
-#: apps/linux/app/src/ui/app/mod.rs:771
+#: apps/linux/app/src/ui/app/mod.rs:773
 msgid "Saved"
 msgstr ""
 
@@ -1042,15 +1042,15 @@ msgstr ""
 msgid "Retry"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:932
+#: apps/linux/app/src/ui/app/mod.rs:934
 msgid "Saved as favorite"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:948 apps/linux/app/src/ui/app/mod.rs:955
+#: apps/linux/app/src/ui/app/mod.rs:950 apps/linux/app/src/ui/app/mod.rs:957
 msgid "Connect to a database first to run SQL."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:1027
+#: apps/linux/app/src/ui/app/mod.rs:1029
 msgid "Open a result grid to jump to a column."
 msgstr ""
 
