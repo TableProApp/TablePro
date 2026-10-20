@@ -1,6 +1,7 @@
 import Foundation
 @testable import TableProDatabase
 @testable import TableProModels
+import TableProSSHTransport
 import TableProTestSupport
 import Testing
 
@@ -111,6 +112,36 @@ struct ConnectionManagerTests {
         #expect(ssh.tunnelledConnectionIds.isEmpty)
         #expect(ssh.openedTunnelIds.isEmpty)
         #expect(manager.session(for: connection.id) == nil)
+    }
+
+    @Test("Connect dials the Mac's route, forwards to its socket and names its SSH profile")
+    func connectDialsTheMacRoute() async throws {
+        let factory = MockDriverFactory()
+        factory.drivers["mock"] = MockDatabaseDriver()
+        let ssh = MockSSHProvider()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore(), sshProvider: ssh)
+        var connection = DatabaseConnection(name: "Alias", type: DatabaseType(rawValue: "mock"))
+        connection.sshEnabled = true
+        connection.sshConfiguration = SSHConfiguration(host: "db", username: "")
+        connection.sshProfileId = UUID()
+        connection.sslEnabled = true
+        connection.sslConfiguration = SSLConfiguration(mode: .require)
+        connection.additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey] = "/run/db.sock"
+        connection.sshRoute = PublishedSSHRoute(
+            publisher: UUID(),
+            input: try #require(connection.sshConfiguration).publishedRouteInput,
+            hops: [.init(id: UUID(), alias: "bastion", host: "b.example", port: 22, username: "jump")],
+            target: .init(alias: "db", host: "10.0.0.5", port: 22, username: "deploy")
+        )
+
+        _ = try await manager.connect(connection)
+        await manager.disconnect(connection.id)
+
+        #expect(ssh.receivedConfigs.first?.host == "10.0.0.5")
+        #expect(ssh.receivedConfigs.first?.jumpHosts.map(\.host) == ["b.example"])
+        #expect(ssh.receivedDestinations.first == .unixSocket(path: "/run/db.sock"))
+        #expect(ssh.receivedProfileIds.first == connection.sshProfileId)
+        #expect(factory.receivedConnections.first?.sslEnabled == false)
     }
 
     @Test("Connect with SSH but no provider throws error")

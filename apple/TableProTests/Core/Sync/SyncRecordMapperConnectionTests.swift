@@ -22,6 +22,7 @@ struct SyncRecordMapperConnectionTests {
         "tagIds",
         "groupId",
         "sshProfileId",
+        "sshRoute",
         "preferredSafeModeLevel",
         "aiPolicy",
         "aiRules",

@@ -4,6 +4,7 @@ import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
 import TableProOracleCore
+import TableProSSHTransport
 
 @MainActor
 @Observable
@@ -86,6 +87,8 @@ final class ConnectionFormViewModel {
 
     // Jump hosts
     var jumpHosts: [JumpHostDraft] = []
+    // Hops only the Mac's ~/.ssh/config names, from the route it published. Host fields are the Mac's.
+    var routeHops: [JumpHostDraft] = []
     var jumpHostKeyFileError: String?
     private(set) var jumpHostCredentialsUnreadable = false
 
@@ -114,6 +117,7 @@ final class ConnectionFormViewModel {
     @ObservationIgnored private var createdFileURL: URL?
     @ObservationIgnored private var addedNewConnection = false
     @ObservationIgnored private var loadedStoredCredentials = false
+    @ObservationIgnored private var sshProfileSecrets: [String: String] = [:]
     private(set) var baseline: ConnectionFormSnapshot?
     private(set) var storedSecrets = ConnectionFormSecrets()
     private let localFiles: LocalDatabaseFileLocator
@@ -171,6 +175,10 @@ final class ConnectionFormViewModel {
                 sshKeyInputMode = .paste
             }
             jumpHosts = ssh.jumpHosts.map(JumpHostDraft.init(hop:))
+            let typedHopIds = Set(ssh.jumpHosts.map(\.id))
+            routeHops = (conn.sshRoute?.hops ?? [])
+                .filter { !typedHopIds.contains($0.id) }
+                .map(JumpHostDraft.init(routeHop:))
         }
         hydrateDatabaseFile(from: conn)
     }
@@ -315,11 +323,23 @@ final class ConnectionFormViewModel {
             sshKeyInputMode = .paste
         }
         loadJumpHostCredentials(for: conn, in: secureStore)
+        if let profileId = conn.sshProfileId {
+            for kind in SSHProfileSecretKind.allCases {
+                let account = kind.account(for: profileId)
+                guard let value = try? secureStore.retrieve(forKey: account), !value.isEmpty else { continue }
+                sshProfileSecrets[account] = value
+            }
+        }
         baseline?.secrets = snapshot.secrets
     }
 
+    var hasSSHProfilePassword: Bool {
+        guard let profileId = existingConnection?.sshProfileId else { return false }
+        return sshProfileSecrets[SSHProfileSecretKind.password.account(for: profileId)] != nil
+    }
+
     private func loadJumpHostCredentials(for connection: DatabaseConnection, in secureStore: any SecureStore) {
-        guard connection.sshConfiguration?.jumpHosts.isEmpty == false else { return }
+        guard connection.sshConfiguration?.jumpHosts.isEmpty == false || !routeHops.isEmpty else { return }
         let loaded: [UUID: JumpHostCredential]
         do {
             loaded = try JumpHostCredentialStore.load(for: connection.id, in: secureStore)
@@ -334,6 +354,10 @@ final class ConnectionFormViewModel {
         for index in jumpHosts.indices {
             guard let credential = loaded[jumpHosts[index].id] else { continue }
             jumpHosts[index].adopt(credential)
+        }
+        for index in routeHops.indices {
+            guard let credential = loaded[routeHops[index].id] else { continue }
+            routeHops[index].adopt(credential)
         }
     }
 
@@ -501,6 +525,7 @@ final class ConnectionFormViewModel {
         if let pastedPrivateKey {
             secrets[ConnectionSecretKind.sshPrivateKey.account(for: connectionId)] = pastedPrivateKey
         }
+        secrets.merge(sshProfileSecrets) { own, _ in own }
         let hopCredentials = jumpHostCredentials
         guard !hopCredentials.isEmpty else { return secrets }
         do {
@@ -768,7 +793,7 @@ final class ConnectionFormViewModel {
         let loaded = storedSecrets.jumpHostCredentials
         guard credentials != loaded else { return }
         var stored = try JumpHostCredentialStore.load(for: connectionId, in: secureStore)
-        let kept = Set(jumpHosts.map(\.id))
+        let kept = Set(jumpHosts.map(\.id) + routeHops.map(\.id))
         for hopId in jumpHostIdsShown where !kept.contains(hopId) || credentials[hopId] != loaded[hopId] {
             stored[hopId] = credentials[hopId]
         }

@@ -50,8 +50,11 @@ struct SyncFieldParityTests {
     /// platform that does not write one also cannot erase it.
     private static let connectionMacOnly: Set<String> = [
         "aiPolicy", "aiRules", "aiAlwaysAllowedTools",
-        "redisDatabase", "startupCommands", "sshProfileId",
+        "redisDatabase", "startupCommands",
     ]
+
+    // Derived on the Mac from a file only the Mac has, so only the Mac writes it; both apps read it.
+    private static let connectionMacPublished: Set<String> = ["sshRouteJson"]
 
     private static let connectionIosOnly: Set<String> = [
         "sshEnabled", "sslEnabled",
@@ -161,7 +164,7 @@ struct SyncFieldParityTests {
         let fields = try #require(Self.sharedRecordTypes[recordType])
 
         let oneSided = recordType == "ConnectionSyncField"
-            ? Self.connectionMacOnly.union(Self.connectionIosOnly)
+            ? Self.connectionMacOnly.union(Self.connectionIosOnly).union(Self.connectionMacPublished)
             : []
 
         let offenders = fields
@@ -196,11 +199,25 @@ struct SyncFieldParityTests {
         )
     }
 
+    @Test("A field the Mac publishes is written only by the Mac and read by both")
+    func macPublishedFieldsFlowOneWay() throws {
+        let mac = try Self.scan(Self.macMapper)
+        let ios = try Self.scan(Self.iosMapper)
+
+        for field in Self.connectionMacPublished {
+            #expect(mac.written("ConnectionSyncField").contains(field))
+            #expect(mac.read("ConnectionSyncField").contains(field))
+            #expect(ios.read("ConnectionSyncField").contains(field))
+            #expect(!ios.written("ConnectionSyncField").contains(field), "\(field) is the Mac's to write")
+        }
+    }
+
     @Test("Every one-sided field the check tolerates is still a real field")
     func toleratedFieldsExist() {
         let known = Set(Self.sharedRecordTypes.values.flatMap { $0 })
         let tolerated = Self.connectionMacOnly
             .union(Self.connectionIosOnly)
+            .union(Self.connectionMacPublished)
             .union(Self.writeOnly)
             .union(Self.legacyReadOnly)
         let stale = tolerated.subtracting(known)

@@ -95,15 +95,16 @@ final class IntegrityStampedFileStore<Element: Codable> {
 
     /// False when nothing reached disk. A caller that also writes keychain items or sync tombstones
     /// has to abort on that rather than strand them against a record that was never persisted.
+    // `byUser` false is a write nobody asked for, such as a sync pull, which is not consent either.
     @discardableResult
-    func save(_ elements: [Element]) -> Bool {
+    func save(_ elements: [Element], byUser: Bool = true) -> Bool {
         do {
             let data = try encoder.encode(elements)
             try data.write(to: fileURL, options: .atomic)
             /// A store that does not take a save as consent keeps the verdict its last load
             /// reached: the write lands, so the user's edit is not lost, but nothing in the file
             /// becomes trusted because of it.
-            guard userSaveEstablishesTrust || isTrusted else {
+            guard (userSaveEstablishesTrust && byUser) || isTrusted else {
                 logger.warning("Saved \(self.label, privacy: .public) without a trust tag; it stays untrusted")
                 return true
             }

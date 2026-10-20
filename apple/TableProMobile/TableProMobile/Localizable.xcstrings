@@ -29,6 +29,30 @@
         }
       }
     },
+    "%1$@ on socket %2$@" : {
+
+    },
+    "Route from Mac" : {
+
+    },
+    "Signs in with the SSH profile's password from iCloud Keychain." : {
+
+    },
+    "Socket %@" : {
+
+    },
+    "This hop comes from an SSH profile on your Mac. Change it there." : {
+
+    },
+    "This hop comes from the Mac's ~/.ssh/config. Change it there." : {
+
+    },
+    "This tunnel follows an SSH profile on your Mac. Change the server there." : {
+
+    },
+    "Your Mac reaches the SSH server through these hosts from its ~/.ssh/config, and this device dials the same route with its own keys. Changing the SSH server or jump hosts above replaces it." : {
+
+    },
     "“%@” is not on any connection." : {
       "localizations" : {
         "ko" : {

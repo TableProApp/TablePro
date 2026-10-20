@@ -236,6 +236,129 @@ struct SSHConfigResolverTests {
         #expect(resolved.proxyJump.isEmpty)
     }
 
+    @Test("ProxyJump none turns the jump off, even where a later Host * names one")
+    func proxyJumpNoneDisables() {
+        let document = SSHConfigParser.parseDocumentContent("""
+        Host bastion
+            HostName b.example
+            ProxyJump none
+        Host *
+            ProxyJump bastion
+        """)
+        let bastion = SSHConfigResolver.resolve(makeConfig(host: "bastion"), document: document, env: Self.stubEnv)
+        let target = SSHConfigResolver.resolve(makeConfig(host: "db"), document: document, env: Self.stubEnv)
+
+        #expect(bastion.proxyJump.isEmpty)
+        #expect(target.proxyJump.map(\.host) == ["bastion"])
+    }
+
+    @Test("A ProxyJump hop written as an ssh URI keeps its user, host and port")
+    func proxyJumpSSHURI() throws {
+        let document = SSHConfigParser.parseDocumentContent("""
+        Host db
+            ProxyJump ssh://ops%40corp@b.example:2222
+        """)
+        let resolved = SSHConfigResolver.resolve(makeConfig(host: "db"), document: document, env: Self.stubEnv)
+        let hop = try #require(resolved.proxyJump.first)
+
+        #expect(hop.username == "ops@corp")
+        #expect(hop.host == "b.example")
+        #expect(hop.port == 2_222)
+    }
+
+    @Test("IdentityAgent none turns the agent off instead of naming a socket")
+    func identityAgentNone() {
+        let document = SSHConfigParser.parseDocumentContent("""
+        Host db
+            IdentityAgent none
+        """)
+        let resolved = SSHConfigResolver.resolve(makeConfig(host: "db"), document: document, env: Self.stubEnv)
+
+        #expect(resolved.agentDisabled)
+        #expect(resolved.agentSocketPath.isEmpty)
+    }
+
+    @Test("IdentityAgent SSH_AUTH_SOCK reads the socket from the environment")
+    func identityAgentEnvironment() {
+        let document = SSHConfigParser.parseDocumentContent("""
+        Host db
+            IdentityAgent SSH_AUTH_SOCK
+        """)
+        let resolved = SSHConfigResolver.resolve(makeConfig(host: "db"), document: document, env: Self.stubEnv)
+
+        #expect(!resolved.agentDisabled)
+        #expect(resolved.agentSocketPath.isEmpty)
+        #expect(resolved.agentSocketOrigin == .environment)
+    }
+
+    @Test("CanonicalizeHostname yes leaves a host reached through a jump alone, and always does not")
+    func canonicalizeSkipsProxiedHostsUnlessAlways() {
+        let env = ResolverEnvironment(
+            runShell: { _ in true },
+            canonicalize: { host, _ in host + ".corp.example" },
+            currentLocalUser: { "tester" }
+        )
+        func resolvedHost(mode: String) -> String {
+            let document = SSHConfigParser.parseDocumentContent("""
+            Host db
+                CanonicalizeHostname \(mode)
+                CanonicalDomains corp.example
+                ProxyJump bastion
+            """)
+            return SSHConfigResolver.resolve(makeConfig(host: "db"), document: document, env: env).host
+        }
+
+        #expect(resolvedHost(mode: "yes") == "db")
+        #expect(resolvedHost(mode: "always") == "db.corp.example")
+    }
+
+    private func user(for content: String, addresses: [String] = []) -> String {
+        let env = ResolverEnvironment(
+            runShell: { _ in true },
+            canonicalize: { host, _ in host },
+            currentLocalUser: { "tester" },
+            localAddresses: { addresses }
+        )
+        let document = SSHConfigParser.parseDocumentContent(content)
+        return SSHConfigResolver.resolve(makeConfig(host: "db"), document: document, env: env).username
+    }
+
+    @Test("Match localnetwork applies only on a network this Mac is on")
+    func matchLocalNetwork() {
+        let config = """
+        Match host db localnetwork 10.0.0.0/8,192.168.1.0/24
+            User office
+        Host db
+            User remote
+        """
+        #expect(user(for: config, addresses: ["127.0.0.1", "10.1.2.3"]) == "office")
+        #expect(user(for: config, addresses: ["fe80::1%en0", "172.16.0.4"]) == "remote")
+    }
+
+    @Test("Match tagged reads a Tag set earlier; a tunnel has no command and session type none")
+    func matchTaggedCommandAndSessionType() {
+        #expect(user(for: "Match tagged prod\n    User tagged\nHost db\n    User plain") == "plain")
+        #expect(user(for: "Host db\n    Tag prod\nMatch tagged prod\n    User tagged") == "tagged")
+        #expect(user(for: "Match sessiontype none\n    User tunnel") == "tunnel")
+        #expect(user(for: "Match command *\n    User any\nMatch command ?*\n    User some") == "any")
+        #expect(user(for: "Match version OpenSSH_*\n    User openssh\nHost db\n    User other") == "other")
+    }
+
+    @Test("A Match criterion TablePro does not know keeps its block from applying either way")
+    func unknownMatchCriterionNeverApplies() {
+        #expect(user(for: "Match bogus x\n    User a\nMatch !bogus x\n    User b\nHost db\n    User c") == "c")
+    }
+
+    @Test("A CIDR network contains the addresses under its prefix only")
+    func cidrContainment() {
+        #expect(SSHLocalNetwork.contains(address: "10.1.2.3", cidr: "10.0.0.0/8"))
+        #expect(!SSHLocalNetwork.contains(address: "11.1.2.3", cidr: "10.0.0.0/8"))
+        #expect(SSHLocalNetwork.contains(address: "2001:db8::5", cidr: "2001:db8::/32"))
+        #expect(!SSHLocalNetwork.contains(address: "10.1.2.3", cidr: "2001:db8::/32"))
+        #expect(SSHLocalNetwork.contains(address: "192.168.1.9", cidr: "192.168.1.9"))
+        #expect(!SSHLocalNetwork.contains(address: "192.168.1.9", cidr: "192.168.1.0/33"))
+    }
+
     @Test("Match host evaluates against post-substitution hostname")
     func matchHost() {
         let document = SSHConfigParser.parseDocumentContent("""
