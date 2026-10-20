@@ -373,6 +373,28 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(isConnected(redialing))
     }
 
+    // SQL Server keeps schemas per database, so the other window's list belongs to the database it left.
+    @Test("A window following a SQL Server database switch lists the new database's schemas")
+    func followReloadsSchemasForTheNewDatabase() async throws {
+        let first = driver(tables: ["orders"])
+        first.currentSchema = "dbo"
+        first.scriptedSchemas = ["dbo", "sales"]
+        let warehouse = DatabaseConnection(name: "Ledger", type: .mssql, host: "sql.example.com", port: 1_433, database: "app")
+        factory.queue(first)
+        _ = try await appState.connectionManager.connect(warehouse)
+        let switching = ConnectionCoordinator(connection: warehouse, appState: appState)
+        await switching.connect()
+        let following = ConnectionCoordinator(connection: warehouse, appState: appState)
+        await following.connect()
+
+        first.scriptedSchemas = ["dbo", "archive"]
+        await switching.switchDatabase(to: "history")
+        await following.followLiveSession()
+
+        #expect(following.activeDatabase == "history")
+        #expect(following.schemas == ["dbo", "archive"])
+    }
+
     @Test("A PostgreSQL database switch in one window moves the other window onto the new session")
     func otherWindowFollowsAPostgreSQLSwitch() async throws {
         let first = driver(tables: ["facts"])
