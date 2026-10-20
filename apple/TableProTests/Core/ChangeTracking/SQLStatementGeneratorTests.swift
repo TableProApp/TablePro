@@ -1194,7 +1194,7 @@ struct SQLStatementGeneratorTests {
                     cellChanges: [CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")],
                     originalRow: ["5", "John", "john@example.com"]
                 ),
-                RowChange(rowID: .existing(1), type: .delete, cellChanges: [], originalRow: ["05", "Ann", "ann@example.com"])
+                RowChange(rowID: .existing(1), type: .delete, cellChanges: [], originalRow: ["2.5", "Ann", "ann@example.com"])
             ],
             insertedRowData: [:],
             deletedRowIDs: [.existing(1)],
@@ -1203,8 +1203,8 @@ struct SQLStatementGeneratorTests {
 
         let update = try #require(statements.first { $0.sql.hasPrefix("UPDATE") })
         let delete = try #require(statements.first { $0.sql.hasPrefix("DELETE") })
-        #expect(update.sql == "UPDATE `users` SET `name` = ? WHERE `id` IN (5, ?)")
-        #expect(update.parameters.compactMap { $0 as? String } == ["Johnny", "5"])
+        #expect(update.sql == "UPDATE `users` SET `name` = ? WHERE `id` IN (5, ?) AND (SELECT COUNT(*) FROM `users` WHERE `id` IN (5, ?)) = 1")
+        #expect(update.parameters.compactMap { $0 as? String } == ["Johnny", "5", "5"])
         #expect(delete.sql == "DELETE FROM `users` WHERE `id` = ?")
     }
 

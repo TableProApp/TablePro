@@ -87,10 +87,18 @@ final class ForeignKeyPreviewModel {
         } catch {
             Self.logger.warning("Foreign key preview could not read columns: \(error.localizedDescription, privacy: .private)")
         }
+        let key = reference.parts.map { (column: $0.column, value: $0.value) }
+        if let shared = await SharedRowKey.error(
+            table: reference.table, schema: reference.schema, key: key,
+            columns: keyColumns, type: databaseType, driver: driver
+        ) {
+            phase = .failed(shared)
+            return
+        }
         let query = SQLBuilder.buildSingleRowLookup(
             table: reference.table,
             schema: reference.schema,
-            key: reference.parts.map { (column: $0.column, value: $0.value) },
+            key: key,
             columns: keyColumns,
             type: databaseType,
             driver: driver

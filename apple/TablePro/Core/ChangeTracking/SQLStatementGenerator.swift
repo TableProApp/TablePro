@@ -335,7 +335,7 @@ struct SQLStatementGenerator {
         }.joined(separator: ", ")
 
         if !primaryKeyColumns.isEmpty {
-            var conditions: [String] = []
+            var terms: [RowMatchTerm] = []
 
             for pkColumn in primaryKeyColumns {
                 guard let pkColumnIndex = columns.firstIndex(of: pkColumn) else { return nil }
@@ -354,12 +354,12 @@ struct SQLStatementGenerator {
                     return nil
                 }
 
-                conditions.append(matchCondition(quoteIdentifierFn(pkColumn), value: pkValue, parameters: &parameters))
+                terms.append(RowMatchTerm(matched: quoteIdentifierFn(pkColumn), value: pkValue))
             }
 
-            guard !conditions.isEmpty else { return nil }
+            guard !terms.isEmpty else { return nil }
 
-            let whereClause = conditions.joined(separator: " AND ")
+            let whereClause = rowCondition(terms, parameters: &parameters)
             let sql =
                 "UPDATE \(qualifiedTableName) SET \(setClauses) WHERE \(whereClause)"
             return ParameterizedStatement(sql: sql, parameters: parameters)
@@ -371,7 +371,7 @@ struct SQLStatementGenerator {
                 return nil
             }
 
-            var conditions: [String] = []
+            var terms: [RowMatchTerm] = []
             for (index, columnName) in columns.enumerated() {
                 guard index < originalRow.count,
                       !rowMatchPolicy.excludedColumns.contains(columnName) else { continue }
@@ -379,16 +379,12 @@ struct SQLStatementGenerator {
                 let matched = rowMatchPolicy.matchExpression(
                     for: columnName, quoted: quoteIdentifierFn(columnName), value: value, databaseType: databaseType
                 )
-                if value.isNull {
-                    conditions.append("\(matched) IS NULL")
-                } else {
-                    conditions.append(matchCondition(matched, value: value, parameters: &parameters))
-                }
+                terms.append(RowMatchTerm(matched: matched, value: value.isNull ? nil : value))
             }
 
-            guard !conditions.isEmpty else { return nil }
+            guard !terms.isEmpty else { return nil }
 
-            let whereClause = conditions.joined(separator: " AND ")
+            let whereClause = rowCondition(terms, parameters: &parameters)
             let sql =
                 "UPDATE \(qualifiedTableName) SET \(setClauses) WHERE \(whereClause)"
 
@@ -396,16 +392,35 @@ struct SQLStatementGenerator {
         }
     }
 
-    /// One column of a row match. SQLite keeps integer 5 and text '5' apart in a column with no affinity, and the
-    /// grid read either one as `5`, so SQLite's own text for a number matches both; a typed column converts either
-    /// literal to its own type, so the same form is exact there too.
-    private func matchCondition(_ matched: String, value: PluginCellValue, parameters: inout [Any?]) -> String {
-        parameters.append(value.asAny)
-        let bound = placeholder(at: parameters.count - 1)
-        guard SQLTypeFamily.of(databaseType) == .sqlite, case .text(let text) = value,
-              SQLiteNumberText.isStoredSpelling(text)
-        else { return "\(matched) = \(bound)" }
-        return "\(matched) IN (\(text), \(bound))"
+    private struct RowMatchTerm {
+        let matched: String
+        let value: PluginCellValue?
+    }
+
+    /// The conditions that pick one row. SQLite keeps integer 5 and text '5' apart in a column with no affinity, and
+    /// the grid read either one as `5`, so an integer the grid read matches both; a typed column converts either
+    /// literal to its own type, so the form is exact there too. When both rows exist the statement itself refuses
+    /// them, since a save the inspector sends carries no row count to hold the server to.
+    private func rowCondition(_ terms: [RowMatchTerm], parameters: inout [Any?]) -> String {
+        let clause = conditions(terms, parameters: &parameters)
+        guard terms.contains(where: { matchesEitherWay($0.value) }) else { return clause }
+        let again = conditions(terms, parameters: &parameters)
+        return "\(clause) AND (SELECT COUNT(*) FROM \(qualifiedTableName) WHERE \(again)) = 1"
+    }
+
+    private func conditions(_ terms: [RowMatchTerm], parameters: inout [Any?]) -> String {
+        terms.map { term in
+            guard let value = term.value else { return "\(term.matched) IS NULL" }
+            parameters.append(value.asAny)
+            let bound = placeholder(at: parameters.count - 1)
+            guard matchesEitherWay(value), case .text(let text) = value else { return "\(term.matched) = \(bound)" }
+            return "\(term.matched) IN (\(text), \(bound))"
+        }.joined(separator: " AND ")
+    }
+
+    private func matchesEitherWay(_ value: PluginCellValue?) -> Bool {
+        guard SQLTypeFamily.of(databaseType) == .sqlite, case .text(let text)? = value else { return false }
+        return SQLiteNumberText.isIntegerSpelling(text)
     }
 
     // MARK: - DELETE Generation
@@ -435,7 +450,8 @@ struct SQLStatementGenerator {
 
         let matchesOneRowPerStatement = primaryKeyColumns.isEmpty && !rowMatchPolicy.excludedColumns.isEmpty
         for row in rowMatches {
-            let rowParameterCount = row.matches.count(where: { $0.boundValue != nil })
+            let boundCount = row.matches.count(where: { $0.boundValue != nil })
+            let rowParameterCount = row.matches.contains { matchesEitherWay($0.boundValue) } ? boundCount * 2 : boundCount
             if !chunk.isEmpty,
                matchesOneRowPerStatement || chunkParameterCount + rowParameterCount > maxBindParameters {
                 flush()
@@ -486,20 +502,20 @@ struct SQLStatementGenerator {
     private func deleteStatement(for rows: [[DeleteColumnMatch]]) -> ParameterizedStatement {
         var parameters: [Any?] = []
         let rowClauses = rows.map { matches -> String in
-            let conditions = matches.map { match -> String in
-                let matched = rowMatchPolicy.matchExpression(
-                    for: match.column,
-                    quoted: quoteIdentifierFn(match.column),
-                    value: match.boundValue ?? .null,
-                    databaseType: databaseType
+            let terms = matches.map { match in
+                RowMatchTerm(
+                    matched: rowMatchPolicy.matchExpression(
+                        for: match.column,
+                        quoted: quoteIdentifierFn(match.column),
+                        value: match.boundValue ?? .null,
+                        databaseType: databaseType
+                    ),
+                    value: match.boundValue
                 )
-                guard let value = match.boundValue else {
-                    return "\(matched) IS NULL"
-                }
-                return matchCondition(matched, value: value, parameters: &parameters)
             }
-            let joined = conditions.joined(separator: " AND ")
-            return matches.count > 1 ? "(\(joined))" : joined
+            let joined = rowCondition(terms, parameters: &parameters)
+            let isCompound = matches.count > 1 || terms.contains { matchesEitherWay($0.value) }
+            return isCompound ? "(\(joined))" : joined
         }
 
         let whereClause = rowClauses.joined(separator: " OR ")

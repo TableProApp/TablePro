@@ -374,6 +374,28 @@ struct SQLiteDriverFileTests {
         #expect(names.rows == [["integer"], ["text"]])
     }
 
+    @MainActor
+    @Test("A preview through a key two rows share says so instead of showing either row")
+    func sharedUntypedKeyPreviewFails() async throws {
+        let driver = try await connectedDriver("shared-preview.db")
+        _ = try await driver.execute(query: "CREATE TABLE p (id PRIMARY KEY, name)")
+        _ = try await driver.execute(query: "INSERT INTO p VALUES (5, 'integer'), ('5', 'text')")
+        let model = ForeignKeyPreviewModel(
+            reference: ForeignKeyReference(table: "p", schema: nil, parts: [.init(column: "id", value: "5")]),
+            session: ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "main"),
+            databaseType: .sqlite
+        )
+        await model.load()
+        try await driver.disconnect()
+
+        guard case .failed(let error) = model.phase else {
+            Issue.record("Expected a failure, got \(model.phase)")
+            return
+        }
+        #expect(error.title == String(localized: "Key Matches Several Rows"))
+        #expect(!model.canOpen)
+    }
+
     @Test("A result column with no declared type that holds only blobs reads as BLOB")
     func untypedBlobColumnReadsAsBlob() async throws {
         let driver = try await connectedDriver("untyped-blob.db")
