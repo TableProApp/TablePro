@@ -58,12 +58,12 @@ struct QueryTextInsertionTests {
         #expect(text == "SET a 1\nGET session:1")
     }
 
-    @Test("A Redis key's escaped trailing blank stays with it")
-    func redisKeepsAnEscapedTrailingBlank() {
+    @Test("A Redis entry is trimmed as the run reads it: a backslash outside quotes is the argument's own")
+    func redisEntryIsTrimmedAsTheRunReadsIt() {
         let (empty, _) = added("DEL victim\\ ", to: "", .redis)
-        let (appended, _) = added("DEL victim\\ ", to: "GET a", .redis)
-        #expect(empty == "DEL victim\\ ")
-        #expect(appended == "GET a\nDEL victim\\ ")
+        let (appended, _) = added("SET greeting \"hi \"", to: "GET a", .redis)
+        #expect(empty == "DEL victim\\")
+        #expect(appended == "GET a\nSET greeting \"hi \"")
     }
 
     @Test("An added query ending in a line comment is closed on a line of its own")
@@ -115,13 +115,13 @@ struct QueryTextInsertionTests {
         #expect(escaped == "SELECT 2;\n\nSELECT 'draft\\'")
     }
 
-    @Test("A Redis draft ending in an open quote or a backslash gets the command in front of it")
+    @Test("A Redis draft ending in an open quote gets the command in front of it; a bare backslash ends nothing open")
     func redisOpenArgumentGetsTheCommandFirst() {
         let (quote, _) = added("GET other", to: "GET \"key", .redis)
         let (backslash, _) = added("GET other", to: "GET key\\", .redis)
 
         #expect(quote == "GET other\nGET \"key")
-        #expect(backslash == "GET other\nGET key\\")
+        #expect(backslash == "GET key\\\nGET other")
     }
 
     @Test("Several statements added to an empty editor are selected too")

@@ -20,7 +20,7 @@ nonisolated enum QueryTextInsertion {
         session: SQLSessionLexicalFacts? = nil
     ) -> Edit {
         let source = text as NSString
-        // Redis-aware: a backslash there escapes a trailing blank that belongs to the last argument.
+        // As the run reads it: Redis text is cut to its commands, as the lexer finds them.
         let added = databaseType == .redis
             ? QueryScript.trimmed(query, databaseType: databaseType)
             : StatementBlank.trimming(query)
