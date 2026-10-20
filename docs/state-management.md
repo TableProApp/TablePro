@@ -113,6 +113,6 @@ Relm4 ships test helpers but they require a running GTK main loop, which is awkw
 
 ## September stabilization
 
-Browse SQL planning is pure and shared between counts and pages. A validation error clears the count through the existing request-generation failure path and surfaces the error; it cannot fall back to an unfiltered total. Delayed sidebar metadata is accepted only for the same connection allocation, so reconnecting the same saved UUID does not make an old response current. See the tests in `services/browse_query.rs` and `services/database_service.rs`.
+Browse SQL planning is pure and shared between counts and pages. A validation error clears the count through the existing request-generation failure path and surfaces the error; it cannot fall back to an unfiltered total. Delayed sidebar metadata is accepted only for the same connection allocation, so reconnecting the same saved UUID does not make an old response current. The planner and its pure tests live in `tablepro-app-services::browse_query`; real-database fixtures stay in the app test tier. Connection identity tests remain in `services/database_service.rs`.
 
 Completion identity and reconnect behavior are described in [architecture](../ARCHITECTURE.md) and constrained by ADR 0008.
