@@ -6,17 +6,11 @@
 //! guarded read is rolled back, and an export refuses SQL that is not a
 //! plain read before sending it.
 
-use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
+use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan};
+use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, statement_access};
 use tablepro_core::{DriverError, ReadOnlyRefusal};
 
 use crate::errors::tds_number;
-
-/// The words that make a statement a write, or let it run one.
-const WRITE_WORDS: [&str; 18] = [
-    "INSERT", "UPDATE", "DELETE", "MERGE", "INTO", "EXEC", "EXECUTE", "CREATE", "ALTER", "DROP", "TRUNCATE", "GRANT",
-    "REVOKE", "DENY", "BEGIN", "COMMIT", "ROLLBACK", "SAVE",
-];
 
 /// Run `sql` inside a transaction that is always rolled back. The line
 /// breaks keep a trailing line comment from swallowing the ROLLBACK.
@@ -34,35 +28,15 @@ pub(crate) fn guarded_error(error: DriverError) -> DriverError {
     }
 }
 
-/// Refuse user SQL that is anything but a read, before it is sent.
+/// Refuse user SQL that is anything but a read, before it is sent. A
+/// second `GO` batch would run outside the guard's transaction.
 pub(crate) fn refuse_writes(sql: &str) -> Result<(), DriverError> {
-    let refused = || DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard);
     let plan = ScriptPlan::build(sql, SqlGrammar::MsSql, LexicalSettings::default_for(SqlGrammar::MsSql));
-    if !plan.diagnostics().is_empty() || plan.batches().len() > 1 {
-        return Err(refused());
+    let reads = plan.batches().len() <= 1 && statement_access(sql, SqlGrammar::MsSql) == StatementAccess::Read;
+    match reads {
+        true => Ok(()),
+        false => Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard)),
     }
-    for statement in plan.statements() {
-        let mut words = plan
-            .tokens(statement.range.clone())
-            .filter(|token| !token.kind.is_trivia() && token.kind != ScriptTokenKind::Semicolon);
-        let opens_as_read = words.next().is_some_and(|token| match token.kind {
-            ScriptTokenKind::OpenParen => true,
-            ScriptTokenKind::Word => sql
-                .get(token.range)
-                .is_some_and(|word| word.eq_ignore_ascii_case("SELECT") || word.eq_ignore_ascii_case("WITH")),
-            _ => false,
-        });
-        let writes = plan.tokens(statement.range.clone()).any(|token| {
-            token.kind == ScriptTokenKind::Word
-                && sql
-                    .get(token.range)
-                    .is_some_and(|word| WRITE_WORDS.iter().any(|write| word.eq_ignore_ascii_case(write)))
-        });
-        if !opens_as_read || writes {
-            return Err(refused());
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -122,6 +96,8 @@ mod tests {
             "SELECT 1\nGO\nSELECT 2",
             "SELECT 'unterminated",
             "SET NOCOUNT ON",
+            "SELECT 1\nDELETE FROM t",
+            "SELECT * FROM OPENQUERY(remote, 'DELETE FROM t')",
         ] {
             assert_eq!(
                 refuse_writes(write),

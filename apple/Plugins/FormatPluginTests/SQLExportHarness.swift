@@ -86,6 +86,23 @@ internal actor SQLExportHarness {
         options: SQLExportOptions = SQLExportOptions(),
         progress: PluginExportProgress? = nil
     ) async throws -> (parts: [String], result: ExportFormatResult) {
+        let written = try await partData(tables: tables, dataSource: dataSource, options: options, progress: progress)
+        let parts = try written.parts.map { data in
+            guard let text = String(data: data, encoding: .utf8) else {
+                throw CocoaError(.fileReadInapplicableStringEncoding)
+            }
+            return text
+        }
+        return (parts, written.result)
+    }
+
+    // The bytes rather than text, for a compressed dump.
+    internal func partData(
+        tables: [PluginExportTable],
+        dataSource: any PluginExportDataSource,
+        options: SQLExportOptions = SQLExportOptions(),
+        progress: PluginExportProgress? = nil
+    ) async throws -> (parts: [Data], result: ExportFormatResult) {
         let plugin = SQLExportPlugin()
         let storedSettings = plugin.settings
         plugin.settings = options
@@ -106,16 +123,16 @@ internal actor SQLExportHarness {
             progress: progress ?? PluginExportProgress(progress: Progress(totalUnitCount: 1))
         )
 
-        var parts: [String] = []
+        var parts: [Data] = []
         var index = 1
         while true {
             let part = SQLExportFileWriter.partURL(for: destination, part: index)
             guard FileManager.default.fileExists(atPath: part.path(percentEncoded: false)) else { break }
             written.append(part)
-            parts.append(try String(contentsOf: part, encoding: .utf8))
+            parts.append(try Data(contentsOf: part))
             index += 1
         }
         guard parts.isEmpty else { return (parts, result) }
-        return ([try String(contentsOf: destination, encoding: .utf8)], result)
+        return ([try Data(contentsOf: destination)], result)
     }
 }

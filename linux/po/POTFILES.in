@@ -180,7 +180,6 @@ crates/app/src/ui/connect_dialog/form_field.rs
 crates/app/src/ui/connect_dialog/imp.rs
 crates/app/src/ui/connect_dialog/mod.rs
 crates/app/src/ui/connect_dialog/pem_validation.rs
-crates/app/src/ui/connect_dialog/read_only_row.rs
 crates/app/src/ui/connect_dialog/row_problem.rs
 crates/app/src/ui/connect_dialog/sqlite_file_row.rs
 crates/app/src/ui/connect_dialog/tests.rs
@@ -219,6 +218,7 @@ crates/app/src/ui/editor/results_pane.rs
 crates/app/src/ui/editor/run_history.rs
 crates/app/src/ui/editor/run_log.rs
 crates/app/src/ui/editor/run_scope.rs
+crates/app/src/ui/editor/safe_mode_gate.rs
 crates/app/src/ui/editor/script_runner.rs
 crates/app/src/ui/editor/sidebar_policy.rs
 crates/app/src/ui/editor/significant_tokens.rs
@@ -365,6 +365,7 @@ crates/app/src/ui/result_pane/mod.rs
 crates/app/src/ui/result_pane/result_limit_banner.rs
 crates/app/src/ui/result_pane/result_set_view.rs
 crates/app/src/ui/result_pane/result_summary.rs
+crates/app/src/ui/safe_mode.rs
 crates/app/src/ui/saved_queries_dialog.rs
 crates/app/src/ui/session_window/application_notification_sink.rs
 crates/app/src/ui/session_window/connect_failed_page.rs
@@ -491,6 +492,7 @@ crates/app/src/ui/workspace/workspace_actions.rs
 crates/app/src/ui/workspace/workspace_persistence.rs
 crates/app/src/ui/workspace/workspace_tab_view.rs
 crates/app/src/ui/workspace/workspace_tabs.rs
+crates/app/src/ui/write_confirmation.rs
 crates/app/src/workspace/close_blocker.rs
 crates/app/src/workspace/close_blocker_dialog.rs
 crates/app/src/workspace/close_decision.rs

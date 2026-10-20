@@ -18,6 +18,7 @@ mod results_pane;
 mod run_history;
 mod run_log;
 mod run_scope;
+mod safe_mode_gate;
 mod script_runner;
 mod sidebar_policy;
 mod significant_tokens;
@@ -49,12 +50,13 @@ use self::imp::RunningScript;
 use self::result_widgets::PageActions;
 use self::run_log::{EntryKind, RunEvent, RunLog};
 use self::run_scope::ScopedText;
-use self::script_runner::{RUN_ROW_LIMIT, ScriptRun, plan_batches, run_in_tab};
+use self::script_runner::{RUN_ROW_LIMIT, RunBatch, ScriptRun, plan_batches, run_in_tab};
 pub(crate) use self::transaction_dirty::OpenTransaction;
 use super::clipboard::{CopyRequest, InClauseRows};
 use super::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
 use super::grid::{GridMsg, GridSink, present_row_json};
 use super::handler_guard::HandlerGuard;
+use super::write_confirmation::{self, WriteConfirmation};
 use crate::services::active_session::ActiveSession;
 use crate::services::history_service::HistoryService;
 use crate::workspace::WorkOutcome;
@@ -76,6 +78,16 @@ pub struct SqlEditorInit {
     /// Keeps the process alive while the tab's connection closes.
     pub hold: Rc<dyn ProcessHold>,
     pub close_timeout: Duration,
+}
+
+/// What one run sends, planned before Safe Mode asks about it, so the
+/// answer covers exactly what then runs.
+struct PlannedRun {
+    scoped: ScopedText,
+    batches: Vec<RunBatch>,
+    policy: tablepro_core::sql_syntax::script::BatchErrorPolicy,
+    warnings: Vec<String>,
+    grammar: SqlGrammar,
 }
 
 pub(crate) struct EditorDeps {
@@ -375,7 +387,7 @@ impl SqlEditor {
 
     fn execute(&self, scoped: ScopedText) {
         let imp = self.imp();
-        if self.is_running() || imp.shut_down.get() {
+        if self.is_running() || imp.shut_down.get() || imp.confirming.get() {
             return;
         }
         let Some(deps) = self.deps() else {
@@ -398,6 +410,50 @@ impl SqlEditor {
             self.say(&crate::i18n::gettext("There is nothing to run."));
             return;
         }
+        let gated = safe_mode_gate::gate(batches, grammar, session.safe_mode());
+        let planned = PlannedRun {
+            scoped,
+            batches: gated.batches,
+            policy,
+            warnings,
+            grammar,
+        };
+        if gated.confirm.is_empty() {
+            self.start_run(session, planned);
+            return;
+        }
+        let confirmation = WriteConfirmation::statements(&session.metadata().name, &gated.confirm, gated.destructive);
+        imp.confirming.set(true);
+        let weak = self.downgrade();
+        glib::spawn_future_local(async move {
+            let Some(editor) = weak.upgrade() else {
+                return;
+            };
+            let answered = write_confirmation::confirm(editor.upcast_ref(), &confirmation).await;
+            editor.imp().confirming.set(false);
+            // The answer covers the connection it was asked on.
+            let same_session = editor
+                .deps()
+                .and_then(|deps| deps.session.get())
+                .is_some_and(|current| Arc::ptr_eq(&current, &session));
+            if answered && same_session && !editor.is_running() && !editor.imp().shut_down.get() {
+                editor.start_run(session, planned);
+            }
+        });
+    }
+
+    fn start_run(&self, session: Arc<tablepro_session::Session>, planned: PlannedRun) {
+        let imp = self.imp();
+        let Some(deps) = self.deps() else {
+            return;
+        };
+        let PlannedRun {
+            scoped,
+            batches,
+            policy,
+            warnings,
+            grammar,
+        } = planned;
         imp.changes_catalog.set(
             batches
                 .iter()

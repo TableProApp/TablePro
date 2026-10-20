@@ -57,6 +57,8 @@ pub struct SqlEditor {
     /// catalog lists.
     pub changes_catalog: Cell<bool>,
     pub shut_down: Cell<bool>,
+    /// Safe Mode is asking about the run, which has not started.
+    pub confirming: Cell<bool>,
     /// The file the text was opened from or last saved to.
     pub file: RefCell<Option<gio::File>>,
     pub saving: Cell<bool>,

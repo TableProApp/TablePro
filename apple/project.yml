@@ -764,8 +764,9 @@ targets:
       folder: ClickHouseDriverPlugin
 
   # The ten bundled format plugins in one bundle: none links a C library, and no two declare the
-  # same top-level name.
+  # same top-level name. SQLiteLinkage is for the round-trip tests, which need the SQLite the driver ships.
   FormatPluginTests:
+    templates: [SQLiteLinkage]
     type: bundle.unit-test
     platform: macOS
     sources:

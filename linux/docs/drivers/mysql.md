@@ -94,9 +94,9 @@ A call that timed out or lost its connection is checked before the link is decla
 
 ## Read-only
 
-`ReadOnlyEnforcement::SessionDefault`: `SET SESSION TRANSACTION READ ONLY` on every session. Saves are refused before anything is sent, and a write through generated SQL fails with 1792. In the editor, the user's own `SET TRANSACTION READ WRITE` or `SET SESSION TRANSACTION READ WRITE` lifts it. For a guarantee, connect with a login that has no write privileges.
+`ReadOnlyEnforcement::SessionDefault`: `SET SESSION TRANSACTION READ ONLY` on every session. Saves are refused before anything is sent, and a write through generated SQL fails with 1792. At Safe Mode Read-Only the app refuses every editor statement that does not read before it is sent, `SET TRANSACTION READ WRITE` included; a function a `SELECT` calls is the server's to refuse. For a guarantee, connect with a login that has no write privileges.
 
-An export, on any connection, runs in `START TRANSACTION READ ONLY` and refuses user SQL with a statement that does not start with `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC`, `EXPLAIN`, `TABLE` or a parenthesis.
+An export, on any connection, runs in `START TRANSACTION READ ONLY` and refuses user SQL that Safe Mode would not count as a read (`tablepro_core::sql_syntax::statement_access`), which reads the text of a `/*! */` comment as the code the server runs.
 
 ## Writes
 

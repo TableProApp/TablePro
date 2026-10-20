@@ -45,7 +45,7 @@ fn connection(name: &str) -> SavedConnection {
         database: "app".to_owned(),
         username: "tablepro".to_owned(),
         tls: tablepro_core::TlsConfig::disabled(),
-        read_only: false,
+        safe_mode: tablepro_core::SafeModeLevel::Off,
         auth_mode: tablepro_core::AuthMode::Password,
         ssh: None,
         last_opened_at: None,
