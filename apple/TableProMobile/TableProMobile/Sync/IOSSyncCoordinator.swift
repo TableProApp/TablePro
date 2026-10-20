@@ -571,6 +571,14 @@ final class IOSSyncCoordinator {
         recordCache.removeAll()
     }
 
+    private func applyRemoteChanges(_ remote: PullChanges) -> Bool {
+        guard let state = getCurrentState?() else { return false }
+        onConnectionsChanged?(mergeConnections(local: state.connections, remote: remote))
+        onGroupsChanged?(mergeGroups(local: state.groups, remote: remote))
+        onTagsChanged?(mergeTags(local: state.tags, remote: remote))
+        return true
+    }
+
     // MARK: - Push
 
     /// Whatever went through is settled even when a later batch threw, so a saved record is not
