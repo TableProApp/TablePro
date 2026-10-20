@@ -15,10 +15,10 @@ public enum SQLiteNumberText {
         Int64(text).map { String($0) == text } ?? false
     }
 
-    // Measured on SQLite 3.54: a REAL prints up to 17 significant digits from SQLite's own decoder, never a trailing
-    // zero but the one in `7.0`, plain from 1e-4 below 1e17 (`0.0001`, `10000000000000000.0`), else as `1.0e-05` or
-    // `1.2e+17`. Those digits match neither the shortest nor the `%.17g` spelling (1/3 prints `0.33333333333333332`,
-    // and a value 15 digits spell can print 17), so only the shape is checked.
+    // A REAL prints with at most 17 significant digits, never a trailing zero but the one in `7.0`, either plain or as
+    // `1.0e-05` and `1.2e+17`. SQLite 3.54 goes plain from 1e-4 below 1e17 and an older one past 1e15, and the digits
+    // are SQLite's own (1/3 prints `0.33333333333333332`), so only the shape is checked; the caller's CAST holds the
+    // match to the exact text.
     private static func isRealSpelling(_ text: String, isZero: Bool) -> Bool {
         let unsigned = text.hasPrefix("-") ? String(text.dropFirst()) : text
         if isZero { return text == "0.0" }
@@ -36,20 +36,12 @@ public enum SQLiteNumberText {
         let significant = fraction == "0" ? digits.reversed().drop { $0 == "0" }.count : digits.count
         guard significant <= 17 else { return false }
 
-        guard parts.count == 2 else {
-            let exponent = whole == "0"
-                ? -(fraction.prefix { $0 == "0" }.count + 1)
-                : whole.count - 1
-            return (-4...16).contains(exponent)
-        }
+        guard parts.count == 2 else { return true }
         let written = parts[1]
         guard whole.count == 1, whole != "0", let sign = written.first, sign == "+" || sign == "-" else { return false }
         let exponentDigits = written.dropFirst()
-        guard exponentDigits.count >= 2, exponentDigits.allSatisfy(\.isASCIIDigit),
-              exponentDigits.count == 2 || exponentDigits.first != "0",
-              let magnitude = Int(exponentDigits)
-        else { return false }
-        return !(-4...16).contains(sign == "-" ? -magnitude : magnitude)
+        return exponentDigits.count >= 2 && exponentDigits.allSatisfy(\.isASCIIDigit)
+            && (exponentDigits.count == 2 || exponentDigits.first != "0")
     }
 }
 
