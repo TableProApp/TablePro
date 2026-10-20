@@ -1,6 +1,7 @@
 import Foundation
 import TableProModels
 import TableProQuery
+import TableProRedisCore
 import TableProSQLGrammar
 
 // A template or a history entry added to the editor: it becomes the text of an empty editor and is appended to any
