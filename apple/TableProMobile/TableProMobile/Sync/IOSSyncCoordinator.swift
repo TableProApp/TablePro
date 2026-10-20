@@ -47,6 +47,7 @@ final class IOSSyncCoordinator {
 
     @ObservationIgnored private let metadata: SyncMetadataStorage
     @ObservationIgnored private let recordCache: SyncRecordCache
+    @ObservationIgnored private var sshFieldsReadFromCache: Set<UUID> = []
     @ObservationIgnored private let makeTransport: () -> any IOSSyncTransport
     @ObservationIgnored private let isEnabled: () -> Bool
     @ObservationIgnored private let networkMonitor: SyncNetworkMonitor?
@@ -874,13 +875,33 @@ final class IOSSyncCoordinator {
     // MARK: - Merge
 
     private func mergeConnections(local: [DatabaseConnection], remote: PullChanges) -> [DatabaseConnection] {
-        merge(
+        let pulledIds = Set(remote.changedConnections.map(\.id))
+        return merge(
             local: local,
             changed: remote.changedConnections,
             deleted: remote.deletedConnectionIDs,
             dirtyIds: metadata.dirtyIds(for: .connection),
             tombstonedIds: tombstonedIds(for: .connection)
-        )
+        ).map { pulledIds.contains($0.id) ? $0 : adoptingCachedSSHFields($0) }
+    }
+
+    // A connection stored before this build read `sshProfileId` and `sshRouteJson` lacks both until
+    // its record changes again, and the record pulled earlier already holds them. A record in this
+    // pull is newer than the cache, which is written only after it.
+    private func adoptingCachedSSHFields(_ connection: DatabaseConnection) -> DatabaseConnection {
+        guard connection.sshConfiguration != nil, connection.sshProfileId == nil, connection.sshRoute == nil,
+              !connection.clearsSSHProfileLink,
+              sshFieldsReadFromCache.insert(connection.id).inserted
+        else { return connection }
+        // The cache is keyed by record name alone, so any zone finds it.
+        let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: CKRecordZone.default().zoneID)
+        guard let record = recordCache.record(for: recordID),
+              let cached = SyncRecordMapper.toConnection(record)
+        else { return connection }
+        var adopted = connection
+        adopted.sshProfileId = cached.sshProfileId
+        adopted.sshRoute = cached.sshRoute
+        return adopted
     }
 
     private func mergeGroups(local: [ConnectionGroup], remote: PullChanges) -> [ConnectionGroup] {

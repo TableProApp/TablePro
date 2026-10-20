@@ -224,6 +224,49 @@ struct IOSSyncCoordinatorTests {
         #expect(pushed.first { $0.id == local.id }?.name == "New")
     }
 
+    @Test("A copy stored before this build read them takes the profile link and route from the cached record")
+    func olderCopyTakesProfileAndRouteFromTheCache() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(
+            name: "Profile",
+            type: .postgresql,
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "db", username: "")
+        )
+        box.connections = [local]
+        let cached = SyncRecordMapper.toRecord(local, zoneID: zoneID)
+        let profileId = UUID()
+        cached[ConnectionSyncField.sshProfileId.key] = profileId.uuidString as CKRecordValue
+        SyncRecordCache(directory: cacheDirectory, defaults: nil).store([cached])
+        let transport = FakeSyncTransport(remoteRecords: [], box: box)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+
+        await coordinator.sync()
+
+        #expect(box.connections.first?.sshProfileId == profileId)
+    }
+
+    @Test("A profile unlinked here is not linked again from the cached record")
+    func unlinkedCopyIsNotRelinkedFromTheCache() async throws {
+        let box = LibraryStateBox()
+        var local = DatabaseConnection(
+            name: "Unlinked",
+            type: .postgresql,
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "other.example", username: "deploy")
+        )
+        local.clearsSSHProfileLink = true
+        box.connections = [local]
+        let cached = SyncRecordMapper.toRecord(local, zoneID: zoneID)
+        cached[ConnectionSyncField.sshProfileId.key] = UUID().uuidString as CKRecordValue
+        SyncRecordCache(directory: cacheDirectory, defaults: nil).store([cached])
+        let coordinator = makeCoordinator(box: box, transport: FakeSyncTransport(remoteRecords: [], box: box))
+
+        await coordinator.sync()
+
+        #expect(box.connections.first?.sshProfileId == nil)
+    }
+
     @Test("A connection edited while its push is in flight stays marked for the next sync")
     func editDuringPushStaysDirty() async throws {
         let box = LibraryStateBox()

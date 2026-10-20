@@ -332,6 +332,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "%1$@ on socket %2$@" : {
+
+    },
     "%@" : {
       "localizations" : {
         "ko" : {
@@ -18621,6 +18624,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Route from Mac" : {
+
+    },
     "row" : {
       "localizations" : {
         "ko" : {
@@ -20321,6 +20327,9 @@
         }
       }
     },
+    "Signs in with the SSH profile's password from iCloud Keychain." : {
+
+    },
     "Sign it again with: codesign --force --sign - %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -20383,6 +20392,9 @@
     "Snowflake" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Socket %@" : {
+
     },
     "Socket Unavailable" : {
 
@@ -26011,6 +26023,12 @@
         }
       }
     },
+    "This hop comes from an SSH profile on your Mac. Change it there." : {
+
+    },
+    "This hop comes from the Mac's ~/.ssh/config. Change it there." : {
+
+    },
     "This is a Redis Sentinel, not a data node, so it only answers SENTINEL commands. Set Connection Mode to Sentinel and list this address under Sentinel Nodes." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -26357,6 +26375,9 @@
           }
         }
       }
+    },
+    "This tunnel follows an SSH profile on your Mac. Change the server there." : {
+
     },
     "This version of TablePro can no longer sync with iCloud. Update TablePro in the App Store to resume." : {
 
@@ -28455,6 +28476,9 @@
       }
     },
     "already saved" : {
+
+    },
+    "Your Mac reaches the SSH server through these hosts from its ~/.ssh/config, and this device dials the same route with its own keys. Changing the SSH server or jump hosts above replaces it." : {
 
     }
   },

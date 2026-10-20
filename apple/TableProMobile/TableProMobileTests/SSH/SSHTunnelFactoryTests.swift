@@ -138,8 +138,7 @@ struct SSHTunnelFactoryTests {
 
         let tunnel = try await SSHTunnelFactory.create(
             config: config,
-            remoteHost: "db.internal",
-            remotePort: 5_432,
+            destination: .tcp(host: "db.internal", port: 5_432),
             credentials: SSHTunnelCredentials(keyPassphrase: "server pass", privateKey: "SERVER KEY"),
             jumpHostCredentials: [
                 first.id: .privateKey(key: "HOP ONE KEY", passphrase: "hop pass"),
@@ -264,8 +263,7 @@ struct SSHTunnelFactoryTests {
         await #expect(throws: SSHTunnelError.usernameMissing(host: onTheHop ? hop.host : config.host)) {
             try await SSHTunnelFactory.create(
                 config: config,
-                remoteHost: "db.internal",
-                remotePort: 5_432,
+                destination: .tcp(host: "db.internal", port: 5_432),
                 credentials: Self.credentials(for: .password),
                 jumpHostCredentials: [hop.id: .privateKey(key: "HOP KEY", passphrase: nil)],
                 prompter: StubPrompter(answer: true),
@@ -304,8 +302,7 @@ struct SSHTunnelFactoryTests {
         await #expect(throws: SSHTunnelError.connectionFailed("\(named) is out of range. Use a value between 1 and 65535.")) {
             try await SSHTunnelFactory.create(
                 config: config,
-                remoteHost: "db.internal",
-                remotePort: remotePort,
+                destination: .tcp(host: "db.internal", port: remotePort),
                 credentials: Self.credentials(for: .password),
                 jumpHostCredentials: [hop.id: .privateKey(key: "HOP KEY", passphrase: nil)],
                 prompter: StubPrompter(answer: true),
@@ -452,8 +449,7 @@ struct SSHTunnelFactoryTests {
         tunnelConfig.jumpHosts = jumpHosts
         return try await SSHTunnelFactory.create(
             config: tunnelConfig,
-            remoteHost: "db.internal",
-            remotePort: 5_432,
+            destination: .tcp(host: "db.internal", port: 5_432),
             credentials: credentials ?? Self.credentials(for: authMethod),
             jumpHostCredentials: jumpHostCredentials,
             prompter: prompter,

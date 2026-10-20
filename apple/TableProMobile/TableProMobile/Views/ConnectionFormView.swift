@@ -456,36 +456,50 @@ struct ConnectionFormView: View {
 
         if viewModel.sshEnabled {
             Section {
-                TextField("SSH Host", text: $viewModel.sshHost)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                TextField("SSH Port", text: $viewModel.sshPort, prompt: Text(verbatim: "22"))
-                    .keyboardType(.numberPad)
-                TextField("SSH Username", text: $viewModel.sshUsername)
-                    .textInputAutocapitalization(.never)
+                Group {
+                    TextField("SSH Host", text: $viewModel.sshHost)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                    TextField("SSH Port", text: $viewModel.sshPort, prompt: Text(verbatim: "22"))
+                        .keyboardType(.numberPad)
+                    TextField("SSH Username", text: $viewModel.sshUsername)
+                        .textInputAutocapitalization(.never)
 
-                Picker("Auth Method", selection: $viewModel.sshAuthMethod) {
-                    Text("Password").tag(SSHConfiguration.SSHAuthMethod.password)
-                    Text("Private Key").tag(SSHConfiguration.SSHAuthMethod.privateKey)
+                    Picker("Auth Method", selection: $viewModel.sshAuthMethod) {
+                        Text("Password").tag(SSHConfiguration.SSHAuthMethod.password)
+                        Text("Private Key").tag(SSHConfiguration.SSHAuthMethod.privateKey)
+                    }
+                    .pickerStyle(.segmented)
                 }
-                .pickerStyle(.segmented)
+                .disabled(viewModel.sshFollowsMacProfile)
             } header: {
                 Text("SSH Server")
             } footer: {
-                if let note = viewModel.sshAuthMethodNote {
+                if viewModel.sshFollowsMacProfile {
+                    Text("This tunnel follows an SSH profile on your Mac. Change the server there.")
+                } else if let note = viewModel.sshAuthMethodNote {
                     Text(note)
                 }
             }
 
             if viewModel.sshAuthMethod == .password {
                 Section("SSH Password") {
-                    SecureField("Password", text: $viewModel.sshPassword)
+                    if viewModel.sshFollowsMacProfile, viewModel.hasSSHProfilePassword {
+                        Text("Signs in with the SSH profile's password from iCloud Keychain.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        SecureField("Password", text: $viewModel.sshPassword)
+                    }
                 }
             } else if viewModel.sshAuthMethod == .privateKey {
                 privateKeySection(viewModel: viewModel)
             }
 
-            JumpHostsSection(viewModel: viewModel) { pushedJumpHostId = $0 }
+            JumpHostsSection(viewModel: viewModel, isEditable: !viewModel.sshFollowsMacProfile) { pushedJumpHostId = $0 }
+
+            if let route = viewModel.macRoute {
+                MacRouteSection(viewModel: viewModel, route: route)
+            }
         }
     }
 

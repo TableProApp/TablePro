@@ -4,6 +4,7 @@ import os
 
 import TableProConnectionLibrary
 import TableProModels
+import TableProSSHTransport
 import TableProSyncTransport
 
 public enum SyncRecordMapper {
@@ -76,6 +77,12 @@ public enum SyncRecordMapper {
             }
         } else {
             fields[.sshConfigJson] = nil
+        }
+        // A record built from scratch (an Upload Again) carries the link this copy knows of.
+        if let profileId = connection.sshProfileId {
+            fields[.sshProfileId] = profileId.uuidString as CKRecordValue
+        } else {
+            clearSSHProfileLinkIfUnlinked(fields, connection)
         }
 
         if let sslConfig = connection.sslConfiguration {
@@ -201,7 +208,21 @@ public enum SyncRecordMapper {
         )
         connection.connectTimeoutSeconds = validConnectTimeout(legacyConnectTimeout)
         connection.adoptConfigurationSwitches()
+        connection.sshProfileId = (fields[.sshProfileId] as? String).flatMap { UUID(uuidString: $0) }
+        connection.sshRoute = (fields[.sshRouteJson] as? Data).flatMap(PublishedSSHRoute.decoded(from:))
         return connection
+    }
+
+    // The Mac rebuilds a profile tunnel from `sshProfileId` alone, so a tunnel switched off here has
+    // to drop the link too, and so does one switched off and on again before it synced. Otherwise
+    // the field is the Mac's, and an older local copy that never read it would clear a link it never saw.
+    private static func clearSSHProfileLinkIfUnlinked(
+        _ fields: SyncRecordFields<ConnectionSyncField>,
+        _ connection: DatabaseConnection
+    ) {
+        let tunnelOff = !connection.sshEnabled && connection.sshConfiguration?.macEnabled != true
+        guard tunnelOff || connection.clearsSSHProfileLink else { return }
+        fields[.sshProfileId] = nil
     }
 
     private static func storedSafeModeLevel(in fields: SyncRecordFields<ConnectionSyncField>) -> SafeModeLevel {
@@ -253,6 +274,7 @@ public enum SyncRecordMapper {
         } else {
             fields[.sshConfigJson] = nil
         }
+        clearSSHProfileLinkIfUnlinked(fields, connection)
 
         if let sslConfig = connection.sslConfiguration {
             if !serverSSLMatches(fields[.sslConfigJson] as? Data, sslConfig),

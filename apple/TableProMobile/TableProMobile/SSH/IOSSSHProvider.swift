@@ -2,6 +2,7 @@ import Foundation
 import os
 import TableProDatabase
 import TableProModels
+import TableProSSHTransport
 
 final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "IOSSSHProvider")
@@ -18,8 +19,8 @@ final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
     func createTunnel(
         config: SSHConfiguration,
         connectionId: UUID,
-        remoteHost: String,
-        remotePort: Int,
+        sshProfileId: UUID?,
+        destination: SSHForwardDestination,
         prompter: (any ConnectionPrompter)?
     ) async throws -> TableProDatabase.SSHTunnel {
         var resolvedConfig = config
@@ -28,9 +29,12 @@ final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
 
         let tunnel = try await SSHTunnelFactory.create(
             config: resolvedConfig,
-            remoteHost: remoteHost,
-            remotePort: remotePort,
-            credentials: SSHTunnelCredentials(connectionId: connectionId, secureStore: secureStore),
+            destination: destination,
+            credentials: SSHTunnelCredentials(
+                connectionId: connectionId,
+                sshProfileId: sshProfileId,
+                secureStore: secureStore
+            ),
             jumpHostCredentials: hopCredentials,
             prompter: prompter
         )

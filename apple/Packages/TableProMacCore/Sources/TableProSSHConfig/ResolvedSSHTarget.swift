@@ -25,6 +25,8 @@ public struct ResolvedSSHTarget: Sendable, Hashable {
     public let identityFiles: [String]
     public let agentSocketPath: String
     public let agentSocketOrigin: AgentSocketOrigin
+    // `IdentityAgent none`: ssh signs in without an agent.
+    public let agentDisabled: Bool
     public let identitiesOnly: Bool
     public let useKeychain: Bool
     public let addKeysToAgent: Bool
@@ -43,6 +45,7 @@ public struct ResolvedSSHTarget: Sendable, Hashable {
         identityFiles: [String],
         agentSocketPath: String,
         agentSocketOrigin: AgentSocketOrigin,
+        agentDisabled: Bool = false,
         identitiesOnly: Bool,
         useKeychain: Bool,
         addKeysToAgent: Bool,
@@ -56,6 +59,7 @@ public struct ResolvedSSHTarget: Sendable, Hashable {
         self.identityFiles = identityFiles
         self.agentSocketPath = agentSocketPath
         self.agentSocketOrigin = agentSocketOrigin
+        self.agentDisabled = agentDisabled
         self.identitiesOnly = identitiesOnly
         self.useKeychain = useKeychain
         self.addKeysToAgent = addKeysToAgent

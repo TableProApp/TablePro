@@ -40,17 +40,31 @@ struct JumpHostEditorView: View {
 
     var body: some View {
         Form {
-            Section {
-                TextField("Host", text: draft.host)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                TextField("Port", text: draft.port, prompt: Text(verbatim: "22"))
-                    .keyboardType(.numberPad)
-                TextField("Username", text: draft.username)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.asciiCapable)
+            if viewModel.hostFieldsAreReadOnly(forHop: hopId) {
+                Section {
+                    LabeledContent("Host", value: hop?.host ?? "")
+                    LabeledContent("Port", value: hop.map { $0.port.isEmpty ? "22" : $0.port } ?? "")
+                    LabeledContent("Username", value: hop?.username ?? "")
+                } footer: {
+                    if viewModel.isRouteOnlyHop(hopId) {
+                        Text("This hop comes from the Mac's ~/.ssh/config. Change it there.")
+                    } else {
+                        Text("This hop comes from an SSH profile on your Mac. Change it there.")
+                    }
+                }
+            } else {
+                Section {
+                    TextField("Host", text: draft.host)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                    TextField("Port", text: draft.port, prompt: Text(verbatim: "22"))
+                        .keyboardType(.numberPad)
+                    TextField("Username", text: draft.username)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.asciiCapable)
+                }
             }
 
             keySection

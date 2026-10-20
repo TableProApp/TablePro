@@ -98,6 +98,11 @@ extension DatabaseManager {
             totpPeriod: sshConfig.totpPeriod,
             deadline: deadline
         )
+        if let dialed = await SSHTunnelManager.shared.dialedRoute(connectionId: connection.id) {
+            connectionStorage.recordDialedSSHRoute(dialed, for: connection.id) {
+                SSHProfileStorage.shared.refreshingLinkedProfile($0)
+            }
+        }
 
         return tunneledConnection(
             from: connection,
