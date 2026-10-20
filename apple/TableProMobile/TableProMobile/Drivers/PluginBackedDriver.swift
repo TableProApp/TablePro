@@ -123,8 +123,12 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         if converted.rowsAffected != 0 {
             continuation.yield(.rowsAffected(converted.rowsAffected))
         }
-        if converted.isTruncated && emitted < options.maxRows {
-            continuation.yield(.truncated(reason: .driverLimit("driver returned isTruncated=true")))
+        // A plugin that capped the read itself returns exactly the cap and says it stopped there.
+        if converted.isTruncated {
+            let reason: TruncationReason = emitted >= options.maxRows
+                ? .rowCap(options.maxRows)
+                : .driverLimit("driver returned isTruncated=true")
+            continuation.yield(.truncated(reason: reason))
         }
     }
 
