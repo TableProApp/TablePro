@@ -133,6 +133,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
             return PluginBackedDriver(
                 plugin: ClickHousePluginDriver(config: pluginConfig(for: connection, password: password, ssl: try ssl(for: connection))),
                 dialedHosts: [connection.host],
+                queryTimeoutSeconds: connection.queryTimeoutSeconds,
                 rowIdentity: .everyColumn,
                 readsOnly: { !SQLWriteClassifier.isWriteQuery($0, databaseType: .clickhouse) }
             )

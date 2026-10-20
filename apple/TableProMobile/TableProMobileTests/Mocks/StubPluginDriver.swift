@@ -13,8 +13,13 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private(set) var generatedChanges: [PluginRowChange] = []
     private(set) var generatedInserts: [Int: [PluginCellValue]] = [:]
     private(set) var generatedColumns: [String] = []
+    private(set) var appliedQueryTimeouts: [Int] = []
 
     func connect() async throws {}
+
+    func applyQueryTimeout(_ seconds: Int) async throws {
+        appliedQueryTimeouts.append(seconds)
+    }
     func disconnect() {}
 
     func execute(query: String) async throws -> PluginQueryResult {

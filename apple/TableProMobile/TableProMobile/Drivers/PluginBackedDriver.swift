@@ -1,23 +1,29 @@
 import Foundation
+import os
 import TableProDatabase
 import TableProModels
 import TableProPluginKit
 
 // Runs a driver the Mac ships as a plugin, compiled into this app, the way the Mac's PluginDriverAdapter does.
 nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "PluginBackedDriver")
+
     private let plugin: any PluginDatabaseDriver
     private let dialedHosts: [String]
+    private let queryTimeoutSeconds: Int?
     private let readsOnly: @Sendable (String) -> Bool
     let rowIdentity: RowIdentity
 
     init(
         plugin: any PluginDatabaseDriver,
         dialedHosts: [String],
+        queryTimeoutSeconds: Int? = nil,
         rowIdentity: RowIdentity,
         readsOnly: @escaping @Sendable (String) -> Bool
     ) {
         self.plugin = plugin
         self.dialedHosts = dialedHosts
+        self.queryTimeoutSeconds = queryTimeoutSeconds
         self.rowIdentity = rowIdentity
         self.readsOnly = readsOnly
     }
@@ -29,6 +35,13 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
             try await LocalNetworkPermission.shared.ensureAccess(for: host)
         }
         try await plugin.connect()
+        guard let queryTimeoutSeconds else { return }
+        // A server that refuses the limit still runs queries, as on the Mac.
+        do {
+            try await plugin.applyQueryTimeout(queryTimeoutSeconds)
+        } catch {
+            Self.logger.warning("The query timeout was not applied: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func disconnect() async throws {
@@ -256,6 +269,12 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         columns: [String],
         values: [(column: String, value: String?)]
     ) throws -> [PluginRowWrite] {
+        // The plugin reads this text as "leave the column out", so storing it as a value cannot be expressed.
+        if values.contains(where: { $0.value == Self.defaultSentinel }) {
+            throw DatabaseError(message: String(format: String(
+                localized: "The text %@ cannot be inserted: this database reads it as the column's default."
+            ), Self.defaultSentinel))
+        }
         let given = Dictionary(values.map { ($0.column, $0.value) }, uniquingKeysWith: { _, last in last })
         let row = columns.map { column -> PluginCellValue in
             guard let value = given[column] else { return .text(Self.defaultSentinel) }

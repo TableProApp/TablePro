@@ -169,6 +169,34 @@ struct PluginBackedDriverTests {
         ])
     }
 
+    @Test("A value spelled as the default marker is refused, never stored as the default")
+    func insertRefusesTheDefaultMarker() {
+        let plugin = StubPluginDriver()
+        let driver = makeDriver(plugin)
+
+        #expect(throws: DatabaseError.self) {
+            try driver.insertWrites(
+                table: "events", schema: nil, columns: ["id", "note"],
+                values: [(column: "id", value: "1"), (column: "note", value: PluginBackedDriver.defaultSentinel)]
+            )
+        }
+        #expect(plugin.generatedInserts.isEmpty)
+    }
+
+    @Test("The connection's saved query timeout reaches the plugin, and none is sent when it has none", arguments: [
+        (Int?.some(0), [0]), (Int?.some(30), [30]), (Int?.none, [Int]())
+    ])
+    func savedQueryTimeoutIsApplied(saved: Int?, applied: [Int]) async throws {
+        let plugin = StubPluginDriver()
+        let driver = PluginBackedDriver(
+            plugin: plugin, dialedHosts: [], queryTimeoutSeconds: saved, rowIdentity: .everyColumn, readsOnly: { _ in true }
+        )
+
+        try await driver.connect()
+
+        #expect(plugin.appliedQueryTimeouts == applied)
+    }
+
     @Test("Catalog columns keep their order and key flags")
     func columnsConvert() async throws {
         let plugin = StubPluginDriver()
