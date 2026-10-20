@@ -27,6 +27,7 @@ struct DataBrowserView: View {
     @State private var deleteTarget: [(column: String, value: String)]?
     @State private var fkPreviewItem: FKPreviewItem?
     @State private var shareText = ""
+    @State private var isCompletingCells = false
     @State private var hapticSuccess = false
     @State private var hapticError = false
 
@@ -274,7 +275,9 @@ struct DataBrowserView: View {
     }
 
     private func rowLink(index: Int, row: [String?]) -> some View {
-        NavigationLink {
+        let cells = viewModel.cells(at: index)
+        let keyValues = viewModel.primaryKeyValues(for: cells)
+        return NavigationLink {
             RowDetailView(
                 columns: columns,
                 rows: viewModel.window.rows,
@@ -287,9 +290,11 @@ struct DataBrowserView: View {
                 safeModeLevel: { [coordinator] in coordinator.connection.safeModeLevel },
                 foreignKeys: viewModel.foreignKeys,
                 onSaved: { Task { await viewModel.load() } },
-                loadFullValue: { ref in
+                loadFullValue: { [schema = viewModel.schema] ref in
                     guard let session else { return nil }
-                    return try await viewModel.loadFullValue(driver: session.driver, ref: ref, databaseType: connection.type)
+                    return try await viewModel.loadFullValue(
+                        driver: session.driver, ref: ref, databaseType: connection.type, schema: schema
+                    )
                 }
             )
         } label: {
@@ -301,11 +306,11 @@ struct DataBrowserView: View {
             )
         }
         .hoverEffect()
-        .contextMenu { rowContextMenu(row: row) }
+        .contextMenu { rowContextMenu(row: row, cells: cells) }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if canDeleteRows {
+            if canDeleteRows, !keyValues.isEmpty {
                 Button {
-                    confirmDelete(row)
+                    confirmDelete(keyValues)
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
@@ -313,42 +318,50 @@ struct DataBrowserView: View {
             }
         }
         .accessibilityActions {
-            if canDeleteRows {
-                Button("Delete row") { confirmDelete(row) }
+            if canDeleteRows, !keyValues.isEmpty {
+                Button("Delete row") { confirmDelete(keyValues) }
             }
         }
     }
 
-    private func confirmDelete(_ row: [String?]) {
-        deleteTarget = viewModel.primaryKeyValues(for: row)
+    private func confirmDelete(_ keyValues: [(column: String, value: String)]) {
+        deleteTarget = keyValues
         showDeleteConfirmation = true
     }
 
     @ViewBuilder
-    private func rowContextMenu(row: [String?]) -> some View {
-        Menu("Share Row") {
-            ForEach(ExportFormat.allCases) { format in
-                Button(format.rawValue) {
-                    shareText = ClipboardExporter.exportRow(
-                        columns: columns, row: row,
-                        format: format, tableName: table.name,
-                        databaseType: connection.type, driver: session?.driver
-                    )
-                    showShareSheet = true
+    private func rowContextMenu(row: [String?], cells: [Cell]) -> some View {
+        if DataBrowserViewModel.canComplete(cells) {
+            Menu("Share Row") {
+                ForEach(ExportFormat.allCases) { format in
+                    Button(format.rawValue) {
+                        exportCompleted([cells]) { exportColumns, completed in
+                            shareText = try ClipboardExporter.exportRow(
+                                columns: exportColumns, cells: completed[0],
+                                format: format, tableName: table.name,
+                                databaseType: connection.type, driver: session?.driver
+                            )
+                            showShareSheet = true
+                        }
+                    }
                 }
             }
-        }
-        Menu("Copy Row") {
-            ForEach(ExportFormat.allCases) { format in
-                Button(format.rawValue) {
-                    let text = ClipboardExporter.exportRow(
-                        columns: columns, row: row,
-                        format: format, tableName: table.name,
-                        databaseType: connection.type, driver: session?.driver
-                    )
-                    ClipboardExporter.copyToClipboard(text)
+            .disabled(isCompletingCells)
+            Menu("Copy Row") {
+                ForEach(ExportFormat.allCases) { format in
+                    Button(format.rawValue) {
+                        exportCompleted([cells]) { exportColumns, completed in
+                            let text = try ClipboardExporter.exportRow(
+                                columns: exportColumns, cells: completed[0],
+                                format: format, tableName: table.name,
+                                databaseType: connection.type, driver: session?.driver
+                            )
+                            ClipboardExporter.copyToClipboard(text)
+                        }
+                    }
                 }
             }
+            .disabled(isCompletingCells)
         }
         let rowFKs = viewModel.foreignKeys.filter { fk in
             guard let colIndex = columns.firstIndex(where: { $0.name == fk.column }),
@@ -388,15 +401,18 @@ struct DataBrowserView: View {
                 Section("Export") {
                     ForEach(ExportFormat.allCases) { format in
                         Button {
-                            let text = ClipboardExporter.exportRows(
-                                columns: columns, rows: rows,
-                                format: format, tableName: table.name,
-                                databaseType: connection.type, driver: session?.driver
-                            )
-                            ClipboardExporter.copyToClipboard(text)
+                            exportCompleted(viewModel.window.rows.map(\.cells)) { exportColumns, completed in
+                                let text = try ClipboardExporter.exportRows(
+                                    columns: exportColumns, rows: completed,
+                                    format: format, tableName: table.name,
+                                    databaseType: connection.type, driver: session?.driver
+                                )
+                                ClipboardExporter.copyToClipboard(text)
+                            }
                         } label: {
                             Label(format.rawValue, systemImage: "doc.on.clipboard")
                         }
+                        .disabled(isCompletingCells)
                     }
                 }
             } label: {
@@ -512,6 +528,43 @@ struct DataBrowserView: View {
             safeModeLevel: { [coordinator] in coordinator.connection.safeModeLevel },
             onInserted: { Task { await viewModel.load() } }
         )
+    }
+
+    // Rows that cannot all be completed skip the reads: the exporter refuses them anyway.
+    private func exportCompleted(
+        _ pageRows: [[Cell]],
+        export: @escaping @MainActor ([ColumnInfo], [[Cell]]) throws -> Void
+    ) {
+        guard !isCompletingCells else { return }
+        let exportColumns = columns
+        let driver = session?.driver
+        isCompletingCells = true
+        Task {
+            defer { isCompletingCells = false }
+            do {
+                var completed = pageRows
+                if let driver, pageRows.allSatisfy(DataBrowserViewModel.canComplete) {
+                    completed = try await viewModel.completeRows(pageRows, driver: driver)
+                }
+                try export(exportColumns, completed)
+            } catch let error where error is ClipboardExporter.IncompleteValues || error is ClipboardExporter.TooLarge
+                        || error is CellLookupError {
+                viewModel.operationError = AppError(
+                    category: .query,
+                    title: String(localized: "Cannot Export"),
+                    message: error.localizedDescription,
+                    recovery: nil,
+                    underlying: error
+                )
+                hapticError.toggle()
+            } catch {
+                viewModel.operationError = ErrorClassifier.classify(
+                    error,
+                    context: ErrorContext(operation: "exportRows", databaseType: connection.type, host: connection.host)
+                )
+                hapticError.toggle()
+            }
+        }
     }
 
     private func performDelete(_ pkValues: [(column: String, value: String)]) async {
