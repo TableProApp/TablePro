@@ -934,6 +934,26 @@ struct IOSSyncCoordinatorTests {
         #expect(box.connections.first { $0.id == uncached.id }?.sslConfiguration?.isLegacyRequire == true)
     }
 
+    @Test("A pending edit over an older copy keeps the Required the Mac switched to after the last pull")
+    func legacyCopyFollowsTheFreshRecord() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Orders", type: .postgresql, sslEnabled: true, sslConfiguration: try legacyRequire())
+        box.connections = [local]
+        cacheServerRecord(of: local, ssl: SSLConfiguration(mode: .require, isMacPreferred: true))
+        var fresh = local
+        fresh.sslConfiguration = SSLConfiguration(mode: .require)
+        let transport = FakeSyncTransport(remoteRecords: [SyncRecordMapper.toRecord(fresh, zoneID: zoneID)], box: box)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        box.connections[0].name = "Renamed"
+        coordinator.markDirty(local.id)
+
+        await coordinator.sync()
+
+        let pushed = try #require(await transport.pushedRecords.first)
+        #expect(SyncRecordMapper.toConnection(pushed)?.name == "Renamed")
+        #expect(SyncRecordMapper.serverSSL(in: pushed)?.isMacPreferred == false)
+    }
+
     /// The block used to live only in memory, so a relaunch forgot it and the first run uploaded
     /// into a recreated zone without asking.
     @Test("Data removed from iCloud still waits for the person after a relaunch")

@@ -167,7 +167,7 @@ final class IOSSyncCoordinator {
     private func prepareFullUpload() {
         metadata.saveToken(nil)
         metadata.zoneState = .unknown
-        recordCache.removeAll()
+        dropRecordCache()
         markAllLocalDataDirty()
     }
 
@@ -214,7 +214,6 @@ final class IOSSyncCoordinator {
             Self.logger.info("Sync skipped: the library has not loaded")
             return
         }
-        await settleLegacySSLModes()
         let previousError = status.error
         let admission = SyncAdmission.decide(
             for: trigger,
@@ -286,7 +285,7 @@ final class IOSSyncCoordinator {
         /// The old zone's records went with it. Kept, their system fields would make every later
         /// save into a zone another device recreated fail as an unknown record.
         if nextZone == .removed, zone != .removed {
-            recordCache.removeAll()
+            dropRecordCache()
             metadata.saveToken(nil)
         }
         metadata.zoneState = nextZone
@@ -321,7 +320,7 @@ final class IOSSyncCoordinator {
         case .previousAccountUnknown:
             Self.logger.notice("An earlier build synced without recording its iCloud account, so sync starts over once")
         }
-        recordCache.removeAll()
+        dropRecordCache()
         lastSyncDate = metadata.lastSyncDate
         return true
     }
@@ -373,6 +372,7 @@ final class IOSSyncCoordinator {
         }
         recordCache.store(pulled.changedRecords)
         recordCache.remove(pulled.deletedRecordIDs)
+        settleLegacySSLModes()
 
         guard admission == .full else { return RunResult(admission: admission, failure: nil) }
         guard let pushFailure = await push(using: transport) else {
@@ -547,34 +547,28 @@ final class IOSSyncCoordinator {
 
     // MARK: - Apply
 
-    // A copy an older iOS build stored lost the Mac's Preferred, which only the cached server record still holds.
-    // A run can delete that cache (iCloud reset, account change) before anything pushes, so this goes first.
-    private func settleLegacySSLModes() async {
-        guard let connections = getCurrentState?()?.connections,
-              connections.contains(where: { $0.sslConfiguration?.isLegacyRequire == true }) else { return }
-        let zoneID = await currentTransport().currentZoneID
-        guard var settled = getCurrentState?()?.connections else { return }
+    // A copy an older iOS build stored lost the Mac's Preferred, which only the cached server record still holds: after a
+    // pull that record is the server's current one, and nothing fresher exists once the cache is about to go.
+    private func settleLegacySSLModes() {
+        guard var connections = getCurrentState?()?.connections else { return }
         var changed = false
-        for index in settled.indices {
-            guard let local = settled[index].sslConfiguration, local.isLegacyRequire else { continue }
-            let recordID = SyncRecordMapper.recordID(type: .connection, id: settled[index].id.uuidString, in: zoneID)
-            guard let cached = recordCache.record(for: recordID),
+        for index in connections.indices {
+            guard let local = connections[index].sslConfiguration, local.isLegacyRequire else { continue }
+            let recordName = SyncRecordType.connection.recordName(for: connections[index].id.uuidString)
+            guard let cached = recordCache.record(named: recordName),
                   let server = SyncRecordMapper.serverSSL(in: cached),
                   local.agrees(withServer: server) else { continue }
-            settled[index].sslConfiguration?.settleLegacyRequire(asMacPreferred: server.isMacPreferred)
+            connections[index].sslConfiguration?.settleLegacyRequire(asMacPreferred: server.isMacPreferred)
             changed = true
         }
         if changed {
-            onConnectionsChanged?(settled)
+            onConnectionsChanged?(connections)
         }
     }
 
-    private func applyRemoteChanges(_ remote: PullChanges) -> Bool {
-        guard let state = getCurrentState?() else { return false }
-        onConnectionsChanged?(mergeConnections(local: state.connections, remote: remote))
-        onGroupsChanged?(mergeGroups(local: state.groups, remote: remote))
-        onTagsChanged?(mergeTags(local: state.tags, remote: remote))
-        return true
+    private func dropRecordCache() {
+        settleLegacySSLModes()
+        recordCache.removeAll()
     }
 
     // MARK: - Push

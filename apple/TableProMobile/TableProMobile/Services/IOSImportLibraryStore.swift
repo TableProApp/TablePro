@@ -24,9 +24,7 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                     port: connection.port,
                     database: connection.database,
                     username: connection.username,
-                    redisDatabase: connection.type == .redis
-                        ? connection.additionalFields[RedisDatabaseIndex.fieldName].flatMap(RedisDatabaseIndex.parse)
-                        : nil,
+                    redisDatabase: ConnectionMatchKey.redisDatabase(in: connection.additionalFields),
                     socketPath: MySQLLocalSocket.path(in: connection.additionalFields)
                 )
             )
