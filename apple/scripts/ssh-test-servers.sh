@@ -7,9 +7,10 @@
 # scripts/lib/openssh-fixture.sh. Before a server's first start its /config gets a drop-in, the
 # authorized keys and, on the TOTP servers, the code secret: the image writes its own sshd_config
 # at init and includes the drop-in near the top, and sshd keeps the first value it reads. A drop-in
-# is ssh-test-servers/<variant>.conf followed by common.conf. The TOTP servers run an image built
-# from ssh-test-servers/totp.Dockerfile. Every server shares one Docker network with redis, the
-# query target behind each tunnel, and with hop2, which only the other servers reach. Neither is published.
+# is each ssh-test-servers/<variant>.conf a server names, then common.conf. The TOTP servers run an
+# image built from ssh-test-servers/totp.Dockerfile. Every server shares one Docker network with
+# redis, the query target behind each tunnel, and with hop2, which only the other servers reach.
+# Neither is published.
 #
 # Usage:
 #   ssh-test-servers.sh up [server...]   # start the servers, every one by default, and wait for each
@@ -19,7 +20,8 @@
 #   ssh-test-servers.sh start <server>   # start a killed server again and wait for its banner
 #   ssh-test-servers.sh env              # NAME=value lines for a runner to eval
 #
-# Servers: v10 v9 pq10 pq9 mac10 rsa256 rsa512 kbdpass passtotp keytotp totp maxauth hop1 hop2 loss.
+# Servers: v10 v9 pq10 pq9 mac10 rsa256 rsa512 kbdpass passtotp passtotp1 keytotp totp maxauth hop1
+# hop2 loss.
 # A bare up removes what an earlier up left and makes new keys; up with names restarts only those.
 # Ports run from TABLEPRO_SSH_TEST_PORT_BASE + 1 (default 22601). Keys live in TABLEPRO_SSH_TEST_DIR
 # (default $TMPDIR/tablepro-ssh-test-servers). decoy-1 to decoy-4 are keys no server accepts, for an
@@ -43,7 +45,7 @@ PASSWORD="tppass"
 KEY_PASSPHRASE="tp-key-pass"
 # The usual documentation example: it signs in to these throwaway servers and nowhere else.
 TOTP_SECRET="JBSWY3DPEHPK3PXP"
-SERVERS="v10 v9 pq10 pq9 mac10 rsa256 rsa512 kbdpass passtotp keytotp totp maxauth hop1 hop2 loss"
+SERVERS="v10 v9 pq10 pq9 mac10 rsa256 rsa512 kbdpass passtotp passtotp1 keytotp totp maxauth hop1 hop2 loss"
 AUTHORIZED_KEYS="ed25519 ed25519-pass rsa rsa-pass ecdsa ecdsa-pass rsa-pem rsa-pem-pass ecdsa-pem ecdsa-pem-pass sk-ed25519"
 DECOY_KEYS="decoy-1 decoy-2 decoy-3 decoy-4"
 
@@ -57,7 +59,7 @@ die() {
     exit 1
 }
 
-# image, port offset (- for unpublished), drop-in variant (- for none), PASSWORD_ACCESS.
+# image, port offset (- for unpublished), drop-in variants joined by + (- for none), PASSWORD_ACCESS.
 # PASSWORD_ACCESS=false keeps /etc/shadow from sshd, so on totp and keytotp only the code signs in.
 server_spec() {
     case "$1" in
@@ -70,6 +72,7 @@ server_spec() {
         rsa512) echo "10 7 rsa-sha2-512 true" ;;
         kbdpass) echo "10 8 kbdint-password true" ;;
         passtotp) echo "totp 9 password-totp true" ;;
+        passtotp1) echo "totp 15 password-totp+one-try true" ;;
         keytotp) echo "totp 10 publickey-totp false" ;;
         totp) echo "totp 11 totp false" ;;
         maxauth) echo "10 12 max-auth-tries true" ;;
@@ -151,11 +154,15 @@ make_keys() {
 }
 
 stage_server() {
-    local name="$1" image="$2" conf="$3" stage="$STATE_DIR/stage/$1" key
+    local name="$1" image="$2" conf="$3" stage="$STATE_DIR/stage/$1" key variant
     rm -rf "$stage"
     mkdir -p "$stage/sshd/sshd_config.d" "$stage/.ssh"
     {
-        [ "$conf" = "-" ] || cat "$FIXTURE_DIR/$conf.conf"
+        if [ "$conf" != "-" ]; then
+            for variant in ${conf//+/ }; do
+                cat "$FIXTURE_DIR/$variant.conf"
+            done
+        fi
         cat "$FIXTURE_DIR/common.conf"
     } > "$stage/sshd/sshd_config.d/tablepro.conf"
     for key in $AUTHORIZED_KEYS; do

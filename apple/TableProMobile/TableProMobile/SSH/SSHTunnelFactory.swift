@@ -173,9 +173,15 @@ nonisolated enum SSHTunnelFactory {
 
         switch target.role {
         case .jumpHost(let key):
-            try await authenticate(stages, username: target.username, key: key.source, passphrase: key.passphrase)
+            try await authenticate(
+                stages,
+                username: target.username,
+                key: key.source,
+                passphrase: key.passphrase,
+                then: nil
+            )
         case .sshServer:
-            try await authenticate(stages, config: config, credentials: credentials)
+            try await authenticate(stages, config: config, credentials: credentials, prompter: prompter)
         }
     }
 
@@ -191,9 +197,9 @@ nonisolated enum SSHTunnelFactory {
         } catch let error as SSHTunnelError {
             switch error {
             case .connectionFailed, .handshakeFailed, .authenticationFailed, .noAvailablePort,
-                 .channelOpenFailed, .tunnelClosed, .negotiationFailed, .authMethodUnsupported,
+                 .channelOpenFailed, .tunnelClosed, .negotiationFailed,
                  .securityKeyUnsupported, .passphraseRequired, .passphraseIncorrect,
-                 .additionalFactorRequired, .promptUnanswerable:
+                 .additionalFactorRequired, .promptUnanswerable, .verificationCodeRejected:
                 throw SSHTunnelError.jumpHostFailed(host: target.host, reason: error.localizedDescription)
             case .hostKeyRejected, .hostKeyUnverified, .usernameMissing, .jumpHostNeedsKey,
                  .jumpHostSharedKeyMissing, .jumpHostFailed, .jumpHostKeysUnreadable:
@@ -202,31 +208,51 @@ nonisolated enum SSHTunnelFactory {
         }
     }
 
+    // Every method but None is followed by keyboard-interactive, as on the Mac: a second factor, or a
+    // PAM server that takes the password that way.
     private static func authenticate<Stages: SSHTunnelStages>(
         _ stages: Stages,
         config: SSHConfiguration,
-        credentials: SSHTunnelCredentials
+        credentials: SSHTunnelCredentials,
+        prompter: (any ConnectionPrompter)?
     ) async throws {
+        func secondStep(password: String?) -> KeyboardInteractiveCredentials {
+            KeyboardInteractiveCredentials(
+                password: password,
+                config: config,
+                totpSecret: credentials.totpSecret,
+                prompter: prompter
+            )
+        }
+
         switch config.authMethod.onDevice {
         case .password:
             guard let password = credentials.password else {
                 throw SSHTunnelError.authenticationFailed("No SSH password provided")
             }
-            try await stages.authenticatePassword(username: config.username, password: password)
+            try await stages.authenticatePassword(
+                username: config.username,
+                password: password,
+                then: secondStep(password: password)
+            )
 
-        case .privateKey:
+        case .privateKey, .sshAgent:
             try await authenticate(
                 stages,
                 username: config.username,
                 key: credentials.privateKeySource(keyPath: config.privateKeyPath),
-                passphrase: credentials.keyPassphrase
+                passphrase: credentials.keyPassphrase,
+                then: secondStep(password: nil)
+            )
+
+        case .keyboardInteractive:
+            try await stages.authenticateKeyboardInteractive(
+                username: config.username,
+                with: secondStep(password: credentials.password)
             )
 
         case .none:
             try await stages.authenticateNone(username: config.username)
-
-        case .sshAgent, .keyboardInteractive:
-            throw SSHTunnelError.authMethodUnsupported(config.authMethod)
         }
     }
 
@@ -234,20 +260,23 @@ nonisolated enum SSHTunnelFactory {
         _ stages: Stages,
         username: String,
         key: SSHTunnelCredentials.PrivateKeySource,
-        passphrase: String?
+        passphrase: String?,
+        then secondStep: KeyboardInteractiveCredentials?
     ) async throws {
         switch key {
         case .inMemory(let keyContent):
             try await stages.authenticatePublicKeyFromMemory(
                 username: username,
                 keyContent: keyContent,
-                passphrase: passphrase
+                passphrase: passphrase,
+                then: secondStep
             )
         case .file(let keyPath):
             try await stages.authenticatePublicKey(
                 username: username,
                 keyPath: keyPath,
-                passphrase: passphrase
+                passphrase: passphrase,
+                then: secondStep
             )
         case .missing:
             throw SSHTunnelError.authenticationFailed("No private key provided")

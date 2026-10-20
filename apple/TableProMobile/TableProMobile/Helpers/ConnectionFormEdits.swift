@@ -10,6 +10,14 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         var username: String
     }
 
+    // Raw values in the Mac's spelling, as SSHConfiguration stores them.
+    nonisolated struct TOTPSettings: Equatable, Sendable {
+        var mode: String
+        var algorithm: String
+        var digits: Int
+        var period: Int
+    }
+
     nonisolated struct SSHTunnel: Equatable, Sendable {
         var host: String
         var port: Int?
@@ -17,6 +25,7 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         var authMethod: SSHConfiguration.SSHAuthMethod
         var privateKeyPath: String?
         var jumpHosts: [JumpHostEdit] = []
+        var totp: TOTPSettings?
     }
 
     nonisolated struct OracleOptions: Equatable, Sendable {
@@ -123,6 +132,12 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.username) { configuration.username = sshTunnel.username }
         if changed(\.authMethod) { configuration.authMethod = sshTunnel.authMethod }
         if changed(\.privateKeyPath) { configuration.privateKeyPath = sshTunnel.privateKeyPath }
+        if changed(\.totp), let totp = sshTunnel.totp {
+            configuration.totpMode = totp.mode
+            configuration.totpAlgorithm = totp.algorithm
+            configuration.totpDigits = totp.digits
+            configuration.totpPeriod = totp.period
+        }
         if changed(\.jumpHosts) {
             configuration.jumpHosts = Self.rebuiltJumpHosts(
                 sshTunnel.jumpHosts,

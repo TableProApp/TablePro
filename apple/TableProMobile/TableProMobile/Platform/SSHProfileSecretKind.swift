@@ -5,11 +5,13 @@ import Foundation
 nonisolated enum SSHProfileSecretKind: CaseIterable, Sendable {
     case password
     case keyPassphrase
+    case totpSecret
 
     var prefix: String {
         switch self {
         case .password: "com.TablePro.sshprofile.password."
         case .keyPassphrase: "com.TablePro.sshprofile.keypassphrase."
+        case .totpSecret: "com.TablePro.sshprofile.totpsecret."
         }
     }
 

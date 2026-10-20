@@ -28,6 +28,8 @@ final class AppState {
     }
 
     private(set) var sampleResetRevision = 0
+    // Bumped when a connection's SSH tunnel stops on its own, so its screen redials.
+    private(set) var tunnelDeaths: [UUID: Int] = [:]
     private var sessionRevisions: [UUID: Int] = [:]
     private var editorHolders: [UUID: Set<ObjectIdentifier>] = [:]
     let onboarding: OnboardingPreferences
@@ -96,6 +98,11 @@ final class AppState {
         }
         self.sessionRedialer = SessionRedialer(connectionManager: connectionManager)
         self.backgroundRelease = BackgroundReleaseCoordinator(connectionManager: connectionManager)
+        sshProvider.observeTunnelDeaths { [weak self] connectionId in
+            Task { @MainActor in
+                self?.tunnelDeaths[connectionId, default: 0] += 1
+            }
+        }
         connectionManager.observeSessionEnds { [weak self] id, driver in
             Task { @MainActor in
                 self?.sessionEnded(id, driver: driver)

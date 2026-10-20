@@ -682,6 +682,10 @@ internal enum LibSSH2TunnelFactory {
 
         do {
             try authenticator.authenticate(session: session, username: username)
+        } catch SSHTunnelError.authenticationFailed(reason: .agentRejected)
+            where transportClosed(socketFD, waitingMilliseconds: serverHangUpWaitMs) {
+            try attempt.check(for: endpoint)
+            throw SSHTunnelError.authenticationFailed(reason: .agentServerClosedConnection)
         } catch {
             do {
                 try attempt.check(for: endpoint)
@@ -694,6 +698,21 @@ internal enum LibSSH2TunnelFactory {
             throw error
         }
         try attempt.check(for: endpoint)
+    }
+
+    // The connection closes just after the server's DISCONNECT, which libssh2 has already read by the
+    // time sign-in gives up, so the check waits a moment for it.
+    private static let serverHangUpWaitMs: Int32 = 1_000
+
+    // libssh2 reports the server's MaxAuthTries hang-up as an ordinary refusal, so the socket says it.
+    internal static func transportClosed(_ socketFD: Int32, waitingMilliseconds: Int32 = 0) -> Bool {
+        var descriptor = pollfd(fd: socketFD, events: Int16(POLLIN), revents: 0)
+        guard poll(&descriptor, 1, waitingMilliseconds) > 0 else { return false }
+        if descriptor.revents & Int16(POLLHUP | POLLERR) != 0 { return true }
+        var byte: UInt8 = 0
+        let peeked = recv(socketFD, &byte, 1, MSG_PEEK | MSG_DONTWAIT)
+        // A reset (libssh2 wrote to the closed connection) reads as an error, not as end of stream.
+        return peeked == 0 || (peeked < 0 && errno != EAGAIN && errno != EINTR)
     }
 
     internal static func buildAuthenticator(
@@ -841,6 +860,12 @@ internal enum LibSSH2TunnelFactory {
 
         func authenticate(session: OpaquePointer, username: String) throws {
             let expandedPath = SSHPathUtilities.expandTilde(keyPath)
+
+            // libssh2 cannot sign with a security key file, and asking for a passphrase it does not have would mislead.
+            if let contents = try? String(contentsOfFile: expandedPath, encoding: .utf8),
+               SSHPrivateKeyTraits(openSSH: contents)?.isSecurityKey == true {
+                throw SSHTunnelError.authenticationFailed(reason: .securityKeyFile)
+            }
 
             // 1. Try with stored passphrase or nil (covers unencrypted keys + Keychain hits)
             let storedPassphrase = SSHPassphraseResolver.resolve(
@@ -1134,17 +1159,5 @@ internal enum LibSSH2TunnelFactory {
             throw SSHTunnelError.tunnelCreationFailed("Failed to listen on port \(port)")
         }
         return listenFD
-    }
-}
-
-// MARK: - TOTPAlgorithm Extension
-
-extension TOTPAlgorithm {
-    var toGeneratorAlgorithm: TOTPGenerator.Algorithm {
-        switch self {
-        case .sha1: return .sha1
-        case .sha256: return .sha256
-        case .sha512: return .sha512
-        }
     }
 }

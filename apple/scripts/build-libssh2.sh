@@ -18,10 +18,14 @@ set -eo pipefail
 #   - CMake (brew install cmake)
 #   - curl (for downloading source tarballs)
 
-LIBSSH2_VERSION="1.11.1"
+# A master snapshot, not a release: 1.11.1 is still the newest release, and only master has
+# mlkem768x25519-sha256 (it needs OpenSSL 3.5) and the fixes for CVE-2026-55199 and
+# CVE-2026-55200. Move to a release once one carries them.
+LIBSSH2_VERSION="1.11.2-dev.3209951db4e4"
+LIBSSH2_COMMIT="3209951db4e47ef902db047d12f9f464f835c27e"
 # shellcheck source=lib/macos.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/macos.sh"
-LIBSSH2_SHA256="d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7"
+LIBSSH2_SHA256="fe5bc1939d7dae5b35441084b88793e84d33ad23899bfa6113f1e51468fe76cc"
 
 ARCH="${1:-both}"
 make_build_dir
@@ -39,35 +43,12 @@ download_sources() {
     fetch_openssl
 
     if [ ! -f "$BUILD_DIR/libssh2-$LIBSSH2_VERSION.tar.gz" ]; then
-        curl -fSL "https://github.com/libssh2/libssh2/releases/download/libssh2-$LIBSSH2_VERSION/libssh2-$LIBSSH2_VERSION.tar.gz" \
+        curl -fSL "https://github.com/libssh2/libssh2/archive/$LIBSSH2_COMMIT.tar.gz" \
             -o "$BUILD_DIR/libssh2-$LIBSSH2_VERSION.tar.gz"
     fi
     echo "$LIBSSH2_SHA256  $BUILD_DIR/libssh2-$LIBSSH2_VERSION.tar.gz" | shasum -a 256 -c -
 
     echo "✅ Sources downloaded"
-}
-
-# libssh2 1.11.1 is the newest release and is still vulnerable to CVE-2026-55200 (CVSS 9.2):
-# ssh2_transport_read() enforces no upper bound on packet_length, so a malicious server can
-# overflow the heap before authentication. Upstream fixed it in 97acf3df with no release cut
-# since, so the fix rides as a patch on top of the pinned release tarball. Drop the patch once
-# a release contains it.
-#
-# Patches live in scripts/patches/<library>/ so each build applies only its own. A flat
-# directory would hand every patch to every library that calls this.
-apply_patches() {
-    local source_dir=$1
-    local library=$2
-    local patch_dir="$SCRIPT_DIR/patches/$library"
-    local patch
-
-    [ -d "$patch_dir" ] || return 0
-
-    for patch in "$patch_dir"/*.patch; do
-        [ -e "$patch" ] || continue
-        echo "🩹 Applying $(basename "$patch") to $library"
-        patch -p1 -d "$source_dir" -i "$patch"
-    done
 }
 
 build_libssh2() {
@@ -82,8 +63,6 @@ build_libssh2() {
     rm -rf "$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch"
     mkdir -p "$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch"
     tar xzf "$BUILD_DIR/libssh2-$LIBSSH2_VERSION.tar.gz" -C "$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch" --strip-components=1
-
-    apply_patches "$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch" libssh2
 
     local build_dir="$BUILD_DIR/libssh2-$LIBSSH2_VERSION-$arch/cmake-build"
     mkdir -p "$build_dir"

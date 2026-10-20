@@ -152,7 +152,8 @@ struct IOSImportLibraryStore: ImportLibraryStore {
         let secrets: [(ConnectionSecretKind, String?)] = [
             (.password, credentials.password),
             (.sshPassword, credentials.sshPassword),
-            (.keyPassphrase, credentials.keyPassphrase)
+            (.keyPassphrase, credentials.keyPassphrase),
+            (.totpSecret, credentials.totpSecret)
         ]
         for case let (kind, value?) in secrets {
             do {
@@ -229,7 +230,7 @@ nonisolated extension DatabaseConnection {
 
     private static func sshConfiguration(_ ssh: ExportableSSHConfig) -> SSHConfiguration? {
         guard ssh.enabled else { return nil }
-        return SSHConfiguration(
+        var configuration = SSHConfiguration(
             host: ssh.host,
             port: ssh.port,
             username: ssh.username,
@@ -245,6 +246,11 @@ nonisolated extension DatabaseConnection {
                 )
             }
         )
+        configuration.totpMode = ssh.totpMode
+        configuration.totpAlgorithm = ssh.totpAlgorithm
+        configuration.totpDigits = ssh.totpDigits
+        configuration.totpPeriod = ssh.totpPeriod
+        return configuration
     }
 
     private static func sshAuthMethod(_ raw: String) -> SSHConfiguration.SSHAuthMethod {

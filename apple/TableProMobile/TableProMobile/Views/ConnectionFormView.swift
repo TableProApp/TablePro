@@ -3,6 +3,7 @@ import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
 import TableProOracleCore
+import TableProSSHTransport
 import UniformTypeIdentifiers
 
 struct ConnectionFormView: View {
@@ -498,8 +499,8 @@ struct ConnectionFormView: View {
                     Picker("Auth Method", selection: $viewModel.sshAuthMethod) {
                         Text("Password").tag(SSHConfiguration.SSHAuthMethod.password)
                         Text("Private Key").tag(SSHConfiguration.SSHAuthMethod.privateKey)
+                        Text("Keyboard Interactive").tag(SSHConfiguration.SSHAuthMethod.keyboardInteractive)
                     }
-                    .pickerStyle(.segmented)
                 }
                 .disabled(viewModel.sshFollowsMacProfile)
             } header: {
@@ -523,12 +524,62 @@ struct ConnectionFormView: View {
                 }
             } else if viewModel.sshAuthMethod == .privateKey {
                 privateKeySection(viewModel: viewModel)
+            } else if viewModel.sshAuthMethod == .keyboardInteractive {
+                Section {
+                    SecureField("Password (optional)", text: $viewModel.sshPassword)
+                } header: {
+                    Text("SSH Password")
+                } footer: {
+                    Text("Answers the server's password prompt. TablePro asks you for anything else when you connect.")
+                }
+            }
+
+            if viewModel.offersTwoFactor {
+                twoFactorSection(viewModel: viewModel)
             }
 
             JumpHostsSection(viewModel: viewModel, isEditable: !viewModel.sshFollowsMacProfile) { pushedJumpHostId = $0 }
 
             if let route = viewModel.macRoute {
                 MacRouteSection(viewModel: viewModel, route: route)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func twoFactorSection(viewModel: ConnectionFormViewModel) -> some View {
+        @Bindable var viewModel = viewModel
+        Section {
+            Picker("TOTP", selection: $viewModel.totpMode) {
+                ForEach(TOTPMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            if viewModel.totpMode == .autoGenerate {
+                SecureField("TOTP Secret", text: $viewModel.totpSecret)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                Picker("Algorithm", selection: $viewModel.totpAlgorithm) {
+                    ForEach(TOTPAlgorithm.allCases) { algorithm in
+                        Text(verbatim: algorithm.rawValue).tag(algorithm)
+                    }
+                }
+                Picker("Digits", selection: $viewModel.totpDigits) {
+                    Text(verbatim: "6").tag(6)
+                    Text(verbatim: "8").tag(8)
+                }
+                Picker("Period", selection: $viewModel.totpPeriod) {
+                    Text("30 seconds").tag(30)
+                    Text("60 seconds").tag(60)
+                }
+            }
+        } header: {
+            Text("Two-Factor Authentication")
+        } footer: {
+            if viewModel.totpMode == .autoGenerate {
+                Text("The Base32 secret from your authenticator setup. TablePro enters the code when the server asks.")
+            } else {
+                Text("If the SSH server asks for a verification code, TablePro asks you for it when you connect.")
             }
         }
     }

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-use crate::{ErrorCategory, SshDestinationProblem};
+use crate::{ErrorCategory, SshAlgorithmKind, SshDestinationProblem};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[non_exhaustive]
@@ -60,6 +60,16 @@ pub enum SshFailure {
         methods: Vec<String>,
     },
 
+    #[error("{host} ended the login after too many authentication failures")]
+    TooManyAuthenticationFailures { host: String },
+
+    #[error("ssh and {host} have no {kind} in common; the server offers {}", .server_offer.join(", "))]
+    NoCommonAlgorithm {
+        host: String,
+        kind: SshAlgorithmKind,
+        server_offer: Vec<String>,
+    },
+
     #[error("the SSH prompt was cancelled")]
     InteractionCancelled,
 
@@ -80,6 +90,7 @@ impl SshFailure {
     pub fn category(&self) -> ErrorCategory {
         match self {
             Self::AuthenticationRejected { .. }
+            | Self::TooManyAuthenticationFailures { .. }
             | Self::InteractionCancelled
             | Self::HostKeyUnknown { .. }
             | Self::HostKeyChanged { .. }
@@ -89,7 +100,8 @@ impl SshFailure {
             | Self::InvalidDestination { .. }
             | Self::ConfigRejected { .. }
             | Self::ControlPathTooLong { .. }
-            | Self::RuntimeDirUnsafe { .. } => ErrorCategory::Configuration,
+            | Self::RuntimeDirUnsafe { .. }
+            | Self::NoCommonAlgorithm { .. } => ErrorCategory::Configuration,
             Self::ForwardRejected { .. } | Self::ChannelOpenFailed { .. } | Self::MasterExited { .. } => {
                 ErrorCategory::Network
             }
@@ -213,6 +225,34 @@ mod tests {
         for (failure, expected) in cases {
             assert_eq!(failure.category(), expected, "{failure:?}");
         }
+    }
+
+    #[test]
+    fn a_login_that_ran_out_of_tries_and_a_failed_negotiation_need_the_user() {
+        let too_many = SshFailure::TooManyAuthenticationFailures {
+            host: "bastion".to_owned(),
+        };
+        let no_common = SshFailure::NoCommonAlgorithm {
+            host: "bastion".to_owned(),
+            kind: SshAlgorithmKind::KeyExchange,
+            server_offer: vec!["mlkem768x25519-sha256".to_owned()],
+        };
+
+        assert_eq!(too_many.category(), ErrorCategory::Authentication);
+        assert_eq!(no_common.category(), ErrorCategory::Configuration);
+    }
+
+    #[test]
+    fn no_common_algorithm_names_the_kind_and_the_offer() {
+        let failure = SshFailure::NoCommonAlgorithm {
+            host: "203.0.113.5".to_owned(),
+            kind: SshAlgorithmKind::HostKey,
+            server_offer: vec!["ssh-rsa".to_owned(), "ssh-dss".to_owned()],
+        };
+        assert_eq!(
+            failure.to_string(),
+            "ssh and 203.0.113.5 have no host key type in common; the server offers ssh-rsa, ssh-dss"
+        );
     }
 
     #[test]

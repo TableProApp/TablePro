@@ -11,14 +11,16 @@ nonisolated struct SSHTunnelCredentials: Sendable, Equatable {
     let password: String?
     let keyPassphrase: String?
     let privateKey: String?
+    let totpSecret: String?
 
-    init(password: String? = nil, keyPassphrase: String? = nil, privateKey: String? = nil) {
+    init(password: String? = nil, keyPassphrase: String? = nil, privateKey: String? = nil, totpSecret: String? = nil) {
         self.password = Self.nonEmpty(password)
         self.keyPassphrase = Self.nonEmpty(keyPassphrase)
         self.privateKey = Self.nonEmpty(privateKey)
+        self.totpSecret = Self.nonEmpty(totpSecret)
     }
 
-    // A tunnel that follows a Mac SSH profile signs in with the profile's password, which iCloud
+    // A tunnel that follows a Mac SSH profile signs in with the profile's password and TOTP secret, which iCloud
     // Keychain brings under the profile's id. A passphrase belongs to the key, and the key here is
     // this device's copy, so its own passphrase comes first.
     init(connectionId: UUID, sshProfileId: UUID? = nil, secureStore: any SecureStore) {
@@ -27,7 +29,9 @@ nonisolated struct SSHTunnelCredentials: Sendable, Equatable {
                 ?? Self.secret(.sshPassword, for: connectionId, in: secureStore),
             keyPassphrase: Self.secret(.keyPassphrase, for: connectionId, in: secureStore)
                 ?? sshProfileId.flatMap { Self.secret(.keyPassphrase, ofProfile: $0, in: secureStore) },
-            privateKey: Self.secret(.sshPrivateKey, for: connectionId, in: secureStore)
+            privateKey: Self.secret(.sshPrivateKey, for: connectionId, in: secureStore),
+            totpSecret: sshProfileId.flatMap { Self.secret(.totpSecret, ofProfile: $0, in: secureStore) }
+                ?? Self.secret(.totpSecret, for: connectionId, in: secureStore)
         )
     }
 

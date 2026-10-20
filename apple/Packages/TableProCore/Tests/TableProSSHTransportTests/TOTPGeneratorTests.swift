@@ -6,7 +6,7 @@ import Foundation
 
 import Testing
 
-@testable import TableProSSHConfig
+@testable import TableProSSHTransport
 
 struct TOTPGeneratorTests {
     // MARK: - RFC 6238 SHA1 Test Vectors (8 digits)
@@ -177,6 +177,13 @@ struct TOTPGeneratorTests {
     func testFromBase32SecretInvalidOrEmpty(_ secret: String) {
         let generator = TOTPGenerator.fromBase32Secret(secret)
         #expect(generator == nil)
+    }
+
+    @Test("Digits or a period no authenticator uses give no generator instead of a trap", arguments: [
+        (6, 0), (6, -30), (5, 30), (9, 30), (10, 30), (-1, 30),
+    ])
+    func unsupportedSettingsAreRefused(digits: Int, period: Int) {
+        #expect(TOTPGenerator.fromBase32Secret("GEZDGNBVGY3TQOJQ", digits: digits, period: period) == nil)
     }
 
     // MARK: - Default Parameters

@@ -64,18 +64,14 @@ struct SSHTunnelErrorClassifierTests {
         #expect(ErrorClassifier.sshTunnelFailure(error) == nil)
     }
 
-    @Test("An auth method iOS cannot use is named and points to the Mac")
-    func unsupportedMethodPointsToTheMac() {
-        let error = ErrorClassifier.classify(
-            SSHTunnelError.authMethodUnsupported(.keyboardInteractive),
-            context: Self.context
-        )
+    @Test("A refused verification code says so and points to the secret and the clock")
+    func refusedCodeIsNamed() {
+        let error = ErrorClassifier.classify(SSHTunnelError.verificationCodeRejected, context: Self.context)
 
-        #expect(error.category == .config)
-        #expect(error.title == String(localized: "SSH Sign-In Unavailable"))
-        #expect(error.message.contains(String(localized: "Keyboard Interactive")))
+        #expect(error.category == .auth)
+        #expect(error.message == String(localized: "The SSH server did not accept the verification code."))
         #expect(error.recovery == String(
-            localized: "Open this connection in TablePro on the Mac, or edit it and choose Password or Private Key."
+            localized: "Check the connection's TOTP secret, and that this device sets its clock automatically."
         ))
     }
 
@@ -89,16 +85,22 @@ struct SSHTunnelErrorClassifierTests {
         ))
     }
 
-    @Test(
-        "A second sign-in step is not read as a wrong credential",
-        arguments: [SSHTunnelError.additionalFactorRequired(["keyboard-interactive"]), .promptUnanswerable("Verification code:")]
-    )
-    func secondStepPointsToTheMac(error tunnelError: SSHTunnelError) {
-        let error = ErrorClassifier.classify(tunnelError, context: Self.context)
+    @Test("A second sign-in step TablePro has nothing for is not read as a wrong credential")
+    func secondStepPointsToTheMac() {
+        let error = ErrorClassifier.classify(SSHTunnelError.additionalFactorRequired(["publickey"]), context: Self.context)
 
         #expect(error.category == .config)
         #expect(error.title == String(localized: "SSH Sign-In Unavailable"))
         #expect(error.recovery == String(localized: "Open this connection in TablePro on the Mac, which can answer this sign-in step."))
+    }
+
+    @Test("A question nobody was there to answer points to connecting from the app")
+    func unansweredQuestionPointsToTheApp() {
+        let error = ErrorClassifier.classify(SSHTunnelError.promptUnanswerable("Verification code:"), context: Self.context)
+
+        #expect(error.category == .config)
+        #expect(error.title == String(localized: "SSH Sign-In Unavailable"))
+        #expect(error.recovery == String(localized: "Open this connection in TablePro and connect from there to answer the question."))
     }
 
     @Test("A missing passphrase names the key's passphrase")
