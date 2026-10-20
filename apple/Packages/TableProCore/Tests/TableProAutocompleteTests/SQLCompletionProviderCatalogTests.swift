@@ -144,4 +144,18 @@ struct SQLCompletionProviderCatalogTests {
         #expect(session.items.first { $0.label == "c.id" }?.isQualifiedReference == true)
         #expect(session.items.first { $0.label == "order.total" }?.isQualifiedReference == false)
     }
+
+    @Test("A function the engine writes bare inserts with no parentheses")
+    func bareFunctionHasNoParentheses() async {
+        let provider = SQLCompletionProvider(
+            catalog: StubCatalog(tables: ["orders"], columns: [:]),
+            grammar: .engine("Oracle"),
+            vocabulary: .curated(forDatabaseTypeId: "Oracle")
+        )
+        let text = "SELECT SYS"
+        let session = await provider.completionSession(text: text, cursorPosition: (text as NSString).length)
+
+        #expect(session.items.first { $0.label == "SYSDATE" }?.insertText == "SYSDATE")
+        #expect(session.items.first { $0.label == "SYS_GUID" }?.insertText == "SYS_GUID()")
+    }
 }

@@ -3,6 +3,10 @@ import Foundation
 public extension SQLEngineVocabulary {
     static let postgreSQL = SQLEngineVocabulary(
         functions: PostgreSQLLists.functions,
+        bareFunctions: [
+            "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP", "LOCALTIME", "LOCALTIMESTAMP", "CURRENT_CATALOG",
+            "CURRENT_ROLE", "CURRENT_SCHEMA", "CURRENT_USER", "SESSION_USER", "SYSTEM_USER", "USER"
+        ],
         dataTypes: PostgreSQLLists.dataTypes,
         tableOptions: ["INHERITS", "PARTITION BY", "TABLESPACE", "WITH", "WITHOUT OIDS"],
         operators: PostgreSQLLists.operators

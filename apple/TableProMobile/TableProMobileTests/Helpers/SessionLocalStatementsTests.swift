@@ -72,6 +72,14 @@ struct SessionLocalStatementsTests {
         #expect(!plain.leavesCatalog)
     }
 
+    @Test("A statement inside a MySQL executable comment may make a temporary table, so it leaves the catalog")
+    func executableCommentLeavesTheCatalog() {
+        let effect = SessionLocalStatements.effect(
+            of: ["/*!50000 CREATE TEMPORARY TABLE orders (draft_note INT) */"], databaseType: .mysql
+        )
+        #expect(effect.leavesCatalog)
+    }
+
     @Test("A role or a search path set on the session leaves the catalog connection behind")
     func sessionContextLeavesTheCatalog() {
         for statement in [

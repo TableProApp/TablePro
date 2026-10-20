@@ -34,6 +34,7 @@ public extension SQLEngineVocabulary {
             "GREATEST", "LEAST", "CAST",
             "SYS_GUID", "DBMS_RANDOM.VALUE", "USER", "SYS_CONTEXT"
         ],
+        bareFunctions: ["SYSDATE", "SYSTIMESTAMP", "CURRENT_DATE", "CURRENT_TIMESTAMP", "USER"],
         dataTypes: Set(oracleDataTypeCategories.flatMap(\.types)),
         tableOptions: [
             "TABLESPACE", "PCTFREE", "INITRANS"

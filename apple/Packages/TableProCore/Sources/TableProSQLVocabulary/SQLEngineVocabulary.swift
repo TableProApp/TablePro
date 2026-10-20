@@ -27,6 +27,8 @@ public struct SQLEngineVocabulary: Sendable, Hashable {
     }
 
     public let functions: Set<String>
+    // Written with no parentheses: `SYSDATE()` is an error on Oracle, `CURRENT_DATE()` on PostgreSQL.
+    public let bareFunctions: Set<String>
     public let functionNamesAreCaseInsensitive: Bool
     public let dataTypes: Set<String>
     public let tableOptions: [String]
@@ -34,12 +36,14 @@ public struct SQLEngineVocabulary: Sendable, Hashable {
 
     public init(
         functions: Set<String>,
+        bareFunctions: Set<String> = [],
         functionNamesAreCaseInsensitive: Bool = true,
         dataTypes: Set<String>,
         tableOptions: [String] = [],
         operators: [Operator] = []
     ) {
         self.functions = functions
+        self.bareFunctions = bareFunctions
         self.functionNamesAreCaseInsensitive = functionNamesAreCaseInsensitive
         self.dataTypes = dataTypes
         self.tableOptions = tableOptions

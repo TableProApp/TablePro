@@ -16,6 +16,7 @@ public extension SQLEngineVocabulary {
             "GLOB", "STRUCT_PACK", "LIST_VALUE", "MAP", "UNNEST",
             "GENERATE_SERIES", "RANGE"
         ],
+        bareFunctions: ["CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP"],
         dataTypes: [
             "INTEGER", "BIGINT", "HUGEINT", "UHUGEINT",
             "DOUBLE", "FLOAT", "DECIMAL",

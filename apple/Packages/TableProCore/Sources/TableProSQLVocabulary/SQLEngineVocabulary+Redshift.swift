@@ -13,6 +13,7 @@ public extension SQLEngineVocabulary {
             "CAST", "TO_NUMBER", "TO_TIMESTAMP",
             "JSON_BUILD_OBJECT", "JSON_AGG", "JSONB_BUILD_OBJECT"
         ],
+        bareFunctions: ["CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP"],
         dataTypes: [
             "INTEGER", "INT", "SMALLINT", "BIGINT", "SERIAL", "BIGSERIAL", "SMALLSERIAL",
             "DECIMAL", "NUMERIC", "REAL", "DOUBLE", "PRECISION",

@@ -108,7 +108,8 @@ public final class SQLCompletionProvider {
                 vocabulary.functionNamesAreCaseInsensitive ? .caseInsensitive : .fixed
             var seen = Set(items.map { $0.label.uppercased() })
             for name in vocabulary.functions.sorted() where seen.insert(name.uppercased()).inserted {
-                items.append(SQLCompletionItem.function(name, signature: "\(name)(…)", caseFolding: folding))
+                let signature = vocabulary.bareFunctions.contains(name.uppercased()) ? name : "\(name)(…)"
+                items.append(SQLCompletionItem.function(name, signature: signature, caseFolding: folding))
             }
         }
         cachedFunctionItems = items

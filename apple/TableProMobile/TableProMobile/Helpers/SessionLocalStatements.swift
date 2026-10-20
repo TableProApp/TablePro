@@ -49,8 +49,10 @@ nonisolated enum SessionLocalStatements {
                 effect.temporaryTables.insert(name)
             }
             let range = NSRange(location: 0, length: (code as NSString).length)
+            // A MySQL executable comment can hide any statement, a temporary table among them, from the patterns.
             if usePattern?.firstMatch(in: code, range: range) != nil
                 || contextPattern?.firstMatch(in: code, range: range) != nil
+                || SQLLeadingComments.conditionalCommentOpeners.contains { code.contains($0) }
                 || SQLCatalogEffectClassifier.effect(of: statement, grammar: grammar).runsUnseenStatements {
                 effect.leavesCatalog = true
             }

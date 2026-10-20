@@ -275,7 +275,8 @@ public extension SQLCompletionItem {
         documentation: String? = nil,
         caseFolding: SQLCompletionCaseFolding = .caseInsensitive
     ) -> SQLCompletionItem {
-        let insertText = signature != nil ? "\(name)()" : name
+        // A signature with no parentheses, such as CURRENT_TIMESTAMP, is written bare.
+        let insertText = signature?.contains("(") == true ? "\(name)()" : name
         return SQLCompletionItem(
             label: name,
             kind: .function,
