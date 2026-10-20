@@ -8,6 +8,7 @@ use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 use tablepro_session::{ConnectAttempts, SessionKey};
 
+use super::connections::LevelSave;
 use super::crash_notice::CrashNotice;
 use super::locate_file::LocateChooser;
 use super::picker_page::PickerPage;
@@ -48,6 +49,11 @@ pub struct SessionWindow {
     pub(super) inhibitor: RefCell<Option<WindowInhibitor>>,
     pub(super) dirty: Cell<bool>,
     pub(super) saving: Cell<bool>,
+    /// A Safe Mode level is being written to the saved connection.
+    pub(super) level_saving: Cell<bool>,
+    /// The newest level chosen while one was being written, which goes
+    /// next so the last choice is the one that stays.
+    pub(super) level_next: Cell<Option<LevelSave>>,
     pub(super) welcome: RefCell<Option<WelcomeView>>,
     /// Shows the banner while the shared connection list cannot be read.
     pub(super) list_observer: Cell<Option<StateObserverId>>,

@@ -4,7 +4,7 @@ use secrecy::{ExposeSecret, SecretString};
 use tablepro_core::credentials::{SecretKind, SecretSave};
 use tablepro_core::{
     AuthMode, ClientIdentity, ConfigError, Credentials, DriverCapabilities, FileEndpoint, NetworkEndpoint,
-    ServerNameOverride, TlsCapabilities, TlsConfig, TlsMode, TransportClass,
+    SafeModeLevel, ServerNameOverride, TlsCapabilities, TlsConfig, TlsMode, TransportClass,
 };
 use tablepro_session::RequestTarget;
 use tablepro_storage::{SavedConnection, SavedSshAuth, SavedSshConfig};
@@ -127,7 +127,7 @@ pub struct ConnectForm {
     pub password: SecretString,
     pub remember_password: bool,
     pub tls: TlsFormState,
-    pub read_only: bool,
+    pub safe_mode: SafeModeLevel,
     pub ssh: Option<SshFormState>,
     pub file: Option<FileEndpoint>,
 }
@@ -153,7 +153,7 @@ impl ConnectForm {
             password: SecretString::from(String::new()),
             remember_password: true,
             tls: TlsFormState::new(caps.tls.as_ref()),
-            read_only: false,
+            safe_mode: SafeModeLevel::Off,
             ssh: None,
             file: None,
         }
@@ -165,7 +165,7 @@ impl ConnectForm {
     /// following the host and user.
     pub fn from_saved(saved: &SavedConnection, caps: &DriverCapabilities) -> Self {
         let mut form = Self::new(&saved.driver_id, caps);
-        form.read_only = saved.read_only;
+        form.safe_mode = saved.safe_mode;
         if caps.is_file_based() {
             form.file = FileEndpoint::open_existing(PathBuf::from(&saved.database)).ok();
         } else {
@@ -387,7 +387,7 @@ impl ConnectForm {
             database,
             username,
             tls,
-            read_only: self.read_only,
+            safe_mode: self.safe_mode,
             auth_mode,
             ssh: valid.ssh.as_ref().map(|(saved, _)| saved.clone()),
             last_opened_at: existing.and_then(|saved| saved.last_opened_at),
@@ -931,7 +931,7 @@ mod tests {
     fn connect_form_from_saved_prefills_without_secrets() {
         let mut typed = filled("postgres", postgres());
         typed.name = "Shop".to_owned();
-        typed.read_only = true;
+        typed.safe_mode = SafeModeLevel::ConfirmWrites;
         let saved = saved_from(&typed, postgres());
 
         let form = ConnectForm::from_saved(&saved, postgres());
@@ -940,7 +940,7 @@ mod tests {
         assert_eq!(form.host, "db.example.com");
         assert_eq!(form.database, "sales");
         assert_eq!(form.username, "app");
-        assert!(form.read_only);
+        assert_eq!(form.safe_mode, SafeModeLevel::ConfirmWrites);
         assert_eq!(form.password.expose_secret(), "", "a secret reached the form");
     }
 

@@ -7,8 +7,8 @@ use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::text_offsets::CharCounter;
 use tablepro_core::sql_syntax::script::{BatchErrorPolicy, LexicalSettings, ScriptDiagnostic, ScriptPlan};
 use tablepro_core::{
-    EditorSession, EditorSessionState, ResultEvent, ResultSink, RowLimit, RunOptions, SinkFlow, TransactionState,
-    UserSql,
+    DriverError, EditorSession, EditorSessionState, ReadOnlyRefusal, ResultEvent, ResultSink, RowLimit, RunOptions,
+    SinkFlow, TransactionState, UserSql,
 };
 use tablepro_session::{MonitorSignal, Session};
 use tokio::sync::mpsc;
@@ -27,6 +27,8 @@ pub struct RunBatch {
     pub repeat: u32,
     /// Where the batch starts in the buffer, in characters.
     pub error_base: usize,
+    /// Safe Mode is Read-Only and the batch writes, so it is not sent.
+    pub refused: bool,
 }
 
 /// Rows one run keeps across all its results. `row_limit` bounds each
@@ -80,6 +82,7 @@ pub fn plan_batches(
                 text: text.to_owned(),
                 repeat: batch.repeat.get(),
                 error_base: scoped.base_char + chars.char_at(batch.range.start),
+                refused: false,
             })
         })
         .collect();
@@ -134,6 +137,15 @@ pub async fn run_batches(
     };
     let mut kept: u64 = 0;
     'batches: for (index, batch) in run.batches.iter().enumerate() {
+        if batch.refused {
+            if events.send(RunEvent::Batch(refusal(index))).await.is_err() {
+                return after;
+            }
+            if !continues(Verdict::Failed, run.policy) {
+                break;
+            }
+            continue;
+        }
         for _ in 0..batch.repeat.max(1) {
             if cancel.is_cancelled() {
                 break 'batches;
@@ -201,6 +213,17 @@ pub async fn run_in_tab(
     cancel: CancellationToken,
     events: mpsc::Sender<RunEvent>,
 ) {
+    // Nothing would be sent, so no connection is opened for it.
+    if run.batches.iter().all(|batch| batch.refused) {
+        for (index, _) in run.batches.iter().enumerate() {
+            let _ = events.send(RunEvent::Batch(refusal(index))).await;
+            if !continues(Verdict::Failed, run.policy) {
+                break;
+            }
+        }
+        let _ = events.send(RunEvent::Finished).await;
+        return;
+    }
     let editor = match slot
         .acquire(&session, run.statement_timeout, close_timeout, &cancel)
         .await
@@ -233,6 +256,22 @@ pub async fn run_in_tab(
     let refuse_next = transaction_open(after.transaction) && !after.rollback_told;
     if slot.forget(&editor, refuse_next) {
         close_quietly(editor, close_timeout).await;
+    }
+}
+
+/// A batch Safe Mode kept from the server, which fails the way a write
+/// the server refused would.
+fn refusal(batch: usize) -> BatchReport {
+    BatchReport {
+        batch,
+        entries: vec![EntryKind::Failed {
+            message: crate::ui::error_text::driver_message(&DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard)),
+            error_char: None,
+        }],
+        verdict: Verdict::Failed,
+        transaction: None,
+        lost: false,
+        elapsed_ms: 0,
     }
 }
 

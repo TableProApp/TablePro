@@ -13,7 +13,7 @@ use libadwaita as adw;
 use super::Workspace;
 use super::tab_factory::TabFactory;
 use crate::ui::a11y::describe_icon_button;
-use crate::ui::shell::{TAB_OVERVIEW_MENU, app_menu, primary_menu_button};
+use crate::ui::shell::{PRIMARY_MENU, TAB_OVERVIEW_MENU, app_menu, primary_menu_button};
 
 /// The window action that shows and hides the sidebar, as GNOME Files
 /// names it.
@@ -73,7 +73,11 @@ pub(super) fn install(
 ) -> ShellHandles {
     let imp = workspace.imp();
     let app = window.application();
-    imp.sidebar_header.pack_end(&primary_menu_button(app.as_ref()));
+    let menu_button = primary_menu_button(app.as_ref());
+    if let Some(menu) = app_menu(app.as_ref(), PRIMARY_MENU) {
+        menu_button.set_menu_model(Some(&with_safe_mode(&menu)));
+    }
+    imp.sidebar_header.pack_end(&menu_button);
 
     window.add_action(&gio::PropertyAction::new(
         SHOW_SIDEBAR,
@@ -100,6 +104,26 @@ pub(super) fn install(
         create_tab: Some(create_tab),
         sidebar_toggle: Some(sidebar_toggle),
     }
+}
+
+/// The main menu with the session's Safe Mode levels on top, as radio
+/// items of the window's stateful `safe-mode` action.
+fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
+    let levels = gio::Menu::new();
+    for level in tablepro_core::SafeModeLevel::ALL {
+        let item = gio::MenuItem::new(Some(&crate::ui::safe_mode::label(level)), None);
+        item.set_action_and_target_value(
+            Some("win.safe-mode"),
+            Some(&crate::ui::safe_mode::action_target(level).to_variant()),
+        );
+        levels.append_item(&item);
+    }
+    let section = gio::Menu::new();
+    section.append_submenu(Some(&crate::i18n::gettext("Safe Mode")), &levels);
+    let whole = gio::Menu::new();
+    whole.append_section(None, &section);
+    whole.append_section(None, menu);
+    whole
 }
 
 /// The toggle shows only while the sidebar is out of view: collapsed
