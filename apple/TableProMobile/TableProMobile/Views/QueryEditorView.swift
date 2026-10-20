@@ -67,6 +67,7 @@ struct QueryEditorView: View {
             temporaryTables: appState.catalogChanges.temporaryTables(
                 for: connectionId, driver: session.map { ObjectIdentifier($0.driver) }
             ),
+            catalogRevision: appState.catalogChanges.generation(for: connectionId),
             isRunning: isExecuting
         )
     }
@@ -822,8 +823,8 @@ struct QueryEditorView: View {
         ).execution
         let effect = SQLCatalogEffectClassifier.effect(ofStatements: script.units.map(\.sql), grammar: grammar)
         var kinds = effect.kinds
-        // A catalog connection sees DDL the transaction ran only once it commits.
-        if effect.endsTransaction { kinds.insert(.tables) }
+        // A commit shows the transaction's DDL to the catalog connection, a rollback takes it back from the session.
+        if effect.endsTransaction { kinds.formUnion([.tables, .schemas, .databases]) }
         coordinator.noteCatalogChanged(kinds)
     }
 

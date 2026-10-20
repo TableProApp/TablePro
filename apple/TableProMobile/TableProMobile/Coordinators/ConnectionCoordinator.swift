@@ -468,7 +468,7 @@ final class ConnectionCoordinator {
         }
         await reloadMetadataIfReleased()
         // A catalog connection sees DDL the transaction ran only once it commits.
-        noteCatalogChanged(.tables)
+        noteCatalogChanged([.tables, .schemas, .databases])
     }
 
     func rollBackTransaction(as token: SessionTransactionMonitor.HoldToken) async throws {
@@ -479,6 +479,8 @@ final class ConnectionCoordinator {
             throw error
         }
         await reloadMetadataIfReleased()
+        // The lists may show a schema or a database the rolled-back transaction created.
+        noteCatalogChanged([.schemas, .databases])
     }
 
     func refreshTransaction() async {

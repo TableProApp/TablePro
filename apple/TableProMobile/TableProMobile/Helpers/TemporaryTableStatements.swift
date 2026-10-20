@@ -13,16 +13,17 @@ nonisolated enum TemporaryTableStatements {
     private static let qualified = #"(?:"# + identifier + #"\s*\.\s*)?"# + identifier
 
     private static let createPattern = try? NSRegularExpression(
-        pattern: #"^\s*CREATE\s+(?:GLOBAL\s+|LOCAL\s+)?TEMP(?:ORARY)?\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"#,
+        pattern: #"^\s*CREATE\s+(?:GLOBAL\s+|LOCAL\s+)?TEMP(?:ORARY)?\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?(?=\s)"#,
         options: [.caseInsensitive]
     )
 
     private static let dropPattern = try? NSRegularExpression(
-        pattern: #"^\s*DROP\s+(?:TEMPORARY\s+)?TABLE\s+(?:IF\s+EXISTS\s+)?"#,
+        pattern: #"^\s*DROP\s+(?:TEMPORARY\s+)?TABLE(?:\s+IF\s+EXISTS)?(?=\s)"#,
         options: [.caseInsensitive]
     )
 
-    private static let namePattern = try? NSRegularExpression(pattern: #"^"# + qualified)
+    // The keyword match stops before the blank the projection put where a quoted name was.
+    private static let namePattern = try? NSRegularExpression(pattern: #"^\s+"# + qualified)
 
     static func change(in statements: [String], databaseType: DatabaseType) -> Change {
         let grammar = SQLLexicalReadings.resolve(

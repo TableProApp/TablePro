@@ -15,6 +15,7 @@ nonisolated struct QueryCompletionScope: Equatable, Sendable {
     var schemas: [String] = []
     var databases: [String] = []
     var temporaryTables: Set<String> = []
+    var catalogRevision = 0
     let isRunning: Bool
 }
 
@@ -105,6 +106,10 @@ final class QueryCompletionController {
                     await catalog.replaceTables(tables)
                     await catalog.markColumnsStale()
                 }
+            }
+            // Another window's DDL can change a schema this one cached without changing its own table list.
+            if previous.catalogRevision != newScope.catalogRevision, !tablesChanged {
+                enqueue { await catalog.markColumnsStale() }
             }
             if previous.temporaryTables != newScope.temporaryTables {
                 let names = newScope.temporaryTables
