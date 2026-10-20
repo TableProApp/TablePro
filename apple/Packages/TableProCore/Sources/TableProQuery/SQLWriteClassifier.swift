@@ -31,7 +31,9 @@ public enum SQLWriteClassifier {
     ]
 
     public static func isWriteQuery(_ sql: String, databaseType: DatabaseType) -> Bool {
-        if databaseType == .redis { return redisWrites(sql) }
+        if databaseType == .redis {
+            return RedisCommandSplitter.commands(in: sql).contains { redisWrites($0.text) }
+        }
         let readings = SQLLexicalReadings.resolve(databaseTypeId: databaseType.rawValue, declared: nil, session: nil)
         return readings.distinct(for: sql).contains { grammar in
             SQLStatementScanner.executableStatements(in: sql, grammar: grammar).contains { statement in
@@ -55,8 +57,6 @@ public enum SQLWriteClassifier {
         return !readKeywords.contains(keyword)
     }
 
-    /// Redis speaks commands, not SQL, so the SQL path would call every `GET` a write. The read set
-    /// is the one QueryClassifier.swift:436-451 already curates for the Mac.
     private static func redisWrites(_ command: String) -> Bool {
         let verb = strippingLeadingTrivia(command)
             .prefix { !$0.isWhitespace }

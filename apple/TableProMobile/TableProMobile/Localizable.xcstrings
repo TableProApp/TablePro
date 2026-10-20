@@ -14934,6 +14934,9 @@
         }
       }
     },
+    "Run All Statements" : {
+
+    },
     "Run queries and find the ones you ran before in History." : {
       "localizations" : {
         "ko" : {
@@ -14961,6 +14964,12 @@
           }
         }
       }
+    },
+    "Run Selection" : {
+
+    },
+    "Run Statement" : {
+
     },
     "Running" : {
       "localizations" : {
@@ -15023,6 +15032,9 @@
       }
     },
     "Running statement %1$d of %2$d" : {
+
+    },
+    "Runs the statement at the cursor, or the selected text." : {
 
     },
     "Safe Mode" : {
@@ -18428,6 +18440,9 @@
         }
       }
     },
+    "The cursor is not in a statement." : {
+
+    },
     "The data could not be read: %@" : {
       "localizations" : {
         "ko" : {
@@ -21022,6 +21037,9 @@
           }
         }
       }
+    },
+    "unbalanced quotes" : {
+
     },
     "Unfavorite" : {
       "localizations" : {

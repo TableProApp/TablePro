@@ -106,6 +106,7 @@ struct QueryScriptTests {
             ("SELECT ';'; DROP TABLE t", .postgresql, false),
             ("SELECT 1 -- ;\n; UPDATE t SET a = 1", .mysql, false),
             ("SELECT 1\nGO\nDELETE FROM t", .mssql, true),
+            ("GET a\nDEL b", .redis, false),
             (Self.issue3399, .sqlite, false),
         ]
         for (text, type, batches) in scripts {
@@ -151,9 +152,23 @@ struct QueryScriptTests {
         #expect(QueryScript(units: script.units, unitKind: .statement).replanned(after: 0, session: noEscapes) == nil)
     }
 
-    @Test("Redis text is one command, as its driver reads it")
-    func redisIsOneCommand() {
-        #expect(plan("  SET k \"a;b\"; GET k \n", .redis).units == [QueryScript.Unit(sql: "SET k \"a;b\"; GET k")])
+    @Test("Redis text runs one command per line or per semicolon, a quoted value kept whole")
+    func redisSplitsIntoCommands() {
+        #expect(plan("RPUSH jobs a\nRPUSH jobs b", .redis).units == [
+            QueryScript.Unit(sql: "RPUSH jobs a"), QueryScript.Unit(sql: "RPUSH jobs b"),
+        ])
+        #expect(plan("  SET k \"a;b\"; GET k \n", .redis).units == [
+            QueryScript.Unit(sql: "SET k \"a;b\""), QueryScript.Unit(sql: "GET k"),
+        ])
+        #expect(plan("SET k \"a\nb\"", .redis).units == [QueryScript.Unit(sql: "SET k \"a\nb\"")])
         #expect(plan(" \n ", .redis).isEmpty)
+    }
+
+    @Test("Trimming a Redis text keeps a blank its backslash escapes")
+    func redisTrimKeepsAnEscapedBlank() {
+        #expect(QueryScript.trimmed("DEL victim\\ ", databaseType: .redis) == "DEL victim\\ ")
+        #expect(QueryScript.trimmed(" \nDEL victim\\ ; GET other \n", databaseType: .redis) == "DEL victim\\ ; GET other")
+        #expect(QueryScript.trimmed(" \n ; ", databaseType: .redis).isEmpty)
+        #expect(QueryScript.trimmed(" \nSELECT 1; \n", databaseType: .sqlite) == "SELECT 1;")
     }
 }
