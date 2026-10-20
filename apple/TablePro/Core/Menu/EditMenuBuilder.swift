@@ -177,6 +177,13 @@ enum EditMenuBuilder {
                 action: #selector(SetValueCommandResponding.generateUUIDv7(_:)),
                 shortcut: .generateUUIDv7,
                 keyboard: keyboard
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Set Cells to Value…"),
+                action: #selector(SetValueCommandResponding.setCellsToValue(_:)),
+                shortcut: .setCellsToValue,
+                keyboard: keyboard
             )
         ])
     }
@@ -270,10 +277,6 @@ enum EditMenuBuilder {
             MenuItemFactory.item(
                 String(localized: "Fill Down"),
                 action: #selector(DataFileSplitViewController.dataFileFillDown(_:))
-            ),
-            MenuItemFactory.item(
-                String(localized: "Set Cells to Value…"),
-                action: #selector(DataFileSplitViewController.dataFileSetCellsToValue(_:))
             ),
             MenuItemFactory.item(
                 String(localized: "Trim Whitespace"),

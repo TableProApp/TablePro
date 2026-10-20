@@ -112,6 +112,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case setValueDefault
     case generateUUIDv4
     case generateUUIDv7
+    case setCellsToValue
     case restorePreviousValues
     case truncateTable
     case toggleHeaderRow
@@ -185,7 +186,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
             return .editor
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
-             .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7,
+             .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7, .setCellsToValue,
              .restorePreviousValues,
              .truncateTable, .toggleHeaderRow, .previewFKReference, .saveAsFavorite, .previousPage,
              .nextPage, .firstPage, .lastPage, .refresh, .export, .importData, .jumpToColumn:
@@ -219,7 +220,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .previewSQL, .aiReviewQuery, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .previousPage, .nextPage, .firstPage, .lastPage, .addRow, .duplicateRow,
-             .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7,
+             .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7, .setCellsToValue,
              .delete, .truncateTable, .previewFKReference, .saveAsFavorite,
              .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .toggleFilters, .jumpToColumn,
              /// Named rather than left to the `default:` below. It reverses a row the grid is
@@ -309,6 +310,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .setValueDefault: return String(localized: "Set Value to Default")
         case .generateUUIDv4: return SetValueOptions.title(for: .uuid(.v4))
         case .generateUUIDv7: return SetValueOptions.title(for: .uuid(.v7))
+        case .setCellsToValue: return String(localized: "Set Cells to Value")
         case .restorePreviousValues: return String(localized: "Restore Previous Values")
         case .truncateTable: return String(localized: "Truncate Table")
         case .toggleHeaderRow: return String(localized: "Switch First Row Between Header/Data")

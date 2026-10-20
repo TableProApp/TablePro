@@ -1204,28 +1204,41 @@ struct MainMenuBuilderTests {
 @MainActor
 struct EditSetValueMenuTests {
     private struct Leaf {
-        let command: SetValueCommand
+        let title: String
         let action: Selector
         let shortcut: ShortcutAction
     }
 
     private static let leaves: [Leaf] = [
-        Leaf(command: .empty, action: #selector(SetValueCommandResponding.setValueEmpty(_:)), shortcut: .setValueEmpty),
-        Leaf(command: .null, action: #selector(SetValueCommandResponding.setValueNull(_:)), shortcut: .setValueNull),
         Leaf(
-            command: .defaultValue,
+            title: SetValueOptions.title(for: .empty),
+            action: #selector(SetValueCommandResponding.setValueEmpty(_:)),
+            shortcut: .setValueEmpty
+        ),
+        Leaf(
+            title: SetValueOptions.title(for: .null),
+            action: #selector(SetValueCommandResponding.setValueNull(_:)),
+            shortcut: .setValueNull
+        ),
+        Leaf(
+            title: SetValueOptions.title(for: .defaultValue),
             action: #selector(SetValueCommandResponding.setValueDefault(_:)),
             shortcut: .setValueDefault
         ),
         Leaf(
-            command: .uuid(.v4),
+            title: SetValueOptions.title(for: .uuid(.v4)),
             action: #selector(SetValueCommandResponding.generateUUIDv4(_:)),
             shortcut: .generateUUIDv4
         ),
         Leaf(
-            command: .uuid(.v7),
+            title: SetValueOptions.title(for: .uuid(.v7)),
             action: #selector(SetValueCommandResponding.generateUUIDv7(_:)),
             shortcut: .generateUUIDv7
+        ),
+        Leaf(
+            title: String(localized: "Set Cells to Value…"),
+            action: #selector(SetValueCommandResponding.setCellsToValue(_:)),
+            shortcut: .setCellsToValue
         ),
     ]
 
@@ -1258,13 +1271,13 @@ struct EditSetValueMenuTests {
         let setValue = try setValueItem(in: editMenu())
         let items = try #require(setValue.submenu).items
         let separators = items.map { $0.isSeparatorItem }
-        #expect(separators == [false, false, false, true, false, false])
+        #expect(separators == [false, false, false, true, false, false, true, false])
 
         let commands = items.filter { !$0.isSeparatorItem }
         let titles = commands.map { $0.title }
         let actions = commands.map { $0.action }
         let identifiers = commands.map { $0.identifier }
-        let expectedTitles = Self.leaves.map { SetValueOptions.title(for: $0.command) }
+        let expectedTitles = Self.leaves.map { $0.title }
         let expectedActions: [Selector?] = Self.leaves.map { $0.action }
         let expectedIdentifiers: [NSUserInterfaceItemIdentifier?] = Self.leaves.map {
             MenuItemFactory.identifier(for: $0.shortcut)
@@ -1293,7 +1306,7 @@ struct EditSetValueMenuTests {
         let edit = try editMenu()
         let setValue = try setValueItem(in: edit)
         let children = setValue.submenu?.items ?? []
-        #expect(children.count == 6)
+        #expect(children.count == 8)
         for shown in [true, false] {
             EditDataMenuGroup.setShown(shown, in: edit)
             #expect(!setValue.isHidden, "data group shown: \(shown)")
@@ -1313,6 +1326,7 @@ struct EditSetValueMenuTests {
         }
         #expect(ShortcutAction.generateUUIDv4.displayName == SetValueOptions.title(for: .uuid(.v4)))
         #expect(ShortcutAction.generateUUIDv7.displayName == SetValueOptions.title(for: .uuid(.v7)))
+        #expect(ShortcutAction.setCellsToValue.displayName == String(localized: "Set Cells to Value"))
     }
 
     @Test("A key the user gives a Set Value command reaches its menu item")

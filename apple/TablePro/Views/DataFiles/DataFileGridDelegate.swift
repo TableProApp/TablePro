@@ -110,6 +110,18 @@ final class DataFileGridDelegate: DataGridViewDelegate {
         return DataFileColumnMenuBuilder.rowItems(forPageRow: displayRow)
     }
 
+    func dataGridSetCellsToValue(_ targets: [SetValueTarget]) -> Bool {
+        guard let owner else { return false }
+        if let target = controller.cellTarget(for: targets) {
+            owner.presentSetCellsToValue(target)
+        }
+        return true
+    }
+
+    func dataGridBatchEdits(actionName: String, _ edits: () -> Void) {
+        controller.batchCellEdits(actionName: actionName, edits)
+    }
+
     func dataGridSummaryColumnPolicy() -> SelectionSummaryColumnPolicy? {
         SelectionSummaryColumnPolicy(
             rules: controller.columnNames.ids.map { DataFileColumnTypes.summaryRule(for: controller.kind(of: $0)) },

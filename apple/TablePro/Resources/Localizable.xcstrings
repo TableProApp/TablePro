@@ -195367,6 +195367,12 @@
         }
       }
     },
+    "This sets %1$lld of %2$lld cells. The others cannot be edited." : {
+
+    },
+    "This sets %lld cells." : {
+
+    },
     "This sets %lld loaded rows. Review and Save to apply." : {
       "localizations" : {
         "fr" : {
@@ -195406,6 +195412,9 @@
           }
         }
       }
+    },
+    "This sets 1 cell." : {
+
     },
     "This sets 1 loaded row. Review and Save to apply." : {
       "localizations" : {
