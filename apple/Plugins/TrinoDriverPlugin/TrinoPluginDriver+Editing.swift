@@ -48,16 +48,16 @@ extension TrinoPluginDriver {
                 let assignments = change.cellChanges.map {
                     TrinoColumnValue(name: $0.columnName, value: TrinoRowEditValues.trinoValue($0.newValue), typeName: typeName($0.columnName))
                 }
-                let keys = keyColumns(primaryKeyColumns, columns: columns, change: change, typeName: typeName)
-                if let sql = TrinoRowEditSQL.update(qualifiedTable: target, assignments: assignments, keyColumns: keys) {
-                    statements.append((sql, []))
-                }
+                guard let keys = keyColumns(primaryKeyColumns, columns: columns, change: change, typeName: typeName),
+                      let sql = TrinoRowEditSQL.update(qualifiedTable: target, assignments: assignments, keyColumns: keys)
+                else { continue }
+                statements.append((sql, []))
             case .delete:
                 guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                let keys = keyColumns(primaryKeyColumns, columns: columns, change: change, typeName: typeName)
-                if let sql = TrinoRowEditSQL.delete(qualifiedTable: target, keyColumns: keys) {
-                    statements.append((sql, []))
-                }
+                guard let keys = keyColumns(primaryKeyColumns, columns: columns, change: change, typeName: typeName),
+                      let sql = TrinoRowEditSQL.delete(qualifiedTable: target, keyColumns: keys)
+                else { continue }
+                statements.append((sql, []))
             }
         }
         return statements.isEmpty ? nil : statements
@@ -68,12 +68,15 @@ extension TrinoPluginDriver {
         columns: [String],
         change: PluginRowChange,
         typeName: (String) -> String
-    ) -> [TrinoColumnValue] {
+    ) -> [TrinoColumnValue]? {
         let keyNames = primaryKeyColumns.isEmpty ? columns : primaryKeyColumns
-        return keyNames.compactMap { column in
+        var keys: [TrinoColumnValue] = []
+        for column in keyNames {
+            // Leaving a column out of the match reaches every row that shares the rest.
             guard let value = originalValue(column, columns: columns, change: change) else { return nil }
-            return TrinoColumnValue(name: column, value: TrinoRowEditValues.trinoValue(value), typeName: typeName(column))
+            keys.append(TrinoColumnValue(name: column, value: TrinoRowEditValues.trinoValue(value), typeName: typeName(column)))
         }
+        return keys
     }
 
     private func originalValue(_ column: String, columns: [String], change: PluginRowChange) -> PluginCellValue? {

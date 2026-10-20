@@ -122,7 +122,8 @@ struct SnowflakeStatementGenerator {
         var parameters: [PluginCellValue] = []
 
         for column in keyColumns {
-            guard let index = columns.firstIndex(of: column), index < originalRow.count else { continue }
+            // Leaving a column out of the match reaches every row that shares the rest.
+            guard let index = columns.firstIndex(of: column), index < originalRow.count else { return nil }
             if Self.isSemiStructured(typeName(for: column)) { continue }
             let value = originalRow[index]
             if case .null = value {
