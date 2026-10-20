@@ -17,19 +17,28 @@ public final class ConnectionManager: @unchecked Sendable {
     private var attemptGenerations: [UUID: Int] = [:]
     private var lastTeardownId = 0
     private var sessionEndObservers: [@Sendable (UUID, any DatabaseDriver) -> Void] = []
+    private var dials: [UUID: SessionDial] = [:]
+    private var catalogs: [UUID: CatalogConnection] = [:]
+    private let now: @Sendable () -> Date
+
+    // The Mac's metadata pool values: an idle server connection is not held for good, and a failure is tried again.
+    static let catalogIdleLimit: TimeInterval = 600
+    static let catalogRetryDelay: TimeInterval = 30
 
     public init(
         driverFactory: DriverFactory,
         secureStore: SecureStore,
         sshProvider: SSHProvider? = nil,
         teardownWaitLimit: Duration = ConnectionManager.defaultTeardownWaitLimit,
-        clock: any Clock<Duration> = ContinuousClock()
+        clock: any Clock<Duration> = ContinuousClock(),
+        now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.driverFactory = driverFactory
         self.secureStore = secureStore
         self.sshProvider = sshProvider
         self.teardownWaitLimit = teardownWaitLimit
         self.clock = clock
+        self.now = now
     }
 
     // A teardown wait that gives up leaves the teardown running and counting as suspension-blocking.
@@ -84,7 +93,8 @@ public final class ConnectionManager: @unchecked Sendable {
                 activeDatabase: connection.database,
                 status: .connected
             )
-            guard adoptSession(session, for: connection.id, generation: generation) else {
+            let dial = SessionDial(connection: connection, host: effectiveHost, port: effectivePort)
+            guard adoptSession(session, dial: dial, for: connection.id, generation: generation) else {
                 if let tunnelId, let provider = sshProvider {
                     try? await provider.closeTunnel(id: tunnelId)
                 }
@@ -115,11 +125,12 @@ public final class ConnectionManager: @unchecked Sendable {
         return next
     }
 
-    private func adoptSession(_ session: ConnectionSession, for id: UUID, generation: Int) -> Bool {
+    private func adoptSession(_ session: ConnectionSession, dial: SessionDial, for id: UUID, generation: Int) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         guard attemptGenerations[id] == generation else { return false }
         sessions[id] = session
+        dials[id] = dial
         return true
     }
 
@@ -222,6 +233,12 @@ public final class ConnectionManager: @unchecked Sendable {
         lastTeardownId += 1
         let teardown = ConnectionTeardown(id: lastTeardownId)
         let sshProvider = sshProvider
+        dials.removeValue(forKey: connectionId)
+        let catalog = catalogs.removeValue(forKey: connectionId)
+        // Apart from the teardown, which a catalog open still dialing would otherwise hold for its connect timeout.
+        if let catalog {
+            Task { await catalog.close() }
+        }
         Task { [weak self] in
             if let sshProvider {
                 try? await sshProvider.closeTunnel(for: connectionId)
@@ -258,6 +275,118 @@ public final class ConnectionManager: @unchecked Sendable {
         blockingTeardowns.remove(connectionId)
     }
 
+    // For catalog reads the user did not ask for: on the session they would end a page the grid streams and replace
+    // MySQL's ROW_COUNT() and warnings or SQL Server's @@ROWCOUNT. Nil for an engine with one connection per file.
+    public func catalogDriver(for connectionId: UUID, database: String) async -> (any DatabaseDriver)? {
+        switch claimCatalog(for: connectionId, database: database) {
+        case nil:
+            return nil
+        case .join(let connection):
+            return await connection.driver()
+        case .opened(let connection, let replaced):
+            if let replaced {
+                Task { await replaced.close() }
+            }
+            let driver = await connection.driver()
+            // A teardown or a newer key that landed during the open owns the slot; this driver is nobody's.
+            guard isCurrentCatalog(connection, for: connectionId) else {
+                await connection.close()
+                return nil
+            }
+            return driver
+        }
+    }
+
+    // Nil when there is no catalog connection, or it stopped answering and was dropped: the caller reads elsewhere.
+    public func readCatalog<T: Sendable>(
+        for connectionId: UUID,
+        database: String,
+        _ read: @Sendable (any DatabaseDriver) async throws -> T
+    ) async throws -> T? {
+        guard let driver = await catalogDriver(for: connectionId, database: database) else { return nil }
+        do {
+            return try await read(driver)
+        } catch {
+            guard (try? await driver.ping()) != true else { throw error }
+            await discardCatalogDriver(driver, for: connectionId)
+            return nil
+        }
+    }
+
+    public func discardCatalogDriver(_ driver: any DatabaseDriver, for connectionId: UUID) async {
+        guard let connection = takeCatalog(holding: driver, for: connectionId) else { return }
+        await connection.close()
+    }
+
+    private func claimCatalog(for connectionId: UUID, database: String) -> CatalogClaim? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let session = sessions[connectionId], let dial = dials[connectionId],
+              driverFactory.opensCatalogConnections(for: dial.connection) else {
+            return nil
+        }
+        let key = CatalogKey(session: ObjectIdentifier(session.driver), database: database)
+        let time = now()
+        if let existing = catalogs[connectionId], existing.key == key,
+           existing.isFresh(at: time, idleLimit: Self.catalogIdleLimit, retryDelay: Self.catalogRetryDelay) {
+            existing.markUsed(at: time)
+            return .join(existing)
+        }
+        let replaced = catalogs[connectionId]
+        let now = self.now
+        let opening = CatalogConnection(key: key, startedAt: time, now: now) { [driverFactory, secureStore] in
+            try await Self.openCatalogDriver(dial: dial, database: database, factory: driverFactory, secureStore: secureStore)
+        }
+        catalogs[connectionId] = opening
+        return .opened(opening, replacing: replaced)
+    }
+
+    private func takeCatalog(holding driver: any DatabaseDriver, for connectionId: UUID) -> CatalogConnection? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let connection = catalogs[connectionId], connection.holds(driver) else { return nil }
+        catalogs.removeValue(forKey: connectionId)
+        return connection
+    }
+
+    private func takeCatalog(for connectionId: UUID, unlessDatabase database: String) -> CatalogConnection? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let connection = catalogs[connectionId], connection.key.database != database else { return nil }
+        catalogs.removeValue(forKey: connectionId)
+        return connection
+    }
+
+    private func isCurrentCatalog(_ connection: CatalogConnection, for connectionId: UUID) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return catalogs[connectionId] === connection
+    }
+
+    private static func openCatalogDriver(
+        dial: SessionDial,
+        database: String,
+        factory: DriverFactory,
+        secureStore: SecureStore
+    ) async throws -> any DatabaseDriver {
+        var target = dial.connection
+        if !database.isEmpty {
+            target.database = database
+        }
+        target.host = dial.host
+        target.port = dial.port
+        let password = try secureStore.retrieve(forKey: passwordKey(for: dial.connection.id))
+        let driver = try factory.createDriver(for: target, password: password)
+        try await driver.connect()
+        do {
+            try await factory.prepareCatalogDriver(driver, for: target)
+        } catch {
+            try? await driver.disconnect()
+            throw error
+        }
+        return driver
+    }
+
     public func updateSession(_ connectionId: UUID, _ mutation: (inout ConnectionSession) -> Void) {
         lock.lock()
         defer { lock.unlock() }
@@ -272,12 +401,21 @@ public final class ConnectionManager: @unchecked Sendable {
         }
         try await session.driver.switchDatabase(to: database)
         updateSession(connectionId) { $0.activeDatabase = database }
+        // SQL Server refuses to drop a database a connection is in, so the catalog connection leaves with the session.
+        if let catalog = takeCatalog(for: connectionId, unlessDatabase: database) {
+            await catalog.close()
+        }
     }
 
     public func session(for connectionId: UUID) -> ConnectionSession? {
         lock.lock()
         defer { lock.unlock() }
         return sessions[connectionId]
+    }
+
+    private enum CatalogClaim {
+        case join(CatalogConnection)
+        case opened(CatalogConnection, replacing: CatalogConnection?)
     }
 
     private enum TeardownBound: Sendable {
@@ -374,5 +512,113 @@ private final class ConnectionTeardown: @unchecked Sendable {
         }
         lock.unlock()
         continuation.resume(returning: false)
+    }
+}
+
+// The host and port are the tunnel's local end when SSH is on, so a catalog connection reuses the tunnel.
+private struct SessionDial: Sendable {
+    let connection: DatabaseConnection
+    let host: String
+    let port: Int
+}
+
+private struct CatalogKey: Equatable, Sendable {
+    let session: ObjectIdentifier
+    let database: String
+}
+
+private final class CatalogConnection: @unchecked Sendable {
+    let key: CatalogKey
+
+    private let lock = NSLock()
+    private let opening: Task<(any DatabaseDriver)?, Never>
+    private var opened: (any DatabaseDriver)?
+    private let failures: FailureClock
+    private var isClosed = false
+    private var lastUsed: Date
+
+    init(
+        key: CatalogKey,
+        startedAt: Date,
+        now: @escaping @Sendable () -> Date,
+        open: @escaping @Sendable () async throws -> any DatabaseDriver
+    ) {
+        self.key = key
+        self.lastUsed = startedAt
+        let failures = FailureClock()
+        self.failures = failures
+        self.opening = Task {
+            do {
+                return try await open()
+            } catch {
+                failures.record(now())
+                return nil
+            }
+        }
+    }
+
+    func driver() async -> (any DatabaseDriver)? {
+        adopt(await opening.value)
+    }
+
+    func holds(_ driver: any DatabaseDriver) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let opened else { return false }
+        return opened === driver
+    }
+
+    // A failed open is tried again after a while; an idle connection may be one the server or a NAT already dropped.
+    func isFresh(at time: Date, idleLimit: TimeInterval, retryDelay: TimeInterval) -> Bool {
+        if let failedAt = failures.time { return time.timeIntervalSince(failedAt) < retryDelay }
+        lock.lock()
+        defer { lock.unlock() }
+        return time.timeIntervalSince(lastUsed) < idleLimit
+    }
+
+    func markUsed(at time: Date) {
+        lock.lock()
+        defer { lock.unlock() }
+        lastUsed = time
+    }
+
+    // A close that lands while the open is in flight still ends the connection once it is up.
+    func close() async {
+        guard markClosed(), let driver = await opening.value else { return }
+        try? await driver.disconnect()
+    }
+
+    private func adopt(_ driver: (any DatabaseDriver)?) -> (any DatabaseDriver)? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isClosed else { return nil }
+        opened = driver
+        return driver
+    }
+
+    private func markClosed() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isClosed else { return false }
+        isClosed = true
+        opened = nil
+        return true
+    }
+}
+
+private final class FailureClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: Date?
+
+    var time: Date? {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
+
+    func record(_ time: Date) {
+        lock.lock()
+        defer { lock.unlock() }
+        recorded = time
     }
 }

@@ -71,6 +71,12 @@ struct DataBrowserView: View {
     private var columns: [ColumnInfo] { viewModel.columns }
     private var rows: [[String?]] { viewModel.legacyRows }
 
+    private var pageReads: DataBrowserViewModel.SessionReadTracker {
+        let transactions = appState.sessionTransactions
+        let connectionId = connection.id
+        return { read in await transactions.track(connectionId, reading: true) { await read() } }
+    }
+
     private var sortColumnBinding: Binding<String?> {
         Binding(
             get: { viewModel.sortState.columns.first?.name },
@@ -118,7 +124,7 @@ struct DataBrowserView: View {
             .task {
                 viewModel.attach(
                     session: session, table: table, databaseType: connection.type,
-                    host: connection.host, schema: browserSchema
+                    host: connection.host, schema: browserSchema, trackRead: pageReads
                 )
                 if let filters = reference?.filters() {
                     viewModel.seedFilters(filters)
@@ -134,17 +140,12 @@ struct DataBrowserView: View {
                 guard source.driver != nil else { return }
                 viewModel.attach(
                     session: session, table: table, databaseType: connection.type,
-                    host: connection.host, schema: source.schema
+                    host: connection.host, schema: source.schema, trackRead: pageReads
                 )
                 Task { await viewModel.load(isInitial: true) }
             }
             .onChange(of: appState.sessionTransactions.rollBackCount(for: connection.id)) {
                 Task { await viewModel.load() }
-            }
-            // With autocommit off, a MySQL read opens a transaction.
-            .onChange(of: viewModel.isLoading || viewModel.isPageLoading) { _, loading in
-                guard !loading else { return }
-                Task { await coordinator.refreshTransaction() }
             }
             .onDisappear { viewModel.cancel() }
             .sheet(isPresented: $showInsertSheet) { insertSheet }

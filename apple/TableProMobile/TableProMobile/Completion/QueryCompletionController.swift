@@ -12,6 +12,8 @@ nonisolated struct QueryCompletionScope: Equatable, Sendable {
     let schema: String
     let databaseType: DatabaseType
     let tables: [TableInfo]
+    var schemas: [String] = []
+    var databases: [String] = []
     let isRunning: Bool
 }
 
@@ -70,7 +72,12 @@ final class QueryCompletionController {
     private var answer: Answer?
     private var hiddenAt: Position?
 
-    func update(scope newScope: QueryCompletionScope, readColumns: @escaping QueryColumnReader) {
+    func update(
+        scope newScope: QueryCompletionScope,
+        readColumns: @escaping QueryColumnReader,
+        readCatalogColumns: QueryColumnReader? = nil,
+        readSchemaTables: QuerySchemaTableReader? = nil
+    ) {
         let previous = scope
         guard previous != newScope else { return }
         scope = newScope
@@ -91,7 +98,16 @@ final class QueryCompletionController {
             let tablesChanged = previous.tables != newScope.tables
             if tablesChanged {
                 let tables = newScope.tables
-                enqueue { await catalog.replaceTables(tables) }
+                // A new list follows DDL, which may have changed a cached table, or committed one it read empty.
+                enqueue {
+                    await catalog.replaceTables(tables)
+                    await catalog.markColumnsStale()
+                }
+            }
+            if previous.schemas != newScope.schemas || previous.databases != newScope.databases {
+                let schemas = newScope.schemas
+                let databases = newScope.databases
+                enqueue { await catalog.replaceNamespaces(schemas: schemas, databases: databases) }
             }
             if previous.isRunning, !newScope.isRunning {
                 // The run may have altered a table.
@@ -101,8 +117,8 @@ final class QueryCompletionController {
                 let allowed = !newScope.isRunning
                 enqueue { await catalog.setColumnReadsAllowed(allowed) }
             }
-            // The run's end asks nothing itself: a column read then would replace the row count and warnings the run
-            // left on the session, so the next keystroke reads instead.
+            // The run's end asks nothing itself: on the session a column read then would replace the row count and
+            // warnings the run left there, so the next keystroke reads instead.
             if tablesChanged {
                 requestAgain()
             }
@@ -113,14 +129,22 @@ final class QueryCompletionController {
             tables: newScope.tables,
             databaseType: newScope.databaseType,
             schema: newScope.schema.isEmpty ? nil : newScope.schema,
-            readColumns: readColumns
+            readColumns: readColumns,
+            readCatalogColumns: readCatalogColumns,
+            readSchemaTables: readSchemaTables,
+            schemas: newScope.schemas,
+            databases: newScope.databases
         )
         let grammar = SQLLexicalReadings.resolve(
             databaseTypeId: newScope.databaseType.rawValue, declared: nil, session: nil
         ).execution
         engine = Engine(
             catalog: catalog,
-            provider: SQLCompletionProvider(catalog: catalog, grammar: grammar, vocabulary: .generic),
+            provider: SQLCompletionProvider(
+                catalog: catalog,
+                grammar: grammar,
+                vocabulary: .curated(forDatabaseTypeId: newScope.databaseType.rawValue)
+            ),
             databaseType: newScope.databaseType
         )
         catalogWork = nil
@@ -198,10 +222,29 @@ final class QueryCompletionController {
         show([], answer: nil)
     }
 
-    static func columnReader(session: @escaping @MainActor () -> ConnectionSession?) -> QueryColumnReader {
+    // A busy session is streaming a page or a run that a read would end, so it reads nothing then.
+    static func columnReader(
+        session: @escaping @MainActor () -> ConnectionSession?,
+        isBusy: @escaping @MainActor () -> Bool = { false }
+    ) -> QueryColumnReader {
         { table, schema in
-            guard let driver = await session()?.driver else { return nil }
+            guard let driver = await session()?.driver, await !isBusy() else { return nil }
             return try await driver.fetchColumns(table: table, schema: schema)
+        }
+    }
+
+    // Another schema's tables: on the catalog connection, else on the session only while it is idle.
+    static func schemaTableReader(
+        catalog: @escaping QuerySchemaTableReader,
+        session: @escaping @MainActor () -> ConnectionSession?,
+        isBusy: @escaping @MainActor () -> Bool
+    ) -> QuerySchemaTableReader {
+        { schema in
+            if let tables = try await catalog(schema) {
+                return tables
+            }
+            guard let driver = await session()?.driver, await !isBusy() else { return nil }
+            return try await driver.fetchTables(schema: schema)
         }
     }
 
@@ -251,7 +294,12 @@ final class QueryCompletionController {
         await catalogWork?.value
         guard ticket == generation else { return }
 
-        let window = SQLCompletionWindow.cut(text, around: caret)
+        let cut = await SQLCompletionWindow.cut(input.text, around: caret, grammar: engine.provider.grammar)
+        guard ticket == generation else { return }
+        guard let window = cut else {
+            show([], answer: nil)
+            return
+        }
         let session = await engine.provider.completionSession(
             text: window.text,
             cursorPosition: caret - window.start,
@@ -259,7 +307,7 @@ final class QueryCompletionController {
         )
         guard ticket == generation else { return }
 
-        let context = session.context
+        let context = session.context.offset(by: window.start)
         // iOS has no manual trigger and the bar never covers the text, so it fills at every code position.
         guard !SQLCompletionTriggerPolicy.suppressesEmptyPrefix(context, isManualTrigger: true) else {
             show([], answer: nil)
@@ -270,15 +318,11 @@ final class QueryCompletionController {
             typedPrefix: context.prefix,
             policy: .default
         )
-        let range = NSRange(location: context.prefixRange.lowerBound + window.start, length: context.prefixRange.count)
-        let quotedName = context.quotedName.map { name in
-            SQLQuotedName(open: name.open + window.start, close: name.close.map { $0 + window.start })
-        }
         show(items, answer: Answer(
             position: position,
             items: items,
-            range: range,
-            quotedName: quotedName,
+            range: NSRange(context.prefixRange),
+            quotedName: context.quotedName,
             databaseType: engine.databaseType
         ))
     }

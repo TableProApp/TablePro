@@ -21,6 +21,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var scriptedLexicalFacts: [SQLSessionLexicalFacts?] = []
     var pingError: Error?
     var fetchTablesError: Error?
+    var fetchColumnsError: Error?
     var commitError: Error?
     var rollbackError: Error?
 
@@ -84,6 +85,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         fetchColumnsCalls += 1
         fetchColumnsSchemas.append(schema)
+        if let fetchColumnsError { throw fetchColumnsError }
         return scriptedColumns
     }
 

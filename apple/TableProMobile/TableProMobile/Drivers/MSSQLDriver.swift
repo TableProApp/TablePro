@@ -120,14 +120,20 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
         AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let task = Task {
+                // FreeTDS reads on its own queue, where no task cancellation reaches; a reader that stops sets the flag
+                // it polls, or the session reads every remaining row before it takes the next statement.
+                let abort = MSSQLStreamAbort()
                 let coreStream = AsyncThrowingStream<MSSQLStreamElement, Error> { coreContinuation in
                     Task {
                         do {
-                            try await conn.streamQuery(query, continuation: coreContinuation)
+                            try await conn.streamQuery(
+                                query, isAborted: { abort.isAborted }, continuation: coreContinuation
+                            )
                         } catch {
                             coreContinuation.finish(throwing: error)
                         }
                     }
+                    coreContinuation.onTermination = { @Sendable _ in abort.abort() }
                 }
                 var emitted = 0
                 var headerColumns: [ColumnInfo] = []
@@ -307,5 +313,22 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
 nonisolated private extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+nonisolated private final class MSSQLStreamAbort: @unchecked Sendable {
+    private let lock = NSLock()
+    private var aborted = false
+
+    var isAborted: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return aborted
+    }
+
+    func abort() {
+        lock.lock()
+        defer { lock.unlock() }
+        aborted = true
     }
 }

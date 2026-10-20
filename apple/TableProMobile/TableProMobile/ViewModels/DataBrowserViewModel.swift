@@ -49,6 +49,9 @@ final class DataBrowserViewModel {
     /// not come from.
     private(set) var schema: String?
     @ObservationIgnored private var host: String = ""
+    @ObservationIgnored private var trackRead: SessionReadTracker?
+    @ObservationIgnored private var pageEndedOnItsOwn = false
+    @ObservationIgnored private var pageWasTrimmed = false
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
     @ObservationIgnored private var keyReadTask: Task<KeyContentsPage, Error>?
@@ -96,18 +99,23 @@ final class DataBrowserViewModel {
 
     // MARK: - Attach
 
+    typealias SessionReadTracker = @MainActor (_ read: () async -> Void) async -> Void
+
+    // `trackRead` marks the session busy for the whole load, so Commit and Roll Back cannot end a page mid-stream.
     func attach(
         session: ConnectionSession?,
         table: TableInfo,
         databaseType: DatabaseType,
         host: String,
-        schema: String? = nil
+        schema: String? = nil,
+        trackRead: SessionReadTracker? = nil
     ) {
         self.session = session
         self.table = table
         self.databaseType = databaseType
         self.host = host
         self.schema = schema
+        self.trackRead = trackRead
     }
 
     // Only the first call counts, so filters the user changed afterwards survive the view's task running again.
@@ -151,13 +159,23 @@ final class DataBrowserViewModel {
         }
         loadError = nil
 
-        if let reader = TableBrowseMode.keyContentsReader(of: session.driver) {
-            await loadKeyContents(reader: reader, key: table.name, generation: generation)
-        } else {
-            await loadRows(session: session, table: table, isInitial: isInitial, generation: generation)
+        await tracked {
+            if let reader = TableBrowseMode.keyContentsReader(of: session.driver) {
+                await loadKeyContents(reader: reader, key: table.name, generation: generation)
+            } else {
+                await loadRows(session: session, table: table, isInitial: isInitial, generation: generation)
+            }
         }
         guard isCurrent(generation) else { return }
         finishLoad()
+    }
+
+    private func tracked(_ read: () async -> Void) async {
+        guard let trackRead else {
+            await read()
+            return
+        }
+        await trackRead(read)
     }
 
     private func isCurrent(_ generation: Int) -> Bool {
@@ -262,8 +280,9 @@ final class DataBrowserViewModel {
         }
     }
 
+    // A page cut short by Stop, a closed screen or another statement says nothing about where the table ends.
     private func settleTotalRowsFromShortPage() {
-        guard legacyRows.count < pagination.pageSize, pagination.totalRows == nil else { return }
+        guard pageEndedOnItsOwn, legacyRows.count < pagination.pageSize, pagination.totalRows == nil else { return }
         pagination.totalRows = pagination.currentOffset + legacyRows.count
     }
 
@@ -590,12 +609,14 @@ final class DataBrowserViewModel {
             case .warning:
                 Self.logger.warning("Memory pressure warning: shrinking window to 100 rows")
                 self.buffer.shrink(to: 100)
+                self.pageWasTrimmed = true
                 if !self.buffer.isEmpty {
                     self.memoryWarning = String(localized: "Results trimmed due to memory pressure.")
                 }
             case .critical:
                 Self.logger.error("Memory pressure critical: shrinking window to 50 rows and cancelling")
                 self.buffer.shrink(to: 50)
+                self.pageWasTrimmed = true
                 self.fetchTask?.cancel()
                 self.memoryWarning = String(localized: "Results trimmed due to memory pressure.")
             }
@@ -623,6 +644,8 @@ final class DataBrowserViewModel {
         fetchTask?.cancel()
         phase = .loading
         buffer.reset()
+        pageEndedOnItsOwn = false
+        pageWasTrimmed = false
 
         let task = Task { [weak self] in
             guard let self else { return }
@@ -634,6 +657,7 @@ final class DataBrowserViewModel {
                 guard self.isCurrent(generation) else { return }
                 self.buffer.flush()
                 self.executionTime = Date().timeIntervalSince(start)
+                self.pageEndedOnItsOwn = !Task.isCancelled && self.buffer.truncation == nil && !self.pageWasTrimmed
                 if let reason = self.buffer.truncation {
                     self.phase = .truncated(reason: reason)
                 } else if case .loading = self.phase {

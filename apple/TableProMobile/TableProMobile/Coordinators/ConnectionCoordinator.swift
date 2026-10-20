@@ -4,6 +4,7 @@ import os
 import SwiftUI
 import TableProDatabase
 import TableProModels
+import TableProSQLGrammar
 
 @MainActor @Observable
 final class ConnectionCoordinator {
@@ -24,6 +25,7 @@ final class ConnectionCoordinator {
     @ObservationIgnored private var sessionCheck: Task<Bool, Never>?
     @ObservationIgnored private var statementFailedDuringCheck = false
     @ObservationIgnored private var metadataRefused = false
+    @ObservationIgnored private var seenCatalogGeneration: Int
     var failureAlertMessage: String?
     var showFailureAlert = false
 
@@ -70,6 +72,7 @@ final class ConnectionCoordinator {
     init(connection: DatabaseConnection, appState: AppState) {
         self.connection = connection
         self.appState = appState
+        seenCatalogGeneration = appState.catalogChanges.generation(for: connection.id)
     }
 
     // MARK: - Persisted State
@@ -268,7 +271,7 @@ final class ConnectionCoordinator {
     private func checkSession(after loss: SessionLoss) async -> Bool {
         guard let session, !isSwitching, !isReconnecting, connectTask == nil else { return false }
         let token = attemptToken
-        var workWasRunning = appState.sessionTransactions.isBusy(connection.id)
+        var workWasRunning = appState.sessionTransactions.isRunningStatements(connection.id)
 
         if await takesNewerSession(than: session, token: token) { return false }
         if appState.connectionManager.session(for: connection.id) != nil, await Self.answersPing(session.driver) {
@@ -278,7 +281,7 @@ final class ConnectionCoordinator {
         // Another window can finish a whole redial while this ping is out.
         if await takesNewerSession(than: session, token: token) { return false }
 
-        workWasRunning = workWasRunning || appState.sessionTransactions.isBusy(connection.id)
+        workWasRunning = workWasRunning || appState.sessionTransactions.isRunningStatements(connection.id)
         let heldTransaction = transactionHold != nil
         isReconnecting = true
         defer { isReconnecting = false }
@@ -454,6 +457,8 @@ final class ConnectionCoordinator {
             throw error
         }
         await reloadMetadataIfReleased()
+        // A catalog connection sees DDL the transaction ran only once it commits.
+        noteCatalogChanged(.tables)
     }
 
     func rollBackTransaction(as token: SessionTransactionMonitor.HoldToken) async throws {
@@ -598,6 +603,91 @@ final class ConnectionCoordinator {
         }
         // With autocommit off, a MySQL read opens a transaction.
         await refreshTransaction()
+    }
+
+    // MARK: - Catalog Changes
+
+    // `reloadedHere`: the caller already read the session, the one place a transaction's own DDL shows.
+    func noteCatalogChanged(_ kinds: SQLCatalogObjectKinds, reloadedHere: Bool = false) {
+        let board = appState.catalogChanges
+        let caughtUp = board.generation(for: connection.id) == seenCatalogGeneration
+        board.post(kinds, for: connection.id)
+        if reloadedHere, caughtUp {
+            seenCatalogGeneration = board.generation(for: connection.id)
+        }
+    }
+
+    // A statement a window ran may have created or dropped what the lists show; failed reads keep the lists.
+    func reloadChangedCatalog() async {
+        let board = appState.catalogChanges
+        let generation = board.generation(for: connection.id)
+        guard generation != seenCatalogGeneration, let session, !isSwitching else { return }
+        var kinds = board.kinds(for: connection.id, since: seenCatalogGeneration)
+        if !supportsSchemas { kinds.remove(.schemas) }
+        if !supportsDatabaseSwitching { kinds.remove(.databases) }
+        let database = supportsDatabaseSwitching ? activeDatabase : ""
+        let schema = supportsSchemas ? activeSchema : nil
+        let place = CatalogPlace(driver: ObjectIdentifier(session.driver), database: activeDatabase, schema: activeSchema)
+        let monitor = appState.sessionTransactions
+
+        var snapshot: CatalogSnapshot?
+        // Only the session sees DDL its open transaction ran; elsewhere a read on it would replace ROW_COUNT().
+        if monitor.hold(for: connection.id, on: session.driver) == nil {
+            do {
+                snapshot = try await appState.connectionManager.readCatalog(for: connection.id, database: database) {
+                    try await Self.readCatalog(kinds, schema: schema, from: $0)
+                }
+            } catch {
+                Self.logger.warning("Reloading the catalog after a change failed: \(error.localizedDescription, privacy: .public)")
+                seenCatalogGeneration = generation
+                return
+            }
+        }
+        if snapshot == nil {
+            // A stream on the session would end under this read, so it waits for the session to go idle.
+            guard !monitor.isBusy(connection.id) else { return }
+            snapshot = try? await monitor.track(connection.id, reading: true) {
+                try await Self.readCatalog(kinds, schema: schema, from: session.driver)
+            }
+        }
+        seenCatalogGeneration = generation
+        guard let snapshot, place == CatalogPlace(
+            driver: self.session.map { ObjectIdentifier($0.driver) }, database: activeDatabase, schema: activeSchema
+        ) else { return }
+        if let reloaded = snapshot.tables { tables = reloaded }
+        if let reloaded = snapshot.schemas { schemas = reloaded }
+        if let reloaded = snapshot.databases { databases = reloaded }
+    }
+
+    private struct CatalogPlace: Equatable {
+        let driver: ObjectIdentifier?
+        let database: String
+        let schema: String
+    }
+
+    private struct CatalogSnapshot: Sendable {
+        var tables: [TableInfo]?
+        var schemas: [String]?
+        var databases: [String]?
+    }
+
+    // The table list is the read that matters: its failure fails the reload, so a dead connection is dropped.
+    nonisolated private static func readCatalog(
+        _ kinds: SQLCatalogObjectKinds,
+        schema: String?,
+        from driver: any DatabaseDriver
+    ) async throws -> CatalogSnapshot {
+        var snapshot = CatalogSnapshot()
+        if kinds.contains(.tables) {
+            snapshot.tables = try await driver.fetchTables(schema: schema)
+        }
+        if kinds.contains(.schemas) {
+            snapshot.schemas = try? await driver.fetchSchemas()
+        }
+        if kinds.contains(.databases) {
+            snapshot.databases = try? await driver.fetchDatabases()
+        }
+        return snapshot
     }
 
     // MARK: - Query History

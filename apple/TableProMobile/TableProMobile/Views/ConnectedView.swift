@@ -184,7 +184,7 @@ struct ConnectedView: View {
             }
             Tab("Query", systemImage: "terminal", value: .query) {
                 NavigationStack {
-                    tabChrome(coordinator) { QueryEditorView() }
+                    tabChrome(coordinator) { QueryEditorView(connectionId: connection.id) }
                         .transactionBar(for: coordinator)
                 }
             }
@@ -206,26 +206,17 @@ struct ConnectedView: View {
         .onChange(of: appState.sessionTransactions.rollBackCount(for: connection.id)) {
             Task { await coordinator.reloadAfterRollBack() }
         }
+        .onChange(of: appState.catalogChanges.generation(for: connection.id)) {
+            Task { await coordinator.reloadChangedCatalog() }
+        }
+        // A reload that would have read a busy session waits for it.
+        .onChange(of: appState.sessionTransactions.isBusy(connection.id)) { _, busy in
+            guard !busy else { return }
+            Task { await coordinator.reloadChangedCatalog() }
+        }
         // tabChrome sits inside each stack; this also reaches pushed row screens and their sheets, which track writes.
         .environment(coordinator)
-        .background {
-            Button("") { coordinator.selectedTab = .tables }
-                .keyboardShortcut("1", modifiers: .command)
-                .accessibilityLabel(Text("Tables"))
-                .hidden()
-            Button("") { coordinator.selectedTab = .query }
-                .keyboardShortcut("2", modifiers: .command)
-                .accessibilityLabel(Text("Query"))
-                .hidden()
-            Button("") { coordinator.selectedTab = .history }
-                .keyboardShortcut("3", modifiers: .command)
-                .accessibilityLabel(Text("History"))
-                .hidden()
-            Button("") { coordinator.selectedTab = .info }
-                .keyboardShortcut("4", modifiers: .command)
-                .accessibilityLabel(Text("Info"))
-                .hidden()
-        }
+        .focusedSceneValue(\.connectedTabActions, ConnectedTabActions { coordinator.selectedTab = $0 })
         .overlay(alignment: .top) {
             if coordinator.isReconnecting {
                 HStack(spacing: 6) {

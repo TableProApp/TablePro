@@ -34,6 +34,7 @@ final class AppState {
     let sessionRedialer: SessionRedialer
     let backgroundRelease: BackgroundReleaseCoordinator
     let queryActivities = QueryActivityController()
+    let catalogChanges = CatalogChangeBoard()
     let syncCoordinator: IOSSyncCoordinator
 
     @ObservationIgnored private var automaticPresentationOwner: UUID?

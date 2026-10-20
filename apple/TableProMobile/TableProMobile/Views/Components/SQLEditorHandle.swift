@@ -20,6 +20,7 @@ final class SQLEditorHandle {
     }
 
     @ObservationIgnored private(set) weak var textView: UITextView?
+    @ObservationIgnored private var publishText: ((String) -> Void)?
     @ObservationIgnored private var band: StatementBand?
     @ObservationIgnored private var nothingToRunState: EditorState?
     @ObservationIgnored private var isPublishScheduled = false
@@ -29,10 +30,32 @@ final class SQLEditorHandle {
         let selection: NSRange
     }
 
-    func attach(_ textView: UITextView) {
+    func attach(_ textView: UITextView, publishText: @escaping (String) -> Void = { _ in }) {
         self.textView = textView
+        self.publishText = publishText
         band = StatementBand(textView: textView)
         editorDidChange()
+    }
+
+    // Through the text view, so Undo brings back what was there; assigning the binding would empty the undo stack.
+    // Off the window the undo step has nowhere to live, so the caller waits until the editor shows.
+    var isInWindow: Bool {
+        textView?.window != nil
+    }
+
+    @discardableResult
+    func add(_ query: String) -> Bool {
+        guard let databaseType, let textView, textView.window != nil else { return false }
+        let edit = QueryTextInsertion.edit(adding: query, to: textView.text ?? "", databaseType: databaseType)
+        guard let start = textView.position(from: textView.beginningOfDocument, offset: edit.range.location),
+              let end = textView.position(from: start, offset: edit.range.length),
+              let range = textView.textRange(from: start, to: end) else { return false }
+        textView.replace(range, withText: edit.text)
+        textView.selectedRange = edit.selection
+        textView.scrollRangeToVisible(edit.selection)
+        publishText?(textView.text ?? "")
+        editorDidChange()
+        return true
     }
 
     func runTarget() -> QueryRunTarget {

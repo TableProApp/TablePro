@@ -3,11 +3,13 @@ import SwiftUI
 import TableProDatabase
 import TableProModels
 import TableProQuery
+import TableProSQLGrammar
 
 struct QueryEditorView: View {
     @Environment(ConnectionCoordinator.self) private var coordinator
     @Environment(AppState.self) private var appState
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryEditorView")
 
@@ -24,7 +26,15 @@ struct QueryEditorView: View {
     private var resultRowCount: Int {
         viewModel.legacyRows.count
     }
-    @State private var saveQueryTask: Task<Void, Never>?
+    @State private var draft = QueryDraftSaver()
+    @State private var deferredAdds: [String] = []
+    @State private var isOnScreen = false
+    // Each window keeps its own text, a cleared one included; the saved draft only seeds a window that never had any.
+    @SceneStorage private var sceneQuery: String?
+
+    init(connectionId: UUID) {
+        _sceneQuery = SceneStorage("queryEditor.text.\(connectionId.uuidString)")
+    }
     @State private var executionStartTime: Date?
     @State private var showWriteConfirmation = false
     @State private var showWriteBlockedAlert = false
@@ -52,7 +62,47 @@ struct QueryEditorView: View {
             schema: activeSchema ?? "",
             databaseType: databaseType,
             tables: tables,
+            schemas: coordinator.supportsSchemas ? coordinator.schemas : [],
+            databases: coordinator.supportsDatabaseSwitching ? coordinator.databases : [],
             isRunning: isExecuting
+        )
+    }
+
+    private var sessionColumnReader: QueryColumnReader {
+        let transactions = appState.sessionTransactions
+        let connectionId = connectionId
+        return QueryCompletionController.columnReader(
+            session: { coordinator.session },
+            isBusy: { transactions.isBusy(connectionId) }
+        )
+    }
+
+    // The active schema is named on every read: the catalog connection never switches schema, the session may.
+    private var catalogColumnReader: QueryColumnReader {
+        let manager = appState.connectionManager
+        let connectionId = connectionId
+        let database = coordinator.supportsDatabaseSwitching ? coordinator.activeDatabase : ""
+        let activeSchema = activeSchema
+        return { table, schema in
+            try await manager.readCatalog(for: connectionId, database: database) { driver in
+                try await driver.fetchColumns(table: table, schema: schema ?? activeSchema)
+            }
+        }
+    }
+
+    private var schemaTableReader: QuerySchemaTableReader {
+        let manager = appState.connectionManager
+        let transactions = appState.sessionTransactions
+        let connectionId = connectionId
+        let database = coordinator.supportsDatabaseSwitching ? coordinator.activeDatabase : ""
+        return QueryCompletionController.schemaTableReader(
+            catalog: { schema in
+                try await manager.readCatalog(for: connectionId, database: database) { driver in
+                    try await driver.fetchTables(schema: schema)
+                }
+            },
+            session: { coordinator.session },
+            isBusy: { transactions.isBusy(connectionId) }
         )
     }
 
@@ -63,34 +113,52 @@ struct QueryEditorView: View {
             resultSection
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { containerSize = $0 }
+        .focusedSceneValue(\.queryEditorActions, menuActions)
         .onAppear {
             editorHandle.databaseType = databaseType
+            isOnScreen = true
             if let pending = coordinator.pendingQuery {
-                query = pending
                 coordinator.pendingQuery = nil
-            } else if query.isEmpty {
-                query = UserDefaults.standard.string(forKey: ConnectionDefaultsKey.lastQuery.name(for: connectionId)) ?? ""
+                deferredAdds.append(pending)
             }
+            let adds = deferredAdds
+            deferredAdds = []
+            guard query.isEmpty else {
+                // A turn later the text view sits in the window, so Undo can take the add back.
+                Task { @MainActor in
+                    for text in adds {
+                        applyAdd(text)
+                    }
+                }
+                return
+            }
+            // The text view takes the restored text on the next update, so these go through the binding.
+            var restored = sceneQuery ?? draft.restore(for: connectionId) ?? ""
+            for text in adds {
+                let edit = QueryTextInsertion.edit(adding: text, to: restored, databaseType: databaseType)
+                restored = QueryTextInsertion.applying(edit, to: restored)
+            }
+            query = restored
         }
         .task(id: session.map { ObjectIdentifier($0.driver) }) {
             editorHandle.sessionFacts = await session?.driver.sessionLexicalFacts()
         }
         .onChange(of: query) { _, newValue in
-            saveQueryTask?.cancel()
-            saveQueryTask = Task {
-                try? await Task.sleep(for: .milliseconds(300))
-                guard !Task.isCancelled else { return }
-                UserDefaults.standard.set(newValue, forKey: ConnectionDefaultsKey.lastQuery.name(for: connectionId))
-            }
+            sceneQuery = newValue
+            draft.textChanged(newValue, for: connectionId)
         }
         .onDisappear {
-            saveQueryTask?.cancel()
+            isOnScreen = false
+            draft.flush()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase != .active else { return }
+            draft.flush()
         }
         .onChange(of: coordinator.pendingQuery) { _, newQuery in
-            if let newQuery {
-                query = newQuery
-                coordinator.pendingQuery = nil
-            }
+            guard let newQuery else { return }
+            coordinator.pendingQuery = nil
+            add(newQuery)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             Task { await viewModel.handlePressure(.warning) }
@@ -99,7 +167,12 @@ struct QueryEditorView: View {
             Task { await viewModel.handlePressure(level) }
         }
         .onChange(of: completionScope, initial: true) { _, scope in
-            completion.update(scope: scope, readColumns: QueryCompletionController.columnReader { coordinator.session })
+            completion.update(
+                scope: scope,
+                readColumns: sessionColumnReader,
+                readCatalogColumns: catalogColumnReader,
+                readSchemaTables: schemaTableReader
+            )
         }
         .alert(String(localized: "Write Query Blocked"), isPresented: $showWriteBlockedAlert) {
             Button("OK", role: .cancel) {}
@@ -163,9 +236,7 @@ struct QueryEditorView: View {
         HStack(spacing: 12) {
             if isExecuting {
                 Button {
-                    executeTask?.cancel()
-                    viewModel.stop()
-                    Task { try? await session?.driver.cancelCurrentQuery() }
+                    stop()
                 } label: {
                     Label(String(localized: "Stop"), systemImage: "stop.fill")
                         .font(.subheadline.weight(.medium))
@@ -173,7 +244,6 @@ struct QueryEditorView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .tint(.red)
-                .keyboardShortcut(".", modifiers: .command)
             } else {
                 Menu {
                     Button {
@@ -228,16 +298,42 @@ struct QueryEditorView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background {
-            Button(runAtCursorTitle) { runAtCursor(dismissingKeyboard: false) }
-                .keyboardShortcut(.return, modifiers: .command)
-                .disabled(!canRun)
-                .hidden()
-            Button("Run All Statements") { runAllStatements(dismissingKeyboard: false) }
-                .keyboardShortcut(.return, modifiers: [.command, .shift])
-                .disabled(!canRun)
-                .hidden()
+    }
+
+    // A template or history entry: Undo takes it back, so an editor not in the window yet takes it when it shows.
+    private func add(_ text: String) {
+        guard editorHandle.isInWindow else {
+            deferredAdds.append(text)
+            return
         }
+        applyAdd(text)
+    }
+
+    private func applyAdd(_ text: String) {
+        guard !editorHandle.add(text) else { return }
+        let edit = QueryTextInsertion.edit(adding: text, to: query, databaseType: databaseType)
+        query = QueryTextInsertion.applying(edit, to: query)
+    }
+
+    private func stop() {
+        executeTask?.cancel()
+        viewModel.stop()
+        Task { try? await session?.driver.cancelCurrentQuery() }
+    }
+
+    private var menuActions: QueryEditorActions? {
+        guard QueryEditorActions.publishes(isOnScreen: isOnScreen, selectedTab: coordinator.selectedTab) else {
+            return nil
+        }
+        return QueryEditorActions(
+            runTitle: runAtCursorTitle,
+            canRun: canRun,
+            isExecuting: isExecuting,
+            run: { runAtCursor(dismissingKeyboard: false) },
+            runAll: { runAllStatements(dismissingKeyboard: false) },
+            stop: { stop() },
+            clear: { showClearConfirmation = true }
+        )
     }
 
     private var canRun: Bool {
@@ -498,7 +594,7 @@ struct QueryEditorView: View {
                             table: table.name, schema: activeSchema, type: databaseType
                         ) {
                             Button(table.name) {
-                                query = template
+                                add(template)
                             }
                         }
                     }
@@ -663,6 +759,7 @@ struct QueryEditorView: View {
         }
 
         progressUpdater.cancel()
+        postCatalogChanges(of: script)
         let phase = viewModel.phase
         let outcome = QueryExecutionOutcome(phase: phase)
 
@@ -696,6 +793,19 @@ struct QueryEditorView: View {
         executionStartTime = nil
 
         await appState.queryActivities.end(token: token, outcome: outcome.activityOutcome)
+    }
+
+    // Every statement counts as run, a failed batch's too: a missed reload leaves the lists naming what is gone.
+    private func postCatalogChanges(of script: QueryScript) {
+        guard databaseType.speaksSQL else { return }
+        let grammar = SQLLexicalReadings.resolve(
+            databaseTypeId: databaseType.rawValue, declared: nil, session: nil
+        ).execution
+        let effect = SQLCatalogEffectClassifier.effect(ofStatements: script.units.map(\.sql), grammar: grammar)
+        var kinds = effect.kinds
+        // A catalog connection sees DDL the transaction ran only once it commits.
+        if effect.endsTransaction { kinds.insert(.tables) }
+        coordinator.noteCatalogChanged(kinds)
     }
 
     private func plan(_ text: String, on session: ConnectionSession) async -> QueryScript {
