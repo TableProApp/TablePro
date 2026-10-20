@@ -10,11 +10,6 @@ public enum SQLiteNumberText {
         return isRealSpelling(text, isZero: real == 0)
     }
 
-    // An integer compares exactly against a column of any affinity; a REAL against a TEXT column does not.
-    public static func isIntegerSpelling(_ text: String) -> Bool {
-        Int64(text).map { String($0) == text } ?? false
-    }
-
     // A REAL prints with at most 17 significant digits, never a trailing zero but the one in `7.0`, either plain or as
     // `1.0e-05` and `1.2e+17`. SQLite 3.54 goes plain from 1e-4 below 1e17 and an older one past 1e15, and the digits
     // are SQLite's own (1/3 prints `0.33333333333333332`), so only the shape is checked; the caller's CAST holds the

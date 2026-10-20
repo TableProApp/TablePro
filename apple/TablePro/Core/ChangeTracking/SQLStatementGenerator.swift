@@ -23,6 +23,7 @@ struct AttributedStatement: @unchecked Sendable {
     let statement: ParameterizedStatement
     let kind: RowWriteKind
     let rowIDs: [RowID]
+    var refusesSharedKey = false
 
     var rowCount: Int { rowIDs.count }
 }
@@ -144,7 +145,9 @@ struct SQLStatementGenerator {
             case .update:
                 flushDeleteRun()
                 if let stmt = generateUpdateSQL(for: change) {
-                    statements.append(AttributedStatement(statement: stmt, kind: .update, rowIDs: [change.rowID]))
+                    statements.append(AttributedStatement(
+                        statement: stmt, kind: .update, rowIDs: [change.rowID], refusesSharedKey: matchesEitherWay(change)
+                    ))
                 }
             case .insert:
                 // SAFETY: Verify the row is still marked as inserted
@@ -397,10 +400,10 @@ struct SQLStatementGenerator {
         let value: PluginCellValue?
     }
 
-    /// The conditions that pick one row. SQLite keeps integer 5 and text '5' apart in a column with no affinity, and
-    /// the grid read either one as `5`, so an integer the grid read matches both; a typed column converts either
-    /// literal to its own type, so the form is exact there too. When both rows exist the statement itself refuses
-    /// them, since a save the inspector sends carries no row count to hold the server to.
+    /// The conditions that pick one row. SQLite keeps the number 5 and the text '5' apart in a column with no
+    /// affinity, and the grid read either one as `5`, so a number the grid read matches both, held by CAST to the
+    /// text SQLite reads it back as so a REAL 5.0 is not matched too; a typed column converts either literal to its
+    /// own type, so the form is exact there too. When both rows exist the statement itself refuses them.
     private func rowCondition(_ terms: [RowMatchTerm], parameters: inout [Any?]) -> String {
         let clause = conditions(terms, parameters: &parameters)
         guard terms.contains(where: { matchesEitherWay($0.value) }) else { return clause }
@@ -414,13 +417,27 @@ struct SQLStatementGenerator {
             parameters.append(value.asAny)
             let bound = placeholder(at: parameters.count - 1)
             guard matchesEitherWay(value), case .text(let text) = value else { return "\(term.matched) = \(bound)" }
-            return "\(term.matched) IN (\(text), \(bound))"
+            parameters.append(value.asAny)
+            let read = placeholder(at: parameters.count - 1)
+            return "(\(term.matched) IN (\(text), \(bound)) AND CAST(\(term.matched) AS TEXT) = \(read))"
         }.joined(separator: " AND ")
     }
 
     private func matchesEitherWay(_ value: PluginCellValue?) -> Bool {
         guard SQLTypeFamily.of(databaseType) == .sqlite, case .text(let text)? = value else { return false }
-        return SQLiteNumberText.isIntegerSpelling(text)
+        return SQLiteNumberText.isStoredSpelling(text)
+    }
+
+    private func matchesEitherWay(_ change: RowChange) -> Bool {
+        let matched = primaryKeyColumns.isEmpty
+            ? columns.filter { !rowMatchPolicy.excludedColumns.contains($0) }
+            : primaryKeyColumns
+        return matched.contains { column in
+            if let originalRow = change.originalRow, let index = columns.firstIndex(of: column), index < originalRow.count {
+                return matchesEitherWay(originalRow[index])
+            }
+            return matchesEitherWay(change.cellChanges.first { $0.columnName == column }?.oldValue)
+        }
     }
 
     // MARK: - DELETE Generation
@@ -443,7 +460,10 @@ struct SQLStatementGenerator {
         func flush() {
             statements.append(
                 AttributedStatement(
-                    statement: deleteStatement(for: chunk.map(\.matches)), kind: .delete, rowIDs: chunk.map(\.rowID)
+                    statement: deleteStatement(for: chunk.map(\.matches)),
+                    kind: .delete,
+                    rowIDs: chunk.map(\.rowID),
+                    refusesSharedKey: chunk.contains { $0.matches.contains { matchesEitherWay($0.boundValue) } }
                 )
             )
         }
@@ -451,7 +471,9 @@ struct SQLStatementGenerator {
         let matchesOneRowPerStatement = primaryKeyColumns.isEmpty && !rowMatchPolicy.excludedColumns.isEmpty
         for row in rowMatches {
             let boundCount = row.matches.count(where: { $0.boundValue != nil })
-            let rowParameterCount = row.matches.contains { matchesEitherWay($0.boundValue) } ? boundCount * 2 : boundCount
+            // An either-way term binds its value twice, and the row's guard repeats every term.
+            let eitherWayCount = row.matches.count { matchesEitherWay($0.boundValue) }
+            let rowParameterCount = eitherWayCount > 0 ? (boundCount + eitherWayCount) * 2 : boundCount
             if !chunk.isEmpty,
                matchesOneRowPerStatement || chunkParameterCount + rowParameterCount > maxBindParameters {
                 flush()

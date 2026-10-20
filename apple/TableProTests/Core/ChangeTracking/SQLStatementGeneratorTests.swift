@@ -1183,6 +1183,7 @@ struct SQLStatementGeneratorTests {
     }
 
     // SQLite keeps integer 5 and text '5' apart in a column with no affinity, and a bound '5' missed the integer row.
+    // CAST holds the match to the text the grid read, so a REAL 1.0 is not matched for the text '1'.
     @Test("A SQLite row match names a number both ways it can be stored")
     func sqliteMatchesEitherStorageClass() throws {
         let generator = try makeGenerator(databaseType: .sqlite)
@@ -1203,9 +1204,37 @@ struct SQLStatementGeneratorTests {
 
         let update = try #require(statements.first { $0.sql.hasPrefix("UPDATE") })
         let delete = try #require(statements.first { $0.sql.hasPrefix("DELETE") })
-        #expect(update.sql == "UPDATE `users` SET `name` = ? WHERE `id` IN (5, ?) AND (SELECT COUNT(*) FROM `users` WHERE `id` IN (5, ?)) = 1")
-        #expect(update.parameters.compactMap { $0 as? String } == ["Johnny", "5", "5"])
-        #expect(delete.sql == "DELETE FROM `users` WHERE `id` = ?")
+        let match = "(`id` IN (5, ?) AND CAST(`id` AS TEXT) = ?)"
+        #expect(update.sql == "UPDATE `users` SET `name` = ? WHERE \(match) AND (SELECT COUNT(*) FROM `users` WHERE \(match)) = 1")
+        #expect(update.parameters.compactMap { $0 as? String } == ["Johnny", "5", "5", "5", "5"])
+        let real = "(`id` IN (2.5, ?) AND CAST(`id` AS TEXT) = ?)"
+        #expect(delete.sql == "DELETE FROM `users` WHERE (\(real) AND (SELECT COUNT(*) FROM `users` WHERE \(real)) = 1)")
+    }
+
+    @Test("A SQLite key write is marked to fail when its guard leaves the row unchanged")
+    func sqliteKeyWriteRefusesASharedKey() throws {
+        let generator = try makeGenerator(databaseType: .sqlite)
+        let attributed = generator.generateAttributedStatements(
+            from: [
+                RowChange(
+                    rowID: .existing(0),
+                    type: .update,
+                    cellChanges: [CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")],
+                    originalRow: ["5", "John", "john@example.com"]
+                ),
+                RowChange(
+                    rowID: .existing(1),
+                    type: .update,
+                    cellChanges: [CellChange(columnIndex: 1, columnName: "name", oldValue: "Ann", newValue: "Anna")],
+                    originalRow: ["x7", "Ann", "ann@example.com"]
+                )
+            ],
+            insertedRowData: [:],
+            deletedRowIDs: [],
+            insertedRowIDs: []
+        )
+
+        #expect(attributed.map(\.refusesSharedKey) == [true, false])
     }
 
     @Test("Another engine keeps a plain bound match")

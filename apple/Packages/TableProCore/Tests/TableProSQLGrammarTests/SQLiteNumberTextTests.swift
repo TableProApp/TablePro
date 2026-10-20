@@ -32,11 +32,4 @@ struct SQLiteNumberTextTests {
     func seventeenDigitShape(text: String) {
         #expect(SQLiteNumberText.isStoredSpelling(text))
     }
-
-    @Test("Only an integer spelling is matched both ways as a key", arguments: [
-        ("5", true), ("-5", true), ("2.5", false), ("0.3333333333333333", false), ("05", false), ("5.0", false)
-    ])
-    func integerSpelling(text: String, isInteger: Bool) {
-        #expect(SQLiteNumberText.isIntegerSpelling(text) == isInteger)
-    }
 }

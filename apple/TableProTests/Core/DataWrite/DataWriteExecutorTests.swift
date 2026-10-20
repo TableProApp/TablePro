@@ -77,6 +77,7 @@ struct DataWriteExecutorTests {
         prologue: [String] = [],
         epilogue: [String] = [],
         matchesRowsWithoutKey: Bool = false,
+        refusesSharedKey: Bool = false,
         databaseType: DatabaseType = .sqlite
     ) -> DataWritePlan {
         DataWritePlan(
@@ -88,7 +89,8 @@ struct DataWriteExecutorTests {
                     statement: ParameterizedStatement(sql: "UPDATE \"t\" SET \"b\" = \(index)", parameters: []),
                     expectedRowCount: expectedRowCount,
                     tableName: "t",
-                    matchesRowsWithoutKey: matchesRowsWithoutKey
+                    matchesRowsWithoutKey: matchesRowsWithoutKey,
+                    refusesSharedKey: refusesSharedKey
                 )
             },
             prologue: prologue,
@@ -146,6 +148,20 @@ struct DataWriteExecutorTests {
         await #expect(throws: DataWriteError.rowsNoLongerMatch(table: "t", expected: 1, actual: 0)) {
             try await DataWriteExecutor.run(
                 plan(expectedRowCount: 1, matchesRowsWithoutKey: true),
+                on: driver(counting)
+            )
+        }
+        #expect(counting.didRollBack)
+        #expect(counting.didCommit == false)
+    }
+
+    // The statement matched nothing because 5 and '5' both read as its key, or the row is gone.
+    @Test("A SQLite key write that refuses a shared key and changed nothing fails, keeping the edit")
+    func sharedKeyWriteThatMatchedNothingFails() async throws {
+        let counting = CountingDriver(affectedRows: 0)
+        await #expect(throws: DataWriteError.keyNoLongerMatchesOneRow(table: "t", expected: 1, actual: 0)) {
+            try await DataWriteExecutor.run(
+                plan(expectedRowCount: 1, refusesSharedKey: true),
                 on: driver(counting)
             )
         }
