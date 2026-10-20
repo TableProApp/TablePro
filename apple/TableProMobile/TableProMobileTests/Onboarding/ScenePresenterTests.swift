@@ -161,6 +161,32 @@ struct ScenePresenterTests {
         #expect(presenter.sheet == nil)
     }
 
+    @Test("A refusal with no cover on screen is presented at once")
+    func refusalWithoutCoverIsPresentedAtOnce() {
+        let presenter = ScenePresenter()
+
+        presenter.presentRefusal(for: connectionId, coverIsOnScreen: false)
+        #expect(presenter.refusedConnectionId == connectionId)
+        #expect(presenter.heldRefusalId == nil)
+    }
+
+    @Test("A refusal that arrives over an open connection is presented once, when the cover dismisses")
+    func refusalOverACoverWaitsForTheDismissal() {
+        let presenter = ScenePresenter()
+
+        presenter.presentRefusal(for: connectionId, coverIsOnScreen: true)
+        #expect(presenter.refusedConnectionId == nil)
+        #expect(presenter.heldRefusalId == connectionId)
+
+        presenter.presentHeldRefusal()
+        #expect(presenter.refusedConnectionId == connectionId)
+        #expect(presenter.heldRefusalId == nil)
+
+        presenter.refusedConnectionId = nil
+        presenter.presentHeldRefusal()
+        #expect(presenter.refusedConnectionId == nil)
+    }
+
     @Test("An import waits until the stored library can be written")
     func importWaitsForLibrary() {
         let presenter = ScenePresenter()

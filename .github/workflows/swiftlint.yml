@@ -1,14 +1,7 @@
 name: SwiftLint
 
 on:
-  pull_request:
-  push:
-    branches: [main, 'release/**']
-  workflow_dispatch:
-
-concurrency:
-  group: swiftlint-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  workflow_call:
 
 permissions:
   contents: read

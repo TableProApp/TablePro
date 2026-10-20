@@ -48,6 +48,18 @@ nonisolated struct AppError: LocalizedError, Sendable {
     var errorDescription: String? { message }
 }
 
+nonisolated extension AppError {
+    // The device refuses these before any network work, so a second attempt fails the same way.
+    var canRetry: Bool {
+        switch underlying as? ConnectionError {
+        case .driverNotFound?, .localSocketNotSupported?:
+            false
+        default:
+            true
+        }
+    }
+}
+
 // MARK: - Error Context
 
 nonisolated struct ErrorContext: Sendable {
@@ -187,9 +199,8 @@ nonisolated enum ErrorClassifier {
         )
     }
 
-    /// A typed error is classified by its case. The substring rules below read a message the user
-    /// writes part of, so a connection called "Prod Tunnel" reported itself as an SSH tunnel failure.
-    private static func connectionFailure(_ error: ConnectionError) -> AppError {
+    // By case, never by text: the substring rules read a name the user typed, such as "Prod Tunnel".
+    static func connectionFailure(_ error: ConnectionError) -> AppError {
         switch error {
         case .previousSessionStillClosing:
             return AppError(
@@ -202,9 +213,9 @@ nonisolated enum ErrorClassifier {
         case .driverNotFound:
             return AppError(
                 category: .config,
-                title: String(localized: "Driver Unavailable"),
+                title: String(localized: "Opens on Mac Only"),
                 message: error.localizedDescription,
-                recovery: String(localized: "This build has no driver for that database type."),
+                recovery: String(localized: "Open it in TablePro on your Mac."),
                 underlying: error
             )
         case .notConnected:

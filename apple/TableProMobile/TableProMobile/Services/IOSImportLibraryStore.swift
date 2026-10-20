@@ -189,7 +189,8 @@ private extension DatabaseConnection {
                     mode: sslMode,
                     caCertificatePath: Self.expandedPath(ssl.caCertificatePath),
                     clientCertificatePath: Self.expandedPath(ssl.clientCertificatePath),
-                    clientKeyPath: Self.expandedPath(ssl.clientKeyPath)
+                    clientKeyPath: Self.expandedPath(ssl.clientKeyPath),
+                    isMacPreferred: ssl.portableMode == .preferred
                 )
             },
             groupId: resolved.groupId,

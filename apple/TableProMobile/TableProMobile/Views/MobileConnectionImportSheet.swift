@@ -196,11 +196,15 @@ struct MobileConnectionImportSheet: View {
         if let duplicate = row.duplicate {
             return String(format: String(localized: "Matches “%@”"), duplicate.name)
         }
+        if let status = MacOnlyConnection.importStatus(typeId: row.settings.type) {
+            return status
+        }
         return row.warnings.first ?? "\(row.settings.host):\(row.settings.port)"
     }
 
     private static func needsAttention(_ row: ConnectionRow) -> Bool {
-        row.unsupportedTypeId != nil || row.duplicate != nil || !row.warnings.isEmpty
+        row.unsupportedTypeId != nil || row.duplicate != nil
+            || MacOnlyConnection.importStatus(typeId: row.settings.type) != nil || !row.warnings.isEmpty
     }
 
     private static func label(for resolution: ConnectionResolution) -> String {

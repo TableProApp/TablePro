@@ -1,55 +1,24 @@
 name: macOS Tests
 
 on:
-  pull_request:
-  push:
-    branches: [main, 'release/**']
-  workflow_dispatch:
-
-# A pull request keeps only its newest run. Each pushed commit gets a group of its own, so no push
-# run is cancelled or replaced by the next merge; runs wait for a free runner instead.
-concurrency:
-  group: macos-tests-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  workflow_call:
+    inputs:
+      plugins:
+        description: Also compile every plugin and check the PluginKit ABI.
+        type: boolean
+        required: true
 
 permissions:
   contents: read
 
 jobs:
-  changes:
-    name: Changes (macOS)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      run: ${{ steps.decide.outputs.run }}
-      plugins: ${{ steps.decide.outputs.plugins }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Decide which suites run
-        id: decide
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          REF: ${{ github.ref }}
-        run: |
-          set -euo pipefail
-          run=$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" macos)
-          plugins=$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" plugins)
-          { echo "run=$run"; echo "plugins=$plugins"; } >> "$GITHUB_OUTPUT"
-
-  # The required check. A job skipped by its if: reports success, so no gate job is needed. The
-  # condition reads "not false" so a failed changes job runs the suite instead of passing it.
   macos:
     name: macOS Tests
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     runs-on: xcode-27
     timeout-minutes: 120
     env:
       NSUnbufferedIO: "YES"
-      COMPILE_PLUGINS: ${{ needs.changes.outputs.plugins != 'false' }}
+      COMPILE_PLUGINS: ${{ inputs.plugins }}
     defaults:
       run:
         working-directory: apple

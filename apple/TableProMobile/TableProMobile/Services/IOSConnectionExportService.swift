@@ -189,7 +189,7 @@ enum IOSConnectionExportService {
     private static func portableSSL(_ connection: DatabaseConnection) -> ExportableSSLConfig? {
         guard connection.sslEnabled, let ssl = connection.sslConfiguration, ssl.mode != .disable else { return nil }
         return ExportableSSLConfig(
-            mode: ssl.mode.portableMode.rawValue,
+            mode: (ssl.isMacPreferred ? PortableSSLMode.preferred : ssl.mode.portableMode).rawValue,
             caCertificatePath: PathPortability.contractHome(ssl.caCertificatePath ?? ""),
             clientCertificatePath: PathPortability.contractHome(ssl.clientCertificatePath ?? ""),
             clientKeyPath: PathPortability.contractHome(ssl.clientKeyPath ?? "")

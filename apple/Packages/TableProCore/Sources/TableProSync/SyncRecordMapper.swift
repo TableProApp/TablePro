@@ -250,7 +250,8 @@ public enum SyncRecordMapper {
         }
 
         if let sslConfig = connection.sslConfiguration {
-            if let data = try? encoder.encode(sslConfig) {
+            if !serverSSLMatches(fields[.sslConfigJson] as? Data, sslConfig),
+               let data = try? encoder.encode(sslConfig) {
                 fields[.sslConfigJson] = data as CKRecordValue
             }
         } else {
@@ -267,6 +268,18 @@ public enum SyncRecordMapper {
         }
 
         fields[.modifiedAtLocal] = Date() as CKRecordValue
+    }
+
+    // A local copy without isMacPreferred may be one an older iOS build stored, so it keeps the server's Preferred.
+    // A blob an older iOS build wrote ("require", nil paths omitted) is rewritten: the Mac cannot read it.
+    private static func serverSSLMatches(_ data: Data?, _ local: SSLConfiguration) -> Bool {
+        guard let data, SSLConfiguration.isMacWireForm(data),
+              let server = try? decoder.decode(SSLConfiguration.self, from: data) else { return false }
+        return (server.isMacPreferred || !local.isMacPreferred)
+            && server.mode == local.mode
+            && server.caCertificatePath == local.caCertificatePath
+            && server.clientCertificatePath == local.clientCertificatePath
+            && server.clientKeyPath == local.clientKeyPath
     }
 
     private static func syncedAdditionalFields(for connection: DatabaseConnection) -> [String: String] {
