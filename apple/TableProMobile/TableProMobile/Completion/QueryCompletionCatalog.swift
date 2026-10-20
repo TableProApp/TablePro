@@ -34,6 +34,7 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
     private let readSchemaTables: QuerySchemaTableReader?
     private let readCatalogSchemaTables: QuerySchemaTableReader?
     private var sessionSchemaReads: [String: Task<[TableInfo]?, any Error>] = [:]
+    private var sessionLocalTables: Set<String> = []
     private var schemas: [String]
     private var databases: [String]
     private var schemaTables: [String: [TableInfo]] = [:]
@@ -61,6 +62,13 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         self.readCatalogSchemaTables = readCatalogSchemaTables
         self.schemas = schemas
         self.databases = databases
+    }
+
+    // Lowercased names of temporary tables the user's statements made on this session.
+    func replaceSessionLocalTables(_ names: Set<String>) {
+        guard names != sessionLocalTables else { return }
+        sessionLocalTables = names
+        columnGeneration += 1
     }
 
     func replaceNamespaces(schemas: [String], databases: [String]) {
@@ -302,15 +310,16 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         }
 
         let generation = columnGeneration
-        if let readCatalogColumns {
+        // A temporary table lives only on the session, so a name the session made never asks the catalog connection.
+        if let readCatalogColumns, !sessionLocalTables.contains(key.table.lowercased()) {
+            // A name the list does not hold may be one, so an empty answer for it is not kept and the session is asked.
             let listed = listedTable(named: key.table, schema: key.schema) != nil
-            switch await read(key, with: readCatalogColumns, generation: generation) {
-            case .answered(let answer) where listed || !answer.isEmpty:
+            switch await read(key, with: readCatalogColumns, generation: generation, keepsEmpty: listed) {
+            case .answered(let answer):
                 return answer
             case .failed where listed:
                 return columns[key]?.columns ?? []
-            case .answered, .failed, .unavailable:
-                // A temporary table lives only on the session, the one place to read a name the list does not hold.
+            case .failed, .unavailable:
                 break
             }
         }
@@ -333,7 +342,8 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         _ key: ColumnKey,
         with reader: @escaping QueryColumnReader,
         generation: Int,
-        onSession: Bool = false
+        onSession: Bool = false,
+        keepsEmpty: Bool = true
     ) async -> ColumnRead {
         let read = Task<[ColumnInfo]?, any Error> {
             try await reader(key.table, key.schema)
@@ -345,7 +355,7 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
             if sessionReads[key] == read { sessionReads[key] = nil }
         }
         do {
-            guard let answer = try await read.value else { return .unavailable }
+            guard let answer = try await read.value, keepsEmpty || !answer.isEmpty else { return .unavailable }
             columns[key] = CachedColumns(generation: generation, columns: answer)
             return .answered(answer)
         } catch {

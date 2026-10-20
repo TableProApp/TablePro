@@ -64,6 +64,9 @@ struct QueryEditorView: View {
             tables: tables,
             schemas: coordinator.supportsSchemas ? coordinator.schemas : [],
             databases: coordinator.supportsDatabaseSwitching ? coordinator.databases : [],
+            temporaryTables: appState.catalogChanges.temporaryTables(
+                for: connectionId, driver: session.map { ObjectIdentifier($0.driver) }
+            ),
             isRunning: isExecuting
         )
     }
@@ -770,7 +773,7 @@ struct QueryEditorView: View {
         }
 
         progressUpdater.cancel()
-        postCatalogChanges(of: script)
+        postCatalogChanges(of: script, on: session)
         let phase = viewModel.phase
         let outcome = QueryExecutionOutcome(phase: phase)
 
@@ -807,8 +810,13 @@ struct QueryEditorView: View {
     }
 
     // Every statement counts as run, a failed batch's too: a missed reload leaves the lists naming what is gone.
-    private func postCatalogChanges(of script: QueryScript) {
+    private func postCatalogChanges(of script: QueryScript, on session: ConnectionSession) {
         guard databaseType.speaksSQL else { return }
+        appState.catalogChanges.noteTemporaryTables(
+            TemporaryTableStatements.change(in: script.units.map(\.sql), databaseType: databaseType),
+            for: connectionId,
+            driver: ObjectIdentifier(session.driver)
+        )
         let grammar = SQLLexicalReadings.resolve(
             databaseTypeId: databaseType.rawValue, declared: nil, session: nil
         ).execution

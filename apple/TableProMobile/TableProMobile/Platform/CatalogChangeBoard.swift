@@ -12,8 +12,14 @@ final class CatalogChangeBoard {
 
     private static let keptEntries = 16
 
+    private struct SessionTables {
+        let driver: ObjectIdentifier
+        var names: Set<String>
+    }
+
     private var generations: [UUID: Int] = [:]
     @ObservationIgnored private var entries: [UUID: [Entry]] = [:]
+    private var temporary: [UUID: SessionTables] = [:]
 
     func generation(for connectionId: UUID) -> Int {
         generations[connectionId, default: 0]
@@ -33,5 +39,19 @@ final class CatalogChangeBoard {
         guard let oldest = posted.first else { return [] }
         guard oldest.generation <= seen + 1 else { return .everything }
         return posted.filter { $0.generation > seen }.reduce([]) { $0.union($1.kinds) }
+    }
+
+    // Temporary tables belong to one session: a new driver starts with none.
+    func temporaryTables(for connectionId: UUID, driver: ObjectIdentifier?) -> Set<String> {
+        guard let driver, let tables = temporary[connectionId], tables.driver == driver else { return [] }
+        return tables.names
+    }
+
+    func noteTemporaryTables(_ change: TemporaryTableStatements.Change, for connectionId: UUID, driver: ObjectIdentifier) {
+        guard !change.created.isEmpty || !change.dropped.isEmpty else { return }
+        var names = temporaryTables(for: connectionId, driver: driver)
+        names.subtract(change.dropped)
+        names.formUnion(change.created)
+        temporary[connectionId] = SessionTables(driver: driver, names: names)
     }
 }

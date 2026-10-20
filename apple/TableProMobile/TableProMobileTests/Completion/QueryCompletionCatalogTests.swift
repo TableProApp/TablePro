@@ -406,6 +406,22 @@ struct QueryCompletionCatalogTests {
         #expect(await sessionSource.reads == ["scratch"])
     }
 
+    @Test("a temporary table the session made is read there, even when it shadows a listed table")
+    func sessionLocalTableReadsTheSession() async {
+        let catalogSource = CatalogColumnSource(["orders": [column("id")]])
+        let sessionSource = CatalogColumnSource(["orders": [column("draft_note")]])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders")], databaseType: .mysql, schema: nil,
+            readColumns: sessionSource.reader, readCatalogColumns: catalogSource.reader
+        )
+
+        await catalog.replaceSessionLocalTables(["orders"])
+        let shadowed = await catalog.columnCompletionItems(for: "orders", schema: nil)
+
+        #expect(labels(shadowed) == ["draft_note"])
+        #expect(await catalogSource.reads.isEmpty)
+    }
+
     @Test("a failed catalog read does not fall back to the session")
     func catalogFailureStays() async {
         let catalogSource = CatalogColumnSource(["orders": [column("id")]], failures: 1)

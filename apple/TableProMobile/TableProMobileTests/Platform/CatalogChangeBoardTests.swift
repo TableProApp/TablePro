@@ -45,4 +45,17 @@ struct CatalogChangeBoardTests {
         #expect(board.generation(for: id) == 0)
         #expect(board.kinds(for: id, since: 0).isEmpty)
     }
+
+    @Test("Temporary tables belong to the session that made them")
+    func temporaryTablesPerSession() {
+        let board = CatalogChangeBoard()
+        let first = NSObject()
+        let second = NSObject()
+        board.noteTemporaryTables(.init(created: ["scratch"]), for: id, driver: ObjectIdentifier(first))
+        board.noteTemporaryTables(.init(created: ["other"], dropped: ["scratch"]), for: id, driver: ObjectIdentifier(first))
+
+        #expect(board.temporaryTables(for: id, driver: ObjectIdentifier(first)) == ["other"])
+        #expect(board.temporaryTables(for: id, driver: ObjectIdentifier(second)).isEmpty)
+        #expect(board.temporaryTables(for: id, driver: nil).isEmpty)
+    }
 }

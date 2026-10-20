@@ -14,6 +14,7 @@ nonisolated struct QueryCompletionScope: Equatable, Sendable {
     let tables: [TableInfo]
     var schemas: [String] = []
     var databases: [String] = []
+    var temporaryTables: Set<String> = []
     let isRunning: Bool
 }
 
@@ -105,6 +106,10 @@ final class QueryCompletionController {
                     await catalog.markColumnsStale()
                 }
             }
+            if previous.temporaryTables != newScope.temporaryTables {
+                let names = newScope.temporaryTables
+                enqueue { await catalog.replaceSessionLocalTables(names) }
+            }
             if previous.schemas != newScope.schemas || previous.databases != newScope.databases {
                 let schemas = newScope.schemas
                 let databases = newScope.databases
@@ -150,6 +155,10 @@ final class QueryCompletionController {
             databaseType: newScope.databaseType
         )
         catalogWork = nil
+        if !newScope.temporaryTables.isEmpty {
+            let names = newScope.temporaryTables
+            enqueue { await catalog.replaceSessionLocalTables(names) }
+        }
         if newScope.isRunning {
             enqueue { await catalog.setColumnReadsAllowed(false) }
         }
