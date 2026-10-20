@@ -383,7 +383,7 @@ struct ConnectionFormEditsTests {
     func sshOffKeepsTheTunnelSwitchedOff() {
         var ssh = SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy")
         ssh.jumpHosts = [SSHJumpHost(host: "jump.example.com", username: "deploy")]
-        ssh.macTotpMode = "autoGenerate"
+        ssh.totpMode = "autoGenerate"
         var snapshot = storedConnection()
         snapshot.sshEnabled = true
         snapshot.sshConfiguration = ssh
@@ -396,7 +396,7 @@ struct ConnectionFormEditsTests {
         #expect(saved.sshConfiguration?.macEnabled == false)
         #expect(saved.sshConfiguration?.host == "bastion.example.com")
         #expect(saved.sshConfiguration?.jumpHosts == ssh.jumpHosts)
-        #expect(saved.sshConfiguration?.macTotpMode == "autoGenerate")
+        #expect(saved.sshConfiguration?.totpMode == "autoGenerate")
     }
 
     @Test("Turning SSH off drops the Mac's SSH profile link, which would otherwise keep the tunnel on there")
