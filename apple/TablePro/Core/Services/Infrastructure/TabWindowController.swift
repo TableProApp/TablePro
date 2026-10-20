@@ -219,6 +219,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         if let splitVC = window.contentViewController as? MainSplitViewController {
             splitVC.startActivationConnectIfNeeded()
             splitVC.syncFrontmostTabManager()
+            // The recovery list records the connection the front window shows.
+            SessionRecoveryTracker.sync()
         }
 
         guard let coordinator = MainContentCoordinator.coordinator(forWindow: window) else { return }

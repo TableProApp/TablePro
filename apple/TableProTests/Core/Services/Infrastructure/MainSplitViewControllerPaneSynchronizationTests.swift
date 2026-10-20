@@ -532,6 +532,19 @@ struct MainSplitViewControllerPaneSynchronizationTests {
         #expect(saved?.tabs.first?.query == "SELECT 1")
     }
 
+    @Test("A connection reopened without its connect stays not connected when its window activates")
+    func reopenedWithoutConnectStaysNotConnected() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        #expect(harness.controller.workspaces.selectedConnectionId == harness.foreground.connectionId)
+
+        harness.controller.startActivationConnectIfNeeded()
+
+        #expect(harness.foreground.phase == .idle)
+        #expect(harness.foreground.attemptToken == nil)
+        #expect(harness.foreground.resolvedPane == .unavailable(.notConnected))
+    }
+
     @Test("Reconnecting only when idle shows a connecting connection and leaves its attempt alone")
     func reconnectIfIdleLeavesAConnectingWorkspaceAlone() throws {
         let harness = try Harness()
