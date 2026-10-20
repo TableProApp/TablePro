@@ -187,8 +187,8 @@ final class ConnectionCoordinator {
         await connectFresh(token: token)
     }
 
-    /// `allowSignIn` is false on the retry that follows a sign-in, so a connection that keeps
-    /// failing cannot put the prompt up again and again.
+    // `allowSignIn` is false on the retry that follows a sign-in, so a connection that keeps
+    // failing cannot put the prompt up again and again.
     private func connectFresh(token: UUID, allowSignIn: Bool = true) async {
         IOSAnalyticsProvider.shared.markConnectionAttempted()
 
@@ -207,23 +207,31 @@ final class ConnectionCoordinator {
             navigateToPendingTable()
         } catch {
             guard attemptToken == token else { return }
+            var failure = error
             // A sign-in that expired is recoverable, so offer it once and retry rather than
             // leaving the user on an error screen whose only button repeats the same failure.
             if allowSignIn,
-               EntraSignIn.needsSignIn(error),
-               await EntraSignIn.offer(fields: connection.additionalFields, prompts: prompts) {
-                guard attemptToken == token else { return }
-                await connectFresh(token: token, allowSignIn: false)
-                return
+               let method = SignInOffer.method(for: error, connection: connection, secureStore: appState.secureStore) {
+                switch await SignInOffer.offer(method, prompts: prompts) {
+                case .signedIn:
+                    guard attemptToken == token else { return }
+                    await connectFresh(token: token, allowSignIn: false)
+                    return
+                case .failed(let signInError):
+                    failure = signInError
+                case .declined:
+                    break
+                }
             }
             guard attemptToken == token else { return }
             let context = ErrorContext(
                 operation: "connect",
                 databaseType: connection.type,
                 host: connection.host,
-                sshEnabled: connection.sshEnabled
+                sshEnabled: connection.sshEnabled,
+                signsInWithIAM: connection.iamSignIn != nil
             )
-            phase = .error(ErrorClassifier.classify(error, context: context))
+            phase = .error(ErrorClassifier.classify(failure, context: context))
         }
     }
 
@@ -249,7 +257,8 @@ final class ConnectionCoordinator {
                 operation: "reconnect",
                 databaseType: connection.type,
                 host: connection.host,
-                sshEnabled: connection.sshEnabled
+                sshEnabled: connection.sshEnabled,
+                signsInWithIAM: connection.iamSignIn != nil
             )
             phase = .error(ErrorClassifier.classify(error, context: context))
             self.session = nil
@@ -313,7 +322,8 @@ final class ConnectionCoordinator {
                     operation: "switchDatabase",
                     databaseType: connection.type,
                     host: connection.host,
-                    sshEnabled: connection.sshEnabled
+                    sshEnabled: connection.sshEnabled,
+                    signsInWithIAM: connection.iamSignIn != nil
                 )
                 phase = .error(ErrorClassifier.classify(error, context: context))
                 self.session = nil

@@ -3,6 +3,7 @@ import SwiftUI
 struct ErrorView: View {
     let error: AppError
     var onRetry: (() async -> Void)?
+    var onEditConnection: (() -> Void)?
 
     var body: some View {
         ContentUnavailableView {
@@ -17,12 +18,23 @@ struct ErrorView: View {
                 }
             }
         } actions: {
-            if let onRetry {
-                Button("Retry") {
-                    Task { await onRetry() }
+            if error.opensEditor, let onEditConnection {
+                Button("Edit Connection", action: onEditConnection)
+                    .buttonStyle(.borderedProminent)
+                if let onRetry {
+                    retryButton(onRetry)
+                        .buttonStyle(.bordered)
                 }
-                .buttonStyle(.borderedProminent)
+            } else if let onRetry {
+                retryButton(onRetry)
+                    .buttonStyle(.borderedProminent)
             }
+        }
+    }
+
+    private func retryButton(_ onRetry: @escaping () async -> Void) -> some View {
+        Button("Retry") {
+            Task { await onRetry() }
         }
     }
 

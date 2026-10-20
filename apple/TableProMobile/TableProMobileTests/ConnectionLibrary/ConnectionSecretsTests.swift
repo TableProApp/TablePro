@@ -67,13 +67,41 @@ struct ConnectionSecretsTests {
             "com.TablePro.password.",
             "com.TablePro.sshpassword.",
             "com.TablePro.keypassphrase.",
-            "com.TablePro.sshkeydata."
+            "com.TablePro.sshkeydata.",
+            "com.TablePro.plugin.awsSecretAccessKey.",
+            "com.TablePro.plugin.awsSessionToken.",
+            "com.TablePro.plugin.gcpServiceAccountKey.",
+            "com.TablePro.deviceiam."
         ])
         let id = UUID()
         #expect(ConnectionSecretKind.sshPrivateKey.account(for: id) == "com.TablePro.sshkeydata.\(id.uuidString)")
+        #expect(
+            ConnectionSecretKind.awsSecretAccessKey.account(for: id)
+                == "com.TablePro.plugin.awsSecretAccessKey.\(id.uuidString)"
+        )
     }
 
-    @Test("The orphan sweep takes the passwords of a connection that is gone and nothing else")
+    @Test("A device-only sign-in key never syncs, whatever Sync Passwords says")
+    func deviceIAMNeverSyncs() {
+        let id = UUID()
+
+        #expect(!KeychainSecureStore.synchronizes(ConnectionSecretKind.deviceIAM.account(for: id), syncsPasswords: true))
+        #expect(!KeychainSecureStore.synchronizes(ConnectionSecretKind.deviceIAM.account(for: id), syncsPasswords: false))
+        #expect(ConnectionSecretKind.allCases.filter { $0.isDeviceOnly } == [.deviceIAM])
+    }
+
+    @Test("A connection's own secrets follow Sync Passwords, the Mac's IAM keys included")
+    func ownSecretsFollowSyncPasswords() {
+        let id = UUID()
+        let synced = ConnectionSecretKind.allCases.filter { !$0.isDeviceOnly }
+
+        for kind in synced {
+            #expect(KeychainSecureStore.synchronizes(kind.account(for: id), syncsPasswords: true))
+            #expect(!KeychainSecureStore.synchronizes(kind.account(for: id), syncsPasswords: false))
+        }
+    }
+
+    @Test("The orphan sweep takes the secrets of a connection that is gone and nothing else")
     func sweepTakesOrphanedPasswordsOnly() {
         let kept = UUID()
         let removed = UUID()
@@ -85,7 +113,11 @@ struct ConnectionSecretsTests {
         #expect(Set(orphaned) == [
             ConnectionSecretKind.password.account(for: removed),
             ConnectionSecretKind.sshPassword.account(for: removed),
-            ConnectionSecretKind.keyPassphrase.account(for: removed)
+            ConnectionSecretKind.keyPassphrase.account(for: removed),
+            ConnectionSecretKind.awsSecretAccessKey.account(for: removed),
+            ConnectionSecretKind.awsSessionToken.account(for: removed),
+            ConnectionSecretKind.gcpServiceAccountKey.account(for: removed),
+            ConnectionSecretKind.deviceIAM.account(for: removed)
         ])
     }
 

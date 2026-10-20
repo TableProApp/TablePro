@@ -249,25 +249,79 @@ public enum AWSSSOLogin {
         openVerificationURL: @escaping @Sendable (URL) -> Void,
         session: URLSession = .shared
     ) async throws {
+        try await login(
+            profileName: profileName,
+            configContents: configContents,
+            cacheDirectory: cacheDirectory,
+            openVerificationURL: openVerificationURL,
+            session: session,
+            clock: ContinuousClock()
+        )
+    }
+
+    static func login<C: Clock>(
+        profileName: String,
+        configContents: String,
+        cacheDirectory: String,
+        openVerificationURL: @escaping @Sendable (URL) -> Void,
+        session: URLSession,
+        clock: C
+    ) async throws where C.Duration == Duration {
         let settings = try AWSSSO.parseProfileSettings(configContent: configContents, profileName: profileName)
-        let registration = try await registerClient(region: settings.region, clientName: "TablePro", session: session)
-        let auth = try await startDeviceAuthorization(
+        let entry = try await authorize(
             region: settings.region,
+            startUrl: settings.startUrl,
+            presentCode: { url, _ in openVerificationURL(url) },
+            session: session,
+            clock: clock
+        )
+        try writeTokenCache(
+            cacheKey: settings.ssoSession ?? settings.startUrl,
+            entry: entry,
+            cacheDirectory: cacheDirectory
+        )
+    }
+
+    public static func authorize(
+        region: String,
+        startUrl: String,
+        presentCode: @escaping @Sendable (URL, String) -> Void,
+        session: URLSession = .shared
+    ) async throws -> AWSSSOTokenCacheEntry {
+        try await authorize(
+            region: region,
+            startUrl: startUrl,
+            presentCode: presentCode,
+            session: session,
+            clock: ContinuousClock()
+        )
+    }
+
+    static func authorize<C: Clock>(
+        region: String,
+        startUrl: String,
+        presentCode: @escaping @Sendable (URL, String) -> Void,
+        session: URLSession,
+        clock: C
+    ) async throws -> AWSSSOTokenCacheEntry where C.Duration == Duration {
+        let registration = try await registerClient(region: region, clientName: "TablePro", session: session)
+        let auth = try await startDeviceAuthorization(
+            region: region,
             clientId: registration.clientId,
             clientSecret: registration.clientSecret,
-            startUrl: settings.startUrl,
+            startUrl: startUrl,
             session: session
         )
-        if let url = URL(string: auth.verificationUriComplete) {
-            openVerificationURL(url)
+        if let url = URL(string: auth.verificationUriComplete) ?? URL(string: auth.verificationUri) {
+            presentCode(url, auth.userCode)
         }
 
-        let deadline = Date().addingTimeInterval(TimeInterval(auth.expiresIn))
+        let deadline = clock.now.advanced(by: .seconds(auth.expiresIn))
         var interval = max(auth.interval, 1)
-        while Date() < deadline {
-            try await Task.sleep(nanoseconds: UInt64(interval) * 1_000_000_000)
+        while clock.now < deadline {
+            try await clock.sleep(for: .seconds(interval))
             let outcome = try await pollToken(
-                region: settings.region,
+                region: region,
                 clientId: registration.clientId,
                 clientSecret: registration.clientSecret,
                 deviceCode: auth.deviceCode,
@@ -275,21 +329,16 @@ public enum AWSSSOLogin {
             )
             switch outcome.poll {
             case .token(let accessToken, let expiresIn):
-                try writeTokenCache(
-                    cacheKey: settings.ssoSession ?? settings.startUrl,
-                    entry: AWSSSOTokenCacheEntry(
-                        accessToken: accessToken,
-                        expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn)),
-                        region: settings.region,
-                        startUrl: settings.startUrl,
-                        refreshToken: outcome.refreshToken,
-                        clientId: registration.clientId,
-                        clientSecret: registration.clientSecret,
-                        registrationExpiresAt: registration.registrationExpiresAt
-                    ),
-                    cacheDirectory: cacheDirectory
+                return AWSSSOTokenCacheEntry(
+                    accessToken: accessToken,
+                    expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn)),
+                    region: region,
+                    startUrl: startUrl,
+                    refreshToken: outcome.refreshToken,
+                    clientId: registration.clientId,
+                    clientSecret: registration.clientSecret,
+                    registrationExpiresAt: registration.registrationExpiresAt
                 )
-                return
             case .pending:
                 continue
             case .slowDown:
@@ -361,11 +410,29 @@ public enum AWSSSOLogin {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let data: Data
+        let response: URLResponse
         do {
-            let (data, _) = try await session.data(for: request)
-            return data
+            (data, response) = try await session.data(for: request)
         } catch {
             throw AWSSSOLoginError.network(error.localizedDescription)
         }
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw failure(status: http.statusCode, errorType: http.value(forHTTPHeaderField: "x-amzn-ErrorType"), data: data)
+        }
+        return data
+    }
+
+    static func failure(status: Int, errorType: String?, data: Data) -> AWSSSOLoginError {
+        let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        let candidates: [String?] = [
+            body?["error_description"] as? String,
+            body?["message"] as? String,
+            body?["Message"] as? String,
+            body?["error"] as? String,
+            errorType?.split(separator: ":").first.map(String.init)
+        ]
+        let detail = candidates.compactMap { $0 }.first { !$0.isEmpty } ?? "HTTP \(status)"
+        return .serverError(detail)
     }
 }

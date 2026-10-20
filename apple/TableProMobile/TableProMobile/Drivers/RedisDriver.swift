@@ -470,7 +470,7 @@ nonisolated extension RedisError {
 nonisolated extension RedisTLSOptions {
     init(ssl: DriverSSLConfiguration, host: String) {
         self.init(
-            host: host,
+            host: ssl.serverName ?? host,
             verifiesCertificate: ssl.verifiesCertificate,
             verifiesHostname: ssl.verifiesHostname,
             caCertificatePath: ssl.existingCACertificatePath,

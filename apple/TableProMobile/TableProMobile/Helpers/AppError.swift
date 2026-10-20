@@ -25,9 +25,10 @@ nonisolated struct AppError: LocalizedError, Sendable {
     let message: String
     let recovery: String?
     let underlying: Error?
-    /// Set when an Oracle listener rejected the connect identifier and named the
-    /// mode it was given, so the form can offer the other mode in one tap.
+    // Set when an Oracle listener rejected the connect identifier and named the
+    // mode it was given, so the form can offer the other mode in one tap.
     let suggestedOracleMode: OracleConnectionOptions.IdentifierMode?
+    let opensEditor: Bool
 
     init(
         category: AppErrorCategory,
@@ -35,7 +36,8 @@ nonisolated struct AppError: LocalizedError, Sendable {
         message: String,
         recovery: String?,
         underlying: Error?,
-        suggestedOracleMode: OracleConnectionOptions.IdentifierMode? = nil
+        suggestedOracleMode: OracleConnectionOptions.IdentifierMode? = nil,
+        opensEditor: Bool = false
     ) {
         self.category = category
         self.title = title
@@ -43,6 +45,7 @@ nonisolated struct AppError: LocalizedError, Sendable {
         self.recovery = recovery
         self.underlying = underlying
         self.suggestedOracleMode = suggestedOracleMode
+        self.opensEditor = opensEditor
     }
 
     var errorDescription: String? { message }
@@ -55,12 +58,20 @@ nonisolated struct ErrorContext: Sendable {
     let databaseType: DatabaseType?
     let host: String?
     let sshEnabled: Bool
+    let signsInWithIAM: Bool
 
-    init(operation: String, databaseType: DatabaseType? = nil, host: String? = nil, sshEnabled: Bool = false) {
+    init(
+        operation: String,
+        databaseType: DatabaseType? = nil,
+        host: String? = nil,
+        sshEnabled: Bool = false,
+        signsInWithIAM: Bool = false
+    ) {
         self.operation = operation
         self.databaseType = databaseType
         self.host = host
         self.sshEnabled = sshEnabled
+        self.signsInWithIAM = signsInWithIAM
     }
 }
 
@@ -112,6 +123,10 @@ nonisolated enum ErrorClassifier {
 
         if let connectionError = error as? ConnectionError {
             return connectionFailure(connectionError)
+        }
+
+        if let signInError = signInFailure(error, context: context) {
+            return signInError
         }
 
         if let redisError = error as? RedisError, let classified = redisFailure(redisError, context: context) {
@@ -332,11 +347,14 @@ nonisolated enum ErrorClassifier {
 
     private static func auth(_ error: Error, context: ErrorContext) -> AppError {
         let dbName = context.databaseType?.rawValue ?? String(localized: "Database")
+        let recovery = context.signsInWithIAM
+            ? String(localized: "This connection signs in with IAM, not a password. Check that the database user is set up for IAM sign-in.")
+            : String(format: String(localized: "Check your %@ username and password."), dbName)
         return AppError(
             category: .auth,
             title: String(localized: "Authentication Failed"),
             message: error.localizedDescription,
-            recovery: String(format: String(localized: "Check your %@ username and password."), dbName),
+            recovery: recovery,
             underlying: error
         )
     }

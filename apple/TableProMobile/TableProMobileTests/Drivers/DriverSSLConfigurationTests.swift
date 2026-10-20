@@ -116,4 +116,20 @@ struct DriverSSLConfigurationTests {
         #expect(absent.existingClientKeyPath == nil)
         #expect(DriverSSLConfiguration(mode: .require).existingClientCertificatePath == nil)
     }
+
+    @Test("A configuration read from the connection names no server, and materialized certificates keep the name")
+    func serverNameSurvivesMaterializing() {
+        #expect(DriverSSLConfiguration(sslEnabled: true, configuration: nil).serverName == nil)
+        #expect(DriverSSLConfiguration(sslEnabled: true, configuration: SSLConfiguration(mode: .verifyFull)).serverName == nil)
+
+        var ssl = DriverSSLConfiguration(mode: .verifyFull)
+        ssl.serverName = "db.example.com"
+        let materialized = ssl.applying(MaterializedCertificates(
+            caCertificatePath: "/tmp/ca.pem",
+            clientCertificatePath: nil,
+            clientKeyPath: nil
+        ))
+        #expect(materialized.serverName == "db.example.com")
+        #expect(materialized.caCertificatePath == "/tmp/ca.pem")
+    }
 }

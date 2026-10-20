@@ -1254,6 +1254,12 @@
         }
       }
     },
+    "Access Key for This Device" : {
+
+    },
+    "Access Key ID" : {
+
+    },
     "Account" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -1460,6 +1466,12 @@
           }
         }
       }
+    },
+    "Add a service account key for this device in the connection's Authentication section. The connection on the Mac does not change." : {
+
+    },
+    "Add an access key for this device in the connection's Authentication section. The connection on the Mac does not change." : {
+
     },
     "Add Connection" : {
       "localizations" : {
@@ -2177,6 +2189,13 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Application Default credentials are files on the Mac. A key added here signs in on this device only. The Mac's connection does not change." : {
+
+    },
+    "Application default credentials not found. Run gcloud auth application-default login." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Apply" : {
       "localizations" : {
         "ko" : {
@@ -2445,6 +2464,9 @@
         }
       }
     },
+    "Authentication" : {
+
+    },
     "Authentication Failed" : {
       "localizations" : {
         "ko" : {
@@ -2556,6 +2578,42 @@
           }
         }
       }
+    },
+    "AWS Access Key Needed" : {
+
+    },
+    "AWS IAM (Access Key)" : {
+
+    },
+    "AWS IAM (Profile)" : {
+
+    },
+    "AWS IAM (SSO)" : {
+
+    },
+    "AWS IAM Setup Incomplete" : {
+
+    },
+    "AWS Profile Is on the Mac" : {
+
+    },
+    "AWS Profile Unavailable" : {
+
+    },
+    "AWS Region" : {
+
+    },
+    "AWS Region Needed" : {
+
+    },
+    "AWS Sign-In Failed" : {
+
+    },
+    "AWS SSO Sign-In Failed" : {
+
+    },
+    "AWS SSO Sign-In Required" : {
+
     },
     "Bag" : {
       "extractionState" : "manual",
@@ -2795,6 +2853,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Cache Name / Replication Group ID" : {
+
+    },
     "Cake" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -2826,6 +2887,19 @@
           }
         }
       }
+    },
+    "Can't Reach Google" : {
+
+    },
+    "Can't reach Google's sign-in service: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Can't Reach IAM Identity Center" : {
+
+    },
+    "Can't Reach Microsoft Entra ID" : {
+
     },
     "Cancel" : {
       "localizations" : {
@@ -3017,6 +3091,24 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Check that the server accepts TLS connections." : {
+
+    },
+    "Check that the service account key is still active, then paste it again in this connection's Authentication section." : {
+
+    },
+    "Check that these AWS credentials are allowed to assume the role." : {
+
+    },
+    "Check the date and time on this device." : {
+
+    },
+    "Check the start URL and SSO Region in this connection's Authentication section." : {
+
+    },
+    "Check this connection's Authentication section." : {
+
+    },
     "Check your %@ username and password." : {
       "localizations" : {
         "ko" : {
@@ -3100,6 +3192,9 @@
           }
         }
       }
+    },
+    "Check your network connection and try again." : {
+
     },
     "Check your query and try again." : {
       "localizations" : {
@@ -3841,6 +3936,9 @@
           }
         }
       }
+    },
+    "Confirm the code %@ in the browser to finish signing in." : {
+
     },
     "Confirm Writes" : {
       "extractionState" : "manual",
@@ -5178,6 +5276,10 @@
         }
       }
     },
+    "Credentials of type %@ are not supported." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Credit Card" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -6501,6 +6603,9 @@
         }
       }
     },
+    "Encryption Not Established" : {
+
+    },
     "ends with" : {
       "localizations" : {
         "ko" : {
@@ -6671,6 +6776,9 @@
         }
       }
     },
+    "Enter the access key in this connection's Authentication section, or turn on Sync Passwords on the Mac and save the connection there again." : {
+
+    },
     "Enter the code %@ in the browser to finish signing in. It is on your clipboard." : {
       "localizations" : {
         "ko" : {
@@ -6754,6 +6862,12 @@
           }
         }
       }
+    },
+    "Enter the RDS Endpoint in this connection's Authentication section." : {
+
+    },
+    "Enter the start URL and SSO Region in this connection's Authentication section, then sign in." : {
+
     },
     "Envelope" : {
       "extractionState" : "manual",
@@ -7490,6 +7604,9 @@
         }
       }
     },
+    "File on the Mac" : {
+
+    },
     "Fill in at least one column. This database cannot insert a row made only of defaults." : {
       "localizations" : {
         "ko" : {
@@ -7924,6 +8041,54 @@
           }
         }
       }
+    },
+    "Google Cloud IAM (Application Default)" : {
+
+    },
+    "Google Cloud IAM (Service Account)" : {
+
+    },
+    "Google no longer accepts these credentials. Sign in again, or renew the key or the gcloud login." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Google rejected the OAuth client ID or secret." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Google rejected the token request (%@)." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Google rejected the token request (HTTP %lld)." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Google returned a token response that can't be read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Google Sign-In Failed" : {
+
+    },
+    "Google Sign-In Is on the Mac" : {
+
+    },
+    "Google sign-in returned an unexpected response. Try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Google sign-in timed out. Try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Google sign-in was cancelled." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Google sign-in was denied: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Graduation Cap" : {
       "extractionState" : "manual",
@@ -8422,6 +8587,15 @@
     "House" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "IAM Identity Center" : {
+
+    },
+    "IAM Identity Center Not Set Up" : {
+
+    },
+    "IAM Identity Center returned role credentials that had already expired." : {
+
     },
     "iCloud" : {
       "localizations" : {
@@ -9609,6 +9783,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Key for This Device" : {
+
+    },
     "Key Not Found" : {
 
     },
@@ -9641,6 +9818,9 @@
       }
     },
     "Keys of type %@ cannot be opened here." : {
+
+    },
+    "Keys sync to your other devices when Sync Passwords is on." : {
 
     },
     "Laptop" : {
@@ -10425,6 +10605,15 @@
     "Mesh" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Method" : {
+
+    },
+    "Microsoft Entra ID Not Set Up" : {
+
+    },
+    "Microsoft Entra ID Sign-In Failed" : {
+
     },
     "Microsoft Entra ID Sign-In Required" : {
       "localizations" : {
@@ -11841,6 +12030,9 @@
     "Not Signed In to iCloud" : {
 
     },
+    "Not valid" : {
+
+    },
     "Nothing to Run" : {
 
     },
@@ -13001,6 +13193,21 @@
         }
       }
     },
+    "Paste the contents of the JSON key. A file path cannot be read on this device." : {
+
+    },
+    "Paste the JSON key on this device in the connection's Authentication section." : {
+
+    },
+    "Paste the service account JSON key in this connection's Authentication section." : {
+
+    },
+    "Paste the whole JSON key from Google Cloud, including its braces." : {
+
+    },
+    "Paste the whole JSON key, not the private key alone." : {
+
+    },
     "Paste the whole PEM block, including its BEGIN and END lines." : {
       "localizations" : {
         "ko" : {
@@ -13028,6 +13235,13 @@
           }
         }
       }
+    },
+    "Paste the whole service account JSON key in this connection's Authentication section." : {
+
+    },
+    "Paste the whole service account JSON key or its file path, not the private key alone." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Path" : {
       "localizations" : {
@@ -13083,6 +13297,9 @@
     "Photo" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Pick another account or role in this connection's Authentication section." : {
+
     },
     "Pie Chart" : {
       "extractionState" : "manual",
@@ -13438,6 +13655,9 @@
     "Processor" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Profile Name" : {
+
     },
     "protocol negotiation" : {
       "extractionState" : "manual",
@@ -13812,6 +14032,15 @@
 
     },
     "Ran %d statements" : {
+
+    },
+    "RDS Endpoint (optional)" : {
+
+    },
+    "RDS Endpoint Invalid" : {
+
+    },
+    "RDS Endpoint Needed" : {
 
     },
     "Read it with a command in Query." : {
@@ -14674,6 +14903,9 @@
         }
       }
     },
+    "Role Not Accessible" : {
+
+    },
     "Rosette" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -15165,6 +15397,9 @@
         }
       }
     },
+    "Saved" : {
+
+    },
     "Saved credentials for these connections will be permanently removed." : {
       "localizations" : {
         "ko" : {
@@ -15381,6 +15616,9 @@
         }
       }
     },
+    "Secret Access Key" : {
+
+    },
     "Section" : {
       "localizations" : {
         "ko" : {
@@ -15567,6 +15805,18 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Service Account Key" : {
+
+    },
+    "Service Account Key Invalid" : {
+
+    },
+    "Service Account Key Is on the Mac" : {
+
+    },
+    "Service Account Key Needed" : {
+
+    },
     "Service Name" : {
       "localizations" : {
         "ko" : {
@@ -15627,6 +15877,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Session Token (optional)" : {
+
+    },
     "Set a passphrase to include passwords." : {
       "localizations" : {
         "ko" : {
@@ -15654,6 +15907,12 @@
           }
         }
       }
+    },
+    "Set the application (client) ID for this connection on the Mac." : {
+
+    },
+    "Set the AWS Region in this connection's Authentication section." : {
+
     },
     "Set up a new database connection" : {
       "extractionState" : "stale",
@@ -16033,6 +16292,12 @@
         }
       }
     },
+    "Sign in to IAM Identity Center to use this connection." : {
+
+    },
+    "Sign in to IAM Identity Center with your browser?" : {
+
+    },
     "Sign in to iCloud in the Settings app to sync your connections." : {
       "localizations" : {
         "ko" : {
@@ -16088,6 +16353,23 @@
           }
         }
       }
+    },
+    "Sign In with IAM Identity Center" : {
+
+    },
+    "Sign in with your Google account to use this connection." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Sign-In Denied" : {
+
+    },
+    "Sign-In Timed Out" : {
+
+    },
+    "Signing the service account token failed." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Skip" : {
       "extractionState" : "stale",
@@ -16594,6 +16876,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "SSO Region" : {
+
+    },
     "Stack" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -16605,6 +16890,9 @@
     "Star of Life" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Start URL" : {
+
     },
     "starts with" : {
       "localizations" : {
@@ -17911,6 +18199,12 @@
         }
       }
     },
+    "Tap Retry to sign in again." : {
+
+    },
+    "Tap Retry to sign in to IAM Identity Center." : {
+
+    },
     "Tap Retry to try again." : {
       "localizations" : {
         "ko" : {
@@ -17938,6 +18232,9 @@
           }
         }
       }
+    },
+    "Tap Retry, then approve the sign-in in the browser before the code expires." : {
+
     },
     "Team" : {
       "extractionState" : "manual",
@@ -18400,6 +18697,18 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The credentials file can't be read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The credentials file has no %@ field." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The credentials point at %@, which is not a Google endpoint." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The CSV data has no header row." : {
       "localizations" : {
         "ko" : {
@@ -18586,6 +18895,9 @@
           }
         }
       }
+    },
+    "The IAM Identity Center sign-in on this device has expired." : {
+
     },
     "The JSON array must contain only objects." : {
       "localizations" : {
@@ -19085,6 +19397,9 @@
         }
       }
     },
+    "The profile is read from files on the Mac. A key added here signs in on this device only. The Mac's connection does not change." : {
+
+    },
     "The query did not finish within the configured timeout, so the connection was reset. Run the query again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -19222,6 +19537,13 @@
           }
         }
       }
+    },
+    "The server answered with something other than HTTP." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The server did not encrypt the connection, so TablePro closed it. An IAM sign-in needs TLS." : {
+
     },
     "The server is not responding. Check the host and port." : {
       "localizations" : {
@@ -19364,6 +19686,17 @@
           }
         }
       }
+    },
+    "The service account key is a file on the Mac, which this device cannot read." : {
+
+    },
+    "The service account key is not valid JSON." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The service account private key can't be read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The socket path contains a control or invisible character." : {
 
@@ -19543,6 +19876,9 @@
       "generatesSymbol" : false
     },
     "There is no statement to run." : {
+
+    },
+    "These settings stay on this device. The Mac reads them from its AWS profile." : {
 
     },
     "This account uses a password verifier the database driver does not support." : {
@@ -19826,6 +20162,24 @@
           }
         }
       }
+    },
+    "This connection signs in with a Google Cloud service account, and this device does not have its key." : {
+
+    },
+    "This connection signs in with an AWS access key, and this device does not have it." : {
+
+    },
+    "This connection signs in with IAM Identity Center, which is not set up on this device." : {
+
+    },
+    "This connection signs in with IAM, not a password. Check that the database user is set up for IAM sign-in." : {
+
+    },
+    "This connection signs in with the AWS profile \"%@\", which is read from files on the Mac." : {
+
+    },
+    "This connection signs in with the gcloud credentials on the Mac." : {
+
     },
     "This connection uses a socket on a Mac and cannot be opened on iPhone or iPad." : {
       "extractionState" : "manual",
@@ -20875,6 +21229,9 @@
           }
         }
       }
+    },
+    "Try again in a moment." : {
+
     },
     "Try again or check your connection." : {
       "localizations" : {
