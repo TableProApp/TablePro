@@ -40,7 +40,7 @@ The macOS app and the iOS app, with everything they build from. Every profile ha
 | `plugins` | none | anything under `apple/Plugins/` changed. Builds `AllPlugins`, building the HANA helper first when it is missing and Go is installed |
 | `abi` | `[base]`, default the newest `v*` tag | PluginKit changed (`.claude/rules/plugin-system.md`, ABI) |
 | `lint` | AGENTS | every changed Swift file |
-| `l10n` | none | strings, or plugin or package messages, changed. Passes only when every plugin and package string is in both the macOS and iOS catalogs, and prints the `--add` command for each target that failed |
+| `l10n` | none | strings, or plugin or package messages, changed. Passes only when every plugin and package string, and every string the last build of each app in the tree extracted, is in that app's catalog. Prints the `--add` command for each check that failed |
 | `docs` | `[docs-checkout]`, default `tablepro-docs` beside the main checkout | AGENTS Every change 4 applies, or a menu, shortcut, driver list or docs.tablepro.app link changed |
 
 - Pick tests by the types you changed, not the test files you edited: `verify.sh` finds a type name in every test target of the tree.
