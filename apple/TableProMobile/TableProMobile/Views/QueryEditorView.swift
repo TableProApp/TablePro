@@ -148,11 +148,14 @@ struct QueryEditorView: View {
             }
             // The text view takes the restored text on the next update, so these go through the binding.
             var restored = sceneQuery ?? draft.restore(for: connectionId) ?? ""
+            var selection: NSRange?
             for text in adds {
                 let edit = QueryTextInsertion.edit(adding: text, to: restored, databaseType: databaseType)
                 restored = QueryTextInsertion.applying(edit, to: restored)
+                selection = edit.selection
             }
             query = restored
+            if let selection { editorHandle.select(selection, onceTextIs: restored) }
         }
         .task(id: session.map { ObjectIdentifier($0.driver) }) {
             editorHandle.sessionFacts = await session?.driver.sessionLexicalFacts()

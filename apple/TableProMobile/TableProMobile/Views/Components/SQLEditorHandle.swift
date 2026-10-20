@@ -23,6 +23,7 @@ final class SQLEditorHandle {
     @ObservationIgnored private var publishText: ((String) -> Void)?
     @ObservationIgnored private var band: StatementBand?
     @ObservationIgnored private var nothingToRunState: EditorState?
+    @ObservationIgnored private var pendingSelection: EditorState?
     @ObservationIgnored private var isPublishScheduled = false
 
     private struct EditorState: Equatable {
@@ -58,6 +59,19 @@ final class SQLEditorHandle {
         return true
     }
 
+    // Text set through the binding reaches the text view on its next update, so its selection waits for that text.
+    func select(_ selection: NSRange, onceTextIs text: String) {
+        pendingSelection = EditorState(text: text, selection: selection)
+        applyPendingSelection()
+    }
+
+    private func applyPendingSelection() {
+        guard let pending = pendingSelection, let textView, (textView.text ?? "") == pending.text else { return }
+        pendingSelection = nil
+        textView.selectedRange = pending.selection
+        textView.scrollRangeToVisible(pending.selection)
+    }
+
     func runTarget() -> QueryRunTarget {
         guard let databaseType, let textView else { return .nothing }
         return QueryRunTarget.resolve(
@@ -85,6 +99,7 @@ final class SQLEditorHandle {
     }
 
     func editorDidChange() {
+        applyPendingSelection()
         refreshBand()
         // Tapping Run resigns the editor after the note is posted, which is no reason to drop it.
         if let nothingToRunState, nothingToRunState != currentState() {
