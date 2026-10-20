@@ -630,9 +630,10 @@ final class ConnectionCoordinator {
         let board = appState.catalogChanges
         let generation = board.generation(for: connection.id)
         guard generation != seenCatalogGeneration, let session, !isSwitching else { return }
-        var kinds = board.kinds(for: connection.id, since: seenCatalogGeneration)
-        if !supportsSchemas { kinds.remove(.schemas) }
-        if !supportsDatabaseSwitching { kinds.remove(.databases) }
+        var wanted = board.kinds(for: connection.id, since: seenCatalogGeneration)
+        if !supportsSchemas { wanted.remove(.schemas) }
+        if !supportsDatabaseSwitching { wanted.remove(.databases) }
+        let kinds = wanted
         let database = supportsDatabaseSwitching ? activeDatabase : ""
         let schema = supportsSchemas ? activeSchema : nil
         let place = CatalogPlace(driver: ObjectIdentifier(session.driver), database: activeDatabase, schema: activeSchema)

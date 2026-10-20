@@ -5,7 +5,7 @@ import TableProSQLGrammar
 // A template or a history entry added to the editor: it becomes the text of an empty editor and is appended to any
 // other as a statement of its own, so nothing typed is lost and Run at Cursor runs it alone.
 nonisolated enum QueryTextInsertion {
-    struct Edit: Equatable {
+    nonisolated struct Edit: Equatable {
         let range: NSRange
         let text: String
         let selection: NSRange

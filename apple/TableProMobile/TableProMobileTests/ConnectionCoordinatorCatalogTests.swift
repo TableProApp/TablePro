@@ -2,6 +2,7 @@ import Foundation
 import TableProDatabase
 @testable import TableProMobile
 import TableProModels
+import TableProSQLGrammar
 import Testing
 
 @MainActor
