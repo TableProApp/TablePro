@@ -240,12 +240,17 @@ enum Probe {
 }
 SWIFT
 
+KIT_SOURCES=()
+while IFS= read -r file; do KIT_SOURCES+=("$file"); done < <(find "$KIT" -name '*.swift')
+PLUGIN_SOURCES=()
+while IFS= read -r file; do PLUGIN_SOURCES+=("$file"); done < <(find "$PLUGIN" "$ROOT/Plugins/Shared" -name '*.swift')
+
 mkdir -p "$WORK/modules"
 echo "building PluginKit and the Cassandra plugin..."
 xcrun swiftc -swift-version 6 -parse-as-library -emit-library -emit-module -module-name TableProPluginKit \
     -emit-module-path "$WORK/modules/TableProPluginKit.swiftmodule" \
     -o "$WORK/libTableProPluginKit.dylib" \
-    $(find "$KIT" -name '*.swift') > "$WORK/build.log" 2>&1 &&
+    "${KIT_SOURCES[@]}" > "$WORK/build.log" 2>&1 &&
     xcrun swiftc -swift-version 6 -parse-as-library -module-name CassandraConsistencyProbe \
         -I "$WORK/modules" -L "$WORK" -lTableProPluginKit \
         -I "$PLUGIN/CCassandra" -Xcc "-I$PLUGIN/CCassandra/include" \
@@ -253,7 +258,7 @@ xcrun swiftc -swift-version 6 -parse-as-library -emit-library -emit-module -modu
         -Xlinker -force_load -Xlinker "$LIBS/libcassandra.a" -Xlinker -force_load -Xlinker "$LIBS/libuv.a" \
         -lssl.3 -lcrypto.3 -lc++ -lz \
         -Xlinker -rpath -Xlinker "$WORK" -Xlinker -rpath -Xlinker "$LIBS/dylibs" \
-        $(find "$PLUGIN" "$ROOT/Plugins/Shared" -name '*.swift') "$WORK/main.swift" -o "$WORK/probe" \
+        "${PLUGIN_SOURCES[@]}" "$WORK/main.swift" -o "$WORK/probe" \
         >> "$WORK/build.log" 2>&1 || {
     cat "$WORK/build.log" >&2
     exit 3
