@@ -1,11 +1,12 @@
 import Foundation
 
 public enum SQLKeywords {
-    // MARK: - Keywords
-
     static let keywordSet: Set<String> = Set(keywords.filter { !$0.contains(" ") }.map { $0.lowercased() })
 
-    /// Primary SQL keywords
+    public static func isKeyword(_ word: String) -> Bool {
+        keywordSet.contains(word.lowercased())
+    }
+
     static let keywords: [String] = [
         // DQL
         "SELECT", "FROM", "WHERE", "AND", "OR", "NOT", "AS",
@@ -90,9 +91,6 @@ public enum SQLKeywords {
         "EXPLAIN", "ANALYZE", "DESCRIBE", "SHOW"
     ]
 
-    // MARK: - Functions
-
-    /// Aggregate functions
     static let aggregateFunctions: [(name: String, signature: String, doc: String)] = [
         ("COUNT", "COUNT(expr)", "Count rows or non-null values"),
         ("SUM", "SUM(expr)", "Sum of values"),
@@ -110,7 +108,6 @@ public enum SQLKeywords {
         ("JSON_ARRAYAGG", "JSON_ARRAYAGG(expr)", "Aggregate into JSON array"),
     ]
 
-    /// Date/Time functions
     static let dateTimeFunctions: [(name: String, signature: String, doc: String)] = [
         ("NOW", "NOW()", "Current date and time"),
         ("CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP", "Current timestamp"),
@@ -152,7 +149,6 @@ public enum SQLKeywords {
         ("MAKETIME", "MAKETIME(hour, minute, second)", "Create time value"),
     ]
 
-    /// String functions
     static let stringFunctions: [(name: String, signature: String, doc: String)] = [
         ("CONCAT", "CONCAT(str1, str2, ...)", "Concatenate strings"),
         ("CONCAT_WS", "CONCAT_WS(sep, str1, ...)", "Concatenate with separator"),
@@ -189,7 +185,6 @@ public enum SQLKeywords {
         ("TRANSLATE", "TRANSLATE(str, from, to)", "Replace characters"),
     ]
 
-    /// Numeric functions
     static let numericFunctions: [(name: String, signature: String, doc: String)] = [
         ("ABS", "ABS(n)", "Absolute value"),
         ("ROUND", "ROUND(n, decimals)", "Round to decimals"),
@@ -220,7 +215,6 @@ public enum SQLKeywords {
         ("PI", "PI()", "Pi constant"),
     ]
 
-    /// Null handling functions
     static let nullFunctions: [(name: String, signature: String, doc: String)] = [
         ("COALESCE", "COALESCE(v1, v2, ...)", "First non-null value"),
         ("IFNULL", "IFNULL(expr, alt)", "Return alt if expr is null"),
@@ -229,14 +223,12 @@ public enum SQLKeywords {
         ("ISNULL", "ISNULL(expr)", "Check if null"),
     ]
 
-    /// Type conversion functions
     static let conversionFunctions: [(name: String, signature: String, doc: String)] = [
         ("CAST", "CAST(expr AS type)", "Convert to type"),
         ("CONVERT", "CONVERT(expr, type)", "Convert to type"),
         ("BINARY", "BINARY(str)", "Convert to binary string"),
     ]
 
-    /// Window functions
     static let windowFunctions: [(name: String, signature: String, doc: String)] = [
         ("ROW_NUMBER", "ROW_NUMBER() OVER(...)", "Sequential row number"),
         ("RANK", "RANK() OVER(...)", "Rank with gaps"),
@@ -251,7 +243,6 @@ public enum SQLKeywords {
         ("CUME_DIST", "CUME_DIST() OVER(...)", "Cumulative distribution"),
     ]
 
-    /// JSON functions (MySQL/PostgreSQL)
     static let jsonFunctions: [(name: String, signature: String, doc: String)] = [
         ("JSON_EXTRACT", "JSON_EXTRACT(json, path)", "Extract value from JSON"),
         ("JSON_OBJECT", "JSON_OBJECT(key, value, ...)", "Create JSON object"),
@@ -275,16 +266,12 @@ public enum SQLKeywords {
         ("JSONB_AGG", "JSONB_AGG(expr)", "Aggregate to JSONB array (PostgreSQL)"),
     ]
 
-    /// All functions combined
     static var allFunctions: [(name: String, signature: String, doc: String)] {
         aggregateFunctions + dateTimeFunctions + stringFunctions +
             numericFunctions + nullFunctions + conversionFunctions +
             windowFunctions + jsonFunctions
     }
 
-    // MARK: - Operators
-
-    /// Comparison operators
     static let operators: [(symbol: String, doc: String)] = [
         ("=", "Equal to"),
         ("<>", "Not equal to"),
@@ -296,9 +283,6 @@ public enum SQLKeywords {
         ("<=>", "Null-safe equal (MySQL)"),
     ]
 
-    // MARK: - Completion Items
-
-    /// Get all keyword completion items
     static func keywordItems() -> [SQLCompletionItem] {
         keywords.map { SQLCompletionItem.keyword($0) }
     }

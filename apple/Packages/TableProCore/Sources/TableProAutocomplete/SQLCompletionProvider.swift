@@ -1,34 +1,16 @@
-//
-//  SQLCompletionProvider.swift
-//  TablePro
-//
-//  Main orchestrator for SQL autocomplete
-//
-
 import Foundation
-import TableProAutocomplete
-import TableProPluginKit
 import TableProSQLGrammar
 
-/// Main provider for SQL autocomplete suggestions
-final class SQLCompletionProvider {
-    // MARK: - Properties
-
+public final class SQLCompletionProvider {
     private let contextAnalyzer = SQLContextAnalyzer()
-    private let schemaProvider: SQLSchemaProvider?
-    private var databaseType: DatabaseType?
-    private var cachedDialect: SQLDialectDescriptor?
+    private let catalog: (any SQLCompletionCatalog)?
+    private var grammar: SQLLexicalGrammar
+    private var vocabulary: SQLCompletionVocabulary
     private var cachedFunctionItems: [SQLCompletionItem]?
-    private var cachedStatementCompletions: [CompletionEntry] = []
     private var favoriteKeywords: [String: (name: String, query: String)] = [:]
 
-    /// Minimum prefix length to trigger suggestions
-    private let minPrefixLength = 1
-
-    /// Default maximum number of suggestions to return
     private let defaultMaxSuggestions = 20
 
-    /// Context-aware suggestion limit: schema-heavy clauses get more results
     private func maxSuggestions(for clauseType: SQLClauseType) -> Int {
         switch clauseType {
         case .from, .join, .into, .dropObject, .createIndex,
@@ -40,36 +22,25 @@ final class SQLCompletionProvider {
         }
     }
 
-    // MARK: - Init
-
-    init(schemaProvider: SQLSchemaProvider?, databaseType: DatabaseType? = nil,
-         dialect: SQLDialectDescriptor? = nil, statementCompletions: [CompletionEntry] = []) {
-        self.schemaProvider = schemaProvider
-        self.databaseType = databaseType
-        self.cachedDialect = dialect
-        self.cachedStatementCompletions = statementCompletions
+    public init(catalog: (any SQLCompletionCatalog)?, grammar: SQLLexicalGrammar, vocabulary: SQLCompletionVocabulary) {
+        self.catalog = catalog
+        self.grammar = grammar
+        self.vocabulary = vocabulary
     }
 
-    /// Update the database type for context-aware completions
-    func setDatabaseType(_ type: DatabaseType, dialect: SQLDialectDescriptor? = nil, statementCompletions: [CompletionEntry] = []) {
-        self.databaseType = type
-        self.cachedDialect = dialect
+    public func update(grammar: SQLLexicalGrammar, vocabulary: SQLCompletionVocabulary) {
+        self.grammar = grammar
+        self.vocabulary = vocabulary
         self.cachedFunctionItems = nil
-        self.cachedStatementCompletions = statementCompletions
     }
 
-    /// Update cached favorite keywords for autocomplete expansion
-    func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
+    public func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
         self.favoriteKeywords = keywords
     }
 
-    // MARK: - Public API
-
-    /// Get completion suggestions for the current cursor position.
-    /// `forcedTableReferences` overrides the tables in scope, used when the caller
-    /// already knows the table (e.g. a single-table filter expression) rather than
-    /// relying on a FROM clause in the analyzed text.
-    func getCompletions(
+    // `forcedTableReferences` stands in for the FROM clause when the caller already knows the table, as a
+    // single-table filter expression does.
+    public func getCompletions(
         text: String,
         cursorPosition: Int,
         forcedTableReferences: [TableReference]? = nil
@@ -82,16 +53,13 @@ final class SQLCompletionProvider {
         return (session.items, session.context)
     }
 
-    /// The completions for the cursor position, as both what the popup shows and the wider pool
-    /// it re-ranks against while it stays open.
-    func completionSession(
+    // `items` is what the popup shows; `candidates` is the wider pool it re-ranks while it stays open.
+    public func completionSession(
         text: String,
         cursorPosition: Int,
         forcedTableReferences: [TableReference]? = nil
     ) async -> (items: [SQLCompletionItem], candidates: [SQLCompletionItem], context: SQLContext) {
-        var context = contextAnalyzer.analyze(
-            query: text, cursorPosition: cursorPosition, grammar: databaseType?.lexicalGrammar ?? .ansi
-        )
+        var context = contextAnalyzer.analyze(query: text, cursorPosition: cursorPosition, grammar: grammar)
         if let forcedTableReferences {
             context = context.replacingTableReferences(forcedTableReferences)
         }
@@ -113,14 +81,9 @@ final class SQLCompletionProvider {
         return (Array(candidates.prefix(limit)), Array(candidates.prefix(sessionPool(for: limit))), context)
     }
 
-    /// Filter, rank and cut a session's candidates down to what the popup shows.
-    ///
-    /// The popup shows `maxSuggestions`, but the session holds `sessionPool` of them, because an
-    /// open popup re-ranks against what it kept rather than asking again. A candidate cut at the
-    /// opening prefix can never lead for a longer one however well the survivors are ordered, and
-    /// PostgreSQL declares more `T`-prefixed functions than the popup shows rows, every one of
-    /// them outranking the `TRUE` keyword for the single letter `t`.
-    func filterRankAndLimit(
+    // A candidate cut at the opening prefix can never lead for a longer one, and PostgreSQL declares more `T`
+    // functions than the popup shows rows, every one outranking `TRUE` for the letter `t`.
+    public func filterRankAndLimit(
         _ items: [SQLCompletionItem],
         prefix: String,
         context: SQLContext
@@ -128,21 +91,17 @@ final class SQLCompletionProvider {
         Array(filterAndRank(items, prefix: prefix, context: context).prefix(maxSuggestions(for: context.clauseType)))
     }
 
-    /// Ten times what the popup shows. Ranking is linear in the pool and the filter beside it
-    /// already walks every candidate: measured at 36us for 40 candidates and 340us for 400, against
-    /// 4ms at 5,000, which is why the pool is bounded rather than kept whole.
+    // Ranking is linear in the pool: measured 36us for 40 candidates, 340us for 400 and 4ms for 5,000.
     private func sessionPool(for limit: Int) -> Int { limit * 10 }
 
-    /// Generic SQL functions plus the active dialect's own functions (deduplicated).
-    /// Cached per dialect; invalidated in `setDatabaseType`.
     private func functionItems() -> [SQLCompletionItem] {
         if let cachedFunctionItems { return cachedFunctionItems }
         var items = SQLKeywords.functionItems()
-        if let dialect = cachedDialect, !dialect.functions.isEmpty {
+        if !vocabulary.functions.isEmpty {
             let folding: SQLCompletionCaseFolding =
-                dialect.functionNamesAreCaseInsensitive ? .caseInsensitive : .fixed
+                vocabulary.functionNamesAreCaseInsensitive ? .caseInsensitive : .fixed
             var seen = Set(items.map { $0.label.uppercased() })
-            for name in dialect.functions.sorted() where seen.insert(name.uppercased()).inserted {
+            for name in vocabulary.functions.sorted() where seen.insert(name.uppercased()).inserted {
                 items.append(SQLCompletionItem.function(name, signature: "\(name)(…)", caseFolding: folding))
             }
         }
@@ -152,34 +111,31 @@ final class SQLCompletionProvider {
 
     // MARK: - Candidate Generation
 
-    /// Get candidate completions based on context
     private func getCandidates( // swiftlint:disable:this function_body_length
         for context: SQLContext
     ) async -> [SQLCompletionItem] {
         var items: [SQLCompletionItem] = []
 
-        // If we have a dot prefix, resolve it as table/alias columns first, then as
-        // a schema (suggest its tables) or database (suggest its schemas). The
-        // namespace fallback also covers aliases that spuriously resolve to a
-        // schema name parsed out of the FROM clause itself.
+        // A dot prefix is a table or alias first, then a schema (its tables) or a database (its schemas). The
+        // namespace fallback also covers an alias that resolves to a schema name parsed out of the FROM clause.
         if let dotPrefix = context.dotPrefix {
-            guard let schemaProvider else { return [] }
+            guard let catalog else { return [] }
             if let derived = context.tableReferences.first(where: {
                 $0.isDerived && $0.identifier.caseInsensitiveCompare(dotPrefix) == .orderedSame
             }), let columns = derived.derivedColumns, !columns.isEmpty {
                 return columns.map { SQLCompletionItem.column($0, dataType: nil, tableName: derived.identifier) }
             }
-            if let tableName = await schemaProvider.resolveAlias(dotPrefix, in: context.tableReferences) {
+            if let tableName = await catalog.resolveAlias(dotPrefix, in: context.tableReferences) {
                 let schema = context.tableReferences.first {
                     $0.tableName.caseInsensitiveCompare(tableName) == .orderedSame
                 }?.schema
-                items = await schemaProvider.columnCompletionItems(for: tableName, schema: schema)
+                items = await catalog.columnCompletionItems(for: tableName, schema: schema)
             }
             if items.isEmpty {
-                if await schemaProvider.isKnownSchema(dotPrefix) {
-                    items = await schemaProvider.tableCompletionItems(inSchema: dotPrefix)
-                } else if await schemaProvider.isKnownDatabase(dotPrefix) {
-                    items = await schemaProvider.schemaCompletionItems()
+                if await catalog.isKnownSchema(dotPrefix) {
+                    items = await catalog.tableCompletionItems(inSchema: dotPrefix)
+                } else if await catalog.isKnownDatabase(dotPrefix) {
+                    items = await catalog.schemaCompletionItems()
                 }
             }
             return items
@@ -187,8 +143,8 @@ final class SQLCompletionProvider {
 
         switch context.clauseType {
         case .from, .join:
-            items = await schemaProvider?.tableCompletionItems() ?? []
-            items += await schemaProvider?.namespaceCompletionItems() ?? []
+            items = await catalog?.tableCompletionItems() ?? []
+            items += await catalog?.namespaceCompletionItems() ?? []
             items += filterKeywords([
                 "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
                 "LEFT OUTER JOIN", "RIGHT OUTER JOIN", "FULL OUTER JOIN",
@@ -198,7 +154,7 @@ final class SQLCompletionProvider {
             ])
 
         case .into:
-            items = await schemaProvider?.tableCompletionItems() ?? []
+            items = await catalog?.tableCompletionItems() ?? []
             items += filterKeywords([
                 "VALUES", "SELECT", "SET",
                 "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
@@ -212,7 +168,6 @@ final class SQLCompletionProvider {
             if let funcName = context.currentFunction {
                 let upperFunc = funcName.uppercased()
                 if upperFunc == "COUNT" {
-                    // COUNT() special: suggest * and DISTINCT as top items
                     var starItem = SQLCompletionItem(
                         label: "*",
                         kind: .keyword,
@@ -240,7 +195,6 @@ final class SQLCompletionProvider {
                     detail: "All columns",
                     sortPriority: 50
                 ))
-                // table.* suggestions when multiple tables in scope (HP-5)
                 for ref in context.tableReferences {
                     let qualifier = ref.alias ?? ref.tableName
                     items.append(SQLCompletionItem(
@@ -261,11 +215,10 @@ final class SQLCompletionProvider {
 
         case .on:
             items += await allowedValueItems(for: context)
-            // HP-3: ON clause — prioritize columns from joined tables
             items += await columnItems(for: context.tableReferences)
             for ref in context.tableReferences {
                 let qualifier = ref.alias ?? ref.tableName
-                let cols = await schemaProvider?.columnCompletionItems(for: ref.tableName, schema: ref.schema) ?? []
+                let cols = await catalog?.columnCompletionItems(for: ref.tableName, schema: ref.schema) ?? []
                 for col in cols {
                     items.append(SQLCompletionItem(
                         label: "\(qualifier).\(col.label)",
@@ -282,9 +235,7 @@ final class SQLCompletionProvider {
             items += filterKeywords([
                 "AND", "OR", "NOT", "IS", "NULL", "TRUE", "FALSE"
             ])
-            // Continuations once the join condition is written: another join or
-            // the next clause. Without these, typing the next keyword (e.g. a
-            // second INNER JOIN) only fuzzy-matches columns.
+            // Once the join condition is written, the next keyword would otherwise only fuzzy-match columns.
             items += filterKeywords([
                 "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
                 "LEFT OUTER JOIN", "RIGHT OUTER JOIN", "FULL OUTER JOIN",
@@ -294,7 +245,6 @@ final class SQLCompletionProvider {
             ])
 
         case .where_, .and, .having:
-            // HP-8: Columns, operators, logical keywords + clause transitions
             items += await allowedValueItems(for: context)
             items += await columnItems(for: context.tableReferences)
             items += SQLKeywords.operatorItems()
@@ -328,13 +278,13 @@ final class SQLCompletionProvider {
 
         case .set:
             if let firstTable = context.tableReferences.first {
-                items = await schemaProvider?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
+                items = await catalog?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
             }
             items += filterKeywords(["WHERE", "RETURNING"])
 
         case .insertColumns:
             if let firstTable = context.tableReferences.first {
-                items = await schemaProvider?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
+                items = await catalog?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
             }
 
         case .values:
@@ -347,7 +297,6 @@ final class SQLCompletionProvider {
         case .functionArg:
             let isCountFunction = context.currentFunction?.uppercased() == "COUNT"
             if isCountFunction {
-                // COUNT() special: suggest * as top item
                 var starItem = SQLCompletionItem(
                     label: "*",
                     kind: .keyword,
@@ -355,9 +304,8 @@ final class SQLCompletionProvider {
                     detail: String(localized: "All columns"),
                     documentation: String(localized: "Count all rows")
                 )
-                starItem.sortPriority = 10  // Highest priority
+                starItem.sortPriority = 10
                 items.append(starItem)
-                // Boost DISTINCT for COUNT(DISTINCT ...)
                 var distinctItem = SQLCompletionItem.keyword("DISTINCT")
                 distinctItem.sortPriority = 20
                 items.append(distinctItem)
@@ -365,7 +313,6 @@ final class SQLCompletionProvider {
             items += await columnItems(for: context.tableReferences)
             items += functionItems()
             if isCountFunction {
-                // DISTINCT already added above with boosted priority
                 items += filterKeywords(["NULL", "TRUE", "FALSE"])
             } else {
                 items += filterKeywords(["NULL", "TRUE", "FALSE", "DISTINCT"])
@@ -384,7 +331,6 @@ final class SQLCompletionProvider {
             items += functionItems()
 
         case .limit:
-            // After LIMIT/OFFSET - typically just numbers, but could include variables
             items += filterKeywords(["OFFSET", "FETCH", "NEXT", "ROWS", "ONLY"])
 
         case .alterTable:
@@ -398,12 +344,12 @@ final class SQLCompletionProvider {
 
         case .alterTableColumn:
             if let firstTable = context.tableReferences.first {
-                items = await schemaProvider?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
+                items = await catalog?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
             }
 
         case .createTable:
             if context.nestingLevel >= 1 {
-                // Boost FK-related keywords so they appear within the 20-item limit
+                // Boosted so the foreign key keywords fit inside the 20-item limit.
                 items = boostedKeywords([
                     "REFERENCES", "ON DELETE", "ON UPDATE",
                     "CASCADE", "RESTRICT", "SET NULL", "NO ACTION",
@@ -417,7 +363,7 @@ final class SQLCompletionProvider {
                 items += dataTypeKeywords()
             } else {
                 items = filterKeywords(["IF NOT EXISTS"])
-                if let options = cachedDialect?.tableOptions {
+                if let options = vocabulary.tableOptions {
                     items += filterKeywords(options)
                 } else {
                     items += filterKeywords([
@@ -455,12 +401,12 @@ final class SQLCompletionProvider {
             ])
 
         case .dropObject:
-            items = await schemaProvider?.tableCompletionItems() ?? []
+            items = await catalog?.tableCompletionItems() ?? []
             items += filterKeywords(["IF EXISTS", "CASCADE", "RESTRICT"])
 
         case .createIndex:
             if context.tableReferences.isEmpty {
-                items = await schemaProvider?.tableCompletionItems() ?? []
+                items = await catalog?.tableCompletionItems() ?? []
                 items += filterKeywords(["ON"])
             } else {
                 items = await columnItems(for: context.tableReferences)
@@ -469,14 +415,14 @@ final class SQLCompletionProvider {
 
         case .createView:
             items = filterKeywords(["SELECT", "AS"])
-            items += await schemaProvider?.tableCompletionItems() ?? []
+            items += await catalog?.tableCompletionItems() ?? []
 
         case .castTarget:
             items = castTargetCompletionItems()
 
         case .unknown:
             items = statementStartCompletionItems()
-            items += await schemaProvider?.tableCompletionItems() ?? []
+            items += await catalog?.tableCompletionItems() ?? []
         }
 
         items += favoriteCompletions(matching: context.prefix)
@@ -493,12 +439,10 @@ final class SQLCompletionProvider {
             .map { SQLCompletionItem.favorite(keyword: $0.key, name: $0.value.name, query: $0.value.query) }
     }
 
-    /// Values a compared column is restricted to, offered as quoted literals ahead of everything
-    /// else. Nothing is offered for an ordinary column.
     private func allowedValueItems(for context: SQLContext) async -> [SQLCompletionItem] {
-        guard let column = context.comparisonColumn, let schemaProvider else { return [] }
+        guard let column = context.comparisonColumn, let catalog else { return [] }
 
-        let values = await schemaProvider.allowedValues(forColumn: column, in: context.tableReferences)
+        let values = await catalog.allowedValues(forColumn: column, in: context.tableReferences)
         return values.map { value in
             var item = SQLCompletionItem(
                 label: "'\(value)'",
@@ -512,14 +456,9 @@ final class SQLCompletionProvider {
         }
     }
 
-    /// Operators the connected dialect declares, with their documented meaning.
-    ///
-    /// Case-insensitive like any other keyword, because the list is not only symbols: PostgreSQL
-    /// declares `IS DISTINCT FROM`, `IS NOT NULL` and `BETWEEN SYMMETRIC` here, and the same words
-    /// arrive from `SQLKeywords` as well. A symbol has no cased character, so folding leaves it be.
+    // Case-insensitive like any keyword: PostgreSQL declares `IS DISTINCT FROM` and `BETWEEN SYMMETRIC` here too.
     private func dialectOperatorItems() -> [SQLCompletionItem] {
-        guard let descriptor = cachedDialect else { return [] }
-        return descriptor.operators.map { operatorDescriptor in
+        vocabulary.operators.map { operatorDescriptor in
             SQLCompletionItem(
                 label: operatorDescriptor.symbol,
                 kind: .operator,
@@ -533,13 +472,10 @@ final class SQLCompletionProvider {
         }
     }
 
-    /// Type names offered directly after a `::` cast operator, in the spelling users write.
-    ///
-    /// Lower case and fixed, which is the convention for a cast and is not the one `CREATE TABLE`
-    /// uses. The two spellings of one vocabulary are why this stays out of the keyword case policy.
+    // Lower case and fixed after `::`, the cast convention, unlike the spelling CREATE TABLE offers.
     private func castTargetCompletionItems() -> [SQLCompletionItem] {
-        guard let descriptor = cachedDialect, !descriptor.dataTypes.isEmpty else { return [] }
-        return descriptor.dataTypes.sorted().map { typeName in
+        guard !vocabulary.dataTypes.isEmpty else { return [] }
+        return vocabulary.dataTypes.sorted().map { typeName in
             let lowercased = typeName.lowercased()
             var item = SQLCompletionItem(label: lowercased, kind: .keyword, insertText: lowercased)
             item.sortPriority = 300
@@ -547,12 +483,10 @@ final class SQLCompletionProvider {
         }
     }
 
-    /// SQL data type keywords (database-aware), with a slight priority boost
-    /// so they sort before generic constraint keywords in CREATE TABLE context.
-    /// Uses plugin-provided dialect data when available; falls back to common SQL types.
+    // Boosted so data types sort before the generic constraint keywords in CREATE TABLE.
     private func dataTypeKeywords() -> [SQLCompletionItem] {
-        if let descriptor = cachedDialect, !descriptor.dataTypes.isEmpty {
-            return descriptor.dataTypes.sorted().map { typeName in
+        if !vocabulary.dataTypes.isEmpty {
+            return vocabulary.dataTypes.sorted().map { typeName in
                 var item = SQLCompletionItem(
                     label: typeName,
                     kind: .keyword,
@@ -579,15 +513,13 @@ final class SQLCompletionProvider {
         }
     }
 
-    /// Columns from explicit table references, or all cached schema columns as fallback
     private func columnItems(for references: [TableReference]) async -> [SQLCompletionItem] {
         if references.isEmpty {
-            return await schemaProvider?.allColumnsFromCachedTables() ?? []
+            return await catalog?.allColumnsFromCachedTables() ?? []
         }
-        return await schemaProvider?.allColumnsInScope(for: references) ?? []
+        return await catalog?.allColumnsInScope(for: references) ?? []
     }
 
-    /// Filter to specific keywords
     private func filterKeywords(_ keywords: [String]) -> [SQLCompletionItem] {
         keywords.map { SQLCompletionItem.keyword($0) }
     }
@@ -602,9 +534,9 @@ final class SQLCompletionProvider {
         "CALL", "EXECUTE", "PREPARE"
     ]
 
-    func statementStartCompletionItems() -> [SQLCompletionItem] {
-        guard cachedStatementCompletions.isEmpty else {
-            return cachedStatementCompletions.map { entry in
+    public func statementStartCompletionItems() -> [SQLCompletionItem] {
+        guard vocabulary.statementCompletions.isEmpty else {
+            return vocabulary.statementCompletions.map { entry in
                 SQLCompletionItem(
                     label: entry.label,
                     kind: .keyword,
@@ -615,7 +547,6 @@ final class SQLCompletionProvider {
         return filterKeywords(Self.statementStartKeywords)
     }
 
-    /// Create keyword items with boosted (lower) sort priority
     private func boostedKeywords(_ keywords: [String], priority: Int) -> [SQLCompletionItem] {
         keywords.map { kw in
             var item = SQLCompletionItem.keyword(kw)
@@ -626,17 +557,14 @@ final class SQLCompletionProvider {
 
     // MARK: - Filtering
 
-    /// Filter and rank items by prefix, returning sorted results with match ranges
-    func filterAndRank(_ items: [SQLCompletionItem], prefix: String, context: SQLContext) -> [SQLCompletionItem] {
+    public func filterAndRank(_ items: [SQLCompletionItem], prefix: String, context: SQLContext) -> [SQLCompletionItem] {
         let filtered = filterByPrefix(items, prefix: prefix)
         return rankResults(filtered, prefix: prefix, context: context)
     }
 
-    /// Filter candidates by prefix (case-insensitive) with fuzzy matching support.
-    /// Resolves `matchedRanges` and the fuzzy-only `fuzzyPenalty` in one pass per
-    /// candidate so `rankResults` never recomputes a fuzzy match. Both fields are
-    /// assigned (never accumulated), so re-filtering a prior result is idempotent.
-    func filterByPrefix(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
+    // Resolves `matchedRanges` and the fuzzy-only `fuzzyPenalty` once per candidate, so ranking never matches again.
+    // Both are assigned rather than accumulated, so filtering a filtered list is idempotent.
+    public func filterByPrefix(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
         guard !prefix.isEmpty else {
             var reset = items
             for i in reset.indices {
@@ -674,18 +602,12 @@ final class SQLCompletionProvider {
         return kept
     }
 
-    /// NSString.range(of:) without the anchored option, returning a Swift Range
-    /// or nil when not found. Avoids re-bridging the result through NSNotFound.
     private func optionalRange(of substring: String, in target: NSString) -> Range<Int>? {
         let range = target.range(of: substring)
         guard range.location != NSNotFound else { return nil }
         return range.location..<(range.location + range.length)
     }
 
-    /// Single fuzzy pass that resolves match state, penalty score, and matched
-    /// character indices in one traversal. `filterByPrefix` calls this once per
-    /// candidate. Uses NSString character-at-index for O(1) random access instead
-    /// of Swift String indexing (LP-9).
     private func resolveFuzzyMatch(pattern: String, target: String) -> (penalty: Int, indices: [Int])? {
         let nsPattern = pattern as NSString
         let nsTarget = target as NSString
@@ -733,13 +655,11 @@ final class SQLCompletionProvider {
         return (penalty, matchedIndices)
     }
 
-    /// Fuzzy matching with scoring: returns penalty score (higher = worse),
-    /// nil = no match.
-    func fuzzyMatchScore(pattern: String, target: String) -> Int? {
+    // Higher is worse; nil is no match.
+    public func fuzzyMatchScore(pattern: String, target: String) -> Int? {
         resolveFuzzyMatch(pattern: pattern, target: target)?.penalty
     }
 
-    /// Convert sorted individual character indices into contiguous ranges
     private func indicesToRanges(_ indices: [Int]) -> [Range<Int>] {
         guard !indices.isEmpty else { return [] }
         var ranges: [Range<Int>] = []
@@ -760,16 +680,9 @@ final class SQLCompletionProvider {
 
     // MARK: - Ranking
 
-    /// Rank results by relevance, lowest score first.
-    ///
-    /// Scores are resolved once per candidate rather than inside the comparator, which called
-    /// `calculateScore` twice per comparison. Ranking runs on every keystroke of an open popup,
-    /// so the candidate set is walked once and the sort then compares integers.
-    ///
-    /// Equal scores fall back to the candidate's own position, which is the order the generator
-    /// emitted it in and carries meaning `sorted(by:)` would otherwise be free to discard: the
-    /// standard library documents the sort as not stable.
-    func rankResults(_ items: [SQLCompletionItem], prefix: String, context: SQLContext) -> [SQLCompletionItem] {
+    // Scores once per candidate rather than in the comparator. Equal scores keep the order the generator emitted,
+    // which carries meaning: the standard library's sort is not stable.
+    public func rankResults(_ items: [SQLCompletionItem], prefix: String, context: SQLContext) -> [SQLCompletionItem] {
         let lowerPrefix = prefix.lowercased()
         let scored = items.enumerated().map { position, item in
             (position: position, item: item, score: calculateScore(for: item, prefix: lowerPrefix, context: context))
@@ -780,10 +693,8 @@ final class SQLCompletionProvider {
         }.map(\.item)
     }
 
-    /// Calculate ranking score for an item (lower = better).
-    /// The fuzzy-only penalty is precomputed into `fuzzyPenalty` by `filterByPrefix`
-    /// so the ranking comparator does not invoke fuzzy matching again.
-    func calculateScore(for item: SQLCompletionItem, prefix: String, context: SQLContext) -> Int {
+    // Lower is better.
+    public func calculateScore(for item: SQLCompletionItem, prefix: String, context: SQLContext) -> Int {
         var score = item.sortPriority + item.fuzzyPenalty
 
         if item.filterText.hasPrefix(prefix) {
@@ -794,10 +705,8 @@ final class SQLCompletionProvider {
             score -= 1_000
         }
 
-        // When prefix is empty and tables are in scope, the user is either in a
-        // table-operand slot (e.g. "... JOIN |") or at a clause transition point
-        // (e.g. "FROM users |" or "WHERE id > 1 |"). In the operand slot, tables
-        // lead; otherwise keywords lead so clause transitions surface.
+        // With nothing typed and tables in scope, tables lead in an operand slot (`... JOIN |`) and keywords lead at
+        // a clause transition (`FROM users |`).
         if prefix.isEmpty && !context.tableReferences.isEmpty && !context.isAfterComma {
             if context.expectsObjectName {
                 if item.kind == .table || item.kind == .view || item.kind == .schema {
@@ -807,7 +716,6 @@ final class SQLCompletionProvider {
                 score -= 300
             }
         } else {
-            // Context-appropriate bonuses when actively typing
             switch context.clauseType {
             case .from, .join, .into, .dropObject, .createIndex:
                 if item.kind == .table || item.kind == .view {
@@ -827,7 +735,6 @@ final class SQLCompletionProvider {
             }
         }
 
-        // Shorter names slightly preferred
         score += (item.label as NSString).length
 
         return score

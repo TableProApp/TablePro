@@ -579,7 +579,7 @@ custom_rules:
   # Tests (listed in TableProTests/.swiftlint.yml and Plugins/.swiftlint.yml)
   suite_without_trait:
     name: "Suite Without A Trait"
-    included: ['.*/(TableProTests|Plugins/[A-Za-z]+Tests|Packages/TableProMacCore/Tests)/']
+    included: ['.*/(TableProTests|Plugins/[A-Za-z]+Tests|Packages/TableProMacCore/Tests|Packages/TableProCore/Tests/TableProAutocompleteTests)/']
     regex: '(?:^#if\b[^\n]*\n[ \t]*|^)(?:@\w+[ \t]+)*@(?:Testing\.)?Suite(?:[ \t]*\(\s*(?:"(?:[^"\\\n]|\\.)*"|#+"[^\n]*?"#+)?\s*\))?(?![ \t]*\()(?=\s)'
     excluded_match_kinds: [comment, doccomment]
     message: "Every top-level @Suite expansion walks every other one, so compile time grows with their square. Keep @Suite only to carry a trait such as .serialized."
