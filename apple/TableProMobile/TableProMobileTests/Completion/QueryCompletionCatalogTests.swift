@@ -288,6 +288,25 @@ struct QueryCompletionCatalogTests {
         #expect(await sessionReads.finished == 1)
     }
 
+    @Test("listed schemas insert quoted by the engine's case rules and keep their own table lists")
+    func schemasKeepTheirSpelling() async {
+        let reads = SchemaTableReads(["sales": [table("lower_orders")], "Sales": [table("upper_orders")]])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders")], databaseType: .postgresql, schema: "public",
+            readColumns: CatalogColumnSource([:]).reader, readSchemaTables: reads.reader,
+            schemas: ["public", "sales", "Sales"]
+        )
+
+        let items = await catalog.schemaCompletionItems()
+        let lower = await catalog.tableCompletionItems(inSchema: "sales")
+        let upper = await catalog.tableCompletionItems(inSchema: "Sales")
+
+        #expect(items.map(\.insertText) == ["public", "sales", "\"Sales\""])
+        #expect(labels(lower) == ["lower_orders"])
+        #expect(labels(upper) == ["upper_orders"])
+        #expect(await reads.count == 2)
+    }
+
     @Test("on MySQL a database qualifies a table, and its tables are read once")
     func mysqlDatabaseQualifiesTables() async {
         let reads = SchemaTableReads(["archive": [table("orders_2019")]])

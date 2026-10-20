@@ -26,6 +26,8 @@ final class ConnectionCoordinator {
     @ObservationIgnored private var statementFailedDuringCheck = false
     @ObservationIgnored private var metadataRefused = false
     @ObservationIgnored private var seenCatalogGeneration: Int
+    @ObservationIgnored private var isReloadingCatalog = false
+    @ObservationIgnored private var catalogReloadRequested = false
     var failureAlertMessage: String?
     var showFailureAlert = false
 
@@ -626,7 +628,21 @@ final class ConnectionCoordinator {
     }
 
     // A statement a window ran may have created or dropped what the lists show; failed reads keep the lists.
+    // One reload at a time: a later post waits for it, so an older answer never lands over a newer one.
     func reloadChangedCatalog() async {
+        guard !isReloadingCatalog else {
+            catalogReloadRequested = true
+            return
+        }
+        isReloadingCatalog = true
+        defer { isReloadingCatalog = false }
+        repeat {
+            catalogReloadRequested = false
+            await reloadChangedCatalogOnce()
+        } while catalogReloadRequested
+    }
+
+    private func reloadChangedCatalogOnce() async {
         let board = appState.catalogChanges
         let generation = board.generation(for: connection.id)
         guard generation != seenCatalogGeneration, let session, !isSwitching else { return }

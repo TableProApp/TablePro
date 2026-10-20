@@ -174,13 +174,17 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         return EnumValueParser.parseMySQLEnumOrSet(from: typeName)
     }
 
+    // A name the server listed, quoted by its own case rules, unlike text the user wrote.
     private func namespaceItem(_ name: String) -> SQLCompletionItem {
-        SQLCompletionItem(label: name, kind: .schema, insertText: asWritten(name))
+        SQLCompletionItem(label: name, kind: .schema, insertText: quoted(name))
     }
 
     // One read per schema at a time; an answer is kept until the catalog goes stale, a failure is not.
-    private func tables(inSchema schema: String) async -> [TableInfo] {
-        let key = schema.lowercased()
+    private func tables(inSchema typed: String) async -> [TableInfo] {
+        // PostgreSQL can hold both `sales` and `Sales`, so the listed spelling is the key, the exact one first.
+        let schema = qualifyingNamespaces.first { $0 == typed }
+            ?? qualifyingNamespaces.first { Self.matches($0, typed) } ?? typed
+        let key = schema
         if let known = schemaTables[key] { return known }
         if let pending = schemaTableReads[key] { return (try? await pending.value).flatMap { $0 } ?? [] }
         let generation = columnGeneration
