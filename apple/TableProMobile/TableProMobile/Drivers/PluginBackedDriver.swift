@@ -94,7 +94,7 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         }
 
         var emitted = 0
-        for (rowIndex, legacyRow) in converted.rows.enumerated() {
+        for row in result.rows {
             if Task.isCancelled {
                 continuation.yield(.truncated(reason: .cancelled))
                 return
@@ -103,15 +103,23 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
                 continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
                 return
             }
-            let cells = legacyRow.enumerated().map { index, value -> Cell in
-                let typeName = index < converted.columns.count ? converted.columns[index].typeName : nil
+            let cells = row.enumerated().map { index, value -> Cell in
                 let ref = cellRef(
                     column: index < result.columns.count ? result.columns[index] : "",
-                    row: result.rows[rowIndex],
+                    row: row,
                     keyIndices: keyIndices,
                     options: options
                 )
-                return Cell.from(legacyValue: value, columnTypeName: typeName, options: options, ref: ref)
+                switch value {
+                case .null:
+                    return .null
+                // Bytes stay binary: shown as hex text they would read as an editable value and match no row.
+                case .bytes(let data):
+                    return .binary(byteCount: data.count, ref: ref)
+                case .text(let text):
+                    let typeName = index < converted.columns.count ? converted.columns[index].typeName : nil
+                    return Cell.from(legacyValue: text, columnTypeName: typeName, options: options, ref: ref)
+                }
             }
             continuation.yield(.row(Row(cells: cells)))
             emitted += 1
