@@ -7002,6 +7002,9 @@
     "Expected true, false or null." : {
 
     },
+    "Explains why it can't open here." : {
+
+    },
     "Explore a music store database without connecting to a server." : {
       "localizations" : {
         "ko" : {
@@ -12322,6 +12325,9 @@
         }
       }
     },
+    "Open it in TablePro on your Mac." : {
+
+    },
     "Open it on the Mac, or change it there to connect by host and port." : {
 
     },
@@ -12436,6 +12442,12 @@
           }
         }
       }
+    },
+    "Opens on Mac only" : {
+
+    },
+    "Opens on Mac Only" : {
+
     },
     "Opens table data" : {
       "localizations" : {
@@ -16560,6 +16572,10 @@
         }
       }
     },
+    "SSH tunneling is not available on this platform" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "SSH Unavailable" : {
       "localizations" : {
         "ko" : {
@@ -17762,6 +17778,10 @@
           }
         }
       }
+    },
+    "TablePro on iPhone and iPad can't open %@ connections." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro will re-download every connection, group, and tag from your iCloud account. Local data on this device is not deleted." : {
       "extractionState" : "stale",
@@ -19175,6 +19195,10 @@
           }
         }
       }
+    },
+    "The previous session is still closing" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The query did not finish within the configured timeout, so the connection was reset. Run the query again." : {
       "extractionState" : "manual",

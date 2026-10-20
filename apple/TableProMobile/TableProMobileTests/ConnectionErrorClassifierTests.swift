@@ -43,16 +43,30 @@ struct ConnectionErrorClassifierTests {
         #expect(error.recovery == String(localized: "Open it on the Mac, or change it there to connect by host and port."))
     }
 
-    @Test("A missing driver is a configuration problem and names the type")
-    func driverNotFoundIsConfiguration() {
+    @Test("A type with no driver here points to the Mac and names the type")
+    func driverNotFoundPointsToTheMac() {
         let error = ErrorClassifier.classify(
-            ConnectionError.driverNotFound("cassandra"),
+            ConnectionError.driverNotFound("Cassandra"),
             context: ErrorContext(operation: "connect")
         )
 
         #expect(error.category == .config)
-        #expect(error.title == String(localized: "Driver Unavailable"))
-        #expect(error.message.contains("cassandra"))
+        #expect(error.title == String(localized: "Opens on Mac Only"))
+        #expect(error.message.contains("Cassandra"))
+        #expect(error.recovery == String(localized: "Open it in TablePro on your Mac."))
+    }
+
+    @Test(
+        "A refusal from the device offers no Retry",
+        arguments: [ConnectionError.driverNotFound("MongoDB"), .localSocketNotSupported]
+    )
+    func refusalCannotRetry(_ refusal: ConnectionError) {
+        #expect(!ErrorClassifier.connectionFailure(refusal).canRetry)
+    }
+
+    @Test("A session that is gone can be retried")
+    func notConnectedCanRetry() {
+        #expect(ErrorClassifier.connectionFailure(.notConnected).canRetry)
     }
 
     @Test("A session that is gone is reported with a way back")

@@ -24,7 +24,7 @@ nonisolated enum ConnectionDetailFormatter {
         }
         var endpoint = connection.host
         let defaultPort = connection.type.defaultPort
-        if !defaultPort.isEmpty, String(connection.port) != defaultPort {
+        if connection.port != 0, !defaultPort.isEmpty, String(connection.port) != defaultPort {
             endpoint += ":\(connection.port)"
         }
         if !connection.database.isEmpty {

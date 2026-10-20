@@ -132,7 +132,23 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         }
     }
 
+    static let supportedTypeList: [DatabaseType] = [
+        .sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle
+    ]
+
+    static func refusal(for connection: DatabaseConnection) -> ConnectionError? {
+        guard supportedTypeList.contains(connection.type) else {
+            return .driverNotFound(connection.type.mobileDisplayName)
+        }
+        guard connection.macSocketPath == nil else { return .localSocketNotSupported }
+        return nil
+    }
+
+    func refusal(for connection: DatabaseConnection) -> ConnectionError? {
+        Self.refusal(for: connection)
+    }
+
     func supportedTypes() -> [DatabaseType] {
-        [.sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle]
+        Self.supportedTypeList
     }
 }
