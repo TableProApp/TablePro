@@ -463,6 +463,22 @@ final class ConnectionCoordinator {
         await refreshTransaction()
     }
 
+    // Where an unqualified table name resolves for this window. Another window's switch can move it under an open
+    // confirmation, so a destructive action checks it again before it runs.
+    struct TablePlacement: Hashable {
+        let driver: ObjectIdentifier?
+        let database: String
+        let schema: String?
+    }
+
+    var tablePlacement: TablePlacement {
+        TablePlacement(
+            driver: session.map { ObjectIdentifier($0.driver) },
+            database: activeDatabase,
+            schema: supportsSchemas ? activeSchema : nil
+        )
+    }
+
     static var editorHeldElsewhereMessage: String {
         String(localized: "Another window has unsaved changes on this connection. Save or discard them before switching database.")
     }

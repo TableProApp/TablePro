@@ -306,6 +306,22 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(tableNames(following) == ["staging_orders"])
     }
 
+    // A Drop or Truncate confirmation open in one window names a table by where that window stood when it was chosen.
+    @Test("Another window's schema switch moves the placement a pending destructive action was chosen in")
+    func followMovesTheTablePlacement() async throws {
+        let first = driver(tables: ["facts"])
+        first.currentSchema = "public"
+        let (switching, following) = try await warehouseCoordinators(on: first)
+        let chosen = following.tablePlacement
+
+        await switching.switchSchema(to: "staging")
+        await following.followLiveSession()
+
+        #expect(chosen.schema == "public")
+        #expect(following.tablePlacement.schema == "staging")
+        #expect(following.tablePlacement != chosen)
+    }
+
     @Test("A PostgreSQL database switch in one window moves the other window onto the new session")
     func otherWindowFollowsAPostgreSQLSwitch() async throws {
         let first = driver(tables: ["facts"])

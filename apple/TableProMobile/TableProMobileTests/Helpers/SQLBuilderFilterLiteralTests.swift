@@ -78,6 +78,14 @@ struct SQLBuilderFilterLiteralTests {
         #expect(sql.contains("WHERE `a\\\\` = 'x'"))
     }
 
+    // ClickHouse has no lowerUTF8 or LIKE for numbers, and CAST to a plain String fails on a NULL.
+    @Test("Contains on a ClickHouse number column reads it as nullable text")
+    func clickHousePatternOnANumberIsCast() {
+        let contains = TableFilter(columnName: "id", filterOperator: .contains, value: "1")
+        #expect(count(.clickhouse, contains, ColumnInfo(name: "id", typeName: "Int32")).contains("CAST(`id` AS Nullable(String))"))
+        #expect(!count(.clickhouse, contains, ColumnInfo(name: "id", typeName: "String")).contains("CAST("))
+    }
+
     private func count(_ type: DatabaseType, _ filter: TableFilter, _ column: ColumnInfo) -> String {
         SQLBuilder.buildFilteredCount(table: "t", schema: nil, type: type, filters: [filter], logicMode: .and, columns: [column])
     }

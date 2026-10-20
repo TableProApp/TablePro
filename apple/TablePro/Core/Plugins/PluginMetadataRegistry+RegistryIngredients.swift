@@ -84,7 +84,7 @@ extension PluginMetadataRegistry {
             requiresBackslashEscaping: true,
             caseSensitivityStyle: .caseFoldFunction,
             caseFoldFunction: "lowerUTF8",
-            textCastTypeName: nil,
+            textCastTypeName: "Nullable(String)",
             functionNamesAreCaseInsensitive: false
         )
 

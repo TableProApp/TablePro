@@ -321,6 +321,9 @@ final class RowDetailViewModel {
 
         pendingWriteConfirmation = false
         writeGate.cancel()
+        // The key and row checks below wait on the server; Save and Cancel stay disabled until they answer.
+        isSaving = true
+        defer { isSaving = false }
 
         guard RowLocator.canLocate(identity: rowIdentity, columns: columns, columnDetails: columnDetails) else {
             operationError = AppError(
@@ -379,6 +382,7 @@ final class RowDetailViewModel {
             operationError = identical
             return false
         }
+        guard isEditing else { return false }
 
         let batch: RowWriteBatch
         do {

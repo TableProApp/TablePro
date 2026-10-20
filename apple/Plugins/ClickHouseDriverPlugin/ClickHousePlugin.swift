@@ -113,7 +113,7 @@ nonisolated final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin
         requiresBackslashEscaping: true,
         caseSensitivityStyle: .caseFoldFunction,
         caseFoldFunction: "lowerUTF8",
-        textCastTypeName: nil,
+        textCastTypeName: "Nullable(String)",
         functionNamesAreCaseInsensitive: false
     )
 
