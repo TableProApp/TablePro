@@ -359,6 +359,13 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(snapshot.capabilities.supportsDatabaseTriggerBrowse)
     }
 
+    @Test("Cassandra and ScyllaDB list user-defined types before their plugin loads", arguments: ["Cassandra", "ScyllaDB"])
+    func cassandraBrowsesUserDefinedTypes(typeId: String) throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+
+        #expect(snapshot.capabilities.supportsUserDefinedTypeBrowse)
+    }
+
     @Test("Cassandra keeps its structure edits when its plugin registers")
     func cassandraKeepsStructureEdits() {
         let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockCassandraPlugin.self)

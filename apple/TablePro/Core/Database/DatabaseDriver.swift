@@ -288,6 +288,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// listed, because its `identity` is the driver's own key for finding it again.
     func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo
 
+    func generateDropTypeSQL(type: UserDefinedTypeInfo) -> String?
+
     /// Fetch every trigger in the given schema, across all its tables.
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo]
 
@@ -840,6 +842,8 @@ extension DatabaseDriver {
         }
         return type
     }
+
+    func generateDropTypeSQL(type: UserDefinedTypeInfo) -> String? { nil }
 
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] { [] }
 

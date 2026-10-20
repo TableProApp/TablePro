@@ -31,6 +31,9 @@ public enum PluginUserDefinedTypeKind: String, Codable, Sendable {
     /// SQL Server `CREATE TYPE x EXTERNAL NAME assembly.class`. Its definition lives in a .NET
     /// assembly, so no catalog read can produce its source.
     case clrType
+
+    // Cassandra `CREATE TYPE x (field type, ...)`: a composite's shape, under the name CQL gives it.
+    case udt
 }
 
 public struct PluginUserDefinedTypeField: Codable, Sendable, Hashable {

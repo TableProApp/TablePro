@@ -35,6 +35,7 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin, Pl
     static let supportsForeignKeys = false
     static let supportsRoutines = true
     static let supportsDatabaseTriggerBrowse = true
+    static let supportsUserDefinedTypeBrowse = true
     static let brandColorHex = "#26A0D8"
     static let queryLanguageName = "CQL"
     static let supportsDatabaseSwitching = true
