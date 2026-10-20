@@ -324,11 +324,23 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
                 rowIndices: write.rowIndices
             )
         })
-        if !rowPin.isEmpty, let changed = target.changedRow,
-           try await matchingRows(table: target.table, columns: target.columns, row: changed).isEmpty {
-            throw RowChangeRefusal.rowNotFound
+        if !rowPin.isEmpty, let changes = target.changes {
+            try await confirmChanged(target, changes: changes)
         }
         return affected
+    }
+
+    // A row still holding its old values was not changed, unless the new values read the same, such as 1.0 for 1.
+    // Generated columns change with their sources, so the row as saved is never predicted.
+    private func confirmChanged(_ target: RowTarget, changes: [(column: String, value: String?)]) async throws {
+        let unchanged = try await matchingRows(table: target.table, columns: target.columns, row: target.row)
+        guard !unchanged.isEmpty else { return }
+        let alreadySaved = try await matchingRows(
+            table: target.table,
+            columns: target.columns + changes.map(\.column),
+            row: target.row + changes.map(\.value)
+        )
+        guard alreadySaved.count == unchanged.count else { throw RowChangeRefusal.rowNotFound }
     }
 
     func matchingRowCount(table: String, schema: String?, columns: [String], row: [String?]) async throws -> Int {

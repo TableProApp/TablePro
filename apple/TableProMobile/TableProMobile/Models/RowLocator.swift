@@ -5,6 +5,12 @@ import TableProModels
 nonisolated struct RowLocator: Sendable {
     let row: [String?]
     let keyValues: [(column: String, value: String)]?
+    // The columns `row` holds, when that is not every column read.
+    var storedColumns: [String]?
+
+    func columnNames(of columns: [ColumnInfo]) -> [String] {
+        storedColumns ?? columns.map(\.name)
+    }
 
     static func identity(of driver: (any DatabaseDriver)?) -> RowIdentity {
         (driver as? any DriverRowWriting)?.rowIdentity ?? .keyColumns
@@ -12,9 +18,17 @@ nonisolated struct RowLocator: Sendable {
 
     static func canLocate(identity: RowIdentity, columns: [ColumnInfo], columnDetails: [ColumnInfo]) -> Bool {
         switch identity {
-        case .keyColumns: columnDetails.contains(where: \.isPrimaryKey)
-        case .everyColumn: !columns.isEmpty
+        case .keyColumns:
+            return columnDetails.contains(where: \.isPrimaryKey)
+        case .everyColumn:
+            let generated = generatedNames(columnDetails)
+            return columns.contains { !generated.contains($0.name) }
         }
+    }
+
+    // A MATERIALIZED or ALIAS value changes with its sources, so a row is matched on what it stores.
+    private static func generatedNames(_ columnDetails: [ColumnInfo]) -> Set<String> {
+        Set(columnDetails.filter(\.isGenerated).map(\.name))
     }
 
     // A binary or cut-off cell holds placeholder text, which as a predicate matches no row, so such a row has no locator.
@@ -38,14 +52,23 @@ nonisolated struct RowLocator: Sendable {
             }
             return RowLocator(row: row, keyValues: values)
         case .everyColumn:
-            guard !columns.isEmpty, cells.count == columns.count else { return nil }
-            let isExact = cells.allSatisfy { cell in
-                switch cell {
+            guard cells.count == columns.count else { return nil }
+            let generated = generatedNames(columnDetails)
+            let stored = columns.indices.filter { !generated.contains(columns[$0].name) }
+            guard !stored.isEmpty else { return nil }
+            let isExact = stored.allSatisfy { index in
+                switch cells[index] {
                 case .null, .text: true
                 case .truncatedText, .binary: false
                 }
             }
-            return isExact ? RowLocator(row: row, keyValues: nil) : nil
+            guard isExact else { return nil }
+            guard stored.count < columns.count else { return RowLocator(row: row, keyValues: nil) }
+            return RowLocator(
+                row: stored.map { row[$0] },
+                keyValues: nil,
+                storedColumns: stored.map { columns[$0].name }
+            )
         }
     }
 }

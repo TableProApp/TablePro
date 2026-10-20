@@ -14,8 +14,8 @@ nonisolated struct RowTarget: Sendable {
     let table: String
     let columns: [String]
     let row: [String?]
-    // The row as an update leaves it; nil for a delete.
-    let changedRow: [String?]?
+    // What an update sets; nil for a delete.
+    let changes: [(column: String, value: String?)]?
 }
 
 nonisolated enum RowChangeRefusal: Error, Equatable {

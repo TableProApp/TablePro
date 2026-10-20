@@ -469,7 +469,7 @@ final class DataBrowserViewModel {
         let writer = session.driver as? any DriverRowWriting
         if let writer, let identical = await SharedRowKey.identicalRowsError(
             writer: writer, table: table.name, schema: schema, locator: locator,
-            columns: columns.map(\.name), type: databaseType, isUpdate: false
+            columns: locator.columnNames(of: columns), type: databaseType, isUpdate: false
         ) {
             operationError = identical
             return false
@@ -480,7 +480,7 @@ final class DataBrowserViewModel {
                 schema: schema,
                 type: databaseType,
                 driver: session.driver,
-                columns: columns.map(\.name),
+                columns: locator.columnNames(of: columns),
                 columnDetails: columnDetails,
                 locator: locator
             ) else { return false }
@@ -492,7 +492,7 @@ final class DataBrowserViewModel {
                 isGone = try await !rowExists(table: table.name, schema: schema, primaryKey: keys, driver: session.driver)
             } else if !isGone, let writer {
                 isGone = try await writer.matchingRowCount(
-                    table: table.name, schema: schema, columns: columns.map(\.name), row: locator.row
+                    table: table.name, schema: schema, columns: locator.columnNames(of: columns), row: locator.row
                 ) == 0
             }
             await load()
