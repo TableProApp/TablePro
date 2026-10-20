@@ -76,11 +76,7 @@ impl SshSession {
 
     pub(crate) fn master_exited(&self) -> TransportError {
         let status = *lock(&self.exit_status);
-        let detail = lock(&self.stderr_tail)
-            .lines()
-            .last()
-            .unwrap_or("the ssh master exited")
-            .to_owned();
+        let detail = lock(&self.stderr_tail).lines().last().unwrap_or_default().to_owned();
         SshFailure::MasterExited { status, detail }.into()
     }
 }
@@ -114,11 +110,14 @@ impl Transport for SshForwardTransport {
                 tracing::debug!(%error, "the forward socket closed with the ssh master");
                 Err(self.session.master_exited())
             }
-            Ok(Err(error)) => Err(SshFailure::ChannelOpenFailed {
-                target: self.service.to_string(),
-                detail: error.to_string(),
+            Ok(Err(error)) => {
+                tracing::debug!(%error, "the forward socket refused the connection");
+                Err(SshFailure::ChannelOpenFailed {
+                    target: self.service.to_string(),
+                    detail: String::new(),
+                }
+                .into())
             }
-            .into()),
         }
     }
 
