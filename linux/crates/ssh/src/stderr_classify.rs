@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tablepro_core::{NetworkEndpoint, SshFailure, TimeoutPhase, TransportError};
+use tablepro_core::{NetworkEndpoint, SshAlgorithmKind, SshFailure, TimeoutPhase, TransportError};
 
 const PROTOCOL_DETAIL_LIMIT: usize = 4096;
 
@@ -26,6 +26,8 @@ pub(crate) struct ClassifyContext<'a> {
 
 pub(crate) fn classify(status: Option<i32>, stderr: &str, context: &ClassifyContext<'_>) -> TransportError {
     let failure = host_key_failure(stderr, context)
+        .or_else(|| negotiation_failure(stderr, context))
+        .or_else(|| attempts_exceeded(stderr, context))
         .or_else(|| authentication_failure(stderr))
         .or_else(|| forwarding_failure(stderr, context))
         .or_else(|| configuration_failure(stderr));
@@ -116,6 +118,62 @@ fn unknown_host_key(host: &str, algorithm: &str, fingerprint: &str, trust_allowe
         trust_allowed,
         declined,
     }
+}
+
+// A server's login banner reaches stderr as the server wrote it, so only a
+// whole line in ssh's own form counts.
+fn negotiation_failure(stderr: &str, context: &ClassifyContext<'_>) -> Option<SshFailure> {
+    stderr.lines().find_map(|line| {
+        let (remote, rest) = line
+            .trim()
+            .strip_prefix("Unable to negotiate with ")?
+            .split_once(": ")?;
+        let (reason, offer) = rest.split_once(". Their offer: ")?;
+        // ssh_err()'s words for the five SSH_ERR_NO_*_ALG_MATCH codes.
+        let kind = match reason {
+            "no matching key exchange method found" => SshAlgorithmKind::KeyExchange,
+            "no matching host key type found" => SshAlgorithmKind::HostKey,
+            "no matching cipher found" => SshAlgorithmKind::Cipher,
+            "no matching MAC found" => SshAlgorithmKind::Mac,
+            "no matching compression method found" => SshAlgorithmKind::Compression,
+            _ => return None,
+        };
+        // ext-info-* (RFC 8308) and kex-strict-* ride in the key exchange list
+        // as signals, not methods a client could pick.
+        let server_offer = offer
+            .split(',')
+            .map(str::trim)
+            .filter(|name| !name.is_empty() && !name.starts_with("ext-info-") && !name.starts_with("kex-strict-"))
+            .map(str::to_owned)
+            .collect();
+        Some(SshFailure::NoCommonAlgorithm {
+            host: remote_host(remote, context)?,
+            kind,
+            server_offer,
+        })
+    })
+}
+
+fn attempts_exceeded(stderr: &str, context: &ClassifyContext<'_>) -> Option<SshFailure> {
+    stderr.lines().find_map(|line| {
+        let record = line
+            .trim()
+            .strip_prefix("Received disconnect from ")?
+            .strip_suffix(": Too many authentication failures")?;
+        let (remote, _code) = record.rsplit_once(':')?;
+        Some(SshFailure::AuthenticationAttemptsExceeded {
+            host: remote_host(remote, context)?,
+        })
+    })
+}
+
+fn remote_host(remote: &str, context: &ClassifyContext<'_>) -> Option<String> {
+    let (host, _port) = remote.split_once(" port ")?;
+    // ssh names a hop behind a jump host UNKNOWN, since it sees only the proxy's pipe.
+    Some(match host.trim() {
+        "" | "UNKNOWN" => context.host.to_owned(),
+        host => host.to_owned(),
+    })
 }
 
 fn authentication_failure(stderr: &str) -> Option<SshFailure> {
@@ -347,10 +405,122 @@ mod tests {
     }
 
     #[test]
+    fn stderr_classification_fixture_too_many_authentication_failures() {
+        assert_eq!(
+            fixture(include_str!(
+                "../tests/fixtures/stderr/too_many_authentication_failures.txt"
+            )),
+            TransportError::Ssh(SshFailure::AuthenticationAttemptsExceeded {
+                host: "127.0.0.1".to_owned(),
+            })
+        );
+    }
+
+    /// The server's offer keeps its methods and drops the extension
+    /// signals that ride in the same list.
+    #[test]
+    fn stderr_classification_fixture_no_matching_key_exchange() {
+        assert_eq!(
+            fixture(include_str!("../tests/fixtures/stderr/no_matching_key_exchange.txt")),
+            TransportError::Ssh(SshFailure::NoCommonAlgorithm {
+                host: "127.0.0.1".to_owned(),
+                kind: SshAlgorithmKind::KeyExchange,
+                server_offer: vec!["mlkem768x25519-sha256".to_owned(), "sntrup761x25519-sha512".to_owned()],
+            })
+        );
+    }
+
+    #[test]
+    fn every_list_ssh_can_fail_to_negotiate_is_named() {
+        let cases = [
+            ("key exchange method", SshAlgorithmKind::KeyExchange),
+            ("host key type", SshAlgorithmKind::HostKey),
+            ("cipher", SshAlgorithmKind::Cipher),
+            ("MAC", SshAlgorithmKind::Mac),
+            ("compression method", SshAlgorithmKind::Compression),
+        ];
+        for (words, kind) in cases {
+            let stderr =
+                format!("Unable to negotiate with 192.0.2.7 port 22: no matching {words} found. Their offer: a,b\n");
+            assert_eq!(
+                fixture(&stderr),
+                TransportError::Ssh(SshFailure::NoCommonAlgorithm {
+                    host: "192.0.2.7".to_owned(),
+                    kind,
+                    server_offer: vec!["a".to_owned(), "b".to_owned()],
+                }),
+                "{words}"
+            );
+        }
+        assert!(matches!(
+            fixture(include_str!("../tests/fixtures/stderr/no_matching_cipher.txt")),
+            TransportError::Ssh(SshFailure::NoCommonAlgorithm { kind: SshAlgorithmKind::Cipher, server_offer, .. })
+                if server_offer.len() == 6
+        ));
+    }
+
+    /// Behind a jump host ssh knows the destination only as the proxy's
+    /// pipe, so the configured host names it.
+    #[test]
+    fn a_hop_behind_a_jump_host_is_named_by_its_configured_host() {
+        assert_eq!(
+            fixture(
+                "Unable to negotiate with UNKNOWN port 65535: no matching host key type found. Their offer: ssh-rsa\n"
+            ),
+            TransportError::Ssh(SshFailure::NoCommonAlgorithm {
+                host: "bastion".to_owned(),
+                kind: SshAlgorithmKind::HostKey,
+                server_offer: vec!["ssh-rsa".to_owned()],
+            })
+        );
+        assert_eq!(
+            fixture("Received disconnect from UNKNOWN port 65535:2: Too many authentication failures\n"),
+            TransportError::Ssh(SshFailure::AuthenticationAttemptsExceeded {
+                host: "bastion".to_owned(),
+            })
+        );
+        assert_eq!(
+            fixture("Received disconnect from fd00::5 port 22:2: Too many authentication failures\n"),
+            TransportError::Ssh(SshFailure::AuthenticationAttemptsExceeded {
+                host: "fd00::5".to_owned(),
+            })
+        );
+    }
+
+    /// A login banner is printed to stderr as the server wrote it, so
+    /// its words alone classify nothing.
+    #[test]
+    fn a_banner_with_ssh_s_words_is_not_ssh_s_error() {
+        let banner = "Too many authentication failures will lock your account.\n\
+                      Unable to negotiate with support: no matching cipher found. Their offer: call us\n";
+
+        assert_eq!(
+            fixture(&format!("{banner}Connection reset by 192.0.2.7 port 22\n")),
+            TransportError::Ssh(SshFailure::Protocol {
+                status: Some(255),
+                detail: format!("{banner}Connection reset by 192.0.2.7 port 22")
+                    .trim()
+                    .to_owned(),
+            })
+        );
+        assert_eq!(
+            fixture(&format!(
+                "{banner}{}",
+                include_str!("../tests/fixtures/stderr/too_many_authentication_failures.txt")
+            )),
+            TransportError::Ssh(SshFailure::AuthenticationAttemptsExceeded {
+                host: "127.0.0.1".to_owned(),
+            })
+        );
+    }
+
+    #[test]
     fn crlf_line_endings_classify_the_same() {
         for stderr in [
             include_str!("../tests/fixtures/stderr/auth_rejected.txt"),
             include_str!("../tests/fixtures/stderr/host_key_changed.txt"),
+            include_str!("../tests/fixtures/stderr/too_many_authentication_failures.txt"),
+            include_str!("../tests/fixtures/stderr/no_matching_key_exchange.txt"),
         ] {
             assert_eq!(fixture(&stderr.replace('\n', "\r\n")), fixture(stderr));
         }

@@ -20,6 +20,7 @@ use crate::argv::{ControlOp, master_args};
 use crate::askpass_bridge::AskpassBridge;
 use crate::hop_config;
 use crate::host_key_checking::HostKeyChecking;
+use crate::identity_pin::pin_key_file;
 use crate::known_hosts::{known_hosts_lookup, spawn_failure};
 use crate::password_owner::password_owner;
 use crate::route::{JumpHop, Route, lookup, trace_route};
@@ -71,6 +72,7 @@ struct MasterPlan {
     strict_hosts: Vec<String>,
     route: Route,
     master_config: Option<PathBuf>,
+    identities_only: bool,
 }
 
 impl MasterPlan {
@@ -93,6 +95,16 @@ impl MasterPlan {
             SshAuth::Agent | SshAuth::PrivateKey { .. } | SshAuth::KeyboardInteractive => None,
         };
         let host_keys = resolved.as_deref().and_then(HostKeyChecking::from_ssh_g);
+        let identities_only = match &config.auth {
+            SshAuth::PrivateKey { path: Some(key), .. } => tokio::select! {
+                pin = pin_key_file(&services.ssh_keygen_program, key, resolved.as_deref()) => pin,
+                () = cancel.cancelled() => return Err(SshFailure::InteractionCancelled.into()),
+            },
+            SshAuth::PrivateKey { path: None, .. }
+            | SshAuth::Agent
+            | SshAuth::Password { .. }
+            | SshAuth::KeyboardInteractive => false,
+        };
         let route = tokio::select! {
             route = trace_route(&services.ssh_program, config_file, resolved.as_deref()) => route,
             () = cancel.cancelled() => return Err(SshFailure::InteractionCancelled.into()),
@@ -106,6 +118,7 @@ impl MasterPlan {
             strict_hosts: strict_hosts(resolved.as_deref(), &route.hops),
             route,
             master_config,
+            identities_only,
         })
     }
 
@@ -124,6 +137,7 @@ impl MasterPlan {
                 liveness,
                 self.host_keys,
                 self.master_config.as_deref(),
+                self.identities_only,
             ))
             .env("SSH_ASKPASS", &services.askpass_program)
             .env("SSH_ASKPASS_REQUIRE", "force")

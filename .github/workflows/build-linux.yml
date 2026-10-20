@@ -409,6 +409,10 @@ jobs:
         include:
           - package: tablepro-ssh
             apt: openssh-client
+          - package: tablepro-ssh
+            release: openssh-9.9
+            apt: openssh-client
+            openssh: "9.9"
           - package: tablepro-test-fixtures
             apt: openssh-client
           - package: tablepro-driver-postgres
@@ -471,6 +475,7 @@ jobs:
           TABLEPRO_TEST_MARIADB: ${{ matrix.mariadb }}
           TABLEPRO_TEST_MSSQL: ${{ matrix.mssql }}
           TABLEPRO_TEST_CLICKHOUSE: ${{ matrix.clickhouse }}
+          TABLEPRO_TEST_OPENSSH: ${{ matrix.openssh }}
         run: cargo nextest run --locked --profile ci -p "$PACKAGE" --run-ignored only
       - name: Upload JUnit report
         if: always()

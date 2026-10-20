@@ -46,6 +46,7 @@ pub(crate) fn master_args(
     liveness: &LivenessPolicy,
     host_keys: Option<HostKeyChecking>,
     config_file: Option<&Path>,
+    identities_only: bool,
 ) -> Vec<OsString> {
     let mut args: Vec<OsString> = Vec::new();
     if let Some(config_file) = config_file {
@@ -84,6 +85,10 @@ pub(crate) fn master_args(
         SshAuth::Agent => {}
         SshAuth::PrivateKey { path, .. } => {
             if let Some(path) = path {
+                // Otherwise ssh offers the agent's other keys first and can run out the server's MaxAuthTries.
+                if identities_only {
+                    push_option(&mut args, "IdentitiesOnly=yes".into());
+                }
                 args.push("-i".into());
                 args.push(path.as_os_str().to_owned());
             }
@@ -183,6 +188,7 @@ mod tests {
             &LivenessPolicy::DESKTOP,
             None,
             None,
+            false,
         );
         assert_eq!(
             strings(&args),
@@ -260,6 +266,7 @@ mod tests {
                     &LivenessPolicy::DESKTOP,
                     host_keys,
                     None,
+                    false,
                 );
                 let strict: Vec<&str> = strings(&args)
                     .into_iter()
@@ -279,6 +286,7 @@ mod tests {
             &LivenessPolicy::DESKTOP,
             None,
             None,
+            false,
         ))
         .join(" ");
         assert!(!without.contains(" -p ") && !without.contains(" -l "));
@@ -288,6 +296,7 @@ mod tests {
             &LivenessPolicy::DESKTOP,
             None,
             None,
+            false,
         );
         assert_eq!(
             strings(&with[with.len() - 6..]),
@@ -305,6 +314,7 @@ mod tests {
             &LivenessPolicy::DESKTOP,
             None,
             None,
+            false,
         );
         let args = strings(&args);
         assert_eq!(args.iter().filter(|arg| **arg == "-J").count(), 1);
@@ -320,6 +330,7 @@ mod tests {
             &LivenessPolicy::DESKTOP,
             None,
             Some(Path::new("/run/user/1000/m/ssh_config")),
+            false,
         );
 
         assert_eq!(strings(&args)[..3], ["-F", "/run/user/1000/m/ssh_config", "-M"]);
@@ -328,35 +339,39 @@ mod tests {
 
     #[test]
     fn private_key_path_adds_minus_i() {
-        let auth = SshAuth::PrivateKey {
-            path: Some(PathBuf::from("/home/deploy/.ssh/id_ed25519")),
-            passphrase: None,
+        let args = |path: Option<&str>, identities_only: bool| {
+            let auth = SshAuth::PrivateKey {
+                path: path.map(PathBuf::from),
+                passphrase: None,
+            };
+            let args = master_args(
+                &config(None, None, auth),
+                Path::new("/tmp/control"),
+                &LivenessPolicy::DESKTOP,
+                None,
+                None,
+                identities_only,
+            );
+            strings(&args).join(" ")
         };
-        let args = master_args(
-            &config(None, None, auth),
-            Path::new("/tmp/control"),
-            &LivenessPolicy::DESKTOP,
-            None,
-            None,
-        );
-        let joined = strings(&args).join(" ");
-        assert!(
-            joined.contains(" -i /home/deploy/.ssh/id_ed25519 -- db-bastion"),
-            "{joined}"
-        );
 
-        let without_path = SshAuth::PrivateKey {
-            path: None,
-            passphrase: None,
-        };
-        let args = master_args(
-            &config(None, None, without_path),
-            Path::new("/tmp/control"),
-            &LivenessPolicy::DESKTOP,
-            None,
-            None,
+        let pinned = args(Some("/home/deploy/.ssh/id_ed25519"), true);
+        let unpinned = args(Some("/home/deploy/.ssh/id_ed25519"), false);
+        let without_path = args(None, true);
+
+        assert!(
+            pinned.contains(" -o IdentitiesOnly=yes -i /home/deploy/.ssh/id_ed25519 -- db-bastion"),
+            "{pinned}"
         );
-        assert!(!strings(&args).contains(&"-i"));
+        assert!(
+            unpinned.contains(" -i /home/deploy/.ssh/id_ed25519 -- db-bastion"),
+            "{unpinned}"
+        );
+        assert!(!unpinned.contains("IdentitiesOnly"), "{unpinned}");
+        assert!(
+            !without_path.contains(" -i ") && !without_path.contains("IdentitiesOnly"),
+            "{without_path}"
+        );
     }
 
     #[test]
@@ -381,6 +396,7 @@ mod tests {
                 &LivenessPolicy::DESKTOP,
                 None,
                 None,
+                false,
             );
             let preferred = strings(&args)
                 .into_iter()

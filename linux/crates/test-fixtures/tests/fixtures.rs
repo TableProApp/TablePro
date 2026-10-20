@@ -9,10 +9,10 @@ use std::process::Stdio;
 
 use tablepro_test_fixtures::{
     ClickHouseFixture, ExecOutput, FixtureCredentials, HbaMode, HostKeyRevocation, MssqlFixture, MysqlFixture,
-    MysqlFlavour, MysqlOptions, OpenSshFixture, PgBouncerFixture, PkiFile, PoolMode, PostgresFixture, PostgresVersion,
-    ScriptedAskpass, ServerVersion, SshAuthVariant, SshKeyPair, TestNetwork, TestPki,
+    MysqlFlavour, MysqlOptions, OpenSshFixture, OpenSshVersion, PgBouncerFixture, PkiFile, PoolMode, PostgresFixture,
+    PostgresVersion, ScriptedAskpass, ServerVersion, SshAuthVariant, SshKeyPair, SshKeyType, TestNetwork, TestPki,
 };
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 
@@ -342,6 +342,44 @@ async fn openssh_fixture_enables_tcp_forwarding() -> TestResult {
 
     assert!(output.succeeded(), "{}", output.stderr_text());
     assert!(output.stdout_text().contains("allowtcpforwarding yes"));
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn openssh_fixture_runs_the_selected_release_with_its_keys_and_lines() -> TestResult {
+    let keys = vec![
+        SshKeyPair::generate("tablepro-first").await?,
+        SshKeyPair::generate_with(SshKeyType::Rsa, None, "tablepro-second").await?,
+    ];
+    let fixture = OpenSshFixture::start_configured(SshAuthVariant::PublicKeys(keys), &["MaxAuthTries 3"]).await?;
+    let SshAuthVariant::PublicKeys(keys) = fixture.variant() else {
+        return Err("the fixture lost its keys".into());
+    };
+
+    let config = fixture
+        .exec(&["sshd.pam", "-T", "-f", OpenSshFixture::SSHD_CONFIG])
+        .await?;
+    let authorized = fixture.exec(&["cat", "/config/.ssh/authorized_keys"]).await?;
+    let mut banner = String::new();
+    BufReader::new(TcpStream::connect((fixture.host(), fixture.port())).await?)
+        .read_line(&mut banner)
+        .await?;
+
+    assert!(
+        config.stdout_text().contains("maxauthtries 3"),
+        "{}",
+        config.stderr_text()
+    );
+    for key in keys {
+        assert!(
+            authorized.stdout_text().lines().any(|line| line == key.public_key()),
+            "{}",
+            authorized.stdout_text()
+        );
+    }
+    assert_eq!(fixture.version(), OpenSshVersion::selected()?);
+    assert!(banner.starts_with(&fixture.version().banner_prefix()), "{banner:?}");
     Ok(())
 }
 

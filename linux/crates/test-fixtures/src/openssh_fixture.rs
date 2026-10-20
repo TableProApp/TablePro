@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 use crate::container_file::with_files;
 use crate::{
-    ContainerFile, ExecOutput, FixtureCredentials, FixtureError, FixtureImage, HostCertificate, SshAuthVariant,
-    TestNetwork,
+    ContainerFile, ExecOutput, FixtureCredentials, FixtureError, HostCertificate, OpenSshVersion, ServerVersion,
+    SshAuthVariant, TestNetwork,
 };
 
 const USERNAME: &str = "tablepro";
@@ -21,6 +21,7 @@ const BANNER_RETRY: Duration = Duration::from_millis(250);
 
 pub struct OpenSshFixture {
     container: ContainerAsync<GenericImage>,
+    version: OpenSshVersion,
     variant: SshAuthVariant,
     host_certificate: Option<HostCertificate>,
     password: String,
@@ -33,25 +34,43 @@ impl OpenSshFixture {
     pub const DROP_IN: &'static str = "/config/sshd/sshd_config.d/tablepro.conf";
     pub const SSHD_CONFIG: &'static str = "/config/sshd/sshd_config";
     pub const CONTAINER_PORT: u16 = 2222;
+    const AUTHORIZED_KEYS_DIR: &'static str = "/tablepro/authorized_keys";
+    const USER_CA: &'static str = "/tablepro/user_ca.pub";
 
     pub async fn start(variant: SshAuthVariant) -> Result<Self, FixtureError> {
-        Self::launch(variant, None).await
+        Self::launch(variant, &[], None).await
     }
 
     /// Start a server that reaches the network's other containers by
     /// alias. Each server gets its own alias, so a two-hop chain can put
     /// two of them on one network.
     pub async fn start_in(variant: SshAuthVariant, network: &TestNetwork) -> Result<Self, FixtureError> {
-        Self::launch(variant, Some(network)).await
+        Self::launch(variant, &[], Some(network)).await
     }
 
-    async fn launch(variant: SshAuthVariant, network: Option<&TestNetwork>) -> Result<Self, FixtureError> {
+    /// Start a server with `sshd_config` lines such as `KexAlgorithms ...`
+    /// added after the variant's own.
+    pub async fn start_configured(variant: SshAuthVariant, sshd_config: &[&str]) -> Result<Self, FixtureError> {
+        Self::launch(variant, sshd_config, None).await
+    }
+
+    async fn launch(
+        variant: SshAuthVariant,
+        sshd_config: &[&str],
+        network: Option<&TestNetwork>,
+    ) -> Result<Self, FixtureError> {
+        let version = OpenSshVersion::selected()?;
         let password = FixtureCredentials::generate_password();
         let host_certificate = match variant {
             SshAuthVariant::HostCertificate => Some(HostCertificate::generate().await?),
-            SshAuthVariant::Password | SshAuthVariant::PublicKey(_) | SshAuthVariant::KeyboardInteractive => None,
+            SshAuthVariant::Password
+            | SshAuthVariant::PublicKey(_)
+            | SshAuthVariant::PublicKeys(_)
+            | SshAuthVariant::UserCertificateAuthority(_)
+            | SshAuthVariant::KeyboardInteractive => None,
         };
-        let mut request = FixtureImage::OPENSSH
+        let mut request = version
+            .image()
             .generic()
             .with_exposed_port(Self::CONTAINER_PORT.tcp())
             .with_wait_for(WaitFor::message_on_stdout("[ls.io-init] done."))
@@ -61,10 +80,27 @@ impl OpenSshFixture {
                 "PASSWORD_ACCESS",
                 if variant.password_access() { "true" } else { "false" },
             );
-        if let SshAuthVariant::PublicKey(key) = &variant {
-            request = request.with_env_var("PUBLIC_KEY", key.public_key());
+        let mut drop_in = Self::drop_in(&variant);
+        for line in sshd_config {
+            drop_in.push_str(line);
+            drop_in.push('\n');
         }
-        let mut files = vec![ContainerFile::readable(Self::DROP_IN, Self::drop_in(&variant))];
+        let mut files = vec![ContainerFile::readable(Self::DROP_IN, drop_in)];
+        // The image's init appends each file in the directory to authorized_keys.
+        let authorized_keys = variant.authorized_keys();
+        if !authorized_keys.is_empty() {
+            request = request.with_env_var("PUBLIC_KEY_DIR", Self::AUTHORIZED_KEYS_DIR);
+        }
+        for (index, key) in authorized_keys.into_iter().enumerate() {
+            let target = format!("{}/key-{index}.pub", Self::AUTHORIZED_KEYS_DIR);
+            files.push(ContainerFile::readable(target, format!("{key}\n")));
+        }
+        if let SshAuthVariant::UserCertificateAuthority(authority) = &variant {
+            files.push(ContainerFile::readable(
+                Self::USER_CA,
+                format!("{}\n", authority.public_key()),
+            ));
+        }
         if let Some(certificate) = &host_certificate {
             files.extend(certificate.files()?);
         }
@@ -81,6 +117,7 @@ impl OpenSshFixture {
         wait_for_banner(&host, port).await?;
         Ok(Self {
             container,
+            version,
             variant,
             host_certificate,
             password,
@@ -102,9 +139,16 @@ impl OpenSshFixture {
             SshAuthVariant::HostCertificate => {
                 configuration.push_str(&format!("HostCertificate {}\n", HostCertificate::CERTIFICATE));
             }
-            SshAuthVariant::Password | SshAuthVariant::PublicKey(_) => {}
+            SshAuthVariant::UserCertificateAuthority(_) => {
+                configuration.push_str(&format!("TrustedUserCAKeys {}\n", Self::USER_CA));
+            }
+            SshAuthVariant::Password | SshAuthVariant::PublicKey(_) | SshAuthVariant::PublicKeys(_) => {}
         }
         configuration
+    }
+
+    pub fn version(&self) -> OpenSshVersion {
+        self.version
     }
 
     pub fn host(&self) -> &str {

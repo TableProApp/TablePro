@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-use crate::{ErrorCategory, SshDestinationProblem, SshRuntimeDirProblem};
+use crate::{ErrorCategory, SshAlgorithmKind, SshDestinationProblem, SshRuntimeDirProblem};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[non_exhaustive]
@@ -70,6 +70,17 @@ pub enum SshFailure {
         methods: Vec<String>,
     },
 
+    /// The server's MaxAuthTries ran out, as with an agent holding more keys than it allows.
+    #[error("{host} closed the connection after too many authentication attempts")]
+    AuthenticationAttemptsExceeded { host: String },
+
+    #[error("{host} and the OpenSSH client share no {kind} (the server offers {})", .server_offer.join(", "))]
+    NoCommonAlgorithm {
+        host: String,
+        kind: SshAlgorithmKind,
+        server_offer: Vec<String>,
+    },
+
     #[error("the SSH prompt was cancelled")]
     InteractionCancelled,
 
@@ -98,6 +109,7 @@ impl SshFailure {
     pub fn category(&self) -> ErrorCategory {
         match self {
             Self::AuthenticationRejected { .. }
+            | Self::AuthenticationAttemptsExceeded { .. }
             | Self::InteractionCancelled
             | Self::HostKeyUnknown { .. }
             | Self::HostKeyChanged { .. }
@@ -109,7 +121,8 @@ impl SshFailure {
             | Self::ConfigRejected { .. }
             | Self::ConfigUnreadable { .. }
             | Self::ControlPathTooLong { .. }
-            | Self::RuntimeDirUnsafe { .. } => ErrorCategory::Configuration,
+            | Self::RuntimeDirUnsafe { .. }
+            | Self::NoCommonAlgorithm { .. } => ErrorCategory::Configuration,
             Self::ForwardRejected { .. } | Self::ChannelOpenFailed { .. } | Self::MasterExited { .. } => {
                 ErrorCategory::Network
             }
@@ -253,6 +266,38 @@ mod tests {
         assert_eq!(unreadable.category(), ErrorCategory::Configuration);
         assert_eq!(protocol.category(), ErrorCategory::Internal);
         assert_eq!(SshFailure::Internal.category(), ErrorCategory::Internal);
+    }
+
+    /// Neither clears on a retry, so both park the reconnect monitor
+    /// rather than counting as internal.
+    #[test]
+    fn exhausted_attempts_and_no_common_algorithm_need_the_user() {
+        let exhausted = SshFailure::AuthenticationAttemptsExceeded {
+            host: "bastion".to_owned(),
+        };
+        let no_common = SshFailure::NoCommonAlgorithm {
+            host: "bastion".to_owned(),
+            kind: SshAlgorithmKind::KeyExchange,
+            server_offer: vec!["mlkem768x25519-sha256".to_owned()],
+        };
+
+        assert_eq!(exhausted.category(), ErrorCategory::Authentication);
+        assert_eq!(no_common.category(), ErrorCategory::Configuration);
+    }
+
+    #[test]
+    fn no_common_algorithm_names_the_list_and_the_server_offer() {
+        let failure = SshFailure::NoCommonAlgorithm {
+            host: "bastion".to_owned(),
+            kind: SshAlgorithmKind::KeyExchange,
+            server_offer: vec!["mlkem768x25519-sha256".to_owned(), "sntrup761x25519-sha512".to_owned()],
+        };
+
+        assert_eq!(
+            failure.to_string(),
+            "bastion and the OpenSSH client share no key exchange method \
+             (the server offers mlkem768x25519-sha256, sntrup761x25519-sha512)"
+        );
     }
 
     #[test]

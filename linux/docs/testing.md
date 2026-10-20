@@ -112,7 +112,7 @@ Every TLS fixture has two principals:
 
 SQL Server has only the `sa` principal, because its TLS contract carries no client identity.
 
-`HbaMode` picks what the PostgreSQL fixture accepts: `Password` (the image defaults, no TLS), `HostSslOnly`, or `ClientCertificate`. Docker maps a published port anew each time a container starts, so a test that restarts the server starts it with `PostgresFixture::start_restartable`, which picks the host port itself; `stop` and `start_again` then bring it back where the session's connection points, with its data. `OpenSshFixture` takes an `SshAuthVariant`: `Password`, `PublicKey`, `KeyboardInteractive` or `HostCertificate`. `HostKeyRevocation` builds a KRL from the running server's host key, and `ScriptedAskpass` writes a 0700 script for `SSH_ASKPASS`.
+`HbaMode` picks what the PostgreSQL fixture accepts: `Password` (the image defaults, no TLS), `HostSslOnly`, or `ClientCertificate`. Docker maps a published port anew each time a container starts, so a test that restarts the server starts it with `PostgresFixture::start_restartable`, which picks the host port itself; `stop` and `start_again` then bring it back where the session's connection points, with its data. `OpenSshFixture` takes an `SshAuthVariant`: `Password`, `PublicKey`, `PublicKeys` (several keys in one authorized_keys), `UserCertificateAuthority` (logins by certificate only), `KeyboardInteractive` or `HostCertificate`, and `start_configured` appends `sshd_config` lines such as `KexAlgorithms`. `SshKeyPair::generate_with` makes an ed25519, RSA or ECDSA P-256 key, encrypted when given a passphrase, and `SshAgent` is a private `ssh-agent` that loads one. `HostKeyRevocation` builds a KRL from the running server's host key, and `ScriptedAskpass` writes a 0700 script for `SSH_ASKPASS`.
 
 ### Conformance
 
@@ -252,10 +252,11 @@ A fixture starts its engine's default release unless the engine's variable names
 | `TABLEPRO_TEST_MARIADB` | 10.11, 11.4, 12.3 | 11.4 |
 | `TABLEPRO_TEST_MSSQL` | 2017, 2019, 2022, 2025 | 2022 |
 | `TABLEPRO_TEST_CLICKHOUSE` | 26.3, 26.8 | 26.8 |
+| `TABLEPRO_TEST_OPENSSH` | 9.9, 10.3 | 10.3 |
 
-`crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
+`crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
 
-The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, and ClickHouse 26.3. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`), never from a literal, so it holds on every release.
+The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, and ClickHouse 26.3, and the SSH suite on OpenSSH 9.9. The README's [supported servers](../README.md#supported-servers) table says why those database releases and not others; OpenSSH 9.9 is the last 9.x. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
 
 Locally, set the variables for the run:
 

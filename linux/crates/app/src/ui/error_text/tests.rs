@@ -4,8 +4,8 @@ use tablepro_core::credentials::{SecretError, SecretKind};
 use tablepro_core::sql_syntax::script::{OpenConstruct, ScriptDiagnostic};
 use tablepro_core::{
     BusyReason, ConfigError, DriverError, ErrorCategory, LossPhase, NetworkEndpoint, ReadOnlyRefusal, ServerCode,
-    ServerDiagnostics, SshDestinationPart, SshDestinationProblem, SshFailure, SshRuntimeDirProblem, StatementOutcome,
-    TimeoutPhase, TlsFailure, TransportError,
+    ServerDiagnostics, SshAlgorithmKind, SshDestinationPart, SshDestinationProblem, SshFailure, SshRuntimeDirProblem,
+    StatementOutcome, TimeoutPhase, TlsFailure, TransportError,
 };
 use tablepro_session::runtime::{TaskFailure, TaskPanic};
 use tablepro_session::{ConnectError, OperationError};
@@ -336,6 +336,53 @@ fn ssh_failures_say_what_to_change() {
         declined: true,
     });
     assert!(declined.contains("not trusted"), "{declined}");
+}
+
+#[test]
+fn too_many_attempts_says_how_to_name_the_key() {
+    let message = ssh_failure_message(&SshFailure::AuthenticationAttemptsExceeded {
+        host: "bastion".to_owned(),
+    });
+
+    assert!(message.contains("bastion"), "{message}");
+    assert!(message.contains("too many failed sign-in attempts"), "{message}");
+    assert!(message.contains("Private key"), "{message}");
+    assert!(message.contains("IdentitiesOnly yes"), "{message}");
+}
+
+#[test]
+fn each_list_with_no_common_algorithm_has_its_own_words() {
+    let kinds = [
+        SshAlgorithmKind::KeyExchange,
+        SshAlgorithmKind::HostKey,
+        SshAlgorithmKind::Cipher,
+        SshAlgorithmKind::Mac,
+        SshAlgorithmKind::Compression,
+    ];
+    let texts: Vec<String> = kinds
+        .iter()
+        .map(|&kind| {
+            ssh_failure_message(&SshFailure::NoCommonAlgorithm {
+                host: "bastion".to_owned(),
+                kind,
+                server_offer: vec!["first".to_owned(), "second".to_owned()],
+            })
+        })
+        .collect();
+
+    for text in &texts {
+        assert!(text.contains("bastion") && text.contains("first, second"), "{text}");
+    }
+    assert_eq!(
+        texts.iter().collect::<std::collections::HashSet<_>>().len(),
+        kinds.len(),
+        "{texts:?}"
+    );
+    assert_eq!(
+        texts[0],
+        "The SSH server bastion and this computer's OpenSSH have no key exchange method in common. \
+         The server allows first, second."
+    );
 }
 
 /// Under StrictHostKeyChecking yes ssh refuses before it shows the key,
