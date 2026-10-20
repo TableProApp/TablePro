@@ -261,8 +261,13 @@ struct MobileConnectionImportSheet: View {
         } catch is CancellationError {
             return
         } catch {
-            passphraseError = error.localizedDescription
             passphrase = ""
+            // Only a failed decryption can be fixed by another passphrase; a file that decrypts but cannot be read cannot.
+            guard case .decryptionFailed? = error as? ConnectionBundleError else {
+                phase = .failed(error.localizedDescription)
+                return
+            }
+            passphraseError = error.localizedDescription
         }
     }
 
