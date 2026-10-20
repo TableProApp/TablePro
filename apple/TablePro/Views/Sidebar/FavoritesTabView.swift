@@ -430,7 +430,7 @@ internal struct FavoritesTabView: View {
             FavoriteFolderRowView(folder: folder)
         case .linkedFolder(let folder):
             LinkedFolderRowLabel(folder: folder)
-        case .linkedSubfolder(_, let displayName, _):
+        case .linkedSubfolder(_, let displayName, _, _):
             LinkedSubfolderRowLabel(displayName: displayName)
         case .linkedFavorite(let linked):
             LinkedFavoriteRowView(favorite: linked, gitState: gitStatusStore.state(for: linked))
@@ -624,6 +624,10 @@ internal struct FavoritesTabView: View {
             coordinator?.showVersionHistory(of: favorite)
         case .discardLinkedFileChanges(let favorite):
             discardChanges(to: favorite)
+        case .copyPath(let path), .copyRelativePath(let path):
+            ClipboardService.shared.writeText(path)
+        case .revealLinkedSubfolder(let url):
+            NSWorkspace.shared.activateFileViewerSelecting([url])
         case .revealLinkedFolder(let folder):
             viewModel.revealLinkedFolder(folder)
         case .setLinkedFolderEnabled(let folder, let isEnabled):

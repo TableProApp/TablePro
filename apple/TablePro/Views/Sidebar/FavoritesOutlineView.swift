@@ -109,10 +109,33 @@ internal final class FavoritesNSOutlineView: SidebarOutlineView {
     override internal func deleteForward(_ sender: Any?) {
         favoritesCoordinator?.performDelete()
     }
+
+    @objc internal func copyPath(_ sender: Any?) {
+        guard let path = favoritesCoordinator?.selectedFilePath else { return }
+        favoritesCoordinator?.performMenuCommand(.copyPath(path.absolute))
+    }
+
+    @objc internal func copyRelativePath(_ sender: Any?) {
+        guard let relative = favoritesCoordinator?.selectedFilePath?.relative else { return }
+        favoritesCoordinator?.performMenuCommand(.copyRelativePath(relative))
+    }
+
+    override internal func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        switch item.action {
+        case #selector(copyPath(_:)):
+            return favoritesCoordinator?.selectedFilePath != nil
+        case #selector(copyRelativePath(_:)):
+            return favoritesCoordinator?.selectedFilePath?.relative != nil
+        default:
+            return super.validateUserInterfaceItem(item)
+        }
+    }
 }
 
 @MainActor
 internal protocol FavoritesOutlineKeyHandling: AnyObject {
+    var selectedFilePath: FavoriteFilePath? { get }
     func performPrimaryAction()
     func performDelete()
+    func performMenuCommand(_ command: FavoritesMenuCommand)
 }

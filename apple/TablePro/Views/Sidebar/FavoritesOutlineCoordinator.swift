@@ -301,6 +301,15 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
         owner.actions.deleteSelection(node.kind)
     }
 
+    internal var selectedFilePath: FavoriteFilePath? {
+        guard case .query(let favoriteNode) = selectedNode()?.kind else { return nil }
+        return favoriteNode.content.filePath
+    }
+
+    internal func performMenuCommand(_ command: FavoritesMenuCommand) {
+        owner.actions.performMenuCommand(command)
+    }
+
     private func selectedNode() -> FavoritesOutlineNode? {
         guard let outlineView, outlineView.selectedRow >= 0 else { return nil }
         return outlineView.item(atRow: outlineView.selectedRow) as? FavoritesOutlineNode
@@ -334,7 +343,7 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
     @objc
     internal func performFavoritesMenuCommand(_ sender: NSMenuItem) {
         guard let box = sender.representedObject as? SidebarMenuCommandBox<FavoritesMenuCommand> else { return }
-        owner.actions.performMenuCommand(box.command)
+        performMenuCommand(box.command)
     }
 
     // MARK: - NSTextFieldDelegate
