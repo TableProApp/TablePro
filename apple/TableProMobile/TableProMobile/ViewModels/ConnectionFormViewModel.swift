@@ -260,6 +260,16 @@ final class ConnectionFormViewModel {
         }
     }
 
+    static let redisPreferredForcesTLSMessage = String(localized: """
+        Redis driver has no TLS fallback. Preferred and Required both force TLS. \
+        Use Required for Redis Cloud, Upstash, and AWS ElastiCache encrypted endpoints.
+        """)
+
+    var sslModeNote: String? {
+        guard type == .redis, sslMode == .preferred else { return nil }
+        return Self.redisPreferredForcesTLSMessage
+    }
+
     private var effectiveSSLMode: SSLModeChoice? {
         switch type {
         case .sqlite, .duckdb: nil

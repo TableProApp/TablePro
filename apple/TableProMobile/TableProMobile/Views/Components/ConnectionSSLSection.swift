@@ -36,8 +36,13 @@ struct ConnectionSSLSection: View {
         } header: {
             Text("SSL")
         } footer: {
-            if viewModel.showsCertificateRows {
-                Text("Certificates stay on this device and are never synced. A PKCS#12 file fills in both the client certificate and its key.")
+            VStack(alignment: .leading, spacing: 4) {
+                if let note = viewModel.sslModeNote {
+                    Text(note)
+                }
+                if viewModel.showsCertificateRows {
+                    Text("Certificates stay on this device and are never synced. A PKCS#12 file fills in both the client certificate and its key.")
+                }
             }
         }
     }

@@ -152,6 +152,19 @@ struct ConnectionFormViewModelSSLTests {
         #expect(viewModel.oracleSSLModeNote == nil)
     }
 
+    @Test("Preferred on Redis notes that it forces TLS, as on the Mac")
+    func redisPreferredNote() {
+        let viewModel = ConnectionFormViewModel(editing: preferredConnection(type: .redis))
+
+        #expect(viewModel.sslModeNote == ConnectionFormViewModel.redisPreferredForcesTLSMessage)
+
+        viewModel.sslMode = .require
+        #expect(viewModel.sslModeNote == nil)
+
+        let mysql = ConnectionFormViewModel(editing: preferredConnection(type: .mysql))
+        #expect(mysql.sslModeNote == nil)
+    }
+
     @Test("a connection with SSL on and no stored configuration opens as Required in every picker")
     func sslEnabledWithoutModeOpensAsRequired() {
         var connection = existingConnection(type: .mssql)

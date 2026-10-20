@@ -15071,6 +15071,9 @@
         }
       }
     },
+    "Redis driver has no TLS fallback. Preferred and Required both force TLS. Use Required for Redis Cloud, Upstash, and AWS ElastiCache encrypted endpoints." : {
+
+    },
     "Refresh from iCloud" : {
       "extractionState" : "stale",
       "localizations" : {
