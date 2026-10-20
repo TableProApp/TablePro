@@ -384,10 +384,6 @@ internal final class ConnectionWorkspace {
         }
     }
 
-    internal var retainsRestoreIntent: Bool {
-        ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: phase)
-    }
-
     /// The panes go down with the rest of it. They retain the SwiftUI tree, which retains the
     /// coordinator this tears down, and a coordinator only leaves the app-wide registry on deinit.
     internal func teardown() {

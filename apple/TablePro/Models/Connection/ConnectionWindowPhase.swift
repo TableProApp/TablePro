@@ -6,14 +6,31 @@
 import Foundation
 
 internal struct ConnectionFailureInfo: Equatable, Sendable {
+    internal let title: String?
     internal let message: String
     internal let failureReason: String?
     internal let recoverySuggestion: String?
+    /// Kept for Copy Details only, such as the driver's own words under a cause TablePro named.
+    internal let details: String?
 
-    internal init(message: String, failureReason: String? = nil, recoverySuggestion: String? = nil) {
+    internal init(
+        title: String? = nil,
+        message: String,
+        failureReason: String? = nil,
+        recoverySuggestion: String? = nil,
+        details: String? = nil
+    ) {
+        self.title = title
         self.message = message
         self.failureReason = failureReason
         self.recoverySuggestion = recoverySuggestion
+        self.details = details
+    }
+
+    internal var lines: [String] {
+        [message, failureReason, recoverySuggestion]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
     }
 }
 

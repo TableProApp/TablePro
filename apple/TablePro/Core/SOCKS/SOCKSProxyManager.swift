@@ -36,6 +36,17 @@ enum SOCKSProxyError: Error, LocalizedError, Equatable {
     }
 }
 
+extension SOCKSProxyError: ConnectionPreflightReporting {
+    var failedBeforeDialing: Bool {
+        switch self {
+        case .invalidConfiguration, .unsupportedOnThisSystem, .listenerFailed:
+            return true
+        case .connectTimedOut, .connectFailed:
+            return false
+        }
+    }
+}
+
 actor SOCKSProxyManager: TunnelManaging {
     static let shared = SOCKSProxyManager()
     private static let logger = Logger(subsystem: "com.TablePro", category: "SOCKSProxyManager")

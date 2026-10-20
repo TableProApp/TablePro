@@ -224,3 +224,15 @@ extension SSHTunnelError {
         return true
     }
 }
+
+extension SSHTunnelError: ConnectionPreflightReporting {
+    var failedBeforeDialing: Bool {
+        switch self {
+        case .configExpansionFailed, .tunnelAlreadyExists, .noAvailablePort, .usernameMissing:
+            return true
+        case .tunnelCreationFailed, .authenticationFailed, .hostKeyVerificationFailed, .channelOpenFailed,
+             .socketForwardingRefused, .forwardRefused, .forwardTimedOut:
+            return false
+        }
+    }
+}

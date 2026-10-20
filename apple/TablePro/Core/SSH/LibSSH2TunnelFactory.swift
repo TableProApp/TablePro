@@ -221,7 +221,7 @@ internal enum LibSSH2TunnelFactory {
         let resolvedPrimary = resolved.primary
         let resolvedJumps = resolved.jumps.map(\.target)
 
-        let firstHop = resolvedJumps.first ?? resolvedPrimary
+        let firstHop = resolved.firstHop
         let firstEndpoint = timeoutEndpoint(host: firstHop.host, port: firstHop.port)
         let socketFD = try await connectTCP(
             host: firstHop.host,
@@ -429,6 +429,19 @@ internal enum LibSSH2TunnelFactory {
                 )
             )
         }
+
+        var firstHop: ResolvedSSHTarget {
+            jumps.first?.target ?? primary
+        }
+    }
+
+    /// The host this Mac opens its TCP connection to; every later hop is dialed from the one before it.
+    internal static func firstHop(
+        of config: SSHConfiguration,
+        document: SSHConfigDocument
+    ) -> (host: String, isJumpHost: Bool)? {
+        guard let resolved = try? resolveChainConfiguration(config: config, document: document) else { return nil }
+        return (resolved.firstHop.host, !resolved.jumps.isEmpty)
     }
 
     internal static func resolveChainConfiguration(

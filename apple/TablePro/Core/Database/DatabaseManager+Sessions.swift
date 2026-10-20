@@ -86,13 +86,16 @@ extension DatabaseManager {
                 deadline: deadline
             )
         } catch {
+            let reportedError = isAttemptCancelled(attempt, for: connection.id)
+                ? error
+                : await diagnosedConnectFailure(error, for: resolvedConnection)
             finalizeConnectionFailure(
                 for: connection.id,
                 cancelled: isAttemptCancelled(attempt, for: connection.id),
-                error: error,
+                error: reportedError,
                 attempt: attempt
             )
-            throw error
+            throw reportedError
         }
 
         let driver: DatabaseDriver
@@ -194,11 +197,12 @@ extension DatabaseManager {
                     reportedError = attributed
                 }
                 closeActiveTunnel(for: connection)
+                reportedError = await diagnosedConnectFailure(reportedError, for: resolvedConnection)
             }
 
             finalizeConnectionFailure(
                 for: connection.id,
-                cancelled: cancelled,
+                cancelled: cancelled || isAttemptCancelled(attempt, for: connection.id),
                 error: reportedError,
                 attempt: attempt
             )

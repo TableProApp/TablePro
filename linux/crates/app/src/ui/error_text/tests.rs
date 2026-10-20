@@ -4,8 +4,8 @@ use tablepro_core::credentials::{SecretError, SecretKind};
 use tablepro_core::sql_syntax::script::{OpenConstruct, ScriptDiagnostic};
 use tablepro_core::{
     BusyReason, ConfigError, DriverError, ErrorCategory, LossPhase, NetworkEndpoint, ReadOnlyRefusal, ServerCode,
-    ServerDiagnostics, SshAlgorithmKind, SshDestinationPart, SshDestinationProblem, SshFailure, StatementOutcome,
-    TimeoutPhase, TlsFailure, TransportError,
+    ServerDiagnostics, SshAlgorithmKind, SshDestinationPart, SshDestinationProblem, SshFailure, SshRuntimeDirProblem,
+    StatementOutcome, TimeoutPhase, TlsFailure, TransportError,
 };
 use tablepro_session::runtime::{TaskFailure, TaskPanic};
 use tablepro_session::{ConnectError, OperationError};
@@ -465,6 +465,135 @@ fn every_ssh_destination_problem_has_its_own_words() {
     );
     assert_eq!(texts[7], "the username contains “;”");
     assert_eq!(texts[9], "“ssh” is not a port number");
+}
+
+#[test]
+fn every_runtime_directory_problem_has_its_own_words() {
+    let path = PathBuf::from("/run/user/1000/app/app.tablepro.TablePro/ssh");
+    let problems = [
+        SshRuntimeDirProblem::OtherOwner,
+        SshRuntimeDirProblem::NotADirectory,
+        SshRuntimeDirProblem::OpenToOthers { mode: 0o770 },
+        SshRuntimeDirProblem::NoDirectoryName,
+        SshRuntimeDirProblem::NotAShellWord,
+        SshRuntimeDirProblem::Io {
+            kind: std::io::ErrorKind::PermissionDenied,
+        },
+        SshRuntimeDirProblem::Io {
+            kind: std::io::ErrorKind::StorageFull,
+        },
+        SshRuntimeDirProblem::Io {
+            kind: std::io::ErrorKind::ReadOnlyFilesystem,
+        },
+        SshRuntimeDirProblem::Io {
+            kind: std::io::ErrorKind::NotADirectory,
+        },
+        SshRuntimeDirProblem::Io {
+            kind: std::io::ErrorKind::Other,
+        },
+    ];
+
+    let texts: Vec<String> = problems
+        .iter()
+        .map(|problem| {
+            ssh_failure_message(&SshFailure::RuntimeDirUnsafe {
+                path: path.clone(),
+                problem: *problem,
+            })
+        })
+        .collect();
+
+    for (problem, text) in problems.iter().zip(&texts) {
+        assert!(
+            !text.contains(&problem.to_string()),
+            "{problem:?} shows its log text: {text}"
+        );
+    }
+    assert_eq!(
+        texts.iter().collect::<std::collections::HashSet<_>>().len(),
+        problems.len(),
+        "{texts:?}"
+    );
+    assert_eq!(
+        texts[2],
+        "The SSH runtime directory /run/user/1000/app/app.tablepro.TablePro/ssh cannot be used safely: other users can open it (mode 770)"
+    );
+}
+
+#[test]
+fn ssh_exit_status_and_output_are_worded_by_the_app() {
+    let protocol = |status: Option<i32>, detail: &str| {
+        ssh_failure_message(&SshFailure::Protocol {
+            status,
+            detail: detail.to_owned(),
+        })
+    };
+
+    assert_eq!(
+        protocol(Some(255), "kex_exchange_identification: read: Connection reset by peer"),
+        "ssh exited with status 255: kex_exchange_identification: read: Connection reset by peer"
+    );
+    assert_eq!(protocol(Some(1), ""), "ssh exited with status 1 and printed nothing.");
+    assert_eq!(protocol(None, "Killed"), "ssh printed something unexpected: Killed");
+    assert_eq!(protocol(None, ""), "ssh did not answer as TablePro expected.");
+    assert_eq!(
+        ssh_failure_message(&SshFailure::MasterExited {
+            status: Some(255),
+            detail: String::new(),
+        }),
+        "The SSH connection ended."
+    );
+    assert_eq!(
+        ssh_failure_message(&SshFailure::ChannelOpenFailed {
+            target: "db:5432".to_owned(),
+            detail: String::new(),
+        }),
+        "The SSH server could not reach db:5432."
+    );
+    assert_eq!(
+        ssh_failure_message(&SshFailure::Internal),
+        "TablePro hit an internal error."
+    );
+}
+
+#[test]
+fn an_ssh_that_will_not_start_is_worded_by_the_app() {
+    let launch = |kind| {
+        ssh_failure_message(&SshFailure::LaunchFailed {
+            program: PathBuf::from("/usr/bin/ssh"),
+            kind,
+        })
+    };
+
+    assert_eq!(
+        launch(std::io::ErrorKind::PermissionDenied),
+        "TablePro is not allowed to run /usr/bin/ssh. Check that it is executable."
+    );
+    assert_eq!(launch(std::io::ErrorKind::Other), "/usr/bin/ssh could not be started.");
+    assert_eq!(
+        ssh_failure_message(&SshFailure::ConfigUnreadable {
+            path: PathBuf::from("/home/u/.ssh/tablepro_config"),
+            kind: std::io::ErrorKind::NotFound,
+        }),
+        "The SSH configuration file /home/u/.ssh/tablepro_config could not be read."
+    );
+}
+
+#[test]
+fn a_tls_failure_with_no_sentence_of_its_own_hides_the_librarys_text() {
+    let library_text = "invalid peer certificate: BadSignature";
+
+    let other = driver_message(&DriverError::Tls {
+        failure: TlsFailure::Other,
+        detail: library_text.to_owned(),
+    });
+    let rejected = driver_message(&DriverError::Tls {
+        failure: TlsFailure::HandshakeRejected,
+        detail: "received fatal alert: HandshakeFailure".to_owned(),
+    });
+
+    assert_eq!(other, "The secure connection failed.");
+    assert_eq!(rejected, "The server ended the secure handshake.");
 }
 
 #[test]

@@ -168,20 +168,25 @@ internal final class LiveLaunchEnvironment: LaunchEnvironment {
             ConnectionWindowIdentity.isConnectionWindow($0.identifier?.rawValue)
         }) else { return }
 
-        let connectionIds = LastOpenConnectionsStorage.shared.load()
-        guard !connectionIds.isEmpty else { return }
+        let session = LastOpenConnectionsStorage.shared.load()
+        guard !session.connections.isEmpty else { return }
 
         let knownIds = Set(ConnectionStorage.shared.loadConnections().map(\.id))
         var frontWindow: NSWindow?
-        for connectionId in connectionIds where knownIds.contains(connectionId) {
+        for connection in session.connections where knownIds.contains(connection.id) {
             WindowManager.shared.openTab(
-                payload: EditorTabPayload(connectionId: connectionId, intent: .restoreOrDefault),
+                payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault),
                 activate: false,
-                autoConnect: true
+                autoConnect: connection.reconnects
             )
             if frontWindow == nil {
-                frontWindow = WindowManager.shared.window(for: connectionId)
+                frontWindow = WindowManager.shared.window(for: connection.id)
             }
+        }
+
+        // Each adoption selects the newcomer, which could leave the window on a Not Connected entry.
+        if let shown = session.shownConnectionId, knownIds.contains(shown) {
+            WindowManager.shared.show(shown, inWindowHosting: shown)
         }
 
         guard let frontWindow else { return }

@@ -1,8 +1,9 @@
+use std::io::ErrorKind;
 use std::path::PathBuf;
 
 use thiserror::Error;
 
-use crate::{ErrorCategory, SshAlgorithmKind, SshDestinationProblem};
+use crate::{ErrorCategory, SshAlgorithmKind, SshDestinationProblem, SshRuntimeDirProblem};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[non_exhaustive]
@@ -13,17 +14,26 @@ pub enum SshFailure {
     #[error("the askpass helper {} was not found", .program.display())]
     AskpassHelperMissing { program: PathBuf },
 
+    #[error("{} could not be started: {kind}", .program.display())]
+    LaunchFailed { program: PathBuf, kind: ErrorKind },
+
     #[error("invalid SSH destination: {problem}")]
     InvalidDestination { problem: SshDestinationProblem },
 
     #[error("ssh rejected the configuration: {detail}")]
     ConfigRejected { detail: String },
 
+    #[error("the ssh_config file {} could not be read: {kind}", .path.display())]
+    ConfigUnreadable { path: PathBuf, kind: ErrorKind },
+
     #[error("the SSH control socket path {} is too long", .path.display())]
     ControlPathTooLong { path: PathBuf },
 
-    #[error("the SSH runtime directory {} is unsafe: {detail}", .path.display())]
-    RuntimeDirUnsafe { path: PathBuf, detail: String },
+    #[error("the SSH runtime directory {} is unsafe: {problem}", .path.display())]
+    RuntimeDirUnsafe {
+        path: PathBuf,
+        problem: SshRuntimeDirProblem,
+    },
 
     #[error("the {algorithm} host key {sha256_fingerprint} for {host} is not known")]
     HostKeyUnknown {
@@ -79,11 +89,19 @@ pub enum SshFailure {
     #[error("could not open an SSH channel to {target}: {detail}")]
     ChannelOpenFailed { target: String, detail: String },
 
+    /// `detail` is ssh's last line, empty when it printed none.
     #[error("the SSH connection ended: {detail}")]
     MasterExited { status: Option<i32>, detail: String },
 
-    #[error("unexpected output from ssh: {detail}")]
-    Protocol { detail: String },
+    /// `status` is set when ssh exited with one, and `detail` is the end
+    /// of what it printed.
+    #[error("unexpected output from ssh (exit status {status:?}): {detail}")]
+    Protocol { status: Option<i32>, detail: String },
+
+    /// A step of TablePro's own failed, such as a setup task that
+    /// panicked. Its cause is logged where it happened.
+    #[error("an internal step of the SSH setup failed")]
+    Internal,
 }
 
 impl SshFailure {
@@ -97,15 +115,17 @@ impl SshFailure {
             | Self::HostKeyRevoked { .. } => ErrorCategory::Authentication,
             Self::OpenSshClientMissing { .. }
             | Self::AskpassHelperMissing { .. }
+            | Self::LaunchFailed { .. }
             | Self::InvalidDestination { .. }
             | Self::ConfigRejected { .. }
+            | Self::ConfigUnreadable { .. }
             | Self::ControlPathTooLong { .. }
             | Self::RuntimeDirUnsafe { .. }
             | Self::NoCommonAlgorithm { .. } => ErrorCategory::Configuration,
             Self::ForwardRejected { .. } | Self::ChannelOpenFailed { .. } | Self::MasterExited { .. } => {
                 ErrorCategory::Network
             }
-            Self::Protocol { .. } => ErrorCategory::Internal,
+            Self::Protocol { .. } | Self::Internal => ErrorCategory::Internal,
         }
     }
 }
@@ -158,7 +178,7 @@ mod tests {
             (
                 SshFailure::RuntimeDirUnsafe {
                     path: PathBuf::from("/run/user/1000/app"),
-                    detail: detail(),
+                    problem: SshRuntimeDirProblem::OtherOwner,
                 },
                 ErrorCategory::Configuration,
             ),
@@ -220,7 +240,6 @@ mod tests {
                 },
                 ErrorCategory::Network,
             ),
-            (SshFailure::Protocol { detail: detail() }, ErrorCategory::Internal),
         ];
         for (failure, expected) in cases {
             assert_eq!(failure.category(), expected, "{failure:?}");
@@ -253,6 +272,27 @@ mod tests {
             failure.to_string(),
             "ssh and 203.0.113.5 have no host key type in common; the server offers ssh-rsa, ssh-dss"
         );
+    }
+
+    #[test]
+    fn a_program_or_file_ssh_needs_is_configuration_and_the_rest_internal() {
+        let launch = SshFailure::LaunchFailed {
+            program: PathBuf::from("ssh"),
+            kind: ErrorKind::PermissionDenied,
+        };
+        let unreadable = SshFailure::ConfigUnreadable {
+            path: PathBuf::from("/home/user/.ssh/tablepro_config"),
+            kind: ErrorKind::NotFound,
+        };
+        let protocol = SshFailure::Protocol {
+            status: Some(255),
+            detail: detail(),
+        };
+
+        assert_eq!(launch.category(), ErrorCategory::Configuration);
+        assert_eq!(unreadable.category(), ErrorCategory::Configuration);
+        assert_eq!(protocol.category(), ErrorCategory::Internal);
+        assert_eq!(SshFailure::Internal.category(), ErrorCategory::Internal);
     }
 
     #[test]

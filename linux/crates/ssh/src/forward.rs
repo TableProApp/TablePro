@@ -86,7 +86,7 @@ fn exit_detail(stderr_tail: &str) -> &str {
         .lines()
         // OpenSSH 10.1 and later print these after a key exchange that is not post-quantum.
         .rfind(|line| !line.is_empty() && !line.starts_with("** "))
-        .unwrap_or("the ssh master exited")
+        .unwrap_or_default()
 }
 
 #[async_trait]
@@ -118,11 +118,14 @@ impl Transport for SshForwardTransport {
                 tracing::debug!(%error, "the forward socket closed with the ssh master");
                 Err(self.session.master_exited())
             }
-            Ok(Err(error)) => Err(SshFailure::ChannelOpenFailed {
-                target: self.service.to_string(),
-                detail: error.to_string(),
+            Ok(Err(error)) => {
+                tracing::debug!(%error, "the forward socket refused the connection");
+                Err(SshFailure::ChannelOpenFailed {
+                    target: self.service.to_string(),
+                    detail: String::new(),
+                }
+                .into())
             }
-            .into()),
         }
     }
 
@@ -170,7 +173,7 @@ mod tests {
                     Timeout, server db not responding.\n";
 
         assert_eq!(exit_detail(tail), "Timeout, server db not responding.");
-        assert_eq!(exit_detail(""), "the ssh master exited");
+        assert_eq!(exit_detail(""), "");
     }
 
     #[test]
@@ -187,6 +190,6 @@ mod tests {
             "Warning: Permanently added '[172.17.0.1]:55002' (ED25519) to the list of known hosts."
         );
         assert_eq!(warning_only.lines().count(), 3);
-        assert_eq!(exit_detail(&warning_only), "the ssh master exited");
+        assert_eq!(exit_detail(&warning_only), "");
     }
 }
