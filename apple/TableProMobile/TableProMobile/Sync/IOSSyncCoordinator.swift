@@ -29,7 +29,18 @@ final class IOSSyncCoordinator {
         case superseded
     }
 
+    private enum RemoteApply {
+        case saved
+        // Connections, groups and tags landed and the saved queries did not, so only the token waits.
+        case savedQueriesHeld
+        case notSaved
+    }
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "Sync")
+
+    static let readableRecordTypes = Set(
+        [SyncRecordType.connection, .group, .tag, .favorite, .favoriteFolder].map(\.rawValue)
+    )
 
     private(set) var status: SyncStatus
     private(set) var lastSyncDate: Date?
@@ -63,10 +74,13 @@ final class IOSSyncCoordinator {
     @ObservationIgnored private var editGenerations: [EditKey: Int] = [:]
     @ObservationIgnored private var accountChangeObservation: AnyCancellable?
 
-    @ObservationIgnored var onConnectionsChanged: (([DatabaseConnection]) -> Void)?
-    @ObservationIgnored var onGroupsChanged: (([ConnectionGroup]) -> Void)?
-    @ObservationIgnored var onTagsChanged: (([ConnectionTag]) -> Void)?
+    // Each returns whether the merged list was saved; false holds the change token for a replay.
+    @ObservationIgnored var onConnectionsChanged: (([DatabaseConnection]) -> Bool)?
+    @ObservationIgnored var onGroupsChanged: (([ConnectionGroup]) -> Bool)?
+    @ObservationIgnored var onTagsChanged: (([ConnectionTag]) -> Bool)?
     @ObservationIgnored var getCurrentState: (() -> LibraryState?)?
+    @ObservationIgnored var getSavedQueries: (() -> SavedQueryContents?)?
+    @ObservationIgnored var onSavedQueriesChanged: ((SavedQueryContents) -> Bool)?
 
     private static var recordCacheDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -360,27 +374,39 @@ final class IOSSyncCoordinator {
         let connCount = changes.changedConnections.count
         let groupCount = changes.changedGroups.count
         let tagCount = changes.changedTags.count
-        Self.logger.info("Pulled \(connCount) connections, \(groupCount) groups, \(tagCount) tags")
+        let queryCount = changes.savedQueries.changedQueries.count
+        let folderCount = changes.savedQueries.changedFolders.count
+        Self.logger.info(
+            "Pulled \(connCount) connections, \(groupCount) groups, \(tagCount) tags, \(queryCount) saved queries, \(folderCount) folders"
+        )
 
-        guard applyRemoteChanges(changes) else {
+        let applied = applyRemoteChanges(changes)
+        guard applied != .notSaved else {
             return RunResult(admission: admission, failure: .pullNotSaved)
         }
-        /// Committed before the upload, so an upload that fails does not make every later run
-        /// download and merge everything since the last clean sync again.
-        if let newToken = pulled.newToken {
+        // Committed before the upload, so a failed upload does not make every later run download everything again.
+        if applied == .saved, let newToken = pulled.newToken {
             metadata.saveToken(newToken)
         }
+        // The connection writes landed, and a dirty connection pushed over a stale change tag would conflict.
         recordCache.store(pulled.changedRecords)
         recordCache.remove(pulled.deletedRecordIDs)
+        let heldDownload: SyncStepFailure? = applied == .saved ? nil : .pullNotSaved
 
-        guard admission == .full else { return RunResult(admission: admission, failure: nil) }
+        guard admission == .full else { return RunResult(admission: admission, failure: heldDownload) }
         guard let pushFailure = await push(using: transport) else {
-            return RunResult(admission: admission, failure: nil)
+            return RunResult(admission: admission, failure: heldDownload)
         }
-        return RunResult(admission: admission, failure: await refined(pushFailure, using: transport))
+        let upload = await refined(pushFailure, using: transport)
+        return RunResult(admission: admission, failure: SyncStepFailure.decisive(upload: upload, download: heldDownload))
     }
 
     private func fetchChanges(using transport: any IOSSyncTransport) async throws -> PullResult {
+        // A delta never resends what an earlier build skipped, so a build that reads more types fetches everything once.
+        if metadata.adoptReadableRecordTypes(Self.readableRecordTypes) {
+            Self.logger.notice("This build reads record types an earlier one skipped, so it fetches everything once")
+            metadata.saveToken(nil)
+        }
         do {
             return try await transport.pull(since: metadata.loadToken())
         } catch let error where SyncFailure(error) == .tokenExpired {
@@ -511,6 +537,16 @@ final class IOSSyncCoordinator {
         addTombstone(tagId.uuidString, type: .tag)
     }
 
+    func markDirty(savedQueries queryIds: [UUID], folders folderIds: [UUID] = []) {
+        markDirty(queryIds.map(\.uuidString), type: .favorite)
+        markDirty(folderIds.map(\.uuidString), type: .favoriteFolder)
+    }
+
+    func markDeleted(savedQueries queryIds: [UUID], folders folderIds: [UUID] = []) {
+        metadata.addTombstones(queryIds.map(\.uuidString), type: .favorite)
+        metadata.addTombstones(folderIds.map(\.uuidString), type: .favoriteFolder)
+    }
+
     private func markDirty(_ ids: [String], type: SyncRecordType) {
         for id in ids {
             editGenerations[EditKey(type: type, id: id), default: 0] += 1
@@ -527,6 +563,23 @@ final class IOSSyncCoordinator {
         markDirty(state.connections.filter(\.participatesInSync).map(\.id.uuidString), type: .connection)
         markDirty(state.groups.map(\.id.uuidString), type: .group)
         markDirty(state.tags.map(\.id.uuidString), type: .tag)
+        guard let savedQueries = getSavedQueries?() else { return }
+        let syncs = Self.ownerSyncs(in: state.connections)
+        markDirty(savedQueries.queries.filter { syncs($0.connectionId) }.map(\.id.uuidString), type: .favorite)
+        markDirty(savedQueries.folders.filter { syncs($0.connectionId) }.map(\.id.uuidString), type: .favoriteFolder)
+    }
+
+    // A record owned by a connection that never leaves the device (the sample) stays local too.
+    private static func ownersKeptOff(in connections: [DatabaseConnection]) -> Set<UUID> {
+        Set(connections.filter { !$0.participatesInSync }.map(\.id))
+    }
+
+    private static func ownerSyncs(keptOff: Set<UUID>) -> (UUID?) -> Bool {
+        { owner in owner.map { !keptOff.contains($0) } ?? true }
+    }
+
+    private static func ownerSyncs(in connections: [DatabaseConnection]) -> (UUID?) -> Bool {
+        ownerSyncs(keptOff: ownersKeptOff(in: connections))
     }
 
     /// An edit made while a run is in flight queues one more run instead of cancelling it, because
@@ -546,12 +599,59 @@ final class IOSSyncCoordinator {
 
     // MARK: - Apply
 
-    private func applyRemoteChanges(_ remote: PullChanges) -> Bool {
-        guard let state = getCurrentState?() else { return false }
-        onConnectionsChanged?(mergeConnections(local: state.connections, remote: remote))
-        onGroupsChanged?(mergeGroups(local: state.groups, remote: remote))
-        onTagsChanged?(mergeTags(local: state.tags, remote: remote))
+    private func applyRemoteChanges(_ remote: PullChanges) -> RemoteApply {
+        guard let state = getCurrentState?() else { return .notSaved }
+        let connectionsSaved = onConnectionsChanged?(mergeConnections(local: state.connections, remote: remote)) ?? true
+        let groupsSaved = onGroupsChanged?(mergeGroups(local: state.groups, remote: remote)) ?? true
+        let tagsSaved = onTagsChanged?(mergeTags(local: state.tags, remote: remote)) ?? true
+        guard connectionsSaved, groupsSaved, tagsSaved else {
+            Self.logger.error("A pulled library change was not saved, so the change token is held")
+            return .notSaved
+        }
+        return applyRemoteSavedQueries(remote.savedQueries) ? .saved : .savedQueriesHeld
+    }
+
+    // Read after the connection callbacks ran, so a connection deleted elsewhere has already taken its records.
+    private func applyRemoteSavedQueries(_ remote: SavedQueryRemoteChanges) -> Bool {
+        guard !remote.isEmpty else { return true }
+        guard let local = getSavedQueries?() else {
+            Self.logger.error("Saved queries arrived while the stored ones are not loaded, so the change token is held")
+            return false
+        }
+        let keptOff = Self.ownersKeptOff(in: getCurrentState?()?.connections ?? [])
+        let outcome = SavedQueryRemoteMerge.merge(
+            local: local,
+            remote: remote,
+            pending: pendingSavedQueryEdits(),
+            keptLocalOwners: keptOff
+        )
+        if outcome.contents != local {
+            guard onSavedQueriesChanged?(outcome.contents) == true else {
+                Self.logger.error("Pulled saved queries were not saved, so the change token is held")
+                return false
+            }
+        }
+        // Pushed even when nothing changed here: a stale copy that lost its keyword still holds it in iCloud.
+        guard !outcome.releasedKeywordIds.isEmpty else { return true }
+        Self.logger.info("Keyword conflicts resolved: \(outcome.releasedKeywordIds.count, privacy: .public)")
+        let syncs = Self.ownerSyncs(keptOff: keptOff)
+        let released = Set(outcome.releasedKeywordIds)
+        let pushed = outcome.contents.queries.filter { released.contains($0.id) && syncs($0.connectionId) }
+        markDirty(pushed.map(\.id.uuidString), type: .favorite)
         return true
+    }
+
+    private func pendingSavedQueryEdits() -> SavedQueryPendingEdits {
+        SavedQueryPendingEdits(
+            dirtyQueryIds: metadata.dirtyIds(for: .favorite),
+            dirtyFolderIds: metadata.dirtyIds(for: .favoriteFolder),
+            deletedQueryIds: tombstonedIds(for: .favorite),
+            deletedFolderIds: tombstonedIds(for: .favoriteFolder)
+        )
+    }
+
+    private func tombstonedIds(for type: SyncRecordType) -> Set<String> {
+        Set(metadata.tombstones(for: type).map(\.id))
     }
 
     // MARK: - Push
@@ -562,7 +662,7 @@ final class IOSSyncCoordinator {
         let zoneID = await transport.currentZoneID
         guard let state = getCurrentState?() else { return nil }
         let generationsAtPush = editGenerations
-        let batch = pushBatch(from: state, in: zoneID)
+        let batch = pushBatch(from: state, savedQueries: getSavedQueries?(), in: zoneID)
         guard !batch.records.isEmpty || !batch.deletions.isEmpty else { return nil }
 
         var outcome: PushOutcome
@@ -610,7 +710,11 @@ final class IOSSyncCoordinator {
         }
     }
 
-    private func pushBatch(from state: LibraryState, in zoneID: CKRecordZone.ID) -> (records: [CKRecord], deletions: [CKRecord.ID]) {
+    private func pushBatch(
+        from state: LibraryState,
+        savedQueries: SavedQueryContents?,
+        in zoneID: CKRecordZone.ID
+    ) -> (records: [CKRecord], deletions: [CKRecord.ID]) {
         var records: [CKRecord] = []
         var deletions: [CKRecord.ID] = []
 
@@ -648,13 +752,37 @@ final class IOSSyncCoordinator {
             }
         }
 
-        for type in [SyncRecordType.connection, .group, .tag] {
+        var deletedTypes: [SyncRecordType] = [.connection, .group, .tag]
+        if let savedQueries {
+            records += savedQueryRecords(savedQueries, connections: state.connections, in: zoneID)
+            deletedTypes += [.favorite, .favoriteFolder]
+        }
+
+        for type in deletedTypes {
             for tombstone in metadata.tombstones(for: type) {
                 deletions.append(SyncRecordMapper.recordID(type: type, id: tombstone.id, in: zoneID))
             }
         }
 
         return (records, deletions)
+    }
+
+    // Built fresh, not from the cache: `.changedKeys` clears a keyword, folder or connection only when the key is named.
+    private func savedQueryRecords(
+        _ contents: SavedQueryContents,
+        connections: [DatabaseConnection],
+        in zoneID: CKRecordZone.ID
+    ) -> [CKRecord] {
+        let syncs = Self.ownerSyncs(in: connections)
+        let dirtyFolderIds = metadata.dirtyIds(for: .favoriteFolder)
+        let dirtyQueryIds = metadata.dirtyIds(for: .favorite)
+        let folders = contents.folders
+            .filter { dirtyFolderIds.contains($0.id.uuidString) && syncs($0.connectionId) }
+            .map { SyncRecordMapper.toRecord($0, zoneID: zoneID) }
+        let queries = contents.queries
+            .filter { dirtyQueryIds.contains($0.id.uuidString) && syncs($0.connectionId) }
+            .map { SyncRecordMapper.toRecord($0, zoneID: zoneID) }
+        return folders + queries
     }
 
     // MARK: - Pull
@@ -666,6 +794,7 @@ final class IOSSyncCoordinator {
         var deletedGroupIDs: Set<UUID> = []
         var changedTags: [ConnectionTag] = []
         var deletedTagIDs: Set<UUID> = []
+        var savedQueries = SavedQueryRemoteChanges()
 
         init(_ result: PullResult) {
             for record in result.changedRecords {
@@ -682,6 +811,14 @@ final class IOSSyncCoordinator {
                     if let tag = SyncRecordMapper.toTag(record) {
                         changedTags.append(tag)
                     }
+                case SyncRecordType.favorite.rawValue:
+                    if let query = SyncRecordMapper.toSavedQuery(record) {
+                        savedQueries.changedQueries.append(query)
+                    }
+                case SyncRecordType.favoriteFolder.rawValue:
+                    if let folder = SyncRecordMapper.toSavedQueryFolder(record) {
+                        savedQueries.changedFolders.append(folder)
+                    }
                 default:
                     break
                 }
@@ -697,6 +834,10 @@ final class IOSSyncCoordinator {
                     deletedGroupIDs.insert(uuid)
                 case .tag:
                     deletedTagIDs.insert(uuid)
+                case .favorite:
+                    savedQueries.deletedQueryIds.insert(uuid)
+                case .favoriteFolder:
+                    savedQueries.deletedFolderIds.insert(uuid)
                 default:
                     break
                 }
@@ -711,7 +852,8 @@ final class IOSSyncCoordinator {
             local: local,
             changed: remote.changedConnections,
             deleted: remote.deletedConnectionIDs,
-            dirtyIds: metadata.dirtyIds(for: .connection)
+            dirtyIds: metadata.dirtyIds(for: .connection),
+            tombstonedIds: tombstonedIds(for: .connection)
         )
     }
 
@@ -720,7 +862,8 @@ final class IOSSyncCoordinator {
             local: local,
             changed: remote.changedGroups,
             deleted: remote.deletedGroupIDs,
-            dirtyIds: metadata.dirtyIds(for: .group)
+            dirtyIds: metadata.dirtyIds(for: .group),
+            tombstonedIds: tombstonedIds(for: .group)
         )
     }
 
@@ -729,7 +872,8 @@ final class IOSSyncCoordinator {
             local: local,
             changed: remote.changedTags,
             deleted: remote.deletedTagIDs,
-            dirtyIds: metadata.dirtyIds(for: .tag)
+            dirtyIds: metadata.dirtyIds(for: .tag),
+            tombstonedIds: tombstonedIds(for: .tag)
         )
     }
 
@@ -737,10 +881,13 @@ final class IOSSyncCoordinator {
         local: [Item],
         changed: [Item],
         deleted: Set<UUID>,
-        dirtyIds: Set<String>
+        dirtyIds: Set<String>,
+        tombstonedIds: Set<String>
     ) -> [Item] where Item.ID == UUID {
         var result = local.filter { !deleted.contains($0.id) }
-        for remoteItem in changed where !deleted.contains(remoteItem.id) {
+        // A record deleted here and not pushed yet stays deleted, or the pull brings it back before the push.
+        for remoteItem in changed
+            where !deleted.contains(remoteItem.id) && !tombstonedIds.contains(remoteItem.id.uuidString) {
             guard let index = result.firstIndex(where: { $0.id == remoteItem.id }) else {
                 result.append(remoteItem)
                 continue
