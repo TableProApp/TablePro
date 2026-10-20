@@ -746,6 +746,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         UserDefinedTypeInfo(try await pluginDriver.fetchUserDefinedType(type.pluginType))
     }
 
+    func generateDropTypeSQL(type: UserDefinedTypeInfo) -> String? {
+        pluginDriver.generateDropTypeSQL(type: type.pluginType)
+    }
+
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         let pluginMeta = try await pluginDriver.fetchDatabaseMetadata(database)
         return Self.databaseMetadata(pluginMeta, systemDatabaseNames: systemDatabaseNames)

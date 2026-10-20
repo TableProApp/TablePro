@@ -71,10 +71,29 @@ struct UserDefinedTypeInfoTests {
 
     @Test("Every named kind maps both ways")
     func kindMapping() {
-        for kind in [PluginUserDefinedTypeKind.enumeration, .composite, .domain, .range] {
+        let kinds: [PluginUserDefinedTypeKind] = [
+            .enumeration, .composite, .domain, .range, .aliasType, .tableType, .clrType, .udt
+        ]
+        for kind in kinds {
             #expect(UserDefinedTypeInfo.Kind(kind).pluginKind == kind)
         }
         #expect(UserDefinedTypeInfo.Kind.other.pluginKind == nil)
+    }
+
+    @Test("A CQL type is named the way CQL names it, lists its fields on hover, and can type a column")
+    func cqlUserDefinedType() {
+        let type = UserDefinedTypeInfo(
+            name: "address",
+            kind: .udt,
+            schema: "shop",
+            fields: [.init(name: "street", type: "text"), .init(name: "city", type: "text")],
+            columnTypeSpelling: "address"
+        )
+
+        #expect(type.kind.displayName == String(localized: "User-Defined Type"))
+        #expect(type.kind.isUsableAsColumnType)
+        #expect(UserTypeRowLogic.tooltip(for: type).contains("street text, city text"))
+        #expect(UserDefinedTypeSuggestions.entries(types: [type], tableSchema: nil) == ["address"])
     }
 
     @Test("A type ref carries the kind so the viewer knows what it opened")
