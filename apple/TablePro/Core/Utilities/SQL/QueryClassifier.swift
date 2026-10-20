@@ -173,9 +173,7 @@ enum QueryClassifier {
         if SQLProceduralBlock.runs(statement, grammar: grammar) {
             return proceduralBlockDeletesEverything(statement, grammar: grammar)
         }
-        let code = SQLCodeProjection.code(of: statement, grammar: grammar).uppercased()
-        guard SQLLeadingComments.leadingCodeKeyword(code) == "DELETE" else { return false }
-        return !hasWhereClause(code: code)
+        return SQLUnfilteredWrite.writes(in: statement, grammar: grammar).contains(.delete)
     }
 
     static func isExplainStatement(_ sql: String) -> Bool {
