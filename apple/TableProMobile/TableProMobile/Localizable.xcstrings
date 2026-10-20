@@ -2377,6 +2377,9 @@
         }
       }
     },
+    "Add the CA certificate that signed the server's certificate, or set SSL Mode to Required." : {
+
+    },
     "Add Rows to Table" : {
       "localizations" : {
         "ko" : {
@@ -4196,6 +4199,12 @@
         }
       }
     },
+    "Certificate Name Mismatch" : {
+
+    },
+    "Certificate Not Trusted" : {
+
+    },
     "Certificate Password" : {
       "localizations" : {
         "ko" : {
@@ -4427,6 +4436,12 @@
 
     },
     "Check the date and time on this device." : {
+
+    },
+    "Check the host name, or set SSL Mode to Verify CA to skip the name check." : {
+
+    },
+    "Check the server's TLS settings and this connection's SSL Mode." : {
 
     },
     "Check the start URL and SSO Region in this connection's Authentication section." : {
@@ -16140,6 +16155,9 @@
         }
       }
     },
+    "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database." : {
+
+    },
     "Orange" : {
       "localizations" : {
         "ko" : {
@@ -16911,6 +16929,9 @@
           }
         }
       }
+    },
+    "Preferred" : {
+
     },
     "Previous Page" : {
       "localizations" : {
@@ -18209,6 +18230,9 @@
           }
         }
       }
+    },
+    "Redis driver has no TLS fallback. Preferred and Required both force TLS. Use Required for Redis Cloud, Upstash, and AWS ElastiCache encrypted endpoints." : {
+
     },
     "Refresh from iCloud" : {
       "extractionState" : "stale",
@@ -19985,6 +20009,12 @@
         }
       }
     },
+    "Server Has No TLS" : {
+
+    },
+    "Server Requires TLS" : {
+
+    },
     "Servers & Network" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -20119,6 +20149,9 @@
       }
     },
     "Session Token (optional)" : {
+
+    },
+    "Set SSL Mode to Preferred or Required." : {
 
     },
     "Set a passphrase to include passwords." : {
@@ -22193,6 +22226,9 @@
 
     },
     "TOTP Secret" : {
+
+    },
+    "TLS Handshake Failed" : {
 
     },
     "Tab" : {
@@ -27431,6 +27467,9 @@
           }
         }
       }
+    },
+    "Turn on TLS on the server, or set SSL Mode to Preferred to connect without it." : {
+
     },
     "Turn On iCloud Sync" : {
       "localizations" : {

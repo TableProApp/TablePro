@@ -47,9 +47,9 @@ final class ConnectionFormViewModel {
     var password = ""
     var database = ""
     var sslEnabled = false
-    var sslMode: SSLConfiguration.SSLMode = .disable
-    var mssqlSSLMode: SSLConfiguration.SSLMode = .disable
-    var oracleSSLMode: SSLConfiguration.SSLMode = .disable
+    var sslMode: SSLModeChoice = .disable
+    var mssqlSSLMode: SSLModeChoice = .disable
+    var oracleSSLMode: SSLModeChoice = .disable
 
     // Client certificates
     var certificateSummaries: [CertificateRole: String] = [:]
@@ -157,12 +157,11 @@ final class ConnectionFormViewModel {
         username = conn.username
         database = conn.database
         sslEnabled = conn.sslEnabled
-        // Coerce verify modes to .require: the iOS driver encrypts without checking the certificate
-        // (DriverSSLConfiguration maps verify* to "require"). Matches what the driver actually does.
-        let storedMode = conn.sslConfiguration?.mode ?? .disable
+        let storedMode = conn.sslConfiguration.map { SSLModeChoice($0) } ?? (conn.sslEnabled ? .require : .disable)
+        // The iOS SQL Server driver checks no certificate, so a verify mode runs as Required.
         mssqlSSLMode = (storedMode == .verifyCa || storedMode == .verifyFull) ? .require : storedMode
         oracleSSLMode = storedMode
-        sslMode = conn.sslConfiguration?.mode ?? (conn.sslEnabled ? .require : .disable)
+        sslMode = storedMode
         oracleConnectionType = OracleConnectionOptions.identifierMode(from: conn.additionalFields)
         oracleServiceName = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] ?? ""
         oracleSID = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? ""
@@ -270,12 +269,30 @@ final class ConnectionFormViewModel {
         existingConnection?.sslConfiguration?.mode == .verifyCa
     }
 
+    static let oraclePreferredPlaintextMessage = String(
+        localized: "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database."
+    )
+
     var oracleSSLModeNote: String? {
-        guard type == .oracle, oracleSSLMode == .verifyCa else { return nil }
-        return DriverSSLConfiguration.oracleVerifyCaUnavailableMessage
+        guard type == .oracle else { return nil }
+        switch oracleSSLMode {
+        case .verifyCa: return DriverSSLConfiguration.oracleVerifyCaUnavailableMessage
+        case .preferred: return Self.oraclePreferredPlaintextMessage
+        case .disable, .require, .verifyFull: return nil
+        }
     }
 
-    private var effectiveSSLMode: SSLConfiguration.SSLMode? {
+    static let redisPreferredForcesTLSMessage = String(localized: """
+        Redis driver has no TLS fallback. Preferred and Required both force TLS. \
+        Use Required for Redis Cloud, Upstash, and AWS ElastiCache encrypted endpoints.
+        """)
+
+    var sslModeNote: String? {
+        guard type == .redis, sslMode == .preferred else { return nil }
+        return Self.redisPreferredForcesTLSMessage
+    }
+
+    private var effectiveSSLMode: SSLModeChoice? {
         switch type {
         case .sqlite, .duckdb: nil
         case .mssql: mssqlSSLMode

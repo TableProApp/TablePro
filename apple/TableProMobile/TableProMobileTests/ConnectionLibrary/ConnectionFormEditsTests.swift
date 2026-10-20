@@ -449,6 +449,115 @@ struct ConnectionFormEditsTests {
         #expect(saved.sslEnabled)
     }
 
+    private func storedConnection(type: DatabaseType, preferred: Bool) -> DatabaseConnection {
+        var connection = storedConnection()
+        connection.type = type
+        connection.sslConfiguration = SSLConfiguration(
+            mode: .require,
+            caCertificatePath: "/Users/mac/ca.pem",
+            clientCertificatePath: "/Users/mac/client.pem",
+            clientKeyPath: "/Users/mac/client.key",
+            isMacPreferred: preferred
+        )
+        return connection
+    }
+
+    private func setSSLChoice(_ choice: SSLModeChoice, on viewModel: ConnectionFormViewModel) {
+        switch viewModel.type {
+        case .mssql: viewModel.mssqlSSLMode = choice
+        case .oracle: viewModel.oracleSSLMode = choice
+        default: viewModel.sslMode = choice
+        }
+    }
+
+    @Test("Required over a Mac Preferred saves Required, clears the preference and keeps the paths", arguments: [
+        DatabaseType.postgresql, .mssql, .oracle
+    ])
+    func requiredOverPreferredSavesRequired(type: DatabaseType) {
+        let snapshot = storedConnection(type: type, preferred: true)
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        setSSLChoice(.require, on: viewModel)
+        let saved = viewModel.applyingEdits(to: snapshot)
+
+        #expect(saved.sslEnabled)
+        #expect(saved.sslConfiguration?.mode == .require)
+        #expect(saved.sslConfiguration?.isMacPreferred == false)
+        #expect(saved.sslConfiguration?.caCertificatePath == "/Users/mac/ca.pem")
+        #expect(saved.sslConfiguration?.clientCertificatePath == "/Users/mac/client.pem")
+        #expect(saved.sslConfiguration?.clientKeyPath == "/Users/mac/client.key")
+    }
+
+    @Test("Preferred over Required saves the preference and keeps the paths", arguments: [
+        DatabaseType.postgresql, .mssql, .oracle
+    ])
+    func preferredOverRequiredSavesPreferred(type: DatabaseType) {
+        let snapshot = storedConnection(type: type, preferred: false)
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        setSSLChoice(.preferred, on: viewModel)
+        let saved = viewModel.applyingEdits(to: snapshot)
+
+        #expect(saved.sslEnabled)
+        #expect(saved.sslConfiguration?.mode == .require)
+        #expect(saved.sslConfiguration?.isMacPreferred == true)
+        #expect(saved.sslConfiguration?.clientCertificatePath == "/Users/mac/client.pem")
+    }
+
+    @Test("Preferred over a disabled connection turns SSL on")
+    func preferredOverDisabledTurnsSSLOn() {
+        var snapshot = storedConnection()
+        snapshot.sslEnabled = false
+        snapshot.sslConfiguration = nil
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        viewModel.sslMode = .preferred
+        let saved = viewModel.applyingEdits(to: snapshot)
+
+        #expect(saved.sslEnabled)
+        #expect(saved.sslConfiguration?.mode == .require)
+        #expect(saved.sslConfiguration?.isMacPreferred == true)
+    }
+
+    @Test("An edit that leaves a Mac Preferred alone keeps it", arguments: [
+        DatabaseType.postgresql, .mssql, .oracle
+    ])
+    func untouchedPreferredStaysPreferred(type: DatabaseType) {
+        let snapshot = storedConnection(type: type, preferred: true)
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        viewModel.port = "5433"
+        let saved = viewModel.applyingEdits(to: snapshot)
+
+        #expect(saved.port == 5_433)
+        #expect(saved.sslConfiguration == snapshot.sslConfiguration)
+        #expect(saved.sslConfiguration?.isMacPreferred == true)
+    }
+
+    @Test("A Preferred left as it opened does not overwrite an SSL mode the Mac saved while the form was open")
+    func untouchedPreferredKeepsMacChange() {
+        let snapshot = storedConnection(type: .postgresql, preferred: true)
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+        var current = snapshot
+        current.sslConfiguration = SSLConfiguration(mode: .verifyFull, caCertificatePath: "/Users/mac/ca.pem")
+
+        viewModel.name = "Renamed"
+        let saved = viewModel.applyingEdits(to: current)
+
+        #expect(saved.sslConfiguration == current.sslConfiguration)
+    }
+
+    @Test("Required over Preferred is a change, and picking Preferred again is not")
+    func preferredAndRequiredAreDistinctChanges() {
+        let viewModel = ConnectionFormViewModel(editing: storedConnection(type: .postgresql, preferred: true))
+
+        viewModel.sslMode = .require
+        #expect(viewModel.hasChanges)
+
+        viewModel.sslMode = .preferred
+        #expect(viewModel.hasChanges == false)
+    }
+
     @Test("An Oracle edit keeps additional fields added after the form opened")
     func oracleEditKeepsNewFields() {
         let snapshot = DatabaseConnection(

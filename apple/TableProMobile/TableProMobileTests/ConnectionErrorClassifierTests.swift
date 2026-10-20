@@ -1,6 +1,7 @@
 import Foundation
 import TableProDatabase
 @testable import TableProMobile
+import TableProPluginKit
 import Testing
 
 @Suite("Connection error classification")
@@ -127,5 +128,21 @@ struct ConnectionErrorClassifierTests {
         for error in errors {
             #expect(error.localizedDescription.contains("bastion.internal"))
         }
+    }
+
+    @Test("A TLS refusal is read by its case and leads to the connection's SSL Mode", arguments: [
+        (SSLHandshakeError.serverRequiresPlaintext(serverMessage: "server does not support it"), "Server Has No TLS"),
+        (.serverRejectedPlaintext(serverMessage: "insecure transport"), "Server Requires TLS"),
+        (.hostnameMismatch(serverMessage: "Hostname verification failed"), "Certificate Name Mismatch"),
+        (.untrustedCertificate(serverMessage: "self-signed certificate"), "Certificate Not Trusted"),
+        (.cipherMismatch(serverMessage: "wrong version number"), "TLS Handshake Failed")
+    ])
+    func tlsFailureByCase(error: SSLHandshakeError, title: String) {
+        let classified = ErrorClassifier.classify(error, context: ErrorContext(operation: "connect", host: "db.example.com"))
+
+        #expect(classified.category == .config)
+        #expect(classified.title == title)
+        #expect(classified.opensEditor)
+        #expect(classified.message.contains(error.serverMessage))
     }
 }

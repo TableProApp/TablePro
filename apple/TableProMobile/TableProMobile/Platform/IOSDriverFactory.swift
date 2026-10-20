@@ -83,6 +83,13 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         if connection.iamSignIn != nil, !resolved.isEnabled {
             // A token is never sent in plaintext. SSL was off, so no certificate belongs to the raised mode.
             resolved = DriverSSLConfiguration(mode: .require)
+        } else if connection.iamSignIn != nil, resolved.isPreferred {
+            resolved = DriverSSLConfiguration(
+                mode: .require,
+                caCertificatePath: resolved.caCertificatePath,
+                clientCertificatePath: resolved.clientCertificatePath,
+                clientKeyPath: resolved.clientKeyPath
+            )
         }
         resolved.serverName = serverName
         return resolved
@@ -154,7 +161,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         case .mssql:
             return MSSQLDriver(connection: connection, password: password)
         case .oracle:
-            return OracleDriver(connection: connection, password: password)
+            return OracleDriver(connection: connection, password: password, serverName: preTunnelHost)
         case .clickhouse:
             return PluginBackedDriver(
                 plugin: ClickHousePluginDriver(config: pluginConfig(

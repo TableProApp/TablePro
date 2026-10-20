@@ -39,6 +39,12 @@ struct PostgreSQLConnectionStringTests {
         #expect(build(ssl: .disabled).contains("client_encoding='UTF8'"))
     }
 
+    @Test("A Mac Preferred reaches libpq as prefer, and Required as require")
+    func preferredIsPrefer() {
+        #expect(build(ssl: DriverSSLConfiguration(mode: .require, isPreferred: true)).contains("sslmode='prefer'"))
+        #expect(build(ssl: DriverSSLConfiguration(mode: .require)).contains("sslmode='require'"))
+    }
+
     @Test("a client certificate and key reach libpq as sslcert and sslkey")
     func clientCertificateIsSent() {
         let certPath = temporaryFile()
