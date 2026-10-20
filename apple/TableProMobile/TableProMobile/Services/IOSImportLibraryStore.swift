@@ -112,6 +112,10 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                     var updated = connection
                     updated.sortOrder = stored.sortOrder
                     updated.isFavorite = stored.isFavorite
+                    updated.sshConfiguration = JumpHostCredentialStore.keepingHopIds(
+                        from: stored.sshConfiguration,
+                        into: updated.sshConfiguration
+                    )
                     stored = updated
                 }
                 if outcome.isSaved {
