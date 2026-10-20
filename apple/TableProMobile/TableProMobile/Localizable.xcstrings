@@ -22553,6 +22553,9 @@
         }
       }
     },
+    "The connection moved to another database or schema. Choose the table again." : {
+
+    },
     "The connection to %@ was lost before the server answered, so its open transaction may have been committed or rolled back. It has been reconnected; check which of its changes were saved before running them again." : {
 
     },
