@@ -62,6 +62,13 @@ internal struct SQLExportRowValueEncoder {
         self.escapeStringLiteral = escapeStringLiteral
     }
 
+    // SQL Server reads '...' in the database's code page, so 日本 in an nvarchar restored as ??, and db-lib reports an
+    // nvarchar column as varchar, so the type cannot pick the columns. N'...' converts back into any text column.
+    // Measured on SQL Server 2022.
+    private var stringLiteralPrefix: String {
+        databaseTypeId == "SQL Server" ? "N" : ""
+    }
+
     internal var writesNothing: Bool { includedColumnIndices.isEmpty }
 
     internal func columnNames(from columns: [String]) -> [String] {
@@ -83,7 +90,7 @@ internal struct SQLExportRowValueEncoder {
                 if numericIndices.contains(columnIndex), PluginNumericLiteral.isValid(value) {
                     return value
                 }
-                return "'\(escapeStringLiteral(value))'"
+                return "\(stringLiteralPrefix)'\(escapeStringLiteral(value))'"
             }
         }
         return "  (\(values.joined(separator: ", ")))"

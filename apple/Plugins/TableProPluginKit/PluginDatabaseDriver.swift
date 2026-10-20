@@ -667,6 +667,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
         placement: PluginEnumLabelPlacement?
     ) -> String?
     func generateRenameEnumLabelSQL(type: PluginUserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String?
+    func generateDropTypeSQL(type: PluginUserDefinedTypeInfo) -> String?
 
     // All-tables metadata SQL (optional — returns nil for non-SQL databases)
     func allTablesMetadataSQL(schema: String?) -> String?
@@ -783,6 +784,8 @@ public extension PluginDatabaseDriver {
         from oldLabel: String,
         to newLabel: String
     ) -> String? { nil }
+
+    func generateDropTypeSQL(type: PluginUserDefinedTypeInfo) -> String? { nil }
 
     /// Engines whose partitions are metadata on one table object, rather than
     /// separate relations, have nothing to nest and keep the empty default.

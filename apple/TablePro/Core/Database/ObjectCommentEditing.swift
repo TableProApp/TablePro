@@ -14,13 +14,11 @@ import TableProSQLGrammar
 enum DatabaseObjectCommandError: LocalizedError, Equatable {
     case notConnected
     case unsupported
-    case denied(String)
 
     var errorDescription: String? {
         switch self {
         case .notConnected: String(localized: "Not connected to database")
         case .unsupported: String(localized: "This database cannot run this command on this object")
-        case let .denied(reason): reason
         }
     }
 }
@@ -63,7 +61,7 @@ enum ObjectCommentEditing {
         }
         try await DatabaseObjectCommandRunner.run(
             sql,
-            on: target,
+            in: target.scope,
             connection: connection,
             kind: .schemaMutation,
             operationDescription: String(localized: "Edit Comment"),
@@ -81,7 +79,7 @@ enum ObjectCommentEditing {
 enum DatabaseObjectCommandRunner {
     static func run(
         _ sql: String,
-        on target: DatabaseObjectTarget,
+        in scope: DatabaseScope,
         connection: DatabaseConnection,
         kind: OperationKind,
         operationDescription: String,
@@ -98,13 +96,8 @@ enum DatabaseObjectCommandRunner {
                 operationDescription: operationDescription
             )
         )
-        guard case .authorized = decision else {
-            throw DatabaseObjectCommandError.denied(
-                decision.deniedReason ?? String(localized: "Operation not permitted")
-            )
-        }
+        if let denial = decision.denialError { throw denial }
 
-        let scope = target.scope
         let startedAt = Date()
         try await DatabaseManager.shared.withScopedDriver(
             scope: scope,

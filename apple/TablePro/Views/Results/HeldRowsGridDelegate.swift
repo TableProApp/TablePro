@@ -15,8 +15,17 @@ import Combine
 @MainActor
 internal final class HeldRowsGridDelegate: ObservableObject, DataGridViewDelegate {
     internal var onSortStateChanged: ((SortState) -> Void)?
+    private weak var gridCoordinator: TableViewCoordinator?
+
+    internal func dataGridAttach(tableViewCoordinator: TableViewCoordinator) {
+        gridCoordinator = tableViewCoordinator
+    }
 
     internal func dataGridSortStateChanged(_ state: SortState) {
         onSortStateChanged?(state)
+    }
+
+    internal func dataGridCopyRows(_ indices: Set<Int>) {
+        gridCoordinator?.copyRowsAsTSV(at: indices, includeHeaders: false)
     }
 }

@@ -67,6 +67,8 @@ protocol ClipboardProvider {
     func writeCsv(_ csv: String)
     func writeImage(_ image: NSImage)
     func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload)
+    func writeText(_ text: String, gridRows: GridRowsClipboardPayload)
+    func writeCsv(_ csv: String, gridRows: GridRowsClipboardPayload)
     func writeCells(_ cells: GridCellsClipboardPayload)
     var hasText: Bool { get }
     var hasGridRows: Bool { get }
@@ -145,8 +147,22 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
         if let html {
             pb.setString(html, forType: .html)
         }
+        setGridRows(gridRows)
+    }
+
+    func writeText(_ text: String, gridRows: GridRowsClipboardPayload) {
+        writeText(text)
+        setGridRows(gridRows)
+    }
+
+    func writeCsv(_ csv: String, gridRows: GridRowsClipboardPayload) {
+        writeCsv(csv)
+        setGridRows(gridRows)
+    }
+
+    private func setGridRows(_ gridRows: GridRowsClipboardPayload) {
         if let data = try? JSONEncoder().encode(gridRows) {
-            pb.setData(data, forType: Self.gridRowsType)
+            NSPasteboard.general.setData(data, forType: Self.gridRowsType)
         }
     }
 

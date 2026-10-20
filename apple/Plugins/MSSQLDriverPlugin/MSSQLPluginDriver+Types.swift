@@ -48,6 +48,10 @@ extension MSSQLPluginDriver {
         }
     }
 
+    func generateDropTypeSQL(type: PluginUserDefinedTypeInfo) -> String? {
+        "DROP TYPE \(MSSQLTypeDefinition.bracketed(effectiveSchema(type.schema))).\(MSSQLTypeDefinition.bracketed(type.name))"
+    }
+
     private func tableType(
         _ type: PluginUserDefinedTypeInfo,
         schema: String

@@ -236,7 +236,11 @@ actor CassandraConnectionActor {
     /// Reads every row a statement returns, a page at a time, so a large result neither stops at a count of the
     /// driver's choosing nor asks the server for more than it answers unpaged: ScyllaDB aborts an unpaged read past
     /// 100 MB. A statement the server will not page, `IN` with `ORDER BY` on the partition key, is read unpaged.
-    func executeQuery(_ cql: String, cancellation: CassandraCancellation? = nil) throws -> CassandraRawResult {
+    func executeQuery(
+        _ cql: String,
+        consistency: CassandraConsistency?,
+        cancellation: CassandraCancellation? = nil
+    ) throws -> CassandraRawResult {
         guard let session else {
             throw CassandraPluginError.notConnected
         }
@@ -244,17 +248,18 @@ actor CassandraConnectionActor {
 
         let startTime = Date()
         do {
-            return try executePaged(cql, pageSize: Self.queryPageSize, session: session, cancellation: cancellation,
-                                    startTime: startTime)
+            return try executePaged(cql, pageSize: Self.queryPageSize, consistency: consistency, session: session,
+                                    cancellation: cancellation, startTime: startTime)
         } catch let error as CassandraPluginError where error.refusesPaging {
-            return try executePaged(cql, pageSize: nil, session: session, cancellation: cancellation,
-                                    startTime: startTime)
+            return try executePaged(cql, pageSize: nil, consistency: consistency, session: session,
+                                    cancellation: cancellation, startTime: startTime)
         }
     }
 
     private func executePaged(
         _ cql: String,
         pageSize: Int32?,
+        consistency: CassandraConsistency?,
         session: OpaquePointer,
         cancellation: CassandraCancellation?,
         startTime: Date
@@ -263,6 +268,7 @@ actor CassandraConnectionActor {
             throw CassandraPluginError.queryFailed("Failed to create statement")
         }
         defer { cass_statement_free(statement) }
+        try Self.apply(consistency, to: statement)
         if let pageSize {
             cass_statement_set_paging_size(statement, pageSize)
         }
@@ -297,6 +303,7 @@ actor CassandraConnectionActor {
     func executePrepared(
         _ cql: String,
         parameters: [PluginCellValue],
+        consistency: CassandraConsistency?,
         cancellation: CassandraCancellation? = nil
     ) throws -> CassandraRawResult {
         guard let session else {
@@ -316,6 +323,7 @@ actor CassandraConnectionActor {
         defer { cass_statement_free(statement) }
 
         try CassandraStatementBinder.bind(parameters, to: statement, prepared: prepared)
+        try Self.apply(consistency, to: statement)
         try cancellation?.check()
 
         guard let result = try executePage(statement, on: session, cancellation: cancellation) else {
@@ -336,6 +344,7 @@ actor CassandraConnectionActor {
     /// is counted by the rows it carried rather than by its size, because ScyllaDB answers a filtered page short.
     func executeBrowse(
         _ browse: CassandraBrowseStatement,
+        consistency: CassandraConsistency?,
         cancellation: CassandraCancellation
     ) throws -> CassandraRawResult {
         if let refusal = browse.window.refusal {
@@ -357,7 +366,7 @@ actor CassandraConnectionActor {
         if browse.window.offset == 0 {
             resumePoints.remove(key)
         }
-        let walk = CassandraBrowseWalk(browse: browse, pageSize: pageSize, key: key)
+        let walk = CassandraBrowseWalk(browse: browse, pageSize: pageSize, key: key, consistency: consistency)
         let resume = resumePoints.nearest(atOrBefore: browse.window.offset, for: key)
 
         let read: (header: (columns: [String], typeNames: [String])?, rows: [[PluginCellValue]])
@@ -391,6 +400,7 @@ actor CassandraConnectionActor {
         defer { cass_statement_free(statement) }
 
         try CassandraStatementBinder.bind(walk.browse.window.values.map { .text($0) }, to: statement, prepared: prepared)
+        try Self.apply(walk.consistency, to: statement)
         cass_statement_set_paging_size(statement, Int32(walk.pageSize))
 
         let offset = walk.browse.window.offset
@@ -542,7 +552,7 @@ actor CassandraConnectionActor {
     }
 
     func switchKeyspace(_ keyspace: String) throws {
-        _ = try executeQuery("USE \"\(escapeIdentifier(keyspace))\"")
+        _ = try executeQuery("USE \"\(escapeIdentifier(keyspace))\"", consistency: nil)
         currentKeyspace = keyspace
     }
 
@@ -944,6 +954,7 @@ actor CassandraConnectionActor {
     /// rows rather than mid-request.
     func streamQuery(
         _ cql: String,
+        consistency: CassandraConsistency?,
         abort: PluginStreamAbort,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) throws {
@@ -960,11 +971,12 @@ actor CassandraConnectionActor {
             throw CassandraPluginError.queryFailed("Failed to create statement")
         }
 
+        defer { cass_statement_free(statement) }
+
         cass_statement_set_paging_size(statement, pageSize)
+        try Self.apply(consistency, to: statement)
 
         var headerSent = false
-
-        defer { cass_statement_free(statement) }
 
         var aborted = false
 
@@ -1057,6 +1069,17 @@ actor CassandraConnectionActor {
         value.replacingOccurrences(of: "\"", with: "\"\"")
     }
 
+    private static func apply(_ consistency: CassandraConsistency?, to statement: OpaquePointer) throws {
+        guard let consistency else { return }
+        guard cass_statement_set_consistency(statement, consistency.level.nativeValue) == CASS_OK else {
+            throw CassandraPluginError.queryFailed("Failed to set the consistency level")
+        }
+        guard let serialLevel = consistency.serialLevel else { return }
+        guard cass_statement_set_serial_consistency(statement, serialLevel.nativeValue) == CASS_OK else {
+            throw CassandraPluginError.queryFailed("Failed to set the serial consistency level")
+        }
+    }
+
     static func classifySSLError(rc: CassError, message: String) -> SSLHandshakeError? {
         switch rc {
         case CASS_ERROR_SSL_NO_PEER_CERT, CASS_ERROR_SSL_INVALID_PEER_CERT:
@@ -1086,4 +1109,22 @@ struct CassandraRawResult: Sendable {
     let rows: [[PluginCellValue]]
     let rowsAffected: Int
     let executionTime: TimeInterval
+}
+
+extension CassandraConsistencyLevel {
+    var nativeValue: CassConsistency {
+        switch self {
+        case .any: return CASS_CONSISTENCY_ANY
+        case .one: return CASS_CONSISTENCY_ONE
+        case .two: return CASS_CONSISTENCY_TWO
+        case .three: return CASS_CONSISTENCY_THREE
+        case .quorum: return CASS_CONSISTENCY_QUORUM
+        case .all: return CASS_CONSISTENCY_ALL
+        case .localQuorum: return CASS_CONSISTENCY_LOCAL_QUORUM
+        case .eachQuorum: return CASS_CONSISTENCY_EACH_QUORUM
+        case .serial: return CASS_CONSISTENCY_SERIAL
+        case .localSerial: return CASS_CONSISTENCY_LOCAL_SERIAL
+        case .localOne: return CASS_CONSISTENCY_LOCAL_ONE
+        }
+    }
 }

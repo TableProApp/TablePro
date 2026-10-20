@@ -127,6 +127,20 @@ struct ClickHouseTabSeparatedRowDecoderTests {
         #expect(outcome.rows == [[.text("['a','b']"), .text("{'k':'v'}"), .text("(7,'x')")]])
     }
 
+    // Measured on ClickHouse 25.8: the String column is TSV-escaped, the compound ones are not escaped again.
+    @Test("A quote or backslash inside an Array, Map or Tuple keeps the escape ClickHouse wrote")
+    func keepsEscapesInsideCompoundValues() {
+        var body = Data(
+            "tags\tattrs\tpair\tname\nArray(Nullable(String))\tMap(String, String)\tTuple(UInt8, String)\tString\n".utf8
+        )
+        let row = #"['a',NULL,'it\'s']"# + "\t" + #"{'k\'':'v\\'}"# + "\t" + #"(1,'x\'y')"# + "\t" + #"it\'s"# + "\n"
+        body.append(contentsOf: Data(row.utf8))
+        let outcome = decodeAll(body)
+        #expect(outcome.rows == [[
+            .text(#"['a',NULL,'it\'s']"#), .text(#"{'k\'':'v\\'}"#), .text(#"(1,'x\'y')"#), .text("it's")
+        ]])
+    }
+
     // MARK: - Chunk boundaries
 
     @Test("A row split across two chunks decodes once it is whole")

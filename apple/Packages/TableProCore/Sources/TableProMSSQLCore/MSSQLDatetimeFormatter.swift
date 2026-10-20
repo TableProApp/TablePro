@@ -1,10 +1,21 @@
 import Foundation
 
 public enum MSSQLDatetimeFormatter {
+    // db-lib converts a `date` and a `time` as a datetime, so a date reads with midnight and a time with 1900-01-01:
+    // parts the column does not hold. Measured on SQL Server 2022.
     public static func reformat(_ raw: String, type: MSSQLColumnType) -> String? {
-        guard type.isDateOrTime else { return nil }
-        return parse(raw)
+        guard type.isDateOrTime, let text = parse(raw) else { return nil }
+        switch type {
+        case .date:
+            return String(text.prefix(10))
+        case .time where text.hasPrefix(timeBaseDate):
+            return String(text.dropFirst(timeBaseDate.count))
+        default:
+            return text
+        }
     }
+
+    private static let timeBaseDate = "1900-01-01 "
 
     /// db-lib's text for a `datetimeoffset` is the local wall clock with no offset, which SQL Server reads back as
     /// +00:00. The ISO 8601 form carries the offset, so the value reads back as the same instant.

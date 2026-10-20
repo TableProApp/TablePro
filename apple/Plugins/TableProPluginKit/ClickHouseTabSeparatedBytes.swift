@@ -26,6 +26,20 @@ internal enum ClickHouseTabSeparatedBytes {
         bytes.allSatisfy { $0 == 0x20 || $0 == 0x09 || $0 == 0x0A || $0 == 0x0D || $0 == 0x0B || $0 == 0x0C }
     }
 
+    // An Array, Map, Tuple or Nested value is written in ClickHouse's literal syntax with no TSV escaping over it,
+    // so `['it\'s']` is already the value's text and unescaping it reads `['it's']`. Measured on ClickHouse 25.8.
+    static func value(_ field: ArraySlice<UInt8>, columnType: String) -> [UInt8] {
+        writesLiteralSyntax(columnType) ? Array(field) : unescape(field)
+    }
+
+    static func writesLiteralSyntax(_ columnType: String) -> Bool {
+        var type = Substring(columnType)
+        for wrapper in ["LowCardinality(", "Nullable("] where type.hasPrefix(wrapper) {
+            type = type.dropFirst(wrapper.count)
+        }
+        return ["Array(", "Map(", "Tuple(", "Nested("].contains { type.hasPrefix($0) }
+    }
+
     /// The escape table ClickHouse's own `writeEscapedString` emits. An unrecognised escape keeps
     /// both of its bytes: a future addition then reads oddly rather than losing the character.
     static func unescape(_ field: ArraySlice<UInt8>) -> [UInt8] {

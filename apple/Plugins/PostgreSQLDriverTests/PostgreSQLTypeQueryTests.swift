@@ -260,4 +260,14 @@ struct PostgreSQLTypeQueryTests {
         #expect(template.hasPrefix("CREATE TYPE \"sales\".\"type_name\" AS ENUM ("))
         #expect(template.hasSuffix(");"))
     }
+
+    @Test("A domain drops as a domain and every other kind as a type, without CASCADE")
+    func dropStatement() {
+        #expect(PostgreSQLObjectQueries.dropType(schema: "app", name: "email", kind: .domain)
+            == "DROP DOMAIN \"app\".\"email\"")
+        for kind in [PluginUserDefinedTypeKind.enumeration, .composite, .range] {
+            #expect(PostgreSQLObjectQueries.dropType(schema: "app", name: "Mood \"x\"", kind: kind)
+                == "DROP TYPE \"app\".\"Mood \"\"x\"\"\"")
+        }
+    }
 }

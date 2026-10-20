@@ -341,11 +341,12 @@ final class KeyHandlingTableView: NSTableView {
             coordinator?.copyGridSelection(controller.selection)
             return
         }
-        if let cell = focusedDataCell() {
+        // A row-number click seeds the cursor for the keyboard only: the user picked the whole row.
+        if !isCursorSeededByRowSelection, let cell = focusedDataCell() {
             coordinator?.copyCellValue(at: cell.row, columnIndex: cell.columnIndex)
             return
         }
-        coordinator?.delegate?.dataGridCopyRows(Set(selectedRowIndexes))
+        coordinator?.copyRowsInCopyFormat(at: Set(selectedRowIndexes))
     }
 
     @objc func copyRowsAsTSV(_ sender: Any?) {
@@ -426,6 +427,9 @@ final class KeyHandlingTableView: NSTableView {
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
         if let command = Self.setValueCommand(for: item.action) {
             return canApplySetValue(command)
+        }
+        if let canCopy = canPerformCopyCommand(item.action) {
+            return canCopy
         }
         switch item.action {
         case #selector(delete(_:)), #selector(deleteBackward(_:)):

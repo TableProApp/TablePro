@@ -105,7 +105,10 @@ extension CassandraPluginDriver {
         let cancellation = activeBrowse.begin()
         defer { activeBrowse.end(cancellation) }
         let result = try await connectionActor.executePrepared(
-            count.cql, parameters: count.values.map { .text($0) }, cancellation: cancellation
+            count.cql,
+            parameters: count.values.map { .text($0) },
+            consistency: sessionConsistency,
+            cancellation: cancellation
         )
         return result.rows.first?.first?.asText.flatMap { Int($0) }
     }
@@ -116,12 +119,13 @@ extension CassandraPluginDriver {
 
     func runBrowse(
         _ browse: CassandraBrowseStatement,
+        consistency: CassandraConsistency?,
         rowCap: Int? = nil,
         consumerLeft: @escaping @Sendable () -> Bool = { false }
     ) async throws -> PluginQueryResult {
         let cancellation = activeBrowse.begin(consumerLeft: consumerLeft)
         defer { activeBrowse.end(cancellation) }
-        let raw = try await connectionActor.executeBrowse(browse, cancellation: cancellation)
+        let raw = try await connectionActor.executeBrowse(browse, consistency: consistency, cancellation: cancellation)
         let isTruncated = rowCap.map { raw.rows.count > $0 } ?? false
         let rows = isTruncated ? Array(raw.rows.prefix(rowCap ?? raw.rows.count)) : raw.rows
         return PluginQueryResult(
@@ -130,15 +134,21 @@ extension CassandraPluginDriver {
             rows: rows,
             rowsAffected: rows.count,
             executionTime: raw.executionTime,
-            isTruncated: isTruncated
+            isTruncated: isTruncated,
+            statusMessage: consistency?.statusMessage(columns: raw.columns)
         )
     }
 
-    func streamBrowse(_ browse: CassandraBrowseStatement) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    func streamBrowse(
+        _ browse: CassandraBrowseStatement,
+        consistency: CassandraConsistency?
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         PluginRowStream.make { continuation, abort in
             let streamTask = Task {
                 do {
-                    let result = try await self.runBrowse(browse, consumerLeft: { abort.isAborted })
+                    let result = try await self.runBrowse(
+                        browse, consistency: consistency, consumerLeft: { abort.isAborted }
+                    )
                     continuation.yield(.header(PluginStreamHeader(
                         columns: result.columns,
                         columnTypeNames: result.columnTypeNames,

@@ -108,7 +108,8 @@ public enum ClickHouseResponseClassifier {
                     row.append(.null)
                     continue
                 }
-                let value = ClickHouseTabSeparatedBytes.unescape(field)
+                let columnType = column < columnTypeNames.count ? columnTypeNames[column] : ""
+                let value = ClickHouseTabSeparatedBytes.value(field, columnType: columnType)
                 guard let text = utf8Text(value) else {
                     binaryColumns.insert(column)
                     row.append(.bytes(Data(value)))

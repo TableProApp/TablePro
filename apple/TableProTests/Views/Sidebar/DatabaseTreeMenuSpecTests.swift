@@ -997,6 +997,31 @@ struct DatabaseTreeMenuSpecTests {
         #expect(issued.filter { if case .copyText = $0 { return true } else { return false } }.count == 1)
     }
 
+    @Test("A type row ends with Drop Type, on its own, when the driver can drop its kind")
+    func typeRowOffersDrop() {
+        let ref = userTypeRef("mood")
+        let support = DatabaseObjectToolEligibility.Support(droppableTypeKinds: [.enumeration])
+        let sections = DatabaseTreeMenuSpec.sections(for: context(clicked: .userType(ref), objectToolSupport: support))
+
+        #expect(sections.last.map { commands([$0]) } == [.dropUserType(ref)])
+        #expect(sections.last.map { titles([$0]) } == [String(localized: "Drop Type…")])
+    }
+
+    @Test("Drop Type is withheld read-only, for a kind the driver cannot drop, and without a statement")
+    func typeRowWithholdsDrop() {
+        let ref = userTypeRef("mood")
+        let enums = DatabaseObjectToolEligibility.Support(droppableTypeKinds: [.enumeration])
+        let udtOnly = DatabaseObjectToolEligibility.Support(droppableTypeKinds: [.udt])
+
+        for menu in [
+            context(clicked: .userType(ref), isReadOnly: true, objectToolSupport: enums),
+            context(clicked: .userType(ref), objectToolSupport: udtOnly),
+            context(clicked: .userType(ref))
+        ] {
+            #expect(!commands(DatabaseTreeMenuSpec.sections(for: menu)).contains(.dropUserType(ref)))
+        }
+    }
+
     @Test("The Types sections offer Refresh and nothing that creates a type")
     func typesSectionsOfferOnlyRefresh() {
         let flat = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .objectKindSection(.type))))

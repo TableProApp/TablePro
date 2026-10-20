@@ -58,8 +58,8 @@ public enum CassandraObjectQueries {
     }
 
     public static func signature(argumentNames: String?, argumentTypes: String?, quotingNames: Bool = false) -> String {
-        let names = elements(of: argumentNames)
-        let types = elements(of: argumentTypes)
+        let names = Self.names(of: argumentNames)
+        let types = Self.types(of: argumentTypes)
         guard !types.isEmpty else { return "()" }
         let parts = types.enumerated().map { index, type -> String in
             guard index < names.count, !names[index].isEmpty else { return type }
@@ -68,34 +68,53 @@ public enum CassandraObjectQueries {
         return "(\(parts.joined(separator: ", ")))"
     }
 
-    /// The driver renders a CQL list as `[a, b]`, with no quotes, and an element can itself hold a comma, as the
-    /// type `frozen<map<text, int>>` does. So the list splits only at commas outside angle brackets.
-    public static func elements(of value: String?) -> [String] {
-        guard let value else { return [] }
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
-        let body = trimmed.hasPrefix("[") && trimmed.hasSuffix("]") ? String(trimmed.dropFirst().dropLast()) : trimmed
+    /// The driver renders a CQL list as `[a, b]`: the elements joined by ", ", nothing quoted or trimmed. A name is
+    /// raw text, so one holding ", " reads as two and the list comes back longer than its types.
+    public static func names(of value: String?) -> [String] {
+        guard let body = listBody(value) else { return [] }
+        return body.components(separatedBy: ", ")
+    }
+
+    /// A type is CQL as the server spells it, `frozen<map<text, int>>` or `frozen<"My, Type">`, so the list splits
+    /// only at a ", " outside angle brackets, parentheses and quoted names.
+    public static func types(of value: String?) -> [String] {
+        guard let body = listBody(value) else { return [] }
         var items: [String] = []
         var current = ""
         var depth = 0
-        for character in body {
-            switch character {
-            case "<", "(":
-                depth += 1
-            case ">", ")":
-                depth -= 1
-            case "," where depth == 0:
-                items.append(current)
-                current = ""
-                continue
-            default:
-                break
+        var isQuoted = false
+        var index = body.startIndex
+        while index < body.endIndex {
+            let character = body[index]
+            let next = body.index(after: index)
+            if character == "\"" {
+                isQuoted.toggle()
+            } else if !isQuoted {
+                switch character {
+                case "<", "(":
+                    depth += 1
+                case ">", ")":
+                    depth -= 1
+                case "," where depth == 0 && next < body.endIndex && body[next] == " ":
+                    items.append(current)
+                    current = ""
+                    index = body.index(after: next)
+                    continue
+                default:
+                    break
+                }
             }
             current.append(character)
+            index = next
         }
         items.append(current)
         return items
-            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " '\"")) }
-            .filter { !$0.isEmpty }
+    }
+
+    private static func listBody(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let body = value.hasPrefix("[") && value.hasSuffix("]") ? String(value.dropFirst().dropLast()) : value
+        return body.isEmpty ? nil : body
     }
 
     public static func functionDefinition(
