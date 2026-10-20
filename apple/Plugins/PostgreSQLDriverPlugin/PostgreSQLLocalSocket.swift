@@ -73,7 +73,7 @@ nonisolated internal enum PostgreSQLLocalSocket {
             trimmed.removeLast()
         }
         let name = (trimmed as NSString).lastPathComponent
-        if name.hasPrefix(fileNamePrefix), let filePort = portInFileName(name) {
+        if trimmed.hasPrefix("/"), name.hasPrefix(fileNamePrefix), let filePort = portInFileName(name) {
             let parent = (trimmed as NSString).deletingLastPathComponent
             return Endpoint(directory: parent.isEmpty ? "/" : parent, port: filePort)
         }

@@ -54,6 +54,8 @@ struct PostgreSQLLocalSocketTests {
             PostgreSQLLocalSocket.issue(for: PostgreSQLLocalSocket.endpoint(path: path, port: 5_432))
         }
         #expect(issue("tmp") == .notAbsolute)
+        #expect(issue(".s.PGSQL.5432") == .notAbsolute)
+        #expect(issue("run/.s.PGSQL.5432") == .notAbsolute)
         #expect(issue("~/run") == .notAbsolute)
         #expect(issue("/tmp/a\u{0}b") == .hiddenCharacter)
         #expect(issue("/tmp/\u{202E}x") == .hiddenCharacter)
