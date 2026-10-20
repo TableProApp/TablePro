@@ -72,4 +72,14 @@ struct SQLCatalogEffectClassifierTests {
         #expect(SQLLeadingComments.stripping("/*!40101 SET x = 1 */") == "/*!40101 SET x = 1 */")
         #expect(SQLLeadingComments.stripping("-- only a comment").isEmpty)
     }
+
+    @Test("A procedure or block runs statements the text does not show; database DDL refreshes as much but says what it does")
+    func unseenStatementsAreMarked() {
+        let mysql = grammar("MySQL")
+        #expect(SQLCatalogEffectClassifier.effect(of: "CALL make_scratch()", grammar: mysql).runsUnseenStatements)
+        let database = SQLCatalogEffectClassifier.effect(of: "CREATE DATABASE archive", grammar: mysql)
+        #expect(!database.runsUnseenStatements)
+        #expect(!SQLCatalogEffectClassifier.effect(ofStatements: ["SELECT 1", "DROP DATABASE archive"], grammar: mysql)
+            .runsUnseenStatements)
+    }
 }

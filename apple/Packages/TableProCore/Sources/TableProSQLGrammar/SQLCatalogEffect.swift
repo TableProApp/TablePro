@@ -21,21 +21,25 @@ public struct SQLCatalogObjectKinds: OptionSet, Sendable, Hashable {
 public struct SQLCatalogEffect: Sendable, Equatable {
     public let kinds: SQLCatalogObjectKinds
     public let endsTransaction: Bool
+    // Set apart from `kinds`: a CREATE DATABASE refreshes every kind too, yet the text says all it does.
+    public let runsUnseenStatements: Bool
 
-    public init(kinds: SQLCatalogObjectKinds, endsTransaction: Bool) {
+    public init(kinds: SQLCatalogObjectKinds, endsTransaction: Bool, runsUnseenStatements: Bool = false) {
         self.kinds = kinds
         self.endsTransaction = endsTransaction
+        self.runsUnseenStatements = runsUnseenStatements
     }
 
     public static let none = SQLCatalogEffect(kinds: [], endsTransaction: false)
 
     // A procedure or a block may create or drop anything, so what the text cannot show refreshes every kind.
-    public static let opaque = SQLCatalogEffect(kinds: .everything, endsTransaction: false)
+    public static let opaque = SQLCatalogEffect(kinds: .everything, endsTransaction: false, runsUnseenStatements: true)
 
     public func union(_ other: SQLCatalogEffect) -> SQLCatalogEffect {
         SQLCatalogEffect(
             kinds: kinds.union(other.kinds),
-            endsTransaction: endsTransaction || other.endsTransaction
+            endsTransaction: endsTransaction || other.endsTransaction,
+            runsUnseenStatements: runsUnseenStatements || other.runsUnseenStatements
         )
     }
 }

@@ -8,8 +8,8 @@ nonisolated enum SessionLocalStatements {
     nonisolated struct Effect: Equatable {
         // Kept after a DROP too: a failed script may never have reached it, and the session answers either way.
         var temporaryTables: Set<String> = []
-        // A `USE`, a role or a search path moved the session off what the catalog connection sees, or a procedure,
-        // dynamic SQL or an ATTACH may have made a table only the session sees.
+        // A `USE`, a role or a search path moved the session off what the catalog connection sees, or a procedure or
+        // dynamic SQL may have made a table only the session sees.
         var leavesCatalog = false
     }
 
@@ -51,7 +51,7 @@ nonisolated enum SessionLocalStatements {
             let range = NSRange(location: 0, length: (code as NSString).length)
             if usePattern?.firstMatch(in: code, range: range) != nil
                 || contextPattern?.firstMatch(in: code, range: range) != nil
-                || SQLCatalogEffectClassifier.effect(of: statement, grammar: grammar) == .opaque {
+                || SQLCatalogEffectClassifier.effect(of: statement, grammar: grammar).runsUnseenStatements {
                 effect.leavesCatalog = true
             }
         }

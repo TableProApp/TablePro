@@ -63,7 +63,10 @@ struct SessionLocalStatementsTests {
                 .leavesCatalog
         )
         let plain = SessionLocalStatements.effect(
-            of: ["SELECT 1", "INSERT INTO t VALUES (1)", "CREATE TABLE u (id int)", "SET @a = 1", "SHOW TABLES"],
+            of: [
+                "SELECT 1", "INSERT INTO t VALUES (1)", "CREATE TABLE u (id int)", "SET @a = 1", "SHOW TABLES",
+                "CREATE DATABASE archive", "DROP DATABASE archive"
+            ],
             databaseType: .mysql
         )
         #expect(!plain.leavesCatalog)
