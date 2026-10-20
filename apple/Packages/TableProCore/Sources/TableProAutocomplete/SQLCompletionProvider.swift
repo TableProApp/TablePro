@@ -102,7 +102,11 @@ public final class SQLCompletionProvider {
 
     private func functionItems() -> [SQLCompletionItem] {
         if let cachedFunctionItems { return cachedFunctionItems }
-        var items = SQLKeywords.functionItems()
+        // The generic list writes SYSDATE() and CURRENT_DATE() too, which the engine may reject.
+        var items = SQLKeywords.functionItems().map { item in
+            guard vocabulary.bareFunctions.contains(item.label.uppercased()) else { return item }
+            return SQLCompletionItem.function(item.label, signature: item.label, documentation: item.documentation)
+        }
         if !vocabulary.functions.isEmpty {
             let folding: SQLCompletionCaseFolding =
                 vocabulary.functionNamesAreCaseInsensitive ? .caseInsensitive : .fixed

@@ -354,6 +354,13 @@ struct QueryCompletionCatalogTests {
         #expect(await catalog.allowedValues(forColumn: "mood", in: moods) == ["sad", "ok"])
     }
 
+    @Test("DuckDB enum labels keep their backslashes and blanks")
+    func duckDBLabelsAreKeptAsWritten() {
+        #expect(QueryCompletionCatalog.duckDBEnumLabels(in: #"ENUM('C:\temp', '  padded  ', 'it''s')"#)
+            == [#"C:\temp"#, "  padded  ", "it's"])
+        #expect(QueryCompletionCatalog.duckDBEnumLabels(in: "VARCHAR") == nil)
+    }
+
     @Test("enum values of a table named in the statement are read when no columns are cached yet")
     func enumValuesOnColdCache() async {
         let source = CatalogColumnSource(["orders": [ColumnInfo(name: "status", typeName: "enum('new','paid')")]])

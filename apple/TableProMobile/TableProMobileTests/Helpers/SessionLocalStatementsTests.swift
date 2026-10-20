@@ -95,12 +95,14 @@ struct SessionLocalStatementsTests {
         #expect(!quiet.leavesCatalog)
     }
 
-    @Test("Dropping, altering or restoring a database is seen, in a comment or a string it is not")
+    @Test("Dropping, altering or restoring a database is seen, in dynamic SQL too, as is any SQL Server procedure")
     func databaseChanges() {
         #expect(SessionLocalStatements.changesDatabases("USE master; DROP DATABASE appdb", databaseType: .mssql))
         #expect(SessionLocalStatements.changesDatabases("alter database appdb set single_user", databaseType: .mssql))
-        #expect(!SessionLocalStatements.changesDatabases("-- DROP DATABASE appdb\nSELECT 1", databaseType: .mssql))
-        #expect(!SessionLocalStatements.changesDatabases("SELECT 'DROP DATABASE appdb'", databaseType: .mssql))
+        #expect(SessionLocalStatements.changesDatabases("USE master; EXEC(N'DROP DATABASE appdb')", databaseType: .mssql))
+        #expect(SessionLocalStatements.changesDatabases("EXEC dbo.cleanup", databaseType: .mssql))
+        #expect(!SessionLocalStatements.changesDatabases("CALL cleanup()", databaseType: .mysql))
+        #expect(!SessionLocalStatements.changesDatabases("SELECT 1; INSERT INTO t VALUES (1)", databaseType: .mssql))
     }
 
     @Test("An index hint, a longer word, a comment or a string is not a USE")

@@ -167,7 +167,7 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         // With no table named, reading every table's columns would cost too much, so only columns already read count.
         guard !references.isEmpty else {
             for table in tables {
-                if let values = Self.allowedValues(of: column, in: columns[columnKey(table.name, schema: nil)]?.columns) {
+                if let values = allowedValues(of: column, in: columns[columnKey(table.name, schema: nil)]?.columns) {
                     return values
                 }
             }
@@ -176,22 +176,49 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         // A CTE or subquery is not a stored table, and a read for its name would only fail on the session.
         for reference in references where !reference.isDerived {
             let read = await columns(of: reference.tableName, schema: reference.schema)
-            if let values = Self.allowedValues(of: column, in: read) { return values }
+            if let values = allowedValues(of: column, in: read) { return values }
         }
         return []
     }
 
-    private static func allowedValues(of column: String, in columns: [ColumnInfo]?) -> [String]? {
-        guard let match = columns?.first(where: { matches($0.name, column) }) else { return nil }
+    private func allowedValues(of column: String, in columns: [ColumnInfo]?) -> [String]? {
+        guard let match = columns?.first(where: { Self.matches($0.name, column) }) else { return nil }
         if let values = match.allowedValues, !values.isEmpty { return values }
         if let values = spelledOutValues(of: match.typeName), !values.isEmpty { return values }
         return nil
     }
 
-    private static func spelledOutValues(of typeName: String) -> [String]? {
+    private func spelledOutValues(of typeName: String) -> [String]? {
         // DuckDB spells a list of enum values ENUM(...)[], whose values are not the column's.
         guard !typeName.hasSuffix("]") else { return nil }
-        return EnumValueParser.parseMySQLEnumOrSet(from: typeName)
+        guard databaseType == .duckdb else { return EnumValueParser.parseMySQLEnumOrSet(from: typeName) }
+        return Self.duckDBEnumLabels(in: typeName)
+    }
+
+    // DuckDB keeps a label's backslashes and blanks as written and doubles only its quotes.
+    nonisolated static func duckDBEnumLabels(in typeName: String) -> [String]? {
+        guard typeName.uppercased().hasPrefix("ENUM("), typeName.hasSuffix(")") else { return nil }
+        var labels: [String] = []
+        var current = ""
+        var inQuote = false
+        var characters = typeName.dropFirst(5).dropLast()[...]
+        while let character = characters.popFirst() {
+            guard character == "'" else {
+                if inQuote { current.append(character) }
+                continue
+            }
+            if inQuote, characters.first == "'" {
+                current.append("'")
+                characters.removeFirst()
+            } else if inQuote {
+                labels.append(current)
+                current = ""
+                inQuote = false
+            } else {
+                inQuote = true
+            }
+        }
+        return labels.isEmpty ? nil : labels
     }
 
     // A name the server listed, quoted by its own case rules, unlike text the user wrote.

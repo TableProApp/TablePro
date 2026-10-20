@@ -42,14 +42,16 @@ nonisolated enum SessionLocalStatements {
         options: [.caseInsensitive]
     )
 
-    // SQL Server cannot drop, restore or take single-user a database the catalog connection sits in.
+    // SQL Server cannot drop, restore or take single-user a database the catalog connection sits in. Read on the raw
+    // text, since `EXEC(N'DROP DATABASE ...')` hides it in a string; a procedure there may do it unseen.
     static func changesDatabases(_ text: String, databaseType: DatabaseType) -> Bool {
+        let range = NSRange(location: 0, length: (text as NSString).length)
+        if databaseChangePattern?.firstMatch(in: text, range: range) != nil { return true }
+        guard databaseType == .mssql else { return false }
         let grammar = SQLLexicalReadings.resolve(
             databaseTypeId: databaseType.rawValue, declared: nil, session: nil
         ).execution
-        let code = SQLCodeProjection.code(of: text, grammar: grammar, revealingExecutableComments: true)
-        let range = NSRange(location: 0, length: (code as NSString).length)
-        return databaseChangePattern?.firstMatch(in: code, range: range) != nil
+        return SQLCatalogEffectClassifier.effect(of: text, grammar: grammar).runsUnseenStatements
     }
 
     static func effect(of statements: [String], databaseType: DatabaseType) -> Effect {
