@@ -38,6 +38,25 @@ struct ConnectionURLParserJDBCTests {
         #expect(try parse("presto://analyst@presto.example.com:8080/hive").type == .presto)
     }
 
+    @Test("A Trino or Presto path names the catalog, then the schema", arguments: [
+        "jdbc:presto://presto.example.com:8080/hive/web?user=analyst",
+        "jdbc:trino://trino.example.com:8080/hive/web?user=analyst",
+        "presto+ssh://jump@bastion.example.com/analyst@presto.internal:8080/hive/web",
+    ])
+    func catalogAndSchemaPath(url: String) throws {
+        let parsed = try parse(url)
+        #expect(parsed.database == "hive")
+        #expect(parsed.additionalFields["trinoSchema"] == "web")
+    }
+
+    @Test("A catalog alone sets no schema, and another engine keeps its whole path")
+    func catalogOnlyPath() throws {
+        let presto = try parse("presto://presto.example.com:8080/hive")
+        #expect(presto.database == "hive")
+        #expect(presto.additionalFields["trinoSchema"] == nil)
+        #expect(try parse("jdbc:postgresql://localhost/app/extra").database == "app/extra")
+    }
+
     @Test("jdbc: in front of a registered scheme is dropped, whatever its case")
     func jdbcPrefixIsDropped() throws {
         #expect(try parse("jdbc:postgresql://localhost:5433/app").type == .postgresql)

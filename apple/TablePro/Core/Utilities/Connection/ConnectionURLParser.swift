@@ -198,10 +198,8 @@ struct ConnectionURLParser {
             $0.removingPercentEncoding
         } ?? ext.password ?? ""
 
-        var database = components.path
-        if database.hasPrefix("/") {
-            database = String(database.dropFirst())
-        }
+        let catalogPath = databasePath(components.path, type: dbType)
+        var database = catalogPath.database
         // Redis-specific: parse database index from path and handle TLS scheme
         var redisDatabase: Int?
         if dbType == .redis {
@@ -273,7 +271,21 @@ struct ConnectionURLParser {
             mongoQueryParams: ext.mongoQueryParams,
             multiHost: nil,
             additionalFields: tls.additionalFields.merging(endpoint.socketFields) { _, socket in socket }
+                .merging(catalogPath.fields) { current, _ in current }
         ))
+    }
+
+    // Trino and Presto read the path as /catalog/schema, as their JDBC drivers do.
+    private static func databasePath(
+        _ rawPath: String,
+        type: DatabaseType
+    ) -> (database: String, fields: [String: String]) {
+        let path = rawPath.hasPrefix("/") ? String(rawPath.dropFirst()) : rawPath
+        guard type.pluginTypeId == DatabaseType.trino.rawValue, let slash = path.firstIndex(of: "/") else {
+            return (path, [:])
+        }
+        let schema = String(path[path.index(after: slash)...])
+        return (String(path[..<slash]), schema.isEmpty ? [:] : ["trinoSchema": schema])
     }
 
     private static func resolveEndpoint(
@@ -463,6 +475,8 @@ struct ConnectionURLParser {
         let sslMode = ext.resolvedSSLMode(for: dbType, port: port ?? dbType.defaultPort)
         port = significantPort(port, for: dbType, sslMode: sslMode)
         let tls = ImportedTLS(sslMode: sslMode, disablesTLS: ext.disablesTLS, type: dbType)
+        let catalogPath = databasePath(database, type: dbType)
+        database = catalogPath.database
 
         // Oracle-specific: path component is the service name, not the database name
         var oracleServiceName: String?
@@ -516,7 +530,7 @@ struct ConnectionURLParser {
             useSrv: ext.useSrv,
             mongoQueryParams: ext.mongoQueryParams,
             multiHost: nil,
-            additionalFields: tls.additionalFields
+            additionalFields: tls.additionalFields.merging(catalogPath.fields) { current, _ in current }
         ))
     }
 
