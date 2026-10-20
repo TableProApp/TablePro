@@ -180,7 +180,7 @@ final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
         }
 
         let folded = val.lowercased()
-        if folded == "true" || folded == "false" {
+        if Self.isBooleanColumnType(columnTypeName), folded == "true" || folded == "false" {
             return folded
         }
 
@@ -190,5 +190,16 @@ final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
         }
 
         return "\"\(PluginExportUtilities.escapeJSONString(val))\""
+    }
+
+    // Text that reads "TRUE" in a text column stays that string, as a numeric-looking one does.
+    // ClickHouse wraps the type, as in `Nullable(Bool)`.
+    private static func isBooleanColumnType(_ typeName: String) -> Bool {
+        var base = typeName.lowercased().trimmingCharacters(in: .whitespaces)
+        while base.hasSuffix(")"), let open = base.firstIndex(of: "("),
+              ["nullable", "lowcardinality"].contains(String(base[..<open])) {
+            base = String(base[base.index(after: open) ..< base.index(before: base.endIndex)])
+        }
+        return base == "bool" || base == "boolean"
     }
 }

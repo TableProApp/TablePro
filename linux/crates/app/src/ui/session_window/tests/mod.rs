@@ -323,7 +323,7 @@ fn saved_connection(database: &std::path::Path) -> SavedConnection {
         database: database.display().to_string(),
         username: String::new(),
         tls: TlsConfig::verify_full(),
-        read_only: false,
+        safe_mode: tablepro_core::SafeModeLevel::Off,
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,
@@ -343,7 +343,7 @@ fn network_connection() -> SavedConnection {
         database: "shop".to_owned(),
         username: "app".to_owned(),
         tls: TlsConfig::verify_full(),
-        read_only: false,
+        safe_mode: tablepro_core::SafeModeLevel::Off,
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,
@@ -383,6 +383,73 @@ fn a_connected_window_shows_the_workspace_and_claims_its_key() {
         test.window
             .lookup_action("disconnect")
             .is_some_and(|action| action.is_enabled())
+    );
+}
+
+fn stored_level(test: &TestWindow) -> Option<tablepro_core::SafeModeLevel> {
+    match test.services.storage.connections().snapshot().state {
+        tablepro_storage::ConnectionListState::Ready(list) => list
+            .iter()
+            .find(|saved| saved.id == test.saved.id)
+            .map(|saved| saved.safe_mode),
+        _ => None,
+    }
+}
+
+fn pick_level(test: &TestWindow, target: &str) {
+    WidgetExt::activate_action(&test.window, "win.safe-mode", Some(&target.to_variant()))
+        .expect("the window's safe-mode action");
+}
+
+fn ticked_level(test: &TestWindow) -> Option<String> {
+    test.window
+        .lookup_action("safe-mode")
+        .and_then(|action| action.state())
+        .and_then(|state| state.get::<String>())
+}
+
+#[gtk4::test]
+fn the_main_menu_moves_the_session_between_levels_that_write_and_saves_it() {
+    let test = TestWindow::connected("SafeModeLive");
+    assert_eq!(ticked_level(&test).as_deref(), Some("off"));
+
+    pick_level(&test, "confirm-writes");
+    wait_until(WAIT, || {
+        stored_level(&test) == Some(tablepro_core::SafeModeLevel::ConfirmWrites)
+    })
+    .expect("the level saved back");
+
+    let super::session_page::SessionPage::Workspace { session, .. } = &*test.window.imp().page.borrow() else {
+        panic!("the window left its workspace");
+    };
+    assert_eq!(session.safe_mode(), tablepro_core::SafeModeLevel::ConfirmWrites);
+    assert_eq!(ticked_level(&test).as_deref(), Some("confirm-writes"));
+    assert_eq!(test.connector.calls().len(), 1, "a level that writes reconnected");
+}
+
+#[gtk4::test]
+fn read_only_from_the_main_menu_saves_it_and_connects_again_read_only() {
+    let test = TestWindow::connected("SafeModeReadOnly");
+
+    pick_level(&test, "read-only");
+    wait_until(WAIT, || test.connector.calls().len() == 2).expect("a second connect");
+    test.wait_for_page("workspace");
+
+    let reopened = test.connector.calls().pop().expect("the reconnect").request;
+    assert!(reopened.workspace_settings.read_only);
+    assert_eq!(reopened.safe_mode, tablepro_core::SafeModeLevel::ReadOnly);
+    assert_eq!(stored_level(&test), Some(tablepro_core::SafeModeLevel::ReadOnly));
+    wait_until(WAIT, || ticked_level(&test).as_deref() == Some("read-only")).expect("Read-Only ticked");
+}
+
+#[gtk4::test]
+fn the_levels_are_off_without_a_session() {
+    let test = TestWindow::picker("SafeModePicker");
+
+    assert!(
+        test.window
+            .lookup_action("safe-mode")
+            .is_some_and(|action| !action.is_enabled())
     );
 }
 

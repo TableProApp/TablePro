@@ -183,6 +183,7 @@ public struct RunMaintenanceTool: MCPToolImplementation {
                 sql: statement,
                 meta: meta,
                 allowsDestructive: true,
+                forcesUserConsent: true,
                 operationLabel: String(
                     format: String(localized: "maintenance operation %@"),
                     operation

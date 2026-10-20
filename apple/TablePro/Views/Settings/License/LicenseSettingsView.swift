@@ -27,9 +27,7 @@ struct LicenseSettingsView: View {
                 LicenseNoticeSection(notice: notice)
             }
 
-            /// Keyed on holding a licence, not on it being in good standing. A lapsed licence
-            /// still has seats worth releasing and billing worth opening, and hiding them behind
-            /// entitlement takes the renewal route away at exactly the moment it is needed.
+            // Keyed on holding a licence: a lapsed one still has seats to release and a renewal to enter.
             if let license = licenseManager.license {
                 identitySection(license)
 
@@ -42,9 +40,11 @@ struct LicenseSettingsView: View {
                 if licenseManager.showsTeamRoster {
                     LicenseTeamSection()
                 }
+                LicenseFeaturesSections(groups: featureGroups, offersPurchase: false)
                 actionsSection
             } else {
                 landingSection
+                LicenseFeaturesSections(groups: featureGroups, offersPurchase: true)
             }
         }
         .formStyle(.grouped)
@@ -152,15 +152,16 @@ struct LicenseSettingsView: View {
                 }
 
                 LicenseActivationForm()
-
-                Link("Buy a License", destination: SupportLinks.pricing(.licenseSettings))
-                    .font(.subheadline)
             }
             .padding(.vertical, 4)
         }
     }
 
     // MARK: - Helpers
+
+    private var featureGroups: [LicenseFeatureGroup] {
+        LicensePresentation.featureGroups(status: licenseManager.status, tier: licenseManager.currentTier)
+    }
 
     /// A seal that stays green for a license that is not working would be the pane telling a
     /// comfortable lie, so it follows entitlement.
@@ -182,7 +183,8 @@ struct LicenseSettingsView: View {
             billingCycle: license.billingCycle,
             expiry: license.expiresAt.map { $0.formatted(date: .abbreviated, time: .omitted) }
         )
-    }}
+    }
+}
 
 /// The license key, masked, with Copy for the real one.
 struct LicenseKeyRow: View {

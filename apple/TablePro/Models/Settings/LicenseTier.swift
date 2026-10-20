@@ -8,7 +8,7 @@
 import Foundation
 
 /// The subscription tier carried by a license. A higher tier unlocks everything a lower tier does.
-internal enum LicenseTier: Equatable {
+internal enum LicenseTier: Hashable {
     case starter
     case team
     case unknown(String)

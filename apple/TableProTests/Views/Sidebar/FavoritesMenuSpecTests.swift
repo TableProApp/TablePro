@@ -102,7 +102,11 @@ struct FavoritesMenuSpecTests {
             .query(.folder(folder, children: [])),
             .query(.linkedFolder(linked, children: [])),
             .query(.linkedSubfolder(
-                folderId: linked.id, displayName: "reports", pathPrefix: "reports", children: []
+                folderId: linked.id,
+                displayName: "reports",
+                pathPrefix: "reports",
+                url: URL(fileURLWithPath: "/tmp/queries/reports", isDirectory: true),
+                children: []
             ))
         ]
 
@@ -393,6 +397,83 @@ struct FavoritesMenuSpecTests {
         let issued = linkedCommands(file, gitState: .changed(GitFileStatus(staged: .unmodified, unstaged: .modified)))
         #expect(issued.contains(.showLinkedFileHistory(file)))
         #expect(issued.contains(.discardLinkedFileChanges(file)))
+    }
+
+    private func items(_ sections: [FavoritesMenuSection]) -> [[FavoritesMenuCommand]] {
+        sections.nonEmptySections().map { commands($0.items) }
+    }
+
+    @Test("A linked file copies its absolute and relative paths between Copy Query and Show in Finder")
+    func linkedFileOffersBothPaths() {
+        let file = LinkedSQLFavorite(
+            folderId: UUID(),
+            fileURL: URL(fileURLWithPath: "/tmp/queries/reports/daily.sql"),
+            relativePath: "reports/daily.sql",
+            name: "daily",
+            mtime: Date(),
+            fileSize: 10
+        )
+        let groups = items(FavoritesMenuSpec.sections(for: FavoritesMenuContext(clicked: .query(.linkedFavorite(file)))))
+
+        #expect(groups.contains([
+            .copyLinkedFavoriteQuery(file),
+            .copyPath("/tmp/queries/reports/daily.sql"),
+            .copyRelativePath("reports/daily.sql"),
+            .revealLinkedFavorite(file)
+        ]))
+    }
+
+    @Test("A linked folder copies its absolute path and has no relative one")
+    func linkedFolderOffersAbsolutePathOnly() {
+        let folder = LinkedSQLFolder(path: "/tmp/queries")
+        let groups = items(FavoritesMenuSpec.sections(for: context(clicked: .query(.linkedFolder(folder, children: [])))))
+
+        #expect(groups.first == [.revealLinkedFolder(folder), .copyPath("/tmp/queries")])
+        #expect(!groups.joined().contains { if case .copyRelativePath = $0 { true } else { false } })
+    }
+
+    @Test("A linked subfolder reveals and copies its own paths instead of the background menu")
+    func linkedSubfolderOffersItsPaths() {
+        let url = URL(fileURLWithPath: "/tmp/queries/reports/2026", isDirectory: true)
+        let subfolder = FavoriteNode.linkedSubfolder(
+            folderId: UUID(),
+            displayName: "2026",
+            pathPrefix: "reports/2026",
+            url: url,
+            children: []
+        )
+        let groups = items(FavoritesMenuSpec.sections(for: context(clicked: .query(subfolder))))
+
+        #expect(groups == [[
+            .revealLinkedSubfolder(url),
+            .copyPath("/tmp/queries/reports/2026"),
+            .copyRelativePath("reports/2026")
+        ]])
+    }
+
+    @Test("A saved query and its folder live in the database, so they offer no path")
+    func storedRowsOfferNoPath() {
+        let kinds: [FavoritesOutlineNode.Kind] = [
+            .query(.favorite(favorite())),
+            .query(.folder(SQLFavoriteFolder(name: "Reports"), children: []))
+        ]
+
+        for kind in kinds {
+            let issued = commands(FavoritesMenuSpec.sections(for: context(clicked: kind)))
+            #expect(!issued.contains { command in
+                switch command {
+                case .copyPath, .copyRelativePath: true
+                default: false
+                }
+            })
+        }
+    }
+
+    @Test("The path commands show the File menu's shortcuts")
+    func pathCommandsShareTheMenuBarShortcuts() {
+        #expect(FavoritesMenuCommand.copyPath("/tmp/a.sql").shortcutAction == .copyPath)
+        #expect(FavoritesMenuCommand.copyRelativePath("a.sql").shortcutAction == .copyRelativePath)
+        #expect(FavoritesMenuCommand.copyText("SELECT 1").shortcutAction == nil)
     }
 
     @Test("An untracked file offers neither history nor Discard Changes")

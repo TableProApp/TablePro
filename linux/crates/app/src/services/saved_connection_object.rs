@@ -61,7 +61,7 @@ mod tests {
             database: "sales".into(),
             username: username.into(),
             tls: tablepro_core::TlsConfig::verify_full(),
-            read_only: false,
+            safe_mode: tablepro_core::SafeModeLevel::Off,
             auth_mode,
             ssh: None,
             last_opened_at: None,

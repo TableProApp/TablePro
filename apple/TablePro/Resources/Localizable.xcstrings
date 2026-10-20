@@ -4531,6 +4531,9 @@
         }
       }
     },
+    "%@ Plan" : {
+
+    },
     "%@ Preview" : {
       "localizations" : {
         "fr" : {
@@ -50417,6 +50420,9 @@
         }
       }
     },
+    "Copy Relative Path" : {
+
+    },
     "Copy Rows" : {
       "localizations" : {
         "fr" : {
@@ -91556,6 +91562,12 @@
         }
       }
     },
+    "Included" : {
+
+    },
+    "Includes everything in %@." : {
+
+    },
     "Incorrect passphrase" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -98576,6 +98588,9 @@
     "Leaf" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Learn More About Licensing" : {
+
     },
     "Lease can only be compared with a lease ID, such as 0x7b." : {
       "extractionState" : "manual",

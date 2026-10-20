@@ -9,12 +9,16 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 
+use tablepro_core::SafeModeLevel;
+
 use super::SessionWindowInput;
 use super::session_page::SessionPage;
 use crate::runtime::{DeliverInput, InputSender};
 
 /// Builds the input an action sends.
 type ActionInput = fn() -> SessionWindowInput;
+
+const SAFE_MODE: &str = "safe-mode";
 
 /// The window's actions and the input each one sends. A closure holds
 /// only the window's input sender, so an action that outlives the window
@@ -40,7 +44,36 @@ pub(super) fn install(window: &adw::ApplicationWindow, input: &InputSender<Sessi
             .build()
     });
     window.add_action_entries(entries);
-    window.add_action_entries([retry_with_new_secret(input.clone())]);
+    window.add_action_entries([retry_with_new_secret(input.clone()), safe_mode(input.clone())]);
+}
+
+/// Stateful, so the main menu shows the levels as radio items with the
+/// session's own ticked. The state moves only once a level applies.
+fn safe_mode(input: InputSender<SessionWindowInput>) -> gio::ActionEntry<adw::ApplicationWindow> {
+    gio::ActionEntry::builder(SAFE_MODE)
+        .parameter_type(Some(glib::VariantTy::STRING))
+        .state(crate::ui::safe_mode::action_target(SafeModeLevel::Off).to_variant())
+        .change_state(move |_, _, target| {
+            if let Some(level) = target
+                .and_then(|target| target.str())
+                .and_then(crate::ui::safe_mode::from_action_target)
+            {
+                input.deliver(SessionWindowInput::SetSafeMode(level));
+            }
+        })
+        .build()
+}
+
+/// Tick the level the session runs at, or disable the levels with no
+/// session on screen.
+pub(super) fn show_safe_mode(window: &adw::ApplicationWindow, level: Option<SafeModeLevel>) {
+    let Some(action) = window.lookup_action(SAFE_MODE).and_downcast::<gio::SimpleAction>() else {
+        return;
+    };
+    action.set_enabled(level.is_some());
+    if let Some(level) = level {
+        action.set_state(&crate::ui::safe_mode::action_target(level).to_variant());
+    }
 }
 
 /// Takes the secret to ask for as its target, named the way the keyring
@@ -81,6 +114,11 @@ pub(super) fn sync(window: &adw::ApplicationWindow, page: &SessionPage, editable
             action.set_enabled(enabled);
         }
     }
+    let level = match page {
+        SessionPage::Workspace { session, .. } => Some(session.safe_mode()),
+        _ => None,
+    };
+    show_safe_mode(window, level);
 }
 
 #[cfg(test)]

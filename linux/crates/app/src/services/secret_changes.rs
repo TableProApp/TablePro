@@ -57,7 +57,7 @@ mod tests {
             database: "shop".to_owned(),
             username: "app".to_owned(),
             tls: TlsConfig::verify_full(),
-            read_only: false,
+            safe_mode: tablepro_core::SafeModeLevel::Off,
             auth_mode: AuthMode::Password,
             ssh: Some(SavedSshConfig {
                 host: "bastion".to_owned(),

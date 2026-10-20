@@ -164,7 +164,6 @@ pub(crate) struct WorkspaceModel {
     driver_id: String,
     /// The driver as the user knows it, for the header's subtitle.
     driver_name: String,
-    read_only: bool,
     /// Writes the tab list a moment after the last change.
     workspace: Rc<workspace_persistence::WorkspacePersistence>,
     /// Recently closed tabs for Ctrl+Shift+T. Pending edits are not
@@ -436,6 +435,8 @@ pub(crate) enum WorkspaceInput {
     WorkspaceLoaded(workspace_tabs::LoadedWorkspace),
     /// The banner's Reset: move the unreadable saved tabs aside.
     ResetWorkspaceLayout,
+    /// The session moved to another Safe Mode level, which the title names.
+    SafeModeChanged,
     WorkspaceLayoutReset(Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>),
     /// An editor draft failed to land after the last one did.
     DraftsNotSaved,
@@ -626,7 +627,6 @@ impl Workspace {
             import_dialog: None,
             driver_id,
             driver_name,
-            read_only: session.read_only(),
             workspace: persistence,
             closed_tabs_stack: Rc::new(RefCell::new(VecDeque::with_capacity(CLOSED_TABS_CAPACITY))),
             _watches: watches,
@@ -894,7 +894,12 @@ impl WorkspaceModel {
         let metadata = self.context.active.metadata();
         let name = metadata.as_ref().map_or("", |metadata| metadata.name.as_str());
         let active = self.selected_workspace_tab_id().and_then(|id| self.tab_title(id));
-        let title = window_title::resolve_window_title(active.as_ref(), name, &self.driver_name, self.read_only);
+        let safe_mode = self
+            .context
+            .active
+            .get()
+            .map_or_else(Default::default, |session| session.safe_mode());
+        let title = window_title::resolve_window_title(active.as_ref(), name, &self.driver_name, safe_mode);
         self.window_title.set_title(&title.heading);
         self.window_title.set_subtitle(&title.subtitle);
         self.sidebar_title.set_title(name);
@@ -1015,6 +1020,7 @@ impl WorkspaceModel {
             WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
+            WorkspaceInput::SafeModeChanged => self.refresh_window_title(),
             WorkspaceInput::WorkspaceLayoutReset(outcome) => self.on_workspace_layout_reset(outcome),
             WorkspaceInput::DraftsNotSaved => self.show_toast(&crate::i18n::gettext(
                 "Editor text could not be saved to disk, so it may not come back after TablePro restarts.",

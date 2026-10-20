@@ -268,15 +268,9 @@ struct IntegrationsActivityLogPane: View {
                 entry.outcome,
                 entry.details ?? ""
             ]
-            return cells.map(Self.escapeCSV).joined(separator: ",")
+            return cells.map(CsvRowConverter.encode).joined(separator: ",")
         }
         return ([header] + rows).joined(separator: "\n") + "\n"
-    }
-
-    private static func escapeCSV(_ value: String) -> String {
-        let needsQuotes = value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r")
-        guard needsQuotes else { return value }
-        return "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
 
     private static func fileTimestamp() -> String {

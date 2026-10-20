@@ -168,6 +168,19 @@ struct MSSQLSchemaQueriesTests {
         #expect(sql.contains("JOIN sys.schemas sr ON tr.schema_id = sr.schema_id"))
     }
 
+    @Test func testForeignKeysQueryReadsReferentialActions() {
+        let sql = MSSQLSchemaQueries.foreignKeys(schema: "dbo", table: "Orders")
+        #expect(sql.contains("fk.delete_referential_action_desc AS on_delete"))
+        #expect(sql.contains("fk.update_referential_action_desc AS on_update"))
+    }
+
+    @Test func testSchemaWideForeignKeysQueryHasNoTableFilter() {
+        let sql = MSSQLSchemaQueries.foreignKeys(schema: "dbo", table: nil)
+        #expect(sql.contains("WHERE s.name = N'dbo'\n"))
+        #expect(!sql.contains("tp.name = "))
+        #expect(sql.contains("tp.name AS table_name"))
+    }
+
     @Test func testParseTableRowDetectsView() {
         let row: [String?] = ["v_active_users", "VIEW"]
         #expect(MSSQLSchemaQueries.parseTableRow(row) == MSSQLTableRow(name: "v_active_users", isView: true))
@@ -233,6 +246,28 @@ struct MSSQLSchemaQueriesTests {
         #expect(parsed?.referencedTable == "users")
         #expect(parsed?.referencedColumn == "id")
         #expect(parsed?.referencedSchema == "sales")
+    }
+
+    @Test func testParseForeignKeyRowReadsActionsAndTable() {
+        let row: [String?] = ["FK_orders_users", "user_id", "users", "id", "dbo", "SET_NULL", "CASCADE", "orders"]
+        let parsed = MSSQLSchemaQueries.parseForeignKeyRow(row)
+        #expect(parsed?.onDelete == "SET NULL")
+        #expect(parsed?.onUpdate == "CASCADE")
+        #expect(parsed?.table == "orders")
+    }
+
+    @Test func testParseForeignKeyRowSpellsNoActionWithASpace() {
+        let row: [String?] = ["FK_orders_users", "user_id", "users", "id", "dbo", "NO_ACTION", "SET_DEFAULT", "orders"]
+        let parsed = MSSQLSchemaQueries.parseForeignKeyRow(row)
+        #expect(parsed?.onDelete == "NO ACTION")
+        #expect(parsed?.onUpdate == "SET DEFAULT")
+    }
+
+    @Test func testParseForeignKeyRowWithoutActionsDefaultsToNoAction() {
+        let row: [String?] = ["FK_orders_users", "user_id", "users", "id"]
+        let parsed = MSSQLSchemaQueries.parseForeignKeyRow(row)
+        #expect(parsed?.onDelete == "NO ACTION")
+        #expect(parsed?.table == nil)
     }
 
     @Test func testParseForeignKeyRowWithoutReferencedSchema() {

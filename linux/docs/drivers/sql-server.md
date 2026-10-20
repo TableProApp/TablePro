@@ -59,8 +59,8 @@ The sandbox has no `/etc/krb5.conf` of the host, and its `/tmp` is private, so a
 
 - Saves are refused before anything is sent (`ReadOnly(ClientGuard)`).
 - A generated read on a read-only connection runs inside `BEGIN TRANSACTION` and `ROLLBACK TRANSACTION`, so a filter fragment that writes is undone. A fragment that ends the guard's transaction itself (errors 266, 3902, 3903) is reported as refused by read-only mode, never as a success.
-- An export, on any connection, refuses user SQL that is not one batch of statements starting with `SELECT`, `WITH` or a parenthesis, or that contains a word that writes or runs code (`INSERT`, `EXEC`, `MERGE`, `INTO` and the like), and runs inside the same rolled-back transaction.
-- An editor session has no guard: it runs whatever the login may run.
+- An export, on any connection, refuses user SQL that is not one batch Safe Mode would count as a read (`tablepro_core::sql_syntax::statement_access`), and runs inside the same rolled-back transaction.
+- An editor session has no driver guard. At Safe Mode Read-Only the app refuses every editor statement it cannot tell reads, before it is sent (`tablepro_core::sql_syntax::statement_access`), which reads a batch with no `;` statement by statement.
 
 ## Stops and timeouts
 

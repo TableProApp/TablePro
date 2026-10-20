@@ -134,7 +134,7 @@ mod tests {
             database: path.display().to_string(),
             username: String::new(),
             tls: tablepro_core::TlsConfig::disabled(),
-            read_only: false,
+            safe_mode: tablepro_core::SafeModeLevel::Off,
             auth_mode: tablepro_core::AuthMode::Password,
             ssh: None,
             last_opened_at: None,
