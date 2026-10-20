@@ -20,8 +20,11 @@ internal enum ConnectionShareLink {
         components.host = "import"
 
         var queryItems = [URLQueryItem(name: "name", value: settings.name)]
-        if let socketPath = connection.localSocketPath {
-            queryItems.append(URLQueryItem(name: "socket", value: socketPath))
+        if let socket = connection.localSocketEndpoint {
+            queryItems.append(URLQueryItem(name: "socket", value: socket.path))
+            if connection.type.localSocketIsDirectory {
+                queryItems.append(URLQueryItem(name: "port", value: String(socket.port)))
+            }
         } else {
             queryItems.append(URLQueryItem(name: "host", value: settings.host))
             queryItems.append(URLQueryItem(name: "port", value: String(settings.port)))

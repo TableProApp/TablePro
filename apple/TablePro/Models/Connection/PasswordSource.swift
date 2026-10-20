@@ -91,6 +91,11 @@ enum PasswordSource: Codable, Hashable, Sendable {
         value.flatMap { reuseSecondsRange.contains($0) ? $0 : nil }
     }
 
+    var withoutReuse: PasswordSource {
+        guard case .command(let shell, _) = self else { return self }
+        return .command(shell: shell)
+    }
+
     /// Decodes a password source from a connection container, treating a present-but-malformed
     /// entry as absent so one bad connection cannot fail loading of the whole store.
     static func resilientlyDecoded<Key>(

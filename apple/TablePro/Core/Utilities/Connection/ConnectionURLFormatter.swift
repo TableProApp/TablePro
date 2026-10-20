@@ -153,9 +153,13 @@ struct ConnectionURLFormatter {
             result += "@"
         }
 
-        let socketPath = connection.localSocketPath
-        if socketPath != nil {
+        let socket = connection.localSocketEndpoint
+        let socketIsDirectory = connection.type.localSocketIsDirectory
+        if let socket {
             result += "localhost"
+            if socketIsDirectory, socket.port != defaultPort {
+                result += ":\(socket.port)"
+            }
         } else if connection.type.pluginTypeId == "MongoDB",
            let mongoHosts = connection.additionalFields["mongoHosts"], !mongoHosts.isEmpty {
             result += mongoHosts
@@ -177,8 +181,12 @@ struct ConnectionURLFormatter {
         result += "/\(pathComponent.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? pathComponent)"
 
         var params: [String] = []
-        if let socketPath {
-            params.append("socket=\(percentEncodeSocketPath(socketPath))")
+        if let socket {
+            params.append(
+                socketIsDirectory
+                    ? "host=\(percentEncodeSocketDirectory(socket.path))"
+                    : "socket=\(percentEncodeSocketPath(socket.path))"
+            )
         }
         let query = buildQueryString(connection)
         if !query.isEmpty {
@@ -199,6 +207,11 @@ struct ConnectionURLFormatter {
     // literal, so `+` and a space survive both percent and form decoding.
     private static func percentEncodeSocketPath(_ path: String) -> String {
         path.addingPercentEncoding(withAllowedCharacters: socketPathAllowed) ?? path
+    }
+
+    // libpq's documented form, `?host=/var/run/postgresql`: a query keeps `/` as it is.
+    private static func percentEncodeSocketDirectory(_ path: String) -> String {
+        path.addingPercentEncoding(withAllowedCharacters: socketPathAllowed.union(CharacterSet(charactersIn: "/"))) ?? path
     }
 
     // Trino and Presto read the path as /catalog/schema, as ConnectionURLParser does.
@@ -306,6 +319,7 @@ struct ConnectionURLFormatter {
             return EtcdTLSModeField.sslMode(forFieldValue: connection.additionalFields[EtcdTLSModeField.fieldId])
                 .map(sslModeParamValue)
         }
+        guard !connection.localSocketSkipsTLS else { return nil }
         let mode = connection.sslConfig.mode
         let portImpliesTLS = connection.type.impliedSSLMode(forPort: connection.port) != nil
         guard mode != connection.type.defaultSSLMode || portImpliesTLS else { return nil }

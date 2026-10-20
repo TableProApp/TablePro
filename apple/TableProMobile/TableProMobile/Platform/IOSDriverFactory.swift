@@ -127,6 +127,9 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 signsInWithToken: connection.iamSignIn != nil
             )
         case .postgresql, .redshift:
+            guard connection.macSocketPath == nil else {
+                throw ConnectionError.localSocketNotSupported
+            }
             return PostgreSQLDriver(
                 host: connection.host,
                 port: connection.port,
