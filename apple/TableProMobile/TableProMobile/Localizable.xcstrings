@@ -11703,13 +11703,16 @@
     "JSON Too Large" : {
 
     },
+    "Jump Hosts" : {
+
+    },
+    "Jump host %1$@ failed: %2$@" : {
+
+    },
     "Jump host %@ has no key on this device." : {
 
     },
     "Jump host %@ uses the SSH server's key, which is not on this device." : {
-
-    },
-    "Jump host %1$@ failed: %2$@" : {
 
     },
     "Jump host key not found: %@" : {
@@ -11741,9 +11744,6 @@
           }
         }
       }
-    },
-    "Jump Hosts" : {
-
     },
     "Jump hosts are connected in order before reaching the SSH server above." : {
 
@@ -13751,6 +13751,9 @@
         }
       }
     },
+    "No key on this device" : {
+
+    },
     "No Foreign Keys" : {
       "localizations" : {
         "ko" : {
@@ -13863,9 +13866,6 @@
           }
         }
       }
-    },
-    "No key on this device" : {
-
     },
     "No License Information" : {
       "localizations" : {
@@ -14036,6 +14036,37 @@
         }
       }
     },
+    "No SSH username is set for %@." : {
+
+    },
+    "No Table Selected" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택된 테이블 없음"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chưa chọn bảng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未选择表"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未選擇資料表"
+          }
+        }
+      }
+    },
     "No row found in %@ where %@ = '%@'" : {
       "localizations" : {
         "ko" : {
@@ -14070,37 +14101,6 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "No row found in %1$@ where %2$@."
-          }
-        }
-      }
-    },
-    "No SSH username is set for %@." : {
-
-    },
-    "No Table Selected" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "선택된 테이블 없음"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chưa chọn bảng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未选择表"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未選擇資料表"
           }
         }
       }
@@ -15392,7 +15392,7 @@
         }
       }
     },
-    "Other work ran on this connection before you confirmed. Check the transaction and try again." : {
+    "Own key" : {
 
     },
     "out-of-band check" : {
@@ -15428,9 +15428,6 @@
           }
         }
       }
-    },
-    "Own key" : {
-
     },
     "Package" : {
       "extractionState" : "manual",
@@ -15961,6 +15958,9 @@
     "Pin" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Other work ran on this connection before you confirmed. Check the transaction and try again." : {
+
     },
     "PING failed: %@" : {
       "extractionState" : "manual",
@@ -18100,6 +18100,12 @@
         }
       }
     },
+    "Row Not Deleted" : {
+
+    },
+    "Row Not Found" : {
+
+    },
     "Row %d of %d" : {
       "localizations" : {
         "ko" : {
@@ -18127,12 +18133,6 @@
           }
         }
       }
-    },
-    "Row Not Deleted" : {
-
-    },
-    "Row Not Found" : {
-
     },
     "Row updated" : {
       "localizations" : {
@@ -18433,10 +18433,10 @@
         }
       }
     },
-    "Same key as SSH server" : {
+    "Same Key as SSH Server" : {
 
     },
-    "Same Key as SSH Server" : {
+    "Same key as SSH server" : {
 
     },
     "Sample Database" : {
@@ -22319,6 +22319,14 @@
         }
       }
     },
+    "The client certificate at %@ could not be read as a PEM or DER certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The client certificate at %@ could not be read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The client certificate for this connection is missing. Import it again in the connection's SSL settings." : {
       "localizations" : {
         "ko" : {
@@ -22346,6 +22354,22 @@
           }
         }
       }
+    },
+    "The client key at %@ could not be read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The client key at %@ is encrypted. This connection needs an unencrypted key." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The client key at %@ is not an RSA or EC private key in PEM or DER form." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The client key at %1$@ does not belong to the certificate at %2$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The client key for this connection is missing. Import it again in the connection's SSL settings." : {
       "localizations" : {
@@ -22768,37 +22792,6 @@
         }
       }
     },
-    "The database “%@” has an open transaction. Switching rolls it back and discards its uncommitted changes." : {
-
-    },
-    "The database assigns this column, so it is never written." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "데이터베이스가 이 열을 할당하므로 이 열은 기록되지 않습니다."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cơ sở dữ liệu gán giá trị cho cột này, nên cột này không bao giờ được ghi."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此列由数据库分配，因此永远不会写入。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此欄位由資料庫指派，因此永遠不會寫入。"
-          }
-        }
-      }
-    },
     "The database limited the result. Showing %d rows." : {
       "localizations" : {
         "ko" : {
@@ -22829,6 +22822,37 @@
     },
     "The database name is longer than the 128 bytes FreeTDS takes." : {
 
+    },
+    "The database “%@” has an open transaction. Switching rolls it back and discards its uncommitted changes." : {
+
+    },
+    "The database assigns this column, so it is never written." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데이터베이스가 이 열을 할당하므로 이 열은 기록되지 않습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cơ sở dữ liệu gán giá trị cho cột này, nên cột này không bao giờ được ghi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此列由数据库分配，因此永远不会写入。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此欄位由資料庫指派，因此永遠不會寫入。"
+          }
+        }
+      }
     },
     "The encrypted file is corrupt or incomplete" : {
       "extractionState" : "manual",
@@ -22968,6 +22992,12 @@
         }
       }
     },
+    "The jump host keys on this device could not be read. Close the form and open it again to change them." : {
+
+    },
+    "The jump host keys on this device could not be read: %@" : {
+
+    },
     "The JSON array must contain only objects." : {
       "localizations" : {
         "ko" : {
@@ -22997,12 +23027,6 @@
       }
     },
     "The JSON ends before it is complete." : {
-
-    },
-    "The jump host keys on this device could not be read: %@" : {
-
-    },
-    "The jump host keys on this device could not be read. Close the form and open it again to change them." : {
 
     },
     "The Kerberos service principal name for this server cannot be passed to FreeTDS. Connect through a shorter host name." : {
@@ -23529,6 +23553,9 @@
           }
         }
       }
+    },
+    "The SSH server does not sign in with a private key, so this jump host needs its own key." : {
+
     },
     "The password is longer than the 128 bytes FreeTDS takes." : {
 
@@ -24096,6 +24123,9 @@
         }
       }
     },
+    "The session that held this transaction has ended." : {
+
+    },
     "The server's SSH host key has changed. Open this connection in TablePro to check it." : {
       "localizations" : {
         "ko" : {
@@ -24184,9 +24214,6 @@
         }
       }
     },
-    "The session that held this transaction has ended." : {
-
-    },
     "The socket path contains a control or invisible character." : {
 
     },
@@ -24232,9 +24259,6 @@
           }
         }
       }
-    },
-    "The SSH server does not sign in with a private key, so this jump host needs its own key." : {
-
     },
     "The SSH server may be unreachable or running a different protocol." : {
       "localizations" : {
@@ -25895,22 +25919,22 @@
     "Transaction Failed" : {
 
     },
-    "Transaction failed on %@. Roll it back to continue." : {
+    "Transaction Open" : {
 
     },
     "Transaction failed on %1$@, %2$@. Roll it back to continue." : {
 
     },
+    "Transaction failed on %@. Roll it back to continue." : {
+
+    },
     "Transaction open" : {
 
     },
-    "Transaction Open" : {
+    "Transaction open on %1$@, %2$@" : {
 
     },
     "Transaction open on %@" : {
-
-    },
-    "Transaction open on %1$@, %2$@" : {
 
     },
     "Transfer" : {
@@ -26196,9 +26220,6 @@
         }
       }
     },
-    "unbalanced quotes" : {
-
-    },
     "Unexpected character." : {
 
     },
@@ -26231,6 +26252,9 @@
           }
         }
       }
+    },
+    "unbalanced quotes" : {
+
     },
     "Unfavorite" : {
       "localizations" : {
