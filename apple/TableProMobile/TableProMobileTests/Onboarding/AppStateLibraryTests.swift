@@ -499,6 +499,44 @@ struct AppStateLibraryTests {
 
     // MARK: - Database file paths
 
+    @Test("A sync merge the library could not save reports so until a save goes through")
+    func unsavedSyncMergeIsReported() throws {
+        let state = makeState(syncEnabled: false)
+        let original = DatabaseConnection(name: "Orders", type: .postgresql)
+        #expect(state.addConnection(original))
+        var renamed = original
+        renamed.name = "Renamed"
+
+        try FileManager.default.removeItem(at: fixture.connectionsFile)
+        try FileManager.default.createDirectory(at: fixture.connectionsFile, withIntermediateDirectories: false)
+        #expect(!state.applySyncedConnections([renamed]))
+        #expect(!state.applySyncedConnections([renamed]))
+
+        try FileManager.default.removeItem(at: fixture.connectionsFile)
+        #expect(state.applySyncedConnections([renamed]))
+        let reloaded = try JSONDecoder().decode([DatabaseConnection].self, from: Data(contentsOf: fixture.connectionsFile))
+        #expect(reloaded.map(\.name) == ["Renamed"])
+    }
+
+    @Test("An older build's SSL require keeps its spelling through a library save")
+    func legacySSLRequireSurvivesASave() throws {
+        let legacy = """
+        [{"id":"\(UUID().uuidString)","name":"Orders","type":"PostgreSQL","host":"db.example.com","port":5432,
+          "username":"app","database":"orders","sslEnabled":true,"sslConfiguration":{"mode":"require"}}]
+        """
+        try Data(legacy.utf8).write(to: fixture.connectionsFile)
+
+        let state = makeState(syncEnabled: false)
+        #expect(state.connections.first?.sslConfiguration?.isLegacyRequire == true)
+        #expect(state.addConnection(DatabaseConnection(name: "Other", type: .mysql)))
+
+        let stored = try #require(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.connectionsFile)) as? [[String: Any]]
+        )
+        let ssl = try #require(stored.first?["sslConfiguration"] as? [String: Any])
+        #expect(ssl["mode"] as? String == "require")
+    }
+
     @Test("Stored file paths load and save exactly as written, and nothing is marked for sync")
     func storedPathsAreNeverRewritten() throws {
         try Data().write(to: fixture.documentsFile("notes.db"))

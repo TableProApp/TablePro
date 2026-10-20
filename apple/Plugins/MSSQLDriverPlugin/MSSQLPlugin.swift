@@ -511,16 +511,20 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         _ = try await execute(query: "BEGIN TRANSACTION")
     }
 
-    /// One round trip, and only when a caller is about to own a transaction on this session. It
-    /// goes through `executeInternal` rather than `execute` so the app's query cancellation and
-    /// history never see it.
+    // executeInternal rather than execute, so the app's query cancellation and history never see the probe.
     func sessionTransactionState() async -> PluginSessionTransactionState {
         guard let result = try? await executeInternal(MSSQLSessionTransaction.probe) else { return .unknown }
         let row = result.rows.first
-        return MSSQLSessionTransaction.state(
+        let state = MSSQLSessionTransaction.state(
             tranCount: row?.first?.asText,
             transactionState: row?.dropFirst().first?.asText
         )
+        switch state {
+        case .idle: return .idle
+        case .open: return .inTransaction
+        case .uncommittable: return .abortedTransaction
+        case nil: return .unknown
+        }
     }
 
     // MARK: - Query Execution

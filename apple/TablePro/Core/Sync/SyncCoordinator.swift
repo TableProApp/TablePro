@@ -953,12 +953,7 @@ final class SyncCoordinator: ObservableObject {
                 }
                 incoming = reconciled
             }
-            var adopted = incoming.adoptingDeviceLocalState(from: connections[index])
-            // Until Production has the field the server never holds a route, so a pull would erase this Mac's.
-            if !ConnectionSyncField.sshRouteJson.isWritable {
-                adopted.sshRoute = connections[index].sshRoute
-            }
-            connections[index] = adopted
+            connections[index] = incoming.adoptingDeviceLocalState(from: connections[index])
         } else {
             connections.append(remoteConnection)
         }

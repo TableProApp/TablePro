@@ -91,6 +91,24 @@ struct IOSConnectionImportServiceTests {
         #expect(rules.maximumGroupDepth == LibraryGroupGraph.maxNestingDepth)
         #expect(rules.supportsSavedQueries)
         #expect(!rules.supportsCredentialProfiles)
+        #expect(!rules.readsJumpHostKeyFiles)
+    }
+
+    @Test("A jump host's Mac key path draws no warning, since this device never reads it")
+    func hopKeyPathDrawsNoWarning() async throws {
+        let ssh = ExportableSSHConfig(
+            enabled: true, host: "bastion.example.com", port: nil, username: "deploy",
+            authMethod: "SSH Agent", privateKeyPath: "", agentSocketPath: "",
+            jumpHosts: [
+                ExportableJumpHost(host: "jump.example.com", port: nil, username: "deploy", authMethod: "Private Key", privateKeyPath: "~/.ssh/jump")
+            ],
+            totpMode: nil, totpAlgorithm: nil, totpDigits: nil, totpPeriod: nil
+        )
+        let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: settings(ssh: ssh))])
+
+        let row = try #require(try await analyzed(bundle).connections.first)
+
+        #expect(row.warnings.isEmpty)
     }
 
     // MARK: - Files
@@ -619,6 +637,50 @@ struct IOSConnectionImportServiceTests {
         let connection = try await importedConnection(settings(ssl: ExportableSSLConfig(mode: "Disabled")))
         #expect(!connection.sslEnabled)
         #expect(connection.sslConfiguration == nil)
+    }
+
+    @Test("An explicit Required is not mistaken for a copy an older build stored, so it replaces a server Preferred")
+    func explicitRequiredIsExplicit() async throws {
+        let connection = try await importedConnection(settings(ssl: ExportableSSLConfig(mode: "Required")))
+        let ssl = try #require(connection.sslConfiguration)
+
+        #expect(!ssl.isLegacyRequire)
+        #expect(!ssl.isMacPreferred)
+        #expect(!ssl.agrees(withServer: SSLConfiguration(mode: .require, isMacPreferred: true)))
+    }
+
+    @Test("A Redis index the Mac keeps outside the additional fields opens the same database")
+    func redisIndexImports() async throws {
+        let redis = ExportableConnection(
+            name: "Cache", host: "cache.example.com", port: 6_379, database: "", username: "",
+            type: DatabaseType.redis.rawValue, redisDatabase: 3
+        )
+        let connection = try await importedConnection(redis)
+
+        #expect(connection.additionalFields["redisDatabase"] == "3")
+    }
+
+    @Test("A Redis connection on another index is not taken for a duplicate")
+    func redisIndexSeparatesDuplicates() async throws {
+        let existing = DatabaseConnection(
+            name: "Cache", type: .redis, host: "cache.example.com", port: 6_379,
+            additionalFields: ["redisDatabase": "3"]
+        )
+        #expect(appState.addConnection(existing))
+        let incoming = { (index: Int) in
+            ExportableConnection(
+                name: "Cache", host: "cache.example.com", port: 6_379, database: "", username: "",
+                type: DatabaseType.redis.rawValue, redisDatabase: index
+            )
+        }
+        let bundle = try ConnectionBundle(appVersion: "Tests", connections: [
+            BundleConnection(ref: "c1", settings: incoming(3)),
+            BundleConnection(ref: "c2", settings: incoming(4))
+        ])
+
+        let rows = try await analyzed(bundle).connections
+
+        #expect(rows.map { $0.duplicate?.id } == [existing.id, nil])
     }
 
     @Test("A Mac Preferred mode opens as required here and exports back as Preferred")

@@ -25,6 +25,7 @@ mod tab_title;
 mod table_naming;
 #[cfg(test)]
 mod tests;
+mod transaction_banner;
 mod unsaved_icon;
 mod window_tabs;
 mod window_title;
@@ -120,6 +121,7 @@ pub(crate) struct WorkspaceModel {
     all_schemas_listed: bool,
     toast_overlay: adw::ToastOverlay,
     reconnect_banner: adw::Banner,
+    transaction_banner: adw::Banner,
     /// Says the sidebar's list could not be read again, until a read
     /// lands.
     catalog_banner: adw::Banner,
@@ -487,8 +489,10 @@ pub(crate) enum WorkspaceInput {
     /// A save started or settled, or tabs' changes were dropped.
     Workspace(crate::workspace::WorkspaceEvent),
     SavesInFlightChanged(usize),
-    /// An editor tab's transaction opened or ended.
+    /// An editor tab's transaction opened, failed or ended.
     EditorTransactionChanged,
+    /// The transaction banner's Show.
+    ShowTransactionTab,
     ShowAlert {
         title: String,
         body: String,
@@ -577,6 +581,7 @@ impl Workspace {
         let history_gate = workspace_actions::spawn_history_gate(&window, history.availability());
         let watches = SessionWatches::new(&session, &input);
         let draft_failures = draft_failure_watch(&drafts, &input);
+        transaction_banner::connect_show(&imp.transaction_banner, &input);
 
         let driver_id = session.metadata().driver_id.clone();
         let driver_name = driver_display_name(&context, &driver_id);
@@ -602,6 +607,7 @@ impl Workspace {
             all_schemas_listed: false,
             toast_overlay: imp.toast_overlay.get(),
             reconnect_banner: imp.reconnect_banner.get(),
+            transaction_banner: imp.transaction_banner.get(),
             catalog_banner: imp.catalog_banner.get(),
             layout_banner: imp.layout_banner.get(),
             row_op_spinner: imp.row_op_spinner.get(),
@@ -921,6 +927,7 @@ impl WorkspaceModel {
         if self.selected_workspace_tab_id() == Some(id) {
             self.refresh_window_title();
         }
+        self.refresh_transaction_banner();
     }
 
     /// Title every tab again when the schemas change whether table tabs
@@ -988,7 +995,11 @@ impl WorkspaceModel {
             WorkspaceInput::StopSaving(id) => self.stop_saving(id),
             WorkspaceInput::Workspace(event) => self.on_workspace_event(event),
             WorkspaceInput::SavesInFlightChanged(count) => self.on_saves_in_flight_changed(count),
-            WorkspaceInput::EditorTransactionChanged => self.refresh_unsaved(),
+            WorkspaceInput::EditorTransactionChanged => {
+                self.refresh_unsaved();
+                self.refresh_transaction_banner();
+            }
+            WorkspaceInput::ShowTransactionTab => self.show_transaction_tab(),
             WorkspaceInput::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id),
             WorkspaceInput::CloseOtherWorkspaceTabs(id) => self.close_other_workspace_tabs(id),
             WorkspaceInput::CloseWorkspaceTabsToRight(id) => self.close_workspace_tabs_to_right(id),

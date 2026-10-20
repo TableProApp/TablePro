@@ -29,6 +29,159 @@
         }
       }
     },
+    "“%@” has an open transaction. Deleting the connection rolls it back and discards its uncommitted changes." : {
+
+    },
+    "\"%@\" is in the list more than once." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 항목이 목록에 두 번 이상 있습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" có trong danh sách nhiều hơn một lần."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 在列表中出现了不止一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」在列表中出現不只一次。"
+          }
+        }
+      }
+    },
+    "\"%@\" is not a file." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 항목은 파일이 아닙니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" không phải là tệp."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 不是文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」不是檔案。"
+          }
+        }
+      }
+    },
+    "\"%@\" is not a full path." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 항목은 전체 경로가 아닙니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" không phải là đường dẫn đầy đủ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 不是完整路径。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」不是完整路徑。"
+          }
+        }
+      }
+    },
+    "\"%@\" is not a valid entry point name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 항목은 올바른 엔트리 포인트 이름이 아닙니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" không phải là tên entry point hợp lệ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 不是有效的入口点名称。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」不是有效的進入點名稱。"
+          }
+        }
+      }
+    },
+    "\"%@\" is not a valid RDS endpoint. Use the form host or host:port." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 항목은 올바른 RDS 엔드포인트가 아닙니다. host 또는 host:port 형식을 사용하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" không phải là RDS endpoint hợp lệ. Hãy dùng dạng host hoặc host:port."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 不是有效的 RDS 终端节点。请使用 host 或 host:port 格式。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」不是有效的 RDS 端點。請使用 host 或 host:port 格式。"
+          }
+        }
+      }
+    },
     "\"%@\" will be permanently deleted." : {
       "localizations" : {
         "ko" : {
@@ -373,6 +526,36 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "%@ is missing its closing parenthesis." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에 닫는 괄호가 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ thiếu dấu đóng ngoặc."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 缺少右括号。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 缺少右括號。"
+          }
+        }
+      }
+    },
     "%@ is read-only, so rows cannot be added." : {
       "localizations" : {
         "ko" : {
@@ -397,6 +580,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 為唯讀，因此無法新增列。"
+          }
+        }
+      }
+    },
+    "%@ no longer exists" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) 더 이상 존재하지 않습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ không còn tồn tại"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已不存在"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已不存在"
+          }
+        }
+      }
+    },
+    "%@ was given arguments it cannot use." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에 사용할 수 없는 인수가 주어졌습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ nhận các đối số mà nó không dùng được."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 收到了无法使用的参数。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 收到無法使用的引數。"
           }
         }
       }
@@ -962,6 +1205,36 @@
         }
       }
     },
+    "%lld rows do not match the foreign keys this change asks for, so nothing was changed. Correct or remove those rows, then try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld개 행이 이 변경이 요구하는 외래 키와 일치하지 않아 아무것도 변경되지 않았습니다. 해당 행을 수정하거나 제거한 후 다시 시도하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld dòng không khớp với các khóa ngoại mà thay đổi này yêu cầu, nên không có gì được thay đổi. Hãy sửa hoặc xóa các dòng đó rồi thử lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 行不符合此更改要求的外键，因此未做任何更改。请更正或删除这些行，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 列不符合此變更要求的外鍵，因此沒有做任何變更。請修正或移除這些列，然後再試一次。"
+          }
+        }
+      }
+    },
     "+%lld more columns" : {
       "localizations" : {
         "ko" : {
@@ -1168,6 +1441,9 @@
         }
       }
     },
+    "A client certificate needs its client key. On the connection's Network tab, choose the client key, or clear the client certificate." : {
+
+    },
     "1 saved query that belongs to these connections, with its folder and keyword." : {
 
     },
@@ -1271,6 +1547,94 @@
         }
       }
     },
+    "A MULTI block is open on this connection. Run EXEC to apply it, or DISCARD to drop it." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 연결에서 MULTI 블록이 열려 있습니다. 적용하려면 EXEC를, 취소하려면 DISCARD를 실행하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối này đang có một khối MULTI. Chạy EXEC để áp dụng, hoặc DISCARD để bỏ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接上有一个未结束的 MULTI 块。运行 EXEC 以应用，或运行 DISCARD 以放弃。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此連線上有一個未結束的 MULTI 區塊。執行 EXEC 以套用，或執行 DISCARD 以捨棄。"
+          }
+        }
+      }
+    },
+    "A renamed column's foreign key is rewritten, so its MATCH and DEFERRABLE clauses are not carried over." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이름이 바뀐 열의 외래 키는 다시 작성되므로 MATCH 및 DEFERRABLE 절이 유지되지 않습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa ngoại của cột được đổi tên sẽ được viết lại, nên các mệnh đề MATCH và DEFERRABLE của nó không được giữ lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重命名列的外键会被重写，因此不会保留其 MATCH 和 DEFERRABLE 子句。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新命名欄位的外鍵會被改寫，因此不會保留其 MATCH 和 DEFERRABLE 子句。"
+          }
+        }
+      }
+    },
+    "A replaced foreign key does not keep its MATCH or DEFERRABLE clause." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대체된 외래 키는 MATCH 또는 DEFERRABLE 절을 유지하지 않습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa ngoại được thay thế không giữ mệnh đề MATCH hoặc DEFERRABLE của nó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "被替换的外键不会保留其 MATCH 或 DEFERRABLE 子句。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "被取代的外鍵不會保留其 MATCH 或 DEFERRABLE 子句。"
+          }
+        }
+      }
+    },
     "A running query shows its time and row count in a Live Activity." : {
       "localizations" : {
         "ko" : {
@@ -1305,6 +1669,36 @@
     "A string cannot hold a line break, tab or other control character." : {
 
     },
+    "A string literal is missing its closing quote." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "문자열 리터럴에 닫는 따옴표가 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Một chuỗi ký tự thiếu dấu nháy đóng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字符串字面量缺少右引号。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字串常值缺少右引號。"
+          }
+        }
+      }
+    },
     "A sync conflict was detected and needs to be resolved." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1338,6 +1732,36 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A view that selects * from this table will return its columns in the new order." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 테이블에서 *를 선택하는 뷰는 새 순서로 열을 반환합니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View chọn * từ bảng này sẽ trả về các cột theo thứ tự mới."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从此表 SELECT * 的视图将按新顺序返回列。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "從此資料表 SELECT * 的檢視表會依新的順序傳回欄位。"
+          }
+        }
+      }
+    },
     "About" : {
       "localizations" : {
         "ko" : {
@@ -1366,6 +1790,34 @@
         }
       }
     },
+    "Accept Suggestion" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "제안 수락"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chấp nhận gợi ý"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接受建议"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接受建議"
+          }
+        }
+      }
+    },
     "Accepted" : {
       "localizations" : {
         "ko" : {
@@ -1390,6 +1842,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "接受"
+          }
+        }
+      }
+    },
+    "Access Key ID" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "액세스 키 ID"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Access Key ID"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Access Key ID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Access Key ID"
+          }
+        }
+      }
+    },
+    "Access Key ID and Secret Access Key are required for AWS IAM authentication." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM 인증에는 Access Key ID와 Secret Access Key가 필요합니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xác thực AWS IAM cần Access Key ID và Secret Access Key."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM 认证需要 Access Key ID 和 Secret Access Key。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM 驗證需要 Access Key ID 和 Secret Access Key。"
           }
         }
       }
@@ -1450,6 +1962,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用中的資料庫"
+          }
+        }
+      }
+    },
+    "Add" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "추가"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增"
           }
         }
       }
@@ -2101,6 +2641,34 @@
     "Algorithm" : {
 
     },
+    "Alias" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "별칭"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bí danh"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "别名"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別名"
+          }
+        }
+      }
+    },
     "All" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2228,6 +2796,36 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "An extension in the list has no file." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "목록의 확장 프로그램 하나에 파일이 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Một extension trong danh sách không có tệp."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列表中有一个扩展没有文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列表中有一個延伸功能沒有檔案。"
+          }
+        }
+      }
+    },
     "an item has an empty reference" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -2322,6 +2920,12 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Another row holds the same value in every column, so this row cannot be changed on its own. Change these rows with a query." : {
+
+    },
+    "Another window has unsaved changes on this connection. Save or discard them before switching database." : {
+
+    },
     "Another selected row adds the same query." : {
 
     },
@@ -2338,6 +2942,36 @@
     "App" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Application (Client) ID" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "애플리케이션(클라이언트) ID"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Application (Client) ID"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "应用程序（客户端）ID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "應用程式（用戶端）ID"
+          }
+        }
+      }
     },
     "Apply" : {
       "localizations" : {
@@ -2487,6 +3121,34 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Assigned by the database" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데이터베이스에서 할당"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Do cơ sở dữ liệu gán"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由数据库分配"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由資料庫指派"
+          }
+        }
+      }
+    },
     "Ask the SSH server's administrator to turn on a method TablePro supports." : {
 
     },
@@ -2610,6 +3272,36 @@
         }
       }
     },
+    "Authentication" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "인증"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xác thực"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "身份验证"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "身分驗證"
+          }
+        }
+      }
+    },
     "Authentication Failed" : {
       "localizations" : {
         "ko" : {
@@ -2666,32 +3358,32 @@
         }
       }
     },
-    "Auto Generate" : {
+    "Auto Inc" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "자동 생성"
+            "value" : "자동 증가"
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tự động tạo"
+            "value" : "Tự tăng"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "自动生成"
+            "value" : "自增"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "自動產生"
+            "value" : "自動遞增"
           }
         }
       }
@@ -2748,6 +3440,216 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自動鎖定"
+          }
+        }
+      }
+    },
+    "AWS IAM (Access Key)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM(액세스 키)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM (Access Key)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM（访问密钥）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM（存取金鑰）"
+          }
+        }
+      }
+    },
+    "AWS IAM (Profile)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM(프로필)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM (Profile)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM（配置）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM（設定檔）"
+          }
+        }
+      }
+    },
+    "AWS IAM (SSO)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM(SSO)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM (SSO)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM（SSO）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS IAM（SSO）"
+          }
+        }
+      }
+    },
+    "AWS Region" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS 리전"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS Region"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS 区域"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS 區域"
+          }
+        }
+      }
+    },
+    "AWS SSO returned an unexpected response." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS SSO가 예기치 않은 응답을 반환했습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS SSO trả về phản hồi không mong đợi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS SSO 返回了意外的响应。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS SSO 傳回了非預期的回應。"
+          }
+        }
+      }
+    },
+    "AWS SSO sign-in failed: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS SSO 로그인 실패: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đăng nhập AWS SSO thất bại: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS SSO 登录失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS SSO 登入失敗：%@"
+          }
+        }
+      }
+    },
+    "Auto Generate" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "자동 생성"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tự động tạo"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动生成"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動產生"
           }
         }
       }
@@ -3021,6 +3923,36 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Cache Name / Replication Group ID" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "캐시 이름 / 복제 그룹 ID"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cache Name / Replication Group ID"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缓存名称 / 复制组 ID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快取名稱 / 複寫群組 ID"
+          }
+        }
+      }
+    },
     "Cake" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -3086,6 +4018,66 @@
     },
     "Cannot reach iCloud. Changes sync when this device is back online." : {
 
+    },
+    "Cannot read ~/.aws/config." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "~/.aws/config를 읽을 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không đọc được ~/.aws/config."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取 ~/.aws/config。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取 ~/.aws/config。"
+          }
+        }
+      }
+    },
+    "Cannot read ~/.aws/credentials." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "~/.aws/credentials를 읽을 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không đọc được ~/.aws/credentials."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取 ~/.aws/credentials。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取 ~/.aws/credentials。"
+          }
+        }
+      }
     },
     "Cannot Save" : {
       "localizations" : {
@@ -3207,6 +4199,36 @@
         }
       }
     },
+    "Change Host to a name the certificate covers." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "호스트를 인증서가 포함하는 이름으로 변경하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đổi Máy chủ thành tên mà chứng chỉ bao gồm."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将主机改为证书涵盖的名称。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將主機改為憑證涵蓋的名稱。"
+          }
+        }
+      }
+    },
     "Change Not Saved" : {
 
     },
@@ -3245,9 +4267,99 @@
     "Changes Not Saved" : {
 
     },
+    "Changing a column's type re-reads every value in it. Text that looks like a number becomes one, so '007' is stored as 7." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "열의 유형을 변경하면 그 열의 모든 값을 다시 읽습니다. 숫자처럼 보이는 텍스트는 숫자가 되므로 '007'은 7로 저장됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đổi kiểu của một cột sẽ đọc lại mọi giá trị trong cột. Văn bản trông giống số sẽ thành số, nên '007' được lưu thành 7."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更改列的类型会重新读取其中的每个值。看起来像数字的文本会变成数字，因此 '007' 会存储为 7。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "變更欄位的類型會重新讀取其中的每個值。看起來像數字的文字會變成數字，因此 '007' 會儲存為 7。"
+          }
+        }
+      }
+    },
+    "Charset" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "문자 집합"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bộ ký tự"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字符集"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字集"
+          }
+        }
+      }
+    },
     "Chat" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Check that the Client Key path points to a valid PEM private key." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "클라이언트 키 경로가 올바른 PEM 개인 키를 가리키는지 확인하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kiểm tra đường dẫn Khóa máy khách trỏ tới một khóa riêng PEM hợp lệ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请检查客户端密钥路径是否指向有效的 PEM 私钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請檢查用戶端金鑰路徑是否指向有效的 PEM 私密金鑰。"
+          }
+        }
+      }
     },
     "Check the connection's TOTP secret, and that this device sets its clock automatically." : {
 
@@ -3572,6 +4684,96 @@
         }
       }
     },
+    "Choose the client certificate and key on the connection's Network tab." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결의 네트워크 탭에서 클라이언트 인증서와 키를 선택하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn chứng chỉ và khóa máy khách trong thẻ Mạng của kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在连接的“网络”标签页中选择客户端证书和密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在連線的「網路」標籤頁中選擇用戶端憑證和金鑰。"
+          }
+        }
+      }
+    },
+    "Choose the extension's file again in Edit Connection." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 편집에서 확장 프로그램의 파일을 다시 선택하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn lại tệp của extension trong Sửa kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在“编辑连接”中重新选择扩展的文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在「編輯連線」中重新選擇延伸功能的檔案。"
+          }
+        }
+      }
+    },
+    "Choose the file again, or type a path that starts with / or ~." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "파일을 다시 선택하거나 / 또는 ~로 시작하는 경로를 입력하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn lại tệp, hoặc nhập đường dẫn bắt đầu bằng / hoặc ~."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新选择文件，或输入以 / 或 ~ 开头的路径。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新選擇檔案，或輸入以 / 或 ~ 開頭的路徑。"
+          }
+        }
+      }
+    },
     "Circle" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -3744,6 +4946,15 @@
         }
       }
     },
+    "ClickHouse ended the result partway through a row, so the rows that arrived are incomplete." : {
+
+    },
+    "ClickHouse returned HTTP %lld." : {
+
+    },
+    "ClickHouse returned no definition for view '%@'." : {
+
+    },
     "Client certificate" : {
       "localizations" : {
         "ko" : {
@@ -3904,6 +5115,36 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Collation" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "정렬 규칙"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đối chiếu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "排序规则"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "定序"
+          }
+        }
+      }
+    },
     "Color" : {
       "localizations" : {
         "ko" : {
@@ -3991,6 +5232,36 @@
     "Command" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Comment" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "주석"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ghi chú"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "注释"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "註解"
+          }
+        }
+      }
     },
     "Commit" : {
 
@@ -5031,6 +6302,96 @@
         }
       }
     },
+    "Correct the Key Passphrase on the connection's Network tab." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결의 네트워크 탭에서 키 암호를 수정하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sửa Cụm mật khẩu của khóa trong thẻ Mạng của kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在连接的“网络”标签页中更正密钥口令。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在連線的「網路」標籤頁中修正金鑰密碼短語。"
+          }
+        }
+      }
+    },
+    "Could not assume role \"%@\": %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "역할 \"%@\"을(를) 맡을 수 없습니다: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể đảm nhận vai trò \"%@\": %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法代入角色 \"%@\"：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法擔任角色「%@」：%@"
+          }
+        }
+      }
+    },
+    "Could not build the %1$@ endpoint for the AWS region \"%2$@\"." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS 리전 \"%2$@\"의 %1$@ 엔드포인트를 만들 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể tạo endpoint %1$@ cho AWS region \"%2$@\"."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法为 AWS 区域 \"%2$@\" 构建 %1$@ 终端节点。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法為 AWS 區域「%2$@」建立 %1$@ 端點。"
+          }
+        }
+      }
+    },
     "Could not complete Oracle native network encryption with this server. It may require an encryption or checksum algorithm the driver does not support." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -5145,6 +6506,36 @@
         }
       }
     },
+    "Could not determine an AWS region for \"%@\". Set the AWS Region field." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\"의 AWS 리전을 확인할 수 없습니다. AWS 리전 필드를 설정하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không xác định được AWS region cho \"%@\". Hãy điền trường AWS Region."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法确定 \"%@\" 的 AWS 区域。请设置“AWS 区域”字段。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法判斷「%@」的 AWS 區域。請設定「AWS 區域」欄位。"
+          }
+        }
+      }
+    },
     "Could not install the sample database: %@" : {
       "localizations" : {
         "ko" : {
@@ -5173,6 +6564,36 @@
         }
       }
     },
+    "Could not load the extension \"%@\"." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "확장 프로그램 \"%@\"을(를) 불러올 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tải được extension \"%@\"."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载扩展 \"%@\"。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法載入延伸功能「%@」。"
+          }
+        }
+      }
+    },
     "Could Not Load the Referenced Row" : {
       "localizations" : {
         "ko" : {
@@ -5197,6 +6618,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法載入參照列"
+          }
+        }
+      }
+    },
+    "Could not reach AWS SSO: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS SSO에 연결할 수 없습니다: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không kết nối được tới AWS SSO: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接 AWS SSO：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連上 AWS SSO：%@"
+          }
+        }
+      }
+    },
+    "Could not reach Microsoft Entra ID: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID에 연결할 수 없습니다: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không kết nối được tới Microsoft Entra ID: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接 Microsoft Entra ID：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連上 Microsoft Entra ID：%@"
           }
         }
       }
@@ -5233,6 +6714,36 @@
         }
       }
     },
+    "Could not run the credential_process command for profile \"%@\": %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"의 credential_process 명령을 실행할 수 없습니다: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không chạy được lệnh credential_process cho hồ sơ \"%@\": %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法运行配置 \"%@\" 的 credential_process 命令：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法執行設定檔「%@」的 credential_process 指令：%@"
+          }
+        }
+      }
+    },
     "Could not start a connection." : {
       "localizations" : {
         "ko" : {
@@ -5257,6 +6768,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法啟動連線。"
+          }
+        }
+      }
+    },
+    "Could not write this text as %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 텍스트를 %@(으)로 기록할 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể ghi văn bản này ở dạng %@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法以 %@ 写入此文本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法以 %@ 寫入此文字。"
           }
         }
       }
@@ -5796,6 +7337,8 @@
       }
     },
     "Default" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -6297,6 +7840,36 @@
     },
     "Digits" : {
 
+    },
+    "Directory (Tenant) ID" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "디렉터리(테넌트) ID"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Directory (Tenant) ID"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目录（租户）ID"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目錄（租用戶）ID"
+          }
+        }
+      }
     },
     "Disabled" : {
       "localizations" : {
@@ -7064,6 +8637,66 @@
         }
       }
     },
+    "Enter the entry point the extension's documentation names." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "확장 프로그램 문서에 나와 있는 엔트리 포인트를 입력하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhập entry point mà tài liệu của extension ghi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输入扩展文档中给出的入口点。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輸入延伸功能文件中寫明的進入點。"
+          }
+        }
+      }
+    },
+    "Enter the Key Passphrase on the connection's Network tab." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결의 네트워크 탭에서 키 암호를 입력하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhập Cụm mật khẩu của khóa trong thẻ Mạng của kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在连接的“网络”标签页中输入密钥口令。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在連線的「網路」標籤頁中輸入金鑰密碼短語。"
+          }
+        }
+      }
+    },
     "Enter the passphrase to decrypt and import connections." : {
       "localizations" : {
         "ko" : {
@@ -7359,6 +8992,96 @@
         }
       }
     },
+    "Expected '.method()' after the collection reference" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "컬렉션 참조 뒤에 '.method()'가 필요합니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cần '.method()' sau tham chiếu collection"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "集合引用后应为 '.method()'"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "集合參照後應為 '.method()'"
+          }
+        }
+      }
+    },
+    "Expected ']' after the collection name" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "컬렉션 이름 뒤에 ']'가 필요합니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cần ']' sau tên collection"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "集合名称后应为 ']'"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "集合名稱後應為 ']'"
+          }
+        }
+      }
+    },
+    "Expected a quoted collection name" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "따옴표로 묶은 컬렉션 이름이 필요합니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cần tên collection đặt trong dấu nháy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "应为带引号的集合名称"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "應為加上引號的集合名稱"
+          }
+        }
+      }
+    },
     "Expected true, false or null." : {
 
     },
@@ -7451,6 +9174,96 @@
         }
       }
     },
+    "Expression" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "표현식"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biểu thức"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "表达式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "運算式"
+          }
+        }
+      }
+    },
+    "Extensions" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "확장 프로그램"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Extension"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "扩展"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "延伸功能"
+          }
+        }
+      }
+    },
+    "Extensions load only for a database file on this Mac, not for a database on a server." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "확장 프로그램은 서버의 데이터베이스가 아닌 이 Mac에 있는 데이터베이스 파일에서만 불러옵니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Extension chỉ được tải cho tệp cơ sở dữ liệu trên máy Mac này, không cho cơ sở dữ liệu trên máy chủ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "扩展只为这台 Mac 上的数据库文件加载，不为服务器上的数据库加载。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "延伸功能只會為這台 Mac 上的資料庫檔案載入，不會為伺服器上的資料庫載入。"
+          }
+        }
+      }
+    },
     "External Drive" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -7489,6 +9302,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "失敗"
+          }
+        }
+      }
+    },
+    "Failed to build the SSO portal URL for profile \"%@\"." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"의 SSO 포털 URL을 만들지 못했습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tạo được URL cổng SSO cho hồ sơ \"%@\"."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法为配置 \"%@\" 构建 SSO 门户 URL。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法為設定檔「%@」建立 SSO 入口網站 URL。"
+          }
+        }
+      }
+    },
+    "Failed to decode the SSO portal response for profile \"%@\"." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"의 SSO 포털 응답을 디코딩하지 못했습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không giải mã được phản hồi của cổng SSO cho hồ sơ \"%@\"."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法解码配置 \"%@\" 的 SSO 门户响应。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法解碼設定檔「%@」的 SSO 入口網站回應。"
           }
         }
       }
@@ -7637,6 +9510,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法解析連線檔案：%@"
+          }
+        }
+      }
+    },
+    "Failed to reach the SSO portal for profile \"%@\": %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"의 SSO 포털에 연결하지 못했습니다: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không kết nối được tới cổng SSO cho hồ sơ \"%@\": %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接配置 \"%@\" 的 SSO 门户：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連上設定檔「%@」的 SSO 入口網站：%@"
           }
         }
       }
@@ -7891,6 +9794,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "檔案"
+          }
+        }
+      }
+    },
+    "File path or paste JSON" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "파일 경로 또는 JSON 붙여넣기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đường dẫn tệp hoặc dán JSON"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件路径或粘贴 JSON"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檔案路徑或貼上 JSON"
           }
         }
       }
@@ -8187,6 +10120,36 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Generated" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "생성됨"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Được tạo"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "產生"
+          }
+        }
+      }
+    },
     "Get Started" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -8212,6 +10175,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開始使用"
+          }
+        }
+      }
+    },
+    "getCollection requires a collection name" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "getCollection에는 컬렉션 이름이 필요합니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "getCollection cần tên collection"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "getCollection 需要集合名称"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "getCollection 需要集合名稱"
+          }
+        }
+      }
+    },
+    "getCollection takes a single quoted collection name" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "getCollection은 따옴표로 묶은 컬렉션 이름 하나만 받습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "getCollection nhận một tên collection duy nhất trong dấu nháy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "getCollection 只接受一个带引号的集合名称"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "getCollection 只接受一個加上引號的集合名稱"
           }
         }
       }
@@ -8360,6 +10383,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "前往頁面…"
+          }
+        }
+      }
+    },
+    "Google Cloud IAM (Application Default)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google Cloud IAM(애플리케이션 기본값)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google Cloud IAM (Application Default)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google Cloud IAM（应用默认凭据）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google Cloud IAM（應用程式預設憑證）"
+          }
+        }
+      }
+    },
+    "Google Cloud IAM (Service Account)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google Cloud IAM(서비스 계정)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google Cloud IAM (Service Account)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google Cloud IAM（服务账户）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google Cloud IAM（服務帳號）"
           }
         }
       }
@@ -8768,6 +10851,34 @@
         }
       }
     },
+    "Hide Suggestions" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "제안 숨기기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ẩn gợi ý"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏建议"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏建議"
+          }
+        }
+      }
+    },
     "Histogram" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -8863,6 +10974,9 @@
       "generatesSymbol" : false
     },
     "If the SSH server asks for a verification code, TablePro asks you for it when you connect." : {
+
+    },
+    "The SSH server asked “%@”, which TablePro can answer only while it is open." : {
 
     },
     "iCloud" : {
@@ -9093,6 +11207,9 @@
       }
     },
     "Icon" : {
+
+    },
+    "Identical Rows" : {
 
     },
     "If items appear on another device but not here, refresh forces a full re-download from iCloud. This may take a moment on slow networks." : {
@@ -9830,6 +11947,66 @@
     "Invalid JSON" : {
 
     },
+    "Invalid JSON: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "잘못된 JSON: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "JSON không hợp lệ: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无效的 JSON: %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "JSON 無效：%@"
+          }
+        }
+      }
+    },
+    "Invalid MongoDB syntax: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "잘못된 MongoDB 구문: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cú pháp MongoDB không hợp lệ: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无效的 MongoDB 语法: %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MongoDB 語法無效：%@"
+          }
+        }
+      }
+    },
     "Invalid number." : {
 
     },
@@ -10094,7 +12271,32 @@
       }
     },
     "Keep Existing, Add Queries" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기존 항목 유지, 쿼리 추가"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giữ bản hiện có, thêm truy vấn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留现有项，添加查询"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留現有項目，新增查詢"
+          }
+        }
+      }
     },
     "Keep your connections, groups, and tags the same on your iPhone, iPad, and Mac." : {
       "extractionState" : "stale",
@@ -10161,6 +12363,9 @@
     "Key" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Key Matches Several Rows" : {
+
     },
     "Key Not Found" : {
 
@@ -10402,6 +12607,9 @@
     "Light Bulb" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The SSH server asks for more to finish signing in." : {
+
     },
     "like" : {
       "localizations" : {
@@ -10857,12 +13065,48 @@
         }
       }
     },
+    "TOTP" : {
+
+    },
+    "The SSH server does not accept keyboard-interactive sign-in. It accepts %@." : {
+
+    },
     "lowercase" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
     "Mac socket %@" : {
 
+    },
+    "macOS blocks a library downloaded from the internet. If you trust it, run: xattr -d com.apple.quarantine %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS는 인터넷에서 다운로드한 라이브러리를 차단합니다. 신뢰할 수 있다면 다음을 실행하십시오: xattr -d com.apple.quarantine %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS chặn thư viện tải về từ internet. Nếu bạn tin tưởng thư viện này, hãy chạy: xattr -d com.apple.quarantine %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 会阻止从互联网下载的库。如果你信任它，请运行：xattr -d com.apple.quarantine %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 會封鎖從網際網路下載的程式庫。如果你信任它，請執行：xattr -d com.apple.quarantine %@"
+          }
+        }
+      }
     },
     "Magnifying Glass" : {
       "extractionState" : "manual",
@@ -11053,6 +13297,34 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Matches “%@”" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”과(와) 일치"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trùng với “%@”"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与“%@”匹配"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與「%@」相符"
+          }
+        }
+      }
+    },
     "Materialized View" : {
 
     },
@@ -11071,6 +13343,96 @@
     "Mesh" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Microsoft Entra ID needs you to sign in again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID에 다시 로그인해야 합니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID cần bạn đăng nhập lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 需要你重新登录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 需要你重新登入。"
+          }
+        }
+      }
+    },
+    "Microsoft Entra ID returned an unexpected response." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID가 예기치 않은 응답을 반환했습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID trả về phản hồi không mong đợi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 返回了意外的响应。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 傳回了非預期的回應。"
+          }
+        }
+      }
+    },
+    "Microsoft Entra ID sign-in failed: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 로그인 실패: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đăng nhập Microsoft Entra ID thất bại: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 登录失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 登入失敗：%@"
+          }
+        }
+      }
     },
     "Microsoft Entra ID Sign-In Required" : {
       "localizations" : {
@@ -11096,6 +13458,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "需要 Microsoft Entra ID 登入"
+          }
+        }
+      }
+    },
+    "Missing argument: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "누락된 인수: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thiếu đối số: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缺少参数：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缺少引數：%@"
           }
         }
       }
@@ -11191,6 +13583,9 @@
           }
         }
       }
+    },
+    "More than one row reads as this key, because a SQLite column with no type keeps a number and the same text apart. Change these rows with a query." : {
+
     },
     "Mountains" : {
       "extractionState" : "manual",
@@ -11321,6 +13716,39 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Password (optional)" : {
+
+    },
+    "my-cache" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "my-cache"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "my-cache"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "my-cache"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "my-cache"
+          }
+        }
+      }
+    },
     "MySQL, PostgreSQL, SQL Server, Oracle, Redis, SQLite, DuckDB, and more." : {
       "localizations" : {
         "ko" : {
@@ -11350,6 +13778,8 @@
       }
     },
     "Name" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -12193,6 +14623,34 @@
     "No SSH username is set for %@." : {
 
     },
+    "No Table Selected" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택된 테이블 없음"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chưa chọn bảng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未选择表"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未選擇資料表"
+          }
+        }
+      }
+    },
     "No row found in %@ where %@ = '%@'" : {
       "localizations" : {
         "ko" : {
@@ -12433,6 +14891,39 @@
         }
       }
     },
+    "Open this connection in TablePro and connect from there to answer the question." : {
+
+    },
+    "Prompt at Connect" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 시 입력 요청"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhắc khi kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接时提示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線時提示"
+          }
+        }
+      }
+    },
     "not equals" : {
       "localizations" : {
         "ko" : {
@@ -12614,6 +15105,8 @@
       }
     },
     "Nullable" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -12762,6 +15255,126 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ON DELETE %@"
+          }
+        }
+      }
+    },
+    "On the connection's Network tab, choose the server's CA certificate under Verify Identity or Verify CA. Required (skip verify) also connects, but does not check the certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결의 네트워크 탭에서 신원 확인 또는 CA 확인 아래에 서버의 CA 인증서를 선택하십시오. 필수(인증서 검증 건너뛰기)로도 연결되지만 인증서는 확인하지 않습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trong thẻ Mạng của kết nối, chọn chứng chỉ CA của máy chủ ở Xác minh danh tính hoặc Xác minh CA. Bắt buộc (bỏ qua xác minh) cũng kết nối được, nhưng không kiểm tra chứng chỉ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在连接的“网络”标签页中，在“验证身份”或“验证 CA”下选择服务器的 CA 证书。“必需（跳过验证）”也能连接，但不会检查证书。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在連線的「網路」標籤頁中，於「驗證身分」或「驗證 CA」下選擇伺服器的 CA 憑證。「必要（略過驗證）」也能連線，但不會檢查憑證。"
+          }
+        }
+      }
+    },
+    "On the connection's Network tab, set SSL Mode to Disabled." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결의 네트워크 탭에서 SSL 모드를 비활성화됨으로 설정하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trong thẻ Mạng của kết nối, đặt Chế độ SSL thành Đã tắt."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在连接的“网络”标签页中，将“SSL 模式”设为“已禁用”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在連線的「網路」標籤頁中，將「SSL 模式」設為「已停用」。"
+          }
+        }
+      }
+    },
+    "On the connection's Network tab, set SSL Mode to Verify Identity, or to Required to skip the certificate check." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결의 네트워크 탭에서 SSL 모드를 신원 확인으로 설정하거나, 인증서 확인을 건너뛰려면 필수로 설정하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trong thẻ Mạng của kết nối, đặt Chế độ SSL thành Xác minh danh tính, hoặc thành Bắt buộc để bỏ qua kiểm tra chứng chỉ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在连接的“网络”标签页中，将“SSL 模式”设为“验证身份”，或设为“必填”以跳过证书检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在連線的「網路」標籤頁中，將「SSL 模式」設為「驗證身分」，或設為「必填」以略過憑證檢查。"
+          }
+        }
+      }
+    },
+    "On Update" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "업데이트 시"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khi cập nhật"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新时"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新時"
           }
         }
       }
@@ -13086,9 +15699,6 @@
     "Open Table" : {
 
     },
-    "Open this connection in TablePro and connect from there to answer the question." : {
-
-    },
     "Open this connection in TablePro on the Mac, or edit it and choose a private key that is not on a security key." : {
 
     },
@@ -13241,6 +15851,66 @@
         }
       }
     },
+    "Optional, for a single-tenant directory" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택 사항, 단일 테넌트 디렉터리용"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tùy chọn, cho thư mục một tenant"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选，用于单租户目录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選用，用於單一租用戶目錄"
+          }
+        }
+      }
+    },
+    "Optional, for temporary credentials" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택 사항, 임시 자격 증명용"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tùy chọn, cho thông tin xác thực tạm thời"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选，用于临时凭据"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選用，用於臨時憑證"
+          }
+        }
+      }
+    },
     "OR" : {
       "localizations" : {
         "ko" : {
@@ -13387,6 +16057,36 @@
     "out-of-band check" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Output" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "출력"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đầu ra"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输出"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輸出"
+          }
+        }
+      }
     },
     "Package" : {
       "extractionState" : "manual",
@@ -13545,6 +16245,8 @@
       }
     },
     "Password" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13571,9 +16273,6 @@
           }
         }
       }
-    },
-    "Password (optional)" : {
-
     },
     "Passwords are excluded by default. To include them, set a passphrase. The file is encrypted with it." : {
       "localizations" : {
@@ -13886,6 +16585,34 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Pick a table to browse its rows." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "테이블을 선택하여 행을 탐색하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn một bảng để xem các dòng của nó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择一个表以浏览其中的行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇一個資料表以瀏覽其中的列。"
+          }
+        }
+      }
+    },
     "Pie Chart" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -14101,6 +16828,8 @@
       }
     },
     "Primary Key" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -14244,32 +16973,302 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "Prompt at Connect" : {
+    "Profile \"%@\" has a source_profile chain that is too long to resolve." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "연결 시 입력 요청"
+            "value" : "프로필 \"%@\"의 source_profile 체인이 너무 길어 확인할 수 없습니다."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nhắc khi kết nối"
+            "value" : "Hồ sơ \"%@\" có chuỗi source_profile quá dài để phân giải."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "连接时提示"
+            "value" : "配置 \"%@\" 的 source_profile 链太长，无法解析。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "連線時提示"
+            "value" : "設定檔「%@」的 source_profile 鏈太長，無法解析。"
+          }
+        }
+      }
+    },
+    "Profile \"%@\" in ~/.aws/config is missing sso_account_id or sso_role_name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "~/.aws/config의 프로필 \"%@\"에 sso_account_id 또는 sso_role_name이 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hồ sơ \"%@\" trong ~/.aws/config thiếu sso_account_id hoặc sso_role_name."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "~/.aws/config 中的配置 \"%@\" 缺少 sso_account_id 或 sso_role_name。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "~/.aws/config 中的設定檔「%@」缺少 sso_account_id 或 sso_role_name。"
+          }
+        }
+      }
+    },
+    "Profile \"%@\" in ~/.aws/config is missing sso_start_url or sso_region." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "~/.aws/config의 프로필 \"%@\"에 sso_start_url 또는 sso_region이 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hồ sơ \"%@\" trong ~/.aws/config thiếu sso_start_url hoặc sso_region."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "~/.aws/config 中的配置 \"%@\" 缺少 sso_start_url 或 sso_region。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "~/.aws/config 中的設定檔「%@」缺少 sso_start_url 或 sso_region。"
+          }
+        }
+      }
+    },
+    "Profile \"%@\" not found in ~/.aws/config." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "~/.aws/config에서 프로필 \"%@\"을(를) 찾을 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy hồ sơ \"%@\" trong ~/.aws/config."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 ~/.aws/config 中找不到配置 \"%@\"。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 ~/.aws/config 中找不到設定檔「%@」。"
+          }
+        }
+      }
+    },
+    "Profile \"%@\" requires an MFA token code, which is not supported yet. Use a profile without mfa_serial." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"에는 MFA 토큰 코드가 필요하며, 이는 아직 지원되지 않습니다. mfa_serial이 없는 프로필을 사용하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hồ sơ \"%@\" cần mã MFA, hiện chưa được hỗ trợ. Hãy dùng hồ sơ không có mfa_serial."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置 \"%@\" 需要 MFA 令牌代码，目前尚不支持。请使用不含 mfa_serial 的配置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定檔「%@」需要 MFA 權杖代碼，目前尚不支援。請使用不含 mfa_serial 的設定檔。"
+          }
+        }
+      }
+    },
+    "Profile \"%@\" sets role_arn but has no source_profile or credential_source to provide base credentials." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"은(는) role_arn을 설정하지만 기본 자격 증명을 제공할 source_profile 또는 credential_source가 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hồ sơ \"%@\" đặt role_arn nhưng không có source_profile hoặc credential_source để cung cấp thông tin xác thực gốc."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置 \"%@\" 设置了 role_arn，但没有提供基础凭据的 source_profile 或 credential_source。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定檔「%@」設定了 role_arn，但沒有提供基礎憑證的 source_profile 或 credential_source。"
+          }
+        }
+      }
+    },
+    "Profile \"%@\" signs in with a web identity token, which is not supported yet." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"은(는) 웹 ID 토큰으로 로그인하며, 이는 아직 지원되지 않습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hồ sơ \"%@\" đăng nhập bằng web identity token, hiện chưa được hỗ trợ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置 \"%@\" 使用 Web 身份令牌登录，目前尚不支持。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定檔「%@」使用 Web 身分權杖登入，目前尚不支援。"
+          }
+        }
+      }
+    },
+    "Profile \"%@\" uses credential_source \"%@\", which is not supported on the desktop app." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"은(는) credential_source \"%@\"을(를) 사용하며, 이는 데스크톱 앱에서 지원되지 않습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hồ sơ \"%@\" dùng credential_source \"%@\", không được hỗ trợ trên ứng dụng máy tính."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置 \"%@\" 使用 credential_source \"%@\"，桌面应用不支持该方式。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定檔「%@」使用 credential_source「%@」，桌面 App 不支援此方式。"
+          }
+        }
+      }
+    },
+    "Profile \"%@\" was not found, or has no access keys or credential_process, in ~/.aws/config or ~/.aws/credentials." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "~/.aws/config 또는 ~/.aws/credentials에서 프로필 \"%@\"을(를) 찾을 수 없거나, 액세스 키 또는 credential_process가 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy hồ sơ \"%@\", hoặc hồ sơ không có access key hay credential_process, trong ~/.aws/config hoặc ~/.aws/credentials."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 ~/.aws/config 或 ~/.aws/credentials 中找不到配置 \"%@\"，或该配置没有访问密钥或 credential_process。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 ~/.aws/config 或 ~/.aws/credentials 中找不到設定檔「%@」，或該設定檔沒有存取金鑰或 credential_process。"
+          }
+        }
+      }
+    },
+    "Profile Name" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 이름"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tên hồ sơ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置名称"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定檔名稱"
           }
         }
       }
@@ -14652,8 +17651,68 @@
     "Ran %d statements" : {
 
     },
+    "RDS Endpoint" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RDS 엔드포인트"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RDS Endpoint"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RDS 终端节点"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RDS 端點"
+          }
+        }
+      }
+    },
     "Read it with a command in Query." : {
 
+    },
+    "Read the foreign key check at the end of this script before committing. Run in an editor it reports the rows that break the new key, but it does not stop the script." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "커밋하기 전에 이 스크립트 끝의 외래 키 검사를 읽으십시오. 편집기에서 실행하면 새 키를 위반하는 행을 보고하지만 스크립트를 중지하지는 않습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hãy đọc phần kiểm tra khóa ngoại ở cuối script này trước khi commit. Khi chạy trong trình soạn thảo, nó báo các dòng vi phạm khóa mới, nhưng không dừng script."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提交前请阅读此脚本末尾的外键检查。在编辑器中运行时，它会报告违反新键的行，但不会停止脚本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提交前請先閱讀此指令稿結尾的外鍵檢查。在編輯器中執行時，它會回報違反新鍵的列，但不會停止指令稿。"
+          }
+        }
+      }
     },
     "read-only" : {
       "localizations" : {
@@ -14740,6 +17799,9 @@
           }
         }
       }
+    },
+    "Reconnect and Roll Back?" : {
+
     },
     "Reconnect and try again." : {
       "localizations" : {
@@ -14909,6 +17971,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Redis 連線失敗"
+          }
+        }
+      }
+    },
+    "Redis queued %@ instead of running it." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redis가 %@을(를) 실행하지 않고 대기열에 넣었습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redis đã đưa %@ vào hàng đợi thay vì chạy lệnh."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redis 将 %@ 加入了队列，而没有运行它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redis 將 %@ 放入佇列，而沒有執行它。"
           }
         }
       }
@@ -15110,6 +18200,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "從「最近」中移除"
+          }
+        }
+      }
+    },
+    "Remove the extensions from this connection in Edit Connection." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 편집에서 이 연결의 확장 프로그램을 제거하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa các extension khỏi kết nối này trong Sửa kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在“编辑连接”中从此连接移除扩展。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在「編輯連線」中從此連線移除延伸功能。"
+          }
+        }
+      }
+    },
+    "Remove the second entry." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "두 번째 항목을 제거하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa mục thứ hai."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除第二个条目。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除第二個項目。"
           }
         }
       }
@@ -15549,6 +18699,36 @@
         }
       }
     },
+    "Role \"%@\" in account \"%@\" is not accessible via SSO. Check role permissions in IAM Identity Center." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "계정 \"%2$@\"의 역할 \"%1$@\"에 SSO로 접근할 수 없습니다. IAM Identity Center에서 역할 권한을 확인하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể truy cập vai trò \"%@\" trong tài khoản \"%@\" qua SSO. Hãy kiểm tra quyền của vai trò trong IAM Identity Center."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法通过 SSO 访问账户 \"%2$@\" 中的角色 \"%1$@\"。请在 IAM Identity Center 中检查角色权限。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法透過 SSO 存取帳號「%2$@」中的角色「%1$@」。請在 IAM Identity Center 中檢查角色權限。"
+          }
+        }
+      }
+    },
     "Roll Back" : {
 
     },
@@ -15930,9 +19110,6 @@
     "Runs the statement at the cursor, or the selected text." : {
 
     },
-    "SSH Sign-In" : {
-
-    },
     "Safe Mode" : {
       "localizations" : {
         "ko" : {
@@ -16051,6 +19228,9 @@
         }
       }
     },
+    "Save and Reconnect" : {
+
+    },
     "Save Changes?" : {
       "localizations" : {
         "ko" : {
@@ -16150,6 +19330,9 @@
     "Saved passwords can only be exported to an encrypted file." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Saving reconnects “%@”, which has an open transaction. Reconnecting rolls it back and discards its uncommitted changes." : {
+
     },
     "Saved queries are limited to %@ so they fit in iCloud." : {
 
@@ -16347,6 +19530,36 @@
         }
       }
     },
+    "Secret Access Key" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보안 액세스 키"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Secret Access Key"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Secret Access Key"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Secret Access Key"
+          }
+        }
+      }
+    },
     "Section" : {
       "localizations" : {
         "ko" : {
@@ -16529,9 +19742,69 @@
         }
       }
     },
+    "Server response: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버 응답: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phản hồi của máy chủ: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器响应：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器回應：%@"
+          }
+        }
+      }
+    },
     "Servers & Network" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Service Account Key" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서비스 계정 키"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa tài khoản dịch vụ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务账号密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服務帳戶金鑰"
+          }
+        }
+      }
     },
     "Service Name" : {
       "localizations" : {
@@ -16593,6 +19866,36 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Session Token" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "세션 토큰"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Session Token"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Session Token"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Session Token"
+          }
+        }
+      }
+    },
     "Set a passphrase to include passwords." : {
       "localizations" : {
         "ko" : {
@@ -16617,6 +19920,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "若要包含密碼，請設定一組通關密語。"
+          }
+        }
+      }
+    },
+    "Set the Microsoft Entra ID application (client) ID for this connection." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 연결의 Microsoft Entra ID 애플리케이션(클라이언트) ID를 설정하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hãy đặt application (client) ID của Microsoft Entra ID cho kết nối này."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请为此连接设置 Microsoft Entra ID 应用程序（客户端）ID。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請為此連線設定 Microsoft Entra ID 應用程式（用戶端）ID。"
           }
         }
       }
@@ -17058,6 +20391,36 @@
         }
       }
     },
+    "Sign in to Microsoft Entra ID to use this connection." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 연결을 사용하려면 Microsoft Entra ID에 로그인하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đăng nhập Microsoft Entra ID để dùng kết nối này."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录 Microsoft Entra ID 以使用此连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登入 Microsoft Entra ID 以使用此連線。"
+          }
+        }
+      }
+    },
     "Sign in to Microsoft Entra ID with your browser?" : {
       "localizations" : {
         "ko" : {
@@ -17088,6 +20451,36 @@
     },
     "Signs in with the SSH profile's password from iCloud Keychain." : {
 
+    },
+    "Sign it again with: codesign --force --sign - %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음 명령으로 다시 서명하십시오: codesign --force --sign - %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ký lại bằng: codesign --force --sign - %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用以下命令重新签名：codesign --force --sign - %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用以下指令重新簽署：codesign --force --sign - %@"
+          }
+        }
+      }
     },
     "Skip" : {
       "extractionState" : "stale",
@@ -17251,6 +20644,66 @@
         }
       }
     },
+    "SQLite did not allow extension loading on this connection." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQLite가 이 연결에서 확장 프로그램 불러오기를 허용하지 않았습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQLite không cho phép tải extension trên kết nối này."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQLite 不允许在此连接上加载扩展。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQLite 不允許在此連線上載入延伸功能。"
+          }
+        }
+      }
+    },
+    "SQLite did not turn extension loading off again after loading." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQLite가 불러온 후 확장 프로그램 불러오기를 다시 끄지 않았습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQLite không tắt lại việc tải extension sau khi tải."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQLite 在加载后没有再次关闭扩展加载。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQLite 在載入後沒有再次關閉延伸功能載入。"
+          }
+        }
+      }
+    },
     "Square" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -17372,6 +20825,9 @@
           }
         }
       }
+    },
+    "SSH Sign-In" : {
+
     },
     "SSH private key not found: %@" : {
       "extractionState" : "manual",
@@ -17609,6 +21065,216 @@
     "SSL mode “%@” is not recognized, so the connection imports with SSL required." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "SSO portal returned HTTP %lld for profile \"%@\"." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSO 포털이 프로필 \"%2$@\"에 대해 HTTP %1$lld을(를) 반환했습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cổng SSO trả về HTTP %lld cho hồ sơ \"%@\"."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSO 门户为配置 \"%2$@\" 返回了 HTTP %1$lld。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSO 入口網站為設定檔「%2$@」傳回 HTTP %1$lld。"
+          }
+        }
+      }
+    },
+    "SSO role credentials for profile \"%@\" were already expired. Run 'aws sso login --profile %@' to refresh." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"의 SSO 역할 자격 증명이 이미 만료되었습니다. 갱신하려면 'aws sso login --profile %@'을(를) 실행하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thông tin xác thực vai trò SSO cho hồ sơ \"%@\" đã hết hạn. Chạy 'aws sso login --profile %@' để làm mới."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置 \"%@\" 的 SSO 角色凭据已过期。请运行 'aws sso login --profile %@' 刷新。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定檔「%@」的 SSO 角色憑證已過期。請執行 'aws sso login --profile %@' 重新整理。"
+          }
+        }
+      }
+    },
+    "SSO session \"%@\" in ~/.aws/config is missing sso_start_url or sso_region." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "~/.aws/config의 SSO 세션 \"%@\"에 sso_start_url 또는 sso_region이 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phiên SSO \"%@\" trong ~/.aws/config thiếu sso_start_url hoặc sso_region."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "~/.aws/config 中的 SSO 会话 \"%@\" 缺少 sso_start_url 或 sso_region。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "~/.aws/config 中的 SSO 工作階段「%@」缺少 sso_start_url 或 sso_region。"
+          }
+        }
+      }
+    },
+    "SSO session \"%@\" referenced by profile \"%@\" was not found in ~/.aws/config." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%2$@\"이(가) 참조하는 SSO 세션 \"%1$@\"을(를) ~/.aws/config에서 찾을 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy phiên SSO \"%@\" mà hồ sơ \"%@\" tham chiếu trong ~/.aws/config."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 ~/.aws/config 中找不到配置 \"%2$@\" 引用的 SSO 会话 \"%1$@\"。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 ~/.aws/config 中找不到設定檔「%2$@」參照的 SSO 工作階段「%1$@」。"
+          }
+        }
+      }
+    },
+    "SSO session for profile \"%@\" has expired. Run 'aws sso login --profile %@' to refresh." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"의 SSO 세션이 만료되었습니다. 갱신하려면 'aws sso login --profile %@'을(를) 실행하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phiên SSO của hồ sơ \"%@\" đã hết hạn. Chạy 'aws sso login --profile %@' để làm mới."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置 \"%@\" 的 SSO 会话已过期。请运行 'aws sso login --profile %@' 刷新。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定檔「%@」的 SSO 工作階段已過期。請執行 'aws sso login --profile %@' 重新整理。"
+          }
+        }
+      }
+    },
+    "SSO token cache for profile \"%@\" is malformed. Run 'aws sso login --profile %@' to refresh." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"의 SSO 토큰 캐시 형식이 잘못되었습니다. 갱신하려면 'aws sso login --profile %@'을(를) 실행하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bộ nhớ đệm token SSO của hồ sơ \"%@\" bị hỏng. Chạy 'aws sso login --profile %@' để làm mới."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置 \"%@\" 的 SSO 令牌缓存格式错误。请运行 'aws sso login --profile %@' 刷新。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定檔「%@」的 SSO 權杖快取格式錯誤。請執行 'aws sso login --profile %@' 重新整理。"
+          }
+        }
+      }
+    },
+    "SSO token cache not found for profile \"%@\". Run 'aws sso login --profile %@' first." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"의 SSO 토큰 캐시를 찾을 수 없습니다. 먼저 'aws sso login --profile %@'을(를) 실행하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tìm thấy bộ nhớ đệm token SSO cho hồ sơ \"%@\". Hãy chạy 'aws sso login --profile %@' trước."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到配置 \"%@\" 的 SSO 令牌缓存。请先运行 'aws sso login --profile %@'。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到設定檔「%@」的 SSO 權杖快取。請先執行 'aws sso login --profile %@'。"
+          }
+        }
+      }
     },
     "Stack" : {
       "extractionState" : "manual",
@@ -18266,9 +21932,6 @@
     "System Table" : {
 
     },
-    "TOTP" : {
-
-    },
     "TOTP Secret" : {
 
     },
@@ -18539,6 +22202,36 @@
         }
       }
     },
+    "TablePro cannot sign an RDS token for \"%@\". Enter the RDS Endpoint (for example mydb.abc123.us-east-1.rds.amazonaws.com:5432) when you connect through a port forward or bastion." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro가 \"%@\"의 RDS 토큰에 서명할 수 없습니다. 포트 포워딩이나 배스천을 통해 연결할 때는 RDS 엔드포인트(예: mydb.abc123.us-east-1.rds.amazonaws.com:5432)를 입력하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro không thể ký token RDS cho \"%@\". Hãy nhập RDS Endpoint (ví dụ mydb.abc123.us-east-1.rds.amazonaws.com:5432) khi bạn kết nối qua port forward hoặc bastion."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 无法为 \"%@\" 签署 RDS 令牌。通过端口转发或堡垒机连接时，请输入 RDS 终端节点（例如 mydb.abc123.us-east-1.rds.amazonaws.com:5432）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 無法為「%@」簽署 RDS 權杖。透過連接埠轉送或堡壘主機連線時，請輸入 RDS 端點（例如 mydb.abc123.us-east-1.rds.amazonaws.com:5432）。"
+          }
+        }
+      }
+    },
     "TablePro cannot upload changes until there is space in iCloud. Changes on this device are kept here and upload once you free up space or add storage." : {
 
     },
@@ -18571,7 +22264,32 @@
       }
     },
     "TablePro could not read your connection library, so nothing was imported." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro가 연결 라이브러리를 읽을 수 없어 아무것도 가져오지 않았습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro không đọc được thư viện kết nối của bạn, nên chưa có gì được nhập."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 无法读取你的连接库，因此未导入任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 無法讀取你的連線庫，因此沒有匯入任何內容。"
+          }
+        }
+      }
     },
     "TablePro could not read your saved connections. Nothing on this device has been changed." : {
       "localizations" : {
@@ -18917,9 +22635,6 @@
         }
       }
     },
-    "The SSH server does not accept keyboard-interactive sign-in. It accepts %@." : {
-
-    },
     "tags %@" : {
       "localizations" : {
         "ko" : {
@@ -19264,15 +22979,6 @@
     "The %d statements before it stay applied." : {
 
     },
-    "The Base32 secret from your authenticator setup. TablePro enters the code when the server asks." : {
-
-    },
-    "The SSH server asked “%@”, which TablePro can answer only while it is open." : {
-
-    },
-    "The SSH server did not accept the verification code." : {
-
-    },
     "The app and iOS versions, and your language" : {
       "localizations" : {
         "ko" : {
@@ -19301,7 +23007,73 @@
         }
       }
     },
+    "The AWS SSO sign-in timed out before it was approved." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS SSO 로그인이 승인되기 전에 시간이 초과되었습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đăng nhập AWS SSO đã hết thời gian chờ trước khi được chấp thuận."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS SSO 登录在获得批准前已超时。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS SSO 登入在獲得核准前已逾時。"
+          }
+        }
+      }
+    },
+    "The AWS SSO sign-in was denied." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS SSO 로그인이 거부되었습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đăng nhập AWS SSO đã bị từ chối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS SSO 登录被拒绝。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AWS SSO 登入遭到拒絕。"
+          }
+        }
+      }
+    },
+    "The Base32 secret from your authenticator setup. TablePro enters the code when the server asks." : {
+
+    },
     "The batch before it stays applied." : {
+
+    },
+    "The CA certificate at %@ could not be read as a PEM or DER certificate." : {
 
     },
     "The CA certificate for this connection is missing. Import it again in the connection's SSL settings." : {
@@ -19336,7 +23108,7 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "The SSH server asks for more to finish signing in." : {
+    "The SSH server did not accept the verification code." : {
 
     },
     "The certificate could not be saved to this device's keychain." : {
@@ -19395,6 +23167,14 @@
         }
       }
     },
+    "The client certificate at %@ could not be read as a PEM or DER certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The client certificate at %@ could not be read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The client certificate for this connection is missing. Import it again in the connection's SSL settings." : {
       "localizations" : {
         "ko" : {
@@ -19423,6 +23203,22 @@
         }
       }
     },
+    "The client key at %@ could not be read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The client key at %@ is encrypted. This connection needs an unencrypted key." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The client key at %@ is not an RSA or EC private key in PEM or DER form." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The client key at %1$@ does not belong to the certificate at %2$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The client key for this connection is missing. Import it again in the connection's SSL settings." : {
       "localizations" : {
         "ko" : {
@@ -19447,6 +23243,96 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此連線的用戶端金鑰遺失。請在連線的 SSL 設定中重新匯入。"
+          }
+        }
+      }
+    },
+    "The client private key could not be read. It may be malformed or in an unsupported format." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "클라이언트 개인 키를 읽을 수 없습니다. 형식이 잘못되었거나 지원되지 않는 형식일 수 있습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không đọc được khóa riêng của máy khách. Khóa có thể bị lỗi hoặc ở định dạng không được hỗ trợ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取客户端私钥。它可能已损坏或格式不受支持。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取用戶端私密金鑰。它可能已損毀或格式不受支援。"
+          }
+        }
+      }
+    },
+    "The client private key is encrypted and needs a passphrase." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "클라이언트 개인 키가 암호화되어 있어 암호가 필요합니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khóa riêng của máy khách đã được mã hóa và cần cụm mật khẩu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "客户端私钥已加密，需要口令。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用戶端私密金鑰已加密，需要密碼短語。"
+          }
+        }
+      }
+    },
+    "The code signature of \"%@\" is damaged, so macOS would stop TablePro when it loads." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\"의 코드 서명이 손상되어 불러올 때 macOS가 TablePro를 중지합니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chữ ký mã của \"%@\" bị hỏng, nên macOS sẽ dừng TablePro khi tải nó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 的代码签名已损坏，因此 macOS 会在加载时停止 TablePro。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」的程式碼簽章已損毀，因此 macOS 會在載入時停止 TablePro。"
           }
         }
       }
@@ -19479,6 +23365,9 @@
         }
       }
     },
+    "The connection moved to another database or schema. Choose the table again." : {
+
+    },
     "The connection to %@ was lost before the server answered, so its open transaction may have been committed or rolled back. It has been reconnected; check which of its changes were saved before running them again." : {
 
     },
@@ -19490,7 +23379,182 @@
       "generatesSymbol" : false
     },
     "The connections could not be saved." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결을 저장할 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không lưu được các kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法儲存連線。"
+          }
+        }
+      }
+    },
+    "The credential_process command for profile \"%@\" did not return valid credentials JSON." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"의 credential_process 명령이 올바른 자격 증명 JSON을 반환하지 않았습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lệnh credential_process cho hồ sơ \"%@\" không trả về JSON thông tin xác thực hợp lệ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置 \"%@\" 的 credential_process 命令没有返回有效的凭据 JSON。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定檔「%@」的 credential_process 指令沒有傳回有效的憑證 JSON。"
+          }
+        }
+      }
+    },
+    "The credential_process command for profile \"%@\" exited with status %lld.%@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"의 credential_process 명령이 상태 %lld(으)로 종료되었습니다.%@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lệnh credential_process cho hồ sơ \"%@\" đã thoát với mã trạng thái %lld.%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置 \"%@\" 的 credential_process 命令以状态 %lld 退出。%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定檔「%@」的 credential_process 指令以狀態 %lld 結束。%@"
+          }
+        }
+      }
+    },
+    "The credential_process command for profile \"%@\" is empty or invalid." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"의 credential_process 명령이 비어 있거나 올바르지 않습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lệnh credential_process cho hồ sơ \"%@\" trống hoặc không hợp lệ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置 \"%@\" 的 credential_process 命令为空或无效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定檔「%@」的 credential_process 指令為空白或無效。"
+          }
+        }
+      }
+    },
+    "The credential_process command for profile \"%@\" is only supported on macOS." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"의 credential_process 명령은 macOS에서만 지원됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lệnh credential_process cho hồ sơ \"%@\" chỉ được hỗ trợ trên macOS."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置 \"%@\" 的 credential_process 命令仅在 macOS 上受支持。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定檔「%@」的 credential_process 指令僅在 macOS 上支援。"
+          }
+        }
+      }
+    },
+    "The credential_process command for profile \"%@\" returned unsupported Version %lld (expected 1)." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"의 credential_process 명령이 지원되지 않는 Version %lld을(를) 반환했습니다(예상 값: 1)."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lệnh credential_process cho hồ sơ \"%@\" trả về Version %lld không được hỗ trợ (cần 1)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置 \"%@\" 的 credential_process 命令返回了不受支持的 Version %lld（应为 1）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定檔「%@」的 credential_process 指令傳回不受支援的 Version %lld（預期為 1）。"
+          }
+        }
+      }
     },
     "The CSV data has no header row." : {
       "localizations" : {
@@ -19613,6 +23677,34 @@
     "The database “%@” has an open transaction. Switching rolls it back and discards its uncommitted changes." : {
 
     },
+    "The database assigns this column, so it is never written." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데이터베이스가 이 열을 할당하므로 이 열은 기록되지 않습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cơ sở dữ liệu gán giá trị cho cột này, nên cột này không bao giờ được ghi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此列由数据库分配，因此永远不会写入。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此欄位由資料庫指派，因此永遠不會寫入。"
+          }
+        }
+      }
+    },
     "The encrypted file is corrupt or incomplete" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -19639,6 +23731,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "加密的檔案已損毀或不完整"
+          }
+        }
+      }
+    },
+    "The extension failed to start: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "확장 프로그램을 시작하지 못했습니다: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Extension không khởi động được: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "扩展启动失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "延伸功能啟動失敗：%@"
           }
         }
       }
@@ -19673,6 +23795,36 @@
     },
     "The failed transaction was rolled back. None of its changes were kept." : {
 
+    },
+    "The file has no function named %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "파일에 %@(이)라는 함수가 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp không có hàm nào tên %@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该文件中没有名为 %@ 的函数。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此檔案中沒有名為 %@ 的函式。"
+          }
+        }
+      }
     },
     "The FreeTDS configuration could not be written: %@" : {
       "extractionState" : "manual",
@@ -20023,6 +24175,66 @@
         }
       }
     },
+    "The Microsoft Entra ID sign-in timed out before it was approved." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 로그인이 승인되기 전에 시간이 초과되었습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đăng nhập Microsoft Entra ID đã hết thời gian chờ trước khi được chấp thuận."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 登录在获得批准前已超时。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 登入在獲得核准前已逾時。"
+          }
+        }
+      }
+    },
+    "The Microsoft Entra ID sign-in was denied." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 로그인이 거부되었습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đăng nhập Microsoft Entra ID đã bị từ chối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 登录被拒绝。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microsoft Entra ID 登入遭到拒絕。"
+          }
+        }
+      }
+    },
     "The operation violates a database constraint." : {
       "localizations" : {
         "ko" : {
@@ -20161,6 +24373,36 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The passphrase for the client private key is incorrect." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "클라이언트 개인 키의 암호가 올바르지 않습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cụm mật khẩu của khóa riêng máy khách không đúng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "客户端私钥的口令不正确。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用戶端私密金鑰的密碼短語不正確。"
+          }
+        }
+      }
+    },
     "The passphrase for this SSH private key is incorrect." : {
 
     },
@@ -20203,6 +24445,66 @@
     "the passwords for “%@” belong to no connection in the file" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The path \"%@\" is too long." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "경로 \"%@\"이(가) 너무 깁니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đường dẫn \"%@\" quá dài."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "路径 \"%@\" 太长。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "路徑「%@」太長。"
+          }
+        }
+      }
+    },
+    "The path of an extension in the list contains a line break or another control character." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "목록에 있는 확장 프로그램의 경로에 줄 바꿈 또는 다른 제어 문자가 있습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đường dẫn của một extension trong danh sách chứa ký tự xuống dòng hoặc ký tự điều khiển khác."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列表中某个扩展的路径包含换行符或其他控制字符。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列表中某個延伸功能的路徑包含換行字元或其他控制字元。"
+          }
+        }
+      }
     },
     "The previous session has not finished closing." : {
       "localizations" : {
@@ -20277,6 +24579,13 @@
     "The query editor cannot send data to COPY FROM STDIN, so no rows were sent. Use Import to load a file into a table." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The query holds more than one Redis command. Send one at a time." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The query names its own output format, %@. Remove its FORMAT clause to read it as rows." : {
+
     },
     "The query returned no rows." : {
       "localizations" : {
@@ -20377,11 +24686,156 @@
         }
       }
     },
+    "The saved extension list is not in a format TablePro can read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장된 확장 프로그램 목록이 TablePro가 읽을 수 있는 형식이 아닙니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Danh sách extension đã lưu không ở định dạng TablePro đọc được."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存的扩展列表格式无法被 TablePro 读取。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已儲存的延伸功能列表格式無法由 TablePro 讀取。"
+          }
+        }
+      }
+    },
+    "The saved Microsoft Entra ID sign-in expired. Sign in again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장된 Microsoft Entra ID 로그인이 만료되었습니다. 다시 로그인하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phiên đăng nhập Microsoft Entra ID đã lưu đã hết hạn. Hãy đăng nhập lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存的 Microsoft Entra ID 登录已过期。请重新登录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已儲存的 Microsoft Entra ID 登入已過期。請重新登入。"
+          }
+        }
+      }
+    },
     "The saved queries could not be read. Nothing was exported." : {
 
     },
     "The saved queries could not be saved." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장된 쿼리를 저장할 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không lưu được các truy vấn đã lưu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存已保存的查询。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法儲存已儲存的查詢。"
+          }
+        }
+      }
+    },
+    "The server and TablePro could not agree on a TLS cipher or protocol version." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버와 TablePro가 TLS 암호화 방식이나 프로토콜 버전에 합의하지 못했습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy chủ và TablePro không thống nhất được thuật toán mã hóa hoặc phiên bản giao thức TLS."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器与 TablePro 无法就 TLS 加密套件或协议版本达成一致。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器與 TablePro 無法就 TLS 加密套件或通訊協定版本達成一致。"
+          }
+        }
+      }
+    },
+    "The server does not accept encrypted connections but TablePro is configured to require TLS." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버가 암호화된 연결을 허용하지 않지만 TablePro는 TLS를 요구하도록 설정되어 있습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy chủ không chấp nhận kết nối mã hóa nhưng TablePro được cấu hình để yêu cầu TLS."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器不接受加密连接，但 TablePro 被配置为要求 TLS。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器不接受加密連線，但 TablePro 設定為要求 TLS。"
+          }
+        }
+      }
     },
     "The server is not responding. Check the host and port." : {
       "localizations" : {
@@ -20407,6 +24861,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "伺服器沒有回應。請檢查主機與連接埠。"
+          }
+        }
+      }
+    },
+    "The server requires a client certificate for TLS mutual authentication." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버가 TLS 상호 인증을 위해 클라이언트 인증서를 요구합니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy chủ yêu cầu chứng chỉ máy khách để xác thực TLS hai chiều."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器要求提供客户端证书以进行 TLS 双向认证。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器要求提供用戶端憑證以進行 TLS 雙向驗證。"
+          }
+        }
+      }
+    },
+    "The server requires an encrypted connection but TablePro is configured to connect in plain text." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버가 암호화된 연결을 요구하지만 TablePro는 일반 텍스트로 연결하도록 설정되어 있습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy chủ yêu cầu kết nối mã hóa nhưng TablePro được cấu hình để kết nối không mã hóa."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器要求加密连接，但 TablePro 被配置为以明文连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器要求加密連線，但 TablePro 設定為以明文連線。"
           }
         }
       }
@@ -20531,6 +25045,66 @@
         }
       }
     },
+    "The server's TLS certificate could not be verified against any trusted root." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버의 TLS 인증서를 신뢰할 수 있는 루트 인증서로 확인할 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể xác minh chứng chỉ TLS của máy chủ với bất kỳ chứng chỉ gốc tin cậy nào."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法根据任何受信任的根证书验证服务器的 TLS 证书。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法依據任何受信任的根憑證驗證伺服器的 TLS 憑證。"
+          }
+        }
+      }
+    },
+    "The server's TLS certificate does not match the hostname being connected to." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버의 TLS 인증서가 연결 중인 호스트 이름과 일치하지 않습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chứng chỉ TLS của máy chủ không khớp với tên máy chủ đang kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器的 TLS 证书与正在连接的主机名不匹配。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器的 TLS 憑證與正在連線的主機名稱不符。"
+          }
+        }
+      }
+    },
     "The socket path contains a control or invisible character." : {
 
     },
@@ -20546,6 +25120,36 @@
     },
     "The socket path must start with /." : {
 
+    },
+    "The SQLite extensions for this connection could not be loaded." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 연결의 SQLite 확장 프로그램을 불러올 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tải được các extension SQLite của kết nối này."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载此连接的 SQLite 扩展。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法載入此連線的 SQLite 延伸功能。"
+          }
+        }
+      }
     },
     "The SSH server accepted the first sign-in step and asks for another (%@), which TablePro on iPhone and iPad cannot complete." : {
 
@@ -20677,6 +25281,9 @@
         }
       }
     },
+    "The text %@ cannot be inserted: this database reads it as the column's default." : {
+
+    },
     "The text could not be parsed as JSON. Use text mode to read it." : {
 
     },
@@ -20732,7 +25339,40 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "There is no file at \"%@\"." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\"에 파일이 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không có tệp nào tại \"%@\"."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 处没有文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」沒有檔案。"
+          }
+        }
+      }
+    },
     "There is no statement to run." : {
+
+    },
+    "These connections have open transactions: %@. Deleting them rolls the transactions back and discards their uncommitted changes." : {
 
     },
     "This account uses a password verifier the database driver does not support." : {
@@ -20764,6 +25404,9 @@
           }
         }
       }
+    },
+    "This also commits the open transaction, keeping its uncommitted changes." : {
+
     },
     "This bracket does not close the one that is open." : {
 
@@ -21117,6 +25760,189 @@
     "This connection's Redis user is not allowed to run this command or reach this key. Ask an administrator to grant it in the user's ACL." : {
 
     },
+    "This database cannot be renamed" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 데이터베이스는 이름을 바꿀 수 없습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể đổi tên cơ sở dữ liệu này"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此数据库无法重命名"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此資料庫無法重新命名"
+          }
+        }
+      }
+    },
+    "This database cannot rename a schema" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 데이터베이스는 스키마 이름을 바꿀 수 없습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cơ sở dữ liệu này không thể đổi tên schema"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此数据库无法重命名模式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此資料庫無法重新命名綱要"
+          }
+        }
+      }
+    },
+    "This database cannot rename a table" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 데이터베이스는 테이블 이름을 바꿀 수 없습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cơ sở dữ liệu này không thể đổi tên bảng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此数据库无法重命名表"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此資料庫無法重新命名資料表"
+          }
+        }
+      }
+    },
+    "This database cannot show the source of %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 데이터베이스는 %@의 소스를 표시할 수 없습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cơ sở dữ liệu này không thể hiển thị mã nguồn của %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此数据库无法显示 %@ 的源代码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此資料庫無法顯示 %@ 的原始碼"
+          }
+        }
+      }
+    },
+    "This database cannot write this change from iPhone or iPad." : {
+
+    },
+    "This database does not store whole documents" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 데이터베이스는 전체 문서를 저장하지 않습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cơ sở dữ liệu này không lưu trữ toàn bộ document"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此数据库不存储完整文档"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此資料庫不儲存完整文件"
+          }
+        }
+      }
+    },
+    "This database has no Create Table form" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 데이터베이스에는 테이블 생성 양식이 없습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cơ sở dữ liệu này không có biểu mẫu Tạo bảng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此数据库没有“创建表”表单"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此資料庫沒有「建立資料表」表單"
+          }
+        }
+      }
+    },
     "This database has no tables." : {
       "localizations" : {
         "ko" : {
@@ -21141,6 +25967,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此資料庫沒有資料表。"
+          }
+        }
+      }
+    },
+    "This file also holds saved queries, which import only on a Mac." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 파일에는 저장된 쿼리도 들어 있으며, 쿼리는 Mac에서만 가져올 수 있습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tệp này cũng chứa truy vấn đã lưu, chỉ nhập được trên máy Mac."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此文件还包含已保存的查询，这些查询只能在 Mac 上导入。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此檔案也包含已儲存的查詢，這些查詢只能在 Mac 上匯入。"
           }
         }
       }
@@ -21456,6 +26310,9 @@
           }
         }
       }
+    },
+    "This row holds a value too long or binary to match exactly, so it cannot identify the row." : {
+
     },
     "This row is no longer in the table. Another session may have changed its key or deleted it." : {
 
@@ -21924,6 +26781,36 @@
         }
       }
     },
+    "TLS handshake failed." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TLS 핸드셰이크에 실패했습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bắt tay TLS thất bại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TLS 握手失败。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TLS 交握失敗。"
+          }
+        }
+      }
+    },
     "TLS renegotiation" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -22252,6 +27139,8 @@
 
     },
     "Type" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -22309,6 +27198,36 @@
     },
     "Unexpected character." : {
 
+    },
+    "Unexpected response from the SSO portal for profile \"%@\"." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 \"%@\"의 SSO 포털에서 예기치 않은 응답이 왔습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phản hồi không mong đợi từ cổng SSO cho hồ sơ \"%@\"."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置 \"%@\" 的 SSO 门户返回了意外的响应。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定檔「%@」的 SSO 入口網站傳回了非預期的回應。"
+          }
+        }
+      }
     },
     "unbalanced quotes" : {
 
@@ -22547,6 +27466,66 @@
     "Unsupported Key Type" : {
 
     },
+    "Unsupported MongoDB method: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지원되지 않는 MongoDB 메서드: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phương thức MongoDB không được hỗ trợ: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不支持的 MongoDB 方法：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不支援的 MongoDB 方法：%@"
+          }
+        }
+      }
+    },
+    "Unterminated string in the collection reference" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "컬렉션 참조에 끝나지 않은 문자열이 있습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chuỗi chưa đóng trong tham chiếu collection"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "集合引用中有未结束的字符串"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "集合參照中有未結束的字串"
+          }
+        }
+      }
+    },
     "Untitled" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -22579,6 +27558,36 @@
     },
     "Update Required" : {
 
+    },
+    "Update the server's TLS configuration or use a newer database server version that supports modern ciphers." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버의 TLS 구성을 업데이트하거나 최신 암호화 방식을 지원하는 새 버전의 데이터베이스 서버를 사용하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hãy cập nhật cấu hình TLS của máy chủ hoặc dùng phiên bản máy chủ cơ sở dữ liệu mới hơn hỗ trợ các thuật toán mã hóa hiện đại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新服务器的 TLS 配置，或使用支持现代加密套件的较新版本数据库服务器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請更新伺服器的 TLS 設定，或使用支援現代加密套件的較新版本資料庫伺服器。"
+          }
+        }
+      }
     },
     "Upload Again" : {
 
@@ -22727,6 +27736,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "改用 SID"
+          }
+        }
+      }
+    },
+    "Use the build of the extension made for this Mac's processor." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac의 프로세서용으로 빌드된 확장 프로그램을 사용하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hãy dùng bản build của extension dành cho bộ xử lý của máy Mac này."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请使用为这台 Mac 的处理器构建的扩展版本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請使用為這台 Mac 的處理器建置的延伸功能版本。"
+          }
+        }
+      }
+    },
+    "Use the name of a C function, such as sqlite3_vec_init, or leave it empty." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sqlite3_vec_init과 같은 C 함수 이름을 사용하거나 비워 두십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dùng tên một hàm C, chẳng hạn sqlite3_vec_init, hoặc để trống."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 C 函数的名称，例如 sqlite3_vec_init，或留空。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 C 函式的名稱，例如 sqlite3_vec_init，或留空。"
           }
         }
       }
@@ -22941,6 +28010,9 @@
     "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed the server's certificate, or set SSL Mode to Verify Identity." : {
+
     },
     "Verify Identity" : {
       "localizations" : {
@@ -23507,6 +28579,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "黃色"
+          }
+        }
+      }
+    },
+    "Your account is not allowed to read the source of %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "계정에 %@의 소스를 읽을 권한이 없습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tài khoản của bạn không được phép đọc mã nguồn của %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的账户无权读取 %@ 的源代码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的帳號無權讀取 %@ 的原始碼"
           }
         }
       }

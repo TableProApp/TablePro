@@ -32383,6 +32383,46 @@
         }
       }
     },
+    "Can't List Tables" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de lister les tables"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "테이블을 나열할 수 없음"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tablolar Listelenemiyor"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể liệt kê bảng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法列出表"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法列出資料表"
+          }
+        }
+      }
+    },
     "Can't reach a PGlite socket server at %@:%d. Start it with 'npx @electric-sql/pglite-socket', then try again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -43920,6 +43960,12 @@
         }
       }
     },
+    "Commit" : {
+
+    },
+    "Commit the transaction" : {
+
+    },
     "Compact" : {
       "localizations" : {
         "fr" : {
@@ -51593,6 +51639,9 @@
           }
         }
       }
+    },
+    "Could Not End the Transaction" : {
+
     },
     "Could not export activity log" : {
       "localizations" : {
@@ -95375,6 +95424,9 @@
         }
       }
     },
+    "Its uncommitted changes are discarded." : {
+
+    },
     "Its WHERE clause is not supported here, so it covers every row." : {
       "localizations" : {
         "fr" : {
@@ -120944,6 +120996,46 @@
         }
       }
     },
+    "Nothing on This Page" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rien sur cette page"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 페이지에 항목 없음"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Sayfada Bir Şey Yok"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trang này không có gì"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此页没有内容"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此頁沒有內容"
+          }
+        }
+      }
+    },
     "Nothing saved yet." : {
       "localizations" : {
         "fr" : {
@@ -127046,6 +127138,9 @@
           }
         }
       }
+    },
+    "Other work ran on this connection before you confirmed. Check the transaction and try again." : {
+
     },
     "Other…" : {
       "localizations" : {
@@ -149065,6 +149160,15 @@
           }
         }
       }
+    },
+    "Roll Back" : {
+
+    },
+    "Roll Back the Transaction?" : {
+
+    },
+    "Roll it back to continue." : {
+
     },
     "Roll the transaction back to discard them, or commit it to keep them." : {
       "localizations" : {
@@ -182924,6 +183028,46 @@
         }
       }
     },
+    "The driver returned part of the listing." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le pilote n’a renvoyé qu’une partie de la liste."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "드라이버가 목록의 일부만 반환했습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sürücü listenin yalnızca bir kısmını döndürdü."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Driver chỉ trả về một phần danh sách."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "驱动只返回了部分列表。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "驅動程式只傳回部分列表。"
+          }
+        }
+      }
+    },
     "The dump is copied into this database, and the change cannot be undone. If an object it holds already exists, the restore stops before copying anything." : {
       "localizations" : {
         "fr" : {
@@ -185842,6 +185986,10 @@
         }
       }
     },
+    "The query holds more than one Redis command. Send one at a time." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The query is empty." : {
       "localizations" : {
         "fr" : {
@@ -187361,6 +187509,9 @@
           }
         }
       }
+    },
+    "The session that held this transaction has ended." : {
+
     },
     "The settings it was created with could not be read, so it gets the target's own." : {
 
@@ -191413,6 +191564,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此連線的用戶端金鑰在本裝置上無法讀取（%@）。金鑰檔案不會在裝置之間同步，請先在此處加入金鑰再連線。"
+          }
+        }
+      }
+    },
+    "This connection's driver does not list its tables." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le pilote de cette connexion ne liste pas ses tables."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 연결의 드라이버는 테이블 목록을 제공하지 않습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu bağlantının sürücüsü tablolarını listelemiyor."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Driver của kết nối này không liệt kê bảng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接的驱动不会列出其表。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此連線的驅動程式不會列出其資料表。"
           }
         }
       }
@@ -198856,6 +199047,30 @@
           }
         }
       }
+    },
+    "Transaction Failed" : {
+
+    },
+    "Transaction failed on %@. Roll it back to continue." : {
+
+    },
+    "Transaction failed on %1$@, %2$@. Roll it back to continue." : {
+
+    },
+    "transaction open" : {
+
+    },
+    "Transaction open" : {
+
+    },
+    "Transaction Open" : {
+
+    },
+    "Transaction open on %@" : {
+
+    },
+    "Transaction open on %1$@, %2$@" : {
+
     },
     "Transactions are not supported by Cloudflare D1" : {
       "extractionState" : "manual",

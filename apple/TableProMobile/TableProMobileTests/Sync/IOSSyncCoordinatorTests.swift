@@ -16,6 +16,7 @@ private final class LibraryStateBox {
     var duringPush: () -> Void = {}
     var duringAccountCheck: () -> Void = {}
     var syncEnabled = true
+    var saves = true
 
     func runDuringPull() {
         duringPull()
@@ -191,9 +192,9 @@ struct IOSSyncCoordinatorTests {
             networkMonitor: nil
         )
         coordinator.getCurrentState = { (box.connections, box.groups, box.tags) }
-        coordinator.onConnectionsChanged = { box.connections = $0; return true }
-        coordinator.onGroupsChanged = { box.groups = $0; return true }
-        coordinator.onTagsChanged = { box.tags = $0; return true }
+        coordinator.onConnectionsChanged = { box.connections = $0; return box.saves }
+        coordinator.onGroupsChanged = { box.groups = $0; return box.saves }
+        coordinator.onTagsChanged = { box.tags = $0; return box.saves }
         coordinator.getSavedQueries = { box.savedQueries }
         coordinator.onSavedQueriesChanged = { box.savedQueries = $0; return true }
         return coordinator
@@ -819,6 +820,23 @@ struct IOSSyncCoordinatorTests {
         #expect(metadata.userDefaults.data(forKey: tokenKey) != nil)
     }
 
+    @Test("A download the library could not save is not acknowledged, so the next run fetches it again")
+    func unsavedPullKeepsTheToken() async throws {
+        let box = LibraryStateBox()
+        box.saves = false
+        metadata.lastAccountId = "account-a"
+        let remote = DatabaseConnection(name: "From Mac", type: .postgresql)
+        let transport = FakeSyncTransport(remoteRecords: [SyncRecordMapper.toRecord(remote, zoneID: zoneID)], box: box)
+        await transport.answerPulls(withToken: try Self.makeChangeToken())
+        let coordinator = makeCoordinator(box: box, transport: transport)
+
+        await coordinator.sync()
+
+        #expect(coordinator.status == .error(.pullNotSaved))
+        #expect(metadata.userDefaults.data(forKey: tokenKey) == nil)
+        #expect(await transport.pushCount == 0)
+    }
+
     @Test("A record iCloud refuses on its own stays pending, and the rest of the run still counts as synced")
     func rejectedRecordStillStampsLastSync() async throws {
         let box = LibraryStateBox()
@@ -935,6 +953,74 @@ struct IOSSyncCoordinatorTests {
         #expect(await transport.zoneSaves == 1)
         #expect(metadata.zoneState == .confirmed)
         #expect(coordinator.status == .idle)
+    }
+
+    private func legacyRequire() throws -> SSLConfiguration {
+        try JSONDecoder().decode(SSLConfiguration.self, from: Data(#"{"mode":"require"}"#.utf8))
+    }
+
+    private func cacheServerRecord(of connection: DatabaseConnection, ssl: SSLConfiguration) {
+        var server = connection
+        server.sslConfiguration = ssl
+        SyncRecordCache(directory: cacheDirectory, defaults: nil).store([SyncRecordMapper.toRecord(server, zoneID: zoneID)])
+    }
+
+    @Test("A Mac Preferred an older iOS build stored as require goes up as Preferred after an iCloud reset")
+    func legacyPreferredSurvivesReset() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Orders", type: .postgresql, sslEnabled: true, sslConfiguration: try legacyRequire())
+        box.connections = [local]
+        cacheServerRecord(of: local, ssl: SSLConfiguration(mode: .require, isMacPreferred: true))
+        metadata.lastAccountId = "account-a"
+        metadata.zoneState = .confirmed
+        let transport = FakeSyncTransport(remoteRecords: [], box: box)
+        await transport.failNextPulls(with: [CKError(.userDeletedZone)])
+        let coordinator = makeCoordinator(box: box, transport: transport)
+
+        await coordinator.sync()
+        #expect(coordinator.status == .error(.blocked(.dataDeletedFromICloud)))
+        await coordinator.uploadAgain()
+
+        #expect(box.connections.first?.sslConfiguration?.isMacPreferred == true)
+        let pushed = try #require(await transport.pushedRecords.first)
+        #expect(SyncRecordMapper.serverSSL(in: pushed)?.isMacPreferred == true)
+    }
+
+    @Test("An older copy settles to what the cached record holds, and stays unsettled without one")
+    func legacyCopiesSettleFromTheCache() async throws {
+        let box = LibraryStateBox()
+        let required = DatabaseConnection(name: "Required", type: .mysql, sslEnabled: true, sslConfiguration: try legacyRequire())
+        let uncached = DatabaseConnection(name: "Uncached", type: .mysql, sslEnabled: true, sslConfiguration: try legacyRequire())
+        box.connections = [required, uncached]
+        cacheServerRecord(of: required, ssl: SSLConfiguration(mode: .require))
+        let coordinator = makeCoordinator(box: box, transport: FakeSyncTransport(remoteRecords: [], box: box))
+
+        await coordinator.sync()
+
+        let settled = try #require(box.connections.first { $0.id == required.id }?.sslConfiguration)
+        #expect(!settled.isLegacyRequire)
+        #expect(!settled.isMacPreferred)
+        #expect(box.connections.first { $0.id == uncached.id }?.sslConfiguration?.isLegacyRequire == true)
+    }
+
+    @Test("A pending edit over an older copy keeps the Required the Mac switched to after the last pull")
+    func legacyCopyFollowsTheFreshRecord() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Orders", type: .postgresql, sslEnabled: true, sslConfiguration: try legacyRequire())
+        box.connections = [local]
+        cacheServerRecord(of: local, ssl: SSLConfiguration(mode: .require, isMacPreferred: true))
+        var fresh = local
+        fresh.sslConfiguration = SSLConfiguration(mode: .require)
+        let transport = FakeSyncTransport(remoteRecords: [SyncRecordMapper.toRecord(fresh, zoneID: zoneID)], box: box)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        box.connections[0].name = "Renamed"
+        coordinator.markDirty(local.id)
+
+        await coordinator.sync()
+
+        let pushed = try #require(await transport.pushedRecords.first)
+        #expect(SyncRecordMapper.toConnection(pushed)?.name == "Renamed")
+        #expect(SyncRecordMapper.serverSSL(in: pushed)?.isMacPreferred == false)
     }
 
     /// The block used to live only in memory, so a relaunch forgot it and the first run uploaded

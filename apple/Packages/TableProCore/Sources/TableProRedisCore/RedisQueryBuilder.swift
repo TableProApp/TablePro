@@ -73,7 +73,7 @@ public struct RedisQueryBuilder: Sendable {
             command += " MATCH \"\(quoteForCommand(pattern))\""
         }
         if let typeScope, !typeScope.isEmpty {
-            command += " TYPE \(typeScope)"
+            command += " TYPE \(RedisArgumentCodec.quote(typeScope))"
         }
         command += " LIMIT \(limit) OFFSET \(offset)"
         return command

@@ -66,9 +66,9 @@ enum QueryClassifier {
         readings: SQLLexicalReadings
     ) -> QueryClassification {
         if let document = documentStoreClassification(sql, databaseType: databaseType) { return document }
+        if let redis = redisClassification(sql, databaseType: databaseType) { return redis }
         let trimmed = StatementBlank.trimming(strippingLeadingComments(sql))
         guard !trimmed.isEmpty else { return .safe }
-        if let redis = redisClassification(trimmed, databaseType: databaseType) { return redis }
         if let ledger = beancountClassification(trimmed, databaseType: databaseType) { return ledger }
         return readings.distinct(for: sql).reduce(QueryClassification.safe) { worst, grammar in
             runnableStatements(of: sql, grammar: grammar).reduce(worst) { partial, statement in
@@ -749,24 +749,6 @@ private extension QueryClassifier {
 }
 
 private extension QueryClassifier {
-    static let redisReadCommands: Set<String> = [
-        "GET", "MGET", "STRLEN", "GETRANGE", "SUBSTR", "EXISTS", "TYPE", "TTL", "PTTL",
-        "EXPIRETIME", "PEXPIRETIME", "KEYS", "SCAN", "RANDOMKEY", "DBSIZE", "DUMP",
-        "HGET", "HMGET", "HGETALL", "HKEYS", "HVALS", "HLEN", "HEXISTS", "HRANDFIELD",
-        "HSCAN", "HSTRLEN", "LRANGE", "LLEN", "LINDEX", "LPOS",
-        "SMEMBERS", "SISMEMBER", "SMISMEMBER", "SCARD", "SRANDMEMBER", "SSCAN",
-        "SDIFF", "SINTER", "SUNION", "SINTERCARD",
-        "ZRANGE", "ZRANGEBYSCORE", "ZRANGEBYLEX", "ZREVRANGE", "ZREVRANGEBYSCORE",
-        "ZREVRANGEBYLEX", "ZRANK", "ZREVRANK", "ZSCORE", "ZMSCORE", "ZCARD", "ZCOUNT",
-        "ZLEXCOUNT", "ZSCAN", "ZRANDMEMBER", "ZDIFF", "ZINTER", "ZUNION", "ZINTERCARD",
-        "XRANGE", "XREVRANGE", "XLEN", "XREAD", "XINFO", "XPENDING",
-        "PFCOUNT", "BITCOUNT", "BITPOS", "GETBIT", "BITFIELD_RO",
-        "GEOPOS", "GEODIST", "GEOHASH", "GEOSEARCH", "GEORADIUS_RO", "GEORADIUSBYMEMBER_RO",
-        "SORT_RO", "OBJECT", "COMMAND", "INFO", "TIME", "LASTSAVE", "PING", "ECHO", "LOLWUT",
-        "JSON.GET", "JSON.MGET", "JSON.TYPE", "JSON.OBJKEYS", "JSON.ARRLEN", "JSON.STRLEN",
-        "TS.RANGE", "TS.REVRANGE", "TS.GET", "TS.MGET", "TS.INFO", "FT.SEARCH", "FT.INFO"
-    ]
-
     static let redisDestructiveCommands: Set<String> = [
         "FLUSHDB", "FLUSHALL", "SHUTDOWN", "MIGRATE", "SWAPDB", "REPLICAOF", "SLAVEOF",
         "CLUSTER", "FAILOVER", "RESET"
@@ -781,12 +763,19 @@ private extension QueryClassifier {
         "SAVE", "BGSAVE", "BGREWRITEAOF", "DEBUG"
     ]
 
+    // Redis has no comments, so every command the driver will run is tiered, and the worst one wins.
     static func redisClassification(
-        _ trimmed: String,
+        _ text: String,
         databaseType: DatabaseType
     ) -> QueryClassification? {
         guard databaseType == .redis else { return nil }
-        guard let arguments = RedisArgumentCodec.split(trimmed) else {
+        return RedisCommandSplitter.commands(in: text).reduce(QueryClassification.safe) { worst, command in
+            worst.escalated(with: redisCommandClassification(StatementBlank.trimming(command.text)))
+        }
+    }
+
+    private static func redisCommandClassification(_ command: String) -> QueryClassification {
+        guard let arguments = RedisArgumentCodec.split(command) else {
             return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
         }
         let statement = redisCommandPastDatabasePrefix(arguments.map { String(bytes: $0, encoding: .utf8) ?? "" })
@@ -796,7 +785,7 @@ private extension QueryClassifier {
             || redisFilesystemCommands.contains(command)
 
         if command == "CONFIG" {
-            let tier: QueryTier = statement.dropFirst().first?.uppercased() == "GET" ? .safe : .destructive
+            let tier: QueryTier = RedisReadCommands.onlyReads(statement) ? .safe : .destructive
             return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: false)
         }
 
@@ -807,7 +796,7 @@ private extension QueryClassifier {
             )
         }
 
-        if redisReadCommands.contains(command) {
+        if RedisReadCommands.onlyReads(statement) {
             return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: false)
         }
 

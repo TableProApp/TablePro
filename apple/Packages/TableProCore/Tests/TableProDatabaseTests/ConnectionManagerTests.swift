@@ -185,6 +185,41 @@ struct ConnectionManagerTests {
         #expect(ssh.receivedPrompters.first.map { $0 is StubPrompter } == true)
     }
 
+    @Test("A tunnelled driver dials the local forward and is told the server's own host name")
+    func tunnelledDriverKeepsTheServerHostName() async throws {
+        let factory = MockDriverFactory()
+        factory.drivers["mock"] = MockDatabaseDriver()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            sshProvider: MockSSHProvider()
+        )
+        var connection = DatabaseConnection(name: "Tunnelled", type: DatabaseType(rawValue: "mock"), host: "db.internal")
+        connection.sshEnabled = true
+        connection.sshConfiguration = SSHConfiguration(host: "jump.example.com")
+
+        _ = try await manager.connect(connection)
+        await manager.disconnect(connection.id)
+
+        let dialed = try #require(factory.receivedConnections.first)
+        #expect(dialed.host == "127.0.0.1")
+        #expect(dialed.additionalFields[DatabaseConnection.preTunnelHostKey] == "db.internal")
+    }
+
+    @Test("A direct connection carries no pre-tunnel host name")
+    func directDriverHasNoPreTunnelHost() async throws {
+        let factory = MockDriverFactory()
+        factory.drivers["mock"] = MockDatabaseDriver()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
+        let connection = DatabaseConnection(name: "Direct", type: DatabaseType(rawValue: "mock"), host: "db.internal")
+
+        _ = try await manager.connect(connection)
+        await manager.disconnect(connection.id)
+
+        let dialed = try #require(factory.receivedConnections.first)
+        #expect(dialed.additionalFields[DatabaseConnection.preTunnelHostKey] == nil)
+    }
+
     @Test("SSH tunnel cleanup on connect failure")
     func sshTunnelCleanupOnFailure() async throws {
         let factory = MockDriverFactory()

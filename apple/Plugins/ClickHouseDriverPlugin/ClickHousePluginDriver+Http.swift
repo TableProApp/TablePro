@@ -7,7 +7,7 @@ import Foundation
 import os
 import TableProPluginKit
 
-extension ClickHousePluginDriver {
+nonisolated extension ClickHousePluginDriver {
     // MARK: - Private HTTP Layer
 
     var executionTimeLimit: Int? {
@@ -245,7 +245,7 @@ extension ClickHousePluginDriver {
 }
 
 /// How the server hands a result back.
-enum ClickHouseResponseShape: Equatable {
+nonisolated enum ClickHouseResponseShape: Equatable {
     /// The server holds the whole result until the query ends, so a failure is an HTTP status and
     /// `X-ClickHouse-Summary` carries the totals.
     case buffered(parameters: [String: String?]?)

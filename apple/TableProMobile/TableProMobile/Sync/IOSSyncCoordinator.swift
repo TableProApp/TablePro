@@ -182,7 +182,7 @@ final class IOSSyncCoordinator {
     private func prepareFullUpload() {
         metadata.saveToken(nil)
         metadata.zoneState = .unknown
-        recordCache.removeAll()
+        dropRecordCache()
         markAllLocalDataDirty()
     }
 
@@ -300,7 +300,7 @@ final class IOSSyncCoordinator {
         /// The old zone's records went with it. Kept, their system fields would make every later
         /// save into a zone another device recreated fail as an unknown record.
         if nextZone == .removed, zone != .removed {
-            recordCache.removeAll()
+            dropRecordCache()
             metadata.saveToken(nil)
         }
         metadata.zoneState = nextZone
@@ -335,7 +335,7 @@ final class IOSSyncCoordinator {
         case .previousAccountUnknown:
             Self.logger.notice("An earlier build synced without recording its iCloud account, so sync starts over once")
         }
-        recordCache.removeAll()
+        dropRecordCache()
         lastSyncDate = metadata.lastSyncDate
         return true
     }
@@ -392,6 +392,7 @@ final class IOSSyncCoordinator {
         // The connection writes landed, and a dirty connection pushed over a stale change tag would conflict.
         recordCache.store(pulled.changedRecords)
         recordCache.remove(pulled.deletedRecordIDs)
+        settleLegacySSLModes()
         let heldDownload: SyncStepFailure? = applied == .saved ? nil : .pullNotSaved
 
         guard admission == .full else { return RunResult(admission: admission, failure: heldDownload) }
@@ -599,6 +600,31 @@ final class IOSSyncCoordinator {
     }
 
     // MARK: - Apply
+
+    // A copy an older iOS build stored lost the Mac's Preferred, which only the cached server record still holds: after a
+    // pull that record is the server's current one, and nothing fresher exists once the cache is about to go.
+    private func settleLegacySSLModes() {
+        guard var connections = getCurrentState?()?.connections else { return }
+        var changed = false
+        for index in connections.indices {
+            guard let local = connections[index].sslConfiguration, local.isLegacyRequire else { continue }
+            let recordName = SyncRecordType.connection.recordName(for: connections[index].id.uuidString)
+            // Only Preferred or Required is in question, so certificate paths edited on either side do not matter.
+            guard let cached = recordCache.record(named: recordName),
+                  let server = SyncRecordMapper.serverSSL(in: cached),
+                  server.mode == local.mode else { continue }
+            connections[index].sslConfiguration?.settleLegacyRequire(asMacPreferred: server.isMacPreferred)
+            changed = true
+        }
+        if changed, onConnectionsChanged?(connections) != true {
+            Self.logger.error("The SSL modes settled from the cached records were not saved")
+        }
+    }
+
+    private func dropRecordCache() {
+        settleLegacySSLModes()
+        recordCache.removeAll()
+    }
 
     private func applyRemoteChanges(_ remote: PullChanges) -> RemoteApply {
         guard let state = getCurrentState?() else { return .notSaved }
@@ -859,8 +885,8 @@ final class IOSSyncCoordinator {
         ).map { pulledIds.contains($0.id) ? $0 : adoptingCachedSSHFields($0) }
     }
 
-    // A connection stored before this build read `sshProfileId` and `sshRouteJson` lacks both until
-    // its record changes again, and the record pulled earlier already holds them. A record in this
+    // A connection stored before this build read `sshProfileId` lacks it until its record changes
+    // again, and the record pulled earlier already holds it. A record in this
     // pull is newer than the cache, which is written only after it.
     private func adoptingCachedSSHFields(_ connection: DatabaseConnection) -> DatabaseConnection {
         guard connection.sshConfiguration != nil, connection.sshProfileId == nil, connection.sshRoute == nil,

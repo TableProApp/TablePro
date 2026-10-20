@@ -20,6 +20,7 @@ struct ConnectionFormView: View {
     @State private var pasteTarget: CertificateRole?
     @State private var showPKCS12Password = false
     @State private var pushedJumpHostId: UUID?
+    @State private var reconnectingConnectionName: String?
 
     var onSaved: (UUID) -> Void
 
@@ -152,6 +153,17 @@ struct ConnectionFormView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     ConfirmButton(title: "Save", action: handleSave)
                         .disabled(!viewModel.canSave || viewModel.isSaving)
+                        .confirmationDialog(
+                            String(localized: "Reconnect and Roll Back?"),
+                            isPresented: confirmingReconnect,
+                            titleVisibility: .visible,
+                            presenting: reconnectingConnectionName
+                        ) { _ in
+                            Button(String(localized: "Save and Reconnect"), role: .destructive) { save() }
+                            Button(String(localized: "Cancel"), role: .cancel) {}
+                        } message: { name in
+                            Text(OpenTransactionWarning.reconnectingOnSave(connectionName: name))
+                        }
                 }
             }
             .fileImporter(
@@ -648,7 +660,25 @@ struct ConnectionFormView: View {
         }
     }
 
+    private var confirmingReconnect: Binding<Bool> {
+        Binding(
+            get: { reconnectingConnectionName != nil },
+            set: { if !$0 { reconnectingConnectionName = nil } }
+        )
+    }
+
+    // A save that redials drops the session, and the server rolls back the transaction it held.
     private func handleSave() {
+        let current = appState.connections.first { $0.id == viewModel.connectionId }
+        if let current, viewModel.redialsAfterSave(over: current),
+           appState.sessionTransactions.hold(for: current.id) != nil {
+            reconnectingConnectionName = current.name.isEmpty ? current.host : current.name
+            return
+        }
+        save()
+    }
+
+    private func save() {
         let reconnects = viewModel.reconnectsAfterSave
         Task {
             guard let savedId = await viewModel.save(appState: appState, secureStore: appState.secureStore) else {

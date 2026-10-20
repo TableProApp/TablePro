@@ -82,7 +82,7 @@ enum ArrayValueEditorModel {
         guard text.length <= maxInspectableLength else {
             return JsonElementDisplay(summary: truncated(text, limit: limit), isValid: true)
         }
-        guard JsonSyntaxParser.parse(value) != nil else {
+        guard value.isValidJson else {
             return JsonElementDisplay(summary: truncated(text, limit: limit), isValid: false)
         }
         return JsonElementDisplay(

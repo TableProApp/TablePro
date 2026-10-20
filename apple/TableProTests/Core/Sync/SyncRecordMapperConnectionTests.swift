@@ -1,6 +1,7 @@
 import CloudKit
 import Foundation
 @testable import TablePro
+import TableProSSHTransport
 import TableProSyncTransport
 import Testing
 
@@ -22,7 +23,6 @@ struct SyncRecordMapperConnectionTests {
         "tagIds",
         "groupId",
         "sshProfileId",
-        "sshRoute",
         "preferredSafeModeLevel",
         "aiPolicy",
         "aiRules",
@@ -58,7 +58,8 @@ struct SyncRecordMapperConnectionTests {
         "cloudflareTunnelMode",
         "cloudSQLProxyMode",
         "socksProxyMode",
-        "tunnelCommandMode"
+        "tunnelCommandMode",
+        "sshRoute"
     ]
 
     private static func storedValues(of connection: DatabaseConnection) -> [String: String] {
@@ -116,6 +117,12 @@ struct SyncRecordMapperConnectionTests {
         )
         connection.tunnelCommandMode = .inline(
             TunnelCommandConfiguration(kubernetesNamespace: "data", kubernetesResource: "svc/postgres")
+        )
+        connection.sshRoute = PublishedSSHRoute(
+            publisher: UUID(),
+            input: .init(host: "db", port: nil, username: "", jumpHosts: []),
+            hops: [],
+            target: .init(alias: "db", host: "10.0.0.5", port: 22, username: "deploy")
         )
         return connection
     }

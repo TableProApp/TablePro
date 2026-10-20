@@ -164,10 +164,10 @@ struct QueryScriptTests {
         #expect(plan(" \n ", .redis).isEmpty)
     }
 
-    @Test("Trimming a Redis text keeps a blank its backslash escapes")
-    func redisTrimKeepsAnEscapedBlank() {
-        #expect(QueryScript.trimmed("DEL victim\\ ", databaseType: .redis) == "DEL victim\\ ")
-        #expect(QueryScript.trimmed(" \nDEL victim\\ ; GET other \n", databaseType: .redis) == "DEL victim\\ ; GET other")
+    @Test("Trimming a Redis text keeps a last argument byte Foundation counts as whitespace")
+    func redisTrimKeepsTheLastArgumentByte() {
+        #expect(QueryScript.trimmed("DEL victim\u{0B} ", databaseType: .redis) == "DEL victim\u{0B}")
+        #expect(QueryScript.trimmed(" \nDEL victim\u{A0} ; GET other \n", databaseType: .redis) == "DEL victim\u{A0} ; GET other")
         #expect(QueryScript.trimmed(" \n ; ", databaseType: .redis).isEmpty)
         #expect(QueryScript.trimmed(" \nSELECT 1; \n", databaseType: .sqlite) == "SELECT 1;")
     }

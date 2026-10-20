@@ -23,28 +23,24 @@ struct SyncRecordMapperSSHRouteTests {
         )
     }
 
-    @Test("A pulled record brings the Mac's route and SSH profile link")
-    func pullReadsRouteAndProfile() throws {
-        let connection = tunnelled()
-        let published = try route(for: connection)
+    @Test("A pulled record brings the Mac's SSH profile link")
+    func pullReadsProfile() throws {
         let profileId = UUID()
-        let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
-        record[ConnectionSyncField.sshRouteJson.key] = try #require(published.encoded()) as CKRecordValue
+        let record = SyncRecordMapper.toRecord(tunnelled(), zoneID: zoneID)
         record[ConnectionSyncField.sshProfileId.key] = profileId.uuidString as CKRecordValue
 
         let pulled = try #require(SyncRecordMapper.toConnection(record))
-        #expect(pulled.sshRoute == published)
         #expect(pulled.sshProfileId == profileId)
     }
 
-    @Test("This device never writes the route; only the Mac that dialed it does")
+    @Test("This device never writes the route")
     func iosNeverWritesRoute() throws {
         var connection = tunnelled()
         connection.sshRoute = try route(for: connection)
 
         let fresh = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
-        #expect(fresh[ConnectionSyncField.sshRouteJson.key] == nil)
-        #expect(!fresh.changedKeys().contains(ConnectionSyncField.sshRouteJson.key))
+        #expect(fresh["sshRouteJson"] == nil)
+        #expect(!fresh.changedKeys().contains("sshRouteJson"))
     }
 
     @Test("A record built from scratch keeps the SSH profile link this copy knows of")

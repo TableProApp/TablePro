@@ -18,23 +18,15 @@ struct SSHRouteSyncRecordTests {
         )
     }
 
-    @Test("A pulled record brings the route another Mac published")
-    func pullReadsRoute() throws {
-        let published = route()
-        let record = SyncRecordMapper.toCKRecord(DatabaseConnection(name: "Alias"), in: zoneID)
-        record[ConnectionSyncField.sshRouteJson.key] = try #require(published.encoded()) as CKRecordValue
-
-        #expect(try SyncRecordMapper.toConnection(record).sshRoute == published)
-    }
-
-    @Test("The route stays off the wire until Production has the field")
-    func routeIsWithheldUntilDeployed() {
+    // CloudKit refuses a whole record that names a field Production lacks, and the Connection record has no route yet.
+    @Test("The route stays on this Mac, off the record")
+    func routeStaysOffTheRecord() {
         var connection = DatabaseConnection(name: "Alias")
         connection.sshRoute = route()
 
         let record = SyncRecordMapper.toCKRecord(connection, in: zoneID)
-        #expect(!ConnectionSyncField.sshRouteJson.isWritable)
-        #expect(record[ConnectionSyncField.sshRouteJson.key] == nil)
+        #expect(!Set(record.allKeys()).contains("sshRouteJson"))
+        #expect(ConnectionSyncField(rawValue: "sshRouteJson") == nil)
     }
 
     @Test("A profile's emptied port and jump hosts are cleared on the server")

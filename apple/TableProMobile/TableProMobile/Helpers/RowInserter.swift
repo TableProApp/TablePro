@@ -3,11 +3,7 @@ import TableProDatabase
 import TableProModels
 
 nonisolated enum RowInsertPlanner {
-    /// A column absent from a row is left out of the statement so the database applies its default.
-    ///
-    /// `allowAllDefaults` and `dropsEmptyPrimaryKey` both default to the behaviour the Shortcuts
-    /// path has always had, where a payload cannot say "leave this out" any other way. A caller that
-    /// distinguishes omission from an empty value, as the insert form does, turns them off.
+    // The defaults suit a Shortcuts payload, which cannot say "leave this column out" except by leaving it empty.
     static func statements(
         table: String,
         schema: String?,
@@ -18,6 +14,54 @@ nonisolated enum RowInsertPlanner {
         allowAllDefaults: Bool = false,
         dropsEmptyPrimaryKey: Bool = true
     ) throws -> [String] {
+        try insertValues(
+            table: table, columns: columns, rows: rows,
+            allowAllDefaults: allowAllDefaults, dropsEmptyPrimaryKey: dropsEmptyPrimaryKey
+        ).compactMap { values in
+            SQLBuilder.buildInsert(
+                table: table,
+                schema: schema,
+                type: type,
+                driver: driver,
+                columns: values.map(\.column),
+                values: values.map(\.value)
+            )
+        }
+    }
+
+    static func batch(
+        table: String,
+        schema: String?,
+        type: DatabaseType,
+        driver: any DatabaseDriver,
+        columns: [ColumnInfo],
+        rows: [PayloadRow],
+        allowAllDefaults: Bool = false,
+        dropsEmptyPrimaryKey: Bool = true
+    ) throws -> RowWriteBatch? {
+        guard let writer = driver as? any DriverRowWriting else {
+            let sql = try statements(
+                table: table, schema: schema, type: type, driver: driver, columns: columns, rows: rows,
+                allowAllDefaults: allowAllDefaults, dropsEmptyPrimaryKey: dropsEmptyPrimaryKey
+            )
+            return sql.isEmpty ? nil : .sql(sql, driver)
+        }
+        let writes = try insertValues(
+            table: table, columns: columns, rows: rows,
+            allowAllDefaults: allowAllDefaults, dropsEmptyPrimaryKey: dropsEmptyPrimaryKey
+        ).flatMap { values in
+            try writer.insertWrites(table: table, schema: schema, columns: columns.map(\.name), values: values)
+        }
+        return writes.isEmpty ? nil : .driver(writes, writer)
+    }
+
+    private static func insertValues(
+        table: String,
+        columns: [ColumnInfo],
+        rows: [PayloadRow],
+        allowAllDefaults: Bool,
+        dropsEmptyPrimaryKey: Bool
+    ) throws -> [[(column: String, value: String?)]] {
         guard !columns.isEmpty else { throw IntentDataError.noColumns(table) }
         let columnNames = Set(columns.map(\.name))
         let primaryKeys = Set(columns.filter(\.isPrimaryKey).map(\.name))
@@ -26,24 +70,15 @@ nonisolated enum RowInsertPlanner {
             let unknown = row.keys.filter { !columnNames.contains($0) }
             guard unknown.isEmpty else { throw IntentDataError.unknownColumns(unknown.sorted(), table) }
 
-            var insertColumns: [String] = []
-            var insertValues: [String?] = []
+            var values: [(column: String, value: String?)] = []
             for column in columns {
                 guard !column.isServerOwned else { continue }
                 guard let value = row.value(for: column.name) else { continue }
                 if dropsEmptyPrimaryKey, primaryKeys.contains(column.name), value.isEmptyOrNull { continue }
-                insertColumns.append(column.name)
-                insertValues.append(value.sqlValue)
+                values.append((column: column.name, value: value.sqlValue))
             }
-            guard !insertColumns.isEmpty || allowAllDefaults else { return nil }
-            return SQLBuilder.buildInsert(
-                table: table,
-                schema: schema,
-                type: type,
-                driver: driver,
-                columns: insertColumns,
-                values: insertValues
-            )
+            guard !values.isEmpty || allowAllDefaults else { return nil }
+            return values
         }
     }
 }
@@ -58,22 +93,21 @@ nonisolated enum RowInserter {
         rows: [PayloadRow]
     ) async throws -> Int {
         let columns = try await driver.fetchColumns(table: table, schema: schema)
-        let statements = try RowInsertPlanner.statements(
+        guard let batch = try RowInsertPlanner.batch(
             table: table,
             schema: qualifier,
             type: type,
             driver: driver,
             columns: columns,
             rows: rows
-        )
-        guard !statements.isEmpty else { throw IntentDataError.noInsertableValues(table) }
+        ) else { throw IntentDataError.noInsertableValues(table) }
 
         // The write joins an autocommit-off transaction, and this session closes right after, which would roll it back.
         guard await driver.sessionTransactionState() == .implicitTransaction else {
-            return try await driver.executeWrite(statements)
+            return try await batch.run()
         }
         do {
-            let affected = try await driver.executeWrite(statements)
+            let affected = try await batch.run()
             try await driver.commitTransaction()
             return affected
         } catch {

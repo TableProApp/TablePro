@@ -53,6 +53,7 @@ final class QueryEditorViewModel {
     private(set) var currentRequest = 0
     private(set) var rowsAffectedTotal = 0
     private(set) var interruption: ScriptInterruption?
+    @ObservationIgnored private(set) var ranTransactionRollBack = false
 
     @ObservationIgnored private var unitKind: QueryScript.UnitKind = .statement
     @ObservationIgnored private var runID: UInt64 = 0
@@ -228,6 +229,7 @@ final class QueryEditorViewModel {
         executionTime = 0
         rowsAffectedTotal = 0
         interruption = nil
+        ranTransactionRollBack = false
         unitKind = script.unitKind
         requestCount = script.requestCount
         currentRequest = 0
@@ -254,6 +256,7 @@ final class QueryEditorViewModel {
         executionTime = 0
         rowsAffectedTotal = 0
         interruption = nil
+        ranTransactionRollBack = false
         requestCount = 0
         currentRequest = 0
         phase = .idle
@@ -303,6 +306,10 @@ final class QueryEditorViewModel {
                         return
                     }
                     rowsAffectedTotal += buffer.rowsAffected ?? 0
+                    if run == runID,
+                       TransactionRollBackClassifier.rollsBackTransaction(unit.sql, statusMessage: buffer.statusMessage) {
+                        ranTransactionRollBack = true
+                    }
                 } catch is CancellationError {
                     settleStopped(atRequest: position, run: run, observedStates: observedStates)
                     return

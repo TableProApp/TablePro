@@ -139,7 +139,7 @@ struct DataBrowserViewModelTests {
         #expect(label == "1-100 trên 3503")
     }
 
-    @Test("primaryKeyValues returns only PK columns from row")
+    @Test("A row locator holds only the key columns of the row")
     func primaryKeyExtraction() async {
         let driver = MockDatabaseDriver()
         driver.scriptedColumns = makeColumns()
@@ -151,11 +151,11 @@ struct DataBrowserViewModelTests {
         vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
         await vm.load(isInitial: true)
 
-        let pks = vm.primaryKeyValues(forRowAt: 0)
+        let pks = vm.rowLocator(forRowAt: 0)?.keyValues
         #expect(pks?.count == 1)
         #expect(pks?.first?.column == "id")
         #expect(pks?.first?.value == "42")
-        #expect(vm.primaryKeyValues(forRowAt: 1) == nil)
+        #expect(vm.rowLocator(forRowAt: 1) == nil)
     }
 
     @Test("A row whose key holds binary data gives no key values to delete it by")
@@ -174,7 +174,7 @@ struct DataBrowserViewModelTests {
         await vm.load(isInitial: true)
 
         #expect(vm.legacyRows.count == 1)
-        #expect(vm.primaryKeyValues(forRowAt: 0) == nil)
+        #expect(vm.rowLocator(forRowAt: 0) == nil)
     }
 
     @Test("Columns and foreign keys are read in the browser's schema, not the driver's")
@@ -218,6 +218,31 @@ struct DataBrowserViewModelTests {
 
         #expect(value == "the whole body")
         #expect(driver.executedQueries == [#"SELECT "body" FROM "crm"."notes" WHERE "id" = '7' LIMIT 1"#])
+    }
+
+    @Test("A full value behind a key column with no type is read whichever way SQLite stored the key")
+    func fullValueThroughUntypedKey() async throws {
+        let columns = [
+            ColumnInfo(name: "id", typeName: "", isPrimaryKey: true, isNullable: false, ordinalPosition: 0),
+            ColumnInfo(name: "body", typeName: "TEXT", ordinalPosition: 1)
+        ]
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = columns
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: columns, rows: [["5", "short"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "notes"), databaseType: .sqlite, host: "")
+        await vm.load(isInitial: true)
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [columns[1]], rows: [["the whole body"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let ref = CellRef(table: "notes", column: "body", primaryKey: [.init(column: "id", value: "5")])
+
+        let value = try await vm.loadFullValue(driver: driver, ref: ref, databaseType: .sqlite, schema: nil)
+
+        #expect(value == "the whole body")
+        #expect(driver.executedQueries.last == #"SELECT "body" FROM "notes" WHERE "id" IN (5, '5') AND CAST("id" AS TEXT) = '5' AND (SELECT COUNT(*) FROM "notes" WHERE "id" IN (5, '5') AND CAST("id" AS TEXT) = '5') = 1 LIMIT 1"#)
     }
 
     @Test("A seeded filter is already in the first SELECT, and only the first seed counts")
@@ -309,8 +334,10 @@ struct DataBrowserViewModelTests {
         #expect(unseeded.takeSingleRowMatch() == false)
     }
 
-    @Test("A seeded key on a column without a type is quoted as the preview quotes it", arguments: ["", "BLOB", "ANY"])
-    func untypedKeyColumnIsQuoted(typeName: String) async {
+    // The preview's lookup uses the same rule, so Open Table lists the row the preview showed.
+    @Test("A seeded key and a user filter on a column without a type match the number either way it was stored",
+          arguments: ["", "BLOB", "ANY"])
+    func untypedKeyColumnMatchesEitherStorageClass(typeName: String) async {
         let columns = [
             ColumnInfo(name: "code", typeName: typeName, ordinalPosition: 0),
             ColumnInfo(name: "label", typeName: "TEXT", ordinalPosition: 1)
@@ -325,9 +352,7 @@ struct DataBrowserViewModelTests {
         vm.seedFilters([TableFilter(columnName: "CODE", value: "5")])
         await vm.load(isInitial: true)
 
-        let select = driver.executedQueries.first ?? ""
-        #expect(select.contains("\"CODE\" = '5'"))
-        #expect(!select.contains("= 5"))
+        #expect((driver.executedQueries.first ?? "").contains("\"CODE\" IN (5, '5')"))
         #expect(vm.takeSingleRowMatch())
 
         let userDriver = MockDatabaseDriver()
@@ -336,7 +361,7 @@ struct DataBrowserViewModelTests {
         unseeded.attach(session: makeSession(driver: userDriver), table: TableInfo(name: "parents"), databaseType: .sqlite, host: "")
         unseeded.filters = [TableFilter(columnName: "code", value: "5")]
         await unseeded.load(isInitial: true)
-        #expect((userDriver.executedQueries.first ?? "").contains("\"code\" = 5"))
+        #expect((userDriver.executedQueries.first ?? "").contains("\"code\" IN (5, '5')"))
     }
 
     @Test("A load overtaken during its row count leaves the newer load's total and loading state alone")
@@ -391,7 +416,7 @@ struct DataBrowserViewModelTests {
             .success(QueryResult(columns: [], rows: [["0"]], rowsAffected: 0, executionTime: 0))
         ]
 
-        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        let success = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
         #expect(success == true)
         #expect(vm.operationError == nil)
         #expect(driver.executedQueries.contains(where: { $0.uppercased().hasPrefix("DELETE") }))
@@ -449,10 +474,10 @@ struct DataBrowserViewModelTests {
             .success(QueryResult(columns: makeColumns(), rows: [["1", "Alice"]], rowsAffected: 0, executionTime: 0))
         ]
 
-        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        let success = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
         #expect(success == false)
         #expect(vm.operationError?.title == String(localized: "Row Not Deleted"))
-        #expect(driver.executedQueries.contains { $0.hasPrefix("SELECT `id` FROM `users` WHERE `id` = '1'") })
+        #expect(driver.executedQueries.contains { $0.hasPrefix("SELECT `id` FROM `users` WHERE `id` = 1") })
         #expect(vm.legacyRows == [["1", "Alice"]])
     }
 
@@ -474,7 +499,7 @@ struct DataBrowserViewModelTests {
             .success(QueryResult(columns: makeColumns(), rows: [], rowsAffected: 0, executionTime: 0))
         ]
 
-        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        let success = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
         #expect(success == true)
         #expect(vm.operationError == nil)
     }
@@ -493,7 +518,7 @@ struct DataBrowserViewModelTests {
 
         driver.scriptedExecuteResults = [.failure(MockDatabaseDriver.MockError.scripted)]
 
-        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        let success = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
         #expect(success == false)
         #expect(vm.operationError != nil)
     }
@@ -517,7 +542,7 @@ struct DataBrowserViewModelTests {
             .success(QueryResult(columns: [], rows: [["0"]], rowsAffected: 0, executionTime: 0))
         ]
 
-        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        let success = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
         #expect(success == true)
         #expect(driver.beganTransactionModes == [.readWrite])
         #expect(driver.didCommitTransaction)
@@ -538,7 +563,7 @@ struct DataBrowserViewModelTests {
         driver.scriptedTransactionState = .idle
         driver.scriptedExecuteResults = [.failure(MockDatabaseDriver.MockError.scripted)]
 
-        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        let success = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
         #expect(success == false)
         #expect(driver.didRollbackTransaction)
         #expect(!driver.didCommitTransaction)
@@ -563,7 +588,7 @@ struct DataBrowserViewModelTests {
             .success(QueryResult(columns: [], rows: [["0"]], rowsAffected: 0, executionTime: 0))
         ]
 
-        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        let success = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
         #expect(success == true)
         #expect(!driver.didBeginTransaction)
         #expect(!driver.didCommitTransaction)

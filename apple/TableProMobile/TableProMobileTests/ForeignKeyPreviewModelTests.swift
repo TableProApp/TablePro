@@ -72,11 +72,43 @@ struct ForeignKeyPreviewModelTests {
         #expect(query == SQLBuilder.buildSingleRowLookup(
             table: "tenant_users", schema: "crm",
             key: [(column: "tenant_id", value: "2"), (column: "id", value: "5")],
-            type: .postgresql, driver: driver
+            columns: [], type: .postgresql, driver: driver
         ))
         #expect(query.hasPrefix("SELECT * FROM \"crm\".\"tenant_users\""))
         #expect(query.contains("\"tenant_id\" = '2'"))
         #expect(query.contains("\"id\" = '5'"))
+    }
+
+    // MySQL finds no row for `bit_col = '5'`, and the browser's filter compares the same column bare.
+    @Test("The lookup reads the referenced table's columns first and takes each literal from their types")
+    func lookupTakesLiteralsFromTheColumns() async throws {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = [
+            ColumnInfo(name: "flags", typeName: "bit(8)", ordinalPosition: 0),
+            ColumnInfo(name: "code", typeName: "varchar(10)", ordinalPosition: 1)
+        ]
+        let reference = ForeignKeyReference(table: "parents", schema: "crm", parts: [
+            ForeignKeyReference.Part(column: "flags", value: "5"),
+            ForeignKeyReference.Part(column: "code", value: "02134")
+        ])
+        let model = ForeignKeyPreviewModel(reference: reference, session: Self.session(driver), databaseType: .mysql)
+        await model.load()
+
+        #expect(driver.fetchColumnsSchemas == ["crm"])
+        let query = try #require(driver.executedQueries.first)
+        #expect(query.contains("WHERE `flags` = 5 AND `code` = '02134' "))
+    }
+
+    @Test("A failed column read still looks the row up, with every value quoted")
+    func columnReadFailureQuotesTheKey() async throws {
+        let driver = Self.driver(rows: [Self.userRow])
+        driver.fetchColumnsError = MockDatabaseDriver.MockError.scripted
+        let model = Self.model(driver)
+        await model.load()
+
+        #expect(model.isLoaded)
+        let query = try #require(driver.executedQueries.first)
+        #expect(query.contains("\"tenant_id\" = '2' AND \"id\" = '5'"))
     }
 
     @Test("The referenced table's keys are read in the reference's schema, and chained links resolve against it")

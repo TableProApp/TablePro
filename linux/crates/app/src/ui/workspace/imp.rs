@@ -64,6 +64,8 @@ pub struct Workspace {
     #[template_child]
     pub reconnect_banner: TemplateChild<adw::Banner>,
     #[template_child]
+    pub transaction_banner: TemplateChild<adw::Banner>,
+    #[template_child]
     pub layout_banner: TemplateChild<adw::Banner>,
     #[template_child]
     pub tab_stack: TemplateChild<gtk::Stack>,

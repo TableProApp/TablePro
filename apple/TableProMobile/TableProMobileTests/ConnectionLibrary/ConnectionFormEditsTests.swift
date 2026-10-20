@@ -379,18 +379,24 @@ struct ConnectionFormEditsTests {
         #expect(saved.port == 2_222)
     }
 
-    @Test("Turning SSH off clears the tunnel")
-    func sshOffClearsTheTunnel() {
+    @Test("Turning SSH off keeps the tunnel's settings, switched off for the Mac too")
+    func sshOffKeepsTheTunnelSwitchedOff() {
+        var ssh = SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy")
+        ssh.jumpHosts = [SSHJumpHost(host: "jump.example.com", username: "deploy")]
+        ssh.macTotpMode = "autoGenerate"
         var snapshot = storedConnection()
         snapshot.sshEnabled = true
-        snapshot.sshConfiguration = SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy")
+        snapshot.sshConfiguration = ssh
         let viewModel = ConnectionFormViewModel(editing: snapshot)
 
         viewModel.sshEnabled = false
         let saved = viewModel.applyingEdits(to: snapshot)
 
         #expect(!saved.sshEnabled)
-        #expect(saved.sshConfiguration == nil)
+        #expect(saved.sshConfiguration?.macEnabled == false)
+        #expect(saved.sshConfiguration?.host == "bastion.example.com")
+        #expect(saved.sshConfiguration?.jumpHosts == ssh.jumpHosts)
+        #expect(saved.sshConfiguration?.macTotpMode == "autoGenerate")
     }
 
     @Test("Turning SSH off drops the Mac's SSH profile link, which would otherwise keep the tunnel on there")

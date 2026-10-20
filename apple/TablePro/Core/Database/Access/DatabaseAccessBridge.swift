@@ -215,7 +215,7 @@ internal actor DatabaseAccessBridge {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
         let databaseType = try await ensureConnected(scope.connectionId)
-        let normalizedQuery = Self.statementText(query, grammar: databaseType.lexicalGrammar)
+        let normalizedQuery = Self.statementText(query, databaseType: databaseType)
         guard !normalizedQuery.isEmpty else {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
@@ -357,6 +357,14 @@ internal actor DatabaseAccessBridge {
     /// emptiness with `.ansi` before it knows the engine and again once it does.
     internal static func statementText(_ query: String, grammar: SQLLexicalGrammar) -> String {
         SQLStatementScanner.executableText(of: query, grammar: grammar)
+    }
+
+    internal static func statementText(_ query: String, databaseType: DatabaseType) -> String {
+        QueryStatementScanner.executableText(
+            of: query,
+            model: QueryStatementModel.forDatabaseType(databaseType),
+            grammar: databaseType.lexicalGrammar
+        )
     }
 }
 
