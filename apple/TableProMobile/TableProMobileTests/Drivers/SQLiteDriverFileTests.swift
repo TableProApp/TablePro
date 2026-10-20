@@ -196,6 +196,96 @@ struct SQLiteDriverFileTests {
         #expect((count.rows.first?.first ?? nil) == "0")
     }
 
+    @Test("A key written as REFERENCES parent with no column points at the parent's primary key")
+    func shorthandKeyReadsTheParentPrimaryKey() async throws {
+        let driver = try await connectedDriver("shorthand.db")
+        _ = try await driver.execute(query: "CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT)")
+        _ = try await driver.execute(
+            query: "CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES Customers)"
+        )
+
+        let keys = try await driver.fetchForeignKeys(table: "orders", schema: nil)
+        try await driver.disconnect()
+
+        #expect(keys.map(\.column) == ["customer_id"])
+        #expect(keys.map(\.referencedTable) == ["Customers"])
+        #expect(keys.map(\.referencedColumn) == ["id"])
+    }
+
+    @Test("A shorthand key to a parent with a non-ASCII name still reads the parent's primary key")
+    func shorthandKeyToNonASCIIParent() async throws {
+        let driver = try await connectedDriver("non-ascii.db")
+        _ = try await driver.execute(query: "CREATE TABLE \"Équipe\" (id INTEGER PRIMARY KEY, name TEXT)")
+        _ = try await driver.execute(
+            query: "CREATE TABLE members (id INTEGER PRIMARY KEY, team_id INTEGER REFERENCES \"Équipe\")"
+        )
+
+        let keys = try await driver.fetchForeignKeys(table: "members", schema: nil)
+        try await driver.disconnect()
+
+        #expect(keys.map(\.referencedTable) == ["Équipe"])
+        #expect(keys.map(\.referencedColumn) == ["id"])
+    }
+
+    @Test("The pairs of a composite key share one name, and another key gets its own")
+    func compositeKeyPairsShareAName() async throws {
+        let driver = try await connectedDriver("composite.db")
+        _ = try await driver.execute(query: "CREATE TABLE regions (id INTEGER PRIMARY KEY)")
+        _ = try await driver.execute(
+            query: "CREATE TABLE users (tenant_id INTEGER, id INTEGER, name TEXT, PRIMARY KEY (tenant_id, id))"
+        )
+        _ = try await driver.execute(query: """
+            CREATE TABLE orders (
+                id INTEGER PRIMARY KEY,
+                tid INTEGER,
+                uid INTEGER,
+                region_id INTEGER REFERENCES regions (id),
+                CONSTRAINT fk_order_user FOREIGN KEY (tid, uid) REFERENCES users (tenant_id, id)
+            )
+            """)
+
+        let keys = try await driver.fetchForeignKeys(table: "orders", schema: nil)
+        try await driver.disconnect()
+
+        let userPairs = keys.filter { $0.referencedTable == "users" }
+        let regionKeys = keys.filter { $0.referencedTable == "regions" }
+        #expect(userPairs.count == 2)
+        #expect(Set(userPairs.map(\.name)).count == 1)
+        #expect(userPairs.map(\.column) == ["tid", "uid"])
+        #expect(userPairs.map(\.referencedColumn) == ["tenant_id", "id"])
+        #expect(regionKeys.map(\.column) == ["region_id"])
+        #expect(regionKeys.allSatisfy { $0.name != userPairs.first?.name })
+    }
+
+    @Test("A declared name equal to another key's positional name keeps the two keys apart")
+    func declaredNameDoesNotMergeKeys() async throws {
+        let driver = try await connectedDriver("collision.db")
+        _ = try await driver.execute(query: "CREATE TABLE p (id INTEGER PRIMARY KEY)")
+        _ = try await driver.execute(query: """
+            CREATE TABLE orders (
+                id INTEGER PRIMARY KEY,
+                a INTEGER,
+                b INTEGER,
+                CONSTRAINT fk_orders_0 FOREIGN KEY (a) REFERENCES p (id),
+                FOREIGN KEY (b) REFERENCES p (id)
+            )
+            """)
+
+        let keys = try await driver.fetchForeignKeys(table: "orders", schema: nil)
+        try await driver.disconnect()
+
+        #expect(keys.count == 2)
+        #expect(Set(keys.map(\.name)).count == 2)
+        let reference = ForeignKeyReference.make(
+            forColumn: "b",
+            foreignKeys: keys,
+            columns: ["id", "a", "b"].map { ColumnInfo(name: $0, typeName: "INTEGER") },
+            cells: [.text("9"), .text("1"), .text("2")],
+            sourceSchema: nil
+        )
+        #expect(reference?.parts == [ForeignKeyReference.Part(column: "id", value: "2")])
+    }
+
     // MARK: - Helpers
 
     private static let createStudent = """

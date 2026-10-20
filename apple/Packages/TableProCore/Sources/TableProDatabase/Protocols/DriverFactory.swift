@@ -16,4 +16,11 @@ public protocol DriverFactory: Sendable {
         secureStore: any SecureStore
     ) async throws -> String?
     func supportedTypes() -> [DatabaseType]
+    func refusal(for connection: DatabaseConnection) -> ConnectionError?
+}
+
+public extension DriverFactory {
+    func refusal(for connection: DatabaseConnection) -> ConnectionError? {
+        supportedTypes().contains(connection.type) ? nil : .driverNotFound(connection.type.rawValue)
+    }
 }

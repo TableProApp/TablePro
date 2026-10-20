@@ -7077,6 +7077,9 @@
         }
       }
     },
+    "Explains why it can't open here." : {
+
+    },
     "Explore a music store database without connecting to a server." : {
       "localizations" : {
         "ko" : {
@@ -11687,6 +11690,16 @@
         }
       }
     },
+    "No row found in %@ where %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No row found in %1$@ where %2$@."
+          }
+        }
+      }
+    },
     "No Tables" : {
       "localizations" : {
         "ko" : {
@@ -12441,6 +12454,9 @@
         }
       }
     },
+    "Open it in TablePro on your Mac." : {
+
+    },
     "Open it on the Mac, or change it there to connect by host and port." : {
 
     },
@@ -12500,6 +12516,9 @@
         }
       }
     },
+    "Open Table" : {
+
+    },
     "Open this connection in TablePro to check the server's SSH host key first." : {
       "localizations" : {
         "ko" : {
@@ -12555,6 +12574,12 @@
           }
         }
       }
+    },
+    "Opens on Mac only" : {
+
+    },
+    "Opens on Mac Only" : {
+
     },
     "Opens table data" : {
       "localizations" : {
@@ -15166,6 +15191,9 @@
         }
       }
     },
+    "Run All Statements" : {
+
+    },
     "Run queries and find the ones you ran before in History." : {
       "localizations" : {
         "ko" : {
@@ -15193,6 +15221,12 @@
           }
         }
       }
+    },
+    "Run Selection" : {
+
+    },
+    "Run Statement" : {
+
     },
     "Running" : {
       "localizations" : {
@@ -15255,6 +15289,9 @@
       }
     },
     "Running statement %1$d of %2$d" : {
+
+    },
+    "Runs the statement at the cursor, or the selected text." : {
 
     },
     "Safe Mode" : {
@@ -16760,6 +16797,10 @@
         }
       }
     },
+    "SSH tunneling is not available on this platform" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "SSH Unavailable" : {
       "localizations" : {
         "ko" : {
@@ -17969,6 +18010,10 @@
         }
       }
     },
+    "TablePro on iPhone and iPad can't open %@ connections." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro will re-download every connection, group, and tag from your iCloud account. Local data on this device is not deleted." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -18737,6 +18782,9 @@
         }
       }
     },
+    "The cursor is not in a statement." : {
+
+    },
     "The data could not be read: %@" : {
       "localizations" : {
         "ko" : {
@@ -19399,6 +19447,10 @@
     },
     "The profile is read from files on the Mac. A key added here signs in on this device only. The Mac's connection does not change." : {
 
+    },
+    "The previous session is still closing" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The query did not finish within the configured timeout, so the connection was reset. Run the query again." : {
       "extractionState" : "manual",
@@ -20578,6 +20630,9 @@
         }
       }
     },
+    "This row's primary key is not plain text, so it cannot identify the row." : {
+
+    },
     "This server has no password set for the default user. Clear the Password field." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -21379,6 +21434,9 @@
           }
         }
       }
+    },
+    "unbalanced quotes" : {
+
     },
     "Unfavorite" : {
       "localizations" : {

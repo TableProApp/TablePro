@@ -67,7 +67,9 @@ nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unche
 
     func execute(query: String) async throws -> QueryResult {
         let start = Date()
-        let args = Self.parseRedisCommand(query)
+        guard let args = Self.parseRedisCommand(query) else {
+            throw RedisError.queryFailed(String(localized: "unbalanced quotes"))
+        }
         guard !args.isEmpty else {
             throw RedisError.queryFailed("Empty command")
         }
@@ -180,9 +182,8 @@ nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unche
     /// separate arguments outside quotes, as they do in the Mac's `RedisArgumentCodec`.
     private static let argumentSeparators: Set<Character> = [" ", "\t", "\n", "\r", "\r\n"]
 
-    /// A quote opens an argument even when nothing is inside it: `LPUSH l "" x` pushes two values, and dropping the
-    /// empty one pushed only `x`.
-    static func parseRedisCommand(_ input: String) -> [String] {
+    // An empty quote is still an argument: `LPUSH l "" x` must push two values, not only `x`.
+    static func parseRedisCommand(_ input: String) -> [String]? {
         var args: [String] = []
         var current = ""
         var hasArgument = false
@@ -224,6 +225,7 @@ nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unche
             current.append(ch)
             hasArgument = true
         }
+        if inQuote != nil { return nil }
         if hasArgument { args.append(current) }
         return args
     }

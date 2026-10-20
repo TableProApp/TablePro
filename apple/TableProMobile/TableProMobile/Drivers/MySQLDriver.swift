@@ -204,23 +204,24 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
-        let safe = table.replacingOccurrences(of: "`", with: "``")
-        let raw = try await actor.execute("SHOW FULL COLUMNS FROM `\(safe)`")
+        let raw = try await actor.execute(Self.showFullColumnsStatement(table: table, database: schema))
         let source = MySQLColumnListing.defaultSource(
             flavor: Self.serverFlavor(for: databaseType, banner: serverVersion),
             banner: serverVersion
         )
-        let catalog = await catalogDefaults(table: table, source: source)
+        let catalog = await catalogDefaults(table: table, database: schema, source: source)
         return MySQLColumnListing.columns(fromShowFullColumns: raw.rows, catalogDefaults: catalog, source: source)
     }
 
-    /// A catalog that refuses leaves every default on what `SHOW FULL COLUMNS` reported, as it does on
-    /// the Mac, rather than taking the column list down with it.
+    // A catalog that refuses leaves the defaults SHOW FULL COLUMNS reported, as on the Mac.
     private func catalogDefaults(
         table: String,
+        database: String?,
         source: MySQLColumnListing.DefaultSource
     ) async -> [String: MySQLCatalogDefault] {
-        guard let query = MySQLColumnListing.catalogDefaultsQuery(table: table, source: source) else { return [:] }
+        guard let query = MySQLColumnListing.catalogDefaultsQuery(table: table, database: database, source: source) else {
+            return [:]
+        }
         do {
             let raw = try await actor.execute(query)
             return MySQLColumnListing.catalogDefaults(fromRows: raw.rows, source: source)
@@ -233,8 +234,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
-        let safe = table.replacingOccurrences(of: "`", with: "``")
-        let raw = try await actor.execute("SHOW INDEX FROM `\(safe)`")
+        let raw = try await actor.execute(Self.showIndexStatement(table: table, database: schema))
 
         var indexMap: [String: (isUnique: Bool, isPrimary: Bool, columns: [String])] = [:]
         var order: [String] = []
@@ -264,69 +264,24 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         }
     }
 
-    /// Below 5.1.10 there is no `REFERENTIAL_CONSTRAINTS`, so the keys come from `SHOW CREATE TABLE`, as on
-    /// the Mac. An error here would also discard the columns and indexes loaded with the keys.
+    // Below 5.1.10 there is no REFERENTIAL_CONSTRAINTS. Failing there would also drop the columns and
+    // indexes loaded with the keys, so those servers read SHOW CREATE TABLE, as on the Mac.
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
         guard Self.readsForeignKeyCatalog(for: databaseType, banner: serverVersion) else {
-            return try await declaredForeignKeys(table: table)
+            return try await declaredForeignKeys(table: table, database: schema)
         }
-        let safe = table.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "''")
-        let dbSafe = database.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "''")
-        let query = """
-            SELECT
-                kcu.CONSTRAINT_NAME,
-                kcu.COLUMN_NAME,
-                kcu.REFERENCED_TABLE_NAME,
-                kcu.REFERENCED_COLUMN_NAME,
-                rc.DELETE_RULE,
-                rc.UPDATE_RULE
-            FROM information_schema.KEY_COLUMN_USAGE kcu
-            JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
-                ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME
-                AND kcu.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA
-            WHERE kcu.TABLE_SCHEMA = '\(dbSafe)'
-                AND kcu.TABLE_NAME = '\(safe)'
-                AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
-            ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION
-            """
-        let raw = try await actor.execute(query)
-
-        return raw.rows.compactMap { row in
-            guard row.count >= 6,
-                  let name = row[0],
-                  let column = row[1],
-                  let refTable = row[2],
-                  let refColumn = row[3] else { return nil }
-            return ForeignKeyInfo(
-                name: name,
-                column: column,
-                referencedTable: refTable,
-                referencedColumn: refColumn,
-                onDelete: row[4] ?? "NO ACTION",
-                onUpdate: row[5] ?? "NO ACTION"
-            )
-        }
+        let raw = try await actor.execute(Self.foreignKeyCatalogQuery(table: table, database: schema))
+        return Self.foreignKeys(fromCatalogRows: raw.rows)
     }
 
-    private func declaredForeignKeys(table: String) async throws -> [ForeignKeyInfo] {
-        let safe = table.replacingOccurrences(of: "`", with: "``")
-        let raw = try await actor.execute("SHOW CREATE TABLE `\(safe)`")
+    private func declaredForeignKeys(table: String, database: String?) async throws -> [ForeignKeyInfo] {
+        let raw = try await actor.execute(Self.showCreateTableStatement(table: table, database: database))
         guard let row = raw.rows.first, row.count > 1, let ddl = row[1] else { return [] }
         let omittedAction = MySQLServerVersion.omittedForeignKeyAction(
             banner: serverVersion,
             flavor: Self.serverFlavor(for: databaseType, banner: serverVersion)
         )
-        return MySQLForeignKeyClause.parse(createTable: ddl, database: database, omittedAction: omittedAction)
-            .map { key in
-                ForeignKeyInfo(
-                    name: key.name,
-                    column: key.column,
-                    referencedTable: key.referencedTable,
-                    referencedColumn: key.referencedColumn,
-                    onDelete: key.onDelete,
-                    onUpdate: key.onUpdate
-                )
-            }
+        return Self.foreignKeys(declaredIn: ddl, database: database, omittedAction: omittedAction)
     }
 
     func fetchDatabases() async throws -> [String] {
@@ -384,6 +339,95 @@ nonisolated enum MySQLTokenSignIn {
               errorCode == UInt32(CR_SSL_CONNECTION_ERROR),
               serverCapabilities & UInt(CLIENT_SSL) == 0 else { return nil }
         return .encryptionNotEstablished
+    }
+}
+
+nonisolated extension MySQLDriver {
+    static func showFullColumnsStatement(table: String, database: String?) -> String {
+        "SHOW FULL COLUMNS FROM \(qualifiedTable(table, database: database))"
+    }
+
+    static func showIndexStatement(table: String, database: String?) -> String {
+        "SHOW INDEX FROM \(qualifiedTable(table, database: database))"
+    }
+
+    static func showCreateTableStatement(table: String, database: String?) -> String {
+        "SHOW CREATE TABLE \(qualifiedTable(table, database: database))"
+    }
+
+    // Nil reads the session's database, which the last USE set. The one the driver connected with
+    // goes stale after a switch.
+    static func databaseLiteral(_ database: String?) -> String {
+        guard let database, !database.isEmpty else { return "DATABASE()" }
+        return "'\(SQLEscaping.backslashStringLiteral(database))'"
+    }
+
+    static func foreignKeyCatalogQuery(table: String, database: String?) -> String {
+        """
+        SELECT
+            kcu.CONSTRAINT_NAME,
+            kcu.COLUMN_NAME,
+            kcu.REFERENCED_TABLE_NAME,
+            kcu.REFERENCED_COLUMN_NAME,
+            rc.DELETE_RULE,
+            rc.UPDATE_RULE,
+            kcu.TABLE_SCHEMA,
+            kcu.REFERENCED_TABLE_SCHEMA
+        FROM information_schema.KEY_COLUMN_USAGE kcu
+        JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
+            ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME
+            AND kcu.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA
+        WHERE kcu.TABLE_SCHEMA = \(databaseLiteral(database))
+            AND kcu.TABLE_NAME = '\(SQLEscaping.backslashStringLiteral(table))'
+            AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
+        ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION
+        """
+    }
+
+    static func foreignKeys(fromCatalogRows rows: [[String?]]) -> [ForeignKeyInfo] {
+        rows.compactMap { row in
+            guard row.count >= 8,
+                  let name = row[0],
+                  let column = row[1],
+                  let refTable = row[2],
+                  let refColumn = row[3] else { return nil }
+            return ForeignKeyInfo(
+                name: name,
+                column: column,
+                referencedTable: refTable,
+                referencedColumn: refColumn,
+                referencedSchema: row[7] == row[6] ? nil : row[7],
+                onDelete: row[4] ?? "NO ACTION",
+                onUpdate: row[5] ?? "NO ACTION"
+            )
+        }
+    }
+
+    // The parser fills the source database into every unqualified key. Nil keeps a same-database key
+    // the same as the catalog read gives it.
+    static func foreignKeys(declaredIn createTable: String, database: String?, omittedAction: String) -> [ForeignKeyInfo] {
+        MySQLForeignKeyClause.parse(createTable: createTable, database: database ?? "", omittedAction: omittedAction)
+            .map { key in
+                ForeignKeyInfo(
+                    name: key.name,
+                    column: key.column,
+                    referencedTable: key.referencedTable,
+                    referencedColumn: key.referencedColumn,
+                    referencedSchema: key.referencedSchema == database ? nil : key.referencedSchema,
+                    onDelete: key.onDelete,
+                    onUpdate: key.onUpdate
+                )
+            }
+    }
+
+    private static func qualifiedTable(_ table: String, database: String?) -> String {
+        let name = quotedIdentifier(table)
+        guard let database, !database.isEmpty else { return name }
+        return "\(quotedIdentifier(database)).\(name)"
+    }
+
+    private static func quotedIdentifier(_ name: String) -> String {
+        "`\(name.replacingOccurrences(of: "`", with: "``"))`"
     }
 }
 

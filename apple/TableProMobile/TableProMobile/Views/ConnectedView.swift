@@ -101,7 +101,7 @@ struct ConnectedView: View {
             statusScreen {
                 ErrorView(
                     error: error,
-                    onRetry: { await coordinator.connect() },
+                    onRetry: error.canRetry ? { await coordinator.connect() } : nil,
                     onEditConnection: connection.isSample ? nil : { presenter.presentConnectionEditor(for: connection.id) }
                 )
             }
@@ -168,7 +168,6 @@ struct ConnectedView: View {
                         if let table = coordinator.selectedTable {
                             DataBrowserView(table: table)
                                 .environment(coordinator)
-                                .id(table)
                         } else {
                             ContentUnavailableView(
                                 "No Table Selected",
@@ -177,6 +176,7 @@ struct ConnectedView: View {
                             )
                         }
                     }
+                    .id(TableBrowserIdentity(coordinator.selectedTable, coordinator.activeDatabase))
                 }
                 .navigationSplitViewStyle(.balanced)
             }
@@ -306,7 +306,7 @@ struct ConnectedView: View {
                     Label(coordinator.activeDatabase, systemImage: "cylinder.split.1x2")
                         .font(.subheadline)
                 }
-                .disabled(coordinator.isSwitching)
+                .disabled(coordinator.isSwitching || presenter.isHeldByEditor)
             }
         }
         if coordinator.supportsSchemas && coordinator.schemas.count > 1 {

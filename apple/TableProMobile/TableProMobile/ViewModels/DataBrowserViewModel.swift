@@ -52,6 +52,16 @@ final class DataBrowserViewModel {
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
     @ObservationIgnored private var keyReadTask: Task<KeyContentsPage, Error>?
+    @ObservationIgnored private var loadGeneration = 0
+    @ObservationIgnored private var hasSeededFilters = false
+    @ObservationIgnored private var seededKeyColumns: [String] = []
+    @ObservationIgnored private var singleRowMatch = SingleRowMatch.inactive
+
+    private enum SingleRowMatch {
+        case inactive
+        case awaitingFirstLoad
+        case found
+    }
 
     init(windowCapacity: Int = 1_000) {
         self.buffer = StreamingResultBuffer(capacity: windowCapacity)
@@ -100,9 +110,28 @@ final class DataBrowserViewModel {
         self.schema = schema
     }
 
+    // Only the first call counts, so filters the user changed afterwards survive the view's task running again.
+    func seedFilters(_ seeded: [TableFilter]) {
+        guard !hasSeededFilters else { return }
+        hasSeededFilters = true
+        filters = seeded
+        seededKeyColumns = seeded.map(\.columnName)
+        filterLogicMode = .and
+        singleRowMatch = hasActiveFilters ? .awaitingFirstLoad : .inactive
+    }
+
+    func takeSingleRowMatch() -> Bool {
+        guard case .found = singleRowMatch else { return false }
+        singleRowMatch = .inactive
+        return true
+    }
+
     // MARK: - Load
 
     func load(isInitial: Bool = false) async {
+        loadGeneration += 1
+        let generation = loadGeneration
+
         guard let session, let table else {
             loadError = AppError(
                 category: .config,
@@ -111,8 +140,7 @@ final class DataBrowserViewModel {
                 recovery: String(localized: "Go back and reconnect to the database."),
                 underlying: nil
             )
-            isLoading = false
-            isPageLoading = false
+            finishLoad()
             return
         }
 
@@ -124,18 +152,40 @@ final class DataBrowserViewModel {
         loadError = nil
 
         if let reader = TableBrowseMode.keyContentsReader(of: session.driver) {
-            await loadKeyContents(reader: reader, key: table.name)
+            await loadKeyContents(reader: reader, key: table.name, generation: generation)
         } else {
-            await loadRows(session: session, table: table, isInitial: isInitial)
+            await loadRows(session: session, table: table, isInitial: isInitial, generation: generation)
         }
-        isLoading = false
-        isPageLoading = false
+        guard isCurrent(generation) else { return }
+        finishLoad()
     }
 
-    private func loadRows(session: ConnectionSession, table: TableInfo, isInitial: Bool) async {
+    private func isCurrent(_ generation: Int) -> Bool {
+        generation == loadGeneration
+    }
+
+    private func finishLoad() {
+        isLoading = false
+        isPageLoading = false
+        guard case .awaitingFirstLoad = singleRowMatch else { return }
+        singleRowMatch = loadError == nil && legacyRows.count == 1 ? .found : .inactive
+    }
+
+    // The preview quotes every key value, and a column without a type (a typeless SQLite key) keeps 5 and '5'
+    // apart, so such a seeded key column compares as text here too and the browser lists the previewed row.
+    private var filterColumns: [ColumnInfo] {
+        let untyped = seededKeyColumns.filter {
+            FilterColumnKind.kind(of: FilterColumnKind.column(named: $0, in: columnDetails)) == nil
+        }
+        return untyped.map { ColumnInfo(name: $0, typeName: "TEXT") } + columnDetails
+    }
+
+    private func loadRows(session: ConnectionSession, table: TableInfo, isInitial: Bool, generation: Int) async {
         do {
             if columnDetails.isEmpty || isInitial {
-                columnDetails = try await session.driver.fetchColumns(table: table.name, schema: nil)
+                let fetched = try await session.driver.fetchColumns(table: table.name, schema: schema)
+                guard isCurrent(generation) else { return }
+                columnDetails = fetched
             }
 
             let pkColumns = columnDetails.filter(\.isPrimaryKey).map(\.name)
@@ -143,9 +193,12 @@ final class DataBrowserViewModel {
             let query = buildSelectQuery(table: table)
             let driver = session.driver
 
-            await loadPage(options: pageOptions(lazyContext: lazyContext), startedAt: Date()) { options in
+            await loadPage(
+                options: pageOptions(lazyContext: lazyContext), startedAt: Date(), generation: generation
+            ) { options in
                 driver.executeStreaming(query: query, options: options)
             }
+            guard isCurrent(generation) else { return }
 
             if case .error(let err) = phase {
                 loadError = err
@@ -155,16 +208,19 @@ final class DataBrowserViewModel {
 
             if foreignKeys.isEmpty || isInitial {
                 do {
-                    foreignKeys = try await session.driver.fetchForeignKeys(table: table.name, schema: nil)
+                    let fetched = try await session.driver.fetchForeignKeys(table: table.name, schema: schema)
+                    guard isCurrent(generation) else { return }
+                    foreignKeys = fetched
                 } catch {
                     Self.logger.warning("Failed to fetch foreign keys: \(error.localizedDescription, privacy: .private)")
                 }
             }
 
-            if pagination.totalRows == nil {
-                await fetchTotalRows(session: session, table: table)
+            if isCurrent(generation), pagination.totalRows == nil {
+                await fetchTotalRows(session: session, table: table, generation: generation)
             }
         } catch {
+            guard isCurrent(generation) else { return }
             loadError = ErrorClassifier.classify(
                 error,
                 context: ErrorContext(operation: "loadData", databaseType: databaseType, host: host)
@@ -172,7 +228,7 @@ final class DataBrowserViewModel {
         }
     }
 
-    private func loadKeyContents(reader: any KeyContentsBrowsing, key: String) async {
+    private func loadKeyContents(reader: any KeyContentsBrowsing, key: String, generation: Int) async {
         let start = Date()
         let limit = pagination.pageSize
         let offset = pagination.currentOffset
@@ -181,15 +237,16 @@ final class DataBrowserViewModel {
         keyReadTask = read
         do {
             let page = try await read.value
-            guard keyReadTask == read, !read.isCancelled else { return }
+            guard keyReadTask == read, !read.isCancelled, isCurrent(generation) else { return }
             columnDetails = page.result.columns
             foreignKeys = []
             pagination.totalRows = page.totalCount
 
             let result = page.result
-            await loadPage(options: pageOptions(lazyContext: nil), startedAt: start) { options in
+            await loadPage(options: pageOptions(lazyContext: nil), startedAt: start, generation: generation) { options in
                 QueryResultStreaming.stream(options: options) { result }
             }
+            guard isCurrent(generation) else { return }
 
             if case .error(let err) = phase {
                 loadError = err
@@ -197,7 +254,7 @@ final class DataBrowserViewModel {
             }
             settleTotalRowsFromShortPage()
         } catch {
-            guard keyReadTask == read, !read.isCancelled else { return }
+            guard keyReadTask == read, !read.isCancelled, isCurrent(generation) else { return }
             loadError = ErrorClassifier.classify(
                 error,
                 context: ErrorContext(operation: "loadKeyContents", databaseType: databaseType, host: host)
@@ -225,7 +282,7 @@ final class DataBrowserViewModel {
             return SQLBuilder.buildSearchSelect(
                 table: table.name, schema: schema, type: databaseType,
                 searchText: activeSearchText, searchColumns: searchableColumns(),
-                filters: filters, logicMode: filterLogicMode,
+                filters: filters, logicMode: filterLogicMode, columns: filterColumns,
                 sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
@@ -233,7 +290,7 @@ final class DataBrowserViewModel {
         if hasActiveFilters {
             return SQLBuilder.buildFilteredSelect(
                 table: table.name, schema: schema, type: databaseType,
-                filters: filters, logicMode: filterLogicMode,
+                filters: filters, logicMode: filterLogicMode, columns: filterColumns,
                 sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
@@ -270,24 +327,25 @@ final class DataBrowserViewModel {
         }
     }
 
-    private func fetchTotalRows(session: ConnectionSession, table: TableInfo) async {
+    private func fetchTotalRows(session: ConnectionSession, table: TableInfo, generation: Int) async {
         do {
             let countQuery: String
             if hasActiveSearch {
                 countQuery = SQLBuilder.buildSearchCount(
                     table: table.name, schema: schema, type: databaseType,
                     searchText: activeSearchText, searchColumns: searchableColumns(),
-                    filters: filters, logicMode: filterLogicMode
+                    filters: filters, logicMode: filterLogicMode, columns: filterColumns
                 )
             } else if hasActiveFilters {
                 countQuery = SQLBuilder.buildFilteredCount(
                     table: table.name, schema: schema, type: databaseType,
-                    filters: filters, logicMode: filterLogicMode
+                    filters: filters, logicMode: filterLogicMode, columns: filterColumns
                 )
             } else {
                 countQuery = SQLBuilder.buildCount(table: table.name, schema: schema, type: databaseType)
             }
             let countResult = try await session.driver.execute(query: countQuery)
+            guard isCurrent(generation) else { return }
             if let firstRow = countResult.rows.first, let firstCol = firstRow.first {
                 pagination.totalRows = Int(firstCol ?? "0")
             }
@@ -406,14 +464,12 @@ final class DataBrowserViewModel {
         }
     }
 
-    func primaryKeyValues(for row: [String?]) -> [(column: String, value: String)] {
-        columnDetails.compactMap { col in
-            guard col.isPrimaryKey,
-                  let colIndex = columns.firstIndex(where: { $0.name == col.name }),
-                  colIndex < row.count,
-                  let value = row[colIndex] else { return nil }
-            return (column: col.name, value: value)
-        }
+    func primaryKeyValues(forRowAt index: Int) -> [(column: String, value: String)]? {
+        let rows = window.rows
+        guard rows.indices.contains(index) else { return nil }
+        return RowDetailViewModel.primaryKeyValues(
+            cells: rows[index].cells, columns: columns, columnDetails: columnDetails
+        )
     }
 
     // MARK: - Lazy Cell Loading
@@ -424,7 +480,7 @@ final class DataBrowserViewModel {
         }
         let predicate = predicates.joined(separator: " AND ")
         let column = SQLBuilder.quoteIdentifier(ref.column, for: databaseType)
-        let table = SQLBuilder.quoteIdentifier(ref.table, for: databaseType)
+        let table = SQLBuilder.qualifiedIdentifier(table: ref.table, schema: schema, for: databaseType)
         let query: String
         switch databaseType {
         case .mssql:
@@ -476,6 +532,7 @@ final class DataBrowserViewModel {
     private func loadPage(
         options: StreamOptions,
         startedAt start: Date,
+        generation: Int,
         stream makeStream: @escaping @Sendable (StreamOptions) -> AsyncThrowingStream<StreamElement, Error>
     ) async {
         fetchTask?.cancel()
@@ -489,6 +546,7 @@ final class DataBrowserViewModel {
                     if Task.isCancelled { break }
                     self.buffer.apply(element)
                 }
+                guard self.isCurrent(generation) else { return }
                 self.buffer.flush()
                 self.executionTime = Date().timeIntervalSince(start)
                 if let reason = self.buffer.truncation {
@@ -497,6 +555,7 @@ final class DataBrowserViewModel {
                     self.phase = .loaded
                 }
             } catch {
+                guard self.isCurrent(generation) else { return }
                 self.buffer.flush()
                 self.phase = .error(self.classify(error: error))
             }

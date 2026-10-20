@@ -46,7 +46,7 @@ nonisolated extension DatabaseType {
         case .redis: "Redis"
         case .mssql: "SQL Server"
         case .oracle: "Oracle"
-        default: rawValue.uppercased()
+        default: rawValue
         }
     }
 

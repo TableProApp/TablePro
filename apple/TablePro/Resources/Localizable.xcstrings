@@ -168616,6 +168616,10 @@
         }
       }
     },
+    "SSH tunneling is not available on this platform" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "SSH User" : {
       "localizations" : {
         "fr" : {
@@ -176969,6 +176973,10 @@
           }
         }
       }
+    },
+    "TablePro on iPhone and iPad can't open %@ connections." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro only notifies when the result is not already on screen." : {
       "localizations" : {
@@ -185491,6 +185499,10 @@
           }
         }
       }
+    },
+    "The previous session is still closing" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The primary key is part of the table and can't be dropped." : {
       "extractionState" : "manual",

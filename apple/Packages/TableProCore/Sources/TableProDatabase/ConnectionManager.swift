@@ -31,17 +31,13 @@ public final class ConnectionManager: @unchecked Sendable {
         self.clock = clock
     }
 
-    /// Opens a session, waiting out a teardown still running for the same connection first.
-    ///
-    /// That wait ends on the calling task's cancellation with `CancellationError`, and after
-    /// `teardownWaitLimit` with `ConnectionError.previousSessionStillClosing`. Neither ending opens a
-    /// session over resources the old driver still holds, and neither retires the teardown: it keeps
-    /// running, it keeps counting as a suspension-blocking resource, and the next attempt succeeds as
-    /// soon as it lands.
+    // A teardown wait that gives up leaves the teardown running and counting as suspension-blocking.
     public func connect(
         _ connection: DatabaseConnection,
         prompter: (any ConnectionPrompter)? = nil
     ) async throws -> ConnectionSession {
+        // Ahead of beginAttempt, so a refusal neither cancels an attempt in flight nor tears down the open session.
+        if let refusal = driverFactory.refusal(for: connection) { throw refusal }
         let generation = beginAttempt(for: connection.id)
         switch await awaitTeardown(of: connection.id, bound: .after(teardownWaitLimit)) {
         case .cleared:
