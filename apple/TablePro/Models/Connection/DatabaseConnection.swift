@@ -441,6 +441,8 @@ internal extension DatabaseConnection {
         adopted.cloudSQLProxyMode = local.cloudSQLProxyMode
         adopted.socksProxyMode = local.socksProxyMode
         adopted.tunnelCommandMode = local.tunnelCommandMode
+        // The Connection record has no route field yet, so the route this Mac dialed stays on it.
+        adopted.sshRoute = local.sshRoute
         return adopted
     }
 }

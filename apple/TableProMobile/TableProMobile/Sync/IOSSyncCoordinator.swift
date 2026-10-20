@@ -885,8 +885,8 @@ final class IOSSyncCoordinator {
         ).map { pulledIds.contains($0.id) ? $0 : adoptingCachedSSHFields($0) }
     }
 
-    // A connection stored before this build read `sshProfileId` and `sshRouteJson` lacks both until
-    // its record changes again, and the record pulled earlier already holds them. A record in this
+    // A connection stored before this build read `sshProfileId` lacks it until its record changes
+    // again, and the record pulled earlier already holds it. A record in this
     // pull is newer than the cache, which is written only after it.
     private func adoptingCachedSSHFields(_ connection: DatabaseConnection) -> DatabaseConnection {
         guard connection.sshConfiguration != nil, connection.sshProfileId == nil, connection.sshRoute == nil,

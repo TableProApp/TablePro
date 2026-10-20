@@ -209,7 +209,6 @@ public enum SyncRecordMapper {
         connection.connectTimeoutSeconds = validConnectTimeout(legacyConnectTimeout)
         connection.adoptConfigurationSwitches()
         connection.sshProfileId = (fields[.sshProfileId] as? String).flatMap { UUID(uuidString: $0) }
-        connection.sshRoute = (fields[.sshRouteJson] as? Data).flatMap(PublishedSSHRoute.decoded(from:))
         return connection
     }
 

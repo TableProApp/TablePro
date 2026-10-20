@@ -132,7 +132,6 @@ struct SyncRecordMapper {
         fields[.redisDatabase] = connection.redisDatabase.map { Int64($0) }
         fields[.startupCommands] = connection.startupCommands.flatMap { $0.isEmpty ? nil : $0 }
         fields[.sshProfileId] = connection.sshProfileId?.uuidString
-        fields[.sshRouteJson] = connection.sshRoute?.encoded()
 
         // Encode complex structs as JSON Data — contract device-local paths
         // to portable ~/… form so they resolve correctly on other devices.
@@ -284,7 +283,6 @@ struct SyncRecordMapper {
         if let queryTimeoutSeconds = validQueryTimeout(queryTimeoutSeconds ?? legacyQueryTimeout) {
             connection.queryTimeoutSeconds = queryTimeoutSeconds
         }
-        connection.sshRoute = (fields[.sshRouteJson] as? Data).flatMap(PublishedSSHRoute.decoded(from:))
         return connection
     }
 
