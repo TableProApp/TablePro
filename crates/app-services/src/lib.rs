@@ -17,3 +17,6 @@ pub mod state_file;
 pub mod structure_tracker;
 pub mod window_state;
 pub mod workspace;
+
+mod workspace_disk;
+pub mod workspace_state;

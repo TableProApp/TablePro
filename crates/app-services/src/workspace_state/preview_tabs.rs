@@ -7,10 +7,10 @@ impl WorkspaceStore {
             .file_lock
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let Ok(mut state) = load_locked() else {
+        let Ok(mut state) = load_locked(&self.inner.paths) else {
             return;
         };
-        if drop_preview_tabs(&mut state) && save_locked(&state).is_err() {
+        if drop_preview_tabs(&mut state) && save_locked(&self.inner.paths, &state).is_err() {
             tracing::warn!("preview tabs could not be discarded from the saved workspace");
         }
     }
@@ -43,7 +43,7 @@ fn drop_preview_tabs(state: &mut WorkspaceState) -> bool {
 #[cfg(test)]
 mod tests {
     use super::drop_preview_tabs;
-    use crate::services::workspace_state::{
+    use crate::workspace_state::{
         ConnectionWorkspaceState, PersistedTableMode, RestoredWorkspaceTab, WorkspaceState, WorkspaceTabRecord,
         restored_workspace_tab,
     };

@@ -25,7 +25,6 @@ pub mod single_instance;
 
 pub mod window_registry;
 pub mod window_state;
-mod workspace_disk;
 pub mod workspace_state;
 
 pub(crate) mod browse_query;

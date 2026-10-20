@@ -77,6 +77,8 @@ Some state outlives any single component: open connections, user preferences, qu
 
 `tablepro-app-services::workspace` owns each window's tab membership, preview status, open-table decisions and save-before-close counters. The collection accepts app-owned payloads; it has no GUI dependency. The GTK adapter owns controllers, page order, dialogs and the `AdwTabView` close handshake. The app adapter writes the existing `services::workspace_state` record format and identifiers.
 
+Workspace serialization, restoration, draft files and the background writer live in `tablepro-app-services::workspace_state`. The app supplies configuration and draft-directory paths through its `workspace_state` adapter. GTK page ordering, snapshot collection and persistence timers remain in the app; the saved format and directory names are unchanged.
+
 Per-tab editing state is the deliberate exception. `change_tracker`, `structure_tracker` and `window_registry` keep a `thread_local!` registry keyed by tab or window id. That is sound because each is confined to the GTK main thread by the Relm4 contract, which is also why they use `RefCell` rather than `Mutex`. Threading a registry handle through every grid cell binding would cost more in the hot `connect_bind` path than it buys. Tests construct a fresh registry rather than sharing the thread-local one.
 
 ## Two persistence primitives, deliberately not one

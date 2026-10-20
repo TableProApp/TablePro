@@ -7,7 +7,6 @@ apps/linux/app/src/lib.rs 1
 apps/linux/app/src/services/change_tracker.rs 1
 apps/linux/app/src/services/connection_service.rs 1
 apps/linux/app/src/services/gtk_approval.rs 1
-apps/linux/app/src/services/workspace_state.rs 1
 apps/linux/app/src/ui/activity_dialog.rs 1
 apps/linux/app/src/ui/app/browse.rs 1
 apps/linux/app/src/ui/app/connection.rs 1

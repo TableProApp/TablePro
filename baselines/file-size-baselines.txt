@@ -8,7 +8,6 @@
 
 crates/core/src/import/cell.rs 1142
 crates/core/src/sql_dialect.rs 966
-apps/linux/app/src/services/workspace_state.rs 1208
 apps/linux/app/src/ui/connect_dialog/mod.rs 1210
 crates/storage/src/connections.rs 1172
 crates/drivers/mssql/tests/integration.rs 1108
