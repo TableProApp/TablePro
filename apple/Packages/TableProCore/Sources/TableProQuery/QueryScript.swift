@@ -96,8 +96,20 @@ public struct QueryScript: Sendable, Equatable {
         )
         return QueryScript(
             units: batches.map { Unit(sql: $0.sql, repeatCount: $0.repeatCount) },
-            unitKind: .batch
+            unitKind: .batch,
+            session: session,
+            source: nil,
+            unitEnds: [],
+            databaseType: databaseType
         )
+    }
+
+    /// The statements a unit runs: the unit itself, or each statement of a batch, so a `ROLLBACK` after a `SELECT` in
+    /// one `GO` batch still counts.
+    public func statements(in unit: Unit) -> [String] {
+        guard unitKind == .batch, let databaseType else { return [unit.sql] }
+        let grammar = Self.executionGrammar(for: databaseType, session: session)
+        return SQLStatementScanner.executableStatements(in: unit.sql, grammar: grammar).map(\.sql)
     }
 
     // A bare Redis argument may end in a byte Foundation trims, such as a vertical tab or a no-break space.

@@ -245,6 +245,23 @@ struct ConnectionCoordinatorReconnectTests {
         await redial.value
     }
 
+    @Test("A first connect its window walked away from is cancelled, so the connect can stop")
+    func abandonedFirstDialIsCancelled() async throws {
+        let coordinator = ConnectionCoordinator(connection: connection, appState: appState)
+        let dialed = driver(tables: ["orders"])
+        let connecting = TestGate()
+        dialed.beforeConnect = { await connecting.enter() }
+        factory.queue(dialed)
+        let connect = Task { await coordinator.connect() }
+        await connecting.waitUntilEntered()
+
+        coordinator.retire()
+        await connecting.open()
+        await connect.value
+
+        #expect(dialed.connectSawCancellation)
+    }
+
     @Test("No window switches database under another window's unsaved row edit")
     func unsavedEditBlocksADatabaseSwitch() async throws {
         let first = driver(tables: ["orders"])
@@ -483,6 +500,23 @@ struct ConnectionCoordinatorReconnectTests {
         await runQuery("ROLLBACK", in: coordinator, on: first)
 
         #expect(coordinator.transactionHold == nil)
+        #expect(monitor.rollBackCount(for: connection.id) == 1)
+    }
+
+    @Test("A ROLLBACK after another statement in one SQL Server batch counts as a Roll Back")
+    func rollBackInsideABatchCounts() async throws {
+        let first = driver(tables: ["orders"], state: .explicitTransaction)
+        try await dial(first)
+        let coordinator = await attachedCoordinator()
+        first.scriptedTransactionState = .idle
+
+        let viewModel = QueryEditorViewModel()
+        let script = QueryScript.plan("SELECT 1; ROLLBACK TRANSACTION;", databaseType: .mssql, sendsBatchesWhole: true)
+        await coordinator.track(rolledBack: { _ in viewModel.ranTransactionRollBack }) {
+            await viewModel.run(driver: first, script: script)
+        }
+
+        #expect(script.unitKind == .batch)
         #expect(monitor.rollBackCount(for: connection.id) == 1)
     }
 
