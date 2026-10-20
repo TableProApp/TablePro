@@ -37,7 +37,7 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
     private var sessionLocalTables: Set<String> = []
     private var schemas: [String]
     private var databases: [String]
-    private var schemaTables: [String: [TableInfo]] = [:]
+    private var schemaTables: [String: (generation: Int, tables: [TableInfo])] = [:]
     private var schemaTableReads: [String: Task<[TableInfo]?, any Error>] = [:]
 
     // `readCatalogColumns` reads on a connection beside the session and answers nil when there is none,
@@ -87,7 +87,6 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
     // Each cached table is read again on its next use and keeps its columns when that read fails.
     func markColumnsStale() {
         columnGeneration += 1
-        schemaTables = [:]
     }
 
     func finishReads() async {
@@ -187,29 +186,32 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         SQLCompletionItem(label: name, kind: .schema, insertText: quoted(name))
     }
 
-    // One read per schema at a time; an answer is kept until the catalog goes stale, a failure is not.
+    // One read per schema at a time; a failure is not kept.
     private func tables(inSchema typed: String) async -> [TableInfo] {
         // PostgreSQL can hold both `sales` and `Sales`, so the listed spelling is the key, the exact one first.
         let schema = qualifyingNamespaces.first { $0 == typed }
             ?? qualifyingNamespaces.first { Self.matches($0, typed) } ?? typed
         let key = schema
-        if let known = schemaTables[key] { return known }
-        if let pending = schemaTableReads[key] { return (try? await pending.value).flatMap { $0 } ?? [] }
+        let known = schemaTables[key]
+        if let known, known.generation == columnGeneration { return known.tables }
+        // A stale list stays offered until a read replaces it.
+        let stale = known?.tables ?? []
+        if let pending = schemaTableReads[key] { return (try? await pending.value).flatMap { $0 } ?? stale }
         let generation = columnGeneration
         if let readCatalogSchemaTables {
             switch await readTables(key, schema, with: readCatalogSchemaTables, generation: generation) {
             case .answered(let answer): return answer
-            case .failed: return []
+            case .failed: return stale
             case .unavailable: break
             }
         }
-        guard columnReadsAllowed, let readSchemaTables else { return [] }
+        guard columnReadsAllowed, let readSchemaTables else { return stale }
         if case .answered(let answer) = await readTables(
             key, schema, with: readSchemaTables, generation: generation, onSession: true
         ) {
             return answer
         }
-        return []
+        return stale
     }
 
     private enum TableRead {
@@ -235,7 +237,7 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         do {
             guard let answer = try await read.value else { return .unavailable }
             // A run that ended during the read may have changed the schema, so the answer is not kept.
-            if generation == columnGeneration { schemaTables[key] = answer }
+            if generation == columnGeneration { schemaTables[key] = (generation, answer) }
             return .answered(answer)
         } catch {
             Self.logger.warning("Reading a schema's tables for completion failed: \(error.localizedDescription, privacy: .private)")

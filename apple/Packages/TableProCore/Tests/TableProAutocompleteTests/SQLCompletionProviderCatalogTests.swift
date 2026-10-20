@@ -6,6 +6,7 @@ import Testing
 private struct StubCatalog: SQLCompletionCatalog {
     let tables: [String]
     let columns: [String: [String]]
+    var values: [String] = []
 
     func resolveAlias(_ aliasOrName: String, in references: [TableReference]) -> String? {
         let name = aliasOrName.lowercased()
@@ -31,7 +32,7 @@ private struct StubCatalog: SQLCompletionCatalog {
     func namespaceCompletionItems() -> [SQLCompletionItem] { [] }
     func isKnownSchema(_ name: String) -> Bool { false }
     func isKnownDatabase(_ name: String) -> Bool { false }
-    func allowedValues(forColumn column: String, in references: [TableReference]) -> [String] { [] }
+    func allowedValues(forColumn column: String, in references: [TableReference]) -> [String] { values }
 
     func allColumnsInScope(for references: [TableReference]) -> [SQLCompletionItem] {
         references.flatMap { columnCompletionItems(for: $0.tableName, schema: $0.schema) }
@@ -110,5 +111,19 @@ struct SQLCompletionProviderCatalogTests {
         )
         #expect(custom.statementStartCompletionItems().map(\.label) == ["FIND"])
         #expect(provider.statementStartCompletionItems().contains { $0.label == "SELECT" })
+    }
+
+    @Test("An allowed value with an apostrophe inserts as a valid literal")
+    func allowedValueIsEscaped() async {
+        let provider = SQLCompletionProvider(
+            catalog: StubCatalog(tables: ["orders"], columns: ["orders": ["status"]], values: ["it's late"]),
+            grammar: .engine("MySQL"),
+            vocabulary: .generic
+        )
+        let text = "SELECT * FROM orders WHERE status = "
+        let session = await provider.completionSession(text: text, cursorPosition: (text as NSString).length)
+
+        let item = session.items.first { $0.label == "'it's late'" }
+        #expect(item?.insertText == "'it''s late'")
     }
 }

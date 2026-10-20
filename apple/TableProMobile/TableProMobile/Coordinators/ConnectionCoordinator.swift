@@ -432,10 +432,11 @@ final class ConnectionCoordinator {
         appState.sessionTransactions.hold(for: connection.id, on: session?.driver)
     }
 
-    // PostgreSQL, Redshift and SQL Server keep DDL inside the transaction that ran it, where only the session sees it.
+    // PostgreSQL, Redshift and SQL Server keep DDL inside the transaction that ran it, where only the session sees it;
+    // a session that cannot say whether it holds one counts as holding one.
     var catalogSeesSessionDDL: Bool {
         guard Self.transactionalDDLTypes.contains(connection.type) else { return true }
-        return transactionHold == nil
+        return appState.sessionTransactions.isKnownIdle(connection.id, on: session?.driver)
     }
 
     private static let transactionalDDLTypes: Set<DatabaseType> = [.postgresql, .redshift, .mssql]

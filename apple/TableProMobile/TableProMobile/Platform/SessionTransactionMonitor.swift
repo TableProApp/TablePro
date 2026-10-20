@@ -24,6 +24,8 @@ final class SessionTransactionMonitor {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SessionTransactionMonitor")
 
     private var entries: [UUID: Entry] = [:]
+    // Sessions whose last answer was idle, apart from those that could not say.
+    @ObservationIgnored private var idleDrivers: [UUID: ObjectIdentifier] = [:]
     private var workCounts: [UUID: Int] = [:]
     @ObservationIgnored private var statementCounts: [UUID: Int] = [:]
     private var rollBackCounts: [UUID: Int] = [:]
@@ -48,6 +50,11 @@ final class SessionTransactionMonitor {
     func token(for connectionId: UUID, on driver: (any DatabaseDriver)?) -> HoldToken? {
         guard let driver, hold(for: connectionId, on: driver) != nil else { return nil }
         return HoldToken(driver: driver, workGeneration: workGenerations[connectionId, default: 0])
+    }
+
+    func isKnownIdle(_ connectionId: UUID, on driver: (any DatabaseDriver)?) -> Bool {
+        guard let driver else { return false }
+        return idleDrivers[connectionId] == ObjectIdentifier(driver)
     }
 
     func rollBackCount(for connectionId: UUID) -> Int {
@@ -146,6 +153,7 @@ final class SessionTransactionMonitor {
     }
 
     private func apply(_ state: DriverTransactionState, from driver: any DatabaseDriver, to connectionId: UUID) {
+        idleDrivers[connectionId] = state == .idle ? ObjectIdentifier(driver) : nil
         switch state {
         case .explicitTransaction, .implicitTransaction:
             entries[connectionId] = Entry(driver: driver, hold: .open)

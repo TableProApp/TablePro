@@ -453,7 +453,7 @@ public final class SQLCompletionProvider {
             var item = SQLCompletionItem(
                 label: "'\(value)'",
                 kind: .keyword,
-                insertText: "'\(value)'",
+                insertText: "'\(value.replacingOccurrences(of: "'", with: "''"))'",
                 detail: column,
                 filterText: value.lowercased()
             )
