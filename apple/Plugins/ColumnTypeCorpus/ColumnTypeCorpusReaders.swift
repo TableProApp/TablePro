@@ -227,6 +227,8 @@ struct CorpusJSONReader {
                 return String(scalars)
             }
             guard byte == UInt8(ascii: "\\") else {
+                // RFC 8259 has a control character in a string escaped, so a raw newline is a broken export.
+                guard byte >= 0x20 else { throw Malformed(offset: index - 1) }
                 run.append(byte)
                 continue
             }
