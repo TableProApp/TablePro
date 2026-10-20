@@ -97,9 +97,9 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         }
     }
 
-    func cancelCurrentQuery() async throws {
-        try plugin.cancelQuery()
-    }
+    // The plugin cancels whichever request it sent last, which can be another window's on this shared session. Stop
+    // ends the run's stream instead, and the plugin stops and kills that request alone.
+    func cancelCurrentQuery() async throws {}
 
     static func emit(
         _ result: PluginQueryResult,

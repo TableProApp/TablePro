@@ -17,6 +17,7 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private(set) var generatedInserts: [Int: [PluginCellValue]] = [:]
     private(set) var generatedColumns: [String] = []
     private(set) var appliedQueryTimeouts: [Int] = []
+    private(set) var cancelQueryCalls = 0
     private(set) var rowLookups: [(query: String, parameters: [PluginCellValue])] = []
 
     func connect() async throws {}
@@ -25,6 +26,10 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         appliedQueryTimeouts.append(seconds)
     }
     func disconnect() {}
+
+    func cancelQuery() throws {
+        cancelQueryCalls += 1
+    }
 
     func execute(query: String) async throws -> PluginQueryResult {
         plainQueries.append(query)
