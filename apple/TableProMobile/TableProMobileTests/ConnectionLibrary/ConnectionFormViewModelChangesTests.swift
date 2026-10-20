@@ -325,6 +325,24 @@ struct ConnectionFormViewModelChangesTests {
         #expect(viewModel.changesSecrets)
     }
 
+    @Test("Loading certificates again, as returning from a jump host does, keeps a removed one removed")
+    func reloadKeepsRemovedCertificate() throws {
+        let connection = postgres()
+        try certificates.store(
+            PEMDocument.encode(Data([1, 2, 3]), as: .certificate),
+            role: .certificateAuthority,
+            for: connection.id
+        )
+        let viewModel = form(editing: connection)
+        viewModel.loadCertificateSummaries()
+
+        viewModel.removeCertificate(.certificateAuthority)
+        viewModel.loadCertificateSummaries()
+
+        #expect(viewModel.hasCertificate(.certificateAuthority) == false)
+        #expect(viewModel.hasChanges)
+    }
+
     @Test("Saving a rename writes no secret back, so secrets changed on another device survive")
     func renameLeavesChangedSecretsAlone() async throws {
         let tunnelled = try #require(existingConnections().first { $0.sshEnabled })

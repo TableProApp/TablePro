@@ -23,6 +23,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     private let session: OpaquePointer
     private let socketFD: Int32
     private let listenFD: Int32
+    private let jumpHops: [SSHJumpHop]
 
     /// Serial: every libssh2 call on this session. libssh2 is not thread-safe per session.
     private let sessionQueue: DispatchQueue
@@ -66,13 +67,15 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
         socketFD: Int32,
         listenFD: Int32,
         localPort: Int,
-        sessionQueue: DispatchQueue
+        sessionQueue: DispatchQueue,
+        jumpHops: [SSHJumpHop] = []
     ) {
         self.session = session
         self.socketFD = socketFD
         self.listenFD = listenFD
         self.localPort = localPort
         self.sessionQueue = sessionQueue
+        self.jumpHops = jumpHops
         let label = UUID().uuidString
         self.relayQueue = DispatchQueue(label: "com.TablePro.ssh.relay.\(label)", qos: .utility, attributes: .concurrent)
         self.acceptQueue = DispatchQueue(label: "com.TablePro.ssh.accept.\(label)", qos: .utility)
@@ -153,15 +156,10 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
         performTeardown()
     }
 
-    /// Breaks every blocking wait first, then frees the session and the descriptors only once
-    /// every task that could still be polling them has exited. `shutdown` unblocks a poll at
-    /// once without releasing the descriptor number, which another thread would otherwise be
-    /// free to receive from the kernel and poll by mistake. `shutdown` does not wake a poll on a
-    /// listening socket on Darwin, so the accept loop ends on the latch instead, inside one
-    /// `acceptPollTimeoutMs`, and its descriptor closes once it has.
-    ///
-    /// The relays are waited on after the accept loop, not alongside it, because the accept loop
-    /// is the only thing that starts one: once it has ended, the group can only empty.
+    // `shutdown` wakes every poll without giving the descriptor number back; nothing is freed or
+    // closed until whatever could poll it has exited. Darwin's `shutdown` does not wake a listening
+    // socket, so the accept loop ends on the latch. It is the only thing that starts a relay, so the
+    // relays are waited on after it. The hops go last, in the Mac's order.
     private func performTeardown() {
         forwardingTask?.cancel()
         keepAliveTask?.cancel()
@@ -174,6 +172,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
         let session = self.session
         let socketFD = self.socketFD
         let listenFD = self.listenFD
+        let jumpHops = self.jumpHops
         let localPort = self.localPort
         let forwardingTask = self.forwardingTask
         let keepAliveTask = self.keepAliveTask
@@ -191,6 +190,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
                 tablepro_libssh2_session_disconnect(session, "Closing tunnel")
                 libssh2_session_free(session)
             }
+            await SSHJumpChain.tearDown(jumpHops)
 
             Self.logger.info("Tunnel closed (local port \(localPort))")
         }

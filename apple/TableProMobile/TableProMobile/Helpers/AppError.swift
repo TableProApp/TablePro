@@ -126,6 +126,10 @@ nonisolated enum ErrorClassifier {
             return connectionFailure(connectionError)
         }
 
+        if let tunnelError = error as? SSHTunnelError, let classified = jumpHostFailure(tunnelError) {
+            return classified
+        }
+
         if let redisError = error as? RedisError, let classified = redisFailure(redisError, context: context) {
             return classified
         }
@@ -243,6 +247,31 @@ nonisolated enum ErrorClassifier {
                 underlying: error
             )
         }
+    }
+
+    // By case, because a translated message may hold none of the words the substring rules look for.
+    private static func jumpHostFailure(_ error: SSHTunnelError) -> AppError? {
+        let recovery: String
+        switch error {
+        case .usernameMissing:
+            recovery = String(localized: "Edit the connection and enter the username under SSH Server or Jump Hosts.")
+        case .jumpHostNeedsKey, .jumpHostSharedKeyMissing:
+            recovery = String(localized: "Edit the connection and set a key for this jump host under Jump Hosts.")
+        case .jumpHostFailed:
+            recovery = String(localized: "Check this jump host's address, port, username and key under Jump Hosts.")
+        case .jumpHostKeysUnreadable:
+            recovery = String(localized: "Try again. If it keeps failing, update TablePro on this device.")
+        case .connectionFailed, .handshakeFailed, .authenticationFailed, .noAvailablePort, .channelOpenFailed,
+             .hostKeyRejected, .hostKeyUnverified, .tunnelClosed:
+            return nil
+        }
+        return AppError(
+            category: .ssh,
+            title: String(localized: "SSH Tunnel Failed"),
+            message: error.localizedDescription,
+            recovery: recovery,
+            underlying: error
+        )
     }
 
     /// A Redis reply is read by its error class, never by its words, because the server echoes the

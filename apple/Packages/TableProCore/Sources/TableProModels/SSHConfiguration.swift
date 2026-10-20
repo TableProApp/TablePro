@@ -14,11 +14,10 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
     public var privateKeyPath: String?
     public var jumpHosts: [SSHJumpHost]
 
-    /// Fields the macOS app stores inside `sshConfigJson` that this model does not use, kept only so
-    /// they survive an iOS sync round trip. Without them, re-encoding a synced connection on iOS
-    /// dropped the macOS `enabled`, remote file path, agent socket and TOTP settings, and the macOS
-    /// app then read the connection back with SSH turned off. Each is optional so a connection this
-    /// model creates omits it and the macOS side keeps inferring `enabled` from a non-empty host.
+    // Fields the macOS app stores inside `sshConfigJson` that this model does not use, carried so an
+    // iOS round trip keeps them. Each is optional, so a configuration this model creates omits it.
+    // The Mac reads a missing `enabled` as off, so the iOS form writes `macEnabled = true` for a
+    // tunnel it saves switched on.
     public var macEnabled: Bool?
     public var macUseSSHConfig: Bool?
     public var macAgentSocketPath: String?
@@ -125,13 +124,10 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
     }
 }
 
-/// How a hop authenticates, spelled the way the macOS app writes it. A hop is never dialled from
-/// iOS, so the value is carried rather than used, and a spelling this build does not know still
-/// belongs to the Mac that wrote it: it is held as it arrived and handed back untouched, the way
-/// `DatabaseType` holds a type no plugin here implements. The exception is the case names shipped
-/// iOS builds wrote (`privateKey`, `sshAgent`), which no macOS build can read: an already-shipped
-/// one decodes this raw value strictly, and a `dataCorrupted` thrown inside `jumpHosts` takes the
-/// whole SSH configuration with it, and with that the connection. Those normalize.
+// How the Mac signs in to a hop, in the macOS spelling. iOS signs in to a hop with a key kept on the
+// device, so this is carried, not used, and a spelling this build does not know goes back untouched.
+// The case names shipped iOS builds wrote (`privateKey`, `sshAgent`) normalize: a shipped macOS build
+// decodes this strictly, and a hop it cannot decode takes the whole SSH configuration with it.
 public struct SSHJumpAuthMethod: Hashable, Sendable {
     public static let privateKey = SSHJumpAuthMethod(rawValue: "Private Key")
     public static let sshAgent = SSHJumpAuthMethod(rawValue: "SSH Agent")
@@ -178,6 +174,9 @@ public struct SSHJumpHost: Codable, Hashable, Sendable, Identifiable {
     /// encoded: a hop without them fails the macOS decode and takes the whole connection with it.
     public var macAuthMethod: SSHJumpAuthMethod
     public var macPrivateKeyPath: String
+
+    // iOS reads no `~/.ssh/config`, so an unset port is the SSH default here.
+    public var resolvedPort: Int { port ?? SSHConfiguration.defaultPort }
 
     public init(
         id: UUID = UUID(),
