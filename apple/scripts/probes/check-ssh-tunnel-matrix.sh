@@ -327,8 +327,7 @@ run_cells() {
     cell totp/password "$NO_CODE" "$SSH_TEST_PORT_TOTP" "${PASSWORD[@]}"
     cell totp/keyboard-interactive/totp-secret "$CONNECTED" "$SSH_TEST_PORT_TOTP" \
         --auth kbdint --password "$SSH_TEST_PASSWORD" "${TOTP[@]}"
-    # On the Mac the PAM stack lets the password in after an empty code, which says nothing about the app.
-    on ios && cell passtotp/password "$NO_CODE" "$SSH_TEST_PORT_PASSTOTP" "${PASSWORD[@]}"
+    # Without a code, passtotp's PAM stack lets the password in after the empty answer (pam-sshd-totp).
     cell passtotp/password/totp-secret "$CONNECTED" "$SSH_TEST_PORT_PASSTOTP" "${PASSWORD[@]}" "${TOTP[@]}"
     # One try: the password's partial success and the code must not cost a second one.
     cell passtotp1/password/totp-secret "$CONNECTED" "$SSH_TEST_PORT_PASSTOTP1" "${PASSWORD[@]}" "${TOTP[@]}"
