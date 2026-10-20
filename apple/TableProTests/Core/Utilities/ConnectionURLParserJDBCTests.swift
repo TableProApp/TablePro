@@ -49,6 +49,13 @@ struct ConnectionURLParserJDBCTests {
         #expect(parsed.additionalFields["trinoSchema"] == "web")
     }
 
+    @Test("An SSH URL's catalog and schema are percent-decoded once")
+    func sshCatalogAndSchemaDecoded() throws {
+        let parsed = try parse("presto+ssh://jump@bastion.example.com/analyst@presto.internal:8080/hive%20lake/sales%20ops")
+        #expect(parsed.database == "hive lake")
+        #expect(parsed.additionalFields["trinoSchema"] == "sales ops")
+    }
+
     @Test("A catalog alone sets no schema, and another engine keeps its whole path")
     func catalogOnlyPath() throws {
         let presto = try parse("presto://presto.example.com:8080/hive")
