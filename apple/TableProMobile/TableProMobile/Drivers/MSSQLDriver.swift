@@ -120,17 +120,26 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
         AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let task = Task {
+                // FreeTDS reads on its own queue, where no task cancellation reaches; a reader that stops sets the flag
+                // it polls, or the session reads every remaining row before it takes the next statement.
+                let abort = MSSQLStreamAbort()
                 let coreStream = AsyncThrowingStream<MSSQLStreamElement, Error> { coreContinuation in
                     Task {
                         do {
-                            try await conn.streamQuery(query, continuation: coreContinuation)
+                            try await conn.streamQuery(
+                                query, isAborted: { abort.isAborted }, continuation: coreContinuation
+                            )
                         } catch {
                             coreContinuation.finish(throwing: error)
                         }
                     }
+                    coreContinuation.onTermination = { @Sendable _ in abort.abort() }
                 }
                 var emitted = 0
                 var headerColumns: [ColumnInfo] = []
+                // Past the row cap the batch keeps running, so a later UPDATE or COMMIT in it still happens and its
+                // error still reaches the run; the rows are read and dropped. Only a reader that stops aborts it.
+                var isCapped = false
                 do {
                     for try await element in coreStream {
                         if Task.isCancelled {
@@ -138,6 +147,7 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                             continuation.finish()
                             return
                         }
+                        if isCapped { continue }
                         switch element {
                         case .header(let columns):
                             headerColumns = columns.enumerated().map { idx, col in
@@ -148,8 +158,8 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                             for row in batch {
                                 if emitted >= options.maxRows {
                                     continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
-                                    continuation.finish()
-                                    return
+                                    isCapped = true
+                                    break
                                 }
                                 let cells = zip(headerColumns, row).map { columnInfo, rawCell in
                                     cell(from: rawCell, columnTypeName: columnInfo.typeName, options: options)
@@ -168,8 +178,8 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in
-                task.cancel()
+            continuation.onTermination = { @Sendable termination in
+                if case .cancelled = termination { task.cancel() }
             }
         }
     }
@@ -317,5 +327,22 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
 nonisolated private extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+nonisolated private final class MSSQLStreamAbort: @unchecked Sendable {
+    private let lock = NSLock()
+    private var aborted = false
+
+    var isAborted: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return aborted
+    }
+
+    func abort() {
+        lock.lock()
+        defer { lock.unlock() }
+        aborted = true
     }
 }

@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 /// Uses PGlite because it cannot open a pooled connection, so every read stays on the injected

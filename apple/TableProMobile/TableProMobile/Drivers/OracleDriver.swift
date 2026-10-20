@@ -118,14 +118,17 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
         AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let task = Task {
+                // Not a child task, so only this cancel stops the read once the reader stops, or the session
+                // reads every remaining row before it takes the next statement.
                 let coreStream = AsyncThrowingStream<OracleStreamElement, Error> { coreContinuation in
-                    Task {
+                    let coreTask = Task {
                         do {
                             try await core.streamQuery(query, continuation: coreContinuation)
                         } catch {
                             coreContinuation.finish(throwing: error)
                         }
                     }
+                    coreContinuation.onTermination = { @Sendable _ in coreTask.cancel() }
                 }
                 var emitted = 0
                 var headerColumns: [ColumnInfo] = []

@@ -61,6 +61,53 @@ struct DataBrowserViewModelTests {
         #expect(vm.isLoading == false)
     }
 
+    @Test("A page load reads the session inside the read tracker, so Commit waits for it")
+    func pageLoadIsTracked() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["1", "Alice"]], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["1"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let log = TrackLog()
+
+        let vm = DataBrowserViewModel()
+        vm.attach(
+            session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql,
+            host: "localhost", trackRead: { read in
+                log.tracked += 1
+                await read()
+                log.callsInside = driver.fetchColumnsCalls + driver.executedQueries.count
+            }
+        )
+        await vm.load(isInitial: true)
+
+        #expect(log.tracked == 1)
+        #expect(log.callsInside == driver.fetchColumnsCalls + driver.executedQueries.count)
+        #expect(log.callsInside > 0)
+        #expect(vm.legacyRows.count == 1)
+    }
+
+    @Test("A page cut short is not taken as the end of the table")
+    func cutPageKeepsTheTotalOpen() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(
+                columns: makeColumns(), rows: [["1", "Alice"]], rowsAffected: 0, executionTime: 0, isTruncated: true
+            )),
+            .success(QueryResult(columns: [], rows: [["120"]], rowsAffected: 0, executionTime: 0))
+        ]
+
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        await vm.load(isInitial: true)
+
+        #expect(vm.legacyRows.count == 1)
+        #expect(vm.pagination.totalRows == 120)
+        #expect(vm.canGoToNextPage)
+    }
+
     @Test("hasActiveSearch reflects activeSearchText")
     func searchFlagsTrack() async {
         let driver = MockDatabaseDriver()
@@ -958,4 +1005,10 @@ private actor ExecuteGate {
     func release(_ call: Int) {
         held.removeValue(forKey: call)?.resume()
     }
+}
+
+@MainActor
+private final class TrackLog {
+    var tracked = 0
+    var callsInside = -1
 }

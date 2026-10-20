@@ -10,6 +10,7 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProUtilities
 
 struct ImportDialog: View {

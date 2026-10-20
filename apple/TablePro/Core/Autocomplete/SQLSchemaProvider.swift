@@ -625,7 +625,7 @@ actor SQLSchemaProvider {
         // swiftlint:disable:next large_tuple
         var itemDataBuilder: [(
             label: String, insertText: String, type: String?, table: String,
-            isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?
+            isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?, isQualified: Bool
         )] = []
 
         let hasMultipleRefs = references.count > 1
@@ -638,7 +638,7 @@ actor SQLSchemaProvider {
                         (
                             label: label, insertText: label, type: nil,
                             table: refId, isPK: false, isNullable: true,
-                            defaultValue: nil, comment: nil
+                            defaultValue: nil, comment: nil, isQualified: hasMultipleRefs
                         ))
                 }
                 continue
@@ -653,7 +653,7 @@ actor SQLSchemaProvider {
                         label: label, insertText: insertText, type: column.dataType,
                         table: ref.tableName, isPK: column.isPrimaryKey,
                         isNullable: column.isNullable, defaultValue: column.defaultValue,
-                        comment: column.comment
+                        comment: column.comment, isQualified: hasMultipleRefs
                     ))
             }
         }
@@ -663,11 +663,13 @@ actor SQLSchemaProvider {
 
         return await MainActor.run {
             itemData.map {
-                SQLCompletionItem.column(
+                var item = SQLCompletionItem.column(
                     $0.label, dataType: $0.type, tableName: $0.table,
                     isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
                     defaultValue: $0.defaultValue, comment: $0.comment
                 )
+                item.isQualifiedReference = $0.isQualified
+                return item
             }
         }
     }
@@ -703,7 +705,7 @@ actor SQLSchemaProvider {
         // swiftlint:disable:next large_tuple
         var itemDataBuilder: [(
             label: String, insertText: String, type: String, table: String,
-            isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?
+            isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?, isQualified: Bool
         )] = []
 
         for entry in allEntries {
@@ -715,7 +717,7 @@ actor SQLSchemaProvider {
                 label: label, insertText: insertText, type: entry.col.dataType,
                 table: entry.table, isPK: entry.col.isPrimaryKey,
                 isNullable: entry.col.isNullable, defaultValue: entry.col.defaultValue,
-                comment: entry.col.comment
+                comment: entry.col.comment, isQualified: isAmbiguous
             ))
         }
 
@@ -729,6 +731,7 @@ actor SQLSchemaProvider {
                     defaultValue: $0.defaultValue, comment: $0.comment
                 )
                 item.sortPriority = 150
+                item.isQualifiedReference = $0.isQualified
                 return item
             }
         }

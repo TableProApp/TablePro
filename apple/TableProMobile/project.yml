@@ -136,6 +136,7 @@ targets:
           - TableProQuery
           - TableProRedisCore
           - TableProSQLGrammar
+          - TableProSQLVocabulary
           - TableProSSHTransport
           - TableProSync
           - TableProSyncTransport

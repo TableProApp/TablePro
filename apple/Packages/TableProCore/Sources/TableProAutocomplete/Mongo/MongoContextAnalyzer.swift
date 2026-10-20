@@ -53,6 +53,12 @@ public enum MongoContextAnalyzer {
         var isInComment = false
     }
 
+    // The scan reads from the start of the text, so a long script costs a linear pass, run off the main actor.
+    @concurrent
+    public static func analyze(_ text: String, cursor: Int) async -> MongoContext {
+        analyze(text: text as NSString, cursor: cursor)
+    }
+
     public static func analyze(text: NSString, cursor: Int) -> MongoContext {
         let bounded = max(0, min(cursor, text.length))
         let prefixRange = prefixRange(in: text, endingAt: bounded)
@@ -98,6 +104,8 @@ public enum MongoContextAnalyzer {
     }
 
     private static func scan(text: NSString, upTo end: Int) -> ScanState {
+        var units = [UInt16](repeating: 0, count: end)
+        text.getCharacters(&units, range: NSRange(location: 0, length: end))
         var state = ScanState()
         var index = 0
         var stringDelimiter: UInt16 = 0
@@ -105,7 +113,7 @@ public enum MongoContextAnalyzer {
         var isInBlockComment = false
 
         while index < end {
-            let character = text.character(at: index)
+            let character = units[index]
 
             if isInLineComment {
                 if character == newline { isInLineComment = false }
@@ -114,7 +122,7 @@ public enum MongoContextAnalyzer {
             }
 
             if isInBlockComment {
-                if character == star, index + 1 < end, text.character(at: index + 1) == slash {
+                if character == star, index + 1 < end, units[index + 1] == slash {
                     isInBlockComment = false
                     index += 2
                     continue
@@ -134,7 +142,7 @@ public enum MongoContextAnalyzer {
             }
 
             if character == slash, index + 1 < end {
-                let next = text.character(at: index + 1)
+                let next = units[index + 1]
                 if next == slash {
                     isInLineComment = true
                     index += 2

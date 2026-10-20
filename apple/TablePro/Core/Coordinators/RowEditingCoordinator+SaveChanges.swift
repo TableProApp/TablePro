@@ -8,6 +8,7 @@ import Foundation
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProSQLGrammar
 
 private let saveChangesLogger = Logger(subsystem: "com.TablePro", category: "RowEditingCoordinator")
 

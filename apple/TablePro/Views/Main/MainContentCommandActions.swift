@@ -13,6 +13,7 @@ import Foundation
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProUtilities
 import UniformTypeIdentifiers
 

@@ -7,12 +7,7 @@ final class MongoCompletionService: QueryCompletionService {
     private let schemaProvider: SQLSchemaProvider?
     private var favoriteKeywords: [String: (name: String, query: String)] = [:]
 
-    private static let windowRadius = 5_000
-
-    /// How many candidates a session may keep for re-ranking as the prefix grows. Every position's
-    /// vocabulary is well under this except a collection's sampled field paths, which a wide
-    /// document schema can run into the thousands; those sessions prefer what the popup showed,
-    /// and the cap holds either way because filtering an empty opening prefix returns everything.
+    // A wide document schema samples thousands of field paths, and a re-rank walks the pool on every keystroke.
     private static let sessionPoolLimit = 400
 
     init(schemaProvider: SQLSchemaProvider?, databaseType: DatabaseType?) {
@@ -51,10 +46,8 @@ final class MongoCompletionService: QueryCompletionService {
     }
 
     func completions(in text: NSString, at offset: Int, isManualTrigger: Bool) async -> QueryCompletionSession? {
-        let windowStart = max(0, offset - Self.windowRadius)
-        let windowEnd = min(text.length, offset + Self.windowRadius)
-        let window = text.substring(with: NSRange(location: windowStart, length: windowEnd - windowStart)) as NSString
-        let context = MongoContextAnalyzer.analyze(text: window, cursor: offset - windowStart)
+        // A cut would start the scan inside whatever string or comment it fell in, so the scan reads the whole text.
+        let context = await MongoContextAnalyzer.analyze(text as String, cursor: offset)
 
         guard context.position != .suppressed else { return nil }
         guard isManualTrigger || !context.prefix.isEmpty || opensBrowsableList(context.position) else { return nil }
@@ -68,10 +61,7 @@ final class MongoCompletionService: QueryCompletionService {
         return QueryCompletionSession(
             items: shown,
             candidates: Array(pool.prefix(Self.sessionPoolLimit)),
-            replacementRange: NSRange(
-                location: context.prefixRange.location + windowStart,
-                length: context.prefixRange.length
-            )
+            replacementRange: context.prefixRange
         )
     }
 

@@ -74,9 +74,13 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         }
     }
 
-    static func tableListStatement(for databaseType: DatabaseType, banner: String?) -> String {
+    // A database names another one's tables, as `otherdb.` in the editor does; nil reads the session's.
+    static func tableListStatement(for databaseType: DatabaseType, banner: String?, database: String? = nil) -> String {
         let flavor = serverFlavor(for: databaseType, banner: banner)
-        return MySQLServerVersion.hasInformationSchema(banner: banner, flavor: flavor) ? "SHOW FULL TABLES" : "SHOW TABLES"
+        let full = MySQLServerVersion.hasInformationSchema(banner: banner, flavor: flavor)
+        let statement = full ? "SHOW FULL TABLES" : "SHOW TABLES"
+        guard let database, !database.isEmpty else { return statement }
+        return "\(statement) FROM \(quotedIdentifier(database))"
     }
 
     static func readsForeignKeyCatalog(for databaseType: DatabaseType, banner: String?) -> Bool {
@@ -199,7 +203,9 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        let raw = try await actor.execute(Self.tableListStatement(for: databaseType, banner: serverVersion))
+        let raw = try await actor.execute(
+            Self.tableListStatement(for: databaseType, banner: serverVersion, database: schema)
+        )
         return MySQLTableListing.tables(fromShowTables: raw.rows, databaseType: databaseType)
     }
 
@@ -752,8 +758,10 @@ private actor MySQLActor {
         )
     }
 
+    // As beginStream does: the server takes no command while a streamed result is unread ("Commands out of sync").
     func execute(_ query: String) throws -> RawMySQLResult {
         guard let mysql else { throw MySQLError.notConnected }
+        endLeftoverStream(of: mysql)
 
         let start = Date()
 

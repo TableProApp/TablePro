@@ -44,6 +44,7 @@ let package = Package(
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
         .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"]),
         .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"]),
+        .library(name: "TableProSQLVocabulary", targets: ["TableProSQLVocabulary"]),
         .library(name: "TableProAutocomplete", targets: ["TableProAutocomplete"]),
         .library(name: "TableProSSHTransport", targets: ["TableProSSHTransport"]),
         .library(name: "CSQLite", targets: ["CSQLite"]),
@@ -203,10 +204,17 @@ let package = Package(
             dependencies: [],
             path: "Sources/TableProSQLGrammar"
         ),
+        // Linked by the macOS app, six plugin bundles and the iOS app, so never TableProPluginKit.
+        .target(
+            name: "TableProSQLVocabulary",
+            dependencies: [],
+            path: "Sources/TableProSQLVocabulary",
+            swiftSettings: pluginCoreSettings
+        ),
         // The macOS app links it, so never TableProPluginKit.
         .target(
             name: "TableProAutocomplete",
-            dependencies: ["TableProSQLGrammar"],
+            dependencies: ["TableProSQLGrammar", "TableProSQLVocabulary"],
             path: "Sources/TableProAutocomplete",
             swiftSettings: pluginCoreSettings
         ),
@@ -338,6 +346,12 @@ let package = Package(
             name: "TableProSQLGrammarTests",
             dependencies: ["TableProSQLGrammar"],
             path: "Tests/TableProSQLGrammarTests"
+        ),
+        .testTarget(
+            name: "TableProSQLVocabularyTests",
+            dependencies: ["TableProSQLVocabulary", "TableProPluginKit"],
+            path: "Tests/TableProSQLVocabularyTests",
+            swiftSettings: pluginCoreSettings
         ),
         .testTarget(
             name: "TableProAutocompleteTests",

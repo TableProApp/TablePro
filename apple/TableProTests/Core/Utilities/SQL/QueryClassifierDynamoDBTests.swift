@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProSQLGrammar
 import Testing
 
 struct QueryClassifierDynamoDBTests {
@@ -198,7 +199,7 @@ struct QueryClassifierDynamoDBTests {
 }
 
 struct CatalogChangeClassifierDynamoDBTests {
-    private func kinds(_ sql: String) -> CatalogObjectKinds {
+    private func kinds(_ sql: String) -> SQLCatalogObjectKinds {
         CatalogChangeClassifier.effect(of: sql, databaseType: .dynamodb).kinds
     }
 

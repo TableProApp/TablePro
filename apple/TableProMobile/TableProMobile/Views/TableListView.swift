@@ -2,6 +2,7 @@ import SwiftUI
 import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
+import TableProSQLGrammar
 
 struct TableListView: View {
     @Environment(ConnectionCoordinator.self) private var coordinator
@@ -195,6 +196,7 @@ struct TableListView: View {
                             )
                             _ = try await coordinator.track { try await driver.executeWrite(["DROP TABLE \(quoted)"]) }
                             await coordinator.refreshTables()
+                            coordinator.noteCatalogChanged(.tables, reloadedHere: true)
                         } catch {
                             errorMessage = error.localizedDescription
                             showError = true

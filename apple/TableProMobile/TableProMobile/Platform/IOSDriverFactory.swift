@@ -228,6 +228,29 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         Self.refusal(for: connection)
     }
 
+    // A second SQLite reader can make the user's COMMIT fail with SQLITE_BUSY, and DuckDB opens a file once per process.
+    func opensCatalogConnections(for connection: DatabaseConnection) -> Bool {
+        switch connection.type {
+        case .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .mssql, .oracle:
+            true
+        default:
+            false
+        }
+    }
+
+    // MySQL: a server started with autocommit off would hold these reads in a transaction that never ends.
+    // SQL Server: a catalog view read waits on the user's uncommitted DDL, so it gives up and keeps the cache.
+    func prepareCatalogDriver(_ driver: any DatabaseDriver, for connection: DatabaseConnection) async throws {
+        switch connection.type {
+        case .mysql, .mariadb, .tidb, .oceanbase:
+            _ = try await driver.execute(query: "SET autocommit = 1")
+        case .mssql:
+            _ = try await driver.execute(query: "SET LOCK_TIMEOUT 2000")
+        default:
+            break
+        }
+    }
+
     func supportedTypes() -> [DatabaseType] {
         Self.supportedTypeList
     }
