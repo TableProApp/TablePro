@@ -1,46 +1,52 @@
 import Foundation
 
 // SQLite keeps integer 5 and text '5' apart in a column with no affinity, and reads both back as `5`.
-// A value is matched both ways only when it is SQLite's own text for a number, so `05` or `5.50`
+// A value is matched both ways only when it has the shape SQLite prints a number in, so `05` or `5.50`
 // never also finds the row that reads `5` or `5.5`.
 public enum SQLiteNumberText {
     public static func isStoredSpelling(_ text: String) -> Bool {
         if let integer = Int64(text) { return String(integer) == text }
-        guard let real = Double(text), real.isFinite else { return false }
-        return realText(real) == text
+        guard let real = Double(text), real.isFinite, text.utf8.allSatisfy({ $0 < 0x80 }) else { return false }
+        return isRealSpelling(text, isZero: real == 0)
     }
 
-    // Measured on SQLite 3.53: the shortest digits that read back, plain from 1e-4 below 1e17 with `.0`
-    // when there is no fraction, `1.0e+20` and `1.5e-07` outside that range.
-    static func realText(_ real: Double) -> String {
-        let sign = real < 0 ? "-" : ""
-        let swiftText = "\(abs(real))"
-        let parts = swiftText.split(separator: "e", maxSplits: 1)
-        let mantissa = String(parts[0])
-        let writtenExponent = parts.count > 1 ? Int(parts[1]) ?? 0 : 0
-        let pointOffset = mantissa.firstIndex(of: ".").map { mantissa.distance(from: mantissa.startIndex, to: $0) }
-            ?? mantissa.count
-        let allDigits = mantissa.filter { $0 != "." }
-        let leadingZeros = allDigits.prefix { $0 == "0" }.count
-        var digits = String(allDigits.dropFirst(leadingZeros))
-        while digits.hasSuffix("0") { digits.removeLast() }
-        guard !digits.isEmpty else { return "\(sign)0.0" }
-        let exponent = pointOffset + writtenExponent - leadingZeros - 1
+    // Measured on SQLite 3.54: a REAL prints with up to 17 significant digits, never a trailing zero but the one
+    // in `7.0`, plain from 1e-4 below 1e17 (`0.0001`, `10000000000000000.0`), else as `1.0e-05` or `1.2e+17`.
+    // The digits are SQLite's own (1/3 prints `0.33333333333333332`), so only the shape is checked.
+    private static func isRealSpelling(_ text: String, isZero: Bool) -> Bool {
+        let unsigned = text.hasPrefix("-") ? String(text.dropFirst()) : text
+        if isZero { return text == "0.0" }
+        let parts = unsigned.split(separator: "e", omittingEmptySubsequences: false)
+        guard parts.count <= 2 else { return false }
+        let mantissa = parts[0].split(separator: ".", omittingEmptySubsequences: false)
+        guard mantissa.count == 2, let whole = mantissa.first, let fraction = mantissa.last,
+              !whole.isEmpty, !fraction.isEmpty,
+              whole.allSatisfy(\.isASCIIDigit), fraction.allSatisfy(\.isASCIIDigit),
+              whole == "0" || whole.first != "0",
+              fraction == "0" || fraction.last != "0"
+        else { return false }
 
-        guard (-4...16).contains(exponent) else {
-            let fraction = digits.dropFirst()
-            let exponentSign = exponent < 0 ? "-" : "+"
-            let exponentDigits = String(abs(exponent))
-            let paddedExponent = exponentDigits.count < 2 ? "0" + exponentDigits : exponentDigits
-            return "\(sign)\(digits.prefix(1)).\(fraction.isEmpty ? "0" : fraction)e\(exponentSign)\(paddedExponent)"
+        let digits = (whole + fraction).drop { $0 == "0" }
+        let significant = fraction == "0" ? digits.reversed().drop { $0 == "0" }.count : digits.count
+        guard significant <= 17 else { return false }
+
+        guard parts.count == 2 else {
+            let exponent = whole == "0"
+                ? -(fraction.prefix { $0 == "0" }.count + 1)
+                : whole.count - 1
+            return (-4...16).contains(exponent)
         }
-        if exponent < 0 {
-            return "\(sign)0.\(String(repeating: "0", count: -exponent - 1))\(digits)"
-        }
-        let whole = digits.count > exponent + 1
-            ? String(digits.prefix(exponent + 1))
-            : digits + String(repeating: "0", count: exponent + 1 - digits.count)
-        let fraction = digits.count > exponent + 1 ? String(digits.dropFirst(exponent + 1)) : "0"
-        return "\(sign)\(whole).\(fraction)"
+        let written = parts[1]
+        guard whole.count == 1, whole != "0", let sign = written.first, sign == "+" || sign == "-" else { return false }
+        let exponentDigits = written.dropFirst()
+        guard exponentDigits.count >= 2, exponentDigits.allSatisfy(\.isASCIIDigit),
+              exponentDigits.count == 2 || exponentDigits.first != "0",
+              let magnitude = Int(exponentDigits)
+        else { return false }
+        return !(-4...16).contains(sign == "-" ? -magnitude : magnitude)
     }
+}
+
+private extension Character {
+    var isASCIIDigit: Bool { ("0"..."9").contains(self) }
 }

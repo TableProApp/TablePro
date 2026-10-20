@@ -39,7 +39,7 @@ public struct FilterSQLGenerator: Sendable {
         let kind = FilterColumnKind.kind(of: column, databaseType: databaseType)
         let eitherStorageClass = FilterColumnKind.comparesEitherStorageClass(column, databaseType: databaseType)
         let escapedValue = escapeValue(filter.value, kind: kind)
-        let folding = caseFolding(for: filter)
+        let folding = caseFolding(for: filter, column: column)
         let operand = textOperand(quotedColumn, for: column)
 
         switch filter.filterOperator {
@@ -90,11 +90,13 @@ public struct FilterSQLGenerator: Sendable {
         }
     }
 
-    private func caseFolding(for filter: TableFilter) -> PluginSQLCaseFolding {
-        PluginSQLCaseFolding.resolve(
+    // A number, a boolean or a bit has no case, and folded as text `5.50` would no longer equal `5.5`.
+    private func caseFolding(for filter: TableFilter, column: ColumnInfo?) -> PluginSQLCaseFolding {
+        let hasNoCase = FilterColumnKind.kind(of: column).map { $0 != .text } ?? false
+        return PluginSQLCaseFolding.resolve(
             style: dialect.caseSensitivityStyle,
             foldFunction: dialect.caseFoldFunction,
-            isCaseSensitive: filter.isCaseSensitive || !filter.filterOperator.supportsCaseSensitivity
+            isCaseSensitive: filter.isCaseSensitive || !filter.filterOperator.supportsCaseSensitivity || hasNoCase
         )
     }
 

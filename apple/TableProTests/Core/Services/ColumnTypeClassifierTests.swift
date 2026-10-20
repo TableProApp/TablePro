@@ -50,6 +50,15 @@ struct ColumnTypeClassifierTests {
         #expect(ColumnTypeClassifier(family: .postgres).classify(rawTypeName: "boolean").isBooleanType)
     }
 
+    @Test("A compared column reads BIT by each side's family")
+    func comparedColumnReadsBitBySide() {
+        let column = CompareColumn(
+            name: "flags", sourceType: "bit", targetType: "BIT", sourceFamily: .postgres, targetFamily: .mysql
+        )
+        #expect(column.sourceColumnType == .text(rawType: "bit"))
+        #expect(column.targetColumnType?.isBooleanType == true)
+    }
+
     @Test("struct classifies as JSON regardless of case")
     func lowercaseStructIsJson() {
         #expect(isJson(classifier.classify(rawTypeName: "struct")))

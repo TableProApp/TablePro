@@ -22,6 +22,9 @@ internal struct CompareColumn: Hashable, Sendable {
     internal let collation: String?
     internal let isGeneratedOnTarget: Bool
     internal let targetIdentity: IdentityKind?
+    /// Each side's engine family, since a PostgreSQL `bit` is a bit string and a MySQL `BIT` is not.
+    internal let sourceFamily: SQLTypeFamily?
+    internal let targetFamily: SQLTypeFamily?
 
     internal init(
         name: String,
@@ -29,7 +32,9 @@ internal struct CompareColumn: Hashable, Sendable {
         targetType: String? = nil,
         collation: String? = nil,
         isGeneratedOnTarget: Bool = false,
-        targetIdentity: IdentityKind? = nil
+        targetIdentity: IdentityKind? = nil,
+        sourceFamily: SQLTypeFamily? = nil,
+        targetFamily: SQLTypeFamily? = nil
     ) {
         self.name = name
         self.sourceType = sourceType
@@ -37,14 +42,17 @@ internal struct CompareColumn: Hashable, Sendable {
         self.collation = collation
         self.isGeneratedOnTarget = isGeneratedOnTarget
         self.targetIdentity = targetIdentity
+        self.sourceFamily = sourceFamily
+        self.targetFamily = targetFamily
     }
 
     internal var sourceColumnType: ColumnType? {
-        sourceType.map { ColumnTypeClassifier().classify(rawTypeName: $0) }
+        sourceType.map { ColumnTypeClassifier(family: sourceFamily).classify(rawTypeName: $0) }
     }
 
     internal var targetColumnType: ColumnType? {
-        (targetType ?? sourceType).map { ColumnTypeClassifier().classify(rawTypeName: $0) }
+        if let targetType { return ColumnTypeClassifier(family: targetFamily).classify(rawTypeName: targetType) }
+        return sourceType.map { ColumnTypeClassifier(family: sourceFamily).classify(rawTypeName: $0) }
     }
 }
 

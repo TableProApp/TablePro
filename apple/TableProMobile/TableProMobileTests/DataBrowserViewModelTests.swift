@@ -234,10 +234,14 @@ struct DataBrowserViewModelTests {
         let vm = DataBrowserViewModel()
         vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "notes"), databaseType: .sqlite, host: "")
         await vm.load(isInitial: true)
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [columns[1]], rows: [["the whole body"]], rowsAffected: 0, executionTime: 0))
+        ]
         let ref = CellRef(table: "notes", column: "body", primaryKey: [.init(column: "id", value: "5")])
 
-        _ = try await vm.loadFullValue(driver: driver, ref: ref, databaseType: .sqlite, schema: nil)
+        let value = try await vm.loadFullValue(driver: driver, ref: ref, databaseType: .sqlite, schema: nil)
 
+        #expect(value == "the whole body")
         #expect(driver.executedQueries.last == #"SELECT "body" FROM "notes" WHERE "id" IN (5, '5') LIMIT 1"#)
     }
 
@@ -473,7 +477,7 @@ struct DataBrowserViewModelTests {
         let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
         #expect(success == false)
         #expect(vm.operationError?.title == String(localized: "Row Not Deleted"))
-        #expect(driver.executedQueries.contains { $0.hasPrefix("SELECT `id` FROM `users` WHERE `id` = '1'") })
+        #expect(driver.executedQueries.contains { $0.hasPrefix("SELECT `id` FROM `users` WHERE `id` = 1") })
         #expect(vm.legacyRows == [["1", "Alice"]])
     }
 

@@ -331,6 +331,32 @@ struct SQLiteDriverFileTests {
         #expect(remaining.rows == [["7", "kept"]])
     }
 
+    // Integer 5 and text '5' are two keys in a column with no type, and both read as 5.
+    @MainActor
+    @Test("A delete through a key two rows share is refused and both rows stay")
+    func sharedUntypedKeyRefusesTheWrite() async throws {
+        let driver = try await connectedDriver("shared-key.db")
+        _ = try await driver.execute(query: "CREATE TABLE p (id PRIMARY KEY, name)")
+        _ = try await driver.execute(query: "INSERT INTO p VALUES (5, 'integer'), ('5', 'text'), (6, 'alone')")
+        let browser = DataBrowserViewModel()
+        browser.attach(
+            session: ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "main"),
+            table: TableInfo(name: "p"), databaseType: .sqlite, host: ""
+        )
+        await browser.load(isInitial: true)
+
+        let shared = await browser.deleteRow(pkValues: [(column: "id", value: "5")])
+        let sharedError = browser.operationError?.title
+        let alone = await browser.deleteRow(pkValues: [(column: "id", value: "6")])
+        let remaining = try await driver.execute(query: "SELECT name FROM p ORDER BY name")
+        try await driver.disconnect()
+
+        #expect(!shared)
+        #expect(sharedError == String(localized: "Key Matches Several Rows"))
+        #expect(alone)
+        #expect(remaining.rows == [["integer"], ["text"]])
+    }
+
     @Test("A result column with no declared type that holds only blobs reads as BLOB")
     func untypedBlobColumnReadsAsBlob() async throws {
         let driver = try await connectedDriver("untyped-blob.db")

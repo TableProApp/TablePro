@@ -152,4 +152,23 @@ struct SQLBuilderSingleRowLookupTests {
             changes: [(column: "name", value: "x")], primaryKeys: key, columns: columns
         ) == "UPDATE \"t\" SET \"name\" = 'x' WHERE \"id\" IN (5, '5')")
     }
+
+    @Test("Only a key matched both ways gets a count to check it names one row")
+    func keyMatchCountOnlyForEitherWayKeys() {
+        let untyped = [ColumnInfo(name: "id", typeName: "")]
+        #expect(SQLBuilder.buildKeyMatchCount(
+            table: "t", schema: nil, key: [("id", "5")], columns: untyped, type: .sqlite, driver: driver()
+        ) == "SELECT COUNT(*) FROM \"t\" WHERE \"id\" IN (5, '5')")
+        #expect(SQLBuilder.buildKeyMatchCount(
+            table: "t", schema: nil, key: [("id", "abc")], columns: untyped, type: .sqlite, driver: driver()
+        ) == nil)
+        #expect(SQLBuilder.buildKeyMatchCount(
+            table: "t", schema: nil, key: [("id", "5")], columns: [ColumnInfo(name: "id", typeName: "INTEGER")],
+            type: .sqlite, driver: driver()
+        ) == nil)
+        #expect(SQLBuilder.buildKeyMatchCount(
+            table: "t", schema: nil, key: [("id", "5")], columns: [], type: .postgresql, driver: driver()
+        ) == nil)
+    }
 }
+

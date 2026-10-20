@@ -9716,6 +9716,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Key Matches Several Rows" : {
+
+    },
     "Key Not Found" : {
 
     },
@@ -10680,6 +10683,9 @@
           }
         }
       }
+    },
+    "More than one row reads as this key, because a SQLite column with no type keeps a number and the same text apart. Change these rows with a query." : {
+
     },
     "Mountains" : {
       "extractionState" : "manual",

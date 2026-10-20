@@ -212,10 +212,16 @@ struct FilterSQLGenerator {
     /// Folding a non-text column is a type error on strict engines, so only fold
     /// columns that are text or whose type the grid has not resolved, unless the
     /// dialect casts the operand to text first, which makes every column foldable.
+    /// A number or a boolean has no case, and folded as text `5.50` would no longer equal `5.5`.
     private func allowsCaseFolding(_ columnType: ColumnType?) -> Bool {
-        columnType == nil
-            || ColumnTypeSQLQuoting.isKnownTextLike(columnType)
-            || dialect.textCastTypeName != nil
+        switch columnType {
+        case .integer?, .decimal?, .boolean?:
+            return false
+        default:
+            return columnType == nil
+                || ColumnTypeSQLQuoting.isKnownTextLike(columnType)
+                || dialect.textCastTypeName != nil
+        }
     }
 
     private func foldedComparison(_ literal: String, folding: PluginSQLCaseFolding) -> String? {

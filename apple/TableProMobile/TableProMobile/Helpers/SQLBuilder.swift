@@ -87,6 +87,25 @@ nonisolated enum SQLBuilder {
         }.joined(separator: " AND ")
     }
 
+    // Nil unless a value matches either way SQLite stores it, the one case where a key can name two rows.
+    static func buildKeyMatchCount(
+        table: String,
+        schema: String?,
+        key: [(column: String, value: String)],
+        columns: [ColumnInfo],
+        type: DatabaseType,
+        driver: any DatabaseDriver
+    ) -> String? {
+        let matchesEitherWay = key.contains { pair in
+            let info = FilterColumnKind.column(named: pair.column, in: columns)
+            guard case .numberOrText = FilterColumnKind.keyLiteral(pair.value, column: info, databaseType: type) else { return false }
+            return true
+        }
+        guard matchesEitherWay else { return nil }
+        let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
+        return "SELECT COUNT(*) FROM \(quotedTable) WHERE \(keyPredicate(key, columns: columns, type: type, driver: driver))"
+    }
+
     static func buildDelete(
         table: String,
         schema: String?,

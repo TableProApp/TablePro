@@ -433,6 +433,13 @@ final class DataBrowserViewModel {
     func deleteRow(pkValues: [(column: String, value: String)]) async -> Bool {
         guard let session, let table, !pkValues.isEmpty else { return false }
         let schema = schema
+        if let shared = await SharedRowKey.error(
+            table: table.name, schema: schema, key: pkValues,
+            columns: columnDetails, type: databaseType, driver: session.driver
+        ) {
+            operationError = shared
+            return false
+        }
         do {
             let deleted = try await session.driver.executeWrite([
                 SQLBuilder.buildDelete(
