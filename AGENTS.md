@@ -42,6 +42,8 @@ Lanes keep parallel agents from editing the same files. Pick open work from [Pro
 
 ## Workflow
 
+The [`fix-issue` skill](.claude/skills/fix-issue/SKILL.md) runs these steps in order for an agent. It holds the order only; the rules stay on this page.
+
 1. Write the failing test first, then the fix, in one commit.
 2. Run the checks in [Validation](#validation) locally. Run scripts unpiped: `bash scripts/preflight.sh | tail -3` reports `tail`'s status, not the script's.
 3. Merge the latest BookiE `linux` branch from GitHub `cozyGarage/BookiE` into the branch (do not rebase a shared branch). Resolve generated files such as `Cargo.lock` by regenerating them.
