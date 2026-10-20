@@ -89,7 +89,7 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func disconnect() async throws {
-        conn.disconnect()
+        await conn.disconnectAndWait()
     }
 
     func ping() async throws -> Bool {
