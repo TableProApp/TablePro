@@ -1,12 +1,16 @@
 # BookiE
 
-BookiE is a native Linux database client built with Rust, GTK4, libadwaita, GtkSourceView, and Relm4. It was previously called TablePro on this branch. The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE); current development is on the `linux` branch. The Cargo workspace lives at the repository root (`crates/`, `apps/linux/`, `tests/`, `scripts/`, `docs/`) and requires Rust 1.98.
+BookiE is a free, open-source database client for Linux, built for data analysts, database administrators, and developers. Browse tables, write SQL, investigate results, and review changes in a native desktop workspace.
 
-Current delivery scope and evidence: [active sprint](docs/bookie-0.2-sprint.md). The [documentation map](docs/README.md) identifies the current source for each topic; dated reviews in the archive prove only the trees they examined. Package release approval remains separate.
+## Why BookiE?
 
-The rename covers the display name, packaging install names (`bookie`, `bookie-agentd`, with `tablepro*` aliases) and branding assets only. Cargo package and binary names stay `tablepro-app` / `tablepro-agentd`. App ID, config and data paths, keyring schema, UUIDs, audit format and protocol contracts stay `tablepro` / `com.tablepro.linux`. Crate names remain `tablepro-*`.
+The name grew out of watching *Peaky Blinders* and thinking about the bookies keeping their ledgers: recording entries, looking them up, and keeping track of changes. There is something familiar in that work for anyone who spends a day with `INSERT`, `SELECT`, `UPDATE`, and `DELETE`.
 
-Every shipped feature is free to use. BookiE has no account, license, subscription, paid-tier, or remote entitlement gate.
+BookiE is for the people doing that work today. Its purpose is to help you understand your data, maintain your databases, and make deliberate changes with a clear record of what happened.
+
+Open source made this project possible. BookiE grew from TablePro's Linux work and draws inspiration from the wider open-source database community. Building it is a way to give back through useful software, fixes, tests, documentation, and shared lessons. Contributions and credit belong alongside the code.
+
+Every shipped feature is free to use, with no account, license key, subscription, paid tier, or remote entitlement check.
 
 ## Status
 
@@ -35,6 +39,16 @@ Running the statement asks for one value per name and sends them as driver-bound
 - **Completion**: typing after `FROM` or `JOIN` offers tables; elsewhere it offers the columns of the tables named in the statement. `alias.` and `table.` narrow to that table's columns, and columns are fetched on demand for tables you reference.
 - **Favorites**: Ctrl+D saves the current editor query under a name in `$XDG_CONFIG_HOME/tablepro/favorites.json`. Saving an existing name replaces its statement.
 - **Open Quickly**: Ctrl+P searches favorites, open tabs, and saved connections. Type to filter (name, statement text, or initials), arrow keys to move, Enter to open, Escape to dismiss.
+
+## Development
+
+The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE), and current development is on the `linux` branch. BookiE is built with Rust, GTK4, libadwaita, GtkSourceView, and Relm4. The Cargo workspace lives at the repository root (`crates/`, `apps/linux/`, `tests/`, `scripts/`, `docs/`) and requires Rust 1.98.
+
+Start with the [documentation map](docs/README.md) and [completion and continuation](docs/bookie-0.2-sprint.md) for current scope and evidence. Release publication remains a separate decision.
+
+### Compatibility names
+
+The product name is BookiE. Installed commands are `bookie` and `bookie-agentd`, with `tablepro*` aliases for compatibility. Existing installations keep their settings and credentials: app ID, configuration and data paths, keyring schema, UUIDs, audit format, and protocol contracts retain their existing `tablepro` / `com.tablepro.linux` identifiers. Cargo packages and binaries remain `tablepro-app` / `tablepro-agentd`, and crate names remain `tablepro-*`.
 
 ## Architecture
 
