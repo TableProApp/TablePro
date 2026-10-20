@@ -357,6 +357,13 @@ class CiWorkflowTests(unittest.TestCase):
             with self.subTest(scenario=scenario):
                 self.assertIn(scenario, default_scenarios)
 
+    def test_codeql_scans_linux_after_merge_and_weekly_but_not_each_pull_request(self):
+        workflow = (ROOT / ".github/workflows/codeql.yml").read_text()
+        triggers = workflow.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]
+        events = set(re.findall(r"^  ([a-z_]+):", triggers, re.M))
+        self.assertEqual(events, {"push", "schedule", "workflow_dispatch"})
+        self.assertIn("branches: [linux]", triggers.split("  push:", 1)[1])
+
     def test_analysis_and_flatpak_skip_docs_and_reuse_cache(self):
         cancel_push_or_pr = (
             "cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}"

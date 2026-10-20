@@ -9,14 +9,6 @@ on:
       - "!**.md"
       - ".github/workflows/codeql.yml"
       - ".github/codeql/**"
-  pull_request:
-    branches: [linux]
-    paths:
-      - "**"
-      - "!docs/**"
-      - "!**.md"
-      - ".github/workflows/codeql.yml"
-      - ".github/codeql/**"
   schedule:
     - cron: "17 6 * * 1"
   workflow_dispatch:
