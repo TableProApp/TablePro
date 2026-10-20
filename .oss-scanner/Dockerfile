@@ -25,14 +25,21 @@ RUN curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
 COPY . /src
 WORKDIR /src
 
+# Full debug info linked into every test binary filled the scanner's disk. Split debug info keeps one
+# copy per crate, which gdb still reads.
+ENV CARGO_PROFILE_DEV_SPLIT_DEBUGINFO=unpacked \
+    CARGO_INCREMENTAL=0
+
 # Linux app. Meson keeps Cargo's home and target under _build, so later runs go through `meson devenv`.
+# One layer, so the app crate meson test builds and devenv rebuilds (TABLEPRO_LIBEXECDIR differs) is
+# stored once; devenv goes last because agents use it.
 RUN cd linux \
     && meson setup _build -Dprofile=development \
     && meson compile -C _build \
     && meson devenv -C _build cargo fetch --locked \
+    && (xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs \
+        || echo "WARNING: meson test reported failures") \
     && meson devenv -C _build cargo test --locked --workspace --no-run
-RUN cd linux && (xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs \
-    || echo "WARNING: meson test reported failures")
 
 # Each target .oss-scanner/swift/Package.swift names is linked in from TableProCore, so a patch to the
 # linked files is a patch to the app.

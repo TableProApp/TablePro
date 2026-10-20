@@ -1,22 +1,12 @@
-//
-//  RDSSigningEndpoint.swift
-//  TablePro
-//
-//  An RDS IAM token is a SigV4 presigned URL whose signature covers the DB
-//  endpoint's host and port, and RDS validates it against its own endpoint. The
-//  socket the driver dials is not always that endpoint: a tunnel points it at
-//  loopback, and so does a port forward the user runs outside TablePro. This
-//  resolves the endpoint the token must be signed for.
-//
-
 import Foundation
-import TableProPluginKit
 
 struct RDSSigningEndpoint: Equatable {
     let host: String
     let port: Int
 }
 
+// RDS validates the token against its own endpoint, while a tunnel or a port forward run outside
+// TablePro makes the driver dial loopback. This picks the endpoint the token is signed for.
 enum RDSSigningEndpointResolver {
     private static let loopbackHosts: Set<String> = ["localhost", "localhost.localdomain", "::1", "[::1]", "0.0.0.0"]
 
@@ -43,7 +33,7 @@ enum RDSSigningEndpointResolver {
         guard !isLoopback(host) else {
             throw AWSAuthError.rdsEndpointUnresolved(host: host)
         }
-        return RDSSigningEndpoint(host: host, port: port)
+        return RDSSigningEndpoint(host: host.lowercased(), port: port)
     }
 
     static func parse(_ value: String, defaultPort: Int) throws -> RDSSigningEndpoint {
@@ -80,6 +70,6 @@ enum RDSSigningEndpointResolver {
         guard isHostname, !isLoopback(host) else {
             throw AWSAuthError.rdsEndpointInvalid(rawValue)
         }
-        return RDSSigningEndpoint(host: host, port: port)
+        return RDSSigningEndpoint(host: host.lowercased(), port: port)
     }
 }

@@ -19,6 +19,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     let ssl: DriverSSLConfiguration
     let databaseType: DatabaseType
     private let connectionEncoding: MySQLConnectionEncoding
+    let signsInWithToken: Bool
 
     var supportsSchemas: Bool { false }
     var currentSchema: String? { nil }
@@ -39,7 +40,8 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         database: String,
         ssl: DriverSSLConfiguration = .disabled,
         databaseType: DatabaseType = .mysql,
-        connectionEncoding: MySQLConnectionEncoding = .utf8
+        connectionEncoding: MySQLConnectionEncoding = .utf8,
+        signsInWithToken: Bool = false
     ) {
         self.host = host
         self.port = port
@@ -49,6 +51,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         self.ssl = ssl
         self.databaseType = databaseType
         self.connectionEncoding = connectionEncoding
+        self.signsInWithToken = signsInWithToken
     }
 
     // MARK: - Connection
@@ -92,7 +95,8 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(
             host: host, port: port, user: user, password: password, database: database,
-            ssl: ssl, encoding: connectionEncoding, databaseType: databaseType
+            ssl: ssl, encoding: connectionEncoding, databaseType: databaseType,
+            signsInWithToken: signsInWithToken
         )
         serverVersion = await actor.serverVersion()
         for statement in Self.sessionSetupStatements(for: databaseType) {
@@ -329,6 +333,20 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 }
 
+nonisolated enum MySQLTokenSignIn {
+    // A token session refuses a server without TLS before the token is sent; this names that refusal.
+    static func connectFailure(
+        signsInWithToken: Bool,
+        errorCode: UInt32,
+        serverCapabilities: UInt
+    ) -> IAMSignInError? {
+        guard signsInWithToken,
+              errorCode == UInt32(CR_SSL_CONNECTION_ERROR),
+              serverCapabilities & UInt(CLIENT_SSL) == 0 else { return nil }
+        return .encryptionNotEstablished
+    }
+}
+
 nonisolated extension MySQLDriver {
     static func showFullColumnsStatement(table: String, database: String?) -> String {
         "SHOW FULL COLUMNS FROM \(qualifiedTable(table, database: database))"
@@ -439,7 +457,8 @@ private actor MySQLActor {
 
     func connect(
         host: String, port: Int, user: String, password: String, database: String,
-        ssl: DriverSSLConfiguration, encoding: MySQLConnectionEncoding, databaseType: DatabaseType
+        ssl: DriverSSLConfiguration, encoding: MySQLConnectionEncoding, databaseType: DatabaseType,
+        signsInWithToken: Bool
     ) async throws {
         self.encoding = encoding
         errorLanguage = nil
@@ -478,6 +497,14 @@ private actor MySQLActor {
         if let clientKeyPath = ssl.existingClientKeyPath {
             _ = clientKeyPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_KEY, $0) }
         }
+        if signsInWithToken {
+            // A no-op in Connector/C 3.4, which answers a cleartext request anyway; set to match the Mac.
+            var enableCleartext: my_bool = 1
+            mysql_options(handle, MYSQL_ENABLE_CLEARTEXT_PLUGIN, &enableCleartext)
+            if !ssl.verifiesCertificate {
+                tablepro_mysql_require_tls_without_verification(handle)
+            }
+        }
 
         guard let portU32 = UInt32(exactly: port), (1...65_535).contains(port) else {
             mysql_close(handle)
@@ -504,9 +531,14 @@ private actor MySQLActor {
         )
 
         guard connected else {
+            let tokenFailure = MySQLTokenSignIn.connectFailure(
+                signsInWithToken: signsInWithToken,
+                errorCode: mysql_errno(handle),
+                serverCapabilities: handle.pointee.server_capabilities
+            )
             let msg = message(from: handle)
             mysql_close(handle)
-            throw MySQLError.connectionFailed(msg)
+            throw tokenFailure ?? MySQLError.connectionFailed(msg)
         }
 
         guard MariaDBCharacterSet.establishSession(on: handle, encoding: encoding) else {

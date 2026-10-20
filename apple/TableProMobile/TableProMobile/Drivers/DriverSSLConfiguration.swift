@@ -9,6 +9,8 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
     let caCertificatePath: String?
     let clientCertificatePath: String?
     let clientKeyPath: String?
+    // The name the certificate must carry when the dialed host is a tunnel's loopback.
+    var serverName: String?
 
     static let disabled = DriverSSLConfiguration(mode: .disable)
 
@@ -21,12 +23,14 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
         mode: TableProModels.SSLConfiguration.SSLMode,
         caCertificatePath: String? = nil,
         clientCertificatePath: String? = nil,
-        clientKeyPath: String? = nil
+        clientKeyPath: String? = nil,
+        serverName: String? = nil
     ) {
         self.mode = mode
         self.caCertificatePath = caCertificatePath
         self.clientCertificatePath = clientCertificatePath
         self.clientKeyPath = clientKeyPath
+        self.serverName = serverName
     }
 
     init(sslEnabled: Bool, configuration: TableProModels.SSLConfiguration?) {
@@ -48,7 +52,8 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
             mode: mode,
             caCertificatePath: materialized.caCertificatePath ?? caCertificatePath,
             clientCertificatePath: materialized.clientCertificatePath ?? clientCertificatePath,
-            clientKeyPath: materialized.clientKeyPath ?? clientKeyPath
+            clientKeyPath: materialized.clientKeyPath ?? clientKeyPath,
+            serverName: serverName
         )
     }
 
