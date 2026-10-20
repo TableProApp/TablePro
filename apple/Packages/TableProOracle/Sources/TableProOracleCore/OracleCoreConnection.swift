@@ -137,30 +137,36 @@ public final class OracleCoreConnection: @unchecked Sendable {
 
     // MARK: - Connection
 
-    public func connect() async throws {
+    static func configuration(
+        for options: OracleConnectionOptions
+    ) throws -> OracleNIO.OracleConnection.Configuration {
         let identifier = options.identifier
         let service: OracleServiceMethod = options.identifierMode == .sid
             ? .sid(identifier)
             : .serviceName(identifier)
-        let tls = try OracleTLSMapper.tls(for: options.tls)
         var configuration = OracleNIO.OracleConnection.Configuration(
             host: options.host,
             port: options.port,
             service: service,
             username: options.user,
             password: options.password,
-            tls: tls
+            tls: try OracleTLSMapper.tls(for: options.tls)
         )
-        configuration.mode = Self.authenticationMode(for: options.role)
-        configuration.nativeNetworkEncryption = Self.encryptionLevel(for: options.networkEncryption)
+        configuration.mode = authenticationMode(for: options.role)
+        configuration.nativeNetworkEncryption = encryptionLevel(for: options.networkEncryption)
         // The driver owns the channel, so it is the only thing that can end a login the
         // server has stopped answering, and it names the handshake phase when it does.
-        // The wrapper below stays a grace period behind it as a backstop for a driver
+        // The wrapper in connect() stays a grace period behind it as a backstop for a driver
         // that never returns at all.
         configuration.options.loginTimeout = .milliseconds(
             max(1, Int64((options.loginTimeoutSeconds * 1_000).rounded(.up)))
         )
-        let connectConfig = configuration
+        configuration.options.tlsServerName = OracleTLSMapper.serverName(for: options.tls)
+        return configuration
+    }
+
+    public func connect() async throws {
+        let connectConfig = try Self.configuration(for: options)
         let connectLogger = nioLogger
 
         let connectionId = Self.connectionCounter.withLock { counter -> Int in

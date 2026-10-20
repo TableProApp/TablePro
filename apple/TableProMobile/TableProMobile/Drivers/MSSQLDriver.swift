@@ -21,7 +21,7 @@ nonisolated private extension MSSQLRawResult {
 
 nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
     nonisolated(unsafe) private var conn: FreeTDSConnection
-    private let options: MSSQLConnectionOptions
+    let options: MSSQLConnectionOptions
     private let additionalFields: [String: String]
     private let host: String
     private let authMethod: MSSQLAuthMethod

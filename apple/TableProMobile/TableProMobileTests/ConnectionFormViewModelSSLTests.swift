@@ -85,4 +85,82 @@ struct ConnectionFormViewModelSSLTests {
         #expect(rebuilt.sslConfiguration?.mode == .require)
         #expect(rebuilt.sslConfiguration?.caCertificatePath == "/Users/mac/ca.pem")
     }
+
+    private func preferredConnection(type: DatabaseType) -> DatabaseConnection {
+        var connection = existingConnection(type: type)
+        connection.sslConfiguration = SSLConfiguration(
+            mode: .require,
+            caCertificatePath: "/Users/mac/ca.pem",
+            clientCertificatePath: "/Users/mac/client.pem",
+            clientKeyPath: "/Users/mac/client.key",
+            isMacPreferred: true
+        )
+        return connection
+    }
+
+    @Test("a Mac Preferred connection opens as Preferred in every picker", arguments: [
+        DatabaseType.postgresql, .mysql, .mssql, .oracle
+    ])
+    func preferredOpensAsPreferred(type: DatabaseType) {
+        let viewModel = ConnectionFormViewModel(editing: preferredConnection(type: type))
+
+        #expect(viewModel.sslMode == .preferred)
+        #expect(viewModel.mssqlSSLMode == .preferred)
+        #expect(viewModel.oracleSSLMode == .preferred)
+    }
+
+    @Test("a Mac Preferred connection is written back as Preferred", arguments: [
+        DatabaseType.postgresql, .mssql, .oracle
+    ])
+    func preferredRoundTrips(type: DatabaseType) {
+        let viewModel = ConnectionFormViewModel(editing: preferredConnection(type: type))
+
+        let rebuilt = viewModel.buildConnection()
+
+        #expect(rebuilt.sslEnabled)
+        #expect(rebuilt.sslConfiguration?.mode == .require)
+        #expect(rebuilt.sslConfiguration?.isMacPreferred == true)
+        #expect(rebuilt.sslConfiguration?.clientCertificatePath == "/Users/mac/client.pem")
+    }
+
+    @Test("Test Connection with Required picked over Preferred connects as Required")
+    func requiredOverPreferredBuildsRequired() {
+        let viewModel = ConnectionFormViewModel(editing: preferredConnection(type: .postgresql))
+
+        viewModel.sslMode = .require
+        let rebuilt = viewModel.buildConnection()
+
+        #expect(rebuilt.sslConfiguration?.mode == .require)
+        #expect(rebuilt.sslConfiguration?.isMacPreferred == false)
+        #expect(rebuilt.sslConfiguration?.caCertificatePath == "/Users/mac/ca.pem")
+    }
+
+    @Test("Preferred shows the certificate rows like Required")
+    func preferredShowsCertificateRows() {
+        let viewModel = ConnectionFormViewModel(editing: preferredConnection(type: .mysql))
+
+        #expect(viewModel.showsCertificateRows)
+    }
+
+    @Test("Preferred on Oracle notes that it connects in plain TCP")
+    func oraclePreferredNote() {
+        let viewModel = ConnectionFormViewModel(editing: preferredConnection(type: .oracle))
+
+        #expect(viewModel.oracleSSLModeNote == ConnectionFormViewModel.oraclePreferredPlaintextMessage)
+
+        viewModel.oracleSSLMode = .require
+        #expect(viewModel.oracleSSLModeNote == nil)
+    }
+
+    @Test("a connection with SSL on and no stored configuration opens as Required in every picker")
+    func sslEnabledWithoutModeOpensAsRequired() {
+        var connection = existingConnection(type: .mssql)
+        connection.sslConfiguration = nil
+
+        let viewModel = ConnectionFormViewModel(editing: connection)
+
+        #expect(viewModel.sslMode == .require)
+        #expect(viewModel.mssqlSSLMode == .require)
+        #expect(viewModel.oracleSSLMode == .require)
+    }
 }
