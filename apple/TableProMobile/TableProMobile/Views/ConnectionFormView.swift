@@ -130,7 +130,9 @@ struct ConnectionFormView: View {
                     sshSection(viewModel: viewModel)
                 }
 
-                testSection
+                if !MacOnlyConnection.isMacOnly(type: viewModel.type) {
+                    testSection
+                }
             }
             .scrollDismissesKeyboard(.interactively)
             .interactiveDismissDisabled(viewModel.hasChanges)
@@ -226,19 +228,23 @@ struct ConnectionFormView: View {
             TextField("Name", text: $viewModel.name)
                 .textInputAutocapitalization(.never)
 
-            Picker("Database Type", selection: $viewModel.type) {
-                ForEach(DatabaseType.mobileSupportedTypes, id: \.rawValue) { dbType in
-                    Label {
-                        Text(dbType.mobileDisplayName)
-                    } icon: {
-                        Image(dbType.iconName)
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 20, height: 20)
+            if DatabaseType.mobileSupportedTypes.contains(viewModel.type) {
+                Picker("Database Type", selection: $viewModel.type) {
+                    ForEach(DatabaseType.mobileSupportedTypes, id: \.rawValue) { dbType in
+                        Label {
+                            Text(dbType.mobileDisplayName)
+                        } icon: {
+                            Image(dbType.iconName)
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                        }
+                        .tag(dbType)
                     }
-                    .tag(dbType)
                 }
+            } else {
+                LabeledContent("Database Type", value: viewModel.type.mobileDisplayName)
             }
         }
     }

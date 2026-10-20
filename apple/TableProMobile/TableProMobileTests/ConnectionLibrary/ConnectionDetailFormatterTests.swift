@@ -17,6 +17,12 @@ struct ConnectionDetailFormatterTests {
         #expect(ConnectionDetailFormatter.detail(for: connection) == "db.acme.io:6543")
     }
 
+    @Test("A port of 0 is left out, since the engine dials no port")
+    func zeroPort() {
+        let connection = DatabaseConnection(type: .bigquery, host: "localhost", port: 0, database: "my-project")
+        #expect(ConnectionDetailFormatter.detail(for: connection) == "localhost/my-project")
+    }
+
     @Test("A file database shows its file name, and an in-memory one says so")
     func fileDatabases() {
         let sqlite = DatabaseConnection(type: .sqlite, database: "/var/mobile/Documents/app.sqlite")

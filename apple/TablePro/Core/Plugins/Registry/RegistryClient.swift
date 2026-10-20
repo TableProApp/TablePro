@@ -44,14 +44,18 @@ internal final class RegistryClient: ObservableObject {
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 30
         config.waitsForConnectivity = true
-        // URLCache stores nothing larger than a twentieth of its capacity.
-        config.urlCache = URLCache(
-            memoryCapacity: 2_000_000,
-            diskCapacity: 20_000_000,
-            directory: AppStorageEnvironment.shared.applicationSupportRoot
-                .appendingPathComponent("TablePro/Registry/URLCache", isDirectory: true)
-        )
+        config.urlCache = makeCache(at: cacheDirectory(in: AppStorageEnvironment.shared.supportDirectory))
         return URLSession(configuration: config)
+    }
+
+    nonisolated internal static func cacheDirectory(in supportDirectory: URL) -> URL {
+        supportDirectory.appendingPathComponent("Registry/URLCache", isDirectory: true)
+    }
+
+    // URLCache stores nothing larger than a twentieth of its capacity. The directory: initializer
+    // opens the cache at the percent-encoded path on macOS 15 and earlier (FB9117600).
+    nonisolated internal static func makeCache(at directory: URL) -> URLCache {
+        URLCache(memoryCapacity: 2_000_000, diskCapacity: 20_000_000, diskPath: directory.path)
     }
 
     // Shares the interactive session's cache; offline it waits for the network until the resource timeout.

@@ -87,6 +87,32 @@ struct ConnectionManagerTests {
         }
     }
 
+    @Test("A type the factory cannot open is refused before any tunnel opens")
+    func unsupportedTypeIsRefusedBeforeTheTunnel() async throws {
+        let factory = MockDriverFactory()
+        factory.drivers["mock"] = MockDatabaseDriver()
+        let ssh = MockSSHProvider()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            sshProvider: ssh
+        )
+        let connection = DatabaseConnection(
+            name: "Mac only",
+            type: .mongodb,
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "jump.example.com")
+        )
+
+        await #expect(throws: ConnectionError.driverNotFound("MongoDB")) {
+            _ = try await manager.connect(connection)
+        }
+
+        #expect(ssh.tunnelledConnectionIds.isEmpty)
+        #expect(ssh.openedTunnelIds.isEmpty)
+        #expect(manager.session(for: connection.id) == nil)
+    }
+
     @Test("Connect with SSH but no provider throws error")
     func connectSSHNoProvider() async throws {
         let factory = MockDriverFactory()

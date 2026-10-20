@@ -25,16 +25,14 @@ nonisolated internal enum MySQLColumnListing {
         return .quotedCatalog
     }
 
-    /// The catalog read for one table's defaults, or nil when `SHOW FULL COLUMNS` is the only source.
-    ///
-    /// It filters on `DATABASE()` because the unqualified `SHOW FULL COLUMNS` reads the session's
-    /// database, and the two answers are matched by column name alone.
-    static func catalogDefaultsQuery(table: String, source: DefaultSource) -> String? {
+    // Its rows are matched to SHOW FULL COLUMNS by column name alone, so both read the same database.
+    static func catalogDefaultsQuery(table: String, database: String?, source: DefaultSource) -> String? {
         switch source {
         case .quotedCatalog, .oceanBaseCatalog:
             return """
                 SELECT COLUMN_NAME, COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '\(SQLEscaping.backslashStringLiteral(table))'
+                WHERE TABLE_SCHEMA = \(MySQLDriver.databaseLiteral(database))
+                    AND TABLE_NAME = '\(SQLEscaping.backslashStringLiteral(table))'
                 """
         case .showFullColumns, .asReported:
             return nil

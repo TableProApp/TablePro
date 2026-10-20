@@ -30,10 +30,12 @@ struct ConnectionListRow: View {
             Button(action: onOpen) {
                 HStack(spacing: 8) {
                     content
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
+                    if !model.isMacOnly {
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
+                    }
                 }
                 .contentShape(Rectangle())
             }
@@ -41,8 +43,12 @@ struct ConnectionListRow: View {
             .hoverEffect()
             .accessibilityElement(children: .combine)
             .accessibilityLabel(model.accessibilityLabel)
-            .accessibilityHint(Text("Opens this connection"))
+            .accessibilityHint(accessibilityHint)
         }
+    }
+
+    private var accessibilityHint: Text {
+        model.isMacOnly ? Text("Explains why it can't open here.") : Text("Opens this connection")
     }
 
     private var lineLimit: Int? {
@@ -58,6 +64,7 @@ struct ConnectionListRow: View {
     private var content: some View {
         contentLayout {
             ConnectionTile(type: model.type, iconName: model.iconName, color: model.color)
+                .opacity(model.isMacOnly ? 0.5 : 1)
 
             VStack(alignment: .leading, spacing: 3) {
                 title
@@ -65,6 +72,12 @@ struct ConnectionListRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(lineLimit)
+                if model.isMacOnly {
+                    Label(MacOnlyConnection.status, systemImage: "laptopcomputer")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(lineLimit)
+                }
                 if model.groupLabel != nil || !model.tags.isEmpty {
                     ConnectionRowLabels(model: model, lineLimit: lineLimit)
                 }
@@ -111,6 +124,7 @@ struct ConnectionListRow: View {
         } else {
             Text(model.title)
                 .font(.body)
+                .foregroundStyle(model.isMacOnly ? .secondary : .primary)
                 .lineLimit(lineLimit)
         }
     }

@@ -101,9 +101,7 @@ struct ConnectedView: View {
             statusScreen { connectingView }
         case .failed(let error):
             statusScreen {
-                ErrorView(error: error) {
-                    await coordinator.connect()
-                }
+                ErrorView(error: error, onRetry: error.canRetry ? { await coordinator.connect() } : nil)
             }
         case .tabs:
             connectedContent(coordinator)
@@ -170,7 +168,6 @@ struct ConnectedView: View {
                         if let table = coordinator.selectedTable {
                             DataBrowserView(table: table)
                                 .environment(coordinator)
-                                .id(table)
                                 .transactionBar(for: coordinator)
                         } else {
                             ContentUnavailableView(
@@ -181,6 +178,7 @@ struct ConnectedView: View {
                             .transactionBar(for: coordinator)
                         }
                     }
+                    .id(TableBrowserIdentity(coordinator.selectedTable, coordinator.activeDatabase))
                 }
                 .navigationSplitViewStyle(.balanced)
             }
@@ -337,7 +335,7 @@ struct ConnectedView: View {
                     Label(coordinator.activeDatabase, systemImage: "cylinder.split.1x2")
                         .font(.subheadline)
                 }
-                .disabled(coordinator.isSwitching)
+                .disabled(coordinator.isSwitching || presenter.isHeldByEditor)
             }
         }
         if coordinator.supportsSchemas && coordinator.schemas.count > 1 {

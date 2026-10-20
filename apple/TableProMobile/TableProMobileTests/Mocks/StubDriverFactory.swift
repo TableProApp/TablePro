@@ -35,5 +35,14 @@ final class StubDriverFactory: DriverFactory, @unchecked Sendable {
         }
     }
 
-    func supportedTypes() -> [DatabaseType] { [] }
+    func supportedTypes() -> [DatabaseType] { drivers.keys.map(DatabaseType.init(rawValue:)) }
+
+    // A queued driver answers a dial of any type.
+    func refusal(for connection: DatabaseConnection) -> ConnectionError? {
+        lock.withLock {
+            queuedDrivers.isEmpty && driversByType[connection.type.rawValue] == nil
+                ? ConnectionError.driverNotFound(connection.type.rawValue)
+                : nil
+        }
+    }
 }

@@ -44,14 +44,16 @@ struct ConnectionListView: View {
         selectedConnectionIdString.flatMap { UUID(uuidString: $0) }
     }
 
-    /// The connection the cover is to show. A held restore keeps the stored id and presents nothing,
-    /// which is how a locked launch reaches Face ID before anything dials, and how a link that has
-    /// not been delivered yet keeps the stored connection from opening ahead of it. A hold postpones
-    /// a restore; it never closes a connection that is already open.
     private var presentedConnection: DatabaseConnection? {
         guard let id = selectedConnectionUUID,
               presenter.presentsConnectionCover(isOnScreen: isConnectionCoverOnScreen) else { return nil }
-        return coordinatorStore.presentedRecord(for: id, in: appState.connections)
+        return presentableRecord(for: id)
+    }
+
+    // An open cover whose record turns Mac-only redials and ends on the refusal, so it is not closed here.
+    private func presentableRecord(for id: UUID) -> DatabaseConnection? {
+        guard let record = coordinatorStore.presentedRecord(for: id, in: appState.connections) else { return nil }
+        return isConnectionCoverOnScreen || !MacOnlyConnection.isMacOnly(record) ? record : nil
     }
 
     private var openConnection: Binding<DatabaseConnection?> {
@@ -216,6 +218,11 @@ struct ConnectionListView: View {
             Button(String(localized: "OK")) { actionErrorMessage = nil }
         } message: {
             Text(actionErrorMessage ?? "")
+        }
+        .alert(refusal?.title ?? "", isPresented: refusalPresented, presenting: refusal) { _ in
+            Button(String(localized: "OK")) { presenter.refusedConnectionId = nil }
+        } message: { error in
+            Text(verbatim: [error.message, error.recovery].compactMap { $0 }.joined(separator: " "))
         }
     }
 
@@ -501,10 +508,12 @@ struct ConnectionListView: View {
 
     @ViewBuilder
     private func connectionMenu(for connection: DatabaseConnection, section: LibrarySectionKind) -> some View {
-        Button {
-            open(connection.id)
-        } label: {
-            Label("Open", systemImage: "arrow.right.circle")
+        if !MacOnlyConnection.isMacOnly(connection) {
+            Button {
+                open(connection.id)
+            } label: {
+                Label("Open", systemImage: "arrow.right.circle")
+            }
         }
         if !connection.isSample {
             Button {
@@ -781,11 +790,35 @@ struct ConnectionListView: View {
             : String(format: String(localized: "%d connections imported."), count)
     }
 
+    private var refusal: AppError? {
+        guard let id = presenter.refusedConnectionId,
+              let connection = appState.connections.first(where: { $0.id == id }),
+              let error = IOSDriverFactory.refusal(for: connection) else { return nil }
+        return ErrorClassifier.connectionFailure(error)
+    }
+
+    private var refusalPresented: Binding<Bool> {
+        Binding(
+            get: { refusal != nil },
+            set: { if !$0 { presenter.refusedConnectionId = nil } }
+        )
+    }
+
     // MARK: - Actions
 
     private func open(_ connectionId: UUID) {
+        guard !isMacOnly(connectionId) else {
+            selectedConnectionIdString = nil
+            presenter.presentRefusal(for: connectionId, coverIsOnScreen: isConnectionCoverOnScreen)
+            return
+        }
         ConnectionListTips.connectionOpened()
         selectedConnectionIdString = connectionId.uuidString
+    }
+
+    private func isMacOnly(_ connectionId: UUID) -> Bool {
+        guard let connection = appState.connections.first(where: { $0.id == connectionId }) else { return false }
+        return MacOnlyConnection.isMacOnly(connection)
     }
 
     private func openSampleDatabase() {
@@ -857,7 +890,9 @@ struct ConnectionListView: View {
         switch intent {
         case .openConnection(let connectionId, let table):
             guard appState.connections.contains(where: { $0.id == connectionId }) else { return }
-            presenter.requestTable(table, in: connectionId)
+            if !isMacOnly(connectionId) {
+                presenter.requestTable(table, in: connectionId)
+            }
             open(connectionId)
         case .importConnections(let url):
             selectedConnectionIdString = nil
@@ -868,7 +903,7 @@ struct ConnectionListView: View {
     private func clearUnknownSelection() {
         guard appState.loadStatus == .ready,
               let id = selectedConnectionUUID,
-              coordinatorStore.presentedRecord(for: id, in: appState.connections) == nil else { return }
+              presentableRecord(for: id) == nil else { return }
         selectedConnectionIdString = nil
     }
 
@@ -877,6 +912,7 @@ struct ConnectionListView: View {
         presenter.dismissConnectionEditor()
         coordinatorStore.discardRemovedRecords()
         presenter.presentHeldImport()
+        presenter.presentHeldRefusal()
     }
 }
 
