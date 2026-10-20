@@ -8,6 +8,13 @@ import TableProGoogleCloud
 import TableProPluginKit
 import TableProUtilities
 
+struct PgpassLookup: Hashable {
+    let host: String
+    let port: Int
+    let database: String
+    let username: String
+}
+
 /// The one answer to "what password does this connection sign in with".
 ///
 /// A connection can get its password from five places: an AWS or Cloud SQL IAM token minted per
@@ -97,14 +104,29 @@ enum ConnectionCredentialResolver {
     }
 
     private static func pgpassPassword(for connection: DatabaseConnection, username: String) -> String {
-        let host = connection.preTunnelHost ?? connection.host
-        let port = connection.preTunnelPort ?? connection.port
+        let lookup = pgpassLookup(for: connection, username: username)
         return PgpassReader.resolve(
-            host: host.isEmpty ? "localhost" : host,
+            host: lookup.host,
+            port: lookup.port,
+            database: lookup.database,
+            username: lookup.username
+        ) ?? ""
+    }
+
+    // What libpq looks up in ~/.pgpass: a socket by its directory, a blank user as the login name.
+    nonisolated static func pgpassLookup(for connection: DatabaseConnection, username: String) -> PgpassLookup {
+        var host = connection.preTunnelHost ?? connection.host
+        var port = connection.preTunnelPort ?? connection.port
+        if connection.type.localSocketIsDirectory, let socket = connection.localSocketEndpoint {
+            host = socket.path
+            port = socket.port
+        }
+        return PgpassLookup(
+            host: PostgreSQLLocalSocket.pgpassHost(forHost: host),
             port: port,
             database: connection.database,
-            username: username
-        ) ?? ""
+            username: PgpassReader.effectiveUsername(username)
+        )
     }
 
     /// What mints the password of a connection that signs in with a token, or nil when the host does

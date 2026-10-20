@@ -311,6 +311,8 @@ targets:
       # The MySQL plugin's socket key and path rules, so the app writes and checks the socket path
       # exactly as the driver reads it.
       - Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
+      # The PostgreSQL plugin's socket directory rules, for the same reason.
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLLocalSocket.swift
     dependencies:
       - target: TableProPluginKit
         embed: true

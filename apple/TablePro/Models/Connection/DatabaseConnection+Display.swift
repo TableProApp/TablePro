@@ -29,7 +29,7 @@ extension DatabaseConnection {
         if let socketPath = sshForwardUnixSocketPath, resolvedSSHConfig.enabled {
             return (socketPath as NSString).abbreviatingWithTildeInPath
         }
-        if let socketPath = localSocketPath {
+        if let socketPath = localSocketFile {
             return (socketPath as NSString).abbreviatingWithTildeInPath
         }
         if let hostList = hostListDescription {

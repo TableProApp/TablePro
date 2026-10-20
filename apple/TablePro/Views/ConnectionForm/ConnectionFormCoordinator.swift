@@ -305,7 +305,7 @@ final class ConnectionFormCoordinator: ObservableObject {
         advanced.write(into: &fields)
 
         var resolvedHost = network.resolvedHost
-        var resolvedPort = network.resolvedPort
+        var resolvedPort = network.resolvedLocalSocketEndpoint?.port ?? network.resolvedPort
 
         // An empty list means what its placeholder shows, never the Host it hid.
         if let hostList = PluginManager.shared.additionalConnectionFields(for: network.type).endpointHostList {

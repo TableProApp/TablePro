@@ -722,8 +722,8 @@ struct ConnectionURLFormatterTests {
 
     @Test("A socket field on an engine without a socket mode is not written")
     func socketOnOtherEngineIsNotWritten() {
-        let connection = socketConnection("/tmp/mysql.sock", type: .postgresql, host: "db.example.com", port: 5_432)
+        let connection = socketConnection("/tmp/mysql.sock", type: .redshift, host: "db.example.com", port: 5_439)
         let url = ConnectionURLFormatter.format(connection, password: nil, sshPassword: nil)
-        #expect(url == "postgresql://root@db.example.com/local")
+        #expect(url == "redshift://root@db.example.com/local")
     }
 }

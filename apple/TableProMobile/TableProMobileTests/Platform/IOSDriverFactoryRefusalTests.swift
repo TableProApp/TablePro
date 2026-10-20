@@ -37,6 +37,20 @@ struct IOSDriverFactoryRefusalTests {
         #expect(IOSDriverFactory.refusal(for: socketConnection(sshHost: "bastion.acme.io")) == nil)
     }
 
+    @Test("A PostgreSQL connection on a Mac socket is refused instead of dialing its leftover host")
+    func postgresMacSocketIsRefused() {
+        let connection = DatabaseConnection(
+            type: .postgresql,
+            host: "localhost",
+            additionalFields: [MySQLLocalSocket.fieldKey: "/tmp"]
+        )
+
+        #expect(IOSDriverFactory.refusal(for: connection) == .localSocketNotSupported)
+        #expect(throws: ConnectionError.localSocketNotSupported) {
+            try IOSDriverFactory().createDriver(for: connection, password: nil)
+        }
+    }
+
     @Test("The connect path gets the device's answer, socket included, not the protocol default")
     func connectPathUsesTheDeviceRule() {
         let factory: any DriverFactory = IOSDriverFactory()

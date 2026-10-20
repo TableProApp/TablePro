@@ -99,7 +99,7 @@ struct ConnectionURLParserSocketTests {
     @Test(
         "Engines without a socket mode ignore socket",
         arguments: [
-            "postgresql://u@localhost/db?socket=/tmp/.s.PGSQL.5432",
+            "redshift://u@localhost/db?socket=/tmp/.s.PGSQL.5439",
             "tidb://root@localhost/db?socket=/tmp/mysql.sock",
             "redis://localhost?socket=/tmp/redis.sock"
         ]

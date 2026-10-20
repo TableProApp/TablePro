@@ -47,6 +47,10 @@ struct ParsedConnectionURL {
         MySQLLocalSocket.path(in: additionalFields)
     }
 
+    var localSocketFile: String? {
+        localSocketPath.map { LocalSocketEndpoint(path: $0, port: resolvedPort, type: type).socketFile }
+    }
+
     var suggestedName: String {
         if let connectionName, !connectionName.isEmpty {
             return connectionName
@@ -71,6 +75,7 @@ enum ConnectionURLParseError: Error, LocalizedError, Equatable {
     case missingHost
     case invalidRedisDatabaseIndex(String)
     case invalidSocketPath(MySQLLocalSocket.PathIssue)
+    case invalidPostgreSQLSocketPath(PostgreSQLLocalSocket.PathIssue)
 
     var errorDescription: String? {
         switch self {
@@ -85,6 +90,8 @@ enum ConnectionURLParseError: Error, LocalizedError, Equatable {
         case .invalidRedisDatabaseIndex(let path):
             return String(format: String(localized: "%@ is not a Redis database index."), path)
         case .invalidSocketPath(let issue):
+            return issue.message
+        case .invalidPostgreSQLSocketPath(let issue):
             return issue.message
         }
     }
@@ -180,7 +187,7 @@ struct ConnectionURLParser {
             return .failure(.invalidURL)
         }
 
-        let endpoint: (host: String, socketFields: [String: String])
+        let endpoint: Endpoint
         switch resolveEndpoint(components, type: dbType) {
         case .success(let resolved): endpoint = resolved
         case .failure(let error): return .failure(error)
@@ -188,7 +195,7 @@ struct ConnectionURLParser {
 
         var ext = parseQueryItems(components.queryItems, dbType: dbType)
 
-        let rawPort = components.port
+        let rawPort = endpoint.port ?? components.port
         var sslMode = ext.resolvedSSLMode(for: dbType, port: rawPort ?? dbType.defaultPort)
         let port = significantPort(rawPort, for: dbType, sslMode: sslMode)
         let username = components.percentEncodedUser.flatMap {
@@ -276,19 +283,50 @@ struct ConnectionURLParser {
         ))
     }
 
+    private typealias Endpoint = (host: String, socketFields: [String: String], port: Int?)
+
     private static func resolveEndpoint(
         _ components: URLComponents,
         type: DatabaseType
-    ) -> Result<(host: String, socketFields: [String: String]), ConnectionURLParseError> {
-        localSocketPath(in: components, type: type).flatMap { socketPath in
+    ) -> Result<Endpoint, ConnectionURLParseError> {
+        if type.localSocketIsDirectory {
+            return libpqEndpoint(in: components, type: type)
+        }
+        return localSocketPath(in: components, type: type).flatMap { socketPath in
             if let socketPath {
-                return .success(("localhost", [MySQLLocalSocket.fieldKey: socketPath]))
+                return .success(("localhost", [MySQLLocalSocket.fieldKey: socketPath], nil))
             }
             guard let host = components.host, !host.isEmpty else {
                 return .failure(.missingHost)
             }
-            return .success((host, [:]))
+            return .success((host, [:], nil))
         }
+    }
+
+    // libpq's rules: query `host` and `port` win, and a host starting with `/` is the socket directory.
+    private static func libpqEndpoint(
+        in components: URLComponents,
+        type: DatabaseType
+    ) -> Result<Endpoint, ConnectionURLParseError> {
+        let items = components.percentEncodedQueryItems ?? []
+        func queryValue(_ name: String) -> String? {
+            guard let raw = items.last(where: { $0.name.lowercased() == name })?.value,
+                  let value = raw.removingPercentEncoding?.trimmingCharacters(in: .whitespaces),
+                  !value.isEmpty
+            else { return nil }
+            return value
+        }
+        let port = queryValue("port").flatMap(Int.init) ?? components.port
+        let host = queryValue("host") ?? components.host ?? ""
+        guard host.hasPrefix("/") else {
+            guard !host.isEmpty else { return .failure(.missingHost) }
+            return .success((host, [:], port))
+        }
+        let socket = PostgreSQLLocalSocket.endpoint(path: host, port: port ?? type.defaultPort)
+        if let issue = PostgreSQLLocalSocket.issue(for: socket) {
+            return .failure(.invalidPostgreSQLSocketPath(issue))
+        }
+        return .success(("localhost", [MySQLLocalSocket.fieldKey: socket.directory], socket.port))
     }
 
     private static let socketParameterNames = ["socket", "unix_socket"]
