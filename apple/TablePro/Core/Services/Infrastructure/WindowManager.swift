@@ -35,9 +35,9 @@ internal final class WindowManager {
             if let existing = host.workspaces.workspace(for: payload.connectionId) {
                 host.workspaces.select(payload.connectionId)
                 existing.open(payload)
-                // An open that asks to connect dials one sitting not connected, as picking it in the switcher does.
+                // Dials only where a new window would: never one the user canceled or disconnected.
                 if autoConnect {
-                    host.reconnectWorkspaceIfIdle(payload.connectionId)
+                    host.startActivationConnectIfNeeded(requested: true)
                 }
             } else {
                 host.adoptWorkspace(payload: payload, autoConnect: autoConnect)
