@@ -79,7 +79,27 @@ final class RowDetailViewModel {
     var canEdit: Bool {
         table != nil && session != nil && !columnDetails.isEmpty && allowsRowEditing
             && !safeModeLevel.blocksWrites
-            && columnDetails.contains(where: { $0.isPrimaryKey })
+            && currentPrimaryKeyValues != nil
+    }
+
+    private var currentPrimaryKeyValues: [(column: String, value: String)]? {
+        Self.primaryKeyValues(cells: cells(at: currentIndex), columns: columns, columnDetails: columnDetails)
+    }
+
+    // A binary or cut-off key cell holds placeholder text, which as a predicate matches no row, so the row has no key.
+    static func primaryKeyValues(
+        cells: [Cell], columns: [ColumnInfo], columnDetails: [ColumnInfo]
+    ) -> [(column: String, value: String)]? {
+        let keyColumns = columnDetails.filter(\.isPrimaryKey)
+        guard !keyColumns.isEmpty else { return nil }
+        var values: [(column: String, value: String)] = []
+        for key in keyColumns {
+            guard let index = columns.firstIndex(where: { $0.name == key.name }),
+                  index < cells.count,
+                  case .text(let value) = cells[index] else { return nil }
+            values.append((column: key.name, value: value))
+        }
+        return values
     }
 
     var supportsLazyLoading: Bool { loadFullValueProvider != nil }
@@ -239,19 +259,23 @@ final class RowDetailViewModel {
         pendingWriteConfirmation = false
         writeGate.cancel()
 
-        let pkValues: [(column: String, value: String)] = columnDetails.compactMap { col in
-            guard col.isPrimaryKey else { return nil }
-            let colIndex = columns.firstIndex(where: { $0.name == col.name })
-            guard let colIndex, colIndex < currentRow.count, let value = currentRow[colIndex] else { return nil }
-            return (column: col.name, value: value)
-        }
-
-        guard !pkValues.isEmpty else {
+        guard columnDetails.contains(where: { $0.isPrimaryKey }) else {
             operationError = AppError(
                 category: .config,
                 title: String(localized: "Cannot Save"),
                 message: String(localized: "No primary key values found."),
                 recovery: String(localized: "This table needs a primary key to identify the row."),
+                underlying: nil
+            )
+            return false
+        }
+
+        guard let pkValues = currentPrimaryKeyValues else {
+            operationError = AppError(
+                category: .config,
+                title: String(localized: "Cannot Save"),
+                message: String(localized: "This row's primary key is not plain text, so it cannot identify the row."),
+                recovery: nil,
                 underlying: nil
             )
             return false

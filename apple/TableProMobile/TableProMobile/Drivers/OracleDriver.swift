@@ -281,7 +281,9 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
                 name: $0.constraintName,
                 column: $0.columnName,
                 referencedTable: $0.referencedTable,
-                referencedColumn: $0.referencedColumn
+                referencedColumn: $0.referencedColumn,
+                referencedSchema: $0.referencedSchema,
+                onDelete: $0.deleteRule
             )
         }
     }

@@ -1,0 +1,72 @@
+import Foundation
+import TableProModels
+import TableProQuery
+import Testing
+@testable import TableProMobile
+
+struct SQLBuilderFilterLiteralTests {
+    private let idFilter = [TableFilter(columnName: "id", filterOperator: .equal, value: "5")]
+    private let codeFilter = [TableFilter(columnName: "code", filterOperator: .equal, value: "02134")]
+    private let codeColumns = [ColumnInfo(name: "code", typeName: "TEXT")]
+    private let sorted = SortState(columns: [SortColumn(name: "id", ascending: true)])
+
+    @Test("A SQL Server filtered select and count close the bracket around the column")
+    func mssqlFilteredSelectAndCount() {
+        #expect(SQLBuilder.buildFilteredSelect(
+            table: "orders", schema: nil, type: .mssql,
+            filters: idFilter, logicMode: .and, limit: 10, offset: 0
+        ).hasPrefix("SELECT * FROM [orders] WHERE [id] = 5 "))
+        #expect(SQLBuilder.buildFilteredSelect(
+            table: "orders", schema: nil, type: .mssql,
+            filters: idFilter, logicMode: .and, sortState: sorted, limit: 10, offset: 0
+        ).hasPrefix("SELECT * FROM [orders] WHERE [id] = 5 ORDER BY [id] ASC"))
+        #expect(SQLBuilder.buildFilteredCount(
+            table: "orders", schema: nil, type: .mssql, filters: idFilter, logicMode: .and
+        ) == "SELECT COUNT(*) FROM [orders] WHERE [id] = 5")
+    }
+
+    @Test("A SQL Server search with a filter closes the bracket around the column")
+    func mssqlSearchSelectAndCount() {
+        #expect(SQLBuilder.buildSearchSelect(
+            table: "orders", schema: nil, type: .mssql,
+            searchText: "", searchColumns: [], filters: idFilter, limit: 10, offset: 0
+        ).hasPrefix("SELECT * FROM [orders] WHERE ([id] = 5) "))
+        #expect(SQLBuilder.buildSearchCount(
+            table: "orders", schema: nil, type: .mssql,
+            searchText: "", searchColumns: [], filters: idFilter
+        ) == "SELECT COUNT(*) FROM [orders] WHERE ([id] = 5)")
+    }
+
+    @Test("Every filtered and search builder hands the column types to the filter")
+    func columnsReachTheFilter() {
+        let quoted = "\"code\" = '02134'"
+        #expect(SQLBuilder.buildFilteredSelect(
+            table: "zips", schema: nil, type: .sqlite,
+            filters: codeFilter, logicMode: .and, columns: codeColumns, limit: 10, offset: 0
+        ).contains(quoted))
+        #expect(SQLBuilder.buildFilteredSelect(
+            table: "zips", schema: nil, type: .sqlite,
+            filters: codeFilter, logicMode: .and, columns: codeColumns, sortState: sorted, limit: 10, offset: 0
+        ).contains(quoted))
+        #expect(SQLBuilder.buildFilteredCount(
+            table: "zips", schema: nil, type: .sqlite,
+            filters: codeFilter, logicMode: .and, columns: codeColumns
+        ).contains(quoted))
+        #expect(SQLBuilder.buildSearchSelect(
+            table: "zips", schema: nil, type: .sqlite,
+            searchText: "", searchColumns: [], filters: codeFilter, columns: codeColumns, limit: 10, offset: 0
+        ).contains(quoted))
+        #expect(SQLBuilder.buildSearchCount(
+            table: "zips", schema: nil, type: .sqlite,
+            searchText: "", searchColumns: [], filters: codeFilter, columns: codeColumns
+        ).contains(quoted))
+    }
+
+    @Test("A MySQL filter value ending in a backslash leaves the literal closed")
+    func mysqlTrailingBackslash() {
+        let filters = [TableFilter(columnName: "path", filterOperator: .equal, value: "C:\\temp\\")]
+        #expect(SQLBuilder.buildFilteredCount(
+            table: "files", schema: nil, type: .mysql, filters: filters, logicMode: .and
+        ) == "SELECT COUNT(*) FROM `files` WHERE `path` = 'C:\\\\temp\\\\'")
+    }
+}

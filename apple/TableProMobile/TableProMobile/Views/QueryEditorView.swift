@@ -13,6 +13,7 @@ struct QueryEditorView: View {
 
     @State private var query = ""
     @State private var editorFocused = false
+    @State private var editorHandle = SQLEditorHandle()
     @State private var viewModel = QueryEditorViewModel()
     @State private var appError: AppError?
     @State private var isExecuting = false
@@ -51,12 +52,16 @@ struct QueryEditorView: View {
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { containerSize = $0 }
         .onAppear {
+            editorHandle.databaseType = databaseType
             if let pending = coordinator.pendingQuery {
                 query = pending
                 coordinator.pendingQuery = nil
             } else if query.isEmpty {
                 query = UserDefaults.standard.string(forKey: ConnectionDefaultsKey.lastQuery.name(for: connectionId)) ?? ""
             }
+        }
+        .task(id: session.map { ObjectIdentifier($0.driver) }) {
+            editorHandle.sessionFacts = await session?.driver.sessionLexicalFacts()
         }
         .onChange(of: query) { _, newValue in
             saveQueryTask?.cancel()
@@ -139,7 +144,7 @@ struct QueryEditorView: View {
 
     private var editorSection: some View {
         VStack(spacing: 0) {
-            SQLHighlightTextView(text: $query, isFocused: $editorFocused)
+            SQLHighlightTextView(text: $query, isFocused: $editorFocused, handle: editorHandle)
                 .frame(minHeight: 80, maxHeight: editorMaxHeight)
 
             actionBar
@@ -148,30 +153,51 @@ struct QueryEditorView: View {
 
     private var actionBar: some View {
         HStack(spacing: 12) {
-            Button {
-                if isExecuting {
+            if isExecuting {
+                Button {
                     executeTask?.cancel()
                     viewModel.stop()
                     Task { try? await session?.driver.cancelCurrentQuery() }
-                } else {
-                    executeTask = Task { await executeQuery() }
+                } label: {
+                    Label(String(localized: "Stop"), systemImage: "stop.fill")
+                        .font(.subheadline.weight(.medium))
                 }
-            } label: {
-                Label(
-                    isExecuting ? String(localized: "Stop") : String(localized: "Run"),
-                    systemImage: isExecuting ? "stop.fill" : "play.fill"
-                )
-                .font(.subheadline.weight(.medium))
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(.red)
+                .keyboardShortcut(".", modifiers: .command)
+            } else {
+                Menu {
+                    Button {
+                        runAtCursor(dismissingKeyboard: true)
+                    } label: {
+                        Label(runAtCursorTitle, systemImage: "play")
+                    }
+                    Button {
+                        runAllStatements(dismissingKeyboard: true)
+                    } label: {
+                        Label("Run All Statements", systemImage: "play.square.stack")
+                    }
+                } label: {
+                    Label(String(localized: "Run"), systemImage: "play.fill")
+                        .font(.subheadline.weight(.medium))
+                } primaryAction: {
+                    runAtCursor(dismissingKeyboard: true)
+                }
+                .menuStyle(.button)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!canRun)
+                .accessibilityHint(Text("Runs the statement at the cursor, or the selected text."))
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .tint(isExecuting ? .red : .accentColor)
-            .disabled(!isExecuting && query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .keyboardShortcut(.return, modifiers: .command)
 
             Spacer()
 
-            if isExecuting, let startTime = executionStartTime {
+            if let runNote = editorHandle.runNote {
+                Text(verbatim: runNote)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else if isExecuting, let startTime = executionStartTime {
                 TimelineView(.periodic(from: startTime, by: 0.1)) { context in
                     let elapsed = context.date.timeIntervalSince(startTime)
                     Text(String(format: "%.1fs", elapsed))
@@ -184,7 +210,7 @@ struct QueryEditorView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if resultRowCount > 0 {
+            if resultRowCount > 0, editorHandle.runNote == nil {
                 Text("\(resultRowCount) rows")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -194,6 +220,24 @@ struct QueryEditorView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+        .background {
+            Button(runAtCursorTitle) { runAtCursor(dismissingKeyboard: false) }
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(!canRun)
+                .hidden()
+            Button("Run All Statements") { runAllStatements(dismissingKeyboard: false) }
+                .keyboardShortcut(.return, modifiers: [.command, .shift])
+                .disabled(!canRun)
+                .hidden()
+        }
+    }
+
+    private var canRun: Bool {
+        !isExecuting && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var runAtCursorTitle: String {
+        editorHandle.hasSelection ? String(localized: "Run Selection") : String(localized: "Run Statement")
     }
 
     // MARK: - Results
@@ -443,6 +487,13 @@ struct QueryEditorView: View {
                 Label("History", systemImage: "clock")
             }
 
+            Button {
+                runAllStatements(dismissingKeyboard: true)
+            } label: {
+                Label("Run All Statements", systemImage: "play.square.stack")
+            }
+            .disabled(!canRun)
+
             if !tables.isEmpty, databaseType.speaksSQL {
                 Menu {
                     ForEach(tables) { table in
@@ -506,8 +557,26 @@ struct QueryEditorView: View {
 
     // MARK: - Execution
 
-    private func executeQuery() async {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func runAtCursor(dismissingKeyboard: Bool) {
+        let target = editorHandle.runTarget()
+        if dismissingKeyboard { editorHandle.endEditing() }
+        switch target {
+        case .selection(let text), .statement(let text, _):
+            executeTask = Task { await executeQuery(text) }
+        case .nothing:
+            editorHandle.noteNothingToRun()
+            hapticError.toggle()
+        }
+    }
+
+    private func runAllStatements(dismissingKeyboard: Bool) {
+        if dismissingKeyboard { editorHandle.endEditing() }
+        executeTask = Task { await executeQuery(query) }
+    }
+
+    private func executeQuery(_ text: String) async {
+        guard !isExecuting else { return }
+        let trimmed = QueryScript.trimmed(text, databaseType: databaseType)
         guard !trimmed.isEmpty else { return }
         guard let session else { return }
         // Text that is only comments plans to nothing under any session setting, so this needs no driver round trip.
@@ -536,16 +605,15 @@ struct QueryEditorView: View {
         await executeQueryDirect(trimmed)
     }
 
-    /// The run is claimed before the first await, so a second tap on Run while the session is asked how it reads
-    /// literals finds it running and does not start another.
+    // Claimed before the first await, so a second Run while the session reports how it reads literals starts nothing.
     private func executeQueryDirect(_ trimmed: String) async {
         guard let session, !isExecuting else { return }
 
-        editorFocused = false
         isExecuting = true
         let startedAt = Date()
         executionStartTime = startedAt
         appError = nil
+        editorHandle.clearRunNote()
 
         let script = await plan(trimmed, on: session)
         guard !script.isEmpty else {
@@ -577,6 +645,11 @@ struct QueryEditorView: View {
         progressUpdater.cancel()
         let phase = viewModel.phase
         let outcome = QueryExecutionOutcome(phase: phase)
+
+        // A stopped request may still hold the driver, and reading the session would wait for the statement Stop ends.
+        if outcome == .completed || outcome == .failed, coordinator.session?.driver === session.driver {
+            editorHandle.sessionFacts = await session.driver.sessionLexicalFacts()
+        }
 
         if case .error(let err) = phase {
             appError = err

@@ -8,6 +8,12 @@ struct DataBrowserView: View {
     @Environment(ConnectionCoordinator.self) private var coordinator
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let table: TableInfo
+    private let reference: ForeignKeyReference?
+
+    init(table: TableInfo, reference: ForeignKeyReference? = nil) {
+        self.table = table
+        self.reference = reference
+    }
 
     private var connection: DatabaseConnection { coordinator.connection }
     private var session: ConnectionSession? { coordinator.session }
@@ -22,6 +28,7 @@ struct DataBrowserView: View {
     @State private var showShareSheet = false
     @State private var showDeleteConfirmation = false
     @State private var showStructure = false
+    @State private var showMatchedRow = false
     @State private var showGoToPage = false
     @State private var goToPageInput = ""
     @State private var deleteTarget: [(column: String, value: String)]?
@@ -32,6 +39,15 @@ struct DataBrowserView: View {
 
     private var activeSchema: String? {
         coordinator.supportsSchemas ? coordinator.activeSchema : nil
+    }
+
+    private var browserSchema: String? {
+        if let reference { return reference.schema }
+        return activeSchema
+    }
+
+    private var displaySchema: String? {
+        reference?.displaySchema(current: activeSchema)
     }
 
     /// Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
@@ -83,7 +99,8 @@ struct DataBrowserView: View {
     var body: some View {
         @Bindable var viewModel = viewModel
         return searchableContent
-            .userActivity(SceneIntent.viewTableActivity, isActive: appState.offersHandoff(for: connection)) { activity in
+            // The root browser stays mounted under this one; SwiftUI leaves two advertisers of one type unspecified.
+            .userActivity(SceneIntent.viewTableActivity, isActive: reference == nil && appState.offersHandoff(for: connection)) { activity in
                 activity.title = table.name
                 activity.isEligibleForHandoff = true
                 activity.userInfo = [
@@ -100,11 +117,19 @@ struct DataBrowserView: View {
             .task {
                 viewModel.attach(
                     session: session, table: table, databaseType: connection.type,
-                    host: connection.host, schema: activeSchema
+                    host: connection.host, schema: browserSchema
                 )
+                if let filters = reference?.filters() {
+                    viewModel.seedFilters(filters)
+                }
                 await viewModel.load(isInitial: true)
+                guard reference != nil, !Task.isCancelled else { return }
+                if viewModel.takeSingleRowMatch() {
+                    showMatchedRow = true
+                }
             }
             .onChange(of: activeSchema) { _, newSchema in
+                guard reference == nil else { return }
                 viewModel.attach(
                     session: session, table: table, databaseType: connection.type,
                     host: connection.host, schema: newSchema
@@ -123,14 +148,13 @@ struct DataBrowserView: View {
                     onClear: { Task { await viewModel.clearFilters() } }
                 )
             }
-            .sheet(item: $fkPreviewItem) { item in
-                FKPreviewView(
-                    fk: item.fk,
-                    value: item.value,
-                    session: session,
-                    databaseType: connection.type
-                )
-            }
+            .foreignKeyPreview(
+                item: $fkPreviewItem,
+                session: session,
+                coordinator: coordinator,
+                databaseType: connection.type,
+                allowsOpen: true
+            )
             .sheet(isPresented: $showShareSheet) {
                 ActivityViewController(items: [shareText])
             }
@@ -178,7 +202,10 @@ struct DataBrowserView: View {
             .sensoryFeedback(.success, trigger: hapticSuccess)
             .sensoryFeedback(.error, trigger: hapticError)
             .navigationDestination(isPresented: $showStructure) {
-                StructureView(table: table, session: session, databaseType: connection.type)
+                StructureView(table: table, session: session, databaseType: connection.type, schema: viewModel.schema)
+            }
+            .navigationDestination(isPresented: $showMatchedRow) {
+                rowDetail(index: 0)
             }
             .alert("Go to Page", isPresented: $showGoToPage) {
                 TextField("Page number", text: $goToPageInput)
@@ -203,11 +230,11 @@ struct DataBrowserView: View {
     private var searchableContent: some View {
         if !browsesSQLRows {
             content
-                .navigationTitle(table.name)
+                .tableTitle(table.name, schema: displaySchema)
                 .navigationBarTitleDisplayMode(.inline)
         } else {
             content
-                .navigationTitle(table.name)
+                .tableTitle(table.name, schema: displaySchema)
                 .navigationBarTitleDisplayMode(.inline)
                 .searchable(text: $searchText, prompt: "Search all columns")
                 .searchFocused($searchFocused)
@@ -273,25 +300,31 @@ struct DataBrowserView: View {
         .refreshable { await viewModel.load() }
     }
 
+    private func rowDetail(index: Int) -> some View {
+        RowDetailView(
+            columns: columns,
+            rows: viewModel.window.rows,
+            initialIndex: index,
+            table: table,
+            session: session,
+            columnDetails: viewModel.columnDetails,
+            databaseType: connection.type,
+            schema: viewModel.schema,
+            safeModeLevel: { [coordinator] in coordinator.connection.safeModeLevel },
+            foreignKeys: viewModel.foreignKeys,
+            onSaved: { Task { await viewModel.load() } },
+            loadFullValue: { ref in
+                guard let session else { return nil }
+                return try await viewModel.loadFullValue(driver: session.driver, ref: ref, databaseType: connection.type)
+            },
+            coordinator: coordinator
+        )
+    }
+
     private func rowLink(index: Int, row: [String?]) -> some View {
-        NavigationLink {
-            RowDetailView(
-                columns: columns,
-                rows: viewModel.window.rows,
-                initialIndex: index,
-                table: table,
-                session: session,
-                columnDetails: viewModel.columnDetails,
-                databaseType: connection.type,
-                schema: viewModel.schema,
-                safeModeLevel: { [coordinator] in coordinator.connection.safeModeLevel },
-                foreignKeys: viewModel.foreignKeys,
-                onSaved: { Task { await viewModel.load() } },
-                loadFullValue: { ref in
-                    guard let session else { return nil }
-                    return try await viewModel.loadFullValue(driver: session.driver, ref: ref, databaseType: connection.type)
-                }
-            )
+        let deleteKeys = canDeleteRows ? viewModel.primaryKeyValues(forRowAt: index) : nil
+        return NavigationLink {
+            rowDetail(index: index)
         } label: {
             RowCard(
                 columns: columns,
@@ -301,11 +334,11 @@ struct DataBrowserView: View {
             )
         }
         .hoverEffect()
-        .contextMenu { rowContextMenu(row: row) }
+        .contextMenu { rowContextMenu(index: index, row: row) }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if canDeleteRows {
+            if let deleteKeys {
                 Button {
-                    confirmDelete(row)
+                    confirmDelete(deleteKeys)
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
@@ -313,19 +346,19 @@ struct DataBrowserView: View {
             }
         }
         .accessibilityActions {
-            if canDeleteRows {
-                Button("Delete row") { confirmDelete(row) }
+            if let deleteKeys {
+                Button("Delete row") { confirmDelete(deleteKeys) }
             }
         }
     }
 
-    private func confirmDelete(_ row: [String?]) {
-        deleteTarget = viewModel.primaryKeyValues(for: row)
+    private func confirmDelete(_ keys: [(column: String, value: String)]) {
+        deleteTarget = keys
         showDeleteConfirmation = true
     }
 
     @ViewBuilder
-    private func rowContextMenu(row: [String?]) -> some View {
+    private func rowContextMenu(index: Int, row: [String?]) -> some View {
         Menu("Share Row") {
             ForEach(ExportFormat.allCases) { format in
                 Button(format.rawValue) {
@@ -350,23 +383,18 @@ struct DataBrowserView: View {
                 }
             }
         }
-        let rowFKs = viewModel.foreignKeys.filter { fk in
-            guard let colIndex = columns.firstIndex(where: { $0.name == fk.column }),
-                  colIndex < row.count,
-                  row[colIndex] != nil else { return false }
-            return true
-        }
-        if !rowFKs.isEmpty {
+        let cells = index < viewModel.window.rows.count ? viewModel.window.rows[index].cells : []
+        let references = ForeignKeyReference.all(
+            foreignKeys: viewModel.foreignKeys, columns: columns,
+            cells: cells, sourceSchema: viewModel.schema
+        )
+        if !references.isEmpty {
             Divider()
-            ForEach(rowFKs, id: \.name) { fk in
+            ForEach(references, id: \.name) { entry in
                 Button {
-                    if let colIndex = columns.firstIndex(where: { $0.name == fk.column }),
-                       colIndex < row.count,
-                       let value = row[colIndex] {
-                        fkPreviewItem = FKPreviewItem(fk: fk, value: value)
-                    }
+                    fkPreviewItem = FKPreviewItem(reference: entry.reference)
                 } label: {
-                    Label("\(fk.column) -> \(fk.referencedTable)", systemImage: "arrow.right.circle")
+                    Label("\(entry.column) -> \(entry.reference.table)", systemImage: "arrow.right.circle")
                 }
             }
         }

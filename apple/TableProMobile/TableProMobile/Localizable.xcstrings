@@ -12011,6 +12011,16 @@
         }
       }
     },
+    "No row found in %@ where %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No row found in %1$@ where %2$@."
+          }
+        }
+      }
+    },
     "No Tables" : {
       "localizations" : {
         "ko" : {
@@ -12857,6 +12867,9 @@
           }
         }
       }
+    },
+    "Open Table" : {
+
     },
     "Open this connection in TablePro to check the server's SSH host key first." : {
       "localizations" : {
@@ -15527,6 +15540,9 @@
         }
       }
     },
+    "Run All Statements" : {
+
+    },
     "Run queries and find the ones you ran before in History." : {
       "localizations" : {
         "ko" : {
@@ -15554,6 +15570,12 @@
           }
         }
       }
+    },
+    "Run Selection" : {
+
+    },
+    "Run Statement" : {
+
     },
     "Running" : {
       "localizations" : {
@@ -15616,6 +15638,9 @@
       }
     },
     "Running statement %1$d of %2$d" : {
+
+    },
+    "Runs the statement at the cursor, or the selected text." : {
 
     },
     "Safe Mode" : {
@@ -19121,6 +19146,9 @@
         }
       }
     },
+    "The cursor is not in a statement." : {
+
+    },
     "The data could not be read: %@" : {
       "localizations" : {
         "ko" : {
@@ -20986,6 +21014,9 @@
         }
       }
     },
+    "This row's primary key is not plain text, so it cannot identify the row." : {
+
+    },
     "This saved query no longer exists. It may have been removed from another device." : {
 
     },
@@ -21790,6 +21821,9 @@
           }
         }
       }
+    },
+    "unbalanced quotes" : {
+
     },
     "Unfavorite" : {
       "localizations" : {

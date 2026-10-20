@@ -306,6 +306,35 @@ struct RowDetailViewModelTests {
         #expect(vm.operationError != nil)
     }
 
+    @Test("A row whose key holds binary data offers no Edit, and Save builds no statement")
+    func binaryKeyBlocksEditAndSave() async {
+        let columns = [
+            ColumnInfo(name: "id", typeName: "BINARY(16)", isPrimaryKey: true, isNullable: false, ordinalPosition: 0),
+            ColumnInfo(name: "name", typeName: "VARCHAR(64)", ordinalPosition: 1)
+        ]
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0))
+        ]
+        let vm = RowDetailViewModel(
+            columns: columns,
+            rows: [Row(cells: [.binary(byteCount: 16, ref: nil), .text("Alice")])],
+            initialIndex: 0,
+            table: TableInfo(name: "customers"),
+            session: makeSession(driver: driver),
+            columnDetails: columns
+        )
+        #expect(vm.canEdit == false)
+
+        vm.startEditing()
+        vm.setEditedValue("Bea", at: 1)
+        #expect(vm.hasUnsavedEdits)
+
+        #expect(await vm.saveChanges() == false)
+        #expect(vm.operationError?.title == String(localized: "Cannot Save"))
+        #expect(driver.executedQueries.isEmpty)
+    }
+
     @Test("loadFullValue populates override and clears loadingCell")
     func lazyLoadPopulates() async {
         let provider: (CellRef) async throws -> String? = { _ in "the full blob value" }

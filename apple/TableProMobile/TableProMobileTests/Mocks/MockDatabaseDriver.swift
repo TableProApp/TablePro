@@ -10,6 +10,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var scriptedExecuteResults: [Result<QueryResult, Error>] = []
     var scriptedColumns: [ColumnInfo] = []
     var scriptedForeignKeys: [ForeignKeyInfo] = []
+    var fetchForeignKeysError: Error?
     var scriptedTables: [TableInfo] = []
     var scriptedDatabases: [String] = []
     var scriptedSchemas: [String] = []
@@ -22,6 +23,8 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     private(set) var executedQueries: [String] = []
     private(set) var fetchColumnsCalls: Int = 0
     private(set) var fetchForeignKeysCalls: Int = 0
+    private(set) var fetchColumnsSchemas: [String?] = []
+    private(set) var fetchForeignKeysSchemas: [String?] = []
     private(set) var beganTransactionModes: [PluginTransactionAccessMode] = []
     private(set) var didBeginTransaction = false
     private(set) var didCommitTransaction = false
@@ -67,6 +70,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         fetchColumnsCalls += 1
+        fetchColumnsSchemas.append(schema)
         return scriptedColumns
     }
 
@@ -74,6 +78,8 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
         fetchForeignKeysCalls += 1
+        fetchForeignKeysSchemas.append(schema)
+        if let fetchForeignKeysError { throw fetchForeignKeysError }
         return scriptedForeignKeys
     }
 
