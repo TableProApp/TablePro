@@ -82,6 +82,8 @@ struct DataGridInvisibleCharacterTests {
         #expect(CellDisplayFormatter.format(.text("abc\r"), columnType: nil) == "abc\r")
         #expect(CellDisplayFormatter.format(.text("a\r\nb\nc"), columnType: nil) == "a  b c")
         #expect("abc\r".sanitizedForCellDisplay == "abc ")
+        #expect("abc\r".shownWithoutMarks == "abc ")
+        #expect(ColumnDistinctValue(display: "abc\r", isNull: false, count: 1).label == "abc ")
     }
 
     @Test("A marked CR is read by name, as every other mark is")

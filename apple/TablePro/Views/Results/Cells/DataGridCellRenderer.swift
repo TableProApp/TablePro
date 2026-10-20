@@ -144,8 +144,7 @@ final class DataGridCellRenderer {
             )
             created = LaidOutLine(line: marked.line, specialCharacters: marked.marks.isEmpty ? nil : marked)
         } else {
-            // The formatter keeps a lone CR for the marks; unmarked it reads as the space it always did.
-            laidOut = laidOut.replacingOccurrences(of: "\r", with: " ", options: .literal)
+            laidOut = laidOut.shownWithoutMarks
             let attributed = NSAttributedString(string: laidOut, attributes: attributes)
             created = LaidOutLine(line: CTLineCreateWithAttributedString(attributed as CFAttributedString), specialCharacters: nil)
         }

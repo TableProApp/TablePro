@@ -220,6 +220,12 @@ internal extension String {
         flattenedOntoOneLine(keepingLoneCarriageReturns: true)
     }
 
+    // What a cell shows while marks are off: the lone CR reads as the space it always did.
+    var shownWithoutMarks: String {
+        guard utf16.contains(0x0D) else { return self }
+        return replacingOccurrences(of: "\r", with: " ", options: .literal)
+    }
+
     private func flattenedOntoOneLine(keepingLoneCarriageReturns: Bool) -> String {
         let nsString = self as NSString
         let length = nsString.length

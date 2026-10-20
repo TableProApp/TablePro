@@ -1083,12 +1083,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 let rawValue = row.values[column]
                 let columnType = column < columnTypes.count ? columnTypes[column] : nil
                 guard findSearches(rawValue, column: column, columnType: columnType) else { return nil }
-                return displayValue(
+                let shown = displayValue(
                     forID: row.id,
                     column: column,
                     rawValue: rawValue,
                     columnType: columnType
                 )
+                return cellRegistry.showsInvisibleCharacters ? shown : shown?.shownWithoutMarks
             }
         )
     }
