@@ -54,6 +54,24 @@ class DistroFloorFailureReportTests(unittest.TestCase):
         self.assertEqual(result.returncode, 17)
         self.assertIn("GTK suite produced no output", result.stdout)
 
+    def test_early_failure_survives_many_later_passes(self):
+        command = r"""
+printf '%s\n' 'RETRY: early_case: expected stored value was absent' \
+  'FAILED: early_case' 'AssertionError: expected stored value was absent'
+for i in $(seq 1 40); do printf 'passed: later_case_%s\n' "$i"; done
+printf '%s\n' '1 GTK scenario(s) failed: early_case'
+exit 17
+"""
+        failure, result = self.run_reporter(command)
+
+        self.assertEqual(failure.returncode, 17)
+        self.assertEqual(result.returncode, 17)
+        self.assertIn("FAILED: early_case", result.stdout)
+        self.assertIn("AssertionError: expected stored value was absent", result.stdout)
+        self.assertIn("RETRY: early_case", result.stdout)
+        self.assertIn("1 GTK scenario(s) failed: early_case", result.stdout)
+        self.assertLessEqual(len(result.stdout.splitlines()), 51)
+
 
 if __name__ == "__main__":
     unittest.main()

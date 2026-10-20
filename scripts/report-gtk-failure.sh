@@ -10,7 +10,7 @@ if ! [[ "$status" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 if [[ -r "$log_file" && -s "$log_file" ]]; then
-  if matches=$(grep -aE '^passed:|^RETRY|^FAILED|scenario.s. failed|^AssertionError|^  File .*gtk_[a-z]*\.py", line [0-9]+, in ' "$log_file" | tail -30) && [[ -n "$matches" ]]; then
+  if matches=$(grep -aE '^RETRY|^FAILED|scenario.s. failed|^AssertionError|^  File .*gtk_[a-z]*\.py", line [0-9]+, in ' "$log_file" | tail -30) && [[ -n "$matches" ]]; then
     printf '%s\n' "$matches"
   fi
   printf 'GTK suite diagnostic tail (%s):\n' "$log_file"
