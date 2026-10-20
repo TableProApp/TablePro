@@ -275,7 +275,8 @@ struct SQLiteDriverFileTests {
         try await driver.disconnect()
 
         #expect(keys.count == 2)
-        #expect(Set(keys.map(\.name)).count == 2)
+        #expect(keys.first { $0.column == "a" }?.name == "fk_orders_0")
+        #expect(keys.first { $0.column == "b" }?.name == "fk_orders_0_2")
         let reference = ForeignKeyReference.make(
             forColumn: "b",
             foreignKeys: keys,
@@ -426,6 +427,34 @@ struct SQLiteDriverFileTests {
         #expect(model.isLoaded)
         #expect(model.fields.map(\.name) == ["id", "tag"])
         #expect(model.fields.allSatisfy { $0.reference == nil })
+    }
+
+    @Test("A shorthand key resolves against the parent SQLite matches, not one differing in non-ASCII case")
+    func shorthandKeysToParentsDifferingInNonASCIICase() async throws {
+        let driver = try await connectedDriver("non-ascii-pair.db")
+        _ = try await driver.execute(query: "CREATE TABLE \"Équipe\" (id INTEGER PRIMARY KEY)")
+        _ = try await driver.execute(query: "CREATE TABLE \"équipe\" (code TEXT PRIMARY KEY)")
+        _ = try await driver.execute(
+            query: "CREATE TABLE child (a INTEGER REFERENCES \"Équipe\", b TEXT REFERENCES \"équipe\")"
+        )
+
+        let keys = try await driver.fetchForeignKeys(table: "child", schema: nil)
+        try await driver.disconnect()
+
+        #expect(keys.first { $0.column == "a" }?.referencedColumn == "id")
+        #expect(keys.first { $0.column == "b" }?.referencedColumn == "code")
+    }
+
+    @Test("A user table whose name starts with sqlite is listed")
+    func tableNamedLikeAnInternalOne() async throws {
+        let driver = try await connectedDriver("sqlite-prefix.db")
+        _ = try await driver.execute(query: "CREATE TABLE sqlitebrowser_backup (id INTEGER PRIMARY KEY)")
+        _ = try await driver.execute(query: "CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT)")
+
+        let tables = try await driver.fetchTables(schema: nil).map(\.name)
+        try await driver.disconnect()
+
+        #expect(tables == ["sqlitebrowser_backup", "t"])
     }
 
     // MARK: - Helpers
