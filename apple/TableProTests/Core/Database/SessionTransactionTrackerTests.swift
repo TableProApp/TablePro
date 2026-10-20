@@ -296,6 +296,9 @@ private final class TransactionScriptedDriver: PluginDriverStub, @unchecked Send
     }
 
     func sessionTransactionState() async -> PluginSessionTransactionState { state }
+
+    // A turn pins a MySQL scope to its database first, as a real session does.
+    func switchDatabase(to database: String) async throws {}
 }
 
 private struct TransactionScriptedFailure: Error {}
