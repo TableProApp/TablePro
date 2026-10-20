@@ -3863,6 +3863,9 @@
         }
       }
     },
+    "%@ is not a socket." : {
+
+    },
     "%@ is not a Redis database index." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -16708,6 +16711,9 @@
           }
         }
       }
+    },
+    "A test here has no connection to take the host, port and database from." : {
+
     },
     "A text index cannot be unique." : {
       "extractionState" : "manual",
@@ -48191,6 +48197,12 @@
     "Connects through the socket file on the General tab." : {
 
     },
+    "Connects to %@. The port names the socket file in the folder." : {
+
+    },
+    "Connects through the socket on the General tab. PostgreSQL sends no SSL over a socket, which stays on this Mac." : {
+
+    },
     "Consistency" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -49303,6 +49315,12 @@
         }
       }
     },
+    "Copy as CSV" : {
+
+    },
+    "Copy as CSV with Headers" : {
+
+    },
     "Copy as Hex" : {
       "localizations" : {
         "fr" : {
@@ -49342,6 +49360,12 @@
           }
         }
       }
+    },
+    "Copy as IN Clause" : {
+
+    },
+    "Copy as INSERT Statements" : {
+
     },
     "Copy as JSON" : {
       "localizations" : {
@@ -49383,6 +49407,12 @@
         }
       }
     },
+    "Copy as Markdown" : {
+
+    },
+    "Copy as UPDATE Statements" : {
+
+    },
     "Copy Average" : {
 
     },
@@ -49395,6 +49425,9 @@
           }
         }
       }
+    },
+    "Copy Cell Value" : {
+
     },
     "Copy Column Name" : {
       "localizations" : {
@@ -50507,6 +50540,9 @@
         }
       }
     },
+    "Copy rows as:" : {
+
+    },
     "Copy rows into %@ on the server" : {
       "localizations" : {
         "fr" : {
@@ -50840,6 +50876,9 @@
         }
       }
     },
+    "Copy uses this format for selected rows. A single cell still copies its value, and Edit > Copy Special offers every format." : {
+
+    },
     "Copy Value" : {
       "localizations" : {
         "fr" : {
@@ -50972,6 +51011,9 @@
           }
         }
       }
+    },
+    "Copying" : {
+
     },
     "Correct the Key Passphrase on the connection's Network tab." : {
       "extractionState" : "manual",
@@ -120888,6 +120930,9 @@
         }
       }
     },
+    "Nothing is at %@. Start the server, or check the folder and the port." : {
+
+    },
     "Nothing is at this path. Start the server, or check the path." : {
 
     },
@@ -156921,6 +156966,9 @@
         }
       }
     },
+    "show a saved password" : {
+
+    },
     "Secret Access Key" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -160247,6 +160295,9 @@
           }
         }
       }
+    },
+    "Set in connections.json." : {
+
     },
     "Set Cells to Value" : {
       "localizations" : {
@@ -179063,6 +179114,9 @@
         }
       }
     },
+    "Test Source" : {
+
+    },
     "Test the current connection settings" : {
       "localizations" : {
         "fr" : {
@@ -183563,6 +183617,9 @@
         }
       }
     },
+    "The folder with the server's socket, or the socket file. SHOW unix_socket_directories in psql lists the folders." : {
+
+    },
     "The following %d queries may permanently modify or delete data. This action cannot be undone.\n\n%@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -187584,6 +187641,10 @@
           }
         }
       }
+    },
+    "The socket path cannot contain a comma." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The socket path contains a control or invisible character." : {
       "extractionState" : "manual",
@@ -200059,6 +200120,9 @@
         }
       }
     },
+    "TSV with Headers" : {
+
+    },
     "TTL has to be a whole number of seconds above 0, or -1 or NULL for no expiry." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -211733,6 +211797,9 @@
           }
         }
       }
+    },
+    "Your credential profiles file was changed outside TablePro, so this profile's password source was not run." : {
+
     },
     "Your database schema and query data will be sent to the AI provider for analysis. Allow for this connection?" : {
       "localizations" : {

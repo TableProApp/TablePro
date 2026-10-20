@@ -27,7 +27,7 @@ struct DatabaseConnectionLocalSocketTests {
 
     @Test("A type the form offers no socket for reports none")
     func otherTypesReportNoSocket() {
-        for type in [DatabaseType.tidb, .oceanbase, .databend, .postgresql] {
+        for type in [DatabaseType.tidb, .oceanbase, .databend, .redshift] {
             #expect(connection(type: type).localSocketPath == nil, "\(type.rawValue)")
         }
     }

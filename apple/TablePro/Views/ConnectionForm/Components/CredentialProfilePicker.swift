@@ -42,6 +42,16 @@ struct CredentialProfilePicker: View {
         } else if let profile = auth.selectedCredentialProfile {
             LabeledContent(String(localized: "Username"), value: displayUsername(profile))
             LabeledContent(String(localized: "Password"), value: profile.passwordMode.displayName)
+            if case .source(let source) = profile.passwordMode, let coordinator = auth.coordinator?.value {
+                PasswordSourceTestView(
+                    source: source,
+                    context: { coordinator.passwordSourceContext() },
+                    refusal: {
+                        CredentialProfileStorage.shared.storeIsTrusted
+                            ? nil : PasswordSourceResolver.ResolutionError.profileStoreNotTrusted
+                    }
+                )
+            }
         }
 
         HStack(spacing: 12) {
@@ -66,7 +76,9 @@ struct CredentialProfilePicker: View {
         }
         .sheet(isPresented: $auth.isSavingCredentialsAsProfile) {
             CredentialProfileEditorSheet(
-                existingProfile: auth.profileFromCurrentCredentials(),
+                existingProfile: auth.profileFromCurrentCredentials(
+                    sourceStoreIsTrusted: auth.coordinator?.value?.storage.storeIsTrusted ?? false
+                ),
                 initialPassword: auth.password,
                 initialDatabaseType: auth.coordinator?.value?.network.type,
                 onSave: { saved in

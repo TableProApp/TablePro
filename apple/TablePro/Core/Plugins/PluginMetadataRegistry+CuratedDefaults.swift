@@ -463,7 +463,8 @@ extension PluginMetadataRegistry {
                     additionalConnectionFields: [pgpassField, connectionOptionsField] + cloudIAMFields,
                     category: .relational,
                     tagline: String(localized: "Advanced object-relational SQL"),
-                    defaultUnixSocketPath: "/var/run/postgresql/.s.PGSQL.5432"
+                    defaultUnixSocketPath: "/var/run/postgresql/.s.PGSQL.5432",
+                    defaultLocalSocketPath: PostgreSQLLocalSocket.defaultDirectory
                 )
             )),
             ("Redshift", PluginMetadataSnapshot(

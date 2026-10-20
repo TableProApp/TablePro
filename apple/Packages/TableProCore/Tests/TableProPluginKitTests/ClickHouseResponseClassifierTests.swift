@@ -98,6 +98,19 @@ struct ClickHouseResponseClassifierTests {
         #expect(outcome.rows == [[.text("a\tb\nc\\d")]])
     }
 
+    // Measured on ClickHouse 25.8: the String column is TSV-escaped, the compound ones are not escaped again.
+    @Test("A quote or backslash inside an Array, Map or Tuple keeps the escape ClickHouse wrote")
+    func compoundValuesKeepTheirEscapes() {
+        let outcome = classify(
+            headers: matchingFormatHeaders,
+            bodyText: "a\tm\tt\ts\nArray(Nullable(String))\tMap(String, String)\tTuple(UInt8, String)\tString\n"
+                + #"['a',NULL,'it\'s']"# + "\t" + #"{'k\'':'v\\'}"# + "\t" + #"(1,'x\'y')"# + "\t" + #"it\'s"# + "\n"
+        )
+        #expect(outcome.rows == [[
+            .text(#"['a',NULL,'it\'s']"#), .text(#"{'k\'':'v\\'}"#), .text(#"(1,'x\'y')"#), .text("it's")
+        ]])
+    }
+
     // MARK: - The Full Escape Table ClickHouse Writes
 
     @Test("Every escape the server emits is decoded, not left as two characters")

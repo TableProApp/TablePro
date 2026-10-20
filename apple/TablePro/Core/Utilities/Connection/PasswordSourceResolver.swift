@@ -15,7 +15,7 @@ enum PasswordSourceResolver {
     private static let commandTimeoutSeconds: UInt64 = 30
     private static let maxOutputBytes = 1_048_576
 
-    enum ResolutionError: LocalizedError {
+    enum ResolutionError: LocalizedError, Equatable {
         case fileNotFound(path: String)
         case fileUnreadable(path: String)
         case environmentVariableNotSet(name: String)
@@ -26,6 +26,7 @@ enum PasswordSourceResolver {
         case invalidSecretJson
         case jsonKeyNotFound(key: String)
         case storeNotTrusted
+        case profileStoreNotTrusted
 
         var errorDescription: String? {
             switch self {
@@ -64,8 +65,18 @@ enum PasswordSourceResolver {
                     password source was not run. Open the connection and save it again to \
                     confirm the change.
                     """)
+            case .profileStoreNotTrusted:
+                return String(localized: """
+                    Your credential profiles file was changed outside TablePro, so this profile's \
+                    password source was not run.
+                    """)
             }
         }
+    }
+
+    // A test reports what the source returns right now, so it neither reads nor fills the reuse cache.
+    static func test(_ source: PasswordSource, for context: ConnectionScriptContext) async throws -> String {
+        try await resolve(source.withoutReuse, for: context)
     }
 
     static func resolve(

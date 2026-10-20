@@ -33,6 +33,14 @@ final class RecordingClipboard: ClipboardProvider {
         replace(text: tsv, html: html, gridRows: gridRows)
     }
 
+    func writeText(_ text: String, gridRows: GridRowsClipboardPayload) {
+        replace(text: text, gridRows: gridRows)
+    }
+
+    func writeCsv(_ csv: String, gridRows: GridRowsClipboardPayload) {
+        replace(text: csv, gridRows: gridRows)
+    }
+
     func writeCells(_ cells: GridCellsClipboardPayload) {
         replace(text: cells.text, gridCells: cells)
     }
