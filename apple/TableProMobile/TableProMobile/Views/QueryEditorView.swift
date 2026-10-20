@@ -778,6 +778,9 @@ struct QueryEditorView: View {
             startedAt: startedAt
         )
 
+        // Waited on before the Stop check, and nothing suspends from here until `track` marks the session busy, which
+        // keeps a new list reload off it.
+        await appState.catalogChanges.sessionReadsFinished(for: connectionId)
         guard !Task.isCancelled else {
             recordHistory(query: trimmed, outcome: .stopped, errorMessage: QueryExecutionOutcome.stopped.historyMessage)
             isExecuting = false
@@ -789,8 +792,6 @@ struct QueryEditorView: View {
 
         let progressUpdater = startActivityProgressUpdater(token: token)
 
-        // Nothing suspends between this wait and `track` marking the session busy, which keeps a new reload off it.
-        await appState.catalogChanges.sessionReadsFinished(for: connectionId)
         await coordinator.track(failed: { _ in QueryExecutionOutcome(phase: viewModel.phase) == .failed }) {
             await viewModel.run(driver: session.driver, script: script)
         }
