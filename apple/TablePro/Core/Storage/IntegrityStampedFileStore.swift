@@ -95,7 +95,7 @@ final class IntegrityStampedFileStore<Element: Codable> {
 
     /// False when nothing reached disk. A caller that also writes keychain items or sync tombstones
     /// has to abort on that rather than strand them against a record that was never persisted.
-    // `byUser` false is a write nobody asked for, such as a sync pull, which is not consent either.
+    /// `byUser` false is a write nobody asked for, such as a sync pull, which is not consent either.
     @discardableResult
     func save(_ elements: [Element], byUser: Bool = true) -> Bool {
         do {

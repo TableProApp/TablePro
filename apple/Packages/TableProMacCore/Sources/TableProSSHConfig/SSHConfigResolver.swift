@@ -477,8 +477,10 @@ public enum SSHConfigResolver {
         case .localNetwork(let networks):
             return SSHLocalNetwork.contains(anyOf: env.localAddresses(), in: networks)
 
+        // Measured with OpenSSH 10.3: with no `Tag`, `Match tagged *` does not hold and `!tagged *` does.
         case .tagged(let patterns):
-            return SSHHostPatternMatcher.matches(host: inputs.tag ?? "", patterns: patterns)
+            guard let tag = inputs.tag else { return false }
+            return SSHHostPatternMatcher.matches(host: tag, patterns: patterns)
 
         // A tunnel runs no remote command and opens no session, as with `ssh -N`.
         case .command(let patterns):

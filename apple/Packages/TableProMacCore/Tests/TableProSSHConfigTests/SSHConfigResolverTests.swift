@@ -339,6 +339,7 @@ struct SSHConfigResolverTests {
     func matchTaggedCommandAndSessionType() {
         #expect(user(for: "Match tagged prod\n    User tagged\nHost db\n    User plain") == "plain")
         #expect(user(for: "Host db\n    Tag prod\nMatch tagged prod\n    User tagged") == "tagged")
+        #expect(user(for: "Match tagged *\n    User any-tag\nMatch !tagged *\n    User untagged") == "untagged")
         #expect(user(for: "Match sessiontype none\n    User tunnel") == "tunnel")
         #expect(user(for: "Match command *\n    User any\nMatch command ?*\n    User some") == "any")
         #expect(user(for: "Match version OpenSSH_*\n    User openssh\nHost db\n    User other") == "other")
