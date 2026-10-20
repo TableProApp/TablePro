@@ -1,8 +1,11 @@
 import Foundation
+import os
 import TableProDatabase
 import TableProModels
 
 final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "IOSSSHProvider")
+
     private let tunnelStore = TunnelStore()
     private let secureStore: SecureStore
     private let container: AppContainerPaths
@@ -21,12 +24,14 @@ final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
     ) async throws -> TableProDatabase.SSHTunnel {
         var resolvedConfig = config
         resolvedConfig.privateKeyPath = config.privateKeyPath.map(container.localPath(forStoredPath:))
+        let hopCredentials = try jumpHostCredentials(for: connectionId, hops: config.jumpHosts)
 
         let tunnel = try await SSHTunnelFactory.create(
             config: resolvedConfig,
             remoteHost: remoteHost,
             remotePort: remotePort,
             credentials: SSHTunnelCredentials(connectionId: connectionId, secureStore: secureStore),
+            jumpHostCredentials: hopCredentials,
             prompter: prompter
         )
 
@@ -34,6 +39,18 @@ final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
         await tunnelStore.add(tunnel, id: tunnelId, connectionId: connectionId)
 
         return TableProDatabase.SSHTunnel(id: tunnelId, localHost: "127.0.0.1", localPort: tunnel.localPort)
+    }
+
+    // A key that could not be read is not a missing key: telling the user to set one would be wrong.
+    private func jumpHostCredentials(for connectionId: UUID, hops: [SSHJumpHost]) throws -> [UUID: JumpHostCredential] {
+        guard !hops.isEmpty else { return [:] }
+        do {
+            return try JumpHostCredentialStore.load(for: connectionId, in: secureStore)
+        } catch {
+            let privateDescription = String(reflecting: error)
+            Self.logger.error("Reading the jump host keys failed: \(privateDescription, privacy: .private)")
+            throw SSHTunnelError.jumpHostKeysUnreadable(error.localizedDescription)
+        }
     }
 
     func closeTunnel(for connectionId: UUID) async throws {

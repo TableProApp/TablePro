@@ -1517,6 +1517,9 @@
         }
       }
     },
+    "Add Jump Host" : {
+
+    },
     "Add multiple rows to a table on a saved connection. Provide the rows as a JSON array, CSV text, or a file." : {
       "localizations" : {
         "ko" : {
@@ -3016,6 +3019,9 @@
     "Chat" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Check this jump host's address, port, username and key under Jump Hosts." : {
+
     },
     "Check your %@ username and password." : {
       "localizations" : {
@@ -6417,6 +6423,12 @@
         }
       }
     },
+    "Edit the connection and enter the username under SSH Server or Jump Hosts." : {
+
+    },
+    "Edit the connection and set a key for this jump host under Jump Hosts." : {
+
+    },
     "Empty String" : {
       "localizations" : {
         "ko" : {
@@ -6962,6 +6974,9 @@
           }
         }
       }
+    },
+    "Explains why it can't open here." : {
+
     },
     "Explore a music store database without connecting to a server." : {
       "localizations" : {
@@ -9461,6 +9476,18 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Jump Hosts" : {
+
+    },
+    "Jump host %1$@ failed: %2$@" : {
+
+    },
+    "Jump host %@ has no key on this device." : {
+
+    },
+    "Jump host %@ uses the SSH server's key, which is not on this device." : {
+
+    },
     "Jump host key not found: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -9490,6 +9517,9 @@
           }
         }
       }
+    },
+    "Jump hosts are connected in order before reaching the SSH server above." : {
+
     },
     "Keep Connections at the Top" : {
       "localizations" : {
@@ -9610,6 +9640,12 @@
       "generatesSymbol" : false
     },
     "Key Not Found" : {
+
+    },
+    "Keyboard Interactive" : {
+
+    },
+    "Keyboard Interactive is set on the Mac and is not available on iPhone and iPad." : {
 
     },
     "Keychain Warning" : {
@@ -10931,6 +10967,9 @@
         }
       }
     },
+    "New Jump Host" : {
+
+    },
     "New Subgroup" : {
       "localizations" : {
         "ko" : {
@@ -11187,6 +11226,9 @@
           }
         }
       }
+    },
+    "No key on this device" : {
+
     },
     "No Foreign Keys" : {
       "localizations" : {
@@ -11470,6 +11512,9 @@
         }
       }
     },
+    "No SSH username is set for %@." : {
+
+    },
     "No row found in %@ where %@ = '%@'" : {
       "localizations" : {
         "ko" : {
@@ -11494,6 +11539,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 %@ 中找不到 %@ = '%@' 的列"
+          }
+        }
+      }
+    },
+    "No row found in %@ where %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No row found in %1$@ where %2$@."
           }
         }
       }
@@ -12249,6 +12304,9 @@
         }
       }
     },
+    "Open it in TablePro on your Mac." : {
+
+    },
     "Open it on the Mac, or change it there to connect by host and port." : {
 
     },
@@ -12308,6 +12366,9 @@
         }
       }
     },
+    "Open Table" : {
+
+    },
     "Open this connection in TablePro to check the server's SSH host key first." : {
       "localizations" : {
         "ko" : {
@@ -12363,6 +12424,12 @@
           }
         }
       }
+    },
+    "Opens on Mac only" : {
+
+    },
+    "Opens on Mac Only" : {
+
     },
     "Opens table data" : {
       "localizations" : {
@@ -12587,6 +12654,9 @@
           }
         }
       }
+    },
+    "Own key" : {
+
     },
     "out-of-band check" : {
       "extractionState" : "manual",
@@ -14934,6 +15004,9 @@
         }
       }
     },
+    "Run All Statements" : {
+
+    },
     "Run queries and find the ones you ran before in History." : {
       "localizations" : {
         "ko" : {
@@ -14961,6 +15034,12 @@
           }
         }
       }
+    },
+    "Run Selection" : {
+
+    },
+    "Run Statement" : {
+
     },
     "Running" : {
       "localizations" : {
@@ -15025,6 +15104,9 @@
     "Running statement %1$d of %2$d" : {
 
     },
+    "Runs the statement at the cursor, or the selected text." : {
+
+    },
     "Safe Mode" : {
       "localizations" : {
         "ko" : {
@@ -15052,6 +15134,12 @@
           }
         }
       }
+    },
+    "Same Key as SSH Server" : {
+
+    },
+    "Same key as SSH server" : {
+
     },
     "Sample Database" : {
       "localizations" : {
@@ -15654,6 +15742,9 @@
           }
         }
       }
+    },
+    "Set to SSH Agent on the Mac. iPhone and iPad sign in with a private key." : {
+
     },
     "Set up a new database connection" : {
       "extractionState" : "stale",
@@ -16477,6 +16568,10 @@
           }
         }
       }
+    },
+    "SSH tunneling is not available on this platform" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "SSH Unavailable" : {
       "localizations" : {
@@ -17681,6 +17776,10 @@
         }
       }
     },
+    "TablePro on iPhone and iPad can't open %@ connections." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro will re-download every connection, group, and tag from your iCloud account. Local data on this device is not deleted." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -18123,6 +18222,9 @@
         }
       }
     },
+    "That file is not a text private key." : {
+
+    },
     "That file is not a valid XLSX workbook." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -18428,6 +18530,9 @@
         }
       }
     },
+    "The cursor is not in a statement." : {
+
+    },
     "The data could not be read: %@" : {
       "localizations" : {
         "ko" : {
@@ -18586,6 +18691,12 @@
           }
         }
       }
+    },
+    "The jump host keys on this device could not be read. Close the form and open it again to change them." : {
+
+    },
+    "The jump host keys on this device could not be read: %@" : {
+
     },
     "The JSON array must contain only objects." : {
       "localizations" : {
@@ -19050,6 +19161,9 @@
         }
       }
     },
+    "The SSH server does not sign in with a private key, so this jump host needs its own key." : {
+
+    },
     "The password is longer than the 128 bytes FreeTDS takes." : {
 
     },
@@ -19084,6 +19198,10 @@
           }
         }
       }
+    },
+    "The previous session is still closing" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The query did not finish within the configured timeout, so the connection was reset. Run the query again." : {
       "extractionState" : "manual",
@@ -20224,6 +20342,9 @@
         }
       }
     },
+    "This row's primary key is not plain text, so it cannot identify the row." : {
+
+    },
     "This server has no password set for the default user. Clear the Password field." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -20904,6 +21025,9 @@
         }
       }
     },
+    "Try again. If it keeps failing, update TablePro on this device." : {
+
+    },
     "Turn Off iCloud Sync" : {
 
     },
@@ -21022,6 +21146,9 @@
           }
         }
       }
+    },
+    "unbalanced quotes" : {
+
     },
     "Unfavorite" : {
       "localizations" : {

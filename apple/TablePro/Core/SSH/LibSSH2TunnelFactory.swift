@@ -19,67 +19,6 @@ internal struct SSHTunnelCredentials: Sendable {
     let keyboardInteractivePromptProvider: (any KeyboardInteractivePromptProvider)?
 }
 
-/// Owns the lifetime boundary between a ProxyJump relay and the libssh2 handles it uses.
-///
-/// Cancelling a Swift task does not cancel the GCD block that runs `SSHChannelRelay`. Teardown must
-/// therefore wake its descriptors and wait for that block to make its final serialized libssh2 call
-/// before freeing the channel or session. The stop action and the relay's final descriptor close are
-/// mutually exclusive under one lock, so a late stop cannot `shutdown` a reused descriptor number.
-internal final class SSHJumpRelayFence: @unchecked Sendable {
-    private struct State {
-        var stopAction: (@Sendable () -> Void)?
-        var isFinished = false
-    }
-
-    private let state: OSAllocatedUnfairLock<State>
-    private let completion = DispatchGroup()
-
-    internal init(stopAction: @escaping @Sendable () -> Void) {
-        state = OSAllocatedUnfairLock(initialState: State(stopAction: stopAction))
-        completion.enter()
-    }
-
-    internal var isActive: Bool {
-        state.withLock { $0.stopAction != nil && !$0.isFinished }
-    }
-
-    internal func stop() {
-        state.withLock { state in
-            guard let stopAction = state.stopAction, !state.isFinished else { return }
-            state.stopAction = nil
-            stopAction()
-        }
-    }
-
-    /// Disarms late stops and releases the completion fence only after the relay-owned local
-    /// descriptor has been closed. `cleanup` runs under the same lock as `stopAction` so those two
-    /// descriptor operations cannot cross.
-    internal func finish(cleanup: @Sendable () -> Void = {}) {
-        let didFinish = state.withLock { state -> Bool in
-            guard !state.isFinished else { return false }
-            state.stopAction = nil
-            state.isFinished = true
-            cleanup()
-            return true
-        }
-        if didFinish {
-            completion.leave()
-        }
-    }
-
-    internal func wait() {
-        completion.wait()
-    }
-
-    internal func waitForCompletion() async {
-        await withCheckedContinuation { continuation in
-            completion.notify(queue: .global(qos: .utility)) {
-                continuation.resume()
-            }
-        }
-    }
-}
-
 /// Creates fully-connected and authenticated SSH tunnels using libssh2.
 internal enum LibSSH2TunnelFactory {
     internal static let logger = Logger(subsystem: "com.TablePro", category: "LibSSH2TunnelFactory")
@@ -344,10 +283,10 @@ internal enum LibSSH2TunnelFactory {
                             qos: .utility
                         )
 
-                        let relay = startChannelRelay(
+                        let relay = LibSSH2JumpRelay.start(
                             channel: channel,
-                            socketFD: fds[0],
-                            sshSocketFD: currentSocketFD,
+                            localFD: fds[0],
+                            transportFD: currentSocketFD,
                             session: currentSession,
                             sessionQueue: hopSessionQueue
                         )
@@ -1099,56 +1038,6 @@ internal enum LibSSH2TunnelFactory {
 
     internal static func timeoutEndpoint(host: String, port: Int) -> ConnectionTimeoutEndpoint {
         .tunnel("\(host):\(port)")
-    }
-
-    /// The libssh2 handles the relay task takes ownership of. The relay is the only thing that
-    /// touches them once it starts, which is what the compiler cannot see through an OpaquePointer.
-    private struct RelayHandles: @unchecked Sendable {
-        let channel: OpaquePointer
-        let session: OpaquePointer
-    }
-
-    /// Start a relay task that copies data between a channel and a socketpair fd.
-    /// libssh2 calls use `sessionQueue.sync` for thread safety; I/O loop runs on a concurrent queue.
-    private static func startChannelRelay(
-        channel: OpaquePointer,
-        socketFD: Int32,
-        sshSocketFD: Int32,
-        session: OpaquePointer,
-        sessionQueue: DispatchQueue
-    ) -> SSHJumpRelayFence {
-        let relayQueue = DispatchQueue(
-            label: "com.TablePro.ssh.hop-relay",
-            qos: .utility
-        )
-        let handles = RelayHandles(channel: channel, session: session)
-        let fence = SSHJumpRelayFence {
-            shutdown(socketFD, SHUT_RDWR)
-            shutdown(sshSocketFD, SHUT_RDWR)
-        }
-        relayQueue.async {
-            defer {
-                fence.finish {
-                    shutdown(socketFD, SHUT_RDWR)
-                    Darwin.close(socketFD)
-                }
-            }
-
-            let relay = SSHChannelRelay(
-                localFD: socketFD,
-                transportFD: sshSocketFD,
-                channelIO: LibSSH2ChannelIO(
-                    channel: handles.channel,
-                    session: handles.session,
-                    sessionQueue: sessionQueue
-                ),
-                bufferSize: 32_768,
-                isActive: { fence.isActive }
-            )
-
-            _ = relay.run()
-        }
-        return fence
     }
 
     // MARK: - Local Socket

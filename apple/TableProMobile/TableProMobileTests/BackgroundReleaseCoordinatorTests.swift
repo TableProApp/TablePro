@@ -36,7 +36,7 @@ private final class StubDriverFactory: DriverFactory, @unchecked Sendable {
         return driver
     }
 
-    func supportedTypes() -> [DatabaseType] { [] }
+    func supportedTypes() -> [DatabaseType] { drivers.keys.map(DatabaseType.init(rawValue:)) }
 }
 
 private func makeConnection(_ type: String) -> DatabaseConnection {

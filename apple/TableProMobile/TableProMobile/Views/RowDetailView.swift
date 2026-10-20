@@ -11,6 +11,7 @@ struct RowDetailView: View {
     @State private var hapticError = false
     @State private var hapticSelection = 0
     @State private var showSaveConfirmation = false
+    private let coordinator: ConnectionCoordinator?
 
     init(
         columns: [ColumnInfo],
@@ -24,8 +25,10 @@ struct RowDetailView: View {
         safeModeLevel: @escaping () -> SafeModeLevel = { .off },
         foreignKeys: [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
-        loadFullValue: ((CellRef) async throws -> String?)? = nil
+        loadFullValue: ((CellRef) async throws -> String?)? = nil,
+        coordinator: ConnectionCoordinator? = nil
     ) {
+        self.coordinator = coordinator
         _viewModel = State(wrappedValue: RowDetailViewModel(
             columns: columns,
             rows: rows,
@@ -107,14 +110,13 @@ struct RowDetailView: View {
         } message: {
             Text(String(format: String(localized: "This will update a row in %@. Continue?"), viewModel.table?.name ?? ""))
         }
-        .sheet(item: $fkPreviewItem) { item in
-            FKPreviewView(
-                fk: item.fk,
-                value: item.value,
-                session: viewModel.session,
-                databaseType: viewModel.databaseType
-            )
-        }
+        .foreignKeyPreview(
+            item: $fkPreviewItem,
+            session: viewModel.session,
+            coordinator: coordinator,
+            databaseType: viewModel.databaseType,
+            allowsOpen: !viewModel.isEditing
+        )
         .sheet(isPresented: $showShareSheet) {
             ActivityViewController(items: [shareText])
         }
@@ -238,9 +240,13 @@ struct RowDetailView: View {
                            !viewModel.hasOverride(forRow: rowIndex, cellIndex: index) {
                             lazyLoadButton(cell: cells[index], rowIndex: rowIndex, cellIndex: index)
                         }
-                        if let fk = viewModel.foreignKeys.first(where: { $0.column == column.name }), let value {
+                        if let fk = viewModel.foreignKeys.first(where: { $0.column == column.name }),
+                           let reference = ForeignKeyReference.make(
+                               forColumn: column.name, foreignKeys: viewModel.foreignKeys,
+                               columns: viewModel.columns, cells: cells, sourceSchema: viewModel.schema
+                           ) {
                             Button {
-                                fkPreviewItem = FKPreviewItem(fk: fk, value: value)
+                                fkPreviewItem = FKPreviewItem(reference: reference)
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "arrow.right.circle.fill")

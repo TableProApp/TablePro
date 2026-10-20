@@ -105,7 +105,7 @@ struct MySQLColumnListingTests {
     func mysqlDefaultsReadAsSQL() {
         let source = MySQLColumnListing.defaultSource(flavor: .mysql, banner: "8.4.11")
         #expect(source == .showFullColumns)
-        #expect(MySQLColumnListing.catalogDefaultsQuery(table: "t", source: source) == nil)
+        #expect(MySQLColumnListing.catalogDefaultsQuery(table: "t", database: nil, source: source) == nil)
 
         let columns = MySQLColumnListing.columns(
             fromShowFullColumns: Self.mysqlShowFullColumns, catalogDefaults: [:], source: source
@@ -219,11 +219,25 @@ struct MySQLColumnListingTests {
 
     @Test("The catalog read names the session's database and escapes the table name")
     func catalogQueryReadsTheSessionDatabase() throws {
-        let query = try #require(MySQLColumnListing.catalogDefaultsQuery(table: #"o'b\x"#, source: .quotedCatalog))
+        let query = try #require(
+            MySQLColumnListing.catalogDefaultsQuery(table: #"o'b\x"#, database: nil, source: .quotedCatalog)
+        )
         #expect(query.contains("TABLE_SCHEMA = DATABASE()"))
         #expect(query.contains(#"TABLE_NAME = 'o''b\\x'"#))
-        #expect(MySQLColumnListing.catalogDefaultsQuery(table: "t", source: .oceanBaseCatalog) != nil)
-        #expect(MySQLColumnListing.catalogDefaultsQuery(table: "t", source: .asReported) == nil)
+        #expect(MySQLColumnListing.catalogDefaultsQuery(table: "t", database: nil, source: .oceanBaseCatalog) != nil)
+        #expect(MySQLColumnListing.catalogDefaultsQuery(table: "t", database: nil, source: .asReported) == nil)
+    }
+
+    @Test("Columns of a table in another database are read from that database")
+    func anotherDatabase() throws {
+        let query = try #require(
+            MySQLColumnListing.catalogDefaultsQuery(table: "regions", database: #"g'e\o"#, source: .quotedCatalog)
+        )
+        #expect(query.contains(#"TABLE_SCHEMA = 'g''e\\o'"#))
+        #expect(!query.contains("DATABASE()"))
+        #expect(MySQLDriver.showFullColumnsStatement(table: "regions", database: "geo") == "SHOW FULL COLUMNS FROM `geo`.`regions`")
+        #expect(MySQLDriver.showFullColumnsStatement(table: "a`b", database: "c`d") == "SHOW FULL COLUMNS FROM `c``d`.`a``b`")
+        #expect(MySQLDriver.showFullColumnsStatement(table: "regions", database: nil) == "SHOW FULL COLUMNS FROM `regions`")
     }
 
     /// OceanBase's catalog drops the precision `CURRENT_TIMESTAMP(3)` was declared with, reports a

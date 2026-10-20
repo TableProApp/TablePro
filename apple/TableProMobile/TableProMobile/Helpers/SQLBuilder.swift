@@ -28,8 +28,7 @@ nonisolated enum SQLBuilder {
         case .mssql:
             let order = orderBy.isEmpty ? "ORDER BY (SELECT NULL)" : orderBy
             return "\(order) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        /// Oracle pages without an `ORDER BY`. The `ORDER BY 1` this used to add fails with ORA-22848 when the first
-        /// column is a LOB, so such a table never opened.
+        // No ORDER BY: `ORDER BY 1` fails with ORA-22848 when the first column is a LOB.
         case .oracle:
             let trailing = "OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
             return orderBy.isEmpty ? trailing : "\(orderBy) \(trailing)"
@@ -50,25 +49,27 @@ nonisolated enum SQLBuilder {
         return "SELECT * FROM \(quoted) \(pagination)"
     }
 
-    /// The single row a foreign key points at.
-    ///
-    /// The value reaches the literal through the driver's own escaper, like every other predicate
-    /// here. Doubling the quote by hand is not enough on a MySQL-family server, where a backslash
-    /// escapes the quote that follows it, so `a\' OR 1=1 -- ` closed the literal and returned an
-    /// unrelated row as the referenced one.
+    // Every pair of a composite key is matched: one column alone can return another tenant's row.
     static func buildSingleRowLookup(
         table: String,
         schema: String?,
-        column: String,
-        value: String,
+        key: [(column: String, value: String)],
         type: DatabaseType,
         driver: any DatabaseDriver
     ) -> String {
         let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
-        let quotedColumn = quoteIdentifier(column, for: type)
-        let literal = driver.escapeStringLiteral(value)
+        let predicate = key.isEmpty ? "1 = 0" : keyPredicate(key, type: type, driver: driver)
         let pagination = paginationClause(orderBy: "", limit: 1, offset: 0, for: type)
-        return "SELECT * FROM \(quotedTable) WHERE \(quotedColumn) = '\(literal)' \(pagination)"
+        return "SELECT * FROM \(quotedTable) WHERE \(predicate) \(pagination)"
+    }
+
+    // Through the driver's escaper: on MySQL a backslash escapes the next quote, so a hand-doubled `a\' OR 1=1 -- ` gets out.
+    private static func keyPredicate(
+        _ key: [(column: String, value: String)], type: DatabaseType, driver: any DatabaseDriver
+    ) -> String {
+        key.map {
+            "\(quoteIdentifier($0.column, for: type)) = '\(driver.escapeStringLiteral($0.value))'"
+        }.joined(separator: " AND ")
     }
 
     static func buildDelete(
@@ -79,9 +80,7 @@ nonisolated enum SQLBuilder {
         primaryKeys: [(column: String, value: String)]
     ) -> String {
         let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
-        let predicate = primaryKeys.map {
-            "\(quoteIdentifier($0.column, for: type)) = '\(driver.escapeStringLiteral($0.value))'"
-        }.joined(separator: " AND ")
+        let predicate = keyPredicate(primaryKeys, type: type, driver: driver)
         return "DELETE FROM \(quotedTable) WHERE \(predicate)"
     }
 
@@ -99,9 +98,7 @@ nonisolated enum SQLBuilder {
             if let val { return "\(qcol) = '\(driver.escapeStringLiteral(val))'" }
             return "\(qcol) = NULL"
         }.joined(separator: ", ")
-        let predicate = primaryKeys.map {
-            "\(quoteIdentifier($0.column, for: type)) = '\(driver.escapeStringLiteral($0.value))'"
-        }.joined(separator: " AND ")
+        let predicate = keyPredicate(primaryKeys, type: type, driver: driver)
         return "UPDATE \(quotedTable) SET \(assignments) WHERE \(predicate)"
     }
 
@@ -125,9 +122,7 @@ nonisolated enum SQLBuilder {
         return "INSERT INTO \(qualifiedTable) (\(cols)) VALUES (\(vals))"
     }
 
-    /// Every column left on its database default. The MySQL dialect takes an empty column list;
-    /// the PostgreSQL family, SQLite and SQL Server take `DEFAULT VALUES`. Oracle accepts
-    /// neither, so it gets no statement.
+    // Oracle accepts neither `() VALUES ()` nor `DEFAULT VALUES`, so it gets no statement.
     static func buildAllDefaultsInsert(qualifiedTable: String, for type: DatabaseType) -> String? {
         if speaksMySQLDialect(type) {
             return "INSERT INTO \(qualifiedTable) () VALUES ()"
@@ -164,11 +159,12 @@ nonisolated enum SQLBuilder {
     static func buildFilteredSelect(
         table: String, schema: String?, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode,
+        columns: [ColumnInfo] = [],
         limit: Int, offset: Int
     ) -> String {
         let dialect = dialectDescriptor(for: type)
         let generator = FilterSQLGenerator(dialect: dialect)
-        let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode)
+        let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let pagination = paginationClause(orderBy: "", limit: limit, offset: offset, for: type)
         var sql = "SELECT * FROM \(quoted)"
@@ -180,12 +176,13 @@ nonisolated enum SQLBuilder {
     static func buildFilteredSelect(
         table: String, schema: String?, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode,
+        columns: [ColumnInfo] = [],
         sortState: SortState,
         limit: Int, offset: Int
     ) -> String {
         let dialect = dialectDescriptor(for: type)
         let generator = FilterSQLGenerator(dialect: dialect)
-        let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode)
+        let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         let orderBy = buildOrderByClause(sortState, for: type)
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let pagination = paginationClause(orderBy: orderBy, limit: limit, offset: offset, for: type)
@@ -197,11 +194,12 @@ nonisolated enum SQLBuilder {
 
     static func buildFilteredCount(
         table: String, schema: String?, type: DatabaseType,
-        filters: [TableFilter], logicMode: FilterLogicMode
+        filters: [TableFilter], logicMode: FilterLogicMode,
+        columns: [ColumnInfo] = []
     ) -> String {
         let dialect = dialectDescriptor(for: type)
         let generator = FilterSQLGenerator(dialect: dialect)
-        let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode)
+        let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         if whereClause.isEmpty {
             return "SELECT COUNT(*) FROM \(quoted)"
@@ -215,13 +213,14 @@ nonisolated enum SQLBuilder {
         table: String, schema: String?, type: DatabaseType,
         searchText: String, searchColumns: [ColumnInfo],
         filters: [TableFilter] = [], logicMode: FilterLogicMode = .and,
+        columns: [ColumnInfo] = [],
         sortState: SortState = SortState(),
         limit: Int, offset: Int
     ) -> String {
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let whereClause = buildSearchWhereClause(
             searchText: searchText, searchColumns: searchColumns,
-            filters: filters, logicMode: logicMode, type: type
+            filters: filters, logicMode: logicMode, columns: columns, type: type
         )
         let orderBy = buildOrderByClause(sortState, for: type)
         let pagination = paginationClause(orderBy: orderBy, limit: limit, offset: offset, for: type)
@@ -234,12 +233,13 @@ nonisolated enum SQLBuilder {
     static func buildSearchCount(
         table: String, schema: String?, type: DatabaseType,
         searchText: String, searchColumns: [ColumnInfo],
-        filters: [TableFilter] = [], logicMode: FilterLogicMode = .and
+        filters: [TableFilter] = [], logicMode: FilterLogicMode = .and,
+        columns: [ColumnInfo] = []
     ) -> String {
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let whereClause = buildSearchWhereClause(
             searchText: searchText, searchColumns: searchColumns,
-            filters: filters, logicMode: logicMode, type: type
+            filters: filters, logicMode: logicMode, columns: columns, type: type
         )
         var sql = "SELECT COUNT(*) FROM \(quoted)"
         if !whereClause.isEmpty { sql += " \(whereClause)" }
@@ -249,7 +249,7 @@ nonisolated enum SQLBuilder {
     private static func buildSearchWhereClause(
         searchText: String, searchColumns: [ColumnInfo],
         filters: [TableFilter], logicMode: FilterLogicMode,
-        type: DatabaseType
+        columns: [ColumnInfo], type: DatabaseType
     ) -> String {
         var whereParts: [String] = []
 
@@ -258,7 +258,9 @@ nonisolated enum SQLBuilder {
             whereParts.append(searchClause)
         }
 
-        if let filterConditions = filterConditions(filters: filters, logicMode: logicMode, type: type) {
+        if let filterConditions = filterConditions(
+            filters: filters, logicMode: logicMode, columns: columns, type: type
+        ) {
             whereParts.append("(\(filterConditions))")
         }
 
@@ -267,11 +269,11 @@ nonisolated enum SQLBuilder {
     }
 
     private static func filterConditions(
-        filters: [TableFilter], logicMode: FilterLogicMode, type: DatabaseType
+        filters: [TableFilter], logicMode: FilterLogicMode, columns: [ColumnInfo], type: DatabaseType
     ) -> String? {
         let dialect = dialectDescriptor(for: type)
         let generator = FilterSQLGenerator(dialect: dialect)
-        let clause = generator.generateWhereClause(from: filters, logicMode: logicMode)
+        let clause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         guard !clause.isEmpty else { return nil }
         let wherePrefix = "WHERE "
         return clause.hasPrefix(wherePrefix)
@@ -348,12 +350,9 @@ nonisolated enum SQLBuilder {
         dialectDescriptor(for: type).caseSensitivityStyle
     }
 
-    /// Mirrors what each driver's plugin declares on the Mac, because iOS links its drivers
-    /// directly and has no plugin bundle to ask. The default arm is the trap: an omitted type gets
-    /// `caseSensitivityStyle` `.unsupported`, which resolves to plain `LIKE` and to a case
-    /// sensitivity toggle the UI will not offer, so a filter silently returns fewer rows than the
-    /// same filter on the Mac. `SQLDialectParityTests` is what stops a new driver landing here
-    /// without an arm.
+    // Mirrors each driver plugin's dialect on the Mac: iOS has no plugin bundle to ask. A type that falls to the
+    // default arm gets `.unsupported` case sensitivity, plain `LIKE`, and fewer rows than the Mac;
+    // `SQLDialectParityTests` catches a driver missing an arm.
     private static func dialectDescriptor(for type: DatabaseType) -> SQLDialectDescriptor {
         if speaksMySQLDialect(type) {
             return SQLDialectDescriptor(

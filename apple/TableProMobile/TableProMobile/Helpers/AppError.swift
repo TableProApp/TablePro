@@ -48,6 +48,18 @@ nonisolated struct AppError: LocalizedError, Sendable {
     var errorDescription: String? { message }
 }
 
+nonisolated extension AppError {
+    // The device refuses these before any network work, so a second attempt fails the same way.
+    var canRetry: Bool {
+        switch underlying as? ConnectionError {
+        case .driverNotFound?, .localSocketNotSupported?:
+            false
+        default:
+            true
+        }
+    }
+}
+
 // MARK: - Error Context
 
 nonisolated struct ErrorContext: Sendable {
@@ -112,6 +124,10 @@ nonisolated enum ErrorClassifier {
 
         if let connectionError = error as? ConnectionError {
             return connectionFailure(connectionError)
+        }
+
+        if let tunnelError = error as? SSHTunnelError, let classified = jumpHostFailure(tunnelError) {
+            return classified
         }
 
         if let redisError = error as? RedisError, let classified = redisFailure(redisError, context: context) {
@@ -187,9 +203,8 @@ nonisolated enum ErrorClassifier {
         )
     }
 
-    /// A typed error is classified by its case. The substring rules below read a message the user
-    /// writes part of, so a connection called "Prod Tunnel" reported itself as an SSH tunnel failure.
-    private static func connectionFailure(_ error: ConnectionError) -> AppError {
+    // By case, never by text: the substring rules read a name the user typed, such as "Prod Tunnel".
+    static func connectionFailure(_ error: ConnectionError) -> AppError {
         switch error {
         case .previousSessionStillClosing:
             return AppError(
@@ -202,9 +217,9 @@ nonisolated enum ErrorClassifier {
         case .driverNotFound:
             return AppError(
                 category: .config,
-                title: String(localized: "Driver Unavailable"),
+                title: String(localized: "Opens on Mac Only"),
                 message: error.localizedDescription,
-                recovery: String(localized: "This build has no driver for that database type."),
+                recovery: String(localized: "Open it in TablePro on your Mac."),
                 underlying: error
             )
         case .notConnected:
@@ -232,6 +247,31 @@ nonisolated enum ErrorClassifier {
                 underlying: error
             )
         }
+    }
+
+    // By case, because a translated message may hold none of the words the substring rules look for.
+    private static func jumpHostFailure(_ error: SSHTunnelError) -> AppError? {
+        let recovery: String
+        switch error {
+        case .usernameMissing:
+            recovery = String(localized: "Edit the connection and enter the username under SSH Server or Jump Hosts.")
+        case .jumpHostNeedsKey, .jumpHostSharedKeyMissing:
+            recovery = String(localized: "Edit the connection and set a key for this jump host under Jump Hosts.")
+        case .jumpHostFailed:
+            recovery = String(localized: "Check this jump host's address, port, username and key under Jump Hosts.")
+        case .jumpHostKeysUnreadable:
+            recovery = String(localized: "Try again. If it keeps failing, update TablePro on this device.")
+        case .connectionFailed, .handshakeFailed, .authenticationFailed, .noAvailablePort, .channelOpenFailed,
+             .hostKeyRejected, .hostKeyUnverified, .tunnelClosed:
+            return nil
+        }
+        return AppError(
+            category: .ssh,
+            title: String(localized: "SSH Tunnel Failed"),
+            message: error.localizedDescription,
+            recovery: recovery,
+            underlying: error
+        )
     }
 
     /// A Redis reply is read by its error class, never by its words, because the server echoes the

@@ -5,6 +5,7 @@ nonisolated enum ConnectionSecretKind: CaseIterable, Sendable {
     case sshPassword
     case keyPassphrase
     case sshPrivateKey
+    case jumpHostKeys
 
     var prefix: String {
         switch self {
@@ -12,13 +13,14 @@ nonisolated enum ConnectionSecretKind: CaseIterable, Sendable {
         case .sshPassword: "com.TablePro.sshpassword."
         case .keyPassphrase: "com.TablePro.keypassphrase."
         case .sshPrivateKey: "com.TablePro.sshkeydata."
+        case .jumpHostKeys: "com.TablePro.jumphostkeys."
         }
     }
 
     var isSweptWhenOrphaned: Bool {
         switch self {
         case .password, .sshPassword, .keyPassphrase: true
-        case .sshPrivateKey: false
+        case .sshPrivateKey, .jumpHostKeys: false
         }
     }
 
