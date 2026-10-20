@@ -730,22 +730,15 @@ final class StructureGridDelegate: DataGridViewDelegate {
         let headers = provider.columns
         guard !headers.isEmpty else { return }
 
-        var lines: [String] = [headers.map { escapeCSVField($0) }.joined(separator: ",")]
+        var lines: [String] = [headers.map(CsvRowConverter.encode).joined(separator: ",")]
         for row in indices.sorted() {
             guard let rowData = provider.row(at: row) else { continue }
-            let line = rowData.map { escapeCSVField($0 ?? "") }.joined(separator: ",")
+            let line = rowData.map { CsvRowConverter.encode($0 ?? "") }.joined(separator: ",")
             lines.append(line)
         }
 
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
-    }
-
-    private func escapeCSVField(_ value: String) -> String {
-        if value.contains(",") || value.contains("\"") || value.contains("\n") {
-            return "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
-        }
-        return value
     }
 
     private func handleCopyAsJSON(_ indices: Set<Int>) {
