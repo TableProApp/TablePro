@@ -31,7 +31,7 @@ struct RowWriteRoutingTests {
         let driver = PluginBackedDriver(
             plugin: plugin,
             dialedHosts: [],
-            rowPin: IOSDriverFactory.clickHouseRowPosition,
+            rowPin: IOSDriverFactory.clickHouseRowPart,
             rowIdentity: identity,
             readsOnly: { _ in true }
         )
@@ -89,7 +89,7 @@ struct RowWriteRoutingTests {
         let change = try #require(plugin.generatedChanges.first)
         #expect(change.type == .update)
         #expect(change.originalRow == ["1", "signup"])
-        #expect(plugin.parameterizedQueries.map { $0.query } == [#"WRITE update events AND "_part" = ? AND "_part_offset" = ?"#])
+        #expect(plugin.parameterizedQueries.map { $0.query } == [#"WRITE update events AND "_part" = ?"#])
         #expect(plugin.plainQueries.isEmpty)
     }
 
@@ -128,12 +128,12 @@ struct RowWriteRoutingTests {
         _ = await vm.deleteRow(RowLocator(row: ["1", nil], keyValues: nil))
 
         let first = try #require(plugin.rowLookups.first)
-        #expect(first.query == #"SELECT "_part", "_part_offset" FROM "events" WHERE "id" = ? AND "name" IS NULL LIMIT 2"#)
+        #expect(first.query == #"SELECT "_part" FROM "events" WHERE "id" = ? AND "name" IS NULL LIMIT 2"#)
         #expect(first.parameters == ["1"])
     }
 
     // Another client can insert the same values between the lookup and the write; the copy lands in another part.
-    @Test("A change runs on the position of the one row its lookup found, then waits for the mutation")
+    @Test("A change runs in the part of the one row its lookup found, then waits for the mutation")
     func changeIsPinnedToTheRowItFound() async throws {
         let plugin = StubPluginDriver()
         plugin.rowCounts = [1, 1]
@@ -141,7 +141,7 @@ struct RowWriteRoutingTests {
             plugin: plugin,
             dialedHosts: [],
             rowChangeSuffix: IOSDriverFactory.clickHouseWaitsForMutation,
-            rowPin: IOSDriverFactory.clickHouseRowPosition,
+            rowPin: IOSDriverFactory.clickHouseRowPart,
             rowIdentity: .everyColumn,
             readsOnly: { _ in true }
         )
@@ -155,8 +155,8 @@ struct RowWriteRoutingTests {
         ))
 
         let write = try #require(plugin.parameterizedQueries.first)
-        #expect(write.query == #"WRITE update events AND "_part" = ? AND "_part_offset" = ? SETTINGS mutations_sync = 1"#)
-        #expect(write.parameters == ["1", "signup", "all_1_1_0", "0"])
+        #expect(write.query == #"WRITE update events AND "_part" = ? SETTINGS mutations_sync = 1"#)
+        #expect(write.parameters == ["1", "signup", "all_1_1_0"])
         #expect(plugin.rowLookups.map { $0.parameters } == [["1", "signup"], ["1", "purchase"]])
     }
 

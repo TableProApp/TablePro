@@ -41,8 +41,8 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             rowLookups.append((query, parameters))
             let count = rowCounts.isEmpty ? 0 : rowCounts.removeFirst()
             return PluginQueryResult(
-                columns: ["_part", "_part_offset"], columnTypeNames: ["String", "UInt64"],
-                rows: Array(repeating: [.text("all_1_1_0"), .text("0")], count: count),
+                columns: ["_part"], columnTypeNames: ["String"],
+                rows: Array(repeating: [.text("all_1_1_0")], count: count),
                 rowsAffected: 0, timing: PluginQueryTiming(total: 0)
             )
         }

@@ -73,7 +73,7 @@ struct ClickHouseOnIOSTests {
 
         let writer = try #require(opened as? PluginBackedDriver)
         #expect(writer.rowIdentity == .everyColumn)
-        #expect(writer.rowPin == ["_part", "_part_offset"])
+        #expect(writer.rowPin == ["_part"])
         #expect(writer.supportsTransactions == false)
     }
 

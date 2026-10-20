@@ -303,8 +303,8 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         return affected
     }
 
-    // A row inserted after the lookup lands outside the pinned position, so the write never reaches it. A position
-    // merged away before the write runs leaves the row as it was, which the check after an update reports.
+    // A row inserted after the lookup lands outside the pinned part, so the write never reaches it. A part merged
+    // away before the write runs leaves the row as it was, which the check after an update reports.
     func run(_ writes: [PluginRowWrite], changing target: RowTarget) async throws -> Int {
         var pin = ""
         var pinValues: [PluginCellValue] = []
