@@ -134,6 +134,24 @@ struct ConnectionCoordinatorCatalogTests {
         #expect(factory.dialed.count == 1)
     }
 
+    @Test("A session a USE moved off the catalog reloads the list from itself, as Refresh does")
+    func movedSessionReloadsFromItself() async {
+        let session = driver(tables: ["orders"])
+        let coordinator = await connected(session)
+        factory.opensCatalogs = true
+        factory.queue(driver(tables: ["stale"]))
+        appState.catalogChanges.noteSessionEffect(
+            .init(leavesCatalog: true), for: connection.id, driver: ObjectIdentifier(session)
+        )
+        session.scriptedTables = [TableInfo(name: "orders_2019")]
+
+        coordinator.noteCatalogChanged(.tables)
+        await coordinator.reloadChangedCatalog()
+
+        #expect(names(coordinator) == ["orders_2019"])
+        #expect(factory.dialed.count == 1)
+    }
+
     @Test("On MySQL, whose DDL commits itself, a held transaction still reloads on the catalog connection")
     func mysqlTransactionReadsTheCatalog() async {
         let session = driver(tables: ["orders"])

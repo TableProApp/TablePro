@@ -848,8 +848,9 @@ final class ConnectionCoordinator {
         let monitor = appState.sessionTransactions
 
         var snapshot: CatalogSnapshot?
-        // On the session a read would replace ROW_COUNT() and the warnings, so it is only where the DDL is visible.
-        if catalogSeesSessionDDL {
+        // On the session a read would replace ROW_COUNT() and the warnings, so it is only where the DDL is visible, or
+        // where a USE or a role moved the session off what the catalog connection sees, as Refresh reads it there too.
+        if catalogMatchesSession {
             do {
                 snapshot = try await appState.connectionManager.readCatalog(for: connection.id, database: database) {
                     try await Self.readCatalog(kinds, schema: schema, from: $0)
@@ -863,7 +864,7 @@ final class ConnectionCoordinator {
         if snapshot == nil {
             // A server that has a catalog connection but could not open one keeps its lists: a read on the session would
             // replace what the user's last statement left there. Only its own uncommitted DDL sends the read there.
-            if catalogSeesSessionDDL, appState.connectionManager.opensCatalogConnections(for: connection.id) {
+            if catalogMatchesSession, appState.connectionManager.opensCatalogConnections(for: connection.id) {
                 seenCatalogGeneration = generation
                 return
             }
