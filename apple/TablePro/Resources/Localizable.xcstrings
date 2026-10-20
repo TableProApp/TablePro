@@ -194790,6 +194790,9 @@
         }
       }
     },
+    "This private key belongs to a security key (FIDO), which TablePro signs with only through an SSH agent. Choose SSH Agent and add the key to it." : {
+
+    },
     "This profile is not allowed to run rds:DescribeDBInstances in %@. Attach AmazonRDSReadOnlyAccess or an equivalent policy." : {
       "localizations" : {
         "fr" : {

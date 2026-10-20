@@ -16,6 +16,7 @@ enum AuthFailureReason: Sendable, Hashable, CaseIterable {
     case passwordMissing
     case verificationCode
     case privateKey
+    case securityKeyFile
     case agentUnavailable(AgentSocketOrigin)
     case agentNoIdentities(AgentSocketOrigin)
     case agentNoMatchingIdentity(AgentSocketOrigin)
@@ -31,7 +32,7 @@ enum AuthFailureReason: Sendable, Hashable, CaseIterable {
     /// Hand-written because the two agent cases carry the socket source they are about, which
     /// stops `CaseIterable` synthesising this.
     static var allCases: [AuthFailureReason] {
-        [.password, .passwordMissing, .verificationCode, .privateKey]
+        [.password, .passwordMissing, .verificationCode, .privateKey, .securityKeyFile]
             + AgentSocketOrigin.allCases.map(AuthFailureReason.agentUnavailable)
             + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoIdentities)
             + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoMatchingIdentity)
@@ -114,6 +115,10 @@ enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
                 return String(localized: "Verification code rejected. Get a new code from your authenticator app and try again.")
             case .privateKey:
                 return String(localized: "SSH private key rejected. Check the key file or passphrase.")
+            case .securityKeyFile:
+                return String(
+                    localized: "This private key belongs to a security key (FIDO), which TablePro signs with only through an SSH agent. Choose SSH Agent and add the key to it."
+                )
             case .agentUnavailable(let origin):
                 return String(
                     format: String(localized: "No SSH agent answered on the socket from %@. Check that agent is running."),

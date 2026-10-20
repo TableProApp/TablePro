@@ -641,6 +641,9 @@ internal enum LibSSH2TunnelFactory {
 
         do {
             try authenticator.authenticate(session: session, username: username)
+        } catch SSHTunnelError.authenticationFailed(reason: .agentRejected) where transportClosed(socketFD) {
+            try attempt.check(for: endpoint)
+            throw SSHTunnelError.authenticationFailed(reason: .agentServerClosedConnection)
         } catch {
             do {
                 try attempt.check(for: endpoint)
@@ -653,6 +656,15 @@ internal enum LibSSH2TunnelFactory {
             throw error
         }
         try attempt.check(for: endpoint)
+    }
+
+    // libssh2 reports the server's MaxAuthTries hang-up as an ordinary refusal, so the socket says it.
+    internal static func transportClosed(_ socketFD: Int32) -> Bool {
+        var descriptor = pollfd(fd: socketFD, events: Int16(POLLIN), revents: 0)
+        guard poll(&descriptor, 1, 0) > 0 else { return false }
+        if descriptor.revents & Int16(POLLHUP | POLLERR) != 0 { return true }
+        var byte: UInt8 = 0
+        return recv(socketFD, &byte, 1, MSG_PEEK | MSG_DONTWAIT) == 0
     }
 
     internal static func buildAuthenticator(
@@ -797,6 +809,12 @@ internal enum LibSSH2TunnelFactory {
 
         func authenticate(session: OpaquePointer, username: String) throws {
             let expandedPath = SSHPathUtilities.expandTilde(keyPath)
+
+            // libssh2 cannot sign with a security key file, and asking for a passphrase it does not have would mislead.
+            if let contents = try? String(contentsOfFile: expandedPath, encoding: .utf8),
+               SSHPrivateKeyTraits(openSSH: contents)?.isSecurityKey == true {
+                throw SSHTunnelError.authenticationFailed(reason: .securityKeyFile)
+            }
 
             // 1. Try with stored passphrase or nil (covers unencrypted keys + Keychain hits)
             let storedPassphrase = SSHPassphraseResolver.resolve(
