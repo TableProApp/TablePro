@@ -466,7 +466,7 @@ impl App {
         // UpdateInPlace and Skip paths where the tab is still alive.
         // The window-close-after-save check runs unconditionally since
         // the counter membership was consumed either way.
-        let drained = super::dec_close_after_save(&mut self.close_after_save.borrow_mut(), &tab_id);
+        let drained = self.close_after_save.borrow_mut().complete(&tab_id);
         if drained && !kind_promoted {
             self.request_workspace_tab_close(tab_id);
         }
@@ -487,7 +487,7 @@ impl App {
         // intent in `close_window_after_save`. Both must be cleared
         // on failure or the next unrelated SaveCompleted on another
         // tab will spuriously close the window.
-        self.close_after_save.borrow_mut().remove(&tab_id);
+        self.close_after_save.borrow_mut().cancel(&tab_id);
         self.close_window_after_save.set(false);
         if let Some(controller) = self
             .workspace_tabs

@@ -95,10 +95,11 @@ impl App {
         let keep_target = menu_target.clone();
         keep_tab_action.connect_activate(move |_, _| {
             let id = keep_target.borrow().as_ref().and_then(read_workspace_tab_id);
+            let mut tabs = keep_tabs.borrow_mut();
             if let Some(id) = id
-                && let Some(WorkspaceTab::Table(slot)) = keep_tabs.borrow_mut().get_mut(&id)
+                && tabs.keep(&id)
+                && let Some(WorkspaceTab::Table(slot)) = tabs.get(&id)
             {
-                slot.preview = false;
                 slot.page.set_indicator_icon(None::<&gio::Icon>);
                 keep_sender.input(AppMsg::WorkspaceTabsChanged);
             }
@@ -109,12 +110,7 @@ impl App {
             *menu_target_setup.borrow_mut() = page.cloned();
             let is_preview = page
                 .and_then(read_workspace_tab_id)
-                .and_then(|id| {
-                    keep_tabs_setup
-                        .borrow()
-                        .get(&id)
-                        .map(|tab| matches!(tab, WorkspaceTab::Table(slot) if slot.preview))
-                })
+                .map(|id| keep_tabs_setup.borrow().is_preview(&id))
                 .unwrap_or(false);
             keep_tab_action_setup.set_enabled(is_preview);
         });
@@ -438,11 +434,10 @@ impl App {
             schema,
             table,
             browse,
-            preview,
         };
         self.workspace_tabs
             .borrow_mut()
-            .insert(tab_id, WorkspaceTab::Table(slot));
+            .insert_with_preview(tab_id, WorkspaceTab::Table(slot), preview);
         tab_view.set_selected_page(&page);
         self.workspace_outer_stack.set_visible_child_name("tabs");
         self.refresh_window_title();
@@ -687,7 +682,7 @@ impl App {
                         let pending_saves: u32 =
                             u32::from(data_dirty) + u32::from(struct_dirty) + u32::from(file_dirty);
                         if pending_saves > 0 {
-                            *close_after_save.borrow_mut().entry(id).or_insert(0) += pending_saves;
+                            close_after_save.borrow_mut().begin(id, pending_saves);
                         }
                         // Revert AdwTabView's "closing" state for now
                         // (the user might still cancel via SaveFailed).
@@ -747,6 +742,7 @@ impl App {
     }
 
     pub(super) fn finish_close_workspace_tab_now(&mut self, id: Uuid, tab_view: &adw::TabView) {
+        let preview = self.workspace_tabs.borrow().is_preview(&id);
         let removed = self.workspace_tabs.borrow_mut().remove(&id);
         let Some(removed) = removed else {
             return;
@@ -757,7 +753,7 @@ impl App {
         // owns the latest query buffer. New-mode Structure drafts are
         // skipped because the table they describe doesn't exist yet,
         // so reopening a draft would be useless.
-        if let Some(descriptor) = describe_closed_tab(&removed) {
+        if let Some(descriptor) = describe_closed_tab(&removed, preview) {
             push_closed_tab(&self.closed_tabs_stack, descriptor);
         }
         // Drop any close-after-save / window-close-after-save intent
@@ -766,7 +762,7 @@ impl App {
         // close prompt, so a stale entry would otherwise live on
         // forever and cause a future unrelated SaveCompleted to
         // spuriously close the window.
-        self.close_after_save.borrow_mut().remove(&id);
+        self.close_after_save.borrow_mut().cancel(&id);
         match &removed {
             WorkspaceTab::Editor(slot) => {
                 let _ = slot.controller.sender().send(SqlEditorInput::Cancel);
@@ -1014,10 +1010,10 @@ fn browse_tab_tooltip(schema: Option<&str>, table: &str, label: &str) -> Option<
     if qualified == label { None } else { Some(qualified) }
 }
 
-fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
+fn describe_closed_tab(slot: &WorkspaceTab, preview: bool) -> Option<ClosedTabDescriptor> {
     match slot {
         WorkspaceTab::Editor(s) => Some(ClosedTabDescriptor::Editor { query: s.query.clone() }),
-        WorkspaceTab::Table(s) if s.preview => None,
+        WorkspaceTab::Table(_) if preview => None,
         WorkspaceTab::Table(s) => {
             let model = s.browse.model();
             let sort = model.current_sort();

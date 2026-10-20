@@ -75,6 +75,8 @@ Why centralise: connection lifecycles, retries, health pings, cancellation and p
 
 Some state outlives any single component: open connections, user preferences, query history, the workspace cache and the MCP bridge. The application owns these as `Arc`s and passes them explicitly into each window, tab and dialog that needs them. They were global singletons until the 0.2 sprint, and that is exactly what the `Arc` handles replaced.
 
+`tablepro-app-services::workspace` owns each window's tab membership, preview status, open-table decisions and save-before-close counters. The collection accepts app-owned payloads; it has no GUI dependency. The GTK adapter owns controllers, page order, dialogs and the `AdwTabView` close handshake. The app adapter writes the existing `services::workspace_state` record format and identifiers.
+
 Per-tab editing state is the deliberate exception. `change_tracker`, `structure_tracker` and `window_registry` keep a `thread_local!` registry keyed by tab or window id. That is sound because each is confined to the GTK main thread by the Relm4 contract, which is also why they use `RefCell` rather than `Mutex`. Threading a registry handle through every grid cell binding would cost more in the hot `connect_bind` path than it buys. Tests construct a fresh registry rather than sharing the thread-local one.
 
 ## Two persistence primitives, deliberately not one

@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::ui::editor::open_file::{choose_save_path, file_error_message, read_sql_file, save_sql_file};
 
 use super::types::{EditorFile, WorkspaceTab};
-use super::{App, AppMsg, dec_close_after_save};
+use super::{App, AppMsg};
 
 const UNTITLED_FILE_NAME: &str = "query.sql";
 
@@ -78,21 +78,21 @@ impl App {
             self.workspace_tabs.borrow().get(&tab),
             Some(WorkspaceTab::Editor(slot)) if slot.has_unsaved_file_changes()
         ) {
-            self.close_after_save.borrow_mut().remove(&tab);
+            self.close_after_save.borrow_mut().cancel(&tab);
             return;
         }
-        if dec_close_after_save(&mut self.close_after_save.borrow_mut(), &tab) {
+        if self.close_after_save.borrow_mut().complete(&tab) {
             self.request_workspace_tab_close(tab);
         }
     }
 
     pub(super) fn on_editor_file_save_failed(&self, tab: Uuid, message: &str) {
-        self.close_after_save.borrow_mut().remove(&tab);
+        self.close_after_save.borrow_mut().cancel(&tab);
         self.show_toast(message);
     }
 
     pub(super) fn on_editor_file_save_cancelled(&self, tab: Uuid) {
-        self.close_after_save.borrow_mut().remove(&tab);
+        self.close_after_save.borrow_mut().cancel(&tab);
     }
 
     pub(super) fn on_editor_file_changed_on_disk(&self, tab: Uuid, sender: ComponentSender<Self>) {

@@ -258,7 +258,7 @@ msgid "Command"
 msgstr ""
 
 #: apps/linux/app/src/services/sidebar_tree.rs:102
-#: apps/linux/app/src/ui/app/mod.rs:393
+#: apps/linux/app/src/ui/app/mod.rs:365
 #: apps/linux/app/src/ui/app/workspace_chrome.rs:92
 msgid "Tables"
 msgstr ""
@@ -476,9 +476,9 @@ msgstr ""
 #: apps/linux/app/src/ui/app/referenced_row.rs:18
 #: apps/linux/app/src/ui/app/status_pages.rs:52
 #: apps/linux/app/src/ui/app/structure.rs:84
-#: apps/linux/app/src/ui/app/workspace_close.rs:43
-#: apps/linux/app/src/ui/app/workspace_close.rs:156
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:644
+#: apps/linux/app/src/ui/app/workspace_close.rs:29
+#: apps/linux/app/src/ui/app/workspace_close.rs:142
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:639
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:235
 #: apps/linux/app/src/ui/connect_dialog/mod.rs:922
 #: apps/linux/app/src/ui/connection_bundle/export.rs:70
@@ -782,7 +782,7 @@ msgid "A reopened tab is no longer linked to its file: {reason}"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/editor_files.rs:76
-#: apps/linux/app/src/ui/app/mod.rs:799
+#: apps/linux/app/src/ui/app/mod.rs:771
 msgid "Saved"
 msgstr ""
 
@@ -831,7 +831,7 @@ msgstr ""
 #: apps/linux/app/src/ui/app/favorites.rs:54
 #: apps/linux/app/src/ui/app/init_window.rs:133
 #: apps/linux/app/src/ui/app/organization.rs:99
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:646
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:641
 #: apps/linux/app/src/ui/browse_tab/chrome.rs:250
 #: apps/linux/app/src/ui/grid/editing.rs:445
 #: apps/linux/app/src/ui/structure_tab/mod.rs:718
@@ -967,7 +967,7 @@ msgid "One or more tabs have unsaved changes. They will be permanently lost if y
 msgstr ""
 
 #: apps/linux/app/src/ui/app/init_window.rs:132
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:645
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:640
 #: apps/linux/app/src/ui/browse_tab/chrome.rs:243
 #: apps/linux/app/src/ui/structure_tab/mod.rs:714
 msgid "Discard"
@@ -994,63 +994,63 @@ msgstr ""
 msgid "Pick a table from the sidebar, or use the button below (Ctrl+T)."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:311
+#: apps/linux/app/src/ui/app/mod.rs:283
 msgid "New connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:318
+#: apps/linux/app/src/ui/app/mod.rs:290
 msgid "Open saved connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:328
+#: apps/linux/app/src/ui/app/mod.rs:300
 msgid "Switch database"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:339
+#: apps/linux/app/src/ui/app/mod.rs:311
 msgid "Production"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:340
+#: apps/linux/app/src/ui/app/mod.rs:312
 msgid "This is a production connection. Changes can affect live data."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:349
+#: apps/linux/app/src/ui/app/mod.rs:321
 msgid "Read-only"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:359
+#: apps/linux/app/src/ui/app/mod.rs:331
 msgid "Saving…"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:365
+#: apps/linux/app/src/ui/app/mod.rs:337
 msgid "Main menu"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:399 apps/linux/app/src/ui/app/mod.rs:479
+#: apps/linux/app/src/ui/app/mod.rs:371 apps/linux/app/src/ui/app/mod.rs:451
 msgid "Search tables"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:405
+#: apps/linux/app/src/ui/app/mod.rs:377
 msgid "Filter schemas"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:426
+#: apps/linux/app/src/ui/app/mod.rs:398
 msgid "Filter tables…"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:449
+#: apps/linux/app/src/ui/app/mod.rs:421
 msgid "Retry"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:960
+#: apps/linux/app/src/ui/app/mod.rs:932
 msgid "Saved as favorite"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:976 apps/linux/app/src/ui/app/mod.rs:983
+#: apps/linux/app/src/ui/app/mod.rs:948 apps/linux/app/src/ui/app/mod.rs:955
 msgid "Connect to a database first to run SQL."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:1055
+#: apps/linux/app/src/ui/app/mod.rs:1027
 msgid "Open a result grid to jump to a column."
 msgstr ""
 
@@ -1611,28 +1611,28 @@ msgid "Catalog refresh failed"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/structure.rs:827
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:325
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:321
 msgid "New Table"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:65
+#: apps/linux/app/src/ui/app/workspace_close.rs:51
 msgid "Close with open session transactions?"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:66
+#: apps/linux/app/src/ui/app/workspace_close.rs:52
 msgid "Open transactions will be rolled back before the window closes."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:67
-#: apps/linux/app/src/ui/app/workspace_close.rs:157
+#: apps/linux/app/src/ui/app/workspace_close.rs:53
+#: apps/linux/app/src/ui/app/workspace_close.rs:143
 msgid "Roll Back and Close"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:153
+#: apps/linux/app/src/ui/app/workspace_close.rs:139
 msgid "Close with an open transaction?"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:154
+#: apps/linux/app/src/ui/app/workspace_close.rs:140
 msgid "The transaction is rolled back when the tab closes."
 msgstr ""
 
@@ -1656,42 +1656,42 @@ msgstr ""
 msgid "New query (Ctrl+E)"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:195
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:407
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:559
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:191
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:403
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:554
 msgid "Row as JSON"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:431
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:427
 msgid "Preview tab. Use the tab menu to keep it open."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:639
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:634
 #, rust-format
 msgid "Save changes to “{name}”?"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:642
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:637
 msgid "Unsaved changes will be permanently lost if you discard them."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:928
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:924
 #: apps/linux/app/src/ui/editor/outcomes.rs:913
 #: apps/linux/app/src/ui/editor/schema.rs:17
 #: apps/linux/app/src/ui/history_dialog.rs:1041
 msgid "Empty query"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:1000
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:996
 msgid "Structure"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:1004
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:1000
 #, rust-format
 msgid "Query {n}"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:1066
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:1062
 msgid "No recently closed tab"
 msgstr ""
 

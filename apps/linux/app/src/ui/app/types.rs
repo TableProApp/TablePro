@@ -88,26 +88,6 @@ pub struct TableTabSlot {
     pub schema: Option<String>,
     pub table: String,
     pub browse: Controller<BrowseTab>,
-    pub preview: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum PreviewReplacement {
-    None,
-    Replace,
-    Promote,
-}
-
-pub(super) fn preview_replacement(is_preview: bool, has_pending_changes: bool) -> PreviewReplacement {
-    match (is_preview, has_pending_changes) {
-        (false, _) => PreviewReplacement::None,
-        (true, false) => PreviewReplacement::Replace,
-        (true, true) => PreviewReplacement::Promote,
-    }
-}
-
-pub(super) fn opens_as_preview(switch_or_append: bool, preview_tabs_enabled: bool) -> bool {
-    switch_or_append && preview_tabs_enabled
 }
 
 pub enum WorkspaceTab {
@@ -140,11 +120,7 @@ impl WorkspaceTab {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum OpenMode {
-    SwitchOrAppend,
-    NewTab,
-}
+pub use tablepro_app_services::workspace::OpenMode;
 
 fn workspace_tab_id_quark() -> glib::Quark {
     static QUARK: std::sync::OnceLock<glib::Quark> = std::sync::OnceLock::new();
@@ -200,31 +176,11 @@ impl StatusKind {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{PreviewReplacement, opens_as_preview, preview_replacement};
-
-    #[test]
-    fn a_clean_preview_can_be_replaced() {
-        assert_eq!(preview_replacement(true, false), PreviewReplacement::Replace);
-    }
-
-    #[test]
-    fn a_preview_with_pending_changes_is_promoted() {
-        assert_eq!(preview_replacement(true, true), PreviewReplacement::Promote);
-    }
-
-    #[test]
-    fn a_regular_tab_is_never_replaced_or_promoted() {
-        assert_eq!(preview_replacement(false, false), PreviewReplacement::None);
-        assert_eq!(preview_replacement(false, true), PreviewReplacement::None);
-    }
-
-    #[test]
-    fn a_table_opens_in_the_preview_tab_only_when_the_preference_is_on() {
-        assert!(opens_as_preview(true, true));
-        assert!(!opens_as_preview(true, false), "off: every table keeps its own tab");
-        assert!(!opens_as_preview(false, true), "an explicit new tab is never a preview");
-        assert!(!opens_as_preview(false, false));
+impl tablepro_app_services::workspace::TabContent for WorkspaceTab {
+    fn table_target(&self) -> Option<(Option<&str>, &str)> {
+        match self {
+            Self::Table(slot) => Some((slot.schema.as_deref(), &slot.table)),
+            _ => None,
+        }
     }
 }

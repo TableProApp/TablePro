@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::rc::Rc;
+use tablepro_app_services::workspace::CloseAfterSave;
 
 use relm4::adw::prelude::*;
 use relm4::gtk::glib;
@@ -15,7 +15,7 @@ use super::{App, AppMsg};
 /// guard polls.
 pub(super) struct WindowLifecycleHandles {
     pub(super) grid_edits_ready: Rc<Cell<bool>>,
-    pub(super) close_after_save: Rc<RefCell<HashMap<Uuid, u32>>>,
+    pub(super) close_after_save: Rc<RefCell<CloseAfterSave>>,
     pub(super) close_window_after_save: Rc<Cell<bool>>,
     pub(super) in_flight_saves: Rc<Cell<usize>>,
     pub(super) session_teardown_ready: Rc<Cell<bool>>,
@@ -47,7 +47,7 @@ pub(super) fn install_window_lifecycle(
     let workspace_flushed_for_close = workspace_flushed.clone();
     let workspace_flush_in_progress = Rc::new(Cell::new(false));
     let workspace_flush_in_progress_for_close = workspace_flush_in_progress.clone();
-    let close_after_save_for_close: Rc<RefCell<HashMap<Uuid, u32>>> = Rc::new(RefCell::new(HashMap::new()));
+    let close_after_save_for_close: Rc<RefCell<CloseAfterSave>> = Rc::new(RefCell::new(Default::default()));
     let close_window_after_save_for_close: Rc<Cell<bool>> = Rc::new(Cell::new(false));
     let in_flight_saves: Rc<Cell<usize>> = Rc::new(Cell::new(0));
     let session_teardown_ready = Rc::new(Cell::new(false));
@@ -171,10 +171,10 @@ pub(super) fn install_window_lifecycle(
                         {
                             let mut map = close_after_save_for_resp.borrow_mut();
                             for id in browse_tabs.iter().copied() {
-                                *map.entry(id).or_insert(0) += 1;
+                                map.begin(id, 1);
                             }
                             for id in structure_tabs.iter().copied() {
-                                *map.entry(id).or_insert(0) += 1;
+                                map.begin(id, 1);
                             }
                         }
                         close_window_after_save_for_resp.set(true);

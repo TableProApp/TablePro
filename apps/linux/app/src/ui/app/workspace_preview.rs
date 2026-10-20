@@ -2,8 +2,8 @@ use relm4::ComponentSender;
 use relm4::gtk::gio;
 use uuid::Uuid;
 
-use super::types::{PreviewReplacement, opens_as_preview, preview_replacement, read_workspace_tab_id};
 use super::{App, OpenMode, WorkspaceTab};
+use tablepro_app_services::workspace::{TableOpenPlan, TableOpenRequest};
 
 impl App {
     pub(super) fn dispatch_select_table(
@@ -13,58 +13,64 @@ impl App {
         open_mode: OpenMode,
         sender: ComponentSender<Self>,
     ) {
-        let switch_or_append = matches!(open_mode, OpenMode::SwitchOrAppend);
-        let is_preview = opens_as_preview(switch_or_append, self.preferences.load().open_tables_in_preview_tab);
-        if switch_or_append {
-            let existing = {
-                let tabs = self.workspace_tabs.borrow();
-                let selected_page = self.workspace_tab_view.as_ref().and_then(|tv| tv.selected_page());
-                let matches_slot = |tab: &WorkspaceTab| match tab {
-                    WorkspaceTab::Table(slot) if slot.schema.as_deref() == schema.as_deref() && slot.table == name => {
-                        Some(slot.page.clone())
-                    }
-                    _ => None,
-                };
-                let selected_match = selected_page.and_then(|page| {
-                    let id = read_workspace_tab_id(&page)?;
-                    matches_slot(tabs.get(&id)?)
-                });
-                selected_match.or_else(|| tabs.values().find_map(matches_slot))
-            };
-            if let Some(page) = existing
-                && let Some(tab_view) = self.workspace_tab_view.as_ref()
-            {
-                tab_view.set_selected_page(&page);
-                return;
-            }
-        }
-        if is_preview {
-            let preview = self.workspace_tabs.borrow().values().find_map(|tab| match tab {
-                WorkspaceTab::Table(slot) if slot.preview => Some((slot.id, slot.page.clone())),
-                _ => None,
-            });
-            if let Some((id, page)) = preview {
-                let has_pending = crate::services::change_tracker::with_tab_ref(id, |tracker| tracker.has_pending())
+        let request = TableOpenRequest {
+            schema: schema.as_deref(),
+            table: &name,
+            selected: self.selected_workspace_tab_id(),
+            mode: open_mode,
+            preview_enabled: self.preferences.load().open_tables_in_preview_tab,
+        };
+        let plan = self.workspace_tabs.borrow().plan_table_open(request, |id| {
+            crate::services::change_tracker::with_tab_ref(id, |tracker| tracker.has_pending()).unwrap_or(false)
+                || crate::services::structure_tracker::with_tab_ref(id, |tracker| tracker.has_pending())
                     .unwrap_or(false)
-                    || crate::services::structure_tracker::with_tab_ref(id, |tracker| tracker.has_pending())
-                        .unwrap_or(false);
-                match preview_replacement(true, has_pending) {
-                    PreviewReplacement::Replace => {
-                        if let Some(tab_view) = self.workspace_tab_view.clone() {
-                            self.finish_close_workspace_tab_now(id, &tab_view);
-                        }
-                    }
-                    PreviewReplacement::Promote => {
-                        if let Some(WorkspaceTab::Table(slot)) = self.workspace_tabs.borrow_mut().get_mut(&id) {
-                            slot.preview = false;
-                        }
-                        page.set_indicator_icon(None::<&gio::Icon>);
-                    }
-                    PreviewReplacement::None => {}
-                }
+        });
+        let TableOpenPlan::Append {
+            preview: is_preview,
+            replace,
+            promote,
+        } = plan
+        else {
+            if let TableOpenPlan::Select(id) = plan {
+                self.select_table_tab(id);
             }
+            return;
+        };
+        if let Some(id) = replace
+            && let Some(view) = self.workspace_tab_view.clone()
+        {
+            self.finish_close_workspace_tab_now(id, &view);
+        }
+        if let Some(id) = promote {
+            self.keep_table_tab(id);
         }
         self.append_table_tab(schema, name, 0, self.default_page_size, None, is_preview, sender);
+    }
+
+    fn select_table_tab(&self, id: Uuid) {
+        let page = self.workspace_tabs.borrow().get(&id).and_then(|tab| match tab {
+            WorkspaceTab::Table(slot) => Some(slot.page.clone()),
+            _ => None,
+        });
+        if let Some(page) = page
+            && let Some(view) = self.workspace_tab_view.as_ref()
+        {
+            view.set_selected_page(&page);
+        }
+    }
+
+    fn keep_table_tab(&self, id: Uuid) {
+        let page = {
+            let mut tabs = self.workspace_tabs.borrow_mut();
+            tabs.keep(&id);
+            tabs.get(&id).and_then(|tab| match tab {
+                WorkspaceTab::Table(slot) => Some(slot.page.clone()),
+                _ => None,
+            })
+        };
+        if let Some(page) = page {
+            page.set_indicator_icon(None::<&gio::Icon>);
+        }
     }
 
     pub(super) fn refresh_browse_tab_dirty(&self, tab_id: Uuid, dirty: bool) {
@@ -75,11 +81,7 @@ impl App {
             crate::services::structure_tracker::with_tab_ref(tab_id, |tracker| tracker.has_pending()).unwrap_or(false);
         let combined_dirty = data || structure || dirty;
         if combined_dirty {
-            let mut tabs = self.workspace_tabs.borrow_mut();
-            if let Some(WorkspaceTab::Table(slot)) = tabs.get_mut(&tab_id) {
-                slot.preview = false;
-                slot.page.set_indicator_icon(None::<&gio::Icon>);
-            }
+            self.keep_table_tab(tab_id);
         }
         let (page, title) = {
             let tabs = self.workspace_tabs.borrow();
