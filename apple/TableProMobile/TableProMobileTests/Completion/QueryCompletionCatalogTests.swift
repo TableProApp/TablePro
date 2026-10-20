@@ -341,6 +341,16 @@ struct QueryCompletionCatalogTests {
         #expect(await catalog.allowedValues(forColumn: "mood", in: moods) == ["sad", "ok"])
     }
 
+    @Test("enum values of a table named in the statement are read when no columns are cached yet")
+    func enumValuesOnColdCache() async {
+        let source = CatalogColumnSource(["orders": [ColumnInfo(name: "status", typeName: "enum('new','paid')")]])
+        let catalog = catalog(source, tables: [table("orders")], type: .mysql)
+
+        #expect(await catalog.allowedValues(forColumn: "status", in: []).isEmpty)
+        let orders = [TableReference(tableName: "orders", alias: nil)]
+        #expect(await catalog.allowedValues(forColumn: "status", in: orders) == ["new", "paid"])
+    }
+
     @Test("a schema-qualified table in another schema is read with that schema")
     func foreignSchemaRead() async {
         let source = CatalogColumnSource(["orders": [column("id")]])

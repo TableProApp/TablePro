@@ -163,16 +163,28 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
     }
 
     // Labels the driver read (PostgreSQL), else the ENUM(...) or SET(...) type MySQL and DuckDB spell out.
-    func allowedValues(forColumn column: String, in references: [TableReference]) -> [String] {
-        let keys = references.isEmpty
-            ? tables.map { columnKey($0.name, schema: nil) }
-            : references.map { columnKey($0.tableName, schema: $0.schema) }
-        for key in keys {
-            guard let match = columns[key]?.columns.first(where: { Self.matches($0.name, column) }) else { continue }
-            if let values = match.allowedValues, !values.isEmpty { return values }
-            if let values = Self.spelledOutValues(of: match.typeName), !values.isEmpty { return values }
+    func allowedValues(forColumn column: String, in references: [TableReference]) async -> [String] {
+        // With no table named, reading every table's columns would cost too much, so only columns already read count.
+        guard !references.isEmpty else {
+            for table in tables {
+                if let values = Self.allowedValues(of: column, in: columns[columnKey(table.name, schema: nil)]?.columns) {
+                    return values
+                }
+            }
+            return []
+        }
+        for reference in references {
+            let read = await columns(of: reference.tableName, schema: reference.schema)
+            if let values = Self.allowedValues(of: column, in: read) { return values }
         }
         return []
+    }
+
+    private static func allowedValues(of column: String, in columns: [ColumnInfo]?) -> [String]? {
+        guard let match = columns?.first(where: { matches($0.name, column) }) else { return nil }
+        if let values = match.allowedValues, !values.isEmpty { return values }
+        if let values = spelledOutValues(of: match.typeName), !values.isEmpty { return values }
+        return nil
     }
 
     private static func spelledOutValues(of typeName: String) -> [String]? {
