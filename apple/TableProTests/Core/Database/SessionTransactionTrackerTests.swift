@@ -185,6 +185,21 @@ struct SessionTransactionTrackerTests {
         #expect(tracker.holds(for: key.connectionId).isEmpty)
     }
 
+    @Test("A late answer from a retired driver leaves the replacement's hold alone")
+    func retiredDriverCannotClearTheReplacement() {
+        let retired = PluginDriverAdapter(connection: TestFixtures.makeConnection(), pluginDriver: TransactionScriptedDriver())
+        let replacement = PluginDriverAdapter(connection: TestFixtures.makeConnection(), pluginDriver: TransactionScriptedDriver())
+        let tracker = SessionTransactionTracker { _, driver in driver === replacement }
+        let key = SessionTransactionTracker.Key(connectionId: UUID(), lane: nil)
+        tracker.record(.inTransaction, on: replacement, for: key)
+        let before = tracker.holds(for: key.connectionId)
+
+        tracker.record(.idle, on: retired, for: key)
+
+        #expect(tracker.holds(for: key.connectionId) == before)
+        #expect(Self.states(key.connectionId, in: tracker) == [.open])
+    }
+
     @Test("The strip marks the entries the record names")
     func railEntriesCarryTheMark() {
         let connection = TestFixtures.makeConnection(database: "sales", type: .mysql)

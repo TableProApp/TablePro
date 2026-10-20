@@ -172,6 +172,53 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(!opening.showFailureAlert)
     }
 
+    @Test("A window closed while another window's dial is out leaves that dial running")
+    func closingAnotherWindowKeepsTheDial() async throws {
+        let first = driver(tables: ["orders"])
+        try await dial(first)
+        let redialing = await attachedCoordinator()
+
+        let teardown = TestGate()
+        first.beforeDisconnect = { await teardown.enter() }
+        first.pingError = MockDatabaseDriver.MockError.scripted
+        let second = driver(tables: ["orders"])
+        factory.queue(second)
+        let redial = Task { await redialing.reconnectIfNeeded() }
+        await teardown.waitUntilEntered()
+
+        let closing = ConnectionCoordinator(connection: connection, appState: appState)
+        closing.retire()
+        await teardown.open()
+        await redial.value
+
+        #expect(redialing.session?.driver === second)
+        #expect(isConnected(redialing))
+        #expect(!redialing.showFailureAlert)
+    }
+
+    @Test("A window busy with its own switch follows another window's switch once it is free")
+    func busyWindowFollowsOnceFree() async throws {
+        let first = driver(tables: ["orders"])
+        try await dial(first)
+        let busy = await attachedCoordinator()
+        let other = await attachedCoordinator()
+
+        let gate = TestGate()
+        first.beforeTransactionState = { await gate.enter() }
+        let busySwitch = Task { await busy.switchDatabase(to: "app_staging") }
+        await gate.waitUntilEntered()
+        first.beforeTransactionState = nil
+        first.scriptedTables = [TableInfo(name: "archive_orders")]
+        await other.switchDatabase(to: "app_archive")
+        await busy.followLiveSession()
+        await gate.open()
+        await busySwitch.value
+        await busy.resumedFollow?.value
+
+        #expect(busy.activeDatabase == "app_archive")
+        #expect(tableNames(busy) == ["archive_orders"])
+    }
+
     @Test("A database switch on the shared session moves the other window to that database and its tables")
     func otherWindowFollowsASharedDatabaseSwitch() async throws {
         let first = driver(tables: ["orders"])

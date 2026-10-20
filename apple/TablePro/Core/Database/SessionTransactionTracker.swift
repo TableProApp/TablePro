@@ -76,11 +76,12 @@ internal final class SessionTransactionTracker: ObservableObject {
     /// An engine that cannot say keeps what an earlier answer from the same driver said, since a
     /// refresh never clears what it refreshes; from another driver it says nothing at all.
     internal func record(_ state: PluginSessionTransactionState, on driver: DatabaseDriver, for key: Key) {
-        revisions[key, default: 0] &+= 1
+        // A turn can outlive its session's teardown; its late answer must not touch the replacement's hold.
         guard isLive(key, driver) else {
-            clear(key)
+            if drivers[key]?.driver === driver { clear(key) }
             return
         }
+        revisions[key, default: 0] &+= 1
         switch state {
         case .inTransaction:
             set(.open, on: driver, for: key)

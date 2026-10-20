@@ -15,6 +15,7 @@ final class SessionRedialer {
     private struct Dial {
         let id: UUID
         let task: Task<ConnectionSession, any Error>
+        var consumers: Set<ObjectIdentifier>
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SessionRedialer")
@@ -31,10 +32,13 @@ final class SessionRedialer {
         _ connection: DatabaseConnection,
         schema: String?,
         prompter: (any ConnectionPrompter)?,
-        joining: Bool = true
+        joining: Bool = true,
+        consumer: AnyObject? = nil
     ) async throws -> Outcome {
+        let consumerId = consumer.map(ObjectIdentifier.init)
         while let inFlight = dials[connection.id] {
             if joining {
+                if let consumerId { dials[connection.id]?.consumers.insert(consumerId) }
                 return Outcome(session: try await inFlight.task.value, dialedHere: false)
             }
             // A database switch needs its own target, and a retry after a sign-in its new credentials.
@@ -51,8 +55,16 @@ final class SessionRedialer {
             await Self.restore(schema, on: session.driver)
             return session
         }
-        dials[connection.id] = Dial(id: dialId, task: task)
+        dials[connection.id] = Dial(id: dialId, task: task, consumers: consumerId.map { [$0] } ?? [])
         return Outcome(session: try await task.value, dialedHere: true)
+    }
+
+    // A window that goes away stops waiting; the dial is cancelled only when no other window still waits on it.
+    func leave(_ connectionId: UUID, consumer: AnyObject) -> Bool {
+        guard var dial = dials[connectionId] else { return true }
+        dial.consumers.remove(ObjectIdentifier(consumer))
+        dials[connectionId] = dial
+        return dial.consumers.isEmpty
     }
 
     // Returns with no dial in flight, so a caller can tear the session down without cancelling one.

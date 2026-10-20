@@ -11,7 +11,10 @@ import Foundation
 /// is pending and a caller's own transaction commits only its own statements. The first statement after that makes
 /// `@@TRANCOUNT` 1.
 public enum MSSQLSessionTransaction {
-    public static let probe = "SELECT @@TRANCOUNT, XACT_STATE()"
+    /// Asked after the user's own batches, so it must not change what the next one reads. A bare `SELECT` sets
+    /// `@@ROWCOUNT` to 1, which a later `SELECT @@ROWCOUNT` or `IF @@ROWCOUNT = 0` would then see; an `EXECUTE`
+    /// leaves the previous `@@ROWCOUNT` in place (Transact-SQL reference, @@ROWCOUNT).
+    public static let probe = "EXEC sp_executesql N'SELECT @@TRANCOUNT, XACT_STATE()'"
 
     public enum State: Sendable, Equatable {
         case idle

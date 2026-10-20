@@ -3,9 +3,9 @@ import TableProMSSQLCore
 import Testing
 
 struct MSSQLSessionTransactionTests {
-    @Test("The probe asks for the open transaction count and whether the transaction can still commit")
+    @Test("The probe asks for the count and commit state inside an EXECUTE, which keeps the session's @@ROWCOUNT")
     func probeAsksForBoth() {
-        #expect(MSSQLSessionTransaction.probe == "SELECT @@TRANCOUNT, XACT_STATE()")
+        #expect(MSSQLSessionTransaction.probe == "EXEC sp_executesql N'SELECT @@TRANCOUNT, XACT_STATE()'")
     }
 
     @Test("No open transaction is idle")

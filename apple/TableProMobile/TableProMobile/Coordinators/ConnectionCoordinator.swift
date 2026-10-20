@@ -19,8 +19,15 @@ final class ConnectionCoordinator {
     private(set) var activeDatabase: String = ""
     private(set) var activeSchema: String = "public"
 
-    private(set) var isSwitching = false
-    private(set) var isReconnecting = false
+    private(set) var isSwitching = false {
+        didSet { resumeFollowIfPending() }
+    }
+    private(set) var isReconnecting = false {
+        didSet { resumeFollowIfPending() }
+    }
+    // Another window moved the session while this one was busy; it follows once it is free.
+    @ObservationIgnored private var followPending = false
+    @ObservationIgnored private(set) var resumedFollow: Task<Void, Never>?
     @ObservationIgnored private var sessionCheck: Task<Bool, Never>?
     @ObservationIgnored private var statementFailedDuringCheck = false
     @ObservationIgnored private var metadataRefused = false
@@ -88,7 +95,9 @@ final class ConnectionCoordinator {
 
     /// The attempt allowed to write `session` and `phase`. Cancelling mints a new one.
     private var attemptToken = UUID()
-    private var connectTask: Task<Void, Never>?
+    private var connectTask: Task<Void, Never>? {
+        didSet { resumeFollowIfPending() }
+    }
 
     private var joiners = AttemptJoiners()
 
@@ -141,7 +150,9 @@ final class ConnectionCoordinator {
         connectTask?.cancel()
         connectTask = nil
         prompts.cancelAll()
-        appState.connectionManager.invalidateAttempt(for: connection.id)
+        if appState.sessionRedialer.leave(connection.id, consumer: self) {
+            appState.connectionManager.invalidateAttempt(for: connection.id)
+        }
         session = nil
     }
 
@@ -213,7 +224,8 @@ final class ConnectionCoordinator {
                 connection,
                 schema: nil,
                 prompter: prompts,
-                joining: allowSignIn
+                joining: allowSignIn,
+                consumer: self
             )
             let newSession = outcome.session
             let newTables = try await newSession.driver.fetchTables(schema: nil)
@@ -308,7 +320,8 @@ final class ConnectionCoordinator {
             let outcome = try await appState.sessionRedialer.redial(
                 dialTarget,
                 schema: supportsSchemas ? activeSchema : nil,
-                prompter: prompts
+                prompter: prompts,
+                consumer: self
             )
             guard attemptToken == token else { return false }
             await takeSession(outcome.session, token: token, dialedHere: outcome.dialedHere)
@@ -398,11 +411,18 @@ final class ConnectionCoordinator {
 
     // Another window replaced the shared session, or switched its database or schema.
     func followLiveSession() async {
-        guard canFollowLiveSession else { return }
+        guard canFollowLiveSession else {
+            followPending = true
+            return
+        }
         let token = attemptToken
         await appState.sessionRedialer.settled(connection.id)
-        guard attemptToken == token, canFollowLiveSession, let held = session,
-              let live = appState.connectionManager.session(for: connection.id) else { return }
+        guard attemptToken == token else { return }
+        guard canFollowLiveSession else {
+            followPending = true
+            return
+        }
+        guard let held = session, let live = appState.connectionManager.session(for: connection.id) else { return }
         if live.driver !== held.driver {
             await takeSession(live, token: token, dialedHere: false)
             guard attemptToken == token else { return }
@@ -425,6 +445,12 @@ final class ConnectionCoordinator {
 
     private var canFollowLiveSession: Bool {
         session != nil && !isSwitching && !isReconnecting && connectTask == nil
+    }
+
+    private func resumeFollowIfPending() {
+        guard followPending, canFollowLiveSession else { return }
+        followPending = false
+        resumedFollow = Task { await followLiveSession() }
     }
 
     // A transaction the server aborted refuses catalog reads, yet the session still holds the user's work.
@@ -619,7 +645,8 @@ final class ConnectionCoordinator {
                 newConnection,
                 schema: nil,
                 prompter: prompts,
-                joining: false
+                joining: false,
+                consumer: self
             ).session
             guard attemptToken == token else { return }
             self.session = newSession
@@ -634,7 +661,8 @@ final class ConnectionCoordinator {
                     connection,
                     schema: nil,
                     prompter: prompts,
-                    joining: false
+                    joining: false,
+                    consumer: self
                 ).session
                 guard attemptToken == token else { return }
                 self.session = fallbackSession
