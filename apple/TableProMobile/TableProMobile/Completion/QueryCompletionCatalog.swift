@@ -173,7 +173,8 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
             }
             return []
         }
-        for reference in references {
+        // A CTE or subquery is not a stored table, and a read for its name would only fail on the session.
+        for reference in references where !reference.isDerived {
             let read = await columns(of: reference.tableName, schema: reference.schema)
             if let values = Self.allowedValues(of: column, in: read) { return values }
         }

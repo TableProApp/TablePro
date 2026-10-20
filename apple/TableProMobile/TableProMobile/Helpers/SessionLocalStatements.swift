@@ -37,6 +37,21 @@ nonisolated enum SessionLocalStatements {
 
     private static let namePattern = try? NSRegularExpression(pattern: "^" + qualified)
 
+    private static let databaseChangePattern = try? NSRegularExpression(
+        pattern: #"\b(?:DROP|ALTER|RESTORE)\s+DATABASE\b"#,
+        options: [.caseInsensitive]
+    )
+
+    // SQL Server cannot drop, restore or take single-user a database the catalog connection sits in.
+    static func changesDatabases(_ text: String, databaseType: DatabaseType) -> Bool {
+        let grammar = SQLLexicalReadings.resolve(
+            databaseTypeId: databaseType.rawValue, declared: nil, session: nil
+        ).execution
+        let code = SQLCodeProjection.code(of: text, grammar: grammar, revealingExecutableComments: true)
+        let range = NSRange(location: 0, length: (code as NSString).length)
+        return databaseChangePattern?.firstMatch(in: code, range: range) != nil
+    }
+
     static func effect(of statements: [String], databaseType: DatabaseType) -> Effect {
         let grammar = SQLLexicalReadings.resolve(
             databaseTypeId: databaseType.rawValue, declared: nil, session: nil

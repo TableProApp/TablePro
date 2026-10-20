@@ -95,6 +95,14 @@ struct SessionLocalStatementsTests {
         #expect(!quiet.leavesCatalog)
     }
 
+    @Test("Dropping, altering or restoring a database is seen, in a comment or a string it is not")
+    func databaseChanges() {
+        #expect(SessionLocalStatements.changesDatabases("USE master; DROP DATABASE appdb", databaseType: .mssql))
+        #expect(SessionLocalStatements.changesDatabases("alter database appdb set single_user", databaseType: .mssql))
+        #expect(!SessionLocalStatements.changesDatabases("-- DROP DATABASE appdb\nSELECT 1", databaseType: .mssql))
+        #expect(!SessionLocalStatements.changesDatabases("SELECT 'DROP DATABASE appdb'", databaseType: .mssql))
+    }
+
     @Test("An index hint, a longer word, a comment or a string is not a USE")
     func useLookalikes() {
         let effect = SessionLocalStatements.effect(

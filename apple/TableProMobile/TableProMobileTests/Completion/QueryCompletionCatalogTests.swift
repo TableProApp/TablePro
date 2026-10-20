@@ -360,6 +360,9 @@ struct QueryCompletionCatalogTests {
         let catalog = catalog(source, tables: [table("orders")], type: .mysql)
 
         #expect(await catalog.allowedValues(forColumn: "status", in: []).isEmpty)
+        let derived = [TableReference(tableName: "c", alias: nil, derivedColumns: ["status"])]
+        #expect(await catalog.allowedValues(forColumn: "status", in: derived).isEmpty)
+        #expect(await source.reads.isEmpty)
         let orders = [TableReference(tableName: "orders", alias: nil)]
         #expect(await catalog.allowedValues(forColumn: "status", in: orders) == ["new", "paid"])
     }

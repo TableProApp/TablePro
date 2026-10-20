@@ -802,6 +802,9 @@ struct QueryEditorView: View {
             startedAt: startedAt
         )
 
+        let holdsCatalog = SessionLocalStatements.changesDatabases(trimmed, databaseType: databaseType)
+        if holdsCatalog { await appState.connectionManager.holdCatalogConnections(for: connectionId) }
+        defer { if holdsCatalog { appState.connectionManager.releaseCatalogConnections(for: connectionId) } }
         // Waited on before the Stop check, and nothing suspends from here until `track` marks the session busy, which
         // keeps a new list reload off it.
         await appState.catalogChanges.sessionReadsFinished(for: connectionId)

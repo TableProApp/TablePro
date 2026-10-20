@@ -20,6 +20,7 @@ public final class ConnectionManager: @unchecked Sendable {
     private var sessionEndObservers: [@Sendable (UUID, any DatabaseDriver) -> Void] = []
     private var dials: [UUID: SessionDial] = [:]
     private var catalogs: [UUID: CatalogConnection] = [:]
+    private var catalogHolds: [UUID: Int] = [:]
     private let now: @Sendable () -> Date
 
     // The Mac's metadata pool values: an idle server connection is not held for good, and a failure is tried again.
@@ -339,6 +340,26 @@ public final class ConnectionManager: @unchecked Sendable {
         }
     }
 
+    // SQL Server cannot drop or take single-user a database another connection sits in, so a run that may do either
+    // closes the catalog connection first and keeps it closed until the run ends.
+    public func holdCatalogConnections(for connectionId: UUID) async {
+        await takeCatalogForHold(for: connectionId)?.close()
+    }
+
+    public func releaseCatalogConnections(for connectionId: UUID) {
+        lock.lock()
+        defer { lock.unlock() }
+        let left = catalogHolds[connectionId, default: 1] - 1
+        catalogHolds[connectionId] = left > 0 ? left : nil
+    }
+
+    private func takeCatalogForHold(for connectionId: UUID) -> CatalogConnection? {
+        lock.lock()
+        defer { lock.unlock() }
+        catalogHolds[connectionId, default: 0] += 1
+        return catalogs.removeValue(forKey: connectionId)
+    }
+
     public func discardCatalogDriver(_ driver: any DatabaseDriver, for connectionId: UUID) async {
         guard let connection = takeCatalog(holding: driver, for: connectionId) else { return }
         await connection.close()
@@ -347,7 +368,7 @@ public final class ConnectionManager: @unchecked Sendable {
     private func claimCatalog(for connectionId: UUID, database: String) -> CatalogClaim? {
         lock.lock()
         defer { lock.unlock() }
-        guard let session = sessions[connectionId], let dial = dials[connectionId],
+        guard catalogHolds[connectionId] == nil, let session = sessions[connectionId], let dial = dials[connectionId],
               driverFactory.opensCatalogConnections(for: dial.effective) else {
             return nil
         }

@@ -67,6 +67,22 @@ struct ConnectionManagerCatalogTests {
         #expect(dialed[1].additionalFields[DatabaseConnection.preTunnelHostKey] == "db.example.com")
     }
 
+    @Test("A hold closes the catalog connection and opens none until released")
+    func holdClosesAndBlocksTheCatalog() async throws {
+        let factory = DialingDriverFactory()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
+        let connection = connection()
+        _ = try await manager.connect(connection)
+        let first = try #require(await manager.catalogDriver(for: connection.id, database: "app") as? MockDatabaseDriver)
+
+        await manager.holdCatalogConnections(for: connection.id)
+
+        #expect(!first.isConnected)
+        #expect(await manager.catalogDriver(for: connection.id, database: "app") == nil)
+        manager.releaseCatalogConnections(for: connection.id)
+        #expect(await manager.catalogDriver(for: connection.id, database: "app") != nil)
+    }
+
     @Test("Readers share one catalog driver until the database changes, which closes the old one")
     func sharedUntilTheDatabaseChanges() async throws {
         let factory = DialingDriverFactory()
