@@ -4,6 +4,8 @@ import TableProModels
 import TableProTestSupport
 import Testing
 
+private let mockType = DatabaseType(rawValue: "mock")
+
 private struct MintFailure: Error {}
 
 private struct MintRequest: Sendable {
@@ -51,7 +53,7 @@ private final class SigningDriverFactory: DriverFactory, @unchecked Sendable {
         return MockDatabaseDriver()
     }
 
-    func supportedTypes() -> [DatabaseType] { [] }
+    func supportedTypes() -> [DatabaseType] { [mockType] }
 }
 
 private final class PasswordRecordingFactory: DriverFactory, @unchecked Sendable {
@@ -62,7 +64,7 @@ private final class PasswordRecordingFactory: DriverFactory, @unchecked Sendable
         return MockDatabaseDriver()
     }
 
-    func supportedTypes() -> [DatabaseType] { [] }
+    func supportedTypes() -> [DatabaseType] { [mockType] }
 }
 
 private func passwordKey(for connection: DatabaseConnection) -> String {
@@ -72,7 +74,7 @@ private func passwordKey(for connection: DatabaseConnection) -> String {
 private func rdsConnection(tunneled: Bool) -> DatabaseConnection {
     DatabaseConnection(
         name: "RDS",
-        type: DatabaseType(rawValue: "mock"),
+        type: mockType,
         host: "mydb.abc123.us-east-1.rds.amazonaws.com",
         port: 5_432,
         username: "iam_user",
