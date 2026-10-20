@@ -4,13 +4,15 @@ import os
 import TableProCoreTypes
 import TableProSSHTransport
 
-/// The steps `SSHTunnelFactory` walks to turn a configuration into a forwarding tunnel, named as a
-/// protocol so the factory's hand-over guarantee can be tested without an SSH server: a spy that
-/// throws at step N asserts the factory released what it had built.
+// A protocol so the factory's hand-over guarantee is testable without an SSH server.
 nonisolated protocol SSHTunnelStages: Sendable {
     associatedtype Tunnel: Sendable
 
     func connect(host: String, port: Int) async throws
+
+    // Opens a channel from the current session to the next host; the next handshake runs over it.
+    func jump(toHost host: String, port: Int) async throws
+
     func handshake() async throws
     func hostKey() async throws -> (keyData: Data, keyType: String)
     func authenticatePassword(username: String, password: String) async throws
@@ -24,16 +26,9 @@ nonisolated protocol SSHTunnelStages: Sendable {
     func discard()
 }
 
-/// Builds a libssh2 session against an SSH server, one cancellable blocking step at a time.
-///
-/// Every step runs on `sessionQueue` through `runCancellableBlocking`, so a cancelled connect
-/// returns to the caller at once while the blocking C call finishes on its own thread. The losing
-/// attempt never adopts what it produced: `discardLateResult` closes the socket it connected and
-/// frees the session it opened, which is what "cancelling a connect does not stop the driver"
-/// requires. `libssh2_session_handshake` blocks for its full timeout whatever `Task.cancel()` does.
-///
-/// The same queue is handed to the tunnel at the end, so a late connect step and the tunnel's own
-/// libssh2 calls can never run at once.
+// Every step runs on the current session's queue through `runCancellableBlocking`, so a cancelled
+// step returns at once and its late result is freed on that queue. Each session gets its own queue:
+// a hop's relay feeds the next handshake, and one shared queue would leave them waiting on each other.
 nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendable {
     typealias Tunnel = SSHTunnel
 
@@ -54,36 +49,42 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
         let pointer: OpaquePointer
     }
 
+    private struct ChannelHandle: @unchecked Sendable {
+        let pointer: OpaquePointer
+    }
+
+    private struct CurrentSession: Sendable {
+        let handle: SessionHandle
+        let queue: DispatchQueue
+    }
+
     private enum ConnectAttempt {
         case connected(Int32)
         case failed(String)
     }
 
-    /// What this builder still owes a release. The listening socket is absent on purpose: nothing
-    /// between binding it and handing it to the tunnel can throw, so it is never this type's to
-    /// release.
+    // The listening socket is absent: nothing between binding it and the hand-over can throw.
     private struct Resources {
+        var sessionQueue: DispatchQueue
         var socketFD: Int32 = -1
         var session: SessionHandle?
+        var hops: [SSHJumpHop] = []
         var tunnel: SSHTunnel?
     }
 
-    private let sessionQueue: DispatchQueue
-    private let resources = OSAllocatedUnfairLock(initialState: Resources())
+    private let resources: OSAllocatedUnfairLock<Resources>
     private let discarded = TeardownLatch()
 
     init() {
-        sessionQueue = DispatchQueue(
-            label: "com.TablePro.ssh.session.\(UUID().uuidString)",
-            qos: .utility
-        )
+        resources = OSAllocatedUnfairLock(initialState: Resources(sessionQueue: Self.makeSessionQueue()))
     }
 
     // MARK: - Steps
 
     func connect(host: String, port: Int) async throws {
+        let queue = resources.withLock { $0.sessionQueue }
         let fd = try await runCancellableBlocking(
-            on: sessionQueue,
+            on: queue,
             work: { try Self.openSocket(host: host, port: port) },
             discardLateResult: { Darwin.close($0) }
         )
@@ -91,14 +92,56 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
         Self.logger.debug("TCP connected to \(host, privacy: .private):\(port)")
     }
 
+    func jump(toHost host: String, port: Int) async throws {
+        let current = try currentSession()
+        let channel = try await runCancellableBlocking(
+            on: current.queue,
+            work: { ChannelHandle(pointer: try Self.openJumpChannel(session: current.handle.pointer, host: host, port: port)) },
+            discardLateResult: { libssh2_channel_free($0.pointer) }
+        )
+
+        var fds: [Int32] = [-1, -1]
+        guard socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) == 0 else {
+            let reason = String(cString: strerror(errno))
+            current.queue.async { libssh2_channel_free(channel.pointer) }
+            throw SSHTunnelError.channelOpenFailed("\(host):\(port): \(reason)")
+        }
+
+        let relayFD = fds[0]
+        let nextTransportFD = fds[1]
+        let transportFD = resources.withLock { $0.socketFD }
+        let relay = LibSSH2JumpRelay.start(
+            channel: channel.pointer,
+            localFD: relayFD,
+            transportFD: transportFD,
+            session: current.handle.pointer,
+            sessionQueue: current.queue
+        )
+        let hop = SSHJumpHop(
+            session: current.handle.pointer,
+            socketFD: transportFD,
+            channel: channel.pointer,
+            relay: relay,
+            sessionQueue: current.queue
+        )
+
+        resources.withLock { state in
+            state.hops.append(hop)
+            state.session = nil
+            state.socketFD = nextTransportFD
+            state.sessionQueue = Self.makeSessionQueue()
+        }
+        Self.logger.debug("Channel open to \(host, privacy: .private):\(port) through a jump host")
+    }
+
     func handshake() async throws {
-        let socketFD = resources.withLock { $0.socketFD }
+        let (socketFD, queue) = resources.withLock { ($0.socketFD, $0.sessionQueue) }
         guard socketFD >= 0 else {
             throw SSHTunnelError.handshakeFailed("No TCP connection")
         }
 
         let handle = try await runCancellableBlocking(
-            on: sessionQueue,
+            on: queue,
             work: { SessionHandle(pointer: try Self.openSession(socketFD: socketFD)) },
             discardLateResult: { libssh2_session_free($0.pointer) }
         )
@@ -106,13 +149,13 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
     }
 
     func hostKey() async throws -> (keyData: Data, keyType: String) {
-        let handle = try currentSession()
+        let current = try currentSession()
         return try await runCancellableBlocking(
-            on: sessionQueue,
+            on: current.queue,
             work: {
                 var keyLength = 0
                 var keyType: Int32 = 0
-                guard let keyPointer = libssh2_session_hostkey(handle.pointer, &keyLength, &keyType) else {
+                guard let keyPointer = libssh2_session_hostkey(current.handle.pointer, &keyLength, &keyType) else {
                     throw SSHTunnelError.hostKeyRejected("The server did not present a host key.")
                 }
                 return (Data(bytes: keyPointer, count: keyLength), HostKeyStore.keyTypeName(keyType))
@@ -121,10 +164,10 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
     }
 
     func authenticatePassword(username: String, password: String) async throws {
-        let handle = try currentSession()
-        try await authenticate(as: username, label: "Password") {
+        let current = try currentSession()
+        try await authenticate(as: username, label: "Password", on: current.queue) {
             libssh2_userauth_password_ex(
-                handle.pointer,
+                current.handle.pointer,
                 username,
                 UInt32(username.utf8.count),
                 password,
@@ -135,7 +178,7 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
     }
 
     func authenticatePublicKey(username: String, keyPath: String, passphrase: String?) async throws {
-        let handle = try currentSession()
+        let current = try currentSession()
         let expandedPath = (keyPath as NSString).expandingTildeInPath
 
         guard FileManager.default.fileExists(atPath: expandedPath) else {
@@ -145,9 +188,9 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
         let publicKeyPath = expandedPath + ".pub"
         let publicKeyPathOrNil: String? = FileManager.default.fileExists(atPath: publicKeyPath) ? publicKeyPath : nil
 
-        try await authenticate(as: username, label: "Public key") {
+        try await authenticate(as: username, label: "Public key", on: current.queue) {
             libssh2_userauth_publickey_fromfile_ex(
-                handle.pointer,
+                current.handle.pointer,
                 username,
                 UInt32(username.utf8.count),
                 publicKeyPathOrNil,
@@ -158,11 +201,11 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
     }
 
     func authenticatePublicKeyFromMemory(username: String, keyContent: String, passphrase: String?) async throws {
-        let handle = try currentSession()
-        try await authenticate(as: username, label: "In-memory key") {
+        let current = try currentSession()
+        try await authenticate(as: username, label: "In-memory key", on: current.queue) {
             keyContent.withCString { keyPointer in
                 libssh2_userauth_publickey_frommemory(
-                    handle.pointer,
+                    current.handle.pointer,
                     username,
                     username.utf8.count,
                     nil, 0,
@@ -174,16 +217,16 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
     }
 
     func authenticateNone(username: String) async throws {
-        let handle = try currentSession()
+        let current = try currentSession()
         try await runCancellableBlocking(
-            on: sessionQueue,
+            on: current.queue,
             work: {
-                guard libssh2_userauth_list(handle.pointer, username, UInt32(username.utf8.count)) == nil else {
+                guard libssh2_userauth_list(current.handle.pointer, username, UInt32(username.utf8.count)) == nil else {
                     throw SSHTunnelError.authenticationFailed(
                         "Server requires credentials; passwordless authentication is not permitted"
                     )
                 }
-                guard libssh2_userauth_authenticated(handle.pointer) != 0 else {
+                guard libssh2_userauth_authenticated(current.handle.pointer) != 0 else {
                     throw SSHTunnelError.authenticationFailed("Passwordless authentication failed")
                 }
             }
@@ -192,21 +235,23 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
     }
 
     func beginForwarding(destination: SSHForwardDestination) async throws -> SSHTunnel {
-        let handle = try currentSession()
-        let socketFD = resources.withLock { $0.socketFD }
+        let current = try currentSession()
+        let (socketFD, hops) = resources.withLock { ($0.socketFD, $0.hops) }
         let bound = try Self.bindLocalSocket()
 
         let tunnel = SSHTunnel(
-            session: handle.pointer,
+            session: current.handle.pointer,
             socketFD: socketFD,
             listenFD: bound.fd,
             localPort: bound.port,
-            sessionQueue: sessionQueue
+            sessionQueue: current.queue,
+            jumpHops: hops
         )
 
         resources.withLock { state in
             state.socketFD = -1
             state.session = nil
+            state.hops = []
             state.tunnel = tunnel
         }
 
@@ -222,7 +267,7 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
 
         let state = resources.withLock { current -> Resources in
             let copy = current
-            current = Resources()
+            current = Resources(sessionQueue: current.sessionQueue)
             return copy
         }
 
@@ -231,36 +276,41 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
             return
         }
 
-        guard state.socketFD >= 0 || state.session != nil else { return }
+        guard state.socketFD >= 0 || state.session != nil || !state.hops.isEmpty else { return }
 
         if state.socketFD >= 0 { shutdown(state.socketFD, SHUT_RDWR) }
 
-        sessionQueue.async {
+        // Queued behind any late step, so a cancelled handshake or jump has finished first.
+        state.sessionQueue.async {
             if let session = state.session?.pointer {
                 libssh2_session_set_blocking(session, 1)
                 tablepro_libssh2_session_disconnect(session, "Closing tunnel")
                 libssh2_session_free(session)
             }
             if state.socketFD >= 0 { Darwin.close(state.socketFD) }
+            guard !state.hops.isEmpty else { return }
+            Task.detached { await SSHJumpChain.tearDown(state.hops) }
         }
     }
 
     // MARK: - Private
 
-    private func currentSession() throws -> SessionHandle {
-        guard let handle = resources.withLock({ $0.session }) else {
+    private func currentSession() throws -> CurrentSession {
+        let (handle, queue) = resources.withLock { ($0.session, $0.sessionQueue) }
+        guard let handle else {
             throw SSHTunnelError.authenticationFailed("No active session")
         }
-        return handle
+        return CurrentSession(handle: handle, queue: queue)
     }
 
     private func authenticate(
         as username: String,
         label: String,
+        on queue: DispatchQueue,
         _ attempt: @escaping @Sendable () -> Int32
     ) async throws {
         try await runCancellableBlocking(
-            on: sessionQueue,
+            on: queue,
             work: {
                 let rc = attempt()
                 guard rc == 0 else {
@@ -269,6 +319,24 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
             }
         )
         Self.logger.debug("\(label, privacy: .public) authentication successful for \(username, privacy: .private)")
+    }
+
+    private static func makeSessionQueue() -> DispatchQueue {
+        DispatchQueue(label: "com.TablePro.ssh.session.\(UUID().uuidString)", qos: .utility)
+    }
+
+    private static func openJumpChannel(session: OpaquePointer, host: String, port: Int) throws -> OpaquePointer {
+        guard let channel = LibSSH2ForwardChannel.open(
+            session: session,
+            destination: .tcp(host: host, port: port),
+            originPort: 0
+        ) else {
+            let reason = LibSSH2ForwardChannel.lastErrorMessage(session: session)
+            throw SSHTunnelError.channelOpenFailed("\(host):\(port): \(reason)")
+        }
+        // The relay reads EAGAIN as "would block", so the hop session runs non-blocking from here.
+        libssh2_session_set_blocking(session, 0)
+        return channel
     }
 
     private static func openSession(socketFD: Int32) throws -> OpaquePointer {

@@ -66,4 +66,52 @@ struct ConnectionErrorClassifierTests {
         #expect(error.title == String(localized: "Not Connected"))
         #expect(error.recovery == String(localized: "Reconnect and try again."))
     }
+
+    @Test("A jump host or username failure is an SSH failure by its case, with a way to fix it", arguments: [
+        (
+            SSHTunnelError.usernameMissing(host: "bastion.internal"),
+            String(localized: "Edit the connection and enter the username under SSH Server or Jump Hosts.")
+        ),
+        (
+            SSHTunnelError.jumpHostNeedsKey(host: "bastion.internal"),
+            String(localized: "Edit the connection and set a key for this jump host under Jump Hosts.")
+        ),
+        (
+            SSHTunnelError.jumpHostSharedKeyMissing(host: "bastion.internal"),
+            String(localized: "Edit the connection and set a key for this jump host under Jump Hosts.")
+        ),
+        (
+            SSHTunnelError.jumpHostFailed(host: "bastion.internal", reason: "Connection timed out"),
+            String(localized: "Check this jump host's address, port, username and key under Jump Hosts.")
+        ),
+        (
+            SSHTunnelError.jumpHostKeysUnreadable("Keychain retrieve failed: -25300"),
+            String(localized: "Try again. If it keeps failing, update TablePro on this device.")
+        )
+    ])
+    func jumpHostFailuresAreSSH(error: SSHTunnelError, recovery: String) {
+        let classified = ErrorClassifier.classify(
+            error,
+            context: ErrorContext(operation: "connect", host: "db.internal", sshEnabled: true)
+        )
+
+        #expect(classified.category == .ssh)
+        #expect(classified.title == String(localized: "SSH Tunnel Failed"))
+        #expect(classified.message == error.localizedDescription)
+        #expect(classified.recovery == recovery)
+    }
+
+    @Test("A jump host error names the host it is about")
+    func jumpHostErrorsNameTheHost() {
+        let errors: [SSHTunnelError] = [
+            .usernameMissing(host: "bastion.internal"),
+            .jumpHostNeedsKey(host: "bastion.internal"),
+            .jumpHostSharedKeyMissing(host: "bastion.internal"),
+            .jumpHostFailed(host: "bastion.internal", reason: "Connection timed out")
+        ]
+
+        for error in errors {
+            #expect(error.localizedDescription.contains("bastion.internal"))
+        }
+    }
 }
