@@ -145,4 +145,3 @@ struct SQLCompletionProviderCatalogTests {
         #expect(session.items.first { $0.label == "order.total" }?.isQualifiedReference == false)
     }
 }
-
