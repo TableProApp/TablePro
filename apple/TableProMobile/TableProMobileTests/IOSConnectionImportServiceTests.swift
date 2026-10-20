@@ -436,6 +436,14 @@ struct IOSConnectionImportServiceTests {
         #expect(connection.sslConfiguration == nil)
     }
 
+    @Test("A Mac Preferred mode opens as required here and exports back as Preferred")
+    func preferredSSLModeSurvivesImport() async throws {
+        let connection = try await importedConnection(settings(ssl: ExportableSSLConfig(mode: "Preferred")))
+        #expect(connection.sslConfiguration?.mode == .require)
+        #expect(connection.sslConfiguration?.isMacPreferred == true)
+        #expect(IOSConnectionExportService.portableSettings(for: connection).sslConfig?.mode == "Preferred")
+    }
+
     // MARK: - Settings
 
     @Test(
