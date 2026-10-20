@@ -63,6 +63,8 @@ final class ScenePresenter {
     private(set) var restoreHolds: Set<RestoreHold> = []
     private(set) var editorHolds: Set<UUID> = []
     private(set) var heldImportFile: URL?
+    var refusedConnectionId: UUID?
+    private(set) var heldRefusalId: UUID?
 
     var holdsConnectionRestore: Bool { !restoreHolds.isEmpty }
 
@@ -139,6 +141,21 @@ final class ScenePresenter {
         guard let url = heldImportFile else { return }
         heldImportFile = nil
         present(.importFile(url))
+    }
+
+    // The alert sits on the list, so it waits for the cover the same way an import does.
+    func presentRefusal(for connectionId: UUID, coverIsOnScreen: Bool) {
+        guard coverIsOnScreen else {
+            refusedConnectionId = connectionId
+            return
+        }
+        heldRefusalId = connectionId
+    }
+
+    func presentHeldRefusal() {
+        guard let connectionId = heldRefusalId else { return }
+        heldRefusalId = nil
+        refusedConnectionId = connectionId
     }
 
     /// A restore hold postpones a connection that is not open yet; it never closes one that is.

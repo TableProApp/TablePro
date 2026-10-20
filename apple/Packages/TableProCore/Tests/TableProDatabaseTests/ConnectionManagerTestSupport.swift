@@ -61,7 +61,7 @@ final class MockDriverFactory: DriverFactory, @unchecked Sendable {
         return driver
     }
 
-    func supportedTypes() -> [DatabaseType] { [] }
+    func supportedTypes() -> [DatabaseType] { drivers.keys.map(DatabaseType.init(rawValue:)) }
 }
 
 final class MockSecureStore: SecureStore, Sendable {

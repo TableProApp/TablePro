@@ -99,9 +99,7 @@ struct ConnectedView: View {
             statusScreen { connectingView }
         case .failed(let error):
             statusScreen {
-                ErrorView(error: error) {
-                    await coordinator.connect()
-                }
+                ErrorView(error: error, onRetry: error.canRetry ? { await coordinator.connect() } : nil)
             }
         case .tabs:
             connectedContent(coordinator)

@@ -108,3 +108,126 @@ struct SyncRecordMapperTests {
         #expect(decoded.safeModeLevel == .confirmWrites)
     }
 }
+
+struct SyncRecordMapperSSLTests {
+    private let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
+    private let macPreferred = #"{"mode":"Preferred","caCertificatePath":"","clientCertificatePath":"","clientKeyPath":""}"#
+
+    private func makeRecord(sslJSON: String) -> CKRecord {
+        let connection = DatabaseConnection(
+            name: "Test",
+            type: .postgresql,
+            host: "db.example.com",
+            port: 5_432,
+            username: "admin",
+            database: "app",
+            sslEnabled: true,
+            sslConfiguration: SSLConfiguration(mode: .require)
+        )
+        let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+        record.fields(ConnectionSyncField.self)[.sslConfigJson] = Data(sslJSON.utf8) as CKRecordValue
+        return record
+    }
+
+    private func sslData(in record: CKRecord) throws -> Data {
+        try #require(record.fields(ConnectionSyncField.self)[.sslConfigJson] as? Data)
+    }
+
+    private func sslJSONObject(in record: CKRecord) throws -> [String: Any] {
+        try #require(JSONSerialization.jsonObject(with: sslData(in: record)) as? [String: Any])
+    }
+
+    @Test("toRecord writes an SSL blob the Mac can decode")
+    func toRecordWritesMacForm() throws {
+        let connection = DatabaseConnection(
+            name: "Test",
+            type: .mysql,
+            sslEnabled: true,
+            sslConfiguration: SSLConfiguration(mode: .verifyFull)
+        )
+        let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+        let data = try sslData(in: record)
+        let json = try sslJSONObject(in: record)
+        #expect(SSLConfiguration.isMacWireForm(data))
+        #expect(json["mode"] as? String == "Verify Identity")
+    }
+
+    @Test("updateRecord keeps a Mac Preferred blob when SSL is unchanged")
+    func keepsMacPreferredWhenUnchanged() throws {
+        let record = makeRecord(sslJSON: macPreferred)
+        var connection = try #require(SyncRecordMapper.toConnection(record))
+        #expect(connection.sslConfiguration == SSLConfiguration(mode: .require, isMacPreferred: true))
+        connection.name = "Renamed"
+
+        SyncRecordMapper.updateRecord(record, with: connection)
+
+        let data = try sslData(in: record)
+        let decoded = try #require(SyncRecordMapper.toConnection(record))
+        #expect(data == Data(macPreferred.utf8))
+        #expect(decoded.name == "Renamed")
+    }
+
+    @Test("updateRecord keeps a Mac Preferred blob for a copy an older iOS build stored as require")
+    func keepsMacPreferredForAnOlderLocalCopy() throws {
+        let record = makeRecord(sslJSON: macPreferred)
+        var connection = try #require(SyncRecordMapper.toConnection(record))
+        connection.sslConfiguration = SSLConfiguration(mode: .require)
+        connection.name = "Renamed"
+
+        SyncRecordMapper.updateRecord(record, with: connection)
+
+        #expect(try sslData(in: record) == Data(macPreferred.utf8))
+    }
+
+    @Test("updateRecord writes Preferred over a server Required")
+    func writesPreferredOverRequired() throws {
+        let record = makeRecord(sslJSON: #"{"mode":"Required","caCertificatePath":"","clientCertificatePath":"","clientKeyPath":""}"#)
+        var connection = try #require(SyncRecordMapper.toConnection(record))
+        connection.sslConfiguration = SSLConfiguration(mode: .require, isMacPreferred: true)
+
+        SyncRecordMapper.updateRecord(record, with: connection)
+
+        #expect(try sslJSONObject(in: record)["mode"] as? String == "Preferred")
+    }
+
+    @Test("A Mac Preferred survives local storage and a rebuilt record")
+    func macPreferredSurvivesRebuild() throws {
+        let fetched = try #require(SyncRecordMapper.toConnection(makeRecord(sslJSON: macPreferred)))
+        let stored = try JSONDecoder().decode(DatabaseConnection.self, from: JSONEncoder().encode(fetched))
+
+        let rebuilt = SyncRecordMapper.toRecord(stored, zoneID: zoneID)
+
+        #expect(stored.sslConfiguration?.mode == .require)
+        #expect(try sslJSONObject(in: rebuilt)["mode"] as? String == "Preferred")
+    }
+
+    @Test("updateRecord writes Verify CA when SSL changed")
+    func writesVerifyCaWhenChanged() throws {
+        let record = makeRecord(sslJSON: macPreferred)
+        var connection = try #require(SyncRecordMapper.toConnection(record))
+        connection.sslConfiguration?.mode = .verifyCa
+
+        SyncRecordMapper.updateRecord(record, with: connection)
+
+        let data = try sslData(in: record)
+        let json = try sslJSONObject(in: record)
+        #expect(SSLConfiguration.isMacWireForm(data))
+        #expect(json["mode"] as? String == "Verify CA")
+    }
+
+    @Test("updateRecord rewrites a blob an older iOS build wrote, even with SSL unchanged")
+    func rewritesOlderIOSBlob() throws {
+        let record = makeRecord(sslJSON: #"{"mode":"require"}"#)
+        let connection = try #require(SyncRecordMapper.toConnection(record))
+        #expect(connection.sslConfiguration == SSLConfiguration(mode: .require))
+
+        SyncRecordMapper.updateRecord(record, with: connection)
+
+        let data = try sslData(in: record)
+        let json = try sslJSONObject(in: record)
+        #expect(json["mode"] as? String == "Required")
+        #expect(Set(json.keys) == ["mode", "caCertificatePath", "clientCertificatePath", "clientKeyPath"])
+        #expect(json["caCertificatePath"] as? String == "")
+        #expect(SSLConfiguration.isMacWireForm(data))
+    }
+}

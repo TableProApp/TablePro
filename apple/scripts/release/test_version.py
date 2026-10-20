@@ -95,17 +95,12 @@ class FakeGitHub:
 
 
 def green_on(sha, branch="release/0.82"):
-    runs, jobs = [], {}
-    for path, name in version.TEST_WORKFLOWS:
-        run_id = f"run-{name}"
-        runs.append(version.Run(run_id, path, "completed", "success", f"https://ci.example/{run_id}"))
-        jobs[(run_id, name)] = ["success"]
-    return {(sha, branch): runs}, jobs
+    run = version.Run("ci", version.CI_WORKFLOW, "completed", "success", "https://ci.example/ci")
+    return {(sha, branch): [run]}, {("ci", job): ["success"] for job in version.TEST_JOBS}
 
 
-def with_run(runs, name, **changes):
-    path = next(path for path, job in version.TEST_WORKFLOWS if job == name)
-    return {key: [replace(run, **changes) if run.path == path else run for run in found]
+def with_ci(runs, **changes):
+    return {key: [replace(run, **changes) if run.path == version.CI_WORKFLOW else run for run in found]
             for key, found in runs.items()}
 
 
@@ -176,49 +171,61 @@ class CheckTests(unittest.TestCase):
     def test_a_skipped_test_job_refuses_the_tag(self):
         self.repo.git("tag", "v0.82.0-beta.1", self.cut)
         runs, jobs = green_on(self.cut)
-        jobs[("run-macOS Tests", "macOS Tests")] = ["skipped"]
+        jobs[("ci", "macos / macOS Tests")] = ["skipped"]
         github = FakeGitHub(releases=[("v0.81.0", False)], runs=runs, jobs=jobs)
         self.assertEqual(self.check("v0.82.0-beta.1", github),
-                         ["macOS Tests ran no tests at https://ci.example/run-macOS Tests (job: skipped)"])
+                         ["macos / macOS Tests ran no tests at https://ci.example/ci (job: skipped)"])
+
+    def test_a_skipped_call_refuses_the_tag(self):
+        self.repo.git("tag", "v0.82.0-beta.1", self.cut)
+        runs, jobs = green_on(self.cut)
+        del jobs[("ci", "ios / iOS and Package Tests")]
+        github = FakeGitHub(releases=[("v0.81.0", False)], runs=runs, jobs=jobs)
+        self.assertEqual(self.check("v0.82.0-beta.1", github),
+                         ["ios / iOS and Package Tests ran no tests at https://ci.example/ci (job: none)"])
+
+    def test_a_failed_test_job_in_a_green_run_refuses_the_tag(self):
+        self.repo.git("tag", "v0.82.0-beta.1", self.cut)
+        runs, jobs = green_on(self.cut)
+        jobs[("ci", "ios / iOS and Package Tests")] = ["failure"]
+        github = FakeGitHub(releases=[("v0.81.0", False)], runs=runs, jobs=jobs)
+        self.assertEqual(self.check("v0.82.0-beta.1", github),
+                         ["ios / iOS and Package Tests ran no tests at https://ci.example/ci (job: failure)"])
 
     def test_a_run_still_going_refuses_at_once_and_names_its_url(self):
         self.repo.git("tag", "v0.82.0-beta.1", self.cut)
         runs, jobs = green_on(self.cut)
         for status in ("queued", "in_progress"):
             with self.subTest(status=status):
-                pending = with_run(runs, "iOS and Package Tests", status=status, conclusion="")
+                pending = with_ci(runs, status=status, conclusion="")
                 github = FakeGitHub(releases=[("v0.81.0", False)], runs=pending, jobs=jobs)
                 self.assertEqual(self.check("v0.82.0-beta.1", github),
-                                 [f"iOS and Package Tests is {status} at https://ci.example/run-iOS and Package "
-                                  "Tests: re-run Verify once it is green"])
+                                 [f"CI is {status} at https://ci.example/ci: re-run Verify once it is green"])
 
     def test_a_failed_run_refuses_the_tag(self):
         self.repo.git("tag", "v0.82.0-beta.1", self.cut)
         runs, jobs = green_on(self.cut)
         for conclusion in ("failure", "cancelled", "startup_failure"):
             with self.subTest(conclusion=conclusion):
-                failed = with_run(runs, "iOS and Package Tests", conclusion=conclusion)
+                failed = with_ci(runs, conclusion=conclusion)
                 github = FakeGitHub(releases=[("v0.81.0", False)], runs=failed, jobs=jobs)
                 self.assertEqual(self.check("v0.82.0-beta.1", github),
-                                 [f"iOS and Package Tests ended '{conclusion}' at "
-                                  "https://ci.example/run-iOS and Package Tests"])
+                                 [f"CI ended '{conclusion}' at https://ci.example/ci"])
 
-    def test_a_missing_run_refuses_the_tag(self):
+    def test_a_run_of_another_workflow_does_not_count(self):
         self.repo.git("tag", "v0.82.0-beta.1", self.cut)
-        runs, jobs = green_on(self.cut)
-        macos_only = {key: [run for run in found if run.path.endswith("macos-tests.yml")]
-                      for key, found in runs.items()}
-        github = FakeGitHub(releases=[("v0.81.0", False)], runs=macos_only, jobs=jobs)
+        old = version.Run("old", ".github/workflows/macos-tests.yml", "completed", "success", "https://ci.example/old")
+        github = FakeGitHub(releases=[("v0.81.0", False)], runs={(self.cut, "release/0.82"): [old]},
+                            jobs={("old", "macOS Tests"): ["success"]})
         self.assertEqual(self.check("v0.82.0-beta.1", github),
-                         [f"no iOS and Package Tests push run on release/0.82 at {self.cut}"])
+                         [f"no CI push run on release/0.82 at {self.cut}"])
 
     def test_only_a_push_run_on_the_line_counts(self):
         self.repo.git("tag", "v0.82.0-beta.1", self.cut)
         runs, jobs = green_on(self.cut, branch="main")
         github = FakeGitHub(releases=[("v0.81.0", False)], runs=runs, jobs=jobs)
         self.assertEqual(self.check("v0.82.0-beta.1", github),
-                         [f"no macOS Tests push run on release/0.82 at {self.cut}",
-                          f"no iOS and Package Tests push run on release/0.82 at {self.cut}"])
+                         [f"no CI push run on release/0.82 at {self.cut}"])
 
     def test_release_build_is_not_required(self):
         self.repo.git("tag", "v0.82.0-beta.1", self.cut)
@@ -535,8 +542,8 @@ class GitHubTests(unittest.TestCase):
             path = command[command.index("--jq") - 1]
             outputs = {
                 "/releases": "v0.82.0\tfalse\nplugin-oracle-v1.0.0\ttrue\n",
-                "/runs?": ("11\t.github/workflows/macos-tests.yml\tcompleted\tsuccess\thttps://ci.example/11\n"
-                           "12\t.github/workflows/ios-tests.yml\tin_progress\t\thttps://ci.example/12\n"),
+                "/runs?": ("11\t.github/workflows/ci.yml\tcompleted\tsuccess\thttps://ci.example/11\n"
+                           "12\t.github/workflows/ci.yml\tin_progress\t\thttps://ci.example/12\n"),
                 "/jobs?": "success\n\n",
             }
             output = next(text for key, text in outputs.items() if key in path)
@@ -545,11 +552,13 @@ class GitHubTests(unittest.TestCase):
         github = version.GitHub("Owner/Repo", run=run)
         self.assertEqual(github.releases(), [("v0.82.0", False), ("plugin-oracle-v1.0.0", True)])
         self.assertEqual(github.push_runs("abc", "release/0.83"), [
-            version.Run("11", ".github/workflows/macos-tests.yml", "completed", "success", "https://ci.example/11"),
-            version.Run("12", ".github/workflows/ios-tests.yml", "in_progress", "", "https://ci.example/12"),
+            version.Run("11", ".github/workflows/ci.yml", "completed", "success", "https://ci.example/11"),
+            version.Run("12", ".github/workflows/ci.yml", "in_progress", "", "https://ci.example/12"),
         ])
-        self.assertEqual(github.job_conclusions("11", "macOS Tests"), ["success", ""])
+        self.assertEqual(github.job_conclusions("11", "macos / macOS Tests"), ["success", ""])
         self.assertIn("--paginate", calls[0])
+        self.assertIn("--paginate", calls[2])
+        self.assertIn('select(.name == "macos / macOS Tests")', calls[2][-1])
         self.assertIn("repos/Owner/Repo/actions/runs?head_sha=abc&event=push&branch=release/0.83&per_page=100",
                       calls[1])
 
