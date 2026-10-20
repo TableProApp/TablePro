@@ -137,7 +137,8 @@ jobs:
         run: |
           mkdir -p app-diagnostics
           for dir in "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports; do
-            [ -d "$dir" ] || continue
+            # The Mac's runner user is not an admin, so it cannot read the system reports.
+            [ -d "$dir" ] && [ -r "$dir" ] && [ -x "$dir" ] || continue
             find "$dir" -maxdepth 2 -iname '*TablePro*' -exec cp {} app-diagnostics/ \;
           done
           log show --last 2h --style compact --info --predicate 'process == "TablePro"' \
