@@ -26,6 +26,7 @@ struct OptionsPaneView: View {
             timeoutSection
             startupSection
             preConnectSection
+            postDisconnectSection
             safetySection
             if aiIsEnabled {
                 aiRulesSection
@@ -197,13 +198,53 @@ struct OptionsPaneView: View {
         Section {
             StartupCommandsEditor(text: $coordinator.advanced.preConnectScript, style: .code)
                 .frame(height: 80)
+                .accessibilityIdentifier("connection-form-pre-connect-script")
+            LabeledContent(String(localized: "Timeout")) {
+                HStack(spacing: 4) {
+                    TextField(
+                        String(localized: "Timeout"),
+                        value: $coordinator.advanced.scriptTimeoutSeconds,
+                        format: .number.grouping(.never),
+                        prompt: Text(verbatim: scriptTimeoutPlaceholder)
+                    )
+                    .labelsHidden()
+                    .frame(width: 100)
+                    .multilineTextAlignment(.trailing)
+                    .accessibilityIdentifier("connection-form-script-timeout")
+                    Text(String(localized: "seconds"))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .help(String(localized: "How long each script may run, from 1 to 300 seconds."))
         } header: {
             Text(String(localized: "Pre-Connect Script"))
         } footer: {
-            Text("Shell script to run before connecting. Non-zero exit aborts connection.")
+            Text(String(localized: """
+                Runs in bash before connecting. A non-zero exit aborts the connection. \
+                TABLEPRO_CONNECTION_NAME, TABLEPRO_HOST, TABLEPRO_PORT, TABLEPRO_USER and \
+                TABLEPRO_DATABASE describe the connection.
+                """))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var postDisconnectSection: some View {
+        Section {
+            StartupCommandsEditor(text: $coordinator.advanced.postDisconnectScript, style: .code)
+                .frame(height: 80)
+                .accessibilityIdentifier("connection-form-post-disconnect-script")
+        } header: {
+            Text(String(localized: "Post-Disconnect Script"))
+        } footer: {
+            Text("Runs in bash once the session ends, only after its pre-connect script ran. A failure is logged, not shown.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var scriptTimeoutPlaceholder: String {
+        String(format: String(localized: "Default (%d)"), ConnectionScriptRunner.defaultTimeoutSeconds)
     }
 
     // MARK: - Safety

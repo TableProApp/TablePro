@@ -1,13 +1,15 @@
 import Foundation
 import TableProPluginKit
+import TableProTrinoCore
 
 final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Trino Driver"
     static let pluginVersion = "1.0.0"
-    static let pluginDescription = "Trino distributed SQL engine support via the REST client protocol"
+    static let pluginDescription = "Trino and Presto support via the REST client protocol"
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "Trino"
+    static let additionalDatabaseTypeIds: [String] = ["Presto"]
 
     static let supportsRenameTable = true
 
@@ -151,6 +153,10 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
         ExplainVariant(id: "validate", label: "Explain (Validate)", sqlPrefix: "EXPLAIN (TYPE VALIDATE)"),
         ExplainVariant(id: "analyze", label: "Explain Analyze", sqlPrefix: "EXPLAIN ANALYZE"),
     ]
+
+    static func driverVariant(for databaseTypeId: String) -> String? {
+        TrinoServerFlavor(rawValue: databaseTypeId)?.rawValue
+    }
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         TrinoPluginDriver(config: config)

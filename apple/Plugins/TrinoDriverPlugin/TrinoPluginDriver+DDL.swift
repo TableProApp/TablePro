@@ -43,8 +43,10 @@ extension TrinoPluginDriver {
         )
     }
 
+    // Presto has no COMMENT ON statement.
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
-        TrinoDDLSQL.objectComment(
+        guard flavor == .trino else { return nil }
+        return TrinoDDLSQL.objectComment(
             qualifiedName: qualifiedName(table: name, schema: schema),
             objectType: objectType,
             comment: comment

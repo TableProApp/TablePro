@@ -7,8 +7,9 @@ public enum TrinoTypeCategory: Sendable, Equatable {
 }
 
 public enum TrinoTypeMapper {
+    // Presto also sends `KHyperLogLog` and `kllsketch` as base64.
     static let binaryTypes: Set<String> = [
-        "varbinary", "hyperloglog", "p4hyperloglog", "qdigest", "tdigest", "setdigest"
+        "varbinary", "hyperloglog", "p4hyperloglog", "khyperloglog", "kllsketch", "qdigest", "tdigest", "setdigest"
     ]
 
     static let structuredTypes: Set<String> = ["array", "map", "row"]

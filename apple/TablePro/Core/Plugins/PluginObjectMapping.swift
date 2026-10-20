@@ -204,6 +204,7 @@ extension UserDefinedTypeInfo.Kind {
         case .aliasType:   self = .aliasType
         case .tableType:   self = .tableType
         case .clrType:     self = .clrType
+        case .udt:         self = .udt
         @unknown default:  self = .other
         }
     }
@@ -217,6 +218,7 @@ extension UserDefinedTypeInfo.Kind {
         case .aliasType:   return .aliasType
         case .tableType:   return .tableType
         case .clrType:     return .clrType
+        case .udt:         return .udt
         case .other:       return nil
         }
     }

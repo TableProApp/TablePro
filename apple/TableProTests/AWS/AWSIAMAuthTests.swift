@@ -146,9 +146,17 @@ struct RegistryAWSIAMFieldsTests {
         #expect(field?.isSecure == true)
     }
 
-    @Test("Redshift and CockroachDB do not offer AWS IAM auth")
+    @Test("Redshift offers AWS IAM auth with its own endpoint field, not the RDS one")
+    func redshiftHasIAM() {
+        let ids = fieldIds(forTypeId: "Redshift")
+        #expect(ids.contains("awsAuth"))
+        #expect(ids.contains("awsProfileName"))
+        #expect(ids.contains(RedshiftIAMSignIn.endpointFieldId))
+        #expect(!ids.contains("awsRDSEndpoint"))
+    }
+
+    @Test("CockroachDB, TiDB and Databend do not offer AWS IAM auth")
     func excludedTypesHaveNoIAM() {
-        #expect(!fieldIds(forTypeId: "Redshift").contains("awsAuth"))
         #expect(!fieldIds(forTypeId: "CockroachDB").contains("awsAuth"))
         #expect(!fieldIds(forTypeId: "TiDB").contains("awsAuth"))
         #expect(!fieldIds(forTypeId: "Databend").contains("awsAuth"))

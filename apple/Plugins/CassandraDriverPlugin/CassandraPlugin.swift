@@ -25,7 +25,8 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin, Pl
     static let databaseDisplayName = "Cassandra / ScyllaDB"
     static let iconName = "cassandra-icon"
     static let defaultPort = 9_042
-    static let additionalConnectionFields: [ConnectionField] = AWSAuthFields.standard()
+    static let additionalConnectionFields: [ConnectionField] =
+        AWSAuthFields.standard() + CassandraConsistency.connectionFields
     static let additionalDatabaseTypeIds: [String] = ["ScyllaDB"]
 
     // MARK: - UI/Capability Metadata
@@ -35,6 +36,7 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin, Pl
     static let supportsForeignKeys = false
     static let supportsRoutines = true
     static let supportsDatabaseTriggerBrowse = true
+    static let supportsUserDefinedTypeBrowse = true
     static let brandColorHex = "#26A0D8"
     static let queryLanguageName = "CQL"
     static let supportsDatabaseSwitching = true
@@ -127,6 +129,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     let activeBrowse = CassandraActiveBrowse()
     private let stateLock = NSLock()
     nonisolated(unsafe) private var _currentKeyspace: String?
+    nonisolated(unsafe) private var _sessionConsistency: CassandraConsistency?
 
     private static let logger = Logger(subsystem: "com.TablePro.CassandraDriver", category: "Driver")
 
@@ -134,6 +137,11 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         stateLock.lock()
         defer { stateLock.unlock() }
         return _currentKeyspace
+    }
+
+    // One driver serves every tab on the connection, so a CONSISTENCY line holds for all of them until disconnect.
+    var sessionConsistency: CassandraConsistency? {
+        stateLock.withLock { _sessionConsistency }
     }
 
     var serverVersion: String? {
@@ -169,6 +177,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let connectDeadline = CassandraConnectDeadline(
             timeout: CassandraConnectTimeout(additionalFields: config.additionalFields)
         )
+        let consistency = try CassandraConsistency(additionalFields: config.additionalFields, host: config.host)
         let keyspace = config.database.isEmpty ? nil : config.database
         let legacyCaPath = config.additionalFields["sslCaCertPath"]
         let resolvedCaPath = config.ssl.caCertificatePath.isEmpty ? legacyCaPath : config.ssl.caCertificatePath
@@ -221,8 +230,11 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             connectTimeout: CassandraConnectTimeout(milliseconds: Int(remainingConnectMilliseconds))
         )
 
-        if let keyspace {
-            stateLock.withLock { _currentKeyspace = keyspace }
+        stateLock.withLock {
+            _sessionConsistency = consistency
+            if let keyspace {
+                _currentKeyspace = keyspace
+            }
         }
 
         guard let versionProbeMilliseconds = connectDeadline.remainingMilliseconds() else {
@@ -259,6 +271,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         stateLock.withLock {
             _currentKeyspace = nil
             _cachedVersion = nil
+            _sessionConsistency = nil
         }
     }
 
@@ -267,14 +280,11 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         Task.detached(priority: .utility) { [connectionActor] in
             await connectionActor.close()
         }
-        stateLock.lock()
-        _currentKeyspace = nil
-        _cachedVersion = nil
-        stateLock.unlock()
+        clearConnectedState()
     }
 
     func ping() async throws {
-        _ = try await execute(query: "SELECT key FROM system.local WHERE key = 'local'")
+        _ = try await executeCatalogQuery("SELECT key FROM system.local WHERE key = 'local'")
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
@@ -285,12 +295,26 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
+        if let command = try CassandraShellCommand.parse(query) {
+            return try run(command)
+        }
+        return try await runStatement(query, consistency: sessionConsistency)
+    }
+
+    // At the driver default, as cqlsh runs DESCRIBE at LOCAL_ONE: ANY refuses reads, and the schema and ping must still work.
+    func executeCatalogQuery(_ query: String) async throws -> PluginQueryResult {
+        try await runStatement(query, consistency: nil)
+    }
+
+    private func runStatement(_ query: String, consistency: CassandraConsistency?) async throws -> PluginQueryResult {
         if let browse = CassandraBrowseStatement.parse(query) {
-            return try await runBrowse(browse)
+            return try await runBrowse(browse, consistency: consistency)
         }
         let cancellation = activeBrowse.begin()
         defer { activeBrowse.end(cancellation) }
-        let rawResult = try await connectionActor.executeQuery(query, cancellation: cancellation)
+        let rawResult = try await connectionActor.executeQuery(
+            query, consistency: consistency, cancellation: cancellation
+        )
         if let refusal = CassandraRowWriter.unappliedInsertRefusal(
             statement: query, columns: rawResult.columns, rows: rawResult.rows
         ) {
@@ -301,7 +325,26 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             columnTypeNames: rawResult.columnTypeNames,
             rows: rawResult.rows,
             rowsAffected: rawResult.rowsAffected,
-            executionTime: rawResult.executionTime
+            executionTime: rawResult.executionTime,
+            statusMessage: consistency?.statusMessage(columns: rawResult.columns)
+        )
+    }
+
+    private func run(_ command: CassandraShellCommand) throws -> PluginQueryResult {
+        let message = stateLock.withLock { () -> String? in
+            guard var consistency = _sessionConsistency else { return nil }
+            let message = command.apply(to: &consistency)
+            _sessionConsistency = consistency
+            return message
+        }
+        guard let message else { throw CassandraPluginError.notConnected }
+        return PluginQueryResult(
+            columns: [],
+            columnTypeNames: [],
+            rows: [],
+            rowsAffected: 0,
+            executionTime: 0,
+            statusMessage: message
         )
     }
 
@@ -309,10 +352,16 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         query: String,
         parameters: [PluginCellValue]
     ) async throws -> PluginQueryResult {
-        if let browse = CassandraBrowseStatement.parse(query) {
-            return try await runBrowse(browse)
+        if let command = try CassandraShellCommand.parse(query) {
+            return try run(command)
         }
-        let rawResult = try await connectionActor.executePrepared(query, parameters: parameters)
+        let consistency = sessionConsistency
+        if let browse = CassandraBrowseStatement.parse(query) {
+            return try await runBrowse(browse, consistency: consistency)
+        }
+        let rawResult = try await connectionActor.executePrepared(
+            query, parameters: parameters, consistency: consistency
+        )
         if let refusal = CassandraRowWriter.unappliedInsertRefusal(
             statement: query, columns: rawResult.columns, rows: rawResult.rows
         ) {
@@ -323,7 +372,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             columnTypeNames: rawResult.columnTypeNames,
             rows: rawResult.rows,
             rowsAffected: rawResult.rowsAffected,
-            executionTime: rawResult.executionTime
+            executionTime: rawResult.executionTime,
+            statusMessage: consistency?.statusMessage(columns: rawResult.columns)
         )
     }
 
@@ -339,7 +389,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
                 rows: Array(whole.rows.prefix(rowCap)),
                 rowsAffected: rowCap,
                 executionTime: whole.executionTime,
-                isTruncated: true
+                isTruncated: true,
+                statusMessage: whole.statusMessage
             )
         }
         guard let rowCap, rowCap > 0, let bounded = try await executeBoundedQuery(query: query, rowCap: rowCap) else {
@@ -351,14 +402,22 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     // MARK: - Streaming
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        if let command = try CassandraShellCommand.parse(query) {
+            return try run(command)
+        }
+        let consistency = sessionConsistency
         if let browse = CassandraBrowseStatement.parse(query) {
-            return try await runBrowse(browse.cappedAt(rowCap: rowCap), rowCap: rowCap)
+            return try await runBrowse(browse.cappedAt(rowCap: rowCap), consistency: consistency, rowCap: rowCap)
         }
         let bounded: PluginQueryResult
         do {
-            bounded = try await boundedQueryFromStream(query: query, rowCap: rowCap)
+            bounded = try await PluginBoundedStream.collect(
+                streamRows(query: query, consistency: consistency),
+                rowCap: rowCap,
+                startedAt: Date()
+            )
         } catch let error as CassandraPluginError where error.refusesPaging {
-            let whole = try await execute(query: query)
+            let whole = try await runStatement(query, consistency: consistency)
             let isTruncated = whole.rows.count > rowCap
             return PluginQueryResult(
                 columns: whole.columns,
@@ -366,7 +425,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
                 rows: isTruncated ? Array(whole.rows.prefix(rowCap)) : whole.rows,
                 rowsAffected: min(whole.rows.count, rowCap),
                 executionTime: whole.executionTime,
-                isTruncated: isTruncated
+                isTruncated: isTruncated,
+                statusMessage: whole.statusMessage
             )
         }
         /// The buffered path reports a read's row count here, so a bounded read reports the same
@@ -378,19 +438,45 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             rowsAffected: bounded.rows.count,
             executionTime: bounded.executionTime,
             isTruncated: bounded.isTruncated,
-            statusMessage: bounded.statusMessage
+            statusMessage: consistency?.statusMessage(columns: bounded.columns)
         )
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let command: CassandraShellCommand?
+        do {
+            command = try CassandraShellCommand.parse(query)
+            if let command {
+                _ = try run(command)
+            }
+        } catch {
+            return PluginRowStream.make { continuation, _ in
+                continuation.finish(throwing: error)
+            }
+        }
+        guard command == nil else {
+            return PluginRowStream.make { continuation, _ in
+                continuation.yield(.header(PluginStreamHeader(columns: [], columnTypeNames: [], estimatedRowCount: nil)))
+                continuation.finish()
+            }
+        }
+        return streamRows(query: query, consistency: sessionConsistency)
+    }
+
+    private func streamRows(
+        query: String,
+        consistency: CassandraConsistency?
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         if let browse = CassandraBrowseStatement.parse(query) {
-            return streamBrowse(browse)
+            return streamBrowse(browse, consistency: consistency)
         }
         let cql = stripTrailingSemicolon(query)
         return PluginRowStream.make { continuation, abort in
             let streamTask = Task {
                 do {
-                    try await self.connectionActor.streamQuery(cql, abort: abort, continuation: continuation)
+                    try await self.connectionActor.streamQuery(
+                        cql, consistency: consistency, abort: abort, continuation: continuation
+                    )
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -408,7 +494,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let tablesQuery = """
             SELECT table_name FROM system_schema.tables WHERE keyspace_name = '\(escapeSingleQuote(ks))'
         """
-        let tablesResult = try await execute(query: tablesQuery)
+        let tablesResult = try await executeCatalogQuery(tablesQuery)
 
         let tables = tablesResult.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
@@ -426,7 +512,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             WHERE keyspace_name = '\(escapeSingleQuote(ks))'
               AND table_name = '\(escapeSingleQuote(table))'
         """
-        let result = try await execute(query: query)
+        let result = try await executeCatalogQuery(query)
 
         struct RawColumn {
             let name: String
@@ -470,7 +556,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             FROM system_schema.columns
             WHERE keyspace_name = '\(escapeSingleQuote(ks))'
         """
-        let result = try await execute(query: query)
+        let result = try await executeCatalogQuery(query)
 
         var allColumns: [String: [PluginColumnInfo]] = [:]
 
@@ -507,7 +593,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         """
 
         do {
-            let result = try await execute(query: query)
+            let result = try await executeCatalogQuery(query)
             return result.rows.compactMap { row in
                 guard let name = row[safe: 0]?.asText else { return nil }
                 let kind = row[safe: 1]?.asText ?? "COMPOSITES"
@@ -540,7 +626,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
         let ks = resolveKeyspace(schema)
-        let result = try await execute(query: """
+        let result = try await executeCatalogQuery("""
             SELECT index_name, kind, options
             FROM system_schema.indexes
             WHERE keyspace_name = '\(escapeSingleQuote(ks))'
@@ -594,7 +680,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             WHERE keyspace_name = '\(escapeSingleQuote(keyspace))'
               AND view_name = '\(escapeSingleQuote(name))'
             """
-        guard let result = try? await execute(query: query) else { return false }
+        guard let result = try? await executeCatalogQuery(query) else { return false }
         return !result.rows.isEmpty
     }
 
@@ -606,7 +692,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             WHERE keyspace_name = '\(escapeSingleQuote(ks))'
               AND view_name = '\(escapeSingleQuote(view))'
         """
-        let result = try await execute(query: query)
+        let result = try await executeCatalogQuery(query)
 
         guard let row = result.rows.first else {
             throw CassandraPluginError.queryFailed("View '\(view)' not found")
@@ -633,7 +719,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         let query = CassandraObjectQueries.tableComment(keyspace: resolveKeyspace(schema), table: table)
-        let result = try await execute(query: query)
+        let result = try await executeCatalogQuery(query)
         let comment = result.rows.first?[safe: 0]?.asText
         return PluginTableMetadata(tableName: table, comment: comment?.isEmpty == false ? comment : nil, engine: "Cassandra")
     }
@@ -651,7 +737,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     func fetchDatabases() async throws -> [String] {
         let query = "SELECT keyspace_name FROM system_schema.keyspaces"
-        let result = try await execute(query: query)
+        let result = try await executeCatalogQuery(query)
         let systemKeyspaces: Set<String> = [
             "system", "system_schema", "system_auth",
             "system_distributed", "system_traces", "system_virtual_schema",

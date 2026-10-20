@@ -15,9 +15,7 @@ internal enum DriverUnavailability: Equatable, Sendable {
 
 extension PluginManager {
     func installedEntry(servingTypeId typeId: String) -> PluginEntry? {
-        plugins.first { entry in
-            entry.databaseTypeId == typeId || entry.additionalTypeIds.contains(typeId)
-        }
+        plugins.first { $0.serves(typeId) }
     }
 
     func driverUnavailability(
@@ -25,6 +23,13 @@ extension PluginManager {
         registryManifest: RegistryManifest? = RegistryClient.shared.manifest
     ) -> DriverUnavailability {
         let typeId = databaseType.pluginTypeId
+        if let entry = installedEntry(servingTypeId: typeId), !entry.serves(databaseType.rawValue) {
+            return .outdated(reason: String(
+                format: String(localized: "The installed %1$@ does not support %2$@. Update it in Settings > Plugins."),
+                entry.name,
+                Self.registryDisplayName(of: databaseType)
+            ))
+        }
         if let entry = installedEntry(servingTypeId: typeId) {
             let rejection = rejectedPlugins.first { $0.providedDatabaseTypeIds.contains(typeId) }
             return .failedToLoad(pluginId: entry.id, pluginName: entry.name, reason: rejection?.reason)
@@ -59,5 +64,11 @@ extension PluginManager {
         case .notInstalled:
             return .pluginNotInstalled(Self.registryDisplayName(of: databaseType))
         }
+    }
+}
+
+extension PluginEntry {
+    func serves(_ typeId: String) -> Bool {
+        databaseTypeId == typeId || additionalTypeIds.contains(typeId)
     }
 }

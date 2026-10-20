@@ -76,7 +76,7 @@ enum CellExpressionVocabulary {
         case .spanner: spanner
         case .bigQuery: bigQuery
         case .snowflake: snowflake
-        case .trino: trino
+        case .trino, .presto: trino
         default: []
         }
     }
@@ -100,7 +100,7 @@ enum CellExpressionVocabulary {
     /// INSERT leaves the column out.
     static func updateTakesDefault(_ databaseType: DatabaseType) -> Bool {
         switch databaseType {
-        case .sqlite, .libsql, .turso, .cloudflareD1, .clickhouse, .databend, .snowflake, .trino,
+        case .sqlite, .libsql, .turso, .cloudflareD1, .clickhouse, .databend, .snowflake, .trino, .presto,
              .cassandra, .scylladb:
             false
         default:

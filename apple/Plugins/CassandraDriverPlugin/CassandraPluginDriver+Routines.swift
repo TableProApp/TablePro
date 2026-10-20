@@ -39,7 +39,7 @@ extension CassandraPluginDriver {
     }
 
     private func fetchCassandraFunctions(keyspace: String) async throws -> [PluginRoutineInfo] {
-        let result = try await execute(query: CassandraObjectQueries.functionList(keyspace: keyspace))
+        let result = try await executeCatalogQuery(CassandraObjectQueries.functionList(keyspace: keyspace))
         return result.rows.compactMap { row -> PluginRoutineInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let signature = CassandraObjectQueries.signature(
@@ -74,7 +74,7 @@ extension CassandraPluginDriver {
     }
 
     private func fetchCassandraAggregates(keyspace: String) async throws -> [PluginRoutineInfo] {
-        let result = try await execute(query: CassandraObjectQueries.aggregateList(keyspace: keyspace))
+        let result = try await executeCatalogQuery(CassandraObjectQueries.aggregateList(keyspace: keyspace))
         return result.rows.compactMap { row -> PluginRoutineInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let signature = CassandraObjectQueries.signature(
@@ -113,7 +113,7 @@ extension CassandraPluginDriver {
     }
 
     func cassandraTriggerList(keyspace: String, table: String?) async throws -> [PluginTriggerInfo] {
-        let result = try await execute(query: CassandraObjectQueries.triggerList(keyspace: keyspace, table: table))
+        let result = try await executeCatalogQuery(CassandraObjectQueries.triggerList(keyspace: keyspace, table: table))
         return result.rows.compactMap { row -> PluginTriggerInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let className = CassandraObjectQueries.triggerClass(fromOptions: row[safe: 3]?.asText) ?? ""
