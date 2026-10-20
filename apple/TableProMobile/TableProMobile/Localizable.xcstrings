@@ -3754,6 +3754,12 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Commit" : {
+
+    },
+    "Commit the Transaction?" : {
+
+    },
     "Computed by the database" : {
       "localizations" : {
         "ko" : {
@@ -9429,6 +9435,9 @@
         }
       }
     },
+    "Its changes are saved to the database." : {
+
+    },
     "Its subgroups are deleted too. Their connections move to Ungrouped." : {
       "localizations" : {
         "ko" : {
@@ -9456,6 +9465,9 @@
           }
         }
       }
+    },
+    "Its uncommitted changes are discarded." : {
+
     },
     "JSON" : {
       "extractionState" : "manual",
@@ -13092,6 +13104,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Other work ran on this connection before you confirmed. Check the transaction and try again." : {
+
+    },
     "PING failed: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -14673,6 +14688,15 @@
           }
         }
       }
+    },
+    "Roll Back" : {
+
+    },
+    "Roll Back the Transaction?" : {
+
+    },
+    "Roll it back to continue." : {
+
     },
     "Rosette" : {
       "extractionState" : "manual",
@@ -16915,6 +16939,12 @@
         }
       }
     },
+    "Switch" : {
+
+    },
+    "Switch Database?" : {
+
+    },
     "Switching..." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -18396,6 +18426,12 @@
         }
       }
     },
+    "The connection to %@ was lost before the server answered, so its open transaction may have been committed or rolled back. It has been reconnected; check which of its changes were saved before running them again." : {
+
+    },
+    "The connection to %@ was lost while it waited, and the server rolled back its open transaction. It has been reconnected; run the statements again." : {
+
+    },
     "The connection was lost while a transaction was open. Check which of its changes were saved before running them again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -18515,6 +18551,9 @@
     "The database name is longer than the 128 bytes FreeTDS takes." : {
 
     },
+    "The database “%@” has an open transaction. Switching rolls it back and discards its uncommitted changes." : {
+
+    },
     "The encrypted file is corrupt or incomplete" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -18544,6 +18583,9 @@
           }
         }
       }
+    },
+    "The failed transaction was rolled back. None of its changes were kept." : {
+
     },
     "The FreeTDS configuration could not be written: %@" : {
       "extractionState" : "manual",
@@ -19337,6 +19379,9 @@
         }
       }
     },
+    "The session that held this transaction has ended." : {
+
+    },
     "The server's SSH host key has changed. Open this connection in TablePro to check it." : {
       "localizations" : {
         "ko" : {
@@ -19523,6 +19568,9 @@
           }
         }
       }
+    },
+    "The transaction on this connection can no longer be committed. Roll it back." : {
+
     },
     "The transaction on this connection is still open. Commit or roll it back." : {
 
@@ -20747,6 +20795,27 @@
           }
         }
       }
+    },
+    "Transaction Failed" : {
+
+    },
+    "Transaction Open" : {
+
+    },
+    "Transaction failed on %1$@, %2$@. Roll it back to continue." : {
+
+    },
+    "Transaction failed on %@. Roll it back to continue." : {
+
+    },
+    "Transaction open" : {
+
+    },
+    "Transaction open on %1$@, %2$@" : {
+
+    },
+    "Transaction open on %@" : {
+
     },
     "Transfer" : {
       "extractionState" : "manual",

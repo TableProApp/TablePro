@@ -71,6 +71,13 @@ struct ConnectionListRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
+            if model.holdsTransaction {
+                Image(systemName: TransactionIndicatorContent.openSymbolName)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+            }
+
             if model.showsFavoriteMark {
                 Image(systemName: "star.fill")
                     .font(.caption)

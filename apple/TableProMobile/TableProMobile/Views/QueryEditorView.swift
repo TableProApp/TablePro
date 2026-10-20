@@ -548,7 +548,9 @@ struct QueryEditorView: View {
 
         let progressUpdater = startActivityProgressUpdater(token: token)
 
-        await viewModel.run(driver: session.driver, script: script)
+        await coordinator.track(failed: { _ in QueryExecutionOutcome(phase: viewModel.phase) == .failed }) {
+            await viewModel.run(driver: session.driver, script: script)
+        }
 
         progressUpdater.cancel()
         let phase = viewModel.phase

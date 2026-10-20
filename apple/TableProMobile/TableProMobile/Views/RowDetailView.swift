@@ -3,6 +3,7 @@ import TableProDatabase
 import TableProModels
 
 struct RowDetailView: View {
+    @Environment(ConnectionCoordinator.self) private var coordinator
     @State private var viewModel: RowDetailViewModel
     @State private var fkPreviewItem: FKPreviewItem?
     @State private var showShareSheet = false
@@ -76,6 +77,8 @@ struct RowDetailView: View {
                 rowNavigator
             }
         }
+        .transactionBar(for: coordinator)
+        .leavesAfterRollBack(of: coordinator, isTableRow: viewModel.table != nil, isEditing: viewModel.isEditing)
         .navigationBarBackButtonHidden(viewModel.isEditing)
         .holdsScene(withUnsavedChanges: viewModel.hasUnsavedEdits)
         .navigationTitle(viewModel.table?.name ?? String(format: String(localized: "Row %d of %d"), viewModel.currentIndex + 1, viewModel.rows.count))
@@ -357,7 +360,9 @@ struct RowDetailView: View {
     }
 
     private func handleSave() async {
-        let success = await viewModel.saveChanges()
+        let success = await coordinator.track(failed: { _ in viewModel.operationError != nil }) {
+            await viewModel.saveChanges()
+        }
         if viewModel.pendingWriteConfirmation {
             showSaveConfirmation = true
             return
@@ -370,7 +375,9 @@ struct RowDetailView: View {
     }
 
     private func executePendingSave() async {
-        let success = await viewModel.executePendingSave()
+        let success = await coordinator.track(failed: { _ in viewModel.operationError != nil }) {
+            await viewModel.executePendingSave()
+        }
         if success {
             hapticSuccess.toggle()
         } else {

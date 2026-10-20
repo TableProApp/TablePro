@@ -104,12 +104,22 @@ struct DataBrowserView: View {
                 )
                 await viewModel.load(isInitial: true)
             }
-            .onChange(of: activeSchema) { _, newSchema in
+            // A redial or another window's database switch hands this table a new session.
+            .onChange(of: BrowseSource(session: session, schema: activeSchema)) { _, source in
+                guard source.driver != nil else { return }
                 viewModel.attach(
                     session: session, table: table, databaseType: connection.type,
-                    host: connection.host, schema: newSchema
+                    host: connection.host, schema: source.schema
                 )
                 Task { await viewModel.load(isInitial: true) }
+            }
+            .onChange(of: appState.sessionTransactions.rollBackCount(for: connection.id)) {
+                Task { await viewModel.load() }
+            }
+            // With autocommit off, a MySQL read opens a transaction.
+            .onChange(of: viewModel.isLoading || viewModel.isPageLoading) { _, loading in
+                guard !loading else { return }
+                Task { await coordinator.refreshTransaction() }
             }
             .onDisappear { viewModel.cancel() }
             .sheet(isPresented: $showInsertSheet) { insertSheet }
@@ -179,6 +189,7 @@ struct DataBrowserView: View {
             .sensoryFeedback(.error, trigger: hapticError)
             .navigationDestination(isPresented: $showStructure) {
                 StructureView(table: table, session: session, databaseType: connection.type)
+                    .transactionBar(for: coordinator)
             }
             .alert("Go to Page", isPresented: $showGoToPage) {
                 TextField("Page number", text: $goToPageInput)
@@ -515,11 +526,21 @@ struct DataBrowserView: View {
     }
 
     private func performDelete(_ pkValues: [(column: String, value: String)]) async {
-        let success = await viewModel.deleteRow(pkValues: pkValues)
+        let success = await coordinator.track(failed: { !$0 }) { await viewModel.deleteRow(pkValues: pkValues) }
         if success {
             hapticSuccess.toggle()
         } else {
             hapticError.toggle()
         }
+    }
+}
+
+private struct BrowseSource: Equatable {
+    let driver: ObjectIdentifier?
+    let schema: String?
+
+    init(session: ConnectionSession?, schema: String?) {
+        driver = session.map { ObjectIdentifier($0.driver) }
+        self.schema = schema
     }
 }

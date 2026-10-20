@@ -378,7 +378,8 @@ struct ConnectionListView: View {
                     connection: connection,
                     section: section,
                     tags: appState.tags,
-                    groups: appState.groups
+                    groups: appState.groups,
+                    holdsTransaction: appState.sessionTransactions.hold(for: connection.id) != nil
                 ),
                 isRenaming: renamingRow == rowId,
                 onOpen: { open(connection.id) },

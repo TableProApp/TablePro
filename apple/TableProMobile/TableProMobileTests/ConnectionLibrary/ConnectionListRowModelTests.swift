@@ -56,4 +56,25 @@ struct ConnectionListRowModelTests {
         #expect(row.title == "db.acme.io")
         #expect(!row.accessibilityLabel.contains("·"))
     }
+
+    @Test("A row whose session holds a transaction says so after Favorite, since its mark is not read on its own")
+    func transactionIsSpokenAfterFavorite() {
+        let connection = DatabaseConnection(name: "Prod", type: .postgresql, isFavorite: true)
+
+        let holding = ConnectionListRowModel(
+            connection: connection,
+            section: .connections,
+            tags: [],
+            groups: [],
+            holdsTransaction: true
+        )
+        let idle = ConnectionListRowModel(connection: connection, section: .connections, tags: [], groups: [])
+
+        #expect(holding.holdsTransaction)
+        #expect(holding.accessibilityLabel.hasSuffix(
+            [String(localized: "Favorite"), String(localized: "Transaction open")].joined(separator: ", ")
+        ))
+        #expect(!idle.holdsTransaction)
+        #expect(!idle.accessibilityLabel.contains(String(localized: "Transaction open")))
+    }
 }

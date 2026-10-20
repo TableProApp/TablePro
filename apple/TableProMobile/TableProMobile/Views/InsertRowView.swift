@@ -12,6 +12,7 @@ struct InsertRowView: View {
     var onInserted: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(ConnectionCoordinator.self) private var coordinator
 
     /// A column absent from this dictionary is left out of the `INSERT` so the database applies
     /// its own default. Keying by name rather than by position is what keeps the state from
@@ -295,7 +296,7 @@ struct InsertRowView: View {
         defer { isSaving = false }
 
         do {
-            try await session.driver.executeWrite([sql])
+            _ = try await coordinator.track { try await session.driver.executeWrite([sql]) }
             hapticSuccess.toggle()
             onInserted?()
             dismiss()

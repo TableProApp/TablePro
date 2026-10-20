@@ -359,7 +359,12 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func sessionTransactionState() async -> DriverTransactionState {
-        await actor.transactionState()
+        guard Self.reportsSessionStatusFlags(for: databaseType, banner: serverVersion) else { return .unknown }
+        return await actor.transactionState()
+    }
+
+    static func reportsSessionStatusFlags(for databaseType: DatabaseType, banner: String?) -> Bool {
+        serverFlavor(for: databaseType, banner: banner).reportsSessionStatusFlags
     }
 
     /// Databend reports no `NO_BACKSLASH_ESCAPES` flag, so its session says nothing.

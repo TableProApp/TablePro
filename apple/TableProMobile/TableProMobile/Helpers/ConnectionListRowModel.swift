@@ -28,12 +28,14 @@ nonisolated struct ConnectionListRowModel: Hashable, Sendable {
     let groupLabel: ConnectionListGroupLabel?
     let isFavorite: Bool
     let showsFavoriteMark: Bool
+    let holdsTransaction: Bool
 
     init(
         connection: DatabaseConnection,
         section: LibrarySectionKind,
         tags allTags: [ConnectionTag],
-        groups: [ConnectionGroup]
+        groups: [ConnectionGroup],
+        holdsTransaction: Bool = false
     ) {
         id = connection.id
         title = connection.name.isEmpty ? connection.host : connection.name
@@ -43,6 +45,7 @@ nonisolated struct ConnectionListRowModel: Hashable, Sendable {
         color = connection.color
         isFavorite = connection.isFavorite
         showsFavoriteMark = connection.isFavorite && section == .connections
+        self.holdsTransaction = holdsTransaction
 
         let tagsById = Dictionary(allTags.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let resolved = connection.tagIds.compactMap { tagsById[$0] }
@@ -67,6 +70,9 @@ nonisolated struct ConnectionListRowModel: Hashable, Sendable {
         }
         if isFavorite {
             parts.append(String(localized: "Favorite"))
+        }
+        if holdsTransaction {
+            parts.append(String(localized: "Transaction open"))
         }
         return parts.joined(separator: ", ")
     }
