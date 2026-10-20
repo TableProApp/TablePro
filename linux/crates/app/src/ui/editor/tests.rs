@@ -296,10 +296,17 @@ fn button_labelled(harness: &Harness, label: &str) -> gtk4::Button {
 
 /// It and every container up to the editor are visible.
 fn shown(harness: &Harness, widget: &impl IsA<gtk4::Widget>) -> bool {
+    hidden_ancestor(harness, widget).is_none()
+}
+
+/// The first of it and its containers up to the editor that is hidden, by type, for a failure message.
+/// Each widget's own flag: `is_visible` also asks the window, which these tests never show.
+fn hidden_ancestor(harness: &Harness, widget: &impl IsA<gtk4::Widget>) -> Option<String> {
     let editor = harness.editor.upcast_ref::<gtk4::Widget>();
     std::iter::successors(Some(widget.as_ref().clone()), |widget| widget.parent())
         .take_while(|widget| widget != editor)
-        .all(|widget| widget.is_visible())
+        .find(|widget| !widget.get_visible())
+        .map(|widget| format!("{} {:?}", widget.type_().name(), widget.widget_name()))
 }
 
 #[gtk4::test]
@@ -309,8 +316,9 @@ fn commit_runs_on_the_tabs_session_and_keeps_the_script() {
     run_and_wait(&harness);
     let before = sent(&harness.fake);
     let commit = button_labelled(&harness, "Commit");
-    assert!(shown(&harness, &commit) && commit.is_sensitive());
-    assert!(shown(&harness, &button_labelled(&harness, "Roll Back")));
+    assert_eq!(hidden_ancestor(&harness, &commit), None);
+    assert!(commit.is_sensitive(), "Commit is off with a transaction open");
+    assert_eq!(hidden_ancestor(&harness, &button_labelled(&harness, "Roll Back")), None);
 
     commit.emit_clicked();
     assert!(harness.editor.is_running(), "Commit did not start a run");
@@ -339,7 +347,7 @@ fn a_failed_transaction_offers_only_roll_back() {
     run_and_wait(&harness);
 
     assert_eq!(harness.editor.open_transaction(), Some(OpenTransaction::Failed));
-    assert!(shown(&harness, &button_labelled(&harness, "Roll Back")));
+    assert_eq!(hidden_ancestor(&harness, &button_labelled(&harness, "Roll Back")), None);
     assert!(!shown(&harness, &button_labelled(&harness, "Commit")));
 }
 

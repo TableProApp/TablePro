@@ -224,8 +224,8 @@ struct IOSSyncCoordinatorTests {
         #expect(pushed.first { $0.id == local.id }?.name == "New")
     }
 
-    @Test("A copy stored before this build read them takes the profile link and route from the cached record")
-    func olderCopyTakesProfileAndRouteFromTheCache() async throws {
+    @Test("A copy stored before this build read it takes the profile link from the cached record")
+    func olderCopyTakesProfileFromTheCache() async throws {
         let box = LibraryStateBox()
         let local = DatabaseConnection(
             name: "Profile",
@@ -241,6 +241,35 @@ struct IOSSyncCoordinatorTests {
         let transport = FakeSyncTransport(remoteRecords: [], box: box)
         let coordinator = makeCoordinator(box: box, transport: transport)
 
+        await coordinator.sync()
+
+        #expect(box.connections.first?.sshProfileId == profileId)
+    }
+
+    @Test("A cached profile link whose save failed is read again on the next sync")
+    func failedSaveReadsTheCacheAgain() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(
+            name: "Profile",
+            type: .postgresql,
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "db", username: "")
+        )
+        box.connections = [local]
+        let cached = SyncRecordMapper.toRecord(local, zoneID: zoneID)
+        let profileId = UUID()
+        cached[ConnectionSyncField.sshProfileId.key] = profileId.uuidString as CKRecordValue
+        SyncRecordCache(directory: cacheDirectory, defaults: nil).store([cached])
+        let coordinator = makeCoordinator(box: box, transport: FakeSyncTransport(remoteRecords: [], box: box))
+        coordinator.onConnectionsChanged = { merged in
+            guard box.saves else { return false }
+            box.connections = merged
+            return true
+        }
+
+        box.saves = false
+        await coordinator.sync()
+        box.saves = true
         await coordinator.sync()
 
         #expect(box.connections.first?.sshProfileId == profileId)
