@@ -64,7 +64,6 @@ struct ClickHouseDMLStatementTests {
         #expect(sql.contains("UPDATE"))
         #expect(sql.contains("WHERE"))
         #expect(sql.contains("`users`"))
-        #expect(sql.hasSuffix(" SETTINGS mutations_sync = 1"))
     }
 
     @Test("A delete becomes ALTER TABLE ... DELETE WHERE")
@@ -84,7 +83,6 @@ struct ClickHouseDMLStatementTests {
         #expect(sql.hasPrefix("ALTER TABLE"))
         #expect(sql.contains("DELETE WHERE"))
         #expect(sql.contains("`users`"))
-        #expect(sql.hasSuffix(" SETTINGS mutations_sync = 1"))
     }
 
     /// Inserts are ordinary. Only the two mutating statements need the ALTER form, and asserting it

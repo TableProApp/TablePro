@@ -11,6 +11,7 @@ struct ClickHouseOnIOSTests {
         return PluginBackedDriver(
             plugin: ClickHousePluginDriver(config: config),
             dialedHosts: [],
+            rowChangeSuffix: IOSDriverFactory.clickHouseWaitsForMutation,
             rowIdentity: .everyColumn,
             readsOnly: { _ in true }
         )

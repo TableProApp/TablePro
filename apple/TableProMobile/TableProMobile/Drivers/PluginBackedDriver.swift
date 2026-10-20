@@ -11,6 +11,7 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
     private let plugin: any PluginDatabaseDriver
     private let dialedHosts: [String]
     private let queryTimeoutSeconds: Int?
+    private let rowChangeSuffix: String
     private let readsOnly: @Sendable (String) -> Bool
     let rowIdentity: RowIdentity
 
@@ -18,12 +19,14 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         plugin: any PluginDatabaseDriver,
         dialedHosts: [String],
         queryTimeoutSeconds: Int? = nil,
+        rowChangeSuffix: String = "",
         rowIdentity: RowIdentity,
         readsOnly: @escaping @Sendable (String) -> Bool
     ) {
         self.plugin = plugin
         self.dialedHosts = dialedHosts
         self.queryTimeoutSeconds = queryTimeoutSeconds
+        self.rowChangeSuffix = rowChangeSuffix
         self.rowIdentity = rowIdentity
         self.readsOnly = readsOnly
     }
@@ -254,13 +257,18 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
             return (index, change.column, old, PluginCellValue(optionalText: change.value))
         }
         let rowChange = PluginRowChange(rowIndex: 0, type: .update, cellChanges: cellChanges, originalRow: original)
-        return try generate(table: table, schema: schema, columns: columns, changes: [rowChange])
+        return try generate(table: table, schema: schema, columns: columns, changes: [rowChange]).map(finishingRowChange)
     }
 
     func deleteWrites(table: String, schema: String?, columns: [String], originalRow: [String?]) throws -> [PluginRowWrite] {
         let original = originalRow.map(PluginCellValue.init(optionalText:))
         let rowChange = PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: original)
         return try generate(table: table, schema: schema, columns: columns, changes: [rowChange], deleted: [0])
+            .map(finishingRowChange)
+    }
+
+    private func finishingRowChange(_ write: PluginRowWrite) -> PluginRowWrite {
+        PluginRowWrite(statement: write.statement + rowChangeSuffix, parameters: write.parameters, rowIndices: write.rowIndices)
     }
 
     func insertWrites(

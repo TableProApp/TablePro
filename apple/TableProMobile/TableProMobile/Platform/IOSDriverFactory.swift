@@ -134,6 +134,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 plugin: ClickHousePluginDriver(config: pluginConfig(for: connection, password: password, ssl: try ssl(for: connection))),
                 dialedHosts: [connection.host],
                 queryTimeoutSeconds: connection.queryTimeoutSeconds,
+                rowChangeSuffix: Self.clickHouseWaitsForMutation,
                 rowIdentity: .everyColumn,
                 readsOnly: { !SQLWriteClassifier.isWriteQuery($0, databaseType: .clickhouse) }
             )
@@ -141,6 +142,10 @@ nonisolated final class IOSDriverFactory: DriverFactory {
             throw ConnectionError.driverNotFound(connection.type.rawValue)
         }
     }
+
+    // A ClickHouse mutation applies in the background unless asked to wait. The row screen keeps the typed values once
+    // a save returns, and a delete looks for the row right after, so both need it applied.
+    static let clickHouseWaitsForMutation = " SETTINGS mutations_sync = 1"
 
     static let supportedTypeList: [DatabaseType] = [
         .sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle,
