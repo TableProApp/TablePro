@@ -35,7 +35,7 @@ struct ConnectionListView: View {
     /// still cancelled without a trace when a handler in the same update clears it, so only a cover
     /// that is on screen dismisses, and only one that is on screen can be waited on.
     @State private var isConnectionCoverOnScreen = false
-    @State private var importResultCount: Int?
+    @State private var importResult: MobileImportOutcomeMessage?
     @State private var actionErrorMessage: String?
     @State private var iCloudAccountAvailable = false
     @State private var tips = ConnectionListTips.makeGroup()
@@ -206,8 +206,10 @@ struct ConnectionListView: View {
         .onChange(of: appState.connections) { _, _ in
             clearUnknownSelection()
         }
-        .alert(importResultMessage, isPresented: importResultPresented) {
-            Button(String(localized: "OK")) { importResultCount = nil }
+        .alert(importResult?.title ?? "", isPresented: importResultPresented, presenting: importResult) { _ in
+            Button(String(localized: "OK")) { importResult = nil }
+        } message: { result in
+            Text(result.message)
         }
         .alert(
             String(localized: "Sample Database Unavailable"),
@@ -710,8 +712,8 @@ struct ConnectionListView: View {
                     }
             }
         case .importFile(let url):
-            MobileConnectionImportSheet(fileURL: url) { count in
-                importResultCount = count
+            MobileConnectionImportSheet(fileURL: url) { outcome in
+                importResult = MobileImportOutcomeMessage(outcome)
             }
             .environment(appState)
         case .export:
@@ -761,8 +763,8 @@ struct ConnectionListView: View {
 
     private var importResultPresented: Binding<Bool> {
         Binding(
-            get: { importResultCount != nil },
-            set: { if !$0 { importResultCount = nil } }
+            get: { importResult != nil },
+            set: { if !$0 { importResult = nil } }
         )
     }
 
@@ -771,13 +773,6 @@ struct ConnectionListView: View {
             get: { actionErrorMessage != nil },
             set: { if !$0 { actionErrorMessage = nil } }
         )
-    }
-
-    private var importResultMessage: String {
-        let count = importResultCount ?? 0
-        return count == 1
-            ? String(localized: "1 connection imported.")
-            : String(format: String(localized: "%d connections imported."), count)
     }
 
     // MARK: - Actions

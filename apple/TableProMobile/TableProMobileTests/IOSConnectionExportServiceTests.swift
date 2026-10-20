@@ -18,11 +18,18 @@ struct IOSConnectionExportServiceTests {
         fixture.makeState(syncEnabled: false, secureStore: secureStore)
     }
 
-    private func exportedBundle(_ connections: [DatabaseConnection], from state: AppState) async throws -> ConnectionBundle {
+    private func exportedBundle(
+        _ connections: [DatabaseConnection],
+        from state: AppState,
+        includeSavedQueries: Bool = true,
+        includeGlobalSavedQueries: Bool = false
+    ) async throws -> ConnectionBundle {
         let data = try await IOSConnectionExportService.exportData(
             connections: connections,
             appState: state,
             includeCredentials: false,
+            includeSavedQueries: includeSavedQueries,
+            includeGlobalSavedQueries: includeGlobalSavedQueries,
             passphrase: nil
         )
         return try ConnectionBundleCodec.decode(data)
@@ -75,7 +82,7 @@ struct IOSConnectionExportServiceTests {
         #expect(!text.contains(keyMarker))
     }
 
-    @Test("An export writes the current file format and no saved queries")
+    @Test("An export writes the current file format, and no saved-query keys when there are no saved queries")
     func exportWritesCurrentFormatWithoutQueries() async throws {
         let text = try await exportedText(includeCredentials: false)
         let object = try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
@@ -83,6 +90,61 @@ struct IOSConnectionExportServiceTests {
         #expect(object["formatVersion"] as? Int == ConnectionBundle.formatVersion)
         #expect(!object.keys.contains("savedQueries"))
         #expect(!object.keys.contains("queryFolders"))
+    }
+
+    @Test("An export carries the exported connections' saved queries with their folders, and global ones only on request")
+    func exportCarriesSavedQueries() async throws {
+        let state = makeState()
+        let orders = DatabaseConnection(name: "Orders", type: .postgresql, host: "db.example.com")
+        let other = DatabaseConnection(name: "Other", type: .postgresql, host: "other.example.com")
+        #expect(state.addConnection(orders))
+        #expect(state.addConnection(other))
+        let reports = SavedQueryFolder(name: "Reports", connectionId: orders.id)
+        #expect(state.savedQueries.insertFolder(reports))
+        #expect(state.savedQueries.insert(SavedQuery(
+            name: "Daily active users", query: "select 1", keyword: "dau", folderId: reports.id, connectionId: orders.id
+        )))
+        #expect(state.savedQueries.insert(SavedQuery(name: "Locks", query: "select 2")))
+        #expect(state.savedQueries.insert(SavedQuery(name: "Other only", query: "select 3", connectionId: other.id)))
+
+        #expect(
+            IOSConnectionExportService.savedQueryCounts(for: [orders], appState: state)
+                == SavedQueryCounts(connectionScoped: 1, global: 1)
+        )
+
+        let scoped = try await exportedBundle([orders], from: state)
+        let query = try #require(scoped.savedQueries.first)
+        #expect(scoped.savedQueries.map(\.name) == ["Daily active users"])
+        #expect(query.sql == "select 1")
+        #expect(query.keyword == "dau")
+        #expect(query.connectionRef == scoped.connections.first?.ref)
+        #expect(scoped.folderChain(query.folderRef).map(\.name) == ["Reports"])
+
+        let withGlobal = try await exportedBundle([orders], from: state, includeGlobalSavedQueries: true)
+        #expect(Set(withGlobal.savedQueries.map(\.name)) == ["Daily active users", "Locks"])
+        #expect(withGlobal.savedQueries.first { $0.name == "Locks" }?.connectionRef == nil)
+
+        let without = try await exportedBundle([orders], from: state, includeSavedQueries: false, includeGlobalSavedQueries: true)
+        #expect(without.savedQueries.isEmpty)
+        #expect(without.queryFolders.isEmpty)
+    }
+
+    @Test("A saved-query store that failed to load refuses an export that includes them, and exports without them")
+    func unreadableSavedQueriesRefuseExport() async throws {
+        let unreadable = Data("{ not json".utf8)
+        let savedQueriesFile = fixture.libraryDirectory.appendingPathComponent("saved-queries.json")
+        try unreadable.write(to: savedQueriesFile)
+        let state = makeState()
+        let connection = DatabaseConnection(name: "Orders", type: .postgresql, host: "db.example.com")
+        #expect(state.addConnection(connection))
+
+        #expect(IOSConnectionExportService.savedQueryCounts(for: [connection], appState: state) == nil)
+        await #expect(throws: IOSConnectionExportError.savedQueriesUnreadable) {
+            try await exportedBundle([connection], from: state)
+        }
+        let bundle = try await exportedBundle([connection], from: state, includeSavedQueries: false)
+        #expect(bundle.connections.count == 1)
+        #expect(try Data(contentsOf: savedQueriesFile) == unreadable)
     }
 
     @Test("SSL modes export in the spelling the Mac reads")

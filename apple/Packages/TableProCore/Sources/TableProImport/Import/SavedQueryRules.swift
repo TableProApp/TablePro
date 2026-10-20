@@ -37,6 +37,12 @@ public enum SavedQueryKeyword {
     public static func shadowsSQLKeyword(_ keyword: String) -> Bool {
         reservedSQLKeywords.contains(keyword.lowercased())
     }
+
+    // A global keyword expands in every connection, so it collides with a holder anywhere.
+    public static func isAvailable(_ keyword: String, scope: UUID?, holderScopes: some Sequence<UUID?>) -> Bool {
+        guard normalized(keyword) != nil else { return true }
+        return !holderScopes.contains { scope == nil || $0 == nil || $0 == scope }
+    }
 }
 
 public enum SavedQueryName {
@@ -156,11 +162,8 @@ public struct SavedQueryLedger: Sendable {
         }
     }
 
-    /// Mirrors `SQLFavoriteStorage.isKeywordAvailable`: a global keyword expands in every connection.
     private func isKeywordAvailable(_ keyword: String, scope: UUID?) -> Bool {
-        guard let holders = keywordScopes[keyword], !holders.isEmpty else { return true }
-        guard let scope else { return false }
-        return !holders.contains(nil) && !holders.contains(scope)
+        SavedQueryKeyword.isAvailable(keyword, scope: scope, holderScopes: keywordScopes[keyword] ?? [])
     }
 
     private static func normalizedName(_ name: String) -> String {

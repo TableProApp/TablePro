@@ -79,6 +79,15 @@ extension SyncCoordinator {
         Set(SyncRecordType.verifiedInProduction.map(\.rawValue)).union([Self.themeContentKind])
     }
 
+    // Only what this Mac applies: a pull skips a category that is off and still moves the token past it.
+    static func readableContent(for settings: SyncSettings) -> Set<String> {
+        var content = Set(SyncRecordType.verifiedInProduction.filter { settings.syncs($0) }.map(\.rawValue))
+        if settings.syncs(.settings) {
+            content.insert(Self.themeContentKind)
+        }
+        return content
+    }
+
     func applyRemoteThemeDeletions(_ settingsRecordNames: Set<String>) -> Bool {
         let prefix = SyncRecordType.settings.recordNamePrefix + ThemeCatalog.syncCategoryPrefix
         let ids = Set(settingsRecordNames.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) })

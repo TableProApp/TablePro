@@ -10,11 +10,11 @@ enum IOSConnectionImportService {
         (DatabaseType.allKnownTypes + [.cockroachdb, .scylladb, .turso]).map(\.rawValue)
     )
 
-    static func environment() -> ImportEnvironment {
+    static func environment(for appState: AppState) -> ImportEnvironment {
         ImportEnvironment(
             rules: ImportRules(
                 maximumGroupDepth: LibraryGroupGraph.maxNestingDepth,
-                supportsSavedQueries: false,
+                supportsSavedQueries: appState.savedQueries.status == .ready,
                 supportsCredentialProfiles: false
             ),
             registeredTypeIds: recognizedTypeIds
@@ -26,15 +26,19 @@ enum IOSConnectionImportService {
         return ConnectionImportAnalyzer.analyze(
             CollectedImport(bundle: bundle, source: .file(name: fileName)),
             library: library,
-            environment: environment()
+            environment: environment(for: appState)
         )
+    }
+
+    static func leavesOutSavedQueries(_ preview: ImportPreview) -> Bool {
+        !preview.environment.rules.supportsSavedQueries && !preview.collected.bundle.savedQueries.isEmpty
     }
 
     static func apply(_ plan: ImportPlan, appState: AppState, secureStore: any SecureStore) async -> ImportOutcome {
         await ImportApplier.apply(
             plan,
             library: IOSImportLibraryStore(appState: appState, secureStore: secureStore),
-            savedQueries: nil
+            savedQueries: appState.savedQueries.importStore
         )
     }
 }

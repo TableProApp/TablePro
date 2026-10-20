@@ -33,6 +33,8 @@ struct QueryEditorView: View {
     @State private var hapticSuccess = false
     @State private var hapticError = false
     @State private var containerSize: CGSize = .zero
+    @State private var savedQueriesRoute: SavedQueriesSheetRoute?
+    @State private var savedQueryFolderExpansion: Set<UUID> = []
 
     private var session: ConnectionSession? { coordinator.session }
     private var tables: [TableInfo] { coordinator.tables }
@@ -95,6 +97,13 @@ struct QueryEditorView: View {
         .sensoryFeedback(.error, trigger: hapticError)
         .sheet(isPresented: $showShareSheet) {
             ActivityViewController(items: [shareText])
+        }
+        .sheet(item: $savedQueriesRoute) { route in
+            SavedQueriesSheet(
+                route: route,
+                connectionId: connectionId,
+                expandedFolderIds: $savedQueryFolderExpansion
+            ) { coordinator.pendingQuery = $0 }
         }
         .confirmationDialog(
             String(localized: "Clear Query"),
@@ -413,6 +422,21 @@ struct QueryEditorView: View {
 
     private var queryMenu: some View {
         Menu {
+            Button {
+                savedQueriesRoute = .list
+            } label: {
+                Label("Saved Queries", systemImage: "list.star")
+            }
+
+            Button {
+                savedQueriesRoute = SavedQueryDraft.savableSQL(from: query).map { SavedQueriesSheetRoute.save(sql: $0) }
+            } label: {
+                Label("Save Query…", systemImage: "star")
+            }
+            .disabled(!query.contains { !$0.isWhitespace } || appState.savedQueries.status != .ready)
+
+            Divider()
+
             Button {
                 coordinator.selectedTab = .history
             } label: {
