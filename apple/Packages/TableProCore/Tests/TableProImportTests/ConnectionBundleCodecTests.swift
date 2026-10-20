@@ -37,7 +37,7 @@ struct ConnectionBundleCodecTests {
 
         let object = try Self.jsonObject(ConnectionBundleCodec.encode(bundle))
 
-        #expect(object["formatVersion"] as? Int == 2)
+        #expect(object["formatVersion"] as? Int == 1)
         #expect(object["exportedAt"] as? String == "2023-11-14T22:13:20Z")
         #expect(object["appVersion"] as? String == "0.70.0")
         #expect((object["connections"] as? [Any])?.isEmpty == true)
@@ -54,6 +54,89 @@ struct ConnectionBundleCodecTests {
 
         #expect(Set(credentials.keys) == ["c1"])
         #expect(credentials["c1"]?["password"] as? String == "hunter2")
+    }
+
+    @Test("A bundle without saved queries or nested groups is written in format 1, linked by name")
+    func flatBundleIsWrittenInFormatOne() async throws {
+        let sealed = try await ConnectionBundleCodec.encode(Self.flatBundle(), passphrase: Self.passphrase)
+        let object = try await Self.jsonObject(ConnectionExportCrypto.decrypt(data: sealed, passphrase: Self.passphrase))
+        let connections = try #require(object["connections"] as? [[String: Any]])
+        let orders = try #require(connections.first)
+
+        #expect(object["formatVersion"] as? Int == 1)
+        #expect(orders["name"] as? String == "Orders")
+        #expect(orders["groupName"] as? String == "Production")
+        #expect(orders["tagName"] as? String == "prod")
+        #expect(orders["tagNames"] as? [String] == ["prod", "team"])
+        #expect(orders["credentialProfileName"] as? String == "reader")
+        #expect(connections.allSatisfy { $0["ref"] == nil && $0["groupRef"] == nil && $0["credentialProfileRef"] == nil })
+        #expect((object["groups"] as? [[String: Any]])?.first?["ref"] == nil)
+        #expect((object["credentialProfiles"] as? [[String: Any]])?.first?["passwordMode"] as? String == "pgpass")
+        let credentials = try #require(object["credentials"] as? [String: Any])
+        #expect(Set(credentials.keys) == ["1"])
+    }
+
+    @Test("A format 1 file reads back as the bundle it was written from")
+    func formatOneRoundTrips() async throws {
+        let bundle = try Self.flatBundle()
+
+        let sealed = try await ConnectionBundleCodec.encode(bundle, passphrase: Self.passphrase)
+        let decoded = try await ConnectionBundleCodec.decode(sealed, passphrase: Self.passphrase)
+
+        #expect(decoded == bundle)
+        #expect(decoded.credentials["1"]?.password == "hunter2")
+    }
+
+    @Test("Saved queries, a query folder or a nested group keep format 2")
+    func formatTwoOnlyWhenNeeded() throws {
+        let settings = BundleConnection(ref: "c1", settings: Self.settings())
+        let bundles = try [
+            ConnectionBundle(
+                exportedAt: Self.exportedAt,
+                appVersion: "0.70.0",
+                connections: [settings],
+                savedQueries: [BundleSavedQuery(ref: "q1", name: "Locks", sql: "SELECT 1")]
+            ),
+            ConnectionBundle(
+                exportedAt: Self.exportedAt,
+                appVersion: "0.70.0",
+                connections: [settings],
+                queryFolders: [BundleQueryFolder(ref: "f1", name: "Reports")]
+            ),
+            ConnectionBundle(
+                exportedAt: Self.exportedAt,
+                appVersion: "0.70.0",
+                connections: [BundleConnection(ref: "c1", settings: Self.settings(), groupRef: "g2")],
+                groups: [BundleGroup(ref: "g1", name: "Client A"), BundleGroup(ref: "g2", name: "Production", parentRef: "g1")]
+            )
+        ]
+
+        for bundle in bundles {
+            let data = try ConnectionBundleCodec.encode(bundle)
+            #expect(try Self.jsonObject(data)["formatVersion"] as? Int == 2)
+            #expect(try ConnectionBundleCodec.decode(data) == bundle)
+        }
+    }
+
+    @Test("Names format 1 would merge keep format 2")
+    func caseOnlyNamesKeepFormatTwo() throws {
+        let bundle = try ConnectionBundle(
+            exportedAt: Self.exportedAt,
+            appVersion: "0.70.0",
+            connections: [
+                BundleConnection(ref: "c1", settings: Self.settings(), credentialProfileRef: "p1"),
+                BundleConnection(ref: "c2", settings: Self.settings(name: "Second"), credentialProfileRef: "p2")
+            ],
+            credentialProfiles: [
+                BundleCredentialProfile(ref: "p1", name: "reader", username: "alice", passwordMode: .prompt),
+                BundleCredentialProfile(ref: "p2", name: "Reader", username: "bob", passwordMode: .pgpass)
+            ]
+        )
+
+        let data = try ConnectionBundleCodec.encode(bundle)
+
+        #expect(try Self.jsonObject(data)["formatVersion"] as? Int == 2)
+        #expect(try ConnectionBundleCodec.decode(data) == bundle)
     }
 
     @Test("A plain file never carries credentials into the app")
@@ -120,6 +203,31 @@ struct ConnectionBundleCodecTests {
 
         await #expect(throws: expected) {
             _ = try await ConnectionBundleCodec.decode(sealed, passphrase: "wrong")
+        }
+    }
+
+    @Test("An encrypted file in a newer format reports the version once the passphrase opens it")
+    func encryptedNewerFormatIsUnsupported() async throws {
+        let json = Data(#"{"formatVersion":3,"exportedAt":"2023-11-14T22:13:20Z","appVersion":"9.0","connections":[]}"#.utf8)
+        let sealed = try await ConnectionExportCrypto.encrypt(data: json, passphrase: Self.passphrase)
+
+        await #expect(throws: ConnectionBundleError.unsupportedVersion(3)) {
+            _ = try await ConnectionBundleCodec.decode(sealed, passphrase: Self.passphrase)
+        }
+    }
+
+    @Test("An encrypted file no passphrase can open fails to parse instead of asking again")
+    func unreadableContainerIsNotAPassphraseFailure() async {
+        let saltAndNonce = Data(repeating: 0, count: 44)
+        let cases: [(container: Data, reason: ConnectionExportCryptoError)] = [
+            (Data("TPRO".utf8) + Data([1]) + saltAndNonce + Data(repeating: 0, count: 10), .corruptData),
+            (Data("TPRO".utf8) + Data([2]) + saltAndNonce + Data(repeating: 0, count: 40), .unsupportedVersion(2))
+        ]
+        for entry in cases {
+            #expect(ConnectionBundleCodec.isEncrypted(entry.container))
+            await #expect(throws: ConnectionBundleError.decodingFailed(entry.reason.localizedDescription)) {
+                _ = try await ConnectionBundleCodec.decode(entry.container, passphrase: Self.passphrase)
+            }
         }
     }
 
@@ -308,6 +416,7 @@ struct ConnectionBundleCodecTests {
         )
     }
 
+    /// The saved query keeps it in format 2, where credentials are keyed by connection ref.
     private static func bundleWithCredentials() throws -> ConnectionBundle {
         try ConnectionBundle(
             exportedAt: exportedAt,
@@ -320,7 +429,8 @@ struct ConnectionBundleCodecTests {
                 sslClientKeyPassphrase: nil,
                 totpSecret: nil,
                 pluginSecureFields: ["token": "secret"]
-            )]
+            )],
+            savedQueries: [BundleSavedQuery(ref: "q1", name: "Locks", sql: "SELECT 1", connectionRef: "c1")]
         )
     }
 
@@ -356,6 +466,33 @@ struct ConnectionBundleCodecTests {
                 awsTarget: nil, awsProfile: nil, awsRegion: nil
             )
         )
+    }
+
+    /// Built the way a format 1 file is read back: connection `i` has ref "i".
+    static func flatBundle() throws -> ConnectionBundle {
+        var builder = ConnectionBundleBuilder(appVersion: "0.70.0", exportedAt: exportedAt)
+        builder.addConnection(
+            fullSettings(),
+            ref: "0",
+            groupPath: [.init(name: "Production", color: "Blue", iconName: "person.3")],
+            tags: [BundleTag(name: "prod", color: "Red"), BundleTag(name: "team")],
+            credentialProfile: .init(name: "reader", username: "ro", passwordMode: .pgpass, secureFieldIds: ["token"])
+        )
+        builder.addConnection(
+            settings(name: "Cache"),
+            ref: "1",
+            groupPath: [.init(name: "Production")],
+            credentialProfile: .init(name: "reader", username: "ro", passwordMode: .pgpass),
+            credentials: ExportableCredentials(
+                password: "hunter2",
+                sshPassword: "ssh",
+                keyPassphrase: nil,
+                sslClientKeyPassphrase: "ssl",
+                totpSecret: "totp",
+                pluginSecureFields: ["token": "secret"]
+            )
+        )
+        return try builder.build()
     }
 
     static func fullBundle() throws -> ConnectionBundle {

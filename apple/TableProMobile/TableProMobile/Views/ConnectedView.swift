@@ -8,12 +8,14 @@ struct ConnectedView: View {
     @Environment(ScenePresenter.self) private var presenter
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let connection: DatabaseConnection
 
     @State private var coordinator: ConnectionCoordinator?
     @State private var hapticSuccess = false
     @State private var hapticError = false
     @State private var showDeletedAlert = false
+    @State private var databaseSwitchAwaitingRollBack: String?
 
     private var displayTitle: String {
         connection.name.isEmpty ? connection.host : connection.name
@@ -163,17 +165,21 @@ struct ConnectedView: View {
                     tabChrome(coordinator) {
                         TableListView(connectionId: connection.id)
                     }
+                    // Side by side, the detail column already shows the bar.
+                    .transactionBar(for: coordinator, isEnabled: horizontalSizeClass == .compact)
                 } detail: {
                     NavigationStack {
                         if let table = coordinator.selectedTable {
                             DataBrowserView(table: table)
                                 .environment(coordinator)
+                                .transactionBar(for: coordinator)
                         } else {
                             ContentUnavailableView(
                                 "No Table Selected",
                                 systemImage: "tablecells",
                                 description: Text("Pick a table to browse its rows.")
                             )
+                            .transactionBar(for: coordinator)
                         }
                     }
                     .id(TableBrowserIdentity(coordinator.selectedTable, coordinator.activeDatabase))
@@ -183,20 +189,29 @@ struct ConnectedView: View {
             Tab("Query", systemImage: "terminal", value: .query) {
                 NavigationStack {
                     tabChrome(coordinator) { QueryEditorView() }
+                        .transactionBar(for: coordinator)
                 }
             }
             Tab("History", systemImage: "clock", value: .history) {
                 NavigationStack {
                     tabChrome(coordinator) { QueryHistoryView() }
+                        .transactionBar(for: coordinator)
                 }
             }
             Tab("Info", systemImage: "info.circle", value: .info) {
                 NavigationStack {
                     tabChrome(coordinator) { ConnectionInfoView() }
+                        .transactionBar(for: coordinator)
                 }
             }
         }
         .tabViewStyle(.sidebarAdaptable)
+        .transactionAccessory(for: coordinator)
+        .onChange(of: appState.sessionTransactions.rollBackCount(for: connection.id)) {
+            Task { await coordinator.reloadAfterRollBack() }
+        }
+        // tabChrome sits inside each stack; this also reaches pushed row screens and their sheets, which track writes.
+        .environment(coordinator)
         .background {
             Button("") { coordinator.selectedTab = .tables }
                 .keyboardShortcut("1", modifiers: .command)
@@ -250,6 +265,24 @@ struct ConnectedView: View {
         } message: {
             Text(coordinator.failureAlertMessage ?? "")
         }
+        .confirmationDialog(
+            String(localized: "Switch Database?"),
+            isPresented: Binding(
+                get: { databaseSwitchAwaitingRollBack != nil },
+                set: { if !$0 { databaseSwitchAwaitingRollBack = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: databaseSwitchAwaitingRollBack
+        ) { database in
+            Button(String(localized: "Switch"), role: .destructive) {
+                Task { await coordinator.switchDatabase(to: database) }
+            }
+        } message: { _ in
+            Text(String(
+                format: String(localized: "The database “%@” has an open transaction. Switching rolls it back and discards its uncommitted changes."),
+                coordinator.activeDatabase
+            ))
+        }
         .userActivity(SceneIntent.viewConnectionActivity, isActive: appState.offersHandoff(for: connection)) { activity in
             activity.title = connection.name.isEmpty ? connection.host : connection.name
             activity.isEligibleForHandoff = true
@@ -293,7 +326,7 @@ struct ConnectedView: View {
                 Menu {
                     ForEach(coordinator.databases, id: \.self) { db in
                         Button {
-                            Task { await coordinator.switchDatabase(to: db) }
+                            requestDatabaseSwitch(to: db, on: coordinator)
                         } label: {
                             if db == coordinator.activeDatabase {
                                 Label(db, systemImage: "checkmark")
@@ -329,6 +362,15 @@ struct ConnectedView: View {
                 }
                 .disabled(coordinator.isSwitching)
             }
+        }
+    }
+
+    private func requestDatabaseSwitch(to database: String, on coordinator: ConnectionCoordinator) {
+        if TransactionIndicatorContent.databaseSwitchEndsSession(for: coordinator.connection.type),
+           coordinator.transactionHold != nil {
+            databaseSwitchAwaitingRollBack = database
+        } else {
+            Task { await coordinator.switchDatabase(to: database) }
         }
     }
 }

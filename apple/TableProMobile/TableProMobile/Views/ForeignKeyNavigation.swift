@@ -54,6 +54,7 @@ private struct ForeignKeyPreviewModifier: ViewModifier {
                         reference: reference
                     )
                     .environment(coordinator)
+                    .transactionBar(for: coordinator)
                 }
             }
     }

@@ -97,6 +97,21 @@ struct MySQLSessionTransactionTests {
         #expect(MySQLSessionTransaction.state(infoResult: 0, serverStatus: 0) == .idle)
     }
 
+    @Test("MySQL, MariaDB and TiDB read the session from the reply's status flags")
+    func measuredFlavorsReportTheStatusFlags() {
+        #expect(MySQLDriver.reportsSessionStatusFlags(for: .mysql, banner: "8.4.11"))
+        #expect(MySQLDriver.reportsSessionStatusFlags(for: .mariadb, banner: "10.6.28-MariaDB-ubu2204"))
+        #expect(MySQLDriver.reportsSessionStatusFlags(for: .tidb, banner: "8.0.11-TiDB-v8.5.0"))
+        #expect(MySQLDriver.reportsSessionStatusFlags(for: .mysql, banner: nil))
+    }
+
+    @Test("OceanBase and Databend report an unknown session, since their status flags were never measured")
+    func unmeasuredFlavorsReportNothing() {
+        #expect(!MySQLDriver.reportsSessionStatusFlags(for: .oceanbase, banner: "5.7.25-OceanBase_CE-v4.2.1"))
+        #expect(!MySQLDriver.reportsSessionStatusFlags(for: .oceanbase, banner: nil))
+        #expect(!MySQLDriver.reportsSessionStatusFlags(for: .mysql, banner: "8.0.17-v1.2.615-nightly"))
+    }
+
     @Test("Unrelated status bits do not change the answer")
     func unrelatedBitsAreIgnored() {
         let noBackslashEscapes = UInt32(SERVER_STATUS_NO_BACKSLASH_ESCAPES)

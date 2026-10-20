@@ -21,6 +21,9 @@ final class ConnectionCoordinator {
 
     private(set) var isSwitching = false
     private(set) var isReconnecting = false
+    @ObservationIgnored private var sessionCheck: Task<Bool, Never>?
+    @ObservationIgnored private var statementFailedDuringCheck = false
+    @ObservationIgnored private var metadataRefused = false
     var failureAlertMessage: String?
     var showFailureAlert = false
 
@@ -172,11 +175,14 @@ final class ConnectionCoordinator {
                 tables = existingTables
                 await loadDatabases()
                 await loadSchemas()
+                await refreshTransaction()
                 guard attemptToken == token else { return }
                 phase = .connected
                 appState.libraryPreferences.recordConnected(connection.id)
                 return
             } catch {
+                guard attemptToken == token else { return }
+                if await keepsRefusingSession(existing, token: token, refusal: error) { return }
                 guard attemptToken == token else { return }
                 session = nil
                 await appState.connectionManager.disconnect(connection.id)
@@ -200,6 +206,7 @@ final class ConnectionCoordinator {
             tables = newTables
             await loadDatabases()
             await loadSchemas()
+            await refreshTransaction()
             guard attemptToken == token else { return }
             phase = .connected
             appState.libraryPreferences.recordConnected(connection.id)
@@ -236,23 +243,71 @@ final class ConnectionCoordinator {
     }
 
     func reconnectIfNeeded() async {
-        guard let session, !isSwitching, !isReconnecting, connectTask == nil else { return }
-        do {
-            _ = try await session.driver.ping()
-            return
-        } catch {
-            // Ping failed; fall through to actual reconnect path below.
-        }
+        await restoreSession(after: .whileIdle)
+    }
 
+    enum SessionLoss {
+        // Nothing was in flight, so the server rolled the transaction back.
+        case whileIdle
+        // A statement was in flight, and it may have committed the transaction before the reply was lost.
+        case duringWork
+        // The transaction is gone either way, which is what was asked for.
+        case duringRollBack
+    }
+
+    // True when the redial dropped a held transaction and the outcome is already settled for the user.
+    @discardableResult
+    private func restoreSession(after loss: SessionLoss) async -> Bool {
+        // One check at a time, and a statement that failed while it ran makes the loss ambiguous.
+        if let sessionCheck {
+            if loss == .duringWork { statementFailedDuringCheck = true }
+            return await sessionCheck.value
+        }
+        statementFailedDuringCheck = false
+        let check = Task {
+            let settled = await checkSession(after: loss)
+            sessionCheck = nil
+            return settled
+        }
+        sessionCheck = check
+        return await check.value
+    }
+
+    private func checkSession(after loss: SessionLoss) async -> Bool {
+        guard let session, !isSwitching, !isReconnecting, connectTask == nil else { return false }
         let token = attemptToken
+        var workWasRunning = appState.sessionTransactions.isBusy(connection.id)
+
+        if await takesNewerSession(than: session, token: token) { return false }
+        if appState.connectionManager.session(for: connection.id) != nil, await Self.answersPing(session.driver) {
+            return false
+        }
+        guard attemptToken == token else { return false }
+        // Another window can finish a whole redial while this ping is out.
+        if await takesNewerSession(than: session, token: token) { return false }
+
+        workWasRunning = workWasRunning || appState.sessionTransactions.isBusy(connection.id)
+        let heldTransaction = transactionHold != nil
         isReconnecting = true
         defer { isReconnecting = false }
         do {
-            let newSession = try await appState.connectionManager.connect(connection, prompter: prompts)
-            guard attemptToken == token else { return }
-            self.session = newSession
+            let outcome = try await appState.sessionRedialer.redial(
+                dialTarget,
+                schema: supportsSchemas ? activeSchema : nil,
+                prompter: prompts
+            )
+            guard attemptToken == token else { return false }
+            await takeSession(outcome.session, token: token, dialedHere: outcome.dialedHere)
+            guard attemptToken == token, heldTransaction else { return false }
+            appState.sessionTransactions.transactionLost(connection.id)
+            let settledLoss: SessionLoss = workWasRunning || statementFailedDuringCheck ? .duringWork : loss
+            if let message = Self.lostTransactionMessage(settledLoss, connectionName: displayName) {
+                failureAlertMessage = message
+                showFailureAlert = true
+            }
+            return true
         } catch {
-            guard attemptToken == token else { return }
+            guard attemptToken == token else { return false }
             let context = ErrorContext(
                 operation: "reconnect",
                 databaseType: connection.type,
@@ -262,7 +317,198 @@ final class ConnectionCoordinator {
             )
             phase = .error(ErrorClassifier.classify(error, context: context))
             self.session = nil
+            return false
         }
+    }
+
+    private func takesNewerSession(than held: ConnectionSession, token: UUID) async -> Bool {
+        // A redial another window started is not ready to share until its schema is back.
+        await appState.sessionRedialer.settled(connection.id)
+        guard attemptToken == token,
+              let live = appState.connectionManager.session(for: connection.id),
+              live.driver !== held.driver else {
+            return false
+        }
+        await takeSession(live, token: token, dialedHere: false)
+        return true
+    }
+
+    private var dialTarget: DatabaseConnection {
+        guard supportsDatabaseSwitching, !activeDatabase.isEmpty else { return connection }
+        var target = connection
+        target.database = activeDatabase
+        return target
+    }
+
+    // A session another window dialed sits on that window's database and schema, so this one
+    // follows it before any write can name a table from the old list.
+    private func takeSession(_ newSession: ConnectionSession, token: UUID, dialedHere: Bool) async {
+        let driver = newSession.driver
+        let fetched: [TableInfo]?
+        do {
+            fetched = try await driver.fetchTables(schema: nil)
+        } catch {
+            Self.logger.warning("Failed to load tables on the new session: \(error.localizedDescription, privacy: .public)")
+            fetched = nil
+        }
+        guard attemptToken == token else { return }
+        var movedPlacement = false
+        if !dialedHere {
+            let database = sessionDatabase(of: newSession)
+            if supportsDatabaseSwitching, !database.isEmpty, database != activeDatabase {
+                activeDatabase = database
+                movedPlacement = true
+            }
+        }
+        // The dial restored this window's schema, or another window's; a failed restore leaves the default.
+        if supportsSchemas, let schema = driver.currentSchema, schema != activeSchema {
+            activeSchema = schema
+            movedPlacement = true
+        }
+        if let fetched {
+            tables = fetched
+        } else {
+            metadataRefused = true
+            if movedPlacement { tables = [] }
+        }
+        session = newSession
+        await refreshTransaction()
+    }
+
+    // A transaction the server aborted refuses catalog reads, yet the session still holds the user's work.
+    private func keepsRefusingSession(_ existing: ConnectionSession, token: UUID, refusal: any Error) async -> Bool {
+        guard await Self.answersPing(existing.driver), attemptToken == token else { return false }
+        await refreshTransaction()
+        guard attemptToken == token,
+              appState.sessionTransactions.hold(for: connection.id, on: existing.driver) != nil else { return false }
+        Self.logger.info("Kept a session that refused its catalog: \(refusal.localizedDescription, privacy: .public)")
+        let database = sessionDatabase(of: existing)
+        if supportsDatabaseSwitching, !database.isEmpty {
+            activeDatabase = database
+        }
+        metadataRefused = true
+        session = existing
+        phase = .connected
+        appState.libraryPreferences.recordConnected(connection.id)
+        return true
+    }
+
+    private func sessionDatabase(of taken: ConnectionSession) -> String {
+        guard let live = appState.connectionManager.session(for: connection.id), live.driver === taken.driver else {
+            return taken.activeDatabase
+        }
+        return live.activeDatabase
+    }
+
+    static func lostTransactionMessage(_ loss: SessionLoss, connectionName: String) -> String? {
+        switch loss {
+        case .whileIdle:
+            String(
+                format: String(
+                    localized: "The connection to %@ was lost while it waited, and the server rolled back its open transaction. It has been reconnected; run the statements again."
+                ),
+                connectionName
+            )
+        case .duringWork:
+            String(
+                format: String(
+                    localized: "The connection to %@ was lost before the server answered, so its open transaction may have been committed or rolled back. It has been reconnected; check which of its changes were saved before running them again."
+                ),
+                connectionName
+            )
+        case .duringRollBack:
+            nil
+        }
+    }
+
+    private static func answersPing(_ driver: any DatabaseDriver) async -> Bool {
+        do {
+            _ = try await driver.ping()
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    // MARK: - Transactions
+
+    var transactionHold: SessionTransactionMonitor.Hold? {
+        appState.sessionTransactions.hold(for: connection.id, on: session?.driver)
+    }
+
+    var transactionToken: SessionTransactionMonitor.HoldToken? {
+        appState.sessionTransactions.token(for: connection.id, on: session?.driver)
+    }
+
+    func track<T>(failed: (T) -> Bool = { _ in false }, _ work: () async throws -> T) async rethrows -> T {
+        do {
+            let value = try await appState.sessionTransactions.track(connection.id, work)
+            if failed(value) {
+                await restoreSession(after: .duringWork)
+            }
+            await reloadMetadataIfReleased()
+            return value
+        } catch {
+            await restoreSession(after: .duringWork)
+            throw error
+        }
+    }
+
+    // The token is what the indicator showed when the user asked, so a swapped session or newer work refuses.
+    func commitTransaction(as token: SessionTransactionMonitor.HoldToken) async throws {
+        do {
+            try await appState.sessionTransactions.commit(connection.id, as: token)
+        } catch {
+            guard await !restoreSession(after: .duringWork) else { return }
+            throw error
+        }
+        await reloadMetadataIfReleased()
+    }
+
+    func rollBackTransaction(as token: SessionTransactionMonitor.HoldToken) async throws {
+        do {
+            try await appState.sessionTransactions.rollBack(connection.id, as: token)
+        } catch {
+            guard await !restoreSession(after: .duringRollBack) else { return }
+            throw error
+        }
+        await reloadMetadataIfReleased()
+    }
+
+    func refreshTransaction() async {
+        await appState.sessionTransactions.refresh(connection.id)
+    }
+
+    // A Roll Back from any window can undo DDL; a failed read keeps the list it has.
+    func reloadAfterRollBack() async {
+        guard !metadataRefused else {
+            await reloadMetadataIfReleased()
+            return
+        }
+        guard let session else { return }
+        do {
+            let reloaded = try await session.driver.fetchTables(schema: supportsSchemas ? activeSchema : nil)
+            guard self.session?.driver === session.driver else { return }
+            tables = reloaded
+        } catch {
+            Self.logger.warning("Failed to reload tables after a Roll Back: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func reloadMetadataIfReleased() async {
+        guard metadataRefused, let session,
+              appState.sessionTransactions.hold(for: connection.id, on: session.driver) == nil else { return }
+        do {
+            let reloaded = try await session.driver.fetchTables(schema: nil)
+            guard self.session?.driver === session.driver else { return }
+            tables = reloaded
+            metadataRefused = false
+        } catch {
+            Self.logger.warning("Tables are still refused: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        await loadDatabases()
+        await loadSchemas()
     }
 
     // MARK: - Database / Schema Switching
@@ -290,6 +536,7 @@ final class ConnectionCoordinator {
                 showFailureAlert = true
             }
         }
+        await refreshTransaction()
     }
 
     private func reconnectWithDatabase(_ database: String) async {
@@ -359,6 +606,8 @@ final class ConnectionCoordinator {
             failureAlertMessage = String(localized: "Failed to refresh tables")
             showFailureAlert = true
         }
+        // With autocommit off, a MySQL read opens a transaction.
+        await refreshTransaction()
     }
 
     // MARK: - Query History
