@@ -99,4 +99,6 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 - [dbx architecture, boundaries and reuse review](archive/2026-10-15-dbx-review.md).
 - [PostgreSQL client review](archive/2026-10-15-postgresql-client-research/review.md), with [46 regression candidates](archive/2026-10-15-postgresql-client-research/cases.csv), [machine-readable cases](archive/2026-10-15-postgresql-client-research/cases.json) and [source pins and probe evidence](archive/2026-10-15-postgresql-client-research/manifest.json). These dated observations do not override current ADRs or sprint priorities.
 
+- [Agent tooling review, October 20](archive/agent-tooling-review-2026-10-20.md): TablePro and dbx agent skills, rules and reviewer agents, and what BookiE adopted (the `fix-issue` skill) or left for gated follow-ups.
+
 - [Workstation test reuse proposal](proposals/workstation-test-reuse.md): bounded local execution, build metadata reuse, cache ownership and post-nightly adoption order.
