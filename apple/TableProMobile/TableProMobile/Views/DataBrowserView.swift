@@ -71,10 +71,16 @@ struct DataBrowserView: View {
     private var columns: [ColumnInfo] { viewModel.columns }
     private var rows: [[String?]] { viewModel.legacyRows }
 
+    // A list reload reading the session would end the page with its next statement, so the page waits for it; nothing
+    // suspends between that wait and `track` marking the session busy.
     private var pageReads: DataBrowserViewModel.SessionReadTracker {
         let transactions = appState.sessionTransactions
+        let catalogChanges = appState.catalogChanges
         let connectionId = connection.id
-        return { read in await transactions.track(connectionId, reading: true) { await read() } }
+        return { read in
+            await catalogChanges.sessionReadsFinished(for: connectionId)
+            await transactions.track(connectionId, reading: true) { await read() }
+        }
     }
 
     private var sortColumnBinding: Binding<String?> {
