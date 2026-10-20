@@ -48,6 +48,8 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 | Run-specific proof (manifests, focused logs) | `evidence/<topic>[-<sha>]-<YYYY-MM-DD>/` | A `manifest.json` or concise `README.md`, with only the artifacts needed to check the claim; link it from the owning row or board |
 | A finished review, audit or long history | [archive/](archive/) | Dated file name; never edited after archiving except for broken links |
 
+The [runner maintenance and isolation proposal](proposals/runner-maintenance-and-isolation.md) records the observed cleanup risks and the staged mini PC runner migration. It is not deployed acceptance.
+
 ## Adding a document
 
 - Look for the owner in the table above first; most new facts are a row, a section or an ADR, not a new file.
