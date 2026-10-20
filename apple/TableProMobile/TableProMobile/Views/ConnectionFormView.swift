@@ -18,6 +18,7 @@ struct ConnectionFormView: View {
     @State private var hapticError = false
     @State private var pasteTarget: CertificateRole?
     @State private var showPKCS12Password = false
+    @State private var pushedJumpHostId: UUID?
 
     var onSaved: (UUID) -> Void
 
@@ -130,7 +131,9 @@ struct ConnectionFormView: View {
                     sshSection(viewModel: viewModel)
                 }
 
-                testSection
+                if !MacOnlyConnection.isMacOnly(type: viewModel.type) {
+                    testSection
+                }
             }
             .scrollDismissesKeyboard(.interactively)
             .interactiveDismissDisabled(viewModel.hasChanges)
@@ -167,6 +170,9 @@ struct ConnectionFormView: View {
                     showPKCS12Password = viewModel.pendingPKCS12 != nil
                 case nil: break
                 }
+            }
+            .navigationDestination(item: $pushedJumpHostId) { hopId in
+                JumpHostEditorView(viewModel: viewModel, hopId: hopId)
             }
             .connectionPrompts(viewModel.prompts)
             .onDisappear { viewModel.prompts.cancelAll() }
@@ -226,19 +232,23 @@ struct ConnectionFormView: View {
             TextField("Name", text: $viewModel.name)
                 .textInputAutocapitalization(.never)
 
-            Picker("Database Type", selection: $viewModel.type) {
-                ForEach(DatabaseType.mobileSupportedTypes, id: \.rawValue) { dbType in
-                    Label {
-                        Text(dbType.mobileDisplayName)
-                    } icon: {
-                        Image(dbType.iconName)
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 20, height: 20)
+            if DatabaseType.mobileSupportedTypes.contains(viewModel.type) {
+                Picker("Database Type", selection: $viewModel.type) {
+                    ForEach(DatabaseType.mobileSupportedTypes, id: \.rawValue) { dbType in
+                        Label {
+                            Text(dbType.mobileDisplayName)
+                        } icon: {
+                            Image(dbType.iconName)
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                        }
+                        .tag(dbType)
                     }
-                    .tag(dbType)
                 }
+            } else {
+                LabeledContent("Database Type", value: viewModel.type.mobileDisplayName)
             }
         }
     }
@@ -433,7 +443,7 @@ struct ConnectionFormView: View {
         }
 
         if viewModel.sshEnabled {
-            Section("SSH Server") {
+            Section {
                 TextField("SSH Host", text: $viewModel.sshHost)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
@@ -447,15 +457,23 @@ struct ConnectionFormView: View {
                     Text("Private Key").tag(SSHConfiguration.SSHAuthMethod.privateKey)
                 }
                 .pickerStyle(.segmented)
+            } header: {
+                Text("SSH Server")
+            } footer: {
+                if let note = viewModel.sshAuthMethodNote {
+                    Text(note)
+                }
             }
 
             if viewModel.sshAuthMethod == .password {
                 Section("SSH Password") {
                     SecureField("Password", text: $viewModel.sshPassword)
                 }
-            } else {
+            } else if viewModel.sshAuthMethod == .privateKey {
                 privateKeySection(viewModel: viewModel)
             }
+
+            JumpHostsSection(viewModel: viewModel) { pushedJumpHostId = $0 }
         }
     }
 

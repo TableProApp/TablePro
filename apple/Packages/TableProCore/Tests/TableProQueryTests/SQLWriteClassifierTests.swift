@@ -120,6 +120,17 @@ struct SQLWriteClassifierTests {
         #expect(isWrite("SOMETHINGNEW key", .redis))
     }
 
+    @Test("a Redis write on any line or after any semicolon makes the text a write")
+    func redisWriteInALaterCommand() {
+        #expect(isWrite("GET a\nDEL b", .redis))
+        #expect(isWrite("GET a; DEL b", .redis))
+        #expect(isWrite("GET a\r\nFLUSHALL", .redis))
+        #expect(!isWrite("GET a\nGET b", .redis))
+        #expect(!isWrite("GET a; GET b;\n", .redis))
+        #expect(!isWrite("GET \"a\nDEL b\"", .redis))
+        #expect(!isWrite(" \n ; ", .redis))
+    }
+
     @Test("empty and comment-only input is not a write")
     func emptyInput() {
         #expect(!isWrite(""))

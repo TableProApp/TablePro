@@ -56,4 +56,28 @@ struct ConnectionListRowModelTests {
         #expect(row.title == "db.acme.io")
         #expect(!row.accessibilityLabel.contains("·"))
     }
+
+    @Test("A row that opens only on a Mac is marked, and VoiceOver names the engine and the reason")
+    func macOnlyRowIsMarked() {
+        let mongo = DatabaseConnection(name: "Events", type: .mongodb, host: "db.acme.io")
+        let socket = DatabaseConnection(
+            name: "Local",
+            type: .mysql,
+            host: "localhost",
+            additionalFields: [MySQLLocalSocket.fieldKey: "/tmp/mysql.sock"]
+        )
+        let postgres = DatabaseConnection(name: "Prod", type: .postgresql, host: "db.acme.io")
+
+        let mongoRow = ConnectionListRowModel(connection: mongo, section: .connections, tags: [], groups: [])
+        let socketRow = ConnectionListRowModel(connection: socket, section: .favorites, tags: [], groups: [])
+        let postgresRow = ConnectionListRowModel(connection: postgres, section: .connections, tags: [], groups: [])
+
+        #expect(mongoRow.isMacOnly)
+        #expect(socketRow.isMacOnly)
+        #expect(postgresRow.isMacOnly == false)
+        #expect(mongoRow.accessibilityLabel.contains("MongoDB"))
+        #expect(mongoRow.accessibilityLabel.contains(MacOnlyConnection.status))
+        #expect(socketRow.accessibilityLabel.contains(MacOnlyConnection.status))
+        #expect(postgresRow.accessibilityLabel.contains(MacOnlyConnection.status) == false)
+    }
 }

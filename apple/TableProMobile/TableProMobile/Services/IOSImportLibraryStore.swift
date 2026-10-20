@@ -112,6 +112,10 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                     var updated = connection
                     updated.sortOrder = stored.sortOrder
                     updated.isFavorite = stored.isFavorite
+                    updated.sshConfiguration = JumpHostCredentialStore.keepingHopIds(
+                        from: stored.sshConfiguration,
+                        into: updated.sshConfiguration
+                    )
                     stored = updated
                 }
                 if outcome.isSaved {
@@ -189,7 +193,8 @@ private extension DatabaseConnection {
                     mode: sslMode,
                     caCertificatePath: Self.expandedPath(ssl.caCertificatePath),
                     clientCertificatePath: Self.expandedPath(ssl.clientCertificatePath),
-                    clientKeyPath: Self.expandedPath(ssl.clientKeyPath)
+                    clientKeyPath: Self.expandedPath(ssl.clientKeyPath),
+                    isMacPreferred: ssl.portableMode == .preferred
                 )
             },
             groupId: resolved.groupId,

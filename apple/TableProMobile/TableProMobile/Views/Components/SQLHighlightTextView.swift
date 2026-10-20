@@ -4,13 +4,20 @@ import UIKit
 struct SQLHighlightTextView: UIViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
+    let handle: SQLEditorHandle?
     let completion: QueryCompletionController?
 
     private static let font = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
 
-    init(text: Binding<String>, isFocused: Binding<Bool> = .constant(false), completion: QueryCompletionController? = nil) {
+    init(
+        text: Binding<String>,
+        isFocused: Binding<Bool> = .constant(false),
+        handle: SQLEditorHandle? = nil,
+        completion: QueryCompletionController? = nil
+    ) {
         self._text = text
         self._isFocused = isFocused
+        self.handle = handle
         self.completion = completion
     }
 
@@ -31,6 +38,7 @@ struct SQLHighlightTextView: UIViewRepresentable {
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
         textView.textStorage.delegate = context.coordinator
         textView.inputAccessoryView = context.coordinator.makeAccessoryToolbar()
+        handle?.attach(textView)
         context.coordinator.connectCompletion(to: textView)
         return textView
     }
@@ -44,6 +52,7 @@ struct SQLHighlightTextView: UIViewRepresentable {
                 SQLSyntaxHighlighter.highlight(textView.textStorage, in: NSRange(location: 0, length: length))
             }
             context.coordinator.isUpdating = false
+            handle?.editorDidChange()
             context.coordinator.requestSuggestions(for: textView)
         }
         if isFocused, !textView.isFirstResponder {
@@ -69,19 +78,28 @@ struct SQLHighlightTextView: UIViewRepresentable {
         func textViewDidChange(_ textView: UITextView) {
             guard !isUpdating else { return }
             parent.text = textView.text
+            parent.handle?.editorDidChange()
             requestSuggestions(for: textView)
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
+            parent.handle?.editorDidChange()
             requestSuggestions(for: textView)
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
             if !parent.isFocused { parent.isFocused = true }
+            parent.handle?.editorDidChange()
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
             if parent.isFocused { parent.isFocused = false }
+            // A selection draws nothing once the editor resigns, so Run would act on text nobody can see.
+            let selection = textView.selectedRange
+            if selection.length > 0 {
+                textView.selectedRange = NSRange(location: selection.location, length: 0)
+            }
+            parent.handle?.editorDidChange()
         }
 
         func textStorage(

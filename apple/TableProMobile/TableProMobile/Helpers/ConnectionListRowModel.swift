@@ -28,6 +28,7 @@ nonisolated struct ConnectionListRowModel: Hashable, Sendable {
     let groupLabel: ConnectionListGroupLabel?
     let isFavorite: Bool
     let showsFavoriteMark: Bool
+    let isMacOnly: Bool
 
     init(
         connection: DatabaseConnection,
@@ -43,6 +44,7 @@ nonisolated struct ConnectionListRowModel: Hashable, Sendable {
         color = connection.color
         isFavorite = connection.isFavorite
         showsFavoriteMark = connection.isFavorite && section == .connections
+        isMacOnly = MacOnlyConnection.isMacOnly(connection)
 
         let tagsById = Dictionary(allTags.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let resolved = connection.tagIds.compactMap { tagsById[$0] }
@@ -59,6 +61,9 @@ nonisolated struct ConnectionListRowModel: Hashable, Sendable {
 
     var accessibilityLabel: String {
         var parts = [title, type.mobileDisplayName, detail]
+        if isMacOnly {
+            parts.append(MacOnlyConnection.status)
+        }
         if let groupLabel {
             parts.append(String(format: String(localized: "in %@"), groupLabel.name))
         }

@@ -1,0 +1,133 @@
+name: CI
+
+# The one entry point for the test and lint workflows. The CI job at the end is the required check.
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'release/**']
+  workflow_dispatch:
+
+# A pull request keeps only its newest run. main runs one at a time, and a newer pending run
+# replaces the older one. Each release/** commit and each dispatch gets its own group, so none is
+# replaced.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref == 'refs/heads/main' && github.ref || format('{0}-{1}', github.ref, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      macos: ${{ steps.decide.outputs.macos }}
+      plugins: ${{ steps.decide.outputs.plugins }}
+      ios: ${{ steps.decide.outputs.ios }}
+      oracle: ${{ steps.decide.outputs.oracle }}
+      hana: ${{ steps.decide.outputs.hana }}
+      swiftlint: ${{ steps.decide.outputs.swiftlint }}
+      linux: ${{ steps.decide.outputs.linux }}
+      linux-docs: ${{ steps.decide.outputs.linux-docs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # A main push compares with the last commit a CI push run passed on, so a commit whose run was
+      # replaced or failed is tested again. No such run, one on HEAD itself, or a dispatch runs
+      # everything.
+      - name: Find the base
+        id: base
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          REF: ${{ github.ref }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          base=""
+          if [ "$EVENT" = pull_request ]; then
+            base="$PR_BASE"
+          elif [ "$EVENT" = push ] && [ "$REF" = refs/heads/main ]; then
+            passed="$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1" \
+              --jq '.workflow_runs[0].head_sha // ""')"
+            head="$(git rev-parse HEAD)"
+            if [ -n "$passed" ] && [ "$passed" != "$head" ] && git merge-base --is-ancestor "$passed" HEAD; then
+              base="$passed"
+            fi
+          fi
+          echo "Base: ${base:-none, so every suite runs}"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+
+      # --ref makes a release/** push run every suite. The linux job below still skips there.
+      - name: Decide which suites run
+        id: decide
+        env:
+          BASE: ${{ steps.base.outputs.base }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          for suite in macos plugins ios oracle hana swiftlint linux linux-docs; do
+            verdict="$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" "$suite")"
+            echo "$suite=$verdict"
+            echo "$suite=$verdict" >> "$GITHUB_OUTPUT"
+          done
+
+  macos:
+    needs: plan
+    if: needs.plan.outputs.macos == 'true'
+    uses: ./.github/workflows/macos-tests.yml
+    with:
+      plugins: ${{ needs.plan.outputs.plugins == 'true' }}
+
+  ios:
+    needs: plan
+    if: needs.plan.outputs.ios == 'true'
+    uses: ./.github/workflows/ios-tests.yml
+    with:
+      oracle: ${{ needs.plan.outputs.oracle == 'true' }}
+
+  swiftlint:
+    needs: plan
+    if: needs.plan.outputs.swiftlint == 'true'
+    uses: ./.github/workflows/swiftlint.yml
+
+  hygiene:
+    needs: plan
+    uses: ./.github/workflows/repo-hygiene.yml
+    with:
+      hana: ${{ needs.plan.outputs.hana == 'true' }}
+
+  # Linux ships from main or linux-X.Y, so a release/** line skips it and an advisory that cargo deny
+  # learns later cannot fail the run an Apple tag's verify reads.
+  linux:
+    needs: plan
+    if: needs.plan.outputs.linux-docs == 'true' && !startsWith(github.ref, 'refs/heads/release/')
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      docs-only: ${{ needs.plan.outputs.linux != 'true' }}
+
+  ci:
+    name: CI
+    needs: [plan, macos, ios, swiftlint, hygiene, linux]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          case " $RESULTS " in
+            *" failure "* | *" cancelled "*) exit 1 ;;
+          esac
