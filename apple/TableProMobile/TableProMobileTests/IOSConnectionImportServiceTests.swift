@@ -31,6 +31,11 @@ struct IOSConnectionImportServiceTests {
         try await analyzed(ConnectionBundleCodec.encode(bundle))
     }
 
+    // A format 1 file numbers its connections by position, so the refs a test built do not survive the file.
+    private func ref(of name: String, in preview: ImportPreview) throws -> BundleRef {
+        try #require(preview.connections.first { $0.settings.name == name }).ref
+    }
+
     @discardableResult
     private func apply(_ preview: ImportPreview, _ selection: ImportSelection? = nil) async -> ImportOutcome {
         let plan = ImportPlanner.plan(preview, selection: selection ?? .defaults(for: preview))
@@ -214,8 +219,9 @@ struct IOSConnectionImportServiceTests {
             tags: [BundleTag(name: "skipped-tag")]
         )
         let preview = try await analyzed(try builder.build())
+        let skipped = try ref(of: "Skipped", in: preview)
         var selection = ImportSelection.defaults(for: preview)
-        selection.setSelected(false, connection: "c2", in: preview)
+        selection.setSelected(false, connection: skipped, in: preview)
 
         let outcome = await apply(preview, selection)
 
@@ -264,12 +270,14 @@ struct IOSConnectionImportServiceTests {
             BundleConnection(ref: "c2", settings: settings(name: "Second"))
         ])
         let preview = try await analyzed(bundle)
+        let first = try ref(of: "First", in: preview)
+        let second = try ref(of: "Second", in: preview)
         var selection = ImportSelection.defaults(for: preview)
-        selection.setSelected(true, connection: "c1", in: preview)
-        selection.setSelected(true, connection: "c2", in: preview)
+        selection.setSelected(true, connection: first, in: preview)
+        selection.setSelected(true, connection: second, in: preview)
 
-        let firstReplace = selection.resolve("c1", as: .replace(existing.id), in: preview)
-        let secondReplace = selection.resolve("c2", as: .replace(existing.id), in: preview)
+        let firstReplace = selection.resolve(first, as: .replace(existing.id), in: preview)
+        let secondReplace = selection.resolve(second, as: .replace(existing.id), in: preview)
 
         #expect(firstReplace)
         #expect(!secondReplace)
@@ -309,9 +317,10 @@ struct IOSConnectionImportServiceTests {
             imported.username = ""
             let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: imported)])
             let preview = try await analyzed(bundle)
+            let row = try ref(of: existing.name, in: preview)
             var selection = ImportSelection.defaults(for: preview)
-            selection.setSelected(true, connection: "c1", in: preview)
-            let replaces = selection.resolve("c1", as: .replace(existing.id), in: preview)
+            selection.setSelected(true, connection: row, in: preview)
+            let replaces = selection.resolve(row, as: .replace(existing.id), in: preview)
             #expect(replaces)
 
             let outcome = await apply(preview, selection)

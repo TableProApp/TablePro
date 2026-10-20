@@ -18,7 +18,6 @@ let package = Package(
     ],
     products: [
         .library(name: "TableProUtilities", targets: ["TableProUtilities"]),
-        .library(name: "TableProAutocomplete", targets: ["TableProAutocomplete"]),
         .library(name: "TableProSSHConfig", targets: ["TableProSSHConfig"]),
         .library(name: "TableProMCP", targets: ["TableProMCP"]),
         .library(name: "TableProMCPTestSupport", targets: ["TableProMCPTestSupport"])
@@ -34,14 +33,6 @@ let package = Package(
                 .product(name: "TableProTabularIO", package: "TableProCore")
             ],
             path: "Sources/TableProUtilities",
-            swiftSettings: appModuleSettings
-        ),
-        .target(
-            name: "TableProAutocomplete",
-            dependencies: [
-                .product(name: "TableProSQLGrammar", package: "TableProCore")
-            ],
-            path: "Sources/TableProAutocomplete",
             swiftSettings: appModuleSettings
         ),
         .target(
@@ -75,15 +66,6 @@ let package = Package(
                 .product(name: "TableProTestSupport", package: "TableProCore")
             ],
             path: "Tests/TableProUtilitiesTests",
-            swiftSettings: appModuleSettings
-        ),
-        .testTarget(
-            name: "TableProAutocompleteTests",
-            dependencies: [
-                "TableProAutocomplete",
-                .product(name: "TableProSQLGrammar", package: "TableProCore")
-            ],
-            path: "Tests/TableProAutocompleteTests",
             swiftSettings: appModuleSettings
         ),
         .testTarget(

@@ -21750,6 +21750,8 @@
       }
     },
     "All columns" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -53518,6 +53520,8 @@
 
     },
     "Count all rows" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {

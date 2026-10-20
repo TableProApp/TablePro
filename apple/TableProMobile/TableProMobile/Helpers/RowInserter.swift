@@ -68,6 +68,17 @@ nonisolated enum RowInserter {
         )
         guard !statements.isEmpty else { throw IntentDataError.noInsertableValues(table) }
 
-        return try await driver.executeWrite(statements)
+        // The write joins an autocommit-off transaction, and this session closes right after, which would roll it back.
+        guard await driver.sessionTransactionState() == .implicitTransaction else {
+            return try await driver.executeWrite(statements)
+        }
+        do {
+            let affected = try await driver.executeWrite(statements)
+            try await driver.commitTransaction()
+            return affected
+        } catch {
+            try? await driver.rollbackTransaction()
+            throw error
+        }
     }
 }

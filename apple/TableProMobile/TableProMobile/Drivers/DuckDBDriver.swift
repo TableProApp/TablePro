@@ -47,8 +47,9 @@ nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
         fileAccess.end()
     }
 
+    // In-process, so an open handle is a live session; an aborted transaction refuses every statement until ROLLBACK.
     func ping() async throws -> Bool {
-        _ = try await actor.query("SELECT 1")
+        guard await actor.isOpen else { throw DuckDBDriverError.notConnected }
         return true
     }
 
@@ -205,6 +206,8 @@ actor DuckDBActor {
         connection = conn
         if let conn { interruptHandle.attach(conn) }
     }
+
+    var isOpen: Bool { database != nil && connection != nil }
 
     func close() {
         interruptHandle.detach()

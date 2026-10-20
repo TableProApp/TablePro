@@ -15,8 +15,12 @@ enum OracleTransactionRole: Equatable, Sendable {
     /// `COMMIT`, or a `ROLLBACK` that is not to a savepoint.
     case endsTransaction
 
-    /// Everything else: DML, DDL, PL/SQL, `CALL`, `ROLLBACK TO`, and the `FORCE` forms of `COMMIT` and `ROLLBACK`,
-    /// which settle an in-doubt distributed transaction rather than the session's own.
+    // Oracle commits before and after DDL (SQL Reference, COMMIT). ALTER SESSION and ALTER SYSTEM are
+    // session and system control, which commit nothing, and the schema switch sends ALTER SESSION.
+    case dataDefinition
+
+    /// Everything else: DML, PL/SQL, `CALL`, `ROLLBACK TO`, session and system control, and the `FORCE` forms of
+    /// `COMMIT` and `ROLLBACK`, which settle an in-doubt distributed transaction rather than the session's own.
     case other
 
     /// How much of a statement is read for its first words. A dump can hold a statement millions of characters long,
@@ -39,9 +43,22 @@ enum OracleTransactionRole: Equatable, Sendable {
         case "ROLLBACK":
             let word = Self.skippingWork(&reader)
             self = word == "TO" || word == "FORCE" ? .other : .endsTransaction
+        case "CREATE", "DROP", "TRUNCATE", "RENAME", "GRANT", "REVOKE", "COMMENT", "AUDIT", "NOAUDIT", "ANALYZE",
+             "PURGE", "FLASHBACK":
+            self = .dataDefinition
+        case "ALTER":
+            let word = reader.nextWord()
+            self = word == "SESSION" || word == "SYSTEM" ? .other : .dataDefinition
+        case "ASSOCIATE", "DISASSOCIATE":
+            self = reader.nextWord() == "STATISTICS" ? .dataDefinition : .other
         default:
             self = .other
         }
+    }
+
+    // A refused COMMIT, ROLLBACK or DDL statement may still have ended the transaction, so only the server can say.
+    var mayEndTransactionWhenRefused: Bool {
+        self == .endsTransaction || self == .dataDefinition
     }
 
     private static func skippingWork(_ reader: inout HeaderReader) -> String? {
