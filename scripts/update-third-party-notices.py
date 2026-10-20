@@ -42,7 +42,6 @@ def generate() -> str:
             "--config",
             str(CONFIG),
             "--locked",
-            "--offline",
             "--fail",
         ]
         if features:

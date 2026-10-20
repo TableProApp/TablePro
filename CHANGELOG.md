@@ -298,6 +298,8 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 
 ### Security
 
+- Update TLS certificate verification and bundled trust roots to block distrusted emSign certificate chains.
+
 - A masked agent whose ClickHouse, Redis or MongoDB batch failed partway saw the database's own error text; it now gets the same withheld message as other failures.
 - A Redis `SELECT n` was treated as a read, so read-only connections and agent read access let it switch the shared connection to another database; it now needs the approval an unrecognised statement needs.
 - A `FOR UPDATE` or `FOR SHARE` read inside a WHERE or HAVING subquery, a join condition or a function argument is now treated as a locking read, so read-only connections and agent read access refuse it.

@@ -124,7 +124,10 @@ async fn graceful_server_stop_during_row_stream_returns_an_error_not_partial_row
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn a_committed_insert_with_a_lost_http_ack_is_not_replayed() {
-    let (_container, opts) = super::start_clickhouse().await;
+    let (_container, mut opts) = super::start_clickhouse().await;
+    if matches!(opts.host.as_str(), "localhost" | "127.0.0.1") {
+        opts.host = "127.0.0.2".into();
+    }
     let observer = super::connect(opts.clone()).await;
     observer
         .execute("CREATE TABLE lost_ack_target (id UInt8, value UInt8) ENGINE = MergeTree ORDER BY id")
@@ -166,8 +169,12 @@ async fn a_committed_insert_with_a_lost_http_ack_is_not_replayed() {
     });
 
     let mut proxied_opts = opts.clone();
+    proxied_opts.host = "127.0.0.1".into();
     proxied_opts.port = proxy_port;
-    let connection = super::connect(proxied_opts).await;
+    let connection = ClickhouseDriver
+        .connect(proxied_opts)
+        .await
+        .expect("connect through local proxy");
     let write = connection.execute("INSERT INTO lost_ack_target VALUES (1, 7)").await;
     assert!(
         matches!(write, Err(DriverError::Disconnected)),
