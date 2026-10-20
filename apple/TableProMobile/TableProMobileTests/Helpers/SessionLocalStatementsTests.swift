@@ -16,8 +16,12 @@ struct SessionLocalStatementsTests {
         let commented = SessionLocalStatements.effect(
             of: ["CREATE TEMPORARY TABLE /* scratch */ orders (id INT)"], databaseType: .mysql
         )
+        let replaced = SessionLocalStatements.effect(
+            of: ["CREATE OR REPLACE TEMPORARY TABLE orders (draft_note INT)"], databaseType: .mariadb
+        )
 
         #expect(mysql.temporaryTables == ["scratch"])
+        #expect(replaced.temporaryTables == ["orders"])
         #expect(commented.temporaryTables == ["orders"])
         #expect(postgres.temporaryTables == ["scratch pad"])
     }

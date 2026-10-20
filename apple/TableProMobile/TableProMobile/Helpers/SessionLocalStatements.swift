@@ -17,7 +17,7 @@ nonisolated enum SessionLocalStatements {
     private static let qualified = #"(?:"# + identifier + #"\s*\.\s*)?"# + identifier
 
     private static let createPattern = try? NSRegularExpression(
-        pattern: #"^\s*CREATE\s+(?:GLOBAL\s+|LOCAL\s+)?TEMP(?:ORARY)?\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?(?=\s)"#,
+        pattern: #"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:GLOBAL\s+|LOCAL\s+)?TEMP(?:ORARY)?\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?(?=\s)"#,
         options: [.caseInsensitive]
     )
 
