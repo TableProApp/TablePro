@@ -344,6 +344,32 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(tableNames(following) == ["staging_facts"])
     }
 
+    @Test("A row edit started while a follow loads tables keeps the old placement until the edit ends")
+    func followYieldsToAnEditStartedDuringItsFetch() async throws {
+        let first = driver(tables: ["facts"])
+        first.currentSchema = "public"
+        let (switching, following) = try await warehouseCoordinators(on: first)
+        await switching.switchSchema(to: "staging")
+
+        let fetch = TestGate()
+        first.scriptedTables = [TableInfo(name: "staging_facts")]
+        first.beforeFetchTables = { await fetch.enter() }
+        let follow = Task { await following.followLiveSession() }
+        await fetch.waitUntilEntered()
+        following.isHeldByEditor = true
+        first.beforeFetchTables = nil
+        await fetch.open()
+        await follow.value
+
+        #expect(following.tablePlacement.schema == "public")
+        #expect(tableNames(following) == ["facts"])
+
+        following.isHeldByEditor = false
+        await following.resumedFollow?.value
+        #expect(following.tablePlacement.schema == "staging")
+        #expect(tableNames(following) == ["staging_facts"])
+    }
+
     @Test("A window closed while its database switch waits on another window's dial leaves that dial's session alone")
     func closedWindowSwitchDoesNotTearDownTheSharedSession() async throws {
         let first = driver(tables: ["facts"])
@@ -371,6 +397,28 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(redialing.session?.driver === second)
         #expect(appState.connectionManager.session(for: redialing.connection.id)?.driver === second)
         #expect(isConnected(redialing))
+    }
+
+    // SQL Server keeps schemas per database, so the other window's list belongs to the database it left.
+    @Test("A window following a SQL Server database switch lists the new database's schemas")
+    func followReloadsSchemasForTheNewDatabase() async throws {
+        let first = driver(tables: ["orders"])
+        first.currentSchema = "dbo"
+        first.scriptedSchemas = ["dbo", "sales"]
+        let warehouse = DatabaseConnection(name: "Ledger", type: .mssql, host: "sql.example.com", port: 1_433, database: "app")
+        factory.queue(first)
+        _ = try await appState.connectionManager.connect(warehouse)
+        let switching = ConnectionCoordinator(connection: warehouse, appState: appState)
+        await switching.connect()
+        let following = ConnectionCoordinator(connection: warehouse, appState: appState)
+        await following.connect()
+
+        first.scriptedSchemas = ["dbo", "archive"]
+        await switching.switchDatabase(to: "history")
+        await following.followLiveSession()
+
+        #expect(following.activeDatabase == "history")
+        #expect(following.schemas == ["dbo", "archive"])
     }
 
     @Test("A PostgreSQL database switch in one window moves the other window onto the new session")
