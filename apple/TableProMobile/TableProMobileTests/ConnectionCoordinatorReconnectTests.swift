@@ -277,6 +277,18 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(monitor.rollBackCount(for: connection.id) == 1)
     }
 
+    @Test("ROLLBACK AND CHAIN counts as a Roll Back though a new transaction is open after it")
+    func chainedRollBackCountsAsARollBack() async throws {
+        let first = driver(tables: ["orders"], state: .explicitTransaction)
+        try await dial(first)
+        let coordinator = await attachedCoordinator()
+
+        await runQuery("ROLLBACK AND CHAIN", in: coordinator, on: first)
+
+        #expect(coordinator.transactionHold == .open)
+        #expect(monitor.rollBackCount(for: connection.id) == 1)
+    }
+
     @Test("A redial over an open transaction tells the user the server rolled it back")
     func redialOverAHoldShowsTheAlert() async throws {
         let first = driver(tables: ["orders"], state: .explicitTransaction)

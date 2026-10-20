@@ -27,6 +27,10 @@ final class ConnectionCoordinator {
     }
     // Another window moved the session while this one was busy; it follows once it is free.
     @ObservationIgnored private var followPending = false
+    // One follow at a time, so an older one's late tables never land over a newer session's.
+    @ObservationIgnored private var isFollowing = false {
+        didSet { resumeFollowIfPending() }
+    }
     @ObservationIgnored private(set) var resumedFollow: Task<Void, Never>?
     @ObservationIgnored private var sessionCheck: Task<Bool, Never>?
     @ObservationIgnored private var statementFailedDuringCheck = false
@@ -411,10 +415,12 @@ final class ConnectionCoordinator {
 
     // Another window replaced the shared session, or switched its database or schema.
     func followLiveSession() async {
-        guard canFollowLiveSession else {
+        guard canFollowLiveSession, !isFollowing else {
             followPending = true
             return
         }
+        isFollowing = true
+        defer { isFollowing = false }
         let token = attemptToken
         await appState.sessionRedialer.settled(connection.id)
         guard attemptToken == token else { return }
@@ -448,7 +454,7 @@ final class ConnectionCoordinator {
     }
 
     private func resumeFollowIfPending() {
-        guard followPending, canFollowLiveSession else { return }
+        guard followPending, canFollowLiveSession, !isFollowing else { return }
         followPending = false
         resumedFollow = Task { await followLiveSession() }
     }
@@ -531,7 +537,8 @@ final class ConnectionCoordinator {
                 lossSettled = await restoreSession(after: .duringWork)
             }
             // A typed ROLLBACK leaves what grids and row screens read as stale as the bar's Roll Back does.
-            if heldBefore, !lossSettled, transactionHold == nil, rolledBack(value) {
+            // AND CHAIN, or a script that opens another after its ROLLBACK, ends with a transaction open.
+            if heldBefore, !lossSettled, rolledBack(value) {
                 appState.sessionTransactions.noteRolledBack(connection.id)
             }
             await reloadMetadataIfReleased()

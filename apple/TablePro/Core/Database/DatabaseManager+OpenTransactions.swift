@@ -75,6 +75,10 @@ extension DatabaseManager {
             }
         }
         CatalogChangeService.post(.transactionEnded(connectionId: hold.connectionId))
+        // Rows a grid read inside the transaction are gone; a tab holding edits keeps them until they are.
+        if !committing {
+            AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: hold.connectionId))
+        }
     }
 
     /// A task group is no bound here: it waits for its child, and the read queues behind any

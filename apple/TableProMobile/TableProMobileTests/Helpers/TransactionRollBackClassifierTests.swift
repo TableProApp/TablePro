@@ -12,6 +12,9 @@ struct TransactionRollBackClassifierTests {
             "Rollback Tran;",
             "-- note\nROLLBACK",
             "/* undo */ ROLLBACK;",
+            "ROLLBACK AND CHAIN",
+            "rollback work and no chain",
+            "ROLLBACK RELEASE",
             "ABORT",
         ]
     )
@@ -25,6 +28,8 @@ struct TransactionRollBackClassifierTests {
             "ROLLBACK TO SAVEPOINT a",
             "rollback work to a",
             "ROLLBACK PREPARED 'tx1'",
+            "ROLLBACK TRAN sp1",
+            "ROLLBACK TRANSACTION @savepoint",
             "COMMIT",
             "SELECT 'ROLLBACK'",
             "-- ROLLBACK\nSELECT 1",
