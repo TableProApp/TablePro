@@ -38,6 +38,8 @@ final class AppState {
 
     @ObservationIgnored private var automaticPresentationOwner: UUID?
     @ObservationIgnored private var pastedSSHKeysAwaitingKeychain: [UUID: String] = [:]
+    // A failed save leaves the change in memory only, so sync must not take an equal download as already saved.
+    @ObservationIgnored private var unsavedLibraryParts: Set<LibraryPart> = []
     let libraryPreferences: ConnectionLibraryPreferences
     let sshProvider: IOSSSHProvider
     let secureStore: any SecureStore
@@ -106,19 +108,19 @@ final class AppState {
         }
 
         syncCoordinator.onConnectionsChanged = { [weak self] merged in
-            self?.applySyncedConnections(merged)
+            self?.applySyncedConnections(merged) ?? false
         }
 
         syncCoordinator.onGroupsChanged = { [weak self] merged in
-            guard let self else { return }
-            guard merged != self.groups else { return }
-            self.persist(groups: merged)
+            guard let self else { return false }
+            guard merged != self.groups || self.unsavedLibraryParts.contains(.groups) else { return true }
+            return self.persist(groups: merged)
         }
 
         syncCoordinator.onTagsChanged = { [weak self] merged in
-            guard let self else { return }
-            guard merged != self.tags else { return }
-            self.persist(tags: merged)
+            guard let self else { return false }
+            guard merged != self.tags || self.unsavedLibraryParts.contains(.tags) else { return true }
+            return self.persist(tags: merged)
         }
 
         syncCoordinator.getCurrentState = { [weak self] in
@@ -154,13 +156,15 @@ final class AppState {
         libraryPublisher.publish(connections)
     }
 
-    func applySyncedConnections(_ merged: [DatabaseConnection]) {
-        guard !refuseWriteIfNotReady() else { return }
-        guard merged != connections else { return }
+    @discardableResult
+    func applySyncedConnections(_ merged: [DatabaseConnection]) -> Bool {
+        guard !refuseWriteIfNotReady() else { return false }
+        guard merged != connections || unsavedLibraryParts.contains(.connections) else { return true }
         let removedIds = Set(connections.map(\.id)).subtracting(merged.map(\.id))
-        persist(connections: merged)
+        let saved = persist(connections: merged)
         localState.purge(removedIds)
         publishLibrary()
+        return saved
     }
 
     private func syncsConnection(_ id: UUID) -> Bool {
@@ -211,36 +215,51 @@ final class AppState {
 
     // MARK: - Persistence Bridges
 
-    private func persist(connections: [DatabaseConnection]) {
+    @discardableResult
+    private func persist(connections: [DatabaseConnection]) -> Bool {
         connectionsState = .loaded(connections)
         pastedSSHKeysAwaitingKeychain = PastedSSHKeyMigration.keysStillHeld(
             pastedSSHKeysAwaitingKeychain,
             by: connections
         )
+        defer { pruneLibraryPreferences() }
         do {
             try storage.save(connections, keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain)
+            unsavedLibraryParts.remove(.connections)
+            return true
         } catch {
+            unsavedLibraryParts.insert(.connections)
             Self.logger.error("Failed to save connections: \(error.localizedDescription, privacy: .public)")
+            return false
         }
-        pruneLibraryPreferences()
     }
 
-    private func persist(groups: [ConnectionGroup]) {
+    @discardableResult
+    private func persist(groups: [ConnectionGroup]) -> Bool {
         groupsState = .loaded(groups)
+        defer { pruneLibraryPreferences() }
         do {
             try groupStorage.save(groups)
+            unsavedLibraryParts.remove(.groups)
+            return true
         } catch {
+            unsavedLibraryParts.insert(.groups)
             Self.logger.error("Failed to save groups: \(error.localizedDescription, privacy: .public)")
+            return false
         }
-        pruneLibraryPreferences()
     }
 
-    private func persist(tags: [ConnectionTag]) {
+    @discardableResult
+    private func persist(tags: [ConnectionTag]) -> Bool {
         tagsState = .loaded(tags)
         do {
             try tagStorage.save(tags)
+            unsavedLibraryParts.remove(.tags)
+            return true
         } catch {
+            unsavedLibraryParts.insert(.tags)
             Self.logger.error("Failed to save tags: \(error.localizedDescription, privacy: .public)")
+            return false
         }
     }
 
@@ -561,6 +580,12 @@ nonisolated enum LibraryStorage {
             ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         return base.appendingPathComponent("TableProMobile", isDirectory: true)
     }
+}
+
+private enum LibraryPart {
+    case connections
+    case groups
+    case tags
 }
 
 private struct StoredConnections {

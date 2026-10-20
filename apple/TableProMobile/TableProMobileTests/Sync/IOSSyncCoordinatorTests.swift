@@ -15,6 +15,7 @@ private final class LibraryStateBox {
     var duringPush: () -> Void = {}
     var duringAccountCheck: () -> Void = {}
     var syncEnabled = true
+    var saves = true
 
     func runDuringPull() {
         duringPull()
@@ -185,9 +186,9 @@ struct IOSSyncCoordinatorTests {
             networkMonitor: nil
         )
         coordinator.getCurrentState = { (box.connections, box.groups, box.tags) }
-        coordinator.onConnectionsChanged = { box.connections = $0 }
-        coordinator.onGroupsChanged = { box.groups = $0 }
-        coordinator.onTagsChanged = { box.tags = $0 }
+        coordinator.onConnectionsChanged = { box.connections = $0; return box.saves }
+        coordinator.onGroupsChanged = { box.groups = $0; return box.saves }
+        coordinator.onTagsChanged = { box.tags = $0; return box.saves }
         return coordinator
     }
 
@@ -766,6 +767,23 @@ struct IOSSyncCoordinatorTests {
 
         #expect(coordinator.status == .error(.blocked(.storageFull)))
         #expect(metadata.userDefaults.data(forKey: tokenKey) != nil)
+    }
+
+    @Test("A download the library could not save is not acknowledged, so the next run fetches it again")
+    func unsavedPullKeepsTheToken() async throws {
+        let box = LibraryStateBox()
+        box.saves = false
+        metadata.lastAccountId = "account-a"
+        let remote = DatabaseConnection(name: "From Mac", type: .postgresql)
+        let transport = FakeSyncTransport(remoteRecords: [SyncRecordMapper.toRecord(remote, zoneID: zoneID)], box: box)
+        await transport.answerPulls(withToken: try Self.makeChangeToken())
+        let coordinator = makeCoordinator(box: box, transport: transport)
+
+        await coordinator.sync()
+
+        #expect(coordinator.status == .error(.pullNotSaved))
+        #expect(metadata.userDefaults.data(forKey: tokenKey) == nil)
+        #expect(await transport.pushCount == 0)
     }
 
     @Test("A record iCloud refuses on its own stays pending, and the rest of the run still counts as synced")

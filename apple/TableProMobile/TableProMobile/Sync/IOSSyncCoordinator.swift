@@ -63,9 +63,10 @@ final class IOSSyncCoordinator {
     @ObservationIgnored private var editGenerations: [EditKey: Int] = [:]
     @ObservationIgnored private var accountChangeObservation: AnyCancellable?
 
-    @ObservationIgnored var onConnectionsChanged: (([DatabaseConnection]) -> Void)?
-    @ObservationIgnored var onGroupsChanged: (([ConnectionGroup]) -> Void)?
-    @ObservationIgnored var onTagsChanged: (([ConnectionTag]) -> Void)?
+    // Each returns whether the library saved the change, so a pull it lost is fetched again.
+    @ObservationIgnored var onConnectionsChanged: (([DatabaseConnection]) -> Bool)?
+    @ObservationIgnored var onGroupsChanged: (([ConnectionGroup]) -> Bool)?
+    @ObservationIgnored var onTagsChanged: (([ConnectionTag]) -> Bool)?
     @ObservationIgnored var getCurrentState: (() -> LibraryState?)?
 
     private static var recordCacheDirectory: URL {
@@ -555,14 +556,15 @@ final class IOSSyncCoordinator {
         for index in connections.indices {
             guard let local = connections[index].sslConfiguration, local.isLegacyRequire else { continue }
             let recordName = SyncRecordType.connection.recordName(for: connections[index].id.uuidString)
+            // Only Preferred or Required is in question, so certificate paths edited on either side do not matter.
             guard let cached = recordCache.record(named: recordName),
                   let server = SyncRecordMapper.serverSSL(in: cached),
-                  local.agrees(withServer: server) else { continue }
+                  server.mode == local.mode else { continue }
             connections[index].sslConfiguration?.settleLegacyRequire(asMacPreferred: server.isMacPreferred)
             changed = true
         }
-        if changed {
-            onConnectionsChanged?(connections)
+        if changed, onConnectionsChanged?(connections) != true {
+            Self.logger.error("The SSL modes settled from the cached records were not saved")
         }
     }
 
@@ -573,10 +575,10 @@ final class IOSSyncCoordinator {
 
     private func applyRemoteChanges(_ remote: PullChanges) -> Bool {
         guard let state = getCurrentState?() else { return false }
-        onConnectionsChanged?(mergeConnections(local: state.connections, remote: remote))
-        onGroupsChanged?(mergeGroups(local: state.groups, remote: remote))
-        onTagsChanged?(mergeTags(local: state.tags, remote: remote))
-        return true
+        let connectionsSaved = onConnectionsChanged?(mergeConnections(local: state.connections, remote: remote)) ?? false
+        let groupsSaved = onGroupsChanged?(mergeGroups(local: state.groups, remote: remote)) ?? false
+        let tagsSaved = onTagsChanged?(mergeTags(local: state.tags, remote: remote)) ?? false
+        return connectionsSaved && groupsSaved && tagsSaved
     }
 
     // MARK: - Push
