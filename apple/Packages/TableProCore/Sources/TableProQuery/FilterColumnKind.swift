@@ -58,10 +58,11 @@ nonisolated public enum FilterColumnKind {
     }
 
     // The literal that identifies a row by one key value. Off SQLite a column the caller could not read stays quoted,
-    // which every typed column accepts except MySQL BIT.
+    // which every typed column accepts except MySQL BIT. A REAL is matched one way only: the grid read SQLite's own
+    // digits, which another spelling of the same value would match too, so a unique text key would read as ambiguous.
     public static func keyLiteral(_ value: String, column: ColumnInfo?, databaseType: DatabaseType) -> ComparisonLiteral {
         if comparesEitherStorageClass(column, databaseType: databaseType) {
-            return SQLiteNumberText.isStoredSpelling(value) ? .numberOrText(value) : .text(value)
+            return SQLiteNumberText.isIntegerSpelling(value) ? .numberOrText(value) : .text(value)
         }
         guard let kind = kind(of: column, databaseType: databaseType) else { return .text(value) }
         return isBareNumber(value, kind: kind) ? .number(value) : .text(value)

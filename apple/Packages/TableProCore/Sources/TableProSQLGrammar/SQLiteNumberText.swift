@@ -7,7 +7,7 @@ public enum SQLiteNumberText {
     public static func isStoredSpelling(_ text: String) -> Bool {
         if let integer = Int64(text) { return String(integer) == text }
         guard let real = Double(text), real.isFinite, text.utf8.allSatisfy({ $0 < 0x80 }) else { return false }
-        return isRealSpelling(text, real: real)
+        return isRealSpelling(text, isZero: real == 0)
     }
 
     // An integer compares exactly against a column of any affinity; a REAL against a TEXT column does not.
@@ -15,12 +15,11 @@ public enum SQLiteNumberText {
         Int64(text).map { String($0) == text } ?? false
     }
 
-    // Measured on SQLite 3.54: a REAL prints with 15 significant digits when they read back as the same value and
-    // with 17 when they do not, never a trailing zero but the one in `7.0`, plain from 1e-4 below 1e17
-    // (`0.0001`, `10000000000000000.0`), else as `1.0e-05` or `1.2e+17`. The 17 digits are SQLite's own
-    // (1/3 prints `0.33333333333333332`), so their shape is checked, not their last digit.
-    private static func isRealSpelling(_ text: String, real: Double) -> Bool {
-        let isZero = real == 0
+    // Measured on SQLite 3.54: a REAL prints up to 17 significant digits from SQLite's own decoder, never a trailing
+    // zero but the one in `7.0`, plain from 1e-4 below 1e17 (`0.0001`, `10000000000000000.0`), else as `1.0e-05` or
+    // `1.2e+17`. Those digits match neither the shortest nor the `%.17g` spelling (1/3 prints `0.33333333333333332`,
+    // and a value 15 digits spell can print 17), so only the shape is checked.
+    private static func isRealSpelling(_ text: String, isZero: Bool) -> Bool {
         let unsigned = text.hasPrefix("-") ? String(text.dropFirst()) : text
         if isZero { return text == "0.0" }
         let parts = unsigned.split(separator: "e", omittingEmptySubsequences: false)
@@ -35,7 +34,7 @@ public enum SQLiteNumberText {
 
         let digits = (whole + fraction).drop { $0 == "0" }
         let significant = fraction == "0" ? digits.reversed().drop { $0 == "0" }.count : digits.count
-        guard significant <= 15 || significant <= 17 && needsMoreThanFifteenDigits(real) else { return false }
+        guard significant <= 17 else { return false }
 
         guard parts.count == 2 else {
             let exponent = whole == "0"
@@ -52,11 +51,6 @@ public enum SQLiteNumberText {
         else { return false }
         return !(-4...16).contains(sign == "-" ? -magnitude : magnitude)
     }
-}
-
-private func needsMoreThanFifteenDigits(_ real: Double) -> Bool {
-    let shortest = "\(abs(real))".prefix { $0 != "e" }.filter(\.isNumber).drop { $0 == "0" }
-    return shortest.reversed().drop { $0 == "0" }.count > 15
 }
 
 private extension Character {

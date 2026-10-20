@@ -120,12 +120,12 @@ struct SQLBuilderSingleRowLookupTests {
     }
 
     // SQLite keeps integer 5 and text '5' apart in a column with no affinity, and the grid shows both as 5.
-    @Test("A SQLite key with no affinity matches the number either way it was stored", arguments: ["", "BLOB", "ANY"])
+    @Test("A SQLite key with no affinity matches an integer either way it was stored", arguments: ["", "BLOB", "ANY"])
     func sqliteUntypedKeyMatchesEitherStorageClass(typeName: String) {
         let columns = [ColumnInfo(name: "id", typeName: typeName)]
         #expect(lookup([("id", "5")], columns: columns, type: .sqlite).contains("WHERE \"id\" IN (5, '5') "))
         #expect(lookup([("id", "-5")], type: .sqlite).contains("WHERE \"id\" IN (-5, '-5') "))
-        #expect(lookup([("id", "2.5")], type: .sqlite).contains("WHERE \"id\" IN (2.5, '2.5') "))
+        #expect(lookup([("id", "2.5")], type: .sqlite).contains("WHERE \"id\" = '2.5' "))
     }
 
     @Test("A SQLite value that is not how SQLite prints a number stays quoted", arguments: ["05", "+5", "5.50", "1e3", "abc", "-0"])

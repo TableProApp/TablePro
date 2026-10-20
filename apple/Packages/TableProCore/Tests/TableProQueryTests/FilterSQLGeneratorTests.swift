@@ -448,5 +448,8 @@ struct FilterSQLGeneratorTests {
             == .number("5"))
         #expect(FilterColumnKind.keyLiteral("5", column: nil, databaseType: .sqlite) == .numberOrText("5"))
         #expect(FilterColumnKind.keyLiteral("05", column: nil, databaseType: .sqlite) == .text("05"))
+        #expect(FilterColumnKind.keyLiteral("2.5", column: nil, databaseType: .sqlite) == .text("2.5"))
+        #expect(FilterColumnKind.keyLiteral("0.3333333333333333", column: nil, databaseType: .sqlite)
+            == .text("0.3333333333333333"))
     }
 }
