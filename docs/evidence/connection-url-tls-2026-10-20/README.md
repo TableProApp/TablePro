@@ -22,4 +22,4 @@ On 2026-10-20, the maintainer explicitly chose to keep Disabled when TLS options
 
 ## Evidence
 
-All 12 focused URL-parser tests and full local preflight passed. Documentation links, ledger, comment and function guards, and diff checks passed. Forgejo acceptance remains pending. No database connection or certificate verification claim follows from parser tests alone.
+All 12 focused URL-parser tests and full local preflight passed. Documentation links, ledger, comment and function guards, and diff checks passed. Forgejo [run 807](http://192.168.1.246:3000/trung/bookie/actions/runs/807) passed all 29 jobs. [PR #1191](https://github.com/cozyGarage/BookiE/pull/1191) merged as `3aba8b35a31c3c0e75374140e4bc023f80236fd8`; issue #1172 is closed. No database connection or certificate verification claim follows from parser tests alone.
