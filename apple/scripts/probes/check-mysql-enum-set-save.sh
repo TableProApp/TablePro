@@ -125,8 +125,8 @@ keyless_case() {
         update_using="$update_using, $variable"
         delete_using="${delete_using:+$delete_using, }$variable"
     done
-    local prefix="SET @n = 'large', @oe = $(bind "$enum_value"), @os = $(bind "$set_value");"
-    local updated deleted
+    local prefix updated deleted
+    prefix="SET @n = 'large', @oe = $(bind "$enum_value"), @os = $(bind "$set_value");"
     updated="$(run "$prefix
         PREPARE w FROM 'UPDATE \`keyless\` SET \`e\` = ? WHERE $e_match AND $s_match';
         EXECUTE w USING $update_using; SELECT ROW_COUNT();")"
