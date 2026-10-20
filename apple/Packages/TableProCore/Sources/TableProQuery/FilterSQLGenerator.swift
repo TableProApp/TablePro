@@ -2,6 +2,7 @@ import Foundation
 import TableProCoreTypes
 import TableProModels
 import TableProPluginKit
+import TableProSQLGrammar
 
 public struct FilterSQLGenerator: Sendable {
     private let dialect: SQLDialectDescriptor
@@ -108,7 +109,7 @@ public struct FilterSQLGenerator: Sendable {
     }
 
     private func eitherStorageComparison(_ column: String, _ value: String, negated: Bool) -> String {
-        guard FilterColumnKind.isCanonicalSQLiteNumber(value) else {
+        guard SQLiteNumberText.isStoredSpelling(value) else {
             return "\(column) \(negated ? "!=" : "=") \(escapeValue(value, kind: .text))"
         }
         return eitherStorageList(column, [value], negated: negated)
@@ -117,7 +118,7 @@ public struct FilterSQLGenerator: Sendable {
     private func eitherStorageList(_ column: String, _ values: [String], negated: Bool) -> String {
         let literals = values.flatMap { value -> [String] in
             let quoted = escapeValue(value, kind: .text)
-            return FilterColumnKind.isCanonicalSQLiteNumber(value) ? [value, quoted] : [quoted]
+            return SQLiteNumberText.isStoredSpelling(value) ? [value, quoted] : [quoted]
         }
         return "\(column) \(negated ? "NOT IN" : "IN") (\(literals.joined(separator: ", ")))"
     }

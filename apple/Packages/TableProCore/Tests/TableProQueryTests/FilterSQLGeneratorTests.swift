@@ -367,6 +367,7 @@ struct FilterSQLGeneratorTests {
         #expect(engineClause(.sqlite, column, "5, abc, 05", op: .in) == "WHERE \"v\" IN (5, '5', 'abc', '05')")
         #expect(engineClause(.sqlite, column, "-2.5", op: .notIn) == "WHERE \"v\" NOT IN (-2.5, '-2.5')")
         #expect(engineClause(.sqlite, column, "02134") == "WHERE \"v\" = '02134'")
+        #expect(engineClause(.sqlite, column, "1.0e+20") == "WHERE \"v\" IN (1.0e+20, '1.0e+20')")
         #expect(engineClause(.sqlite, column, "5", op: .greaterThan) == "WHERE \"v\" > 5")
     }
 
@@ -374,15 +375,6 @@ struct FilterSQLGeneratorTests {
     func sqliteTypedColumnUnchanged() {
         #expect(engineClause(.sqlite, ColumnInfo(name: "id", typeName: "INTEGER"), "5") == "WHERE \"id\" = 5")
         #expect(engineClause(.sqlite, ColumnInfo(name: "code", typeName: "TEXT"), "5") == "WHERE \"code\" = '5'")
-    }
-
-    @Test("A number SQLite prints the same way is canonical", arguments: [
-        ("5", true), ("-5", true), ("0", true), ("2.5", true), ("7.0", true), ("0.1", true),
-        ("05", false), ("+5", false), ("-0", false), ("5.50", false), ("1e3", false), (".5", false),
-        ("99999999999999999999", false), ("abc", false), ("", false)
-    ])
-    func canonicalSQLiteNumber(value: String, isCanonical: Bool) {
-        #expect(FilterColumnKind.isCanonicalSQLiteNumber(value) == isCanonical)
     }
 
     private var castingDialect: SQLDialectDescriptor {

@@ -2,6 +2,7 @@ import Foundation
 import TableProCoreTypes
 import TableProModels
 import TableProPluginKit
+import TableProSQLGrammar
 
 // Unknown types fall to `.text`: `int_col = '5'` still matches everywhere, `text_col = 02134` finds the wrong row.
 nonisolated public enum FilterColumnKind {
@@ -49,15 +50,6 @@ nonisolated public enum FilterColumnKind {
         databaseType == .sqlite && kind(of: column, databaseType: databaseType) == nil
     }
 
-    // How SQLite spells a stored number, so `IN (5, '5')` never also matches a row that reads `05` or `5.50`.
-    public static func isCanonicalSQLiteNumber(_ value: String) -> Bool {
-        if let integer = Int64(value) { return String(integer) == value }
-        guard value.contains("."), !value.contains(where: { $0 == "e" || $0 == "E" }),
-              let real = Double(value), real.isFinite
-        else { return false }
-        return "\(real)" == value
-    }
-
     // Character.isNumber takes digits of every script, and no engine parses those as a number.
     // An integer column takes a fraction bare too: PostgreSQL and SQL Server reject `int_col > '5.5'`.
     public static func isBareNumber(_ value: String, kind: PluginColumnKind?) -> Bool {
@@ -69,7 +61,7 @@ nonisolated public enum FilterColumnKind {
     // which every typed column accepts except MySQL BIT.
     public static func keyLiteral(_ value: String, column: ColumnInfo?, databaseType: DatabaseType) -> ComparisonLiteral {
         if comparesEitherStorageClass(column, databaseType: databaseType) {
-            return isCanonicalSQLiteNumber(value) ? .numberOrText(value) : .text(value)
+            return SQLiteNumberText.isStoredSpelling(value) ? .numberOrText(value) : .text(value)
         }
         guard let kind = kind(of: column, databaseType: databaseType) else { return .text(value) }
         return isBareNumber(value, kind: kind) ? .number(value) : .text(value)

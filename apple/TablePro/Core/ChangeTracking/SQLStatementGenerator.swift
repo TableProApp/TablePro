@@ -9,6 +9,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// A parameterized SQL statement with placeholders and bound values
 struct ParameterizedStatement: @unchecked Sendable {
@@ -353,10 +354,7 @@ struct SQLStatementGenerator {
                     return nil
                 }
 
-                parameters.append(pkValue.asAny)
-                conditions.append(
-                    "\(quoteIdentifierFn(pkColumn)) = \(placeholder(at: parameters.count - 1))"
-                )
+                conditions.append(matchCondition(quoteIdentifierFn(pkColumn), value: pkValue, parameters: &parameters))
             }
 
             guard !conditions.isEmpty else { return nil }
@@ -384,8 +382,7 @@ struct SQLStatementGenerator {
                 if value.isNull {
                     conditions.append("\(matched) IS NULL")
                 } else {
-                    parameters.append(value.asAny)
-                    conditions.append("\(matched) = \(placeholder(at: parameters.count - 1))")
+                    conditions.append(matchCondition(matched, value: value, parameters: &parameters))
                 }
             }
 
@@ -397,6 +394,18 @@ struct SQLStatementGenerator {
 
             return ParameterizedStatement(sql: sql, parameters: parameters)
         }
+    }
+
+    /// One column of a row match. SQLite keeps integer 5 and text '5' apart in a column with no affinity, and the
+    /// grid read either one as `5`, so SQLite's own text for a number matches both; a typed column converts either
+    /// literal to its own type, so the same form is exact there too.
+    private func matchCondition(_ matched: String, value: PluginCellValue, parameters: inout [Any?]) -> String {
+        parameters.append(value.asAny)
+        let bound = placeholder(at: parameters.count - 1)
+        guard SQLTypeFamily.of(databaseType) == .sqlite, case .text(let text) = value,
+              SQLiteNumberText.isStoredSpelling(text)
+        else { return "\(matched) = \(bound)" }
+        return "\(matched) IN (\(text), \(bound))"
     }
 
     // MARK: - DELETE Generation
@@ -487,8 +496,7 @@ struct SQLStatementGenerator {
                 guard let value = match.boundValue else {
                     return "\(matched) IS NULL"
                 }
-                parameters.append(value.asAny)
-                return "\(matched) = \(placeholder(at: parameters.count - 1))"
+                return matchCondition(matched, value: value, parameters: &parameters)
             }
             let joined = conditions.joined(separator: " AND ")
             return matches.count > 1 ? "(\(joined))" : joined
