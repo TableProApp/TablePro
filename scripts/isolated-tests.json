@@ -566,6 +566,16 @@
       "tablepro-app",
       "--lib",
       "ui::app::environment_marker::tests::the_badge_and_header_tint_follow_the_connection_environment"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::editor_inputs_cannot_dispatch_or_cancel_an_active_query"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::editor_dispatch_resumes_after_success_cancel_and_timeout"
     ]
   ],
   "keyring": [

@@ -1193,4 +1193,6 @@ fn build_completion_refresh(
 }
 
 #[cfg(test)]
+mod dispatch_tests;
+#[cfg(test)]
 mod tests;
