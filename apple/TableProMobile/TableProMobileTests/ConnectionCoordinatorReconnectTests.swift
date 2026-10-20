@@ -196,6 +196,45 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(!redialing.showFailureAlert)
     }
 
+    @Test("A dial its last window walked away from is delisted, so a retry does not wait on it")
+    func abandonedDialIsDelisted() async throws {
+        let first = driver(tables: ["orders"])
+        try await dial(first)
+        let redialing = await attachedCoordinator()
+
+        let teardown = TestGate()
+        first.beforeDisconnect = { await teardown.enter() }
+        first.pingError = MockDatabaseDriver.MockError.scripted
+        factory.queue(driver(tables: ["orders"]))
+        let redial = Task { await redialing.reconnectIfNeeded() }
+        await teardown.waitUntilEntered()
+
+        redialing.retire()
+        await appState.sessionRedialer.settled(connection.id)
+        await teardown.open()
+        await redial.value
+    }
+
+    @Test("No window switches database under another window's unsaved row edit")
+    func unsavedEditBlocksADatabaseSwitch() async throws {
+        let first = driver(tables: ["orders"])
+        try await dial(first)
+        let switching = await attachedCoordinator()
+        let editing = await attachedCoordinator()
+
+        editing.isHeldByEditor = true
+        await switching.switchDatabase(to: "app_staging")
+
+        #expect(switching.activeDatabase == "app_prod")
+        #expect(switching.showFailureAlert)
+        #expect(switching.failureAlertMessage == ConnectionCoordinator.editorHeldElsewhereMessage)
+
+        editing.isHeldByEditor = false
+        switching.showFailureAlert = false
+        await switching.switchDatabase(to: "app_staging")
+        #expect(switching.activeDatabase == "app_staging")
+    }
+
     @Test("A window busy with its own switch follows another window's switch once it is free")
     func busyWindowFollowsOnceFree() async throws {
         let first = driver(tables: ["orders"])

@@ -29,6 +29,7 @@ final class AppState {
 
     private(set) var sampleResetRevision = 0
     private var sessionRevisions: [UUID: Int] = [:]
+    private var editorHolders: [UUID: Set<ObjectIdentifier>] = [:]
     let onboarding: OnboardingPreferences
     let connectionManager: ConnectionManager
     let sessionTransactions: SessionTransactionMonitor
@@ -136,6 +137,21 @@ final class AppState {
 
     func bumpSessionRevision(_ connectionId: UUID) {
         sessionRevisions[connectionId, default: 0] += 1
+    }
+
+    // A window with unsaved row edits names its table without a database, so no other window may move the shared session.
+    func setEditorHold(_ isHolding: Bool, by holder: AnyObject, on connectionId: UUID) {
+        let id = ObjectIdentifier(holder)
+        if isHolding {
+            editorHolders[connectionId, default: []].insert(id)
+        } else {
+            editorHolders[connectionId]?.remove(id)
+            if editorHolders[connectionId]?.isEmpty == true { editorHolders[connectionId] = nil }
+        }
+    }
+
+    func holdsEditor(_ connectionId: UUID, besides holder: AnyObject) -> Bool {
+        !(editorHolders[connectionId] ?? []).subtracting([ObjectIdentifier(holder)]).isEmpty
     }
 
     private func sessionEnded(_ connectionId: UUID, driver: any DatabaseDriver) {

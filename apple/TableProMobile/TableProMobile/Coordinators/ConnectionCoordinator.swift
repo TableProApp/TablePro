@@ -27,6 +27,19 @@ final class ConnectionCoordinator {
     }
     // Another window moved the session while this one was busy; it follows once it is free.
     @ObservationIgnored private var followPending = false
+    // A follow that changes the database rebuilds the table screen, which would drop an unsaved row edit.
+    var isHeldByEditor = false {
+        didSet {
+            guard isHeldByEditor != oldValue else { return }
+            appState.setEditorHold(isHeldByEditor, by: self, on: connection.id)
+            resumeFollowIfPending()
+        }
+    }
+
+    var anotherWindowHoldsEditor: Bool {
+        appState.holdsEditor(connection.id, besides: self)
+    }
+
     // One follow at a time, so an older one's late tables never land over a newer session's.
     @ObservationIgnored private var isFollowing = false {
         didSet { resumeFollowIfPending() }
@@ -157,6 +170,7 @@ final class ConnectionCoordinator {
         if appState.sessionRedialer.leave(connection.id, consumer: self) {
             appState.connectionManager.invalidateAttempt(for: connection.id)
         }
+        appState.setEditorHold(false, by: self, on: connection.id)
         session = nil
     }
 
@@ -449,8 +463,12 @@ final class ConnectionCoordinator {
         await refreshTransaction()
     }
 
+    static var editorHeldElsewhereMessage: String {
+        String(localized: "Another window has unsaved changes on this connection. Save or discard them before switching database.")
+    }
+
     private var canFollowLiveSession: Bool {
-        session != nil && !isSwitching && !isReconnecting && connectTask == nil
+        session != nil && !isSwitching && !isReconnecting && connectTask == nil && !isHeldByEditor
     }
 
     private func resumeFollowIfPending() {
@@ -612,6 +630,11 @@ final class ConnectionCoordinator {
 
     func switchDatabase(to name: String) async {
         guard session != nil, name != activeDatabase, !isSwitching else { return }
+        guard !anotherWindowHoldsEditor else {
+            failureAlertMessage = Self.editorHeldElsewhereMessage
+            showFailureAlert = true
+            return
+        }
         isSwitching = true
         defer { isSwitching = false }
 
