@@ -243,7 +243,8 @@ final class ConnectionCoordinator {
                 schema: nil,
                 prompter: prompts,
                 joining: allowSignIn,
-                consumer: self
+                consumer: self,
+                stillWanted: { [weak self] in self?.attemptToken == token }
             )
             let newSession = outcome.session
             let newTables = try await newSession.driver.fetchTables(schema: nil)
@@ -339,7 +340,8 @@ final class ConnectionCoordinator {
                 dialTarget,
                 schema: supportsSchemas ? activeSchema : nil,
                 prompter: prompts,
-                consumer: self
+                consumer: self,
+                stillWanted: { [weak self] in self?.attemptToken == token }
             )
             guard attemptToken == token else { return false }
             await takeSession(outcome.session, token: token, dialedHere: outcome.dialedHere)
@@ -412,19 +414,21 @@ final class ConnectionCoordinator {
     // follows it before any write can name a table from the old list.
     @discardableResult
     private func adoptPlacement(of taken: ConnectionSession, includingDatabase: Bool) -> Bool {
-        var moved = false
+        let moved = movedPlacement(of: taken, includingDatabase: includingDatabase)
+        if let database = moved.database { activeDatabase = database }
+        if let schema = moved.schema { activeSchema = schema }
+        return moved.database != nil || moved.schema != nil
+    }
+
+    private func movedPlacement(of taken: ConnectionSession, includingDatabase: Bool) -> (database: String?, schema: String?) {
+        var database: String?
         if includingDatabase {
-            let database = sessionDatabase(of: taken)
-            if supportsDatabaseSwitching, !database.isEmpty, database != activeDatabase {
-                activeDatabase = database
-                moved = true
-            }
+            let candidate = sessionDatabase(of: taken)
+            if supportsDatabaseSwitching, !candidate.isEmpty, candidate != activeDatabase { database = candidate }
         }
-        if supportsSchemas, let schema = taken.driver.currentSchema, schema != activeSchema {
-            activeSchema = schema
-            moved = true
-        }
-        return moved
+        var schema: String?
+        if supportsSchemas, let current = taken.driver.currentSchema, current != activeSchema { schema = current }
+        return (database, schema)
     }
 
     // Another window replaced the shared session, or switched its database or schema.
@@ -449,14 +453,23 @@ final class ConnectionCoordinator {
             await loadSchemas()
             return
         }
-        guard adoptPlacement(of: live, includingDatabase: true) else { return }
-        session = live
+        let moved = movedPlacement(of: live, includingDatabase: true)
+        guard moved.database != nil || moved.schema != nil else { return }
+        let fetched: [TableInfo]?
         do {
-            let fetched = try await live.driver.fetchTables(schema: supportsSchemas ? activeSchema : nil)
-            guard attemptToken == token, session?.driver === live.driver else { return }
-            tables = fetched
+            fetched = try await live.driver.fetchTables(schema: supportsSchemas ? moved.schema ?? activeSchema : nil)
         } catch {
             Self.logger.warning("Failed to load tables where another window moved the session: \(error.localizedDescription, privacy: .public)")
+            fetched = nil
+        }
+        guard attemptToken == token, session?.driver === live.driver else { return }
+        // Placement and tables change in one step, so a row of the old list never pairs with the new placement.
+        if let database = moved.database { activeDatabase = database }
+        if let schema = moved.schema { activeSchema = schema }
+        session = live
+        if let fetched {
+            tables = fetched
+        } else {
             metadataRefused = true
             tables = []
         }
@@ -678,21 +691,24 @@ final class ConnectionCoordinator {
 
     // Lets another window's redial land before the teardown that would cancel it, and dials where other windows join.
     private func reconnectWithDatabase(_ database: String) async {
+        let token = attemptToken
         await appState.sessionRedialer.settled(connection.id)
+        // A window closed during that wait must not tear down the session the other windows now use.
+        guard attemptToken == token else { return }
         await appState.connectionManager.disconnect(connection.id)
         self.session = nil
 
         var newConnection = connection
         newConnection.database = database
 
-        let token = attemptToken
         do {
             let newSession = try await appState.sessionRedialer.redial(
                 newConnection,
                 schema: nil,
                 prompter: prompts,
                 joining: false,
-                consumer: self
+                consumer: self,
+                stillWanted: { [weak self] in self?.attemptToken == token }
             ).session
             guard attemptToken == token else { return }
             self.session = newSession
@@ -701,6 +717,7 @@ final class ConnectionCoordinator {
             UserDefaults.standard.set(database, forKey: ConnectionDefaultsKey.lastDB.name(for: connection.id))
             await loadSchemas()
         } catch {
+            guard attemptToken == token else { return }
             Self.logger.error("Failed to switch to database \(database, privacy: .public): \(error.localizedDescription, privacy: .public)")
             do {
                 let fallbackSession = try await appState.sessionRedialer.redial(
@@ -708,7 +725,8 @@ final class ConnectionCoordinator {
                     schema: nil,
                     prompter: prompts,
                     joining: false,
-                    consumer: self
+                    consumer: self,
+                    stillWanted: { [weak self] in self?.attemptToken == token }
                 ).session
                 guard attemptToken == token else { return }
                 self.session = fallbackSession
@@ -716,6 +734,7 @@ final class ConnectionCoordinator {
                 failureAlertMessage = String(localized: "Failed to switch database")
                 showFailureAlert = true
             } catch {
+                guard attemptToken == token else { return }
                 let context = ErrorContext(
                     operation: "switchDatabase",
                     databaseType: connection.type,

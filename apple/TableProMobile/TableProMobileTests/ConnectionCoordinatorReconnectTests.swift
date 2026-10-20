@@ -322,6 +322,57 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(following.tablePlacement != chosen)
     }
 
+    @Test("A window following a schema switch keeps its old placement until the new schema's tables arrive")
+    func followCommitsPlacementWithItsTables() async throws {
+        let first = driver(tables: ["facts"])
+        first.currentSchema = "public"
+        let (switching, following) = try await warehouseCoordinators(on: first)
+        await switching.switchSchema(to: "staging")
+
+        let fetch = TestGate()
+        first.scriptedTables = [TableInfo(name: "staging_facts")]
+        first.beforeFetchTables = { await fetch.enter() }
+        let follow = Task { await following.followLiveSession() }
+        await fetch.waitUntilEntered()
+        let duringFetch = (following.tablePlacement.schema, tableNames(following))
+        await fetch.open()
+        await follow.value
+
+        #expect(duringFetch.0 == "public")
+        #expect(duringFetch.1 == ["facts"])
+        #expect(following.tablePlacement.schema == "staging")
+        #expect(tableNames(following) == ["staging_facts"])
+    }
+
+    @Test("A window closed while its database switch waits on another window's dial leaves that dial's session alone")
+    func closedWindowSwitchDoesNotTearDownTheSharedSession() async throws {
+        let first = driver(tables: ["facts"])
+        first.currentSchema = "public"
+        let (redialing, switching) = try await warehouseCoordinators(on: first)
+        let dialsBefore = factory.dialed.count
+
+        let teardown = TestGate()
+        first.beforeDisconnect = { await teardown.enter() }
+        first.pingError = MockDatabaseDriver.MockError.scripted
+        let second = driver(tables: ["facts"])
+        second.currentSchema = "public"
+        factory.queue(second)
+        let redial = Task { await redialing.reconnectIfNeeded() }
+        await teardown.waitUntilEntered()
+
+        let switchTask = Task { await switching.switchDatabase(to: "staging") }
+        for _ in 0 ..< 20 { await Task.yield() }
+        switching.retire()
+        await teardown.open()
+        await redial.value
+        await switchTask.value
+
+        #expect(factory.dialed.count == dialsBefore + 1)
+        #expect(redialing.session?.driver === second)
+        #expect(appState.connectionManager.session(for: redialing.connection.id)?.driver === second)
+        #expect(isConnected(redialing))
+    }
+
     @Test("A PostgreSQL database switch in one window moves the other window onto the new session")
     func otherWindowFollowsAPostgreSQLSwitch() async throws {
         let first = driver(tables: ["facts"])

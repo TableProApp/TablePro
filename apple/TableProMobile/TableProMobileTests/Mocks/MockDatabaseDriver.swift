@@ -53,6 +53,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var beforeDisconnect: (@Sendable () async -> Void)?
     var beforeExecute: (@Sendable () async -> Void)?
     var beforeTransactionState: (@Sendable () async -> Void)?
+    var beforeFetchTables: (@Sendable () async -> Void)?
 
     func connect() async throws {}
     func disconnect() async throws {
@@ -78,6 +79,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
+        await beforeFetchTables?()
         if let fetchTablesError { throw fetchTablesError }
         return scriptedTables
     }

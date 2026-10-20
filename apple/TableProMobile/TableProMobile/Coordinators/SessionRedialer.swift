@@ -34,7 +34,8 @@ final class SessionRedialer {
         schema: String?,
         prompter: (any ConnectionPrompter)?,
         joining: Bool = true,
-        consumer: AnyObject? = nil
+        consumer: AnyObject? = nil,
+        stillWanted: @MainActor () -> Bool = { true }
     ) async throws -> Outcome {
         let consumerId = consumer.map(ObjectIdentifier.init)
         while let inFlight = dials[connection.id] {
@@ -46,6 +47,8 @@ final class SessionRedialer {
             // A database switch needs its own target, and a retry after a sign-in its new credentials.
             _ = try? await inFlight.task.value
         }
+        // A dial replaces the session other windows use, so a window that went away while it waited dials nothing.
+        guard stillWanted(), !Task.isCancelled else { throw CancellationError() }
         let manager = connectionManager
         let dialId = UUID()
         let shared = SharedDialPrompter()
