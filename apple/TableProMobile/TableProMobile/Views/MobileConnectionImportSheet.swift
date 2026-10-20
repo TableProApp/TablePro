@@ -4,7 +4,7 @@ import TableProModels
 
 struct MobileConnectionImportSheet: View {
     let fileURL: URL
-    var onImported: ((Int) -> Void)?
+    var onImported: ((ImportOutcome) -> Void)?
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -126,12 +126,27 @@ struct MobileConnectionImportSheet: View {
                     connectionRow(row, in: review)
                 }
             } footer: {
-                if !review.preview.collected.bundle.savedQueries.isEmpty {
-                    Text("This file also holds saved queries, which import only on a Mac.")
+                if IOSConnectionImportService.leavesOutSavedQueries(review.preview) {
+                    Text("Saved queries can't be read right now, so they are not imported.")
+                }
+            }
+            savedQueriesSection(review)
+        }
+        .disabled(isImporting)
+    }
+
+    @ViewBuilder
+    private func savedQueriesSection(_ review: Review) -> some View {
+        if !review.preview.queries.isEmpty {
+            let statuses = review.plan.queryStatuses
+            Section("Saved Queries") {
+                ForEach(review.preview.queries) { row in
+                    MobileImportQueryRow(row: row, status: statuses[row.ref]) { included in
+                        self.review?.selection.setIncluded(included, query: row.ref)
+                    }
                 }
             }
         }
-        .disabled(isImporting)
     }
 
     private func connectionRow(_ row: ConnectionRow, in review: Review) -> some View {
@@ -206,17 +221,6 @@ struct MobileConnectionImportSheet: View {
             return String(localized: "TablePro could not read your connection library, so nothing was imported.")
         }
         return error.localizedDescription
-    }
-
-    private static func message(for failure: ImportFailure) -> String {
-        switch failure {
-        case .libraryUnreadable:
-            String(localized: "TablePro could not read your connection library, so nothing was imported.")
-        case .connectionsNotSaved:
-            String(localized: "The connections could not be saved.")
-        case .savedQueriesNotSaved:
-            String(localized: "The saved queries could not be saved.")
-        }
     }
 
     // MARK: - State helpers
@@ -296,11 +300,11 @@ struct MobileConnectionImportSheet: View {
             appState: appState,
             secureStore: appState.secureStore
         )
-        if let failure = outcome.failure, !outcome.importedAnything {
-            phase = .failed(Self.message(for: failure))
+        if outcome.failure != nil, !outcome.importedAnything {
+            phase = .failed(MobileImportOutcomeMessage(outcome).message)
             return
         }
-        onImported?(outcome.connectionsAdded + outcome.connectionsReplaced)
+        onImported?(outcome)
         dismiss()
     }
 

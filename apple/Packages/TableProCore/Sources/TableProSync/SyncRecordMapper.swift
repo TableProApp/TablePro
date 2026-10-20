@@ -26,8 +26,7 @@ public enum SyncRecordMapper {
         SyncRecordType.parse(recordName: recordName)
     }
 
-    /// Reads the colour from the field both platforms now write, falling back to the hex `colorTag`
-    /// that iOS wrote before they converged.
+    // iOS wrote hex to `colorTag` before both apps converged on `color`.
     private static func color(from fields: SyncRecordFields<ConnectionSyncField>) -> ConnectionColor {
         if let stored = fields[.color] as? String {
             return ConnectionColor(storedValue: stored)
@@ -40,9 +39,7 @@ public enum SyncRecordMapper {
 
     // MARK: - Connection -> CKRecord
 
-    /// Builds the whole record from the model, which is also how a connection whose cached record
-    /// is gone gets pushed. Under `.changedKeys` only a named key reaches the server, so every field
-    /// `updateRecord` would clear is named here too, or a cleared group, tag or icon comes back.
+    // Under `.changedKeys` only a named key reaches the server, so every field `updateRecord` would clear is named here too.
     public static func toRecord(_ connection: DatabaseConnection, zoneID: CKRecordZone.ID) -> CKRecord {
         let id = recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
         let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: id)
@@ -423,5 +420,97 @@ public enum SyncRecordMapper {
         fields[.isPreset] = Int64(tag.isPreset ? 1 : 0)
         fields[.color] = tag.color.rawValue
         fields[.modifiedAtLocal] = Date()
+    }
+
+    // MARK: - Saved Query -> CKRecord
+
+    // Built whole from the local query, so an emptied keyword, folder or connection is named and cleared on the server.
+    public static func toRecord(_ query: SavedQuery, zoneID: CKRecordZone.ID) -> CKRecord {
+        let id = recordID(type: .favorite, id: query.id.uuidString, in: zoneID)
+        let record = CKRecord(recordType: SyncRecordType.favorite.rawValue, recordID: id)
+
+        let fields = record.fields(SQLFavoriteSyncField.self, absentValues: .clear)
+        fields[.favoriteId] = query.id.uuidString
+        fields[.name] = query.name
+        fields[.query] = query.query
+        fields[.keyword] = query.keyword
+        fields[.folderId] = query.folderId?.uuidString
+        fields[.connectionId] = query.connectionId?.uuidString
+        fields[.sortOrder] = Int64(query.sortOrder)
+        fields[.createdAt] = query.createdAt
+        fields[.updatedAt] = query.updatedAt
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
+
+        return record
+    }
+
+    // MARK: - CKRecord -> Saved Query
+
+    public static func toSavedQuery(_ record: CKRecord) -> SavedQuery? {
+        let fields = record.fields(SQLFavoriteSyncField.self)
+        guard let idString = fields[.favoriteId] as? String,
+              let id = UUID(uuidString: idString),
+              let name = fields[.name] as? String,
+              let query = fields[.query] as? String
+        else {
+            logger.warning("Failed to decode saved query from CKRecord: missing required fields")
+            return nil
+        }
+
+        return SavedQuery(
+            id: id,
+            name: name,
+            query: query,
+            keyword: fields[.keyword] as? String,
+            folderId: (fields[.folderId] as? String).flatMap(UUID.init(uuidString:)),
+            connectionId: (fields[.connectionId] as? String).flatMap(UUID.init(uuidString:)),
+            sortOrder: Int(fields[.sortOrder] as? Int64 ?? 0),
+            createdAt: fields[.createdAt] as? Date,
+            updatedAt: fields[.updatedAt] as? Date
+        )
+    }
+
+    // MARK: - Saved Query Folder -> CKRecord
+
+    public static func toRecord(_ folder: SavedQueryFolder, zoneID: CKRecordZone.ID) -> CKRecord {
+        let id = recordID(type: .favoriteFolder, id: folder.id.uuidString, in: zoneID)
+        let record = CKRecord(recordType: SyncRecordType.favoriteFolder.rawValue, recordID: id)
+
+        let fields = record.fields(SQLFavoriteFolderSyncField.self, absentValues: .clear)
+        fields[.folderId] = folder.id.uuidString
+        fields[.name] = folder.name
+        fields[.parentId] = folder.parentId?.uuidString
+        fields[.connectionId] = folder.connectionId?.uuidString
+        fields[.sortOrder] = Int64(folder.sortOrder)
+        fields[.createdAt] = folder.createdAt
+        fields[.updatedAt] = folder.updatedAt
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
+
+        return record
+    }
+
+    // MARK: - CKRecord -> Saved Query Folder
+
+    public static func toSavedQueryFolder(_ record: CKRecord) -> SavedQueryFolder? {
+        let fields = record.fields(SQLFavoriteFolderSyncField.self)
+        guard let idString = fields[.folderId] as? String,
+              let id = UUID(uuidString: idString),
+              let name = fields[.name] as? String
+        else {
+            logger.warning("Failed to decode saved query folder from CKRecord: missing required fields")
+            return nil
+        }
+
+        return SavedQueryFolder(
+            id: id,
+            name: name,
+            parentId: (fields[.parentId] as? String).flatMap(UUID.init(uuidString:)),
+            connectionId: (fields[.connectionId] as? String).flatMap(UUID.init(uuidString:)),
+            sortOrder: Int(fields[.sortOrder] as? Int64 ?? 0),
+            createdAt: fields[.createdAt] as? Date,
+            updatedAt: fields[.updatedAt] as? Date
+        )
     }
 }

@@ -28,7 +28,7 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                     socketPath: MySQLLocalSocket.path(in: connection.additionalFields)
                 )
             )
-        })
+        }, savedQueries: appState.savedQueries.ledgerEntries() ?? [])
     }
 
     func addImportedProfiles(_ profiles: [PlannedCredentialProfile]) throws -> [BundleRef: UUID] {

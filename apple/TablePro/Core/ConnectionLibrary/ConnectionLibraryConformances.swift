@@ -1,8 +1,3 @@
-//
-//  ConnectionLibraryConformances.swift
-//  TablePro
-//
-
 import Foundation
 import TableProConnectionLibrary
 import TableProImport
@@ -14,6 +9,8 @@ extension DatabaseConnection: LibraryConnectionRepresentable {
 extension ConnectionGroup: LibraryGroupRepresentable {}
 
 extension ConnectionTag: LibraryTagRepresentable {}
+
+extension SQLFavorite: SavedQueryRepresentable {}
 
 internal extension LinkedConnection {
     var libraryEntry: LibraryExternalEntry {

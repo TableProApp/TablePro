@@ -2,16 +2,7 @@ import Foundation
 @testable import TableProSyncTransport
 import Testing
 
-/// macOS and iOS map a synced record with two separate `SyncRecordMapper` implementations, because
-/// the two platforms cannot share one `DatabaseConnection`: the macOS `DatabaseType` resolves
-/// through the plugin registry and is open-ended by design, while iOS carries a fixed list. So the
-/// wire contract is the only thing holding them together, and nothing checked that both ends
-/// actually use it.
-///
-/// A connection's colour reached users that way: macOS wrote `ConnectionColor`'s name to `color`
-/// and iOS wrote hex to `colorTag`, each read only its own field, and a colour set on one device
-/// was invisible on the other. Every asymmetry left is listed below, so a new one fails here
-/// instead of shipping.
+// The two apps map records in separate files, so a field only one side writes or reads fails here instead of shipping.
 @Suite("Sync field parity between the two mappers")
 struct SyncFieldParityTests {
     private static let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -24,30 +15,27 @@ struct SyncFieldParityTests {
     private static let macMapper = "TablePro/Core/Sync/SyncRecordMapper.swift"
     private static let iosMapper = "Packages/TableProCore/Sources/TableProSync/SyncRecordMapper.swift"
 
-    /// Record types both apps sync. Every field of these has to survive a trip in either direction.
+    // Every field of these has to survive a trip in either direction.
     private static let sharedRecordTypes: [String: [String]] = [
         "ConnectionSyncField": ConnectionSyncField.allCases.map(\.rawValue),
         "ConnectionGroupSyncField": ConnectionGroupSyncField.allCases.map(\.rawValue),
         "ConnectionTagSyncField": ConnectionTagSyncField.allCases.map(\.rawValue),
+        "SQLFavoriteSyncField": SQLFavoriteSyncField.allCases.map(\.rawValue),
+        "SQLFavoriteFolderSyncField": SQLFavoriteFolderSyncField.allCases.map(\.rawValue),
     ]
 
-    /// Record types only the Mac syncs, because the iPhone app has no feature that owns them.
-    /// Listed rather than ignored so half-adding one to iOS fails instead of going unnoticed.
+    // The iPhone app has no feature that owns these. Listed so half-adding one to iOS fails.
     private static let macOnlyRecordTypes: Set<String> = [
         "AppSettingsSyncField",
         "FavoriteTableSyncField",
         "FavoriteDatabaseSyncField",
-        "SQLFavoriteSyncField",
-        "SQLFavoriteFolderSyncField",
         "SSHProfileSyncField",
         "CredentialProfileSyncField",
         "TableFolderSyncField",
         "TableFolderItemSyncField",
     ]
 
-    /// Connection fields only one platform has a model property for. Each is a feature the other
-    /// app does not have, and `CKModifyRecordsOperation.savePolicy = .changedKeys` means the
-    /// platform that does not write one also cannot erase it.
+    // A feature the other app lacks; under `.changedKeys` the app that never writes the field cannot erase it either.
     private static let connectionMacOnly: Set<String> = [
         "aiPolicy", "aiRules", "aiAlwaysAllowedTools",
         "redisDatabase", "startupCommands", "sshProfileId",
@@ -57,10 +45,9 @@ struct SyncFieldParityTests {
         "sshEnabled", "sslEnabled",
     ]
 
-    /// Written by whichever mapper owns the value and never read back by it.
     private static let writeOnly: Set<String> = ["modifiedAtLocal", "schemaVersion"]
 
-    /// Read for backwards compatibility and no longer written by anyone.
+    // Still read from records older builds wrote.
     private static let legacyReadOnly: Set<String> = ["colorTag"]
 
     private struct MapperScan {
@@ -73,9 +60,7 @@ struct SyncFieldParityTests {
         func read(_ recordType: String) -> Set<String> { read[recordType] ?? [] }
     }
 
-    /// Scope follows either the accessor a function builds for itself or the one it is handed as a
-    /// parameter. Reading only the first missed `color`, which a helper reads from an argument. The
-    /// accessor may also take an `absentValues:` argument after the type.
+    // A helper can be handed the accessor as a parameter, so its `SyncRecordFields<...>` type sets the scope too.
     private static let scopePattern = try! NSRegularExpression(
         pattern: #"\.fields\((\w+)\.self[,)]|SyncRecordFields<(\w+)>"#
     )
