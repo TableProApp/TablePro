@@ -78,7 +78,12 @@ public enum SyncRecordMapper {
         } else {
             fields[.sshConfigJson] = nil
         }
-        clearSSHProfileLinkIfUnlinked(fields, connection)
+        // A record built from scratch (an Upload Again) carries the link this copy knows of.
+        if let profileId = connection.sshProfileId {
+            fields[.sshProfileId] = profileId.uuidString as CKRecordValue
+        } else {
+            clearSSHProfileLinkIfUnlinked(fields, connection)
+        }
 
         if let sslConfig = connection.sslConfiguration {
             do {

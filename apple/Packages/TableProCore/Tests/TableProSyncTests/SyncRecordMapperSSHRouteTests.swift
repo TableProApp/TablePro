@@ -47,6 +47,15 @@ struct SyncRecordMapperSSHRouteTests {
         #expect(!fresh.changedKeys().contains(ConnectionSyncField.sshRouteJson.key))
     }
 
+    @Test("A record built from scratch keeps the SSH profile link this copy knows of")
+    func freshRecordKeepsTheProfileLink() {
+        var connection = tunnelled()
+        connection.sshProfileId = UUID()
+
+        let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+        #expect(record[ConnectionSyncField.sshProfileId.key] as? String == connection.sshProfileId?.uuidString)
+    }
+
     @Test("Turning the tunnel off here drops the Mac's SSH profile link")
     func tunnelOffClearsProfileLink() throws {
         let base = SyncRecordMapper.toRecord(tunnelled(), zoneID: zoneID)
