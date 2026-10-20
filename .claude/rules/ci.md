@@ -18,7 +18,7 @@ paths:
 - main and `release/*` require `CI`, the last job of `ci.yml`, and `PR title` (`pr-title.yml`). Strict is off. Admins can bypass in pull_request mode.
 - `CI` fails when a job it needs failed or was cancelled. A skipped job passes.
 - `release/0.82` keeps its own workflow files and the old per-workflow checks.
-- Tags never move (ruleset 25308039, no bypass). Only admins create `release/*` and the `v*`, `linux-v*`, `libs-*` and `plugin-*` tags.
+- Tags never move (ruleset 25308039, no bypass). Only admins create `release/*` and the `v*`, `ios-v*`, `linux-v*`, `libs-*` and `plugin-*` tags.
 
 ## Reading a red check
 
