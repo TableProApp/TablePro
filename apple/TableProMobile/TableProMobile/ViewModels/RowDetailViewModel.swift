@@ -295,7 +295,8 @@ final class RowDetailViewModel {
             type: databaseType,
             driver: session.driver,
             changes: changes,
-            primaryKeys: pkValues
+            primaryKeys: pkValues,
+            columns: columnDetails
         )
 
         switch writeGate.submit(sql, under: safeModeLevel) {

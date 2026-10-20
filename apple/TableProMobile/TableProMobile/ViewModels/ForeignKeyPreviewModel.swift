@@ -78,10 +78,20 @@ final class ForeignKeyPreviewModel {
         defer { isRunning = false }
 
         let driver = session.driver
+        // The key columns' types pick each literal, as they do for the filter Open Table runs.
+        var keyColumns: [ColumnInfo] = []
+        do {
+            keyColumns = try await driver.fetchColumns(table: reference.table, schema: reference.schema)
+        } catch is CancellationError {
+            return
+        } catch {
+            Self.logger.warning("Foreign key preview could not read columns: \(error.localizedDescription, privacy: .private)")
+        }
         let query = SQLBuilder.buildSingleRowLookup(
             table: reference.table,
             schema: reference.schema,
             key: reference.parts.map { (column: $0.column, value: $0.value) },
+            columns: keyColumns,
             type: databaseType,
             driver: driver
         )

@@ -54,7 +54,6 @@ final class DataBrowserViewModel {
     @ObservationIgnored private var keyReadTask: Task<KeyContentsPage, Error>?
     @ObservationIgnored private var loadGeneration = 0
     @ObservationIgnored private var hasSeededFilters = false
-    @ObservationIgnored private var seededKeyColumns: [String] = []
     @ObservationIgnored private var singleRowMatch = SingleRowMatch.inactive
 
     private enum SingleRowMatch {
@@ -115,7 +114,6 @@ final class DataBrowserViewModel {
         guard !hasSeededFilters else { return }
         hasSeededFilters = true
         filters = seeded
-        seededKeyColumns = seeded.map(\.columnName)
         filterLogicMode = .and
         singleRowMatch = hasActiveFilters ? .awaitingFirstLoad : .inactive
     }
@@ -169,15 +167,6 @@ final class DataBrowserViewModel {
         isPageLoading = false
         guard case .awaitingFirstLoad = singleRowMatch else { return }
         singleRowMatch = loadError == nil && legacyRows.count == 1 ? .found : .inactive
-    }
-
-    // The preview quotes every key value, and a column without a type (a typeless SQLite key) keeps 5 and '5'
-    // apart, so such a seeded key column compares as text here too and the browser lists the previewed row.
-    private var filterColumns: [ColumnInfo] {
-        let untyped = seededKeyColumns.filter {
-            FilterColumnKind.kind(of: FilterColumnKind.column(named: $0, in: columnDetails)) == nil
-        }
-        return untyped.map { ColumnInfo(name: $0, typeName: "TEXT") } + columnDetails
     }
 
     private func loadRows(session: ConnectionSession, table: TableInfo, isInitial: Bool, generation: Int) async {
@@ -282,7 +271,7 @@ final class DataBrowserViewModel {
             return SQLBuilder.buildSearchSelect(
                 table: table.name, schema: schema, type: databaseType,
                 searchText: activeSearchText, searchColumns: searchableColumns(),
-                filters: filters, logicMode: filterLogicMode, columns: filterColumns,
+                filters: filters, logicMode: filterLogicMode, columns: columnDetails,
                 sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
@@ -290,7 +279,7 @@ final class DataBrowserViewModel {
         if hasActiveFilters {
             return SQLBuilder.buildFilteredSelect(
                 table: table.name, schema: schema, type: databaseType,
-                filters: filters, logicMode: filterLogicMode, columns: filterColumns,
+                filters: filters, logicMode: filterLogicMode, columns: columnDetails,
                 sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
@@ -334,12 +323,12 @@ final class DataBrowserViewModel {
                 countQuery = SQLBuilder.buildSearchCount(
                     table: table.name, schema: schema, type: databaseType,
                     searchText: activeSearchText, searchColumns: searchableColumns(),
-                    filters: filters, logicMode: filterLogicMode, columns: filterColumns
+                    filters: filters, logicMode: filterLogicMode, columns: columnDetails
                 )
             } else if hasActiveFilters {
                 countQuery = SQLBuilder.buildFilteredCount(
                     table: table.name, schema: schema, type: databaseType,
-                    filters: filters, logicMode: filterLogicMode, columns: filterColumns
+                    filters: filters, logicMode: filterLogicMode, columns: columnDetails
                 )
             } else {
                 countQuery = SQLBuilder.buildCount(table: table.name, schema: schema, type: databaseType)
@@ -450,7 +439,8 @@ final class DataBrowserViewModel {
                     schema: schema,
                     type: databaseType,
                     driver: session.driver,
-                    primaryKeys: pkValues
+                    primaryKeys: pkValues,
+                    columns: columnDetails
                 )
             ])
             await load()
@@ -475,10 +465,12 @@ final class DataBrowserViewModel {
     // MARK: - Lazy Cell Loading
 
     func loadFullValue(driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType) async throws -> String? {
-        let predicates = ref.primaryKey.map { component in
-            "\(SQLBuilder.quoteIdentifier(component.column, for: databaseType)) = '\(driver.escapeStringLiteral(component.value))'"
-        }
-        let predicate = predicates.joined(separator: " AND ")
+        let predicate = SQLBuilder.keyPredicate(
+            ref.primaryKey.map { (column: $0.column, value: $0.value) },
+            columns: columnDetails,
+            type: databaseType,
+            driver: driver
+        )
         let column = SQLBuilder.quoteIdentifier(ref.column, for: databaseType)
         let table = SQLBuilder.qualifiedIdentifier(table: ref.table, schema: schema, for: databaseType)
         let query: String

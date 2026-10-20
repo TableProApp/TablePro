@@ -69,4 +69,32 @@ struct SQLBuilderFilterLiteralTests {
             table: "files", schema: nil, type: .mysql, filters: filters, logicMode: .and
         ) == "SELECT COUNT(*) FROM `files` WHERE `path` = 'C:\\\\temp\\\\'")
     }
+
+    private func count(_ type: DatabaseType, _ filter: TableFilter, _ column: ColumnInfo) -> String {
+        SQLBuilder.buildFilteredCount(table: "t", schema: nil, type: type, filters: [filter], logicMode: .and, columns: [column])
+    }
+
+    // Open Table on a PostgreSQL bit(3) key ran `"b" = 101`, which has no operator, and the browser showed the error.
+    @Test("A PostgreSQL bit or boolean filter compares a quoted value")
+    func postgresBitAndBooleanAreQuoted() {
+        let bit = ColumnInfo(name: "b", typeName: "bit")
+        #expect(count(.postgresql, TableFilter(columnName: "b", value: "101"), bit) == "SELECT COUNT(*) FROM \"t\" WHERE \"b\" = '101'")
+        let flag = ColumnInfo(name: "f", typeName: "boolean")
+        #expect(count(.postgresql, TableFilter(columnName: "f", value: "1"), flag) == "SELECT COUNT(*) FROM \"t\" WHERE \"f\" = '1'")
+    }
+
+    @Test("Contains on a non-character column reads it as the engine's text type")
+    func patternOnNonCharacterColumnIsCast() {
+        let id = ColumnInfo(name: "id", typeName: "integer")
+        let contains = TableFilter(columnName: "id", filterOperator: .contains, value: "5")
+        #expect(count(.postgresql, contains, id).hasSuffix("WHERE CAST(\"id\" AS TEXT) ILIKE '%5%' ESCAPE '!'"))
+        #expect(count(.redshift, contains, id).hasSuffix("WHERE LOWER(CAST(\"id\" AS TEXT)) LIKE LOWER('%5%') ESCAPE '!'"))
+        #expect(count(.duckdb, contains, ColumnInfo(name: "id", typeName: "INTEGER"))
+            .hasSuffix("WHERE CAST(\"id\" AS VARCHAR) ILIKE '%5%' ESCAPE '!'"))
+        #expect(count(.mysql, contains, id).hasSuffix("WHERE `id` LIKE '%5%'"))
+        let name = ColumnInfo(name: "name", typeName: "character varying")
+        #expect(count(.postgresql, TableFilter(columnName: "name", filterOperator: .contains, value: "a"), name)
+            .hasSuffix("WHERE \"name\" ILIKE '%a%' ESCAPE '!'"))
+    }
 }
+

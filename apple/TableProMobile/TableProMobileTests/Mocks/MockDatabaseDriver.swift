@@ -11,6 +11,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var scriptedColumns: [ColumnInfo] = []
     var scriptedForeignKeys: [ForeignKeyInfo] = []
     var fetchForeignKeysError: Error?
+    var fetchColumnsError: Error?
     var scriptedTables: [TableInfo] = []
     var scriptedDatabases: [String] = []
     var scriptedSchemas: [String] = []
@@ -71,6 +72,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         fetchColumnsCalls += 1
         fetchColumnsSchemas.append(schema)
+        if let fetchColumnsError { throw fetchColumnsError }
         return scriptedColumns
     }
 
