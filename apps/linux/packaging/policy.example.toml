@@ -1,9 +1,9 @@
-# TablePro policy defaults
+# BookiE policy defaults
 #
 # Copy to ~/.config/tablepro/policy.toml and adjust.
 # Environments: local, dev, staging, prod
 # Omitted fields inherit the secure defaults for their environment.
-# Omitted mask_patterns retain TablePro's default sensitive-field masks.
+# Omitted mask_patterns retain BookiE's default sensitive-field masks.
 
 [environments.local]
 agent_writes = "approve"

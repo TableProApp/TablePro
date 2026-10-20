@@ -1,24 +1,24 @@
 # Backlog after 0.2.0
 
-The maintainer confirmed 0.2.0 delivery work complete on 2026-10-18; publication is pending. Rows here select subsequent development. Project #3 and the owning issues keep status and acceptance; this page keeps the order. The [completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md) preserves the former release checklist.
+On 2026-10-18, the maintainer recorded 0.2.0 delivery work complete while publication was pending. Check the [release page](https://github.com/cozyGarage/BookiE/releases) for current publication status. Rows here select subsequent development. Project #3 and the owning issues keep status and acceptance; this page keeps the order. The [completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md) preserves the former release checklist.
 
-The [feature comparison](0.2-feature-comparison.md) holds the wider parity
-candidate inventory. An item becomes backlog work only after selection; add an
-owner, acceptance layer and GitHub issue when promoting it. Do not treat the
-candidate inventory as a release commitment.
+The [capability review](capability-review.md) records general evaluation
+criteria and current technical boundaries. An item becomes backlog work only
+after selection; add an owner, acceptance layer and GitHub issue when promoting
+it. Do not treat a capability gap as a release commitment.
 
-## Upstream Linux adoption after 0.2.0
+## Linux code adoption after 0.2.0
 
-Tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149) owns the selected packets from the [development-process review](archive/upstream-linux-adoption-2026-10-18.md). TablePro remains the upstream for compatible Rust/Linux code, tests and tooling. Preserve provenance and BookiE's accepted contracts. These tasks do not reopen 0.2.0 or authorize publishing it.
+Tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149) owns the selected packets from the [development-process review](archive/upstream-linux-adoption-2026-10-18.md). Reuse compatible Rust/Linux code, tests and tooling only after checking provenance, licensing and BookiE's accepted contracts. These tasks do not reopen 0.2.0 or authorize publishing it.
 
-Start with the two native driver investigations and common conformance. Tooling can proceed independently in its lane; reverse paging follows the accepted backend contract. Existing server output #550/#1033/#1034, stream retention #554/#1032, active edits #1029, workspace identity #1054, diagnostics #666 and CI capacity #573 retain their owners. Full export stays behind ADR 0014; framework replacement and broad vendor removal are separate decisions.
+Start with the two native driver investigations and common conformance. Tooling can proceed independently in its lane. Reverse keyset paging and PostgreSQL query-plan coverage have landed in #1153; check #1143 for any remaining acceptance before scheduling follow-up. Existing server output #550/#1033/#1034, stream retention #554/#1032, active edits #1029, workspace identity #1054, diagnostics #666 and CI capacity #573 retain their owners. Full export stays behind ADR 0014; framework replacement and broad vendor removal are separate decisions.
 
 | ID / issue | Selected work | Lane | Acceptance focus |
 |---|---|---|---|
 | UP-2 / [#1140](https://github.com/cozyGarage/BookiE/issues/1140) | PgBouncer cancellation, backend identity and cross-client isolation | B3 | Native concurrent-client oracle before any client-library decision |
 | UP-3 / [#1141](https://github.com/cozyGarage/BookiE/issues/1141) | MySQL server-zone defaults, DST keys and save modes | B3 | Native mysql-client oracle; B4 review before session mutation |
 | UP-4 / [#1142](https://github.com/cozyGarage/BookiE/issues/1142) | Cancellation and write-outcome conformance | B4 | Map existing tests, then common fault/real-engine and governed cases |
-| UP-5 / [#1143](https://github.com/cozyGarage/BookiE/issues/1143) | Reverse keyset paging and query-plan evidence | B3 | Extend existing primary-key seeking; UX handoff after accepted contract |
+| UP-5 / [#1143](https://github.com/cozyGarage/BookiE/issues/1143) | Confirm remaining acceptance for reverse keyset paging | UX | Reverse navigation and PostgreSQL backward-index plan checks landed in #1153; the issue index owns the current lane and live status |
 | UP-6 / [#1144](https://github.com/cozyGarage/BookiE/issues/1144) | Mechanical GTK task and lifecycle boundaries | UX | Targeted compatible checks; retain Relm4 and current code conventions |
 | UP-7 / [#1145](https://github.com/cozyGarage/BookiE/issues/1145) | Third-party notices from shipped dependency graphs | UX | Inventory first, deterministic provenance and package-content coverage |
 | UP-8 / [#1146](https://github.com/cozyGarage/BookiE/issues/1146) | Offline release inputs and metadata consistency | UX | Extend pinned candidates; keep publication a separate action |
@@ -51,7 +51,7 @@ The [newest-code follow-up](archive/upstream-next-slices-2026-10-20.md) records 
 
 | Row | What | Notes |
 |---|---|---|
-| SNAP-2 to SNAP-4 | Database snapshots: PostgreSQL, SQL Server, then SQLite and DuckDB file copies | ADR 0015 / SNAP-1 accepted the feature for 0.2.x (not a 0.2.0 blocker); limit 5 snapshots per database |
+| SNAP-2 to SNAP-4 | Database snapshots: PostgreSQL, SQL Server, then SQLite and DuckDB file copies | ADR 0015 records the accepted design; this is post-0.2.0 implementation work, not a release commitment; limit 5 snapshots per database |
 | UI-1b | Edit SSH jump chains in the form | Storage, transport, bundle v2 and per-hop passphrase coverage merged in #490, #492, #494 and #528; GTK editing stays refused until its complete path passes |
 | UI-19 | Foreign key value picker, estimated counts | FK navigation, paste TSV and the ENUM and SET pickers (PostgreSQL, MySQL, MariaDB) landed |
 | UI-38 | Local filters and sorting for materialized SQL results | Exact-value filtering and local sort are implemented; settings are retained per statement/result set across reruns and pin/unpin. Selection follows the same materialized result, and app-restart persistence is not included |
@@ -65,7 +65,7 @@ The [newest-code follow-up](archive/upstream-next-slices-2026-10-20.md) records 
 
 | Row | What |
 |---|---|
-| PERF-2, PERF-7, PERF-8 | Progressively load SQL editor results while keeping bounded resource use. Core, PostgreSQL, PolicyGuard and the PostgreSQL editor lifecycle have landed; other engines and comparable memory profiling remain open. |
+| PERF-2, PERF-7, PERF-8 | Progressively load SQL editor results while keeping bounded resource use. Core, PostgreSQL, PolicyGuard and the PostgreSQL editor lifecycle have landed; other engines and comparable memory profiling still need qualification. |
 | PERF-3 | MongoDB browse on large collections | Compatible `_id` keyset seek landed in #493; supported server-side sorting landed in #837. Other sorted pages and keyless deep pages still use offset pagination; installed and representative-network acceptance remain |
 | PERF-4 | Server time next to elapsed time |
 | PERF-5, PERF-6 | Idle memory and binary size, accepted for now |
@@ -74,59 +74,29 @@ The [newest-code follow-up](archive/upstream-next-slices-2026-10-20.md) records 
 
 | Row | What |
 |---|---|
-| TEST-2 | Broad mutation audit: policy, core, transport, SSH and storage are measured; survivor triage stays open under [#559](https://github.com/cozyGarage/BookiE/issues/559). Expected-value provenance is tracked separately by [TEST-32](oracle-review.md); see the [transport mutation report](evidence/test-quality-2026-10-11/transport-mutants.md) for one measured package. |
+| TEST-2 | Maintain the selected-package mutation audit in the [Forgejo nightly workflow](../.forgejo/workflows/nightly.yml) and triage survivors under [#559](https://github.com/cozyGarage/BookiE/issues/559). Expected-value provenance is tracked separately by [TEST-32](oracle-review.md); dated package results remain in [evidence](evidence/test-quality-2026-10-11/). |
 | AUD-11 consolidation | Finish the single AST walk for classification, masking and blast-radius planning. Behavioural fixes are closed on the current policy suite; shared analysis landed in #506. Structural consolidation follows 0.2.0. |
 | TEST-12 | Verify sample and page-observed type union, plus acceptance evidence, against the bounded 128-document non-snapshot contract in [ADR 0007](decisions/0007-type-and-value-preservation.md) |
 | APP-MOD | Keep the app layer thin: finish the staged moves of [ADR 0018](decisions/0018-headless-app-services-crate.md) (completion, workspace and browse/edit models, scoped filter and mapping stores, preference data, quick-switcher ranking and retry decisions are now headless; translated errors and the TabView handshake stay in app adapters; continue the remaining service moves), and replace hard-coded driver-name branches in the app layer with driver capabilities, starting with `browse_tab/value_parse.rs` |
 | UI-21, TEST-28 | Fake connection for the GTK tier, native Ubuntu AT-SPI menu reachability |
-| TEST-30 | Remaining SonarCloud and CodeQL findings | #562 has no Lane set on Project #3 yet, so it is not listed in the lane index. |
-| TEST-34 | Import Python coverage for repository tooling into SonarCloud without lowering the coverage gate; #830 added tests but SonarCloud reported 0.0% new-code coverage |
-| TEST-36 | Record duration for each installed GTK scenario and retry so distro-floor suite growth can be measured before changing its timeout or shard layout ([#1075](https://github.com/cozyGarage/BookiE/issues/1075)); keep the existing 600-second bound until measured |
-| AUD-5 | About 4,700 comment lines in `src/` to move into docs, file by file |
-| DOC-3, DOC-5 | Orca and high contrast pass; value comparison with DBeaver and dbx. The [October 18 source audit](archive/code-and-ui-audit-2026-10-18.md) identifies custom styling and pending-state checks; the [visual matrix](manual-verification-0.2-features.md#visual-audit-matrix) records the proposed acceptance recipe. |
-| PEER-2 | One per-dialect lexer profile (backslash escapes, `E''` strings, `--` rule, quote characters) shared by the statement splitter, the classifier and export quoting; dbx's `SqlDialectProfile` closed a class of splitter and export disagreements |
+| TEST-30 | Triage remaining SonarCloud and CodeQL findings; close confirmed false positives with a reason |
+| TEST-34 | Import repository-tool Python coverage into SonarCloud without lowering the coverage gate ([#830](https://github.com/cozyGarage/BookiE/issues/830)) |
+| TEST-36 | Record duration for each installed GTK scenario and retry so suite growth can be measured before changing timeouts or shard layout ([#1075](https://github.com/cozyGarage/BookiE/issues/1075)); retain current limits until there is measurement evidence |
+| AUD-5 | Move nonessential Rust comments into documentation under the repository comment-line rule ([#563](https://github.com/cozyGarage/BookiE/issues/563)) |
+| DOC-3, DOC-5 | Orca, keyboard-only and high-contrast acceptance; verify typed values and pending edits remain understandable across display and interaction paths. The [visual matrix](manual-verification-0.2-features.md#visual-audit-matrix) records the proposed acceptance recipe. |
+| PEER-2 | One per-dialect lexer profile (backslash escapes, `E''` strings, `--` rule, quote characters) shared by statement splitting, classification and export quoting, so those paths cannot interpret the same SQL differently |
 | PEER-3 | A Redis command table with arity and safety class that fails closed on unknown commands, instead of relying on the SQL classifier |
 | B4-9, B4-11, B4-17, B4-21 | Route and TLS acceptance evidence, failed-batch rollback on optional MySQL engines and package acceptance, native multi-hop trust flow, SQL Server Kerberos Windows AD interoperability and package acceptance |
 
 ## Peer-review delivery
 
-[#1026](https://github.com/cozyGarage/BookiE/issues/1026) owns the ordered small slices from the [October 16 review](archive/linux-peer-review-2026-10-16.md). The dependency-boundary slice is closed through [#1037](https://github.com/cozyGarage/BookiE/pull/1037); active-edit close ownership, NULL/default intent, shared action guards, stream resource budgets and bounded server output remain in their child issues. Follow-ups #1054 (database-scoped workspace identity), #1056 (SQLite metadata-name shadowing), #1065 (per-object write capabilities, B3) and #1067 (installed GTK coverage for active edits closed through “Close Other Tabs”) are tracked as separate PEER-13, PEER-14, PEER-16 and PEER-17 slices. #1065 records the metadata contract and engine evidence before handing the accepted capability to UX issue #1031. Sequence the dependent work: B3 backend contract #1033 precedes GTK consumer #1034; stream retention #1032 can now proceed because #1002 and #1012 are merged and #1016 has an explicit fail-closed recovery rule: close the retired session without sending ROLLBACK and retain the Unknown outcome. Workspace identity #1054 waits for #1051. Each child has one lane and its own acceptance. Existing #550, #554, #893, #891, #943 and #983 retain their scope; the tracker does not add release blockers.
+The [peer-review tracker #1026](https://github.com/cozyGarage/BookiE/issues/1026) and its child issues own the sequence, dependencies, lane and acceptance for the [October 16 review](archive/linux-peer-review-2026-10-16.md). Check the live project and issue before selecting work; this page does not duplicate child-issue status.
 
 ## Development tooling
 
 - Improve CI feedback time and reliability based on measured workload and available capacity ([#573](https://github.com/cozyGarage/BookiE/issues/573)).
 - Folder layout: done on 2026-10-11 (`crates/`, `apps/linux/`, `tests/`; see [ARCHITECTURE](../ARCHITECTURE.md#repository-layout)). Moving every per-crate integration test out of its crate stays a separate, larger step if wanted.
 
-## GitHub issues
+## Issue and lane status
 
-The linked issue records each theme's scope or acceptance decision. Project #3 owns active scheduling; a closed issue does not imply that a separately listed future capability has shipped.
-
-| Issue | Theme |
-|---|---|
-| [#547](https://github.com/cozyGarage/BookiE/issues/547) | Database snapshots (SNAP-2 to SNAP-4) |
-| [#548](https://github.com/cozyGarage/BookiE/issues/548) | SSH jump chains and reusable profiles in the form (UI-1b, UI-26) |
-| [#549](https://github.com/cozyGarage/BookiE/issues/549) | Foreign key value picker, estimated counts (UI-19); FK navigation, paste TSV and the ENUM and SET pickers are done |
-| [#550](https://github.com/cozyGarage/BookiE/issues/550) | Server output and timing breakdown (UI-20, PERF-4) |
-| [#552](https://github.com/cozyGarage/BookiE/issues/552) | Multi-cursor editing and the typed activity console remain; preview tabs, history panel, split panes and SQL code folding have landed (UI-17b, 18, 22, 23, 26; #754) |
-| [#554](https://github.com/cozyGarage/BookiE/issues/554) | Streamed results (PERF-2, 7, 8) |
-| [#555](https://github.com/cozyGarage/BookiE/issues/555) | MongoDB browse on large collections (PERF-3) |
-| [#556](https://github.com/cozyGarage/BookiE/issues/556) | Intermittent installed GTK suite (TEST-31) |
-| [#557](https://github.com/cozyGarage/BookiE/issues/557) | Debian and Ubuntu desktop acceptance (PKG-2) |
-| [#558](https://github.com/cozyGarage/BookiE/issues/558) | Flatpak (PKG-4, PKG-8) |
-| [#559](https://github.com/cozyGarage/BookiE/issues/559) | Mutation triage (TEST-2) |
-| [#560](https://github.com/cozyGarage/BookiE/issues/560) | Native Ubuntu AT-SPI and fake connection (TEST-28, UI-21) |
-| [#561](https://github.com/cozyGarage/BookiE/issues/561) | Accessibility pass and value comparison (DOC-3, DOC-5) |
-| [#562](https://github.com/cozyGarage/BookiE/issues/562) | SonarCloud and CodeQL findings (TEST-30) |
-| [#563](https://github.com/cozyGarage/BookiE/issues/563) | Comment lines into docs (AUD-5) |
-| [#565](https://github.com/cozyGarage/BookiE/issues/565) | Where per-crate integration tests live |
-| [#566](https://github.com/cozyGarage/BookiE/issues/566) | B4 acceptance evidence (B4-9, 11, 17, 21) |
-| [#567](https://github.com/cozyGarage/BookiE/issues/567) | MongoDB metadata sample consistency (TEST-12) |
-| [#571](https://github.com/cozyGarage/BookiE/issues/571) | AUD-11 single-AST-walk consolidation |
-| [#572](https://github.com/cozyGarage/BookiE/issues/572) | Clear NEEDS REVIEW on PRODUCT, personas and capability specs |
-| [#573](https://github.com/cozyGarage/BookiE/issues/573) | CI feedback time and reliability |
-| [#574](https://github.com/cozyGarage/BookiE/issues/574) | PKG-1 Arch / Omarchy / Hyprland Wayland acceptance |
-| [#575](https://github.com/cozyGarage/BookiE/issues/575) | TEST-6 manual verification checklist triage |
-| [#579](https://github.com/cozyGarage/BookiE/issues/579) | MySQL/MariaDB Unix socket endpoint (Omarchy-relevant); driver and installed-form coverage are in #680, but connection URLs still cannot express a socket endpoint; keep open for URL import, the merge-tier gate and native local-service connect/save/reopen/bundle acceptance |
-| [#580](https://github.com/cozyGarage/BookiE/issues/580) | Filter Schemas and PostgreSQL many-schema catalog performance |
-| [#609](https://github.com/cozyGarage/BookiE/issues/609) | Local filtering and sorting for loaded SQL and pinned results (UI-38) |
-| [#861](https://github.com/cozyGarage/BookiE/issues/861) | MCP token dialog reports best-effort keyring storage accurately (UI-43) |
+Project #3 owns live scheduling and lane assignment. `docs/known-issues.md` maps ledger IDs to issues; issue bodies own scope and acceptance. Check those sources before treating a row above as open or selecting it.

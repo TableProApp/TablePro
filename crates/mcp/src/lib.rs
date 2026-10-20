@@ -1,4 +1,4 @@
-//! MCP server surface for TablePro Linux.
+//! MCP server surface for BookiE.
 //!
 //! Token scopes and connection allowlists answer **who** and **which
 //! connections**. Every tool call then obtains a connection through a

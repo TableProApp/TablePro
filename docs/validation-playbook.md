@@ -4,7 +4,7 @@ Use this page to select checks, hand off work, and review evidence. The executab
 
 ## Current desktop target
 
-The [current continuation](bookie-0.2-sprint.md#current-continuation) records 0.2.0 delivery complete with publication pending. The [backlog](backlog.md) orders subsequent work; each selected issue names its acceptance layers. Debian/GNOME installed-package expansion remains later work. GNOME 50 in the layer catalog names GTK/libadwaita development-library requirements, not a required desktop shell. Keep existing automated Linux checks and record unavailable environments as pending.
+The [sprint](bookie-0.2-sprint.md) records the maintainer's 2026-10-18 completion decision; use the release page linked there for current publication status. The [backlog](backlog.md) orders subsequent work; each selected issue names its acceptance layers. Debian/GNOME installed-package expansion remains later work. GNOME 50 in the layer catalog names GTK/libadwaita development-library requirements, not a required desktop shell. Keep existing automated Linux checks and record unavailable environments as pending.
 
 ## Start here
 
@@ -151,7 +151,7 @@ An agent must read `AGENTS.md`, inspect status and confirm the SHA before editin
 7. Run focused mutation checks with a nonzero selected count and independent expected values. Document each equivalent survivor with a concrete argument; leave unresolved survivors/timeouts open.
 8. Update scenario evidence and the owning sprint task. Keep the test with the fix.
 
-Use [the scenario survey](archive/b3-test-scenario-survey.md) and [value contracts](value-contracts.md) as the B3 case backlog. Current examples:
+Use [value contracts](value-contracts.md) and the B3 board as the current case backlog. The [scenario survey](archive/b3-test-scenario-survey.md) records dated research patterns and source provenance. Current examples:
 
 | Encountered scenario | Permanent regression home | Next edge to investigate |
 | --- | --- | --- |

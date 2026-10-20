@@ -1,6 +1,6 @@
 # Known limitations of BookiE 0.2
 
-What the application does not do, or does differently from what you might expect, and the bugs we know about. Entries link to their owning issue, decision or evidence when one exists. Reviewed 2026-10-17.
+What the application does not do, or does differently from what you might expect, and the bugs we know about. Entries link to their owning issue, decision or evidence when one exists. Issues own current work and acceptance status; this page records user-visible behavior.
 
 ## Data and values
 
@@ -9,7 +9,7 @@ What the application does not do, or does differently from what you might expect
   before opening the destination dialog or publishing a file. Export the current
   page or a loaded query result instead. A per-engine consistent export path is
   an unselected future candidate; database snapshots for backup and restore are
-  a separate feature accepted for 0.2.x ([ADR 0015](decisions/0015-database-snapshots.md)).
+  a separate feature with an accepted design and no release target ([ADR 0015](decisions/0015-database-snapshots.md)).
 - **Large results still have materialization limits** (PERF-2, PERF-8 / [#554](https://github.com/cozyGarage/BookiE/issues/554)). Materialized
   results stop at 1 million rows, 10 million cells or 64 MiB estimated size.
   Single-statement PostgreSQL `SELECT`s in the SQL editor now stream cursor
@@ -20,9 +20,10 @@ What the application does not do, or does differently from what you might expect
   This does not measure normal queries or the complete process ceiling. Other
   engines and unsupported statement shapes remain materialized.
   The historical grid measurement was about 2.5 times the result memory; #518
-  now shares immutable values with materialized rows, and comparable profiling
-  remains open (ADR 0011).
+  now shares immutable values with materialized rows. Further comparable
+  profiling is tracked with PERF-2/8 (ADR 0011).
 - **SQL result filters apply only to loaded rows** ([#609](https://github.com/cozyGarage/BookiE/issues/609)). Filter and sort actions are local, show the visible and loaded counts, and do not re-run SQL. Clearing a filter restores loaded rows. Settings carry across reruns of the same statement and pin/unpin while the result remains current or pinned. Selection follows source-row identity when the same materialized result is rerendered; a fresh query resets selection. Settings do not survive an app restart.
+- **File exports use text markers for undecodable cells** ([#883](https://github.com/cozyGarage/BookiE/issues/883)). CSV, JSON, Markdown, HTML, XML, Excel, copied text and MCP CSV content use a visible `<undecodable TYPE>` string; these text representations do not retain a separate typed marker, so a real text value with the same spelling is ambiguous. SQL export refuses the value. MCP JSON retains an explicit tagged `undecodable` value.
 - **Long cells are shown as a preview** (PERF-10). Values over 8 KiB show a typed
   preview and byte count. View Value and Copy Value use the full value, including
   pending edits and drafts. Browse-table values are refetched by primary key; a
@@ -30,8 +31,8 @@ What the application does not do, or does differently from what you might expect
 - **Hidden-column projection still needs desktop acceptance** (PERF-9). Merged
   [#384](https://github.com/cozyGarage/BookiE/pull/384) projects hidden non-key
   columns out of the select and refuses full-row copy, row JSON and current-page
-  export while those values are unfetched. Installed Arch/Hyprland Wayland
-  acceptance remains open; Debian/GNOME acceptance follows after 0.2.0.
+  export while those values are unfetched. Installed desktop acceptance follows
+  the target and evidence recorded under PKG-1 and PKG-2.
 - **A table without a primary key cannot be deleted from the grid** (TEST-14). There
   is no all-column fallback, by design.
 - **ClickHouse ambiguous local times:** a `DateTime64` that falls in a repeated or
@@ -40,9 +41,9 @@ What the application does not do, or does differently from what you might expect
 - **SQLite real numbers:** negative zero and NaN cannot be bound as parameters.
 - **SQLite JSON aggregate output** can differ across system SQLite versions (TEST-25).
 - **CSV import does not map SQL Server IDENTITY columns.** PostgreSQL, MySQL/MariaDB and SQLite can import explicit auto-increment values when mapped. SQL Server identity columns and generated columns remain database-owned ([#634](https://github.com/cozyGarage/BookiE/issues/634)).
-- **Unzoned PostgreSQL `timestamptz` CSV values** are currently interpreted as UTC. [PostgreSQL](https://www.postgresql.org/docs/current/datatype-datetime.html) normally interprets unzoned timestamp input in the session time zone; the import rule is awaiting a decision ([#857](https://github.com/cozyGarage/BookiE/issues/857)). Include an explicit zone in the CSV to avoid ambiguity.
-- **MongoDB:** browse pages are separate observations, not one point-in-time view (TEST-12); a column with mixed types is read-only. Compatible `_id` pages can use keyset seeking ([#493](https://github.com/cozyGarage/BookiE/pull/493)), and supported sort requests run server-side ([#837](https://github.com/cozyGarage/BookiE/pull/837)). Sorted pages outside the compatible `_id` keyset path and keyless deep pages still use offset pagination. Installed and representative-network acceptance remain open (PERF-3 / [#555](https://github.com/cozyGarage/BookiE/issues/555)).
-- **MySQL failed batches:** rollback of a failed batch is verified for InnoDB and a Docker matrix that includes MyISAM, MEMORY, CSV, ARCHIVE, `MRG_MyISAM`, BLACKHOLE, Aria and related side effects; optional or vendor engines and package acceptance remain open (B4-11).
+- **Unzoned PostgreSQL `timestamptz` CSV values** are currently interpreted as UTC. [PostgreSQL](https://www.postgresql.org/docs/current/datatype-datetime.html) normally interprets unzoned timestamp input in the session time zone; the import rule is tracked in [#857](https://github.com/cozyGarage/BookiE/issues/857). Include an explicit zone in the CSV to avoid ambiguity.
+- **MongoDB:** browse pages are separate observations, not one point-in-time view (TEST-12); a column with mixed types is read-only. Compatible `_id` pages can use keyset seeking ([#493](https://github.com/cozyGarage/BookiE/pull/493)), and supported sort requests run server-side ([#837](https://github.com/cozyGarage/BookiE/pull/837)). Sorted pages outside the compatible `_id` keyset path and keyless deep pages still use offset pagination. Installed and representative-network acceptance is tracked under PERF-3 / [#555](https://github.com/cozyGarage/BookiE/issues/555).
+- **MySQL failed batches:** rollback of a failed batch is verified for InnoDB and a Docker matrix that includes MyISAM, MEMORY, CSV, ARCHIVE, `MRG_MyISAM`, BLACKHOLE, Aria and related side effects; optional or vendor engines and package acceptance are tracked under B4-11.
 
 ## Editing and connections
 
@@ -50,8 +51,8 @@ What the application does not do, or does differently from what you might expect
 - **SSH jump chains cannot be edited in the form** (UI-1b / [#548](https://github.com/cozyGarage/BookiE/issues/548)). They connect and run, but editing remains disabled until the complete GTK editor path is implemented and accepted.
 - **Reusable SSH profiles cannot be edited** (UI-26).
 - **Local socket endpoint differences:** PostgreSQL selects a socket directory plus port; MySQL and MariaDB select the full socket-file path. Both local routes reject TLS and SSH and never fall back to TCP. Connection URLs cannot express local socket endpoints; configure them in the form or import a connection bundle ([#579](https://github.com/cozyGarage/BookiE/issues/579)).
-- **SQL Server with Kerberos** has a Samba AD and verified-TLS fixture that passed the Kerberos selectors; Windows AD interoperability and package acceptance remain open (B4-21).
-- **SQL Server query cancellation is not supported yet.** A Tiberius 0.13 probe did not receive SQL Server's cancellation acknowledgement after the active operation was interrupted. BookiE keeps server-side cancellation disabled; an interrupted operation remains unknown and its connection or session is retired. A working acknowledged path and read/write outcome rules remain open (B4-23 / [#850](https://github.com/cozyGarage/BookiE/issues/850)).
+- **SQL Server with Kerberos** has a Samba AD and verified-TLS fixture that passed the Kerberos selectors; Windows AD interoperability and package acceptance are tracked under B4-21.
+- **SQL Server query cancellation is not supported yet.** A Tiberius 0.13 probe did not receive SQL Server's cancellation acknowledgement after the active operation was interrupted. BookiE keeps server-side cancellation disabled; an interrupted operation remains unknown and its connection or session is retired. A working acknowledged path and read/write outcome rules are tracked under B4-23 / [#850](https://github.com/cozyGarage/BookiE/issues/850).
 - **DuckDB read-only flat files** need Linux and a writable directory on the same filesystem as the file (the application pins the file through a private link there). A read-only in-memory DuckDB connection is refused.
 
 ## Interface
@@ -61,24 +62,24 @@ What the application does not do, or does differently from what you might expect
 - Text and JSON values over the 8 KiB preview threshold can be edited in the full-value dialog up to 1 MiB. Invalid JSON cannot be staged; SQL NULL, empty text, JSON `null`, and text `null` remain separate values. View Value and Copy Value expose the full value. Values over 1 MiB remain read-only.
 - No server messages (NOTICE, PRINT) and no timing breakdown; timing shows elapsed time only (UI-20, PERF-4 / [#550](https://github.com/cozyGarage/BookiE/issues/550)).
 - No foreign-key value picker or estimated row counts (UI-19 / [#549](https://github.com/cozyGarage/BookiE/issues/549)). Enum and set pickers and tab-separated row paste are implemented.
-- PostgreSQL schemas can be hidden from the sidebar per connection ([#580](https://github.com/cozyGarage/BookiE/issues/580)); this display filter does not reduce catalog query work. Many-schema performance and restricted-role metadata remain open under B6.
-- Database snapshots and one-click rollback remain unavailable (SNAP-1 accepted the feature for 0.2.x; implementation is SNAP-2 to SNAP-4 / [#547](https://github.com/cozyGarage/BookiE/issues/547)). PostgreSQL logical backup and restore are available through the installed `pg_dump` and `pg_restore` tools; see the [user guide](user-guide.md#back-up-and-restore-postgresql). They are not point-in-time snapshots.
-- Accessibility is not fully verified with Orca, keyboard-only navigation or high contrast (DOC-3). The specific missing-name and action reports in [#658](https://github.com/cozyGarage/BookiE/issues/658) were rechecked and resolved in [#920](https://github.com/cozyGarage/BookiE/pull/920); broader accessibility acceptance remains open.
+- PostgreSQL schemas can be hidden from the sidebar per connection ([#580](https://github.com/cozyGarage/BookiE/issues/580)); this display filter does not reduce catalog query work. Many-schema performance and restricted-role metadata acceptance remains with #580.
+- Database snapshots and one-click rollback remain unavailable. ADR 0015 records the design; implementation is post-0.2.0 backlog work tracked by SNAP-2 to SNAP-4 / [#547](https://github.com/cozyGarage/BookiE/issues/547). PostgreSQL logical backup and restore are available through the installed `pg_dump` and `pg_restore` tools; see the [user guide](user-guide.md#back-up-and-restore-postgresql). They are not point-in-time snapshots.
+- Accessibility is not fully verified with Orca, keyboard-only navigation or high contrast (DOC-3). The specific missing-name and action reports in [#658](https://github.com/cozyGarage/BookiE/issues/658) were rechecked and resolved in [#920](https://github.com/cozyGarage/BookiE/pull/920); broader acceptance is tracked under DOC-3.
 
 ## Platforms and packaging
 
-- The 0.2.0 desktop target is Arch Linux / Omarchy under Hyprland as a native Wayland client. Installed package acceptance, including install, upgrade and rollback, remains pending (PKG-1 / [#574](https://github.com/cozyGarage/BookiE/issues/574)); Xvfb results do not count.
-- Native Debian and Ubuntu GNOME desktop acceptance remains open for the later PKG-2 phase, although the packages build and the installed test suite passes in containers.
-- Flatpak is not offered. Flathub submission and screenshots remain open (PKG-4, PKG-8); the earlier manual install and launch checks are recorded in the [platform guide](platforms.md#flathub).
+- The 0.2.0 desktop target is Arch Linux / Omarchy under Hyprland as a native Wayland client. Installed package acceptance, including install, upgrade and rollback, is tracked under PKG-1 / [#574](https://github.com/cozyGarage/BookiE/issues/574); Xvfb results do not count.
+- Native Debian and Ubuntu GNOME desktop acceptance is tracked under the later PKG-2 phase, although the packages build and the installed test suite passes in containers.
+- Flatpak is not offered. Flathub submission and screenshots are tracked under PKG-4 and PKG-8; the earlier manual install and launch checks are recorded in the [platform guide](platforms.md#flathub).
 - Windows and macOS are not supported; the application is built for Linux with GTK 4 and libadwaita.
 
-## Known bugs
+## Known bugs and unresolved outcomes
 
-- **A tunnel drop during a PostgreSQL Session transaction leaves the original transaction outcome unknown** ([#1016](https://github.com/cozyGarage/BookiE/issues/1016)). The editor closes the unusable session without sending ROLLBACK through it. This does not prove that the transaction rolled back, so governed writes to the saved connection remain blocked. The PostgreSQL release regression in [#998](https://github.com/cozyGarage/BookiE/pull/998) checks reopening a session after reconnect; a new backend is never reused as the old session. A fresh session on that connection can still run reads and end its read-only snapshot with ROLLBACK, because the audit journal does not treat a rollback as a new write; commits and writes stay blocked until reconciliation ([#947](https://github.com/cozyGarage/BookiE/issues/947)).
-- **Catalog kind selection may shift the schema search field** ([#660](https://github.com/cozyGarage/BookiE/issues/660)). The issue remains open; the current isolated GTK widget test did not reproduce it.
-- **PostgreSQL `VOID` results are shown as undecodable** ([#660](https://github.com/cozyGarage/BookiE/issues/660)); they should render as empty values.
-- **Two installed launches were reported to abort inside BookiE** ([#666](https://github.com/cozyGarage/BookiE/issues/666)); the cause remains under investigation.
-- **Installed GTK suite is intermittent on Forgejo** (TEST-31 / [#556](https://github.com/cozyGarage/BookiE/issues/556)): the startup restore layout abort was fixed in [#821](https://github.com/cozyGarage/BookiE/pull/821). Intermittent failures remain under investigation; recent failures include an application shutdown with a bad exit status after the scenarios passed. The required consecutive full-run evidence has not been met.
+- **Unresolved transaction after PostgreSQL session loss** ([#1016](https://github.com/cozyGarage/BookiE/issues/1016)). Reporting the outcome as unknown and refusing further governed writes on that connection is intentional: a disconnected session cannot confirm whether its transaction committed. The editor closes the unusable session without sending ROLLBACK through it. The PostgreSQL release regression in [#998](https://github.com/cozyGarage/BookiE/pull/998) checks that reconnecting never reuses a new backend as the old session. A fresh session may run reads and end its read-only snapshot with ROLLBACK; commits and other governed writes remain blocked until the unresolved outcome is reconciled. The app has no in-app reconciliation action yet ([#947](https://github.com/cozyGarage/BookiE/issues/947)).
+- **Catalog kind selection may shift the schema search field** ([#660](https://github.com/cozyGarage/BookiE/issues/660)). Check the issue for current reproduction and fix status.
+- **PostgreSQL `VOID` results are shown as undecodable.** The expected presentation is an empty result value.
+- **Two installed launches were reported to abort inside BookiE** ([#666](https://github.com/cozyGarage/BookiE/issues/666)); consult the issue for diagnosis and current status.
+- **Installed GTK suite has had intermittent Forgejo failures** (TEST-31 / [#556](https://github.com/cozyGarage/BookiE/issues/556)): the startup restore layout abort was fixed in [#821](https://github.com/cozyGarage/BookiE/pull/821). Historical failures also include application shutdown with a bad exit status after scenarios passed. Check TEST-31 and #556 for current run evidence.
 
 ## Test and CI limits
 

@@ -95,13 +95,13 @@ PostgreSQL integration coverage includes controlled cancellation and timeout aga
 
 ## PostgreSQL release fixture
 
-Run the Phase 3 release gate with:
+Run the PostgreSQL release fixture with:
 
 ```bash
 ./scripts/test-postgres-release.sh
 ```
 
-The script generates fixture certificates and SSH keys, starts PostgreSQL 16 with TLS, an OpenSSH bastion, and Toxiproxy, builds the `tablepro-askpass` helper, runs the agentd system OpenSSH G5 acceptance test, then runs `tablepro-release-tests` with `--include-ignored --test-threads=1`. Only Toxiproxy publishes host ports, so the database is reachable through the proxied path or the bastion and either path can be cut during a test.
+The script generates fixture certificates and SSH keys, starts PostgreSQL 16 with TLS, an OpenSSH bastion, and Toxiproxy, builds the `tablepro-askpass` helper, verifies that agentd refuses an unknown system OpenSSH host key before allowing a guarded PostgreSQL query, then runs `tablepro-release-tests` with `--include-ignored --test-threads=1`. Only Toxiproxy publishes host ports, so the database is reachable through the proxied path or the bastion and either path can be cut during a test.
 
 The suite verifies certificate hostname and authority checks, tunnelled access to a database with no published port, that a tunnelled `VerifyFull` verifies the original database hostname while a TCP-forwarded one refuses to verify the local dial address, read-only denial of data-changing CTEs and administrative functions, batch and interactive rollback, activity and blocking-lock queries, and direct and SSH reconnect.
 
@@ -135,7 +135,7 @@ It runs `pg_dump` and `pg_restore` from the `postgres:18-alpine` image through w
 
 ## Manual verification after the 0.2 feature sprint
 
-The upstream feature adoption merged in September 2026 added GTK surfaces whose logic is unit-tested and whose layout has never been displayed. The checklist is [manual-verification-0.2-features.md](manual-verification-0.2-features.md). Treat it as outstanding until each line carries a result.
+The 0.2.0 feature checklist records installed GTK workflows and layouts that need visual acceptance. Unit and widget tests do not establish installed desktop behavior. See [manual-verification-0.2-features.md](manual-verification-0.2-features.md); each unchecked item remains unverified until a result is recorded.
 
 ## GTK tests
 
@@ -211,7 +211,7 @@ sudo pacman -S --needed dbus xorg-server-xvfb at-spi2-core python-atspi
 
 Ubuntu CI uses `dbus-daemon`, `gnome-keyring`, `xvfb`, `xauth`, `at-spi2-core`, `python3-pyatspi`, and `scrot`. GitHub pull requests run the required GTK fast checks and widget regressions; the installed GTK safety smoke runs only on a schedule or manual dispatch. The separate daily GTK Safety Soak runs five retry-free attempts and uploads stdout, stderr, accessibility snapshots, and screenshots on failure. 0.2.0 qualification requires 30 consecutive attempts across at least six runs at the same source SHA. Service-level tests still cover pure state and policy behavior, but they do not replace these cross-layer tests.
 
-The nightly workflow runs in stages (unit-tier coverage, then the Docker-tier coverage and mutation jobs, then the soak and package jobs), two shards at a time, so a red stage is a finding and not a lost runner. Each driver crate is measured with its Docker suite against `baselines/coverage-floors-crates.txt` (`scripts/check-crate-coverage-floors.py`). Mutation results are compared with `baselines/mutants/<package>.txt` by `scripts/check-mutants-baseline.py`: a missed mutant that is not in the baseline fails the run, and baseline lines that a test now catches are listed for deletion. A missing baseline file means no missed mutant is accepted. The soak is three runs of five attempts each per night.
+The nightly workflow runs in stages: unit-tier coverage first, then Docker coverage and mutation jobs in parallel, followed by the soak and package jobs. Docker and mutation matrices run at most two jobs at a time. A red job is a failure to classify, not proof of a product bug; use the job log and the [failure-triage guidance](#reading-a-red-nightly) to distinguish code, test, setup and infrastructure causes. Each driver crate is measured with its Docker suite against `baselines/coverage-floors-crates.txt` (`scripts/check-crate-coverage-floors.py`). Mutation results are compared with `baselines/mutants/<package>.txt` by `scripts/check-mutants-baseline.py`: a missed mutant that is not in the baseline fails the run, and baseline lines that a test now catches are listed for deletion. A missing baseline file means no missed mutant is accepted. The soak is three runs of five attempts each per night.
 
 ### Reading a red nightly
 
@@ -280,9 +280,9 @@ cargo llvm-cov --workspace --exclude tablepro-driver-duckdb --exclude tablepro-a
 
 Exclude app and fixture tiers so the map does not depend on Docker or a display. Coverage shows execution, not assertion quality.
 
-## Upstream test-suite parity
+## Regression case selection
 
-The [September adoption record](archive/testing-history.md#upstream-test-suite-parity) preserves the original cases and counts. Current case candidates and ownership are in [the scenario survey](archive/b3-test-scenario-survey.md) and the B3/B4 boards. Competitor issue-derived checks are hypotheses, not confirmed BookiE defects; the open checklist is in [#790](https://github.com/cozyGarage/BookiE/issues/790). Reproduce a candidate against current source before changing it; a historical claim of zero tests does not establish a current coverage gap.
+The [historical test record](archive/testing-history.md#upstream-test-suite-parity) preserves the original cases and counts. The [scenario survey](archive/b3-test-scenario-survey.md) is a dated source study, not a current backlog; current B3 case status belongs to the board and [value-contract index](value-contracts.md). Failure reports are hypotheses, not confirmed BookiE defects; the active checklist is [#790](https://github.com/cozyGarage/BookiE/issues/790). Trace the matching BookiE path and reproduce a candidate against current source before changing code; a historical claim of zero tests does not establish a current coverage gap.
 
 ## File-size guard
 

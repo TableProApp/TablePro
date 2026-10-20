@@ -1,6 +1,8 @@
-# Oracle review of the value and policy tests (before 0.2.0)
+# Value and policy test oracle review
 
-A passing test only says the code agrees with the test. This review asks the other question: **where did the expected value come from?** If it came from the database, a standard or a written rule, the test defines the right behaviour. If it came from the code under test, a green gate proves nothing.
+This is a dated sample review created for TEST-32 before 0.2.0. Its test paths and verdicts are not a current inventory; recheck source before using them. The oracle classes and worksheet remain useful when reviewing a contract. The blank result table is a template, not evidence. Current task status belongs to [issue #594](https://github.com/cozyGarage/BookiE/issues/594).
+
+A passing test only says the code agrees with the test. Ask **where did the expected value come from?** If it came from the database, a standard or a written rule, the test defines the right behaviour. If it came from the code under test, a green gate proves nothing.
 
 Related: [value contracts](value-contracts.md) (the shared corpus and the rules for values), [manual verification](manual-verification-0.2-features.md) (the installed checks this review sits beside) and ledger row TEST-32.
 
@@ -14,17 +16,17 @@ Related: [value contracts](value-contracts.md) (the shared corpus and the rules 
 | C, computed | The expectation is computed by the code under test, or by a copy of its algorithm | an expected string built with the same formatter the driver uses |
 | P, policy | The expected decision comes from an ADR, `AGENTS.md` or a written rule | "TRUNCATE needs approval in Local" |
 
-N and P are strong. R is strong against loss but blind to symmetric errors (the code stores a value wrongly and reads it back wrongly the same way), so every R test needs one manual native check, which is Part B. H is acceptable when the literal is checked once against the real engine, with the command recorded. C is weak and should be replaced.
+N and P provide independent expectations. R catches loss but can miss symmetric errors (the code stores a value wrongly and reads it back wrongly the same way), so use an independent native check for representative high-risk contracts. H is acceptable when the literal is checked against the real engine and the command is recorded. C is weak and should be replaced.
 
 Verdict for each test: **OK**, **WEAK** (right idea, fragile or one-sided), **WRONG** (the expectation is not what the engine or the rule says) or **UNKNOWN** (needs a person to decide).
 
-## Part A: sample sheet for the lane owners
+## Part A: historical sample sheet
 
-B3 fills the value rows and B4 the policy rows. Read the test, find where each expected value comes from, then fill the last three columns. The sample was drawn across engines and areas, and the same procedure then applies to the rest of the value-contract tests. A pull request that adds a test names its oracle class in the description.
+These rows demonstrate how to identify an oracle and review an assertion. They are not a complete or current audit. For new tests, name the oracle in the review and use the owning issue for any unresolved gap.
 
 | # | Area | Test (file:line) | What it asserts | Class | Verdict | Notes |
 |---|---|---|---|---|---|---|
-| 1 | All engines, scalars | `crates/core/tests/support/value_contract.rs` `assert_scalar_contract`, run by `value_contract_preserves_scalar_boundaries_through_parameters_and_exports` in each driver | The 10 integers, 8 floats, 11 texts and 6 decimals in `tests/data/value-contract.json` survive a parameter and a literal export | R | WEAK | `value_contract.rs:5-99` loads `tests/data/value-contract.json` and compares bind (`:84-90`) and literal export (`:91-98`) to the same corpus value. This catches loss but can miss symmetric encoder/decoder errors; Part B's native-client check is still pending. |
+| 1 | All engines, scalars | `crates/core/tests/support/value_contract.rs` `assert_scalar_contract`, run by `value_contract_preserves_scalar_boundaries_through_parameters_and_exports` in each driver | The 10 integers, 8 floats, 11 texts and 6 decimals in `tests/data/value-contract.json` survive a parameter and a literal export | R | WEAK | `value_contract.rs:5-99` loads `tests/data/value-contract.json` and compares bind (`:84-90`) and literal export (`:91-98`) to the same corpus value. This catches loss but can miss symmetric encoder/decoder errors; use independent native checks for representative high-risk contracts. |
 | 2 | PostgreSQL | `crates/drivers/postgres/tests/support/value_contracts.rs:544` `value_contract_pg_lsn_maximum_preserves_text_and_wire_identity` | `pg_lsn` max keeps its text, native type name and wire bytes; the server confirms equality | N | OK | `value_contracts.rs:549-564`: `pg_typeof`, `value::text`, `encode(pg_lsn_send(...))` and `value = 'FFFFFFFF/FFFFFFFF'::pg_lsn AS server_match` are computed by PostgreSQL. |
 | 3 | PostgreSQL | `crates/drivers/postgres/tests/support/value_contracts.rs:106` `value_contract_wide_numeric_csv_round_trips_through_native_insert_plan` | A 40-digit `numeric(65,0)`, a narrow value and NULL survive CSV export and import | N | OK | `value_contracts.rs:106-183`: the CSV path carries values through import, and the final `amount::text` comes from PostgreSQL (`:171-182`). Plan row carriers at `:159-166` are hand-typed; the database text is the independent final oracle. |
 | 4 | PostgreSQL | `crates/drivers/postgres/src/array.rs:464` `value_contract_enum_array_labels_quote_null_text_and_preserve_sql_null`; `crates/drivers/postgres/tests/support/array_contract_parts/enum_array_file_consumers.rs` `value_contract_custom_enum_array_file_exports_preserve_labels` | Enum array labels `NULL`, empty, `a,b`, `a"b`, `東京` and a real SQL NULL render and rebind without changing their values | H | OK | The unit expectation `{"NULL","","a,b","a\"b","東京",NULL}` is hand-typed against synthetic wire bytes. The native PostgreSQL test rebinds the driver's text and compares `array_to_json` and `array_send` with server results. PostgreSQL quotes some enum labels differently in `::text`; equivalent valid text is accepted when native values and wire bytes match. |
@@ -33,7 +35,7 @@ B3 fills the value rows and B4 the policy rows. Read the test, find where each e
 | 7 | ClickHouse | `crates/drivers/clickhouse/tests/integration.rs:648` `value_contract_ambiguous_datetime64_local_time_is_refused` | A `DateTime64` in an ambiguous local hour (DST) is shown as undecodable, not guessed, and cannot be turned into a literal | P | OK | `integration.rs:651-668` (and Lord Howe `:676-698`): refusal follows the documented ambiguous-time limitation; `toString(stamp)` and `toUnixTimestamp64Milli(stamp)` establish the native input. |
 | 8 | MySQL / MariaDB | `crates/drivers/mysql/tests/support/enum_sql_mode_contract.rs:453` `value_contract_mariadb_empty_enum_and_set_csv_restore_survive_empty_string_is_null` | Empty `ENUM` and `SET` values survive a CSV restore under the Oracle-style empty-string-is-NULL mode | N | OK | `enum_sql_mode_contract.rs:515-553` and restore `:584-632`: `CAST(col + 0 AS CHAR)`, `HEX(col)` and `col IS NULL` are MariaDB oracles before and after CSV restore under `EMPTY_STRING_IS_NULL`. |
 | 9 | MongoDB | `crates/drivers/mongodb/tests/support/value_contracts.rs:869` `value_contract_binary_subtypes_survive_native_grid_edits` | Binary subtypes are kept when a document is edited from the grid | N | OK | `value_contracts.rs:885-973`: seed and post-edit check use the native `mongodb` crate (`insert_one` / `find_one`) for subtype and bytes, not only the driver result. |
-| 10 | SQLite | `crates/drivers/sqlite/tests/integration.rs` `sqlite_real_storage_preserves_float_edge_bits` | The smallest subnormal, the maximum, and both infinities keep their exact bits | R | WEAK | `integration.rs:1027-1055`: bits are inserted through our binder and compared on read (`to_bits`); `typeof(value)` confirms native REAL storage but not an independently inserted float. The manual native-client check in Part B is pending. |
+| 10 | SQLite | `crates/drivers/sqlite/tests/integration.rs` `sqlite_real_storage_preserves_float_edge_bits` | The smallest subnormal, the maximum, and both infinities keep their exact bits | R | WEAK | At the review source, bits were inserted through our binder and compared on read (`to_bits`); `typeof(value)` confirmed native REAL storage but not an independently inserted float. This is a historical sample finding, not a current status claim. |
 | 11 | Export | `crates/core/src/export/file.rs:182` `value_contract_xml_illegal_text_preserves_destination_and_reports_coordinates` | Text XML cannot hold is refused with its row and column and the destination file is untouched | N | OK | `file.rs:185-208`: characters are those XML 1.0 forbids; error must name `row 2, column 2` and the codepoint; destination bytes stay `existing XML`. |
 | 12 | Policy | `crates/policy/tests/aud11_s6_s7.rs` `truncate_needs_human_approval_even_when_local_ddl_is_permissive` | `TRUNCATE` needs approval in Local even when ordinary DDL does not | P | OK | `aud11_s6_s7.rs:69-74`: Local defaults have `human_approve_ddl == false`, yet `TRUNCATE TABLE users` must be `RequireApproval` (AUD-11 / [effects proposal](proposals/policy-effects-and-verdict.md)). |
 | 13 | Policy | `crates/policy/src/select_writes.rs:23` `select_into_creates_a_table_and_is_a_write` | `SELECT ... INTO` is classified as a write | P | OK | `select_writes.rs:23-34`: postgres/mssql `SELECT ... INTO` must report `writes()` and not `StatementClass::Select` (table-creating select is a write). |
@@ -59,18 +61,18 @@ How to answer a row quickly:
 3. If it is H, say whether it was checked against the real engine, and how.
 4. Put WEAK or WRONG rows in the ledger with the file and line.
 
-## Part B: real values by hand (maintainer and UX lane)
+## Part B: independent native-client check
 
-This is the first pass and it is manual, so it belongs with the installed checks before 0.2.0. The point is to see the value the database really stores, without our code in between.
+Use a database's native client when a round trip cannot rule out matching encode/decode errors. This worksheet is a planning template; check that the current app supports the selected operation and record actual results with the owning issue or pull request.
 
-For each engine in the 0.2.0 promise that you can reach (PostgreSQL, MySQL or MariaDB, SQL Server, SQLite, DuckDB, ClickHouse, MongoDB and Redis), use its native client and scratch data: a table, collection or key/value entry as appropriate.
+Use disposable scratch data and the engine's native client. Select only values and operations that the current driver and app support.
 
 1. Create scratch data with native integer, float, decimal and text values where the engine supports those types. For Redis, seed string keys with text and binary values, and use a counter command for an integer reply.
 2. Seed the applicable values below with the native client, so our code is not involved.
 3. Read them back with the native client and note the exact text it prints.
 4. Open the data in the app and compare its value display and CSV export to the native result. Use the grid for tables and the query editor for command-oriented engines.
 5. Change a value through the app path that the engine supports, then read it back with the native client. The stored value must be the one you entered.
-6. Record the engine, value kind and operation beside each result; never leave a result blank.
+6. Record the engine, value kind, operation, source revision and environment beside each actual result. Keep the blank table below as a template, not a pass record.
 
 Values (from `tests/data/value-contract.json`):
 
@@ -103,8 +105,8 @@ Part B, mock for a PostgreSQL decimal:
 
 | PostgreSQL | decimal | `1.23000000` | `1.23000000` | `1.23000000` | typed `4.50000000`, read back `4.50000000` | pass | 2026-10-11, build `abcdef0` |
 
-## After the first pass
+## Using the worksheet
 
-- Fill Part A for the sample, then extend it to the rest of the value-contract tests by area: B3 for values, B4 for policy.
-- Every WEAK or WRONG row becomes a ledger row or a small test pull request.
-- Every Part B failure is a product bug: record it in the ledger with the engine, the value and what each side showed.
+- Recheck sample rows against current code before treating them as evidence.
+- Route a confirmed gap to the owning issue and lane; preserve the failing case as a regression test when behavior changes.
+- Record native-client discrepancies with the engine, value, operation and source revision so another contributor can reproduce them.

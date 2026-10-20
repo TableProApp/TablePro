@@ -61,7 +61,8 @@ def _stage_package(
         "Section: database\n"
         "Priority: optional\n"
         "Architecture: amd64\n"
-        "Maintainer: TablePro Contributors <noreply@tablepro.app>\n"
+        "Maintainer: BookiE Contributors <noreply@tablepro.app>\n"
+        "Homepage: https://github.com/cozyGarage/BookiE\n"
         "Description: Native Linux database client\n"
         " BookiE test fixture\n"
     )

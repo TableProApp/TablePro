@@ -2,7 +2,7 @@
 
 > [NEEDS REVIEW] Draft written on 2026-10-11 from `tablepro-storage` secrets, paths, transport keyring mapping and [ADR 0004](../../docs/decisions/0004-libsecret-secret-storage.md). A maintainer review is pending.
 
-**Spec tier:** buildable **Serves:** `Local DBA`, `MCP operator` **Status:** in-development **Success metric:** Keyring failure is never treated as a missing password; connection JSON never holds a secret.
+**Spec tier:** buildable **Serves:** `Local DBA`, `MCP operator` **Implementation:** shipped under [ADR 0004](../../docs/decisions/0004-libsecret-secret-storage.md) **Specification:** draft pending review **Success metric:** Keyring failure is never treated as a missing password; connection JSON never holds a secret.
 
 ## Purpose
 

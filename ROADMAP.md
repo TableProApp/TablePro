@@ -4,7 +4,7 @@ The [completion and continuation page](docs/bookie-0.2-sprint.md) records milest
 
 ## Current milestone
 
-The maintainer confirmed on 2026-10-18 that BookiE 0.2.0 delivery work is complete. Release publication is pending. The [completion handoff](docs/archive/bookie-0.2-completion-handoff-2026-10-18.md) preserves prior scope and acceptance records; new development follows the backlog and Project #3.
+On 2026-10-18, the maintainer recorded that BookiE 0.2.0 delivery work was complete while release publication was pending. Check the [release page](https://github.com/cozyGarage/BookiE/releases) for current publication status. The [completion handoff](docs/archive/bookie-0.2-completion-handoff-2026-10-18.md) preserves prior scope and acceptance records; new development follows the backlog and Project #3.
 
 ## Repository layout
 

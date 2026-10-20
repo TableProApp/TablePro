@@ -57,7 +57,8 @@ Version: ${VERSION}
 Section: database
 Priority: optional
 Architecture: ${ARCH}
-Maintainer: TablePro Contributors <noreply@tablepro.app>
+Maintainer: BookiE Contributors <noreply@tablepro.app>
+Homepage: https://github.com/cozyGarage/BookiE
 Depends: libgtk-4-1, libadwaita-1-0, libgtksourceview-5-0, libsecret-1-0, libgssapi-krb5-2, libkrb5-3, libsqlite3-0
 Description: Native Linux database client
  BookiE is a native GTK4 / libadwaita database client. It installs

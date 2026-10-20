@@ -1,6 +1,6 @@
 # Connection handling
 
-Reviewed against SSH code tip `e329f9a` on 2026-10-17. [ADR 0008](decisions/0008-connection-and-session-ownership.md) owns identity and trust, [ADR 0005](decisions/0005-server-side-cancellation.md) cancellation, and remaining B4 acceptance is on [Project #3](https://github.com/users/cozyGarage/projects/3) (Lane B4). The [September connection audit](archive/connections-history.md) retains older source claims and coverage tables; its gaps are not current status.
+[ADR 0008](decisions/0008-connection-and-session-ownership.md) owns identity and trust; [ADR 0005](decisions/0005-server-side-cancellation.md) owns cancellation. The B4 lane on [Project #3](https://github.com/users/cozyGarage/projects/3) owns remaining acceptance. This guide describes current contracts; check the code and owning issue before relying on a time-sensitive acceptance claim. The [September connection audit](archive/connections-history.md) is historical evidence only.
 
 ## Shared assembly and ownership
 
@@ -10,7 +10,7 @@ Saved UUID, live handle, editor session and namespace are distinct owners. The G
 
 GUI and agentd scope connection state to the live generation. Agentd creates an `AuditState` generation for each cached session and attaches a fault sink that retires only the matching session, even if its ping still succeeds. Journal failure remains shared across sessions.
 
-A login the server refuses is never retried. PostgreSQL reports a wrong password or unknown role (28P01) as an authentication failure, and any other class 28 refusal (for example no `pg_hba.conf` entry) or a missing database (3D000) also stops reconnect attempts, so a bad credential cannot lock an account by repeated tries; a busy server (53300) and network faults are still retried.
+After a connection attempt is classified, permanent login and database errors stop the reconnect loop: authentication failures (class 28, including a wrong password, unknown role or no `pg_hba.conf` entry) and a missing database (3D000) are not retried. A busy server (53300) and network faults remain retryable. PostgreSQL's initial SQLx pool startup can retry connection attempts until its acquire deadline before the driver returns an error; this is separate from the app's reconnect classification.
 
 ## TLS identity and evidence
 
@@ -24,7 +24,7 @@ PostgreSQL and MySQL Verify CA and Verify Full use the operating system trust st
 
 ## Built-in SSH trust
 
-The GUI defaults to `UnknownHostKey::Refuse` and installs a prompter. An unknown key requires explicit consent before persistence; decline/cancel must write no key. A changed key is refused. Each hop owns its own trust decision. Agentd is unattended and refuses unknown keys. Built-in known hosts are distinct from OpenSSH's `~/.ssh/known_hosts`; running system `ssh` does not populate the built-in store. Installed trust-refusal and audit acceptance remains under B4-7, with overall Arch/Hyprland package acceptance under PKG-1 and steps in the [manual checklist](manual-verification-0.2-features.md).
+The GUI defaults to `UnknownHostKey::Refuse` and installs a prompter. An unknown key requires explicit consent before persistence; decline/cancel must write no key. A changed key is refused. Each hop owns its own trust decision. Agentd is unattended and refuses unknown keys. Built-in known hosts are distinct from OpenSSH's `~/.ssh/known_hosts`; running system `ssh` does not populate the built-in store. Installed trust-refusal and audit acceptance are tracked under B4-7; overall Arch/Hyprland package acceptance is tracked under PKG-1. Steps are in the [manual checklist](manual-verification-0.2-features.md).
 
 ## System OpenSSH
 

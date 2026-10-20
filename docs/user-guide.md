@@ -8,7 +8,7 @@ BookiE is a database client for Linux. It opens PostgreSQL, MySQL and MariaDB, S
 2. Pick the database type, then fill in host, port, database and user. For SQLite and DuckDB, choose the file.
 3. Click **Test** to check the details, then **Connect**.
 
-For MySQL and MariaDB, choose a local socket file instead of a host to connect through a Unix socket; the path is saved with the connection and exported in bundles. For PostgreSQL, the schema filter menu hides schema groups per connection and restores them. A wrong PostgreSQL password or database is reported at once and is not retried. The General preferences choose how NULL is shown in the grid (NULL, the empty-set symbol or (null)).
+For MySQL and MariaDB, choose a local socket file instead of a host to connect through a Unix socket; the path is saved with the connection and exported in bundles. For PostgreSQL, the schema filter menu hides schema groups per connection and restores them. PostgreSQL login and missing-database errors stop the app's reconnect loop; the initial SQLx pool startup may retry until its connection deadline. The General preferences choose how NULL is shown in the grid (NULL, the empty-set symbol or (null)).
 
 Passwords are kept in your desktop keyring, never in BookiE's own files.
 
@@ -43,7 +43,7 @@ SQL completion offers keywords and scoped table and column names. Choosing an id
 
 While a query runs again, the previous result stays on screen, dimmed, until the new result, an error, or a cancel or timeout message replaces it.
 
-Click a sortable result column header to order the rows already loaded in that result. This is a local view change and does not run the SQL again, including for write statements that return rows. SQL NULL values stay last; columns with mixed or undecodable values cannot be sorted. Text uses local value ordering, which can differ from the database collation.
+Click a sortable result column header to order the rows already loaded in that result. This is a local view change and does not run the SQL again, including for write statements that return rows. SQL NULL values stay last; columns with mixed, JSON or undecodable values cannot be sorted. Text follows the desktop locale collation, which can differ from the database collation.
 
 Right-click a result cell and choose **Filter by This Value** to filter the loaded rows in that result. This also works on pinned results, shows visible and loaded row counts, and does not run the SQL again.
 
@@ -84,7 +84,7 @@ BookiE checks every statement before it runs:
 
 - Writes on a read-only connection are refused.
 - Depending on the connection's environment and your policy, risky statements (for example a `DELETE` without `WHERE`, or schema changes in production) ask for your approval first. The time spent waiting for approval is not counted in the statement's elapsed time.
-- Every executed, refused or cancelled operation is written to an audit journal on your machine.
+- BookiE records governed operation outcomes in a local audit journal when it is available. MCP and operations that require audit persistence are refused if the journal is unavailable. A Local or Dev policy may allow a human write to continue after audit-intent failure; that write may succeed without being recorded.
 
 ## Back up and restore PostgreSQL
 
@@ -92,7 +92,7 @@ From the app menu, choose **Back Up Database…** to save a custom-format `.dump
 
 ## Snapshots
 
-Planned for a 0.2.x release, after 0.2.0: take a snapshot of a database before an experiment and restore it with one click, starting with PostgreSQL. See [ADR 0015](decisions/0015-database-snapshots.md) and ledger rows SNAP-1 to SNAP-4 in [known-issues.md](known-issues.md).
+Database snapshots are not available. [ADR 0015](decisions/0015-database-snapshots.md) records an accepted design; implementation is listed as post-0.2.0 work in the [backlog](backlog.md), with no release target. PostgreSQL logical backup and restore are available separately; see [Back up and restore PostgreSQL](#back-up-and-restore-postgresql).
 
 ## AI agents (MCP)
 

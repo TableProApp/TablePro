@@ -23,7 +23,7 @@ Mixing a typed domain error and an opaque catch-all at the same boundary is a re
 
 - Recoverable failure (bad input, network, policy denial, missing row): return `Result`.
 - A broken program invariant that types should have made impossible: fix the types. Do not paper over it with `unwrap` or `expect` in production paths.
-- A dependency panic on hostile input is not your panic. [ADR 0006](decisions/0006-driver-panic-containment.md) catches it in `PolicyGuard` and turns it into `DriverError` (`Internal` for reads, `OperationOutcomeUnknown` for writes).
+- A dependency panic on hostile input is not your panic. Calls forwarded through `PolicyGuard` use the containment behavior in [ADR 0006](decisions/0006-driver-panic-containment.md), converting a caught panic into `DriverError` (`Internal` for reads, `OperationOutcomeUnknown` for writes). The ADR records internal direct-call gaps that do not yet pass through that boundary.
 
 ## Designing a `thiserror` enum
 
@@ -85,7 +85,7 @@ Use the `tracing` crate. `app::logging::init` installs a `tracing_subscriber` fo
 
 Log the **variant and safe fields**, not a hope that `Display` is clean. Prefer `tracing` fields (`error = ?classified`, `sqlstate = %code`) over interpolating a full error string that might grow sensitive detail later.
 
-Never log passwords, secret tokens, connection strings, SQL text, query parameters, unmasked results or raw panic payloads at any level. Dependency panic payloads and raw network frames can contain the same data; do not treat them as safe diagnostics. The app and `agentd` install a hook that always withholds panic messages, and `PolicyGuard` withholds caught driver panic payloads while reporting the operation and payload byte count. Set `TABLEPRO_DEBUG_PANICS=1` to capture a backtrace without exposing the panic message; `RUST_BACKTRACE=1` also requests a backtrace. Both modes retain the source location and stack frames. [#666](https://github.com/cozyGarage/BookiE/issues/666) tracks the installed-launch investigation. Nothing enforces general log privacy automatically: no lint or CI step greps for sensitive identifiers, so it remains a review obligation. `print!`, `println!`, `eprint!`, `eprintln!` and `dbg!` are denied by the workspace lints, which keeps application logging on `tracing`; protocol output that must reach stdout writes through an explicit `std::io::stdout` handle instead.
+Never log passwords, secret tokens, connection strings, SQL text, query parameters, unmasked results or raw panic payloads at any level. Dependency panic payloads and raw network frames can contain the same data; do not treat them as safe diagnostics. The app and `agentd` install a hook that always withholds panic messages, and `PolicyGuard` withholds caught driver panic payloads while reporting the operation and payload byte count. Set `TABLEPRO_DEBUG_PANICS=1` to capture a backtrace without exposing the panic message; `RUST_BACKTRACE=1` also requests a backtrace. Both modes retain the source location and stack frames. Historical installed-launch reports are recorded in [#666](https://github.com/cozyGarage/BookiE/issues/666). Nothing enforces general log privacy automatically: no lint or CI step greps for sensitive identifiers, so it remains a review obligation. `print!`, `println!`, `eprint!`, `eprintln!` and `dbg!` are denied by the workspace lints, which keeps application logging on `tracing`; protocol output that must reach stdout writes through an explicit `std::io::stdout` handle instead.
 
 ## `unwrap` and `expect`
 

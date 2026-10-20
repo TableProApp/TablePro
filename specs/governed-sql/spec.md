@@ -2,7 +2,7 @@
 
 > [NEEDS REVIEW] Draft written on 2026-10-11 from PolicyGuard, MCP auth and ARCHITECTURE. A maintainer review is pending.
 
-**Spec tier:** buildable **Serves:** `Local DBA`, `MCP operator` **Status:** in-development **Success metric:** Every issued GUI, MCP and agent database handle is a `PolicyGuard`; denied work and cancelled approval or bulk finish still write a terminal audit state.
+**Spec tier:** buildable **Serves:** `Local DBA`, `MCP operator` **Implementation:** in use; acceptance tracked separately **Specification:** draft, needs review **Success metric:** Every issued GUI, MCP and agent database handle is a `PolicyGuard`; denied work and cancelled approval or bulk finish still write a terminal audit state.
 
 ## Purpose
 
@@ -14,7 +14,9 @@ The only path a consumer may hold to a live database. Token scopes and connectio
 - Per-statement order: classify, evaluate rules, request approval when required, write required audit intent, execute, mask eligible consumer results, then write the terminal audit outcome.
 - Optional session query cursors for one read statement in a read-only snapshot. `PolicyGuard` authorizes once, masks each page, and records page and terminal outcomes under one operation. PostgreSQL is the only driver that supports cursors; the SQL editor uses this path for supported single-statement PostgreSQL `SELECT`s.
 - MCP token scopes (`tools:read` / `tools:write` via `TokenPermissions`), per-token rate limits and connection allowlists.
+- MCP tool safety annotations and structured operation/transaction outcomes for tool errors.
 - Preview, transaction, retry and batch paths using the same rule, approval, intent and audit pipeline as direct execution. Session mode skips the shared-connection short-circuit.
+- Backup and restore through explicit guarded administrative operations, with restore approval and unknown-outcome handling after dispatch.
 
 ## Out of scope
 
@@ -56,6 +58,8 @@ Deny { rule, message }
 
 `StatementClass` (`crates/policy/src/classify.rs`): `select`, `insert`, `update`, `delete`, `ddl`, `administrative`, `transaction`, `other`, `unparseable`. `is_write` is true for every class except `select` and `transaction`.
 
+MCP tool errors include a stable `code`, `operation_outcome`, `transaction_outcome` and safe `message` in `structuredContent`. Tool safety annotations are declared from the server's read-only tool set; these hints do not replace scope, allowlist or policy checks.
+
 ## Interface contracts
 
 ### `PolicyGuard::authorize` / `authorize_analysis`
@@ -84,7 +88,7 @@ Audit intent is written before driver execution when `intent_is_required` is tru
 
 - Empty allowlist: `token has an empty connection allowlist` (`empty_allowlist_denies_connection_access` asserts the error mentions `allowlist`).
 - Connection not listed: `token is not allowed to access this connection`.
-- `list_connections` with an empty allowlist returns an empty list rather than every saved connection (code in `McpBridge::list_connections`; no dedicated test).
+- `list_connections` with an empty allowlist returns an empty list rather than every saved connection (`McpBridge::list_connections`).
 
 ### Connection provider
 
@@ -108,7 +112,7 @@ Audit intent is written before driver execution when `intent_is_required` is tru
 6. Execute through the inner `Connection`, honouring `OperationControl` cancellation and timeouts.
 7. Apply masking to the returned result (`apply_masking`) when the principal requires it.
 8. Persist the terminal audit outcome: `succeeded`, `failed`, `cancelled`, `timed_out`, or `unknown`. Audit failure after execution must not open a path around policy.
-9. MCP tools call `authorize_scopes`, then `check_rate`, then `ensure_connection_allowed`, then `provider.connection`, which wraps the driver in `PolicyGuard` before any SQL. Write tools also require `ToolsWrite` before a connection opens.
+9. Connection-scoped MCP tools call `authorize_scopes`, then `check_rate`, then `ensure_connection_allowed`, then `provider.connection`, which wraps the driver in `PolicyGuard` before any SQL. Write tools also require `ToolsWrite` before a connection opens. `list_connections` checks scope and rate limit, then filters the returned connections by the token allowlist.
 
 ## State machine
 
@@ -127,6 +131,7 @@ Audit intent is written before driver execution when `intent_is_required` is tru
 | intent-recorded | failed | driver error | audit `failed` |
 | intent-recorded | cancelled | `OperationControl` cancelled | audit `cancelled` |
 | intent-recorded | timed_out | timeout | audit `timed_out` |
+| intent-recorded | unknown | operation may have been applied without a confirmed outcome | audit `unknown`; governed writes may be blocked |
 
 Terminal audit states: `succeeded`, `failed`, `denied`, `cancelled`, `timed_out`, `unknown`.
 
@@ -148,6 +153,7 @@ Terminal audit states: `succeeded`, `failed`, `denied`, `cancelled`, `timed_out`
 ### Audit
 
 - Denied, failed, cancelled and timed-out operations MUST produce the matching terminal audit state.
+- Operations with uncertain post-dispatch outcomes MUST be recorded as `unknown`; the client MUST NOT imply safe retry or replay.
 - Audit failure MUST NOT open a path around policy.
 
 ## Invariants
@@ -156,6 +162,7 @@ Terminal audit states: `succeeded`, `failed`, `denied`, `cancelled`, `timed_out`
 - An empty MCP allowlist MUST deny connection use.
 - `Unparseable` SQL MUST be treated as a write.
 - A failed audit-intent write MUST prevent execution when intent is required.
+- An operation with an unknown post-dispatch outcome MUST preserve that uncertainty for consumers.
 
 ## Guarded query cursors
 
@@ -205,4 +212,4 @@ Each line names the tip proof. When the proof is code only, that is marked.
 
 ## Open questions
 
-None known. Architect review of this draft is still the open checklist fork.
+Architect review of this draft remains open. Transaction setup behavior is recorded in Guard wrapping; [#889](https://github.com/cozyGarage/BookiE/issues/889) is closed.

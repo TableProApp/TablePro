@@ -2,7 +2,7 @@
 
 ## Delivery status
 
-The maintainer confirmed on 2026-10-18 that **0.2.0 delivery work is complete; release publication is pending**. Delivery branch: `linux`. The app and agentd manifests identify source version `0.2.0`; tag creation and release publication remain separate actions.
+On 2026-10-18, the maintainer confirmed that **0.2.0 delivery work was complete while release publication was pending**. Check the [release page](https://github.com/cozyGarage/BookiE/releases) for current publication status. Delivery branch: `linux`. The app and agentd manifests identify source version `0.2.0`; tag creation and release publication are separate actions.
 
 The [0.2.0 scope](0.2.0-scope.md) records the completed delivery boundary. The previous scope and sprint checklists are preserved in the [completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md). Their historical open rows do not reopen 0.2.0. This status records the maintainer's decision, not a new run of the package, driver or desktop checks.
 
@@ -10,7 +10,7 @@ The [0.2.0 scope](0.2.0-scope.md) records the completed delivery boundary. The p
 
 The [post-0.2.0 backlog](backlog.md) owns selected development order. [Project #3](https://github.com/users/cozyGarage/projects/3) owns issue status and Lane; the [ledger index](known-issues.md) maps IDs to issues. Existing open correctness, qualification and infrastructure issues keep their evidence and follow-up scope. They are not silently closed by a milestone-status change.
 
-The TablePro Linux adoption tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149) selects driver investigations, shared conformance and development-tooling improvements. Start with PgBouncer cancellation and MySQL native-value oracles, then extend existing contracts. The [dated audit](archive/upstream-linux-adoption-2026-10-18.md) explains what to reuse, existing coverage and choices that need a separate decision.
+The Linux code-adoption tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149) selects driver investigations, shared conformance and development-tooling improvements. Start with PgBouncer cancellation and MySQL native-value oracles, then extend existing contracts. The [dated audit](archive/upstream-linux-adoption-2026-10-18.md) records candidate behavior, existing coverage and choices that need a separate decision.
 
 ## Standing decisions
 

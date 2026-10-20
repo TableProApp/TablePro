@@ -383,22 +383,11 @@ Default workspace Clippy/unit checks exclude optional DuckDB. GitHub runs the ch
 | No embedded browser | Native GTK widgets only. |
 | No in-process user scripting | Reduces attack surface beside SQL policy. |
 | Redis single endpoint | Sentinel/Cluster deferred past 0.2.0. |
-| Packaging | Arch x86_64 first, Debian/GNOME amd64 next. Flatpak / Flathub are left out of 0.2.0 ([PRODUCT.md](./PRODUCT.md)). A recipe is not publication. |
+| Packaging | Arch x86_64 is the 0.2.0 target. Debian/GNOME amd64 and Flatpak remain later backlog work; a recipe is not publication. |
 
-## Studied from for document structure
+## How to read this architecture map
 
-Peers whose architecture pages shaped how this map is written (diagrams, seam tables, deliberate limits). Not a product roadmap to copy. BookiE stays Linux-native, multi-engine, and PolicyGuard-first; [PRODUCT.md](./PRODUCT.md) and [AGENTS.md](./AGENTS.md) own scope.
-
-| Project | Document habit borrowed |
-|---|---|
-| [anil-e/codd](https://github.com/anil-e/codd) | Short product README over a heavy architecture book; closest GTK/Relm4 stack for orientation only. |
-| [0xErwin1/dbflux](https://github.com/0xErwin1/dbflux) | Layered crate Mermaid, query-flow and connect-flow sequence diagrams before dense prose. |
-| [adulari/forge](https://github.com/adulari/forge) | System context + container map tied to ADRs; domain glossary and stability notes as separate short pages. |
-| [context-graph-ai/contextdb](https://github.com/context-graph-ai/contextdb) | Named trait/pipeline stages with owner tables (engine docs; we apply the shape, not the engine). |
-| [matija/esploro](https://github.com/matija/esploro) | Request lifecycle plus an honest limits section next to the happy path. |
-| [Reactive Resume architecture](https://docs.rxresu.me/contributing/architecture) | “Where new code goes” table and a short boundary checklist after the workspace map (not their web/auth stack). |
-
-Also useful for prose density: [helix-editor/helix `docs/architecture.md`](https://github.com/helix-editor/helix/blob/master/docs/architecture.md) and [Nonanti/narwhal `docs/ARCHITECTURE.md`](https://github.com/Nonanti/narwhal/blob/main/docs/ARCHITECTURE.md).
+The workspace graph shows allowed dependency direction. The trait table identifies the runtime seams. The request sequence shows how a database operation crosses storage, transport, driver, policy and audit. The ownership tables and deliberate limits make it clear where new code belongs and which behavior is intentionally unsupported. These are documentation techniques; they do not expand the product scope in [PRODUCT.md](./PRODUCT.md) or the contributor rules in [AGENTS.md](./AGENTS.md).
 
 ## Deep-dives
 

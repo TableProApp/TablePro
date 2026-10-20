@@ -1,4 +1,4 @@
-# Internal TablePro Linux RC recipe. Do not submit this package to the AUR.
+# Internal BookiE RC recipe. Do not submit this package to the AUR.
 # `scripts/build-arch-rc.sh` resolves the signed-off RC tag to an immutable
 # commit, source/vendor checksums and build-input manifest.
 # shellcheck shell=bash disable=SC2034,SC2154,SC2164

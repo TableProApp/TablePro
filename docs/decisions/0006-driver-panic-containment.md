@@ -4,6 +4,10 @@
 - **Date**: 2026-09-18
 - **Clarified**: 2026-10-15 for the dependency. The workspace uses the crates.io `tiberius` 0.13 release, not a pinned git dependency. The decision is unchanged.
 
+### Clarification (2026-10-20)
+
+The blast-radius count query and `PolicySession::close` now use the guarded panic boundary, resolving [#880](https://github.com/cozyGarage/BookiE/issues/880). The statement below that a future call site cannot forget to opt in describes the required architecture; composition roots and internal direct calls still need review and regression coverage.
+
 ## Context
 
 Drivers decode whatever the server sends. A hostile, compromised, or merely buggy server can drive a decoder into a state its author did not anticipate, and some of our dependencies answer that with a panic rather than an error. The SQL Server driver is the concrete case: `tiberius` panics inside its codec on input it cannot parse. The original decision used a pinned Git revision; the workspace now uses crates.io `tiberius` 0.13. This boundary remains necessary until the panic is fixed in a reviewed release or maintained patch.
@@ -49,7 +53,7 @@ The sink remains opt-in through `PolicyGuard::with_fault_sink` rather than a req
 
 ## Alternatives considered
 
-**Fork the dependency and remove the panics.** This is what upstream `TableProApp/TablePro` did for `tiberius`. It is the real fix for the specific library, and it remains worth adopting, but it does not generalise: the next driver with the same habit reintroduces the hang. Containment and a fork solve different halves, and the fork is now an upgrade rather than a prerequisite.
+**Fork the dependency and remove the panics.** This addresses the specific library defect, but it does not generalise: another driver can introduce the same failure mode. Containment and a dependency fix solve different parts of the problem. The guard remains necessary even if the affected dependency is patched.
 
 **A process-level hook for duplicate diagnostics.** Rejected in the original decision. `catch_unwind` does not suppress the default hook. Privacy treatment of that hook is still required; the rejection of duplicate diagnostics does not justify printing arbitrary payloads.
 

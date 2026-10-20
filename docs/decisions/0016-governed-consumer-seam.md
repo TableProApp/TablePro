@@ -3,9 +3,13 @@
 - **Status**: Accepted
 - **Date**: 2026-10-12
 
+### Clarification (2026-10-20)
+
+The statement below that "the type boundary cannot" forget the guard is an architectural requirement, not a compiler-enforced guarantee. `ConnectionProvider::connection` returns `Arc<dyn Connection>`, so composition roots and provider implementations must preserve the invariant and tests must cover issued handles. The accepted decision is unchanged.
+
 ## Context
 
-The GTK app, MCP tools and `bookie-agentd` all need a live database handle. Optional checks around a raw driver connection are easy to skip from a new screen, tool or import path. Later features borrowed from other clients must not open a second execute path or a second value model.
+The GTK app, MCP tools and `bookie-agentd` all need a live database handle. Optional checks around a raw driver connection are easy to skip from a new screen, tool or import path. Later features must not open a second execute path or a second value model.
 
 Behaviour extracted from the code lives in [the governed SQL spec](../../specs/governed-sql/spec.md). This record is the architecture choice. Cancellation is [ADR 0005](0005-server-side-cancellation.md). Panic containment is [ADR 0006](0006-driver-panic-containment.md). Values are [ADR 0007](0007-type-and-value-preservation.md). Identity and trust are [ADR 0008](0008-connection-and-session-ownership.md).
 
@@ -27,7 +31,7 @@ Metadata and browse fetches that do not carry user SQL still go through the guar
 
 Modularity means crate seams and capability flags, not a runtime driver ABI ([ADR 0001](0001-no-plugin-system.md)).
 
-Later work may adopt these ideas from other clients when they stay on this seam:
+Future features may extend these workflows only when they stay on this seam:
 
 - Presentation of read-only or production connections (colors, watermarks, confirmations). The presentation does not become a second gate, and an MCP or CLI path cannot widen a human unlock.
 - Grid bandwidth: previews, hidden-column projection and cursor paging ([ADR 0011](0011-paged-query-results.md)) through the guard.

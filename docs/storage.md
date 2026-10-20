@@ -41,10 +41,10 @@ Workspace state is keyed by connection UUID and limited before it is written. Un
 
 ## Query history
 
-History schema upgrades use SQLite transactions. Before changing an existing database, the store makes a private SQLite snapshot at `history.before-migrations.db` while holding its storage lock. To roll back the history format, close BookiE, move the upgraded `history.db` and its `-wal`/`-shm` companions aside, then copy `history.before-migrations.db` to `history.db` with mode `0600`. History entries added after the snapshot will not be in the restored file.
+`HistoryStore::open()` rejects a database whose `user_version` is newer than the migrations this build supports, before applying migrations; the refusal leaves that database version unchanged. For supported older schemas, migrations use SQLite transactions. Before changing an existing database, the store makes a private SQLite snapshot at `history.before-migrations.db` while holding its storage lock. To roll back the history format, close BookiE, move the upgraded `history.db` and its `-wal`/`-shm` companions aside, then copy `history.before-migrations.db` to `history.db` with mode `0600`. History entries added after the snapshot will not be in the restored file.
 
 
-`tablepro_storage::query_history` owns a single SQLite pool. `init()` creates `history.db`, enables WAL mode, creates the `history` table, and creates an FTS5 virtual table with triggers that follow inserts, deletes, and query text updates.
+`tablepro_storage::query_history::HistoryStore` owns a single SQLite pool. `HistoryStore::open()` creates `history.db` when needed, enables WAL mode, applies the schema migrations, and creates an FTS5 virtual table with triggers that follow inserts, deletes, and query text updates.
 
 History records include query text, driver and connection identity, execution time, duration, affected rows, success, cancellation, pin state, and an optional error. Search supports text, connection, outcome, time, and limit filters. Unpinned entries can be pruned by age.
 
@@ -54,7 +54,7 @@ History export from the GUI writes through a temporary sibling file and a rename
 
 ## Policy
 
-The GUI loads `$XDG_CONFIG_HOME/tablepro/policy.toml` at startup. A missing file uses the built-in defaults. A file that exists but cannot be read or parsed is refused: the GUI uses defaults, disables MCP, and a later reload that fails keeps the policy already in memory. An explicit empty `mask_patterns` list is treated as the default sensitive-field patterns. `tablepro-agentd` still requires a readable `--policy` path and does not start without one.
+The GUI loads `$XDG_CONFIG_HOME/tablepro/policy.toml` at startup. A missing file uses the built-in defaults. If a present file cannot be read or parsed, the GUI marks policy unavailable and the local guard receives the built-in defaults; CSV imports and MCP are disabled. Other local SQL operations still use those defaults, so restrictions in the unreadable file are not enforced. A later reload failure keeps the policy already in memory. An explicit empty `mask_patterns` list is treated as the default sensitive-field patterns. `tablepro-agentd` requires a readable `--policy` path and does not start without one.
 
 ## Audit journal
 
@@ -111,9 +111,9 @@ Version 3 is written by current exports. Imports continue to accept versions 1 a
 
 ### What a bundle carries
 
-Exported: `id`, `name`, `driver_id`, `host`, `port`, `socket_dir`, `socket_path`, `database`, `username`, `tls_mode`, `tls_root_cert`, `read_only`, `auth_mode`, `environment`, `ssh`, plus the group, tags and colour from the organisation sidecar.
+Exported: `id`, `name`, `driver_id`, `host`, `port`, `socket_dir`, `socket_path`, `database`, `username`, `tls_mode`, `tls_root_cert`, `tls_client_cert`, `tls_client_key`, `read_only`, `auth_mode`, `environment`, `ssh`, plus the group, tags and colour from the organisation sidecar. Certificate and key fields contain file paths, not file contents.
 
-Withheld: `use_tls` (the legacy boolean `tls_mode` replaced, so no bundle can claim `use_tls: true, tls_mode: disabled`), `last_opened_at` (local telemetry), unknown keys carried from a newer version, the contents of `tls_root_cert` and any SSH private key (paths only), and policy `connection_overrides`.
+Withheld: `use_tls` (the legacy boolean `tls_mode` replaced, so no bundle can claim `use_tls: true, tls_mode: disabled`), `last_opened_at` (local telemetry), unknown keys carried from a newer version, the contents of TLS certificate and key files and any SSH private key (paths only), and policy `connection_overrides`.
 
 `BUNDLE_INCLUDED_FIELDS` and `BUNDLE_EXCLUDED_FIELDS` must together equal `KNOWN_CONNECTION_FIELDS`. A unit test asserts this, so a new field on `SavedConnection` fails the build until someone classifies it.
 

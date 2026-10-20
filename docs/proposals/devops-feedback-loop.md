@@ -1,6 +1,6 @@
 # Proposal: close the loop from development to bug trace
 
-Status: proposal, 2026-10-12. Nothing here is accepted until the owner picks it up. See [Done since the proposal](#done-since-the-proposal) for what has shipped.
+Status: dated proposal, created 2026-10-12 and updated 2026-10-17. The shipped/open/next notes below are a snapshot, not live status; the [backlog](../backlog.md) and owning issues control current priority and acceptance. Nothing here changes workflow rules unless adopted through the project process.
 
 ## Why
 
@@ -79,26 +79,16 @@ Next:
 - An **introduced in** field on crash and data-loss issues, filled from `git blame`, so recurring classes show up (for example the `AdwTabView` close handshake or `RefCell` re-borrow).
 - A weekly review of the open crash issues, the failure classes from step 2, and the ledger rows that need a human.
 
-## Environments and data: cheap clones instead of rebuilding databases
+## Reusable database fixtures
 
-Contributed from the 2026-10 PostgreSQL talk and the Postgres.FM episodes on Xata and RegreSQL. The idea: seed a database once, then give every test its own copy-on-write clone in seconds.
+Repeated image downloads, schema setup and data seeding add cost and failure points to integration tests. Reusable fixture layers can include pinned engine images, deterministic schema/data seeds, and copy-on-write database clones where the storage platform supports them. These patterns are options to measure, not selected dependencies or current workflow requirements.
 
-What the tools are (checked 2026-10-12):
-
-| Tool | What it does | Licence | Activity |
-|---|---|---|---|
-| [DBLab Engine](https://github.com/postgres-ai/database-lab-engine) | Thin clones and branches of a PostgreSQL database on ZFS or LVM, for testing in CI | Apache-2.0 | pushed 2026-10-08 |
-| [RegreSQL](https://github.com/boringSQL/regresql) | SQL regression tests with expected results and EXPLAIN plan baselines | BSD-2-Clause | pushed 2026-10-04 |
-| Xata | Open-source PostgreSQL branching | see episode | see episode |
-
-All three focus on PostgreSQL, BookiE's most mature engine. They do not address the other drivers.
-
-Where they would pay off for BookiE, in order of value for effort:
+Potential value for BookiE, in order of effort:
 
 1. **Reuse pinned fixture images with seeded schemas.** Repeated pulls and fixture startup are common sources of delay. Prepare immutable engine fixtures with their schema and seed data ready, then measure their effect on startup time and reproducibility before adopting them across test layers.
 2. **Seed once, create isolated copies for experiments.** Where the storage platform supports safe copy-on-write snapshots, an immutable seeded PostgreSQL template can provide a fresh database per experiment. Verify isolation, reset behavior and cleanup before relying on it in shared validation.
-3. **RegreSQL on the SQL we generate.** BookiE builds SQL itself: browse paging, keyed updates, catalog and foreign key queries. Baseline their EXPLAIN plans against a seeded database so a change that turns an index scan into a sequential scan fails a test. The open many-schema catalog performance work ([#580](https://github.com/cozyGarage/BookiE/issues/580)) needs exactly this.
-4. **DBLab itself**, only when we need large realistic datasets and many parallel clones. It adds operational complexity and is not justified for the current fixture sizes.
+3. **Plan regression checks for generated SQL.** BookiE builds browse paging, keyed updates, catalog and foreign-key queries. Baseline EXPLAIN plans against a seeded database so material query-plan regressions are visible. The many-schema catalog performance work ([#580](https://github.com/cozyGarage/BookiE/issues/580)) is a candidate workload.
+4. **Database cloning infrastructure**, only when large realistic datasets and parallel isolated runs justify its operational cost. Current fixture sizes do not establish that need.
 
 ## Remaining proposed work
 

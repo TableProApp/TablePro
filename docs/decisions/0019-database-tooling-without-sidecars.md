@@ -3,6 +3,12 @@
 - **Status**: Accepted; PostgreSQL backup and restore are wired into the app. Their cancellation and unknown-outcome hardening is tracked by [#1043](https://github.com/cozyGarage/BookiE/issues/1043). File conversion, schema migrations and backup/restore for other engines remain planned after 0.2.0.
 - **Date**: 2026-10-16
 
+### Clarification (2026-10-20)
+
+The accepted decision does not set a release target for the remaining tools. PostgreSQL backup and restore are implemented; follow-up work remains subject to post-0.2.0 selection and acceptance.
+
+The implementation uses the shared transport and SSH route to create the client-tool endpoint, then supervises the vendor process in `crates/dump`; it is not specific to the system OpenSSH backend. The current process does not apply Landlock, so the conditional filesystem restriction in Decision 3 is not implemented and must not be treated as a shipped security boundary.
+
 ## Context
 
 Users want file conversion, schema migrations and logical backups next to browsing and editing. One proposal was to keep performance-critical paths in Rust and ship Go binaries as sidecars for this tooling. A sidecar adds a second toolchain to every package build, a second supply-chain review that `deny.toml` does not cover, 10 to 40 MB per binary, and a process boundary that needs its own credential handling. [ADR 0001](0001-no-plugin-system.md) already rules out loading third-party code, and [ADR 0015](0015-database-snapshots.md) covers native snapshots, not portable dumps.
@@ -38,6 +44,6 @@ The DuckDB driver and the OpenSSH supervisor already exist, are tested and pass 
 
 ## Alternatives considered
 
-- Go sidecars (dbmate, golang-migrate, goose, Atlas): a second toolchain and audit pipeline, larger packages, and their own database connections outside `PolicyGuard`. Atlas binaries also ship under a proprietary licence.
+- External migration-tool sidecars: a second toolchain and audit pipeline, larger packages, and separate database connections that would bypass `PolicyGuard` unless the tools can use BookiE's guarded connection.
 - Writing dump and restore in Rust per engine: complete control, but a large writer to maintain per engine and lower fidelity than the vendor tools.
 - Running tools on the host from Flatpak: escapes the sandbox.

@@ -2,7 +2,7 @@
 
 Which product and architecture forks BookiE has already answered, and where. Silence is not an answer: each applicable fork is a link, N/A, or an open item. No new decisions are invented here.
 
-Reviewed against the current ADR index, code and living docs on 2026-10-14. The menu shape follows the [repository-standards decision checklist](https://repositorystandards.com/docs/checklist.html); living records stay in this directory and in [AGENTS.md](../../AGENTS.md). Open product and architecture decisions remain open until their named owners resolve them.
+Reviewed against the ADR index, code and living docs on 2026-10-20. Each row points to its decision owner; open product and architecture decisions remain open until their named owners resolve them.
 
 ## Foundation
 
@@ -10,7 +10,7 @@ Reviewed against the current ADR index, code and living docs on 2026-10-14. The 
 | --- | --- | --- |
 | Repo topology | Decided | Cargo workspace at the repository root (`crates/`, `apps/linux/`, `tests/`, `scripts/`, `docs/`). [ARCHITECTURE](../../ARCHITECTURE.md#repository-layout), [AGENTS](../../AGENTS.md). |
 | Domain / module boundaries | Decided | Crates by capability (`core`, `policy`, `mcp`, `transport`, `ssh`, drivers). [ARCHITECTURE](../../ARCHITECTURE.md). Static drivers: [ADR 0001](0001-no-plugin-system.md). |
-| Two authored descriptions of one structure | Decided | One Cargo graph. Packaging Meson/Flatpak consume the same crates. |
+| Build graph and packaging inputs | Decided | One Cargo graph; Meson and Flatpak packaging consume the same crates. |
 | Language & type strictness | Decided | Rust 1.98; Clippy denies `unwrap` / `expect` / `panic` on production paths. [AGENTS](../../AGENTS.md). |
 | Working language | Decided | English. [AGENTS](../../AGENTS.md). |
 | Dependency & supply-chain policy | Decided | License and advisory review through root `deny.toml`. [AGENTS](../../AGENTS.md). |
@@ -29,8 +29,8 @@ Reviewed against the current ADR index, code and living docs on 2026-10-14. The 
 
 | Fork | Status | Where it lives |
 | --- | --- | --- |
-| API / contract style & versioning | Decided | No public HTTP product API. MCP tools; `tablepro` protocol contracts stay on the rename boundary. [ARCHITECTURE](../../ARCHITECTURE.md). |
-| Auth & authorization model | Decided | Desktop: Secret Service. MCP: token scopes, connection allowlists, then `PolicyGuard`. [ADR 0004](0004-libsecret-secret-storage.md), [ADR 0008](0008-connection-and-session-ownership.md), [ADR 0016](0016-governed-consumer-seam.md), [AGENTS](../../AGENTS.md). |
+| API / contract style & versioning | Decided | No general-purpose REST API. MCP is the machine interface and supports stdio and streamable HTTP; existing `tablepro` protocol contracts stay on the rename boundary. [ARCHITECTURE](../../ARCHITECTURE.md). |
+| Auth & authorization model | Decided | Secret Service stores desktop credentials; database permissions remain engine-controlled. MCP access composes token scopes, connection allowlists and `PolicyGuard` SQL policy. [ADR 0004](0004-libsecret-secret-storage.md), [ADR 0008](0008-connection-and-session-ownership.md), [ADR 0016](0016-governed-consumer-seam.md), [AGENTS](../../AGENTS.md). |
 | Error & result modeling | Decided | Typed `thiserror` at crate boundaries. Panic containment: [ADR 0006](0006-driver-panic-containment.md). |
 | Config & secrets management | Decided | Database and SSH credentials use Secret Service. GUI-issued MCP token plaintext is returned once and keyring storage is attempted; headless token issuance emits plaintext once to stdout or an explicitly selected owner-only file. Secrets never go in connection JSON, argv, traces, errors or audit fields. [ADR 0004](0004-libsecret-secret-storage.md), [AGENTS](../../AGENTS.md). |
 
@@ -62,17 +62,15 @@ Reviewed against the current ADR index, code and living docs on 2026-10-14. The 
 
 | Fork | Status | Where it lives |
 | --- | --- | --- |
-| Target personas | Draft | [docs/personas.md](../personas.md) (`NEEDS REVIEW`). |
+| Target users and workflows | Recorded | [Product overview](../../PRODUCT.md) and [user contexts](../personas.md). |
 | Pricing / monetization | Decided in PRODUCT | Free, no account. [PRODUCT.md](../../PRODUCT.md). Promote to a separate BDR only if the wording must bind apart from PRODUCT. |
 | Data retention & compliance | Undecided | No retention period recorded. Do not invent one here. |
 | SLAs & support | N/A | Desktop client. No uptime SLA. |
 | Vendor / platform lock-in | Decided | GTK / libadwaita and Secret Service are accepted costs. [ADR 0002](0002-rust-gtk4-libadwaita.md), [ADR 0004](0004-libsecret-secret-storage.md). |
 | Positioning & messaging | Partial | Free / no-account and Linux-native bet live in PRODUCT; market one-liner not separately recorded. |
-| North Star & KPI tree | Draft | [PRODUCT.md](../../PRODUCT.md) (`NEEDS REVIEW`). |
+| Product outcome measures | Defined | Product outcomes are acceptance statements; the application has no telemetry or KPI collection system. [PRODUCT.md](../../PRODUCT.md). |
 | Analytics tracking plan | N/A | No product telemetry pipeline. |
-| Multi-tenant SaaS auth | N/A | Not a hosted multi-tenant service. |
-| Node API versioning | N/A | No Node application stack. |
-| Flathub as primary distribution | N/A | Packages are GitHub releases today. |
+| Flathub as primary distribution | N/A | Flathub is not selected as the primary channel; the artifacts recorded in [platforms](../platforms.md) are from GitHub Releases. Verify the release page for current publication status. |
 
 ## Feature decisions already recorded
 
@@ -85,17 +83,16 @@ Reviewed against the current ADR index, code and living docs on 2026-10-14. The 
 | Sidebar object tree | [ADR 0012](0012-sidebar-object-tree.md) |
 | Multiple result sets | [ADR 0013](0013-multiple-query-result-sets.md) |
 | Full-table export read snapshot | [ADR 0014](0014-full-table-export-snapshot.md) (not the same as ADR 0015) |
-| Database clone / restore snapshots | [ADR 0015](0015-database-snapshots.md) (accepted for 0.2.x after 0.2.0) |
+| Database clone / restore snapshots | [ADR 0015](0015-database-snapshots.md) (accepted design; implementation is post-0.2.0 backlog work, with no release target) |
 | Bundle admin audit | [ADR 0010](0010-administrative-action-audit.md) |
-| File conversion, schema migrations, logical backup | [ADR 0019](0019-database-tooling-without-sidecars.md) (accepted for 0.2.x after 0.2.0) |
+| File conversion, schema migrations, logical backup | [ADR 0019](0019-database-tooling-without-sidecars.md) (accepted design; implementation status varies by tool, with remaining work post-0.2.0) |
 
 ## Open forks (do not invent answers here)
 
 | Fork | Who unblocks | Next step |
 | --- | --- | --- |
-| PRODUCT / personas / North Star draft markers | Maintainer / product | Clear `NEEDS REVIEW` on [PRODUCT.md](../../PRODUCT.md) and [personas](../personas.md) |
 | SSH and capability specs | Architect | Review [specs/](../../specs/README.md); when a spec and the code disagree, fix the spec. The `PolicyGuard` decision is [ADR 0016](0016-governed-consumer-seam.md); the governed SQL spec is still a draft |
-| Security baseline ADR (R19-style axes) | Architect | Extract from AGENTS security invariants only if a contestable choice remains |
+| Security baseline ADR | Architect | Extract from AGENTS security invariants only if a contestable choice remains |
 | Accessibility / WCAG claim | Maintainer | Ledger DOC-3; do not claim AA from Adwaita alone |
 | Data retention | Product | Leave open until legal or product answers |
 | Performance budget ADR | Architect | Optional; PERF-* ledger rows may stay sufficient |

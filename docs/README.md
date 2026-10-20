@@ -17,20 +17,20 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 | Audience | Documents |
 |---|---|
 | People using BookiE | [User guide](user-guide.md), [platforms](platforms.md), [root README](../README.md) |
-| Anyone comparing clients | [0.2 feature comparison](0.2-feature-comparison.md) |
+| Maintainers reviewing capability scope | [Capability review](capability-review.md) |
 | Contributors writing code | [AGENTS.md](../AGENTS.md), [architecture](../ARCHITECTURE.md) (including [where new code goes](../ARCHITECTURE.md#where-new-code-goes) and the boundary checklist), [code conventions](code-conventions.md), [adding drivers](adding-drivers.md), [state management](state-management.md), [connections](connections.md), [disconnection contracts](disconnection-contracts.md), [storage](storage.md), [error handling](error-handling.md) |
 | Contributors testing | [Validation playbook](validation-playbook.md) (including [CI tiers](validation-playbook.md#ci-tiers): GitHub cheap vs Forgejo merge), [testing](testing.md), ignored-test inventory (`scripts/inventory-ignored-tests.py`, generated, not committed), [manual verification](manual-verification-0.2-features.md) |
 | Planning and status | [Sprint](bookie-0.2-sprint.md), [0.2.0 scope](0.2.0-scope.md), [backlog](backlog.md), [known limitations](known-limitations.md), [Project #3](https://github.com/users/cozyGarage/projects/3), [ledger index](known-issues.md), [B3 board pointer](type-contract-strategy.md), [B4 board pointer](b4-task-board.md), [value evidence index](value-contracts.md), [ROADMAP](../ROADMAP.md), [changelog](../CHANGELOG.md) |
-| Product context and specs | [PRODUCT.md](../PRODUCT.md), [personas](personas.md), [PRINCIPLES.md](../PRINCIPLES.md), [SECURITY.md](../SECURITY.md), [capability specs](../specs/README.md) (drafts until reviewed; AGENTS and ADRs rank above them) |
+| Product context and specs | [PRODUCT.md](../PRODUCT.md), [user contexts](personas.md), [PRINCIPLES.md](../PRINCIPLES.md), [SECURITY.md](../SECURITY.md), [capability specs](../specs/README.md) (descriptive drafts until architect review; AGENTS and ADRs rank above them) |
 | Decisions | [ADRs](decisions/README.md), [decision checklist](decisions/checklist.md), [proposals](proposals/) |
-| Proof and history | [evidence](evidence/), [archive](archive/), [upstream sync](upstream-sync.md) |
+| Proof and history | [evidence](evidence/), [archive](archive/), [external code review](upstream-sync.md) |
 
 ## Where each fact belongs
 
 | Fact | Owner | Update rule |
 | --- | --- | --- |
 | A rule for every change | [AGENTS.md](../AGENTS.md) | One copy; tool-specific files point to it |
-| What the product is and who it serves | [PRODUCT.md](../PRODUCT.md), [personas](personas.md), [PRINCIPLES.md](../PRINCIPLES.md) | Keep aligned with shipped behaviour; NEEDS REVIEW until a maintainer clears the draft |
+| Product constraints, users and outcomes | [PRODUCT.md](../PRODUCT.md), [personas](personas.md), [PRINCIPLES.md](../PRINCIPLES.md) | Keep aligned with shipped behaviour; product constraints are not implementation status |
 | Current capability behaviour extracted from code | [specs/](../specs/README.md) | Descriptive only; when a spec and the code disagree, fix the spec |
 | An architecture or behaviour decision | An [ADR](decisions/README.md) | Proposed, then Accepted by the maintainer; change a decision explicitly in a new or amended ADR; keep the [checklist](decisions/checklist.md) row in sync |
 | Which forks already have an answer | The [decision checklist](decisions/checklist.md) | Link, N/A, or open item; do not invent a decision to fill a cell |
@@ -76,32 +76,33 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 - [Changelog fragment evaluation, October 19](archive/changelog-fragment-evaluation-2026-10-19.md) (kept the current workflow because commit volume did not establish conflict cost)
 - [Architecture review](archive/architecture-consistency-review-2026-10-03.md) and its [inventory companion](archive/architecture-consistency-2026-10-03-inventory.md)
 - [AUD-10 DuckDB read-only file access](archive/duckdb-read-only-aud10-2026-10-10.md)
-- [App layer audit](archive/app-layer-external-audit-2026-10-06.md): GUI gaps and the TablePro and dbx comparison
+- [App layer audit](archive/app-layer-external-audit-2026-10-06.md): UI layering, request ownership and test-boundary findings
 - [Grid memory and fetch action plan](archive/grid-memory-and-fetch-action-plan-2026-10-07.md)
 - [Settings and icon review, October 14](archive/ui-refresh-upstream-review-2026-10-14.md)
 - [Upstream main](archive/upstream-main-review-2026-10-03.md) ([inventory](archive/upstream-main-review-2026-10-03-inventory.md)) and [older releases](archive/upstream-older-releases-review-2026-10-03.md) ([inventory](archive/upstream-older-releases-2026-10-03-inventory.md))
-- [External audit and post-0.2 plan](archive/external-audit-2026-10-06.md) and its [client review](archive/external-audit-client-review-2026-10-06.md)
+- [External audit and post-0.2 plan](archive/external-audit-2026-10-06.md) and its [implementation review](archive/external-audit-client-review-2026-10-06.md)
 
 ## Keep context bounded
 
 Record a rule once in an ADR and a task once on Project #3. Do not copy old test counts into a current claim. Keep ignored `target/quality` paths as plain text, and when output is unavailable, say so instead of leaving a dead link.
 
-## Client research (October 2026)
+## Engineering review records (October 2026)
 
 - [Newest-code and upstream follow-up, October 20](archive/upstream-next-slices-2026-10-20.md): PostgreSQL transaction outcome gaps, native/savepoint and CI diagnostic probes, current upstream changes and proposed next slices.
 - [TablePro and dbx deep review, October 20](archive/tablepro-dbx-review-2026-10-20/README.md): full feature, architecture and fix-commit mapping of TablePro `3222542a4` and dbx `d1e88ab4b` against BookiE `7c4cb3929`, with Wave 0 defects to confirm and a ranked roadmap of candidates.
 - [Upstream main analysis, October 20](archive/upstream-main-analysis-2026-10-20.md): pinned Linux and Apple changes, current adoption status, transferable regression cases and integration costs.
 
-- [Upstream Linux adoption and development workflow](archive/upstream-linux-adoption-2026-10-18.md), with the [movement/source audit](archive/upstream-linux-movement-2026-10-18.md): code, CI, infrastructure, conventions and post-0.2.0 tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149).
+- [Linux code adoption and development workflow](archive/upstream-linux-adoption-2026-10-18.md), with the [source movement audit](archive/upstream-linux-movement-2026-10-18.md): code, CI, conventions and post-0.2.0 tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149).
 - [0.2.0 completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md): maintainer completion statement, publication boundary and previous scope/sprint snapshots.
 
-- [Code and UI audit, October 18](archive/code-and-ui-audit-2026-10-18.md): source findings for pending-state cues, high contrast and responsiveness; refreshed dbx, TablePro and DBeaver fixes; proposed audit packets and their acceptance layers.
-- [TablePro issue review, October 20](archive/tablepro-issue-review-2026-10-20.md): transferable issue patterns, BookiE overlap, and focused follow-up candidates.
+- [Code and UI audit, October 18](archive/code-and-ui-audit-2026-10-18.md): dated source evidence for pending-state cues, high contrast and responsiveness.
+- [Capability review](capability-review.md): general evaluation method and BookiE's current technical boundaries.
+- [Database-client architecture, CI and operation-outcome review, October 15](archive/2026-10-15-dbx-review.md): source-specific evidence is preserved in the dated archive; current general evaluation criteria are in the [capability review](capability-review.md).
+- [Issue-derived database-client regression patterns, October 20](archive/tablepro-issue-review-2026-10-20.md): dated source references and BookiE checks; use the [capability review](capability-review.md) for current general guidance.
 - [Peer-review delivery tracker](https://github.com/cozyGarage/BookiE/issues/1026) and its lane-owned slices are the current work queue for the review below.
-- [Linux documentation update plan and peer review, October 16](archive/linux-peer-review-2026-10-16.md): current-source findings, completed-work reconciliation, dbx and other client lessons, and TablePro main/Linux port candidates.
-- [Linux peer review, October 17](archive/linux-peer-review-2026-10-17.md): refreshed source pins, recent dbx fixes, and their BookiE applicability.
-- [dbx architecture, boundaries and reuse review](archive/2026-10-15-dbx-review.md).
-- [PostgreSQL client review](archive/2026-10-15-postgresql-client-research/review.md), with [46 regression candidates](archive/2026-10-15-postgresql-client-research/cases.csv), [machine-readable cases](archive/2026-10-15-postgresql-client-research/cases.json) and [source pins and probe evidence](archive/2026-10-15-postgresql-client-research/manifest.json). These dated observations do not override current ADRs or sprint priorities.
+- [Linux documentation update plan and peer review, October 16](archive/linux-peer-review-2026-10-16.md): source reconciliation, architecture boundaries, and regression candidates.
+- [Linux peer review, October 17](archive/linux-peer-review-2026-10-17.md): dated source checks and applicable regression-test lessons.
+- [PostgreSQL edge-case research archive](archive/2026-10-15-postgresql-client-research/review.md), with its [scenario catalogue](archive/2026-10-15-postgresql-client-research/cases.csv) and [probe evidence](archive/2026-10-15-postgresql-client-research/manifest.json). These are dated source-comparison records; current BookiE contracts are summarized in the [capability review](capability-review.md).
 
 - [Agent tooling review, October 20](archive/agent-tooling-review-2026-10-20.md): TablePro and dbx agent skills, rules and reviewer agents, and what BookiE adopted (the `fix-issue` skill) or left for gated follow-ups.
 

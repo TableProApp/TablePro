@@ -101,7 +101,7 @@ The read-modify-write under a file lock is the point: two windows save different
 
 - `gtk::glib::clone!` capturing `&mut` references to model fields. Use `ComponentSender` and route via `Input`.
 - Async work spawned with raw `tokio::spawn` from inside a component. Use `sender.command`.
-- A new global singleton for state the application could own and pass in. Pass it via `Init` or parent to child `Input`. The main-thread `thread_local!` tab registries are the documented exception, not a precedent to extend.
+- A new global singleton for state the application could own and pass in. Pass it via `Init` or parent to child `Input`. Existing `thread_local!` registries are constrained to current GTK main-context callers; they are not a precedent to extend, especially from `app-services` worker code.
 - A `Component` doing async work in its `init`. Promote to `AsyncComponent`.
 - One enormous `Input` enum with 30 variants. Split the component.
 
@@ -113,7 +113,7 @@ Relm4 ships test helpers but they require a running GTK main loop, which is awkw
 - Do not write component-level tests until we hit a bug that they would have caught.
 - Prefer integration tests at the driver layer and unit tests at the model layer.
 
-## September stabilization
+## Regression cases: browse planning and metadata identity
 
 Browse SQL planning is pure and shared between counts and pages. A validation error clears the count through the existing request-generation failure path and surfaces the error; it cannot fall back to an unfiltered total. Delayed sidebar metadata is accepted only for the same connection allocation, so reconnecting the same saved UUID does not make an old response current. The planner and its pure tests live in `tablepro-app-services::browse_query`; real-database fixtures stay in the app test tier. Connection identity tests remain in `services/database_service.rs`.
 

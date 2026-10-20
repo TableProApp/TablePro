@@ -1,6 +1,6 @@
 # PostgreSQL release fixture
 
-Deterministic PostgreSQL environment for the Phase 3 release gate. Run it from the workspace root:
+Deterministic PostgreSQL environment for release acceptance. Run it from the workspace root:
 
 ```bash
 ./scripts/test-postgres-release.sh

@@ -12,16 +12,16 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 - The Arch package includes generated license texts and versioned attributions for the Rust dependencies used by its application binaries.
 - Preferences has **Reuse one tab when opening tables**. Turn it off to give every table opened from the sidebar its own tab; an already-open table is still selected instead of duplicated.
 
-- Reveal Table in Sidebar (Ctrl+Shift+L, or the main menu) opens the collapsed groups around the open table, clears a search that hides it, and scrolls to and selects it in the sidebar.- Opening a new SQL editor while disconnected now shows the editor and removes completion suggestions cached from the previous connection.
-- When a query stops at the query timeout, the editor offers Run again with a longer timeout, which runs the same query once with four times the timeout and leaves the saved timeout unchanged.- Opening a new SQL editor while disconnected now shows the editor and removes completion suggestions cached from the previous connection.
-- A connection marked Production now shows a red Production badge and a tinted header bar, and its window title starts with [Production], so it stands out from other connections.
+- Reveal Table in Sidebar (Ctrl+Shift+L, or the main menu) opens the collapsed groups around the open table, clears a search that hides it, and scrolls to and selects it in the sidebar.
 - Opening a new SQL editor while disconnected now shows the editor and removes completion suggestions cached from the previous connection.
+- When a query stops at the query timeout, the editor offers Run again with a longer timeout, which runs the same query once with four times the timeout and leaves the saved timeout unchanged.
+- A connection marked Production now shows a red Production badge and a tinted header bar, and its window title starts with [Production], so it stands out from other connections.
 - SQL completion inserts complete dialect-quoted table and column names, preserves aliases, and offers scoped metadata instead of arbitrary editor words.
 - Large SQL query results stream in bounded pages, can be pinned, and can be fully exported by running the guarded query again.
 - CSV imports into PostgreSQL, MySQL/MariaDB and SQLite can preserve explicit auto-increment values from mapped columns; generated columns remain database-owned.
 - Editable text and JSON columns open a bounded full-value dialog; JSON input is validated, source-text JSON retains its exact text, and Format JSON makes semantic formatting changes visible before Apply.
 - At narrow window widths, the navigation sidebar collapses and the Fold block and Unfold all toolbar buttons hide so the remaining editor controls stay in view; their keyboard shortcuts still work.
-- Preferences gives appearance its own page and explains the data-browser and editor settings more clearly; About distinguishes BookiE contributors from the upstream TablePro authors.
+- Preferences gives appearance its own page and explains the data-browser and editor settings more clearly; About separates project credits from third-party attribution.
 - Switching database drivers keeps custom connection values and updates fields that still use the previous driver's defaults.
 - Duplicating a password-authenticated connection with a saved password opens the copy's credential form so its password can be entered before connecting.
 - PostgreSQL results and edits support `json[]`, `jsonb[]`, `int4range`, `int8range` and `point` values.

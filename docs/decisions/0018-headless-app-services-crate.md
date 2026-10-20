@@ -3,6 +3,10 @@
 - **Status**: Accepted
 - **Date**: 2026-10-12
 
+### Implementation status (2026-10-20)
+
+Several GTK-free service modules have moved to `crates/app-services`; the crate has no GTK, libadwaita, glib or Relm4 dependencies. The headless tab model and workspace persistence now live in `crates/app-services/src/workspace.rs` and `workspace_state.rs`; GTK page handling remains in `apps/linux/app/src/ui/app/workspace_tabs.rs`. The staged migration remains active under APP-MOD in the [post-0.2.0 backlog](../backlog.md).
+
 ## Context
 
 `apps/linux/app` is 55,000 of about 110,000 lines in the workspace. Its `services/` directory is about 11,900 lines. Measured on 2026-10-12:

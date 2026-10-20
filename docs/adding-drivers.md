@@ -1,6 +1,6 @@
 # Adding a database driver
 
-Reviewed against Linux code tip `e802d600c` on 2026-10-14. Drivers are static Rust crates under `crates/drivers/`; see [ADR 0001](decisions/0001-no-plugin-system.md). The [active sprint](bookie-0.2-sprint.md) owns engine scope and sequencing. Use [ADR 0007](decisions/0007-type-and-value-preservation.md) as the common type/value and native proof standard. The [documentation entry point](README.md) identifies the owning boards and selective evidence lookup.
+Drivers are static Rust crates under `crates/drivers/`; see [ADR 0001](decisions/0001-no-plugin-system.md). The [active sprint](bookie-0.2-sprint.md) owns engine scope and sequencing. Use [ADR 0007](decisions/0007-type-and-value-preservation.md) as the common type/value and native proof standard. The [documentation entry point](README.md) identifies the owning boards and selective evidence lookup. Recheck the current traits and implementations before using this checklist; the workspace manifests are authoritative for dependency versions.
 
 ## Contracts and crate boundaries
 
@@ -28,7 +28,7 @@ These are the dependencies used by the current drivers:
 | MongoDB | `mongodb`, including the workspace's vendored patch |
 | DuckDB | `duckdb`, behind the optional `duckdb` feature |
 
-Review engine/library proposals against [driver maturity](adding-drivers.md#order-the-engines-were-added), dependency policy and license requirements. Upstream macOS plugins are behavior references; they do not introduce a Linux runtime plugin ABI.
+Review engine/library proposals against [driver maturity](adding-drivers.md#order-the-engines-were-added), dependency policy and license requirements. Keep driver registration static unless a new architecture decision explicitly changes that contract.
 
 ## Implementation checklist
 
