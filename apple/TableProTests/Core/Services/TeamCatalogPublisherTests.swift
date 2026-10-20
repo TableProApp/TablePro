@@ -68,6 +68,39 @@ struct TeamCatalogPublisherTests {
         #expect(!json.contains("hunter2"))
     }
 
+    @Test("A catalog file opens in older builds unless its connection sits in a nested group")
+    func catalogFileFormatFollowsGroupDepth() throws {
+        let folder = try makeTempDirectory()
+        let library = try ImportLibraryFixture()
+        defer {
+            try? FileManager.default.removeItem(at: folder)
+            library.cleanUp()
+        }
+        let client = ConnectionGroup(name: "Client A")
+        let production = ConnectionGroup(name: "Production", parentId: client.id)
+        for group in [client, production] {
+            try library.groups.addGroup(group)
+        }
+        var flat = DatabaseConnection(name: "Flat DB")
+        flat.groupId = client.id
+        var nested = DatabaseConnection(name: "Nested DB")
+        nested.groupId = production.id
+
+        let written = try TeamCatalogPublisher.publish([flat, nested], to: folder, exporter: library.exporter)
+
+        let objects = try written.map { url in
+            try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        }
+        let flatEntry = try #require((objects[0]["connections"] as? [[String: Any]])?.first)
+        #expect(objects[0]["formatVersion"] as? Int == 1)
+        #expect(flatEntry["groupName"] as? String == "Client A")
+        #expect(flatEntry["ref"] == nil)
+        #expect(objects[1]["formatVersion"] as? Int == 2)
+        let nestedBundle = try ConnectionBundleCodec.decode(Data(contentsOf: written[1]))
+        let nestedGroup = nestedBundle.groupChain(nestedBundle.connections.first?.groupRef)
+        #expect(nestedGroup.map(\.name) == ["Client A", "Production"])
+    }
+
     @Test("Published file cannot carry a command password source (RCE guard)")
     func publishStripsPasswordSource() throws {
         let folder = try makeTempDirectory()

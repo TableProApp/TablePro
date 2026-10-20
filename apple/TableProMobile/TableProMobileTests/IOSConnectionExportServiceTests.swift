@@ -75,12 +75,12 @@ struct IOSConnectionExportServiceTests {
         #expect(!text.contains(keyMarker))
     }
 
-    @Test("An export writes the current file format and no saved queries")
-    func exportWritesCurrentFormatWithoutQueries() async throws {
+    @Test("An export without nested groups writes the format older builds open, and no saved queries")
+    func exportWritesFormatOneWithoutQueries() async throws {
         let text = try await exportedText(includeCredentials: false)
         let object = try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
 
-        #expect(object["formatVersion"] as? Int == ConnectionBundle.formatVersion)
+        #expect(object["formatVersion"] as? Int == 1)
         #expect(!object.keys.contains("savedQueries"))
         #expect(!object.keys.contains("queryFolders"))
     }

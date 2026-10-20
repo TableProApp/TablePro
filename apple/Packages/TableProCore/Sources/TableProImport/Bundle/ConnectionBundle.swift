@@ -128,6 +128,7 @@ public struct BundleSavedQuery: Codable, Sendable, Equatable {
 }
 
 public struct ConnectionBundle: Sendable, Equatable {
+    /// The newest format this build reads. A file is written in it only when format 1 cannot hold the bundle.
     public static let formatVersion = 2
 
     public let exportedAt: Date

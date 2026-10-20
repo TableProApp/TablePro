@@ -247,6 +247,25 @@ struct QueryEditorViewModelTests {
         #expect(vm.interruption?.standingWork == .openTransaction)
     }
 
+    @Test("a failure that aborted the script's transaction says to roll it back, not to commit")
+    func failureInsideAbortedTransaction() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedTransactionStates = [.explicitTransaction, .explicitTransaction, .abortedTransaction]
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0)),
+            .failure(MockDatabaseDriver.MockError.scripted),
+        ]
+
+        let vm = QueryEditorViewModel(windowCapacity: 100)
+        await vm.run(driver: driver, script: .statements("BEGIN", "INSERT INTO t VALUES (1)", "SELECT 1/0"))
+
+        #expect(vm.interruption?.standingWork == .abortedTransaction)
+        #expect(
+            vm.standingWorkNote == "The transaction on this connection can no longer be committed. Roll it back."
+        )
+    }
+
     @Test("a failing first statement leaves nothing standing behind it")
     func failureOfTheFirstStatement() async {
         let driver = MockDatabaseDriver()

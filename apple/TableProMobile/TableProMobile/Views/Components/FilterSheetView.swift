@@ -59,9 +59,7 @@ struct FilterSheetView: View {
                             }
 
                             if filter.filterOperator.needsValue {
-                                TextField("Value", text: binding.value)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
+                                LiteralTextField("Value", text: binding.value)
                             }
 
                             if filter.filterOperator.supportsCaseSensitivity, isCaseSensitivityAdjustable {
@@ -69,9 +67,7 @@ struct FilterSheetView: View {
                             }
 
                             if filter.filterOperator == .between {
-                                TextField("Second value", text: binding.secondValue)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
+                                LiteralTextField("Second value", text: binding.secondValue)
                             }
                         }
                     }
