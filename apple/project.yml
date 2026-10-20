@@ -757,6 +757,23 @@ targets:
     templates: [PluginTests, SQLiteLinkage]
     templateAttributes:
       folder: SQLiteDriverPlugin
+    # SQLite runs the column type corpus here, through the export formats a user picks.
+    sources:
+      - path: Plugins/ColumnTypeCorpus
+        excludes:
+          - Corpus
+      - path: Plugins/CSVExportPlugin
+        excludes:
+          - Info.plist
+      - path: Plugins/JSONExportPlugin
+        excludes:
+          - Info.plist
+      - path: Plugins/SQLExportPlugin
+        excludes:
+          - Info.plist
+    dependencies:
+      - package: TableProCore
+        product: TableProSQLGrammar
 
   ClickHouseDriverTests:
     templates: [PluginTests, ClickHouseLinkage]

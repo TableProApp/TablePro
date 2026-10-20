@@ -1,0 +1,284 @@
+{
+  "engine": "mysql",
+  "databaseTypeId": "MySQL",
+  "typeList": "Plugins/MySQLDriverPlugin/MySQLPlugin.swift",
+  "createTable": "CREATE TABLE {table} ({id} INT PRIMARY KEY, {column} {type})",
+  "columns": [
+    {
+      "type": "TINYINT",
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "-128", "cell": "-128"}, {"sql": "127", "cell": "127"}],
+      "edit": {"text": "12", "cell": "12"}
+    },
+    {
+      "type": "TINYINT UNSIGNED",
+      "covers": [],
+      "values": [{"sql": "255", "cell": "255"}],
+      "edit": {"text": "0", "cell": "0"}
+    },
+    {
+      "type": "SMALLINT",
+      "values": [{"sql": "-32768", "cell": "-32768"}, {"sql": "32767", "cell": "32767"}],
+      "edit": {"text": "1", "cell": "1"}
+    },
+    {
+      "type": "MEDIUMINT",
+      "values": [{"sql": "-8388608", "cell": "-8388608"}, {"sql": "16777215 - 8388608", "cell": "8388607"}],
+      "edit": {"text": "2", "cell": "2"}
+    },
+    {
+      "type": "INT",
+      "values": [{"sql": "-2147483648", "cell": "-2147483648"}, {"sql": "2147483647", "cell": "2147483647"}],
+      "edit": {"text": "3", "cell": "3"}
+    },
+    {
+      "type": "INTEGER",
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "0", "cell": "0"}],
+      "edit": {"text": "-4", "cell": "-4"}
+    },
+    {
+      "type": "BIGINT",
+      "values": [
+        {"sql": "-9223372036854775808", "cell": "-9223372036854775808"},
+        {"sql": "9223372036854775807", "cell": "9223372036854775807"}
+      ],
+      "edit": {"text": "42", "cell": "42"}
+    },
+    {
+      "type": "BIGINT UNSIGNED",
+      "covers": [],
+      "values": [{"sql": "18446744073709551615", "cell": "18446744073709551615"}],
+      "edit": {"text": "18446744073709551614", "cell": "18446744073709551614"}
+    },
+    {
+      "type": "FLOAT",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "1.5", "cell": "1.5"},
+        {"sql": "-3.4e38", "cell": "-3.4e38"}
+      ],
+      "edit": {"text": "2.25", "cell": "2.25"}
+    },
+    {
+      "type": "DOUBLE",
+      "values": [{"sql": "0.1", "cell": "0.1"}, {"sql": "1.7976931348623157e308", "cell": "1.7976931348623157e308"}],
+      "edit": {"text": "-0.5", "cell": "-0.5"}
+    },
+    {
+      "type": "REAL",
+      "values": [{"sql": "2.5", "cell": "2.5"}],
+      "edit": {"text": "1e-10", "cell": "0.0000000001"}
+    },
+    {
+      "type": "DECIMAL(65,30)",
+      "covers": ["DECIMAL"],
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "12345678901234567890.123456789", "cell": "12345678901234567890.123456789000000000000000000000"},
+        {"sql": "-0.5", "cell": "-0.500000000000000000000000000000"}
+      ],
+      "edit": {"text": "1.1", "cell": "1.100000000000000000000000000000"}
+    },
+    {
+      "type": "NUMERIC(10,2)",
+      "covers": ["NUMERIC"],
+      "values": [{"sql": "123.4", "cell": "123.40"}],
+      "edit": {"text": "99.99", "cell": "99.99"}
+    },
+    {
+      "type": "CHAR(5)",
+      "covers": ["CHAR"],
+      "values": [{"sql": "''", "cell": ""}, {"sql": "'ab'", "cell": "ab"}],
+      "edit": {"text": "xyz", "cell": "xyz"}
+    },
+    {
+      "type": "VARCHAR(50)",
+      "covers": ["VARCHAR"],
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "''", "cell": ""},
+        {"sql": "'Ünïcödé ✓ 日本語 🦄'", "cell": "Ünïcödé ✓ 日本語 🦄"},
+        {"sql": "'back\\\\slash ''quote'' \"double\"'", "cell": "back\\slash 'quote' \"double\""},
+        {"sql": "'line one\\nline two'", "cell": "line one\nline two"},
+        {"sql": "'true'", "cell": "true"},
+        {"sql": "'=1+1'", "cell": "=1+1"}
+      ],
+      "edit": {"text": "edited, \"quoted\" \\ back", "cell": "edited, \"quoted\" \\ back"}
+    },
+    {
+      "type": "TINYTEXT",
+      "values": [{"sql": "'tiny'", "cell": "tiny"}],
+      "edit": {"text": "t", "cell": "t"}
+    },
+    {
+      "type": "TEXT",
+      "values": [{"sql": "'text'", "cell": "text"}],
+      "edit": {"text": "", "cell": ""}
+    },
+    {
+      "type": "MEDIUMTEXT",
+      "values": [{"sql": "'medium'", "cell": "medium"}],
+      "edit": {"text": "m", "cell": "m"}
+    },
+    {
+      "type": "LONGTEXT",
+      "values": [{"sql": "REPEAT('x', 70000)", "cell": "x", "repeat": 70000}],
+      "edit": {"text": "long", "cell": "long"}
+    },
+    {
+      "type": "ENUM('small','large','it''s')",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "'small'", "cell": "small"},
+        {"sql": "'it''s'", "cell": "it's"}
+      ],
+      "edit": {"text": "large", "cell": "large"}
+    },
+    {
+      "type": "SET('red','green','blue')",
+      "values": [{"sql": "''", "cell": ""}, {"sql": "'blue,red'", "cell": "red,blue"}],
+      "edit": {"text": "green,red", "cell": "red,green"}
+    },
+    {
+      "type": "DATE",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "'1000-01-01'", "cell": "1000-01-01"},
+        {"sql": "'9999-12-31'", "cell": "9999-12-31"}
+      ],
+      "edit": {"text": "2000-02-29", "cell": "2000-02-29"}
+    },
+    {
+      "type": "TIME(6)",
+      "covers": ["TIME"],
+      "values": [
+        {"sql": "'-838:59:59'", "cell": "-838:59:59.000000"},
+        {"sql": "'838:59:59'", "cell": "838:59:59.000000"},
+        {"sql": "'12:34:56.789012'", "cell": "12:34:56.789012"}
+      ],
+      "edit": {"text": "01:02:03", "cell": "01:02:03.000000"}
+    },
+    {
+      "type": "DATETIME(6)",
+      "covers": ["DATETIME"],
+      "values": [
+        {"sql": "'1000-01-01 00:00:00'", "cell": "1000-01-01 00:00:00.000000"},
+        {"sql": "'9999-12-31 23:59:59.999999'", "cell": "9999-12-31 23:59:59.999999"}
+      ],
+      "edit": {"text": "2026-10-20 15:22:20", "cell": "2026-10-20 15:22:20.000000"}
+    },
+    {
+      "type": "TIMESTAMP",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "'1970-01-01 00:00:01'", "cell": "1970-01-01 00:00:01"},
+        {"sql": "'2038-01-19 03:14:07'", "cell": "2038-01-19 03:14:07"}
+      ],
+      "edit": {"text": "2026-10-20 15:22:20", "cell": "2026-10-20 15:22:20"}
+    },
+    {
+      "type": "YEAR",
+      "values": [{"sql": "1901", "cell": "1901"}, {"sql": "2155", "cell": "2155"}],
+      "edit": {"text": "2026", "cell": "2026"}
+    },
+    {
+      "type": "BINARY(4)",
+      "covers": ["BINARY"],
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "X'00FF'", "cell": "0x00FF0000"}],
+      "edit": {"hex": "DEADBEEF", "cell": "0xDEADBEEF"}
+    },
+    {
+      "type": "VARBINARY(16)",
+      "covers": ["VARBINARY"],
+      "values": [{"sql": "X''", "cell": "0x"}, {"sql": "X'00FF7F80'", "cell": "0x00FF7F80"}],
+      "edit": {"hex": "0102", "cell": "0x0102"}
+    },
+    {
+      "type": "TINYBLOB",
+      "values": [{"sql": "X'01'", "cell": "0x01"}],
+      "edit": {"hex": "02", "cell": "0x02"}
+    },
+    {
+      "type": "BLOB",
+      "values": [{"sql": "X'48656C6C6F'", "cell": "0x48656C6C6F"}],
+      "edit": {"hex": "FF", "cell": "0xFF"}
+    },
+    {
+      "type": "MEDIUMBLOB",
+      "values": [{"sql": "X'00'", "cell": "0x00"}],
+      "edit": {"hex": "0A0D", "cell": "0x0A0D"}
+    },
+    {
+      "type": "LONGBLOB",
+      "values": [{"sql": "X'CAFE'", "cell": "0xCAFE"}],
+      "edit": {"hex": "BABE", "cell": "0xBABE"}
+    },
+    {
+      "type": "BIT(8)",
+      "covers": ["BIT"],
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "b'10101010'", "cell": "170"}, {"sql": "b'1'", "cell": "1"}],
+      "edit": {"row": 2, "text": "5", "cell": "5"},
+      "known": {
+        "edit": {"defect": "the grid saves a BIT cell as text, and the server stores the text's bytes: 5 saves as 53", "matches": "reads back \"53\""},
+        "sql": {"defect": "the dump writes a BIT value as quoted text, which restores as the text's bytes", "matches": "the replayed dump reads"}
+      }
+    },
+    {
+      "type": "BOOLEAN",
+      "values": [{"sql": "TRUE", "cell": "1"}, {"sql": "FALSE", "cell": "0"}],
+      "edit": {"text": "0", "cell": "0"}
+    },
+    {
+      "type": "BOOL",
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "1", "cell": "1"}],
+      "edit": {"text": "1", "cell": "1"}
+    },
+    {
+      "type": "JSON",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "'{\"b\": 1, \"a\": [2, 3]}'", "cell": "{\"a\": [2, 3], \"b\": 1}"},
+        {"sql": "'\"text\"'", "cell": "\"text\""},
+        {"sql": "'null'", "cell": "null"}
+      ],
+      "edit": {"text": "[1,2]", "cell": "[1, 2]"}
+    },
+    {
+      "type": "GEOMETRY",
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "ST_GeomFromText('POINT(1 2)')", "cell": "POINT(1.0 2.0)"}],
+      "edit": {"text": "POINT(3 4)", "cell": "POINT(3.0 4.0)"},
+      "known": {
+        "edit": {"defect": "the grid saves a geometry as WKT bound as text, which the server refuses (1416)", "matches": "\\[1416\\]"},
+        "sql": {"defect": "the dump writes a geometry as a WKT string, which the server refuses (1416)", "matches": "\\[1416\\]"}
+      }
+    },
+    {
+      "type": "POINT",
+      "values": [{"sql": "ST_GeomFromText('POINT(1.5 -2)')", "cell": "POINT(1.5 -2.0)"}],
+      "edit": {"text": "POINT(0 0)", "cell": "POINT(0.0 0.0)"},
+      "known": {
+        "edit": {"defect": "the grid saves a geometry as WKT bound as text, which the server refuses (1416)", "matches": "\\[1416\\]"},
+        "sql": {"defect": "the dump writes a geometry as a WKT string, which the server refuses (1416)", "matches": "\\[1416\\]"}
+      }
+    },
+    {
+      "type": "LINESTRING",
+      "values": [{"sql": "ST_GeomFromText('LINESTRING(0 0,1 1)')", "cell": "LINESTRING(0.0 0.0, 1.0 1.0)"}],
+      "edit": {"text": "LINESTRING(1 1,2 2)", "cell": "LINESTRING(1.0 1.0, 2.0 2.0)"},
+      "known": {
+        "edit": {"defect": "the grid saves a geometry as WKT bound as text, which the server refuses (1416)", "matches": "\\[1416\\]"},
+        "sql": {"defect": "the dump writes a geometry as a WKT string, which the server refuses (1416)", "matches": "\\[1416\\]"}
+      }
+    },
+    {
+      "type": "POLYGON",
+      "values": [
+        {"sql": "ST_GeomFromText('POLYGON((0 0,1 0,1 1,0 0))')", "cell": "POLYGON((0.0 0.0, 1.0 0.0, 1.0 1.0, 0.0 0.0))"}
+      ],
+      "edit": {"text": "POLYGON((0 0,2 0,2 2,0 0))", "cell": "POLYGON((0.0 0.0, 2.0 0.0, 2.0 2.0, 0.0 0.0))"},
+      "known": {
+        "edit": {"defect": "the grid saves a geometry as WKT bound as text, which the server refuses (1416)", "matches": "\\[1416\\]"},
+        "sql": {"defect": "the dump writes a geometry as a WKT string, which the server refuses (1416)", "matches": "\\[1416\\]"}
+      }
+    }
+  ]
+}

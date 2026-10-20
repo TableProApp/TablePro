@@ -1,0 +1,335 @@
+{
+  "engine": "postgresql",
+  "databaseTypeId": "PostgreSQL",
+  "typeList": "Plugins/PostgreSQLDriverPlugin/PostgreSQLPlugin.swift",
+  "createTable": "CREATE TABLE {table} ({id} INTEGER PRIMARY KEY, {column} {type})",
+  "columns": [
+    {
+      "type": "SMALLINT",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "-32768", "cell": "-32768"},
+        {"sql": "32767", "cell": "32767"}
+      ],
+      "edit": {"text": "12", "cell": "12"}
+    },
+    {
+      "type": "INTEGER",
+      "values": [{"sql": "-2147483648", "cell": "-2147483648"}, {"sql": "2147483647", "cell": "2147483647"}],
+      "edit": {"text": "-5", "cell": "-5"}
+    },
+    {
+      "type": "BIGINT",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "-9223372036854775808", "cell": "-9223372036854775808"},
+        {"sql": "9223372036854775807", "cell": "9223372036854775807"}
+      ],
+      "edit": {"text": "42", "cell": "42"}
+    },
+    {
+      "type": "SERIAL",
+      "values": [{"sql": "1", "cell": "1"}, {"sql": "2147483647", "cell": "2147483647"}],
+      "edit": {"text": "5", "cell": "5"}
+    },
+    {
+      "type": "BIGSERIAL",
+      "values": [{"sql": "9223372036854775807", "cell": "9223372036854775807"}],
+      "edit": {"text": "6", "cell": "6"}
+    },
+    {
+      "type": "SMALLSERIAL",
+      "values": [{"sql": "32767", "cell": "32767"}],
+      "edit": {"text": "7", "cell": "7"}
+    },
+    {
+      "type": "REAL",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "1.5", "cell": "1.5"},
+        {"sql": "-0.000001", "cell": "-1e-06"},
+        {"sql": "3.4028235e38", "cell": "3.4028235e+38"},
+        {"sql": "'NaN'", "cell": "NaN"},
+        {"sql": "'-Infinity'", "cell": "-Infinity"}
+      ],
+      "edit": {"text": "2.25", "cell": "2.25"}
+    },
+    {
+      "type": "DOUBLE PRECISION",
+      "values": [
+        {"sql": "0.1", "cell": "0.1"},
+        {"sql": "1.7976931348623157e308", "cell": "1.7976931348623157e+308"},
+        {"sql": "'Infinity'", "cell": "Infinity"}
+      ],
+      "edit": {"text": "-0.5", "cell": "-0.5"}
+    },
+    {
+      "type": "NUMERIC",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "12345678901234567890.123456789", "cell": "12345678901234567890.123456789"},
+        {"sql": "-0.00000001", "cell": "-0.00000001"},
+        {"sql": "'NaN'", "cell": "NaN"},
+        {"sql": "'Infinity'", "cell": "Infinity"}
+      ],
+      "edit": {"text": "1.10", "cell": "1.10"}
+    },
+    {
+      "type": "DECIMAL(10,2)",
+      "covers": ["DECIMAL"],
+      "values": [{"sql": "123.4", "cell": "123.40"}, {"sql": "-0.5", "cell": "-0.50"}],
+      "edit": {"text": "99.999", "cell": "100.00"}
+    },
+    {
+      "type": "MONEY",
+      "values": [{"sql": "12.34", "cell": "$12.34"}, {"sql": "-1", "cell": "-$1.00"}],
+      "edit": {"text": "5", "cell": "$5.00"}
+    },
+    {
+      "type": "CHARACTER VARYING(10)",
+      "covers": ["CHARACTER VARYING"],
+      "values": [{"sql": "''", "cell": ""}, {"sql": "'ten chars!'", "cell": "ten chars!"}],
+      "edit": {"text": "x", "cell": "x"}
+    },
+    {
+      "type": "VARCHAR(20)",
+      "covers": ["VARCHAR"],
+      "values": [{"sql": "'it''s'", "cell": "it's"}],
+      "edit": {"text": "", "cell": ""}
+    },
+    {
+      "type": "CHARACTER(5)",
+      "covers": ["CHARACTER"],
+      "values": [{"sql": "'ab'", "cell": "ab   "}],
+      "edit": {"text": "xyz", "cell": "xyz  "}
+    },
+    {
+      "type": "CHAR(3)",
+      "covers": ["CHAR"],
+      "values": [{"sql": "'a'", "cell": "a  "}],
+      "edit": {"text": "é", "cell": "é  "}
+    },
+    {
+      "type": "TEXT",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "''", "cell": ""},
+        {"sql": "'Ünïcödé ✓ 日本語 🦄'", "cell": "Ünïcödé ✓ 日本語 🦄"},
+        {"sql": "E'line one\\nline two\\ttab'", "cell": "line one\nline two\ttab"},
+        {"sql": "E'back\\\\slash and ''quote'' and \"double\"'", "cell": "back\\slash and 'quote' and \"double\""},
+        {"sql": "'true'", "cell": "true"},
+        {"sql": "'=1+1'", "cell": "=1+1"}
+      ],
+      "edit": {"text": "edited, \"quoted\"", "cell": "edited, \"quoted\""}
+    },
+    {
+      "type": "NAME",
+      "values": [{"sql": "'pg_catalog'", "cell": "pg_catalog"}],
+      "edit": {"text": "public", "cell": "public"}
+    },
+    {
+      "type": "DATE",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "'2026-10-20'", "cell": "2026-10-20"},
+        {"sql": "'0001-01-01'", "cell": "0001-01-01"},
+        {"sql": "'4713-01-01 BC'", "cell": "4713-01-01 BC"},
+        {"sql": "'infinity'", "cell": "infinity"}
+      ],
+      "edit": {"text": "2000-02-29", "cell": "2000-02-29"}
+    },
+    {
+      "type": "TIME",
+      "values": [{"sql": "'23:59:59.999999'", "cell": "23:59:59.999999"}, {"sql": "'24:00:00'", "cell": "24:00:00"}],
+      "edit": {"text": "12:00:00", "cell": "12:00:00"}
+    },
+    {
+      "type": "TIME WITH TIME ZONE",
+      "values": [{"sql": "'12:00:00+05:30'", "cell": "12:00:00+05:30"}],
+      "edit": {"text": "01:02:03-08", "cell": "01:02:03-08"}
+    },
+    {
+      "type": "TIMESTAMP",
+      "values": [
+        {"sql": "'2026-10-20 15:22:20.123456'", "cell": "2026-10-20 15:22:20.123456"},
+        {"sql": "'0001-01-01 00:00:00'", "cell": "0001-01-01 00:00:00"},
+        {"sql": "'infinity'", "cell": "infinity"}
+      ],
+      "edit": {"text": "1999-12-31 23:59:59", "cell": "1999-12-31 23:59:59"}
+    },
+    {
+      "type": "TIMESTAMPTZ",
+      "values": [{"sql": "'2026-10-20 15:22:20+00'", "cell": "2026-10-20 15:22:20+00"}],
+      "edit": {"text": "2026-10-20 10:00:00-05", "cell": "2026-10-20 15:00:00+00"}
+    },
+    {
+      "type": "TIMESTAMP WITH TIME ZONE",
+      "values": [{"sql": "'2026-10-20 15:22:20.5+02'", "cell": "2026-10-20 13:22:20.5+00"}],
+      "edit": {"text": "2000-01-01 00:00:00+00", "cell": "2000-01-01 00:00:00+00"}
+    },
+    {
+      "type": "INTERVAL",
+      "values": [
+        {"sql": "'1 year 2 mons 3 days 04:05:06.789'", "cell": "1 year 2 mons 3 days 04:05:06.789"},
+        {"sql": "'-1 day'", "cell": "-1 days"}
+      ],
+      "edit": {"text": "2 hours", "cell": "02:00:00"}
+    },
+    {
+      "type": "BYTEA",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "''::bytea", "cell": "0x"},
+        {"sql": "'\\x00ff7f80'", "cell": "0x00FF7F80"}
+      ],
+      "edit": {"hex": "DEADBEEF", "cell": "0xDEADBEEF"}
+    },
+    {
+      "type": "BOOLEAN",
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "true", "cell": "true"}, {"sql": "false", "cell": "false"}],
+      "edit": {"text": "false", "cell": "false"}
+    },
+    {
+      "type": "JSON",
+      "values": [
+        {"sql": "'{\"b\": 1, \"a\": [2, 3]}'", "cell": "{\"b\": 1, \"a\": [2, 3]}"},
+        {"sql": "'null'", "cell": "null"},
+        {"sql": "'\"text\"'", "cell": "\"text\""}
+      ],
+      "edit": {"text": "{\"k\":\"v\"}", "cell": "{\"k\":\"v\"}"}
+    },
+    {
+      "type": "JSONB",
+      "values": [
+        {"sql": "'{\"b\": 1, \"a\": [2, 3]}'", "cell": "{\"a\": [2, 3], \"b\": 1}"},
+        {"sql": "'[]'", "cell": "[]"}
+      ],
+      "edit": {"text": "[1,2]", "cell": "[1, 2]"}
+    },
+    {
+      "type": "UUID",
+      "values": [{"sql": "'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'", "cell": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"}],
+      "edit": {"text": "A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A12", "cell": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12"}
+    },
+    {
+      "type": "INTEGER[]",
+      "covers": ["ARRAY"],
+      "values": [{"sql": "'{1,NULL,3}'", "cell": "{1,NULL,3}"}, {"sql": "'{}'", "cell": "{}"}],
+      "edit": {"text": "{4,5}", "cell": "{4,5}"}
+    },
+    {
+      "type": "TEXT[]",
+      "covers": [],
+      "values": [{"sql": "ARRAY['a,b', 'c\"d', NULL, '']", "cell": "{\"a,b\",\"c\\\"d\",NULL,\"\"}"}],
+      "edit": {"text": "{x,\"y z\"}", "cell": "{x,\"y z\"}"}
+    },
+    {
+      "type": "INTEGER[][]",
+      "covers": [],
+      "values": [{"sql": "'{{1,2},{3,4}}'", "cell": "{{1,2},{3,4}}"}],
+      "edit": {"text": "{{5,6}}", "cell": "{{5,6}}"}
+    },
+    {
+      "type": "INET",
+      "values": [{"sql": "'192.168.0.1/24'", "cell": "192.168.0.1/24"}, {"sql": "'::1'", "cell": "::1"}],
+      "edit": {"text": "10.0.0.1", "cell": "10.0.0.1"}
+    },
+    {
+      "type": "CIDR",
+      "values": [{"sql": "'10.0.0.0/8'", "cell": "10.0.0.0/8"}],
+      "edit": {"text": "192.168.0.0/16", "cell": "192.168.0.0/16"}
+    },
+    {
+      "type": "MACADDR",
+      "values": [{"sql": "'08:00:2b:01:02:03'", "cell": "08:00:2b:01:02:03"}],
+      "edit": {"text": "08-00-2b-01-02-04", "cell": "08:00:2b:01:02:04"}
+    },
+    {
+      "type": "MACADDR8",
+      "values": [{"sql": "'08:00:2b:01:02:03:04:05'", "cell": "08:00:2b:01:02:03:04:05"}],
+      "edit": {"text": "08:00:2b:01:02:03:04:06", "cell": "08:00:2b:01:02:03:04:06"}
+    },
+    {
+      "type": "POINT",
+      "values": [{"sql": "'(1.5,2)'", "cell": "(1.5,2)"}],
+      "edit": {"text": "(0,-1)", "cell": "(0,-1)"}
+    },
+    {
+      "type": "LINE",
+      "values": [{"sql": "'{1,-1,0}'", "cell": "{1,-1,0}"}],
+      "edit": {"text": "{2,-1,3}", "cell": "{2,-1,3}"}
+    },
+    {
+      "type": "LSEG",
+      "values": [{"sql": "'[(0,0),(1,1)]'", "cell": "[(0,0),(1,1)]"}],
+      "edit": {"text": "[(1,1),(2,2)]", "cell": "[(1,1),(2,2)]"}
+    },
+    {
+      "type": "BOX",
+      "values": [{"sql": "'(0,0),(1,1)'", "cell": "(1,1),(0,0)"}],
+      "edit": {"text": "(2,2),(0,0)", "cell": "(2,2),(0,0)"}
+    },
+    {
+      "type": "PATH",
+      "values": [{"sql": "'[(0,0),(1,1),(2,0)]'", "cell": "[(0,0),(1,1),(2,0)]"}],
+      "edit": {"text": "((0,0),(1,1))", "cell": "((0,0),(1,1))"}
+    },
+    {
+      "type": "POLYGON",
+      "values": [{"sql": "'((0,0),(1,1),(1,0))'", "cell": "((0,0),(1,1),(1,0))"}],
+      "edit": {"text": "((0,0),(2,2),(2,0))", "cell": "((0,0),(2,2),(2,0))"}
+    },
+    {
+      "type": "CIRCLE",
+      "values": [{"sql": "'<(0,0),1>'", "cell": "<(0,0),1>"}],
+      "edit": {"text": "<(1,1),2>", "cell": "<(1,1),2>"}
+    },
+    {
+      "type": "INT4RANGE",
+      "values": [{"sql": "'[1,10)'", "cell": "[1,10)"}, {"sql": "'empty'", "cell": "empty"}],
+      "edit": {"text": "(1,5]", "cell": "[2,6)"}
+    },
+    {
+      "type": "INT8RANGE",
+      "values": [{"sql": "'[1,)'", "cell": "[1,)"}],
+      "edit": {"text": "[,5)", "cell": "(,5)"}
+    },
+    {
+      "type": "NUMRANGE",
+      "values": [{"sql": "'(1.5,2.5]'", "cell": "(1.5,2.5]"}],
+      "edit": {"text": "[0,1)", "cell": "[0,1)"}
+    },
+    {
+      "type": "TSRANGE",
+      "values": [
+        {"sql": "'[2026-01-01 00:00,2026-01-02 00:00)'", "cell": "[\"2026-01-01 00:00:00\",\"2026-01-02 00:00:00\")"}
+      ],
+      "edit": {"text": "[2026-02-01,2026-03-01)", "cell": "[\"2026-02-01 00:00:00\",\"2026-03-01 00:00:00\")"}
+    },
+    {
+      "type": "TSTZRANGE",
+      "values": [{"sql": "'[2026-01-01 00:00+00,)'", "cell": "[\"2026-01-01 00:00:00+00\",)"}],
+      "edit": {"text": "(,2026-01-01 00:00+00]", "cell": "(,\"2026-01-01 00:00:00+00\"]"}
+    },
+    {
+      "type": "DATERANGE",
+      "values": [{"sql": "'[2026-01-01,2026-12-31]'", "cell": "[2026-01-01,2027-01-01)"}],
+      "edit": {"text": "[2026-02-01,2026-03-01)", "cell": "[2026-02-01,2026-03-01)"}
+    },
+    {
+      "type": "TSVECTOR",
+      "values": [{"sql": "'a fat cat'", "cell": "'a' 'cat' 'fat'"}],
+      "edit": {"text": "rat", "cell": "'rat'"}
+    },
+    {
+      "type": "TSQUERY",
+      "values": [{"sql": "'fat & rat'", "cell": "'fat' & 'rat'"}],
+      "edit": {"text": "cat | dog", "cell": "'cat' | 'dog'"}
+    },
+    {
+      "type": "XML",
+      "values": [{"sql": "'<a>1</a>'", "cell": "<a>1</a>"}],
+      "edit": {"text": "<b x=\"y\"/>", "cell": "<b x=\"y\"/>"}
+    }
+  ]
+}

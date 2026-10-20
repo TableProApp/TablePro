@@ -36,8 +36,11 @@ import TableProPluginKit
 /// `max_string_size = EXTENDED` accepts up to 16,383 bytes, and `SQLExportRowValueEncoder` counts it
 /// so the export reports how many values it could not promise rather than claiming a clean dump.
 ///
+/// DuckDB reads `X'4142'` as the text `x4142` and stores those bytes, so a restore wrote different
+/// bytes and reported success. `from_hex('4142')` is the BLOB itself. Measured on DuckDB 1.5.2.
+///
 /// An engine this does not name keeps `X''`, which is what the export has always written, so no
-/// engine's output changes except the two measured to have been wrong.
+/// engine's output changes except the three measured to have been wrong.
 internal enum SQLExportBinaryLiteral {
     /// The most binary bytes Oracle can carry in one `HEXTORAW` literal: 4,000 characters of hex,
     /// two per byte. Measured, not inferred.
@@ -55,6 +58,9 @@ internal enum SQLExportBinaryLiteral {
         }
         if databaseTypeId == "Oracle" {
             return data.isEmpty ? "EMPTY_BLOB()" : "HEXTORAW('\(hex)')"
+        }
+        if databaseTypeId == "DuckDB" {
+            return "from_hex('\(hex)')"
         }
         switch SqlDialect.from(databaseTypeId: databaseTypeId) {
         case .postgres:

@@ -180,7 +180,7 @@ final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
         }
 
         let folded = val.lowercased()
-        if folded == "true" || folded == "false" {
+        if folded == "true" || folded == "false", Self.isBooleanColumnType(columnTypeName) {
             return folded
         }
 
@@ -190,5 +190,15 @@ final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
         }
 
         return "\"\(PluginExportUtilities.escapeJSONString(val))\""
+    }
+
+    // The column decides, as it does for numbers: "true" in a text column, or a label of
+    // Enum8('true' = 1, 'bool' = 2), is a string.
+    static func isBooleanColumnType(_ typeName: String) -> Bool {
+        var type = Substring(typeName.lowercased())
+        for wrapper in ["lowcardinality(", "nullable("] where type.hasPrefix(wrapper) && type.hasSuffix(")") {
+            type = type.dropFirst(wrapper.count).dropLast()
+        }
+        return type == "bool" || type == "boolean"
     }
 }
