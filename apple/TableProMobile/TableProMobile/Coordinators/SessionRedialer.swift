@@ -67,8 +67,9 @@ final class SessionRedialer {
         return Outcome(session: try await task.value, dialedHere: true)
     }
 
-    // A window that goes away stops waiting; the dial is cancelled only when no other window still waits on it.
-    // An abandoned dial is delisted at once, so a retry starts its own rather than wait out a blocked connect.
+    // A window that goes away stops waiting; the dial is cancelled only when no other window still waits on it, so
+    // a polled connect or SSH handshake stops. An abandoned dial is delisted at once, so a retry starts its own
+    // rather than wait out a blocked connect.
     func leave(_ connectionId: UUID, consumer: AnyObject) -> Bool {
         guard var dial = dials[connectionId] else { return true }
         dial.consumers.remove(ObjectIdentifier(consumer))
@@ -78,6 +79,7 @@ final class SessionRedialer {
             return false
         }
         dials[connectionId] = nil
+        dial.task.cancel()
         return true
     }
 

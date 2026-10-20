@@ -54,8 +54,13 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var beforeExecute: (@Sendable () async -> Void)?
     var beforeTransactionState: (@Sendable () async -> Void)?
     var beforeFetchTables: (@Sendable () async -> Void)?
+    var beforeConnect: (@Sendable () async -> Void)?
+    private(set) var connectSawCancellation = false
 
-    func connect() async throws {}
+    func connect() async throws {
+        await beforeConnect?()
+        connectSawCancellation = Task.isCancelled
+    }
     func disconnect() async throws {
         await beforeDisconnect?()
     }
