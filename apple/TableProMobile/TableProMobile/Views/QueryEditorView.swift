@@ -100,7 +100,7 @@ struct QueryEditorView: View {
         let activeSchema = activeSchema
         let coordinator = coordinator
         return { table, schema in
-            guard await coordinator.catalogSeesSessionDDL else { return nil }
+            guard await coordinator.catalogMatchesSession else { return nil }
             return try await manager.readCatalog(for: connectionId, database: database) { driver in
                 try await driver.fetchColumns(table: table, schema: schema ?? activeSchema)
             }
@@ -113,7 +113,7 @@ struct QueryEditorView: View {
         let database = coordinator.supportsDatabaseSwitching ? coordinator.activeDatabase : ""
         let coordinator = coordinator
         return { schema in
-            guard await coordinator.catalogSeesSessionDDL else { return nil }
+            guard await coordinator.catalogMatchesSession else { return nil }
             return try await manager.readCatalog(for: connectionId, database: database) { driver in
                 try await driver.fetchTables(schema: schema)
             }
@@ -747,6 +747,7 @@ struct QueryEditorView: View {
         let script = await plan(trimmed, on: session)
         guard !script.isEmpty else {
             isExecuting = false
+            completion.reopenColumnReads()
             executionStartTime = nil
             reportNothingToRun()
             return
@@ -762,6 +763,7 @@ struct QueryEditorView: View {
         guard !Task.isCancelled else {
             recordHistory(query: trimmed, outcome: .stopped, errorMessage: QueryExecutionOutcome.stopped.historyMessage)
             isExecuting = false
+            completion.reopenColumnReads()
             executionStartTime = nil
             await appState.queryActivities.end(token: token, outcome: .stopped)
             return
@@ -805,6 +807,7 @@ struct QueryEditorView: View {
         }
 
         isExecuting = false
+        completion.reopenColumnReads()
         executionStartTime = nil
 
         await appState.queryActivities.end(token: token, outcome: outcome.activityOutcome)
@@ -813,8 +816,8 @@ struct QueryEditorView: View {
     // Every statement counts as run, a failed batch's too: a missed reload leaves the lists naming what is gone.
     private func postCatalogChanges(of script: QueryScript, on session: ConnectionSession) {
         guard databaseType.speaksSQL else { return }
-        appState.catalogChanges.noteTemporaryTables(
-            TemporaryTableStatements.change(in: script.units.map(\.sql), databaseType: databaseType),
+        appState.catalogChanges.noteSessionEffect(
+            SessionLocalStatements.effect(of: script.units.map(\.sql), databaseType: databaseType),
             for: connectionId,
             driver: ObjectIdentifier(session.driver)
         )

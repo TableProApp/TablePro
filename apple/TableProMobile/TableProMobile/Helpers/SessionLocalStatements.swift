@@ -2,11 +2,14 @@ import Foundation
 import TableProModels
 import TableProSQLGrammar
 
-// The temporary tables a run created or dropped: they live only on its session, which a catalog connection never sees.
-nonisolated enum TemporaryTableStatements {
-    nonisolated struct Change: Equatable {
-        var created: Set<String> = []
-        var dropped: Set<String> = []
+// What a run leaves on its own session that a catalog connection beside it never sees. Read from every statement the
+// run planned, sent or not, so it only ever sends more reads to the session, which always answers right.
+nonisolated enum SessionLocalStatements {
+    nonisolated struct Effect: Equatable {
+        // Kept after a DROP too: a failed script may never have reached it, and the session answers either way.
+        var temporaryTables: Set<String> = []
+        // A `USE` moves the session off the database the catalog connection opens.
+        var switchesDatabase = false
     }
 
     private static let identifier = #"(`(?:[^`]|``)+`|"(?:[^"]|"")+"|\[[^\]]+\]|[\w$#]+)"#
@@ -17,32 +20,33 @@ nonisolated enum TemporaryTableStatements {
         options: [.caseInsensitive]
     )
 
-    private static let dropPattern = try? NSRegularExpression(
-        pattern: #"^\s*DROP\s+(?:TEMPORARY\s+)?TABLE(?:\s+IF\s+EXISTS)?(?=\s)"#,
+    // Anywhere in the code, as a SQL Server batch needs no `;` before it; MySQL's `USE INDEX` hint is not one. The
+    // projection blanks a quoted name, so nothing after `USE` is required.
+    private static let usePattern = try? NSRegularExpression(
+        pattern: #"\bUSE\b(?!\s+(?:INDEX|KEY)\b)"#,
         options: [.caseInsensitive]
     )
 
     // The keyword match stops before the blank the projection put where a quoted name was.
     private static let namePattern = try? NSRegularExpression(pattern: #"^\s+"# + qualified)
 
-    static func change(in statements: [String], databaseType: DatabaseType) -> Change {
+    static func effect(of statements: [String], databaseType: DatabaseType) -> Effect {
         let grammar = SQLLexicalReadings.resolve(
             databaseTypeId: databaseType.rawValue, declared: nil, session: nil
         ).execution
-        var change = Change()
+        var effect = Effect()
         for statement in statements {
             // Read on the code alone, with its quoted names kept, so a comment or a string never names a table.
             let code = SQLCodeProjection.code(of: statement, grammar: grammar, revealingExecutableComments: true)
-            let source = statement as NSString
-            if let name = tableName(matching: createPattern, in: code, source: source) {
-                change.created.insert(name)
-                change.dropped.remove(name)
-            } else if let name = tableName(matching: dropPattern, in: code, source: source) {
-                change.dropped.insert(name)
-                change.created.remove(name)
+            if let name = tableName(matching: createPattern, in: code, source: statement as NSString) {
+                effect.temporaryTables.insert(name)
+            }
+            let range = NSRange(location: 0, length: (code as NSString).length)
+            if usePattern?.firstMatch(in: code, range: range) != nil {
+                effect.switchesDatabase = true
             }
         }
-        return change
+        return effect
     }
 
     // The keywords are matched on the code, where quoted names are blanked; the name is read from the source after them.

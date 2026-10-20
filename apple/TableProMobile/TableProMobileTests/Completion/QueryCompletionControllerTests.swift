@@ -422,6 +422,21 @@ struct QueryCompletionControllerTests {
         await controller.settle()
     }
 
+    @Test("a run that ends before the view sees it start reads columns again")
+    func unseenRunReopensReads() async {
+        let source = ControllerColumnSource(["orders": ordersColumns])
+        let controller = controller(scope(), source: source)
+
+        await controller.finishColumnReads()
+        let during = await suggest(controller, "SELECT o. FROM orders o", caret: 9)
+        #expect(!during.contains { $0.kind == .column })
+        controller.reopenColumnReads()
+
+        let after = await suggest(controller, "SELECT o. FROM orders o", caret: 9)
+        #expect(after.map { $0.label } == ["id", "total"])
+        #expect(await source.reads == ["orders"])
+    }
+
     @Test("the column reader asks whichever session is current")
     func readerFollowsSession() async throws {
         let first = MockDatabaseDriver()

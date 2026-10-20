@@ -51,11 +51,25 @@ struct CatalogChangeBoardTests {
         let board = CatalogChangeBoard()
         let first = NSObject()
         let second = NSObject()
-        board.noteTemporaryTables(.init(created: ["scratch"]), for: id, driver: ObjectIdentifier(first))
-        board.noteTemporaryTables(.init(created: ["other"], dropped: ["scratch"]), for: id, driver: ObjectIdentifier(first))
+        board.noteSessionEffect(.init(temporaryTables: ["scratch"]), for: id, driver: ObjectIdentifier(first))
+        board.noteSessionEffect(.init(temporaryTables: ["other"]), for: id, driver: ObjectIdentifier(first))
 
-        #expect(board.temporaryTables(for: id, driver: ObjectIdentifier(first)) == ["other"])
+        #expect(board.temporaryTables(for: id, driver: ObjectIdentifier(first)) == ["scratch", "other"])
         #expect(board.temporaryTables(for: id, driver: ObjectIdentifier(second)).isEmpty)
         #expect(board.temporaryTables(for: id, driver: nil).isEmpty)
+    }
+
+    @Test("A USE leaves the session off the window's database until a switch, and a new session starts on it")
+    func sessionLeftDatabase() {
+        let board = CatalogChangeBoard()
+        let first = NSObject()
+        let second = NSObject()
+        board.noteSessionEffect(.init(switchesDatabase: true), for: id, driver: ObjectIdentifier(first))
+
+        #expect(board.sessionLeftDatabase(for: id, driver: ObjectIdentifier(first)))
+        #expect(!board.sessionLeftDatabase(for: id, driver: ObjectIdentifier(second)))
+        #expect(!board.sessionLeftDatabase(for: UUID(), driver: ObjectIdentifier(first)))
+        board.noteSessionDatabaseSwitched(for: id)
+        #expect(!board.sessionLeftDatabase(for: id, driver: ObjectIdentifier(first)))
     }
 }

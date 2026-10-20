@@ -228,8 +228,20 @@ final class QueryCompletionController {
     }
 
     // A read already sent can issue its next statement mid-run, which ends a PostgreSQL stream, so a run waits for it.
+    // Queued behind scope work, so a reopen still pending from the last run cannot land after it.
     func finishColumnReads() async {
-        await engine?.catalog.closeSessionReads()
+        guard let catalog = engine?.catalog else { return }
+        enqueue { await catalog.closeSessionReads() }
+        await catalogWork?.value
+    }
+
+    // A run that ends before the view sees it start leaves `update(scope:)` no transition to reopen reads on.
+    func reopenColumnReads() {
+        guard let catalog = engine?.catalog else { return }
+        enqueue {
+            await catalog.markColumnsStale()
+            await catalog.setColumnReadsAllowed(true)
+        }
     }
 
     func hide() {

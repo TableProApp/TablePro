@@ -20,6 +20,7 @@ final class CatalogChangeBoard {
     private var generations: [UUID: Int] = [:]
     @ObservationIgnored private var entries: [UUID: [Entry]] = [:]
     private var temporary: [UUID: SessionTables] = [:]
+    private var movedSessions: [UUID: ObjectIdentifier] = [:]
 
     func generation(for connectionId: UUID) -> Int {
         generations[connectionId, default: 0]
@@ -47,11 +48,20 @@ final class CatalogChangeBoard {
         return tables.names
     }
 
-    func noteTemporaryTables(_ change: TemporaryTableStatements.Change, for connectionId: UUID, driver: ObjectIdentifier) {
-        guard !change.created.isEmpty || !change.dropped.isEmpty else { return }
-        var names = temporaryTables(for: connectionId, driver: driver)
-        names.subtract(change.dropped)
-        names.formUnion(change.created)
+    func noteSessionEffect(_ effect: SessionLocalStatements.Effect, for connectionId: UUID, driver: ObjectIdentifier) {
+        if effect.switchesDatabase { movedSessions[connectionId] = driver }
+        guard !effect.temporaryTables.isEmpty else { return }
+        let names = temporaryTables(for: connectionId, driver: driver).union(effect.temporaryTables)
         temporary[connectionId] = SessionTables(driver: driver, names: names)
+    }
+
+    // Until a database switch puts the session back on the database the window shows.
+    func sessionLeftDatabase(for connectionId: UUID, driver: ObjectIdentifier?) -> Bool {
+        guard let driver else { return false }
+        return movedSessions[connectionId] == driver
+    }
+
+    func noteSessionDatabaseSwitched(for connectionId: UUID) {
+        movedSessions[connectionId] = nil
     }
 }

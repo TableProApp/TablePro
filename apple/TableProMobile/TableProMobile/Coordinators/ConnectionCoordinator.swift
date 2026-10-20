@@ -441,6 +441,14 @@ final class ConnectionCoordinator {
 
     private static let transactionalDDLTypes: Set<DatabaseType> = [.postgresql, .redshift, .mssql]
 
+    // Completion reads beside the session only while both see the same tables: same DDL, same database.
+    var catalogMatchesSession: Bool {
+        guard catalogSeesSessionDDL else { return false }
+        return !appState.catalogChanges.sessionLeftDatabase(
+            for: connection.id, driver: session.map { ObjectIdentifier($0.driver) }
+        )
+    }
+
     var transactionToken: SessionTransactionMonitor.HoldToken? {
         appState.sessionTransactions.token(for: connection.id, on: session?.driver)
     }
@@ -532,6 +540,7 @@ final class ConnectionCoordinator {
         } else {
             do {
                 try await appState.connectionManager.switchDatabase(connection.id, to: name)
+                appState.catalogChanges.noteSessionDatabaseSwitched(for: connection.id)
                 if let freshSession = appState.connectionManager.session(for: connection.id) {
                     self.session = freshSession
                 }
