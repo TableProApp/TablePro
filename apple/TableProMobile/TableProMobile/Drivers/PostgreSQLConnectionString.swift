@@ -12,8 +12,7 @@ nonisolated enum PostgreSQLConnectionString {
         password: String,
         ssl: DriverSSLConfiguration
     ) -> String {
-        var parameters: [(String, String)] = [
-            ("host", host),
+        var parameters: [(String, String)] = endpoint(dialing: host, serverName: ssl.serverName) + [
             ("port", String(port)),
             ("dbname", database),
             ("user", user),
@@ -36,6 +35,20 @@ nonisolated enum PostgreSQLConnectionString {
         return parameters
             .map { "\($0.0)='\(escape($0.1))'" }
             .joined(separator: " ")
+    }
+
+    // libpq checks the certificate and sends SNI for `host`, and dials `hostaddr` without a lookup.
+    private static func endpoint(dialing host: String, serverName: String?) -> [(String, String)] {
+        guard let serverName, !serverName.isEmpty, serverName != host, isIPAddress(host) else {
+            return [("host", host)]
+        }
+        return [("host", serverName), ("hostaddr", host)]
+    }
+
+    private static func isIPAddress(_ host: String) -> Bool {
+        var ipv4 = in_addr()
+        var ipv6 = in6_addr()
+        return inet_pton(AF_INET, host, &ipv4) == 1 || inet_pton(AF_INET6, host, &ipv6) == 1
     }
 
     static func escape(_ value: String) -> String {

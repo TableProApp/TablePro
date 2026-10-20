@@ -122,6 +122,15 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                         from: stored.sshConfiguration,
                         into: updated.sshConfiguration
                     )
+                    // A Mac SSH profile's password goes to whatever server this connection's tunnel names, so the link
+                    // survives only when the file names the same one.
+                    if stored.sshProfileId != nil {
+                        if updated.sshConfiguration?.publishedRouteInput == stored.sshConfiguration?.publishedRouteInput {
+                            updated.sshProfileId = stored.sshProfileId
+                        } else {
+                            updated.clearsSSHProfileLink = true
+                        }
+                    }
                     stored = updated
                 }
                 if outcome.isSaved {

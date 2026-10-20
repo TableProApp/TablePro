@@ -66,6 +66,7 @@ final class ConnectionFormViewModel {
     var oracleSID = ""
     var oracleRole: OracleConnectionOptions.Role = .normal
     var oracleNetworkEncryption: OracleConnectionOptions.NetworkEncryption = .accepted
+    var iam = ConnectionIAMFormState()
 
     // Organization
     var groupId: UUID?
@@ -160,6 +161,7 @@ final class ConnectionFormViewModel {
         oracleSID = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? ""
         oracleRole = OracleConnectionOptions.role(from: conn.additionalFields)
         oracleNetworkEncryption = OracleConnectionOptions.networkEncryption(from: conn.additionalFields)
+        iam = ConnectionIAMFormState(connection: conn)
         sshEnabled = conn.sshEnabled
         groupId = conn.groupId
         tagId = conn.tagId
@@ -245,7 +247,8 @@ final class ConnectionFormViewModel {
             safeModeLevel: safeModeLevel,
             sslMode: effectiveSSLMode,
             sshTunnel: sshTunnel,
-            oracle: oracleOptions
+            oracle: oracleOptions,
+            iam: iamOptions
         )
     }
 
@@ -330,7 +333,12 @@ final class ConnectionFormViewModel {
                 sshProfileSecrets[account] = value
             }
         }
-        baseline?.secrets = snapshot.secrets
+        let iamSecrets = ConnectionIAMSecrets.stored(for: conn.id, in: secureStore)
+        iam.secrets = iamSecrets
+        storedSecrets.iam = iamSecrets
+        // Read first: `snapshot` reads `baseline`, which an in-place write would already hold.
+        let loaded = snapshot.secrets
+        baseline?.secrets = loaded
     }
 
     var hasSSHProfilePassword: Bool {
@@ -375,6 +383,7 @@ final class ConnectionFormViewModel {
 
     private func onTypeChange(from oldType: DatabaseType) {
         guard oldType != type else { return }
+        iam.keepMethodOffered(for: type)
         updateDefaultPort()
         selectedFileURL = nil
         database = ""
@@ -515,6 +524,7 @@ final class ConnectionFormViewModel {
         if !password.isEmpty {
             secrets[ConnectionSecretKind.password.account(for: connectionId)] = password
         }
+        secrets.merge(iamTestSecrets(for: connectionId)) { _, iamSecret in iamSecret }
         guard sshEnabled else { return secrets }
         if !sshPassword.isEmpty {
             secrets[ConnectionSecretKind.sshPassword.account(for: connectionId)] = sshPassword
@@ -581,7 +591,8 @@ final class ConnectionFormViewModel {
                 operation: "testConnection",
                 databaseType: type,
                 host: host,
-                sshEnabled: sshEnabled
+                sshEnabled: sshEnabled,
+                signsInWithIAM: testConn.iamSignIn != nil
             )
             let classified = ErrorClassifier.classify(error, context: context)
             testResult = TestResult(
@@ -740,6 +751,10 @@ final class ConnectionFormViewModel {
                 Self.logger.error("Failed to store SSH key passphrase: \(error.localizedDescription, privacy: .public)")
                 storageFailed = true
             }
+        }
+
+        if !storedSecrets.iam.persist(writes.iam, for: connectionId, in: secureStore) {
+            storageFailed = true
         }
 
         do {

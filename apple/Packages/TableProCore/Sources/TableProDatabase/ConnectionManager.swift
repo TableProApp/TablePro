@@ -59,7 +59,9 @@ public final class ConnectionManager: @unchecked Sendable {
             throw ConnectionError.previousSessionStillClosing
         }
         guard isCurrentAttempt(generation, for: connection.id) else { throw CancellationError() }
-        let password = try secureStore.retrieve(forKey: Self.passwordKey(for: connection.id))
+        let stored = try secureStore.retrieve(forKey: Self.passwordKey(for: connection.id))
+        let password = try await driverFactory.resolvePassword(for: connection, stored: stored, secureStore: secureStore)
+        guard isCurrentAttempt(generation, for: connection.id) else { throw CancellationError() }
 
         var effectiveHost = connection.host
         var effectivePort = connection.port
@@ -95,7 +97,11 @@ public final class ConnectionManager: @unchecked Sendable {
                 effectiveConnection.sslConfiguration = nil
             }
 
-            let driver = try driverFactory.createDriver(for: effectiveConnection, password: password)
+            let driver = try driverFactory.createDriver(
+                for: effectiveConnection,
+                password: password,
+                preTunnelHost: tunnelId == nil ? nil : connection.host
+            )
             try await driver.connect()
 
             let session = ConnectionSession(
