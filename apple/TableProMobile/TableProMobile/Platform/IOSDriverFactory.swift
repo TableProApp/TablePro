@@ -83,6 +83,13 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         if connection.iamSignIn != nil, !resolved.isEnabled {
             // A token is never sent in plaintext. SSL was off, so no certificate belongs to the raised mode.
             resolved = DriverSSLConfiguration(mode: .require)
+        } else if connection.iamSignIn != nil, resolved.isPreferred {
+            resolved = DriverSSLConfiguration(
+                mode: .require,
+                caCertificatePath: resolved.caCertificatePath,
+                clientCertificatePath: resolved.clientCertificatePath,
+                clientKeyPath: resolved.clientKeyPath
+            )
         }
         resolved.serverName = serverName
         return resolved
@@ -154,11 +161,14 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         case .mssql:
             return MSSQLDriver(connection: connection, password: password)
         case .oracle:
-            return OracleDriver(connection: connection, password: password)
+            return OracleDriver(connection: connection, password: password, serverName: preTunnelHost)
         case .clickhouse:
             return PluginBackedDriver(
                 plugin: ClickHousePluginDriver(config: pluginConfig(
-                    for: connection, password: password, ssl: try ssl(for: connection, serverName: preTunnelHost)
+                    for: connection,
+                    password: password,
+                    ssl: try ssl(for: connection, serverName: preTunnelHost),
+                    preTunnelHost: preTunnelHost
                 )),
                 dialedHosts: [connection.host],
                 queryTimeoutSeconds: connection.queryTimeoutSeconds,
@@ -180,15 +190,23 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         .clickhouse
     ]
 
-    func pluginConfig(for connection: DatabaseConnection, password: String?, ssl: DriverSSLConfiguration) -> DriverConnectionConfig {
-        DriverConnectionConfig(
+    // A plugin reads the server behind a tunnel from its fields; one stored or imported there never stands in for it.
+    func pluginConfig(
+        for connection: DatabaseConnection,
+        password: String?,
+        ssl: DriverSSLConfiguration,
+        preTunnelHost: String?
+    ) -> DriverConnectionConfig {
+        var fields = connection.additionalFields
+        fields[DatabaseConnection.preTunnelHostKey] = preTunnelHost
+        return DriverConnectionConfig(
             host: connection.host,
             port: connection.port,
             username: connection.username,
             password: password ?? "",
             database: connection.database,
             ssl: ssl.pluginConfiguration,
-            additionalFields: connection.additionalFields
+            additionalFields: fields
         )
     }
 

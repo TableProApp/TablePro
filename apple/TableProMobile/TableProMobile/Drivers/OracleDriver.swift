@@ -20,6 +20,7 @@ nonisolated private extension OracleRawResult {
 nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
     private let core: OracleCoreConnection
     private let host: String
+    let ssl: DriverSSLConfiguration
     private let fallbackSchema: String
 
     var supportsSchemas: Bool { true }
@@ -28,11 +29,12 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
     nonisolated(unsafe) private(set) var currentSchema: String?
     nonisolated(unsafe) private(set) var serverVersion: String?
 
-    init(connection: DatabaseConnection, password: String?) {
-        let ssl = DriverSSLConfiguration(
+    init(connection: DatabaseConnection, password: String?, serverName: String? = nil) {
+        var ssl = DriverSSLConfiguration(
             sslEnabled: connection.sslEnabled,
             configuration: connection.sslConfiguration
         )
+        ssl.serverName = serverName
         core = OracleCoreConnection(options: OracleConnectionOptions(
             host: connection.host,
             port: connection.port,
@@ -47,6 +49,7 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
             networkEncryption: OracleConnectionOptions.networkEncryption(from: connection.additionalFields)
         ))
         host = connection.host
+        self.ssl = ssl
         fallbackSchema = connection.username.uppercased()
         currentSchema = fallbackSchema
     }

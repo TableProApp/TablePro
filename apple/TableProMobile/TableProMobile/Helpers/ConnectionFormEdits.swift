@@ -46,7 +46,7 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
     var tagId: UUID?
     var iconName: String?
     var safeModeLevel: SafeModeLevel
-    var sslMode: SSLConfiguration.SSLMode?
+    var sslMode: SSLModeChoice?
     var sshTunnel: SSHTunnel?
     var oracle: OracleOptions?
     var iam: IAMOptions?
@@ -97,9 +97,7 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
             connection.sslEnabled = false
             return
         }
-        var configuration = connection.sslConfiguration ?? SSLConfiguration()
-        configuration.mode = sslMode
-        connection.sslConfiguration = configuration
+        connection.sslConfiguration = sslMode.applied(to: connection.sslConfiguration ?? SSLConfiguration())
         connection.sslEnabled = sslMode != .disable
     }
 

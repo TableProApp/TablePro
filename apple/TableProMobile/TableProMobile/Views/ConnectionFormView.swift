@@ -109,20 +109,20 @@ struct ConnectionFormView: View {
                     Section {
                         if viewModel.type == .oracle {
                             Picker(String(localized: "SSL Mode"), selection: $viewModel.oracleSSLMode) {
-                                Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
-                                Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
+                                Text(String(localized: "Disabled")).tag(SSLModeChoice.disable)
+                                Text(String(localized: "Preferred")).tag(SSLModeChoice.preferred)
+                                Text(String(localized: "Required")).tag(SSLModeChoice.require)
                                 if viewModel.offersOracleVerifyCa {
-                                    Text(String(localized: "Verify CA")).tag(SSLConfiguration.SSLMode.verifyCa)
+                                    Text(String(localized: "Verify CA")).tag(SSLModeChoice.verifyCa)
                                 }
-                                Text(String(localized: "Verify Identity")).tag(SSLConfiguration.SSLMode.verifyFull)
+                                Text(String(localized: "Verify Identity")).tag(SSLModeChoice.verifyFull)
                             }
                         } else if viewModel.type == .mssql {
-                            // The iOS driver encrypts without checking the certificate, because this form collects
-                            // no CA file for FreeTDS, so only Disabled and Required are listed.
-                            // See Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift for the FreeTDS contract.
+                            // No verify modes: this form collects no CA file for FreeTDS, so the iOS driver checks no certificate.
                             Picker(String(localized: "SSL Mode"), selection: $viewModel.mssqlSSLMode) {
-                                Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
-                                Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
+                                Text(String(localized: "Disabled")).tag(SSLModeChoice.disable)
+                                Text(String(localized: "Preferred")).tag(SSLModeChoice.preferred)
+                                Text(String(localized: "Required")).tag(SSLModeChoice.require)
                             }
                         }
                     } footer: {
