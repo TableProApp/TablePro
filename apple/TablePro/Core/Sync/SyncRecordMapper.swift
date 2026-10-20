@@ -12,6 +12,7 @@ import TableProConnectionLibrary
 import TableProImport
 import TableProPluginKit
 import TableProSSHConfig
+import TableProSSHTransport
 import TableProSyncTransport
 
 enum SyncDecodeError: Error, LocalizedError {
@@ -690,13 +691,11 @@ struct SyncRecordMapper {
         let recordID = recordID(type: .sshProfile, id: profile.id.uuidString, in: zone)
         let record = CKRecord(recordType: SyncRecordType.sshProfile.rawValue, recordID: recordID)
 
-        let fields = record.fields(SSHProfileSyncField.self)
+        let fields = record.fields(SSHProfileSyncField.self, absentValues: .clear)
         fields[.profileId] = profile.id.uuidString
         fields[.name] = profile.name
         fields[.host] = profile.host
-        if let port = profile.port {
-            fields[.port] = Int64(port)
-        }
+        fields[.port] = profile.port.map { Int64($0) }
         fields[.username] = profile.username
         fields[.authMethod] = profile.authMethod.rawValue
         fields[.privateKeyPath] = PathPortability.contractHome(profile.privateKeyPath)
@@ -708,7 +707,9 @@ struct SyncRecordMapper {
         fields[.modifiedAtLocal] = Date()
         fields[.schemaVersion] = schemaVersion
 
-        if !profile.jumpHosts.isEmpty {
+        if profile.jumpHosts.isEmpty {
+            fields[.jumpHostsJson] = nil
+        } else {
             do {
                 let portableJumpHosts = Self.makePortable(profile.jumpHosts)
                 fields[.jumpHostsJson] = try encoder.encode(portableJumpHosts)
@@ -778,7 +779,7 @@ struct SyncRecordMapper {
         let recordID = recordID(type: .credentialProfile, id: profile.id.uuidString, in: zone)
         let record = CKRecord(recordType: SyncRecordType.credentialProfile.rawValue, recordID: recordID)
 
-        let fields = record.fields(CredentialProfileSyncField.self)
+        let fields = record.fields(CredentialProfileSyncField.self, absentValues: .clear)
         fields[.profileId] = profile.id.uuidString
         fields[.name] = profile.name
         fields[.username] = profile.username
@@ -787,7 +788,9 @@ struct SyncRecordMapper {
         fields[.modifiedAtLocal] = Date()
         fields[.schemaVersion] = schemaVersion
 
-        if !profile.secureFieldIds.isEmpty {
+        if profile.secureFieldIds.isEmpty {
+            fields[.secureFieldIdsJson] = nil
+        } else {
             do {
                 fields[.secureFieldIdsJson] = try encoder.encode(profile.secureFieldIds)
             } catch {

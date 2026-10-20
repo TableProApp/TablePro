@@ -84,7 +84,7 @@ extension PluginMetadataRegistry {
             requiresBackslashEscaping: true,
             caseSensitivityStyle: .caseFoldFunction,
             caseFoldFunction: "lowerUTF8",
-            textCastTypeName: nil,
+            textCastTypeName: "Nullable(String)",
             functionNamesAreCaseInsensitive: false
         )
 
@@ -359,7 +359,8 @@ extension PluginMetadataRegistry {
             booleanLiteralStyle: .truefalse,
             likeEscapeStyle: .explicit,
             paginationStyle: .limit,
-            caseSensitivityStyle: .ilikeOperator
+            caseSensitivityStyle: .ilikeOperator,
+            textCastTypeName: "VARCHAR"
         )
 
         let duckdbColumnTypes: [String: [String]] = [

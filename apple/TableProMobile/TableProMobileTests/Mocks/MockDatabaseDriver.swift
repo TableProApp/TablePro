@@ -11,6 +11,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var scriptedColumns: [ColumnInfo] = []
     var scriptedForeignKeys: [ForeignKeyInfo] = []
     var fetchForeignKeysError: Error?
+    var fetchColumnsError: Error?
     var scriptedTables: [TableInfo] = []
     var scriptedDatabases: [String] = []
     var scriptedSchemas: [String] = []
@@ -52,6 +53,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var beforeDisconnect: (@Sendable () async -> Void)?
     var beforeExecute: (@Sendable () async -> Void)?
     var beforeTransactionState: (@Sendable () async -> Void)?
+    var beforeFetchTables: (@Sendable () async -> Void)?
 
     func connect() async throws {}
     func disconnect() async throws {
@@ -77,6 +79,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
+        await beforeFetchTables?()
         if let fetchTablesError { throw fetchTablesError }
         return scriptedTables
     }
@@ -84,6 +87,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         fetchColumnsCalls += 1
         fetchColumnsSchemas.append(schema)
+        if let fetchColumnsError { throw fetchColumnsError }
         return scriptedColumns
     }
 

@@ -179,7 +179,9 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .truefalse,
         likeEscapeStyle: .explicit,
         paginationStyle: .limit,
-        caseSensitivityStyle: .ilikeOperator
+        caseSensitivityStyle: .ilikeOperator,
+        // DuckDB has no LIKE or lower() for INTEGER, UUID or DATE: `~~(INTEGER, STRING_LITERAL)` is a binder error.
+        textCastTypeName: "VARCHAR"
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {

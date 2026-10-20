@@ -18,10 +18,15 @@ nonisolated struct SSHTunnelCredentials: Sendable, Equatable {
         self.privateKey = Self.nonEmpty(privateKey)
     }
 
-    init(connectionId: UUID, secureStore: any SecureStore) {
+    // A tunnel that follows a Mac SSH profile signs in with the profile's password, which iCloud
+    // Keychain brings under the profile's id. A passphrase belongs to the key, and the key here is
+    // this device's copy, so its own passphrase comes first.
+    init(connectionId: UUID, sshProfileId: UUID? = nil, secureStore: any SecureStore) {
         self.init(
-            password: Self.secret(.sshPassword, for: connectionId, in: secureStore),
-            keyPassphrase: Self.secret(.keyPassphrase, for: connectionId, in: secureStore),
+            password: sshProfileId.flatMap { Self.secret(.password, ofProfile: $0, in: secureStore) }
+                ?? Self.secret(.sshPassword, for: connectionId, in: secureStore),
+            keyPassphrase: Self.secret(.keyPassphrase, for: connectionId, in: secureStore)
+                ?? sshProfileId.flatMap { Self.secret(.keyPassphrase, ofProfile: $0, in: secureStore) },
             privateKey: Self.secret(.sshPrivateKey, for: connectionId, in: secureStore)
         )
     }
@@ -39,7 +44,15 @@ nonisolated struct SSHTunnelCredentials: Sendable, Equatable {
         for connectionId: UUID,
         in secureStore: any SecureStore
     ) -> String? {
-        try? secureStore.retrieve(forKey: kind.account(for: connectionId))
+        nonEmpty(try? secureStore.retrieve(forKey: kind.account(for: connectionId)))
+    }
+
+    private static func secret(
+        _ kind: SSHProfileSecretKind,
+        ofProfile profileId: UUID,
+        in secureStore: any SecureStore
+    ) -> String? {
+        nonEmpty(try? secureStore.retrieve(forKey: kind.account(for: profileId)))
     }
 
     private static func nonEmpty(_ value: String?) -> String? {

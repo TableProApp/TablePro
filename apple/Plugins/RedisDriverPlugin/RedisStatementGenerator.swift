@@ -191,8 +191,19 @@ struct RedisStatementGenerator {
             return nil
         }
         return json
-            .map { (name: $0.key, value: String(describing: $0.value)) }
+            .map { (name: $0.key, value: fieldText($0.value)) }
             .sorted { $0.name < $1.name }
+    }
+
+    // A field holds text: a JSON string as its text, any other value as the JSON that wrote it.
+    private static func fieldText(_ value: Any) -> String {
+        if let text = value as? String { return text }
+        let options: JSONSerialization.WritingOptions = [.fragmentsAllowed, .sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? JSONSerialization.data(withJSONObject: value, options: options),
+              let text = String(bytes: data, encoding: .utf8) else {
+            return String(describing: value)
+        }
+        return text
     }
 
     // MARK: - UPDATE

@@ -50,11 +50,34 @@
                   </object>
                 </child>
                 <child>
-                  <object class="GtkLabel" id="transaction_label">
+                  <object class="GtkBox" id="transaction_bar">
                     <property name="visible">false</property>
-                    <style>
-                      <class name="warning"/>
-                    </style>
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkLabel" id="transaction_label">
+                        <style>
+                          <class name="warning"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="roll_back_button">
+                        <property name="label" translatable="yes">Roll Back</property>
+                        <property name="action-name">editor.roll-back</property>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="commit_button">
+                        <property name="label" translatable="yes">Commit</property>
+                        <property name="action-name">editor.commit</property>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
                   </object>
                 </child>
               </object>

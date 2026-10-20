@@ -118,9 +118,13 @@ nonisolated extension DatabaseConnection {
             && database == other.database
             && sshEnabled == other.sshEnabled
             && sshConfiguration == other.sshConfiguration
-            && sslEnabled == other.sslEnabled
-            && sslConfiguration == other.sslConfiguration
+            && sslDialed == other.sslDialed
             && additionalFields == other.additionalFields
             && isSample == other.isSample
+    }
+
+    // A Preferred the Mac holds dials as Required here, so a change to that alone keeps the session.
+    private var sslDialed: DriverSSLConfiguration {
+        DriverSSLConfiguration(sslEnabled: sslEnabled, configuration: sslConfiguration)
     }
 }

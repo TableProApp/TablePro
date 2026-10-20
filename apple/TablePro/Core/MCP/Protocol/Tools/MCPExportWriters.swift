@@ -64,8 +64,6 @@ private extension MCPExportValue {
         case number
         case boolean
 
-        private static let familiesRenderingBitsAsDecimal: Set<SQLTypeFamily> = [.mysql]
-
         init(columnType: ColumnType?, family: SQLTypeFamily) {
             switch columnType {
             case .integer?, .decimal?:
@@ -79,7 +77,7 @@ private extension MCPExportValue {
 
         private static func booleanColumnReading(rawType: String?, family: SQLTypeFamily) -> ColumnReading {
             guard let rawType, case .bitString = SQLTypeParser.parse(rawType, family: family).kind else { return .boolean }
-            return familiesRenderingBitsAsDecimal.contains(family) ? .number : .text
+            return family.readsBitsAsDecimal ? .number : .text
         }
 
         func value(of text: String) -> MCPExportValue {

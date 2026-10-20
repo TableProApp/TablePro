@@ -2,6 +2,8 @@ import Foundation
 import os
 import TableProDatabase
 import TableProModels
+import TableProPluginKit
+import TableProQuery
 import TableProRedisCore
 
 nonisolated final class IOSDriverFactory: DriverFactory {
@@ -160,14 +162,40 @@ nonisolated final class IOSDriverFactory: DriverFactory {
             return MSSQLDriver(connection: connection, password: password)
         case .oracle:
             return OracleDriver(connection: connection, password: password, serverName: preTunnelHost)
+        case .clickhouse:
+            return PluginBackedDriver(
+                plugin: ClickHousePluginDriver(config: pluginConfig(for: connection, password: password, ssl: try ssl(for: connection, serverName: preTunnelHost))),
+                dialedHosts: [connection.host],
+                queryTimeoutSeconds: connection.queryTimeoutSeconds,
+                rowChangeSuffix: Self.clickHouseWaitsForMutation,
+                rowIdentity: .everyColumn,
+                readsOnly: { !SQLWriteClassifier.isWriteQuery($0, databaseType: .clickhouse) }
+            )
         default:
             throw ConnectionError.driverNotFound(connection.type.rawValue)
         }
     }
 
+    // A ClickHouse mutation applies in the background unless asked to wait. The row screen keeps the typed values once
+    // a save returns, and a delete looks for the row right after, so both need it applied.
+    static let clickHouseWaitsForMutation = " SETTINGS mutations_sync = 1"
+
     static let supportedTypeList: [DatabaseType] = [
-        .sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle
+        .sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle,
+        .clickhouse
     ]
+
+    func pluginConfig(for connection: DatabaseConnection, password: String?, ssl: DriverSSLConfiguration) -> DriverConnectionConfig {
+        DriverConnectionConfig(
+            host: connection.host,
+            port: connection.port,
+            username: connection.username,
+            password: password ?? "",
+            database: connection.database,
+            ssl: ssl.pluginConfiguration,
+            additionalFields: connection.additionalFields
+        )
+    }
 
     static func refusal(for connection: DatabaseConnection) -> ConnectionError? {
         guard supportedTypeList.contains(connection.type) else {

@@ -199,6 +199,16 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
         _ = try await runQuery(MSSQLSchemaQueries.rollbackTransaction)
     }
 
+    func sessionTransactionState() async -> DriverTransactionState {
+        guard let row = try? await runQuery(MSSQLSessionTransaction.probe).rows.first else { return .unknown }
+        switch MSSQLSessionTransaction.state(tranCount: row[safe: 0] ?? nil, transactionState: row[safe: 1] ?? nil) {
+        case .idle: return .idle
+        case .open: return .explicitTransaction
+        case .uncommittable: return .abortedTransaction
+        case nil: return .unknown
+        }
+    }
+
     // MARK: - Database & Schema Navigation
 
     func fetchDatabases() async throws -> [String] {

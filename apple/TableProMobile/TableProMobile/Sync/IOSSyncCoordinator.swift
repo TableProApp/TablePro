@@ -47,6 +47,7 @@ final class IOSSyncCoordinator {
 
     @ObservationIgnored private let metadata: SyncMetadataStorage
     @ObservationIgnored private let recordCache: SyncRecordCache
+    @ObservationIgnored private var sshFieldsReadFromCache: Set<UUID> = []
     @ObservationIgnored private let makeTransport: () -> any IOSSyncTransport
     @ObservationIgnored private let isEnabled: () -> Bool
     @ObservationIgnored private let networkMonitor: SyncNetworkMonitor?
@@ -181,7 +182,7 @@ final class IOSSyncCoordinator {
     private func prepareFullUpload() {
         metadata.saveToken(nil)
         metadata.zoneState = .unknown
-        recordCache.removeAll()
+        dropRecordCache()
         markAllLocalDataDirty()
     }
 
@@ -299,7 +300,7 @@ final class IOSSyncCoordinator {
         /// The old zone's records went with it. Kept, their system fields would make every later
         /// save into a zone another device recreated fail as an unknown record.
         if nextZone == .removed, zone != .removed {
-            recordCache.removeAll()
+            dropRecordCache()
             metadata.saveToken(nil)
         }
         metadata.zoneState = nextZone
@@ -334,7 +335,7 @@ final class IOSSyncCoordinator {
         case .previousAccountUnknown:
             Self.logger.notice("An earlier build synced without recording its iCloud account, so sync starts over once")
         }
-        recordCache.removeAll()
+        dropRecordCache()
         lastSyncDate = metadata.lastSyncDate
         return true
     }
@@ -391,6 +392,7 @@ final class IOSSyncCoordinator {
         // The connection writes landed, and a dirty connection pushed over a stale change tag would conflict.
         recordCache.store(pulled.changedRecords)
         recordCache.remove(pulled.deletedRecordIDs)
+        settleLegacySSLModes()
         let heldDownload: SyncStepFailure? = applied == .saved ? nil : .pullNotSaved
 
         guard admission == .full else { return RunResult(admission: admission, failure: heldDownload) }
@@ -599,9 +601,37 @@ final class IOSSyncCoordinator {
 
     // MARK: - Apply
 
+    // A copy an older iOS build stored lost the Mac's Preferred, which only the cached server record still holds: after a
+    // pull that record is the server's current one, and nothing fresher exists once the cache is about to go.
+    private func settleLegacySSLModes() {
+        guard var connections = getCurrentState?()?.connections else { return }
+        var changed = false
+        for index in connections.indices {
+            guard let local = connections[index].sslConfiguration, local.isLegacyRequire else { continue }
+            let recordName = SyncRecordType.connection.recordName(for: connections[index].id.uuidString)
+            // Only Preferred or Required is in question, so certificate paths edited on either side do not matter.
+            guard let cached = recordCache.record(named: recordName),
+                  let server = SyncRecordMapper.serverSSL(in: cached),
+                  server.mode == local.mode else { continue }
+            connections[index].sslConfiguration?.settleLegacyRequire(asMacPreferred: server.isMacPreferred)
+            changed = true
+        }
+        if changed, onConnectionsChanged?(connections) != true {
+            Self.logger.error("The SSL modes settled from the cached records were not saved")
+        }
+    }
+
+    private func dropRecordCache() {
+        settleLegacySSLModes()
+        recordCache.removeAll()
+    }
+
     private func applyRemoteChanges(_ remote: PullChanges) -> RemoteApply {
         guard let state = getCurrentState?() else { return .notSaved }
-        let connectionsSaved = onConnectionsChanged?(mergeConnections(local: state.connections, remote: remote)) ?? true
+        let merged = mergeConnections(local: state.connections, remote: remote)
+        let connectionsSaved = onConnectionsChanged?(merged.connections) ?? true
+        // Marked read only once saved, so a pull whose save failed reads the cache again next time.
+        if connectionsSaved { sshFieldsReadFromCache.formUnion(merged.adoptedFromCache) }
         let groupsSaved = onGroupsChanged?(mergeGroups(local: state.groups, remote: remote)) ?? true
         let tagsSaved = onTagsChanged?(mergeTags(local: state.tags, remote: remote)) ?? true
         guard connectionsSaved, groupsSaved, tagsSaved else {
@@ -847,14 +877,44 @@ final class IOSSyncCoordinator {
 
     // MARK: - Merge
 
-    private func mergeConnections(local: [DatabaseConnection], remote: PullChanges) -> [DatabaseConnection] {
-        merge(
+    private func mergeConnections(
+        local: [DatabaseConnection],
+        remote: PullChanges
+    ) -> (connections: [DatabaseConnection], adoptedFromCache: Set<UUID>) {
+        let pulledIds = Set(remote.changedConnections.map(\.id))
+        var adopted: Set<UUID> = []
+        let connections = merge(
             local: local,
             changed: remote.changedConnections,
             deleted: remote.deletedConnectionIDs,
             dirtyIds: metadata.dirtyIds(for: .connection),
             tombstonedIds: tombstonedIds(for: .connection)
-        )
+        ).map { connection -> DatabaseConnection in
+            guard !pulledIds.contains(connection.id), let cached = adoptingCachedSSHFields(connection) else {
+                return connection
+            }
+            adopted.insert(connection.id)
+            return cached
+        }
+        return (connections, adopted)
+    }
+
+    // A connection stored before this build read `sshProfileId` lacks it until its record changes
+    // again, and the record pulled earlier already holds it. A record in this
+    // pull is newer than the cache, which is written only after it.
+    private func adoptingCachedSSHFields(_ connection: DatabaseConnection) -> DatabaseConnection? {
+        guard connection.sshConfiguration != nil, connection.sshProfileId == nil,
+              !connection.clearsSSHProfileLink,
+              !sshFieldsReadFromCache.contains(connection.id)
+        else { return nil }
+        // The cache is keyed by record name alone, so any zone finds it.
+        let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: CKRecordZone.default().zoneID)
+        guard let record = recordCache.record(for: recordID),
+              let cached = SyncRecordMapper.toConnection(record)
+        else { return nil }
+        var adopted = connection
+        adopted.sshProfileId = cached.sshProfileId
+        return adopted
     }
 
     private func mergeGroups(local: [ConnectionGroup], remote: PullChanges) -> [ConnectionGroup] {

@@ -131,6 +131,14 @@ struct SQLWriteClassifierTests {
         #expect(!isWrite(" \n ; ", .redis))
     }
 
+    @Test("a Redis verb is read the way the driver reads it")
+    func redisVerbAsTheDriverReadsIt() {
+        #expect(!isWrite("\"GET\" k", .redis))
+        #expect(!isWrite("'config' 'get' maxmemory", .redis))
+        #expect(isWrite("/* GET */ FLUSHALL", .redis))
+        #expect(isWrite("\"FLUSHALL", .redis))
+    }
+
     @Test("empty and comment-only input is not a write")
     func emptyInput() {
         #expect(!isWrite(""))

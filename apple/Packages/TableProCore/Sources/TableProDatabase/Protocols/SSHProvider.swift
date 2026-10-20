@@ -1,12 +1,13 @@
 import Foundation
 import TableProModels
+import TableProSSHTransport
 
 public protocol SSHProvider: Sendable {
     func createTunnel(
         config: SSHConfiguration,
         connectionId: UUID,
-        remoteHost: String,
-        remotePort: Int,
+        sshProfileId: UUID?,
+        destination: SSHForwardDestination,
         prompter: (any ConnectionPrompter)?
     ) async throws -> SSHTunnel
 

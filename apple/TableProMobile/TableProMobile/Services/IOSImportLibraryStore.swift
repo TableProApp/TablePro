@@ -4,6 +4,7 @@ import TableProConnectionLibrary
 import TableProDatabase
 import TableProImport
 import TableProModels
+import TableProRedisCore
 
 @MainActor
 struct IOSImportLibraryStore: ImportLibraryStore {
@@ -23,7 +24,7 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                     port: connection.port,
                     database: connection.database,
                     username: connection.username,
-                    redisDatabase: nil,
+                    redisDatabase: ConnectionMatchKey.redisDatabase(in: connection.additionalFields),
                     socketPath: MySQLLocalSocket.path(in: connection.additionalFields)
                 )
             )
@@ -101,7 +102,12 @@ struct IOSImportLibraryStore: ImportLibraryStore {
         var added: [UUID] = []
         var replaced: [UUID] = []
         for resolved in connections {
-            let connection = DatabaseConnection(importing: resolved)
+            let connection = DatabaseConnection(
+                importedSettings: resolved.planned.settings,
+                id: resolved.planned.id,
+                groupId: resolved.groupId,
+                tagIds: resolved.tagIds
+            )
             switch resolved.planned.write {
             case .add:
                 if appState.addConnection(connection) {
@@ -150,7 +156,7 @@ struct IOSImportLibraryStore: ImportLibraryStore {
     }
 }
 
-internal extension SSLConfiguration.SSLMode {
+nonisolated extension SSLConfiguration.SSLMode {
     // iOS has no Preferred mode, and an unknown mode must never weaken a connection to plain text.
     init(importing portable: PortableSSLMode?) {
         guard let portable else {
@@ -166,13 +172,12 @@ internal extension SSLConfiguration.SSLMode {
     }
 }
 
-private extension DatabaseConnection {
-    init(importing resolved: ResolvedConnection) {
-        let settings = resolved.planned.settings
+nonisolated extension DatabaseConnection {
+    init(importedSettings settings: ExportableConnection, id: UUID = UUID(), groupId: UUID? = nil, tagIds: [UUID] = []) {
         let safeModeLevel = SafeModeLevel(wireValue: settings.safeModeLevel, isReadOnly: false)
         let sslMode = settings.sslConfig.map { SSLConfiguration.SSLMode(importing: $0.portableMode) } ?? .disable
         self.init(
-            id: resolved.planned.id,
+            id: id,
             name: settings.name,
             type: DatabaseType(rawValue: settings.type),
             host: settings.host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : settings.host,
@@ -184,7 +189,7 @@ private extension DatabaseConnection {
             isReadOnly: safeModeLevel.blocksWrites,
             safeModeLevel: safeModeLevel,
             queryTimeoutSeconds: settings.queryTimeoutSeconds,
-            additionalFields: settings.additionalFields ?? [:],
+            additionalFields: Self.importedAdditionalFields(settings),
             sshEnabled: settings.sshConfig?.enabled == true,
             sshConfiguration: settings.sshConfig.flatMap { Self.sshConfiguration($0) },
             sslEnabled: sslMode != .disable,
@@ -197,13 +202,23 @@ private extension DatabaseConnection {
                     isMacPreferred: ssl.portableMode == .preferred
                 )
             },
-            groupId: resolved.groupId,
-            tagIds: resolved.tagIds
+            groupId: groupId,
+            tagIds: tagIds
         )
         connectTimeoutSeconds = settings.connectTimeoutSeconds
     }
 
-    static func sshConfiguration(_ ssh: ExportableSSHConfig) -> SSHConfiguration? {
+    // The Mac falls back to its own Redis index when the additional field is unset, so the import reads it the same way.
+    private static func importedAdditionalFields(_ settings: ExportableConnection) -> [String: String] {
+        var fields = settings.additionalFields ?? [:]
+        if DatabaseType(rawValue: settings.type) == .redis, fields[RedisDatabaseIndex.fieldName] == nil,
+           let redisDatabase = settings.redisDatabase {
+            fields[RedisDatabaseIndex.fieldName] = String(redisDatabase)
+        }
+        return fields
+    }
+
+    private static func sshConfiguration(_ ssh: ExportableSSHConfig) -> SSHConfiguration? {
         guard ssh.enabled else { return nil }
         return SSHConfiguration(
             host: ssh.host,
@@ -223,7 +238,7 @@ private extension DatabaseConnection {
         )
     }
 
-    static func sshAuthMethod(_ raw: String) -> SSHConfiguration.SSHAuthMethod {
+    private static func sshAuthMethod(_ raw: String) -> SSHConfiguration.SSHAuthMethod {
         switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "privatekey", "publickey", "private key": .privateKey
         case "sshagent", "agent", "ssh agent": .sshAgent
@@ -233,7 +248,7 @@ private extension DatabaseConnection {
         }
     }
 
-    static func expandedPath(_ path: String?) -> String? {
+    private static func expandedPath(_ path: String?) -> String? {
         guard let path else { return nil }
         let expanded = PathPortability.expandHome(path)
         return expanded.isEmpty ? nil : expanded

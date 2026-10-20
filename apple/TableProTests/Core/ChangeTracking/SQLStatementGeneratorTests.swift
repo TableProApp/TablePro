@@ -1181,4 +1181,42 @@ struct SQLStatementGeneratorTests {
         #expect(stmt.sql.contains("\"database\" = $1"))
         #expect(stmt.sql.contains("\"id\" = $2"))
     }
+
+    // SQLite keeps integer 5 and text '5' apart in a column with no affinity, and a bound '5' missed the integer row.
+    @Test("A SQLite row match names a number both ways it can be stored")
+    func sqliteMatchesEitherStorageClass() throws {
+        let generator = try makeGenerator(databaseType: .sqlite)
+        let statements = generator.generateStatements(
+            from: [
+                RowChange(
+                    rowID: .existing(0),
+                    type: .update,
+                    cellChanges: [CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny")],
+                    originalRow: ["5", "John", "john@example.com"]
+                ),
+                RowChange(rowID: .existing(1), type: .delete, cellChanges: [], originalRow: ["2.5", "Ann", "ann@example.com"])
+            ],
+            insertedRowData: [:],
+            deletedRowIDs: [.existing(1)],
+            insertedRowIDs: []
+        )
+
+        let update = try #require(statements.first { $0.sql.hasPrefix("UPDATE") })
+        let delete = try #require(statements.first { $0.sql.hasPrefix("DELETE") })
+        #expect(update.sql == "UPDATE `users` SET `name` = ? WHERE `id` IN (5, ?) AND (SELECT COUNT(*) FROM `users` WHERE `id` IN (5, ?)) = 1")
+        #expect(update.parameters.compactMap { $0 as? String } == ["Johnny", "5", "5"])
+        #expect(delete.sql == "DELETE FROM `users` WHERE `id` = ?")
+    }
+
+    @Test("Another engine keeps a plain bound match")
+    func otherEnginesKeepBoundMatch() throws {
+        let statements = try makeGenerator(databaseType: .mysql).generateStatements(
+            from: [RowChange(rowID: .existing(0), type: .delete, cellChanges: [], originalRow: ["5", "John", "john@example.com"])],
+            insertedRowData: [:],
+            deletedRowIDs: [.existing(0)],
+            insertedRowIDs: []
+        )
+        #expect(statements.first?.sql == "DELETE FROM `users` WHERE `id` = ?")
+    }
 }
+

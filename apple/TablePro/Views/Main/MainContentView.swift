@@ -462,6 +462,11 @@ struct MainContentView: View {
                 }
                 Divider()
             }
+            ConnectionTransactionBar(
+                connectionId: connection.id,
+                transactions: DatabaseManager.shared.sessionTransactions,
+                databaseManager: DatabaseManager.shared
+            )
             editorContentView
         }
         .onChange(of: toolbarState.connectionWarning) { warning in

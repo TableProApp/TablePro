@@ -29,7 +29,7 @@ final class RowDetailViewModel {
     var operationError: AppError?
     private(set) var showSaveSuccess = false
 
-    @ObservationIgnored private var writeGate = ConfirmedWriteGate()
+    @ObservationIgnored private var writeGate = ConfirmedWriteGate<RowWriteBatch>()
 
     @ObservationIgnored let onSaved: (() -> Void)?
     @ObservationIgnored let loadFullValueProvider: ((CellRef) async throws -> String?)?
@@ -80,27 +80,25 @@ final class RowDetailViewModel {
     var canEdit: Bool {
         table != nil && session != nil && !columnDetails.isEmpty && allowsRowEditing
             && !safeModeLevel.blocksWrites
-            && primaryKeyValues(at: currentIndex) != nil
+            && currentLocator != nil
+    }
+
+    private var rowIdentity: RowIdentity { RowLocator.identity(of: session?.driver) }
+
+    private var currentLocator: RowLocator? {
+        RowLocator.locate(
+            cells: cells(at: currentIndex), columns: columns, columnDetails: columnDetails, identity: rowIdentity
+        )
     }
 
     private func primaryKeyValues(at rowIndex: Int) -> [(column: String, value: String)]? {
         Self.primaryKeyValues(cells: cells(at: rowIndex), columns: columns, columnDetails: columnDetails)
     }
 
-    // A placeholder key cell, such as `[BLOB 16 bytes]`, matches no row as a predicate, so the row has no key.
     static func primaryKeyValues(
         cells: [Cell], columns: [ColumnInfo], columnDetails: [ColumnInfo]
     ) -> [(column: String, value: String)]? {
-        let keyColumns = columnDetails.filter(\.isPrimaryKey)
-        guard !keyColumns.isEmpty else { return nil }
-        var values: [(column: String, value: String)] = []
-        for key in keyColumns {
-            guard let index = columns.firstIndex(where: { $0.name == key.name }),
-                  index < cells.count,
-                  let value = cells[index].keyText(column: key.name) else { return nil }
-            values.append((column: key.name, value: value))
-        }
-        return values
+        RowLocator.locate(cells: cells, columns: columns, columnDetails: columnDetails, identity: .keyColumns)?.keyValues
     }
 
     var supportsLazyLoading: Bool { loadFullValueProvider != nil }
@@ -323,8 +321,11 @@ final class RowDetailViewModel {
 
         pendingWriteConfirmation = false
         writeGate.cancel()
+        // The key and row checks below wait on the server; Save and Cancel stay disabled until they answer.
+        isSaving = true
+        defer { isSaving = false }
 
-        guard columnDetails.contains(where: { $0.isPrimaryKey }) else {
+        guard RowLocator.canLocate(identity: rowIdentity, columns: columns, columnDetails: columnDetails) else {
             operationError = AppError(
                 category: .config,
                 title: String(localized: "Cannot Save"),
@@ -335,11 +336,13 @@ final class RowDetailViewModel {
             return false
         }
 
-        guard let pkValues = primaryKeyValues(at: currentIndex) else {
+        guard let locator = currentLocator else {
             operationError = AppError(
                 category: .config,
                 title: String(localized: "Cannot Save"),
-                message: String(localized: "This row's primary key is not plain text, so it cannot identify the row."),
+                message: rowIdentity == .everyColumn
+                    ? String(localized: "This row holds a value too long or binary to match exactly, so it cannot identify the row.")
+                    : String(localized: "This row's primary key is not plain text, so it cannot identify the row."),
                 recovery: nil,
                 underlying: nil
             )
@@ -365,34 +368,59 @@ final class RowDetailViewModel {
             return false
         }
 
-        let sql = SQLBuilder.buildUpdate(
-            table: table.name,
-            schema: schema,
-            type: databaseType,
-            driver: session.driver,
-            changes: changes,
-            primaryKeys: pkValues
-        )
+        if let keys = locator.keyValues, let shared = await SharedRowKey.error(
+            table: table.name, schema: schema, key: keys,
+            columns: columnDetails, type: databaseType, driver: session.driver
+        ) {
+            operationError = shared
+            return false
+        }
+        if let writer = session.driver as? any DriverRowWriting, let identical = await SharedRowKey.identicalRowsError(
+            writer: writer, table: table.name, schema: schema, locator: locator,
+            columns: columns.map(\.name), type: databaseType, isUpdate: true
+        ) {
+            operationError = identical
+            return false
+        }
+        guard isEditing else { return false }
 
-        switch writeGate.submit(sql, under: safeModeLevel) {
+        let batch: RowWriteBatch
+        do {
+            guard let built = try RowWriteBatch.update(
+                table: table.name,
+                schema: schema,
+                type: databaseType,
+                driver: session.driver,
+                columns: columns.map(\.name),
+                columnDetails: columnDetails,
+                locator: locator,
+                changes: changes
+            ) else { return false }
+            batch = built
+        } catch {
+            let context = ErrorContext(operation: "saveChanges", databaseType: databaseType)
+            operationError = ErrorClassifier.classify(error, context: context)
+            return false
+        }
+
+        switch writeGate.submit(batch, under: safeModeLevel) {
         case .blocked:
             return false
         case .awaitConfirmation:
             pendingWriteConfirmation = true
             return false
-        case .run(let statement):
-            return await execute(sql: statement, session: session)
+        case .run(let batch):
+            return await execute(batch)
         }
     }
 
     func executePendingSave() async -> Bool {
         pendingWriteConfirmation = false
-        let confirmed = writeGate.confirm(under: safeModeLevel)
-        guard let session, let confirmed else { return false }
-        return await execute(sql: confirmed, session: session)
+        guard let confirmed = writeGate.confirm(under: safeModeLevel) else { return false }
+        return await execute(confirmed)
     }
 
-    private func execute(sql: String, session: ConnectionSession) async -> Bool {
+    private func execute(_ batch: RowWriteBatch) async -> Bool {
         isSaving = true
         defer { isSaving = false }
         let rowIndex = currentIndex
@@ -405,7 +433,7 @@ final class RowDetailViewModel {
 
         let affected: Int
         do {
-            affected = try await session.driver.executeWrite([sql])
+            affected = try await batch.run()
         } catch {
             let context = ErrorContext(operation: "saveChanges", databaseType: databaseType)
             operationError = ErrorClassifier.classify(error, context: context)
@@ -445,7 +473,8 @@ final class RowDetailViewModel {
     // The server can store other text than was sent: jsonb drops duplicate keys and reorders the rest. MySQL also
     // counts only changed rows, so this read, not the affected count, tells a missing row from an unchanged one.
     private func storedCells(at columnIndices: [Int], inRow rowIndex: Int) async throws -> [Int: Cell]? {
-        guard let loadFullValueProvider, let table, let pkValues = primaryKeyValues(at: rowIndex) else { return nil }
+        guard rowIdentity == .keyColumns, let loadFullValueProvider, let table,
+              let pkValues = primaryKeyValues(at: rowIndex) else { return nil }
         let keys = pkValues.map { PrimaryKeyComponent(column: $0.column, value: $0.value) }
         var stored: [Int: Cell] = [:]
         for index in columnIndices {

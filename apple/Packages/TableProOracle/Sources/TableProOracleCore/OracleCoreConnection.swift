@@ -587,7 +587,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
 
     private func recordSuccess(of role: OracleTransactionRole, on session: Int) async {
         var answer: Bool?
-        if role == .dataDefinition, holdsTransaction {
+        if role == .dataDefinition || role == .procedural, holdsTransaction {
             answer = await serverHoldsTransaction()
         }
         let serverHoldsTransaction = answer
