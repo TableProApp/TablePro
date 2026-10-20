@@ -857,7 +857,7 @@ extension PluginMetadataRegistry {
                             placeholder: "/path/to/ca-cert.pem",
                             section: .advanced
                         )
-                    ],
+                    ] + cassandraConsistencyFields(),
                     category: .wideColumn,
                     tagline: String(localized: "Distributed wide-column store")
                 )
@@ -903,7 +903,7 @@ extension PluginMetadataRegistry {
                             placeholder: "/path/to/ca-cert.pem",
                             section: .advanced
                         )
-                    ],
+                    ] + cassandraConsistencyFields(),
                     category: .wideColumn,
                     tagline: String(localized: "C++ rewrite of Cassandra, faster")
                 )
@@ -1152,4 +1152,26 @@ extension PluginMetadataRegistry {
             + weaviatePluginDefaults() + hanaPluginDefaults() + firebasePluginDefaults() + bigtablePluginDefaults()
     }
     // swiftlint:enable function_body_length
+}
+
+// Kept identical to CassandraConsistency.connectionFields in the plugin. ScyllaDB's form shows this list even once the
+// plugin is loaded (registerVariant).
+private func cassandraConsistencyFields() -> [ConnectionField] {
+    let levels = ["LOCAL_ONE", "ONE", "TWO", "THREE", "QUORUM", "LOCAL_QUORUM", "EACH_QUORUM", "ALL", "ANY"]
+    let serialLevels = ["SERIAL", "LOCAL_SERIAL"]
+    let unset = ConnectionField.DropdownOption(value: "", label: String(localized: "Default"))
+    return [
+        ConnectionField(
+            id: "cassandraConsistency",
+            label: String(localized: "Consistency"),
+            fieldType: .dropdown(options: [unset] + levels.map { .init(value: $0, label: $0) }),
+            section: .advanced
+        ),
+        ConnectionField(
+            id: "cassandraSerialConsistency",
+            label: String(localized: "Serial Consistency"),
+            fieldType: .dropdown(options: [unset] + serialLevels.map { .init(value: $0, label: $0) }),
+            section: .advanced
+        ),
+    ]
 }
