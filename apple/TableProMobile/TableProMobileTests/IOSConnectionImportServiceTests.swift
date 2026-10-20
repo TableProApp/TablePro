@@ -523,7 +523,8 @@ struct IOSConnectionImportServiceTests {
             let row = try ref(of: existing.name, in: preview)
             var selection = ImportSelection.defaults(for: preview)
             selection.setSelected(true, connection: row, in: preview)
-            #expect(selection.resolve(row, as: .replace(existing.id), in: preview))
+            let replaces = selection.resolve(row, as: .replace(existing.id), in: preview)
+            #expect(replaces)
 
             _ = await apply(preview, selection)
 
