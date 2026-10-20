@@ -279,6 +279,26 @@ struct ConnectionURLFormatterTests {
         #expect(!url.contains("sslmode"))
     }
 
+    @Test("A Trino or Presto URL writes the schema after the catalog and imports back to both", arguments: [
+        DatabaseType.trino, .presto,
+    ])
+    func catalogAndSchemaRoundTrip(type: DatabaseType) throws {
+        var connection = DatabaseConnection(
+            name: "", host: "coordinator.example.com", port: 8_080, database: "hive", username: "analyst", type: type
+        )
+        connection.additionalFields["trinoSchema"] = "web"
+        let url = ConnectionURLFormatter.format(connection, password: nil, sshPassword: nil)
+        #expect(url.hasPrefix("\(type == .trino ? "trino" : "presto")://analyst@coordinator.example.com/hive/web"))
+
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse")
+            return
+        }
+        #expect(parsed.type == type)
+        #expect(parsed.database == "hive")
+        #expect(parsed.additionalFields["trinoSchema"] == "web")
+    }
+
     @Test("SSL disabled is written out where the driver would otherwise pick another mode")
     func testSSLDisabledWrittenWhereNotTheDefault() {
         let postgres = DatabaseConnection(
@@ -722,8 +742,8 @@ struct ConnectionURLFormatterTests {
 
     @Test("A socket field on an engine without a socket mode is not written")
     func socketOnOtherEngineIsNotWritten() {
-        let connection = socketConnection("/tmp/mysql.sock", type: .postgresql, host: "db.example.com", port: 5_432)
+        let connection = socketConnection("/tmp/mysql.sock", type: .redshift, host: "db.example.com", port: 5_439)
         let url = ConnectionURLFormatter.format(connection, password: nil, sshPassword: nil)
-        #expect(url == "postgresql://root@db.example.com/local")
+        #expect(url == "redshift://root@db.example.com/local")
     }
 }

@@ -43,7 +43,7 @@ internal enum DatabaseTreeMenuSpec {
         case .trigger(let ref):
             return triggerSections(ref)
         case .userType(let ref):
-            return userTypeSections(ref)
+            return userTypeSections(ref, context: context)
         case .objectKindSection(let kind):
             return objectKindSections(kind, context: context)
         case .containerObjectKindSection(let group):
@@ -282,15 +282,26 @@ internal enum DatabaseTreeMenuSpec {
         ]
     }
 
-    private static func userTypeSections(_ ref: DatabaseTreeUserTypeRef) -> [DatabaseTreeMenuSection] {
+    private static func userTypeSections(
+        _ ref: DatabaseTreeUserTypeRef,
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuSection] {
         var copies: [DatabaseTreeMenuItem] = [.command(String(localized: "Copy Name"), .copyText(ref.type.name))]
         if ref.type.qualifiedName != ref.type.name {
             copies.append(.command(String(localized: "Copy Qualified Name"), .copyText(ref.type.qualifiedName)))
         }
-        return [
+        var sections = [
             DatabaseTreeMenuSection(copies),
             DatabaseTreeMenuSection([.command(String(localized: "Show Definition"), .showObjectSource(ref.objectRef))])
         ]
+        if DatabaseObjectToolEligibility.canDropType(
+            ref.type.kind,
+            support: context.objectToolSupport,
+            isReadOnly: context.isReadOnly
+        ) {
+            sections.append(DatabaseTreeMenuSection([.command(String(localized: "Drop Type…"), .dropUserType(ref))]))
+        }
+        return sections
     }
 
     private static func redisSections(_ node: RedisKeyNode) -> [DatabaseTreeMenuSection] {

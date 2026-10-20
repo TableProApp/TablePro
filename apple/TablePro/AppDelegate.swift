@@ -163,6 +163,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task {
             await MCPServerManager.shared.stop()
+            await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

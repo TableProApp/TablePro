@@ -33,6 +33,9 @@ struct GeneralPaneView: View {
         }
         .formStyle(.grouped)
         .defaultFocus($nameFocused, true)
+        .task(id: coordinator.auth.pgpassLookup) {
+            coordinator.auth.updatePgpassStatus()
+        }
     }
 
     // MARK: - Identity
@@ -99,6 +102,9 @@ struct GeneralPaneView: View {
                 }
                 if coordinator.network.usesLocalSocket {
                     LocalSocketPathField(coordinator: coordinator)
+                    if coordinator.network.localSocketIsDirectory {
+                        portField
+                    }
                 } else {
                     hostFieldsView
                 }
@@ -113,7 +119,11 @@ struct GeneralPaneView: View {
                 Text(String(localized: "Connection"))
             } footer: {
                 if coordinator.network.usesLocalSocket {
-                    LocalSocketFooter(status: coordinator.network.localSocketFileStatus)
+                    LocalSocketFooter(
+                        status: coordinator.network.localSocketFileStatus,
+                        socketFile: coordinator.network.resolvedLocalSocketEndpoint?.socketFile,
+                        isDirectory: coordinator.network.localSocketIsDirectory
+                    )
                 } else if usesForwardSocket {
                     Text(String(localized: """
                     Host and Port are unused. The SSH tunnel forwards to the socket path set \
@@ -157,13 +167,8 @@ struct GeneralPaneView: View {
             )
             .accessibilityIdentifier("connection-form-host")
             .disabled(usesForwardSocket)
-            TextField(
-                String(localized: "Port"),
-                text: portBinding,
-                prompt: Text(defaultPortString)
-            )
-            .accessibilityIdentifier("connection-form-port")
-            .disabled(usesForwardSocket)
+            portField
+                .disabled(usesForwardSocket)
             portTLSNotice
         }
         ForEach(connectionFields, id: \.id) { field in
@@ -174,6 +179,15 @@ struct GeneralPaneView: View {
                 )
             }
         }
+    }
+
+    private var portField: some View {
+        TextField(
+            String(localized: "Port"),
+            text: portBinding,
+            prompt: Text(defaultPortString)
+        )
+        .accessibilityIdentifier("connection-form-port")
     }
 
     private var usesForwardSocket: Bool {

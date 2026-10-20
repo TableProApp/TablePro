@@ -134,7 +134,7 @@ struct CellExpressionVocabularyTests {
 
     @Test("UPDATE takes DEFAULT except where its grammar has none", arguments: [
         (DatabaseType.sqlite, false), (.libsql, false), (.turso, false), (.cloudflareD1, false),
-        (.clickhouse, false), (.databend, false), (.snowflake, false), (.trino, false),
+        (.clickhouse, false), (.databend, false), (.snowflake, false), (.trino, false), (.presto, false),
         (.cassandra, false), (.scylladb, false),
         (.postgresql, true), (.mysql, true), (.mssql, true), (.oracle, true), (.duckdb, true),
     ])

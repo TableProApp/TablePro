@@ -40,6 +40,8 @@ struct ConnectionFormEdits: Equatable {
 
     static let appManagedAdditionalFieldIDs: Set<String> = [
         "preConnectScript",
+        DatabaseConnection.postDisconnectScriptKey,
+        DatabaseConnection.scriptTimeoutSecondsKey,
         "promptForPassword",
         DatabaseConnection.connectTimeoutSecondsKey,
         DatabaseConnection.queryTimeoutSecondsKey,

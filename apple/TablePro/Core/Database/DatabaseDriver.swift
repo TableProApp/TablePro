@@ -288,6 +288,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// listed, because its `identity` is the driver's own key for finding it again.
     func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo
 
+    func generateDropTypeSQL(type: UserDefinedTypeInfo) -> String?
+
     /// Fetch every trigger in the given schema, across all its tables.
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo]
 
@@ -841,6 +843,8 @@ extension DatabaseDriver {
         return type
     }
 
+    func generateDropTypeSQL(type: UserDefinedTypeInfo) -> String? { nil }
+
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] { [] }
 
     func fetchTriggerDDL(_ trigger: TriggerInfo) async throws -> String {
@@ -981,13 +985,13 @@ enum DatabaseDriverFactory {
         )
         let credentialFields = additionalFields
         let passwordMinter = ConnectionCredentialResolver.iamPasswordMinter(for: connection, fields: credentialFields)
-        let password: String
+        let signIn: ResolvedSignIn
         if requiresHostDeadline {
-            password = try await resolvePasswordWithinDeadline(
+            signIn = try await resolvePasswordWithinDeadline(
                 deadline: deadline,
                 endpoint: timeoutEndpoint
             ) {
-                try await ConnectionCredentialResolver.resolvePassword(
+                try await ConnectionCredentialResolver.resolveSignIn(
                     for: connection,
                     fields: credentialFields,
                     override: passwordOverride,
@@ -995,7 +999,7 @@ enum DatabaseDriverFactory {
                 )
             }
         } else {
-            password = try await ConnectionCredentialResolver.resolvePassword(
+            signIn = try await ConnectionCredentialResolver.resolveSignIn(
                 for: connection,
                 fields: credentialFields,
                 override: passwordOverride,
@@ -1022,8 +1026,8 @@ enum DatabaseDriverFactory {
         let config = DriverConnectionConfig(
             host: connection.host,
             port: connection.port,
-            username: preparedConfiguration.username,
-            password: password,
+            username: signIn.username ?? preparedConfiguration.username,
+            password: signIn.password,
             database: connection.database,
             ssl: connection.transportSSLConfiguration,
             additionalFields: additionalFields,
@@ -1076,13 +1080,13 @@ enum DatabaseDriverFactory {
         return fields
     }
 
-    static func resolvePasswordWithinDeadline(
+    static func resolvePasswordWithinDeadline<Value: Sendable>(
         deadline: ConnectionDeadline,
         endpoint: ConnectionTimeoutEndpoint,
-        resolver: @escaping @MainActor @Sendable () async throws -> String
-    ) async throws -> String {
+        resolver: @escaping @MainActor @Sendable () async throws -> Value
+    ) async throws -> Value {
         try deadline.check(endpoint: endpoint)
-        let gate = ConnectionSingleResumeGate<String>()
+        let gate = ConnectionSingleResumeGate<Value>()
         let operation = Task { @MainActor in
             do {
                 gate.resume(with: .success(try await resolver()))

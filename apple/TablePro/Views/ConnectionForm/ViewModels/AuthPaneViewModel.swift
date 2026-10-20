@@ -223,17 +223,27 @@ final class AuthPaneViewModel: ObservableObject {
         }
     }
 
+    var pgpassLookup: PgpassLookup? {
+        guard usePgpass, let network = coordinator?.value?.network else { return nil }
+        let endpoint = network.pgpassEndpoint
+        return PgpassLookup(
+            host: endpoint.host,
+            port: endpoint.port,
+            database: network.database,
+            username: PgpassReader.effectiveUsername(resolvedUsername)
+        )
+    }
+
     func updatePgpassStatus() {
-        guard let coordinator = coordinator?.value else { return }
-        guard usePgpass else {
+        guard let lookup = pgpassLookup else {
             pgpassStatus = .notChecked
             return
         }
         pgpassStatus = PgpassStatus.check(
-            host: coordinator.network.resolvedHost,
-            port: coordinator.network.resolvedPort,
-            database: coordinator.network.database,
-            username: PgpassReader.effectiveUsername(resolvedUsername)
+            host: lookup.host,
+            port: lookup.port,
+            database: lookup.database,
+            username: lookup.username
         )
     }
 }

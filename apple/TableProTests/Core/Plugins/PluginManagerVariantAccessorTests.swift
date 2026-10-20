@@ -21,6 +21,21 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+private final class TrinoPluginBeforePresto: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Trino Driver"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "A Trino plugin built before it served Presto"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+    static let databaseTypeId = "Trino"
+    static let databaseDisplayName = "Trino"
+    static let iconName = "trino-icon"
+    static let defaultPort = 8_080
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
 @MainActor
 struct PluginManagerVariantAccessorTests {
     private var manager: PluginManager { PluginManager.shared }
@@ -32,6 +47,40 @@ struct PluginManagerVariantAccessorTests {
         #expect(manager.supportsCloudflareTunnel(for: .pglite) == false)
         #expect(manager.supportsSOCKSProxy(for: .pglite) == false)
         #expect(manager.supportsTunnelCommand(for: .pglite) == false)
+    }
+
+    @Test("A Trino plugin that predates Presto serves Trino, and a Presto connection asks for its update")
+    func pluginOlderThanItsVariantDoesNotServeIt() throws {
+        let pluginsDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: pluginsDir) }
+        let stale = PluginManager(builtInPluginsURL: nil, userPluginsDir: pluginsDir)
+        stale.plugins = [
+            PluginEntry(
+                id: "com.TablePro.TrinoDriver",
+                bundle: Bundle.main,
+                url: pluginsDir.appendingPathComponent("TrinoDriver.tableplugin"),
+                source: .userInstalled,
+                name: "Trino Driver",
+                version: "1.0.0",
+                pluginDescription: "",
+                capabilities: [.databaseDriver],
+                databaseTypeId: "Trino",
+                additionalTypeIds: [],
+                pluginIconName: "trino-icon",
+                defaultPort: 8_080,
+                exportFormatId: nil,
+                importFormatId: nil
+            )
+        ]
+        stale.driverPlugins["Trino"] = TrinoPluginBeforePresto()
+
+        #expect(stale.driverPlugin(for: .trino) != nil)
+        #expect(stale.driverPlugin(for: .presto) == nil)
+        guard case .outdated(let reason) = stale.driverUnavailability(for: .presto, registryManifest: nil) else {
+            Issue.record("expected .outdated, got \(stale.driverUnavailability(for: .presto, registryManifest: nil))")
+            return
+        }
+        #expect(reason.contains("Presto"))
     }
 
     @Test("PostgreSQL keeps the transports PGlite declines, so the two are genuinely distinguished")

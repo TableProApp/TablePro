@@ -466,6 +466,16 @@ class DataGridRowView: NSTableRowView {
         return item
     }
 
+    // Copy over a cell range copies the range, so the clicked cell needs a command of its own.
+    private func makeCopyCellValueItem(dataColumn: Int) -> NSMenuItem {
+        let item = NSMenuItem(
+            title: String(localized: "Copy Cell Value"), action: #selector(copyClickedCellValue(_:)), keyEquivalent: ""
+        )
+        item.representedObject = dataColumn
+        item.target = self
+        return item
+    }
+
     /// Deliberately not `menu(for:)`. The table view owns context-menu handling because it
     /// is the only level that can re-target the selection to the clicked row first; a row
     /// view answering `menuForEvent:` would swallow the event and act on the old selection.
@@ -494,6 +504,9 @@ class DataGridRowView: NSTableRowView {
         }
 
         menu.addItem(makeCopyItem(target: target))
+        if case .cell(let clickedColumn) = target {
+            menu.addItem(makeCopyCellValueItem(dataColumn: clickedColumn))
+        }
 
         let copyAsMenu = NSMenu()
 
@@ -550,12 +563,7 @@ class DataGridRowView: NSTableRowView {
             copyAsMenu.addItem(inClauseItem)
         }
 
-        /// The statements leave out the columns the server owns, which only the schema names, so the items stay away
-        /// until it has arrived, as Duplicate does.
-        if let dbType = coordinator.databaseType,
-           dbType != .mongodb && dbType != .redis,
-           coordinator.tableName != nil,
-           coordinator.tableRowsProvider().hasAuthoritativeSchema {
+        if coordinator.canCopyRowsAsInsert {
             copyAsMenu.addItem(NSMenuItem.separator())
 
             let insertItem = NSMenuItem(
@@ -565,10 +573,7 @@ class DataGridRowView: NSTableRowView {
             insertItem.target = self
             copyAsMenu.addItem(insertItem)
 
-            /// A table without a key is matched on every column, so one no match can compare leaves nothing to find
-            /// the row by.
-            let matchPolicy = coordinator.tableRowsProvider().rowMatchPolicy
-            if !coordinator.primaryKeyColumns.isEmpty || matchPolicy.excludedColumns.isEmpty {
+            if coordinator.canCopyRowsAsUpdate {
                 let updateItem = NSMenuItem(
                     title: String(localized: "UPDATE Statement(s)"),
                     action: #selector(copyAsUpdate),
@@ -790,11 +795,21 @@ class DataGridRowView: NSTableRowView {
             if let columnIndex = focusedDataColumnIndex(in: coordinator) {
                 coordinator.copyCellValue(at: rowIndex, columnIndex: columnIndex)
             } else {
-                copySelectedOrCurrentRow()
+                copySelectedOrCurrentRowInCopyFormat()
             }
         case .row, .none:
-            copySelectedOrCurrentRow()
+            copySelectedOrCurrentRowInCopyFormat()
         }
+    }
+
+    private func copySelectedOrCurrentRowInCopyFormat() {
+        guard let coordinator else { return }
+        coordinator.copyRowsInCopyFormat(at: coordinator.currentRowSelection(fallbackRow: rowIndex))
+    }
+
+    @objc private func copyClickedCellValue(_ sender: NSMenuItem) {
+        guard let coordinator, let columnIndex = sender.representedObject as? Int else { return }
+        coordinator.copyCellValue(at: rowIndex, columnIndex: columnIndex)
     }
 
     @objc private func pasteRows() {
@@ -823,6 +838,7 @@ class DataGridRowView: NSTableRowView {
 
     private func focusedDataColumnIndex(in coordinator: TableViewCoordinator) -> Int? {
         guard let tableView = coordinator.tableView as? KeyHandlingTableView,
+              !tableView.isCursorSeededByRowSelection,
               tableView.focusedRow == rowIndex,
               tableView.presentsDataColumn(at: tableView.focusedColumn) else { return nil }
         return DataGridView.dataColumnIndex(

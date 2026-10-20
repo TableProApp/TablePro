@@ -254,8 +254,8 @@ final class NetworkPaneViewModel: ObservableObject {
         if !socketPath.isEmpty {
             fields[DatabaseConnection.sshForwardUnixSocketPathKey] = socketPath
         }
-        if usesLocalSocket, let localSocket = resolvedLocalSocketPath {
-            fields[MySQLLocalSocket.fieldKey] = localSocket
+        if let localSocket = resolvedLocalSocketEndpoint {
+            fields[MySQLLocalSocket.fieldKey] = localSocket.path
         }
     }
 }

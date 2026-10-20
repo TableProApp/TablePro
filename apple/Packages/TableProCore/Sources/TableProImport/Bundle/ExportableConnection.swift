@@ -143,6 +143,7 @@ public extension ExportableConnection {
     private static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
 
     static let importBlockedAdditionalFieldKeys: Set<String> = [
+        "postdisconnectscript",
         "preconnectscript",
         "pretunnelhost",
         "pretunnelport",

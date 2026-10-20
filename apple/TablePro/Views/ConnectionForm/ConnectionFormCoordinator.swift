@@ -305,7 +305,7 @@ final class ConnectionFormCoordinator: ObservableObject {
         advanced.write(into: &fields)
 
         var resolvedHost = network.resolvedHost
-        var resolvedPort = network.resolvedPort
+        var resolvedPort = network.resolvedLocalSocketEndpoint?.port ?? network.resolvedPort
 
         // An empty list means what its placeholder shows, never the Host it hid.
         if let hostList = PluginManager.shared.additionalConnectionFields(for: network.type).endpointHostList {
@@ -317,11 +317,21 @@ final class ConnectionFormCoordinator: ObservableObject {
             resolvedPort = primary.port
         }
 
-        let trimmedScript = advanced.preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedScript.isEmpty {
-            fields.removeValue(forKey: "preConnectScript")
+        for (key, script) in [
+            ("preConnectScript", advanced.preConnectScript),
+            (DatabaseConnection.postDisconnectScriptKey, advanced.postDisconnectScript)
+        ] {
+            if script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                fields.removeValue(forKey: key)
+            } else {
+                fields[key] = script
+            }
+        }
+        if let timeout = advanced.scriptTimeoutSeconds,
+           ConnectionScriptRunner.timeoutSecondsRange.contains(timeout) {
+            fields[DatabaseConnection.scriptTimeoutSecondsKey] = String(timeout)
         } else {
-            fields["preConnectScript"] = advanced.preConnectScript
+            fields.removeValue(forKey: DatabaseConnection.scriptTimeoutSecondsKey)
         }
 
         return ConnectionFormEdits(

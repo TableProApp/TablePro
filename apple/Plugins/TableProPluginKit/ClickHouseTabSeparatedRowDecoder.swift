@@ -66,13 +66,15 @@ public struct ClickHouseTabSeparatedRowDecoder: Sendable {
             )
             return nil
         }
-        guard !line.isEmpty else { return nil }
-        return ClickHouseTabSeparatedBytes.fields(line).map(Self.cellValue)
+        guard !line.isEmpty, let types = header?.columnTypeNames else { return nil }
+        return ClickHouseTabSeparatedBytes.fields(line).enumerated().map { index, field in
+            Self.cellValue(field, columnType: index < types.count ? types[index] : "")
+        }
     }
 
-    private static func cellValue(_ field: ArraySlice<UInt8>) -> PluginCellValue {
+    private static func cellValue(_ field: ArraySlice<UInt8>, columnType: String) -> PluginCellValue {
         guard !ClickHouseTabSeparatedBytes.isNullMarker(field) else { return .null }
-        let value = ClickHouseTabSeparatedBytes.unescape(field)
+        let value = ClickHouseTabSeparatedBytes.value(field, columnType: columnType)
         guard let text = String(bytes: value, encoding: .utf8) else { return .bytes(Data(value)) }
         return .text(text)
     }

@@ -19,6 +19,17 @@ struct ClickHouseParameterBindingTests {
         #expect(bound.params["p2"] == "two")
     }
 
+    // Measured on ClickHouse 25.8: `C:\new` sent as it is arrived as `C:`, a newline and `ew`, and a raw tab was refused.
+    @Test("A text parameter is sent in the escaped form ClickHouse reads it in")
+    func textParametersAreEscaped() {
+        let bound = ClickHouseParameterBinding.bind(
+            query: "SELECT ?, ?",
+            parameters: [.text(#"C:\new\table"#), .text("a\tb\nc\rd\u{0}e")]
+        )
+        #expect(bound.params["p1"] == #"C:\\new\\table"#)
+        #expect(bound.params["p2"] == #"a\tb\nc\rd\0e"#)
+    }
+
     @Test("A null parameter keeps its slot with no value")
     func nullParameterKeepsItsSlot() {
         let bound = ClickHouseParameterBinding.bind(
