@@ -64,6 +64,14 @@ public enum SQLTokenBoundary {
         return (start + 1, start)
     }
 
+    // The analyzer's token start while the caret stays inside `name`, nil once it leaves.
+    public static func segmentStart(inside name: SQLQuotedName, in text: NSString, endingAt cursor: Int) -> Int? {
+        guard name.open < text.length, cursor > name.open, cursor <= text.length,
+              let close = closingQuote(for: text.character(at: name.open), brackets: true),
+              !contains(close, in: text, from: name.open + 1, to: cursor) else { return nil }
+        return name.close == nil ? name.open : name.open + 1
+    }
+
     private static func walkBack(in text: NSString, from caret: Int, brackets: Bool) -> Int {
         var start = caret
         while start > 0 {

@@ -4,12 +4,15 @@ import TableProSQLGrammar
 public final class SQLCompletionProvider {
     private let contextAnalyzer = SQLContextAnalyzer()
     private let catalog: (any SQLCompletionCatalog)?
-    private var grammar: SQLLexicalGrammar
+    public private(set) var grammar: SQLLexicalGrammar
     private var vocabulary: SQLCompletionVocabulary
     private var cachedFunctionItems: [SQLCompletionItem]?
     private var favoriteKeywords: [String: (name: String, query: String)] = [:]
 
     private let defaultMaxSuggestions = 20
+
+    // What a quoted name can hold: a keyword or a call typed between the quotes would be read as a name.
+    private static let nameKinds: Set<SQLCompletionKind> = [.table, .view, .column, .schema, .alias]
 
     private func maxSuggestions(for clauseType: SQLClauseType) -> Int {
         switch clauseType {
@@ -69,6 +72,9 @@ public final class SQLCompletionProvider {
         }
 
         var candidates = await getCandidates(for: context)
+        if context.quotedName != nil {
+            candidates = candidates.filter { Self.nameKinds.contains($0.kind) }
+        }
 
         if !context.prefix.isEmpty {
             candidates = filterByPrefix(candidates, prefix: context.prefix)

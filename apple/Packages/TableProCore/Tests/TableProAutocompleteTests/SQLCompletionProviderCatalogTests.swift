@@ -73,6 +73,34 @@ struct SQLCompletionProviderCatalogTests {
         #expect(session.context.isInsideString)
     }
 
+    @Test("A quoted name with a space ranks on the whole name")
+    func quotedNameRanksOnTheWholeName() async {
+        let provider = SQLCompletionProvider(
+            catalog: StubCatalog(tables: ["Details", "Order Details", "orders"], columns: [:]),
+            grammar: .engine("SQL Server"),
+            vocabulary: .generic
+        )
+        let session = await provider.completionSession(text: "SELECT * FROM [Order Det]", cursorPosition: 24)
+        #expect(session.items.first?.label == "Order Details")
+        #expect(!session.items.contains { $0.label == "Details" })
+    }
+
+    // `[ord|]` offered ORDER BY and LEFT OUTER JOIN, which an accept wrote between the brackets.
+    @Test("Inside a quoted name only names are offered")
+    func quotedNameOffersOnlyNames() async {
+        let provider = SQLCompletionProvider(
+            catalog: StubCatalog(tables: ["orders"], columns: [:]),
+            grammar: .engine("SQL Server"),
+            vocabulary: .generic
+        )
+        let quoted = await provider.completionSession(text: "SELECT * FROM [ord]", cursorPosition: 18)
+        #expect(quoted.items.contains { $0.label == "orders" })
+        #expect(!quoted.items.contains { $0.kind == .keyword })
+
+        let bare = await provider.completionSession(text: "SELECT * FROM ord", cursorPosition: 17)
+        #expect(bare.items.contains { $0.kind == .keyword })
+    }
+
     @Test("A vocabulary's statement completions replace the generic statement keywords")
     func vocabularyStatementCompletions() {
         let custom = SQLCompletionProvider(

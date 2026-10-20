@@ -1,11 +1,3 @@
-//
-//  QueryCompletionAdapter.swift
-//  TablePro
-//
-//  Bridges a per-language QueryCompletionService to TableProEditorKit's
-//  CodeSuggestionDelegate.
-//
-
 import AppKit
 import SwiftUI
 import TableProAutocomplete
@@ -19,6 +11,19 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         var candidates: [SQLCompletionItem]
         var replacementRange: NSRange
         var tokenStart: Int
+        var quotedName: QuotedName?
+    }
+
+    // Typing lands before a closed name's close, so the close keeps its distance from the end of the text.
+    private struct QuotedName {
+        let name: SQLQuotedName
+        let closeFromEnd: Int?
+    }
+
+    private struct Edit {
+        let range: NSRange
+        let text: String
+        let caret: Int
     }
 
     private struct Configuration: Equatable {
@@ -39,11 +44,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         self.service = QueryCompletionServiceFactory.make(schemaProvider: schemaProvider, databaseType: databaseType)
     }
 
-    /// Rebuilding the service drops the open completion session, so it happens only when the
-    /// inputs actually differ. The editor reconfigures on appear, on a connection change and
-    /// again when the profile resolves, and a refresh in any window of the connection bumps the
-    /// profile revision the editor's `.task(id:)` keys on: rebuilding unconditionally closed the
-    /// popup under whoever was typing.
+    // The editor reconfigures on appear, on a connection change and on every refresh, and a rebuild drops the session.
     func configure(
         schemaProvider: SQLSchemaProvider?,
         databaseType: DatabaseType?,
@@ -66,8 +67,6 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
     }
 
     #if DEBUG
-    /// Identifies the built service so a test can tell a rebuild from a no-op without reaching
-    /// for the private session state a rebuild discards.
     var serviceIdentityForTesting: ObjectIdentifier { ObjectIdentifier(service) }
 
     init(serviceForTesting service: QueryCompletionService) {
@@ -102,13 +101,12 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         guard !textView.textView.hasMarkedText() else { return nil }
 
         let liveCursorPosition = textView.cursorPositions.first ?? cursorPosition
-        let text = (textView.textView.textStorage?.string ?? "") as NSString
+        // A copy: the storage string keeps changing during the request, and the response names the prefix it ranked.
+        let text = NSString(string: textView.textView.textStorage?.string ?? "")
         let offset = liveCursorPosition.range.location
         guard offset >= 0, offset <= text.length else { return nil }
 
-        let tokenStart = service.tokenStart(in: text, endingAt: offset)
-        let prefixRange = NSRange(location: tokenStart, length: offset - tokenStart)
-        let prefix = CodeSuggestionPrefix(range: prefixRange, text: text.substring(with: prefixRange))
+        let localStart = service.tokenStart(in: text, endingAt: offset)
 
         guard let result = await service.completions(
             in: text,
@@ -118,29 +116,26 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
             return nil
         }
 
+        // The analyzer reads a quoted name whole; the local walk back stops at its last space.
+        let tokenStart = result.quotedName == nil ? localStart : result.replacementRange.location
+        let prefixRange = NSRange(location: tokenStart, length: offset - tokenStart)
         session = Session(
             candidates: result.candidates,
             replacementRange: result.replacementRange,
-            tokenStart: tokenStart
+            tokenStart: tokenStart,
+            quotedName: result.quotedName.map { name in
+                QuotedName(name: name, closeFromEnd: name.close.map { text.length - $0 })
+            }
         )
 
         return CodeSuggestionResponse(
             items: result.items.map { SQLSuggestionEntry(item: $0) },
             windowPosition: liveCursorPosition,
-            prefix: prefix
+            prefix: CodeSuggestionPrefix(range: prefixRange, text: text.substring(with: prefixRange))
         )
     }
 
-    /// Filters and ranks the open session's candidates for the token the cursor sits at the end of.
-    ///
-    /// Ranking happens here, on the keystroke, rather than on a debounced task writing to a cache:
-    /// the list handed back is the list the suggestion window shows and preselects its first row
-    /// from, so a list ordered for an earlier prefix commits the wrong item on Return. It costs no
-    /// debounce, because filtering already matches every candidate in the session and ordering the
-    /// survivors is the cheaper half.
-    ///
-    /// The survivors come from the session's own candidates rather than the previous keystroke's,
-    /// so deleting a character widens the list back out.
+    // Ranked per keystroke, not debounced: the window preselects the first row, so a stale order commits the wrong item.
     func completionOnCursorMove(
         textView: TextViewController,
         cursorPosition: CursorPosition
@@ -149,16 +144,12 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
 
         let offset = cursorPosition.range.location
         guard let text = textView.textView.textStorage?.string as NSString?,
-              offset >= 0, offset <= text.length else { return nil }
-
-        let start = service.tokenStart(in: text, endingAt: offset)
-        guard start == session.tokenStart else { return nil }
-        let length = offset - start
+              offset >= 0, offset <= text.length,
+              tokenStart(in: text, endingAt: offset, for: session) == session.tokenStart else { return nil }
+        let length = offset - session.tokenStart
         guard length > 0, length <= maximumPrefixLength else { return nil }
 
-        let prefix = text.substring(with: NSRange(location: start, length: length))
-        guard !prefix.isEmpty else { return nil }
-
+        let prefix = text.substring(with: NSRange(location: session.tokenStart, length: length))
         let ranked = service.rank(session.candidates, prefix: prefix)
         return ranked.isEmpty ? nil : ranked.map { SQLSuggestionEntry(item: $0) }
     }
@@ -177,23 +168,57 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
               let session else { return }
 
         let text = textView.textView.textStorage?.string as NSString?
-        let replaceRange = resolvedReplacementRange(
-            in: text,
-            cursor: cursorPosition?.range.location,
-            fallback: session.replacementRange
-        )
-        let resolution = SQLCompletionInsertion.resolve(for: entry.item)
+        let cursor = cursorPosition?.range.location
+        let edit = quotedNameEdit(for: entry.item, in: text, cursor: cursor, session: session)
+            ?? tokenEdit(for: entry.item, in: text, cursor: cursor, fallback: session.replacementRange)
 
-        textView.textView.replaceCharacters(in: [replaceRange], with: resolution.text)
-        textView.setCursorPositions([
-            CursorPosition(range: NSRange(location: replaceRange.location + resolution.cursorOffset, length: 0))
-        ])
+        textView.textView.replaceCharacters(in: [edit.range], with: edit.text)
+        textView.setCursorPositions([CursorPosition(range: NSRange(location: edit.caret, length: 0))])
+    }
+
+    private func tokenStart(in text: NSString, endingAt offset: Int, for session: Session) -> Int? {
+        guard let quoted = session.quotedName else { return service.tokenStart(in: text, endingAt: offset) }
+        return SQLTokenBoundary.segmentStart(inside: quoted.name, in: text, endingAt: offset)
+    }
+
+    private func tokenEdit(for item: SQLCompletionItem, in text: NSString?, cursor: Int?, fallback: NSRange) -> Edit {
+        let range = resolvedReplacementRange(in: text, cursor: cursor, fallback: fallback)
+        let resolution = SQLCompletionInsertion.resolve(for: item)
+        return Edit(range: range, text: resolution.text, caret: range.location + resolution.cursorOffset)
     }
 
     private func resolvedReplacementRange(in text: NSString?, cursor: Int?, fallback: NSRange) -> NSRange {
         guard let text, let cursor, cursor >= 0, cursor <= text.length else { return fallback }
         let start = service.tokenStart(in: text, endingAt: cursor)
         return NSRange(location: start, length: cursor - start)
+    }
+
+    // Between the quotes, close doubled and added if missing, caret past it; a qualified column replaces the quotes.
+    private func quotedNameEdit(for item: SQLCompletionItem, in text: NSString?, cursor: Int?, session: Session) -> Edit? {
+        guard let quoted = session.quotedName, let text, let cursor,
+              SQLTokenBoundary.segmentStart(inside: quoted.name, in: text, endingAt: cursor) != nil else { return nil }
+
+        let open = quoted.name.open
+        let opener = text.character(at: open)
+        let closer = opener == UInt16(UInt8(ascii: "[")) ? UInt16(UInt8(ascii: "]")) : opener
+        let close = quoted.closeFromEnd.map { text.length - $0 }.flatMap { close in
+            close >= cursor && close < text.length && text.character(at: close) == closer ? close : nil
+        }
+
+        if item.kind == .column, item.label.contains(".") {
+            let resolution = SQLCompletionInsertion.resolve(for: item)
+            let token = NSRange(location: open, length: (close.map { $0 + 1 } ?? cursor) - open)
+            return Edit(range: token, text: resolution.text, caret: open + resolution.cursorOffset)
+        }
+
+        let closeText = String(decoding: [closer], as: UTF16.self)
+        let name = item.label.replacingOccurrences(of: closeText, with: closeText + closeText)
+        let inner = NSRange(location: open + 1, length: (close ?? cursor) - open - 1)
+        return Edit(
+            range: inner,
+            text: close == nil ? name + closeText : name,
+            caret: open + 1 + (name as NSString).length + 1
+        )
     }
 }
 
