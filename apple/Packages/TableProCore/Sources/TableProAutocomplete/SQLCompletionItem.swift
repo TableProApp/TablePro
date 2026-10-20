@@ -57,6 +57,8 @@ public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
     public let caseFolding: SQLCompletionCaseFolding
     public var matchedRanges: [Range<Int>] = []
     public var fuzzyPenalty: Int = 0
+    // `o.total` names a table and a column; a column literally named `order.total` is one name.
+    public var isQualifiedReference = false
 
     public init(
         label: String,
@@ -91,6 +93,7 @@ public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
         self.caseFolding = item.caseFolding
         self.matchedRanges = item.matchedRanges
         self.fuzzyPenalty = item.fuzzyPenalty
+        self.isQualifiedReference = item.isQualifiedReference
     }
 
     /// The same suggestion, spelled differently. `filterText` and `matchedRanges` are carried over

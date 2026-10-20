@@ -205,7 +205,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
             close >= cursor && close < text.length && text.character(at: close) == closer ? close : nil
         }
 
-        if item.kind == .column, item.label.contains(".") {
+        if item.isQualifiedReference {
             let resolution = SQLCompletionInsertion.resolve(for: item)
             let token = NSRange(location: open, length: (close.map { $0 + 1 } ?? cursor) - open)
             return Edit(range: token, text: resolution.text, caret: open + resolution.cursorOffset)

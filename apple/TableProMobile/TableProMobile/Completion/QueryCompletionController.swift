@@ -377,7 +377,8 @@ final class QueryCompletionController {
             )
         }
         if let close = quoted.close {
-            if isQualifiedColumn(item, for: answer.databaseType) {
+            // `o.total` is two names, so it cannot go inside the quotes typed around one.
+            if item.isQualifiedReference {
                 let token = NSRange(location: quoted.open, length: close + 1 - quoted.open)
                 return QueryCompletionEdit(
                     range: token,
@@ -393,12 +394,6 @@ final class QueryCompletionController {
         // An opening quote with no close of its own is overwritten by the quoted name, so it is never left doubled.
         let typed = NSRange(location: quoted.open, length: NSMaxRange(answer.range) - quoted.open)
         return QueryCompletionEdit(range: typed, text: insertion.text, caret: typed.location + insertion.cursorOffset)
-    }
-
-    // `o.total` is two names, so it cannot go inside the quotes typed around one.
-    private static func isQualifiedColumn(_ item: SQLCompletionItem, for type: DatabaseType) -> Bool {
-        item.kind == .column && item.label.contains(".")
-            && item.insertText != CompletionIdentifierQuoting.quoted(item.label, for: type)
     }
 
     private static func keywordEdit(

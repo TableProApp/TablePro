@@ -126,4 +126,23 @@ struct SQLCompletionProviderCatalogTests {
         let item = session.items.first { $0.label == "'it's late'" }
         #expect(item?.insertText == "'it''s late'")
     }
+
+    @Test("A table-qualified column is marked as two names; a column whose name holds a dot is not")
+    func qualifiedReferenceIsMarked() async {
+        let provider = SQLCompletionProvider(
+            catalog: StubCatalog(
+                tables: ["orders", "customers"],
+                columns: ["orders": ["order.total"], "customers": ["id"]]
+            ),
+            grammar: .engine("PostgreSQL"),
+            vocabulary: .generic
+        )
+        let text = "SELECT * FROM orders o JOIN customers c ON "
+        let session = await provider.completionSession(text: text, cursorPosition: (text as NSString).length)
+
+        #expect(session.items.first { $0.label == "o.order.total" }?.isQualifiedReference == true)
+        #expect(session.items.first { $0.label == "c.id" }?.isQualifiedReference == true)
+        #expect(session.items.first { $0.label == "order.total" }?.isQualifiedReference == false)
+    }
 }
+

@@ -267,6 +267,17 @@ struct QueryCompletionControllerTests {
         #expect(edit.caret == 14)
     }
 
+    @Test("a column whose name holds a dot stays inside the quotes typed around it")
+    func dottedColumnInQuotes() async throws {
+        let source = ControllerColumnSource(["orders": [ColumnInfo(name: "order.total", typeName: "REAL")]])
+        let controller = controller(scope(.postgresql), source: source)
+        let text = "SELECT \"ord\" FROM orders"
+
+        _ = await suggest(controller, text, caret: 11)
+        let edit = try accept("order.total", in: text, caret: 11, with: controller)
+        #expect(applying(edit, to: text) == "SELECT \"order.total\" FROM orders")
+    }
+
     @Test("hiding keeps the bar empty until the caret moves")
     func hideUntilMoved() async {
         let controller = controller(scope(), source: ControllerColumnSource([:]))

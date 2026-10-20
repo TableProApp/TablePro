@@ -226,14 +226,16 @@ public final class SQLCompletionProvider {
                 let qualifier = ref.alias ?? ref.tableName
                 let cols = await catalog?.columnCompletionItems(for: ref.tableName, schema: ref.schema) ?? []
                 for col in cols {
-                    items.append(SQLCompletionItem(
+                    var item = SQLCompletionItem(
                         label: "\(qualifier).\(col.label)",
                         kind: .column,
                         insertText: "\(qualifier).\(col.label)",
                         detail: col.detail,
                         documentation: "Column from \(ref.tableName)",
                         sortPriority: 80
-                    ))
+                    )
+                    item.isQualifiedReference = true
+                    items.append(item)
                 }
             }
             items += SQLKeywords.operatorItems()

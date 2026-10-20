@@ -352,6 +352,30 @@ extension GlobalStateSuites {
             #expect(controller.cursorPositions.first?.range == NSRange(location: 29, length: 0))
         }
 
+        @MainActor
+        @Test("accepting a column whose name holds a dot keeps it inside the quotes")
+        func dottedColumnStaysQuoted() async throws {
+            let source = SQLSchemaProvider.ColumnMetadataSource(
+                fetchColumns: { _, _ in [TestFixtures.makeColumnInfo(name: "order.total")] },
+                fetchAllColumns: { [:] }
+            )
+            let provider = SQLSchemaProvider(metadataSource: source)
+            await provider.updateTables([TestFixtures.makeTableInfo(name: "t")])
+            let controller = EditorControllerFixture.make(string: #"SELECT "ord" FROM t"#)
+            let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .postgresql)
+            let caret = CursorPosition(range: NSRange(location: 11, length: 0))
+
+            let response = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: caret,
+                isManualTrigger: false
+            )
+            let item = try #require(response?.items.first { $0.label == "order.total" })
+            adapter.completionWindowApplyCompletion(item: item, textView: controller, cursorPosition: caret)
+
+            #expect(controller.textView.string == #"SELECT "order.total" FROM t"#)
+        }
+
         // MARK: - Helpers
 
         @MainActor
