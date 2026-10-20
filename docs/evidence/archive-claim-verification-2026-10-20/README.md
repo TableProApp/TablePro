@@ -4,6 +4,8 @@
 
 **Verification source:** BookiE Linux `8c92a24456e455899c0760f8ef8d39b2eb791b7f`. All source traces and runtime results below refer to this revision. The later changes in this contribution are documentation only. Original external repository pins remain those recorded by each archived review; no new upstream audit is claimed.
 
+The [October 21 supplement](supplement-2026-10-21.md) reconciles the subsequently added 65th archive document and its issue owners. It does not extend the runtime results below to a new source.
+
 ## Completion and scope
 
 - [x] Inventory all 64 archived Markdown documents and all four companion artifacts at the verification source.
