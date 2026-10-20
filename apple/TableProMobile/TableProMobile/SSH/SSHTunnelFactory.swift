@@ -192,7 +192,9 @@ nonisolated enum SSHTunnelFactory {
         } catch let error as SSHTunnelError {
             switch error {
             case .connectionFailed, .handshakeFailed, .authenticationFailed, .noAvailablePort,
-                 .channelOpenFailed, .tunnelClosed:
+                 .channelOpenFailed, .tunnelClosed, .negotiationFailed, .authMethodUnsupported,
+                 .securityKeyUnsupported, .passphraseRequired, .passphraseIncorrect,
+                 .additionalFactorRequired, .promptUnanswerable:
                 throw SSHTunnelError.jumpHostFailed(host: target.host, reason: error.localizedDescription)
             case .hostKeyRejected, .hostKeyUnverified, .usernameMissing, .jumpHostNeedsKey,
                  .jumpHostSharedKeyMissing, .jumpHostFailed, .jumpHostKeysUnreadable:
@@ -225,9 +227,7 @@ nonisolated enum SSHTunnelFactory {
             try await stages.authenticateNone(username: config.username)
 
         case .sshAgent, .keyboardInteractive:
-            throw SSHTunnelError.authenticationFailed(
-                "Auth method \(config.authMethod.rawValue) not supported on iOS"
-            )
+            throw SSHTunnelError.authMethodUnsupported(config.authMethod)
         }
     }
 

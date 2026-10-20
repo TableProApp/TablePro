@@ -2491,6 +2491,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Ask the SSH server's administrator to turn on a method TablePro supports." : {
+
+    },
     "Atom" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -6762,6 +6765,9 @@
         }
       }
     },
+    "Edit the connection and check the key's passphrase under Private Key." : {
+
+    },
     "Edit the connection and choose the database file again." : {
       "localizations" : {
         "ko" : {
@@ -6789,6 +6795,9 @@
           }
         }
       }
+    },
+    "Edit the connection and enter the key's passphrase under Private Key." : {
+
     },
     "Edit the connection and enter the username under SSH Server or Jump Hosts." : {
 
@@ -10056,6 +10065,9 @@
         }
       }
     },
+    "It supports these host key types: %@." : {
+
+    },
     "Its connection is not imported." : {
 
     },
@@ -13208,6 +13220,15 @@
       }
     },
     "Open Table" : {
+
+    },
+    "Open this connection in TablePro on the Mac, or edit it and choose a private key that is not on a security key." : {
+
+    },
+    "Open this connection in TablePro on the Mac, or edit it and choose Password or Private Key." : {
+
+    },
+    "Open this connection in TablePro on the Mac, which can answer this sign-in step." : {
 
     },
     "Open this connection in TablePro to check the server's SSH host key first." : {
@@ -17412,6 +17433,12 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "SSH Agent" : {
+
+    },
+    "SSH Authentication Failed" : {
+
+    },
     "SSH Host" : {
       "localizations" : {
         "ko" : {
@@ -17581,6 +17608,9 @@
           }
         }
       }
+    },
+    "SSH Sign-In Unavailable" : {
+
     },
     "SSH Tunnel" : {
       "localizations" : {
@@ -18563,6 +18593,18 @@
         }
       }
     },
+    "TablePro and the SSH server could not agree on how to encrypt the connection." : {
+
+    },
+    "TablePro and the SSH server have no cipher in common." : {
+
+    },
+    "TablePro and the SSH server have no key exchange or host key method in common." : {
+
+    },
+    "TablePro and the SSH server have no MAC algorithm in common." : {
+
+    },
     "TablePro can't open “%@”." : {
       "localizations" : {
         "ko" : {
@@ -18869,6 +18911,18 @@
     "TablePro on iPhone and iPad can't open %@ connections." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "TablePro on iPhone and iPad cannot use the SSH authentication method “%@”." : {
+
+    },
+    "TablePro supports these ciphers: %@." : {
+
+    },
+    "TablePro supports these key exchange methods: %@." : {
+
+    },
+    "TablePro supports these MAC algorithms: %@." : {
+
     },
     "TablePro will re-download every connection, group, and tag from your iCloud account. Local data on this device is not deleted." : {
       "extractionState" : "stale",
@@ -20297,6 +20351,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The passphrase for this SSH private key is incorrect." : {
+
+    },
     "The Password field is empty. Fill it in, or clear Username to sign in as the default user." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -20554,6 +20611,9 @@
         }
       }
     },
+    "The server runs %@." : {
+
+    },
     "The server sent an unexpected message and the connection was reset. Run the query again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -20698,6 +20758,21 @@
     "The socket path must start with /." : {
 
     },
+    "The SSH server accepted the first sign-in step and asks for another (%@), which TablePro on iPhone and iPad cannot complete." : {
+
+    },
+    "The SSH server asked “%@”, which TablePro on iPhone and iPad cannot answer." : {
+
+    },
+    "The SSH server did not answer in time." : {
+
+    },
+    "The SSH server does not accept a password. It accepts %@." : {
+
+    },
+    "The SSH server does not accept a private key. It accepts %@." : {
+
+    },
     "The SSH server may be unreachable or running a different protocol." : {
       "localizations" : {
         "ko" : {
@@ -20725,6 +20800,9 @@
           }
         }
       }
+    },
+    "The SSH server offers no sign-in method." : {
+
     },
     "The SSH tunnel connected but could not forward to the database port." : {
       "localizations" : {
@@ -21714,6 +21792,12 @@
           }
         }
       }
+    },
+    "This SSH private key belongs to a security key (FIDO), which TablePro on iPhone and iPad cannot sign with." : {
+
+    },
+    "This SSH private key is encrypted, and no passphrase is saved for it." : {
+
     },
     "This table has no foreign key relationships." : {
       "localizations" : {

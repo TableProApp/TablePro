@@ -9,20 +9,23 @@
 # against this container, and the probe keeps them measured.
 #
 # Usage:
-#   sftp-test-server.sh up       # start it, wait until it answers
+#   sftp-test-server.sh up       # start it, wait until sshd sends its banner
 #   sftp-test-server.sh down     # remove it
-#   sftp-test-server.sh status   # report whether it is listening
+#   sftp-test-server.sh status   # report whether sshd answers
 #
 # The probe connects to 127.0.0.1:22022 and reads no environment variable, so it needs the
 # default TABLEPRO_SFTP_TEST_PORT.
 
 set -euo pipefail
 
+# shellcheck source=lib/openssh-fixture.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/openssh-fixture.sh"
+
 CONTAINER="${TABLEPRO_SFTP_TEST_CONTAINER:-tp-sftp-it}"
 PORT="${TABLEPRO_SFTP_TEST_PORT:-22022}"
 USERNAME="tp"
 PASSWORD="tppass"
-IMAGE="lscr.io/linuxserver/openssh-server:latest"
+IMAGE="$OPENSSH_FIXTURE_IMAGE_10"
 
 usage() {
     awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "${BASH_SOURCE[0]}"
@@ -30,7 +33,7 @@ usage() {
 }
 
 listening() {
-    nc -z -w 2 127.0.0.1 "$PORT" > /dev/null 2>&1
+    openssh_banner 127.0.0.1 "$PORT" > /dev/null
 }
 
 case "${1:-}" in
@@ -39,28 +42,25 @@ case "${1:-}" in
             echo "sftp test server already listening on 127.0.0.1:$PORT"
             exit 0
         fi
-        docker rm -f "$CONTAINER" > /dev/null 2>&1 || true
+        docker rm -f -v "$CONTAINER" > /dev/null 2>&1 || true
         docker run -d --name "$CONTAINER" \
-            -p "$PORT:2222" \
+            -p "127.0.0.1:$PORT:2222" \
             -e USER_NAME="$USERNAME" \
             -e USER_PASSWORD="$PASSWORD" \
             -e PASSWORD_ACCESS=true \
             -e SUDO_ACCESS=false \
             "$IMAGE" > /dev/null
 
-        for _ in $(seq 1 60); do
-            if listening; then
-                echo "sftp test server listening on 127.0.0.1:$PORT as $USERNAME"
-                exit 0
-            fi
-            sleep 1
-        done
-        echo "sftp test server did not start within 60s" >&2
+        if openssh_wait_for_banner 127.0.0.1 "$PORT" 60; then
+            echo "sftp test server listening on 127.0.0.1:$PORT as $USERNAME"
+            exit 0
+        fi
+        echo "sftp test server sent no SSH banner within 60s" >&2
         docker logs "$CONTAINER" 2>&1 | tail -20 >&2
         exit 1
         ;;
     down)
-        docker rm -f "$CONTAINER" > /dev/null 2>&1 || true
+        docker rm -f -v "$CONTAINER" > /dev/null 2>&1 || true
         echo "removed $CONTAINER"
         ;;
     status)

@@ -78,7 +78,7 @@ struct SSHTunnelFactoryTests {
     func unsupportedAuthMethodDiscards() async {
         let stages = SpyTunnelStages()
 
-        await #expect(throws: SSHTunnelError.self) {
+        await #expect(throws: SSHTunnelError.authMethodUnsupported(.keyboardInteractive)) {
             try await Self.create(stages: stages, authMethod: .keyboardInteractive)
         }
 
@@ -339,6 +339,38 @@ struct SSHTunnelFactoryTests {
         let stages = SpyTunnelStages(failingAt: .authenticatePrivateKey, with: refusal)
 
         await #expect(throws: SSHTunnelError.jumpHostFailed(host: Self.bastion.host, reason: refusal.localizedDescription)) {
+            try await Self.create(
+                stages: stages,
+                authMethod: .password,
+                jumpHosts: [Self.bastion],
+                jumpHostCredentials: [Self.bastion.id: .privateKey(key: "HOP KEY", passphrase: nil)]
+            )
+        }
+
+        #expect(stages.discardCount == 1)
+    }
+
+    @Test(
+        "A named failure at a hop names the hop and keeps its words",
+        arguments: zip(
+            [SpyTunnelStages.Step.handshake, .authenticatePrivateKey, .authenticatePrivateKey, .authenticatePrivateKey],
+            [
+                SSHTunnelError.negotiationFailed(SSHNegotiationFailure(
+                    stage: .keyExchangeOrHostKey,
+                    serverSoftware: "OpenSSH_10.3",
+                    supported: ["curve25519-sha256"],
+                    supportedHostKeys: ["ssh-ed25519"]
+                )),
+                .passphraseIncorrect,
+                .securityKeyUnsupported,
+                .additionalFactorRequired(["keyboard-interactive"]),
+            ]
+        )
+    )
+    func namedHopFailureNamesTheHop(step: SpyTunnelStages.Step, failure: SSHTunnelError) async {
+        let stages = SpyTunnelStages(failingAt: step, with: failure)
+
+        await #expect(throws: SSHTunnelError.jumpHostFailed(host: Self.bastion.host, reason: failure.localizedDescription)) {
             try await Self.create(
                 stages: stages,
                 authMethod: .password,
