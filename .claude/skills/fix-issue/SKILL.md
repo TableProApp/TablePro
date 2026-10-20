@@ -1,10 +1,10 @@
 ---
 name: fix-issue
 description: >-
-  Take a TablePro problem from report to one open pull request: read the GitHub issue,
+  Take a TablePro problem from report to an open pull request: read the GitHub issue,
   discussion, user feedback, screen recording or plain description, find the real cause, fix it
-  together with every related defect the investigation proves, verify it, open one PR for all of
-  it, and keep that PR green through CI. Use for bugs, behavior gaps, small features and "make
+  together with every defect the investigation and review prove, verify it, open one PR for all
+  of it, and keep it green through CI. Use for bugs, behavior gaps, small features and "make
   this work the native way" requests on any TablePro app, whether phrased as "fix #1234", an issue
   or discussion URL, a pasted complaint, or a Vietnamese description ("sửa lỗi ...", "tại sao ...
   không chạy", "làm lại cho đúng native"). The repo's documented standard decides every step over
@@ -14,14 +14,14 @@ description: >-
 
 # Fix Issue
 
-One run ends in one open, green pull request that fixes the reported problem at its cause, plus every related defect the investigation proved.
+One run ends in one open, green pull request that fixes the reported problem at its cause, plus every defect the run proved.
 
 ## The standard decides
 
 The documented standard decides every step of a run: the root `AGENTS.md`, the platform guide and its area rules, this skill and its references, `RELEASING.md`, and the platform's design guidelines and documented APIs. A request is input to it, whoever makes it: the reporter, a commenter, the user or the maintainer running the skill.
 
 - **Full scope.** Fix every case the cause reaches, not only the reported one.
-- **Related defects ship too**, inside the scope boundary (Phase 1).
+- **Every proven defect ships.** What the investigation or review proves gets fixed in this run, wherever it sits, never parked in the PR body (Phase 1, What ships).
 - **Native and documented.** The mechanism the platform documents and the design guideline behind it. No hack, no custom reimplementation, no quick patch in place of the real fix.
 - **A proposed fix is input, not the spec.** When research shows a different mechanism is correct, build that and say why.
 - **A request never overrides a rule.** When one conflicts, follow the rule and name it in one line. Changing a rule is its own docs pull request, never an exception made inside a run.
@@ -38,7 +38,7 @@ TablePro is one native app per platform, each with its own code, toolchain, base
 Pick the platform from the report: the issue's Platform field, a `platform-*` label, the operating system the reporter names, or the app the user means. Ask when the report does not say. Then read the one profile whose Covers section matches. It gives the base branch, the guide that defines done, the native standard, the verify steps and how to capture the screen. It names two more files, each read only when needed: `references/research-<name>.md` for the research lane, and `references/verification-<name>.md` when a verdict or a red check needs reading.
 
 - **No profile, no run.** A platform with no profile in this checkout cannot be fixed from it: say so and stop. The same goes for a value the profile leaves empty. Never borrow another platform's base branch, commands or guidelines.
-- **One run per app.** The same problem in two apps is two runs: the code, the base branch and the pull request are separate.
+- **One pull request per run.** A defect the run proves in another app ships in the same pull request, verified with that app's profile as well; every profile's pull request base is `main`. The same problem in two apps is one run.
 - `verify.sh` runs the steps of the machine's own platform unless `--platform <name>` names another.
 
 ## Autonomy
@@ -68,7 +68,10 @@ Answer three questions. Full mode gives each to a lane (`references/lanes.md`).
 - **Correct behavior** (`research`, skipped for purely internal logic). For UI, the design guideline and the documented API, checked against the platform's API ground truth and its version floor. For a driver, the dependency's own source at the version we ship. For a new feature or a changed interaction, also comparable clients. Sources: the profile's research file.
 - **Related defects** (`hunt`). What else is broken in the code this change touches, and where else the same cause or pattern lives. Only defects with a concrete failure scenario count.
 
-**Scope boundary.** A verified defect ships in this PR when it sits in code the change touches, or shares its root cause or pattern, anywhere in the platform's code. A pre-existing defect outside that code goes under the PR's "Not in this PR" heading with its evidence, unfixed, and so does the same defect in another platform's app.
+**What ships.** Every verified defect ships, wherever it sits: in code the change touches, in code that shares its cause or pattern, or in code a lane or reviewer walked past. So does every gap a lane finds in the behavior the report asks for. All of it ships in this run's one PR, another app's code included (Platform), and so does a defect found after the PR opened, while it is still open. There is no "Not in this PR" list.
+
+- **A trade-off is not a reason to leave a defect.** When every fix seems to break something else, keep looking for the design that holds both; when none exists, it is a product decision: ask (Autonomy).
+- **Only a forbidden step is left for the user**: a library or plugin publish, a CloudKit schema deploy, a tag (Autonomy). Build and verify everything up to it, and name the step in the PR body under "Needs the maintainer".
 
 **Verify each related defect before it enters scope**: read the cited code, check nothing upstream prevents the failure, check the path is reachable. In Full mode one `verify` lane takes the whole list.
 
@@ -81,7 +84,7 @@ Write `<tree>/.analysis/<slug>/plan.md`, under 80 lines, opening with a progress
 - the root cause, as a mechanism;
 - **refactor or patch**, with the reason: refactor when the current shape cannot express the correct behavior without a special case, the bug comes from a wrong model, or a patch leaves the same class of bug alive; patch when the design is sound and the mistake is local;
 - the design: the API or pattern, its ownership boundary, the design guideline;
-- the scope as a checklist: files in order, blast-radius cases, each verified related defect with `file:line`;
+- the scope as a checklist: files in order, blast-radius cases, each verified defect with `file:line` and the app whose PR it ships in;
 - the tests that fail before the fix, in the targets the profile's Done section says to check first;
 - the changelog fragment, docs, localization and screenshots the change needs.
 
@@ -117,7 +120,7 @@ The profile lists the platform's steps and when each runs; the guide's Every cha
 
 A model that did not write the diff reviews all of it; the harness file names the reviewer. In Full mode the first round adds an adversarial pass on the design. Add a security pass when the change touches credentials, SQL construction, query execution, plugin loading, MCP or AI permissions, or sync, and any pass the profile names.
 
-Fix what is real and inside the scope boundary without asking. A real finding about pre-existing behavior outside it goes under "Not in this PR". Re-verify, review again, and stop after three rounds; what is still open goes under "Not in this PR".
+Fix every real finding without asking, pre-existing behavior included (Phase 1, What ships). Re-verify and review again until a round finds nothing real. When a fourth round still finds new defects in this change's own code, the design is wrong: go back to Phase 2.
 
 ## Phase 6: Ship
 
@@ -140,4 +143,4 @@ Stop after two rounds of CI fixes. Never merge the PR.
 
 ## Phase 8: Report
 
-At most eight lines, in the user's language: the PR link first, what it fixes (the issue and each bundled defect, one line each at most), the root cause in one sentence, the CI state, who reviewed it, and what is left open or needs the user.
+At most eight lines, in the user's language: the PR link first, what it fixes (the issue and each bundled defect, one line each at most), the root cause in one sentence, the CI state, who reviewed it, and any step that needs the maintainer.

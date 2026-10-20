@@ -22,6 +22,27 @@ struct BottomSafeAreaBarLayoutTests {
         #expect(hit.map { !$0.isDescendant(of: tabBar) } ?? false)
     }
 
+    @Test("A pushed detail screen's bar sits under the screen's own bar and above the tab bar, and both clear its rows")
+    func pushedScreenBarStacksUnderItsOwnBar() throws {
+        guard UIDevice.current.userInterfaceIdiom == .phone else { return }
+        let probe = LayoutProbe()
+        let host = try HostedTree(probe: probe, variant: .pushedScreenBars)
+        defer { host.tearDown() }
+
+        let tabBar = try host.settledTabBar()
+        let marker = probe.markerFrame
+        let screenBar = probe.screenBarFrame
+
+        #expect(probe.reachedPushedScreen)
+        #expect(!marker.isEmpty)
+        #expect(!screenBar.isEmpty)
+        #expect(!marker.intersects(tabBar.convert(tabBar.bounds, to: host.window)))
+        #expect(screenBar.maxY <= marker.minY + 0.5)
+        #expect(probe.listInsets.bottom >= host.window.bounds.maxY - screenBar.minY - 0.5)
+        let hit = host.window.hitTest(CGPoint(x: marker.midX, y: marker.midY), with: nil)
+        #expect(hit.map { !$0.isDescendant(of: tabBar) } ?? false)
+    }
+
     @Test("A hidden bar leaves no blank strip above the tab bar")
     func emptyBarAddsNoInset() throws {
         guard UIDevice.current.userInterfaceIdiom == .phone else { return }
@@ -42,7 +63,9 @@ struct BottomSafeAreaBarLayoutTests {
 @MainActor
 private final class LayoutProbe {
     var markerFrame: CGRect = .zero
+    var screenBarFrame: CGRect = .zero
     var listInsets = EdgeInsets()
+    var reachedPushedScreen = false
 }
 
 private struct UnsettledLayout: Error, CustomStringConvertible {
@@ -55,6 +78,7 @@ private struct HostedTree {
         case bar
         case emptyBar
         case noBar
+        case pushedScreenBars
     }
 
     private static let layoutTurns = 300
@@ -143,16 +167,41 @@ private struct ProbeTabs: View {
     var body: some View {
         TabView {
             Tab("Tables", systemImage: "tablecells") {
-                NavigationStack {
-                    content
-                        .navigationTitle("Rows")
-                }
+                tables
             }
             Tab("Query", systemImage: "terminal") {
                 Text(verbatim: "Query")
             }
         }
         .tabViewStyle(.sidebarAdaptable)
+    }
+
+    // The app's Tables tab: a row screen with its own bar is pushed in the detail column and carries the bar too.
+    @ViewBuilder
+    private var tables: some View {
+        if variant == .pushedScreenBars {
+            NavigationSplitView(preferredCompactColumn: .constant(.detail)) {
+                List {
+                    Text(verbatim: "albums")
+                }
+            } detail: {
+                NavigationStack(path: .constant([0])) {
+                    Text(verbatim: "Rows")
+                        .navigationDestination(for: Int.self) { _ in
+                            rows
+                                .bottomSafeAreaBar { screenBar }
+                                .bottomSafeAreaBar { marker }
+                                .navigationTitle("Row")
+                                .onAppear { probe.reachedPushedScreen = true }
+                        }
+                }
+            }
+        } else {
+            NavigationStack {
+                content
+                    .navigationTitle("Rows")
+            }
+        }
     }
 
     @ViewBuilder
@@ -166,7 +215,7 @@ private struct ProbeTabs: View {
                     marker
                 }
             }
-        case .noBar:
+        case .noBar, .pushedScreenBars:
             rows
         }
     }
@@ -190,6 +239,17 @@ private struct ProbeTabs: View {
                 proxy.frame(in: .global)
             } action: { frame in
                 probe.markerFrame = frame
+            }
+    }
+
+    private var screenBar: some View {
+        Color.blue
+            .frame(height: 44)
+            .frame(maxWidth: .infinity)
+            .onGeometryChange(for: CGRect.self) { proxy in
+                proxy.frame(in: .global)
+            } action: { frame in
+                probe.screenBarFrame = frame
             }
     }
 }

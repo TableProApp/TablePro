@@ -50,7 +50,8 @@ struct AppStateFixture {
         syncEnabled: Bool,
         secureStore: any SecureStore = MockSecureStore(),
         libraryPublisher: ConnectionLibraryPublisher? = nil,
-        transport: any IOSSyncTransport = UnreachableSyncTransport()
+        transport: any IOSSyncTransport = UnreachableSyncTransport(),
+        driverFactory: (any DriverFactory)? = nil
     ) -> AppState {
         let coordinator = IOSSyncCoordinator(
             metadata: metadata,
@@ -74,7 +75,8 @@ struct AppStateFixture {
                 searchIndex: RecordingSearchIndex(),
                 writeWidgetItems: { _ in },
                 refreshShortcutParameters: {}
-            )
+            ),
+            driverFactory: driverFactory
         )
     }
 

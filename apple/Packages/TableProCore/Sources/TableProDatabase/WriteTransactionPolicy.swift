@@ -8,9 +8,10 @@ public enum WriteTransactionPolicy {
     ) -> Bool {
         guard supportsTransactions else { return false }
         switch state {
-        case .idle, .implicitTransaction:
+        case .idle:
             return true
-        case .explicitTransaction:
+        // MySQL's START TRANSACTION commits the work an autocommit-off session holds, so the write joins it.
+        case .explicitTransaction, .implicitTransaction, .abortedTransaction:
             return false
         case .unknown:
             return statementCount > 1

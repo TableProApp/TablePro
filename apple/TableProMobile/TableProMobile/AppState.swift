@@ -30,6 +30,8 @@ final class AppState {
     private(set) var sampleResetRevision = 0
     let onboarding: OnboardingPreferences
     let connectionManager: ConnectionManager
+    let sessionTransactions: SessionTransactionMonitor
+    let sessionRedialer: SessionRedialer
     let backgroundRelease: BackgroundReleaseCoordinator
     let queryActivities = QueryActivityController()
     let syncCoordinator: IOSSyncCoordinator
@@ -58,7 +60,8 @@ final class AppState {
         sampleInstaller: SampleDatabaseInstaller = .live,
         localDatabaseFiles: LocalDatabaseFileLocator = .live,
         bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
-        libraryPublisher: ConnectionLibraryPublisher? = nil
+        libraryPublisher: ConnectionLibraryPublisher? = nil,
+        driverFactory injectedDriverFactory: (any DriverFactory)? = nil
     ) {
         self.sampleInstaller = sampleInstaller
         self.libraryPublisher = libraryPublisher ?? .live()
@@ -72,7 +75,8 @@ final class AppState {
         savedQueries = SavedQueryLibrary(directory: libraryDirectory, syncCoordinator: syncCoordinator)
         groupStorage = GroupPersistence(directory: libraryDirectory)
         tagStorage = TagPersistence(directory: libraryDirectory)
-        let driverFactory = IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localDatabaseFiles)
+        let driverFactory: any DriverFactory = injectedDriverFactory
+            ?? IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localDatabaseFiles)
         self.secureStore = secureStore
         let sshProvider = IOSSSHProvider(secureStore: secureStore, container: localDatabaseFiles.container)
         self.sshProvider = sshProvider
@@ -82,6 +86,16 @@ final class AppState {
             sshProvider: sshProvider
         )
         self.connectionManager = connectionManager
+        let sessionTransactions = SessionTransactionMonitor { [connectionManager] id in
+            connectionManager.session(for: id)?.driver
+        }
+        self.sessionTransactions = sessionTransactions
+        connectionManager.observeSessionEnds { [weak sessionTransactions] id, driver in
+            Task { @MainActor in
+                sessionTransactions?.sessionEnded(id, driver: driver)
+            }
+        }
+        self.sessionRedialer = SessionRedialer(connectionManager: connectionManager)
         self.backgroundRelease = BackgroundReleaseCoordinator(connectionManager: connectionManager)
         loadPersistedData()
         savedQueries.syncsOwner = { [weak self] id in

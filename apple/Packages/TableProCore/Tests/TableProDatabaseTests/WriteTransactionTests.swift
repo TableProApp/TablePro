@@ -111,7 +111,7 @@ private final class ProtocolDefaultDriver: DatabaseDriver, @unchecked Sendable {
 struct WriteTransactionPolicyTests {
     @Test("A driver without transactions never opens one")
     func withoutTransactions() {
-        for state in [DriverTransactionState.idle, .explicitTransaction, .implicitTransaction, .unknown] {
+        for state in [DriverTransactionState.idle, .explicitTransaction, .implicitTransaction, .abortedTransaction, .unknown] {
             for count in 1...2 {
                 #expect(
                     WriteTransactionPolicy.opensTransaction(
@@ -128,17 +128,31 @@ struct WriteTransactionPolicyTests {
         #expect(WriteTransactionPolicy.opensTransaction(supportsTransactions: true, state: .idle, statementCount: 2))
     }
 
-    @Test("A transaction the server opened because autocommit is off still wraps and commits")
-    func implicitTransactionWraps() {
+    @Test("A transaction the server opened because autocommit is off is joined, since a BEGIN would commit it")
+    func implicitTransactionIsJoined() {
         #expect(
             WriteTransactionPolicy.opensTransaction(
                 supportsTransactions: true, state: .implicitTransaction, statementCount: 1
-            )
+            ) == false
         )
         #expect(
             WriteTransactionPolicy.opensTransaction(
                 supportsTransactions: true, state: .implicitTransaction, statementCount: 2
-            )
+            ) == false
+        )
+    }
+
+    @Test("A transaction a failed statement aborted is joined, so the server's refusal reaches the caller")
+    func abortedTransactionIsJoined() {
+        #expect(
+            WriteTransactionPolicy.opensTransaction(
+                supportsTransactions: true, state: .abortedTransaction, statementCount: 1
+            ) == false
+        )
+        #expect(
+            WriteTransactionPolicy.opensTransaction(
+                supportsTransactions: true, state: .abortedTransaction, statementCount: 2
+            ) == false
         )
     }
 
@@ -192,14 +206,27 @@ struct DatabaseDriverWriteTests {
         #expect(driver.events == [.execute("UPDATE t SET v = 1")])
     }
 
-    @Test("A session with autocommit off is wrapped and committed")
-    func implicitTransactionWraps() async throws {
+    @Test("A session with autocommit off runs the batch inside the work it holds, with no BEGIN or COMMIT")
+    func implicitTransactionIsJoined() async throws {
         let driver = RecordingWriteDriver()
         driver.scriptedState = .implicitTransaction
 
-        _ = try await driver.executeWrite(["UPDATE t SET v = 1"])
+        _ = try await driver.executeWrite(["INSERT a", "INSERT b"])
 
-        #expect(driver.events == [.begin(.readWrite), .execute("UPDATE t SET v = 1"), .commit])
+        #expect(driver.events == [.execute("INSERT a"), .execute("INSERT b")])
+    }
+
+    @Test("A session in an aborted transaction sends the statement bare and leaves the rollback to the user")
+    func abortedTransactionIsJoined() async throws {
+        let driver = RecordingWriteDriver()
+        driver.scriptedState = .abortedTransaction
+        driver.failingStatement = "UPDATE t SET v = 1"
+
+        await #expect(throws: WriteFailure.self) {
+            _ = try await driver.executeWrite(["UPDATE t SET v = 1"])
+        }
+
+        #expect(driver.events == [.execute("UPDATE t SET v = 1")])
     }
 
     @Test("An unknown state leaves a single statement bare and wraps a batch")
