@@ -97,10 +97,11 @@ public final class ConnectionManager: @unchecked Sendable {
                 effectiveConnection.sslConfiguration = nil
             }
 
+            let preTunnelHost = tunnelId == nil ? nil : connection.host
             let driver = try driverFactory.createDriver(
                 for: effectiveConnection,
                 password: password,
-                preTunnelHost: tunnelId == nil ? nil : connection.host
+                preTunnelHost: preTunnelHost
             )
             try await driver.connect()
 
@@ -111,7 +112,7 @@ public final class ConnectionManager: @unchecked Sendable {
                 status: .connected
             )
             // As the session dialed: through the tunnel's port, with its TLS and verify-host overrides.
-            let dial = SessionDial(connection: effectiveConnection)
+            let dial = SessionDial(saved: connection, effective: effectiveConnection, preTunnelHost: preTunnelHost)
             guard adoptSession(session, dial: dial, for: connection.id, generation: generation) else {
                 if let tunnelId, let provider = sshProvider {
                     try? await provider.closeTunnel(id: tunnelId)
@@ -319,7 +320,7 @@ public final class ConnectionManager: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard let dial = dials[connectionId] else { return false }
-        return driverFactory.opensCatalogConnections(for: dial.connection)
+        return driverFactory.opensCatalogConnections(for: dial.effective)
     }
 
     // Nil when there is no catalog connection, or it stopped answering and was dropped: the caller reads elsewhere.
@@ -347,7 +348,7 @@ public final class ConnectionManager: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard let session = sessions[connectionId], let dial = dials[connectionId],
-              driverFactory.opensCatalogConnections(for: dial.connection) else {
+              driverFactory.opensCatalogConnections(for: dial.effective) else {
             return nil
         }
         let key = CatalogKey(session: ObjectIdentifier(session.driver), database: database)
@@ -394,12 +395,14 @@ public final class ConnectionManager: @unchecked Sendable {
         factory: DriverFactory,
         secureStore: SecureStore
     ) async throws -> any DatabaseDriver {
-        var target = dial.connection
+        var target = dial.effective
         if !database.isEmpty {
             target.database = database
         }
-        let password = try secureStore.retrieve(forKey: passwordKey(for: dial.connection.id))
-        let driver = try factory.createDriver(for: target, password: password)
+        // An IAM token is minted for the saved host and expires, so each catalog connection gets its own.
+        let stored = try secureStore.retrieve(forKey: passwordKey(for: dial.saved.id))
+        let password = try await factory.resolvePassword(for: dial.saved, stored: stored, secureStore: secureStore)
+        let driver = try factory.createDriver(for: target, password: password, preTunnelHost: dial.preTunnelHost)
         try await driver.connect()
         do {
             try await factory.prepareCatalogDriver(driver, for: target)
@@ -540,7 +543,9 @@ private final class ConnectionTeardown: @unchecked Sendable {
 
 // The host and port are the tunnel's local end when SSH is on, so a catalog connection reuses the tunnel.
 private struct SessionDial: Sendable {
-    let connection: DatabaseConnection
+    let saved: DatabaseConnection
+    let effective: DatabaseConnection
+    let preTunnelHost: String?
 }
 
 private struct CatalogKey: Equatable, Sendable {

@@ -157,7 +157,9 @@ nonisolated final class IOSDriverFactory: DriverFactory {
             return OracleDriver(connection: connection, password: password)
         case .clickhouse:
             return PluginBackedDriver(
-                plugin: ClickHousePluginDriver(config: pluginConfig(for: connection, password: password, ssl: try ssl(for: connection))),
+                plugin: ClickHousePluginDriver(config: pluginConfig(
+                    for: connection, password: password, ssl: try ssl(for: connection, serverName: preTunnelHost)
+                )),
                 dialedHosts: [connection.host],
                 queryTimeoutSeconds: connection.queryTimeoutSeconds,
                 rowChangeSuffix: Self.clickHouseWaitsForMutation,
