@@ -9,6 +9,7 @@ Native database clients that share no code: `apple/` holds the macOS and iOS app
 - `.claude/`: the path-scoped rules and the `fix-issue` and `release` skills, which Codex sees through `.agents/skills/`.
 - `scripts/`: `banned-words.txt` with `check-banned-words.sh`, the PR title and changed-path checks in `scripts/ci`, and the towncrier pin in `scripts/release`.
 - `appcast.xml`: the legacy feed apps up to 0.81 read from `main` (`apple/RELEASING.md`, Channels).
+- `.oss-scanner/`: the build image and threat model for Anthropic's OSS Scanner. Renaming a TableProCore target that `.oss-scanner/swift/Package.swift` lists updates it there too.
 - Docs site: TableProApp/docs, cloned beside this repo as `../tablepro-docs`, under its own `AGENTS.md`.
 
 ## Principles
