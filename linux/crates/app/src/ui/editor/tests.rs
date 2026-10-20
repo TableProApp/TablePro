@@ -352,7 +352,8 @@ fn an_open_transaction_marks_the_tab() {
     assert_eq!(changes.take(), [true]);
 }
 
-const OPENS_A_TRANSACTION: &str = "BEGIN; UPDATE t SET a = 1";
+// With a WHERE clause, so Safe Mode runs it without asking.
+const OPENS_A_TRANSACTION: &str = "BEGIN; UPDATE t SET a = 1 WHERE id = 1";
 
 /// The script opens a transaction, and COMMIT or ROLLBACK ends it.
 fn transaction_runs() -> Replies<FakeRun> {
