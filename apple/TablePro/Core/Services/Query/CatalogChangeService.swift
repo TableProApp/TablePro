@@ -217,7 +217,7 @@ final class CatalogChangeService {
     /// transaction ends, and the statement that ends it may run on a different driver of the same
     /// connection than the one that ran the DDL. Remembering which transaction held catalog changes
     /// cannot tell those drivers apart, so every transaction end refreshes the objects and schemas.
-    private static let transactionEndKinds: CatalogObjectKinds = [.objects, .schemas]
+    private static let transactionEndKinds: SQLCatalogObjectKinds = [.objects, .schemas]
 
     private static func change(for container: DatabaseContainerRef, connectionId: UUID) -> CatalogChange {
         switch container.kind {

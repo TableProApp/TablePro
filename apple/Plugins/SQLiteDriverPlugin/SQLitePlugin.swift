@@ -7,6 +7,7 @@ import CSQLite
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLVocabulary
 
 final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "SQLite Driver"
@@ -83,36 +84,35 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
             "REPLACE", "ABORT", "FAIL", "IGNORE", "ROLLBACK",
             "TEMP", "TEMPORARY", "VACUUM", "EXPLAIN", "QUERY", "PLAN"
         ],
-        functions: [
-            "COUNT", "SUM", "AVG", "MAX", "MIN", "GROUP_CONCAT", "TOTAL",
-            "LENGTH", "SUBSTR", "SUBSTRING", "LOWER", "UPPER", "TRIM", "LTRIM", "RTRIM",
-            "REPLACE", "INSTR", "PRINTF",
-            "DATE", "TIME", "DATETIME", "JULIANDAY", "STRFTIME",
-            "ABS", "ROUND", "RANDOM",
-            "CAST", "TYPEOF",
-            "COALESCE", "IFNULL", "NULLIF", "HEX", "QUOTE"
-        ],
-        dataTypes: [
-            "INTEGER", "REAL", "TEXT", "BLOB", "NUMERIC",
-            "INT", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT",
-            "UNSIGNED", "BIG", "INT2", "INT8",
-            "CHARACTER", "VARCHAR", "VARYING", "NCHAR", "NATIVE",
-            "NVARCHAR", "CLOB",
-            "DOUBLE", "PRECISION", "FLOAT",
-            "DECIMAL", "BOOLEAN", "DATE", "DATETIME"
-        ],
-        tableOptions: [
-            "WITHOUT ROWID", "STRICT"
-        ],
+        functions: SQLEngineVocabulary.sqlite.functions,
+        dataTypes: SQLEngineVocabulary.sqlite.dataTypes,
+        tableOptions: SQLEngineVocabulary.sqlite.tableOptions,
         regexSyntax: .unsupported,
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
         paginationStyle: .limit,
-        caseSensitivityStyle: .collationDefined
+        caseSensitivityStyle: .collationDefined,
+        operators: SQLEngineVocabulary.sqlite.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
+        textCastTypeName: nil,
+        functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlite.functionNamesAreCaseInsensitive
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         SQLitePluginDriver(config: config)
+    }
+}
+
+private extension SQLOperatorDescriptor {
+    init?(vocabulary entry: SQLEngineVocabulary.Operator) {
+        guard let category = Category(rawValue: entry.category),
+              let placement = Placement(rawValue: entry.placement) else { return nil }
+        self.init(
+            symbol: entry.symbol,
+            summary: entry.summary,
+            category: category,
+            placement: placement,
+            appliesToTypes: entry.appliesToTypes
+        )
     }
 }
 

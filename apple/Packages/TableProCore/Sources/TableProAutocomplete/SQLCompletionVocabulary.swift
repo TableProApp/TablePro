@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLVocabulary
 
 public struct SQLCompletionVocabulary: Sendable {
     public struct Operator: Sendable, Hashable {
@@ -48,4 +49,17 @@ public struct SQLCompletionVocabulary: Sendable {
     }
 
     public static let generic = SQLCompletionVocabulary()
+
+    public static func curated(forDatabaseTypeId typeId: String) -> SQLCompletionVocabulary {
+        guard let engine = SQLEngineVocabulary.curated(forDatabaseTypeId: typeId) else { return .generic }
+        return SQLCompletionVocabulary(
+            functions: engine.functions,
+            functionNamesAreCaseInsensitive: engine.functionNamesAreCaseInsensitive,
+            operators: engine.operators.map {
+                Operator(symbol: $0.symbol, summary: $0.summary, appliesToTypes: $0.appliesToTypes)
+            },
+            dataTypes: engine.dataTypes,
+            tableOptions: engine.tableOptions
+        )
+    }
 }
