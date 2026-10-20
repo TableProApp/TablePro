@@ -399,6 +399,7 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("scripts/tests/test_check_crate_boundaries.py", exclusions)
         self.assertIn("scripts/tests/test_gtk_runner.py", exclusions)
         self.assertIn("scripts/tests/test_arch_candidate.py", exclusions)
+        self.assertIn("scripts/tests/test_csv_import_chooser.py", exclusions)
         self.assertIn("scripts/tests/test_update_third_party_notices.py", exclusions)
 
     def test_sonar_excludes_app_pinning_test_support_from_coverage(self):
