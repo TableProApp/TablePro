@@ -2,11 +2,17 @@ import Foundation
 @testable import TableProMobile
 import TableProModels
 import TableProQuery
+import TableProSQLGrammar
 import Testing
 
 struct QueryTextInsertionTests {
-    private func added(_ query: String, to text: String, _ type: DatabaseType = .postgresql) -> (String, NSRange) {
-        let edit = QueryTextInsertion.edit(adding: query, to: text, databaseType: type)
+    private func added(
+        _ query: String,
+        to text: String,
+        _ type: DatabaseType = .postgresql,
+        session: SQLSessionLexicalFacts? = nil
+    ) -> (String, NSRange) {
+        let edit = QueryTextInsertion.edit(adding: query, to: text, databaseType: type, session: session)
         return (QueryTextInsertion.applying(edit, to: text), edit.selection)
     }
 
@@ -82,6 +88,40 @@ struct QueryTextInsertionTests {
         #expect(string == "SELECT 2;\n\nSELECT 'abc")
         #expect(caretAfterString == NSRange(location: 9, length: 0))
         #expect(comment == "SELECT 2;\n\nSELECT 1; /* draft")
+    }
+
+    @Test("A comment after the last statement does not move the query to the front")
+    func trailingCommentStillAppends() {
+        let (text, _) = added("SELECT 2", to: "SELECT 1; -- note")
+        #expect(text == "SELECT 1; -- note\n\nSELECT 2;")
+    }
+
+    @Test("An unfinished PL/SQL block gets the query in front of it")
+    func openBlockGetsTheQueryFirst() {
+        let (text, _) = added("SELECT 1 FROM dual", to: "BEGIN NULL;", .oracle)
+        #expect(text == "SELECT 1 FROM dual;\n\nBEGIN NULL;")
+    }
+
+    @Test("The session's reading of backslashes decides whether the text ends inside a string")
+    func sessionDecidesAnOpenString() {
+        let escapes = SQLSessionLexicalFacts(
+            determined: .backslashEscapesInSingleQuotes,
+            enabled: .backslashEscapesInSingleQuotes
+        )
+        let (plain, _) = added("SELECT 2", to: "SELECT 'draft\\'")
+        let (escaped, _) = added("SELECT 2", to: "SELECT 'draft\\'", session: escapes)
+
+        #expect(plain == "SELECT 'draft\\'\n;\n\nSELECT 2;")
+        #expect(escaped == "SELECT 2;\n\nSELECT 'draft\\'")
+    }
+
+    @Test("A Redis draft ending in an open quote or a backslash gets the command in front of it")
+    func redisOpenArgumentGetsTheCommandFirst() {
+        let (quote, _) = added("GET other", to: "GET \"key", .redis)
+        let (backslash, _) = added("GET other", to: "GET key\\", .redis)
+
+        #expect(quote == "GET other\nGET \"key")
+        #expect(backslash == "GET other\nGET key\\")
     }
 
     @Test("A history entry of several statements is selected, so Run runs all of it")

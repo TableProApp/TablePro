@@ -21,6 +21,8 @@ final class CatalogChangeBoard {
     @ObservationIgnored private var entries: [UUID: [Entry]] = [:]
     private var temporary: [UUID: SessionTables] = [:]
     private var movedSessions: [UUID: ObjectIdentifier] = [:]
+    @ObservationIgnored private var sessionReads: [UUID: Int] = [:]
+    @ObservationIgnored private var sessionReadWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
 
     func generation(for connectionId: UUID) -> Int {
         generations[connectionId, default: 0]
@@ -63,5 +65,27 @@ final class CatalogChangeBoard {
 
     func noteSessionDatabaseSwitched(for connectionId: UUID) {
         movedSessions[connectionId] = nil
+    }
+
+    // A list reload that reads the session runs more than one statement, and a run started between them would have
+    // its stream ended by the next one, so a run waits for it.
+    func beginSessionRead(for connectionId: UUID) {
+        sessionReads[connectionId, default: 0] += 1
+    }
+
+    func endSessionRead(for connectionId: UUID) {
+        let left = sessionReads[connectionId, default: 1] - 1
+        sessionReads[connectionId] = left > 0 ? left : nil
+        guard left <= 0 else { return }
+        for waiter in sessionReadWaiters.removeValue(forKey: connectionId) ?? [] {
+            waiter.resume()
+        }
+    }
+
+    // Checked again on each wake, so the caller holds the main actor from the last check into its own work.
+    func sessionReadsFinished(for connectionId: UUID) async {
+        while sessionReads[connectionId, default: 0] > 0 {
+            await withCheckedContinuation { sessionReadWaiters[connectionId, default: []].append($0) }
+        }
     }
 }

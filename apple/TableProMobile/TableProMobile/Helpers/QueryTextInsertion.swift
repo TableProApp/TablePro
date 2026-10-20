@@ -12,7 +12,12 @@ nonisolated enum QueryTextInsertion {
         let selection: NSRange
     }
 
-    static func edit(adding query: String, to text: String, databaseType: DatabaseType) -> Edit {
+    static func edit(
+        adding query: String,
+        to text: String,
+        databaseType: DatabaseType,
+        session: SQLSessionLexicalFacts? = nil
+    ) -> Edit {
         let source = text as NSString
         // Redis-aware: a backslash there escapes a trailing blank that belongs to the last argument.
         let added = databaseType == .redis
@@ -24,26 +29,23 @@ nonisolated enum QueryTextInsertion {
         }
 
         let end = NSRange(location: source.length, length: 0)
+        let start = NSRange(location: 0, length: 0)
         let opensLine = text.hasSuffix("\n") || text.hasSuffix("\r")
         guard databaseType.speaksSQL else {
             let inserted = (opensLine ? "" : "\n") + added
-            return Edit(range: end, text: inserted, selection: caret(after: inserted, at: source.length))
+            let appended = Edit(range: end, text: inserted, selection: caret(after: inserted, at: source.length))
+            // An open quote or a trailing backslash carries the last command on into the added one.
+            guard databaseType == .redis, !redisCommandStandsAlone(appended, in: text) else { return appended }
+            return Edit(range: start, text: added + "\n", selection: caret(after: added, at: 0))
         }
 
         let grammar = SQLLexicalReadings.resolve(
-            databaseTypeId: databaseType.rawValue, declared: nil, session: nil
+            databaseTypeId: databaseType.rawValue, declared: nil, session: session
         ).execution
         let statement = terminated(added, grammar: grammar)
         let length = (statement as NSString).length
         // SQL Server needs a batch line: a CREATE PROCEDURE must start its batch, and one before would swallow the query.
         let batchLine = databaseType == .mssql ? "GO\n" : ""
-        // Appended, it would sit inside the string or comment the text leaves open, so it goes first instead.
-        if endsInsideOpenSpan(text, grammar: grammar) {
-            let start = NSRange(location: 0, length: 0)
-            let target = NSRange(location: 0, length: length)
-            let inserted = statement + "\n" + batchLine + "\n"
-            return Edit(range: start, text: inserted, selection: selection(of: target, statement, grammar))
-        }
         // On a line of its own, so a trailing line comment cannot swallow it.
         let closesLast = endsInOpenStatement(text, grammar: grammar) ? "\n;" : ""
         let lead: String
@@ -53,7 +55,12 @@ nonisolated enum QueryTextInsertion {
             lead = closesLast + (closesLast.isEmpty && opensLine ? "" : "\n") + batchLine + "\n"
         }
         let target = NSRange(location: source.length + (lead as NSString).length, length: length)
-        return Edit(range: end, text: lead + statement, selection: selection(of: target, statement, grammar))
+        let appended = Edit(range: end, text: lead + statement, selection: selection(of: target, statement, grammar))
+        if statementStandsAlone(appended, at: target.location, in: text, grammar: grammar) { return appended }
+        // A string, comment or procedural block the text leaves open would take it in, so it goes first instead.
+        let first = NSRange(location: 0, length: length)
+        let inserted = statement + "\n" + batchLine + "\n"
+        return Edit(range: start, text: inserted, selection: selection(of: first, statement, grammar))
     }
 
     static func applying(_ edit: Edit, to text: String) -> String {
@@ -84,9 +91,27 @@ nonisolated enum QueryTextInsertion {
         return statement + (trailingSpan(of: statement, grammar: grammar)?.kind == .lineComment ? "\n;" : ";")
     }
 
-    private static func endsInsideOpenSpan(_ text: String, grammar: SQLLexicalGrammar) -> Bool {
-        guard let span = trailingSpan(of: text, grammar: grammar) else { return false }
-        return !span.isTerminated && span.kind != .lineComment
+    // Alone when the statement holding it takes no code from the text before it; a comment there is only trivia.
+    private static func statementStandsAlone(
+        _ edit: Edit,
+        at location: Int,
+        in text: String,
+        grammar: SQLLexicalGrammar
+    ) -> Bool {
+        let result = applying(edit, to: text)
+        let holder = SQLStatementScanner.navigableStatements(in: result, grammar: grammar).first {
+            NSLocationInRange(location, $0.contentRange)
+        }
+        guard let start = holder?.contentRange.location else { return false }
+        guard start < edit.range.location else { return true }
+        let code = SQLCodeProjection.code(of: result, grammar: grammar) as NSString
+        let borrowed = code.substring(with: NSRange(location: start, length: edit.range.location - start))
+        return !StatementBlank.hasContent(borrowed)
+    }
+
+    private static func redisCommandStandsAlone(_ edit: Edit, in text: String) -> Bool {
+        guard let last = RedisCommandSplitter.commands(in: applying(edit, to: text)).last else { return false }
+        return last.range.location >= edit.range.location
     }
 
     // The comment, string or quoted name that runs to the end of the text, if any.

@@ -72,4 +72,28 @@ struct CatalogChangeBoardTests {
         board.noteSessionDatabaseSwitched(for: id)
         #expect(!board.sessionLeftCatalog(for: id, driver: ObjectIdentifier(first)))
     }
+
+    @Test("A run waits for a list reload reading the session, and goes at once when none is")
+    func runWaitsForSessionRead() async {
+        let board = CatalogChangeBoard()
+        await board.sessionReadsFinished(for: id)
+
+        board.beginSessionRead(for: id)
+        let finished = Flag()
+        let waiter = Task { @MainActor [id] in
+            await board.sessionReadsFinished(for: id)
+            finished.isSet = true
+        }
+        await Task.yield()
+        #expect(!finished.isSet)
+        board.endSessionRead(for: id)
+        await waiter.value
+        #expect(finished.isSet)
+    }
 }
+
+@MainActor
+private final class Flag {
+    var isSet = false
+}
+

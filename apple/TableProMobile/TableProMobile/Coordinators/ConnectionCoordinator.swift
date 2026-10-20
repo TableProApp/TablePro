@@ -690,9 +690,11 @@ final class ConnectionCoordinator {
             }
             // A stream on the session would end under this read, so it waits for the session to go idle.
             guard !monitor.isBusy(connection.id) else { return }
+            board.beginSessionRead(for: connection.id)
             snapshot = try? await monitor.track(connection.id, reading: true) {
                 try await Self.readCatalog(kinds, schema: schema, from: session.driver)
             }
+            board.endSessionRead(for: connection.id)
         }
         seenCatalogGeneration = generation
         guard let snapshot, place == CatalogPlace(

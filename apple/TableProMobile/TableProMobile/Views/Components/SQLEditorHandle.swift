@@ -47,7 +47,9 @@ final class SQLEditorHandle {
     @discardableResult
     func add(_ query: String) -> Bool {
         guard let databaseType, let textView, textView.window != nil else { return false }
-        let edit = QueryTextInsertion.edit(adding: query, to: textView.text ?? "", databaseType: databaseType)
+        let edit = QueryTextInsertion.edit(
+            adding: query, to: textView.text ?? "", databaseType: databaseType, session: sessionFacts
+        )
         guard let start = textView.position(from: textView.beginningOfDocument, offset: edit.range.location),
               let end = textView.position(from: start, offset: edit.range.length),
               let range = textView.textRange(from: start, to: end) else { return false }

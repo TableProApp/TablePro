@@ -150,7 +150,9 @@ struct QueryEditorView: View {
             var restored = sceneQuery ?? draft.restore(for: connectionId) ?? ""
             var selection: NSRange?
             for text in adds {
-                let edit = QueryTextInsertion.edit(adding: text, to: restored, databaseType: databaseType)
+                let edit = QueryTextInsertion.edit(
+                    adding: text, to: restored, databaseType: databaseType, session: editorHandle.sessionFacts
+                )
                 restored = QueryTextInsertion.applying(edit, to: restored)
                 selection = edit.selection
             }
@@ -329,7 +331,9 @@ struct QueryEditorView: View {
 
     private func applyAdd(_ text: String) {
         guard !editorHandle.add(text) else { return }
-        let edit = QueryTextInsertion.edit(adding: text, to: query, databaseType: databaseType)
+        let edit = QueryTextInsertion.edit(
+            adding: text, to: query, databaseType: databaseType, session: editorHandle.sessionFacts
+        )
         query = QueryTextInsertion.applying(edit, to: query)
     }
 
@@ -774,6 +778,8 @@ struct QueryEditorView: View {
 
         let progressUpdater = startActivityProgressUpdater(token: token)
 
+        // Nothing suspends between this wait and `track` marking the session busy, which keeps a new reload off it.
+        await appState.catalogChanges.sessionReadsFinished(for: connectionId)
         await coordinator.track(failed: { _ in QueryExecutionOutcome(phase: viewModel.phase) == .failed }) {
             await viewModel.run(driver: session.driver, script: script)
         }
