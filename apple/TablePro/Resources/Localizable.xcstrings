@@ -183087,6 +183087,12 @@
         }
       }
     },
+    "The driver wrote a DELETE with no WHERE clause, which would remove every row." : {
+
+    },
+    "The driver wrote an UPDATE with no WHERE clause, which would change every row." : {
+
+    },
     "The dump is copied into this database, and the change cannot be undone. If an object it holds already exists, the restore stops before copying anything." : {
       "localizations" : {
         "fr" : {
