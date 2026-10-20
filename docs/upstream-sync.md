@@ -184,9 +184,9 @@ At this checkpoint, `-J` hops ran a separate `ssh` that received none of Bookie'
 
 `3bcd8df75` found a real defect in our tree. We already emit `RenameColumn` ahead of the alter, but our alter guard still counted the name as a change, so a column whose name alone changed raised an `AlterColumn` with nothing to do. PostgreSQL and SQL Server swallowed it as `NoChange`. SQLite refused the entire save, because it refuses every alter. MySQL emitted a redundant `MODIFY COLUMN` that restates the definition from a model carrying no collation, character set or comment. Fixed with a cross-dialect regression test.
 
-`55528b854` does not apply: we have no askpass bridge. Carry it forward if the system OpenSSH transport is ever adopted in B4.
+`55528b854` now applies and is covered: BookiE has an askpass bridge (`crates/ssh/src/openssh/askpass_bridge.rs`), and `crates/ssh/src/openssh/prompt.rs` matches the host-key prompt of both OpenSSH 9 and 10, with a 9.6 prompt test beside the bridge. Rechecked 2026-10-20.
 
-One older commit deserves a separate check rather than a claim. `92aea7112 fix(core): export values at the precision their column declares` sits below the boundary, inside the 60 the sprint plan already dispositioned, under "converge serializers". That row records an intention, not a verification, so whether our exporter matches the declared precision is still unconfirmed.
+One older commit deserves a separate check rather than a claim. `92aea7112 fix(core): export values at the precision their column declares` sits below the boundary, inside the 60 the sprint plan already dispositioned, under "converge serializers". That row records an intention, not a verification, so whether our exporter matches the declared precision is still unconfirmed. The [October 20 fix review](archive/tablepro-dbx-review-2026-10-20/b-tablepro-fixes.md) settles it from source: JSON numbers and decimal scale are covered, and the remaining timestamp fraction padding difference is cosmetic.
 
 ### What we imported
 
