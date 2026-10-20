@@ -7,6 +7,14 @@ import Testing
 
 @MainActor
 struct MacOnlyImportRowTests {
+    private let fixture: AppStateFixture
+    private let appState: AppState
+
+    init() throws {
+        fixture = try AppStateFixture()
+        appState = fixture.makeState(syncEnabled: false)
+    }
+
     private func analyzed(type: String) throws -> ImportPreview {
         let settings = ExportableConnection(
             name: "Search",
@@ -20,7 +28,7 @@ struct MacOnlyImportRowTests {
         return ConnectionImportAnalyzer.analyze(
             CollectedImport(bundle: bundle, source: .file(name: "Tests.tablepro")),
             library: ImportLibrarySnapshot(),
-            environment: IOSConnectionImportService.environment()
+            environment: IOSConnectionImportService.environment(for: appState)
         )
     }
 

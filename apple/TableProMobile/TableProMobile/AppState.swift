@@ -43,6 +43,8 @@ final class AppState {
     let secureStore: any SecureStore
     let localDatabaseFiles: LocalDatabaseFileLocator
     let queryHistory: QueryHistoryStorage
+    // Outside `loadStatus`, so a saved queries file that fails to load never locks the connections.
+    let savedQueries: SavedQueryLibrary
 
     private let sampleInstaller: SampleDatabaseInstaller
     private let libraryPublisher: ConnectionLibraryPublisher
@@ -70,6 +72,7 @@ final class AppState {
         syncCoordinator = injectedSyncCoordinator ?? IOSSyncCoordinator()
         storage = ConnectionPersistence(directory: libraryDirectory)
         queryHistory = QueryHistoryStorage(directory: libraryDirectory)
+        savedQueries = SavedQueryLibrary(directory: libraryDirectory, syncCoordinator: syncCoordinator)
         groupStorage = GroupPersistence(directory: libraryDirectory)
         tagStorage = TagPersistence(directory: libraryDirectory)
         let driverFactory: any DriverFactory = injectedDriverFactory
@@ -95,6 +98,9 @@ final class AppState {
         self.sessionRedialer = SessionRedialer(connectionManager: connectionManager)
         self.backgroundRelease = BackgroundReleaseCoordinator(connectionManager: connectionManager)
         loadPersistedData()
+        savedQueries.syncsOwner = { [weak self] id in
+            self?.syncsConnection(id) ?? true
+        }
 
         guard !TestRuntime.isActive else { return }
 
@@ -105,25 +111,38 @@ final class AppState {
             }
         }
 
+        connectSync()
+    }
+
+    // Separate from init, which skips it under tests, so a test can run the wiring the app runs.
+    func connectSync() {
         syncCoordinator.onConnectionsChanged = { [weak self] merged in
-            self?.applySyncedConnections(merged)
+            self?.applySyncedConnections(merged) ?? false
         }
 
         syncCoordinator.onGroupsChanged = { [weak self] merged in
-            guard let self else { return }
-            guard merged != self.groups else { return }
-            self.persist(groups: merged)
+            guard let self else { return false }
+            guard merged != self.groups else { return true }
+            return self.persist(groups: merged, onlyIfSaved: true)
         }
 
         syncCoordinator.onTagsChanged = { [weak self] merged in
-            guard let self else { return }
-            guard merged != self.tags else { return }
-            self.persist(tags: merged)
+            guard let self else { return false }
+            guard merged != self.tags else { return true }
+            return self.persist(tags: merged, onlyIfSaved: true)
         }
 
         syncCoordinator.getCurrentState = { [weak self] in
             guard let self, self.loadStatus == .ready else { return nil }
             return (self.connections, self.groups, self.tags)
+        }
+
+        syncCoordinator.getSavedQueries = { [weak self] in
+            self?.savedQueries.syncContents
+        }
+
+        syncCoordinator.onSavedQueriesChanged = { [weak self] merged in
+            self?.savedQueries.applySynced(merged) ?? false
         }
     }
 
@@ -134,6 +153,7 @@ final class AppState {
     }
 
     func retryLoadIfFailed() {
+        savedQueries.retryLoadIfFailed()
         guard loadStatus == .failed else { return }
         Self.logger.info("Retrying persistence load after previous failure")
         loadPersistedData()
@@ -154,13 +174,16 @@ final class AppState {
         libraryPublisher.publish(connections)
     }
 
-    func applySyncedConnections(_ merged: [DatabaseConnection]) {
-        guard !refuseWriteIfNotReady() else { return }
-        guard merged != connections else { return }
+    @discardableResult
+    func applySyncedConnections(_ merged: [DatabaseConnection]) -> Bool {
+        guard !refuseWriteIfNotReady() else { return false }
+        guard merged != connections else { return true }
         let removedIds = Set(connections.map(\.id)).subtracting(merged.map(\.id))
-        persist(connections: merged)
+        guard persist(connections: merged, onlyIfSaved: true) else { return false }
         localState.purge(removedIds)
+        savedQueries.removeRecords(ofConnections: removedIds, tombstoning: false)
         publishLibrary()
+        return true
     }
 
     private func syncsConnection(_ id: UUID) -> Bool {
@@ -211,37 +234,51 @@ final class AppState {
 
     // MARK: - Persistence Bridges
 
-    private func persist(connections: [DatabaseConnection]) {
-        connectionsState = .loaded(connections)
-        pastedSSHKeysAwaitingKeychain = PastedSSHKeyMigration.keysStillHeld(
-            pastedSSHKeysAwaitingKeychain,
-            by: connections
-        )
+    // A pulled change shown but not saved would make the next equal merge report it saved and move the token past it.
+    @discardableResult
+    private func persist(connections: [DatabaseConnection], onlyIfSaved: Bool = false) -> Bool {
+        let heldKeys = PastedSSHKeyMigration.keysStillHeld(pastedSSHKeysAwaitingKeychain, by: connections)
+        var saved = true
         do {
-            try storage.save(connections, keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain)
+            try storage.save(connections, keepingPastedSSHKeys: heldKeys)
         } catch {
+            saved = false
             Self.logger.error("Failed to save connections: \(error.localizedDescription, privacy: .public)")
         }
+        guard saved || !onlyIfSaved else { return false }
+        connectionsState = .loaded(connections)
+        pastedSSHKeysAwaitingKeychain = heldKeys
         pruneLibraryPreferences()
+        return saved
     }
 
-    private func persist(groups: [ConnectionGroup]) {
-        groupsState = .loaded(groups)
+    @discardableResult
+    private func persist(groups: [ConnectionGroup], onlyIfSaved: Bool = false) -> Bool {
+        var saved = true
         do {
             try groupStorage.save(groups)
         } catch {
+            saved = false
             Self.logger.error("Failed to save groups: \(error.localizedDescription, privacy: .public)")
         }
+        guard saved || !onlyIfSaved else { return false }
+        groupsState = .loaded(groups)
         pruneLibraryPreferences()
+        return saved
     }
 
-    private func persist(tags: [ConnectionTag]) {
-        tagsState = .loaded(tags)
+    @discardableResult
+    private func persist(tags: [ConnectionTag], onlyIfSaved: Bool = false) -> Bool {
+        var saved = true
         do {
             try tagStorage.save(tags)
         } catch {
+            saved = false
             Self.logger.error("Failed to save tags: \(error.localizedDescription, privacy: .public)")
         }
+        guard saved || !onlyIfSaved else { return false }
+        tagsState = .loaded(tags)
+        return saved
     }
 
     private func pruneLibraryPreferences() {
@@ -336,6 +373,9 @@ final class AppState {
         guard !removed.isEmpty else { return }
         persist(connections: connections.filter { !ids.contains($0.id) })
         localState.purge(Set(removed.map(\.id)))
+        let syncedIds = Set(removed.filter(\.participatesInSync).map(\.id))
+        savedQueries.removeRecords(ofConnections: syncedIds, tombstoning: true)
+        savedQueries.removeRecords(ofConnections: Set(removed.map(\.id)).subtracting(syncedIds), tombstoning: false)
         publishLibrary()
         for connection in removed where connection.participatesInSync {
             syncCoordinator.markDeleted(connection.id)

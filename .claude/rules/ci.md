@@ -43,14 +43,12 @@ paths:
 ## Runners
 
 - Xcode jobs run on `xcode-27`, a GitHub preview image. `setup-xcode` pins the Xcode build.
-- Release Build runs on `mac-mini-m4pro` (`self-hosted`, `macOS`, `ARM64`, `tablepro-release`), the maintainer's Mac, as the maintainer's user. `gh variable set MAC_RUNNER --body github` moves it to `xcode-27`; `gh variable delete MAC_RUNNER` moves it back.
-- Signing, notarization and the feed stay on hosted runners.
-- Any workflow on a pushed ref can target that label: never approve a fork PR run that changes `.github/` unread.
+- Every job runs on a GitHub-hosted runner. There is no self-hosted runner.
 - At most 5 hosted macOS jobs and 20 jobs in all run at once.
 
 ## Release Build
 
-- `release-build.yml` builds and packages the app and every registry plugin as a tag does, unsigned: nightly at 19:00 UTC, Sundays at 07:00 UTC on `xcode-27`, and by dispatch. No tag waits for it.
+- `release-build.yml` builds and packages the app and every registry plugin as a tag does, unsigned, on `xcode-27`: nightly at 19:00 UTC and by dispatch. No tag waits for it.
 
 ## Summaries
 
