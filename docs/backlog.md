@@ -23,7 +23,6 @@ The [October 20 TablePro and dbx review](archive/tablepro-dbx-review-2026-10-20/
 
 | ID / issue | Defect | Lane | Acceptance focus |
 |---|---|---|---|
-| RV-1 / [#1171](https://github.com/cozyGarage/BookiE/issues/1171) | Ctrl+Enter during a running query starts a second run | UX | Keyboard run follows the Run button guard |
 | RV-2 / [#1172](https://github.com/cozyGarage/BookiE/issues/1172) | URL import drops `sslmode` and saves TLS Disabled | B4 | Storage unit cases per `sslmode`; omitted TLS options retain Disabled by maintainer decision; explicit modes survive import |
 | RV-3 / [#1173](https://github.com/cozyGarage/BookiE/issues/1173) | Missing SQLite or DuckDB file becomes a new empty database | B3 | Driver refusal on a missing path; explicit create through UX |
 | RV-4 / [#1174](https://github.com/cozyGarage/BookiE/issues/1174) | Every TLS error advises disabling TLS | B4 | Typed failure kinds; only "server has no TLS" suggests Disabled |

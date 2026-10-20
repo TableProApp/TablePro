@@ -26,7 +26,7 @@ impl SqlEditor {
     }
 
     pub(super) fn begin_run(&mut self, sql: String, single_statement: bool, sender: ComponentSender<Self>) {
-        if self.session_teardown_active {
+        if self.session_teardown_active || !self.run_generation.active.is_empty() {
             return;
         }
         let driver_id = self.metadata().map(|metadata| metadata.driver_id).unwrap_or_default();

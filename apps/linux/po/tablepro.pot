@@ -298,7 +298,7 @@ msgid "Connection closed."
 msgstr ""
 
 #: apps/linux/app/src/ui/activity_dialog.rs:111
-#: apps/linux/app/src/ui/editor/mod.rs:998
+#: apps/linux/app/src/ui/editor/mod.rs:1000
 msgid "Running…"
 msgstr ""
 
@@ -2712,8 +2712,8 @@ msgstr ""
 msgid "no active connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:1149
-#: apps/linux/app/src/ui/editor/mod.rs:1162
+#: apps/linux/app/src/ui/editor/mod.rs:1151
+#: apps/linux/app/src/ui/editor/mod.rs:1164
 msgid "query-results"
 msgstr ""
 

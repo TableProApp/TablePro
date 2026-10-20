@@ -986,7 +986,9 @@ impl SqlEditor {
             self.status.set_label(&crate::tr!("no active connection"));
             return;
         };
-        let generation = self.run_generation.start_new();
+        let Some(generation) = self.run_generation.try_start_new() else {
+            return;
+        };
 
         if let Some(prev) = self.cancel_token.take() {
             prev.cancel();

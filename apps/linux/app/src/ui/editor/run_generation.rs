@@ -12,6 +12,13 @@ pub(super) struct RunTerminal {
 }
 
 impl RunGeneration {
+    pub(super) fn try_start_new(&mut self) -> Option<u64> {
+        if !self.active.is_empty() {
+            return None;
+        }
+        Some(self.start_new())
+    }
+
     pub(super) fn start_new(&mut self) -> u64 {
         self.next = self.next.wrapping_add(1);
         self.current = Some(self.next);
@@ -33,5 +40,24 @@ impl RunGeneration {
             replace_ui,
             became_idle: self.active.is_empty(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_active_run_refuses_new_execution_until_its_terminal_outcome() {
+        let mut generations = RunGeneration::default();
+        for _ in 0..3 {
+            let running = generations.try_start_new().unwrap();
+            assert!(generations.try_start_new().is_none());
+            assert!(generations.accepts(running));
+            assert_eq!(generations.active.len(), 1);
+            let terminal = generations.finish(running).unwrap();
+            assert!(terminal.replace_ui);
+            assert!(terminal.became_idle);
+        }
     }
 }
