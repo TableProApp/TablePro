@@ -631,6 +631,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
         if dataChanged {
             reformatDisplayedText()
+        } else if previous.showInvisibleCharacters != settings.showInvisibleCharacters {
+            redrawVisibleCells()
         }
     }
 

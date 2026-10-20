@@ -2585,6 +2585,9 @@
         }
       }
     },
+    "%@ bytes" : {
+
+    },
     "%@ can only be compared with a whole number." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -3008,6 +3011,9 @@
           }
         }
       }
+    },
+    "%@ characters" : {
+
     },
     "%@ completed" : {
       "localizations" : {
@@ -12766,6 +12772,9 @@
         }
       }
     },
+    "1 byte" : {
+
+    },
     "1 cell" : {
       "localizations" : {
         "fr" : {
@@ -12775,6 +12784,9 @@
           }
         }
       }
+    },
+    "1 character" : {
+
     },
     "1 connection" : {
       "localizations" : {
@@ -35387,6 +35399,9 @@
           }
         }
       }
+    },
+    "Characters are Unicode code points. Bytes are the length in UTF-8." : {
+
     },
     "Charset" : {
       "extractionState" : "manual",
@@ -87623,6 +87638,9 @@
         }
       }
     },
+    "Holds a bidirectional control, which can change the order the text is shown in" : {
+
+    },
     "Holds a command that forwards a local port, such as kubectl port-forward." : {
       "localizations" : {
         "fr" : {
@@ -104659,6 +104677,9 @@
     "Map Pin" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Mark zero-width, control and special space characters in cells and value fields" : {
+
     },
     "Markdown" : {
       "localizations" : {

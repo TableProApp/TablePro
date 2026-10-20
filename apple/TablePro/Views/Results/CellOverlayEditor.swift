@@ -42,6 +42,7 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
         applyTheme(to: textView, scope: scope)
         textView.focusRingType = .none
         Self.applyCellTextLayout(to: textView)
+        markInvisibleCharacters(in: textView)
         textView.delegate = self
         textView.string = value
         textView.selectAll(nil)

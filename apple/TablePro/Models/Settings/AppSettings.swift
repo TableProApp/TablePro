@@ -101,6 +101,7 @@ struct DataGridSettings: Codable, Equatable {
     var truncateQueryResults: Bool
     var defaultSortBehavior: DefaultSortBehavior
     var defaultSortDirection: SortDirection
+    var showInvisibleCharacters: Bool
 
     static let `default` = DataGridSettings(
         rowHeight: .normal,
@@ -115,7 +116,8 @@ struct DataGridSettings: Codable, Equatable {
         queryResultRowCap: 10_000,
         truncateQueryResults: true,
         defaultSortBehavior: .none,
-        defaultSortDirection: .ascending
+        defaultSortDirection: .ascending,
+        showInvisibleCharacters: true
     )
 
     init(
@@ -131,7 +133,8 @@ struct DataGridSettings: Codable, Equatable {
         queryResultRowCap: Int = 10_000,
         truncateQueryResults: Bool = true,
         defaultSortBehavior: DefaultSortBehavior = .none,
-        defaultSortDirection: SortDirection = .ascending
+        defaultSortDirection: SortDirection = .ascending,
+        showInvisibleCharacters: Bool = true
     ) {
         self.rowHeight = rowHeight
         self.dateFormat = dateFormat
@@ -146,6 +149,7 @@ struct DataGridSettings: Codable, Equatable {
         self.truncateQueryResults = truncateQueryResults
         self.defaultSortBehavior = defaultSortBehavior
         self.defaultSortDirection = defaultSortDirection
+        self.showInvisibleCharacters = showInvisibleCharacters
     }
 
     init(from decoder: Decoder) throws {
@@ -169,6 +173,9 @@ struct DataGridSettings: Codable, Equatable {
         truncateQueryResults = container.decodeSetting(.truncateQueryResults, default: fallback.truncateQueryResults)
         defaultSortBehavior = container.decodeSetting(.defaultSortBehavior, default: fallback.defaultSortBehavior)
         defaultSortDirection = container.decodeSetting(.defaultSortDirection, default: fallback.defaultSortDirection)
+        showInvisibleCharacters = container.decodeSetting(
+            .showInvisibleCharacters, default: fallback.showInvisibleCharacters
+        )
     }
 
     // MARK: - Validated Properties

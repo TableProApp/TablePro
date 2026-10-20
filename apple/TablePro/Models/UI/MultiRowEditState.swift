@@ -163,6 +163,16 @@ final class MultiRowEditState: ObservableObject {
     private(set) var cellWriter: CellWriterSupport = .none
     private(set) var rowsAreInserted = false
 
+    private var revealsInvisibleCharacters: Bool
+    private var settingsCancellable: AnyCancellable?
+
+    init() {
+        revealsInvisibleCharacters = AppSettingsManager.shared.dataGrid.showInvisibleCharacters
+        settingsCancellable = AppEvents.shared.dataGridSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.adoptInvisibleCharacterSetting() }
+    }
+
     var hasEdits: Bool {
         fields.contains { $0.hasEdit }
     }
@@ -309,7 +319,8 @@ final class MultiRowEditState: ObservableObject {
                 isLongText: isLongText,
                 originalValue: originalValue,
                 displayFormatOverride: displayFormat,
-                isBinaryValue: newField.isBinaryValue
+                isBinaryValue: newField.isBinaryValue,
+                revealsInvisibleCharacters: revealsInvisibleCharacters
             )
             newFields.append(newField)
         }
@@ -340,6 +351,28 @@ final class MultiRowEditState: ObservableObject {
             }
         }
         return Set(holdsBytes.indices.filter { holdsBytes[$0] && !holdsText[$0] })
+    }
+
+    // A value holding an invisible character takes the text view only while marks are on, so a field
+    // shown when the setting changes is resolved again.
+    private func adoptInvisibleCharacterSetting() {
+        let reveals = AppSettingsManager.shared.dataGrid.showInvisibleCharacters
+        guard reveals != revealsInvisibleCharacters else { return }
+        revealsInvisibleCharacters = reveals
+        for index in fields.indices where !fields[index].isSchemaField && fields[index].editor == nil {
+            let field = fields[index]
+            let resolved = FieldEditorResolver.resolve(
+                for: field.columnTypeEnum,
+                isLongText: field.isLongText,
+                originalValue: field.originalValue,
+                displayFormatOverride: field.displayFormat,
+                isBinaryValue: field.isBinaryValue,
+                revealsInvisibleCharacters: reveals
+            )
+            if resolved != field.resolvedEditor {
+                fields[index].resolvedEditor = resolved
+            }
+        }
     }
 
     /// Configure state for a single schema row supplied by the grid that owns the selection.

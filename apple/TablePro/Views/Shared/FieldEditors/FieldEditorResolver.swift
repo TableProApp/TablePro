@@ -5,6 +5,7 @@
 import Foundation
 import TableProGeometry
 import TableProPluginKit
+import TableProTextEngine
 
 @MainActor
 internal enum FieldEditorResolver {
@@ -35,7 +36,8 @@ internal enum FieldEditorResolver {
         isLongText: Bool,
         originalValue: String?,
         displayFormatOverride: ValueDisplayFormat? = nil,
-        isBinaryValue: Bool = false
+        isBinaryValue: Bool = false,
+        revealsInvisibleCharacters: Bool = false
     ) -> FieldEditorKind {
         let structuredAllowed: Bool
         if let override = displayFormatOverride {
@@ -88,7 +90,7 @@ internal enum FieldEditorResolver {
         if BlobFormattingService.shared.requiresFormatting(columnType: type) {
             return .blobHex
         }
-        if isLongText || needsMultiLineEditor(originalValue) {
+        if isLongText || needsMultiLineEditor(originalValue, revealsInvisibleCharacters: revealsInvisibleCharacters) {
             return .multiLine
         }
         return .singleLine
@@ -191,11 +193,18 @@ internal enum FieldEditorResolver {
     /// `isLongText` only matches six exact type names, so a large value in `VARCHAR(MAX)`,
     /// `NCLOB` or ClickHouse's `Nullable(String)` never reached the multi-line editor. Whether a
     /// value belongs on one line is a property of the value, so ask the value as well.
-    static func needsMultiLineEditor(_ value: String?) -> Bool {
+    /// A one-line field cannot mark an invisible character, so a value holding one takes the text
+    /// view that can, while the marks are on.
+    static func needsMultiLineEditor(_ value: String?, revealsInvisibleCharacters: Bool = false) -> Bool {
         guard let value, !value.isEmpty else { return false }
         let text = value as NSString
         if text.length > multiLineValueThreshold { return true }
-        return text.rangeOfCharacter(from: .newlines).location != NSNotFound
+        if text.rangeOfCharacter(from: .newlines).location != NSNotFound { return true }
+        return revealsInvisibleCharacters && holdsInvisibleCharacter(text)
+    }
+
+    private static func holdsInvisibleCharacter(_ text: NSString) -> Bool {
+        (0 ..< text.length).contains { SpecialCharacter.classify(in: text, at: $0) != nil }
     }
 
     /// Two lines' worth at the inspector's minimum width. The value font is user-configurable, so how

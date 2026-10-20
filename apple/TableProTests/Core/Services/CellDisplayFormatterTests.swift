@@ -159,10 +159,10 @@ struct CellDisplayFormatterTests {
         #expect(result == "hello world")
     }
 
-    @Test("text with linebreaks is sanitized")
+    @Test("text with linebreaks is sanitized, and a lone CR stays for the cell to mark")
     func linebreaksSanitized() {
-        let result = CellDisplayFormatter.format(.text("line1\nline2\rline3"), columnType: nil)
-        #expect(result == "line1 line2 line3")
+        let result = CellDisplayFormatter.format(.text("line1\nline2\rline3\r\nline4"), columnType: nil)
+        #expect(result == "line1 line2\rline3  line4")
     }
 
     @Test("text over max length is truncated")

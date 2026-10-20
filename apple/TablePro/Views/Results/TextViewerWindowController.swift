@@ -62,6 +62,9 @@ private struct TextViewerWindowContent: View {
             isEditable: isEditable,
             textContainerInset: NSSize(width: 8, height: 10)
         )
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            ValueLengthReadout(value: text)
+        }
         .onChange(of: text) { _ in
             guard isEditable else { return }
             onCommit?(text)

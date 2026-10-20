@@ -116,6 +116,23 @@ struct FieldEditorResolverTests {
         #expect(kind == .singleLine)
     }
 
+    @Test("a short value holding an invisible character opens the text view that marks it, while marks are on")
+    func invisibleCharacterNeedsTheTextView() {
+        let type = ColumnType.text(rawType: "VARCHAR(255)")
+        for value in ["abc\u{200B}", "1\u{00A0}000", "\u{FEFF}id", "a\u{202E}b"] {
+            #expect(
+                FieldEditorResolver.resolve(for: type, isLongText: false, originalValue: value, revealsInvisibleCharacters: true)
+                    == .multiLine,
+                "\(value.unicodeScalars.map { String($0.value, radix: 16) })"
+            )
+            #expect(FieldEditorResolver.resolve(for: type, isLongText: false, originalValue: value) == .singleLine)
+        }
+        #expect(
+            FieldEditorResolver.resolve(for: type, isLongText: false, originalValue: "hello", revealsInvisibleCharacters: true)
+                == .singleLine
+        )
+    }
+
     @Test("an empty long-text column still opens the multi-line editor")
     func emptyLongTextColumnStaysMultiLine() {
         let kind = FieldEditorResolver.resolve(

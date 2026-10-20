@@ -34,6 +34,7 @@ final class CellOverlayViewer: CellOverlayBase, NSTextViewDelegate {
         textView.backgroundColor = .textBackgroundColor
         applyTheme(to: textView, scope: scope)
         Self.applyCellTextLayout(to: textView)
+        markInvisibleCharacters(in: textView)
         textView.delegate = self
         textView.string = value
         textView.selectAll(nil)

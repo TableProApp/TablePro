@@ -37,6 +37,8 @@ struct DataGridSection: View {
             Toggle("Show row numbers", isOn: $settings.showRowNumbers)
             Toggle("Auto-show inspector on row select", isOn: $settings.autoShowInspector)
             Toggle("Smart value detection", isOn: $settings.enableSmartValueDetection)
+            Toggle("Show invisible characters", isOn: $settings.showInvisibleCharacters)
+                .help(String(localized: "Mark zero-width, control and special space characters in cells and value fields"))
 
             Picker("Default row sort:", selection: $settings.defaultSortBehavior) {
                 ForEach(DefaultSortBehavior.allCases) { behavior in
