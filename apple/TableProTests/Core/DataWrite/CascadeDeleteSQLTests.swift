@@ -15,8 +15,8 @@ struct CascadeDeleteSQLTests {
         table: "orders", columns: ["customer_id"], parentColumns: ["id"], parent: customers
     )
 
-    private static func effect(_ table: String, _ kind: CascadeEffect.Kind = .delete, _ paths: [CascadeRowSet]) -> CascadeEffect {
-        CascadeEffect(table: table, kind: kind, constraints: [], paths: paths, hasUnexpressiblePath: false)
+    private static func effect(_ table: String, _ paths: [CascadeRowSet]) -> CascadeEffect {
+        CascadeEffect(table: table, kind: .delete, constraints: [], paths: paths, hasUnexpressiblePath: false)
     }
 
     @Test("A direct child selects through the parent's own column")
