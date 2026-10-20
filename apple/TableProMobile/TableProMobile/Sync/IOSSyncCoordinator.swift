@@ -912,6 +912,8 @@ final class IOSSyncCoordinator {
         guard let record = recordCache.record(for: recordID),
               let cached = SyncRecordMapper.toConnection(record)
         else { return nil }
+        // The profile's password goes to the server this copy names, so a copy that names another one takes no link.
+        guard cached.sshConfiguration?.publishedRouteInput == connection.sshConfiguration?.publishedRouteInput else { return nil }
         var adopted = connection
         adopted.sshProfileId = cached.sshProfileId
         return adopted

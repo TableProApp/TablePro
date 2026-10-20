@@ -343,9 +343,6 @@ final class ConnectionFormViewModel {
             sshKeyInputMode = .paste
         }
         loadJumpHostCredentials(for: conn, in: secureStore)
-        let iamSecrets = ConnectionIAMSecrets.stored(for: conn.id, in: secureStore)
-        iam.secrets = iamSecrets
-        storedSecrets.iam = iamSecrets
         if let profileId = conn.sshProfileId {
             for kind in SSHProfileSecretKind.allCases {
                 let account = kind.account(for: profileId)
@@ -353,6 +350,9 @@ final class ConnectionFormViewModel {
                 sshProfileSecrets[account] = value
             }
         }
+        let iamSecrets = ConnectionIAMSecrets.stored(for: conn.id, in: secureStore)
+        iam.secrets = iamSecrets
+        storedSecrets.iam = iamSecrets
         // Read first: `snapshot` reads `baseline`, which an in-place write would already hold.
         let loaded = snapshot.secrets
         baseline?.secrets = loaded

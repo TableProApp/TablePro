@@ -498,6 +498,41 @@ struct IOSConnectionImportServiceTests {
         }
     }
 
+    // The link makes this device send the Mac profile's password to whatever server the tunnel names.
+    @Test("Replacing a profile-linked connection keeps the link only when the file names the same SSH server")
+    func replaceKeepsTheProfileLinkOnlyForTheSameServer() async throws {
+        for (host, keepsLink) in [("bastion.example.com", true), ("bastion.attacker.example", false)] {
+            var existing = DatabaseConnection(
+                name: "Linked \(host)",
+                type: .postgresql,
+                host: "db.example.com",
+                port: 5_432,
+                sshEnabled: true,
+                sshConfiguration: SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy", authMethod: .password)
+            )
+            let profileId = UUID()
+            existing.sshProfileId = profileId
+            #expect(appState.addConnection(existing))
+            var ssh = tunnel(authMethod: "password")
+            ssh.host = host
+            var imported = settings(name: existing.name, host: existing.host, ssh: ssh)
+            imported.database = ""
+            imported.username = ""
+            let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: imported)])
+            let preview = try await analyzed(bundle)
+            let row = try ref(of: existing.name, in: preview)
+            var selection = ImportSelection.defaults(for: preview)
+            selection.setSelected(true, connection: row, in: preview)
+            #expect(selection.resolve(row, as: .replace(existing.id), in: preview))
+
+            _ = await apply(preview, selection)
+
+            let replaced = try #require(appState.connections.first { $0.id == existing.id })
+            #expect(replaced.sshProfileId == (keepsLink ? profileId : nil), "\(host)")
+            #expect(replaced.clearsSSHProfileLink == !keepsLink, "\(host)")
+        }
+    }
+
     private func tunnel(authMethod: String, keyPath: String = "") -> ExportableSSHConfig {
         ExportableSSHConfig(
             enabled: true, host: "bastion.example.com", port: 22, username: "deploy",

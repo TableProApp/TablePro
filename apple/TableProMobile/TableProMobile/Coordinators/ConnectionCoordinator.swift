@@ -231,9 +231,9 @@ final class ConnectionCoordinator {
         await connectFresh(token: token)
     }
 
-    /// `allowSignIn` is false on the retry that follows a sign-in, so a connection that keeps
-    /// failing cannot put the prompt up again and again. That retry dials with the new credentials
-    /// rather than join a dial another window started without them.
+    // `allowSignIn` is false on the retry that follows a sign-in, so a connection that keeps
+    // failing cannot put the prompt up again and again. That retry dials with the new credentials
+    // rather than join a dial another window started without them.
     private func connectFresh(token: UUID, allowSignIn: Bool = true) async {
         IOSAnalyticsProvider.shared.markConnectionAttempted()
 

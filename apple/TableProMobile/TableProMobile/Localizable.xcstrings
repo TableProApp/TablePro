@@ -8403,6 +8403,10 @@
         }
       }
     },
+    "ElastiCache IAM authentication requires TLS. Enable SSL in the connection's SSL settings." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Empty String" : {
       "localizations" : {
         "ko" : {
@@ -8690,6 +8694,10 @@
           }
         }
       }
+    },
+    "Enter the ElastiCache cache name (replication group ID) to use IAM authentication." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Enter the entry point the extension's documentation names." : {
       "extractionState" : "manual",
