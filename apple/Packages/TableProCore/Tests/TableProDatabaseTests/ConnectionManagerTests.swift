@@ -203,7 +203,7 @@ struct ConnectionManagerTests {
 
         let dialed = try #require(factory.receivedConnections.first)
         #expect(dialed.host == "127.0.0.1")
-        #expect(dialed.additionalFields[DatabaseConnection.preTunnelHostKey] == "db.internal")
+        #expect(factory.receivedPreTunnelHosts == ["db.internal"])
     }
 
     @Test("A direct connection carries no pre-tunnel host name")
@@ -216,8 +216,7 @@ struct ConnectionManagerTests {
         _ = try await manager.connect(connection)
         await manager.disconnect(connection.id)
 
-        let dialed = try #require(factory.receivedConnections.first)
-        #expect(dialed.additionalFields[DatabaseConnection.preTunnelHostKey] == nil)
+        #expect(factory.receivedPreTunnelHosts == [nil])
     }
 
     @Test("SSH tunnel cleanup on connect failure")

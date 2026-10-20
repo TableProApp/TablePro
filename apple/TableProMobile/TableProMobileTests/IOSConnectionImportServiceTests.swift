@@ -517,7 +517,8 @@ struct IOSConnectionImportServiceTests {
             var ssh = tunnel(authMethod: "password")
             ssh.host = host
             var imported = settings(name: existing.name, host: existing.host, ssh: ssh)
-            imported.database = ""
+            // A file equal to the stored connection offers no replace, so the same-server case changes another field.
+            imported.database = "reporting"
             imported.username = ""
             let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: imported)])
             let preview = try await analyzed(bundle)
@@ -525,11 +526,12 @@ struct IOSConnectionImportServiceTests {
             var selection = ImportSelection.defaults(for: preview)
             selection.setSelected(true, connection: row, in: preview)
             let resolved = selection.resolve(row, as: .replace(existing.id), in: preview)
-            #expect(resolved)
+            #expect(resolved, "\(host)")
 
             _ = await apply(preview, selection)
 
             let replaced = try #require(appState.connections.first { $0.id == existing.id })
+            #expect(replaced.database == "reporting", "\(host)")
             #expect(replaced.sshProfileId == (keepsLink ? profileId : nil), "\(host)")
             #expect(replaced.clearsSSHProfileLink == !keepsLink, "\(host)")
         }

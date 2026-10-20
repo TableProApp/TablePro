@@ -22,23 +22,30 @@ nonisolated enum SharedRowKey {
         } catch {
             return ErrorClassifier.classify(error, context: ErrorContext(operation: "checkRowKey", databaseType: type))
         }
-        if count == 0, isUpdate {
-            return AppError(
+        if count == 0, isUpdate { return error(for: .rowNotFound) }
+        guard count > 1 else { return nil }
+        return error(for: .identicalRows)
+    }
+
+    static func error(for refusal: RowChangeRefusal) -> AppError {
+        switch refusal {
+        case .rowNotFound:
+            AppError(
                 category: .query,
                 title: String(localized: "Row Not Found"),
                 message: CellLookupError.rowNotFound.localizedDescription,
                 recovery: String(localized: "Reload the table to see the row as it is now."),
                 underlying: CellLookupError.rowNotFound
             )
+        case .identicalRows:
+            AppError(
+                category: .query,
+                title: String(localized: "Identical Rows"),
+                message: String(localized: "Another row holds the same value in every column, so this row cannot be changed on its own. Change these rows with a query."),
+                recovery: nil,
+                underlying: nil
+            )
         }
-        guard count > 1 else { return nil }
-        return AppError(
-            category: .query,
-            title: String(localized: "Identical Rows"),
-            message: String(localized: "Another row holds the same value in every column, so this row cannot be changed on its own. Change these rows with a query."),
-            recovery: nil,
-            underlying: nil
-        )
     }
 
     static func error(

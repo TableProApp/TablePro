@@ -197,6 +197,16 @@ struct PluginBackedDriverTests {
         #expect(plugin.appliedQueryTimeouts == applied)
     }
 
+    // The plugin's own cancel stops whichever request it sent last, which can be another window's.
+    @Test("Stop leaves the plugin's driver-wide cancel alone")
+    func stopDoesNotCancelTheLatestRequest() async throws {
+        let plugin = StubPluginDriver()
+
+        try await makeDriver(plugin).cancelCurrentQuery()
+
+        #expect(plugin.cancelQueryCalls == 0)
+    }
+
     @Test("Catalog columns keep their order and key flags")
     func columnsConvert() async throws {
         let plugin = StubPluginDriver()

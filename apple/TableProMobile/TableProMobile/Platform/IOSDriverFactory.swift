@@ -173,6 +173,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 dialedHosts: [connection.host],
                 queryTimeoutSeconds: connection.queryTimeoutSeconds,
                 rowChangeSuffix: Self.clickHouseWaitsForMutation,
+                rowPin: Self.clickHouseRowPart,
                 rowIdentity: .everyColumn,
                 readsOnly: { !SQLWriteClassifier.isWriteQuery($0, databaseType: .clickhouse) }
             )
@@ -184,6 +185,11 @@ nonisolated final class IOSDriverFactory: DriverFactory {
     // A ClickHouse mutation applies in the background unless asked to wait. The row screen keeps the typed values once
     // a save returns, and a delete looks for the row right after, so both need it applied.
     static let clickHouseWaitsForMutation = " SETTINGS mutations_sync = 1"
+
+    // The lookup finds the only row holding these values, and a part never changes, so naming its part leaves out
+    // a copy inserted later. `_part_offset` would pin the row too, but a mutation filtering on it fails and stays
+    // queued before 25 (measured on 24.8: "Virtual column _part_offset must be filled by range reader").
+    static let clickHouseRowPart = ["_part"]
 
     static let supportedTypeList: [DatabaseType] = [
         .sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle,

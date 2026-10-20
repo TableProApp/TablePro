@@ -55,6 +55,12 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
 final class MockDriverFactory: DriverFactory, @unchecked Sendable {
     var drivers: [String: any DatabaseDriver] = [:]
     private(set) var receivedConnections: [DatabaseConnection] = []
+    private(set) var receivedPreTunnelHosts: [String?] = []
+
+    func createDriver(for connection: DatabaseConnection, password: String?, preTunnelHost: String?) throws -> any DatabaseDriver {
+        receivedPreTunnelHosts.append(preTunnelHost)
+        return try createDriver(for: connection, password: password)
+    }
 
     func createDriver(for connection: DatabaseConnection, password: String?) throws -> any DatabaseDriver {
         receivedConnections.append(connection)

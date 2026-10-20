@@ -417,19 +417,6 @@ final class RowDetailViewModel {
     func executePendingSave() async -> Bool {
         pendingWriteConfirmation = false
         guard let confirmed = writeGate.confirm(under: safeModeLevel) else { return false }
-        // A row matched on every value can change while the confirmation is up, and nothing after the write tells.
-        if let session, let table, let writer = session.driver as? any DriverRowWriting, let locator = currentLocator {
-            isSaving = true
-            let stale = await SharedRowKey.identicalRowsError(
-                writer: writer, table: table.name, schema: schema, locator: locator,
-                columns: columns.map(\.name), type: databaseType, isUpdate: true
-            )
-            isSaving = false
-            if let stale {
-                operationError = stale
-                return false
-            }
-        }
         return await execute(confirmed)
     }
 
@@ -447,6 +434,9 @@ final class RowDetailViewModel {
         let affected: Int
         do {
             affected = try await batch.run()
+        } catch let refusal as RowChangeRefusal {
+            operationError = SharedRowKey.error(for: refusal)
+            return false
         } catch {
             let context = ErrorContext(operation: "saveChanges", databaseType: databaseType)
             operationError = ErrorClassifier.classify(error, context: context)

@@ -554,7 +554,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
 
     // MARK: - Kill Query
 
-    private func killQuery(queryId: String) {
+    func killQuery(queryId: String) {
         lock.lock()
         let connectedSession = session
         lock.unlock()
@@ -637,13 +637,15 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             shape: .streamed(rowCap: rowCap)
         )
         request.timeoutInterval = _queryTimeout.requestTimeoutInterval
-        try await streamTabSeparatedRows(
-            request: request,
-            session: session,
-            batchSize: min(5_000, rowCap + 1),
-            boundedOutputCut: isOutputCut,
-            continuation: continuation
-        )
+        try await killingOnCancel(queryId: queryId) {
+            try await streamTabSeparatedRows(
+                request: request,
+                session: session,
+                batchSize: min(5_000, rowCap + 1),
+                boundedOutputCut: isOutputCut,
+                continuation: continuation
+            )
+        }
     }
 
     /// `TabSeparatedWithNamesAndTypes` carries the names on line one and the types on line two, so
@@ -778,12 +780,14 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             shape: .streamed(rowCap: nil)
         )
         request.timeoutInterval = _queryTimeout.requestTimeoutInterval
-        try await streamTabSeparatedRows(
-            request: request,
-            session: session,
-            batchSize: 5_000,
-            continuation: continuation
-        )
+        try await killingOnCancel(queryId: queryId) {
+            try await streamTabSeparatedRows(
+                request: request,
+                session: session,
+                batchSize: 5_000,
+                continuation: continuation
+            )
+        }
     }
 
     private func streamingContext(
