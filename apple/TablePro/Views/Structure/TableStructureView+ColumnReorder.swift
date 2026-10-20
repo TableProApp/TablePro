@@ -9,6 +9,7 @@ import Combine
 import Foundation
 import SwiftUI
 import TableProPluginKit
+import TableProSQLGrammar
 
 extension TableStructureView {
     /// Whether a column may be dragged right now, and the reason shown on the row number when not.

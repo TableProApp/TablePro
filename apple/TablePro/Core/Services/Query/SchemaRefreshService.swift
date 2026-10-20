@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Every window of a connection shares one refresh: a request for the same connection and
 /// database joins the one in flight.
