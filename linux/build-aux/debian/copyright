@@ -4416,7 +4416,7 @@ License: Apache-2.0 or Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-Files: vendor/rustls-webpki-0.103.15/*
+Files: vendor/rustls-webpki-0.103.16/*
 Copyright: 2015 Brian Smith.
 License: ISC
  Except as otherwise noted, this project is licensed under the following
@@ -5450,7 +5450,7 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
 
-Files: vendor/webpki-roots-1.0.9/*
+Files: vendor/webpki-roots-1.0.10/*
 Copyright: the authors of webpki-roots
 License: CDLA-Permissive-2.0
  # Community Data License Agreement - Permissive - Version 2.0
