@@ -137,6 +137,9 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                 }
                 var emitted = 0
                 var headerColumns: [ColumnInfo] = []
+                // Past the row cap the batch keeps running, so a later UPDATE or COMMIT in it still happens; the
+                // rows are read and dropped. Only a reader that stops aborts it.
+                var isCapped = false
                 do {
                     for try await element in coreStream {
                         if Task.isCancelled {
@@ -144,6 +147,7 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                             continuation.finish()
                             return
                         }
+                        if isCapped { continue }
                         switch element {
                         case .header(let columns):
                             headerColumns = columns.enumerated().map { idx, col in
@@ -155,7 +159,8 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                                 if emitted >= options.maxRows {
                                     continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
                                     continuation.finish()
-                                    return
+                                    isCapped = true
+                                    break
                                 }
                                 let cells = zip(headerColumns, row).map { columnInfo, rawCell in
                                     cell(from: rawCell, columnTypeName: columnInfo.typeName, options: options)
@@ -174,8 +179,8 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in
-                task.cancel()
+            continuation.onTermination = { @Sendable termination in
+                if case .cancelled = termination { task.cancel() }
             }
         }
     }
