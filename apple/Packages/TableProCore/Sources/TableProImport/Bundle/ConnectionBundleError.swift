@@ -6,6 +6,7 @@ public enum ConnectionBundleError: LocalizedError, Equatable {
     case decodingFailed(String)
     case invalidBundle(String)
     case requiresPassphrase
+    /// The passphrase does not open the file. A file that cannot be decrypted for any other reason is `decodingFailed`.
     case decryptionFailed(String)
     case encodingFailed
     case credentialsRequireEncryption
