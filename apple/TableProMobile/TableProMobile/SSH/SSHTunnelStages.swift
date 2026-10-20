@@ -375,6 +375,9 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
         }
 
         _ = fcntl(fd, F_SETFL, flags)
+        for refusal in SSHTransportKeepAlive.enable(on: fd) {
+            logger.warning("Failed to set \(refusal, privacy: .public)")
+        }
         return .connected(fd)
     }
 

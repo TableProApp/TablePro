@@ -28,6 +28,8 @@ final class AppState {
     }
 
     private(set) var sampleResetRevision = 0
+    // Bumped when a connection's SSH tunnel stops on its own, so its screen redials.
+    private(set) var tunnelDeaths: [UUID: Int] = [:]
     let onboarding: OnboardingPreferences
     let connectionManager: ConnectionManager
     let sessionTransactions: SessionTransactionMonitor
@@ -77,6 +79,11 @@ final class AppState {
         self.secureStore = secureStore
         let sshProvider = IOSSSHProvider(secureStore: secureStore, container: localDatabaseFiles.container)
         self.sshProvider = sshProvider
+        sshProvider.observeTunnelDeaths { [weak self] connectionId in
+            Task { @MainActor in
+                self?.tunnelDeaths[connectionId, default: 0] += 1
+            }
+        }
         let connectionManager = ConnectionManager(
             driverFactory: driverFactory,
             secureStore: secureStore,

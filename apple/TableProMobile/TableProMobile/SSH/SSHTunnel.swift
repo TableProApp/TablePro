@@ -35,6 +35,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     private let acceptQueue: DispatchQueue
 
     private let aliveLatch = TeardownLatch()
+    private let deathNotice = SSHTunnelDeathNotice()
 
     /// The relays still running, so teardown frees the session only once none of them can touch
     /// it. A group rather than a collection of tasks: a relay leaves it by finishing, which is the
@@ -150,9 +151,15 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
         performTeardown()
     }
 
+    // A tunnel that stops on its own, unlike close(), which its owner asked for.
+    func onDeath(_ handler: @escaping @Sendable () -> Void) {
+        deathNotice.onDeath(handler)
+    }
+
     private func markDead() {
         guard aliveLatch.claim() else { return }
         performTeardown()
+        deathNotice.died()
     }
 
     // shutdown wakes every poll on the transport but keeps the number, so no other socket can take it mid-poll.
