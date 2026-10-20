@@ -186898,6 +186898,10 @@
         }
       }
     },
+    "The server answered with HTTP %lld and no address. The coordinator never redirects, so a proxy in front of it sent this. Check the host, port and SSL Mode." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server answered with HTTP %lld and no address. Trino never redirects, so a proxy in front of it sent this. Check the host, port and SSL Mode." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -187100,6 +187104,10 @@
           }
         }
       }
+    },
+    "The server redirected the request to %@. TablePro does not follow redirects, and the coordinator never sends one, so a proxy in front of it did. Check the host, port and SSL Mode." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The server redirected the request to %@. TablePro does not follow redirects, and Trino never sends one, so a proxy in front of it did. Check the host, port and SSL Mode." : {
       "extractionState" : "manual",

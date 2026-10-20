@@ -140,7 +140,9 @@ extension TrinoPluginDriver {
     /// reads the same forgiving way.
     private func isMaterializedView(_ name: String, schema: String?) async -> Bool {
         guard let catalog = currentCatalog, let targetSchema = resolveSchema(schema) else { return false }
-        let sql = TrinoIntrospectionSQL.materializedView(catalog: catalog, schema: targetSchema, name: name)
+        let sql = TrinoIntrospectionSQL.materializedView(
+            catalog: catalog, schema: targetSchema, name: name, flavor: flavor
+        )
         guard let result = try? await execute(query: sql) else { return false }
         return !result.rows.isEmpty
     }
@@ -171,14 +173,16 @@ extension TrinoPluginDriver {
     }
 
     private func tableComment(table: String, schema: String?) async -> String? {
-        guard let catalog = currentCatalog, let targetSchema = resolveSchema(schema) else { return nil }
-        let sql = TrinoIntrospectionSQL.tableComment(catalog: catalog, schema: targetSchema, table: table)
+        guard let catalog = currentCatalog, let targetSchema = resolveSchema(schema),
+              let sql = TrinoIntrospectionSQL.tableComment(
+                  catalog: catalog, schema: targetSchema, table: table, flavor: flavor
+              ) else { return nil }
         let result = try? await execute(query: sql)
         return Self.normalizedText(text(result?.rows.first?.first))
     }
 
     private func materializedViewNames(catalog: String, schema: String) async -> Set<String> {
-        let sql = TrinoIntrospectionSQL.listMaterializedViews(catalog: catalog, schema: schema)
+        let sql = TrinoIntrospectionSQL.listMaterializedViews(catalog: catalog, schema: schema, flavor: flavor)
         guard let result = try? await execute(query: sql) else { return [] }
         return Set(result.rows.compactMap { firstText($0) })
     }

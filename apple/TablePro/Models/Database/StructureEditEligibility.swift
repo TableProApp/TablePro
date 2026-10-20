@@ -94,6 +94,11 @@ struct StructureObjectEditMatrix: Sendable, Equatable {
     /// Indexes are created and dropped in CQL, which the plugin does not write.
     static let cassandra = StructureObjectEditMatrix([.table: [.addColumn, .dropColumn]])
 
+    /// What the Trino plugin writes for a column, minus `COMMENT ON`, which Presto's grammar does not have.
+    static let presto = StructureObjectEditMatrix([
+        .table: [.addColumn, .dropColumn, .renameColumn, .changeColumnType]
+    ])
+
     /// Measured against PostgreSQL 17.11, one statement per cell. A table and a partitioned table
     /// take all seventeen. A view and a materialized view differ on `SET DEFAULT` and on
     /// `CREATE INDEX`, which is why one row per kind is the only shape that works. A foreign table

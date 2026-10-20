@@ -28,6 +28,16 @@ struct ConnectionURLParserJDBCTests {
         #expect(parsed.sslModeResolution == SSLModeResolution(mode: .verifyIdentity, origin: .impliedByPort))
     }
 
+    @Test("presto and jdbc:presto import as Presto, with Presto JDBC's port 443 rule")
+    func prestoImports() throws {
+        let parsed = try parse("jdbc:presto://presto.example.com:443/hive")
+        #expect(parsed.type == .presto)
+        #expect(parsed.host == "presto.example.com")
+        #expect(parsed.database == "hive")
+        #expect(parsed.sslModeResolution == SSLModeResolution(mode: .verifyIdentity, origin: .impliedByPort))
+        #expect(try parse("presto://analyst@presto.example.com:8080/hive").type == .presto)
+    }
+
     @Test("jdbc: in front of a registered scheme is dropped, whatever its case")
     func jdbcPrefixIsDropped() throws {
         #expect(try parse("jdbc:postgresql://localhost:5433/app").type == .postgresql)

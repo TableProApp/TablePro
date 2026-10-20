@@ -491,6 +491,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         reverseTypeIndex["PGlite"] = "PostgreSQL"
         reverseTypeIndex["ScyllaDB"] = "Cassandra"
         reverseTypeIndex["Turso"] = "libSQL"
+        reverseTypeIndex["Presto"] = "Trino"
         reverseTypeIndex["Firebase Realtime Database"] = "Firestore"
     }
 

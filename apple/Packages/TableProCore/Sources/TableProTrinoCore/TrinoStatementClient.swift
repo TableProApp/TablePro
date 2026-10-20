@@ -97,7 +97,7 @@ public final class TrinoStatementClient: @unchecked Sendable {
         onPage: ([[TrinoValue]]) -> Void
     ) async throws -> StatementOutcome {
         guard let statementURL = config.statementURL else {
-            throw TrinoError.invalidConfiguration("Invalid Trino server URL")
+            throw TrinoError.invalidConfiguration("Invalid \(config.flavor.productName) server URL")
         }
         if let credential = config.plaintextCredential {
             throw TrinoError.credentialsRequireTLS(credential)
@@ -263,7 +263,7 @@ public final class TrinoStatementClient: @unchecked Sendable {
         do {
             return try JSONDecoder().decode(TrinoQueryResults.self, from: response.body)
         } catch {
-            throw TrinoError.invalidResponse("Could not decode the Trino response")
+            throw TrinoError.invalidResponse("Could not decode the \(config.flavor.productName) response")
         }
     }
 
@@ -322,7 +322,9 @@ public final class TrinoStatementClient: @unchecked Sendable {
         if !config.clientTags.isEmpty {
             headers[protocolHeaders.clientTags] = config.clientTags.joined(separator: ",")
         }
-        headers[protocolHeaders.clientCapabilities] = "PARAMETRIC_DATETIME"
+        if let capabilities = config.flavor.clientCapabilities {
+            headers[protocolHeaders.clientCapabilities] = capabilities
+        }
         headers["Content-Type"] = "text/plain; charset=utf-8"
         if let authorization = config.authorizationHeader {
             headers["Authorization"] = authorization
@@ -340,11 +342,11 @@ public final class TrinoStatementClient: @unchecked Sendable {
 
     private func followURL(_ uri: String) throws -> URL {
         guard let url = URL(string: uri) else {
-            throw TrinoError.invalidResponse("Trino returned an invalid nextUri")
+            throw TrinoError.invalidResponse("\(config.flavor.productName) returned an invalid nextUri")
         }
         guard config.useTLS, url.scheme?.lowercased() != "https" else { return url }
         throw TrinoError.invalidResponse(
-            "Trino answered an HTTPS request with a plain http:// address, so it was not followed. "
+            "\(config.flavor.productName) answered an HTTPS request with a plain http:// address, so it was not followed. "
                 + "A coordinator behind a TLS proxy needs http-server.process-forwarded=true."
         )
     }
