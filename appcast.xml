@@ -6,6 +6,50 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.83.0-beta.1</title>
+            <pubDate>Tue, 20 Oct 2026 05:21:17 +0000</pubDate>
+            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>830001</sparkle:version>
+            <sparkle:shortVersionString>0.83.0-beta.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.83.0-beta.1
+
+### Added
+
+- Facet picker in result charts that draws one chart per value of a column, with shared axes and one legend. ([#3593](https://github.com/TableProApp/TablePro/pull/3593))
+
+### Changed
+
+- Editable inspector values and the binary dump sit in the same value well as read-only values in every theme. ([#3582](https://github.com/TableProApp/TablePro/pull/3582))
+- The sidebar lists an object section only when the schema holds something of that kind. ([#3592](https://github.com/TableProApp/TablePro/pull/3592))
+
+### Fixed
+
+- A dead-key quote in the SQL editor inserted three quotes, or deleted the closing quote when cancelled. ([#3579](https://github.com/TableProApp/TablePro/pull/3579))
+- Undo after an accented or input method character left part of it behind or replayed each keystroke. ([#3579](https://github.com/TableProApp/TablePro/pull/3579))
+- Double, triple or Shift-clicking while composing input method text deleted that text. ([#3579](https://github.com/TableProApp/TablePro/pull/3579))
+- Editable values in the row inspector and array editor ignored the theme and drew a system box. ([#3582](https://github.com/TableProApp/TablePro/pull/3582))
+- The row inspector's field area drew a gray surface that ignored the theme instead of the inspector's own background. ([#3590](https://github.com/TableProApp/TablePro/pull/3590))
+- Line numbers in a read-only code view, such as EXPLAIN Raw, no longer draw over the toolbar above it. ([#3591](https://github.com/TableProApp/TablePro/pull/3591))
+- Result chart pickers went blank when their column was missing from the new result. ([#3593](https://github.com/TableProApp/TablePro/pull/3593))
+- Result chart series changed color, symbol and dash when the rows were sorted or paged. ([#3593](https://github.com/TableProApp/TablePro/pull/3593))
+- Result chart toolbar kept the previous result's notices after switching to a result with no numeric column. ([#3593](https://github.com/TableProApp/TablePro/pull/3593))
+- Result charts and maps blanked to a spinner on every refresh, sort or page turn. ([#3593](https://github.com/TableProApp/TablePro/pull/3593))
+- Result chart labels were blank for empty text, and a NULL series merged with a literal "No value" series. ([#3593](https://github.com/TableProApp/TablePro/pull/3593))
+- Filter bar suggesting the fields of a same-named collection in another database. ([#3595](https://github.com/TableProApp/TablePro/pull/3595))
+- Table Info missing after opening a table, until the inspector was switched to the assistant and back. ([#3595](https://github.com/TableProApp/TablePro/pull/3595))
+- Table Info showing a same-named table's numbers from another schema, or going empty after a rename. ([#3595](https://github.com/TableProApp/TablePro/pull/3595))
+- Table Info keeping the old comment after Edit Comment. ([#3595](https://github.com/TableProApp/TablePro/pull/3595))
+- In Dark, a read-only code view no longer shows a lighter band above and beside its text. ([#3596](https://github.com/TableProApp/TablePro/pull/3596))
+- Show All Tables opens the listing as a read-only grid instead of an editor tab that ran nothing. ([#3674](https://github.com/TableProApp/TablePro/pull/3674))
+- On macOS 15 and earlier, launching TablePro created a stray Application%20Support folder in ~/Library. ([#3677](https://github.com/TableProApp/TablePro/pull/3677))
+
+[View release notes](https://github.com/TableProApp/TablePro/releases/tag/v0.83.0-beta.1)
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.1/TablePro-0.83.0-beta.1.tar.xz" length="41904440" type="application/octet-stream" sparkle:edSignature="O08KmO2gJpaVFUhup90tbt6oaqR55xiaFYli2Ms9CwbS9T2hvkxjYyS1A5bdoFLnqFoT1Ka8nrEmBj1JPNCdCw=="/>
+        </item>
+        <item>
             <title>0.82.0</title>
             <pubDate>Mon, 19 Oct 2026 08:15:16 +0000</pubDate>
             <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
@@ -229,6 +273,6 @@ Connections and groups take custom icons. Connection exports carry saved queries
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: Go/ELAr+CYBk73Qkxcv8NrTQGrFDL7qlbTuzRe31unyAHXvych0VAJfZ3EHXAOrBwZs5B0bbf8JWUO/iN9efAg==
-length: 20723
+edSignature: 6gHy0Y8MPaeBg1XPDrwpYmzt6pXZlMFo+KMfiIgotJ1gMWGCxyuO8i8cXhAyQsJnznk75dpLJOEtXW9BvpH/Aw==
+length: 25096
 -->
