@@ -201,9 +201,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw RedisPluginError.notConnected
         }
 
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        let operation = try RedisCommandParser.parse(trimmed)
+        let operation = try RedisCommandParser.parse(query)
         return try await executeOperation(operation, connection: conn, startTime: startTime)
     }
 
@@ -507,8 +505,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw RedisPluginError.notConnected
         }
 
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let operation = try RedisCommandParser.parse(trimmed)
+        let operation = try RedisCommandParser.parse(query)
 
         switch operation {
         case .scan(_, let pattern, _, let type):

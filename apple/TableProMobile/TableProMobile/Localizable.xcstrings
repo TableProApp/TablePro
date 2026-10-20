@@ -19245,6 +19245,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The query holds more than one Redis command. Send one at a time." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The query returned no rows." : {
       "localizations" : {
         "ko" : {

@@ -145,7 +145,9 @@ final class CatalogChangeService {
     private func recordCommittedTableEdits(of succeeded: SucceededStatements) {
         let connectionId = succeeded.scope.connectionId
         recordNameHazards(
-            of: DatabaseManager.startupStatements(from: startupCommands(connectionId)),
+            of: DatabaseManager.startupStatements(
+                from: startupCommands(connectionId), databaseType: succeeded.databaseType
+            ),
             databaseType: succeeded.databaseType,
             connectionId: connectionId
         )

@@ -112,7 +112,9 @@ let package = Package(
         ),
         .target(
             name: "TableProQuery",
-            dependencies: ["TableProModels", "TableProPluginKit", "TableProCoreTypes", "TableProSQLGrammar"],
+            dependencies: [
+                "TableProModels", "TableProPluginKit", "TableProCoreTypes", "TableProSQLGrammar", "TableProRedisCore"
+            ],
             path: "Sources/TableProQuery"
         ),
         .target(

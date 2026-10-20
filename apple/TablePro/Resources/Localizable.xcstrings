@@ -185835,6 +185835,10 @@
         }
       }
     },
+    "The query holds more than one Redis command. Send one at a time." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The query is empty." : {
       "localizations" : {
         "fr" : {

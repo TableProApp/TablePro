@@ -56,6 +56,12 @@ struct RedisArgumentCodecReadabilityTests {
     func spacesAreQuoted() {
         #expect(RedisArgumentCodec.quote(Data("hello world".utf8)) == "\"hello world\"")
     }
+
+    @Test("a value with a semicolon is quoted, since a semicolon ends a command")
+    func semicolonsAreQuoted() {
+        #expect(RedisArgumentCodec.quote("user;1") == "\"user;1\"")
+        #expect(RedisCommandSplitter.commands(in: "DEL \(RedisArgumentCodec.quote("user;1"))").count == 1)
+    }
 }
 
 struct RedisArgumentCodecGrammarTests {
@@ -86,6 +92,25 @@ struct RedisArgumentCodecGrammarTests {
     func splitsOnWhitespace() {
         #expect(RedisArgumentCodec.split("SET mykey \"hello world\"")?.count == 3)
         #expect(RedisArgumentCodec.split("SET mykey \"hello world\"")?.last == Data("hello world".utf8))
+    }
+
+    @Test("a vertical tab or form feed separates arguments but stays inside a bare one, as in redis-cli")
+    func verticalTabAndFormFeed() {
+        #expect(RedisArgumentCodec.split("\u{0B}GET\u{0C}a") == [Data("GET\u{0C}a".utf8)])
+        #expect(RedisArgumentCodec.split("ECHO \"a\"\u{0B}b") == [Data("ECHO".utf8), Data("a".utf8), Data("b".utf8)])
+        #expect(RedisArgumentCodec.split("ECHO a\u{0B}b") == [Data("ECHO".utf8), Data("a\u{0B}b".utf8)])
+    }
+
+    @Test("one command's text keeps a semicolon and reads a line break as a blank")
+    func oneCommandIgnoresScriptSeparators() {
+        #expect(RedisArgumentCodec.split("SET k a;b") == [Data("SET".utf8), Data("k".utf8), Data("a;b".utf8)])
+        #expect(RedisArgumentCodec.split("SET k\nv") == [Data("SET".utf8), Data("k".utf8), Data("v".utf8)])
+    }
+
+    @Test("a backslash outside quotes is a plain byte")
+    func bareBackslash() {
+        #expect(RedisArgumentCodec.split("DEL victim\\") == [Data("DEL".utf8), Data("victim\\".utf8)])
+        #expect(RedisArgumentCodec.split("SET k a\\ b") == [Data("SET".utf8), Data("k".utf8), Data("a\\".utf8), Data("b".utf8)])
     }
 
     @Test("blank input yields no arguments")
