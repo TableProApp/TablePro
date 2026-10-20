@@ -4,6 +4,7 @@ import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
 import TableProOracleCore
+import TableProSSHTransport
 
 @MainActor
 @Observable
@@ -83,6 +84,13 @@ final class ConnectionFormViewModel {
     var sshKeyContent = ""
     var sshKeyPassphrase = ""
     var sshKeyInputMode: KeyInputMode = .file
+
+    // Two-factor sign-in, in the Mac's settings
+    var totpMode: TOTPMode = .none
+    var totpSecret = ""
+    var totpAlgorithm: TOTPAlgorithm = .sha1
+    var totpDigits = 6
+    var totpPeriod = 30
 
     // Jump hosts
     var jumpHosts: [JumpHostDraft] = []
@@ -171,6 +179,10 @@ final class ConnectionFormViewModel {
                 sshKeyInputMode = .paste
             }
             jumpHosts = ssh.jumpHosts.map(JumpHostDraft.init(hop:))
+            totpMode = ssh.totpMode.flatMap(TOTPMode.init(rawValue:)) ?? .none
+            totpAlgorithm = ssh.totpAlgorithm.flatMap(TOTPAlgorithm.init(rawValue:)) ?? .sha1
+            totpDigits = ssh.totpDigits ?? 6
+            totpPeriod = ssh.totpPeriod ?? 30
         }
         hydrateDatabaseFile(from: conn)
     }
@@ -212,10 +224,12 @@ final class ConnectionFormViewModel {
         return sshKeyContent
     }
 
+    var offersTwoFactor: Bool {
+        sshAuthMethod != .none
+    }
+
     var sshAuthMethodNote: String? {
         switch sshAuthMethod {
-        case .keyboardInteractive:
-            String(localized: "Keyboard Interactive is set on the Mac and is not available on iPhone and iPad.")
         case .privateKey where existingConnection?.sshConfiguration?.authMethod == .sshAgent:
             String(localized: "Set to SSH Agent on the Mac. iPhone and iPad sign in with a private key.")
         default:
@@ -267,7 +281,13 @@ final class ConnectionFormViewModel {
             username: sshUsername,
             authMethod: sshAuthMethodToStore,
             privateKeyPath: sshKeyPath.isEmpty ? nil : sshKeyPath,
-            jumpHosts: jumpHosts.map(\.edit)
+            jumpHosts: jumpHosts.map(\.edit),
+            totp: ConnectionFormEdits.TOTPSettings(
+                mode: totpMode.rawValue,
+                algorithm: totpAlgorithm.rawValue,
+                digits: totpDigits,
+                period: totpPeriod
+            )
         )
     }
 
@@ -313,6 +333,10 @@ final class ConnectionFormViewModel {
             sshKeyContent = privateKey
             storedSecrets.privateKey = privateKey
             sshKeyInputMode = .paste
+        }
+        if let secret = Self.storedSecret(.totpSecret, for: conn.id, in: secureStore) {
+            totpSecret = secret
+            storedSecrets.totpSecret = secret
         }
         loadJumpHostCredentials(for: conn, in: secureStore)
         baseline?.secrets = snapshot.secrets
@@ -500,6 +524,9 @@ final class ConnectionFormViewModel {
         }
         if let pastedPrivateKey {
             secrets[ConnectionSecretKind.sshPrivateKey.account(for: connectionId)] = pastedPrivateKey
+        }
+        if !totpSecret.isEmpty {
+            secrets[ConnectionSecretKind.totpSecret.account(for: connectionId)] = totpSecret
         }
         let hopCredentials = jumpHostCredentials
         guard !hopCredentials.isEmpty else { return secrets }
@@ -713,6 +740,15 @@ final class ConnectionFormViewModel {
                 storedSecrets.sshKeyPassphrase = changed
             } catch {
                 Self.logger.error("Failed to store SSH key passphrase: \(error.localizedDescription, privacy: .public)")
+                storageFailed = true
+            }
+        }
+        if let changed = writes.totpSecret {
+            do {
+                try secureStore.store(changed, forKey: ConnectionSecretKind.totpSecret.account(for: connectionId))
+                storedSecrets.totpSecret = changed
+            } catch {
+                Self.logger.error("Failed to store TOTP secret: \(error.localizedDescription, privacy: .public)")
                 storageFailed = true
             }
         }

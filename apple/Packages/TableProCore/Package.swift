@@ -108,7 +108,7 @@ let package = Package(
         ),
         .target(
             name: "TableProDatabase",
-            dependencies: ["TableProModels", "TableProCoreTypes", "TableProPluginKit", "TableProSQLGrammar"],
+            dependencies: ["TableProModels", "TableProCoreTypes", "TableProPluginKit", "TableProSQLGrammar", "TableProSSHTransport"],
             path: "Sources/TableProDatabase"
         ),
         .target(

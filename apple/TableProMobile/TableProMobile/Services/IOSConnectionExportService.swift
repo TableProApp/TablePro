@@ -83,13 +83,14 @@ enum IOSConnectionExportService {
         let password = secret(.password, of: connectionId, in: store)
         let sshPassword = secret(.sshPassword, of: connectionId, in: store)
         let keyPassphrase = secret(.keyPassphrase, of: connectionId, in: store)
-        guard password != nil || sshPassword != nil || keyPassphrase != nil else { return nil }
+        let totpSecret = secret(.totpSecret, of: connectionId, in: store)
+        guard password != nil || sshPassword != nil || keyPassphrase != nil || totpSecret != nil else { return nil }
         return ExportableCredentials(
             password: password,
             sshPassword: sshPassword,
             keyPassphrase: keyPassphrase,
             sslClientKeyPassphrase: nil,
-            totpSecret: nil,
+            totpSecret: totpSecret,
             pluginSecureFields: nil
         )
     }
@@ -129,10 +130,10 @@ enum IOSConnectionExportService {
             privateKeyPath: PathPortability.contractHome(ssh.privateKeyPath ?? ""),
             agentSocketPath: "",
             jumpHosts: jumpHosts,
-            totpMode: nil,
-            totpAlgorithm: nil,
-            totpDigits: nil,
-            totpPeriod: nil
+            totpMode: ssh.totpMode,
+            totpAlgorithm: ssh.totpAlgorithm,
+            totpDigits: ssh.totpDigits,
+            totpPeriod: ssh.totpPeriod
         )
     }
 

@@ -30,28 +30,33 @@ nonisolated extension ErrorClassifier {
                 error,
                 recovery: String(localized: "Try again. If it keeps failing, update TablePro on this device.")
             )
-        case .authMethodUnsupported:
-            return signInUnavailable(
-                error,
-                recovery: String(localized: "Open this connection in TablePro on the Mac, or edit it and choose Password or Private Key.")
-            )
         case .securityKeyUnsupported:
             return signInUnavailable(
                 error,
                 recovery: String(localized: "Open this connection in TablePro on the Mac, or edit it and choose a private key that is not on a security key.")
             )
-        case .additionalFactorRequired, .promptUnanswerable:
+        case .additionalFactorRequired:
             return signInUnavailable(
                 error,
                 recovery: String(localized: "Open this connection in TablePro on the Mac, which can answer this sign-in step.")
             )
+        case .promptUnanswerable:
+            return signInUnavailable(
+                error,
+                recovery: String(localized: "Open this connection in TablePro and connect from there to answer the question.")
+            )
+        case .verificationCodeRejected:
+            return signInRejected(
+                error,
+                recovery: String(localized: "Check the connection's TOTP secret, and that this device sets its clock automatically.")
+            )
         case .passphraseRequired:
-            return passphraseFailure(
+            return signInRejected(
                 error,
                 recovery: String(localized: "Edit the connection and enter the key's passphrase under Private Key.")
             )
         case .passphraseIncorrect:
-            return passphraseFailure(
+            return signInRejected(
                 error,
                 recovery: String(localized: "Edit the connection and check the key's passphrase under Private Key.")
             )
@@ -81,7 +86,7 @@ nonisolated extension ErrorClassifier {
         )
     }
 
-    private static func passphraseFailure(_ error: SSHTunnelError, recovery: String) -> AppError {
+    private static func signInRejected(_ error: SSHTunnelError, recovery: String) -> AppError {
         AppError(
             category: .auth,
             title: String(localized: "SSH Authentication Failed"),

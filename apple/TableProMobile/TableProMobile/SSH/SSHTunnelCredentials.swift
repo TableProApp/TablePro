@@ -11,18 +11,21 @@ nonisolated struct SSHTunnelCredentials: Sendable, Equatable {
     let password: String?
     let keyPassphrase: String?
     let privateKey: String?
+    let totpSecret: String?
 
-    init(password: String? = nil, keyPassphrase: String? = nil, privateKey: String? = nil) {
+    init(password: String? = nil, keyPassphrase: String? = nil, privateKey: String? = nil, totpSecret: String? = nil) {
         self.password = Self.nonEmpty(password)
         self.keyPassphrase = Self.nonEmpty(keyPassphrase)
         self.privateKey = Self.nonEmpty(privateKey)
+        self.totpSecret = Self.nonEmpty(totpSecret)
     }
 
     init(connectionId: UUID, secureStore: any SecureStore) {
         self.init(
             password: Self.secret(.sshPassword, for: connectionId, in: secureStore),
             keyPassphrase: Self.secret(.keyPassphrase, for: connectionId, in: secureStore),
-            privateKey: Self.secret(.sshPrivateKey, for: connectionId, in: secureStore)
+            privateKey: Self.secret(.sshPrivateKey, for: connectionId, in: secureStore),
+            totpSecret: Self.secret(.totpSecret, for: connectionId, in: secureStore)
         )
     }
 

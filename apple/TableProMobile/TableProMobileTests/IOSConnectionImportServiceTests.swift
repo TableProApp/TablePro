@@ -365,6 +365,33 @@ struct IOSConnectionImportServiceTests {
         #expect(try store.retrieve(forKey: ConnectionSecretKind.keyPassphrase.account(for: id)) == "key0")
     }
 
+    @Test("An imported tunnel keeps its TOTP settings and restores the secret")
+    func importRestoresTOTP() async throws {
+        var builder = ConnectionBundleBuilder(appVersion: "Tests")
+        let tunnelSettings = settings(ssh: ExportableSSHConfig(
+            enabled: true, host: "bastion.example.com", port: 22, username: "deploy",
+            authMethod: "Keyboard Interactive", privateKeyPath: "", agentSocketPath: "", jumpHosts: nil,
+            totpMode: "auto_generate", totpAlgorithm: "SHA512", totpDigits: 8, totpPeriod: 60
+        ))
+        builder.addConnection(tunnelSettings, ref: "c1", credentials: ExportableCredentials(
+            password: nil, sshPassword: nil, keyPassphrase: nil,
+            sslClientKeyPassphrase: nil, totpSecret: "JBSWY3DPEHPK3PXP", pluginSecureFields: nil
+        ))
+        let sealed = try await ConnectionBundleCodec.encode(try builder.build(), passphrase: "correct horse")
+        let bundle = try await ConnectionBundleCodec.decode(sealed, passphrase: "correct horse")
+        let preview = try await IOSConnectionImportService.preview(of: bundle, fileName: "Tests.tablepro", appState: appState)
+
+        await apply(preview)
+
+        let imported = try #require(appState.connections.first)
+        #expect(imported.sshConfiguration?.authMethod == .keyboardInteractive)
+        #expect(imported.sshConfiguration?.totpMode == "auto_generate")
+        #expect(imported.sshConfiguration?.totpAlgorithm == "SHA512")
+        #expect(imported.sshConfiguration?.totpDigits == 8)
+        #expect(imported.sshConfiguration?.totpPeriod == 60)
+        #expect(try store.retrieve(forKey: ConnectionSecretKind.totpSecret.account(for: imported.id)) == "JBSWY3DPEHPK3PXP")
+    }
+
     @Test("A connection the library refuses to save gets no Keychain item and is not counted")
     func unsavedConnectionGetsNoCredentials() async throws {
         var builder = ConnectionBundleBuilder(appVersion: "Tests")

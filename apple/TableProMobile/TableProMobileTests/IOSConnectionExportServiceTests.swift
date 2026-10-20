@@ -223,6 +223,36 @@ struct IOSConnectionExportServiceTests {
         #expect(ssh.authMethod == "SSH Agent")
     }
 
+    @Test("An exported tunnel carries its TOTP settings, and the secret only with credentials")
+    func exportCarriesTOTP() async throws {
+        let store = MockSecureStore()
+        let state = makeState(secureStore: store)
+        var ssh = SSHConfiguration(host: "db-1", username: "deploy", authMethod: .keyboardInteractive)
+        ssh.totpMode = "auto_generate"
+        ssh.totpAlgorithm = "SHA256"
+        ssh.totpDigits = 8
+        ssh.totpPeriod = 60
+        let connection = DatabaseConnection(name: "TOTP", type: .postgresql, host: "10.0.0.5", sshEnabled: true, sshConfiguration: ssh)
+        #expect(state.addConnection(connection))
+        store.seed("com.TablePro.totpsecret.\(connection.id.uuidString)", "JBSWY3DPEHPK3PXP")
+
+        let plain = try await exportedBundle(state.connections, from: state)
+        let exported = try #require(plain.connections.first?.settings.sshConfig)
+        #expect(exported.totpMode == "auto_generate")
+        #expect(exported.totpAlgorithm == "SHA256")
+        #expect(exported.totpDigits == 8)
+        #expect(exported.totpPeriod == 60)
+
+        let data = try await IOSConnectionExportService.exportData(
+            connections: state.connections,
+            appState: state,
+            includeCredentials: true,
+            passphrase: "export-passphrase"
+        )
+        let sealed = try await ConnectionBundleCodec.decode(data, passphrase: "export-passphrase")
+        #expect(sealed.connections.first?.credentials?.totpSecret == "JBSWY3DPEHPK3PXP")
+    }
+
     @Test("Timeout overrides export explicitly and keep unrelated fields")
     func exportKeepsTimeoutOverrides() {
         var connection = DatabaseConnection(

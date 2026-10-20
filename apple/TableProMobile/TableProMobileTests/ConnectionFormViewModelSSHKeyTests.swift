@@ -190,7 +190,7 @@ struct ConnectionFormViewModelSSHKeyTests {
         let form = ConnectionFormViewModel(editing: connection)
 
         #expect(form.sshAuthMethod == .keyboardInteractive)
-        #expect(form.sshAuthMethodNote != nil)
+        #expect(form.sshAuthMethodNote == nil)
 
         form.sshKeyInputMode = .paste
         form.sshKeyContent = pastedKey
