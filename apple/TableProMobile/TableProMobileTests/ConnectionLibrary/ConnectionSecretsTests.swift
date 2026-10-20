@@ -67,7 +67,8 @@ struct ConnectionSecretsTests {
             "com.TablePro.password.",
             "com.TablePro.sshpassword.",
             "com.TablePro.keypassphrase.",
-            "com.TablePro.sshkeydata."
+            "com.TablePro.sshkeydata.",
+            "com.TablePro.jumphostkeys."
         ])
         let id = UUID()
         #expect(ConnectionSecretKind.sshPrivateKey.account(for: id) == "com.TablePro.sshkeydata.\(id.uuidString)")
@@ -94,6 +95,30 @@ struct ConnectionSecretsTests {
         let account = ConnectionSecretKind.sshPrivateKey.account(for: UUID())
 
         #expect(ConnectionSecretKind.orphanedAccounts([account], keeping: [UUID()]).isEmpty)
+    }
+
+    @Test("The orphan sweep never takes jump host keys, which may be the only copy")
+    func sweepSparesJumpHostKeys() {
+        let account = ConnectionSecretKind.jumpHostKeys.account(for: UUID())
+
+        #expect(ConnectionSecretKind.orphanedAccounts([account], keeping: [UUID()]).isEmpty)
+    }
+
+    @Test("A duplicate gets its own copy of the jump host keys, which outlives the original")
+    func duplicateCopiesJumpHostKeys() throws {
+        let source = UUID()
+        let copy = UUID()
+        let keys: [UUID: JumpHostCredential] = [
+            UUID(): .privateKey(key: "HOP KEY", passphrase: "pass"),
+            UUID(): .sshServerKey
+        ]
+        try JumpHostCredentialStore.save(keys, for: source, in: secureStore)
+
+        #expect(secrets.copy(from: source, to: copy))
+        secrets.delete(for: source)
+
+        #expect(try JumpHostCredentialStore.load(for: copy, in: secureStore) == keys)
+        #expect(try JumpHostCredentialStore.load(for: source, in: secureStore).isEmpty)
     }
 
     @Test("The orphan sweep takes nothing before the connections have loaded")

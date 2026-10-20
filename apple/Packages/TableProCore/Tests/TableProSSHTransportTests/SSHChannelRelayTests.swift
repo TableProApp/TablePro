@@ -96,6 +96,24 @@ struct SSHChannelRelayTests {
         #expect(result == .channelClosed)
     }
 
+    @Test("Channel data that arrives after the local peer closed ends the relay instead of raising SIGPIPE")
+    func channelDataAfterLocalPeerClosed() {
+        let local = SocketPair()
+        let transport = SocketPair()
+        defer { local.close(); transport.close() }
+
+        local.closeB()
+        var dummy: UInt8 = 1
+        _ = Darwin.send(transport.b, &dummy, 1, 0)
+
+        let payload = Data("late".utf8)
+        let io = FakeChannelIO(actions: [.data(payload)], fallback: .closed)
+        let result = runRelay(localFD: local.a, transportFD: transport.a, io: io)
+
+        #expect(result == .localClosed)
+        #expect(io.deliveredCount == payload.count)
+    }
+
     @Test("Channel data is forwarded to the local socket")
     func forwardsChannelData() {
         let local = SocketPair()

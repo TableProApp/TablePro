@@ -84,6 +84,11 @@ final class ConnectionFormViewModel {
     var sshKeyPassphrase = ""
     var sshKeyInputMode: KeyInputMode = .file
 
+    // Jump hosts
+    var jumpHosts: [JumpHostDraft] = []
+    var jumpHostKeyFileError: String?
+    private(set) var jumpHostCredentialsUnreadable = false
+
     // File picker output
     var selectedFileURL: URL?
     var newDatabaseName = ""
@@ -108,6 +113,7 @@ final class ConnectionFormViewModel {
     @ObservationIgnored let connectionId: UUID
     @ObservationIgnored private var createdFileURL: URL?
     @ObservationIgnored private var addedNewConnection = false
+    @ObservationIgnored private var loadedStoredCredentials = false
     private(set) var baseline: ConnectionFormSnapshot?
     private(set) var storedSecrets = ConnectionFormSecrets()
     private let localFiles: LocalDatabaseFileLocator
@@ -159,11 +165,12 @@ final class ConnectionFormViewModel {
             sshHost = ssh.host
             sshPort = ssh.port.map(String.init) ?? ""
             sshUsername = ssh.username
-            sshAuthMethod = ssh.authMethod
+            sshAuthMethod = ssh.authMethod.onDevice
             sshKeyPath = ssh.privateKeyPath ?? ""
-            if ssh.authMethod == .privateKey, sshKeyPath.isEmpty {
+            if sshAuthMethod == .privateKey, sshKeyPath.isEmpty {
                 sshKeyInputMode = .paste
             }
+            jumpHosts = ssh.jumpHosts.map(JumpHostDraft.init(hop:))
         }
         hydrateDatabaseFile(from: conn)
     }
@@ -190,7 +197,7 @@ final class ConnectionFormViewModel {
         if type == .duckdb {
             return duckDBInMemory || !database.isEmpty
         }
-        return !host.isEmpty
+        return !host.isEmpty && !hasJumpHostWithoutHost
     }
 
     var isFileBased: Bool {
@@ -200,9 +207,20 @@ final class ConnectionFormViewModel {
     var isEditing: Bool { existingConnection != nil }
 
     var pastedPrivateKey: String? {
-        guard sshEnabled, sshAuthMethod == .privateKey, sshKeyInputMode == .paste,
+        guard sshEnabled, sshAuthMethod.onDevice == .privateKey, sshKeyInputMode == .paste,
               !sshKeyContent.isEmpty else { return nil }
         return sshKeyContent
+    }
+
+    var sshAuthMethodNote: String? {
+        switch sshAuthMethod {
+        case .keyboardInteractive:
+            String(localized: "Keyboard Interactive is set on the Mac and is not available on iPhone and iPad.")
+        case .privateKey where existingConnection?.sshConfiguration?.authMethod == .sshAgent:
+            String(localized: "Set to SSH Agent on the Mac. iPhone and iPad sign in with a private key.")
+        default:
+            nil
+        }
     }
 
     var edits: ConnectionFormEdits {
@@ -247,9 +265,19 @@ final class ConnectionFormViewModel {
             host: sshHost,
             port: Int(sshPort),
             username: sshUsername,
-            authMethod: sshAuthMethod,
-            privateKeyPath: sshKeyPath.isEmpty ? nil : sshKeyPath
+            authMethod: sshAuthMethodToStore,
+            privateKeyPath: sshKeyPath.isEmpty ? nil : sshKeyPath,
+            jumpHosts: jumpHosts.map(\.edit)
         )
+    }
+
+    // The picker shows how this device signs in. Left as it opened, the method goes back as the Mac
+    // stored it, which matters when a switched-off tunnel is turned on and every field is written.
+    private var sshAuthMethodToStore: SSHConfiguration.SSHAuthMethod {
+        guard let stored = existingConnection?.sshConfiguration?.authMethod, stored.onDevice == sshAuthMethod else {
+            return sshAuthMethod
+        }
+        return stored
     }
 
     private var oracleOptions: ConnectionFormEdits.OracleOptions? {
@@ -265,8 +293,10 @@ final class ConnectionFormViewModel {
 
     // MARK: - Credential Hydration
 
+    // The form's `.task` runs again whenever a pushed screen pops, and a second load would overwrite edits.
     func loadStoredCredentials(secureStore: any SecureStore) async {
-        guard let conn = existingConnection else { return }
+        guard let conn = existingConnection, !loadedStoredCredentials else { return }
+        loadedStoredCredentials = true
         if let stored = Self.storedSecret(.password, for: conn.id, in: secureStore) {
             password = stored
             storedSecrets.password = stored
@@ -284,7 +314,27 @@ final class ConnectionFormViewModel {
             storedSecrets.privateKey = privateKey
             sshKeyInputMode = .paste
         }
+        loadJumpHostCredentials(for: conn, in: secureStore)
         baseline?.secrets = snapshot.secrets
+    }
+
+    private func loadJumpHostCredentials(for connection: DatabaseConnection, in secureStore: any SecureStore) {
+        guard connection.sshConfiguration?.jumpHosts.isEmpty == false else { return }
+        let loaded: [UUID: JumpHostCredential]
+        do {
+            loaded = try JumpHostCredentialStore.load(for: connection.id, in: secureStore)
+        } catch {
+            Self.logger.error("Failed to read jump host keys: \(error.localizedDescription, privacy: .private)")
+            jumpHostCredentialsUnreadable = true
+            credentialError = Self.jumpHostKeysUnreadableMessage
+            return
+        }
+        let shown = jumpHostIdsShown
+        storedSecrets.jumpHostCredentials = loaded.filter { shown.contains($0.key) }
+        for index in jumpHosts.indices {
+            guard let credential = loaded[jumpHosts[index].id] else { continue }
+            jumpHosts[index].adopt(credential)
+        }
     }
 
     private static func storedSecret(
@@ -450,6 +500,14 @@ final class ConnectionFormViewModel {
         }
         if let pastedPrivateKey {
             secrets[ConnectionSecretKind.sshPrivateKey.account(for: connectionId)] = pastedPrivateKey
+        }
+        let hopCredentials = jumpHostCredentials
+        guard !hopCredentials.isEmpty else { return secrets }
+        do {
+            secrets[ConnectionSecretKind.jumpHostKeys.account(for: connectionId)] =
+                try JumpHostCredentialStore.encode(hopCredentials)
+        } catch {
+            Self.logger.error("Failed to encode jump host keys: \(error.localizedDescription, privacy: .private)")
         }
         return secrets
     }
@@ -666,6 +724,13 @@ final class ConnectionFormViewModel {
             storageFailed = true
         }
 
+        do {
+            try persistJumpHostCredentials(secureStore: secureStore)
+        } catch {
+            Self.logger.error("Failed to store jump host keys: \(error.localizedDescription, privacy: .private)")
+            storageFailed = true
+        }
+
         guard !storageFailed else {
             credentialError = String(localized: "Some credentials could not be saved to the keychain. You may need to re-enter them later.")
             return false
@@ -692,6 +757,23 @@ final class ConnectionFormViewModel {
             try secureStore.delete(forKey: account)
         }
         storedSecrets.privateKey = key
+    }
+
+    // The item is synced to every device, which may have changed it while the form was open, so it
+    // is re-read and only the entries this form changed are written. An item that could not be read
+    // when the form opened is never written; a failed re-read throws, and the next Save tries again.
+    func persistJumpHostCredentials(secureStore: any SecureStore) throws {
+        guard !jumpHostCredentialsUnreadable else { return }
+        let credentials = jumpHostCredentials
+        let loaded = storedSecrets.jumpHostCredentials
+        guard credentials != loaded else { return }
+        var stored = try JumpHostCredentialStore.load(for: connectionId, in: secureStore)
+        let kept = Set(jumpHosts.map(\.id))
+        for hopId in jumpHostIdsShown where !kept.contains(hopId) || credentials[hopId] != loaded[hopId] {
+            stored[hopId] = credentials[hopId]
+        }
+        try JumpHostCredentialStore.save(sshEnabled ? stored : [:], for: connectionId, in: secureStore)
+        storedSecrets.jumpHostCredentials = credentials
     }
 
     func dismissCredentialError() {
