@@ -29,6 +29,9 @@
         }
       }
     },
+    "“%@” has an open transaction. Deleting the connection rolls it back and discards its uncommitted changes." : {
+
+    },
     "\"%@\" is in the list more than once." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -1336,6 +1339,9 @@
           }
         }
       }
+    },
+    "A client certificate needs its client key. On the connection's Network tab, choose the client key, or clear the client certificate." : {
+
     },
     "A database named “%@” already exists." : {
       "localizations" : {
@@ -2782,6 +2788,12 @@
     "Another connection to %@ with other settings is still logging in. Try again once it finishes." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Another row holds the same value in every column, so this row cannot be changed on its own. Change these rows with a query." : {
+
+    },
+    "Another window has unsaved changes on this connection. Save or discard them before switching database." : {
+
     },
     "Antenna" : {
       "extractionState" : "manual",
@@ -4729,6 +4741,15 @@
           }
         }
       }
+    },
+    "ClickHouse ended the result partway through a row, so the rows that arrived are incomplete." : {
+
+    },
+    "ClickHouse returned HTTP %lld." : {
+
+    },
+    "ClickHouse returned no definition for view '%@'." : {
+
     },
     "Client certificate" : {
       "localizations" : {
@@ -10815,6 +10836,9 @@
       }
     },
     "Icon" : {
+
+    },
+    "Identical Rows" : {
 
     },
     "If items appear on another device but not here, refresh forces a full re-download from iCloud. This may take a moment on slow networks." : {
@@ -17135,6 +17159,9 @@
         }
       }
     },
+    "Reconnect and Roll Back?" : {
+
+    },
     "Reconnect and try again." : {
       "localizations" : {
         "ko" : {
@@ -18523,6 +18550,9 @@
         }
       }
     },
+    "Save and Reconnect" : {
+
+    },
     "Save Changes?" : {
       "localizations" : {
         "ko" : {
@@ -18582,6 +18612,9 @@
     "Saved passwords can only be exported to an encrypted file." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Saving reconnects “%@”, which has an open transaction. Reconnecting rolls it back and discards its uncommitted changes." : {
+
     },
     "Scatter Plot" : {
       "extractionState" : "manual",
@@ -22231,6 +22264,9 @@
     "The batch before it stays applied." : {
 
     },
+    "The CA certificate at %@ could not be read as a PEM or DER certificate." : {
+
+    },
     "The CA certificate for this connection is missing. Import it again in the connection's SSL settings." : {
       "localizations" : {
         "ko" : {
@@ -23702,6 +23738,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The query names its own output format, %@. Remove its FORMAT clause to read it as rows." : {
+
+    },
     "The query returned no rows." : {
       "localizations" : {
         "ko" : {
@@ -24375,6 +24414,9 @@
         }
       }
     },
+    "The text %@ cannot be inserted: this database reads it as the column's default." : {
+
+    },
     "The text could not be parsed as JSON. Use text mode to read it." : {
 
     },
@@ -24463,6 +24505,9 @@
     "There is no statement to run." : {
 
     },
+    "These connections have open transactions: %@. Deleting them rolls the transactions back and discards their uncommitted changes." : {
+
+    },
     "This account uses a password verifier the database driver does not support." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -24492,6 +24537,9 @@
           }
         }
       }
+    },
+    "This also commits the open transaction, keeping its uncommitted changes." : {
+
     },
     "This bracket does not close the one that is open." : {
 
@@ -24965,6 +25013,9 @@
         }
       }
     },
+    "This database cannot write this change from iPhone or iPad." : {
+
+    },
     "This database does not store whole documents" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -25355,6 +25406,9 @@
           }
         }
       }
+    },
+    "This row holds a value too long or binary to match exactly, so it cannot identify the row." : {
+
     },
     "This row is no longer in the table. Another session may have changed its key or deleted it." : {
 
@@ -27008,6 +27062,9 @@
     "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed the server's certificate, or set SSL Mode to Verify Identity." : {
+
     },
     "Verify Identity" : {
       "localizations" : {
