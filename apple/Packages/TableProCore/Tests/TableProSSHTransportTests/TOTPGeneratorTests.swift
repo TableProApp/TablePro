@@ -6,7 +6,7 @@ import Foundation
 
 import Testing
 
-@testable import TableProSSHConfig
+@testable import TableProSSHTransport
 
 struct TOTPGeneratorTests {
     // MARK: - RFC 6238 SHA1 Test Vectors (8 digits)

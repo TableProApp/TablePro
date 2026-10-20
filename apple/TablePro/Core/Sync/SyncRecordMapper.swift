@@ -12,6 +12,7 @@ import TableProConnectionLibrary
 import TableProImport
 import TableProPluginKit
 import TableProSSHConfig
+import TableProSSHTransport
 import TableProSyncTransport
 
 enum SyncDecodeError: Error, LocalizedError {

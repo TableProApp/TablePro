@@ -6,7 +6,7 @@ import Foundation
 
 import Testing
 
-@testable import TableProSSHConfig
+@testable import TableProSSHTransport
 
 struct Base32Tests {
     // MARK: - RFC 4648 Test Vectors
