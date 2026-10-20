@@ -11130,6 +11130,16 @@
         }
       }
     },
+    "%lld rows in %@ block the delete" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld rows in %2$@ block the delete"
+          }
+        }
+      }
+    },
     "%lld seconds" : {
       "localizations" : {
         "fr" : {
@@ -13119,6 +13129,9 @@
           }
         }
       }
+    },
+    "1 row in %@ blocks the delete" : {
+
     },
     "1 saved query found" : {
 
@@ -16779,6 +16792,9 @@
           }
         }
       }
+    },
+    "A transaction is open on this connection, and its uncommitted rows aren't in these counts." : {
+
     },
     "A tunnel forwards one address, and the node Sentinel names is on the server's own network, so Sentinel mode cannot run through one. Connect to a data node directly, or turn the tunnel off." : {
       "extractionState" : "manual",
@@ -24225,6 +24241,9 @@
           }
         }
       }
+    },
+    "And %lld more" : {
+
     },
     "Animations" : {
       "extractionState" : "stale",
@@ -60455,6 +60474,16 @@
         }
       }
     },
+    "Delete %lld rows from %@?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Delete %1$lld rows from %2$@?"
+          }
+        }
+      }
+    },
     "Delete %lld rows?" : {
       "localizations" : {
         "fr" : {
@@ -61470,6 +61499,9 @@
         }
       }
     },
+    "Delete this row from %@?" : {
+
+    },
     "Delete this row?" : {
       "localizations" : {
         "fr" : {
@@ -61843,6 +61875,22 @@
           }
         }
       }
+    },
+    "Deletes %lld rows from %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Deletes %1$lld rows from %2$@"
+          }
+        }
+      }
+    },
+    "Deletes 1 row from %@" : {
+
+    },
+    "Deletes rows from %@ (not counted)" : {
+
     },
     "Deleting row %@ from %@ permanently removes it." : {
       "localizations" : {
@@ -82773,6 +82821,9 @@
         }
       }
     },
+    "Foreign keys also change the rows listed below. This can't be undone, and Data Rewind can't restore rows a foreign key deletes." : {
+
+    },
     "Foreign keys are followed %d levels deep" : {
       "localizations" : {
         "fr" : {
@@ -82782,6 +82833,9 @@
           }
         }
       }
+    },
+    "Foreign keys aren't enforced for this save, so rows in other tables that reference these rows stay as they are." : {
+
     },
     "Foreign keys between %@ reference each other, so no order puts every parent before its children. Those tables are written in the order they were listed, and the dump cannot be restored while foreign keys are enforced." : {
       "extractionState" : "manual",
@@ -82794,6 +82848,9 @@
           }
         }
       }
+    },
+    "Foreign keys declared in other schemas weren't checked." : {
+
     },
     "Foreign keys the table declares" : {
       "localizations" : {
@@ -133498,6 +133555,9 @@
         }
       }
     },
+    "PrestoDB distributed SQL query engine" : {
+
+    },
     "Pretty Print" : {
       "localizations" : {
         "fr" : {
@@ -150512,6 +150572,9 @@
         }
       }
     },
+    "Rows in %@ may block the delete (not counted)" : {
+
+    },
     "Rows in this export" : {
       "localizations" : {
         "fr" : {
@@ -160628,6 +160691,66 @@
     "Set Value to NULL" : {
 
     },
+    "Sets %@ to its default in %lld rows of %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sets %1$@ to its default in %2$lld rows of %3$@"
+          }
+        }
+      }
+    },
+    "Sets %@ to its default in 1 row of %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sets %1$@ to its default in 1 row of %2$@"
+          }
+        }
+      }
+    },
+    "Sets %@ to its default in rows of %@ (not counted)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sets %1$@ to its default in rows of %2$@ (not counted)"
+          }
+        }
+      }
+    },
+    "Sets %@ to NULL in %lld rows of %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sets %1$@ to NULL in %2$lld rows of %3$@"
+          }
+        }
+      }
+    },
+    "Sets %@ to NULL in 1 row of %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sets %1$@ to NULL in 1 row of %2$@"
+          }
+        }
+      }
+    },
+    "Sets %@ to NULL in rows of %@ (not counted)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sets %1$@ to NULL in rows of %2$@ (not counted)"
+          }
+        }
+      }
+    },
     "Sets the value to %@" : {
       "localizations" : {
         "fr" : {
@@ -162687,6 +162810,9 @@
           }
         }
       }
+    },
+    "Show rows in %@" : {
+
     },
     "Show Sidebar" : {
       "localizations" : {
@@ -166055,6 +166181,9 @@
         }
       }
     },
+    "Some foreign keys weren't followed, so more rows may change than shown." : {
+
+    },
     "Some included tables have not been compared with their current settings." : {
       "localizations" : {
         "fr" : {
@@ -166104,6 +166233,9 @@
           }
         }
       }
+    },
+    "Some rows couldn't be counted, so more rows may change than shown." : {
+
     },
     "some slots have no owner" : {
       "extractionState" : "manual",
@@ -176638,6 +176770,9 @@
         }
       }
     },
+    "TablePro couldn't check which rows in other tables reference these rows." : {
+
+    },
     "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and reopen TablePro." : {
       "localizations" : {
         "fr" : {
@@ -177806,6 +177941,9 @@
           }
         }
       }
+    },
+    "Tables more than %lld foreign keys away weren't checked." : {
+
     },
     "Tables of %@" : {
       "localizations" : {
@@ -181083,6 +181221,9 @@
         }
       }
     },
+    "The changes were edited while the save was checking other tables. Save again to include them." : {
+
+    },
     "The ChatGPT account could not be identified." : {
       "localizations" : {
         "fr" : {
@@ -183879,6 +184020,9 @@
           }
         }
       }
+    },
+    "The installed %1$@ does not support %2$@. Update it in Settings > Plugins." : {
+
     },
     "The instance connection name must be in the form project:region:instance." : {
       "localizations" : {
@@ -186724,6 +186868,9 @@
           }
         }
       }
+    },
+    "The save will fail: the rows listed below still reference rows this deletes, and their foreign key doesn't allow it." : {
+
     },
     "The saved extension list is not in a format TablePro can read." : {
       "extractionState" : "manual",
@@ -195297,6 +195444,9 @@
         }
       }
     },
+    "This save also edits key columns, and the counts don't include those edits." : {
+
+    },
     "This Save Cannot Be Restored" : {
       "localizations" : {
         "fr" : {
@@ -195346,6 +195496,9 @@
           }
         }
       }
+    },
+    "This save turns foreign key checks off first, so these rows may stay as they are." : {
+
     },
     "This save was made on a different connection. Open that connection to restore it." : {
       "localizations" : {
