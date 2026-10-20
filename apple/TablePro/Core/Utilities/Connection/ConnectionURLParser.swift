@@ -324,15 +324,34 @@ struct ConnectionURLParser {
         type: DatabaseType
     ) -> Result<Endpoint, ConnectionURLParseError> {
         let items = components.percentEncodedQueryItems ?? []
-        func queryValue(_ name: String) -> String? {
-            guard let raw = items.last(where: { $0.name.lowercased() == name })?.value,
-                  let value = raw.removingPercentEncoding?.trimmingCharacters(in: .whitespaces),
-                  !value.isEmpty
-            else { return nil }
-            return value
+        // nil when absent; an empty value is present and means libpq's default.
+        func queryValue(_ name: String) -> String?? {
+            guard let item = items.last(where: { $0.name.lowercased() == name }) else { return nil }
+            return .some((item.value ?? "").removingPercentEncoding?.trimmingCharacters(in: .whitespaces))
         }
-        let port = queryValue("port").flatMap(Int.init) ?? components.port
-        let host = queryValue("host") ?? components.host ?? ""
+        let port: Int?
+        switch queryValue("port") {
+        case .none:
+            port = components.port
+        case .some(.none):
+            return .failure(.invalidURL)
+        case .some(.some(let raw)):
+            guard !raw.isEmpty else {
+                port = nil
+                break
+            }
+            guard let value = Int(raw), (1...65_535).contains(value) else { return .failure(.invalidURL) }
+            port = value
+        }
+        let host: String
+        switch queryValue("host") {
+        case .none:
+            host = components.host ?? ""
+        case .some(.none):
+            return .failure(.invalidURL)
+        case .some(.some(let raw)):
+            host = raw
+        }
         guard host.hasPrefix("/") else {
             guard !host.isEmpty else { return .failure(.missingHost) }
             return .success((host, [:], port))

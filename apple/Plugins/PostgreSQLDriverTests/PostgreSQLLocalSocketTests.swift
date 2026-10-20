@@ -100,6 +100,18 @@ struct PostgreSQLLocalSocketTests {
         }
     }
 
+    @Test("A socket host pins hostaddr empty, so an inherited PGHOSTADDR cannot turn it into TCP")
+    func socketPinsHostaddr() {
+        func conninfo(host: String) -> String {
+            LibPQConnectionString.build(
+                host: host, port: 5_432, user: "", password: nil, database: "app",
+                sslConfig: SSLConfiguration(), options: nil
+            )
+        }
+        #expect(conninfo(host: "/tmp").hasPrefix("host='/tmp' hostaddr='' port='5432'"))
+        #expect(!conninfo(host: "db.example.com").contains("hostaddr"))
+    }
+
     @Test("A path libpq would misread fails before it is dialed")
     func driverRejectsBadPath() {
         #expect(throws: LibPQPluginError.self) {
