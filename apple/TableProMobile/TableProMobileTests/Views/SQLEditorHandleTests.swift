@@ -167,7 +167,11 @@ struct SQLEditorHandleTests {
         #expect(editor.textView.selectedRange == NSRange(location: 0, length: 0))
 
         editor.model.text = text
-        await ObservedCondition.wait { editor.textView.text == text }
+        // The text view is UIKit, not observed, so this waits a few main-queue turns for SwiftUI's update.
+        for _ in 0..<100 where editor.textView.text != text {
+            await nextMainQueueTurn()
+        }
+        try #require(editor.textView.text == text)
         #expect(editor.textView.selectedRange == NSRange(location: 20, length: 0))
         guard case .statement(let statement, _) = editor.handle.runTarget() else {
             Issue.record("expected the caret's statement")

@@ -137,8 +137,8 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                 }
                 var emitted = 0
                 var headerColumns: [ColumnInfo] = []
-                // Past the row cap the batch keeps running, so a later UPDATE or COMMIT in it still happens; the
-                // rows are read and dropped. Only a reader that stops aborts it.
+                // Past the row cap the batch keeps running, so a later UPDATE or COMMIT in it still happens and its
+                // error still reaches the run; the rows are read and dropped. Only a reader that stops aborts it.
                 var isCapped = false
                 do {
                     for try await element in coreStream {
@@ -158,7 +158,6 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
                             for row in batch {
                                 if emitted >= options.maxRows {
                                     continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
-                                    continuation.finish()
                                     isCapped = true
                                     break
                                 }

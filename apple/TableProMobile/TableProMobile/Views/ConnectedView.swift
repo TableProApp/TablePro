@@ -9,9 +9,11 @@ struct ConnectedView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(SceneMenuState.self) private var menuState: SceneMenuState?
     let connection: DatabaseConnection
 
     @State private var coordinator: ConnectionCoordinator?
+    @State private var menuOwner = UUID()
     @State private var hapticSuccess = false
     @State private var hapticError = false
     @State private var showDeletedAlert = false
@@ -216,7 +218,10 @@ struct ConnectedView: View {
         }
         // tabChrome sits inside each stack; this also reaches pushed row screens and their sheets, which track writes.
         .environment(coordinator)
-        .focusedSceneValue(\.connectedTabActions, ConnectedTabActions { coordinator.selectedTab = $0 })
+        .onAppear {
+            menuState?.publishTabs(ConnectedTabActions { coordinator.selectedTab = $0 }, from: menuOwner)
+        }
+        .onDisappear { menuState?.withdrawTabs(menuOwner) }
         .overlay(alignment: .top) {
             if coordinator.isReconnecting {
                 HStack(spacing: 6) {

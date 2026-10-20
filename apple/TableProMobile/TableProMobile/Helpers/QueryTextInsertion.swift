@@ -23,9 +23,15 @@ nonisolated enum QueryTextInsertion {
         let added = databaseType == .redis
             ? QueryScript.trimmed(query, databaseType: databaseType)
             : StatementBlank.trimming(query)
+        let grammar = SQLLexicalReadings.resolve(
+            databaseTypeId: databaseType.rawValue, declared: nil, session: session
+        ).execution
         guard StatementBlank.hasContent(text) else {
             let whole = NSRange(location: 0, length: source.length)
-            return Edit(range: whole, text: added, selection: caret(after: added, at: 0))
+            let chosen = databaseType.speaksSQL
+                ? selection(of: NSRange(location: 0, length: (added as NSString).length), added, grammar)
+                : caret(after: added, at: 0)
+            return Edit(range: whole, text: added, selection: chosen)
         }
 
         let end = NSRange(location: source.length, length: 0)
@@ -39,9 +45,6 @@ nonisolated enum QueryTextInsertion {
             return Edit(range: start, text: added + "\n", selection: caret(after: added, at: 0))
         }
 
-        let grammar = SQLLexicalReadings.resolve(
-            databaseTypeId: databaseType.rawValue, declared: nil, session: session
-        ).execution
         let statement = terminated(added, grammar: grammar)
         let length = (statement as NSString).length
         // SQL Server needs a batch line: a CREATE PROCEDURE must start its batch, and one before would swallow the query.
@@ -71,10 +74,13 @@ nonisolated enum QueryTextInsertion {
         NSRange(location: location + (inserted as NSString).length, length: 0)
     }
 
-    // A history entry of several statements is selected, so Run runs all of it rather than its last statement.
+    // A history entry of several statements is selected, so Run runs all of it rather than its last statement. One
+    // statement gets the caret at its own end, before a comment after it, where Run would find nothing.
     private static func selection(of target: NSRange, _ statement: String, _ grammar: SQLLexicalGrammar) -> NSRange {
-        let count = SQLStatementScanner.navigableStatements(in: statement, grammar: grammar).count
-        return count > 1 ? target : NSRange(location: NSMaxRange(target), length: 0)
+        let statements = SQLStatementScanner.navigableStatements(in: statement, grammar: grammar)
+        if statements.count > 1 { return target }
+        guard let only = statements.first else { return NSRange(location: NSMaxRange(target), length: 0) }
+        return NSRange(location: target.location + NSMaxRange(only.contentRange), length: 0)
     }
 
     private static func endsInOpenStatement(_ text: String, grammar: SQLLexicalGrammar) -> Bool {

@@ -124,6 +124,25 @@ struct QueryTextInsertionTests {
         #expect(backslash == "GET other\nGET key\\")
     }
 
+    @Test("Several statements added to an empty editor are selected too")
+    func severalStatementsInAnEmptyEditor() {
+        let (text, selection) = added("SELECT 2; SELECT 3", to: "")
+        #expect(text == "SELECT 2; SELECT 3")
+        #expect(selection == NSRange(location: 0, length: 18))
+    }
+
+    @Test("A comment after the added statement leaves the caret where Run finds the statement")
+    func caretStopsBeforeATrailingComment() throws {
+        let (text, selection) = added("SELECT 2; -- note", to: "SELECT 1;")
+        #expect(text == "SELECT 1;\n\nSELECT 2; -- note")
+        let target = QueryRunTarget.resolve(in: text, selection: selection, databaseType: .postgresql, session: nil)
+        guard case .statement(let statement, _) = target else {
+            Issue.record("expected a statement, got \(target)")
+            return
+        }
+        #expect(statement.hasPrefix("SELECT 2"))
+    }
+
     @Test("A history entry of several statements is selected, so Run runs all of it")
     func severalStatementsAreSelected() {
         let (text, selection) = added("SELECT 2; SELECT 3", to: "SELECT 1;")

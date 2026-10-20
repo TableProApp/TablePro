@@ -20,6 +20,40 @@ struct ConnectedTabActions {
     let select: (ConnectedTab) -> Void
 }
 
+// A connection opens in a full-screen cover, and a focused value set inside that presentation never reaches the menu
+// bar (measured on iPadOS 27: every item stayed disabled), so views inside write here and the scene root publishes it.
+@MainActor
+@Observable
+final class SceneMenuState {
+    private(set) var queryEditor: QueryEditorActions?
+    private(set) var tabs: ConnectedTabActions?
+    @ObservationIgnored private var queryEditorOwner: UUID?
+    @ObservationIgnored private var tabsOwner: UUID?
+
+    func publishQueryEditor(_ actions: QueryEditorActions?, from owner: UUID) {
+        queryEditorOwner = owner
+        queryEditor = actions
+    }
+
+    // A view leaving after another took its place leaves the newer value alone.
+    func withdrawQueryEditor(_ owner: UUID) {
+        guard queryEditorOwner == owner else { return }
+        queryEditorOwner = nil
+        queryEditor = nil
+    }
+
+    func publishTabs(_ actions: ConnectedTabActions, from owner: UUID) {
+        tabsOwner = owner
+        tabs = actions
+    }
+
+    func withdrawTabs(_ owner: UUID) {
+        guard tabsOwner == owner else { return }
+        tabsOwner = nil
+        tabs = nil
+    }
+}
+
 extension FocusedValues {
     @Entry var queryEditorActions: QueryEditorActions?
     @Entry var connectedTabActions: ConnectedTabActions?
@@ -32,19 +66,21 @@ struct QueryCommands: Commands {
 
     var body: some Commands {
         CommandGroup(before: .sidebar) {
-            Button("Tables") { tabs?.select(.tables) }
-                .keyboardShortcut("1", modifiers: .command)
-                .disabled(tabs == nil)
-            Button("Query") { tabs?.select(.query) }
-                .keyboardShortcut("2", modifiers: .command)
-                .disabled(tabs == nil)
-            Button("History") { tabs?.select(.history) }
-                .keyboardShortcut("3", modifiers: .command)
-                .disabled(tabs == nil)
-            Button("Info") { tabs?.select(.info) }
-                .keyboardShortcut("4", modifiers: .command)
-                .disabled(tabs == nil)
-            Divider()
+            // One section: loose items placed before the sidebar group came out in reverse on iPadOS 27.
+            Section {
+                Button("Tables") { tabs?.select(.tables) }
+                    .keyboardShortcut("1", modifiers: .command)
+                    .disabled(tabs == nil)
+                Button("Query") { tabs?.select(.query) }
+                    .keyboardShortcut("2", modifiers: .command)
+                    .disabled(tabs == nil)
+                Button("History") { tabs?.select(.history) }
+                    .keyboardShortcut("3", modifiers: .command)
+                    .disabled(tabs == nil)
+                Button("Info") { tabs?.select(.info) }
+                    .keyboardShortcut("4", modifiers: .command)
+                    .disabled(tabs == nil)
+            }
         }
         CommandMenu("Query") {
             Button(actions?.runTitle ?? String(localized: "Run Statement")) { actions?.run() }

@@ -10,6 +10,7 @@ struct QueryEditorView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(SceneMenuState.self) private var menuState: SceneMenuState?
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryEditorView")
 
@@ -29,6 +30,7 @@ struct QueryEditorView: View {
     @State private var draft = QueryDraftSaver()
     @State private var deferredAdds: [String] = []
     @State private var isOnScreen = false
+    @State private var menuOwner = UUID()
     // Each window keeps its own text, a cleared one included; the saved draft only seeds a window that never had any.
     @SceneStorage private var sceneQuery: String?
 
@@ -127,7 +129,9 @@ struct QueryEditorView: View {
             resultSection
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { containerSize = $0 }
-        .focusedSceneValue(\.queryEditorActions, menuActions)
+        .onChange(of: menuSignature, initial: true) {
+            menuState?.publishQueryEditor(menuActions, from: menuOwner)
+        }
         .onAppear {
             editorHandle.databaseType = databaseType
             isOnScreen = true
@@ -168,6 +172,7 @@ struct QueryEditorView: View {
         }
         .onDisappear {
             isOnScreen = false
+            menuState?.withdrawQueryEditor(menuOwner)
             draft.flush()
         }
         .onChange(of: scenePhase) { _, phase in
@@ -341,6 +346,12 @@ struct QueryEditorView: View {
         executeTask?.cancel()
         viewModel.stop()
         Task { try? await session?.driver.cancelCurrentQuery() }
+    }
+
+    // The actions hold closures, so this is what decides when the menu needs them again.
+    private var menuSignature: [String] {
+        guard let menuActions else { return [] }
+        return [menuActions.runTitle, String(menuActions.canRun), String(menuActions.isExecuting)]
     }
 
     private var menuActions: QueryEditorActions? {
