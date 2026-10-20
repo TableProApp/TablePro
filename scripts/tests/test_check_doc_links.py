@@ -56,6 +56,20 @@ class DocLinkTests(unittest.TestCase):
             self.assertIn(source, files)
             self.assertNotIn(generated, files)
 
+    def test_flatpak_cache_links_are_skipped_while_source_errors_are_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            generated = root / ".flatpak-builder/build/dependency/README.md"
+            source = root / "docs/source.md"
+            generated.parent.mkdir(parents=True)
+            source.parent.mkdir(parents=True)
+            generated.write_text("[missing](missing-generated.md)")
+            source.write_text("[missing](missing-source.md)")
+            self.assertEqual(
+                checker.broken_links(root, checker.markdown_files(root)),
+                [(source, "missing-source.md")],
+            )
+
     def test_a_directory_target_counts_as_existing(self):
         self.assertEqual(self.broken({"a.md": "[d](dir/)", "dir/f.txt": "x"}), [])
 

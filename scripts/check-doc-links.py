@@ -44,7 +44,7 @@ def broken_links(root, files):
 
 
 def markdown_files(root):
-    skipped = {"target", ".git", ".cargo", ".rustup", "node_modules", "evidence", "vendor"}
+    skipped = {"target", ".git", ".cargo", ".rustup", ".flatpak-builder", "node_modules", "evidence", "vendor"}
     generated = "apps/linux/packaging/out/"
     files = [
         p
