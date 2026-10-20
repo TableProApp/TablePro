@@ -164,7 +164,8 @@ final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             }
 
             var processed = val
-            let hadLineBreaks = val.contains("\n") || val.contains("\r")
+            // `\r\n` is one Character, so only a scalar test sees a Windows line break.
+            let hadLineBreaks = val.unicodeScalars.contains { $0 == "\n" || $0 == "\r" }
 
             if options.convertLineBreakToSpace {
                 processed = processed
@@ -197,7 +198,7 @@ final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         guard originalHadLineBreaks, options.quoteHandling == .asNeeded, !escaped.hasPrefix("\"") else {
             return escaped
         }
-        return "\"\(escaped.replacingOccurrences(of: "\"", with: "\"\""))\""
+        return "\"\(escaped.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     private func writeOptions(_ options: CSVExportOptions) -> PluginCsvWriteOptions {

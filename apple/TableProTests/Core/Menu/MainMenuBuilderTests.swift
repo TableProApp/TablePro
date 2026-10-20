@@ -111,6 +111,23 @@ struct MainMenuStructureTests {
         ])
     }
 
+    @Test("File carries Copy Path and Copy Relative Path for the Favorites list to answer")
+    func fileMenuCopiesLinkedPaths() throws {
+        let file = try #require(buildMenu().items.first { $0.title == String(localized: "File") }?.submenu)
+        let copyPath = try #require(file.items.first { $0.title == String(localized: "Copy Path") })
+        let copyRelativePath = try #require(file.items.first { $0.title == String(localized: "Copy Relative Path") })
+        let index = try #require(file.items.firstIndex(of: copyPath))
+
+        #expect(file.items[index + 1] === copyRelativePath)
+        #expect(copyPath.action == #selector(FavoritesNSOutlineView.copyPath(_:)))
+        #expect(copyRelativePath.action == #selector(FavoritesNSOutlineView.copyRelativePath(_:)))
+        #expect(copyPath.target == nil)
+        #expect(copyRelativePath.target == nil)
+        #expect(copyPath.keyEquivalent == "c")
+        #expect(copyPath.keyEquivalentModifierMask == [.command, .shift, .option])
+        #expect(copyRelativePath.keyEquivalent.isEmpty)
+    }
+
     @Test("No two menu items share a title")
     func titlesAreUnique() {
         let titles = flatten(buildMenu())
