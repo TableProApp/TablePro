@@ -1011,6 +1011,7 @@ struct MainEditorContentView: View {
                 showRowNumbers: settingsManager.dataGrid.showRowNumbers,
                 hiddenColumns: tab.columnLayout.hiddenColumns,
                 appliesRowSortPreferences: true,
+                appliesRowCopyFormat: true,
                 supportsColumnSort: tab.tabType != .table
                     || PluginManager.shared.supportsColumnSort(for: connection.type),
                 editRefusalMessage: refusal?.message

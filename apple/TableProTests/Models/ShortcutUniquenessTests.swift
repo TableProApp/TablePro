@@ -50,10 +50,10 @@ struct ShortcutUniquenessTests {
     }
 
     // Counted, not listed: a default for any of these takes a combo already in use, so it has to be on purpose.
-    @Test("Twenty-one actions ship unbound")
+    @Test("Twenty-eight actions ship unbound")
     func unboundActionsAreCounted() {
         let unbound = ShortcutAction.allCases.filter { KeyboardSettings.defaultShortcuts[$0] == nil }
-        #expect(unbound.count == 21, "Unbound: \(unbound.map(\.rawValue).sorted())")
+        #expect(unbound.count == 28, "Unbound: \(unbound.map(\.rawValue).sorted())")
         for action in unbound {
             #expect(KeyboardSettings.default.shortcut(for: action) == nil, "\(action.rawValue)")
         }

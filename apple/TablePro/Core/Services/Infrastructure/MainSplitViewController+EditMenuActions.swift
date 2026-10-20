@@ -26,7 +26,7 @@ extension MainSplitViewController {
     @objc func copy(_ sender: Any?) {
         guard let actions = commandActions else { return }
         if actions.hasRowSelection {
-            actions.copySelectedRows()
+            actions.copySelectedRowsInCopyFormat()
             return
         }
         actions.copyTableNames()
