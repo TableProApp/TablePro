@@ -628,7 +628,10 @@ final class IOSSyncCoordinator {
 
     private func applyRemoteChanges(_ remote: PullChanges) -> RemoteApply {
         guard let state = getCurrentState?() else { return .notSaved }
-        let connectionsSaved = onConnectionsChanged?(mergeConnections(local: state.connections, remote: remote)) ?? true
+        let merged = mergeConnections(local: state.connections, remote: remote)
+        let connectionsSaved = onConnectionsChanged?(merged.connections) ?? true
+        // Marked read only once saved, so a pull whose save failed reads the cache again next time.
+        if connectionsSaved { sshFieldsReadFromCache.formUnion(merged.adoptedFromCache) }
         let groupsSaved = onGroupsChanged?(mergeGroups(local: state.groups, remote: remote)) ?? true
         let tagsSaved = onTagsChanged?(mergeTags(local: state.tags, remote: remote)) ?? true
         guard connectionsSaved, groupsSaved, tagsSaved else {
@@ -874,33 +877,43 @@ final class IOSSyncCoordinator {
 
     // MARK: - Merge
 
-    private func mergeConnections(local: [DatabaseConnection], remote: PullChanges) -> [DatabaseConnection] {
+    private func mergeConnections(
+        local: [DatabaseConnection],
+        remote: PullChanges
+    ) -> (connections: [DatabaseConnection], adoptedFromCache: Set<UUID>) {
         let pulledIds = Set(remote.changedConnections.map(\.id))
-        return merge(
+        var adopted: Set<UUID> = []
+        let connections = merge(
             local: local,
             changed: remote.changedConnections,
             deleted: remote.deletedConnectionIDs,
             dirtyIds: metadata.dirtyIds(for: .connection),
             tombstonedIds: tombstonedIds(for: .connection)
-        ).map { pulledIds.contains($0.id) ? $0 : adoptingCachedSSHFields($0) }
+        ).map { connection -> DatabaseConnection in
+            guard !pulledIds.contains(connection.id), let cached = adoptingCachedSSHFields(connection) else {
+                return connection
+            }
+            adopted.insert(connection.id)
+            return cached
+        }
+        return (connections, adopted)
     }
 
     // A connection stored before this build read `sshProfileId` lacks it until its record changes
     // again, and the record pulled earlier already holds it. A record in this
     // pull is newer than the cache, which is written only after it.
-    private func adoptingCachedSSHFields(_ connection: DatabaseConnection) -> DatabaseConnection {
-        guard connection.sshConfiguration != nil, connection.sshProfileId == nil, connection.sshRoute == nil,
+    private func adoptingCachedSSHFields(_ connection: DatabaseConnection) -> DatabaseConnection? {
+        guard connection.sshConfiguration != nil, connection.sshProfileId == nil,
               !connection.clearsSSHProfileLink,
-              sshFieldsReadFromCache.insert(connection.id).inserted
-        else { return connection }
+              !sshFieldsReadFromCache.contains(connection.id)
+        else { return nil }
         // The cache is keyed by record name alone, so any zone finds it.
         let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: CKRecordZone.default().zoneID)
         guard let record = recordCache.record(for: recordID),
               let cached = SyncRecordMapper.toConnection(record)
-        else { return connection }
+        else { return nil }
         var adopted = connection
         adopted.sshProfileId = cached.sshProfileId
-        adopted.sshRoute = cached.sshRoute
         return adopted
     }
 
