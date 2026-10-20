@@ -66,14 +66,16 @@ nonisolated enum SQLBuilder {
 
     // The literal rule the table browser's filter uses, so a row the lookup finds is the row Open Table lists.
     // Text goes through the driver's escaper: on MySQL a backslash escapes the next quote, so a hand-doubled
-    // `a\' OR 1=1 -- ` gets out.
+    // `a\' OR 1=1 -- ` gets out. With `uniqueIn`, a key that matches either way SQLite stores it also has to
+    // name a single row of that table, checked inside the statement so a row stored meanwhile cannot join it.
     static func keyPredicate(
         _ key: [(column: String, value: String)],
         columns: [ColumnInfo],
         type: DatabaseType,
-        driver: any DatabaseDriver
+        driver: any DatabaseDriver,
+        uniqueIn quotedTable: String? = nil
     ) -> String {
-        key.map { pair in
+        let predicate = key.map { pair in
             let column = quoteIdentifier(pair.column, for: type)
             let info = FilterColumnKind.column(named: pair.column, in: columns)
             switch FilterColumnKind.keyLiteral(pair.value, column: info, databaseType: type) {
@@ -85,9 +87,21 @@ nonisolated enum SQLBuilder {
                 return "\(column) IN (\(value), '\(value)')"
             }
         }.joined(separator: " AND ")
+        guard let quotedTable, keyMatchesEitherWay(key, columns: columns, type: type) else { return predicate }
+        return "\(predicate) AND (SELECT COUNT(*) FROM \(quotedTable) WHERE \(predicate)) = 1"
     }
 
-    // Nil unless a value matches either way SQLite stores it, the one case where a key can name two rows.
+    // The one case where a key can name two rows: integer 5 and text '5' in a SQLite column with no type.
+    static func keyMatchesEitherWay(_ key: [(column: String, value: String)], columns: [ColumnInfo], type: DatabaseType) -> Bool {
+        key.contains { pair in
+            let info = FilterColumnKind.column(named: pair.column, in: columns)
+            guard case .numberOrText = FilterColumnKind.keyLiteral(pair.value, column: info, databaseType: type) else {
+                return false
+            }
+            return true
+        }
+    }
+
     static func buildKeyMatchCount(
         table: String,
         schema: String?,
@@ -95,13 +109,7 @@ nonisolated enum SQLBuilder {
         columns: [ColumnInfo],
         type: DatabaseType,
         driver: any DatabaseDriver
-    ) -> String? {
-        let matchesEitherWay = key.contains { pair in
-            let info = FilterColumnKind.column(named: pair.column, in: columns)
-            guard case .numberOrText = FilterColumnKind.keyLiteral(pair.value, column: info, databaseType: type) else { return false }
-            return true
-        }
-        guard matchesEitherWay else { return nil }
+    ) -> String {
         let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
         return "SELECT COUNT(*) FROM \(quotedTable) WHERE \(keyPredicate(key, columns: columns, type: type, driver: driver))"
     }
@@ -115,7 +123,7 @@ nonisolated enum SQLBuilder {
         columns: [ColumnInfo]
     ) -> String {
         let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
-        let predicate = keyPredicate(primaryKeys, columns: columns, type: type, driver: driver)
+        let predicate = keyPredicate(primaryKeys, columns: columns, type: type, driver: driver, uniqueIn: quotedTable)
         return "DELETE FROM \(quotedTable) WHERE \(predicate)"
     }
 
@@ -134,7 +142,7 @@ nonisolated enum SQLBuilder {
             if let val { return "\(qcol) = '\(driver.escapeStringLiteral(val))'" }
             return "\(qcol) = NULL"
         }.joined(separator: ", ")
-        let predicate = keyPredicate(primaryKeys, columns: columns, type: type, driver: driver)
+        let predicate = keyPredicate(primaryKeys, columns: columns, type: type, driver: driver, uniqueIn: quotedTable)
         return "UPDATE \(quotedTable) SET \(assignments) WHERE \(predicate)"
     }
 

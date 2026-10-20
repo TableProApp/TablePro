@@ -435,7 +435,7 @@ struct FilterSQLGeneratorColumnTypeTests {
         #expect(Self.engineCondition(.mysql, type: .text(rawType: ""), value: "5", dialect: Self.mysqlDialect) == "`v` = '5'")
     }
 
-    @Test("Match Case off leaves a number column compared as a number")
+    @Test("Match Case off compares a number column as a number and still folds a pattern on it")
     func numberColumnIsNotFolded() {
         let decimal = Self.castingCondition(
             column: "price", type: .decimal(rawType: "numeric"), op: .equal, value: "5.5", isCaseSensitive: false
@@ -444,7 +444,7 @@ struct FilterSQLGeneratorColumnTypeTests {
             column: "price", type: .decimal(rawType: "numeric"), op: .contains, value: "5", isCaseSensitive: false
         )
         #expect(decimal == "\"price\" = 5.5")
-        #expect(pattern == "CAST(\"price\" AS TEXT) LIKE '%5%' ESCAPE '!'")
+        #expect(pattern == "CAST(\"price\" AS TEXT) ILIKE '%5%' ESCAPE '!'")
     }
 }
 

@@ -202,6 +202,7 @@ struct FilterSQLGenerator {
         let matchesCase = filter.isCaseSensitive
             || !filter.filterOperator.supportsCaseSensitivity
             || !allowsCaseFolding(columnType)
+            || Self.comparisonOperators.contains(filter.filterOperator) && hasNoCase(columnType)
         return PluginSQLCaseFolding.resolve(
             style: dialect.caseSensitivityStyle,
             foldFunction: dialect.caseFoldFunction,
@@ -212,17 +213,24 @@ struct FilterSQLGenerator {
     /// Folding a non-text column is a type error on strict engines, so only fold
     /// columns that are text or whose type the grid has not resolved, unless the
     /// dialect casts the operand to text first, which makes every column foldable.
-    /// A number or a boolean has no case, and folded as text `5.50` would no longer equal `5.5`.
     private func allowsCaseFolding(_ columnType: ColumnType?) -> Bool {
+        columnType == nil
+            || ColumnTypeSQLQuoting.isKnownTextLike(columnType)
+            || dialect.textCastTypeName != nil
+    }
+
+    /// A number or a boolean has no case, and compared folded as text `5.50` would no longer equal `5.5`.
+    /// A pattern still folds: `contains TRUE` finds PostgreSQL's `true`.
+    private func hasNoCase(_ columnType: ColumnType?) -> Bool {
         switch columnType {
         case .integer?, .decimal?, .boolean?:
-            return false
+            return true
         default:
-            return columnType == nil
-                || ColumnTypeSQLQuoting.isKnownTextLike(columnType)
-                || dialect.textCastTypeName != nil
+            return false
         }
     }
+
+    private static let comparisonOperators: Set<FilterOperator> = [.equal, .notEqual, .inList, .notInList]
 
     private func foldedComparison(_ literal: String, folding: PluginSQLCaseFolding) -> String? {
         guard folding.foldsComparisonOperands else { return literal }

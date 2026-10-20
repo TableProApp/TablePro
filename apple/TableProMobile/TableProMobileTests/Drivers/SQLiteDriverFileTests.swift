@@ -357,6 +357,23 @@ struct SQLiteDriverFileTests {
         #expect(remaining.rows == [["integer"], ["text"]])
     }
 
+    @Test("An update through a key two rows share changes neither, even without the check before it")
+    func sharedKeyUpdateChangesNothing() async throws {
+        let driver = try await connectedDriver("shared-update.db")
+        _ = try await driver.execute(query: "CREATE TABLE p (id PRIMARY KEY, name)")
+        _ = try await driver.execute(query: "INSERT INTO p VALUES (5, 'integer'), ('5', 'text')")
+        let columns = try await driver.fetchColumns(table: "p", schema: nil)
+
+        try await driver.executeWrite([SQLBuilder.buildUpdate(
+            table: "p", schema: nil, type: .sqlite, driver: driver,
+            changes: [(column: "name", value: "both")], primaryKeys: [(column: "id", value: "5")], columns: columns
+        )])
+        let names = try await driver.execute(query: "SELECT name FROM p ORDER BY name")
+        try await driver.disconnect()
+
+        #expect(names.rows == [["integer"], ["text"]])
+    }
+
     @Test("A result column with no declared type that holds only blobs reads as BLOB")
     func untypedBlobColumnReadsAsBlob() async throws {
         let driver = try await connectedDriver("untyped-blob.db")

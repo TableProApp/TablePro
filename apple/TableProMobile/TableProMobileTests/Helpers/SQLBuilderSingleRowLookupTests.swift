@@ -146,29 +146,26 @@ struct SQLBuilderSingleRowLookupTests {
         let key = [(column: "id", value: "5")]
         #expect(SQLBuilder.buildDelete(
             table: "t", schema: nil, type: .sqlite, driver: driver(), primaryKeys: key, columns: columns
-        ) == "DELETE FROM \"t\" WHERE \"id\" IN (5, '5')")
+        ) == "DELETE FROM \"t\" WHERE \"id\" IN (5, '5') AND (SELECT COUNT(*) FROM \"t\" WHERE \"id\" IN (5, '5')) = 1")
         #expect(SQLBuilder.buildUpdate(
             table: "t", schema: nil, type: .sqlite, driver: driver(),
             changes: [(column: "name", value: "x")], primaryKeys: key, columns: columns
-        ) == "UPDATE \"t\" SET \"name\" = 'x' WHERE \"id\" IN (5, '5')")
+        ) == "UPDATE \"t\" SET \"name\" = 'x' WHERE \"id\" IN (5, '5') AND (SELECT COUNT(*) FROM \"t\" WHERE \"id\" IN (5, '5')) = 1")
     }
 
-    @Test("Only a key matched both ways gets a count to check it names one row")
-    func keyMatchCountOnlyForEitherWayKeys() {
+    @Test("Only a key matched both ways can name two rows")
+    func onlyEitherWayKeysCanNameTwoRows() {
         let untyped = [ColumnInfo(name: "id", typeName: "")]
+        #expect(SQLBuilder.keyMatchesEitherWay([("id", "5")], columns: untyped, type: .sqlite))
+        #expect(!SQLBuilder.keyMatchesEitherWay([("id", "abc")], columns: untyped, type: .sqlite))
+        #expect(!SQLBuilder.keyMatchesEitherWay([("id", "5")], columns: [ColumnInfo(name: "id", typeName: "INTEGER")], type: .sqlite))
+        #expect(!SQLBuilder.keyMatchesEitherWay([("id", "5")], columns: [], type: .postgresql))
         #expect(SQLBuilder.buildKeyMatchCount(
             table: "t", schema: nil, key: [("id", "5")], columns: untyped, type: .sqlite, driver: driver()
         ) == "SELECT COUNT(*) FROM \"t\" WHERE \"id\" IN (5, '5')")
-        #expect(SQLBuilder.buildKeyMatchCount(
-            table: "t", schema: nil, key: [("id", "abc")], columns: untyped, type: .sqlite, driver: driver()
-        ) == nil)
-        #expect(SQLBuilder.buildKeyMatchCount(
-            table: "t", schema: nil, key: [("id", "5")], columns: [ColumnInfo(name: "id", typeName: "INTEGER")],
-            type: .sqlite, driver: driver()
-        ) == nil)
-        #expect(SQLBuilder.buildKeyMatchCount(
-            table: "t", schema: nil, key: [("id", "5")], columns: [], type: .postgresql, driver: driver()
-        ) == nil)
+        #expect(SQLBuilder.buildDelete(
+            table: "t", schema: nil, type: .postgresql, driver: driver(), primaryKeys: [("id", "5")], columns: []
+        ) == "DELETE FROM \"t\" WHERE \"id\" = '5'")
     }
 }
 

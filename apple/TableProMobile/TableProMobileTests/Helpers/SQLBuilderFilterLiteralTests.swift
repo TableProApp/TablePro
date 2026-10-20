@@ -87,9 +87,9 @@ struct SQLBuilderFilterLiteralTests {
     func patternOnNonCharacterColumnIsCast() {
         let id = ColumnInfo(name: "id", typeName: "integer")
         let contains = TableFilter(columnName: "id", filterOperator: .contains, value: "5")
-        #expect(count(.postgresql, contains, id).hasSuffix("WHERE CAST(\"id\" AS TEXT) LIKE '%5%' ESCAPE '!'"))
+        #expect(count(.postgresql, contains, id).hasSuffix("WHERE CAST(\"id\" AS TEXT) ILIKE '%5%' ESCAPE '!'"))
         #expect(count(.duckdb, contains, ColumnInfo(name: "id", typeName: "INTEGER"))
-            .hasSuffix("WHERE CAST(\"id\" AS VARCHAR) LIKE '%5%' ESCAPE '!'"))
+            .hasSuffix("WHERE CAST(\"id\" AS VARCHAR) ILIKE '%5%' ESCAPE '!'"))
         #expect(count(.mysql, contains, id).hasSuffix("WHERE `id` LIKE '%5%'"))
         let uuid = TableFilter(columnName: "u", filterOperator: .contains, value: "a0")
         #expect(count(.postgresql, uuid, ColumnInfo(name: "u", typeName: "uuid"))

@@ -90,15 +90,20 @@ public struct FilterSQLGenerator: Sendable {
         }
     }
 
-    // A number, a boolean or a bit has no case, and folded as text `5.50` would no longer equal `5.5`.
+    // A number, a boolean or a bit has no case, and compared folded as text `5.50` would no longer equal `5.5`.
+    // A pattern still folds: `contains TRUE` finds PostgreSQL's `true`.
     private func caseFolding(for filter: TableFilter, column: ColumnInfo?) -> PluginSQLCaseFolding {
-        let hasNoCase = FilterColumnKind.kind(of: column).map { $0 != .text } ?? false
+        let comparesWithoutCase = Self.comparisonOperators.contains(filter.filterOperator)
+            && FilterColumnKind.kind(of: column).map { $0 != .text } ?? false
         return PluginSQLCaseFolding.resolve(
             style: dialect.caseSensitivityStyle,
             foldFunction: dialect.caseFoldFunction,
-            isCaseSensitive: filter.isCaseSensitive || !filter.filterOperator.supportsCaseSensitivity || hasNoCase
+            isCaseSensitive: filter.isCaseSensitive || !filter.filterOperator.supportsCaseSensitivity
+                || comparesWithoutCase
         )
     }
+
+    private static let comparisonOperators: Set<FilterOperator> = [.equal, .notEqual, .in, .notIn]
 
     // A plain comparison keeps the column's own type and its index; only a case fold reads it as text.
     private func comparisonCondition(

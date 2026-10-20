@@ -398,10 +398,10 @@ struct FilterSQLGeneratorTests {
                              isCaseSensitive: false, dialect: dialect)
             == "WHERE LOWER(CAST(\"mood\" AS TEXT)) IN (LOWER('a'), LOWER('b'))")
         #expect(engineClause(.postgresql, ColumnInfo(name: "n", typeName: "numeric"), "5", op: .startsWith, dialect: dialect)
-            == "WHERE CAST(\"n\" AS TEXT) LIKE '5%' ESCAPE '!'")
+            == "WHERE CAST(\"n\" AS TEXT) ILIKE '5%' ESCAPE '!'")
     }
 
-    @Test("Match Case off leaves a number, boolean or bit column compared as itself")
+    @Test("Match Case off compares a number, boolean or bit column as itself and still folds a pattern")
     func noCaseColumnsAreNotFolded() {
         let dialect = castingDialect
         let price = ColumnInfo(name: "price", typeName: "numeric(10,2)")
@@ -410,8 +410,9 @@ struct FilterSQLGeneratorTests {
             == "WHERE \"price\" IN ('5.5', '6')")
         #expect(engineClause(.postgresql, ColumnInfo(name: "b", typeName: "bit"), "1", isCaseSensitive: false, dialect: dialect)
             == "WHERE \"b\" = '1'")
-        #expect(engineClause(.postgresql, price, "5", op: .contains, isCaseSensitive: false, dialect: dialect)
-            == "WHERE CAST(\"price\" AS TEXT) LIKE '%5%' ESCAPE '!'")
+        #expect(engineClause(.postgresql, ColumnInfo(name: "f", typeName: "boolean"), "TRUE", op: .contains,
+                             isCaseSensitive: false, dialect: dialect)
+            == "WHERE CAST(\"f\" AS TEXT) ILIKE '%TRUE%' ESCAPE '!'")
     }
 
     @Test("A character column keeps its own operand", arguments: ["character varying", "text", "citext", "bpchar", "name"])

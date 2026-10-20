@@ -501,7 +501,7 @@ final class DataBrowserViewModel {
         let components = primaryKey.map { PrimaryKeyComponent(column: $0.column, value: $0.value) }
         let ref = CellRef(table: table, column: components[0].column, primaryKey: components)
         do {
-            _ = try await loadFullValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema)
+            _ = try await readValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema, ofOneRow: false)
             return true
         } catch CellLookupError.rowNotFound {
             return false
@@ -510,14 +510,22 @@ final class DataBrowserViewModel {
 
     // The caller passes the schema its rows came from: a schema switch while a read is in flight must not move it.
     func loadFullValue(driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType, schema: String?) async throws -> String? {
+        try await readValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema, ofOneRow: true)
+    }
+
+    // A full value is read only from a key that names one row; whether a deleted row is still there is not.
+    private func readValue(
+        driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType, schema: String?, ofOneRow: Bool
+    ) async throws -> String? {
+        let table = SQLBuilder.qualifiedIdentifier(table: ref.table, schema: schema, for: databaseType)
         let predicate = SQLBuilder.keyPredicate(
             ref.primaryKey.map { (column: $0.column, value: $0.value) },
             columns: columnDetails,
             type: databaseType,
-            driver: driver
+            driver: driver,
+            uniqueIn: ofOneRow ? table : nil
         )
         let column = SQLBuilder.quoteIdentifier(ref.column, for: databaseType)
-        let table = SQLBuilder.qualifiedIdentifier(table: ref.table, schema: schema, for: databaseType)
         let query: String
         switch databaseType {
         case .mssql:

@@ -12,13 +12,18 @@ nonisolated enum SharedRowKey {
         type: DatabaseType,
         driver: any DatabaseDriver
     ) async -> AppError? {
-        guard let query = SQLBuilder.buildKeyMatchCount(
+        guard SQLBuilder.keyMatchesEitherWay(key, columns: columns, type: type) else { return nil }
+        let query = SQLBuilder.buildKeyMatchCount(
             table: table, schema: schema, key: key, columns: columns, type: type, driver: driver
-        ) else { return nil }
-        guard let result = try? await driver.execute(query: query),
-              let count = result.rows.first?.first.flatMap({ $0 }).flatMap({ Int($0) }),
-              count > 1
-        else { return nil }
+        )
+        let count: Int
+        do {
+            let result = try await driver.execute(query: query)
+            count = result.rows.first?.first.flatMap { $0 }.flatMap { Int($0) } ?? 0
+        } catch {
+            return ErrorClassifier.classify(error, context: ErrorContext(operation: "checkRowKey", databaseType: type))
+        }
+        guard count > 1 else { return nil }
         return AppError(
             category: .query,
             title: String(localized: "Key Matches Several Rows"),
