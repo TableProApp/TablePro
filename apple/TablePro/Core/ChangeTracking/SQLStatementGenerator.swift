@@ -472,7 +472,7 @@ struct SQLStatementGenerator {
         for row in rowMatches {
             let boundCount = row.matches.count(where: { $0.boundValue != nil })
             // An either-way term binds its value twice, and the row's guard repeats every term.
-            let eitherWayCount = row.matches.count { matchesEitherWay($0.boundValue) }
+            let eitherWayCount = row.matches.count(where: { matchesEitherWay($0.boundValue) })
             let rowParameterCount = eitherWayCount > 0 ? (boundCount + eitherWayCount) * 2 : boundCount
             if !chunk.isEmpty,
                matchesOneRowPerStatement || chunkParameterCount + rowParameterCount > maxBindParameters {
