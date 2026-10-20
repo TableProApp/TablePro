@@ -4,6 +4,7 @@ import TableProDatabase
 import TableProModels
 
 struct StructureView: View {
+    @Environment(ConnectionCoordinator.self) private var coordinator
     let table: TableInfo
     let session: ConnectionSession?
     let databaseType: DatabaseType
@@ -259,5 +260,7 @@ struct StructureView: View {
         }
 
         isLoading = false
+        // With autocommit off, a MySQL read opens a transaction.
+        await coordinator.refreshTransaction()
     }
 }

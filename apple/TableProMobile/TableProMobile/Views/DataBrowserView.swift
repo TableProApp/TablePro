@@ -325,7 +325,15 @@ struct DataBrowserView: View {
             onSaved: { Task { await viewModel.load() } },
             loadFullValue: { ref in
                 guard let session else { return nil }
-                return try await viewModel.loadFullValue(driver: session.driver, ref: ref, databaseType: connection.type)
+                // With autocommit off, a MySQL read opens a transaction; a failed read refreshes too, and never redials.
+                do {
+                    let value = try await viewModel.loadFullValue(driver: session.driver, ref: ref, databaseType: connection.type)
+                    await coordinator.refreshTransaction()
+                    return value
+                } catch {
+                    await coordinator.refreshTransaction()
+                    throw error
+                }
             },
             coordinator: coordinator
         )

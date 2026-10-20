@@ -167,6 +167,9 @@ final class ConnectionCoordinator {
     }
 
     private func runAttempt(token: UUID) async {
+        // Another window's dial is shared once its schema is back, never torn down mid-dial.
+        await appState.sessionRedialer.settled(connection.id)
+        guard attemptToken == token else { return }
         if let existing = appState.connectionManager.session(for: connection.id) {
             do {
                 let existingTables = try await existing.driver.fetchTables(schema: nil)
@@ -185,6 +188,12 @@ final class ConnectionCoordinator {
                 if await keepsRefusingSession(existing, token: token, refusal: error) { return }
                 guard attemptToken == token else { return }
                 session = nil
+                await appState.sessionRedialer.settled(connection.id)
+                guard attemptToken == token else { return }
+                if let live = appState.connectionManager.session(for: connection.id), live.driver !== existing.driver {
+                    await runAttempt(token: token)
+                    return
+                }
                 await appState.connectionManager.disconnect(connection.id)
             }
         }
@@ -194,16 +203,29 @@ final class ConnectionCoordinator {
     }
 
     /// `allowSignIn` is false on the retry that follows a sign-in, so a connection that keeps
-    /// failing cannot put the prompt up again and again.
+    /// failing cannot put the prompt up again and again. That retry dials with the new credentials
+    /// rather than join a dial another window started without them.
     private func connectFresh(token: UUID, allowSignIn: Bool = true) async {
         IOSAnalyticsProvider.shared.markConnectionAttempted()
 
         do {
-            let newSession = try await appState.connectionManager.connect(connection, prompter: prompts)
+            let outcome = try await appState.sessionRedialer.redial(
+                connection,
+                schema: nil,
+                prompter: prompts,
+                joining: allowSignIn
+            )
+            let newSession = outcome.session
             let newTables = try await newSession.driver.fetchTables(schema: nil)
             guard attemptToken == token else { return }
+            if !outcome.dialedHere {
+                adoptPlacement(of: newSession, includingDatabase: true)
+            }
             session = newSession
             tables = newTables
+            if outcome.dialedHere {
+                appState.bumpSessionRevision(connection.id)
+            }
             await loadDatabases()
             await loadSchemas()
             await refreshTransaction()
@@ -291,7 +313,7 @@ final class ConnectionCoordinator {
             guard attemptToken == token else { return false }
             await takeSession(outcome.session, token: token, dialedHere: outcome.dialedHere)
             guard attemptToken == token, heldTransaction else { return false }
-            appState.sessionTransactions.transactionLost(connection.id)
+            appState.sessionTransactions.noteRolledBack(connection.id)
             let settledLoss: SessionLoss = workWasRunning || statementFailedDuringCheck ? .duringWork : loss
             if let message = Self.lostTransactionMessage(settledLoss, connectionName: displayName) {
                 failureAlertMessage = message
@@ -331,31 +353,17 @@ final class ConnectionCoordinator {
         return target
     }
 
-    // A session another window dialed sits on that window's database and schema, so this one
-    // follows it before any write can name a table from the old list.
     private func takeSession(_ newSession: ConnectionSession, token: UUID, dialedHere: Bool) async {
-        let driver = newSession.driver
         let fetched: [TableInfo]?
         do {
-            fetched = try await driver.fetchTables(schema: nil)
+            fetched = try await newSession.driver.fetchTables(schema: nil)
         } catch {
             Self.logger.warning("Failed to load tables on the new session: \(error.localizedDescription, privacy: .public)")
             fetched = nil
         }
         guard attemptToken == token else { return }
-        var movedPlacement = false
-        if !dialedHere {
-            let database = sessionDatabase(of: newSession)
-            if supportsDatabaseSwitching, !database.isEmpty, database != activeDatabase {
-                activeDatabase = database
-                movedPlacement = true
-            }
-        }
         // The dial restored this window's schema, or another window's; a failed restore leaves the default.
-        if supportsSchemas, let schema = driver.currentSchema, schema != activeSchema {
-            activeSchema = schema
-            movedPlacement = true
-        }
+        let movedPlacement = adoptPlacement(of: newSession, includingDatabase: !dialedHere)
         if let fetched {
             tables = fetched
         } else {
@@ -363,7 +371,60 @@ final class ConnectionCoordinator {
             if movedPlacement { tables = [] }
         }
         session = newSession
+        if dialedHere {
+            appState.bumpSessionRevision(connection.id)
+        }
         await refreshTransaction()
+    }
+
+    // A session another window dialed or moved sits on that window's database and schema, so this one
+    // follows it before any write can name a table from the old list.
+    @discardableResult
+    private func adoptPlacement(of taken: ConnectionSession, includingDatabase: Bool) -> Bool {
+        var moved = false
+        if includingDatabase {
+            let database = sessionDatabase(of: taken)
+            if supportsDatabaseSwitching, !database.isEmpty, database != activeDatabase {
+                activeDatabase = database
+                moved = true
+            }
+        }
+        if supportsSchemas, let schema = taken.driver.currentSchema, schema != activeSchema {
+            activeSchema = schema
+            moved = true
+        }
+        return moved
+    }
+
+    // Another window replaced the shared session, or switched its database or schema.
+    func followLiveSession() async {
+        guard canFollowLiveSession else { return }
+        let token = attemptToken
+        await appState.sessionRedialer.settled(connection.id)
+        guard attemptToken == token, canFollowLiveSession, let held = session,
+              let live = appState.connectionManager.session(for: connection.id) else { return }
+        if live.driver !== held.driver {
+            await takeSession(live, token: token, dialedHere: false)
+            guard attemptToken == token else { return }
+            await loadSchemas()
+            return
+        }
+        guard adoptPlacement(of: live, includingDatabase: true) else { return }
+        session = live
+        do {
+            let fetched = try await live.driver.fetchTables(schema: supportsSchemas ? activeSchema : nil)
+            guard attemptToken == token, session?.driver === live.driver else { return }
+            tables = fetched
+        } catch {
+            Self.logger.warning("Failed to load tables where another window moved the session: \(error.localizedDescription, privacy: .public)")
+            metadataRefused = true
+            tables = []
+        }
+        await refreshTransaction()
+    }
+
+    private var canFollowLiveSession: Bool {
+        session != nil && !isSwitching && !isReconnecting && connectTask == nil
     }
 
     // A transaction the server aborted refuses catalog reads, yet the session still holds the user's work.
@@ -431,11 +492,21 @@ final class ConnectionCoordinator {
         appState.sessionTransactions.token(for: connection.id, on: session?.driver)
     }
 
-    func track<T>(failed: (T) -> Bool = { _ in false }, _ work: () async throws -> T) async rethrows -> T {
+    func track<T>(
+        failed: (T) -> Bool = { _ in false },
+        rolledBack: (T) -> Bool = { _ in false },
+        _ work: () async throws -> T
+    ) async rethrows -> T {
+        let heldBefore = transactionHold != nil
         do {
             let value = try await appState.sessionTransactions.track(connection.id, work)
+            var lossSettled = false
             if failed(value) {
-                await restoreSession(after: .duringWork)
+                lossSettled = await restoreSession(after: .duringWork)
+            }
+            // A typed ROLLBACK leaves what grids and row screens read as stale as the bar's Roll Back does.
+            if heldBefore, !lossSettled, transactionHold == nil, rolledBack(value) {
+                appState.sessionTransactions.noteRolledBack(connection.id)
             }
             await reloadMetadataIfReleased()
             return value
@@ -484,6 +555,8 @@ final class ConnectionCoordinator {
         } catch {
             Self.logger.warning("Failed to reload tables after a Roll Back: \(error.localizedDescription, privacy: .public)")
         }
+        // With autocommit off, a MySQL read opens a transaction.
+        await refreshTransaction()
     }
 
     private func reloadMetadataIfReleased() async {
@@ -528,9 +601,12 @@ final class ConnectionCoordinator {
             }
         }
         await refreshTransaction()
+        appState.bumpSessionRevision(connection.id)
     }
 
+    // Lets another window's redial land before the teardown that would cancel it, and dials where other windows join.
     private func reconnectWithDatabase(_ database: String) async {
+        await appState.sessionRedialer.settled(connection.id)
         await appState.connectionManager.disconnect(connection.id)
         self.session = nil
 
@@ -539,7 +615,12 @@ final class ConnectionCoordinator {
 
         let token = attemptToken
         do {
-            let newSession = try await appState.connectionManager.connect(newConnection, prompter: prompts)
+            let newSession = try await appState.sessionRedialer.redial(
+                newConnection,
+                schema: nil,
+                prompter: prompts,
+                joining: false
+            ).session
             guard attemptToken == token else { return }
             self.session = newSession
             self.tables = try await newSession.driver.fetchTables(schema: nil)
@@ -549,7 +630,12 @@ final class ConnectionCoordinator {
         } catch {
             Self.logger.error("Failed to switch to database \(database, privacy: .public): \(error.localizedDescription, privacy: .public)")
             do {
-                let fallbackSession = try await appState.connectionManager.connect(connection, prompter: prompts)
+                let fallbackSession = try await appState.sessionRedialer.redial(
+                    connection,
+                    schema: nil,
+                    prompter: prompts,
+                    joining: false
+                ).session
                 guard attemptToken == token else { return }
                 self.session = fallbackSession
                 self.tables = try await fallbackSession.driver.fetchTables(schema: nil)
@@ -577,6 +663,7 @@ final class ConnectionCoordinator {
             try await session.driver.switchSchema(to: name)
             activeSchema = name
             UserDefaults.standard.set(name, forKey: ConnectionDefaultsKey.lastSchema.name(for: connection.id))
+            appState.bumpSessionRevision(connection.id)
             self.tables = try await session.driver.fetchTables(schema: name)
         } catch {
             failureAlertMessage = String(localized: "Failed to switch schema")

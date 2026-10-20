@@ -12,10 +12,15 @@ final class SessionRedialer {
         let dialedHere: Bool
     }
 
+    private struct Dial {
+        let id: UUID
+        let task: Task<ConnectionSession, any Error>
+    }
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "SessionRedialer")
 
     private let connectionManager: ConnectionManager
-    private var dials: [UUID: Task<ConnectionSession, any Error>] = [:]
+    private var dials: [UUID: Dial] = [:]
 
     init(connectionManager: ConnectionManager) {
         self.connectionManager = connectionManager
@@ -25,26 +30,36 @@ final class SessionRedialer {
     func redial(
         _ connection: DatabaseConnection,
         schema: String?,
-        prompter: (any ConnectionPrompter)?
+        prompter: (any ConnectionPrompter)?,
+        joining: Bool = true
     ) async throws -> Outcome {
-        if let inFlight = dials[connection.id] {
-            return Outcome(session: try await inFlight.value, dialedHere: false)
+        while let inFlight = dials[connection.id] {
+            if joining {
+                return Outcome(session: try await inFlight.task.value, dialedHere: false)
+            }
+            // A database switch needs its own target, and a retry after a sign-in its new credentials.
+            _ = try? await inFlight.task.value
         }
         let manager = connectionManager
-        let dial = Task {
+        let dialId = UUID()
+        let task = Task {
+            // Delisted before any waiter resumes: awaiting a finished task never suspends, so a listed one would spin.
+            defer {
+                if dials[connection.id]?.id == dialId { dials[connection.id] = nil }
+            }
             let session = try await manager.connect(connection, prompter: prompter)
             await Self.restore(schema, on: session.driver)
             return session
         }
-        dials[connection.id] = dial
-        defer {
-            if dials[connection.id] == dial { dials[connection.id] = nil }
-        }
-        return Outcome(session: try await dial.value, dialedHere: true)
+        dials[connection.id] = Dial(id: dialId, task: task)
+        return Outcome(session: try await task.value, dialedHere: true)
     }
 
+    // Returns with no dial in flight, so a caller can tear the session down without cancelling one.
     func settled(_ connectionId: UUID) async {
-        _ = try? await dials[connectionId]?.value
+        while let dial = dials[connectionId] {
+            _ = try? await dial.task.value
+        }
     }
 
     private static func restore(_ schema: String?, on driver: any DatabaseDriver) async {

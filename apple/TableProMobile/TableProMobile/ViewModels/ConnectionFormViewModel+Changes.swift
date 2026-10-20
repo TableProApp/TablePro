@@ -54,6 +54,12 @@ extension ConnectionFormViewModel {
         isEditing && changesSecrets
     }
 
+    // A changed secret reconnects the open screen, and a record that dials differently drops its session.
+    func redialsAfterSave(over current: DatabaseConnection) -> Bool {
+        guard isEditing else { return false }
+        return reconnectsAfterSave || !applyingEdits(to: current).dialsTheSameWay(as: current)
+    }
+
     var secretWrites: ConnectionFormSecretWrites {
         ConnectionFormSecretWrites(
             password: Self.changedSecret(password, loaded: storedSecrets.password),

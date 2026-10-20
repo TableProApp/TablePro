@@ -206,6 +206,9 @@ struct ConnectedView: View {
         .onChange(of: appState.sessionTransactions.rollBackCount(for: connection.id)) {
             Task { await coordinator.reloadAfterRollBack() }
         }
+        .onChange(of: appState.sessionRevision(for: connection.id)) {
+            Task { await coordinator.followLiveSession() }
+        }
         // tabChrome sits inside each stack; this also reaches pushed row screens and their sheets, which track writes.
         .environment(coordinator)
         .background {

@@ -2,6 +2,7 @@ import Foundation
 import TableProDatabase
 @testable import TableProMobile
 import TableProModels
+import TableProQuery
 import Testing
 
 @MainActor
@@ -52,6 +53,31 @@ struct ConnectionCoordinatorReconnectTests {
 
     private func tableNames(_ coordinator: ConnectionCoordinator) -> [String] {
         coordinator.tables.map { $0.name }
+    }
+
+    private func warehouseCoordinators(on driver: MockDatabaseDriver) async throws -> (ConnectionCoordinator, ConnectionCoordinator) {
+        let warehouse = DatabaseConnection(
+            name: "Warehouse",
+            type: .postgresql,
+            host: "pg.example.com",
+            port: 5_432,
+            database: "analytics"
+        )
+        factory.queue(driver)
+        _ = try await appState.connectionManager.connect(warehouse)
+        let left = ConnectionCoordinator(connection: warehouse, appState: appState)
+        await left.connect()
+        let right = ConnectionCoordinator(connection: warehouse, appState: appState)
+        await right.connect()
+        return (left, right)
+    }
+
+    private func runQuery(_ text: String, in coordinator: ConnectionCoordinator, on driver: MockDatabaseDriver) async {
+        let viewModel = QueryEditorViewModel()
+        let script = QueryScript(units: [QueryScript.Unit(sql: text)], unitKind: .statement)
+        await coordinator.track(rolledBack: { _ in viewModel.ranTransactionRollBack }) {
+            await viewModel.run(driver: driver, script: script)
+        }
     }
 
     @Test("A redial dials the database the toolbar shows and reloads its tables")
@@ -114,6 +140,94 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(right.session?.driver === second)
         #expect(isConnected(left))
         #expect(isConnected(right))
+    }
+
+    @Test("A window that opens the connection while another redials it shares that dial, and neither shows an error")
+    func freshOpenSharesARedial() async throws {
+        let first = driver(tables: ["orders"])
+        try await dial(first)
+        let redialing = await attachedCoordinator()
+        let dialsBefore = factory.dialed.count
+
+        let teardown = TestGate()
+        first.beforeDisconnect = { await teardown.enter() }
+        first.pingError = MockDatabaseDriver.MockError.scripted
+        let second = driver(tables: ["orders"])
+        factory.queue(second)
+        let redial = Task { await redialing.reconnectIfNeeded() }
+        await teardown.waitUntilEntered()
+
+        let opening = ConnectionCoordinator(connection: connection, appState: appState)
+        let fresh = Task { await opening.connect() }
+        await teardown.open()
+        await redial.value
+        await fresh.value
+
+        #expect(factory.dialed.count == dialsBefore + 1)
+        #expect(redialing.session?.driver === second)
+        #expect(opening.session?.driver === second)
+        #expect(isConnected(redialing))
+        #expect(isConnected(opening))
+        #expect(!redialing.showFailureAlert)
+        #expect(!opening.showFailureAlert)
+    }
+
+    @Test("A database switch on the shared session moves the other window to that database and its tables")
+    func otherWindowFollowsASharedDatabaseSwitch() async throws {
+        let first = driver(tables: ["orders"])
+        try await dial(first)
+        let switching = await attachedCoordinator()
+        let following = await attachedCoordinator()
+        let revision = appState.sessionRevision(for: connection.id)
+
+        first.scriptedTables = [TableInfo(name: "staging_orders")]
+        await switching.switchDatabase(to: "app_staging")
+        #expect(appState.sessionRevision(for: connection.id) > revision)
+        await following.followLiveSession()
+
+        #expect(following.session?.driver === first)
+        #expect(following.activeDatabase == "app_staging")
+        #expect(tableNames(following) == ["staging_orders"])
+    }
+
+    @Test("A PostgreSQL database switch in one window moves the other window onto the new session")
+    func otherWindowFollowsAPostgreSQLSwitch() async throws {
+        let first = driver(tables: ["facts"])
+        first.currentSchema = "public"
+        let (switching, following) = try await warehouseCoordinators(on: first)
+
+        let second = driver(tables: ["staging_facts"])
+        second.currentSchema = "public"
+        factory.queue(second)
+        await switching.switchDatabase(to: "staging")
+        await following.followLiveSession()
+
+        #expect(switching.session?.driver === second)
+        #expect(following.session?.driver === second)
+        #expect(following.activeDatabase == "staging")
+        #expect(tableNames(following) == ["staging_facts"])
+    }
+
+    @Test("A typed ROLLBACK that ends the transaction counts as a Roll Back, and a typed COMMIT does not")
+    func typedRollBackCountsAsARollBack() async throws {
+        let first = driver(tables: ["orders"], state: .explicitTransaction)
+        try await dial(first)
+        let coordinator = await attachedCoordinator()
+        #expect(coordinator.transactionHold == .open)
+
+        first.scriptedTransactionState = .idle
+        await runQuery("COMMIT", in: coordinator, on: first)
+        #expect(coordinator.transactionHold == nil)
+        #expect(monitor.rollBackCount(for: connection.id) == 0)
+
+        first.scriptedTransactionState = .explicitTransaction
+        await coordinator.refreshTransaction()
+        #expect(coordinator.transactionHold == .open)
+        first.scriptedTransactionState = .idle
+        await runQuery("ROLLBACK", in: coordinator, on: first)
+
+        #expect(coordinator.transactionHold == nil)
+        #expect(monitor.rollBackCount(for: connection.id) == 1)
     }
 
     @Test("A redial over an open transaction tells the user the server rolled it back")
