@@ -21,6 +21,7 @@ final class DatabaseManager: ObservableObject {
     internal let pluginManager: PluginManager
     internal let aiAccessApprovals: AIAccessApprovals
     internal let preConnectScriptConsent: PreConnectScriptConsent
+    internal let postDisconnectScripts: PostDisconnectScripts
     internal let localNetworkProbe: any LocalNetworkAccessProbing
     internal var historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
 
@@ -181,6 +182,7 @@ final class DatabaseManager: ObservableObject {
         pluginManager: PluginManager = .shared,
         aiAccessApprovals: AIAccessApprovals = .shared,
         preConnectScriptConsent: PreConnectScriptConsent = PreConnectScriptConsent(),
+        postDisconnectScripts: PostDisconnectScripts = PostDisconnectScripts(),
         localNetworkProbe: any LocalNetworkAccessProbing = NetworkFrameworkLocalNetworkProbe()
     ) {
         self.connectionStorage = connectionStorage
@@ -188,6 +190,7 @@ final class DatabaseManager: ObservableObject {
         self.pluginManager = pluginManager
         self.aiAccessApprovals = aiAccessApprovals
         self.preConnectScriptConsent = preConnectScriptConsent
+        self.postDisconnectScripts = postDisconnectScripts
         self.localNetworkProbe = localNetworkProbe
         observeConnectionUpdates()
         observeHealthCheckSetting()

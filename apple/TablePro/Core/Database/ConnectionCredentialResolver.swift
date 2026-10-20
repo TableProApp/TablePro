@@ -31,9 +31,23 @@ enum ConnectionCredentialResolver {
         override: String? = nil,
         deadline: ConnectionDeadline? = nil
     ) async throws -> String {
+        try await resolveSignIn(for: connection, fields: fields, override: override, deadline: deadline).password
+    }
+
+    // A nil username keeps the connection's own; Redshift IAM is the sign-in that hands back another.
+    static func resolveSignIn(
+        for connection: DatabaseConnection,
+        fields: [String: String],
+        override: String? = nil,
+        deadline: ConnectionDeadline? = nil
+    ) async throws -> ResolvedSignIn {
         if let minter = iamPasswordMinter(for: connection, fields: fields) {
             return try await minter.mint(deadline: deadline)
         }
+        return ResolvedSignIn(username: nil, password: try await resolveStoredPassword(for: connection, override: override))
+    }
+
+    private static func resolveStoredPassword(for connection: DatabaseConnection, override: String?) async throws -> String {
         if let override { return override }
         if case .profile(let profileId) = connection.credentialMode,
            let profile = CredentialProfileStorage.shared.profile(for: profileId) {
@@ -43,7 +57,7 @@ enum ConnectionCredentialResolver {
             guard await ConnectionStorage.shared.storeIsTrusted else {
                 throw PasswordSourceResolver.ResolutionError.storeNotTrusted
             }
-            return try await PasswordSourceResolver.resolve(passwordSource)
+            return try await PasswordSourceResolver.resolve(passwordSource, for: ConnectionScriptContext(connection: connection))
         }
         if connection.usePgpass {
             return pgpassPassword(for: connection, username: resolveUsername(for: connection))
@@ -99,7 +113,7 @@ enum ConnectionCredentialResolver {
             guard CredentialProfileStorage.shared.storeIsTrusted else {
                 throw PasswordSourceResolver.ResolutionError.storeNotTrusted
             }
-            return try await PasswordSourceResolver.resolve(source)
+            return try await PasswordSourceResolver.resolve(source, for: ConnectionScriptContext(connection: connection))
         }
     }
 
@@ -129,15 +143,14 @@ enum ConnectionCredentialResolver {
         )
     }
 
-    /// What mints the password of a connection that signs in with a token, or nil when the host does
-    /// not: a plain password, or an AWS IAM sign-in its driver resolves itself. The AWS token is signed
-    /// for the resolved username rather than `connection.username`, which can lag behind the profile
-    /// until a write-through lands.
+    // The AWS token is signed for the resolved username: `connection.username` can lag behind its profile.
     static func iamPasswordMinter(
         for connection: DatabaseConnection,
         fields: [String: String]
     ) -> IAMPasswordMinter? {
         switch connection.iamSignIn {
+        case .aws(let source) where connection.type == .redshift:
+            return .redshift(RedshiftIAMSignIn(connection: connection, source: source, fields: fields))
         case .aws(let source):
             guard !connection.resolvesAWSIAMInDriver else { return nil }
             return .aws(AWSIAMTokenSigner(
@@ -162,4 +175,9 @@ enum ConnectionCredentialResolver {
     ) -> TimeInterval {
         TimeInterval(max(1, deadline.remainingMilliseconds(at: now))) / 1_000
     }
+}
+
+struct ResolvedSignIn: Equatable, Sendable {
+    let username: String?
+    let password: String
 }

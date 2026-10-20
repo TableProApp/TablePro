@@ -211,6 +211,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         let sqliteFamily = SQLLexicalProfile(grammar: sqlite)
         let cqlFamily = SQLLexicalProfile(grammar: cql, undetermined: [.carriageReturnEndsLineComments])
         let commandLineFamily = SQLLexicalProfile(grammar: commandLine)
+        let trinoFamily = SQLLexicalProfile(grammar: .ansi, undetermined: [.carriageReturnEndsLineComments])
         return [
             "PostgreSQL": postgreSQLFamily,
             "Greenplum": postgreSQLFamily,
@@ -261,7 +262,8 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                 alternatives: [spannerPostgreSQL],
                 undetermined: [.carriageReturnEndsLineComments]
             ),
-            "Trino": SQLLexicalProfile(grammar: .ansi, undetermined: [.carriageReturnEndsLineComments]),
+            "Trino": trinoFamily,
+            "Presto": trinoFamily,
             "Teradata": SQLLexicalProfile(
                 grammar: .ansi,
                 undetermined: [.nestedBlockComments, .carriageReturnEndsLineComments]

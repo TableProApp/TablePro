@@ -317,11 +317,21 @@ final class ConnectionFormCoordinator: ObservableObject {
             resolvedPort = primary.port
         }
 
-        let trimmedScript = advanced.preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedScript.isEmpty {
-            fields.removeValue(forKey: "preConnectScript")
+        for (key, script) in [
+            ("preConnectScript", advanced.preConnectScript),
+            (DatabaseConnection.postDisconnectScriptKey, advanced.postDisconnectScript)
+        ] {
+            if script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                fields.removeValue(forKey: key)
+            } else {
+                fields[key] = script
+            }
+        }
+        if let timeout = advanced.scriptTimeoutSeconds,
+           ConnectionScriptRunner.timeoutSecondsRange.contains(timeout) {
+            fields[DatabaseConnection.scriptTimeoutSecondsKey] = String(timeout)
         } else {
-            fields["preConnectScript"] = advanced.preConnectScript
+            fields.removeValue(forKey: DatabaseConnection.scriptTimeoutSecondsKey)
         }
 
         return ConnectionFormEdits(

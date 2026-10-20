@@ -126,6 +126,7 @@ struct ConnectionURLFormatter {
         if connection.type == .redis {
             sshPathComponent = redisPath(for: connection)
         }
+        sshPathComponent += catalogSchemaSuffix(for: connection, path: sshPathComponent)
         result += "/\(sshPathComponent)"
 
         let query = buildQueryString(connection, sshConfig: ssh)
@@ -175,6 +176,7 @@ struct ConnectionURLFormatter {
         if connection.type == .redis {
             pathComponent = redisPath(for: connection)
         }
+        pathComponent += catalogSchemaSuffix(for: connection, path: pathComponent)
         // Unencoded, a `#` or `?` in the name would swallow the query, socket included.
         result += "/\(pathComponent.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? pathComponent)"
 
@@ -210,6 +212,14 @@ struct ConnectionURLFormatter {
     // libpq's documented form, `?host=/var/run/postgresql`: a query keeps `/` as it is.
     private static func percentEncodeSocketDirectory(_ path: String) -> String {
         path.addingPercentEncoding(withAllowedCharacters: socketPathAllowed.union(CharacterSet(charactersIn: "/"))) ?? path
+    }
+
+    // Trino and Presto read the path as /catalog/schema, as ConnectionURLParser does.
+    private static func catalogSchemaSuffix(for connection: DatabaseConnection, path: String) -> String {
+        guard connection.type.pluginTypeId == DatabaseType.trino.rawValue, !path.isEmpty,
+              let schema = connection.additionalFields["trinoSchema"]?.trimmingCharacters(in: .whitespaces),
+              !schema.isEmpty else { return "" }
+        return "/\(schema)"
     }
 
     private static func redisPath(for connection: DatabaseConnection) -> String {
