@@ -4,6 +4,10 @@ on:
     - cron: "0 23 * * *"
   workflow_dispatch:
 
+concurrency:
+  group: bookie-lab
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: never
   CARGO_INCREMENTAL: "0"

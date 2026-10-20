@@ -32,6 +32,8 @@ On October 20 at 22:19 UTC, PR run #822 and scheduled run #823 both ran widget t
 
 The current workflow concurrency group includes the branch ref. A scheduled run on `linux` and a push to a gate branch therefore use different groups. The gate script's local file lock cannot serialize a server-triggered schedule. Before accepting overlapping workloads, coordinate scheduled runs with the gate queue or isolate their build directories and qualify the resulting resource load. Verify this with an actual scheduled-run and branch-run pair; a manual gate pair alone does not cover the failure.
 
+The workflow hotfix gives both merge-tier and nightly workflows the same static concurrency group, `bookie-lab`, with `cancel-in-progress: false`. Forgejo queues these workflows across refs without cancelling the accepted gate. Existing runs retain their original workflow settings; the queue owner must resolve their overlap. Verify the server has concurrency-group queuing enabled and qualify a scheduled-run and branch-run pair before claiming live acceptance.
+
 The proposed cache helper holds shared locks for active jobs. Those locks exclude cleanup, but allow concurrent builds. Cleanup coordination does not satisfy this scheduling requirement.
 
 ## Move exec-e gradually

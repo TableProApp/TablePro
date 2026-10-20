@@ -30,6 +30,20 @@ class CiWorkflowTests(unittest.TestCase):
             workflow = (ROOT / path).read_text()
             self.assertIn("cargo install cargo-about --locked --version 0.9.2 --features=cli", workflow)
 
+    def test_forgejo_workflows_queue_without_cancelling_across_refs(self):
+        groups = []
+        for name in ("ci", "nightly"):
+            workflow = (ROOT / f".forgejo/workflows/{name}.yml").read_text()
+            match = re.search(r"^concurrency:\n((?:[ \t]+[^\n]*\n)+)", workflow, re.MULTILINE)
+            self.assertIsNotNone(match, name)
+            settings = dict(line.strip().split(":", 1) for line in match[1].splitlines())
+            group = settings["group"].strip()
+            self.assertTrue(group, name)
+            self.assertNotIn("${{", group, name)
+            self.assertEqual(settings["cancel-in-progress"].strip(), "false", name)
+            groups.append(group)
+        self.assertEqual(groups[0], groups[1])
+
     def test_forgejo_gtk_jobs_select_distinct_run_scoped_mcp_ports(self):
         ci = (ROOT / ".forgejo/workflows/ci.yml").read_text()
         nightly = (ROOT / ".forgejo/workflows/nightly.yml").read_text()

@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: lab-ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/linux' }}
+  group: bookie-lab
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: never
