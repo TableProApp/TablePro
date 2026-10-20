@@ -22,7 +22,6 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var scriptedLexicalFacts: [SQLSessionLexicalFacts?] = []
     var pingError: Error?
     var fetchTablesError: Error?
-    var fetchColumnsError: Error?
     var commitError: Error?
     var rollbackError: Error?
 
