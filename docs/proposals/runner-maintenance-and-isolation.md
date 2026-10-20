@@ -26,6 +26,14 @@ The implementation must reach both Forgejo workflows, their shell execution, the
 
 Stage the lock helper first, then qualify the workflows that acquire it. Activate replacement cleanup only after all older jobs without that lock have drained. Otherwise the exclusive lock gives false assurance. Keep the previous timer configuration available for rollback, but do not restore its destructive pruning while jobs run. Observe an actual timer invocation and subsequent warm-cache build before calling maintenance complete.
 
+## Serialize scheduled runs with gates
+
+On October 20 at 22:19 UTC, PR run #822 and scheduled run #823 both ran widget tests on exec-a using `/var/cache/ci/target/widgets`. Their logs repeatedly alternated build-directory lock waits and app compilation, taking about 34 seconds per selected test while completed tests took approximately 0.1 seconds. Both continued to pass tests. At inspection, the host had 73 GiB disk free and 14 GiB available memory. See the [run evidence on #573](https://github.com/cozyGarage/BookiE/issues/573#issuecomment-6303063907).
+
+The current workflow concurrency group includes the branch ref. A scheduled run on `linux` and a push to a gate branch therefore use different groups. The gate script's local file lock cannot serialize a server-triggered schedule. Before accepting overlapping workloads, coordinate scheduled runs with the gate queue or isolate their build directories and qualify the resulting resource load. Verify this with an actual scheduled-run and branch-run pair; a manual gate pair alone does not cover the failure.
+
+The proposed cache helper holds shared locks for active jobs. Those locks exclude cleanup, but allow concurrent builds. Cleanup coordination does not satisfy this scheduling requirement.
+
 ## Move exec-e gradually
 
 Preserve the existing n8n and Atlassian services during the runner migration. First identify their configuration and backup owners. Verify a restore of the n8n database together with its encryption key; a database backup without the matching key cannot establish usable credential recovery. Keep secrets out of this repository.
