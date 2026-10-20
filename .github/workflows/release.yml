@@ -268,7 +268,12 @@ jobs:
       - name: Verify the release
         run: |
           set -euo pipefail
-          gh release verify "$TAG"
+          # GitHub writes the release attestation a few seconds after the release publishes.
+          for attempt in 1 2 3 4 5 6; do
+            gh release verify "$TAG" && break
+            [ "$attempt" -lt 6 ] || exit 1
+            sleep 10
+          done
           for asset in dist/*; do
             gh release verify-asset "$TAG" "$asset"
           done

@@ -90,8 +90,6 @@ struct SQLKeywordsTests {
                "Found \(functionNames.count - uniqueNames.count) duplicate function names")
     }
 
-    // MARK: - P2: MP-1 - Missing SQL Keywords
-
     @Test("Keywords contain window clause keywords")
     func testWindowClauseKeywords() {
         let windowKeywords = ["OVER", "PARTITION", "UNBOUNDED", "PRECEDING", "FOLLOWING", "CURRENT ROW"]
@@ -139,8 +137,6 @@ struct SQLKeywordsTests {
             #expect(SQLKeywords.keywords.contains(kw), "Missing utility keyword: \(kw)")
         }
     }
-
-    // MARK: - P2: MP-2 - Missing Functions
 
     @Test("Aggregate functions include STDDEV and VARIANCE")
     func testMissingAggregateFunctions() {
@@ -190,11 +186,17 @@ struct SQLKeywordsTests {
     @Test("allFunctions includes all new functions")
     func testAllFunctionsUpdated() {
         let allNames = SQLKeywords.allFunctions.map(\.name)
-        // Spot check a few from different categories
         #expect(allNames.contains("STDDEV"))
         #expect(allNames.contains("EXTRACT"))
         #expect(allNames.contains("REGEXP_REPLACE"))
         #expect(allNames.contains("SIN"))
         #expect(allNames.contains("JSON_BUILD_OBJECT"))
+    }
+
+    @Test("isKeyword matches a keyword in any case and nothing else", arguments: [
+        ("date", true), ("ORDER", true), ("User", false), ("orders", false), ("current row", false),
+    ])
+    func isKeyword(word: String, expected: Bool) {
+        #expect(SQLKeywords.isKeyword(word) == expected)
     }
 }

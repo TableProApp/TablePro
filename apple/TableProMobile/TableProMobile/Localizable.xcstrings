@@ -819,6 +819,15 @@
     "%lld changes could not be uploaded to iCloud. They stay on this device and go again on the next sync." : {
 
     },
+    "%lld items" : {
+
+    },
+    "%lld keys" : {
+
+    },
+    "%lld more not shown" : {
+
+    },
     "%lld of %lld" : {
       "localizations" : {
         "en" : {
@@ -1024,6 +1033,12 @@
         }
       }
     },
+    "1 item" : {
+
+    },
+    "1 key" : {
+
+    },
     "1 row" : {
       "localizations" : {
         "ko" : {
@@ -1164,6 +1179,9 @@
           }
         }
       }
+    },
+    "A string cannot hold a line break, tab or other control character." : {
+
     },
     "A sync conflict was detected and needs to be resolved." : {
       "extractionState" : "stale",
@@ -1987,6 +2005,10 @@
         }
       }
     },
+    "All columns" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "All data in \"%@\" will be permanently deleted." : {
       "localizations" : {
         "ko" : {
@@ -2074,6 +2096,9 @@
     "Americas" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Ask the SSH server's administrator to turn on a method TablePro supports." : {
+
     },
     "an item has an empty reference" : {
       "extractionState" : "manual",
@@ -2327,9 +2352,6 @@
     "Asia and Australia" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
-    },
-    "Ask the SSH server's administrator to turn on a method TablePro supports." : {
-
     },
     "Atom" : {
       "extractionState" : "manual",
@@ -2610,6 +2632,9 @@
         }
       }
     },
+    "Binary values and values not loaded in full cannot be exported: %@." : {
+
+    },
     "Blue" : {
       "localizations" : {
         "ko" : {
@@ -2860,6 +2885,9 @@
           }
         }
       }
+    },
+    "Cannot Export" : {
+
     },
     "Cannot reach iCloud. Changes sync when this device is back online." : {
 
@@ -3763,6 +3791,12 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Commit" : {
+
+    },
+    "Commit the Transaction?" : {
+
+    },
     "Computed by the database" : {
       "localizations" : {
         "ko" : {
@@ -4591,6 +4625,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Copy" : {
+
+    },
     "Copy Column Name" : {
       "localizations" : {
         "ko" : {
@@ -4618,6 +4655,12 @@
           }
         }
       }
+    },
+    "Copy Key" : {
+
+    },
+    "Copy Key Path" : {
+
     },
     "Copy Name" : {
       "localizations" : {
@@ -5016,6 +5059,10 @@
           }
         }
       }
+    },
+    "Count all rows" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Create" : {
       "localizations" : {
@@ -6370,6 +6417,9 @@
         }
       }
     },
+    "Edit JSON" : {
+
+    },
     "Edit Tag" : {
       "localizations" : {
         "ko" : {
@@ -6984,6 +7034,9 @@
         }
       }
     },
+    "Expected true, false or null." : {
+
+    },
     "Explains why it can't open here." : {
 
     },
@@ -7078,6 +7131,9 @@
       "generatesSymbol" : false
     },
     "External Table" : {
+
+    },
+    "Extra text after the JSON value." : {
 
     },
     "Eye" : {
@@ -7772,6 +7828,9 @@
     "Fork and Knife" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Format" : {
+
     },
     "FreeTDS could not set up the login." : {
 
@@ -9369,6 +9428,18 @@
         }
       }
     },
+    "Invalid escape sequence." : {
+
+    },
+    "Invalid JSON" : {
+
+    },
+    "Invalid number." : {
+
+    },
+    "It supports these host key types: %@." : {
+
+    },
     "is not null" : {
       "localizations" : {
         "ko" : {
@@ -9453,7 +9524,7 @@
         }
       }
     },
-    "It supports these host key types: %@." : {
+    "Its changes are saved to the database." : {
 
     },
     "Its subgroups are deleted too. Their connections move to Ungrouped." : {
@@ -9484,9 +9555,15 @@
         }
       }
     },
+    "Its uncommitted changes are discarded." : {
+
+    },
     "JSON" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "JSON Too Large" : {
+
     },
     "Jump Hosts" : {
 
@@ -9887,6 +9964,16 @@
         }
       }
     },
+    "Line %lld, column %lld: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Line %1$lld, column %2$lld: %3$@"
+          }
+        }
+      }
+    },
     "Line Chart" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -10271,6 +10358,10 @@
         }
       }
     },
+    "lowercase" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Mac socket %@" : {
 
     },
@@ -10454,6 +10545,14 @@
           }
         }
       }
+    },
+    "Match what I type, otherwise lowercase" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Match what I type, otherwise UPPERCASE" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Materialized View" : {
 
@@ -10709,6 +10808,9 @@
           }
         }
       }
+    },
+    "Moves the cursor to the error." : {
+
     },
     "Music" : {
       "extractionState" : "manual",
@@ -11765,6 +11867,15 @@
         }
       }
     },
+    "The SSH server does not accept a private key. It accepts %@." : {
+
+    },
+    "The SSH server offers no sign-in method." : {
+
+    },
+    "This SSH private key is encrypted, and no passphrase is saved for it." : {
+
+    },
     "not equals" : {
       "localizations" : {
         "ko" : {
@@ -11906,6 +12017,9 @@
       }
     },
     "Not Signed In to iCloud" : {
+
+    },
+    "Not valid JSON." : {
 
     },
     "Nothing to Run" : {
@@ -12322,15 +12436,6 @@
     "Open it on the Mac, or change it there to connect by host and port." : {
 
     },
-    "Open this connection in TablePro on the Mac, or edit it and choose Password or Private Key." : {
-
-    },
-    "Open this connection in TablePro on the Mac, or edit it and choose a private key that is not on a security key." : {
-
-    },
-    "Open this connection in TablePro on the Mac, which can answer this sign-in step." : {
-
-    },
     "Open Sample Database" : {
       "localizations" : {
         "ko" : {
@@ -12388,6 +12493,15 @@
       }
     },
     "Open Table" : {
+
+    },
+    "Open this connection in TablePro on the Mac, or edit it and choose Password or Private Key." : {
+
+    },
+    "Open this connection in TablePro on the Mac, or edit it and choose a private key that is not on a security key." : {
+
+    },
+    "Open this connection in TablePro on the Mac, which can answer this sign-in step." : {
 
     },
     "Open this connection in TablePro to check the server's SSH host key first." : {
@@ -13182,6 +13296,9 @@
     "Pin" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Other work ran on this connection before you confirmed. Check the transaction and try again." : {
+
     },
     "PING failed: %@" : {
       "extractionState" : "manual",
@@ -14280,6 +14397,9 @@
         }
       }
     },
+    "Reload the table to see the row as it is now." : {
+
+    },
     "Remove" : {
       "localizations" : {
         "ko" : {
@@ -14765,6 +14885,15 @@
         }
       }
     },
+    "Roll Back" : {
+
+    },
+    "Roll Back the Transaction?" : {
+
+    },
+    "Roll it back to continue." : {
+
+    },
     "Rosette" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -14828,6 +14957,12 @@
           }
         }
       }
+    },
+    "Row Not Deleted" : {
+
+    },
+    "Row Not Found" : {
+
     },
     "Row %d of %d" : {
       "localizations" : {
@@ -15126,6 +15261,15 @@
 
     },
     "Runs the statement at the cursor, or the selected text." : {
+
+    },
+    "SSH Agent" : {
+
+    },
+    "SSH Authentication Failed" : {
+
+    },
+    "SSH Sign-In Unavailable" : {
 
     },
     "Safe Mode" : {
@@ -16360,12 +16504,6 @@
         }
       }
     },
-    "SSH Agent" : {
-
-    },
-    "SSH Authentication Failed" : {
-
-    },
     "Square" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -16539,9 +16677,6 @@
           }
         }
       }
-    },
-    "SSH Sign-In Unavailable" : {
-
     },
     "SSH Tunnel" : {
       "localizations" : {
@@ -17040,6 +17175,12 @@
         }
       }
     },
+    "Switch" : {
+
+    },
+    "Switch Database?" : {
+
+    },
     "Switching..." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -17512,6 +17653,18 @@
         }
       }
     },
+    "TablePro and the SSH server could not agree on how to encrypt the connection." : {
+
+    },
+    "TablePro and the SSH server have no MAC algorithm in common." : {
+
+    },
+    "TablePro and the SSH server have no cipher in common." : {
+
+    },
+    "TablePro and the SSH server have no key exchange or host key method in common." : {
+
+    },
     "TablePro can't open “%@”." : {
       "localizations" : {
         "ko" : {
@@ -17778,18 +17931,6 @@
         }
       }
     },
-    "TablePro on iPhone and iPad cannot use the SSH authentication method “%@”." : {
-
-    },
-    "TablePro supports these MAC algorithms: %@." : {
-
-    },
-    "TablePro supports these ciphers: %@." : {
-
-    },
-    "TablePro supports these key exchange methods: %@." : {
-
-    },
     "TablePro Is Locked" : {
       "localizations" : {
         "ko" : {
@@ -17818,21 +17959,21 @@
         }
       }
     },
-    "TablePro and the SSH server could not agree on how to encrypt the connection." : {
-
-    },
-    "TablePro and the SSH server have no MAC algorithm in common." : {
-
-    },
-    "TablePro and the SSH server have no cipher in common." : {
-
-    },
-    "TablePro and the SSH server have no key exchange or host key method in common." : {
-
-    },
     "TablePro on iPhone and iPad can't open %@ connections." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "TablePro on iPhone and iPad cannot use the SSH authentication method “%@”." : {
+
+    },
+    "TablePro supports these MAC algorithms: %@." : {
+
+    },
+    "TablePro supports these ciphers: %@." : {
+
+    },
+    "TablePro supports these key exchange methods: %@." : {
+
     },
     "TablePro will re-download every connection, group, and tag from your iCloud account. Local data on this device is not deleted." : {
       "extractionState" : "stale",
@@ -18008,6 +18149,15 @@
         }
       }
     },
+    "The SSH server accepted the first sign-in step and asks for another (%@), which TablePro on iPhone and iPad cannot complete." : {
+
+    },
+    "The SSH server asked “%@”, which TablePro on iPhone and iPad cannot answer." : {
+
+    },
+    "The SSH server did not answer in time." : {
+
+    },
     "tags %@" : {
       "localizations" : {
         "ko" : {
@@ -18159,6 +18309,9 @@
           }
         }
       }
+    },
+    "Text" : {
+
     },
     "Text Search" : {
       "extractionState" : "manual",
@@ -18412,6 +18565,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The SSH server does not accept a password. It accepts %@." : {
+
+    },
     "The certificate could not be saved to this device's keychain." : {
       "localizations" : {
         "ko" : {
@@ -18552,6 +18708,12 @@
         }
       }
     },
+    "The connection to %@ was lost before the server answered, so its open transaction may have been committed or rolled back. It has been reconnected; check which of its changes were saved before running them again." : {
+
+    },
+    "The connection to %@ was lost while it waited, and the server rolled back its open transaction. It has been reconnected; run the statements again." : {
+
+    },
     "The connection was lost while a transaction was open. Check which of its changes were saved before running them again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -18674,6 +18836,9 @@
     "The database name is longer than the 128 bytes FreeTDS takes." : {
 
     },
+    "The database “%@” has an open transaction. Switching rolls it back and discards its uncommitted changes." : {
+
+    },
     "The encrypted file is corrupt or incomplete" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -18704,9 +18869,15 @@
         }
       }
     },
+    "The failed transaction was rolled back. None of its changes were kept." : {
+
+    },
     "The FreeTDS configuration could not be written: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The full values on this page need more memory than this device has free. Choose a smaller page size and try again." : {
+
     },
     "The host cannot be passed to FreeTDS. Use a host name or an IP address, without spaces, brackets, “=”, “;” or “#”." : {
       "extractionState" : "manual",
@@ -18779,6 +18950,9 @@
           }
         }
       }
+    },
+    "The JSON ends before it is complete." : {
+
     },
     "The Kerberos service principal name for this server cannot be passed to FreeTDS. Connect through a shorter host name." : {
       "extractionState" : "manual",
@@ -19075,9 +19249,6 @@
         }
       }
     },
-    "The passphrase for this SSH private key is incorrect." : {
-
-    },
     "The Oracle connection closed while the statement was running. Run it again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -19218,22 +19389,10 @@
         }
       }
     },
-    "The SSH server accepted the first sign-in step and asks for another (%@), which TablePro on iPhone and iPad cannot complete." : {
-
-    },
-    "The SSH server asked “%@”, which TablePro on iPhone and iPad cannot answer." : {
-
-    },
-    "The SSH server did not answer in time." : {
-
-    },
-    "The SSH server does not accept a password. It accepts %@." : {
-
-    },
-    "The SSH server does not accept a private key. It accepts %@." : {
-
-    },
     "The SSH server does not sign in with a private key, so this jump host needs its own key." : {
+
+    },
+    "The passphrase for this SSH private key is incorrect." : {
 
     },
     "The password is longer than the 128 bytes FreeTDS takes." : {
@@ -19345,6 +19504,9 @@
         }
       }
     },
+    "The server runs %@." : {
+
+    },
     "the reference “%@” is inside itself" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -19384,6 +19546,9 @@
           }
         }
       }
+    },
+    "The row is still in the table. A trigger, rule or row security policy may have stopped the delete." : {
+
     },
     "The sample database is missing from the app." : {
       "localizations" : {
@@ -19440,9 +19605,6 @@
           }
         }
       }
-    },
-    "The server runs %@." : {
-
     },
     "The server sent an unexpected message and the connection was reset. Run the query again." : {
       "extractionState" : "manual",
@@ -19530,6 +19692,9 @@
         }
       }
     },
+    "The session that held this transaction has ended." : {
+
+    },
     "The server's SSH host key has changed. Open this connection in TablePro to check it." : {
       "localizations" : {
         "ko" : {
@@ -19601,9 +19766,6 @@
           }
         }
       }
-    },
-    "The SSH server offers no sign-in method." : {
-
     },
     "The SSH tunnel connected but could not forward to the database port." : {
       "localizations" : {
@@ -19692,6 +19854,9 @@
         }
       }
     },
+    "The text could not be parsed as JSON. Use text mode to read it." : {
+
+    },
     "The text encoding is invalid." : {
       "localizations" : {
         "ko" : {
@@ -19720,10 +19885,16 @@
         }
       }
     },
+    "The transaction on this connection can no longer be committed. Roll it back." : {
+
+    },
     "The transaction on this connection is still open. Commit or roll it back." : {
 
     },
     "The user name is longer than the 128 bytes FreeTDS takes." : {
+
+    },
+    "The value of %@ is not valid JSON." : {
 
     },
     "The workbook is missing %@." : {
@@ -19739,6 +19910,9 @@
       "generatesSymbol" : false
     },
     "There is no statement to run." : {
+
+    },
+    "This SSH private key belongs to a security key (FIDO), which TablePro on iPhone and iPad cannot sign with." : {
 
     },
     "This account uses a password verifier the database driver does not support." : {
@@ -19770,6 +19944,9 @@
           }
         }
       }
+    },
+    "This bracket does not close the one that is open." : {
+
     },
     "This build has no driver for that database type." : {
       "localizations" : {
@@ -20358,6 +20535,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This JSON document is too large for tree view. Use text mode instead." : {
+
+    },
     "This Oracle server is older than release 11.1, which the database driver does not support." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -20392,12 +20572,6 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "This SSH private key belongs to a security key (FIDO), which TablePro on iPhone and iPad cannot sign with." : {
-
-    },
-    "This SSH private key is encrypted, and no passphrase is saved for it." : {
-
-    },
     "This query will modify data. Are you sure you want to continue?" : {
       "localizations" : {
         "ko" : {
@@ -20425,6 +20599,9 @@
           }
         }
       }
+    },
+    "This row is no longer in the table. Another session may have changed its key or deleted it." : {
+
     },
     "This row's primary key is not plain text, so it cannot identify the row." : {
 
@@ -20953,9 +21130,33 @@
         }
       }
     },
+    "Transaction Failed" : {
+
+    },
+    "Transaction Open" : {
+
+    },
+    "Transaction failed on %1$@, %2$@. Roll it back to continue." : {
+
+    },
+    "Transaction failed on %@. Roll it back to continue." : {
+
+    },
+    "Transaction open" : {
+
+    },
+    "Transaction open on %1$@, %2$@" : {
+
+    },
+    "Transaction open on %@" : {
+
+    },
     "Transfer" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Tree" : {
+
     },
     "Triangle" : {
       "extractionState" : "manual",
@@ -21231,6 +21432,9 @@
         }
       }
     },
+    "Unexpected character." : {
+
+    },
     "unbalanced quotes" : {
 
     },
@@ -21477,6 +21681,10 @@
     },
     "Upload Again" : {
 
+    },
+    "UPPERCASE" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Uptrend" : {
       "extractionState" : "manual",
@@ -21944,6 +22152,9 @@
           }
         }
       }
+    },
+    "View as JSON" : {
+
     },
     "Views" : {
       "localizations" : {

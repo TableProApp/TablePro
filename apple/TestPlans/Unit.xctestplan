@@ -112,13 +112,6 @@
     {
       "target" : {
         "containerPath" : "container:Packages\/TableProMacCore",
-        "identifier" : "TableProAutocompleteTests",
-        "name" : "TableProAutocompleteTests"
-      }
-    },
-    {
-      "target" : {
-        "containerPath" : "container:Packages\/TableProMacCore",
         "identifier" : "TableProMCPTests",
         "name" : "TableProMCPTests"
       }

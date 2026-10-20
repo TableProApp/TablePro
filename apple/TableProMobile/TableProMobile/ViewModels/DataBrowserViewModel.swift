@@ -443,8 +443,9 @@ final class DataBrowserViewModel {
 
     func deleteRow(pkValues: [(column: String, value: String)]) async -> Bool {
         guard let session, let table, !pkValues.isEmpty else { return false }
+        let schema = schema
         do {
-            try await session.driver.executeWrite([
+            let deleted = try await session.driver.executeWrite([
                 SQLBuilder.buildDelete(
                     table: table.name,
                     schema: schema,
@@ -453,7 +454,22 @@ final class DataBrowserViewModel {
                     primaryKeys: pkValues
                 )
             ])
+            // SQL Server under SET NOCOUNT ON reports 0 for every delete, so a zero is checked against the table.
+            var isGone = deleted > 0
+            if !isGone {
+                isGone = try await !rowExists(table: table.name, schema: schema, primaryKey: pkValues, driver: session.driver)
+            }
             await load()
+            guard isGone else {
+                operationError = AppError(
+                    category: .query,
+                    title: String(localized: "Row Not Deleted"),
+                    message: String(localized: "The row is still in the table. A trigger, rule or row security policy may have stopped the delete."),
+                    recovery: nil,
+                    underlying: nil
+                )
+                return false
+            }
             return true
         } catch {
             operationError = ErrorClassifier.classify(
@@ -462,6 +478,11 @@ final class DataBrowserViewModel {
             )
             return false
         }
+    }
+
+    func cells(at index: Int) -> [Cell] {
+        let rows = window.rows
+        return rows.indices.contains(index) ? rows[index].cells : []
     }
 
     func primaryKeyValues(forRowAt index: Int) -> [(column: String, value: String)]? {
@@ -474,7 +495,24 @@ final class DataBrowserViewModel {
 
     // MARK: - Lazy Cell Loading
 
-    func loadFullValue(driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType) async throws -> String? {
+    private func rowExists(
+        table: String,
+        schema: String?,
+        primaryKey: [(column: String, value: String)],
+        driver: any DatabaseDriver
+    ) async throws -> Bool {
+        let components = primaryKey.map { PrimaryKeyComponent(column: $0.column, value: $0.value) }
+        let ref = CellRef(table: table, column: components[0].column, primaryKey: components)
+        do {
+            _ = try await loadFullValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema)
+            return true
+        } catch CellLookupError.rowNotFound {
+            return false
+        }
+    }
+
+    // The caller passes the schema its rows came from: a schema switch while a read is in flight must not move it.
+    func loadFullValue(driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType, schema: String?) async throws -> String? {
         let predicates = ref.primaryKey.map { component in
             "\(SQLBuilder.quoteIdentifier(component.column, for: databaseType)) = '\(driver.escapeStringLiteral(component.value))'"
         }
@@ -492,8 +530,55 @@ final class DataBrowserViewModel {
         }
 
         let result = try await driver.execute(query: query)
-        return result.rows.first?.first ?? nil
+        guard let row = result.rows.first else { throw CellLookupError.rowNotFound }
+        return row.first ?? nil
     }
+
+    nonisolated static func canComplete(_ cells: [Cell]) -> Bool {
+        cells.allSatisfy { cell in
+            switch cell {
+            case .null, .text: true
+            case .truncatedText(_, _, let ref): ref != nil
+            case .binary: false
+            }
+        }
+    }
+
+    func completeRows(_ rows: [[Cell]], driver: any DatabaseDriver) async throws -> [[Cell]] {
+        let pendingBytes = rows.joined().reduce(0) { total, cell in
+            guard case .truncatedText(_, let bytes, _?) = cell else { return total }
+            return total + bytes
+        }
+        guard Self.exportFits(
+            pendingBytes: pendingBytes,
+            availableBytes: MemoryPressureMonitor.shared.availableMemoryBytes()
+        ) else {
+            throw ClipboardExporter.TooLarge()
+        }
+        let schema = schema
+        var complete: [[Cell]] = []
+        complete.reserveCapacity(rows.count)
+        for cells in rows {
+            var row = cells
+            for (index, cell) in cells.enumerated() {
+                guard case .truncatedText(_, _, let ref?) = cell else { continue }
+                try Task.checkCancellation()
+                let value = try await loadFullValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema)
+                row[index] = value.map(Cell.text) ?? .null
+            }
+            complete.append(row)
+        }
+        return complete
+    }
+
+    // The full values, the export text and the pasteboard's copy of it are all held at once.
+    nonisolated static func exportFits(pendingBytes: Int, availableBytes: Int) -> Bool {
+        guard pendingBytes > 0, availableBytes > 0 else { return true }
+        let (copies, overflow) = pendingBytes.multipliedReportingOverflow(by: 4)
+        return !overflow && availableBytes - exportMemoryMarginBytes > copies
+    }
+
+    private nonisolated static let exportMemoryMarginBytes = 64 * 1_024 * 1_024
 
     // MARK: - Memory Pressure
 

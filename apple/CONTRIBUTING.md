@@ -118,7 +118,7 @@ The architecture is in the area rules under `.claude/rules/`, and its invariants
 | TableProEditor | `Packages/`, vendored from CodeEditSourceEditor and CodeEditTextView | The SQL editor |
 | TableProGrammars | `Packages/` | Tree-sitter grammars |
 | TableProCore | `Packages/` | Modules the macOS and iOS apps share |
-| TableProMacCore | `Packages/` | macOS-only modules the app links: utilities, autocomplete, SSH config, MCP |
+| TableProMacCore | `Packages/` | macOS-only modules the app links: utilities, SSH config, MCP |
 | TableProOracle | `Packages/`, wraps a pinned fork of OracleNIO | Oracle wire protocol |
 | Sparkle | SPM | Updates, EdDSA-signed |
 | Yams | SPM | YAML for project folder import |
