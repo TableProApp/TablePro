@@ -395,7 +395,13 @@ final class ConnectionCoordinator {
         return target
     }
 
-    private func takeSession(_ newSession: ConnectionSession, token: UUID, dialedHere: Bool) async {
+    @discardableResult
+    private func takeSession(
+        _ newSession: ConnectionSession,
+        token: UUID,
+        dialedHere: Bool,
+        yieldingToEdits: Bool = false
+    ) async -> Bool {
         let fetched: [TableInfo]?
         do {
             fetched = try await newSession.driver.fetchTables(schema: nil)
@@ -403,7 +409,12 @@ final class ConnectionCoordinator {
             Self.logger.warning("Failed to load tables on the new session: \(error.localizedDescription, privacy: .public)")
             fetched = nil
         }
-        guard attemptToken == token else { return }
+        guard attemptToken == token else { return false }
+        // A row edit started while the tables loaded lives on a screen this would rebuild.
+        if yieldingToEdits, !canFollowLiveSession {
+            followPending = true
+            return false
+        }
         // The dial restored this window's schema, or another window's; a failed restore leaves the default.
         let movedPlacement = adoptPlacement(of: newSession, includingDatabase: !dialedHere)
         if let fetched {
@@ -417,6 +428,7 @@ final class ConnectionCoordinator {
             appState.bumpSessionRevision(connection.id)
         }
         await refreshTransaction()
+        return true
     }
 
     // A session another window dialed or moved sits on that window's database and schema, so this one
@@ -457,8 +469,8 @@ final class ConnectionCoordinator {
         }
         guard let held = session, let live = appState.connectionManager.session(for: connection.id) else { return }
         if live.driver !== held.driver {
-            await takeSession(live, token: token, dialedHere: false)
-            guard attemptToken == token else { return }
+            guard await takeSession(live, token: token, dialedHere: false, yieldingToEdits: true),
+                  attemptToken == token else { return }
             await loadSchemas()
             return
         }
@@ -472,6 +484,11 @@ final class ConnectionCoordinator {
             fetched = nil
         }
         guard attemptToken == token, session?.driver === live.driver else { return }
+        // A row edit started while the tables loaded lives on a screen the new placement would rebuild.
+        guard canFollowLiveSession else {
+            followPending = true
+            return
+        }
         // Placement and tables change in one step, so a row of the old list never pairs with the new placement.
         if let database = moved.database { activeDatabase = database }
         if let schema = moved.schema { activeSchema = schema }

@@ -344,6 +344,32 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(tableNames(following) == ["staging_facts"])
     }
 
+    @Test("A row edit started while a follow loads tables keeps the old placement until the edit ends")
+    func followYieldsToAnEditStartedDuringItsFetch() async throws {
+        let first = driver(tables: ["facts"])
+        first.currentSchema = "public"
+        let (switching, following) = try await warehouseCoordinators(on: first)
+        await switching.switchSchema(to: "staging")
+
+        let fetch = TestGate()
+        first.scriptedTables = [TableInfo(name: "staging_facts")]
+        first.beforeFetchTables = { await fetch.enter() }
+        let follow = Task { await following.followLiveSession() }
+        await fetch.waitUntilEntered()
+        following.isHeldByEditor = true
+        first.beforeFetchTables = nil
+        await fetch.open()
+        await follow.value
+
+        #expect(following.tablePlacement.schema == "public")
+        #expect(tableNames(following) == ["facts"])
+
+        following.isHeldByEditor = false
+        await following.resumedFollow?.value
+        #expect(following.tablePlacement.schema == "staging")
+        #expect(tableNames(following) == ["staging_facts"])
+    }
+
     @Test("A window closed while its database switch waits on another window's dial leaves that dial's session alone")
     func closedWindowSwitchDoesNotTearDownTheSharedSession() async throws {
         let first = driver(tables: ["facts"])
