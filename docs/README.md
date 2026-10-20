@@ -84,6 +84,7 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 ## Client research (October 2026)
 
+- [TablePro and dbx deep review, October 20](archive/tablepro-dbx-review-2026-10-20/README.md): full feature, architecture and fix-commit mapping of TablePro `3222542a4` and dbx `d1e88ab4b` against BookiE `7c4cb3929`, with Wave 0 defects to confirm and a ranked roadmap of candidates.
 - [Upstream main analysis, October 20](archive/upstream-main-analysis-2026-10-20.md): pinned Linux and Apple changes, current adoption status, transferable regression cases and integration costs.
 
 - [Upstream Linux adoption and development workflow](archive/upstream-linux-adoption-2026-10-18.md), with the [movement/source audit](archive/upstream-linux-movement-2026-10-18.md): code, CI, infrastructure, conventions and post-0.2.0 tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149).
