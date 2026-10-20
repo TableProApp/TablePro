@@ -95,6 +95,27 @@ struct PluginBackedDriverTests {
         #expect(ref?.primaryKey == [PrimaryKeyComponent(column: "id", value: "7")])
     }
 
+    @Test("Bytes stay a binary cell, so a row holding them is never matched by its hex text")
+    func bytesStayBinary() async throws {
+        let plugin = StubPluginDriver()
+        plugin.scriptedResult = result(rows: [["1", .bytes(Data([0xFF, 0x00]))]])
+        let driver = makeDriver(plugin)
+
+        let elements = try await drain(driver.executeStreaming(query: "SELECT * FROM t", options: StreamOptions(maxRows: 10)))
+
+        let row = try #require(elements.compactMap { element -> Row? in
+            if case .row(let row) = element { return row }
+            return nil
+        }.first)
+        guard case .binary(let count, _) = row.cells[1] else {
+            Issue.record("bytes should arrive as a binary cell")
+            return
+        }
+        #expect(count == 2)
+        let columns = [ColumnInfo(name: "id", typeName: "UInt64"), ColumnInfo(name: "name", typeName: "String")]
+        #expect(RowLocator.locate(cells: row.cells, columns: columns, columnDetails: columns, identity: .everyColumn) == nil)
+    }
+
     @Test("An engine without transactions reports nothing pending")
     func noTransactionsMeansIdle() async {
         let plugin = StubPluginDriver()
