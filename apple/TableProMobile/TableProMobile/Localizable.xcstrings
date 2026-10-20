@@ -1067,6 +1067,12 @@
         }
       }
     },
+    "30 seconds" : {
+
+    },
+    "60 seconds" : {
+
+    },
     "A database named “%@” already exists." : {
       "localizations" : {
         "ko" : {
@@ -1976,6 +1982,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Algorithm" : {
+
+    },
     "All" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2096,6 +2105,9 @@
     "Americas" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Answers the server's password prompt. TablePro asks you for anything else when you connect." : {
+
     },
     "Ask the SSH server's administrator to turn on a method TablePro supports." : {
 
@@ -2525,6 +2537,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自動"
+          }
+        }
+      }
+    },
+    "Auto Generate" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "자동 생성"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tự động tạo"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动生成"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動產生"
           }
         }
       }
@@ -3050,6 +3092,9 @@
     "Chat" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Check the connection's TOTP secret, and that this device sets its clock automatically." : {
+
     },
     "Check this jump host's address, port, username and key under Jump Hosts." : {
 
@@ -6035,6 +6080,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Digits" : {
+
+    },
     "Disabled" : {
       "localizations" : {
         "ko" : {
@@ -8505,6 +8553,9 @@
     "House" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "If the SSH server asks for a verification code, TablePro asks you for it when you connect." : {
+
     },
     "iCloud" : {
       "localizations" : {
@@ -11724,6 +11775,8 @@
       }
     },
     "None" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -11866,6 +11919,48 @@
           }
         }
       }
+    },
+    "Period" : {
+
+    },
+    "Prompt at Connect" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 시 입력 요청"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhắc khi kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接时提示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線時提示"
+          }
+        }
+      }
+    },
+    "TOTP" : {
+
+    },
+    "The Base32 secret from your authenticator setup. TablePro enters the code when the server asks." : {
+
+    },
+    "The SSH server asks for more to finish signing in." : {
+
     },
     "The SSH server does not accept a private key. It accepts %@." : {
 
@@ -12495,7 +12590,7 @@
     "Open Table" : {
 
     },
-    "Open this connection in TablePro on the Mac, or edit it and choose Password or Private Key." : {
+    "Open this connection in TablePro and connect from there to answer the question." : {
 
     },
     "Open this connection in TablePro on the Mac, or edit it and choose a private key that is not on a security key." : {
@@ -12791,6 +12886,9 @@
       }
     },
     "Own key" : {
+
+    },
+    "Password (optional)" : {
 
     },
     "out-of-band check" : {
@@ -15269,6 +15367,9 @@
     "SSH Authentication Failed" : {
 
     },
+    "SSH Sign-In" : {
+
+    },
     "SSH Sign-In Unavailable" : {
 
     },
@@ -17510,6 +17611,9 @@
     "System Table" : {
 
     },
+    "TOTP Secret" : {
+
+    },
     "Tab" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -17963,9 +18067,6 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "TablePro on iPhone and iPad cannot use the SSH authentication method “%@”." : {
-
-    },
     "TablePro supports these MAC algorithms: %@." : {
 
     },
@@ -18152,7 +18253,7 @@
     "The SSH server accepted the first sign-in step and asks for another (%@), which TablePro on iPhone and iPad cannot complete." : {
 
     },
-    "The SSH server asked “%@”, which TablePro on iPhone and iPad cannot answer." : {
+    "The SSH server asked “%@”, which TablePro can answer only while it is open." : {
 
     },
     "The SSH server did not answer in time." : {
@@ -18500,6 +18601,12 @@
 
     },
     "The %d statements before it stay applied." : {
+
+    },
+    "The SSH server did not accept the verification code." : {
+
+    },
+    "The SSH server does not accept keyboard-interactive sign-in. It accepts %@." : {
 
     },
     "The app and iOS versions, and your language" : {
@@ -21375,6 +21482,9 @@
     "Two People" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Two-Factor Authentication" : {
+
     },
     "Type" : {
       "localizations" : {

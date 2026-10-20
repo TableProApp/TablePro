@@ -56,13 +56,18 @@ public struct TOTPGenerator: Sendable {
         return period - elapsed
     }
 
+    public static let supportedDigits = 6 ... 8
+    public static let supportedPeriods = 1 ... 3_600
+
     public static func fromBase32Secret(
         _ secretString: String,
         algorithm: Algorithm = .sha1,
         digits: Int = 6,
         period: Int = 30
     ) -> TOTPGenerator? {
-        guard let secretData = Base32.decode(secretString), !secretData.isEmpty else {
+        // Imported and synced settings arrive unchecked, and a period of 0 or a ten-digit code traps.
+        guard supportedDigits.contains(digits), supportedPeriods.contains(period),
+              let secretData = Base32.decode(secretString), !secretData.isEmpty else {
             return nil
         }
         return TOTPGenerator(secret: secretData, algorithm: algorithm, digits: digits, period: period)

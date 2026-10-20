@@ -250,7 +250,8 @@ struct IOSConnectionExportServiceTests {
             passphrase: "export-passphrase"
         )
         let sealed = try await ConnectionBundleCodec.decode(data, passphrase: "export-passphrase")
-        #expect(sealed.connections.first?.credentials?.totpSecret == "JBSWY3DPEHPK3PXP")
+        let ref = try #require(sealed.connections.first?.ref)
+        #expect(sealed.credentials[ref]?.totpSecret == "JBSWY3DPEHPK3PXP")
     }
 
     @Test("Timeout overrides export explicitly and keep unrelated fields")

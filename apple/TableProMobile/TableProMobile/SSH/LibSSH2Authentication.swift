@@ -26,7 +26,11 @@ nonisolated final class KeyboardInteractiveAnswers {
     private(set) var unansweredPrompt: String?
     private(set) var declined = false
     private(set) var sentCode = false
+    private(set) var askedUser = false
     private(set) var promptsSeen = 0
+    private(set) var userWait: TimeInterval = 0
+    // Told how long the user has taken so far, so the session's own timeout leaves that time out.
+    var userWaitChanged: ((TimeInterval) -> Void)?
 
     init(password: String? = nil, totp: (any TOTPProvider)? = nil, ask: Ask? = nil) {
         self.password = password
@@ -64,12 +68,20 @@ nonisolated final class KeyboardInteractiveAnswers {
         }
 
         let challenge = KeyboardInteractiveChallenge(name: name, instruction: instruction, prompts: pending.map { prompts[$0] })
-        guard let replies = ask(challenge), replies.count == pending.count else {
+        let asked = Date()
+        let reply = ask(challenge)
+        userWait += Date().timeIntervalSince(asked)
+        userWaitChanged?(userWait)
+        guard let replies = reply, replies.count == pending.count else {
             declined = true
             return answers.map { $0 ?? "" }
         }
+        askedUser = true
         for (offset, index) in pending.enumerated() {
             answers[index] = replies[offset]
+            if KeyboardInteractivePromptKind(promptText: prompts[index].text) == .totp {
+                sentCode = true
+            }
         }
         return answers.map { $0 ?? "" }
     }
@@ -228,12 +240,14 @@ nonisolated struct LibSSH2Authentication {
         after first: (method: String, failure: String)?
     ) throws {
         let rc = session.keyboardInteractive(answers)
+        // A Cancel stands even when the server takes the empty answer.
+        if answers.declined { throw CancellationError() }
         if rc == 0 { return }
         let detail = failureText(of: Self.keyboardInteractiveMethod, rc: rc)
 
-        if answers.declined { throw CancellationError() }
         if let prompt = answers.unansweredPrompt { throw SSHTunnelError.promptUnanswerable(prompt) }
         if answers.sentCode { throw SSHTunnelError.verificationCodeRejected }
+        if answers.askedUser { throw SSHTunnelError.authenticationFailed(detail) }
         guard answers.promptsSeen == 0, let first else {
             throw SSHTunnelError.authenticationFailed(first?.failure ?? detail)
         }
@@ -335,7 +349,20 @@ nonisolated struct LibSSH2UserAuthSession: SSHUserAuthSession {
         let abstract: UnsafeMutablePointer<UnsafeMutableRawPointer?> = libssh2_session_abstract(session)
         let previous = abstract.pointee
         abstract.pointee = Unmanaged.passUnretained(answers).toOpaque()
-        defer { abstract.pointee = previous }
+        // libssh2 times the whole call from its start, the callback included, so a user typing a code
+        // would otherwise run out the network timeout.
+        let session = self.session
+        let timeout = libssh2_session_get_timeout(session)
+        if timeout > 0 {
+            answers.userWaitChanged = { waited in
+                libssh2_session_set_timeout(session, timeout + Int(waited * 1_000))
+            }
+        }
+        defer {
+            abstract.pointee = previous
+            answers.userWaitChanged = nil
+            libssh2_session_set_timeout(session, timeout)
+        }
 
         return withExtendedLifetime(answers) {
             libssh2_userauth_keyboard_interactive_ex(session, username, UInt32(username.utf8.count)) {

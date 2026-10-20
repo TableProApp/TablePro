@@ -79,11 +79,6 @@ final class AppState {
         self.secureStore = secureStore
         let sshProvider = IOSSSHProvider(secureStore: secureStore, container: localDatabaseFiles.container)
         self.sshProvider = sshProvider
-        sshProvider.observeTunnelDeaths { [weak self] connectionId in
-            Task { @MainActor in
-                self?.tunnelDeaths[connectionId, default: 0] += 1
-            }
-        }
         let connectionManager = ConnectionManager(
             driverFactory: driverFactory,
             secureStore: secureStore,
@@ -101,6 +96,11 @@ final class AppState {
         }
         self.sessionRedialer = SessionRedialer(connectionManager: connectionManager)
         self.backgroundRelease = BackgroundReleaseCoordinator(connectionManager: connectionManager)
+        sshProvider.observeTunnelDeaths { [weak self] connectionId in
+            Task { @MainActor in
+                self?.tunnelDeaths[connectionId, default: 0] += 1
+            }
+        }
         loadPersistedData()
 
         guard !TestRuntime.isActive else { return }

@@ -168,6 +168,46 @@ struct LibSSH2AuthenticationTests {
         #expect(session.sentAnswers == [""])
     }
 
+    @Test("Cancel stands even when the server takes the empty answer")
+    func declinedPromptCancelsEvenWhenAccepted() {
+        let session = ScriptedAuthSession(lists: ["keyboard-interactive"], prompts: ["Verification code: "])
+        let answers = KeyboardInteractiveAnswers(password: "secret") { _ in nil }
+
+        #expect(throws: CancellationError.self) {
+            try LibSSH2Authentication(session: session).keyboardInteractive(answers)
+        }
+    }
+
+    @Test("A code the user typed and the server refused is named as the code, not the password")
+    func refusedTypedCodeIsNamed() {
+        let session = ScriptedAuthSession(
+            lists: ["password", "keyboard-interactive"],
+            password: .failing(Self.rcAuthenticationFailed, "Authentication failed (username/password)"),
+            prompts: ["Verification code: "],
+            keyboardInteractive: .failing(Self.rcAuthenticationFailed, "Authentication failed (keyboard-interactive)")
+        )
+        let answers = KeyboardInteractiveAnswers(password: "secret") { _ in ["000000"] }
+
+        #expect(throws: SSHTunnelError.verificationCodeRejected) {
+            try LibSSH2Authentication(session: session).password("secret", then: answers)
+        }
+    }
+
+    @Test("Another answer the user typed and the server refused keeps the server's words")
+    func refusedTypedAnswerKeepsServerText() {
+        let session = ScriptedAuthSession(
+            lists: ["password", "keyboard-interactive"],
+            password: .failing(Self.rcAuthenticationFailed, "Authentication failed (username/password)"),
+            prompts: ["Enter PIN: "],
+            keyboardInteractive: .failing(Self.rcAuthenticationFailed, "Authentication failed (keyboard-interactive)")
+        )
+        let answers = KeyboardInteractiveAnswers(password: "secret") { _ in ["1234"] }
+
+        #expect(throws: SSHTunnelError.authenticationFailed("Authentication failed (keyboard-interactive)")) {
+            try LibSSH2Authentication(session: session).password("secret", then: answers)
+        }
+    }
+
     @Test("A key the server took as the first of two steps goes on to keyboard-interactive")
     func keyPartialSuccessContinues() throws {
         let session = ScriptedAuthSession(
@@ -334,6 +374,23 @@ struct LibSSH2AuthenticationTests {
             instruction: "Approve the push or type a passcode.",
             prompts: [Self.prompt("Passcode or option (1-3): ", echo: true)]
         ))
+    }
+
+    @Test("The time the user takes is reported, so the session's timeout can leave it out")
+    func userWaitIsReported() {
+        var reported: [TimeInterval] = []
+        let answers = KeyboardInteractiveAnswers { _ in
+            Thread.sleep(forTimeInterval: 0.05)
+            return ["424242"]
+        }
+        answers.userWaitChanged = { reported.append($0) }
+
+        _ = answers.respond(name: "", instruction: "", prompts: [Self.prompt("Verification code: ")])
+        _ = answers.respond(name: "", instruction: "", prompts: [Self.prompt("Verification code: ")])
+
+        #expect(reported.count == 2)
+        #expect((reported.first ?? 0) >= 0.05)
+        #expect((reported.last ?? 0) >= 0.1)
     }
 
     private static func prompt(_ text: String, echo: Bool = false) -> KeyboardInteractivePrompt {
