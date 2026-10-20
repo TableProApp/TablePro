@@ -33,7 +33,7 @@ nonisolated enum QueryTextInsertion {
         let grammar = SQLLexicalReadings.resolve(
             databaseTypeId: databaseType.rawValue, declared: nil, session: nil
         ).execution
-        let statement = endsInOpenStatement(added, grammar: grammar) ? added + ";" : added
+        let statement = terminated(added, grammar: grammar)
         let length = (statement as NSString).length
         // SQL Server needs a batch line: a CREATE PROCEDURE must start its batch, and one before would swallow the query.
         let batchLine = databaseType == .mssql ? "GO\n" : ""
@@ -78,7 +78,19 @@ nonisolated enum QueryTextInsertion {
         return !code.isEmpty && !code.hasSuffix(";")
     }
 
+    // After a trailing line comment a `;` would be part of the comment, so it goes on a line of its own.
+    private static func terminated(_ statement: String, grammar: SQLLexicalGrammar) -> String {
+        guard endsInOpenStatement(statement, grammar: grammar) else { return statement }
+        return statement + (trailingSpan(of: statement, grammar: grammar)?.kind == .lineComment ? "\n;" : ";")
+    }
+
     private static func endsInsideOpenSpan(_ text: String, grammar: SQLLexicalGrammar) -> Bool {
+        guard let span = trailingSpan(of: text, grammar: grammar) else { return false }
+        return !span.isTerminated && span.kind != .lineComment
+    }
+
+    // The comment, string or quoted name that runs to the end of the text, if any.
+    private static func trailingSpan(of text: String, grammar: SQLLexicalGrammar) -> SQLNonCodeSpan.Span? {
         let source = text as NSString
         var index = SQLStatementScanner.locatedStatements(in: text, grammar: grammar).last?.offset ?? 0
         while index < source.length {
@@ -86,9 +98,9 @@ nonisolated enum QueryTextInsertion {
                 index += 1
                 continue
             }
-            if !span.isTerminated, span.kind != .lineComment { return true }
+            if span.end >= source.length { return span }
             index = max(span.end, index + 1)
         }
-        return false
+        return nil
     }
 }

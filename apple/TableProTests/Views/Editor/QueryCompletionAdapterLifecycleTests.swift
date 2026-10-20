@@ -376,6 +376,34 @@ extension GlobalStateSuites {
             #expect(controller.textView.string == #"SELECT "order.total" FROM t"#)
         }
 
+        @MainActor
+        @Test("accepting a table-qualified column inside quotes replaces the quotes")
+        func qualifiedColumnReplacesTheQuotes() async throws {
+            let source = SQLSchemaProvider.ColumnMetadataSource(
+                fetchColumns: { table, _ in
+                    [TestFixtures.makeColumnInfo(name: table == "orders" ? "total" : "name")]
+                },
+                fetchAllColumns: { [:] }
+            )
+            let provider = SQLSchemaProvider(metadataSource: source)
+            await provider.updateTables([
+                TestFixtures.makeTableInfo(name: "orders"), TestFixtures.makeTableInfo(name: "customers")
+            ])
+            let controller = EditorControllerFixture.make(string: #"SELECT "to" FROM orders o, customers c"#)
+            let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .postgresql)
+            let caret = CursorPosition(range: NSRange(location: 10, length: 0))
+
+            let response = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: caret,
+                isManualTrigger: false
+            )
+            let item = try #require(response?.items.first { $0.label == "o.total" })
+            adapter.completionWindowApplyCompletion(item: item, textView: controller, cursorPosition: caret)
+
+            #expect(controller.textView.string == "SELECT o.total FROM orders o, customers c")
+        }
+
         // MARK: - Helpers
 
         @MainActor

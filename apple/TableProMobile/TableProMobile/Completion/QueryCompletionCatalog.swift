@@ -282,7 +282,8 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
                 items.append(columnItem(
                     label: isQualified ? "\(label).\(entry.name)" : entry.name,
                     insertText: isQualified ? "\(prefix).\(entry.insertText)" : entry.insertText,
-                    dataType: entry.dataType
+                    dataType: entry.dataType,
+                    isQualified: isQualified
                 ))
             }
         }
@@ -307,7 +308,8 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
                 var item = columnItem(
                     label: isAmbiguous ? "\(entry.key.table).\(column.name)" : column.name,
                     insertText: isAmbiguous ? "\(prefix).\(quoted(column.name))" : quoted(column.name),
-                    dataType: column.typeName
+                    dataType: column.typeName,
+                    isQualified: isAmbiguous
                 )
                 item.sortPriority = 150
                 return item
@@ -404,8 +406,12 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         return self.schema.map { Self.matches($0, schema) } ?? false
     }
 
-    private func columnItem(label: String, insertText: String, dataType: String?) -> SQLCompletionItem {
-        SQLCompletionItem(label: label, kind: .column, insertText: insertText, detail: dataType)
+    private func columnItem(
+        label: String, insertText: String, dataType: String?, isQualified: Bool = false
+    ) -> SQLCompletionItem {
+        var item = SQLCompletionItem(label: label, kind: .column, insertText: insertText, detail: dataType)
+        item.isQualifiedReference = isQualified
+        return item
     }
 
     private func quoted(_ name: String) -> String {

@@ -60,6 +60,14 @@ struct QueryTextInsertionTests {
         #expect(appended == "GET a\nDEL victim\\ ")
     }
 
+    @Test("An added query ending in a line comment is closed on a line of its own")
+    func addedLineCommentIsClosedBelow() {
+        let (first, _) = added("SELECT 2 -- note", to: "SELECT 'draft")
+        let (last, _) = added("SELECT 2 -- note", to: "SELECT 1;")
+        #expect(first == "SELECT 2 -- note\n;\n\nSELECT 'draft")
+        #expect(last == "SELECT 1;\n\nSELECT 2 -- note\n;")
+    }
+
     @Test("A semicolon inside a string does not count as the end")
     func semicolonInAStringIsNotTheEnd() {
         let (text, _) = added("SELECT 2", to: "SELECT ';'")
