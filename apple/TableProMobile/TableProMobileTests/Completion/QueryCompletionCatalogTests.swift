@@ -307,6 +307,19 @@ struct QueryCompletionCatalogTests {
         #expect(await reads.count == 2)
     }
 
+    @Test("a schema that differs from the active one only in case lists its own tables")
+    func caseDistinctSchemaIsNotTheActiveOne() async {
+        let reads = SchemaTableReads(["Sales": [table("upper_orders")]])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("lower_orders")], databaseType: .postgresql, schema: "sales",
+            readColumns: CatalogColumnSource([:]).reader, readSchemaTables: reads.reader,
+            schemas: ["public", "sales", "Sales"]
+        )
+
+        #expect(labels(await catalog.tableCompletionItems(inSchema: "Sales")) == ["upper_orders"])
+        #expect(labels(await catalog.tableCompletionItems(inSchema: "sales")) == ["lower_orders"])
+    }
+
     @Test("on MySQL a database qualifies a table, and its tables are read once")
     func mysqlDatabaseQualifiesTables() async {
         let reads = SchemaTableReads(["archive": [table("orders_2019")]])

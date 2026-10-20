@@ -8,8 +8,8 @@ nonisolated enum SessionLocalStatements {
     nonisolated struct Effect: Equatable {
         // Kept after a DROP too: a failed script may never have reached it, and the session answers either way.
         var temporaryTables: Set<String> = []
-        // A `USE` moved the session off the database the catalog connection opens, or a procedure, dynamic SQL or an
-        // ATTACH may have made a table only the session sees.
+        // A `USE`, a role or a search path moved the session off what the catalog connection sees, or a procedure,
+        // dynamic SQL or an ATTACH may have made a table only the session sees.
         var leavesCatalog = false
     }
 
@@ -25,6 +25,13 @@ nonisolated enum SessionLocalStatements {
     // projection blanks a quoted name, so nothing after `USE` is required.
     private static let usePattern = try? NSRegularExpression(
         pattern: #"\bUSE\b(?!\s+(?:INDEX|KEY)\b)"#,
+        options: [.caseInsensitive]
+    )
+
+    // Who the session is and where it looks up a bare name: a role or a search path the catalog connection never set.
+    private static let contextPattern = try? NSRegularExpression(
+        pattern: #"^\s*(?:(?:SET|RESET)\s+(?:SESSION\s+|LOCAL\s+)?(?:ROLE|SESSION\s+AUTHORIZATION|SEARCH_PATH|SCHEMA|ALL)\b"#
+            + #"|ALTER\s+SESSION\s+SET\s+CURRENT_SCHEMA\b|DISCARD\s+ALL\b)"#,
         options: [.caseInsensitive]
     )
 
@@ -44,6 +51,7 @@ nonisolated enum SessionLocalStatements {
             }
             let range = NSRange(location: 0, length: (code as NSString).length)
             if usePattern?.firstMatch(in: code, range: range) != nil
+                || contextPattern?.firstMatch(in: code, range: range) != nil
                 || SQLCatalogEffectClassifier.effect(of: statement, grammar: grammar) == .opaque {
                 effect.leavesCatalog = true
             }

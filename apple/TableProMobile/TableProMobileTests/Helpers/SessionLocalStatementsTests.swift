@@ -64,6 +64,21 @@ struct SessionLocalStatementsTests {
         #expect(!plain.leavesCatalog)
     }
 
+    @Test("A role or a search path set on the session leaves the catalog connection behind")
+    func sessionContextLeavesTheCatalog() {
+        for statement in [
+            "SET ROLE limited_user", "SET SESSION AUTHORIZATION 'reporter'", "SET search_path TO sales",
+            "set local search_path = archive", "SET SCHEMA 'sales'", "RESET ROLE", "DISCARD ALL",
+            "ALTER SESSION SET CURRENT_SCHEMA = hr"
+        ] {
+            #expect(SessionLocalStatements.effect(of: [statement], databaseType: .postgresql).leavesCatalog, "\(statement)")
+        }
+        let quiet = SessionLocalStatements.effect(
+            of: ["SET statement_timeout = 0", "SET TIME ZONE 'UTC'", "SET @rolename = 'x'"], databaseType: .postgresql
+        )
+        #expect(!quiet.leavesCatalog)
+    }
+
     @Test("An index hint, a longer word, a comment or a string is not a USE")
     func useLookalikes() {
         let effect = SessionLocalStatements.effect(

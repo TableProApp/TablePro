@@ -200,9 +200,7 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
 
     // One read per schema at a time; a failure is not kept.
     private func tables(inSchema typed: String) async -> [TableInfo] {
-        // PostgreSQL can hold both `sales` and `Sales`, so the listed spelling is the key, the exact one first.
-        let schema = qualifyingNamespaces.first { $0 == typed }
-            ?? qualifyingNamespaces.first { Self.matches($0, typed) } ?? typed
+        let schema = resolvedNamespace(typed)
         let key = schema
         let known = schemaTables[key]
         if let known, known.generation == columnGeneration { return known.tables }
@@ -401,9 +399,16 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         return tables.first { $0.name == name } ?? tables.first { Self.matches($0.name, name) }
     }
 
+    // PostgreSQL can hold both `sales` and `Sales`, so the listed spelling a name resolves to decides, not its case.
     private func isActiveSchema(_ schema: String?) -> Bool {
         guard let schema else { return true }
-        return self.schema.map { Self.matches($0, schema) } ?? false
+        guard let active = self.schema else { return false }
+        guard qualifyingNamespaces.contains(active) else { return Self.matches(active, schema) }
+        return resolvedNamespace(schema) == active
+    }
+
+    private func resolvedNamespace(_ typed: String) -> String {
+        qualifyingNamespaces.first { $0 == typed } ?? qualifyingNamespaces.first { Self.matches($0, typed) } ?? typed
     }
 
     private func columnItem(
