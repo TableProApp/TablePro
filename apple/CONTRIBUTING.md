@@ -140,7 +140,7 @@ xcodebuild -importLocalizations -project TablePro.xcodeproj -localizationPath Lo
 scripts/localization.py status              # what is translated, per language
 ```
 
-The export builds the app first, so run `scripts/download-libs.sh` and `scripts/generate-project.sh` once before it. Pass an existing language code to fill gaps, or a new one to start a language. Commit the catalog, not the export: `Localization/` is ignored. The iPhone and iPad app has its own catalog: run the same commands on `TableProMobile/TableProMobile.xcodeproj` with the `TableProMobile` scheme. Plugin and package strings: [`AGENTS.md`](AGENTS.md), Every change 3.
+The export builds the app first, so run `scripts/download-libs.sh` and `scripts/generate-project.sh` once before it. Pass an existing language code to fill gaps, or a new one to start a language. Commit the catalog, not the export: `Localization/` is ignored. The iPhone and iPad app has its own catalog: run the same commands on `TableProMobile/TableProMobile.xcodeproj` with the `TableProMobile` scheme. Plugin and package strings, and strings a command-line build added: [`AGENTS.md`](AGENTS.md), Every change 3.
 
 ## Troubleshooting
 
