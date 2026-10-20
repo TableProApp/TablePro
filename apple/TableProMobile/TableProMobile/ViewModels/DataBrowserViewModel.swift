@@ -447,6 +447,14 @@ final class DataBrowserViewModel {
             operationError = shared
             return false
         }
+        let writer = session.driver as? any DriverRowWriting
+        if let writer, let identical = await SharedRowKey.identicalRowsError(
+            writer: writer, table: table.name, schema: schema, locator: locator,
+            columns: columns.map(\.name), type: databaseType
+        ) {
+            operationError = identical
+            return false
+        }
         do {
             guard let batch = try RowWriteBatch.delete(
                 table: table.name,
@@ -459,14 +467,14 @@ final class DataBrowserViewModel {
             ) else { return false }
             let deleted = try await batch.run()
             // SQL Server under SET NOCOUNT ON reports 0 for every delete, so a zero is checked against the table.
-            // A row matched on every value has no key to check by, and a ClickHouse mutation reports no count.
+            // A ClickHouse mutation reports no count, so the row is looked for by every value it held.
             var isGone = deleted > 0
-            if !isGone {
-                if let keys = locator.keyValues, !keys.isEmpty {
-                    isGone = try await !rowExists(table: table.name, schema: schema, primaryKey: keys, driver: session.driver)
-                } else {
-                    isGone = true
-                }
+            if !isGone, let keys = locator.keyValues, !keys.isEmpty {
+                isGone = try await !rowExists(table: table.name, schema: schema, primaryKey: keys, driver: session.driver)
+            } else if !isGone, let writer {
+                isGone = try await writer.matchingRowCount(
+                    table: table.name, schema: schema, columns: columns.map(\.name), row: locator.row
+                ) == 0
             }
             await load()
             guard isGone else {

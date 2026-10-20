@@ -99,6 +99,68 @@ struct RowWriteRoutingTests {
         #expect(change.originalRow == ["1", "signup"])
     }
 
+    @Test("A row matched on every value is counted with the writer's own predicates before it changes")
+    func identityIsCountedFirst() async throws {
+        let plugin = StubPluginDriver()
+        let vm = DataBrowserViewModel()
+        vm.attach(session: session(plugin), table: TableInfo(name: "events"), databaseType: .clickhouse, host: "localhost")
+
+        _ = await vm.deleteRow(RowLocator(row: ["1", nil], keyValues: nil))
+
+        let first = try #require(plugin.countQueries.first)
+        #expect(first.query == #"SELECT COUNT(*) FROM "events" WHERE "id" = ? AND "name" IS NULL"#)
+        #expect(first.parameters == ["1"])
+    }
+
+    @Test("An edit is refused when another row holds the same value in every column")
+    func identicalRowEditIsRefused() async {
+        let plugin = StubPluginDriver()
+        plugin.rowCounts = [2]
+        let vm = RowDetailViewModel(
+            columns: columns,
+            rows: [Row(cells: [.text("1"), .text("signup")])],
+            initialIndex: 0,
+            table: TableInfo(name: "events"),
+            session: session(plugin),
+            columnDetails: columns
+        )
+        vm.startEditing()
+        vm.setEditedValue("purchase", at: 1)
+
+        let saved = await vm.saveChanges()
+
+        #expect(!saved)
+        #expect(vm.operationError?.title == String(localized: "Identical Rows"))
+        #expect(plugin.parameterizedQueries.isEmpty)
+    }
+
+    @Test("A delete is refused when another row holds the same value in every column")
+    func identicalRowDeleteIsRefused() async {
+        let plugin = StubPluginDriver()
+        plugin.rowCounts = [2]
+        let vm = DataBrowserViewModel()
+        vm.attach(session: session(plugin), table: TableInfo(name: "events"), databaseType: .clickhouse, host: "localhost")
+
+        let deleted = await vm.deleteRow(RowLocator(row: ["1", "signup"], keyValues: nil))
+
+        #expect(!deleted)
+        #expect(vm.operationError?.title == String(localized: "Identical Rows"))
+        #expect(plugin.generatedChanges.isEmpty)
+    }
+
+    @Test("A delete whose row is still there afterwards says so")
+    func deleteThatLeftItsRowFails() async {
+        let plugin = StubPluginDriver()
+        plugin.rowCounts = [1, 1]
+        let vm = DataBrowserViewModel()
+        vm.attach(session: session(plugin), table: TableInfo(name: "events"), databaseType: .clickhouse, host: "localhost")
+
+        let deleted = await vm.deleteRow(RowLocator(row: ["1", "signup"], keyValues: nil))
+
+        #expect(!deleted)
+        #expect(vm.operationError?.title == String(localized: "Row Not Deleted"))
+    }
+
     @Test("An insert on an engine that writes its own rows goes to its writer, leaving out what the row leaves out")
     func insertGoesToTheWriter() throws {
         let plugin = StubPluginDriver()

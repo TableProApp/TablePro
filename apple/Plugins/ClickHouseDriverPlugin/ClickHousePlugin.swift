@@ -437,6 +437,10 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         return (statement: sql, parameters: parameters)
     }
 
+    // A mutation runs in the background by default, so a saved edit or a delete would report success before the
+    // rows change, and a refresh would still show them.
+    static let waitsForMutation = "mutations_sync = 1"
+
     private func generateClickHouseUpdate(
         table: String,
         columns: [String],
@@ -457,7 +461,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             columns: columns, change: change, parameters: &parameters
         ) else { return nil }
 
-        let sql = "ALTER TABLE \(escapedTable) UPDATE \(setClauses) WHERE \(whereClause)"
+        let sql = "ALTER TABLE \(escapedTable) UPDATE \(setClauses) WHERE \(whereClause) SETTINGS \(Self.waitsForMutation)"
         return (statement: sql, parameters: parameters)
     }
 
@@ -473,7 +477,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             columns: columns, change: change, parameters: &parameters
         ) else { return nil }
 
-        let sql = "ALTER TABLE \(escapedTable) DELETE WHERE \(whereClause)"
+        let sql = "ALTER TABLE \(escapedTable) DELETE WHERE \(whereClause) SETTINGS \(Self.waitsForMutation)"
         return (statement: sql, parameters: parameters)
     }
 

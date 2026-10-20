@@ -120,12 +120,13 @@ struct SQLBuilderSingleRowLookupTests {
     }
 
     // SQLite keeps integer 5 and text '5' apart in a column with no affinity, and the grid shows both as 5.
-    @Test("A SQLite key with no affinity matches an integer either way it was stored", arguments: ["", "BLOB", "ANY"])
+    @Test("A SQLite key with no affinity matches the number either way it was stored", arguments: ["", "BLOB", "ANY"])
     func sqliteUntypedKeyMatchesEitherStorageClass(typeName: String) {
         let columns = [ColumnInfo(name: "id", typeName: typeName)]
-        #expect(lookup([("id", "5")], columns: columns, type: .sqlite).contains("WHERE \"id\" IN (5, '5') "))
-        #expect(lookup([("id", "-5")], type: .sqlite).contains("WHERE \"id\" IN (-5, '-5') "))
-        #expect(lookup([("id", "2.5")], type: .sqlite).contains("WHERE \"id\" = '2.5' "))
+        #expect(lookup([("id", "5")], columns: columns, type: .sqlite)
+            .contains("WHERE \"id\" IN (5, '5') AND CAST(\"id\" AS TEXT) = '5' "))
+        #expect(lookup([("id", "-5")], type: .sqlite).contains("WHERE \"id\" IN (-5, '-5') AND CAST(\"id\" AS TEXT) = '-5' "))
+        #expect(lookup([("id", "2.5")], type: .sqlite).contains("WHERE \"id\" IN (2.5, '2.5') AND CAST(\"id\" AS TEXT) = '2.5' "))
     }
 
     @Test("A SQLite value that is not how SQLite prints a number stays quoted", arguments: ["05", "+5", "5.50", "1e3", "abc", "-0"])
@@ -146,11 +147,11 @@ struct SQLBuilderSingleRowLookupTests {
         let key = [(column: "id", value: "5")]
         #expect(SQLBuilder.buildDelete(
             table: "t", schema: nil, type: .sqlite, driver: driver(), primaryKeys: key, columns: columns
-        ) == "DELETE FROM \"t\" WHERE \"id\" IN (5, '5') AND (SELECT COUNT(*) FROM \"t\" WHERE \"id\" IN (5, '5')) = 1")
+        ) == "DELETE FROM \"t\" WHERE \"id\" IN (5, '5') AND CAST(\"id\" AS TEXT) = '5' AND (SELECT COUNT(*) FROM \"t\" WHERE \"id\" IN (5, '5') AND CAST(\"id\" AS TEXT) = '5') = 1")
         #expect(SQLBuilder.buildUpdate(
             table: "t", schema: nil, type: .sqlite, driver: driver(),
             changes: [(column: "name", value: "x")], primaryKeys: key, columns: columns
-        ) == "UPDATE \"t\" SET \"name\" = 'x' WHERE \"id\" IN (5, '5') AND (SELECT COUNT(*) FROM \"t\" WHERE \"id\" IN (5, '5')) = 1")
+        ) == "UPDATE \"t\" SET \"name\" = 'x' WHERE \"id\" IN (5, '5') AND CAST(\"id\" AS TEXT) = '5' AND (SELECT COUNT(*) FROM \"t\" WHERE \"id\" IN (5, '5') AND CAST(\"id\" AS TEXT) = '5') = 1")
     }
 
     @Test("Only a key matched both ways can name two rows")
@@ -162,7 +163,7 @@ struct SQLBuilderSingleRowLookupTests {
         #expect(!SQLBuilder.keyMatchesEitherWay([("id", "5")], columns: [], type: .postgresql))
         #expect(SQLBuilder.buildKeyMatchCount(
             table: "t", schema: nil, key: [("id", "5")], columns: untyped, type: .sqlite, driver: driver()
-        ) == "SELECT COUNT(*) FROM \"t\" WHERE \"id\" IN (5, '5')")
+        ) == "SELECT COUNT(*) FROM \"t\" WHERE \"id\" IN (5, '5') AND CAST(\"id\" AS TEXT) = '5'")
         #expect(SQLBuilder.buildDelete(
             table: "t", schema: nil, type: .postgresql, driver: driver(), primaryKeys: [("id", "5")], columns: []
         ) == "DELETE FROM \"t\" WHERE \"id\" = '5'")

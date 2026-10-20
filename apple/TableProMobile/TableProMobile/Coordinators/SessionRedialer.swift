@@ -72,9 +72,12 @@ final class SessionRedialer {
         return true
     }
 
-    // Returns with no dial in flight, so a caller can tear the session down without cancelling one.
-    func settled(_ connectionId: UUID) async {
+    // Returns with no dial in flight, so a caller can tear the session down without cancelling one. A window that
+    // waits to take the dial's session is one of its consumers, so another window leaving does not cancel it.
+    func settled(_ connectionId: UUID, consumer: AnyObject? = nil) async {
+        let consumerId = consumer.map(ObjectIdentifier.init)
         while let dial = dials[connectionId] {
+            if let consumerId { dials[connectionId]?.consumers.insert(consumerId) }
             _ = try? await dial.task.value
         }
     }

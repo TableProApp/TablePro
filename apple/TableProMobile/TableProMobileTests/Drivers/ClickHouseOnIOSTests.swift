@@ -29,7 +29,7 @@ struct ClickHouseOnIOSTests {
         )
 
         let write = try #require(writes.first)
-        #expect(write.statement == "ALTER TABLE `events` UPDATE `name` = ? WHERE `id` = ? AND `name` = ? AND `note` IS NULL")
+        #expect(write.statement == "ALTER TABLE `events` UPDATE `name` = ? WHERE `id` = ? AND `name` = ? AND `note` IS NULL SETTINGS mutations_sync = 1")
         #expect(write.parameters == ["purchase", "1", "signup"])
     }
 
@@ -39,7 +39,7 @@ struct ClickHouseOnIOSTests {
             table: "events", schema: nil, columns: ["id", "name"], originalRow: ["1", "signup"]
         )
 
-        #expect(writes.map(\.statement) == ["ALTER TABLE `events` DELETE WHERE `id` = ? AND `name` = ?"])
+        #expect(writes.map(\.statement) == ["ALTER TABLE `events` DELETE WHERE `id` = ? AND `name` = ? SETTINGS mutations_sync = 1"])
     }
 
     @Test("A new row names only the columns it sets")

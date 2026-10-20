@@ -362,12 +362,17 @@ struct FilterSQLGeneratorTests {
     @Test("A SQLite column with no affinity matches a number either way it was stored", arguments: ["", "BLOB", "ANY"])
     func sqliteUntypedMatchesEitherStorageClass(typeName: String) {
         let column = ColumnInfo(name: "v", typeName: typeName)
-        #expect(engineClause(.sqlite, column, "5") == "WHERE \"v\" IN (5, '5')")
-        #expect(engineClause(.sqlite, column, "5", op: .notEqual) == "WHERE \"v\" NOT IN (5, '5')")
-        #expect(engineClause(.sqlite, column, "5, abc, 05", op: .in) == "WHERE \"v\" IN (5, '5', 'abc', '05')")
-        #expect(engineClause(.sqlite, column, "-2.5", op: .notIn) == "WHERE \"v\" NOT IN (-2.5, '-2.5')")
+        #expect(engineClause(.sqlite, column, "5") == "WHERE (\"v\" IN (5, '5') AND CAST(\"v\" AS TEXT) = '5')")
+        #expect(engineClause(.sqlite, column, "5", op: .notEqual)
+            == "WHERE NOT (\"v\" IN (5, '5') AND CAST(\"v\" AS TEXT) = '5')")
+        #expect(engineClause(.sqlite, column, "5, abc, 05", op: .in)
+            == "WHERE (\"v\" IN (5, '5', 'abc', '05') AND CAST(\"v\" AS TEXT) IN ('5', 'abc', '05'))")
+        #expect(engineClause(.sqlite, column, "abc, 05", op: .in) == "WHERE \"v\" IN ('abc', '05')")
+        #expect(engineClause(.sqlite, column, "-2.5", op: .notIn)
+            == "WHERE NOT (\"v\" IN (-2.5, '-2.5') AND CAST(\"v\" AS TEXT) = '-2.5')")
         #expect(engineClause(.sqlite, column, "02134") == "WHERE \"v\" = '02134'")
-        #expect(engineClause(.sqlite, column, "1.0e+20") == "WHERE \"v\" IN (1.0e+20, '1.0e+20')")
+        #expect(engineClause(.sqlite, column, "1.0e+20")
+            == "WHERE (\"v\" IN (1.0e+20, '1.0e+20') AND CAST(\"v\" AS TEXT) = '1.0e+20')")
         #expect(engineClause(.sqlite, column, "5", op: .greaterThan) == "WHERE \"v\" > 5")
     }
 
@@ -448,8 +453,6 @@ struct FilterSQLGeneratorTests {
             == .number("5"))
         #expect(FilterColumnKind.keyLiteral("5", column: nil, databaseType: .sqlite) == .numberOrText("5"))
         #expect(FilterColumnKind.keyLiteral("05", column: nil, databaseType: .sqlite) == .text("05"))
-        #expect(FilterColumnKind.keyLiteral("2.5", column: nil, databaseType: .sqlite) == .text("2.5"))
-        #expect(FilterColumnKind.keyLiteral("0.3333333333333333", column: nil, databaseType: .sqlite)
-            == .text("0.3333333333333333"))
+        #expect(FilterColumnKind.keyLiteral("2.5", column: nil, databaseType: .sqlite) == .numberOrText("2.5"))
     }
 }

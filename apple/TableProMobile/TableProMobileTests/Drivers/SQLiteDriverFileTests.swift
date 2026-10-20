@@ -309,6 +309,43 @@ struct SQLiteDriverFileTests {
         #expect(names == ["5": "integer", "6": "text", "05": "padded"])
     }
 
+    // SQLite prints 1/3 as 0.33333333333333332, so the text '0.3333333333333333' is another row with the same number.
+    @Test("A key, an edit and a filter on a column with no type reach the row whose text the grid read, REAL included")
+    func untypedRealKeyMatchesItsOwnText() async throws {
+        let driver = try await connectedDriver("untyped-real.db")
+        _ = try await driver.execute(query: "CREATE TABLE p (id PRIMARY KEY, name)")
+        _ = try await driver.execute(query: "INSERT INTO p VALUES (1.0 / 3, 'real'), ('0.3333333333333333', 'text'), (2.5, 'half')")
+        let columns = try await driver.fetchColumns(table: "p", schema: nil)
+        let shown = try await driver.execute(query: "SELECT id FROM p WHERE name = 'real'").rows.first?.first ?? nil
+
+        func names(_ query: String) async throws -> [String] {
+            try await driver.execute(query: query).rows.compactMap { $0.last ?? nil }
+        }
+        let byRealText = try await names(SQLBuilder.buildSingleRowLookup(
+            table: "p", schema: nil, key: [(column: "id", value: shown ?? "")], columns: columns, type: .sqlite, driver: driver
+        ))
+        let byShorterText = try await names(SQLBuilder.buildSingleRowLookup(
+            table: "p", schema: nil, key: [(column: "id", value: "0.3333333333333333")], columns: columns, type: .sqlite, driver: driver
+        ))
+        let filtered = try await names(SQLBuilder.buildFilteredSelect(
+            table: "p", schema: nil, type: .sqlite,
+            filters: [TableFilter(columnName: "id", value: "0.3333333333333333")], logicMode: .and, columns: columns,
+            limit: 10, offset: 0
+        ))
+        try await driver.executeWrite([SQLBuilder.buildUpdate(
+            table: "p", schema: nil, type: .sqlite, driver: driver,
+            changes: [(column: "name", value: "edited")], primaryKeys: [(column: "id", value: "2.5")], columns: columns
+        )])
+        let edited = try await names("SELECT id, name FROM p WHERE id = 2.5")
+        try await driver.disconnect()
+
+        #expect(shown == "0.33333333333333332")
+        #expect(byRealText == ["real"])
+        #expect(byShorterText == ["text"])
+        #expect(filtered == ["text"])
+        #expect(edited == ["edited"])
+    }
+
     @Test("Update and delete through a key column with no type reach the integer row and only it")
     func untypedKeyUpdatesAndDeletes() async throws {
         let driver = try await connectedDriver("untyped-write.db")

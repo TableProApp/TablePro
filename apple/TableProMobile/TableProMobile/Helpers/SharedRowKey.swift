@@ -4,6 +4,33 @@ import TableProModels
 
 // A SQLite column with no type can hold the number 5 and the text '5' as two keys that both read as 5.
 nonisolated enum SharedRowKey {
+    // A row matched on every value it holds is not one row when another holds the same values: ClickHouse would
+    // change both.
+    static func identicalRowsError(
+        writer: any DriverRowWriting,
+        table: String,
+        schema: String?,
+        locator: RowLocator,
+        columns: [String],
+        type: DatabaseType
+    ) async -> AppError? {
+        guard locator.keyValues == nil else { return nil }
+        let count: Int
+        do {
+            count = try await writer.matchingRowCount(table: table, schema: schema, columns: columns, row: locator.row)
+        } catch {
+            return ErrorClassifier.classify(error, context: ErrorContext(operation: "checkRowKey", databaseType: type))
+        }
+        guard count > 1 else { return nil }
+        return AppError(
+            category: .query,
+            title: String(localized: "Identical Rows"),
+            message: String(localized: "Another row holds the same value in every column, so this row cannot be changed on its own. Change these rows with a query."),
+            recovery: nil,
+            underlying: nil
+        )
+    }
+
     static func error(
         table: String,
         schema: String?,

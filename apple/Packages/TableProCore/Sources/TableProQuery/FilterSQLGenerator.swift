@@ -122,12 +122,19 @@ public struct FilterSQLGenerator: Sendable {
         return eitherStorageList(column, [value], negated: negated)
     }
 
+    // IN keeps the index; CAST holds the match to the text SQLite reads the value back as, which the grid showed,
+    // so a REAL that another spelling of the same number parses to is not matched as well.
     private func eitherStorageList(_ column: String, _ values: [String], negated: Bool) -> String {
-        let literals = values.flatMap { value -> [String] in
-            let quoted = escapeValue(value, kind: .text)
-            return SQLiteNumberText.isStoredSpelling(value) ? [value, quoted] : [quoted]
+        let quoted = values.map { escapeValue($0, kind: .text) }
+        let literals = zip(values, quoted).flatMap { value, text in
+            SQLiteNumberText.isStoredSpelling(value) ? [value, text] : [text]
         }
-        return "\(column) \(negated ? "NOT IN" : "IN") (\(literals.joined(separator: ", ")))"
+        guard literals.count > quoted.count else {
+            return "\(column) \(negated ? "NOT IN" : "IN") (\(quoted.joined(separator: ", ")))"
+        }
+        let read = quoted.count == 1 ? "= \(quoted[0])" : "IN (\(quoted.joined(separator: ", ")))"
+        let match = "\(column) IN (\(literals.joined(separator: ", "))) AND CAST(\(column) AS TEXT) \(read)"
+        return negated ? "NOT (\(match))" : "(\(match))"
     }
 
     // PostgreSQL and DuckDB have no LIKE or lower() for uuid, numbers or enums, and a text cast is valid on every column.

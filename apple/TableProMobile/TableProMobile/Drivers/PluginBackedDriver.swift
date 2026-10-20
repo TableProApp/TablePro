@@ -297,6 +297,20 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         return affected
     }
 
+    // Unqualified and with the same predicates as the plugin's own row writes, so it counts the rows they would touch.
+    func matchingRowCount(table: String, schema: String?, columns: [String], row: [String?]) async throws -> Int {
+        var parameters: [PluginCellValue] = []
+        let conditions = zip(columns, row).map { column, value -> String in
+            let quoted = plugin.quoteIdentifier(column)
+            guard let value else { return "\(quoted) IS NULL" }
+            parameters.append(.text(value))
+            return "\(quoted) = ?"
+        }
+        let query = "SELECT COUNT(*) FROM \(plugin.quoteIdentifier(table)) WHERE \(conditions.joined(separator: " AND "))"
+        let result = try await plugin.executeParameterized(query: query, parameters: parameters)
+        return result.rows.first?.first?.asText.flatMap { Int($0) } ?? 0
+    }
+
     // The Mac's grid marks a cell left at the column default with this text, and the drivers leave such a column out.
     static let defaultSentinel = "__DEFAULT__"
 

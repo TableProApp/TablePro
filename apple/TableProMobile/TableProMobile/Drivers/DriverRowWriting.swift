@@ -32,4 +32,7 @@ nonisolated protocol DriverRowWriting: DatabaseDriver {
     ) throws -> [PluginRowWrite]
 
     func run(_ writes: [PluginRowWrite]) async throws -> Int
+
+    // How many rows hold exactly these values, which every-column identity needs to be one.
+    func matchingRowCount(table: String, schema: String?, columns: [String], row: [String?]) async throws -> Int
 }

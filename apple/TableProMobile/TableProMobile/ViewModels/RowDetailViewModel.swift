@@ -372,6 +372,13 @@ final class RowDetailViewModel {
             operationError = shared
             return false
         }
+        if let writer = session.driver as? any DriverRowWriting, let identical = await SharedRowKey.identicalRowsError(
+            writer: writer, table: table.name, schema: schema, locator: locator,
+            columns: columns.map(\.name), type: databaseType
+        ) {
+            operationError = identical
+            return false
+        }
 
         let batch: RowWriteBatch
         do {

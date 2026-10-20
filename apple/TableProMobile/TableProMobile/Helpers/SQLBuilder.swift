@@ -86,7 +86,8 @@ nonisolated enum SQLBuilder {
             case .text(let value):
                 return "\(column) = '\(driver.escapeStringLiteral(value))'"
             case .numberOrText(let value):
-                return "\(column) IN (\(value), '\(value)')"
+                // CAST is the text the grid read, so a REAL another spelling of the same number parses to stays out.
+                return "\(column) IN (\(value), '\(value)') AND CAST(\(column) AS TEXT) = '\(value)'"
             }
         }.joined(separator: " AND ")
         guard let quotedTable, keyMatchesEitherWay(key, columns: columns, type: type) else { return predicate }

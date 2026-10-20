@@ -242,7 +242,7 @@ struct DataBrowserViewModelTests {
         let value = try await vm.loadFullValue(driver: driver, ref: ref, databaseType: .sqlite, schema: nil)
 
         #expect(value == "the whole body")
-        #expect(driver.executedQueries.last == #"SELECT "body" FROM "notes" WHERE "id" IN (5, '5') AND (SELECT COUNT(*) FROM "notes" WHERE "id" IN (5, '5')) = 1 LIMIT 1"#)
+        #expect(driver.executedQueries.last == #"SELECT "body" FROM "notes" WHERE "id" IN (5, '5') AND CAST("id" AS TEXT) = '5' AND (SELECT COUNT(*) FROM "notes" WHERE "id" IN (5, '5') AND CAST("id" AS TEXT) = '5') = 1 LIMIT 1"#)
     }
 
     @Test("A seeded filter is already in the first SELECT, and only the first seed counts")

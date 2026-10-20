@@ -196,6 +196,36 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(!redialing.showFailureAlert)
     }
 
+    @Test("A window waiting to share another window's dial keeps it when that window closes")
+    func waitingWindowKeepsTheDialItsOpenerLeft() async throws {
+        let first = driver(tables: ["orders"])
+        try await dial(first)
+        let redialing = await attachedCoordinator()
+        let dialsBefore = factory.dialed.count
+
+        let teardown = TestGate()
+        first.beforeDisconnect = { await teardown.enter() }
+        first.pingError = MockDatabaseDriver.MockError.scripted
+        let second = driver(tables: ["orders"])
+        factory.queue(second)
+        let redial = Task { await redialing.reconnectIfNeeded() }
+        await teardown.waitUntilEntered()
+
+        let opening = ConnectionCoordinator(connection: connection, appState: appState)
+        let fresh = Task { await opening.connect() }
+        // Main-actor hops: the open task, then its attempt, which joins the dial before it first suspends.
+        for _ in 0 ..< 20 { await Task.yield() }
+        redialing.retire()
+        await teardown.open()
+        await redial.value
+        await fresh.value
+
+        #expect(factory.dialed.count == dialsBefore + 1)
+        #expect(opening.session?.driver === second)
+        #expect(isConnected(opening))
+        #expect(!opening.showFailureAlert)
+    }
+
     @Test("A dial its last window walked away from is delisted, so a retry does not wait on it")
     func abandonedDialIsDelisted() async throws {
         let first = driver(tables: ["orders"])

@@ -197,7 +197,7 @@ final class ConnectionCoordinator {
 
     private func runAttempt(token: UUID) async {
         // Another window's dial is shared once its schema is back, never torn down mid-dial.
-        await appState.sessionRedialer.settled(connection.id)
+        await appState.sessionRedialer.settled(connection.id, consumer: self)
         guard attemptToken == token else { return }
         if let existing = appState.connectionManager.session(for: connection.id) {
             do {
@@ -217,7 +217,7 @@ final class ConnectionCoordinator {
                 if await keepsRefusingSession(existing, token: token, refusal: error) { return }
                 guard attemptToken == token else { return }
                 session = nil
-                await appState.sessionRedialer.settled(connection.id)
+                await appState.sessionRedialer.settled(connection.id, consumer: self)
                 guard attemptToken == token else { return }
                 if let live = appState.connectionManager.session(for: connection.id), live.driver !== existing.driver {
                     await runAttempt(token: token)
@@ -367,7 +367,7 @@ final class ConnectionCoordinator {
 
     private func takesNewerSession(than held: ConnectionSession, token: UUID) async -> Bool {
         // A redial another window started is not ready to share until its schema is back.
-        await appState.sessionRedialer.settled(connection.id)
+        await appState.sessionRedialer.settled(connection.id, consumer: self)
         guard attemptToken == token,
               let live = appState.connectionManager.session(for: connection.id),
               live.driver !== held.driver else {
@@ -436,7 +436,7 @@ final class ConnectionCoordinator {
         isFollowing = true
         defer { isFollowing = false }
         let token = attemptToken
-        await appState.sessionRedialer.settled(connection.id)
+        await appState.sessionRedialer.settled(connection.id, consumer: self)
         guard attemptToken == token else { return }
         guard canFollowLiveSession else {
             followPending = true
