@@ -45,6 +45,28 @@ struct ConnectionManagerCatalogTests {
         #expect((catalog as? MockDatabaseDriver)?.isConnected == true)
     }
 
+    @Test("The catalog driver takes the session's tunnel overrides: no TLS to a unix socket, the saved host to verify")
+    func keepsTheSessionsTunnelOverrides() async throws {
+        let factory = DialingDriverFactory()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            sshProvider: MockSSHProvider()
+        )
+        var connection = connection(ssh: true)
+        connection.sslEnabled = true
+        connection.additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey] = "/var/run/mysqld/mysqld.sock"
+        _ = try await manager.connect(connection)
+
+        _ = try #require(await manager.catalogDriver(for: connection.id, database: "app"))
+
+        let dialed = factory.dialed
+        #expect(dialed.count == 2)
+        #expect(dialed[1].sslEnabled == dialed[0].sslEnabled)
+        #expect(dialed[1].sslEnabled == false)
+        #expect(dialed[1].additionalFields[DatabaseConnection.preTunnelHostKey] == "db.example.com")
+    }
+
     @Test("Readers share one catalog driver until the database changes, which closes the old one")
     func sharedUntilTheDatabaseChanges() async throws {
         let factory = DialingDriverFactory()

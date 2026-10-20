@@ -104,7 +104,8 @@ public final class ConnectionManager: @unchecked Sendable {
                 activeDatabase: connection.database,
                 status: .connected
             )
-            let dial = SessionDial(connection: connection, host: effectiveHost, port: effectivePort)
+            // As the session dialed: through the tunnel's port, with its TLS and verify-host overrides.
+            let dial = SessionDial(connection: effectiveConnection)
             guard adoptSession(session, dial: dial, for: connection.id, generation: generation) else {
                 if let tunnelId, let provider = sshProvider {
                     try? await provider.closeTunnel(id: tunnelId)
@@ -391,8 +392,6 @@ public final class ConnectionManager: @unchecked Sendable {
         if !database.isEmpty {
             target.database = database
         }
-        target.host = dial.host
-        target.port = dial.port
         let password = try secureStore.retrieve(forKey: passwordKey(for: dial.connection.id))
         let driver = try factory.createDriver(for: target, password: password)
         try await driver.connect()
@@ -536,8 +535,6 @@ private final class ConnectionTeardown: @unchecked Sendable {
 // The host and port are the tunnel's local end when SSH is on, so a catalog connection reuses the tunnel.
 private struct SessionDial: Sendable {
     let connection: DatabaseConnection
-    let host: String
-    let port: Int
 }
 
 private struct CatalogKey: Equatable, Sendable {
