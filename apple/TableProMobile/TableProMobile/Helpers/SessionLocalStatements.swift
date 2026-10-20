@@ -69,7 +69,7 @@ nonisolated enum SessionLocalStatements {
             // A MySQL executable comment can hide any statement, a temporary table among them, from the patterns.
             if usePattern?.firstMatch(in: code, range: range) != nil
                 || contextPattern?.firstMatch(in: code, range: range) != nil
-                || SQLLeadingComments.conditionalCommentOpeners.contains { code.contains($0) }
+                || SQLLeadingComments.conditionalCommentOpeners.contains(where: { code.contains($0) })
                 || SQLCatalogEffectClassifier.effect(of: statement, grammar: grammar).runsUnseenStatements {
                 effect.leavesCatalog = true
             }
