@@ -5,14 +5,15 @@ import TableProModels
 // A SQLite column with no type can hold the number 5 and the text '5' as two keys that both read as 5.
 nonisolated enum SharedRowKey {
     // A row matched on every value it holds is not one row when another holds the same values: ClickHouse would
-    // change both.
+    // change both. An update that matches none would report success and drop the typed values.
     static func identicalRowsError(
         writer: any DriverRowWriting,
         table: String,
         schema: String?,
         locator: RowLocator,
         columns: [String],
-        type: DatabaseType
+        type: DatabaseType,
+        isUpdate: Bool
     ) async -> AppError? {
         guard locator.keyValues == nil else { return nil }
         let count: Int
@@ -20,6 +21,15 @@ nonisolated enum SharedRowKey {
             count = try await writer.matchingRowCount(table: table, schema: schema, columns: columns, row: locator.row)
         } catch {
             return ErrorClassifier.classify(error, context: ErrorContext(operation: "checkRowKey", databaseType: type))
+        }
+        if count == 0, isUpdate {
+            return AppError(
+                category: .query,
+                title: String(localized: "Row Not Found"),
+                message: CellLookupError.rowNotFound.localizedDescription,
+                recovery: String(localized: "Reload the table to see the row as it is now."),
+                underlying: CellLookupError.rowNotFound
+            )
         }
         guard count > 1 else { return nil }
         return AppError(

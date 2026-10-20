@@ -169,7 +169,15 @@ struct FilterSQLGenerator {
     private func eitherStorageComparison(_ column: String, _ value: String, columnType: ColumnType?, negated: Bool) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespaces)
         guard comparesEitherStorageClass(columnType), SQLiteNumberText.isStoredSpelling(trimmed) else { return nil }
-        return "\(column) \(negated ? "NOT IN" : "IN") (\(trimmed), \(quotedLiteral(trimmed)))"
+        return eitherStorageMatch(column, literals: [trimmed, quotedLiteral(trimmed)], texts: [quotedLiteral(trimmed)], negated: negated)
+    }
+
+    /// IN keeps the index; CAST holds the match to the text SQLite reads the value back as, which the grid showed,
+    /// so a REAL that another spelling of the same number parses to is not matched as well.
+    private func eitherStorageMatch(_ column: String, literals: [String], texts: [String], negated: Bool) -> String {
+        let read = texts.count == 1 ? "= \(texts[0])" : "IN (\(texts.joined(separator: ", ")))"
+        let match = "\(column) IN (\(literals.joined(separator: ", "))) AND CAST(\(column) AS TEXT) \(read)"
+        return negated ? "NOT (\(match))" : "(\(match))"
     }
 
     private func comparesEitherStorageClass(_ columnType: ColumnType?) -> Bool {
@@ -253,11 +261,13 @@ struct FilterSQLGenerator {
         guard !parsed.isEmpty else { return nil }
 
         var literals: [String] = []
+        var texts: [String] = []
         var hasNull = false
         let eitherStorage = comparesEitherStorageClass(columnType)
         for item in parsed {
             if eitherStorage, SQLiteNumberText.isStoredSpelling(item) {
                 literals.append(contentsOf: [item, quotedLiteral(item)])
+                texts.append(quotedLiteral(item))
                 continue
             }
             switch renderLiteral(item, columnType: columnType) {
@@ -265,6 +275,7 @@ struct FilterSQLGenerator {
                 hasNull = true
             case .value(let literal):
                 literals.append(literal)
+                texts.append(literal)
             }
         }
 
@@ -272,6 +283,9 @@ struct FilterSQLGenerator {
         let nonNullValues = foldsList ? literals.map(folding.fold) : literals
         let foldedColumn = foldsList ? folding.fold(patternOperand(column, columnType: columnType)) : column
         let inClause: String? = nonNullValues.isEmpty ? nil : {
+            if eitherStorage, literals.count > texts.count {
+                return eitherStorageMatch(column, literals: literals, texts: texts, negated: negated)
+            }
             let list = nonNullValues.joined(separator: ", ")
             return negated
                 ? "\(foldedColumn) NOT IN (\(list))"

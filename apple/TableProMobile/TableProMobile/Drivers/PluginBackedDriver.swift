@@ -307,6 +307,9 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
 
     // Unqualified and with the same predicates as the plugin's own row writes, so it counts the rows they would touch.
     func matchingRowCount(table: String, schema: String?, columns: [String], row: [String?]) async throws -> Int {
+        guard !columns.isEmpty, columns.count == row.count else {
+            throw DatabaseError(message: String(localized: "This database cannot write this change from iPhone or iPad."))
+        }
         var parameters: [PluginCellValue] = []
         let conditions = zip(columns, row).map { column, value -> String in
             let quoted = plugin.quoteIdentifier(column)

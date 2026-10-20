@@ -423,11 +423,14 @@ struct FilterSQLGeneratorColumnTypeTests {
     @Test("A SQLite column with no affinity matches a number either way it was stored")
     func sqliteUntypedMatchesEitherStorageClass() {
         for type in [ColumnType.text(rawType: ""), .blob(rawType: "BLOB"), .text(rawType: "ANY"), nil] {
-            #expect(Self.engineCondition(.sqlite, type: type, value: "5", dialect: Self.sqliteDialect) == "\"v\" IN (5, '5')")
+            #expect(Self.engineCondition(.sqlite, type: type, value: "5", dialect: Self.sqliteDialect)
+                == "(\"v\" IN (5, '5') AND CAST(\"v\" AS TEXT) = '5')")
             #expect(Self.engineCondition(.sqlite, type: type, op: .notEqual, value: "5", dialect: Self.sqliteDialect)
-                == "\"v\" NOT IN (5, '5')")
+                == "NOT (\"v\" IN (5, '5') AND CAST(\"v\" AS TEXT) = '5')")
             #expect(Self.engineCondition(.sqlite, type: type, op: .inList, value: "5, x", dialect: Self.sqliteDialect)
-                == "\"v\" IN (5, '5', 'x')")
+                == "(\"v\" IN (5, '5', 'x') AND CAST(\"v\" AS TEXT) IN ('5', 'x'))")
+            #expect(Self.engineCondition(.sqlite, type: type, value: "0.10000000000000001", dialect: Self.sqliteDialect)
+                == "(\"v\" IN (0.10000000000000001, '0.10000000000000001') AND CAST(\"v\" AS TEXT) = '0.10000000000000001')")
         }
         #expect(Self.engineCondition(.sqlite, type: .text(rawType: ""), value: "05", dialect: Self.sqliteDialect) == "\"v\" = '05'")
         #expect(Self.engineCondition(.sqlite, type: .integer(rawType: "INTEGER"), value: "5", dialect: Self.sqliteDialect)

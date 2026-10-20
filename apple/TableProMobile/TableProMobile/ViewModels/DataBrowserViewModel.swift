@@ -450,7 +450,7 @@ final class DataBrowserViewModel {
         let writer = session.driver as? any DriverRowWriting
         if let writer, let identical = await SharedRowKey.identicalRowsError(
             writer: writer, table: table.name, schema: schema, locator: locator,
-            columns: columns.map(\.name), type: databaseType
+            columns: columns.map(\.name), type: databaseType, isUpdate: false
         ) {
             operationError = identical
             return false

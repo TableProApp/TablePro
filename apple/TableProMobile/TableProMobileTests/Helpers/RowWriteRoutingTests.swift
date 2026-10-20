@@ -12,6 +12,21 @@ struct RowWriteRoutingTests {
         ColumnInfo(name: "name", typeName: "String", ordinalPosition: 1)
     ]
 
+    private func loadedBrowser(_ plugin: StubPluginDriver) async -> DataBrowserViewModel {
+        plugin.scriptedColumns = [
+            PluginColumnInfo(name: "id", dataType: "UInt64", isNullable: false, isPrimaryKey: true),
+            PluginColumnInfo(name: "name", dataType: "String")
+        ]
+        plugin.scriptedResult = PluginQueryResult(
+            columns: ["id", "name"], columnTypeNames: ["UInt64", "String"], rows: [["1", nil]],
+            rowsAffected: 0, timing: PluginQueryTiming(total: 0)
+        )
+        let vm = DataBrowserViewModel()
+        vm.attach(session: session(plugin), table: TableInfo(name: "events"), databaseType: .clickhouse, host: "localhost")
+        await vm.load(isInitial: true)
+        return vm
+    }
+
     private func session(_ plugin: StubPluginDriver, identity: RowIdentity = .everyColumn) -> ConnectionSession {
         let driver = PluginBackedDriver(plugin: plugin, dialedHosts: [], rowIdentity: identity, readsOnly: { _ in true })
         return ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "default")
@@ -88,8 +103,7 @@ struct RowWriteRoutingTests {
     @Test("A delete on an engine that writes its own rows sends the whole row to its writer")
     func browserDeletesThroughTheWriter() async throws {
         let plugin = StubPluginDriver()
-        let vm = DataBrowserViewModel()
-        vm.attach(session: session(plugin), table: TableInfo(name: "events"), databaseType: .clickhouse, host: "localhost")
+        let vm = await loadedBrowser(plugin)
 
         let deleted = await vm.deleteRow(RowLocator(row: ["1", "signup"], keyValues: nil))
 
@@ -102,8 +116,7 @@ struct RowWriteRoutingTests {
     @Test("A row matched on every value is counted with the writer's own predicates before it changes")
     func identityIsCountedFirst() async throws {
         let plugin = StubPluginDriver()
-        let vm = DataBrowserViewModel()
-        vm.attach(session: session(plugin), table: TableInfo(name: "events"), databaseType: .clickhouse, host: "localhost")
+        let vm = await loadedBrowser(plugin)
 
         _ = await vm.deleteRow(RowLocator(row: ["1", nil], keyValues: nil))
 
@@ -138,8 +151,7 @@ struct RowWriteRoutingTests {
     func identicalRowDeleteIsRefused() async {
         let plugin = StubPluginDriver()
         plugin.rowCounts = [2]
-        let vm = DataBrowserViewModel()
-        vm.attach(session: session(plugin), table: TableInfo(name: "events"), databaseType: .clickhouse, host: "localhost")
+        let vm = await loadedBrowser(plugin)
 
         let deleted = await vm.deleteRow(RowLocator(row: ["1", "signup"], keyValues: nil))
 
@@ -148,12 +160,34 @@ struct RowWriteRoutingTests {
         #expect(plugin.generatedChanges.isEmpty)
     }
 
+    @Test("An edit of a row another client changed or deleted says the row is gone and keeps the typed value")
+    func editOfAGoneRowFails() async {
+        let plugin = StubPluginDriver()
+        plugin.rowCounts = [0]
+        let vm = RowDetailViewModel(
+            columns: columns,
+            rows: [Row(cells: [.text("1"), .text("signup")])],
+            initialIndex: 0,
+            table: TableInfo(name: "events"),
+            session: session(plugin),
+            columnDetails: columns
+        )
+        vm.startEditing()
+        vm.setEditedValue("purchase", at: 1)
+
+        let saved = await vm.saveChanges()
+
+        #expect(!saved)
+        #expect(vm.operationError?.title == String(localized: "Row Not Found"))
+        #expect(vm.isEditing)
+        #expect(plugin.parameterizedQueries.isEmpty)
+    }
+
     @Test("A delete whose row is still there afterwards says so")
     func deleteThatLeftItsRowFails() async {
         let plugin = StubPluginDriver()
         plugin.rowCounts = [1, 1]
-        let vm = DataBrowserViewModel()
-        vm.attach(session: session(plugin), table: TableInfo(name: "events"), databaseType: .clickhouse, host: "localhost")
+        let vm = await loadedBrowser(plugin)
 
         let deleted = await vm.deleteRow(RowLocator(row: ["1", "signup"], keyValues: nil))
 

@@ -374,7 +374,7 @@ final class RowDetailViewModel {
         }
         if let writer = session.driver as? any DriverRowWriting, let identical = await SharedRowKey.identicalRowsError(
             writer: writer, table: table.name, schema: schema, locator: locator,
-            columns: columns.map(\.name), type: databaseType
+            columns: columns.map(\.name), type: databaseType, isUpdate: true
         ) {
             operationError = identical
             return false
