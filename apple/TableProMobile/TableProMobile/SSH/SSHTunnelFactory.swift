@@ -95,9 +95,7 @@ nonisolated enum SSHTunnelFactory {
             try await stages.authenticateNone(username: config.username)
 
         default:
-            throw SSHTunnelError.authenticationFailed(
-                "Auth method \(config.authMethod.rawValue) not supported on iOS"
-            )
+            throw SSHTunnelError.authMethodUnsupported(config.authMethod)
         }
     }
 }

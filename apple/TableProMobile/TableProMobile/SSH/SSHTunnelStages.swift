@@ -121,55 +121,24 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
     }
 
     func authenticatePassword(username: String, password: String) async throws {
-        let handle = try currentSession()
-        try await authenticate(as: username, label: "Password") {
-            libssh2_userauth_password_ex(
-                handle.pointer,
-                username,
-                UInt32(username.utf8.count),
-                password,
-                UInt32(password.utf8.count),
-                nil
-            )
-        }
+        try await authenticate(as: username, label: "Password") { try $0.password(password) }
     }
 
     func authenticatePublicKey(username: String, keyPath: String, passphrase: String?) async throws {
-        let handle = try currentSession()
         let expandedPath = (keyPath as NSString).expandingTildeInPath
 
         guard FileManager.default.fileExists(atPath: expandedPath) else {
             throw SSHTunnelError.authenticationFailed("Private key not found at \(keyPath)")
         }
 
-        let publicKeyPath = expandedPath + ".pub"
-        let publicKeyPathOrNil: String? = FileManager.default.fileExists(atPath: publicKeyPath) ? publicKeyPath : nil
-
         try await authenticate(as: username, label: "Public key") {
-            libssh2_userauth_publickey_fromfile_ex(
-                handle.pointer,
-                username,
-                UInt32(username.utf8.count),
-                publicKeyPathOrNil,
-                expandedPath,
-                passphrase
-            )
+            try $0.publicKey(.readFile(at: expandedPath), passphrase: passphrase)
         }
     }
 
     func authenticatePublicKeyFromMemory(username: String, keyContent: String, passphrase: String?) async throws {
-        let handle = try currentSession()
         try await authenticate(as: username, label: "In-memory key") {
-            keyContent.withCString { keyPointer in
-                libssh2_userauth_publickey_frommemory(
-                    handle.pointer,
-                    username,
-                    username.utf8.count,
-                    nil, 0,
-                    keyPointer, keyContent.utf8.count,
-                    passphrase
-                )
-            }
+            try $0.publicKey(.memory(keyContent), passphrase: passphrase)
         }
     }
 
@@ -257,16 +226,12 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
     private func authenticate(
         as username: String,
         label: String,
-        _ attempt: @escaping @Sendable () -> Int32
+        _ attempt: @escaping @Sendable (LibSSH2Authentication) throws -> Void
     ) async throws {
+        let handle = try currentSession()
         try await runCancellableBlocking(
             on: sessionQueue,
-            work: {
-                let rc = attempt()
-                guard rc == 0 else {
-                    throw SSHTunnelError.authenticationFailed("\(label) authentication failed (error \(rc))")
-                }
-            }
+            work: { try attempt(LibSSH2Authentication(session: handle.pointer, username: username)) }
         )
         Self.logger.debug("\(label, privacy: .public) authentication successful for \(username, privacy: .private)")
     }
@@ -281,8 +246,9 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
 
         let rc = libssh2_session_handshake(session, socketFD)
         guard rc == 0 else {
+            let failure = LibSSH2HandshakeFailure.error(session: session, rc: rc)
             libssh2_session_free(session)
-            throw SSHTunnelError.handshakeFailed("Handshake failed (error \(rc))")
+            throw failure
         }
 
         return session

@@ -72,7 +72,7 @@ struct SSHTunnelFactoryTests {
     func unsupportedAuthMethodDiscards() async {
         let stages = SpyTunnelStages()
 
-        await #expect(throws: SSHTunnelError.self) {
+        await #expect(throws: SSHTunnelError.authMethodUnsupported(.sshAgent)) {
             try await Self.create(stages: stages, authMethod: .sshAgent)
         }
 

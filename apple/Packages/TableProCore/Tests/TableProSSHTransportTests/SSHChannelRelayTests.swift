@@ -96,6 +96,78 @@ struct SSHChannelRelayTests {
         #expect(result == .channelClosed)
     }
 
+    @Test("A transport failure on read ends as a transport hangup, not a channel close")
+    func readTransportFailureIsHangup() {
+        let local = SocketPair()
+        let transport = SocketPair()
+        defer { local.close(); transport.close() }
+
+        var dummy: UInt8 = 1
+        _ = Darwin.send(transport.b, &dummy, 1, 0)
+
+        let result = runRelay(
+            localFD: local.a,
+            transportFD: transport.a,
+            io: FakeChannelIO(fallback: .transportFailed)
+        )
+
+        #expect(result == .transportHangup)
+    }
+
+    @Test("A transport failure on read after the SSH server hung up ends as a transport hangup")
+    func readTransportFailureAfterHangupIsHangup() {
+        let local = SocketPair()
+        let transport = SocketPair()
+        defer { local.close(); transport.close() }
+
+        transport.closeB()
+
+        let result = runRelay(
+            localFD: local.a,
+            transportFD: transport.a,
+            io: FakeChannelIO(fallback: .transportFailed)
+        )
+
+        #expect(result == .transportHangup)
+    }
+
+    @Test("A transport failure on write ends as a transport hangup, not a channel close")
+    func writeTransportFailureIsHangup() {
+        let local = SocketPair()
+        let transport = SocketPair()
+        defer { local.close(); transport.close() }
+
+        let payload = Data("world".utf8)
+        payload.withUnsafeBytes { raw in
+            _ = Darwin.send(local.b, raw.baseAddress, raw.count, 0)
+        }
+
+        let result = runRelay(
+            localFD: local.a,
+            transportFD: transport.a,
+            io: FakeChannelIO(fallback: .wouldBlock, writeResult: .transportFailed)
+        )
+
+        #expect(result == .transportHangup)
+    }
+
+    @Test("Channel data for a client that already closed ends the relay as a local close")
+    func channelDataForClosedClientIsLocalClose() {
+        let local = SocketPair()
+        let transport = SocketPair()
+        defer { local.close(); transport.close() }
+
+        local.closeB()
+        var dummy: UInt8 = 1
+        _ = Darwin.send(transport.b, &dummy, 1, 0)
+
+        let io = FakeChannelIO(actions: [.data(Data("rows".utf8))], fallback: .wouldBlock)
+        let result = runRelay(localFD: local.a, transportFD: transport.a, io: io)
+
+        #expect(result == .localClosed)
+        #expect(io.readCount == 1)
+    }
+
     @Test("Channel data is forwarded to the local socket")
     func forwardsChannelData() {
         let local = SocketPair()
@@ -449,18 +521,21 @@ internal final class FakeChannelIO: SSHChannelIO, @unchecked Sendable {
         case data(Data)
         case wouldBlock
         case closed
+        case transportFailed
     }
 
     private let lock = NSLock()
     private var actions: [Action]
     private let fallback: Action
+    private let writeResult: ChannelWriteResult?
     private var writtenBuffer = Data()
     private var reads = 0
     private var delivered = 0
 
-    init(actions: [Action] = [], fallback: Action = .wouldBlock) {
+    init(actions: [Action] = [], fallback: Action = .wouldBlock, writeResult: ChannelWriteResult? = nil) {
         self.actions = actions
         self.fallback = fallback
+        self.writeResult = writeResult
     }
 
     var written: Data {
@@ -502,12 +577,15 @@ internal final class FakeChannelIO: SSHChannelIO, @unchecked Sendable {
             return .wouldBlock
         case .closed:
             return .closed
+        case .transportFailed:
+            return .transportFailed
         }
     }
 
     func write(_ buffer: UnsafePointer<CChar>, count: Int) -> ChannelWriteResult {
         lock.lock()
         defer { lock.unlock() }
+        if let writeResult { return writeResult }
         buffer.withMemoryRebound(to: UInt8.self, capacity: count) { source in
             writtenBuffer.append(contentsOf: UnsafeBufferPointer(start: source, count: count))
         }

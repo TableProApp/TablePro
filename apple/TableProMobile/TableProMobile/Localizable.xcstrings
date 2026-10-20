@@ -2325,6 +2325,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Ask the SSH server's administrator to turn on a method TablePro supports." : {
+
+    },
     "Atom" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -6389,6 +6392,9 @@
         }
       }
     },
+    "Edit the connection and check the key's passphrase under Private Key." : {
+
+    },
     "Edit the connection and choose the database file again." : {
       "localizations" : {
         "ko" : {
@@ -6416,6 +6422,9 @@
           }
         }
       }
+    },
+    "Edit the connection and enter the key's passphrase under Private Key." : {
+
     },
     "Empty String" : {
       "localizations" : {
@@ -9429,6 +9438,9 @@
         }
       }
     },
+    "It supports these host key types: %@." : {
+
+    },
     "Its subgroups are deleted too. Their connections move to Ungrouped." : {
       "localizations" : {
         "ko" : {
@@ -9610,6 +9622,9 @@
       "generatesSymbol" : false
     },
     "Key Not Found" : {
+
+    },
+    "Keyboard Interactive" : {
 
     },
     "Keychain Warning" : {
@@ -12250,6 +12265,15 @@
       }
     },
     "Open it on the Mac, or change it there to connect by host and port." : {
+
+    },
+    "Open this connection in TablePro on the Mac, or edit it and choose Password or Private Key." : {
+
+    },
+    "Open this connection in TablePro on the Mac, or edit it and choose a private key that is not on a security key." : {
+
+    },
+    "Open this connection in TablePro on the Mac, which can answer this sign-in step." : {
 
     },
     "Open Sample Database" : {
@@ -16248,6 +16272,12 @@
         }
       }
     },
+    "SSH Agent" : {
+
+    },
+    "SSH Authentication Failed" : {
+
+    },
     "Square" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -16421,6 +16451,9 @@
           }
         }
       }
+    },
+    "SSH Sign-In Unavailable" : {
+
     },
     "SSH Tunnel" : {
       "localizations" : {
@@ -17653,6 +17686,18 @@
         }
       }
     },
+    "TablePro on iPhone and iPad cannot use the SSH authentication method “%@”." : {
+
+    },
+    "TablePro supports these MAC algorithms: %@." : {
+
+    },
+    "TablePro supports these ciphers: %@." : {
+
+    },
+    "TablePro supports these key exchange methods: %@." : {
+
+    },
     "TablePro Is Locked" : {
       "localizations" : {
         "ko" : {
@@ -17680,6 +17725,18 @@
           }
         }
       }
+    },
+    "TablePro and the SSH server could not agree on how to encrypt the connection." : {
+
+    },
+    "TablePro and the SSH server have no MAC algorithm in common." : {
+
+    },
+    "TablePro and the SSH server have no cipher in common." : {
+
+    },
+    "TablePro and the SSH server have no key exchange or host key method in common." : {
+
     },
     "TablePro will re-download every connection, group, and tag from your iCloud account. Local data on this device is not deleted." : {
       "extractionState" : "stale",
@@ -18910,6 +18967,9 @@
         }
       }
     },
+    "The passphrase for this SSH private key is incorrect." : {
+
+    },
     "The Oracle connection closed while the statement was running. Run it again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -19049,6 +19109,21 @@
           }
         }
       }
+    },
+    "The SSH server accepted the first sign-in step and asks for another (%@), which TablePro on iPhone and iPad cannot complete." : {
+
+    },
+    "The SSH server asked “%@”, which TablePro on iPhone and iPad cannot answer." : {
+
+    },
+    "The SSH server did not answer in time." : {
+
+    },
+    "The SSH server does not accept a password. It accepts %@." : {
+
+    },
+    "The SSH server does not accept a private key. It accepts %@." : {
+
     },
     "The password is longer than the 128 bytes FreeTDS takes." : {
 
@@ -19251,6 +19326,9 @@
         }
       }
     },
+    "The server runs %@." : {
+
+    },
     "The server sent an unexpected message and the connection was reset. Run the query again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -19408,6 +19486,9 @@
           }
         }
       }
+    },
+    "The SSH server offers no sign-in method." : {
+
     },
     "The SSH tunnel connected but could not forward to the database port." : {
       "localizations" : {
@@ -20195,6 +20276,12 @@
     "This Oracle server requires Native Network Encryption but did not offer it on this connection. Ask the DBA to enable it, or use TLS instead by setting an SSL mode." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "This SSH private key belongs to a security key (FIDO), which TablePro on iPhone and iPad cannot sign with." : {
+
+    },
+    "This SSH private key is encrypted, and no passphrase is saved for it." : {
+
     },
     "This query will modify data. Are you sure you want to continue?" : {
       "localizations" : {

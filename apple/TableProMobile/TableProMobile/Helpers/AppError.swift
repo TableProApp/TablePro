@@ -114,6 +114,10 @@ nonisolated enum ErrorClassifier {
             return connectionFailure(connectionError)
         }
 
+        if let tunnelError = error as? SSHTunnelError, let classified = sshTunnelFailure(tunnelError) {
+            return classified
+        }
+
         if let redisError = error as? RedisError, let classified = redisFailure(redisError, context: context) {
             return classified
         }
