@@ -8,7 +8,7 @@ apps/linux/app/src/services/change_tracker_materialize_tests.rs 12
 apps/linux/app/src/services/change_tracker_row_identity.rs 39
 apps/linux/app/src/services/connection_monitor.rs 2
 apps/linux/app/src/services/connection_service.rs 15
-apps/linux/app/src/services/database_service.rs 41
+apps/linux/app/src/services/database_service.rs 39
 apps/linux/app/src/services/gtk_approval.rs 13
 apps/linux/app/src/services/mcp_service.rs 3
 apps/linux/app/src/services/operation_control.rs 8

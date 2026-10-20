@@ -448,7 +448,7 @@ impl SqlEditor {
         relm4::spawn(async move {
             let result = close_for_teardown(shared)
                 .await
-                .map_err(|error| crate::ui::error_text::driver_message(&error));
+                .map_err(|error| crate::services::error_text::driver_message(&error));
             sender.input(super::SqlEditorInput::SessionTeardownFinished(result));
         });
     }
@@ -554,7 +554,7 @@ impl SqlEditor {
         relm4::spawn(async move {
             let result = rollback_and_close(&shared)
                 .await
-                .map_err(|error| crate::ui::error_text::driver_message(&error));
+                .map_err(|error| crate::services::error_text::driver_message(&error));
             sender.input(super::SqlEditorInput::SessionRollbackFinished { session_id, result });
         });
     }
@@ -609,7 +609,7 @@ impl SqlEditor {
         relm4::spawn(async move {
             let result = commit_session(&shared)
                 .await
-                .map_err(|error| crate::ui::error_text::driver_message(&error));
+                .map_err(|error| crate::services::error_text::driver_message(&error));
             sender.input(SqlEditorInput::SessionCommitFinished { session_id, result });
         });
     }
@@ -695,7 +695,7 @@ pub(crate) fn close_detached(shared: SharedSession) {
 fn session_open_message(error: &DriverError) -> String {
     match error {
         DriverError::Unsupported(_) => crate::tr!("This engine does not offer dedicated sessions yet"),
-        other => crate::ui::error_text::driver_message(other),
+        other => crate::services::error_text::driver_message(other),
     }
 }
 

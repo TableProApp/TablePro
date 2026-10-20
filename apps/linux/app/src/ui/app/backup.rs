@@ -8,7 +8,7 @@ use tablepro_app_services::database_backup::{BackupJob, SavedBackupContext, run_
 use tablepro_core::{DriverError, OperationControl};
 use tablepro_policy::Principal;
 
-use crate::ui::error_text;
+use crate::services::error_text;
 use crate::ui::progress_dialog::CancellableDialog;
 
 use super::{App, AppMsg};

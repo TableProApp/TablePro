@@ -1,6 +1,10 @@
 pub mod approval_wait;
 pub mod column_widths;
+pub mod completion;
+pub mod completion_identifiers;
+pub mod completion_proposals;
 pub mod config_io;
+pub mod connection_identity;
 pub mod database_backup;
 pub mod filter_settings;
 pub mod ordered_refresh;

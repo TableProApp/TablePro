@@ -1,6 +1,4 @@
-mod completion;
-mod completion_identifiers;
-mod completion_proposals;
+use tablepro_app_services::{completion, completion_identifiers, completion_proposals};
 mod completion_provider;
 mod diagnostics;
 mod error_location;
@@ -45,7 +43,7 @@ use crate::ui::grid::GridMsg;
 
 pub use completion::{SchemaIndex, SchemaRequest, referenced_tables};
 pub(crate) use completion_identifiers::{catalog_reference, split_table_reference, table_key};
-pub use schema::{SQL_KEYWORDS, derive_tab_label};
+pub use schema::derive_tab_label;
 pub(crate) use session_mode::{StreamSession, query_cursor_export_factory};
 pub use statement_cursor::grammar_for;
 

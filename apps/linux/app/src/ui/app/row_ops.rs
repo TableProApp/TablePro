@@ -6,8 +6,8 @@ use tablepro_storage::query_history::{Outcome, Source};
 use uuid::Uuid;
 
 use crate::services::change_tracker::StatementSource;
+use crate::services::error_text;
 use crate::ui::browse_tab::BrowseTabInput;
-use crate::ui::error_text;
 
 use super::ran_statements::{finish_if_recorded, sql_without_parameters};
 use super::{App, AppMsg};

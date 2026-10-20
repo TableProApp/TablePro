@@ -192,7 +192,7 @@ fn outcome_text(kind: CatalogObjectKind, outcome: &Result<Vec<CatalogObject>, Dr
             tr!("This engine does not list {kind}.").replace("{kind}", &kind_label(kind).to_lowercase())
         }
         Err(DriverError::PolicyDenied(_)) => tr!("Policy does not allow this listing."),
-        Err(error) => crate::ui::error_text::driver_message(error),
+        Err(error) => crate::services::error_text::driver_message(error),
     }
 }
 

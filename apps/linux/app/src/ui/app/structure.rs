@@ -18,10 +18,10 @@ use tablepro_storage::query_history::{Outcome, Source};
 use crate::services::read_scopes::ReadScope;
 
 use crate::services::catalog::CatalogOrigin;
+use crate::services::error_text;
 use crate::services::structure_tracker;
 use crate::ui::app::ran_statements::finish_if_recorded;
 use crate::ui::app::{App, AppMsg, WorkspaceTab};
-use crate::ui::error_text;
 use crate::ui::structure_tab::{StructureMode, StructureTabInput};
 
 impl App {
