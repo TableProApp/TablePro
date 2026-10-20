@@ -9,3 +9,7 @@ nonisolated extension DatabaseConnection: LibraryConnectionRepresentable {
 nonisolated extension ConnectionGroup: LibraryGroupRepresentable {}
 
 nonisolated extension ConnectionTag: LibraryTagRepresentable {}
+
+nonisolated extension SavedQuery: SavedQueryRepresentable {}
+
+nonisolated extension SavedQueryFolder: SavedQueryFolderRepresentable {}

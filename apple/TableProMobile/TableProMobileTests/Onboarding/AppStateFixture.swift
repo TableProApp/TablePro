@@ -50,12 +50,13 @@ struct AppStateFixture {
         syncEnabled: Bool,
         secureStore: any SecureStore = MockSecureStore(),
         libraryPublisher: ConnectionLibraryPublisher? = nil,
+        transport: any IOSSyncTransport = UnreachableSyncTransport(),
         driverFactory: (any DriverFactory)? = nil
     ) -> AppState {
         let coordinator = IOSSyncCoordinator(
             metadata: metadata,
             recordCache: SyncRecordCache(directory: root.appendingPathComponent("Cache"), defaults: nil),
-            makeTransport: { UnreachableSyncTransport() },
+            makeTransport: { transport },
             isEnabled: { syncEnabled },
             notificationCenter: NotificationCenter()
         )

@@ -1,15 +1,9 @@
-//
-//  SQLFavoriteStorage+Import.swift
-//  TablePro
-//
-
 import Foundation
 import os
 import TableProImport
 
 internal extension SQLFavoriteStorage {
-    /// Decides against live rows inside the transaction, so a query or folder a sync pull wrote
-    /// after the preview is matched instead of duplicated. Any failure rolls the whole import back.
+    // Decides against live rows inside the transaction, so a query a pull wrote after the preview is matched, not duplicated.
     func importSavedQueries(_ queries: [PlannedQuery], now: Date = Date()) -> SavedQueryImportWrite? {
         guard !queries.isEmpty else { return ImportTally().write }
         return inTransaction { () -> SavedQueryImportWrite? in
@@ -22,26 +16,10 @@ internal extension SQLFavoriteStorage {
         }
     }
 
-    /// One actor call, so the folders match the favorites they were read with.
+    // One actor call, so the folders match the favorites they were read with.
     func readAllFavoritesAndFolders() -> (favorites: [SQLFavorite], folders: [SQLFavoriteFolder])? {
         guard let favorites = readAllFavorites(), let folders = readAllFolders() else { return nil }
         return (favorites, folders)
-    }
-
-    /// Cuts the chain where a folder's parent cannot hold it, then trims from the leaf until the
-    /// last folder can hold the query.
-    static func holdableFolderPath(_ path: [PathComponent], for scope: UUID?) -> [PathComponent] {
-        var kept: [PathComponent] = []
-        for component in path {
-            guard !component.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  SavedQueryScopeRule.folder(kept.last?.scope, canHold: component.scope)
-            else { break }
-            kept.append(component)
-        }
-        while let leaf = kept.last, !SavedQueryScopeRule.folder(leaf.scope, canHold: scope) {
-            kept.removeLast()
-        }
-        return kept
     }
 }
 
@@ -83,14 +61,14 @@ private extension SQLFavoriteStorage {
         var tally = ImportTally()
 
         for query in queries {
-            let name = Self.importedName(query)
+            let name = SavedQueryImportPlacement.importedName(query)
             switch ledger.verdict(name: name, sql: query.sql, keyword: query.keyword, scope: query.connectionId) {
             case .alreadySaved:
                 tally.alreadySaved += 1
             case .tooLarge:
                 tally.tooLarge += 1
             case .insert(let keyword, let dropped, _):
-                let path = Self.holdableFolderPath(query.folderPath, for: query.connectionId)
+                let path = SavedQueryImportPlacement.holdableFolderPath(query.folderPath, for: query.connectionId)
                 let resolved = PathTreeResolver.resolve([path], existing: folderNodes)
                 for node in resolved.created {
                     let folder = SQLFavoriteFolder(
@@ -126,10 +104,5 @@ private extension SQLFavoriteStorage {
             }
         }
         return tally.write
-    }
-
-    static func importedName(_ query: PlannedQuery) -> String {
-        let trimmed = query.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? SavedQueryName.derived(from: query.sql) : query.name
     }
 }

@@ -85,11 +85,11 @@ struct IOSConnectionImportServiceTests {
         #expect(!recognized.contains("Vertica"))
     }
 
-    @Test("iPhone imports nested groups to the library depth and no saved queries or credential profiles")
+    @Test("iPhone imports nested groups to the library depth, saved queries while their store is readable, and no credential profiles")
     func environmentRules() {
-        let rules = IOSConnectionImportService.environment().rules
+        let rules = IOSConnectionImportService.environment(for: appState).rules
         #expect(rules.maximumGroupDepth == LibraryGroupGraph.maxNestingDepth)
-        #expect(!rules.supportsSavedQueries)
+        #expect(rules.supportsSavedQueries)
         #expect(!rules.supportsCredentialProfiles)
     }
 
@@ -124,8 +124,8 @@ struct IOSConnectionImportServiceTests {
         #expect(connection.tagIds.compactMap { appState.tag(for: $0)?.name } == ["production"])
     }
 
-    @Test("Saved queries in a version 2 file are left out and the connection still imports")
-    func savedQueriesAreIgnored() async throws {
+    @Test("Saved queries in a version 2 file import with their connection, folder and keyword")
+    func savedQueriesImport() async throws {
         var builder = ConnectionBundleBuilder(appVersion: "Tests")
         builder.addConnection(settings(), ref: "c1")
         builder.addSavedQuery(
@@ -138,13 +138,145 @@ struct IOSConnectionImportServiceTests {
         builder.addSavedQuery(name: "Locks", sql: "select 2", keyword: nil, connection: nil)
 
         let preview = try await analyzed(try builder.build())
-        #expect(preview.queries.isEmpty)
-        #expect(preview.connections.map(\.savedQueryCount) == [0])
+        #expect(preview.queries.map(\.name) == ["Daily active users", "Locks"])
+        #expect(preview.connections.map(\.savedQueryCount) == [1])
 
         let outcome = await apply(preview)
         #expect(outcome.connectionsAdded == 1)
-        #expect(outcome.savedQueriesAdded == 0)
+        #expect(outcome.savedQueriesAdded == 2)
         #expect(outcome.savedQueriesNotImported == 0)
+
+        let connection = try #require(appState.connections.first)
+        let contents = appState.savedQueries.contents
+        let scoped = try #require(contents.queries.first { $0.name == "Daily active users" })
+        #expect(scoped.query == "select 1")
+        #expect(scoped.keyword == "dau")
+        #expect(scoped.connectionId == connection.id)
+        let folder = try #require(contents.folders.first { $0.id == scoped.folderId })
+        #expect(folder.name == "Reports")
+        #expect(folder.connectionId == connection.id)
+        let global = try #require(contents.queries.first { $0.name == "Locks" })
+        #expect(global.connectionId == nil)
+        #expect(global.folderId == nil)
+    }
+
+    @Test("A file imported again with Keep Existing finds its queries already saved and adds none")
+    func keepExistingAgainAddsNothing() async throws {
+        let existing = ordersConnection()
+        #expect(appState.addConnection(existing))
+        var builder = ConnectionBundleBuilder(appVersion: "Tests")
+        builder.addConnection(settings(), ref: "c1")
+        let queryRef = builder.addSavedQuery(name: "Daily active users", sql: "select 1", keyword: "dau", connection: "c1")
+        let bundle = try builder.build()
+
+        let first = try keepingExisting(try await analyzed(bundle), existing)
+        let firstOutcome = await IOSConnectionImportService.apply(first, appState: appState, secureStore: store)
+        #expect(firstOutcome.savedQueriesAdded == 1)
+        #expect(MobileImportOutcomeMessage(firstOutcome).message == String(localized: "1 saved query was added."))
+
+        let again = try keepingExisting(try await analyzed(bundle), existing)
+        #expect(again.queryStatuses[queryRef]?.availability == .alreadySaved)
+        #expect(again.queries.isEmpty)
+        #expect(appState.savedQueries.contents.queries.map(\.connectionId) == [existing.id])
+    }
+
+    @Test("A keyword the connection already holds is dropped with a note, and the query still imports")
+    func heldKeywordIsDropped() async throws {
+        let existing = ordersConnection()
+        #expect(appState.addConnection(existing))
+        #expect(appState.savedQueries.insert(SavedQuery(name: "Sessions", query: "select 3", keyword: "dau", connectionId: existing.id)))
+        var builder = ConnectionBundleBuilder(appVersion: "Tests")
+        builder.addConnection(settings(), ref: "c1")
+        let queryRef = builder.addSavedQuery(name: "Daily active users", sql: "select 1", keyword: "dau", connection: "c1")
+        let preview = try await analyzed(try builder.build())
+
+        let plan = try keepingExisting(preview, existing)
+        let status = try #require(plan.queryStatuses[queryRef])
+        let row = try #require(preview.queryRow(queryRef))
+        #expect(status.droppedKeyword == .inUse("dau"))
+        #expect(MobileImportQueryRow.note(for: row, status: status) == String(
+            format: String(localized: "Keyword “%@” is in use, so it imports without one."),
+            "dau"
+        ))
+
+        let outcome = await IOSConnectionImportService.apply(plan, appState: appState, secureStore: store)
+        #expect(outcome.savedQueriesAdded == 1)
+        let imported = try #require(appState.savedQueries.contents.queries.first { $0.name == "Daily active users" })
+        #expect(imported.keyword == nil)
+        #expect(imported.connectionId == existing.id)
+    }
+
+    @Test("A query saved after the review is matched when the import writes, not added twice")
+    func writeDecidesAgainstLiveRows() async throws {
+        var builder = ConnectionBundleBuilder(appVersion: "Tests")
+        builder.addConnection(settings(), ref: "c1")
+        builder.addSavedQuery(name: "Locks", sql: "select 2", keyword: nil, connection: nil)
+        let preview = try await analyzed(try builder.build())
+        let plan = ImportPlanner.plan(preview, selection: .defaults(for: preview))
+        #expect(plan.queries.count == 1)
+        #expect(appState.savedQueries.insert(SavedQuery(name: "Locks", query: "select 2")))
+
+        let outcome = await IOSConnectionImportService.apply(plan, appState: appState, secureStore: store)
+
+        #expect(outcome.connectionsAdded == 1)
+        #expect(outcome.savedQueriesAdded == 0)
+        #expect(outcome.savedQueriesNotImported == 1)
+        #expect(appState.savedQueries.contents.queries.count(where: { $0.name == "Locks" }) == 1)
+    }
+
+    @Test("A saved-query store that failed to load leaves the file's queries out, says so, and keeps its file")
+    func unreadableSavedQueriesAreLeftOut() async throws {
+        let failedFixture = try AppStateFixture()
+        let unreadable = Data("{ not json".utf8)
+        let savedQueriesFile = failedFixture.libraryDirectory.appendingPathComponent("saved-queries.json")
+        try unreadable.write(to: savedQueriesFile)
+        let failed = failedFixture.makeState(syncEnabled: false, secureStore: store)
+        var builder = ConnectionBundleBuilder(appVersion: "Tests")
+        builder.addConnection(settings(), ref: "c1")
+        builder.addSavedQuery(name: "Locks", sql: "select 2", keyword: nil, connection: "c1")
+
+        let preview = try await IOSConnectionImportService.preview(
+            of: try builder.build(),
+            fileName: "Tests.tablepro",
+            appState: failed
+        )
+        #expect(!preview.environment.rules.supportsSavedQueries)
+        #expect(preview.queries.isEmpty)
+        #expect(IOSConnectionImportService.leavesOutSavedQueries(preview))
+
+        let plan = ImportPlanner.plan(preview, selection: .defaults(for: preview))
+        let outcome = await IOSConnectionImportService.apply(plan, appState: failed, secureStore: store)
+        #expect(outcome.connectionsAdded == 1)
+        #expect(outcome.savedQueriesAdded == 0)
+        #expect(try Data(contentsOf: savedQueriesFile) == unreadable)
+    }
+
+    @Test("A query row explains why it does not import as the Mac review does")
+    func queryRowNotes() {
+        let row = QueryRow(
+            ref: "q1", name: "Locks", keyword: "locks", connection: nil, connectionName: nil,
+            folderPath: [], byteCount: 1_000_000, isTooLarge: true, isSuggested: true
+        )
+        func note(_ availability: QueryStatus.Availability, dropped: SavedQueryKeywordDrop? = nil, nameExists: Bool = false) -> String? {
+            MobileImportQueryRow.note(for: row, status: QueryStatus(
+                availability: availability,
+                isIncluded: availability == .available,
+                nameExists: nameExists,
+                droppedKeyword: dropped
+            ))
+        }
+
+        #expect(note(.addedByAnotherRow) == String(localized: "Another selected row adds the same query."))
+        #expect(note(.connectionSkipped) == String(localized: "Its connection is not imported."))
+        let size = ByteCountFormatter.string(fromByteCount: 1_000_000, countStyle: .file)
+        #expect(note(.tooLarge) == String(format: String(localized: "Too large to save (%@)"), size))
+        #expect(note(.alreadySaved) == nil)
+        #expect(note(.available, dropped: .invalid("a b")) == String(
+            format: String(localized: "Keyword “%@” is not valid, so it imports without one."),
+            "a b"
+        ))
+        #expect(note(.available, nameExists: true) == String(localized: "A saved query with this name exists."))
+        #expect(note(.available) == nil)
     }
 
     @Test("A nested group path imports as nested groups")
@@ -233,9 +365,28 @@ struct IOSConnectionImportServiceTests {
 
     // MARK: - Duplicates
 
-    @Test("A duplicate offers As Copy and Replace, and no Keep Existing without saved queries")
+    @Test("A duplicate offers As Copy and Replace, and Keep Existing first when the file holds saved queries for it")
     func duplicateOffersCopyAndReplace() async throws {
-        let existing = DatabaseConnection(
+        let existing = ordersConnection()
+        #expect(appState.addConnection(existing))
+        let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: settings())])
+        var builder = ConnectionBundleBuilder(appVersion: "Tests")
+        builder.addConnection(settings(), ref: "c1")
+        builder.addSavedQuery(name: "Locks", sql: "select 2", keyword: nil, connection: "c1")
+
+        let rows = try await analyzed(bundle).connections
+        let row = try #require(rows.first)
+        let rowsWithQueries = try await analyzed(try builder.build()).connections
+        let rowWithQueries = try #require(rowsWithQueries.first)
+
+        #expect(row.duplicate?.id == existing.id)
+        #expect(!row.isSelectedByDefault)
+        #expect(row.resolutions == [.addCopy, .replace(existing.id)])
+        #expect(rowWithQueries.resolutions == [.keepExisting(existing.id), .addCopy, .replace(existing.id)])
+    }
+
+    private func ordersConnection() -> DatabaseConnection {
+        DatabaseConnection(
             name: "Orders",
             type: .postgresql,
             host: "db.example.com",
@@ -243,15 +394,13 @@ struct IOSConnectionImportServiceTests {
             username: "app",
             database: "orders"
         )
-        #expect(appState.addConnection(existing))
-        let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: settings())])
+    }
 
-        let rows = try await analyzed(bundle).connections
-        let row = try #require(rows.first)
-
-        #expect(row.duplicate?.id == existing.id)
-        #expect(!row.isSelectedByDefault)
-        #expect(row.resolutions == [.addCopy, .replace(existing.id)])
+    private func keepingExisting(_ preview: ImportPreview, _ existing: DatabaseConnection) throws -> ImportPlan {
+        var selection = ImportSelection.defaults(for: preview)
+        selection.setSelected(true, connection: "c1", in: preview)
+        try #require(selection.resolution(for: "c1") == .keepExisting(existing.id))
+        return ImportPlanner.plan(preview, selection: selection)
     }
 
     @Test("Two rows can never replace the same connection")

@@ -29,6 +29,34 @@
         }
       }
     },
+    "\"%@\" will be permanently deleted." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 항목이 영구적으로 삭제됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" sẽ bị xoá vĩnh viễn."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 将被永久删除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」將會永久刪除。"
+          }
+        }
+      }
+    },
     "“%@” is not on any connection." : {
       "localizations" : {
         "ko" : {
@@ -701,6 +729,7 @@
       }
     },
     "%d connections imported." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -718,6 +747,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已导入 %d 个连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已匯入 %d 個連線。"
+          }
+        }
+      }
+    },
+    "%d connections were imported." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d개 연결을 가져왔습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã nhập %d kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已导入%d个连接。"
           }
         },
         "zh-Hant" : {
@@ -783,6 +840,18 @@
           }
         }
       }
+    },
+    "%d saved queries that belong to these connections, with their folders and keywords." : {
+
+    },
+    "%d saved queries that every connection shows." : {
+
+    },
+    "%d saved queries were added." : {
+
+    },
+    "%d saved queries were not imported." : {
+
     },
     "%ld is not a TCP port." : {
       "extractionState" : "manual",
@@ -978,6 +1047,7 @@
 
     },
     "1 connection imported." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -989,6 +1059,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Đã nhập 1 kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已导入 1 个连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已匯入 1 個連線。"
+          }
+        }
+      }
+    },
+    "1 connection was imported." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1개 연결을 가져왔습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 kết nối đã được nhập."
           }
         },
         "zh-Hans" : {
@@ -1066,6 +1164,18 @@
           }
         }
       }
+    },
+    "1 saved query that belongs to these connections, with its folder and keyword." : {
+
+    },
+    "1 saved query that every connection shows." : {
+
+    },
+    "1 saved query was added." : {
+
+    },
+    "1 saved query was not imported." : {
+
     },
     "A database named “%@” already exists." : {
       "localizations" : {
@@ -1179,6 +1289,9 @@
           }
         }
       }
+    },
+    "A saved query with this name exists." : {
+
     },
     "A string cannot hold a line break, tab or other control character." : {
 
@@ -2005,6 +2118,9 @@
         }
       }
     },
+    "All connections" : {
+
+    },
     "All columns" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -2092,6 +2208,9 @@
           }
         }
       }
+    },
+    "Also include global saved queries" : {
+
     },
     "Americas" : {
       "extractionState" : "manual",
@@ -2190,6 +2309,9 @@
     "Another connection to %@ with other settings is still logging in. Try again once it finishes." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Another selected row adds the same query." : {
+
     },
     "Antenna" : {
       "extractionState" : "manual",
@@ -2581,6 +2703,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自動鎖定"
+          }
+        }
+      }
+    },
+    "Available in all connections" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모든 연결에서 사용 가능"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Có trong mọi kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在所有连接中可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在所有連線中可用"
           }
         }
       }
@@ -3011,6 +3161,9 @@
           }
         }
       }
+    },
+    "Change Not Saved" : {
+
     },
     "Changes from iCloud could not be saved on this device. They download again on the next sync." : {
 
@@ -5846,6 +5999,62 @@
         }
       }
     },
+    "Delete Folder" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "폴더 삭제"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xoá thư mục"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除資料夾"
+          }
+        }
+      }
+    },
+    "Delete Folder?" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "폴더를 삭제하시겠습니까?"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xoá thư mục?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除文件夹？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除資料夾？"
+          }
+        }
+      }
+    },
     "Delete group" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -5958,6 +6167,9 @@
           }
         }
       }
+    },
+    "Delete Saved Query?" : {
+
     },
     "Delete Tag" : {
       "localizations" : {
@@ -6417,6 +6629,9 @@
         }
       }
     },
+    "Edit Query" : {
+
+    },
     "Edit JSON" : {
 
     },
@@ -6487,6 +6702,34 @@
     },
     "Edit the connection and set a key for this jump host under Jump Hosts." : {
 
+    },
+    "Edit…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "편집…"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sửa…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編輯…"
+          }
+        }
+      }
     },
     "Empty String" : {
       "localizations" : {
@@ -6862,6 +7105,34 @@
         }
       }
     },
+    "global" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전역"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "toàn cục"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全局"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全域"
+          }
+        }
+      }
+    },
     "Error" : {
       "localizations" : {
         "ko" : {
@@ -6921,6 +7192,9 @@
           }
         }
       }
+    },
+    "Everything selected was already in your library." : {
+
     },
     "Execute" : {
       "localizations" : {
@@ -7794,6 +8068,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Folder Deleted" : {
+
+    },
     "Foreign Keys" : {
       "localizations" : {
         "ko" : {
@@ -7891,6 +8168,34 @@
     "Gift" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Global" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전역"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toàn cục"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全局"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全域"
+          }
+        }
+      }
     },
     "Globe" : {
       "extractionState" : "manual",
@@ -8881,6 +9186,34 @@
         }
       }
     },
+    "Import Complete" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "가져오기 완료"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhập Hoàn tất"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "导入完成"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匯入完成"
+          }
+        }
+      }
+    },
     "Import Connections" : {
       "localizations" : {
         "ko" : {
@@ -8908,6 +9241,9 @@
           }
         }
       }
+    },
+    "Import Failed" : {
+
     },
     "Import connections from your Mac" : {
       "extractionState" : "stale",
@@ -8965,6 +9301,9 @@
           }
         }
       }
+    },
+    "Import Incomplete" : {
+
     },
     "Import PKCS#12" : {
       "localizations" : {
@@ -9105,6 +9444,9 @@
           }
         }
       }
+    },
+    "Include Saved Queries" : {
+
     },
     "Include passwords" : {
       "localizations" : {
@@ -9493,6 +9835,34 @@
         }
       }
     },
+    "keyword: %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키워드: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "từ khoá: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关键字：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關鍵字:%@"
+          }
+        }
+      }
+    },
     "It never contains a hostname, username, password, query, or any data from your databases. You can change this in Settings." : {
       "localizations" : {
         "ko" : {
@@ -9522,6 +9892,9 @@
       }
     },
     "It supports these host key types: %@." : {
+
+    },
+    "Its connection is not imported." : {
 
     },
     "Its changes are saved to the database." : {
@@ -9666,7 +10039,11 @@
         }
       }
     },
+    "Keep Existing, Add Queries" : {
+
+    },
     "Keep your connections, groups, and tags the same on your iPhone, iPad, and Mac." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -9693,6 +10070,9 @@
           }
         }
       }
+    },
+    "Keep your connections, groups, tags, and saved queries the same on your iPhone, iPad, and Mac." : {
+
     },
     "Kerberos authentication failed: %@" : {
       "extractionState" : "manual",
@@ -9766,6 +10146,71 @@
       }
     },
     "Keys of type %@ cannot be opened here." : {
+
+    },
+    "Keyword" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키워드"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Từ khoá"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关键字"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關鍵字"
+          }
+        }
+      }
+    },
+    "Keyword cannot contain spaces" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키워드에는 공백을 포함할 수 없습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Từ khoá không được chứa khoảng trắng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关键字不能包含空格"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關鍵字不能包含空格"
+          }
+        }
+      }
+    },
+    "Keyword “%@”" : {
+
+    },
+    "Keyword “%@” is in use, so it imports without one." : {
+
+    },
+    "Keyword “%@” is not valid, so it imports without one." : {
 
     },
     "Laptop" : {
@@ -10781,6 +11226,12 @@
         }
       }
     },
+    "Move to Folder" : {
+
+    },
+    "Move to Folder…" : {
+
+    },
     "Move to Group" : {
       "localizations" : {
         "ko" : {
@@ -11053,6 +11504,34 @@
         }
       }
     },
+    "New Folder" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 폴더"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thư mục mới"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增資料夾"
+          }
+        }
+      }
+    },
     "New Group" : {
       "localizations" : {
         "ko" : {
@@ -11083,6 +11562,34 @@
     },
     "New Jump Host" : {
 
+    },
+    "New Subfolder" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 하위 폴더"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thư mục con mới"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建子文件夹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增子資料夾"
+          }
+        }
+      }
     },
     "New Subgroup" : {
       "localizations" : {
@@ -11626,6 +12133,9 @@
         }
       }
     },
+    "No Saved Queries" : {
+
+    },
     "No SSH username is set for %@." : {
 
     },
@@ -12007,6 +12517,9 @@
         }
       }
     },
+    "Nothing Imported" : {
+
+    },
     "Not Signed In to iCloud" : {
 
     },
@@ -12253,6 +12766,9 @@
         }
       }
     },
+    "Only folders available in all connections can hold a global query." : {
+
+    },
     "open" : {
       "localizations" : {
         "ko" : {
@@ -12361,6 +12877,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開啟資料表、篩選其中的列，並直接修改值。"
+          }
+        }
+      }
+    },
+    "Open in Editor" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "편집기에서 열기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở trong trình soạn thảo"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在编辑器中打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在編輯器中開啟"
           }
         }
       }
@@ -13737,6 +14281,9 @@
         }
       }
     },
+    "Queries you save from the Query menu appear here." : {
+
+    },
     "Query" : {
       "localizations" : {
         "ko" : {
@@ -14475,6 +15022,37 @@
         }
       }
     },
+    "Rename" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이름 변경"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đổi tên"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重命名"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新命名"
+          }
+        }
+      }
+    },
+    "Rename Folder" : {
+
+    },
     "Replace" : {
       "localizations" : {
         "ko" : {
@@ -14502,6 +15080,9 @@
           }
         }
       }
+    },
+    "Replaces the editor's text with this query." : {
+
     },
     "Report" : {
       "extractionState" : "manual",
@@ -15400,6 +15981,46 @@
         }
       }
     },
+    "Save Query" : {
+
+    },
+    "Save Query…" : {
+
+    },
+    "Saved Queries" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장된 쿼리"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn đã lưu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已保存的查询"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已儲存的查詢"
+          }
+        }
+      }
+    },
+    "Saved Queries Unavailable" : {
+
+    },
+    "Saved Query Deleted" : {
+
+    },
     "Saved credentials for these connections will be permanently removed." : {
       "localizations" : {
         "ko" : {
@@ -15431,6 +16052,15 @@
     "Saved passwords can only be exported to an encrypted file." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Saved queries are limited to %@ so they fit in iCloud." : {
+
+    },
+    "Saved queries are written as readable text unless the file is encrypted." : {
+
+    },
+    "Saved queries can't be read right now, so they are not imported." : {
+
     },
     "Scatter Plot" : {
       "extractionState" : "manual",
@@ -15558,6 +16188,9 @@
       }
     },
     "Search Icons" : {
+
+    },
+    "Search Saved Queries" : {
 
     },
     "Search tables" : {
@@ -15946,6 +16579,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "設定"
+          }
+        }
+      }
+    },
+    "Shadows the SQL keyword '%@'" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQL 키워드 '%@'와 이름이 겹칩니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trùng với từ khoá SQL '%@'"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与 SQL 关键字 '%@' 冲突"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與 SQL 關鍵字「%@」衝突"
           }
         }
       }
@@ -17799,6 +18460,9 @@
         }
       }
     },
+    "TablePro could not read your connection library, so nothing was imported." : {
+
+    },
     "TablePro could not read your saved connections. Nothing on this device has been changed." : {
       "localizations" : {
         "ko" : {
@@ -17826,6 +18490,12 @@
           }
         }
       }
+    },
+    "TablePro could not read your saved queries. Nothing on this device has been changed." : {
+
+    },
+    "TablePro could not write your saved queries, so this change was not saved." : {
+
     },
     "TablePro Data Was Removed from iCloud" : {
 
@@ -18697,6 +19367,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The connections could not be saved." : {
+
+    },
     "The CSV data has no header row." : {
       "localizations" : {
         "ko" : {
@@ -18844,6 +19517,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "加密的檔案已損毀或不完整"
+          }
+        }
+      }
+    },
+    "The folder \"%@\" will be deleted. Items inside will be moved to the parent level." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 폴더가 삭제됩니다. 폴더 안의 항목은 상위 단계로 이동됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thư mục \"%@\" sẽ bị xoá. Các mục bên trong sẽ được chuyển lên cấp cha."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件夹 \"%@\" 将被删除。其中的项目将移至上一级。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "資料夾「%@」將被刪除。其中的項目將移至上一層。"
           }
         }
       }
@@ -19553,6 +20254,12 @@
           }
         }
       }
+    },
+    "The saved queries could not be read. Nothing was exported." : {
+
+    },
+    "The saved queries could not be saved." : {
+
     },
     "The server is not responding. Check the host and port." : {
       "localizations" : {
@@ -20469,6 +21176,9 @@
         }
       }
     },
+    "This folder no longer exists. It may have been removed from another device." : {
+
+    },
     "This group can't go inside the parent you chose. It may have changed on another device." : {
       "localizations" : {
         "ko" : {
@@ -20528,6 +21238,34 @@
     "This is a Redis Sentinel, not a data node, so it only answers SENTINEL commands. Set Connection Mode to Sentinel and list this address under Sentinel Nodes." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "This keyword is already in use" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 키워드는 이미 사용 중입니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Từ khoá này đã được sử dụng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此关键字已被使用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此關鍵字已被使用"
+          }
+        }
+      }
     },
     "This JSON document is too large for tree view. Use text mode instead." : {
 
@@ -20598,6 +21336,9 @@
 
     },
     "This row's primary key is not plain text, so it cannot identify the row." : {
+
+    },
+    "This saved query no longer exists. It may have been removed from another device." : {
 
     },
     "This server has no password set for the default user. Clear the Password field." : {
@@ -21065,6 +21806,9 @@
     "Token" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Too large to save (%@)" : {
+
     },
     "Too many rows. Add up to %lld rows at a time." : {
       "localizations" : {
@@ -21674,7 +22418,33 @@
     },
     "Untitled" : {
       "extractionState" : "manual",
-      "generatesSymbol" : false
+      "generatesSymbol" : false,
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "제목 없음"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không có tiêu đề"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未命名"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未命名"
+          }
+        }
+      }
     },
     "Update Required" : {
 
@@ -22665,6 +23435,9 @@
           }
         }
       }
+    },
+    "already saved" : {
+
     }
   },
   "version" : "1.0"

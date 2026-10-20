@@ -157,6 +157,20 @@ struct SQLEditorHandleTests {
         #expect(editor.bandedRanges() == [NSRange(location: 0, length: 9)])
     }
 
+    @Test("A saved query opened into the editor runs on Run, though its SQL ends in a newline")
+    func openedSavedQueryRuns() async throws {
+        let editor = try HostedEditor(text: "")
+        defer { editor.tearDown() }
+
+        editor.handle.noteNothingToRun()
+        await ObservedCondition.wait { editor.handle.runNote != nil }
+
+        editor.model.text = SavedQueryDraft.editorText(opening: "SELECT 1;\n")
+        await ObservedCondition.wait { editor.handle.runNote == nil }
+        #expect(editor.handle.runTarget() == .statement("SELECT 1;", range: NSRange(location: 0, length: 9)))
+        #expect(editor.bandedRanges() == [NSRange(location: 0, length: 9)])
+    }
+
     private func nextMainQueueTurn() async {
         await withCheckedContinuation { continuation in
             DispatchQueue.main.async { continuation.resume() }
