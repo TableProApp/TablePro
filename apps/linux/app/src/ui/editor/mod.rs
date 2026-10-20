@@ -217,7 +217,7 @@ pub enum SqlEditorInput {
     },
     SessionCommitFinished {
         session_id: Uuid,
-        result: Result<(), String>,
+        result: Result<tablepro_core::SessionCommitOutcome, String>,
     },
     SessionRollbackFinished {
         session_id: Uuid,

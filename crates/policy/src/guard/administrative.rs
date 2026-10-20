@@ -209,6 +209,7 @@ fn administrative_analysis(operation: AdministrativeOperation) -> StatementAnaly
             parse_error: None,
         },
         blast_radius: None,
+        rolls_back_to_savepoint: false,
         sensitive_positions: None,
         known_statement_rows: Vec::new(),
     }

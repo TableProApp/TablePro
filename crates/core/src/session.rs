@@ -4,6 +4,12 @@ use crate::error::DriverError;
 use crate::operation::OperationControl;
 use crate::query::{QueryCursorId, QueryCursorPage, QueryResult, QueryResultBatch, Value};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SessionCommitOutcome {
+    Committed,
+    RolledBack,
+}
+
 #[async_trait]
 pub trait Session: Send {
     async fn query_params_controlled(
@@ -12,6 +18,10 @@ pub trait Session: Send {
         params: &[Value],
         control: &OperationControl,
     ) -> Result<QueryResult, DriverError>;
+
+    async fn commit_controlled(&mut self, _control: &OperationControl) -> Result<SessionCommitOutcome, DriverError> {
+        Err(DriverError::Unsupported("confirmed session commit outcomes".into()))
+    }
 
     async fn query_result_sets_params_controlled(
         &mut self,
@@ -82,6 +92,15 @@ mod tests {
         async fn close(self: Box<Self>) -> Result<(), DriverError> {
             Ok(())
         }
+    }
+
+    #[tokio::test]
+    async fn a_session_without_confirmed_commit_support_returns_a_typed_unsupported_error() {
+        let mut session = SessionWithoutCursor;
+        let result = session
+            .commit_controlled(&OperationControl::with_timeout(std::time::Duration::from_secs(1)))
+            .await;
+        assert!(matches!(result, Err(DriverError::Unsupported(_))));
     }
 
     #[tokio::test]

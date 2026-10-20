@@ -44,8 +44,6 @@ The [October 20 TablePro and dbx review](archive/tablepro-dbx-review-2026-10-20/
 | RV-11 / [#1181](https://github.com/cozyGarage/BookiE/issues/1181) | TLS material files, `CLONE` history, MCP lockout, system trust store | B4 | One failing test per finding |
 | RV-12 / [#1182](https://github.com/cozyGarage/BookiE/issues/1182) | Restore drops tabs after 32 per connection | UX | Unsaved editor text always restored |
 | RV-13 / [#1184](https://github.com/cozyGarage/BookiE/issues/1184) | Copy then paste between BookiE grids changes values | UX | Round trip keeps text and NULL |
-| RV-14 / [#1186](https://github.com/cozyGarage/BookiE/issues/1186) | PostgreSQL savepoint recovery leaves the policy's aborted flag set | B4 | Recovered commit agrees with stored rows and terminal audit |
-| RV-15 / [#1187](https://github.com/cozyGarage/BookiE/issues/1187) | Editor reports committed when PostgreSQL rolled back an aborted transaction | UX | Explicit outcome reaches the session-end UI |
 
 The [newest-code follow-up](archive/upstream-next-slices-2026-10-20.md) records the native PostgreSQL and failure-report probes behind RV-14 to RV-16, the latest Apple-side upstream lessons, and a proposed sequence before server notices and PostgreSQL extension work. Its candidate order does not add a release commitment.
 

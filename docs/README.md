@@ -66,6 +66,7 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 - [Sprint history](archive/bookie-0.2-history.md) (includes 2026-10-08/09 continuation snapshots)
 - [B4 history](archive/b4-history.md) (includes superseded tip checkpoints, [completed local slices](archive/b4-history.md#archived-completed-local-slices-2026-10-10-consolidation) and [remaining-task prose](archive/b4-history.md#archived-remaining-task-prose-2026-10-10-pass-4))
 - [Evidence directory index](archive/evidence-index-2026-10-10.md) (failed / incomplete / retest vs historical pass; do not delete red manifests)
+- [PostgreSQL session outcome regressions, October 20](evidence/postgres-session-outcomes-375253c-2026-10-20/README.md): audit, typed commit and GTK evidence for #1186 and #1187.
 - [Forgejo nightly #778 selective rerun plan, October 20](evidence/nightly-778-selective-rerun-2026-10-20/README.md): preserve completed jobs and isolate OOM-interrupted shards before the next run.
 - [Capability evidence audit](archive/capability-evidence-2026-09-07.md) (historical September capability snapshot; current status is in the sprint)
 - [B3 board narrative](archive/type-contract-history.md#archived-b3-board-narrative-2026-10-09-consolidation-pass-2) and [value-contracts narrative](archive/value-contract-history.md#archived-value-contracts-narrative-2026-10-09-consolidation-pass-2) (2026-10-09 pass 2)

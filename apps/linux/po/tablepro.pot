@@ -486,7 +486,7 @@ msgstr ""
 #: apps/linux/app/src/ui/connection_bundle/import.rs:105
 #: apps/linux/app/src/ui/connection_row.rs:204
 #: apps/linux/app/src/ui/editor/mod.rs:373
-#: apps/linux/app/src/ui/editor/session_mode.rs:260
+#: apps/linux/app/src/ui/editor/session_mode.rs:261
 #: apps/linux/app/src/ui/export_dialog/file.rs:121
 #: apps/linux/app/src/ui/grid/editing.rs:448
 #: apps/linux/app/src/ui/grid/full_value_editor.rs:227
@@ -2626,7 +2626,7 @@ msgid "Cancel running query (Esc)"
 msgstr ""
 
 #: apps/linux/app/src/ui/editor/mod.rs:382
-#: apps/linux/app/src/ui/editor/session_mode.rs:279
+#: apps/linux/app/src/ui/editor/session_mode.rs:280
 msgid "Session"
 msgstr ""
 
@@ -2708,7 +2708,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/editor/mod.rs:981
 #: apps/linux/app/src/ui/editor/mod.rs:986
-#: apps/linux/app/src/ui/editor/session_mode.rs:338
+#: apps/linux/app/src/ui/editor/session_mode.rs:339
 msgid "no active connection"
 msgstr ""
 
@@ -2917,52 +2917,53 @@ msgstr ""
 msgid "Run again with a {n}s timeout"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/session_mode.rs:255
+#: apps/linux/app/src/ui/editor/session_mode.rs:256
 msgid "End the session with an open transaction?"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/session_mode.rs:257
+#: apps/linux/app/src/ui/editor/session_mode.rs:258
 msgid "Changes made since BEGIN are kept only if you commit them."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/session_mode.rs:261
+#: apps/linux/app/src/ui/editor/session_mode.rs:262
 msgid "Roll Back"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/session_mode.rs:262
+#: apps/linux/app/src/ui/editor/session_mode.rs:263
 msgid "Commit"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/session_mode.rs:277
+#: apps/linux/app/src/ui/editor/session_mode.rs:278
 msgid "Session · transaction open"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/session_mode.rs:412
-#: apps/linux/app/src/ui/editor/session_mode.rs:551
+#: apps/linux/app/src/ui/editor/session_mode.rs:413
+#: apps/linux/app/src/ui/editor/session_mode.rs:552
 msgid "Rolling back and closing session…"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/session_mode.rs:441
+#: apps/linux/app/src/ui/editor/session_mode.rs:442
 msgid "Closing session…"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/session_mode.rs:509
+#: apps/linux/app/src/ui/editor/session_mode.rs:510
 msgid "This editor session was retired after a connection failure. Reopen Session before running more SQL."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/session_mode.rs:582
+#: apps/linux/app/src/ui/editor/session_mode.rs:583
+#: apps/linux/app/src/ui/editor/session_mode.rs:638
 msgid "Session rolled back"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/session_mode.rs:606
+#: apps/linux/app/src/ui/editor/session_mode.rs:607
 msgid "Committing session…"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/session_mode.rs:635
+#: apps/linux/app/src/ui/editor/session_mode.rs:637
 msgid "Session committed"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/session_mode.rs:697
+#: apps/linux/app/src/ui/editor/session_mode.rs:701
 msgid "This engine does not offer dedicated sessions yet"
 msgstr ""
 

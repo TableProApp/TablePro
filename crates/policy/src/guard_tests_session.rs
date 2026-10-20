@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "guard_tests_session/savepoint_recovery.rs"]
+mod savepoint_recovery;
+
 #[derive(Default)]
 struct SessionScript {
     sent: Mutex<Vec<String>>,

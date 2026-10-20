@@ -433,3 +433,37 @@ async fn unsupported_cursor_is_refused_without_materializing_the_query() {
     assert!(matches!(result, Err(DriverError::Unsupported(_))), "{result:?}");
     assert!(script.materialized_sql.lock().expect("query lock").is_empty());
 }
+
+#[tokio::test]
+async fn typed_commit_refuses_an_active_cursor_without_dispatching_commit() {
+    let (guard, script, audit) = make_guard(vec![page("secret", true)], None, false);
+    let mut session = guard.open_session().await.expect("open guarded session");
+    begin_read_snapshot(&mut session).await;
+    let control = OperationControl::new(CancellationToken::new(), None);
+    let cursor = session
+        .open_query_cursor_controlled("SELECT password FROM accounts", &[], &control)
+        .await
+        .expect("open cursor");
+    let before = script.materialized_sql.lock().expect("sent").len();
+    assert!(matches!(
+        session.commit_controlled(&control).await,
+        Err(DriverError::PolicyDenied(_))
+    ));
+    assert_eq!(script.materialized_sql.lock().expect("sent").len(), before);
+    assert!(session.transaction_open());
+    assert_eq!(
+        audit
+            .events
+            .lock()
+            .expect("audit")
+            .last()
+            .expect("refusal")
+            .terminal_status,
+        AuditTerminalStatus::Denied
+    );
+    session
+        .close_query_cursor_controlled(cursor, &control)
+        .await
+        .expect("close cursor");
+    session.close().await.expect("close session");
+}

@@ -63,7 +63,7 @@ pub use query::{
     QueryResultBatch, QueryResultBudget, TableInfo, Value,
 };
 pub use registry::DriverRegistry;
-pub use session::Session;
+pub use session::{Session, SessionCommitOutcome};
 pub use shortcut_label::{
     BrowseDrawnShortcuts, BrowseShortcut, browse_drawn_shortcuts, browse_item_accelerator, browse_visible_key,
 };

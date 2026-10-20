@@ -313,6 +313,46 @@ GLib.MainLoop().run()
         ui.wait_for_node(name="Session rolled back")
         assert psql("SELECT COUNT(*) FROM public.session_rollback_probe") == "0"
 
+    def postgres_session_commit_distinguishes_aborted_rollback_from_recovered_commit(database, base):
+        def run_session_sql(sql):
+            ui.set_editor_text(sql)
+            deadline = time.monotonic() + ui.WAIT_SECONDS
+            while time.monotonic() < deadline:
+                button = ui.wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON)
+                if button.getState().contains(pyatspi.STATE_SENSITIVE):
+                    ui.invoke(button)
+                    return
+                time.sleep(ui.POLL_SECONDS)
+            raise AssertionError(f"session query did not become available for {sql!r}:\n{ui.accessible_snapshot()}")
+
+        ui.open_saved_connection(ui.POSTGRES_CONNECTION_NAME)
+        ui.wait_for_frame_containing(f"{ui.POSTGRES_CONNECTION_NAME} — BookiE")
+        psql("DROP TABLE IF EXISTS public.session_commit_probe; CREATE TABLE public.session_commit_probe (id integer PRIMARY KEY)")
+        ui.invoke(ui.wait_for_node(name="Open SQL editor"))
+        ui.wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON)
+        for row_id, recover, status, count in [
+            (1, False, "Session rolled back", "0"),
+            (2, True, "Session committed", "1"),
+        ]:
+            ui.invoke(ui.wait_for_node(name="Session", role=pyatspi.ROLE_TOGGLE_BUTTON))
+            run_session_sql(
+                f"BEGIN; INSERT INTO public.session_commit_probe VALUES ({row_id}); "
+                "SAVEPOINT recovery; SELECT 1 / 0;"
+            )
+            ui.invoke(ui.wait_for_node(name="Approve once", role=pyatspi.ROLE_PUSH_BUTTON))
+            ui.wait_for_node(name="Approve once", present=False)
+            ui.wait_for_node_containing("division by zero")
+            if recover:
+                run_session_sql("ROLLBACK TO recovery")
+                ui.wait_for_node_containing("done in")
+            ui.invoke(ui.wait_for_node(name="Session · transaction open", role=pyatspi.ROLE_TOGGLE_BUTTON))
+            ui.wait_for_node(name="End the session with an open transaction?")
+            ui.invoke(ui.wait_for_node(name="Commit", role=pyatspi.ROLE_PUSH_BUTTON))
+            ui.wait_for_node(name=status)
+            ui.wait_for_node(name="Session", role=pyatspi.ROLE_TOGGLE_BUTTON)
+            stored = psql("SELECT COUNT(*) FROM public.session_commit_probe")
+            assert stored == count, (recover, stored, count)
+
     def editing_a_saved_connection_prefills_it_and_saves_the_new_name(database, base):
         before = saved_connections(base)
         ui.invoke(ui.wait_for_node(name="Open saved connection", role=pyatspi.ROLE_TOGGLE_BUTTON))
@@ -1617,6 +1657,7 @@ GLib.MainLoop().run()
         result.append(clickhouse_enum_grid_edit_preserves_native_label_and_siblings)
     if os.environ.get("TABLEPRO_GTK_POSTGRES_PORT"):
         result.append(postgres_session_transaction_confirmation_cancels_or_rolls_back)
+        result.append(postgres_session_commit_distinguishes_aborted_rollback_from_recovered_commit)
         result.append(postgres_saved_connection_browses_rows_and_values)
         result.append(postgres_hidden_projection_refresh_and_edit_preserve_hidden_value)
         result.append(postgres_grid_edit_and_delete_commit_to_the_server)

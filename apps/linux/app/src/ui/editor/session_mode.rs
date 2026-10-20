@@ -6,7 +6,8 @@ use relm4::{adw, gtk};
 #[cfg(test)]
 use tablepro_core::QueryResult;
 use tablepro_core::{
-    Connection, DriverError, OperationControl, QueryCursorId, QueryCursorPage, QueryResultBatch, Session, Value,
+    Connection, DriverError, OperationControl, QueryCursorId, QueryCursorPage, QueryResultBatch, Session,
+    SessionCommitOutcome, Value,
 };
 use uuid::Uuid;
 
@@ -617,7 +618,7 @@ impl SqlEditor {
     pub(super) fn on_session_commit_finished(
         &mut self,
         session_id: Uuid,
-        result: Result<(), String>,
+        result: Result<SessionCommitOutcome, String>,
         sender: &ComponentSender<Self>,
     ) {
         if !commit_callback_matches(
@@ -630,9 +631,13 @@ impl SqlEditor {
         self.ending_session_id = None;
         self.session_button.set_sensitive(true);
         match result {
-            Ok(()) => {
+            Ok(outcome) => {
                 self.end_session(sender);
-                self.status.set_label(&crate::tr!("Session committed"));
+                let message = match outcome {
+                    SessionCommitOutcome::Committed => crate::tr!("Session committed"),
+                    SessionCommitOutcome::RolledBack => crate::tr!("Session rolled back"),
+                };
+                self.status.set_label(&message);
             }
             Err(message) => {
                 self.session_button.set_active(true);
@@ -655,14 +660,13 @@ impl SqlEditor {
     }
 }
 
-async fn commit_session(shared: &SharedSession) -> Result<(), DriverError> {
+async fn commit_session(shared: &SharedSession) -> Result<SessionCommitOutcome, DriverError> {
     let mut guard = shared.lock().await;
     let session = guard
         .as_mut()
         .ok_or_else(|| DriverError::Unsupported("the session was closed".into()))?;
     let control = OperationControl::with_timeout(std::time::Duration::from_secs(30));
-    session.query_params_controlled("COMMIT", &[], &control).await?;
-    Ok(())
+    session.commit_controlled(&control).await
 }
 
 async fn rollback_and_close(shared: &SharedSession) -> Result<(), DriverError> {
@@ -797,6 +801,11 @@ mod tests {
 
     #[async_trait::async_trait]
     impl Session for FailFirstCommit {
+        async fn commit_controlled(&mut self, control: &OperationControl) -> Result<SessionCommitOutcome, DriverError> {
+            self.query_params_controlled("COMMIT", &[], control).await?;
+            Ok(SessionCommitOutcome::Committed)
+        }
+
         async fn query_params_controlled(
             &mut self,
             sql: &str,

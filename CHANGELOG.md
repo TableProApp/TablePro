@@ -119,6 +119,8 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 - PostgreSQL databases can be backed up to a file and restored from one with the installed client tools, through SSH tunnels and TLS; restores need approval and both are audited.
 
 ### Changed
+- Ending an aborted PostgreSQL editor transaction reports that it rolled back instead of saying its changes were committed.
+- PostgreSQL session audit records distinguish committed transactions recovered through savepoints from aborted transactions that roll back.
 
 - Running a query again keeps the previous result on screen, dimmed, until the new result, error, cancel or timeout page replaces it, instead of leaving a blank area.- An unresolved write outcome blocks governed writes only on its saved connection; a journal failure or unresolved process-wide operation still blocks writes everywhere.
 - Typing in a table cell is included in unsaved changes before a tab closes, a connection disconnects or a preview tab is replaced.
