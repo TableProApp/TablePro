@@ -214,7 +214,7 @@ struct DataBrowserViewModelTests {
         )
         let ref = CellRef(table: "notes", column: "body", primaryKey: [.init(column: "id", value: "7")])
 
-        let value = try await vm.loadFullValue(driver: driver, ref: ref, databaseType: .postgresql)
+        let value = try await vm.loadFullValue(driver: driver, ref: ref, databaseType: .postgresql, schema: vm.schema)
 
         #expect(value == "the whole body")
         #expect(driver.executedQueries == [#"SELECT "body" FROM "crm"."notes" WHERE "id" = '7' LIMIT 1"#])
@@ -236,7 +236,7 @@ struct DataBrowserViewModelTests {
         await vm.load(isInitial: true)
         let ref = CellRef(table: "notes", column: "body", primaryKey: [.init(column: "id", value: "5")])
 
-        _ = try await vm.loadFullValue(driver: driver, ref: ref, databaseType: .sqlite)
+        _ = try await vm.loadFullValue(driver: driver, ref: ref, databaseType: .sqlite, schema: nil)
 
         #expect(driver.executedQueries.last == #"SELECT "body" FROM "notes" WHERE "id" IN (5, '5') LIMIT 1"#)
     }
@@ -418,6 +418,88 @@ struct DataBrowserViewModelTests {
         #expect(driver.executedQueries.contains(where: { $0.uppercased().hasPrefix("DELETE") }))
     }
 
+    @Test("A binary, NULL or ref-less cut key cell gives no key, and a cut one with a ref gives the whole key")
+    func nonTextKeyGivesNoKey() async {
+        let columns = [
+            ColumnInfo(name: "tenant", typeName: "INT", isPrimaryKey: true, isNullable: false, ordinalPosition: 0),
+            ColumnInfo(name: "id", typeName: "BINARY", isPrimaryKey: true, isNullable: false, ordinalPosition: 1),
+            ColumnInfo(name: "name", typeName: "VARCHAR(64)", ordinalPosition: 2)
+        ]
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = columns
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: columns, rows: [["1", "x", "Alice"]], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["1"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        await vm.load(isInitial: true)
+
+        let keyValues = { (cells: [Cell]) in
+            RowDetailViewModel.primaryKeyValues(cells: cells, columns: vm.columns, columnDetails: vm.columnDetails)
+        }
+        #expect(keyValues([.text("1"), .binary(byteCount: 16, ref: nil), .text("Alice")]) == nil)
+        #expect(keyValues([.text("1"), .null, .text("Alice")]) == nil)
+        #expect(keyValues([.text("1"), .truncatedText(prefix: "a", totalBytes: 5_000, ref: nil), .text("Alice")]) == nil)
+        let wholeKey = CellRef(table: "users", column: "id", primaryKey: [
+            PrimaryKeyComponent(column: "tenant", value: "1"), PrimaryKeyComponent(column: "id", value: "long-key")
+        ])
+        let cutKey = keyValues([.text("1"), .truncatedText(prefix: "lo", totalBytes: 5_000, ref: wholeKey), .text("Alice")])
+        #expect(cutKey?.map { $0.value } == ["1", "long-key"])
+
+        let keys = keyValues([.text("1"), .text("7"), .text("Alice")])
+        #expect(keys?.map { $0.column } == ["tenant", "id"])
+        #expect(keys?.map { $0.value } == ["1", "7"])
+    }
+
+    @Test("A delete that leaves the row in the table reports it instead of succeeding")
+    func deleteThatKeepsTheRowFails() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["1", "Alice"]], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["1"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        await vm.load(isInitial: true)
+
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["1"]], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: makeColumns(), rows: [["1", "Alice"]], rowsAffected: 0, executionTime: 0))
+        ]
+
+        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        #expect(success == false)
+        #expect(vm.operationError?.title == String(localized: "Row Not Deleted"))
+        #expect(driver.executedQueries.contains { $0.hasPrefix("SELECT `id` FROM `users` WHERE `id` = '1'") })
+        #expect(vm.legacyRows == [["1", "Alice"]])
+    }
+
+    @Test("A delete whose count reads 0, as under SET NOCOUNT ON, succeeds once the row is gone")
+    func uncountedDeleteOfAGoneRowSucceeds() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["1", "Alice"]], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["1"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        await vm.load(isInitial: true)
+
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: makeColumns(), rows: [], rowsAffected: 0, executionTime: 0))
+        ]
+
+        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        #expect(success == true)
+        #expect(vm.operationError == nil)
+    }
+
     @Test("deleteRow returns false and sets operationError on driver failure")
     func deleteFailure() async {
         let driver = MockDatabaseDriver()
@@ -506,6 +588,131 @@ struct DataBrowserViewModelTests {
         #expect(success == true)
         #expect(!driver.didBeginTransaction)
         #expect(!driver.didCommitTransaction)
+    }
+
+    private func bodyRef(_ column: String) -> CellRef {
+        CellRef(table: "users", column: column, primaryKey: [PrimaryKeyComponent(column: "id", value: "1")])
+    }
+
+    @Test("Loading a full value from a row that is gone throws, so it never reads as NULL")
+    func loadFullValueOfMissingRowThrows() async throws {
+        let driver = MockDatabaseDriver()
+        let vm = DataBrowserViewModel()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [[nil]], rowsAffected: 0, executionTime: 0))
+        ]
+
+        await #expect(throws: CellLookupError.rowNotFound) {
+            try await vm.loadFullValue(driver: driver, ref: bodyRef("bio"), databaseType: .mysql, schema: nil)
+        }
+        let storedNull = try await vm.loadFullValue(driver: driver, ref: bodyRef("bio"), databaseType: .mysql, schema: nil)
+        #expect(storedNull == nil)
+    }
+
+    @Test("A full value is read from the schema's table, the one Save and Delete write to")
+    func loadFullValueReadsTheBrowsedSchema() async throws {
+        let driver = MockDatabaseDriver()
+        let vm = DataBrowserViewModel()
+        driver.scriptedExecuteResults = [.success(QueryResult(columns: [], rows: [["full"]], rowsAffected: 0, executionTime: 0))]
+
+        #expect(try await vm.loadFullValue(driver: driver, ref: bodyRef("bio"), databaseType: .postgresql, schema: "sales") == "full")
+        #expect(driver.executedQueries.first?.contains(#"FROM "sales"."users" WHERE"#) == true)
+    }
+
+    @Test("Completing rows keeps reading the schema they came from after the browser switches schema")
+    func completeRowsKeepsTheirSchema() async throws {
+        let driver = MockDatabaseDriver()
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .postgresql, host: "localhost", schema: "sales")
+        driver.beforeExecute = { @MainActor in
+            vm.attach(session: nil, table: TableInfo(name: "users"), databaseType: .postgresql, host: "localhost", schema: "archive")
+        }
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [["a"]], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["b"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let rows: [[Cell]] = [
+            [.text("1"), .truncatedText(prefix: "a", totalBytes: 5_000, ref: bodyRef("bio"))],
+            [.text("1"), .truncatedText(prefix: "b", totalBytes: 5_000, ref: bodyRef("notes"))]
+        ]
+
+        _ = try await vm.completeRows(rows, driver: driver)
+
+        #expect(vm.schema == "archive")
+        #expect(driver.executedQueries.count == 2)
+        #expect(driver.executedQueries.allSatisfy { $0.contains(#"FROM "sales"."users" WHERE"#) })
+    }
+
+    @Test("A page export reads full values only while the device has room for them, the text and its copy")
+    func exportFitsInFreeMemory() {
+        let margin = 64 * 1_024 * 1_024
+        #expect(DataBrowserViewModel.exportFits(pendingBytes: 0, availableBytes: 1))
+        #expect(DataBrowserViewModel.exportFits(pendingBytes: 10_000_000, availableBytes: 0))
+        #expect(DataBrowserViewModel.exportFits(pendingBytes: 10_000_000, availableBytes: margin + 40_000_001))
+        #expect(!DataBrowserViewModel.exportFits(pendingBytes: 10_000_000, availableBytes: margin + 40_000_000))
+        #expect(!DataBrowserViewModel.exportFits(pendingBytes: 200_000_000, availableBytes: 500_000_000))
+        #expect(!DataBrowserViewModel.exportFits(pendingBytes: .max, availableBytes: .max))
+    }
+
+    @Test("Completing a row reads each cut value that has a ref, one query per value")
+    func completeRowsReadsCutValues() async throws {
+        let driver = MockDatabaseDriver()
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        let full = String(repeating: "a", count: 5_000)
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [[full]], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [[nil]], rowsAffected: 0, executionTime: 0))
+        ]
+        let cells: [Cell] = [
+            .text("1"),
+            .truncatedText(prefix: "aaa", totalBytes: 5_000, ref: bodyRef("bio")),
+            .truncatedText(prefix: "bbb", totalBytes: 5_000, ref: bodyRef("notes")),
+            .null
+        ]
+        #expect(DataBrowserViewModel.canComplete(cells))
+
+        let complete = try await vm.completeRows([cells], driver: driver)[0]
+
+        #expect(driver.executedQueries.count == 2)
+        #expect(driver.executedQueries.first?.contains("`bio`") == true)
+        #expect(Row(cells: complete).legacyValues == ["1", full, nil, nil])
+    }
+
+    @Test("A binary value or a cut value with no ref cannot be completed, so the export names its column")
+    func uncompletableCellsBlockExport() async throws {
+        let driver = MockDatabaseDriver()
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        let columns = [
+            ColumnInfo(name: "id", typeName: "INT", ordinalPosition: 0),
+            ColumnInfo(name: "avatar", typeName: "BLOB", ordinalPosition: 1)
+        ]
+        let binary: [Cell] = [.text("1"), .binary(byteCount: 16, ref: bodyRef("avatar"))]
+        let keyless: [Cell] = [.text("1"), .truncatedText(prefix: "a", totalBytes: 5_000, ref: nil)]
+        #expect(!DataBrowserViewModel.canComplete(binary))
+        #expect(!DataBrowserViewModel.canComplete(keyless))
+
+        let complete = try await vm.completeRows([binary], driver: driver)[0]
+
+        #expect(driver.executedQueries.isEmpty)
+        #expect(throws: ClipboardExporter.IncompleteValues(columns: ["avatar"])) {
+            try ClipboardExporter.exportRow(columns: columns, cells: complete, format: .json, databaseType: .mysql, driver: nil)
+        }
+    }
+
+    @Test("A row that is gone stops the completion instead of exporting NULL")
+    func completeRowsOfMissingRowThrows() async {
+        let driver = MockDatabaseDriver()
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        driver.scriptedExecuteResults = [.success(QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0))]
+        let cells: [Cell] = [.text("1"), .truncatedText(prefix: "a", totalBytes: 5_000, ref: bodyRef("bio"))]
+
+        await #expect(throws: CellLookupError.rowNotFound) {
+            try await vm.completeRows([cells], driver: driver)
+        }
     }
 
     @Test("changePageSize resets currentPage and totalRows")

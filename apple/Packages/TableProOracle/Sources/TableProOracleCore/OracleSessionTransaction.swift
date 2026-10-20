@@ -8,7 +8,7 @@ import Foundation
 /// driver's commit flag and the server commits it in the same round trip.
 ///
 /// A transaction opens with ``open()``, which is what the app's own writes call, or with a statement that opens one
-/// (``OracleTransactionRole/opensTransaction``). It ends with a `COMMIT` or `ROLLBACK`, whoever sends it.
+/// (``OracleTransactionRole/opensTransaction``). It ends with a `COMMIT`, a `ROLLBACK` or DDL, whoever sends it.
 ///
 /// The transaction belongs to the connection its first statement ran on. A connection that closes takes the
 /// transaction with it, so a statement that finds the transaction's connection replaced fails with
@@ -31,34 +31,40 @@ struct OracleSessionTransaction: Equatable, Sendable {
             return false
         case .opensTransaction, .endsTransaction:
             guard isOpen else { return false }
-        case .other:
+        case .dataDefinition, .other:
             guard isOpen else { return true }
         }
         try bind(to: session)
         return false
     }
 
-    /// A statement that opens a transaction opens it here only once Oracle has accepted it, and a `COMMIT` or
-    /// `ROLLBACK` ends it.
-    mutating func statementSucceeded(_ role: OracleTransactionRole, on session: Int) {
+    // DDL commits around itself, but DDL on a private temporary table can leave the transaction open: the server decides.
+    mutating func statementSucceeded(
+        _ role: OracleTransactionRole,
+        on session: Int,
+        serverHoldsTransaction: Bool? = nil
+    ) {
         switch role {
         case .opensTransaction:
             isOpen = true
             self.session = session
         case .endsTransaction:
             close()
+        case .dataDefinition:
+            if serverHoldsTransaction == false { close() }
         case .query, .other:
             break
         }
     }
 
-    /// A `COMMIT` or `ROLLBACK` the server refused ends the transaction only when the server no longer holds one: a
-    /// malformed one leaves it open, and a commit a deferred constraint rolled back (ORA-02091) ends it.
+    /// A `COMMIT`, `ROLLBACK` or DDL statement the server refused ends the transaction only when the server no longer
+    /// holds one: a malformed one leaves it open, a commit a deferred constraint rolled back (ORA-02091) ends it, and
+    /// so does DDL that failed after the commit Oracle runs before it.
     ///
     /// `serverHoldsTransaction` is nil when there was no live connection to ask. The transaction is then left as it
     /// is, and the next write finds out whether its connection survived.
     mutating func statementFailed(_ role: OracleTransactionRole, serverHoldsTransaction: Bool?) {
-        guard role == .endsTransaction, serverHoldsTransaction == false else { return }
+        guard role.mayEndTransactionWhenRefused, serverHoldsTransaction == false else { return }
         close()
     }
 

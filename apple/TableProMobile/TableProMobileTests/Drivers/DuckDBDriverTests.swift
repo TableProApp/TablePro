@@ -128,6 +128,40 @@ final class DuckDBDriverTests: XCTestCase {
         XCTAssertTrue(alive)
     }
 
+    func testPingInsideAnAbortedTransactionKeepsTheSession() async throws {
+        let driver = try XCTUnwrap(driver)
+        _ = try await driver.execute(query: "CREATE TABLE keep (x INTEGER)")
+        _ = try await driver.execute(query: "INSERT INTO keep VALUES (1)")
+        _ = try await driver.execute(query: "CREATE TABLE u (x INTEGER PRIMARY KEY)")
+        _ = try await driver.execute(query: "BEGIN TRANSACTION")
+        _ = try await driver.execute(query: "INSERT INTO u VALUES (1)")
+        do {
+            _ = try await driver.execute(query: "INSERT INTO u VALUES (1)")
+            XCTFail("A duplicate key must fail")
+        } catch {}
+        do {
+            _ = try await driver.execute(query: "SELECT 1")
+            XCTFail("An aborted DuckDB transaction must refuse a statement")
+        } catch {}
+
+        let alive = try await driver.ping()
+        XCTAssertTrue(alive)
+
+        _ = try await driver.execute(query: "ROLLBACK")
+        let kept = try await driver.execute(query: "SELECT x FROM keep")
+        XCTAssertEqual(kept.rows.first?.first ?? nil, "1")
+    }
+
+    func testPingAfterDisconnectFails() async throws {
+        let closed = DuckDBDriver(source: .inMemory)
+        try await closed.connect()
+        try await closed.disconnect()
+        do {
+            _ = try await closed.ping()
+            XCTFail("A closed DuckDB session must fail its ping")
+        } catch DuckDBDriverError.notConnected {}
+    }
+
     func testServerVersionIsReported() async throws {
         let driver = try XCTUnwrap(driver)
         XCTAssertNotNil(driver.serverVersion)

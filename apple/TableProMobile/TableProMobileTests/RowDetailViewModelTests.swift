@@ -576,6 +576,7 @@ struct RowDetailViewModelTests {
         lastCell: Cell,
         lastTypeName: String = "TEXT",
         driver: MockDatabaseDriver = MockDatabaseDriver(),
+        safeModeLevel: SafeModeLevel = .off,
         loadFullValue: ((CellRef) async throws -> String?)? = nil
     ) -> RowDetailViewModel {
         let columns = makeColumns(lastTypeName: lastTypeName)
@@ -586,6 +587,7 @@ struct RowDetailViewModelTests {
             table: TableInfo(name: "users"),
             session: makeSession(driver: driver),
             columnDetails: columns,
+            safeModeLevel: { safeModeLevel },
             loadFullValue: loadFullValue
         )
     }
@@ -683,7 +685,7 @@ struct RowDetailViewModelTests {
         let vm = makeViewModel(
             lastCell: .truncatedText(prefix: "abc", totalBytes: 5_000, ref: bodyRef(id: "1")),
             driver: driver,
-            loadFullValue: { _ in "abc and the rest" }
+            loadFullValue: { _ in driver.executedQueries.isEmpty ? "abc and the rest" : "abc and the rest, edited" }
         )
         await vm.loadFullValue(ref: bodyRef(id: "1"), forRow: 0, cellIndex: 2)
         vm.startEditing()
@@ -694,6 +696,7 @@ struct RowDetailViewModelTests {
         #expect(driver.executedQueries.count == 1)
         #expect(driver.executedQueries.first?.contains("abc and the rest, edited") == true)
         #expect(vm.currentRow[2] == "abc and the rest, edited")
+        #expect(vm.isEditableAsText(at: 2))
     }
 
     @Test("A full value that arrives while editing becomes the field's value, not an unsaved edit")
@@ -766,5 +769,330 @@ struct RowDetailViewModelTests {
         #expect(vm.hasOverride(forRow: 0, cellIndex: 2) == false)
         #expect(vm.row(at: 1)[2] == "the second row's body")
         #expect(vm.isEditableAsText(at: 2) == false)
+    }
+
+    private func savedUpdate() -> Result<QueryResult, Error> {
+        .success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0))
+    }
+
+    private func kind(of cell: Cell) -> String {
+        switch cell {
+        case .null: return "null"
+        case .text(let value): return "text \(value)"
+        case .truncatedText: return "truncated"
+        case .binary: return "binary"
+        }
+    }
+
+    @Test("A value is offered as JSON when either type says JSON, or when a text column holds an object or array")
+    func jsonDetectionReadsBothTypes() async {
+        let jsonb = makeViewModel(lastCell: .text(#"{"a":1}"#), lastTypeName: "jsonb")
+        #expect(jsonb.isJSON(at: 2))
+        #expect(jsonb.isJSON(at: 1) == false)
+        #expect(jsonb.jsonText(forRow: 0, at: 2) == #"{"a":1}"#)
+
+        let mariaDB = RowDetailViewModel(
+            columns: makeColumns(lastTypeName: "JSON"),
+            rows: [Row(cells: [.text("1"), .text("Alice"), .text("[1]")])],
+            initialIndex: 0,
+            columnDetails: makeColumns(lastTypeName: "longtext")
+        )
+        #expect(mariaDB.isJSON(at: 2))
+
+        let catalogOnly = RowDetailViewModel(
+            columns: makeColumns(lastTypeName: "VARCHAR"),
+            rows: [Row(cells: [.text("1"), .text("Alice"), .text("42")])],
+            initialIndex: 0,
+            columnDetails: makeColumns(lastTypeName: "JSON")
+        )
+        #expect(catalogOnly.isJSON(at: 2))
+        #expect(catalogOnly.jsonText(forRow: 0, at: 2) == "42")
+
+        let object = makeViewModel(lastCell: .text(#" {"a": [1, 2]}"#))
+        #expect(object.isJSON(at: 2) == false)
+        #expect(object.jsonText(forRow: 0, at: 2) == #" {"a": [1, 2]}"#)
+
+        #expect(makeViewModel(lastCell: .text("42")).jsonText(forRow: 0, at: 2) == nil)
+        #expect(makeViewModel(lastCell: .text(#"{"a":"#)).jsonText(forRow: 0, at: 2) == nil)
+        #expect(makeViewModel(lastCell: .text("{}"), lastTypeName: "unknown").jsonText(forRow: 0, at: 2) == nil)
+        #expect(makeViewModel(lastCell: .null, lastTypeName: "jsonb").jsonText(forRow: 0, at: 2) == nil)
+
+        let truncated = makeViewModel(
+            lastCell: .truncatedText(prefix: #"{"a": "#, totalBytes: 5_000, ref: bodyRef(id: "1")),
+            lastTypeName: "jsonb",
+            loadFullValue: { _ in #"{"a": "the rest"}"# }
+        )
+        #expect(truncated.jsonText(forRow: 0, at: 2) == nil)
+        await truncated.loadFullValue(ref: bodyRef(id: "1"), forRow: 0, cellIndex: 2)
+        #expect(truncated.jsonText(forRow: 0, at: 2) == #"{"a": "the rest"}"#)
+    }
+
+    @Test("Save refuses a JSON column's edit that does not parse, before Safe Mode or the database sees it")
+    func invalidJSONEditIsRefused() async {
+        let driver = MockDatabaseDriver()
+        let vm = makeViewModel(
+            lastCell: .text(#"{"tags": [1, 2, 3]}"#),
+            lastTypeName: "jsonb",
+            driver: driver,
+            safeModeLevel: .confirmWrites
+        )
+        vm.startEditing()
+        #expect(vm.hasInvalidJSONEdit == false)
+
+        vm.setEditedValue(#"{"tags": [1, 2, 3]"#, at: 2)
+        #expect(vm.hasInvalidJSONEdit)
+        #expect(await vm.saveChanges() == false)
+        #expect(vm.operationError != nil)
+        #expect(vm.pendingWriteConfirmation == false)
+        #expect(vm.isEditing)
+        #expect(driver.executedQueries.isEmpty)
+    }
+
+    @Test("A JSON value left as it was is no edit, and an edited one is written exactly as typed")
+    func jsonEditSavesAsTyped() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [savedUpdate()]
+        let stored = #"{"b": 1, "a": 2}"#
+        let vm = makeViewModel(lastCell: .text(stored), lastTypeName: "jsonb", driver: driver)
+        vm.startEditing()
+        vm.setEditedValue(stored, at: 2)
+        #expect(vm.hasUnsavedEdits == false)
+
+        let typed = "{\n  \"b\":1,\"a\" : 2\n}"
+        vm.setEditedValue(typed, at: 2)
+        #expect(vm.hasInvalidJSONEdit == false)
+        #expect(await vm.saveChanges())
+        #expect(driver.executedQueries.count == 1)
+        #expect(driver.executedQueries.first?.contains(typed) == true)
+    }
+
+    @Test("Clearing a MariaDB JSON field saves NULL, though its catalog type reads longtext")
+    func clearedMariaDBJSONSavesNull() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [savedUpdate()]
+        let vm = RowDetailViewModel(
+            columns: makeColumns(lastTypeName: "JSON"),
+            rows: [Row(cells: [.text("1"), .text("Alice"), .text(#"{"a": 1}"#)])],
+            initialIndex: 0,
+            table: TableInfo(name: "users"),
+            session: makeSession(driver: driver),
+            columnDetails: makeColumns(lastTypeName: "longtext")
+        )
+        vm.startEditing()
+        vm.setEditedValue("", at: 2)
+
+        #expect(vm.writtenValue(at: 2) == nil)
+        #expect(vm.hasInvalidJSONEdit == false)
+        #expect(await vm.saveChanges())
+        let query = driver.executedQueries.first ?? ""
+        #expect(query.contains("`body` = NULL") || query.contains("\"body\" = NULL"))
+        #expect(!query.contains("''"))
+    }
+
+    @Test("A text column holding JSON saves an edit that does not parse, since the column takes any text")
+    func textColumnSavesBrokenJSON() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [savedUpdate()]
+        let vm = makeViewModel(lastCell: .text(#"{"a": 1}"#), driver: driver)
+        vm.startEditing()
+        vm.setEditedValue(#"{"a": "#, at: 2)
+
+        #expect(vm.hasInvalidJSONEdit == false)
+        #expect(await vm.saveChanges())
+        #expect(driver.executedQueries.count == 1)
+    }
+
+    @Test("After a save the row shows what the database stored, not what was typed")
+    func savedRowShowsTheStoredValue() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [savedUpdate()]
+        let stored = #"{"a": 3, "b": 1}"#
+        var lookups: [CellRef] = []
+        let vm = makeViewModel(
+            lastCell: .text(#"{"a": 1}"#),
+            lastTypeName: "jsonb",
+            driver: driver,
+            loadFullValue: { ref in
+                lookups.append(ref)
+                return stored
+            }
+        )
+        vm.startEditing()
+        vm.setEditedValue(#"{"b":1,"a":2,"a":3}"#, at: 2)
+
+        #expect(await vm.saveChanges())
+        #expect(lookups == [bodyRef(id: "1")])
+        #expect(vm.currentRow[2] == stored)
+        #expect(vm.isEditing == false)
+        #expect(vm.showSaveSuccess)
+    }
+
+    @Test("A save whose row is gone says so and stays in edit mode with the typed values")
+    func saveOfAMissingRowStaysEditing() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [.success(QueryResult(columns: [], rows: [], rowsAffected: 0, executionTime: 0))]
+        let vm = makeViewModel(
+            lastCell: .text("old"),
+            driver: driver,
+            loadFullValue: { _ in throw CellLookupError.rowNotFound }
+        )
+        vm.startEditing()
+        vm.setEditedValue("new", at: 2)
+
+        #expect(await vm.saveChanges() == false)
+        #expect(vm.operationError?.title == String(localized: "Row Not Found"))
+        #expect(vm.isEditing)
+        #expect(vm.editedValues[2] == "new")
+        #expect(vm.hasUnsavedEdits)
+        #expect(vm.showSaveSuccess == false)
+        #expect(vm.currentRow[2] == "old")
+    }
+
+    @Test("A save that updated a row whose key then changed is saved, with the typed values")
+    func saveOfARowThatLeftItsKeyIsSaved() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [savedUpdate()]
+        var savedCount = 0
+        let columns = makeColumns(lastTypeName: "TEXT")
+        let vm = RowDetailViewModel(
+            columns: columns,
+            rows: [Row(cells: [.text("1"), .text("Alice"), .text("old")])],
+            initialIndex: 0,
+            table: TableInfo(name: "users"),
+            session: makeSession(driver: driver),
+            columnDetails: columns,
+            onSaved: { savedCount += 1 },
+            loadFullValue: { _ in throw CellLookupError.rowNotFound }
+        )
+        vm.startEditing()
+        vm.setEditedValue("new", at: 2)
+
+        #expect(await vm.saveChanges())
+        #expect(vm.operationError == nil)
+        #expect(vm.isEditing == false)
+        #expect(vm.currentRow[2] == "new")
+        #expect(savedCount == 1)
+    }
+
+    @Test("A save whose read-back fails for another reason keeps the typed values")
+    func failedReadBackKeepsTypedValues() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [savedUpdate()]
+        let vm = makeViewModel(
+            lastCell: .text("old"),
+            driver: driver,
+            loadFullValue: { _ in throw MockDatabaseDriver.MockError.scripted }
+        )
+        vm.startEditing()
+        vm.setEditedValue("new", at: 2)
+
+        #expect(await vm.saveChanges())
+        #expect(vm.operationError == nil)
+        #expect(vm.isEditing == false)
+        #expect(vm.currentRow[2] == "new")
+    }
+
+    @Test("A save reads back only the saved columns, and an unsaved long value keeps its reference")
+    func readBackLeavesUnsavedCellsAlone() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [savedUpdate()]
+        var lookedUp: [String] = []
+        let vm = makeViewModel(
+            lastCell: .truncatedText(prefix: "abc", totalBytes: 5_000, ref: bodyRef(id: "1")),
+            driver: driver,
+            loadFullValue: { ref in
+                lookedUp.append(ref.column)
+                return "Charlie"
+            }
+        )
+        vm.startEditing()
+        vm.setEditedValue("Charlie", at: 1)
+
+        #expect(await vm.saveChanges())
+        #expect(lookedUp == ["name"])
+        #expect(vm.currentRow[1] == "Charlie")
+        guard case .truncatedText(_, _, let ref) = vm.cells(at: 0)[2] else {
+            Issue.record("the unsaved truncated value became \(vm.cells(at: 0)[2])")
+            return
+        }
+        #expect(ref == bodyRef(id: "1"))
+    }
+
+    @Test("Complete cells carry a loaded long value in full and leave every placeholder as it is")
+    func completeCellsApplyLoadedValues() async {
+        let columns = makeColumns() + [
+            ColumnInfo(name: "body", typeName: "TEXT", ordinalPosition: 2),
+            ColumnInfo(name: "note", typeName: "TEXT", ordinalPosition: 3),
+            ColumnInfo(name: "memo", typeName: "TEXT", ordinalPosition: 4),
+            ColumnInfo(name: "data", typeName: "BLOB", ordinalPosition: 5)
+        ]
+        func ref(_ column: String) -> CellRef {
+            CellRef(table: "users", column: column, primaryKey: [.init(column: "id", value: "1")])
+        }
+        let vm = RowDetailViewModel(
+            columns: columns,
+            rows: [Row(cells: [
+                .text("1"),
+                .null,
+                .truncatedText(prefix: "abc", totalBytes: 5_000, ref: ref("body")),
+                .truncatedText(prefix: "n", totalBytes: 5_000, ref: ref("note")),
+                .truncatedText(prefix: "m", totalBytes: 5_000, ref: nil),
+                .binary(byteCount: 12, ref: ref("data"))
+            ])],
+            initialIndex: 0,
+            table: TableInfo(name: "users"),
+            columnDetails: columns,
+            loadFullValue: { ref in ref.column == "note" ? nil : "\(ref.column) in full" }
+        )
+        await vm.loadFullValue(ref: ref("body"), forRow: 0, cellIndex: 2)
+        await vm.loadFullValue(ref: ref("note"), forRow: 0, cellIndex: 3)
+        await vm.loadFullValue(ref: ref("data"), forRow: 0, cellIndex: 5)
+
+        let kinds = vm.completeCells(at: 0).map { kind(of: $0) }
+        #expect(kinds == ["text 1", "null", "text body in full", "null", "truncated", "binary"])
+        #expect(vm.completeValue(forRow: 0, at: 2) == "body in full")
+        #expect(vm.completeValue(forRow: 0, at: 4) == nil)
+        #expect(vm.completeValue(forRow: 0, at: 5) == nil)
+    }
+
+    @Test("A long text key cut for display still names its row, through the whole key its ref carries")
+    func cutTextKeyEditsThroughItsRef() async {
+        let columns = [
+            ColumnInfo(name: "slug", typeName: "TEXT", isPrimaryKey: true, isNullable: false, ordinalPosition: 0),
+            ColumnInfo(name: "doc", typeName: "TEXT", ordinalPosition: 1)
+        ]
+        let slug = String(repeating: "k", count: 5_000)
+        let ref = CellRef(table: "t", column: "slug", primaryKey: [PrimaryKeyComponent(column: "slug", value: slug)])
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [savedUpdate()]
+        let vm = RowDetailViewModel(
+            columns: columns,
+            rows: [Row(cells: [.truncatedText(prefix: "kkk", totalBytes: 5_000, ref: ref), .text("a")])],
+            initialIndex: 0,
+            table: TableInfo(name: "t"),
+            session: makeSession(driver: driver),
+            columnDetails: columns
+        )
+        #expect(vm.canEdit)
+
+        vm.startEditing()
+        vm.setEditedValue("b", at: 1)
+        #expect(await vm.saveChanges())
+        #expect(driver.executedQueries.first?.hasSuffix("WHERE \"slug\" = '\(slug)'") == true)
+    }
+
+    @Test("Sharing a row reports a long value not loaded yet, and exports it in full once loaded")
+    func rowExportNeedsCompleteValues() async {
+        let vm = makeViewModel(
+            lastCell: .truncatedText(prefix: "abc", totalBytes: 5_000, ref: nil),
+            loadFullValue: { _ in "abc and the rest" }
+        )
+        #expect(vm.exportCurrentRow(as: .csv) == nil)
+        #expect(vm.operationError != nil)
+
+        vm.operationError = nil
+        await vm.loadFullValue(ref: bodyRef(id: "1"), forRow: 0, cellIndex: 2)
+        #expect(vm.exportCurrentRow(as: .csv)?.contains("abc and the rest") == true)
+        #expect(vm.operationError == nil)
     }
 }
