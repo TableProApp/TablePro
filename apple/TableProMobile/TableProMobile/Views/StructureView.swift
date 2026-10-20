@@ -28,7 +28,7 @@ struct StructureView: View {
     @State private var selectedTab: Tab = .columns
     @State private var columns: [ColumnInfo] = []
     @State private var indexes: [IndexInfo] = []
-    @State private var foreignKeys: [ForeignKeyInfo] = []
+    @State private var foreignKeys: [ForeignKeyRow] = []
     @State private var isLoading = true
     @State private var appError: AppError?
 
@@ -186,13 +186,14 @@ struct StructureView: View {
                 )
             } else {
                 List {
-                    ForEach(foreignKeys, id: \.name) { fk in
+                    ForEach(foreignKeys) { key in
+                        let fk = key.pairs[0]
                         VStack(alignment: .leading, spacing: 6) {
                             Text(fk.name)
                                 .font(.body)
                                 .fontWeight(.semibold)
 
-                            Text(verbatim: "\(fk.column) \u{2192} \(fk.referencedTable).\(fk.referencedColumn)")
+                            Text(verbatim: key.reference)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
 
@@ -247,7 +248,7 @@ struct StructureView: View {
 
             self.columns = try await fetchedColumns
             self.indexes = try await fetchedIndexes
-            self.foreignKeys = try await fetchedForeignKeys
+            self.foreignKeys = ForeignKeyReference.keys(in: try await fetchedForeignKeys).map(ForeignKeyRow.init)
 
             Self.logger.debug("Loaded structure for \(table.name, privacy: .public): \(columns.count) columns, \(indexes.count) indexes, \(foreignKeys.count) foreign keys")
         } catch {
@@ -259,5 +260,22 @@ struct StructureView: View {
         }
 
         isLoading = false
+    }
+
+    // Drivers report a composite key as one row per column pair, all under the key's name.
+    nonisolated struct ForeignKeyRow: Identifiable {
+        let pairs: [ForeignKeyInfo]
+
+        var id: [String?] { [pairs[0].referencedSchema, pairs[0].referencedTable, pairs[0].name] }
+
+        var reference: String {
+            let first = pairs[0]
+            guard pairs.count > 1 else {
+                return "\(first.column) \u{2192} \(first.referencedTable).\(first.referencedColumn)"
+            }
+            let columns = pairs.map(\.column).joined(separator: ", ")
+            let referenced = pairs.map(\.referencedColumn).joined(separator: ", ")
+            return "\(columns) \u{2192} \(first.referencedTable) (\(referenced))"
+        }
     }
 }

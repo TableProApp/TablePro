@@ -136,7 +136,7 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     func fetchTables(schema: String?) async throws -> [TableInfo] {
         let raw = try await actor.execute("""
             SELECT name, type FROM sqlite_master
-            WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'
+            WHERE type IN ('table', 'view') AND name NOT GLOB 'sqlite_*'
             ORDER BY name
             """)
 
@@ -225,18 +225,9 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
-        let safe = table.replacingOccurrences(of: "'", with: "''")
-        let raw = try await actor.execute("PRAGMA foreign_key_list('\(safe)')")
-        guard !raw.rows.isEmpty else { return [] }
-
-        let parentKeys = try await primaryKeys(ofTables: raw.rows.compactMap { $0.count > 2 ? $0[2] : nil })
-        // Positional names only: a declared name can equal another key's fk_<table>_<id>, and keys are grouped by name.
-        return SQLiteForeignKeyGrouping.infos(
-            table: table,
-            pragmaRows: raw.rows.map { $0.map(PluginCellValue.fromOptional) },
-            createTableSQL: nil,
-            primaryKeysByTable: parentKeys
-        ).map { key in
+        let raw = try await actor.execute(SQLiteForeignKeyGrouping.foreignKeysQuery(table: table))
+        let rows = raw.rows.map { $0.map(PluginCellValue.fromOptional) }
+        return SQLiteForeignKeyGrouping.foreignKeys(table: table, fromRows: rows).map { key in
             ForeignKeyInfo(
                 name: key.name,
                 column: key.column,
@@ -245,27 +236,6 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
                 onDelete: key.onDelete,
                 onUpdate: key.onUpdate
             )
-        }
-    }
-
-    // The pragma reports a null parent column for a shorthand `REFERENCES parent`, which means the
-    // parent's primary key. Keyed by lower-cased name, as SQLiteForeignKeyGrouping looks them up.
-    // SQLite matches names case-insensitively for ASCII only, so both sides go through its own lower().
-    private func primaryKeys(ofTables tables: [String]) async throws -> [String: [String]] {
-        let names = Set(tables)
-        guard !names.isEmpty else { return [:] }
-        let literals = names.sorted()
-            .map { "lower('\($0.replacingOccurrences(of: "'", with: "''"))')" }
-            .joined(separator: ", ")
-        let raw = try await actor.execute("""
-            SELECT m.name, i.name
-            FROM sqlite_master m, pragma_table_info(m.name) i
-            WHERE m.type = 'table' AND lower(m.name) IN (\(literals)) AND i.pk > 0
-            ORDER BY m.name, i.pk
-            """)
-        return raw.rows.reduce(into: [:]) { keys, row in
-            guard row.count >= 2, let table = row[0], let column = row[1] else { return }
-            keys[table.lowercased(), default: []].append(column)
         }
     }
 
