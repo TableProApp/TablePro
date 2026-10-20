@@ -4613,6 +4613,7 @@ dependencies = [
  "rustix",
  "secrecy",
  "tablepro-core",
+ "tablepro-test-fixtures",
  "tablepro-test-support",
  "tempfile",
  "testcontainers",

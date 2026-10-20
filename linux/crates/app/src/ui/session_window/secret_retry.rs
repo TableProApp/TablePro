@@ -174,6 +174,28 @@ mod tests {
     }
 
     #[test]
+    fn too_many_failed_attempts_offers_no_secret() {
+        let too_many = ConnectError::Driver(DriverError::Transport(TransportError::Ssh(
+            SshFailure::TooManyAuthenticationFailures {
+                host: "bastion.example.com".to_owned(),
+            },
+        )));
+        let auths = [
+            SavedSshAuth::Password,
+            SavedSshAuth::PrivateKey {
+                path: Some(PathBuf::from("/home/u/.ssh/id_ed25519")),
+                has_passphrase: true,
+            },
+            SavedSshAuth::Agent,
+        ];
+
+        for auth in auths {
+            let saved = saved(AuthMode::Password, Some(auth));
+            assert_eq!(refused_secret(&too_many, &saved), None, "{:?}", saved.ssh);
+        }
+    }
+
+    #[test]
     fn an_unreadable_keyring_offers_nothing_to_type_again() {
         let unreadable = ConnectError::Keyring(KeyringError::Secret {
             kind: SecretKind::SshPassword,
