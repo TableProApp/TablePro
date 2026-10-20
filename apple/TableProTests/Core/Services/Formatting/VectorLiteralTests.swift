@@ -81,8 +81,14 @@ struct VectorLiteralTests {
         #expect(VectorLiteral.summary(of: "{}/3") == "{} 3 dims")
     }
 
+    @Test("Space around an element is read past and never joins two numbers into one")
+    func spacedElements() {
+        #expect(VectorLiteral.summary(of: "[ 1 , 2 ]") == "[1, 2] 2 dims")
+        #expect(VectorLiteral.summary(of: "{ 1 : 0.5 }/3") == "{1:0.5} 3 dims")
+    }
+
     @Test("Text that is not shaped like a vector keeps its own display", arguments: [
-        "hello", "[1,,2]", "[[1,2],[3]]", "[a,b]", "{1:2}", "{x:1}/3", "[1,2", "{\"a\":1}"
+        "hello", "[1,,2]", "[[1,2],[3]]", "[a,b]", "{1:2}", "{x:1}/3", "[1,2", "{\"a\":1}", "[1 2,3]", "{1 2:3}/5"
     ])
     func nonVectorHasNoSummary(text: String) {
         #expect(VectorLiteral.summary(of: text) == nil)

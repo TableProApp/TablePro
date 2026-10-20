@@ -29,8 +29,7 @@ enum PgvectorTypes {
         return names
     }
 
-    // pgvector stores the dimension count as the type modifier, which `PQfmod` reports for a table column
-    // and an explicit cast and leaves at -1 for any other expression.
+    // pgvector stores the dimension count as the type modifier; -1 is a column declared without one.
     static func spelling(of typeName: String, modifier: Int32) -> String {
         guard modifier > 0 else { return typeName }
         let isArray = typeName.hasSuffix("[]")

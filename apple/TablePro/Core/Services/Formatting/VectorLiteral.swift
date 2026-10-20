@@ -157,7 +157,7 @@ private struct VectorTextShape {
                 let token = bytes[tokenStart..<index]
                 guard Self.isElement(token, sparse: isSparse) else { return nil }
                 if leading.count < leadingCount {
-                    leading.append(Self.display(token))
+                    leading.append(Self.display(token, sparse: isSparse))
                 }
                 count += 1
                 tokenStart = index + 1
@@ -180,31 +180,40 @@ private struct VectorTextShape {
     private static func isElement(_ token: ArraySlice<UInt8>, sparse: Bool) -> Bool {
         guard sparse else { return isNumber(token) }
         guard let colonIndex = token.firstIndex(of: colon) else { return false }
-        let index = token[token.startIndex..<colonIndex].filter { !isWhitespace($0) }
-        guard !index.isEmpty, index.allSatisfy(isDigit) else { return false }
-        return isNumber(token[(colonIndex + 1)...])
+        let index = trimmed(token[token.startIndex..<colonIndex])
+        return !index.isEmpty && index.allSatisfy(isDigit) && isNumber(token[(colonIndex + 1)...])
     }
 
     // Decimal spellings only, which is what pgvector and the other engines with a bracketed vector print.
+    // Space is allowed around a number, never inside one.
     private static func isNumber(_ token: ArraySlice<UInt8>) -> Bool {
-        var sawDigit = false
-        for byte in token where !isWhitespace(byte) {
-            if isDigit(byte) {
-                sawDigit = true
-                continue
-            }
-            switch byte {
-            case UInt8(ascii: "."), UInt8(ascii: "-"), UInt8(ascii: "+"), UInt8(ascii: "e"), UInt8(ascii: "E"):
-                continue
-            default:
-                return false
-            }
-        }
-        return sawDigit
+        let number = trimmed(token)
+        return number.contains(where: isDigit) && number.allSatisfy(isNumberByte)
     }
 
-    private static func display(_ token: ArraySlice<UInt8>) -> String {
-        String(bytes: token.filter { !isWhitespace($0) }, encoding: .utf8) ?? ""
+    private static func display(_ token: ArraySlice<UInt8>, sparse: Bool) -> String {
+        guard sparse, let colonIndex = token.firstIndex(of: colon) else { return text(trimmed(token)) }
+        return text(trimmed(token[token.startIndex..<colonIndex])) + ":" + text(trimmed(token[(colonIndex + 1)...]))
+    }
+
+    private static func isNumberByte(_ byte: UInt8) -> Bool {
+        switch byte {
+        case UInt8(ascii: "0")...UInt8(ascii: "9"), UInt8(ascii: "."), UInt8(ascii: "-"), UInt8(ascii: "+"),
+             UInt8(ascii: "e"), UInt8(ascii: "E"):
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func trimmed(_ token: ArraySlice<UInt8>) -> ArraySlice<UInt8> {
+        var slice = token.drop(while: isWhitespace)
+        while let last = slice.last, isWhitespace(last) { slice = slice.dropLast() }
+        return slice
+    }
+
+    private static func text(_ bytes: ArraySlice<UInt8>) -> String {
+        String(bytes: bytes, encoding: .utf8) ?? ""
     }
 
     private static func isWhitespace(_ byte: UInt8) -> Bool {

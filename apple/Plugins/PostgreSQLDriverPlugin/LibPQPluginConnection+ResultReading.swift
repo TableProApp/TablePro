@@ -35,7 +35,9 @@ internal extension LibPQPluginConnection {
                 columns.append("column_\(i)")
             }
             let oid = UInt32(PQftype(result, Int32(i)))
-            let modifier = PQfmod(result, Int32(i))
+            // Only a column read straight from a table reports its own modifier: `v::vector(3)` over a
+            // `vector` column reports the cast's, which the column does not enforce.
+            let modifier = PQftable(result, Int32(i)) == 0 ? -1 : PQfmod(result, Int32(i))
             columnOids.append(oid)
             columnTypeModifiers.append(modifier)
             columnTypeNames.append(typeNames.name(for: oid, modifier: modifier))
