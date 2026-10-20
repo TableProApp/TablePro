@@ -48,6 +48,11 @@ final class DataFileGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridPasteRows() {
+        // Rows copied as CSV, JSON or Markdown carry their values, which the tab-separated parser cannot read back.
+        if let copied = ClipboardService.shared.readGridRows() {
+            controller.pasteRows(DataFilePasteParser.rows(from: copied, into: controller.columnNames.displayNames))
+            return
+        }
         guard let raw = ClipboardService.shared.readText(), !raw.isEmpty else { return }
         let rows = DataFilePasteParser.rows(from: raw)
         controller.pasteRows(rows)
@@ -135,6 +140,33 @@ enum DataFilePasteParser {
         text.split(omittingEmptySubsequences: false, whereSeparator: { $0 == "\n" || $0 == "\r\n" })
             .map { line in line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init) }
             .filter { !($0.count == 1 && $0[0].isEmpty) }
+    }
+
+    // By name when every copied column is one of the file's, once, so rows copied with columns reordered or
+    // hidden land where they came from. Anything else pastes in order, as its text would.
+    @MainActor
+    static func rows(from copied: GridRowsClipboardPayload, into columns: [String]) -> [[String]] {
+        let fileColumns = Set(columns)
+        guard Set(copied.columns).count == copied.columns.count, copied.columns.allSatisfy(fileColumns.contains) else {
+            return copied.rows.map { $0.map(text(of:)) }
+        }
+        let sources = columns.map { copied.columns.firstIndex(of: $0) }
+        return copied.rows.map { row in
+            sources.map { source in
+                guard let source, row.indices.contains(source) else { return "" }
+                return text(of: row[source])
+            }
+        }
+    }
+
+    // NULL pastes as the empty value this grid's own row copy writes for it.
+    @MainActor
+    static func text(of cell: PluginCellValue) -> String {
+        switch cell {
+        case .text(let text): return text
+        case .null: return ""
+        case .bytes(let data): return BlobFormattingService.shared.format(data, for: .copy) ?? ""
+        }
     }
 }
 

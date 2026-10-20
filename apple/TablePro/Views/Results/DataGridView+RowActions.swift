@@ -26,13 +26,32 @@ extension TableViewCoordinator {
         delegate?.dataGridAddRow()
     }
 
+    func copyRows(at indices: Set<Int>, as format: RowCopyFormat) {
+        switch format {
+        case .rows: delegate?.dataGridCopyRows(indices)
+        case .rowsWithHeaders: copyRowsWithHeaders(at: indices)
+        case .json: copyRowsAsJson(at: indices)
+        case .csv: copyRowsAsCsv(at: indices, includeHeaders: false)
+        case .csvWithHeaders: copyRowsAsCsv(at: indices, includeHeaders: true)
+        case .markdown: copyRowsAsMarkdown(at: indices)
+        }
+    }
+
+    func copyRowsInCopyFormat(at indices: Set<Int>) {
+        copyRows(at: indices, as: rowCopyFormat)
+    }
+
     func copyRowsWithHeaders(at indices: Set<Int>) {
-        let sortedIndices = indices.sorted()
+        copyRowsAsTSV(at: indices, includeHeaders: true)
+    }
+
+    func copyRowsAsTSV(at indices: Set<Int>, includeHeaders: Bool) {
+        let sortedIndices = clipboardDisplayIndices(indices)
         let tableRows = tableRowsProvider()
         let projection = visibleColumnProjection
         let columnTypes = projection.columnTypes(tableRows.columnTypes)
         let columns = projection.columns(tableRows.columns)
-        var tsvRows: [String] = [columns.joined(separator: "\t")]
+        var tsvRows: [String] = includeHeaders ? [columns.joined(separator: "\t")] : []
         var htmlRows: [[String]] = []
         var copiedRows: [Row] = []
 
@@ -43,16 +62,38 @@ extension TableViewCoordinator {
             htmlRows.append(formatted)
             copiedRows.append(row)
         }
+        guard !copiedRows.isEmpty else { return }
 
         let tsv = tsvRows.joined(separator: "\n")
-        let html = HtmlTableEncoder.encode(rows: htmlRows, headers: columns)
-        let payload = GridRowsClipboardPayload(
+        let html = includeHeaders ? HtmlTableEncoder.encode(rows: htmlRows, headers: columns) : nil
+        ClipboardService.shared.writeRows(
+            tsv: tsv,
+            html: html,
+            gridRows: rowsPayload(copiedRows, columns: columns, projection: projection)
+        )
+    }
+
+    // The ceiling each format's converter already puts on its text, taken first so the paste payload holds the same rows.
+    private func clipboardDisplayIndices(_ indices: Set<Int>) -> [Int] {
+        let sorted = indices.sorted()
+        let limit = RowOperationsManager.maxClipboardRows
+        guard sorted.count > limit else { return sorted }
+        rowActionsLogger.warning("Clipboard copy truncated: \(sorted.count) rows selected, capping at \(limit)")
+        return Array(sorted.prefix(limit))
+    }
+
+    // Carried by every row copy, so a paste into a grid takes the rows rather than parsing the text.
+    private func rowsPayload(
+        _ rows: [Row],
+        columns: [String],
+        projection: VisibleColumnProjection
+    ) -> GridRowsClipboardPayload {
+        GridRowsClipboardPayload(
             columns: columns,
-            copying: copiedRows,
-            expressionColumns: copiedRows.map { changeManager.expressionColumns(forRow: $0.id) },
+            copying: rows,
+            expressionColumns: rows.map { changeManager.expressionColumns(forRow: $0.id) },
             projection: projection
         )
-        ClipboardService.shared.writeRows(tsv: tsv, html: html, gridRows: payload)
     }
 
     func copyCellValue(at rowIndex: Int, columnIndex: Int) {
@@ -92,6 +133,18 @@ extension TableViewCoordinator {
         }
 
         return BlobFormattingService.shared.formatIfNeeded(value, columnType: columnType, for: .copy)
+    }
+
+    // The statements leave out the columns the server owns, which only the schema names, so they wait for it as Duplicate does.
+    var canCopyRowsAsInsert: Bool {
+        guard let databaseType, databaseType != .mongodb, databaseType != .redis, tableName != nil else { return false }
+        return tableRowsProvider().hasAuthoritativeSchema
+    }
+
+    // A table without a key is matched on every column, so one no match can compare leaves nothing to find the row by.
+    var canCopyRowsAsUpdate: Bool {
+        guard canCopyRowsAsInsert else { return false }
+        return !primaryKeyColumns.isEmpty || tableRowsProvider().rowMatchPolicy.excludedColumns.isEmpty
     }
 
     func copyRowsAsInsert(at indices: Set<Int>) {
@@ -192,38 +245,47 @@ extension TableViewCoordinator {
 
     func copyRowsAsJson(at indices: Set<Int>) {
         guard !indices.isEmpty else { return }
+        let tableRows = tableRowsProvider()
+        let projection = selectedColumnProjection()
+        let displayIndices = clipboardDisplayIndices(indices)
         let output = ResultJsonSerializer.serialize(
-            tableRows: tableRowsProvider(),
+            tableRows: tableRows,
             displayIDs: displayIDs,
-            selectedDisplayIndices: indices,
-            columns: selectedColumnProjection()
+            selectedDisplayIndices: Set(displayIndices),
+            columns: projection
         )
         guard output.rowCount > 0 else { return }
-        ClipboardService.shared.writeText(output.json)
+        let copied = displayIndices.compactMap(displayRow(at:))
+        ClipboardService.shared.writeText(
+            output.json,
+            gridRows: rowsPayload(copied, columns: projection.columns(tableRows.columns), projection: projection)
+        )
     }
 
     func copyRowsAsCsv(at indices: Set<Int>, includeHeaders: Bool) {
         let projection = selectedColumnProjection()
-        let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
-        guard !rows.isEmpty else { return }
+        let copied = clipboardDisplayIndices(indices).compactMap(displayRow(at:))
+        guard !copied.isEmpty else { return }
         let tableRows = tableRowsProvider()
-        let converter = CsvRowConverter(
-            columns: projection.columns(tableRows.columns),
-            columnTypes: projection.columnTypes(tableRows.columnTypes)
+        let columns = projection.columns(tableRows.columns)
+        let converter = CsvRowConverter(columns: columns, columnTypes: projection.columnTypes(tableRows.columnTypes))
+        ClipboardService.shared.writeCsv(
+            converter.generateCsv(rows: copied.map { projection.values(Array($0.values)) }, includeHeaders: includeHeaders),
+            gridRows: rowsPayload(copied, columns: columns, projection: projection)
         )
-        ClipboardService.shared.writeCsv(converter.generateCsv(rows: rows, includeHeaders: includeHeaders))
     }
 
     func copyRowsAsMarkdown(at indices: Set<Int>) {
         let projection = selectedColumnProjection()
-        let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
-        guard !rows.isEmpty else { return }
+        let copied = clipboardDisplayIndices(indices).compactMap(displayRow(at:))
+        guard !copied.isEmpty else { return }
         let tableRows = tableRowsProvider()
-        let converter = MarkdownTableConverter(
-            columns: projection.columns(tableRows.columns),
-            columnTypes: projection.columnTypes(tableRows.columnTypes)
+        let columns = projection.columns(tableRows.columns)
+        let converter = MarkdownTableConverter(columns: columns, columnTypes: projection.columnTypes(tableRows.columnTypes))
+        ClipboardService.shared.writeText(
+            converter.generateMarkdown(rows: copied.map { projection.values(Array($0.values)) }),
+            gridRows: rowsPayload(copied, columns: columns, projection: projection)
         )
-        ClipboardService.shared.writeText(converter.generateMarkdown(rows: rows))
     }
 
     func copyRowsAsInClause(at indices: Set<Int>, columnIndex: Int) {

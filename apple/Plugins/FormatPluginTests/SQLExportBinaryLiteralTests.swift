@@ -16,7 +16,7 @@ struct SQLExportBinaryLiteralTests {
 
     @Test("MySQL and SQLite keep the hex literal they have always taken")
     func hexLiteralEnginesAreUnchanged() {
-        for typeId in ["MySQL", "MariaDB", "TiDB", "OceanBase", "SQLite", "libSQL", "Turso", "DuckDB", "Cloudflare D1"] {
+        for typeId in ["MySQL", "MariaDB", "TiDB", "OceanBase", "SQLite", "libSQL", "Turso", "Cloudflare D1"] {
             #expect(SQLExportBinaryLiteral.render(sample, databaseTypeId: typeId) == "X'414243'")
         }
     }
@@ -30,6 +30,13 @@ struct SQLExportBinaryLiteralTests {
         for typeId in ["PostgreSQL", "Greenplum", "AlloyDB", "Citus", "CockroachDB", "PGlite", "Redshift"] {
             #expect(SQLExportBinaryLiteral.render(sample, databaseTypeId: typeId) == "decode('414243', 'hex')")
         }
+    }
+
+    // Measured on DuckDB 1.5.2: X'414243' stores the bytes of the text x414243.
+    @Test("DuckDB takes from_hex, which is the BLOB itself")
+    func duckDBUsesFromHex() {
+        #expect(SQLExportBinaryLiteral.render(sample, databaseTypeId: "DuckDB") == "from_hex('414243')")
+        #expect(SQLExportBinaryLiteral.render(Data(), databaseTypeId: "DuckDB") == "from_hex('')")
     }
 
     @Test("SQL Server takes a 0x constant")

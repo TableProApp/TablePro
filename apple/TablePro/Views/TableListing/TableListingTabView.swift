@@ -86,7 +86,8 @@ internal struct TableListingTabView: View {
                 databaseType: databaseType,
                 showRowNumbers: true,
                 supportsColumnCommands: false,
-                supportsValueFilter: false
+                supportsValueFilter: false,
+                appliesRowCopyFormat: true
             ),
             delegate: model.gridDelegate,
             selectedRowIndices: $model.selectedRows,

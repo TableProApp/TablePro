@@ -1,0 +1,269 @@
+{
+  "engine": "oracle",
+  "databaseTypeId": "Oracle",
+  "typeList": "Plugins/OracleDriverPlugin/OracleTypeCatalog.swift",
+  "createTable": "CREATE TABLE {table} ({id} NUMBER(10) PRIMARY KEY, {column} {type})",
+  "dropTable": "DROP TABLE {table} PURGE",
+  "columns": [
+    {
+      "type": "NUMBER",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "0", "cell": "0"},
+        {"sql": "-1.5", "cell": "-1.5"},
+        {"sql": "12345678901234567890.123456789", "cell": "12345678901234567890.123456789"},
+        {"sql": "1e40", "cell": "10000000000000000000000000000000000000000"}
+      ],
+      "edit": {"text": "42", "cell": "42"}
+    },
+    {
+      "type": "NUMBER(10,2)",
+      "covers": [],
+      "values": [{"sql": "123.4", "cell": "123.4"}],
+      "edit": {"text": "99.999", "cell": "100"}
+    },
+    {
+      "type": "INTEGER",
+      "values": [{"sql": "-2147483648", "cell": "-2147483648"}],
+      "edit": {"text": "7", "cell": "7"}
+    },
+    {
+      "type": "INT",
+      "values": [{"sql": "1", "cell": "1"}],
+      "edit": {"text": "-1", "cell": "-1"}
+    },
+    {
+      "type": "SMALLINT",
+      "values": [{"sql": "32767", "cell": "32767"}],
+      "edit": {"text": "2", "cell": "2"}
+    },
+    {
+      "type": "FLOAT",
+      "values": [{"sql": "1.5", "cell": "1.5"}],
+      "edit": {"text": "2.25", "cell": "2.25"}
+    },
+    {
+      "type": "BINARY_FLOAT",
+      "values": [{"sql": "1.5", "cell": "1.5"}, {"sql": "BINARY_FLOAT_INFINITY", "cell": "inf"}],
+      "edit": {"text": "-0.5", "cell": "-0.5"}
+    },
+    {
+      "type": "BINARY_DOUBLE",
+      "values": [{"sql": "0.1", "cell": "0.1"}, {"sql": "BINARY_DOUBLE_NAN", "cell": "nan"}],
+      "edit": {"text": "3.5", "cell": "3.5"}
+    },
+    {
+      "type": "DECIMAL(10,3)",
+      "covers": ["DECIMAL"],
+      "values": [{"sql": "1.25", "cell": "1.25"}],
+      "edit": {"text": "-3.125", "cell": "-3.125"}
+    },
+    {
+      "type": "NUMERIC(5)",
+      "covers": ["NUMERIC"],
+      "values": [{"sql": "12345", "cell": "12345"}],
+      "edit": {"text": "1", "cell": "1"}
+    },
+    {
+      "type": "REAL",
+      "values": [{"sql": "2.5", "cell": "2.5"}],
+      "edit": {"text": "0.125", "cell": "0.125"}
+    },
+    {
+      "type": "DOUBLE PRECISION",
+      "values": [{"sql": "0.1", "cell": "0.1"}],
+      "edit": {"text": "8", "cell": "8"}
+    },
+    {
+      "type": "VARCHAR2(100 CHAR)",
+      "covers": ["VARCHAR2"],
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "''", "cell": null},
+        {"sql": "'Ünïcödé ✓ 日本語 🦄'", "cell": "Ünïcödé ✓ 日本語 🦄"},
+        {"sql": "'line one' || CHR(10) || 'line two'", "cell": "line one\nline two"},
+        {"sql": "'back\\slash ''quote'' \"double\"'", "cell": "back\\slash 'quote' \"double\""},
+        {"sql": "'true'", "cell": "true"},
+        {"sql": "'=1+1'", "cell": "=1+1"}
+      ],
+      "edit": {"text": "edited, \"quoted\"", "cell": "edited, \"quoted\""}
+    },
+    {
+      "type": "NVARCHAR2(50)",
+      "covers": ["NVARCHAR2"],
+      "values": [{"sql": "N'ñandú 日本'", "cell": "ñandú 日本"}],
+      "edit": {"text": "ø", "cell": "ø"}
+    },
+    {
+      "type": "CHAR(5)",
+      "covers": ["CHAR"],
+      "values": [{"sql": "'ab'", "cell": "ab   "}],
+      "edit": {"text": "xyz", "cell": "xyz  "}
+    },
+    {
+      "type": "NCHAR(3)",
+      "covers": ["NCHAR"],
+      "values": [{"sql": "N'é'", "cell": "é  "}],
+      "edit": {"text": "ü", "cell": "ü  "}
+    },
+    {
+      "type": "CLOB",
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "'clob text'", "cell": "clob text"}],
+      "edit": {"text": "more", "cell": "more"}
+    },
+    {
+      "type": "NCLOB",
+      "values": [{"sql": "N'nclob ✓'", "cell": "nclob ✓"}],
+      "edit": {"text": "n", "cell": "n"}
+    },
+    {
+      "type": "LONG",
+      "values": [{"sql": "'long text'", "cell": "long text"}],
+      "edit": {"text": "l", "cell": "l"}
+    },
+    {
+      "type": "DATE",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "TO_DATE('2026-10-20 15:22:20', 'YYYY-MM-DD HH24:MI:SS')", "cell": "2026-10-20 15:22:20"},
+        {"sql": "TO_DATE('0001-01-01', 'YYYY-MM-DD')", "cell": "0001-01-01 00:00:00"}
+      ],
+      "edit": {"text": "2000-02-29 12:00:00", "cell": "2000-02-29 12:00:00"},
+      "known": {
+        "sql": {"defect": "the dump writes the value as text in the driver's format, which Oracle parses with the session's NLS format and refuses (ORA-01861, ORA-01843)", "matches": "ORA-018(61|43)"}
+      }
+    },
+    {
+      "type": "TIMESTAMP",
+      "values": [
+        {"sql": "TO_TIMESTAMP('2026-10-06 15:22:20.050000', 'YYYY-MM-DD HH24:MI:SS.FF')", "cell": "2026-10-06 15:22:20.050000"}
+      ],
+      "edit": {"text": "1999-12-31 23:59:59.000000", "cell": "1999-12-31 23:59:59.000000"},
+      "known": {
+        "sql": {"defect": "the dump writes the value as text in the driver's format, which Oracle parses with the session's NLS format and refuses (ORA-01861, ORA-01843)", "matches": "ORA-018(61|43)"}
+      }
+    },
+    {
+      "type": "TIMESTAMP WITH TIME ZONE",
+      "values": [
+        {"sql": "TO_TIMESTAMP_TZ('2026-10-06 15:22:20.000001 -05:30', 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM')", "cell": "2026-10-06 15:22:20.000001-05:30"}
+      ],
+      "edit": {"text": "2000-01-01 00:00:00.000000+00:00", "cell": "2000-01-01 00:00:00.000000+00:00"},
+      "known": {
+        "sql": {"defect": "the dump writes the value as text in the driver's format, which Oracle parses with the session's NLS format and refuses (ORA-01861, ORA-01843)", "matches": "ORA-018(61|43)"}
+      }
+    },
+    {
+      "type": "TIMESTAMP WITH LOCAL TIME ZONE",
+      "values": [
+        {"sql": "TO_TIMESTAMP('2026-10-06 15:22:20', 'YYYY-MM-DD HH24:MI:SS')", "cell": "2026-10-06 15:22:20.000000+00:00"}
+      ],
+      "edit": {"text": "2000-01-01 00:00:00", "cell": "2000-01-01 00:00:00.000000+00:00"},
+      "known": {
+        "sql": {"defect": "the dump writes the value as text in the driver's format, which Oracle parses with the session's NLS format and refuses (ORA-01861, ORA-01843)", "matches": "ORA-018(61|43)"}
+      }
+    },
+    {
+      "type": "INTERVAL YEAR(4) TO MONTH",
+      "covers": ["INTERVAL YEAR TO MONTH"],
+      "values": [{"sql": "INTERVAL '1-2' YEAR TO MONTH", "cell": "1-02"}],
+      "edit": {"text": "3-04", "cell": "3-04"}
+    },
+    {
+      "type": "INTERVAL DAY(3) TO SECOND(3)",
+      "covers": ["INTERVAL DAY TO SECOND"],
+      "values": [{"sql": "INTERVAL '3 04:05:06.789' DAY TO SECOND", "cell": "3 04:05:06.789"}],
+      "edit": {"text": "1 00:00:00", "cell": "1 00:00:00"}
+    },
+    {
+      "type": "RAW(16)",
+      "covers": ["RAW"],
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "HEXTORAW('00FF7F80')", "cell": "0x00FF7F80"}],
+      "edit": {"hex": "DEADBEEF", "cell": "0xDEADBEEF"}
+    },
+    {
+      "type": "LONG RAW",
+      "values": [{"sql": "HEXTORAW('CAFE')", "cell": "0xCAFE"}],
+      "edit": {"hex": "BABE", "cell": "0xBABE"}
+    },
+    {
+      "type": "BLOB",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "HEXTORAW('48656C6C6F')", "cell": "0x48656C6C6F"},
+        {"sql": "EMPTY_BLOB()", "cell": "0x"}
+      ],
+      "edit": {"hex": "FF", "cell": "0xFF"},
+      "known": {
+        "browse": {"defect": "an empty BLOB reads as NULL", "matches": "EMPTY_BLOB\\(\\) reads NULL"}
+      }
+    },
+    {
+      "type": "BFILE",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "BFILENAME('TP_DIR', 'file.txt')", "cell": "BFILENAME('TP_DIR', 'file.txt')"}
+      ],
+      "skip": {"edit": "a BFILE is a locator to a server file, written with BFILENAME rather than a value"},
+      "known": {
+        "sql": {"defect": "the dump writes a BFILE as quoted text, which Oracle refuses (ORA-00932)", "matches": "ORA-00932"}
+      }
+    },
+    {
+      "type": "BOOLEAN",
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "TRUE", "cell": "true"}, {"sql": "FALSE", "cell": "false"}],
+      "edit": {"text": "false", "cell": "false"}
+    },
+    {
+      "type": "JSON",
+      "values": [{"sql": "JSON('{\"b\":1,\"a\":[2,3]}')", "cell": "{\"b\":1,\"a\":[2,3]}"}],
+      "edit": {"text": "{\"k\":\"v\"}", "cell": "{\"k\":\"v\"}"}
+    },
+    {
+      "type": "VECTOR(3, FLOAT32)",
+      "covers": ["VECTOR"],
+      "values": [{"sql": "'[1.5, 2, 3]'", "cell": "[1.5E+000,2.0E+000,3.0E+000]"}],
+      "edit": {"text": "[4, 5, 6]", "cell": "[4.0E+000,5.0E+000,6.0E+000]"},
+      "known": {
+        "browse": {"defect": "a VECTOR reads as the placeholder <vector>", "matches": "reads \"<vector>\""},
+        "edit": {"defect": "the saved VECTOR reads back as <vector>", "matches": "reads back \"<vector>\""},
+        "sql": {"defect": "the dump writes the placeholder <vector>, which Oracle refuses (ORA-51804)", "matches": "ORA-51804"}
+      }
+    },
+    {
+      "type": "XMLTYPE",
+      "values": [{"sql": "XMLTYPE('<a>1</a>')", "cell": "<a>1</a>"}],
+      "edit": {"text": "<b>2</b>", "cell": "<b>2</b>"},
+      "known": {
+        "browse": {"defect": "an XMLTYPE reads as <unsupported: object>", "matches": "reads \"<unsupported: object>\""},
+        "edit": {"defect": "the column reads as server-owned, so the grid refuses the save", "matches": "cannot be given a value"},
+        "sql": {"defect": "the dump writes the placeholder, which Oracle refuses (ORA-31011)", "matches": "ORA-31011"}
+      }
+    },
+    {
+      "type": "SDO_GEOMETRY",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "SDO_GEOMETRY(2001, NULL, SDO_POINT_TYPE(1, 2, NULL), NULL, NULL)", "cell": "POINT (1 2)"}
+      ],
+      "skip": {"edit": "a geometry is written through SDO_GEOMETRY, not a typed value"},
+      "known": {
+        "browse": {"defect": "an SDO_GEOMETRY reads as <unsupported: object>", "matches": "reads \"<unsupported: object>\""},
+        "sql": {"defect": "the dump writes the placeholder, which Oracle refuses (ORA-00932)", "matches": "ORA-00932"}
+      }
+    },
+    {
+      "type": "ROWID",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "CHARTOROWID('AAAR3sAAEAAAACXAAA')", "cell": "AAAR3sAAEAAAACXAAA"}
+      ],
+      "edit": {"text": "AAAR3sAAEAAAACXAAB", "cell": "AAAR3sAAEAAAACXAAB"}
+    },
+    {
+      "type": "UROWID",
+      "values": [{"sql": "CHARTOROWID('AAAR3sAAEAAAACXAAA')", "cell": "AAAR3sAAEAAAACXAAA"}],
+      "edit": {"text": "AAAR3sAAEAAAACXAAC", "cell": "AAAR3sAAEAAAACXAAC"}
+    }
+  ]
+}

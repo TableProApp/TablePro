@@ -49303,6 +49303,12 @@
         }
       }
     },
+    "Copy as CSV" : {
+
+    },
+    "Copy as CSV with Headers" : {
+
+    },
     "Copy as Hex" : {
       "localizations" : {
         "fr" : {
@@ -49342,6 +49348,12 @@
           }
         }
       }
+    },
+    "Copy as IN Clause" : {
+
+    },
+    "Copy as INSERT Statements" : {
+
     },
     "Copy as JSON" : {
       "localizations" : {
@@ -49383,6 +49395,12 @@
         }
       }
     },
+    "Copy as Markdown" : {
+
+    },
+    "Copy as UPDATE Statements" : {
+
+    },
     "Copy Average" : {
 
     },
@@ -49395,6 +49413,9 @@
           }
         }
       }
+    },
+    "Copy Cell Value" : {
+
     },
     "Copy Column Name" : {
       "localizations" : {
@@ -50507,6 +50528,9 @@
         }
       }
     },
+    "Copy rows as:" : {
+
+    },
     "Copy rows into %@ on the server" : {
       "localizations" : {
         "fr" : {
@@ -50840,6 +50864,9 @@
         }
       }
     },
+    "Copy uses this format for selected rows. A single cell still copies its value, and Edit > Copy Special offers every format." : {
+
+    },
     "Copy Value" : {
       "localizations" : {
         "fr" : {
@@ -50972,6 +50999,9 @@
           }
         }
       }
+    },
+    "Copying" : {
+
     },
     "Correct the Key Passphrase on the connection's Network tab." : {
       "extractionState" : "manual",
@@ -200067,6 +200097,9 @@
           }
         }
       }
+    },
+    "TSV with Headers" : {
+
     },
     "TTL has to be a whole number of seconds above 0, or -1 or NULL for no expiry." : {
       "extractionState" : "manual",
