@@ -347,24 +347,28 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             }
             let mode = self.sslConfig.mode
             let startsWithTLS = MySQLLocalSocket.attemptsTLS(mode, overSocket: self.transport.isUnixSocket)
+            let firstMode: SSLMode = startsWithTLS ? mode : .disabled
             let session: EstablishedSession
             do {
-                session = try self.attemptConnect(enforceSSL: startsWithTLS, deadline: deadline)
-            } catch let error as MariaDBPluginError where startsWithTLS && mode == .preferred && MariaDBSSLClassifier.sslOnlyErrorCodes.contains(error.code) {
+                session = try self.attemptConnect(mode: firstMode, deadline: deadline)
+            } catch let error as MariaDBPluginError where firstMode == .preferred && MariaDBSSLClassifier.sslOnlyErrorCodes.contains(error.code) {
                 logger.notice("MySQL SSL handshake failed (code \(error.code)); falling back to plaintext for .preferred mode")
                 do {
-                    session = try self.attemptConnect(enforceSSL: false, deadline: deadline)
+                    session = try self.attemptConnect(mode: .disabled, deadline: deadline)
                 } catch let fallbackError as MariaDBPluginError {
-                    if let sslError = MariaDBSSLClassifier.classifySSLError(code: fallbackError.code, message: fallbackError.message) {
-                        throw sslError
-                    }
-                    throw fallbackError
+                    throw Self.connectError(fallbackError)
+                }
+            } catch let error as MariaDBPluginError where firstMode == .preferred && MySQLPlaintextPassword.isRefusal(code: error.code) {
+                // Preferred may have had TLS, or may have lost it on the way, so the password goes only once TLS is required.
+                do {
+                    session = try self.attemptConnect(mode: .required, deadline: deadline)
+                } catch let retryError as MariaDBPluginError where MariaDBSSLClassifier.sslOnlyErrorCodes.contains(retryError.code) {
+                    throw Self.connectError(error)
+                } catch let retryError as MariaDBPluginError {
+                    throw Self.connectError(retryError)
                 }
             } catch let error as MariaDBPluginError {
-                if let sslError = MariaDBSSLClassifier.classifySSLError(code: error.code, message: error.message) {
-                    throw sslError
-                }
-                throw error
+                throw Self.connectError(error)
             }
 
             let handle = session.handle
@@ -393,8 +397,15 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let errorLanguage: String.Encoding?
     }
 
+    private static func connectError(_ error: MariaDBPluginError) -> any Error {
+        if MySQLPlaintextPassword.isRefusal(code: error.code) {
+            return MariaDBPluginError(code: 0, message: MySQLPlaintextPassword.refusalMessage, sqlState: nil)
+        }
+        return MariaDBSSLClassifier.classifySSLError(code: error.code, message: error.message) ?? error
+    }
+
     private func attemptConnect(
-        enforceSSL: Bool,
+        mode: SSLMode,
         deadline: MySQLConnectDeadline
     ) throws -> EstablishedSession {
         var timeout = try connectSocketTimeoutSeconds(deadline: deadline)
@@ -418,7 +429,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var allowLocalInfile: UInt32 = 0
         mysql_options(mysql, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
 
-        applyTLS(enforceSSL ? sslConfig.mode : .disabled, to: mysql)
+        applyTLS(mode, to: mysql)
 
         mysql_options(mysql, MYSQL_SET_CHARSET_NAME, "utf8mb4")
 
@@ -664,6 +675,12 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     // Connector/C turns TLS on for any CA, certificate or key it is given, so a plaintext attempt gets none.
     private func applyTLS(_ mode: SSLMode, to handle: UnsafeMutablePointer<MYSQL>) {
         MariaDBTLSMode.apply(mode, to: handle)
+        // A local socket never leaves this Mac, and the mysql client trusts it the same way.
+        if mode == .disabled || mode == .preferred, !transport.isUnixSocket {
+            _ = MySQLPlaintextPassword.methodsWithoutTLS.withCString {
+                mysql_options(handle, MARIADB_OPT_RESTRICTED_AUTH, $0)
+            }
+        }
         guard mode != .disabled else { return }
         if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
             _ = sslConfig.caCertificatePath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CA, $0) }

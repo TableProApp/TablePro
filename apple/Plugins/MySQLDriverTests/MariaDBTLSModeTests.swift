@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 import Testing
 
@@ -30,9 +31,9 @@ struct MariaDBTLSModeTests {
         #expect(!served.sawInPlaintext(Self.secret))
     }
 
-    @Test("Preferred still signs in to a server without TLS")
+    @Test("Preferred still signs in to a server without TLS that takes the hashed password")
     func preferredFallsBack() async throws {
-        let server = try PlaintextMySQLServer()
+        let server = try PlaintextMySQLServer(asksForCleartext: false)
         defer { server.close() }
         async let session = server.serveOneSession()
         let connection = connection(port: server.port, mode: .preferred, cleartext: false)
@@ -41,7 +42,25 @@ struct MariaDBTLSModeTests {
         connection.disconnect()
 
         let served = await session
-        #expect(served.sawLogin)
+        #expect(served.loggedIn)
+    }
+
+    // Preferred tries again with TLS required, which this server cannot give, so it connects twice.
+    @Test(
+        "Disabled and Preferred refuse a server without TLS that asks for the password in plain text",
+        arguments: [(SSLMode.disabled, 1), (SSLMode.preferred, 2)]
+    )
+    func plaintextPasswordNeedsTLS(mode: SSLMode, connects: Int) async throws {
+        let server = try PlaintextMySQLServer()
+        defer { server.close() }
+        async let sessions = server.serve(sessions: connects)
+        let connection = connection(port: server.port, mode: mode, cleartext: false)
+
+        let error = await #expect(throws: (any Error).self) { try await connection.connect() }
+
+        #expect(error?.localizedDescription == MySQLPlaintextPassword.refusalMessage)
+        let served = await sessions
+        #expect(!served.contains { $0.loggedIn || $0.sawInPlaintext(Self.secret) })
     }
 
     @Test("The kill connection keeps TLS when the session had it, and Preferred becomes Required there")
@@ -72,6 +91,7 @@ private final class PlaintextMySQLServer: @unchecked Sendable {
     struct Session: Sendable {
         var received: [UInt8] = []
         var sawLogin = false
+        var loggedIn = false
 
         func sawInPlaintext(_ secret: String) -> Bool {
             let needle = Array(secret.utf8)
@@ -88,8 +108,10 @@ private final class PlaintextMySQLServer: @unchecked Sendable {
 
     let port: Int
     private let listener: Int32
+    private let asksForCleartext: Bool
 
-    init() throws {
+    init(asksForCleartext: Bool = true) throws {
+        self.asksForCleartext = asksForCleartext
         let socketFD = socket(AF_INET, SOCK_STREAM, 0)
         guard socketFD >= 0 else { throw SetupFailure() }
         var option: Int32 = 1
@@ -120,9 +142,13 @@ private final class PlaintextMySQLServer: @unchecked Sendable {
     }
 
     func serveOneSession() async -> Session {
+        await serve(sessions: 1)[0]
+    }
+
+    func serve(sessions count: Int) async -> [Session] {
         await withCheckedContinuation { continuation in
             DispatchQueue(label: "com.TablePro.tests.plaintext-mysql").async {
-                continuation.resume(returning: self.runSession())
+                continuation.resume(returning: (0..<count).map { _ in self.runSession() })
             }
         }
     }
@@ -142,10 +168,15 @@ private final class PlaintextMySQLServer: @unchecked Sendable {
         }
         guard login.payload.count != Self.sslRequestLength else { return session }
         session.sawLogin = true
-        guard send(Self.switchToCleartext, sequence: login.sequence &+ 1, to: client),
-              let answer = readPacket(client, into: &session),
-              send(Self.okPacket, sequence: answer.sequence &+ 1, to: client)
-        else { return session }
+        if asksForCleartext {
+            guard send(Self.switchToCleartext, sequence: login.sequence &+ 1, to: client),
+                  let answer = readPacket(client, into: &session),
+                  send(Self.okPacket, sequence: answer.sequence &+ 1, to: client)
+            else { return session }
+        } else {
+            guard send(Self.okPacket, sequence: login.sequence &+ 1, to: client) else { return session }
+        }
+        session.loggedIn = true
         while let command = readPacket(client, into: &session), command.payload.first != 0x01 {
             guard send(Self.okPacket, sequence: command.sequence &+ 1, to: client) else { break }
         }

@@ -34,6 +34,10 @@ int main(int argc, char **argv) {
     if (strcmp(mode, "disabled") == 0 || strcmp(mode, "preferred") == 0) {
         mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, strcmp(mode, "preferred") == 0 ? &on : &off);
         mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &off);
+        // MySQLPlaintextPassword.methodsWithoutTLS, which both apps set on a session that may run without TLS.
+        mysql_optionsv(mysql, MARIADB_OPT_RESTRICTED_AUTH,
+                       "mysql_native_password,caching_sha2_password,sha256_password,mysql_old_password,"
+                       "client_ed25519,parsec,auth_gssapi_client");
     } else if (strcmp(mode, "required") == 0) {
         tablepro_mysql_require_tls_without_verification(mysql);
     } else if (strcmp(mode, "verify-ca") == 0) {

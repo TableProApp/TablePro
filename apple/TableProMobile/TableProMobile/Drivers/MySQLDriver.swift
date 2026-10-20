@@ -570,7 +570,18 @@ private actor MySQLActor {
                 where policy == .preferred && MariaDBSSLClassifier.sslOnlyErrorCodes.contains(failure.code) {
                 // Preferred retries in plaintext after a failed handshake, as the Mac does.
                 handle = try await open(endpoint, ssl: ssl, policy: .disabled, serverName: nil, deadline: deadline)
+            } catch let failure as AttemptFailure
+                where policy == .preferred && MySQLPlaintextPassword.isRefusal(code: failure.code) {
+                // Preferred may have had TLS, or may have lost it on the way, so the password goes only once TLS is
+                // required, as the Mac does.
+                do {
+                    handle = try await open(endpoint, ssl: ssl, policy: .required, serverName: nil, deadline: deadline)
+                } catch let retry as AttemptFailure where MariaDBSSLClassifier.sslOnlyErrorCodes.contains(retry.code) {
+                    throw failure
+                }
             }
+        } catch let failure as AttemptFailure where MySQLPlaintextPassword.isRefusal(code: failure.code) {
+            throw MySQLError.connectionFailed(MySQLPlaintextPassword.refusalMessage)
         } catch let failure as AttemptFailure {
             if let tokenFailure = MySQLTokenSignIn.connectFailure(
                 signsInWithToken: signsInWithToken,
@@ -636,6 +647,11 @@ private actor MySQLActor {
         mysql_options(handle, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
 
         policy.apply(to: handle, ssl: ssl, serverName: serverName)
+        if policy == .disabled || policy == .preferred {
+            _ = MySQLPlaintextPassword.methodsWithoutTLS.withCString {
+                mysql_options(handle, MARIADB_OPT_RESTRICTED_AUTH, $0)
+            }
+        }
         if endpoint.signsInWithToken {
             // A no-op in Connector/C 3.4, which answers a cleartext request anyway; set to match the Mac.
             var enableCleartext: my_bool = 1

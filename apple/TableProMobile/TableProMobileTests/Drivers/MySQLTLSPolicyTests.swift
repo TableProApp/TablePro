@@ -1,6 +1,7 @@
 import Foundation
 @testable import TableProMobile
 import TableProModels
+import TableProMySQLCore
 import TableProPluginKit
 import TableProTLSTestFixtures
 import Testing
@@ -43,6 +44,41 @@ struct MySQLTLSPolicyTests {
         let served = await session
         #expect(!served.encrypted)
         #expect(served.loggedIn)
+    }
+
+    // A server, or anyone who strips TLS on the way, can ask for the password as typed; the mysql client refuses.
+    @Test(
+        "Disabled and Preferred refuse a server without TLS that asks for the password in plain text",
+        arguments: [DriverSSLConfiguration.disabled, DriverSSLConfiguration(mode: .require, isPreferred: true)]
+    )
+    func plaintextPasswordNeedsTLS(ssl: DriverSSLConfiguration) async throws {
+        let server = try FakeMySQLServer(identity: nil, asksForCleartext: true)
+        defer { server.close() }
+        async let sessions = server.serve(sessions: ssl.isPreferred ? 2 : 1)
+
+        let error = await connectOutcome(port: server.port, ssl: ssl)
+
+        #expect(error?.localizedDescription.contains(MySQLPlaintextPassword.refusalMessage) == true)
+        let served = await sessions
+        #expect(served.allSatisfy { $0.cleartextPassword == nil && !$0.loggedIn })
+        #expect(!served.contains { $0.sawInPlaintext(Self.password) })
+    }
+
+    @Test("Preferred sends a password asked for in plain text once TLS is required, to a server that has TLS")
+    func preferredSendsPlaintextPasswordOverTLS() async throws {
+        let server = try FakeMySQLServer(identity: .rogue, asksForCleartext: true)
+        defer { server.close() }
+        async let sessions = server.serve(sessions: 2)
+        let driver = driver(port: server.port, ssl: DriverSSLConfiguration(mode: .require, isPreferred: true))
+
+        try await driver.connect()
+        try await driver.disconnect()
+
+        let served = await sessions
+        #expect(served[0].cleartextPassword == nil)
+        #expect(served[1].encrypted)
+        #expect(served[1].cleartextPassword == Self.password)
+        #expect(served[1].loggedIn)
     }
 
     @Test("Preferred retries in plaintext after a failed TLS handshake, as the Mac does")
