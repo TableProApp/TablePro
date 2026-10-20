@@ -13,6 +13,7 @@ nonisolated extension DatabaseType {
         case .redis: return "6379"
         case .mssql: return "1433"
         case .oracle: return "1521"
+        case .clickhouse: return String(ClickHousePlugin.defaultPort)
         case .sqlite, .duckdb: return ""
         default: return "3306"
         }
@@ -60,6 +61,7 @@ nonisolated extension DatabaseType {
         .duckdb,
         .redis,
         .mssql,
-        .oracle
+        .oracle,
+        .clickhouse
     ]
 }

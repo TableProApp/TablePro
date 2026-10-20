@@ -74,6 +74,9 @@ public final class ConnectionManager: @unchecked Sendable {
             var effectiveConnection = connection
             effectiveConnection.host = effectiveHost
             effectiveConnection.port = effectivePort
+            if tunnelId != nil {
+                effectiveConnection.additionalFields[DatabaseConnection.preTunnelHostKey] = connection.host
+            }
 
             let driver = try driverFactory.createDriver(for: effectiveConnection, password: password)
             try await driver.connect()

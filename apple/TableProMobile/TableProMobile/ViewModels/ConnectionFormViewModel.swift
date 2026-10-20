@@ -228,7 +228,7 @@ final class ConnectionFormViewModel {
             name: name.isEmpty ? (selectedFileURL?.lastPathComponent ?? host) : name,
             type: type,
             host: host,
-            port: Int(port) ?? 3_306,
+            port: Int(port) ?? Int(type.defaultPort) ?? 0,
             username: username,
             database: database,
             groupId: groupId,

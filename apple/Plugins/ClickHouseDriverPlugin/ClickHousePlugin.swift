@@ -9,7 +9,7 @@ import TableProNumberFormatting
 import TableProPluginKit
 import TableProTLSClientIdentity
 
-final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
+nonisolated final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "ClickHouse Driver"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "ClickHouse database support via HTTP interface"
@@ -124,7 +124,7 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
 
 // MARK: - Error Types
 
-struct ClickHouseError: Error, PluginDriverError {
+nonisolated struct ClickHouseError: Error, PluginDriverError {
     let message: String
 
     var pluginErrorMessage: String { message }
@@ -158,7 +158,7 @@ struct ClickHouseError: Error, PluginDriverError {
 
 // MARK: - Internal Query Result
 
-struct CHQueryResult {
+nonisolated struct CHQueryResult {
     let columns: [String]
     let columnTypeNames: [String]
     let rows: [[PluginCellValue]]
@@ -172,7 +172,7 @@ struct CHQueryResult {
 
 // MARK: - Plugin Driver
 
-final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     let config: DriverConnectionConfig
     private let sessionConfiguration: URLSessionConfiguration
     private var _serverVersion: String?
@@ -252,7 +252,10 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
-        let tlsDelegate = try ClickHouseTLSDelegate.make(for: config.ssl)
+        let tlsDelegate = try ClickHouseTLSDelegate.make(
+            for: config.ssl,
+            serverName: config.additionalFields["preTunnelHost"]?.nilIfEmpty
+        )
         let connectTimeout = PluginConnectTimeout.milliseconds(
             in: config.additionalFields,
             default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)
@@ -932,7 +935,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
 // MARK: - TLS Delegate
 
-final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+nonisolated final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
     private enum Strategy {
         case systemTrust
         case skipVerify
@@ -941,6 +944,8 @@ final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Send
 
     private let strategy: Strategy
     private let clientCredential: URLCredential?
+    // Behind a tunnel the session dials 127.0.0.1, so the certificate is checked against this name instead.
+    private let serverName: String?
     private let lock = NSLock()
     private var refusal: SSLHandshakeError?
 
@@ -948,19 +953,20 @@ final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Send
         lock.withLock { refusal }
     }
 
-    private init(strategy: Strategy, clientCredential: URLCredential?) {
+    private init(strategy: Strategy, clientCredential: URLCredential?, serverName: String?) {
         self.strategy = strategy
         self.clientCredential = clientCredential
+        self.serverName = serverName
     }
 
-    static func make(for ssl: SSLConfiguration) throws -> ClickHouseTLSDelegate? {
+    static func make(for ssl: SSLConfiguration, serverName: String? = nil) throws -> ClickHouseTLSDelegate? {
         guard ssl.isEnabled else { return nil }
         let strategy = try serverTrustStrategy(for: ssl)
         let clientCredential = try clientCredential(for: ssl)
-        if case .systemTrust = strategy, clientCredential == nil {
+        if case .systemTrust = strategy, clientCredential == nil, serverName == nil {
             return nil
         }
-        return ClickHouseTLSDelegate(strategy: strategy, clientCredential: clientCredential)
+        return ClickHouseTLSDelegate(strategy: strategy, clientCredential: clientCredential, serverName: serverName)
     }
 
     private static func serverTrustStrategy(for ssl: SSLConfiguration) throws -> Strategy {
@@ -1035,21 +1041,33 @@ final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Send
 
         switch strategy {
         case .systemTrust:
-            completionHandler(.performDefaultHandling, nil)
+            guard let serverName else {
+                completionHandler(.performDefaultHandling, nil)
+                return
+            }
+            evaluate(serverTrust, hostname: serverName as CFString, completionHandler: completionHandler)
         case .skipVerify:
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
         case .verifyChain(let anchor, let checksHostname):
             SecTrustSetAnchorCertificates(serverTrust, [anchor] as CFArray)
-            let hostname = checksHostname ? challenge.protectionSpace.host as CFString : nil
-            SecTrustSetPolicies(serverTrust, [SecPolicyCreateSSL(true, hostname)] as CFArray)
-            var evaluationError: CFError?
-            guard SecTrustEvaluateWithError(serverTrust, &evaluationError) else {
-                record(Self.refusal(for: evaluationError))
-                completionHandler(.cancelAuthenticationChallenge, nil)
-                return
-            }
-            completionHandler(.useCredential, URLCredential(trust: serverTrust))
+            let hostname = checksHostname ? (serverName ?? challenge.protectionSpace.host) as CFString : nil
+            evaluate(serverTrust, hostname: hostname, completionHandler: completionHandler)
         }
+    }
+
+    private func evaluate(
+        _ serverTrust: SecTrust,
+        hostname: CFString?,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        SecTrustSetPolicies(serverTrust, [SecPolicyCreateSSL(true, hostname)] as CFArray)
+        var evaluationError: CFError?
+        guard SecTrustEvaluateWithError(serverTrust, &evaluationError) else {
+            record(Self.refusal(for: evaluationError))
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        completionHandler(.useCredential, URLCredential(trust: serverTrust))
     }
 
     private func answerClientCertificate(

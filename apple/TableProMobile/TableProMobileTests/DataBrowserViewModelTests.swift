@@ -139,7 +139,7 @@ struct DataBrowserViewModelTests {
         #expect(label == "1-100 trên 3503")
     }
 
-    @Test("primaryKeyValues returns only PK columns from row")
+    @Test("A row locator holds only the key columns of the row")
     func primaryKeyExtraction() async {
         let driver = MockDatabaseDriver()
         driver.scriptedColumns = makeColumns()
@@ -151,11 +151,11 @@ struct DataBrowserViewModelTests {
         vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
         await vm.load(isInitial: true)
 
-        let pks = vm.primaryKeyValues(forRowAt: 0)
+        let pks = vm.rowLocator(forRowAt: 0)?.keyValues
         #expect(pks?.count == 1)
         #expect(pks?.first?.column == "id")
         #expect(pks?.first?.value == "42")
-        #expect(vm.primaryKeyValues(forRowAt: 1) == nil)
+        #expect(vm.rowLocator(forRowAt: 1) == nil)
     }
 
     @Test("A row whose key holds binary data gives no key values to delete it by")
@@ -174,7 +174,7 @@ struct DataBrowserViewModelTests {
         await vm.load(isInitial: true)
 
         #expect(vm.legacyRows.count == 1)
-        #expect(vm.primaryKeyValues(forRowAt: 0) == nil)
+        #expect(vm.rowLocator(forRowAt: 0) == nil)
     }
 
     @Test("Columns and foreign keys are read in the browser's schema, not the driver's")
@@ -416,7 +416,7 @@ struct DataBrowserViewModelTests {
             .success(QueryResult(columns: [], rows: [["0"]], rowsAffected: 0, executionTime: 0))
         ]
 
-        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        let success = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
         #expect(success == true)
         #expect(vm.operationError == nil)
         #expect(driver.executedQueries.contains(where: { $0.uppercased().hasPrefix("DELETE") }))
@@ -474,7 +474,7 @@ struct DataBrowserViewModelTests {
             .success(QueryResult(columns: makeColumns(), rows: [["1", "Alice"]], rowsAffected: 0, executionTime: 0))
         ]
 
-        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        let success = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
         #expect(success == false)
         #expect(vm.operationError?.title == String(localized: "Row Not Deleted"))
         #expect(driver.executedQueries.contains { $0.hasPrefix("SELECT `id` FROM `users` WHERE `id` = 1") })
@@ -499,7 +499,7 @@ struct DataBrowserViewModelTests {
             .success(QueryResult(columns: makeColumns(), rows: [], rowsAffected: 0, executionTime: 0))
         ]
 
-        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        let success = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
         #expect(success == true)
         #expect(vm.operationError == nil)
     }
@@ -518,7 +518,7 @@ struct DataBrowserViewModelTests {
 
         driver.scriptedExecuteResults = [.failure(MockDatabaseDriver.MockError.scripted)]
 
-        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        let success = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
         #expect(success == false)
         #expect(vm.operationError != nil)
     }
@@ -542,7 +542,7 @@ struct DataBrowserViewModelTests {
             .success(QueryResult(columns: [], rows: [["0"]], rowsAffected: 0, executionTime: 0))
         ]
 
-        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        let success = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
         #expect(success == true)
         #expect(driver.beganTransactionModes == [.readWrite])
         #expect(driver.didCommitTransaction)
@@ -563,7 +563,7 @@ struct DataBrowserViewModelTests {
         driver.scriptedTransactionState = .idle
         driver.scriptedExecuteResults = [.failure(MockDatabaseDriver.MockError.scripted)]
 
-        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        let success = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
         #expect(success == false)
         #expect(driver.didRollbackTransaction)
         #expect(!driver.didCommitTransaction)
@@ -588,7 +588,7 @@ struct DataBrowserViewModelTests {
             .success(QueryResult(columns: [], rows: [["0"]], rowsAffected: 0, executionTime: 0))
         ]
 
-        let success = await vm.deleteRow(pkValues: [(column: "id", value: "1")])
+        let success = await vm.deleteRow(RowLocator(row: ["1", "Alice"], keyValues: [(column: "id", value: "1")]))
         #expect(success == true)
         #expect(!driver.didBeginTransaction)
         #expect(!driver.didCommitTransaction)

@@ -18,6 +18,8 @@ nonisolated enum SQLBuilder {
             return "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
         case .mssql:
             return "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
+        case .clickhouse:
+            return clickHouseQuotedIdentifier(name)
         default:
             return "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
         }
@@ -408,6 +410,10 @@ nonisolated enum SQLBuilder {
                 requiresBackslashEscaping: true,
                 caseSensitivityStyle: .collationDefined
             )
+        }
+        // The ClickHouse plugin is compiled into this app, so its own dialect is read rather than mirrored.
+        if type == .clickhouse, let dialect = ClickHousePlugin.sqlDialect {
+            return dialect
         }
         switch type {
         case .postgresql:

@@ -58,7 +58,7 @@ final class ConnectionCoordinator {
         connection.type == .mysql || connection.type == .mariadb ||
         connection.type == .tidb || connection.type == .oceanbase ||
         connection.type == .postgresql || connection.type == .redshift ||
-        connection.type == .mssql
+        connection.type == .mssql || connection.type == .clickhouse
     }
 
     var supportsSchemas: Bool {

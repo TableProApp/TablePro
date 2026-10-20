@@ -346,9 +346,9 @@ struct SQLiteDriverFileTests {
         )
         await browser.load(isInitial: true)
 
-        let shared = await browser.deleteRow(pkValues: [(column: "id", value: "5")])
+        let shared = await browser.deleteRow(RowLocator(row: ["5", "integer"], keyValues: [(column: "id", value: "5")]))
         let sharedError = browser.operationError?.title
-        let alone = await browser.deleteRow(pkValues: [(column: "id", value: "6")])
+        let alone = await browser.deleteRow(RowLocator(row: ["6", "alone"], keyValues: [(column: "id", value: "6")]))
         let remaining = try await driver.execute(query: "SELECT name FROM p ORDER BY name")
         try await driver.disconnect()
 

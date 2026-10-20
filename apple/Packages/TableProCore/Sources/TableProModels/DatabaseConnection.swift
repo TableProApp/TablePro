@@ -4,6 +4,8 @@ import Foundation
 public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     public static let connectTimeoutSecondsKey = "connectTimeoutSeconds"
     public static let queryTimeoutSecondsKey = "queryTimeoutSeconds"
+    // Set only on the copy a driver gets behind an SSH tunnel, whose host is then the local forward.
+    public static let preTunnelHostKey = "preTunnelHost"
     public static let connectTimeoutSecondsRange = 1 ... 600
     public static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
 
