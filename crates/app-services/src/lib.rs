@@ -22,3 +22,5 @@ mod workspace_disk;
 pub mod workspace_state;
 
 pub mod browse_query;
+
+pub mod change_tracker;

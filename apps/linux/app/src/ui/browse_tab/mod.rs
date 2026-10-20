@@ -662,7 +662,7 @@ impl SimpleComponent for BrowseTab {
         // channel is leaked into the GTK main loop via spawn_local,
         // matching how the per-tab GridMsg channel above is wired.
         let (tracker_sender, tracker_receiver) = relm4::channel::<crate::services::change_tracker::TrackerEvent>();
-        crate::services::change_tracker::with_tab(init.tab_id, |t| t.subscribe(tracker_sender));
+        crate::services::change_tracker::subscribe(init.tab_id, tracker_sender);
         let input_for_tracker = sender.input_sender().clone();
         relm4::spawn_local(tracker_receiver.forward(input_for_tracker, move |event| match event {
             crate::services::change_tracker::TrackerEvent::PendingCountChanged(n) => {

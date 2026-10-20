@@ -82,11 +82,11 @@
         "sql_dialect::updates::tests::optimistic_updates_compare_the_original_value_with_null_safe_dialect_syntax"
       ]
     },
-    "apps/linux/app/src/services/change_tracker.rs": {
-      "package": "tablepro-app",
+    "crates/app-services/src/change_tracker.rs": {
+      "package": "tablepro-app-services",
       "target": "--lib",
       "tests": [
-        "services::change_tracker::tests::materialize_orders_inserts_then_updates_then_deletes"
+        "change_tracker::tests::materialize_orders_inserts_then_updates_then_deletes"
       ]
     },
     "apps/linux/app/tests/stale_grid_update.rs": {

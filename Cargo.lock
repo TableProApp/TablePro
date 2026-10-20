@@ -6275,6 +6275,8 @@ name = "tablepro-app-services"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
+ "rust_decimal",
  "secrecy",
  "serde",
  "serde_json",
@@ -6288,6 +6290,7 @@ dependencies = [
  "tempfile",
  "testcontainers",
  "testcontainers-modules",
+ "thiserror",
  "tokio",
  "tokio-util",
  "tracing",

@@ -2,9 +2,6 @@
 apps/linux/app/src/config.rs 5
 apps/linux/app/src/lib.rs 9
 apps/linux/app/src/logging.rs 3
-apps/linux/app/src/services/change_tracker.rs 150
-apps/linux/app/src/services/change_tracker_materialize_tests.rs 12
-apps/linux/app/src/services/change_tracker_row_identity.rs 39
 apps/linux/app/src/services/connection_monitor.rs 2
 apps/linux/app/src/services/connection_service.rs 15
 apps/linux/app/src/services/database_service.rs 39

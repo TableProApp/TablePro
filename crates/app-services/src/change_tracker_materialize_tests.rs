@@ -1,7 +1,3 @@
-//! `materialize` turns pending edits into the statements a save runs
-//! inside one transaction. These tests pin the properties that make the
-//! batch safe to execute and reproducible to diagnose.
-
 use super::*;
 use tablepro_core::ColumnInfo;
 use tablepro_core::sql_dialect::BuildSqlError;
@@ -52,7 +48,6 @@ fn materialize(tracker: &TabChangeTracker) -> (Vec<(String, Vec<Value>)>, Vec<St
         .expect("the batch must build")
 }
 
-/// The primary-key value each update targets, read from its WHERE placeholder.
 fn targeted_ids(statements: &[(String, Vec<Value>)]) -> Vec<i64> {
     statements
         .iter()
@@ -71,8 +66,6 @@ fn targeted_ids(statements: &[(String, Vec<Value>)]) -> Vec<i64> {
 #[test]
 fn updates_are_emitted_in_primary_key_order_so_a_batch_is_reproducible() {
     let mut tracker = TabChangeTracker::new();
-    // Insertion order deliberately unsorted: a HashMap walk would emit
-    // these in an order that depends on the process's hash seed.
     for id in [7, 2, 5, 1, 8, 3, 6, 4] {
         tracker.track_cell_edit(key(id), 1, Value::Null, Value::Text(format!("v{id}")));
     }
@@ -229,14 +222,11 @@ fn a_table_without_a_primary_key_refuses_to_build_an_update() {
     assert!(matches!(error, MaterializeError::BuildSql(BuildSqlError::NoPrimaryKey)));
 }
 
-/// H11: a Structure tab dropping a column must not panic a pending Browse
-/// tab edit that recorded an index into the old, wider column list.
 #[test]
 fn an_update_targeting_a_column_dropped_since_it_was_tracked_refuses_instead_of_panicking() {
     let mut tracker = TabChangeTracker::new();
     tracker.track_cell_edit(key(1), 2, Value::Null, Value::Text("x".into()));
 
-    // The column at index 2 ("label") no longer exists after the drop.
     let narrow_columns = vec![pk("id"), data("note")];
     let error = tracker
         .materialize("postgres", None, "t", &narrow_columns)
@@ -244,15 +234,12 @@ fn an_update_targeting_a_column_dropped_since_it_was_tracked_refuses_instead_of_
     assert!(matches!(error, MaterializeError::BuildSql(BuildSqlError::StaleColumns)));
 }
 
-/// H11's other half: a delete recorded against a wider primary key (before
-/// a PK column was dropped) must not panic when the current PK is narrower.
 #[test]
 fn a_delete_targeting_a_shrunk_primary_key_refuses_instead_of_panicking() {
     let mut tracker = TabChangeTracker::new();
     let row_key = RowKey::from_pk_values(&[Value::Int(1), Value::Int(2)]).expect("a composite key");
     tracker.track_delete(row_key, vec![Value::Int(1), Value::Int(2), Value::Null]);
 
-    // Column "b" was dropped from the primary key; only "a" remains.
     let narrow_columns = vec![pk("a"), data("note")];
     let error = tracker
         .materialize("postgres", None, "t", &narrow_columns)

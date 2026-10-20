@@ -16,6 +16,8 @@ tablepro-dump = { path = "../dump" }
 tablepro-policy = { path = "../policy" }
 tablepro-transport = { path = "../transport" }
 tablepro-storage = { path = "../storage" }
+chrono.workspace = true
+thiserror.workspace = true
 serde.workspace = true
 tracing.workspace = true
 serde_json.workspace = true
@@ -24,6 +26,7 @@ tokio-util.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+rust_decimal.workspace = true
 async-trait.workspace = true
 secrecy.workspace = true
 tablepro-driver-postgres = { path = "../drivers/postgres" }
