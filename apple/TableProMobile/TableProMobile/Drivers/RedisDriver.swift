@@ -67,14 +67,7 @@ nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unche
 
     func execute(query: String) async throws -> QueryResult {
         let start = Date()
-        guard let args = Self.parseRedisCommand(query) else {
-            throw RedisError.queryFailed(String(localized: "unbalanced quotes"))
-        }
-        guard !args.isEmpty else {
-            throw RedisError.queryFailed("Empty command")
-        }
-
-        let reply = try await send(args)
+        let reply = try await actor.command(Self.commandArguments(query))
         let elapsed = Date().timeIntervalSince(start)
         return try RedisQueryResultBuilder.result(for: reply, executionTime: elapsed)
     }
@@ -178,56 +171,17 @@ nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unche
         try await actor.command(arguments)
     }
 
-    /// Swift reads "\r\n" as one `Character`, so it is listed whole beside "\r" and "\n". Line breaks
-    /// separate arguments outside quotes, as they do in the Mac's `RedisArgumentCodec`.
-    private static let argumentSeparators: Set<Character> = [" ", "\t", "\n", "\r", "\r\n"]
-
-    // An empty quote is still an argument: `LPUSH l "" x` must push two values, not only `x`.
-    static func parseRedisCommand(_ input: String) -> [String]? {
-        var args: [String] = []
-        var current = ""
-        var hasArgument = false
-        var inQuote: Character?
-        var escape = false
-
-        for ch in input {
-            if escape {
-                current.append(ch)
-                escape = false
-                continue
-            }
-            if ch == "\\" {
-                escape = true
-                hasArgument = true
-                continue
-            }
-            if let q = inQuote {
-                if ch == q {
-                    inQuote = nil
-                } else {
-                    current.append(ch)
-                }
-                continue
-            }
-            if ch == "\"" || ch == "'" {
-                inQuote = ch
-                hasArgument = true
-                continue
-            }
-            if argumentSeparators.contains(ch) {
-                if hasArgument {
-                    args.append(current)
-                    current = ""
-                    hasArgument = false
-                }
-                continue
-            }
-            current.append(ch)
-            hasArgument = true
+    static func commandArguments(_ query: String) throws -> [Data] {
+        switch RedisSingleCommand(query) {
+        case .arguments(let arguments):
+            return arguments
+        case .empty:
+            throw RedisError.queryFailed("Empty command")
+        case .unbalancedQuotes:
+            throw RedisError.queryFailed(String(localized: "unbalanced quotes"))
+        case .severalCommands:
+            throw RedisError.queryFailed(RedisSingleCommand.severalCommandsMessage)
         }
-        if inQuote != nil { return nil }
-        if hasArgument { args.append(current) }
-        return args
     }
 }
 
@@ -326,6 +280,10 @@ private actor RedisActor {
     }
 
     func command(_ args: [String]) throws -> RedisReplyValue {
+        try executeCommand(args.map { Data($0.utf8) })
+    }
+
+    func command(_ args: [Data]) throws -> RedisReplyValue {
         try executeCommand(args)
     }
 
@@ -342,16 +300,16 @@ private actor RedisActor {
     }
 
     private func executeCommand(_ args: [String]) throws -> RedisReplyValue {
+        try executeCommand(args.map { Data($0.utf8) })
+    }
+
+    private func executeCommand(_ args: [Data]) throws -> RedisReplyValue {
         guard let ctx else { throw RedisError.notConnected }
 
-        let argc = Int32(args.count)
-        let cStrings = args.map { strdup($0) }
-        defer { cStrings.forEach { free($0) } }
-
-        var argv: [UnsafePointer<CChar>?] = cStrings.map { UnsafePointer($0) }
-        var argvlen: [Int] = args.map { $0.utf8.count }
-
-        guard let rawReply = redisCommandArgv(ctx, argc, &argv, &argvlen) else {
+        let rawReply = RedisCommandArgv.withPointers(args) { argv, argvlen in
+            redisCommandArgv(ctx, Int32(args.count), argv, argvlen)
+        }
+        guard let rawReply else {
             if ctx.pointee.err != 0 {
                 let msg = withUnsafePointer(to: &ctx.pointee.errstr.0) { String(cString: $0) }
                 throw RedisError.connectionFailed(msg)
@@ -365,11 +323,17 @@ private actor RedisActor {
         return parseReply(reply)
     }
 
+    // Read by length: a bulk string can hold a NUL.
+    private nonisolated static func text(of reply: UnsafeMutablePointer<redisReply>) -> String? {
+        guard let str = reply.pointee.str else { return nil }
+        return String(decoding: UnsafeRawBufferPointer(start: str, count: reply.pointee.len), as: UTF8.self)
+    }
+
     private func parseReply(_ reply: UnsafeMutablePointer<redisReply>) -> RedisReplyValue {
         switch reply.pointee.type {
         case REDIS_REPLY_STRING:
-            if let str = reply.pointee.str {
-                return .string(String(cString: str))
+            if let text = Self.text(of: reply) {
+                return .string(text)
             }
             return .null
 
@@ -392,14 +356,14 @@ private actor RedisActor {
             return .array(items)
 
         case REDIS_REPLY_STATUS:
-            if let str = reply.pointee.str {
-                return .status(String(cString: str))
+            if let text = Self.text(of: reply) {
+                return .status(text)
             }
             return .status("OK")
 
         case REDIS_REPLY_ERROR:
-            if let str = reply.pointee.str {
-                return .error(String(cString: str))
+            if let text = Self.text(of: reply) {
+                return .error(text)
             }
             return .error("Unknown error")
 

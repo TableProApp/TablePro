@@ -1,5 +1,6 @@
 import Foundation
 import TableProModels
+import TableProRedisCore
 import TableProSQLGrammar
 
 /// The requests one run of a query text makes, in the order it makes them.
@@ -99,7 +100,7 @@ public struct QueryScript: Sendable, Equatable {
         )
     }
 
-    // A Redis backslash escapes a trailing blank, which a whitespace trim would cut from the last argument.
+    // A bare Redis argument may end in a byte Foundation trims, such as a vertical tab or a no-break space.
     public static func trimmed(_ text: String, databaseType: DatabaseType) -> String {
         guard databaseType == .redis else { return text.trimmingCharacters(in: .whitespacesAndNewlines) }
         let commands = RedisCommandSplitter.commands(in: text)
