@@ -11,26 +11,28 @@ public struct FilterSQLGenerator: Sendable {
 
     public func generateWhereClause(
         from filters: [TableFilter],
-        logicMode: FilterLogicMode
+        logicMode: FilterLogicMode,
+        columns: [ColumnInfo] = []
     ) -> String {
         let activeFilters = filters.filter { $0.isEnabled && $0.isValid }
         guard !activeFilters.isEmpty else { return "" }
 
-        let conditions = activeFilters.compactMap { generateCondition(for: $0) }
+        let conditions = activeFilters.compactMap { generateCondition(for: $0, columns: columns) }
         guard !conditions.isEmpty else { return "" }
 
         let joined = conditions.joined(separator: " \(logicMode.rawValue) ")
         return "WHERE \(joined)"
     }
 
-    private func generateCondition(for filter: TableFilter) -> String? {
+    private func generateCondition(for filter: TableFilter, columns: [ColumnInfo]) -> String? {
         if filter.columnName == TableFilter.rawSQLColumn {
             guard let rawSQL = filter.rawSQL, !rawSQL.isEmpty else { return nil }
             return rawSQL
         }
 
         let quotedColumn = quoteIdentifier(filter.columnName)
-        let escapedValue = escapeValue(filter.value)
+        let kind = FilterColumnKind.kind(of: FilterColumnKind.column(named: filter.columnName, in: columns))
+        let escapedValue = escapeValue(filter.value, kind: kind)
         let folding = caseFolding(for: filter)
 
         switch filter.filterOperator {
@@ -55,11 +57,11 @@ public struct FilterSQLGenerator: Sendable {
         case .isNotNull:
             return "\(quotedColumn) IS NOT NULL"
         case .in:
-            return listCondition(quotedColumn, filter.value, negated: false, folding: folding)
+            return listCondition(quotedColumn, filter.value, kind: kind, negated: false, folding: folding)
         case .notIn:
-            return listCondition(quotedColumn, filter.value, negated: true, folding: folding)
+            return listCondition(quotedColumn, filter.value, kind: kind, negated: true, folding: folding)
         case .between:
-            let escapedSecond = escapeValue(filter.secondValue)
+            let escapedSecond = escapeValue(filter.secondValue, kind: kind)
             return "\(quotedColumn) BETWEEN \(escapedValue) AND \(escapedSecond)"
         case .contains:
             let pattern = escapeLikePattern(filter.value)
@@ -98,11 +100,11 @@ public struct FilterSQLGenerator: Sendable {
     }
 
     private func listCondition(
-        _ column: String, _ rawValue: String, negated: Bool, folding: PluginSQLCaseFolding
+        _ column: String, _ rawValue: String, kind: PluginColumnKind?, negated: Bool, folding: PluginSQLCaseFolding
     ) -> String {
         let keyword = negated ? "NOT IN" : "IN"
         let items = rawValue.split(separator: ",")
-            .map { escapeValue($0.trimmingCharacters(in: .whitespaces)) }
+            .map { escapeValue($0.trimmingCharacters(in: .whitespaces), kind: kind) }
         let foldable = folding.foldsComparisonOperands && items.allSatisfy { $0.hasPrefix("'") }
         let rendered = foldable ? items.map { folding.fold($0) } : items
         let subject = foldable ? folding.fold(column) : column
@@ -119,19 +121,29 @@ public struct FilterSQLGenerator: Sendable {
     }
 
     private func quoteIdentifier(_ name: String) -> String {
-        let q = dialect.identifierQuote
-        let escaped = name.replacingOccurrences(of: q, with: "\(q)\(q)")
-        return "\(q)\(escaped)\(q)"
+        let open = dialect.identifierQuote
+        let close = open == "[" ? "]" : open
+        let escaped = name.replacingOccurrences(of: close, with: "\(close)\(close)")
+        return "\(open)\(escaped)\(close)"
     }
 
-    private func escapeValue(_ value: String) -> String {
-        if Int64(value) != nil || Double(value) != nil {
+    private func escapeValue(_ value: String, kind: PluginColumnKind?) -> String {
+        if isBareNumber(value, kind: kind) {
             return value
         }
-        let escaped = value
-            .replacingOccurrences(of: "'", with: "''")
-            .replacingOccurrences(of: "\0", with: "")
+        var escaped = value.replacingOccurrences(of: "\0", with: "")
+        if dialect.requiresBackslashEscaping {
+            escaped = escaped.replacingOccurrences(of: "\\", with: "\\\\")
+        }
+        escaped = escaped.replacingOccurrences(of: "'", with: "''")
         return "'\(escaped)'"
+    }
+
+    // Character.isNumber takes digits of every script, and no engine parses those as a number.
+    // An integer column takes a fraction bare too: PostgreSQL and SQL Server reject `int_col > '5.5'`.
+    private func isBareNumber(_ value: String, kind: PluginColumnKind?) -> Bool {
+        guard value.unicodeScalars.allSatisfy(\.isASCII) else { return false }
+        return kind != .text && PluginNumericLiteral.isValid(value)
     }
 
     private func escapeLikePattern(_ value: String) -> String {

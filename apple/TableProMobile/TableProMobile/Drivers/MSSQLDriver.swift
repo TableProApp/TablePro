@@ -276,7 +276,8 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
         return result.rows.compactMap { row in
             MSSQLSchemaQueries.parseForeignKeyRow(row).map {
                 ForeignKeyInfo(name: $0.constraintName, column: $0.columnName,
-                               referencedTable: $0.referencedTable, referencedColumn: $0.referencedColumn)
+                               referencedTable: $0.referencedTable, referencedColumn: $0.referencedColumn,
+                               referencedSchema: $0.referencedSchema)
             }
         }
     }

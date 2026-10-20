@@ -1,10 +1,12 @@
 import Foundation
 @testable import TableProMobile
+import TableProModels
+import TableProQuery
 import Testing
 
 @Suite("Redis command parsing")
 struct RedisCommandParsingTests {
-    private func parse(_ input: String) -> [String] {
+    private func parse(_ input: String) -> [String]? {
         RedisDriver.parseRedisCommand(input)
     }
 
@@ -27,7 +29,7 @@ struct RedisCommandParsingTests {
     @Test("leading and trailing line breaks add no argument")
     func surroundingLineBreaks() {
         #expect(parse("\n\r\nGET k\n\n") == ["GET", "k"])
-        #expect(parse("\n\r\n\r").isEmpty)
+        #expect(parse("\n\r\n\r")?.isEmpty == true)
     }
 
     @Test("a double-quoted argument keeps its line breaks")
@@ -67,7 +69,42 @@ struct RedisCommandParsingTests {
 
     @Test("empty and blank input give no arguments")
     func emptyInput() {
-        #expect(parse("").isEmpty)
-        #expect(parse(" \t ").isEmpty)
+        #expect(parse("")?.isEmpty == true)
+        #expect(parse(" \t ")?.isEmpty == true)
+    }
+
+    @Test("an unclosed quote gives no command, so a cut value is never stored")
+    func unclosedQuoteGivesNil() {
+        #expect(parse("SET greeting \"hello") == nil)
+        #expect(parse("SET greeting 'hello") == nil)
+        #expect(parse("SET k \"a\\\"") == nil)
+    }
+
+    @Test("a backslash before a line break keeps one command, split and parsed alike")
+    func escapedLineBreakMatchesSplitter() throws {
+        try expectOneCommand("SET k a\\\nb", parsesTo: ["SET", "k", "a\nb"])
+        try expectOneCommand("SET k a\\\r\nb", parsesTo: ["SET", "k", "a\r\nb"])
+    }
+
+    @Test("Run on a command ending in an escaped blank sends that blank in its key")
+    func escapedTrailingBlankReachesTheDriver() {
+        let script = "DEL victim\\ ; GET other"
+        let target = QueryRunTarget.resolve(
+            in: script, selection: NSRange(location: 2, length: 0), databaseType: .redis, session: nil
+        )
+        #expect(target == .statement("DEL victim\\ ", range: NSRange(location: 0, length: 12)))
+        for text in ["DEL victim\\ ", script] {
+            let runText = QueryScript.trimmed(text, databaseType: .redis)
+            let units = QueryScript.plan(runText, databaseType: .redis, sendsBatchesWhole: false).units
+            let arguments = units.first.flatMap { parse($0.sql) }
+            #expect(arguments == ["DEL", "victim "])
+        }
+    }
+
+    private func expectOneCommand(_ script: String, parsesTo expected: [String]) throws {
+        let commands = RedisCommandSplitter.commands(in: script)
+        #expect(commands.count == 1)
+        let command = try #require(commands.first)
+        #expect(parse(command.text) == expected)
     }
 }

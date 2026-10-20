@@ -80,7 +80,27 @@ final class RowDetailViewModel {
     var canEdit: Bool {
         table != nil && session != nil && !columnDetails.isEmpty && allowsRowEditing
             && !safeModeLevel.blocksWrites
-            && primaryKeyComponents(at: currentIndex) != nil
+            && primaryKeyValues(at: currentIndex) != nil
+    }
+
+    private func primaryKeyValues(at rowIndex: Int) -> [(column: String, value: String)]? {
+        Self.primaryKeyValues(cells: cells(at: rowIndex), columns: columns, columnDetails: columnDetails)
+    }
+
+    // A placeholder key cell, such as `[BLOB 16 bytes]`, matches no row as a predicate, so the row has no key.
+    static func primaryKeyValues(
+        cells: [Cell], columns: [ColumnInfo], columnDetails: [ColumnInfo]
+    ) -> [(column: String, value: String)]? {
+        let keyColumns = columnDetails.filter(\.isPrimaryKey)
+        guard !keyColumns.isEmpty else { return nil }
+        var values: [(column: String, value: String)] = []
+        for key in keyColumns {
+            guard let index = columns.firstIndex(where: { $0.name == key.name }),
+                  index < cells.count,
+                  let value = cells[index].keyText(column: key.name) else { return nil }
+            values.append((column: key.name, value: value))
+        }
+        return values
     }
 
     var supportsLazyLoading: Bool { loadFullValueProvider != nil }
@@ -148,20 +168,6 @@ final class RowDetailViewModel {
     private static func opensContainer(_ value: String) -> Bool {
         let first = value.utf8.first { $0 != 0x20 && $0 != 0x09 && $0 != 0x0A && $0 != 0x0D }
         return first == UInt8(ascii: "{") || first == UInt8(ascii: "[")
-    }
-
-    // A key cell drawn as a placeholder, such as `[BLOB 16 bytes]`, matches no row in a WHERE clause.
-    private func primaryKeyComponents(at rowIndex: Int) -> [PrimaryKeyComponent]? {
-        let keyColumns = columnDetails.filter(\.isPrimaryKey)
-        guard !keyColumns.isEmpty else { return nil }
-        let rowCells = cells(at: rowIndex)
-        var components: [PrimaryKeyComponent] = []
-        for key in keyColumns {
-            guard let index = columns.firstIndex(where: { $0.name == key.name }), index < rowCells.count,
-                  let value = rowCells[index].keyText(column: key.name) else { return nil }
-            components.append(PrimaryKeyComponent(column: key.name, value: value))
-        }
-        return components
     }
 
     func columnDetail(for name: String) -> ColumnInfo? {
@@ -318,12 +324,23 @@ final class RowDetailViewModel {
         pendingWriteConfirmation = false
         writeGate.cancel()
 
-        guard let keys = primaryKeyComponents(at: currentIndex) else {
+        guard columnDetails.contains(where: { $0.isPrimaryKey }) else {
             operationError = AppError(
                 category: .config,
                 title: String(localized: "Cannot Save"),
                 message: String(localized: "No primary key values found."),
                 recovery: String(localized: "This table needs a primary key to identify the row."),
+                underlying: nil
+            )
+            return false
+        }
+
+        guard let pkValues = primaryKeyValues(at: currentIndex) else {
+            operationError = AppError(
+                category: .config,
+                title: String(localized: "Cannot Save"),
+                message: String(localized: "This row's primary key is not plain text, so it cannot identify the row."),
+                recovery: nil,
                 underlying: nil
             )
             return false
@@ -354,7 +371,7 @@ final class RowDetailViewModel {
             type: databaseType,
             driver: session.driver,
             changes: changes,
-            primaryKeys: keys.map { (column: $0.column, value: $0.value) }
+            primaryKeys: pkValues
         )
 
         switch writeGate.submit(sql, under: safeModeLevel) {
@@ -428,7 +445,8 @@ final class RowDetailViewModel {
     // The server can store other text than was sent: jsonb drops duplicate keys and reorders the rest. MySQL also
     // counts only changed rows, so this read, not the affected count, tells a missing row from an unchanged one.
     private func storedCells(at columnIndices: [Int], inRow rowIndex: Int) async throws -> [Int: Cell]? {
-        guard let loadFullValueProvider, let table, let keys = primaryKeyComponents(at: rowIndex) else { return nil }
+        guard let loadFullValueProvider, let table, let pkValues = primaryKeyValues(at: rowIndex) else { return nil }
+        let keys = pkValues.map { PrimaryKeyComponent(column: $0.column, value: $0.value) }
         var stored: [Int: Cell] = [:]
         for index in columnIndices {
             let ref = CellRef(table: table.name, column: columns[index].name, primaryKey: keys)
