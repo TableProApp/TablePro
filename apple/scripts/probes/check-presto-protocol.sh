@@ -57,7 +57,7 @@ def run(sql, headers=None):
 
 
 def check(name, passed, detail):
-    print(("ok   " if passed else "FAIL ") + name + ": " + json.dumps(detail)[:300])
+    print(("ok   " if passed else "FAIL ") + name + ": " + json.dumps(detail, default=str)[:600])
     if not passed:
         failures.append(name)
 
@@ -74,8 +74,9 @@ for attempt in range(60):
 trino_only = run("SELECT 1", {"X-Trino-User": "tablepro", "Content-Type": "text/plain"})
 check("X-Trino- headers carry no user", trino_only.get("httpStatus") == 400 or bool(trino_only.get("error")), trino_only)
 
-version = run("SELECT version()")
-check("SELECT version()", not version.get("error") and version.get("rows"), version)
+check("version() does not exist", "not registered" in (run("SELECT version()").get("error") or ""), "")
+node = run("SELECT node_version FROM system.runtime.nodes WHERE coordinator = true")
+check("coordinator version from system.runtime.nodes", not node.get("error") and node.get("rows"), node)
 
 catalogs = run("SHOW CATALOGS")
 check("SHOW CATALOGS", "system" in [r[0] for r in catalogs.get("rows", [])], catalogs)
@@ -117,21 +118,27 @@ check("FETCH FIRST runs", run(values + " FETCH FIRST 2 ROWS ONLY").get("rows") =
 for prefix in ["EXPLAIN", "EXPLAIN (TYPE DISTRIBUTED)", "EXPLAIN (TYPE IO)", "EXPLAIN (TYPE VALIDATE)", "EXPLAIN ANALYZE"]:
     check(prefix, not run(prefix + " " + values).get("error"), "")
 
-check("SHOW STATS FOR", not run("SHOW STATS FOR (SELECT 1 AS x)").get("error"), "")
+stats = run('SHOW STATS FOR "tpch"."tiny"."nation"')
+summary = [r for r in stats.get("rows", []) if r[0] is None]
+check("SHOW STATS row_count is the fifth column", bool(summary) and summary[0][4] == 25, stats)
+browse = run('SELECT * FROM "tpch"."tiny"."nation" LIMIT 10')
+check("browse with LIMIT", len(browse.get("rows", [])) == 10, browse.get("error"))
+session_offset = run(values + " OFFSET 1 ROWS LIMIT 1", presto_headers({"X-Presto-Session": "offset_clause_enabled=true"}))
+check("offset_clause_enabled turns OFFSET on", session_offset.get("rows") == [[2]], session_offset)
 check("COMMENT ON TABLE is a syntax error", bool(run("COMMENT ON TABLE system.runtime.nodes IS 'x'").get("error")), "")
 
 capability = run("SELECT 1", presto_headers({"X-Presto-Client-Capabilities": "PARAMETRIC_DATETIME"}))
 check("an unknown capability header is ignored", capability.get("rows") == [[1]], capability)
 
 typed = run("SELECT TIMESTAMP '2024-01-02 03:04:05.123456', CAST('ab' AS varbinary), ARRAY[1, 2], JSON '{\"a\":1}'")
-check("type names and values", not typed.get("error"), typed)
+check("type names and values", not typed.get("error"), [typed.get("rows"), [c["type"] for c in typed.get("columns") or []]])
 
 session = run("SELECT 1", presto_headers({"X-Presto-Catalog": "system", "X-Presto-Schema": "runtime"}))
 check("catalog and schema headers", session.get("rows") == [[1]], session)
 
 status, _, body = request(
     "POST", f"{base}/v1/statement", presto_headers(),
-    b"SELECT count(*) FROM UNNEST(sequence(1, 1000000000)) CROSS JOIN UNNEST(sequence(1, 1000))",
+    b"SELECT count(*) FROM tpch.sf100000.lineitem",
 )
 results = json.loads(body)
 query_id, next_uri = results["id"], results["nextUri"]
@@ -139,9 +146,14 @@ for _ in range(3):
     _, _, body = request("GET", next_uri)
     next_uri = json.loads(body).get("nextUri") or next_uri
 cancel_status, _, _ = request("DELETE", next_uri)
-time.sleep(3)
-state = run(f"SELECT state, error_code FROM system.runtime.queries WHERE query_id = '{query_id}'")
-check("DELETE on nextUri cancels", cancel_status == 204 and state.get("rows", [[None]])[0][0] == "FAILED", [cancel_status, state])
+state = {}
+for _ in range(20):
+    state = run(f"SELECT state, error_code FROM system.runtime.queries WHERE query_id = '{query_id}'")
+    if state.get("rows") and state["rows"][0][0] in ("FAILED", "FINISHED"):
+        break
+    time.sleep(1)
+final_state = (state.get("rows") or [[None]])[0][0]
+check("DELETE on nextUri cancels", cancel_status == 204 and final_state == "FAILED", [cancel_status, state])
 
 print("FAILED: " + ", ".join(failures) if failures else "all checks passed")
 sys.exit(1 if failures else 0)
