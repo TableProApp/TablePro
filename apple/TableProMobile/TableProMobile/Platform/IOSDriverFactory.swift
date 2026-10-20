@@ -166,6 +166,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 dialedHosts: [connection.host],
                 queryTimeoutSeconds: connection.queryTimeoutSeconds,
                 rowChangeSuffix: Self.clickHouseWaitsForMutation,
+                rowPin: Self.clickHouseRowPosition,
                 rowIdentity: .everyColumn,
                 readsOnly: { !SQLWriteClassifier.isWriteQuery($0, databaseType: .clickhouse) }
             )
@@ -177,6 +178,9 @@ nonisolated final class IOSDriverFactory: DriverFactory {
     // A ClickHouse mutation applies in the background unless asked to wait. The row screen keeps the typed values once
     // a save returns, and a delete looks for the row right after, so both need it applied.
     static let clickHouseWaitsForMutation = " SETTINGS mutations_sync = 1"
+
+    // A MergeTree row's part and offset in it. A row with the same values inserted later lands in another part.
+    static let clickHouseRowPosition = ["_part", "_part_offset"]
 
     static let supportedTypeList: [DatabaseType] = [
         .sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle,

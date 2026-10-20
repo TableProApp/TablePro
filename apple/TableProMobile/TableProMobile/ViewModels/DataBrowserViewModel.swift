@@ -488,6 +488,12 @@ final class DataBrowserViewModel {
                 return false
             }
             return true
+        } catch RowChangeRefusal.rowNotFound {
+            await load()
+            return true
+        } catch let refusal as RowChangeRefusal {
+            operationError = SharedRowKey.error(for: refusal)
+            return false
         } catch {
             operationError = ErrorClassifier.classify(
                 error,

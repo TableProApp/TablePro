@@ -6,8 +6,9 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var answersBoundedReads = true
     var hasTransactions = false
     var scriptedColumns: [PluginColumnInfo] = []
-    // Answers to the row counts a write asks first and a delete asks again, in order.
-    var rowCounts: [Int] = [1, 0]
+    // How many rows each row lookup finds, in order: the check before a change, the lookup when it runs, and the
+    // check after it.
+    var rowCounts: [Int] = [1, 1, 0]
 
     private(set) var boundedQueries: [(query: String, rowCap: Int)] = []
     private(set) var plainQueries: [String] = []
@@ -16,7 +17,7 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private(set) var generatedInserts: [Int: [PluginCellValue]] = [:]
     private(set) var generatedColumns: [String] = []
     private(set) var appliedQueryTimeouts: [Int] = []
-    private(set) var countQueries: [(query: String, parameters: [PluginCellValue])] = []
+    private(set) var rowLookups: [(query: String, parameters: [PluginCellValue])] = []
 
     func connect() async throws {}
 
@@ -31,11 +32,12 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        if query.hasPrefix("SELECT COUNT(*)") {
-            countQueries.append((query, parameters))
+        if query.hasPrefix("SELECT "), query.hasSuffix(" LIMIT 2") {
+            rowLookups.append((query, parameters))
             let count = rowCounts.isEmpty ? 0 : rowCounts.removeFirst()
             return PluginQueryResult(
-                columns: ["count"], columnTypeNames: ["UInt64"], rows: [[.text(String(count))]],
+                columns: ["_part", "_part_offset"], columnTypeNames: ["String", "UInt64"],
+                rows: Array(repeating: [.text("all_1_1_0"), .text("0")], count: count),
                 rowsAffected: 0, timing: PluginQueryTiming(total: 0)
             )
         }

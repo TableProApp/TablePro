@@ -9,6 +9,20 @@ nonisolated enum RowIdentity: Sendable, Equatable {
     case everyColumn
 }
 
+// The row an edit or delete was read from, found again when the change runs.
+nonisolated struct RowTarget: Sendable {
+    let table: String
+    let columns: [String]
+    let row: [String?]
+    // The row as an update leaves it; nil for a delete.
+    let changedRow: [String?]?
+}
+
+nonisolated enum RowChangeRefusal: Error, Equatable {
+    case rowNotFound
+    case identicalRows
+}
+
 // ClickHouse writes rows as mutations and MongoDB as document commands, neither of which SQLBuilder can express.
 nonisolated protocol DriverRowWriting: DatabaseDriver {
     var rowIdentity: RowIdentity { get }
@@ -33,6 +47,9 @@ nonisolated protocol DriverRowWriting: DatabaseDriver {
 
     func run(_ writes: [PluginRowWrite]) async throws -> Int
 
-    // How many rows hold exactly these values, which every-column identity needs to be one.
+    // Runs an update or delete on the one row `target` names, or throws RowChangeRefusal.
+    func run(_ writes: [PluginRowWrite], changing target: RowTarget) async throws -> Int
+
+    // How many rows hold exactly these values, up to two, which every-column identity needs to be one.
     func matchingRowCount(table: String, schema: String?, columns: [String], row: [String?]) async throws -> Int
 }

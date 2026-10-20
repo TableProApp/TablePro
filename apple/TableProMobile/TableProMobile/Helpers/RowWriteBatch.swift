@@ -6,18 +6,19 @@ import TableProPluginKit
 nonisolated enum RowWriteBatch: Sendable {
     case sql([String], any DatabaseDriver)
     case driver([PluginRowWrite], any DriverRowWriting)
+    case rowChange([PluginRowWrite], any DriverRowWriting, RowTarget)
 
     var isEmpty: Bool {
         switch self {
         case .sql(let statements, _): statements.isEmpty
-        case .driver(let writes, _): writes.isEmpty
+        case .driver(let writes, _), .rowChange(let writes, _, _): writes.isEmpty
         }
     }
 
     var statements: [String] {
         switch self {
         case .sql(let statements, _): statements
-        case .driver(let writes, _): writes.map(\.statement)
+        case .driver(let writes, _), .rowChange(let writes, _, _): writes.map(\.statement)
         }
     }
 
@@ -26,6 +27,7 @@ nonisolated enum RowWriteBatch: Sendable {
         switch self {
         case .sql(let statements, let driver): try await driver.executeWrite(statements)
         case .driver(let writes, let writer): try await writer.run(writes)
+        case .rowChange(let writes, let writer, let target): try await writer.run(writes, changing: target)
         }
     }
 
@@ -44,7 +46,12 @@ nonisolated enum RowWriteBatch: Sendable {
             let writes = try writer.updateWrites(
                 table: table, schema: schema, columns: columns, originalRow: locator.row, changes: changes
             )
-            return .driver(writes, writer)
+            var changed = locator.row
+            for change in changes {
+                guard let index = columns.firstIndex(of: change.column), index < changed.count else { continue }
+                changed[index] = change.value
+            }
+            return .rowChange(writes, writer, RowTarget(table: table, columns: columns, row: locator.row, changedRow: changed))
         }
         guard let keys = locator.keyValues else { return nil }
         let sql = SQLBuilder.buildUpdate(
@@ -65,7 +72,7 @@ nonisolated enum RowWriteBatch: Sendable {
     ) throws -> RowWriteBatch? {
         if let writer = driver as? any DriverRowWriting {
             let writes = try writer.deleteWrites(table: table, schema: schema, columns: columns, originalRow: locator.row)
-            return .driver(writes, writer)
+            return .rowChange(writes, writer, RowTarget(table: table, columns: columns, row: locator.row, changedRow: nil))
         }
         guard let keys = locator.keyValues, !keys.isEmpty else { return nil }
         let sql = SQLBuilder.buildDelete(
