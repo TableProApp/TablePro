@@ -804,11 +804,11 @@ struct QueryEditorView: View {
 
         let holdsCatalog = SessionLocalStatements.changesDatabases(trimmed, databaseType: databaseType)
         if holdsCatalog { await appState.connectionManager.holdCatalogConnections(for: connectionId) }
-        defer { if holdsCatalog { appState.connectionManager.releaseCatalogConnections(for: connectionId) } }
         // Waited on before the Stop check, and nothing suspends from here until `track` marks the session busy, which
         // keeps a new list reload off it.
         await appState.catalogChanges.sessionReadsFinished(for: connectionId)
         guard !Task.isCancelled else {
+            if holdsCatalog { appState.connectionManager.releaseCatalogConnections(for: connectionId) }
             recordHistory(query: trimmed, outcome: .stopped, errorMessage: QueryExecutionOutcome.stopped.historyMessage)
             isExecuting = false
             completion.reopenColumnReads()
@@ -827,6 +827,8 @@ struct QueryEditorView: View {
         }
 
         progressUpdater.cancel()
+        // Released before the change posts, so the reload it starts can open a catalog connection again.
+        if holdsCatalog { appState.connectionManager.releaseCatalogConnections(for: connectionId) }
         postCatalogChanges(on: session)
         let phase = viewModel.phase
         let outcome = QueryExecutionOutcome(phase: phase)

@@ -157,5 +157,14 @@ struct SQLCompletionProviderCatalogTests {
 
         #expect(session.items.first { $0.label == "SYSDATE" }?.insertText == "SYSDATE")
         #expect(session.items.first { $0.label == "SYS_GUID" }?.insertText == "SYS_GUID()")
+
+        let sqlServer = SQLCompletionProvider(
+            catalog: StubCatalog(tables: ["orders"], columns: [:]),
+            grammar: .engine("SQL Server"),
+            vocabulary: .curated(forDatabaseTypeId: "SQL Server")
+        )
+        let global = "SELECT @@ROW"
+        let globals = await sqlServer.completionSession(text: global, cursorPosition: (global as NSString).length)
+        #expect(globals.items.first { $0.label == "@@ROWCOUNT" }?.insertText == "@@ROWCOUNT")
     }
 }

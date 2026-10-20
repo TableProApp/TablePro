@@ -15,7 +15,7 @@ public extension SQLEngineVocabulary {
             "OBJECT_ID", "OBJECT_NAME", "SCHEMA_NAME", "DB_NAME",
             "SCOPE_IDENTITY", "@@IDENTITY", "@@ROWCOUNT"
         ],
-        bareFunctions: ["CURRENT_TIMESTAMP"],
+        bareFunctions: ["CURRENT_TIMESTAMP", "@@IDENTITY", "@@ROWCOUNT"],
         dataTypes: [
             "INT", "INTEGER", "TINYINT", "SMALLINT", "BIGINT",
             "DECIMAL", "NUMERIC", "FLOAT", "REAL", "MONEY", "SMALLMONEY",
