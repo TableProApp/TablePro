@@ -66,8 +66,20 @@ struct ConnectionFormViewModelTests {
         vm.type = .redis
         #expect(vm.port == "6379")
 
+        vm.type = .clickhouse
+        #expect(vm.port == "8123")
+
         vm.type = .sqlite
         #expect(vm.port == "")
+    }
+
+    @Test("A cleared port saves the type's default port, not MySQL's")
+    func clearedPortSavesTheTypeDefault() {
+        let vm = ConnectionFormViewModel()
+        vm.type = .clickhouse
+        vm.port = ""
+
+        #expect(vm.edits.port == 8_123)
     }
 
     @Test("canSave requires database for SQLite, host for server types")

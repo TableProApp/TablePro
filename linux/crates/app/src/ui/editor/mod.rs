@@ -50,6 +50,7 @@ use self::result_widgets::PageActions;
 use self::run_log::{EntryKind, RunEvent, RunLog};
 use self::run_scope::ScopedText;
 use self::script_runner::{RUN_ROW_LIMIT, ScriptRun, plan_batches, run_in_tab};
+pub(crate) use self::transaction_dirty::OpenTransaction;
 use super::clipboard::{CopyRequest, InClauseRows};
 use super::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
 use super::grid::{GridMsg, GridSink, present_row_json};
@@ -137,6 +138,12 @@ impl SqlEditor {
     /// Whether the tab's connection holds a transaction the user opened.
     pub fn has_open_transaction(&self) -> bool {
         self.imp().transaction_dirty.get()
+    }
+
+    /// The transaction the results line names. Unlike
+    /// `has_open_transaction`, an engine that cannot say has none.
+    pub(crate) fn open_transaction(&self) -> Option<OpenTransaction> {
+        self.imp().open_transaction.get()
     }
 
     /// Whether the last run sent a statement that can change what the
@@ -512,15 +519,14 @@ impl SqlEditor {
         imp.run_button.set_sensitive(true);
         imp.stop_button.set_visible(false);
         imp.results.set_running(false);
-        let (summary, label, dirty, first, entry, outcome) = {
+        let (summary, transaction, first, entry, outcome) = {
             let log = imp.log.borrow();
             let Some(log) = log.as_ref() else {
                 return;
             };
             (
                 log.summary(),
-                transaction_dirty::transaction_label(log.lost(), log.transaction()),
-                transaction_dirty::transaction_dirty(log.lost(), log.transaction(), log.has_run()),
+                RunTransaction::of(log),
                 log.first_to_show(),
                 run_history::history_entry(query, metadata, started_at, log),
                 log.outcome(),
@@ -533,11 +539,17 @@ impl SqlEditor {
             WorkOutcome::Succeeded | WorkOutcome::Cancelled => gtk4::AccessibleAnnouncementPriority::Medium,
         };
         crate::ui::a11y::announce(&*imp.results, &summary, priority);
-        imp.results.set_transaction(label.as_deref());
+        imp.results
+            .set_transaction(transaction.label.as_deref(), transaction.offers_commit);
         if let Some(first) = first.and_then(|first| u32::try_from(first).ok()) {
             imp.results.select(first);
         }
-        if imp.transaction_dirty.replace(dirty) != dirty {
+        let dirty = transaction.dirty;
+        let dirty_changed = imp.transaction_dirty.replace(dirty) != dirty;
+        // Open to failed keeps the tab dirty, and the window still names
+        // the change on its other tabs.
+        let open_changed = imp.open_transaction.replace(transaction.open) != transaction.open;
+        if dirty_changed || open_changed {
             self.emit_by_name::<()>("transaction-changed", &[&dirty]);
         }
         self.record_history(entry, dialect);
@@ -832,6 +844,25 @@ impl SqlEditor {
                 editor.insert_file(file, true).await;
             }
         });
+    }
+}
+
+struct RunTransaction {
+    label: Option<String>,
+    offers_commit: bool,
+    dirty: bool,
+    open: Option<OpenTransaction>,
+}
+
+impl RunTransaction {
+    fn of(log: &RunLog) -> Self {
+        let (lost, state) = (log.lost(), log.transaction());
+        Self {
+            label: transaction_dirty::transaction_label(lost, state),
+            offers_commit: transaction_dirty::offers_commit(lost, state),
+            dirty: transaction_dirty::transaction_dirty(lost, state, log.has_run()),
+            open: transaction_dirty::open_transaction(lost, state),
+        }
     }
 }
 

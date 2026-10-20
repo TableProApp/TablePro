@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 import TableProSQLGrammar
 import TableProUtilities
 
@@ -25,9 +26,13 @@ enum QueryStatementModel {
     /// Statements are the top-level statements of a JavaScript program.
     case javascript
 
+    /// A command ends at a semicolon or a line break outside quotes, read by the codec the Redis driver uses.
+    case redis
+
     static func forDatabaseType(_ type: DatabaseType) -> QueryStatementModel {
         switch type {
         case .mongodb: return .javascript
+        case .redis: return .redis
         default: return .sql
         }
     }
@@ -48,6 +53,8 @@ enum QueryStatementScanner {
             return SQLStatementScanner.locatedStatements(in: text, grammar: grammar)
         case .javascript:
             return JavaScriptStatementScanner.locatedStatements(in: text).map(located)
+        case .redis:
+            return RedisCommandSplitter.commands(in: text).map(located)
         }
     }
 
@@ -63,6 +70,8 @@ enum QueryStatementScanner {
             return JavaScriptStatementScanner.executableStatements(in: text)
                 .map(located)
                 .filter { $0.contentRange.length > 0 }
+        case .redis:
+            return RedisCommandSplitter.commands(in: text).map(located)
         }
     }
 
@@ -82,6 +91,10 @@ enum QueryStatementScanner {
                     sql: (text as NSString).substring(with: located.contentRange),
                     range: located.contentRange
                 )
+            }
+        case .redis:
+            return RedisCommandSplitter.commands(in: text).map { command in
+                SQLStatementScanner.ExecutableStatement(sql: command.text, range: command.range)
             }
         }
     }
@@ -104,6 +117,11 @@ enum QueryStatementScanner {
                 return SQLStatementScanner.LocatedStatement(sql: "", offset: 0, hasContent: false)
             }
             return located(statement)
+        case .redis:
+            guard let command = RedisCommandSplitter.command(at: cursorPosition, in: text) else {
+                return SQLStatementScanner.LocatedStatement(sql: "", offset: 0, hasContent: false)
+            }
+            return located(command)
         }
     }
 
@@ -116,7 +134,7 @@ enum QueryStatementScanner {
         switch model {
         case .sql:
             return SQLStatementScanner.statementStart(after: offset, in: text, grammar: grammar)
-        case .javascript:
+        case .javascript, .redis:
             return navigableStatements(in: text, model: model, grammar: grammar)
                 .first { $0.contentRange.location > offset }?
                 .contentRange.location
@@ -132,7 +150,7 @@ enum QueryStatementScanner {
         switch model {
         case .sql:
             return SQLStatementScanner.statementStart(before: offset, in: text, grammar: grammar)
-        case .javascript:
+        case .javascript, .redis:
             return navigableStatements(in: text, model: model, grammar: grammar)
                 .last { $0.contentRange.location < offset }?
                 .contentRange.location
@@ -148,11 +166,32 @@ enum QueryStatementScanner {
         switch model {
         case .sql:
             return SQLStatementScanner.statementSelectionEnd(after: offset, in: text, grammar: grammar)
-        case .javascript:
+        case .javascript, .redis:
             if let next = statementStart(after: offset, in: text, model: model, grammar: grammar) { return next }
             let end = navigableStatements(in: text, model: model, grammar: grammar).last?.contentRange.upperBound
             return end.flatMap { $0 > offset ? $0 : nil }
         }
+    }
+
+    /// The span from the first statement to the last, which is what a driver receives for a whole text.
+    static func executableText(
+        of text: String,
+        model: QueryStatementModel,
+        grammar: SQLLexicalGrammar
+    ) -> String {
+        switch model {
+        case .sql, .javascript:
+            return SQLStatementScanner.executableText(of: text, grammar: grammar)
+        case .redis:
+            let commands = RedisCommandSplitter.commands(in: text)
+            guard let first = commands.first, let last = commands.last else { return "" }
+            let start = first.range.location
+            return (text as NSString).substring(with: NSRange(location: start, length: NSMaxRange(last.range) - start))
+        }
+    }
+
+    private static func located(_ command: RedisCommandSplitter.Command) -> SQLStatementScanner.LocatedStatement {
+        SQLStatementScanner.LocatedStatement(wholeText: command.text, offset: command.range.location)
     }
 
     private static func located(

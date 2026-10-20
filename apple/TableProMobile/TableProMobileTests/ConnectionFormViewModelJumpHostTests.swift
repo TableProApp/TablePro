@@ -1,6 +1,7 @@
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProSSHTransport
 import Testing
 
 @testable import TableProMobile
@@ -150,6 +151,67 @@ struct ConnectionFormViewModelJumpHostTests {
             secondHop.id: .privateKey(key: hopKey, passphrase: "unlock")
         ]
         #expect(try stored(for: connection.id, in: store) == expected)
+    }
+
+    private func aliased() -> DatabaseConnection {
+        let ssh = SSHConfiguration(host: "db", username: "", authMethod: .privateKey)
+        var connection = DatabaseConnection(
+            name: "Alias",
+            type: .postgresql,
+            host: "127.0.0.1",
+            port: 5_432,
+            sshEnabled: true,
+            sshConfiguration: ssh
+        )
+        connection.sshRoute = PublishedSSHRoute(
+            publisher: UUID(),
+            input: ssh.publishedRouteInput,
+            hops: [.init(id: Self.routeHopId, alias: "bastion", host: "b.example", port: 22, username: "jump")],
+            target: .init(alias: "db", host: "10.0.0.5", port: 22, username: "deploy")
+        )
+        return connection
+    }
+
+    private static let routeHopId = PublishedSSHRoute.derivedHopId(alias: "bastion", occurrence: 0)
+
+    @Test("A hop only the Mac's ~/.ssh/config names is shown read only and takes a key here")
+    func routeHopTakesAKey() async throws {
+        let connection = aliased()
+        let store = RecordingSecureStore()
+        let form = await loadedForm(connection, store: store)
+
+        #expect(form.macRoute != nil)
+        #expect(form.isRouteOnlyHop(Self.routeHopId))
+        #expect(form.hostFieldsAreReadOnly(forHop: Self.routeHopId))
+        #expect(form.jumpHosts.isEmpty)
+
+        form.updateJumpHost(Self.routeHopId) { $0.usesServerKey = true }
+        try form.persistJumpHostCredentials(secureStore: store)
+
+        #expect(try stored(for: connection.id, in: store) == [Self.routeHopId: .sshServerKey])
+    }
+
+    @Test("Typing a different SSH host here stops the Mac's route from applying")
+    func editingTheServerDropsTheRoute() async {
+        let form = await loadedForm(aliased(), store: RecordingSecureStore())
+
+        form.sshHost = "db.example.com"
+        #expect(form.macRoute == nil)
+    }
+
+    @Test("A profile-linked tunnel keeps the server and hops read only, and tests with the profile's password")
+    func profileLinkedTunnelIsReadOnly() async {
+        var connection = chained(authMethod: .password)
+        let profileId = UUID()
+        connection.sshProfileId = profileId
+        let store = RecordingSecureStore()
+        store.seed("com.TablePro.sshprofile.password.\(profileId.uuidString)", "profile-secret")
+        let form = await loadedForm(connection, store: store)
+
+        #expect(form.sshFollowsMacProfile)
+        #expect(form.hostFieldsAreReadOnly(forHop: firstHop.id))
+        #expect(form.hasSSHProfilePassword)
+        #expect(form.testSecrets(for: connection.id)["com.TablePro.sshprofile.password.\(profileId.uuidString)"] == "profile-secret")
     }
 
     @Test("Removing a hop drops its key, and removing the last keyed hop deletes the item")

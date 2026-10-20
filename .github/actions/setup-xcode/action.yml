@@ -7,8 +7,8 @@ inputs:
     required: false
     default: "false"
 
-# The only place the version and build are written. The bundle name differs by machine
-# (Xcode_27.1_Release_Candidate.app on xcode-27, Xcode.app on a Mac), so it is found by its version.plist.
+# The only place the version and build are written. The image names the bundle by its own scheme
+# (Xcode_27.1_Release_Candidate.app on xcode-27), so it is found by its version.plist.
 runs:
   using: composite
   steps:

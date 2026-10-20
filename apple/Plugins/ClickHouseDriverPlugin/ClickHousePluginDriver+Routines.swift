@@ -8,7 +8,7 @@ import TableProPluginKit
 
 /// ClickHouse has user-defined functions and no procedures or triggers, so only the Functions
 /// section appears.
-public enum ClickHouseObjectQueries {
+nonisolated public enum ClickHouseObjectQueries {
     public static func escapeLiteral(_ value: String) -> String {
         value
             .replacingOccurrences(of: "\\", with: "\\\\")
@@ -45,7 +45,7 @@ public enum ClickHouseObjectQueries {
     }
 }
 
-extension ClickHousePluginDriver {
+nonisolated extension ClickHousePluginDriver {
     /// A server without `system.functions.create_query` (21.8 and older) predates
     /// `CREATE FUNCTION`, so it has no user-defined function to list.
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {

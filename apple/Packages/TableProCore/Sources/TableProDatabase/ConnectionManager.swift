@@ -1,5 +1,6 @@
 import Foundation
 import TableProModels
+import TableProSSHTransport
 
 public final class ConnectionManager: @unchecked Sendable {
     public static let defaultTeardownWaitLimit: Duration = .seconds(5)
@@ -62,27 +63,37 @@ public final class ConnectionManager: @unchecked Sendable {
 
         var effectiveHost = connection.host
         var effectivePort = connection.port
+        var forwardsToUnixSocket = false
         var tunnelId: UUID?
-        if connection.sshEnabled, let ssh = connection.sshConfiguration {
+        if connection.sshEnabled, let ssh = connection.sshConfigurationForDialing {
             guard let provider = sshProvider else {
                 throw ConnectionError.sshNotSupported
             }
             let tunnel = try await provider.createTunnel(
                 config: ssh,
                 connectionId: connection.id,
-                remoteHost: connection.host,
-                remotePort: connection.port,
+                sshProfileId: connection.sshProfileId,
+                destination: connection.sshForwardDestination,
                 prompter: prompter
             )
             tunnelId = tunnel.id
             effectiveHost = tunnel.localHost
             effectivePort = tunnel.localPort
+            forwardsToUnixSocket = connection.sshForwardUnixSocketPath != nil
         }
 
         do {
             var effectiveConnection = connection
             effectiveConnection.host = effectiveHost
             effectiveConnection.port = effectivePort
+            if tunnelId != nil {
+                effectiveConnection.additionalFields[DatabaseConnection.preTunnelHostKey] = connection.host
+            }
+            // A server refuses TLS on a unix socket, as the Mac's tunnel path already accounts for.
+            if forwardsToUnixSocket {
+                effectiveConnection.sslEnabled = false
+                effectiveConnection.sslConfiguration = nil
+            }
 
             let driver = try driverFactory.createDriver(for: effectiveConnection, password: password)
             try await driver.connect()

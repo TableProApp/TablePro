@@ -919,6 +919,7 @@ extension DatabaseManager {
         }
         activeSessions[connectionId] = session
         connectionStatusVersions[connectionId, default: 0] &+= 1
+        sessionTransactions.prune(connectionId)
         AppEvents.shared.connectionStatusChanged.send(
             ConnectionStatusChange(connectionId: connectionId, status: session.status)
         )

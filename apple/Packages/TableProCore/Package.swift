@@ -99,7 +99,7 @@ let package = Package(
         ),
         .target(
             name: "TableProModels",
-            dependencies: ["TableProPluginKit", "TableProCoreTypes"],
+            dependencies: ["TableProPluginKit", "TableProCoreTypes", "TableProSSHTransport"],
             path: "Sources/TableProModels"
         ),
         .target(
@@ -109,12 +109,14 @@ let package = Package(
         ),
         .target(
             name: "TableProDatabase",
-            dependencies: ["TableProModels", "TableProCoreTypes", "TableProPluginKit", "TableProSQLGrammar"],
+            dependencies: ["TableProModels", "TableProCoreTypes", "TableProPluginKit", "TableProSQLGrammar", "TableProSSHTransport"],
             path: "Sources/TableProDatabase"
         ),
         .target(
             name: "TableProQuery",
-            dependencies: ["TableProModels", "TableProPluginKit", "TableProCoreTypes", "TableProSQLGrammar"],
+            dependencies: [
+                "TableProModels", "TableProPluginKit", "TableProCoreTypes", "TableProSQLGrammar", "TableProRedisCore"
+            ],
             path: "Sources/TableProQuery"
         ),
         .target(
@@ -322,7 +324,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProModelsTests",
-            dependencies: ["TableProModels", "TableProPluginKit"],
+            dependencies: ["TableProModels", "TableProPluginKit", "TableProSSHTransport"],
             path: "Tests/TableProModelsTests"
         ),
         .testTarget(
@@ -332,7 +334,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProDatabaseTests",
-            dependencies: ["TableProDatabase", "TableProModels", "TableProPluginKit", "TableProTestSupport"],
+            dependencies: ["TableProDatabase", "TableProModels", "TableProPluginKit", "TableProSSHTransport", "TableProTestSupport"],
             path: "Tests/TableProDatabaseTests"
         ),
         .testTarget(
@@ -379,7 +381,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProSyncTests",
-            dependencies: ["TableProSync", "TableProSyncTransport", "TableProModels"],
+            dependencies: ["TableProSync", "TableProSyncTransport", "TableProModels", "TableProSSHTransport"],
             path: "Tests/TableProSyncTests"
         ),
         .testTarget(

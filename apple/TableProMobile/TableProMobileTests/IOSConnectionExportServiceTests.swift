@@ -1,7 +1,10 @@
+import CloudKit
 import Foundation
 import TableProImport
 @testable import TableProMobile
 import TableProModels
+import TableProSync
+import TableProSyncTransport
 import Testing
 
 @MainActor
@@ -18,11 +21,18 @@ struct IOSConnectionExportServiceTests {
         fixture.makeState(syncEnabled: false, secureStore: secureStore)
     }
 
-    private func exportedBundle(_ connections: [DatabaseConnection], from state: AppState) async throws -> ConnectionBundle {
+    private func exportedBundle(
+        _ connections: [DatabaseConnection],
+        from state: AppState,
+        includeSavedQueries: Bool = true,
+        includeGlobalSavedQueries: Bool = false
+    ) async throws -> ConnectionBundle {
         let data = try await IOSConnectionExportService.exportData(
             connections: connections,
             appState: state,
             includeCredentials: false,
+            includeSavedQueries: includeSavedQueries,
+            includeGlobalSavedQueries: includeGlobalSavedQueries,
             passphrase: nil
         )
         return try ConnectionBundleCodec.decode(data)
@@ -75,14 +85,69 @@ struct IOSConnectionExportServiceTests {
         #expect(!text.contains(keyMarker))
     }
 
-    @Test("An export writes the current file format and no saved queries")
-    func exportWritesCurrentFormatWithoutQueries() async throws {
+    @Test("An export without nested groups writes the format older builds open, and no saved queries")
+    func exportWritesFormatOneWithoutQueries() async throws {
         let text = try await exportedText(includeCredentials: false)
         let object = try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
 
-        #expect(object["formatVersion"] as? Int == ConnectionBundle.formatVersion)
+        #expect(object["formatVersion"] as? Int == 1)
         #expect(!object.keys.contains("savedQueries"))
         #expect(!object.keys.contains("queryFolders"))
+    }
+
+    @Test("An export carries the exported connections' saved queries with their folders, and global ones only on request")
+    func exportCarriesSavedQueries() async throws {
+        let state = makeState()
+        let orders = DatabaseConnection(name: "Orders", type: .postgresql, host: "db.example.com")
+        let other = DatabaseConnection(name: "Other", type: .postgresql, host: "other.example.com")
+        #expect(state.addConnection(orders))
+        #expect(state.addConnection(other))
+        let reports = SavedQueryFolder(name: "Reports", connectionId: orders.id)
+        #expect(state.savedQueries.insertFolder(reports))
+        #expect(state.savedQueries.insert(SavedQuery(
+            name: "Daily active users", query: "select 1", keyword: "dau", folderId: reports.id, connectionId: orders.id
+        )))
+        #expect(state.savedQueries.insert(SavedQuery(name: "Locks", query: "select 2")))
+        #expect(state.savedQueries.insert(SavedQuery(name: "Other only", query: "select 3", connectionId: other.id)))
+
+        #expect(
+            IOSConnectionExportService.savedQueryCounts(for: [orders], appState: state)
+                == SavedQueryCounts(connectionScoped: 1, global: 1)
+        )
+
+        let scoped = try await exportedBundle([orders], from: state)
+        let query = try #require(scoped.savedQueries.first)
+        #expect(scoped.savedQueries.map(\.name) == ["Daily active users"])
+        #expect(query.sql == "select 1")
+        #expect(query.keyword == "dau")
+        #expect(query.connectionRef == scoped.connections.first?.ref)
+        #expect(scoped.folderChain(query.folderRef).map(\.name) == ["Reports"])
+
+        let withGlobal = try await exportedBundle([orders], from: state, includeGlobalSavedQueries: true)
+        #expect(Set(withGlobal.savedQueries.map(\.name)) == ["Daily active users", "Locks"])
+        #expect(withGlobal.savedQueries.first { $0.name == "Locks" }?.connectionRef == nil)
+
+        let without = try await exportedBundle([orders], from: state, includeSavedQueries: false, includeGlobalSavedQueries: true)
+        #expect(without.savedQueries.isEmpty)
+        #expect(without.queryFolders.isEmpty)
+    }
+
+    @Test("A saved-query store that failed to load refuses an export that includes them, and exports without them")
+    func unreadableSavedQueriesRefuseExport() async throws {
+        let unreadable = Data("{ not json".utf8)
+        let savedQueriesFile = fixture.libraryDirectory.appendingPathComponent("saved-queries.json")
+        try unreadable.write(to: savedQueriesFile)
+        let state = makeState()
+        let connection = DatabaseConnection(name: "Orders", type: .postgresql, host: "db.example.com")
+        #expect(state.addConnection(connection))
+
+        #expect(IOSConnectionExportService.savedQueryCounts(for: [connection], appState: state) == nil)
+        await #expect(throws: IOSConnectionExportError.savedQueriesUnreadable) {
+            try await exportedBundle([connection], from: state)
+        }
+        let bundle = try await exportedBundle([connection], from: state, includeSavedQueries: false)
+        #expect(bundle.connections.count == 1)
+        #expect(try Data(contentsOf: savedQueriesFile) == unreadable)
     }
 
     @Test("SSL modes export in the spelling the Mac reads")
@@ -124,6 +189,19 @@ struct IOSConnectionExportServiceTests {
             sslConfiguration: SSLConfiguration(mode: .disable)
         )
         #expect(IOSConnectionExportService.portableSettings(for: connection).sslConfig == nil)
+    }
+
+    @Test("A connection synced from a Mac exports its SSL, which the Mac keeps only in its SSL settings")
+    func macSyncedSSLExports() throws {
+        let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
+        let record = SyncRecordMapper.toRecord(DatabaseConnection(name: "Secure", type: .postgresql), zoneID: zoneID)
+        let fields = record.fields(ConnectionSyncField.self)
+        fields[.sslEnabled] = nil
+        let macBlob = #"{"mode":"Verify Identity","caCertificatePath":"","clientCertificatePath":"","clientKeyPath":""}"#
+        fields[.sslConfigJson] = Data(macBlob.utf8) as CKRecordValue
+        let connection = try #require(SyncRecordMapper.toConnection(record))
+
+        #expect(IOSConnectionExportService.portableSettings(for: connection).sslConfig?.mode == "Verify Identity")
     }
 
     @Test("A connection in a nested group exports the whole group path")
@@ -221,6 +299,65 @@ struct IOSConnectionExportServiceTests {
 
         #expect(ssh.port == nil)
         #expect(ssh.authMethod == "SSH Agent")
+    }
+
+    @Test("An exported tunnel keeps the Mac's agent socket, TOTP and remote file settings")
+    func exportKeepsMacTunnelFields() async throws {
+        let state = makeState()
+        var ssh = SSHConfiguration(host: "db-1", username: "deploy", authMethod: .sshAgent)
+        ssh.macAgentSocketPath = "~/.1password/agent.sock"
+        ssh.macTotpMode = "auto_generate"
+        ssh.macTotpAlgorithm = "SHA256"
+        ssh.macTotpDigits = 8
+        ssh.macTotpPeriod = 60
+        ssh.macRemoteFilePath = "/srv/app.db"
+        ssh.macRemoteFileAccess = "onServer"
+        let connection = DatabaseConnection(
+            name: "Agent",
+            type: .postgresql,
+            host: "10.0.0.5",
+            sshEnabled: true,
+            sshConfiguration: ssh
+        )
+        #expect(state.addConnection(connection))
+
+        let bundle = try await exportedBundle(state.connections, from: state)
+        let exported = try #require(bundle.connections.first?.settings.sshConfig)
+
+        #expect(exported.agentSocketPath == "~/.1password/agent.sock")
+        #expect(exported.totpMode == "auto_generate")
+        #expect(exported.totpAlgorithm == "SHA256")
+        #expect(exported.totpDigits == 8)
+        #expect(exported.totpPeriod == 60)
+        #expect(exported.remoteFilePath == "/srv/app.db")
+        #expect(exported.remoteFileAccess == "onServer")
+    }
+
+    @Test("An export with credentials carries the SSH profile's password a linked tunnel signs in with")
+    func exportCarriesProfilePassword() async throws {
+        let store = MockSecureStore()
+        let state = makeState(secureStore: store)
+        var connection = DatabaseConnection(
+            name: "Profile",
+            type: .postgresql,
+            host: "10.0.0.5",
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "bastion.example.com", username: "deploy")
+        )
+        let profileId = UUID()
+        connection.sshProfileId = profileId
+        #expect(state.addConnection(connection))
+        store.seed("com.TablePro.sshprofile.password.\(profileId.uuidString)", "profile-secret")
+
+        let data = try await IOSConnectionExportService.exportData(
+            connections: state.connections,
+            appState: state,
+            includeCredentials: true,
+            passphrase: "export-passphrase"
+        )
+        let decrypted = try await ConnectionExportCrypto.decrypt(data: data, passphrase: "export-passphrase")
+
+        #expect(try #require(String(data: decrypted, encoding: .utf8)).contains("profile-secret"))
     }
 
     @Test("Timeout overrides export explicitly and keep unrelated fields")

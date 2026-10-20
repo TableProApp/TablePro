@@ -126,8 +126,8 @@ final class SessionTransactionMonitor {
         }
     }
 
-    // Rows a view read inside a transaction its session lost are as stale as after a Roll Back.
-    func transactionLost(_ connectionId: UUID) {
+    // A typed ROLLBACK or a lost session ends the transaction as the bar's Roll Back does, so views reload the same way.
+    func noteRolledBack(_ connectionId: UUID) {
         rollBackCounts[connectionId, default: 0] += 1
     }
 

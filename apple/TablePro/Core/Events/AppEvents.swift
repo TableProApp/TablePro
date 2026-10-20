@@ -93,6 +93,9 @@ final class AppEvents {
     /// A window put another connections-strip entry in front, so the strip's highlight moves.
     let visibleContainerChanged = PassthroughSubject<Void, Never>()
 
+    /// A session connection started or stopped holding a transaction. Payload is the connection's id.
+    let sessionTransactionsChanged = PassthroughSubject<UUID, Never>()
+
     // MARK: - Data Sources
 
     /// Query history changed (entry added, deleted, or cleared).

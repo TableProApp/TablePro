@@ -738,7 +738,7 @@ private extension RedisPluginConnection {
 
         let argc = Int32(args.count)
 
-        try withArgvPointers(args: args) { argv, argvlen in
+        try RedisCommandArgv.withPointers(args) { argv, argvlen in
             guard redisAppendCommandArgv(ctx, argc, argv, argvlen) == REDIS_OK else {
                 throw transportFailure(ctx, delivered: false)
             }
@@ -784,7 +784,7 @@ private extension RedisPluginConnection {
         var appendedCount = 0
         for args in commands {
             let argc = Int32(args.count)
-            try withArgvPointers(args: args) { argv, argvlen in
+            try RedisCommandArgv.withPointers(args) { argv, argvlen in
                 let status = redisAppendCommandArgv(ctx, argc, argv, argvlen)
                 if status != REDIS_OK {
                     for _ in 0 ..< appendedCount {
@@ -839,39 +839,6 @@ private extension RedisPluginConnection {
             }
         }
         #endif
-    }
-
-    func withArgvPointers<T>(
-        args: [Data],
-        body: (UnsafeMutablePointer<UnsafePointer<CChar>?>, UnsafeMutablePointer<Int>) throws -> T
-    ) rethrows -> T {
-        let count = args.count
-
-        let buffers: [UnsafeMutablePointer<CChar>] = args.map { arg in
-            let ptr = UnsafeMutablePointer<CChar>.allocate(capacity: arg.count + 1)
-            arg.withUnsafeBytes { raw in
-                if let base = raw.bindMemory(to: CChar.self).baseAddress {
-                    ptr.initialize(from: base, count: arg.count)
-                }
-            }
-            ptr[arg.count] = 0
-            return ptr
-        }
-        defer { buffers.forEach { $0.deallocate() } }
-
-        let argv = UnsafeMutablePointer<UnsafePointer<CChar>?>.allocate(capacity: count)
-        let argvlen = UnsafeMutablePointer<Int>.allocate(capacity: count)
-        defer {
-            argv.deallocate()
-            argvlen.deallocate()
-        }
-
-        for i in 0 ..< count {
-            argv[i] = UnsafePointer(buffers[i])
-            argvlen[i] = args[i].count
-        }
-
-        return try body(argv, argvlen)
     }
 
     func parseReply(_ reply: UnsafeMutablePointer<redisReply>) -> RedisReply {

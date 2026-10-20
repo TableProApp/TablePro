@@ -35,7 +35,7 @@ struct ConnectionListView: View {
     /// still cancelled without a trace when a handler in the same update clears it, so only a cover
     /// that is on screen dismisses, and only one that is on screen can be waited on.
     @State private var isConnectionCoverOnScreen = false
-    @State private var importResultCount: Int?
+    @State private var importResult: MobileImportOutcomeMessage?
     @State private var actionErrorMessage: String?
     @State private var iCloudAccountAvailable = false
     @State private var tips = ConnectionListTips.makeGroup()
@@ -208,8 +208,10 @@ struct ConnectionListView: View {
         .onChange(of: appState.connections) { _, _ in
             clearUnknownSelection()
         }
-        .alert(importResultMessage, isPresented: importResultPresented) {
-            Button(String(localized: "OK")) { importResultCount = nil }
+        .alert(importResult?.title ?? "", isPresented: importResultPresented, presenting: importResult) { _ in
+            Button(String(localized: "OK")) { importResult = nil }
+        } message: { result in
+            Text(result.message)
         }
         .alert(
             String(localized: "Sample Database Unavailable"),
@@ -320,11 +322,7 @@ struct ConnectionListView: View {
                 confirmConnectionDeletion()
             }
         } message: {
-            if connectionsPendingDeletion.count > 1 {
-                Text("Saved credentials for these connections will be permanently removed.")
-            } else {
-                Text("Are you sure you want to delete this connection? Saved credentials will be permanently removed.")
-            }
+            Text(deletionMessage)
         }
         .confirmationDialog(
             String(localized: "Delete Group"),
@@ -720,8 +718,8 @@ struct ConnectionListView: View {
                     }
             }
         case .importFile(let url):
-            MobileConnectionImportSheet(fileURL: url) { count in
-                importResultCount = count
+            MobileConnectionImportSheet(fileURL: url) { outcome in
+                importResult = MobileImportOutcomeMessage(outcome)
             }
             .environment(appState)
         case .export:
@@ -763,6 +761,17 @@ struct ConnectionListView: View {
         )
     }
 
+    // Deleting a connection drops its session, and the server rolls back a transaction it held.
+    private var deletionMessage: String {
+        let holding = appState.connections.filter {
+            connectionsPendingDeletion.contains($0.id) && appState.sessionTransactions.hold(for: $0.id) != nil
+        }
+        return OpenTransactionWarning.deletion(
+            deletingCount: connectionsPendingDeletion.count,
+            holdingTransactions: holding.map { $0.name.isEmpty ? $0.host : $0.name }
+        )
+    }
+
     private var deletionTitle: String {
         connectionsPendingDeletion.count > 1
             ? String(format: String(localized: "Delete %d Connections"), connectionsPendingDeletion.count)
@@ -771,8 +780,8 @@ struct ConnectionListView: View {
 
     private var importResultPresented: Binding<Bool> {
         Binding(
-            get: { importResultCount != nil },
-            set: { if !$0 { importResultCount = nil } }
+            get: { importResult != nil },
+            set: { if !$0 { importResult = nil } }
         )
     }
 
@@ -781,13 +790,6 @@ struct ConnectionListView: View {
             get: { actionErrorMessage != nil },
             set: { if !$0 { actionErrorMessage = nil } }
         )
-    }
-
-    private var importResultMessage: String {
-        let count = importResultCount ?? 0
-        return count == 1
-            ? String(localized: "1 connection imported.")
-            : String(format: String(localized: "%d connections imported."), count)
     }
 
     private var refusal: AppError? {

@@ -141,6 +141,12 @@
                           </object>
                         </child>
                         <child type="top">
+                          <object class="AdwBanner" id="transaction_banner">
+                            <property name="use-markup">false</property>
+                            <property name="button-label" translatable="yes">Show</property>
+                          </object>
+                        </child>
+                        <child type="top">
                           <!-- Until the unreadable file is moved aside, no tab
                                of this session is saved, so it stays up. -->
                           <object class="AdwBanner" id="layout_banner">

@@ -40,71 +40,155 @@ public enum TLSClientIdentity {
     }
 
     private static func importedCertificates(from data: Data) -> [SecCertificate] {
-        importedItems(from: data, expecting: .itemTypeUnknown).compactMap { item in
-            guard CFGetTypeID(item) == SecCertificateGetTypeID() else { return nil }
-            return unsafeDowncast(item, to: SecCertificate.self)
-        }
+        let blocks = PEMBlock.all(in: data).filter { $0.label == "CERTIFICATE" }
+        let ders = blocks.isEmpty ? [data] : blocks.compactMap(\.der)
+        return ders.compactMap { SecCertificateCreateWithData(nil, $0 as CFData) }
     }
 
     private static func importedPrivateKey(from data: Data) throws -> SecKey {
-        let keyText = String(data: data, encoding: .utf8).flatMap(privateKeyBlock(in:))
-        if let keyText, isEncrypted(keyText) {
-            throw TLSClientIdentityError.keyEncrypted
+        let block = PEMBlock.all(in: data).first { $0.label.hasSuffix("PRIVATE KEY") }
+        let der: Data
+        if let block {
+            guard !block.isEncrypted else { throw TLSClientIdentityError.keyEncrypted }
+            guard let blockDER = block.der else { throw TLSClientIdentityError.keyUnreadable }
+            der = blockDER
+        } else {
+            der = data
         }
-        if let x963 = ellipticCurveX963(pem: keyText, der: data), let key = ellipticCurveKey(x963: x963) {
+        if let x963 = ellipticCurveX963(der: der), let key = privateKey(der: x963, type: kSecAttrKeyTypeECSECPrimeRandom) {
             return key
         }
-        let source = keyText.map { Data($0.utf8) } ?? data
-        let imported = importedItems(from: source, expecting: .itemTypePrivateKey)
-        guard let key = imported.first(where: { CFGetTypeID($0) == SecKeyGetTypeID() }) else {
+        guard let pkcs1 = rsaPKCS1(der: der, label: block?.label),
+              let key = privateKey(der: pkcs1, type: kSecAttrKeyTypeRSA) else {
             throw TLSClientIdentityError.keyUnreadable
         }
-        return unsafeDowncast(key, to: SecKey.self)
+        return key
     }
 
-    private static func importedItems(from data: Data, expecting type: SecExternalItemType) -> [AnyObject] {
-        var format = SecExternalFormat.formatUnknown
-        var itemType = type
-        var items: CFArray?
-        guard SecItemImport(data as CFData, nil, &format, &itemType, [], nil, nil, &items) == errSecSuccess,
-              let items else {
-            return []
-        }
-        return items as [AnyObject]
-    }
-
-    private static func privateKeyBlock(in text: String) -> String? {
-        guard let begin = text.range(of: #"-----BEGIN [A-Z ]*PRIVATE KEY-----"#, options: .regularExpression),
-              let end = text.range(
-                  of: #"-----END [A-Z ]*PRIVATE KEY-----"#,
-                  options: .regularExpression,
-                  range: begin.upperBound..<text.endIndex
-              ) else {
-            return nil
-        }
-        return String(text[begin.lowerBound..<end.upperBound])
-    }
-
-    private static func isEncrypted(_ keyText: String) -> Bool {
-        keyText.hasPrefix("-----BEGIN ENCRYPTED PRIVATE KEY-----") || keyText.contains("Proc-Type: 4,ENCRYPTED")
-    }
-
-    private static func ellipticCurveX963(pem: String?, der: Data) -> Data? {
-        if let pem {
-            return (try? P256.Signing.PrivateKey(pemRepresentation: pem))?.x963Representation
-                ?? (try? P384.Signing.PrivateKey(pemRepresentation: pem))?.x963Representation
-                ?? (try? P521.Signing.PrivateKey(pemRepresentation: pem))?.x963Representation
-        }
-        return (try? P256.Signing.PrivateKey(derRepresentation: der))?.x963Representation
+    private static func ellipticCurveX963(der: Data) -> Data? {
+        (try? P256.Signing.PrivateKey(derRepresentation: der))?.x963Representation
             ?? (try? P384.Signing.PrivateKey(derRepresentation: der))?.x963Representation
             ?? (try? P521.Signing.PrivateKey(derRepresentation: der))?.x963Representation
     }
 
-    private static func ellipticCurveKey(x963: Data) -> SecKey? {
+    private static func rsaPKCS1(der: Data, label: String?) -> Data? {
+        switch label {
+        case nil:
+            return pkcs1(fromPKCS8: der) ?? (isPKCS1(der) ? der : nil)
+        case "RSA PRIVATE KEY":
+            return isPKCS1(der) ? der : nil
+        case "PRIVATE KEY":
+            return pkcs1(fromPKCS8: der)
+        default:
+            return nil
+        }
+    }
+
+    private static let rsaEncryptionOID: [UInt8] = [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01]
+
+    private static func pkcs1(fromPKCS8 der: Data) -> Data? {
+        var outer = DERReader(Array(der)[...])
+        guard let privateKeyInfo = outer.read(DERReader.sequence), outer.isAtEnd else { return nil }
+        var fields = DERReader(privateKeyInfo)
+        guard fields.read(DERReader.integer) != nil,
+              let algorithm = fields.read(DERReader.sequence) else { return nil }
+        var algorithmFields = DERReader(algorithm)
+        guard let oid = algorithmFields.read(DERReader.objectIdentifier),
+              oid.elementsEqual(rsaEncryptionOID),
+              let wrapped = fields.read(DERReader.octetString) else { return nil }
+        let pkcs1 = Data(wrapped)
+        return isPKCS1(pkcs1) ? pkcs1 : nil
+    }
+
+    private static func isPKCS1(_ der: Data) -> Bool {
+        var outer = DERReader(Array(der)[...])
+        guard let rsaPrivateKey = outer.read(DERReader.sequence), outer.isAtEnd else { return false }
+        var fields = DERReader(rsaPrivateKey)
+        // RSAPrivateKey opens with version, n, e, d, p, q, dp, dq, qinv (RFC 8017, A.1.2).
+        for _ in 0..<9 {
+            guard fields.read(DERReader.integer) != nil else { return false }
+        }
+        return true
+    }
+
+    private static func privateKey(der: Data, type: CFString) -> SecKey? {
         let attributes: [String: Any] = [
-            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecAttrKeyType as String: type,
             kSecAttrKeyClass as String: kSecAttrKeyClassPrivate
         ]
-        return SecKeyCreateWithData(x963 as CFData, attributes as CFDictionary, nil)
+        return SecKeyCreateWithData(der as CFData, attributes as CFDictionary, nil)
+    }
+}
+
+private struct PEMBlock {
+    let label: String
+    let headers: [String]
+    let der: Data?
+
+    var isEncrypted: Bool {
+        label == "ENCRYPTED PRIVATE KEY" || headers.contains { $0.hasPrefix("Proc-Type:") && $0.hasSuffix(",ENCRYPTED") }
+    }
+
+    private static let beginPrefix = "-----BEGIN "
+    private static let boundarySuffix = "-----"
+
+    static func all(in data: Data) -> [PEMBlock] {
+        guard let text = String(data: data, encoding: .utf8) else { return [] }
+        var blocks: [PEMBlock] = []
+        var open: (label: String, headers: [String], body: String)?
+        for rawLine in text.split(whereSeparator: \.isNewline) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix(beginPrefix), line.hasSuffix(boundarySuffix),
+               line.count >= beginPrefix.count + boundarySuffix.count {
+                open = (String(line.dropFirst(beginPrefix.count).dropLast(boundarySuffix.count)), [], "")
+            } else if let current = open, line == "-----END \(current.label)-----" {
+                blocks.append(PEMBlock(label: current.label, headers: current.headers, der: Data(base64Encoded: current.body)))
+                open = nil
+            } else if open != nil {
+                // RFC 1421 headers such as Proc-Type and DEK-Info; base64 never holds a colon.
+                if line.contains(":") {
+                    open?.headers.append(line)
+                } else {
+                    open?.body += line
+                }
+            }
+        }
+        return blocks
+    }
+}
+
+private struct DERReader {
+    static let integer: UInt8 = 0x02
+    static let octetString: UInt8 = 0x04
+    static let objectIdentifier: UInt8 = 0x06
+    static let sequence: UInt8 = 0x30
+
+    private let bytes: ArraySlice<UInt8>
+    private var offset: Int
+
+    init(_ bytes: ArraySlice<UInt8>) {
+        self.bytes = bytes
+        offset = bytes.startIndex
+    }
+
+    var isAtEnd: Bool {
+        offset == bytes.endIndex
+    }
+
+    mutating func read(_ tag: UInt8) -> ArraySlice<UInt8>? {
+        guard bytes.endIndex - offset >= 2, bytes[offset] == tag else { return nil }
+        var cursor = offset + 1
+        let first = bytes[cursor]
+        cursor += 1
+        var length = Int(first)
+        if first & 0x80 != 0 {
+            let octetCount = Int(first & 0x7F)
+            guard (1...4).contains(octetCount), octetCount <= bytes.endIndex - cursor else { return nil }
+            length = bytes[cursor..<(cursor + octetCount)].reduce(0) { $0 << 8 | Int($1) }
+            cursor += octetCount
+        }
+        guard length <= bytes.endIndex - cursor else { return nil }
+        offset = cursor + length
+        return bytes[cursor..<offset]
     }
 }

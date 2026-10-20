@@ -81,6 +81,23 @@ struct ConnectionRedialTests {
         var sampled = original
         sampled.isSample = true
         #expect(!sampled.dialsTheSameWay(as: original))
+
+        var verified = original
+        verified.sslEnabled = true
+        verified.sslConfiguration = SSLConfiguration(mode: .verifyFull)
+        #expect(!verified.dialsTheSameWay(as: secured))
+    }
+
+    @Test("The Mac's Preferred over a Required this device dials the same way keeps the session")
+    func macPreferredKeepsTheSession() {
+        var required = connection()
+        required.sslEnabled = true
+        required.sslConfiguration = SSLConfiguration(mode: .require)
+
+        var preferred = required
+        preferred.sslConfiguration = SSLConfiguration(mode: .require, isMacPreferred: true)
+
+        #expect(preferred.dialsTheSameWay(as: required))
     }
 }
 

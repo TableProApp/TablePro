@@ -216,6 +216,13 @@ struct ConnectedView: View {
             guard !busy else { return }
             Task { await coordinator.reloadChangedCatalog() }
         }
+        .onChange(of: appState.sessionRevision(for: connection.id)) {
+            Task { await coordinator.followLiveSession() }
+        }
+        .onChange(of: presenter.isHeldByEditor, initial: true) { _, held in
+            coordinator.isHeldByEditor = held
+        }
+        .onDisappear { coordinator.isHeldByEditor = false }
         // tabChrome sits inside each stack; this also reaches pushed row screens and their sheets, which track writes.
         .environment(coordinator)
         .onAppear {
@@ -331,7 +338,7 @@ struct ConnectedView: View {
                     Label(coordinator.activeDatabase, systemImage: "cylinder.split.1x2")
                         .font(.subheadline)
                 }
-                .disabled(coordinator.isSwitching || presenter.isHeldByEditor)
+                .disabled(coordinator.isSwitching || presenter.isHeldByEditor || coordinator.anotherWindowHoldsEditor)
             }
         }
         if coordinator.supportsSchemas && coordinator.schemas.count > 1 {

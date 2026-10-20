@@ -275,6 +275,136 @@ fn an_open_transaction_marks_the_tab() {
     assert_eq!(changes.take(), [true]);
 }
 
+const OPENS_A_TRANSACTION: &str = "BEGIN; UPDATE t SET a = 1";
+
+/// The script opens a transaction, and COMMIT or ROLLBACK ends it.
+fn transaction_runs() -> Replies<FakeRun> {
+    let mut runs = Replies::default();
+    runs.when_sql_contains("COMMIT", FakeRun::completed(Vec::new()))
+        .when_sql_contains("ROLLBACK", FakeRun::completed(Vec::new()))
+        .always(FakeRun::completed(Vec::new()).leaving(TransactionState::InTransaction));
+    runs
+}
+
+fn button_labelled(harness: &Harness, label: &str) -> gtk4::Button {
+    crate::test_support::descendants(&harness.editor)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk4::Button>().ok())
+        .find(|button| button.label().as_deref() == Some(label))
+        .expect("the button")
+}
+
+/// It and every container up to the editor are visible.
+fn shown(harness: &Harness, widget: &impl IsA<gtk4::Widget>) -> bool {
+    hidden_ancestor(harness, widget).is_none()
+}
+
+/// The first of it and its containers up to the editor that is hidden, by type, for a failure message.
+fn hidden_ancestor(harness: &Harness, widget: &impl IsA<gtk4::Widget>) -> Option<String> {
+    let editor = harness.editor.upcast_ref::<gtk4::Widget>();
+    std::iter::successors(Some(widget.as_ref().clone()), |widget| widget.parent())
+        .take_while(|widget| widget != editor)
+        .find(|widget| !widget.is_visible())
+        .map(|widget| format!("{} {:?}", widget.type_().name(), widget.widget_name()))
+}
+
+#[gtk4::test]
+fn commit_runs_on_the_tabs_session_and_keeps_the_script() {
+    let harness = editor_with(transaction_runs(), OPENS_A_TRANSACTION);
+    let _window = InWindow::new(&harness.editor);
+    run_and_wait(&harness);
+    let before = sent(&harness.fake);
+    let commit = button_labelled(&harness, "Commit");
+    assert_eq!(hidden_ancestor(&harness, &commit), None);
+    assert!(commit.is_sensitive(), "Commit is off with a transaction open");
+    assert_eq!(hidden_ancestor(&harness, &button_labelled(&harness, "Roll Back")), None);
+
+    commit.emit_clicked();
+    assert!(harness.editor.is_running(), "Commit did not start a run");
+    assert!(!commit.is_sensitive(), "Commit stayed on during the run");
+    wait_until(WAIT, || !harness.editor.is_running()).expect("the commit to end");
+
+    assert_eq!(sent(&harness.fake), [before, vec!["COMMIT".to_owned()]].concat());
+    assert_eq!(buffer_text(&harness.editor.buffer()), OPENS_A_TRANSACTION);
+    assert!(!harness.editor.has_open_transaction());
+    assert_eq!(harness.editor.open_transaction(), None);
+    assert!(!shown(&harness, &commit), "the line outlived the transaction");
+    assert_eq!(
+        harness.editor.imp().results.n_entries(),
+        1,
+        "the results are not the COMMIT's"
+    );
+}
+
+#[gtk4::test]
+fn a_failed_transaction_offers_only_roll_back() {
+    let mut runs = Replies::default();
+    runs.always(FakeRun::completed(Vec::new()).leaving(TransactionState::Failed));
+    let harness = editor_with(runs, OPENS_A_TRANSACTION);
+    let _window = InWindow::new(&harness.editor);
+
+    run_and_wait(&harness);
+
+    assert_eq!(harness.editor.open_transaction(), Some(OpenTransaction::Failed));
+    assert_eq!(hidden_ancestor(&harness, &button_labelled(&harness, "Roll Back")), None);
+    assert!(!shown(&harness, &button_labelled(&harness, "Commit")));
+}
+
+fn roll_back_prompt(harness: &Harness, window: &crate::test_support::OwnedWindow<adw::Window>) -> adw::AlertDialog {
+    button_labelled(harness, "Roll Back").emit_clicked();
+    let mut alert = None;
+    wait_until(WAIT, || {
+        alert = crate::workspace::visible_alert(window);
+        alert.is_some()
+    })
+    .expect("the rollback prompt");
+    alert.expect("the rollback prompt")
+}
+
+#[gtk4::test]
+fn roll_back_asks_first_and_cancel_keeps_the_transaction() {
+    adw::init().expect("libadwaita initialises under the test backend");
+    let harness = editor_with(transaction_runs(), OPENS_A_TRANSACTION);
+    let window = crate::test_support::OwnedWindow::presented(adw::Window::builder().content(&harness.editor).build());
+    run_and_wait(&harness);
+    let before = sent(&harness.fake);
+
+    let alert = roll_back_prompt(&harness, &window);
+
+    assert_eq!(alert.heading().as_deref(), Some("Roll Back the Transaction?"));
+    assert_eq!(alert.body().as_str(), "Its uncommitted changes are discarded.");
+    assert_eq!(alert.default_response().as_deref(), Some("cancel"));
+    assert_eq!(
+        alert.response_appearance("roll-back"),
+        adw::ResponseAppearance::Destructive
+    );
+    assert!(crate::workspace::answer(&window, "cancel"));
+    wait_until(WAIT, || crate::workspace::visible_alert(&window).is_none()).expect("the prompt to close");
+    crate::test_support::drain_main_context();
+    assert_eq!(sent(&harness.fake), before, "Cancel sent a statement");
+    assert!(harness.editor.has_open_transaction());
+}
+
+#[gtk4::test]
+fn roll_back_once_confirmed_runs_on_the_tabs_session() {
+    adw::init().expect("libadwaita initialises under the test backend");
+    let harness = editor_with(transaction_runs(), OPENS_A_TRANSACTION);
+    let window = crate::test_support::OwnedWindow::presented(adw::Window::builder().content(&harness.editor).build());
+    run_and_wait(&harness);
+
+    roll_back_prompt(&harness, &window);
+    assert!(crate::workspace::answer(&window, "roll-back"));
+    wait_until(WAIT, || {
+        sent(&harness.fake).last().map(String::as_str) == Some("ROLLBACK")
+    })
+    .expect("the rollback to be sent");
+    wait_until(WAIT, || !harness.editor.is_running()).expect("the rollback to end");
+
+    assert_eq!(buffer_text(&harness.editor.buffer()), OPENS_A_TRANSACTION);
+    assert!(!harness.editor.has_open_transaction());
+    assert!(!shown(&harness, &button_labelled(&harness, "Roll Back")));
+}
+
 #[gtk4::test]
 fn stop_cancels_the_running_statement() {
     let mut runs = Replies::default();

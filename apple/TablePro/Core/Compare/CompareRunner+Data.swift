@@ -220,7 +220,9 @@ internal extension CompareRunner {
                 targetType: targetColumn.typeNameForClassification,
                 collation: column.collation,
                 isGeneratedOnTarget: targetColumn.isGenerated,
-                targetIdentity: targetColumn.identityKind
+                targetIdentity: targetColumn.identityKind,
+                sourceFamily: SQLTypeFamily.of(context.source.databaseType),
+                targetFamily: SQLTypeFamily.of(context.target.databaseType)
             )
         }
         let primaryKey = read.columns

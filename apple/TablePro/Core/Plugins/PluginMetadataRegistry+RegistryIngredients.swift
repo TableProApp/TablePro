@@ -85,7 +85,7 @@ extension PluginMetadataRegistry {
             requiresBackslashEscaping: true,
             caseSensitivityStyle: .caseFoldFunction,
             caseFoldFunction: "lowerUTF8",
-            textCastTypeName: nil,
+            textCastTypeName: "Nullable(String)",
             functionNamesAreCaseInsensitive: false
         )
 
@@ -303,7 +303,7 @@ extension PluginMetadataRegistry {
             paginationStyle: .limit,
             caseSensitivityStyle: .ilikeOperator,
             operators: SQLEngineVocabulary.duckDB.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
-            textCastTypeName: nil,
+            textCastTypeName: "VARCHAR",
             functionNamesAreCaseInsensitive: SQLEngineVocabulary.duckDB.functionNamesAreCaseInsensitive
         )
 

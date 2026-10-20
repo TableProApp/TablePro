@@ -4,20 +4,52 @@ import TableProDatabase
 import TableProImport
 import TableProModels
 
+nonisolated enum IOSConnectionExportError: LocalizedError, Equatable {
+    case savedQueriesUnreadable
+
+    var errorDescription: String? {
+        switch self {
+        case .savedQueriesUnreadable:
+            String(localized: "The saved queries could not be read. Nothing was exported.")
+        }
+    }
+}
+
 @MainActor
 enum IOSConnectionExportService {
     static func exportData(
         connections: [DatabaseConnection],
         appState: AppState,
         includeCredentials: Bool,
+        includeSavedQueries: Bool = true,
+        includeGlobalSavedQueries: Bool = false,
         passphrase: String?
     ) async throws -> Data {
+        var savedQueries: SavedQueryContents?
+        if includeSavedQueries {
+            guard let readable = readableSavedQueries(in: appState) else {
+                throw IOSConnectionExportError.savedQueriesUnreadable
+            }
+            savedQueries = readable
+        }
         let bundle = try BundleExportAssembler.assemble(
-            exportInput(connections, appState: appState, includeCredentials: includeCredentials),
-            options: BundleExportOptions(includesCredentials: includeCredentials, includesSavedQueries: false),
+            exportInput(connections, appState: appState, includeCredentials: includeCredentials, savedQueries: savedQueries),
+            options: BundleExportOptions(
+                includesCredentials: includeCredentials,
+                includesSavedQueries: includeSavedQueries,
+                includesGlobalSavedQueries: includeSavedQueries && includeGlobalSavedQueries
+            ),
             appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         )
         return try await ConnectionBundleCodec.encode(bundle, passphrase: includeCredentials ? passphrase ?? "" : "")
+    }
+
+    // Nil when the saved queries cannot be read, which is not the same as having none.
+    static func savedQueryCounts(for connections: [DatabaseConnection], appState: AppState) -> SavedQueryCounts? {
+        guard let readable = readableSavedQueries(in: appState) else { return nil }
+        return BundleExportAssembler.savedQueryCounts(
+            exportInput(connections, appState: appState, includeCredentials: false, savedQueries: readable)
+        )
     }
 
     static func suggestedFilename(for connections: [DatabaseConnection]) -> String {
@@ -49,10 +81,15 @@ enum IOSConnectionExportService {
         )
     }
 
+    private static func readableSavedQueries(in appState: AppState) -> SavedQueryContents? {
+        appState.savedQueries.status == .ready ? appState.savedQueries.contents : nil
+    }
+
     private static func exportInput(
         _ connections: [DatabaseConnection],
         appState: AppState,
-        includeCredentials: Bool
+        includeCredentials: Bool,
+        savedQueries: SavedQueryContents?
     ) -> BundleExportInput {
         BundleExportInput(
             connections: connections.map { connection in
@@ -61,7 +98,7 @@ enum IOSConnectionExportService {
                     settings: portableSettings(for: connection),
                     groupId: connection.groupId,
                     tagIds: connection.tagIds,
-                    credentials: includeCredentials ? credentials(of: connection.id, in: appState.secureStore) : nil
+                    credentials: includeCredentials ? credentials(of: connection, in: appState.secureStore) : nil
                 )
             },
             groups: appState.groups.map {
@@ -75,14 +112,29 @@ enum IOSConnectionExportService {
             },
             tags: appState.tags.map {
                 BundleExportInput.Tag(id: $0.id, name: $0.name, color: portableColor($0.color))
+            },
+            queryFolders: (savedQueries?.folders ?? []).map {
+                BundleExportInput.QueryFolder(id: $0.id, name: $0.name, parentId: $0.parentId, connectionId: $0.connectionId)
+            },
+            savedQueries: (savedQueries?.queries ?? []).map {
+                BundleExportInput.SavedQuery(
+                    id: $0.id,
+                    name: $0.name,
+                    sql: $0.query,
+                    keyword: $0.keyword,
+                    folderId: $0.folderId,
+                    connectionId: $0.connectionId
+                )
             }
         )
     }
 
-    private static func credentials(of connectionId: UUID, in store: any SecureStore) -> ExportableCredentials? {
-        let password = secret(.password, of: connectionId, in: store)
-        let sshPassword = secret(.sshPassword, of: connectionId, in: store)
-        let keyPassphrase = secret(.keyPassphrase, of: connectionId, in: store)
+    // The tunnel's secrets are the ones it signs in with, a linked SSH profile's included.
+    private static func credentials(of connection: DatabaseConnection, in store: any SecureStore) -> ExportableCredentials? {
+        let password = secret(.password, of: connection.id, in: store)
+        let tunnel = SSHTunnelCredentials(connectionId: connection.id, sshProfileId: connection.sshProfileId, secureStore: store)
+        let sshPassword = tunnel.password
+        let keyPassphrase = tunnel.keyPassphrase
         guard password != nil || sshPassword != nil || keyPassphrase != nil else { return nil }
         return ExportableCredentials(
             password: password,
@@ -127,12 +179,14 @@ enum IOSConnectionExportService {
             username: ssh.username,
             authMethod: ssh.authMethod.rawValue,
             privateKeyPath: PathPortability.contractHome(ssh.privateKeyPath ?? ""),
-            agentSocketPath: "",
+            agentSocketPath: PathPortability.contractHome(ssh.macAgentSocketPath ?? ""),
             jumpHosts: jumpHosts,
-            totpMode: nil,
-            totpAlgorithm: nil,
-            totpDigits: nil,
-            totpPeriod: nil
+            totpMode: ssh.macTotpMode.flatMap { $0 == "none" ? nil : $0 },
+            totpAlgorithm: ssh.macTotpAlgorithm.flatMap { $0 == "SHA1" ? nil : $0 },
+            totpDigits: ssh.macTotpDigits.flatMap { $0 == 6 ? nil : $0 },
+            totpPeriod: ssh.macTotpPeriod.flatMap { $0 == 30 ? nil : $0 },
+            remoteFilePath: ssh.macRemoteFilePath.flatMap { $0.isEmpty ? nil : $0 },
+            remoteFileAccess: ssh.macRemoteFileAccess.flatMap { $0 == "readOnlyCopy" ? nil : $0 }
         )
     }
 

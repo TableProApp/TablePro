@@ -78,7 +78,7 @@ struct SSHTunnelFactoryTests {
     func unsupportedAuthMethodDiscards() async {
         let stages = SpyTunnelStages()
 
-        await #expect(throws: SSHTunnelError.self) {
+        await #expect(throws: SSHTunnelError.authMethodUnsupported(.keyboardInteractive)) {
             try await Self.create(stages: stages, authMethod: .keyboardInteractive)
         }
 
@@ -138,8 +138,7 @@ struct SSHTunnelFactoryTests {
 
         let tunnel = try await SSHTunnelFactory.create(
             config: config,
-            remoteHost: "db.internal",
-            remotePort: 5_432,
+            destination: .tcp(host: "db.internal", port: 5_432),
             credentials: SSHTunnelCredentials(keyPassphrase: "server pass", privateKey: "SERVER KEY"),
             jumpHostCredentials: [
                 first.id: .privateKey(key: "HOP ONE KEY", passphrase: "hop pass"),
@@ -264,8 +263,7 @@ struct SSHTunnelFactoryTests {
         await #expect(throws: SSHTunnelError.usernameMissing(host: onTheHop ? hop.host : config.host)) {
             try await SSHTunnelFactory.create(
                 config: config,
-                remoteHost: "db.internal",
-                remotePort: 5_432,
+                destination: .tcp(host: "db.internal", port: 5_432),
                 credentials: Self.credentials(for: .password),
                 jumpHostCredentials: [hop.id: .privateKey(key: "HOP KEY", passphrase: nil)],
                 prompter: StubPrompter(answer: true),
@@ -304,8 +302,7 @@ struct SSHTunnelFactoryTests {
         await #expect(throws: SSHTunnelError.connectionFailed("\(named) is out of range. Use a value between 1 and 65535.")) {
             try await SSHTunnelFactory.create(
                 config: config,
-                remoteHost: "db.internal",
-                remotePort: remotePort,
+                destination: .tcp(host: "db.internal", port: remotePort),
                 credentials: Self.credentials(for: .password),
                 jumpHostCredentials: [hop.id: .privateKey(key: "HOP KEY", passphrase: nil)],
                 prompter: StubPrompter(answer: true),
@@ -339,6 +336,38 @@ struct SSHTunnelFactoryTests {
         let stages = SpyTunnelStages(failingAt: .authenticatePrivateKey, with: refusal)
 
         await #expect(throws: SSHTunnelError.jumpHostFailed(host: Self.bastion.host, reason: refusal.localizedDescription)) {
+            try await Self.create(
+                stages: stages,
+                authMethod: .password,
+                jumpHosts: [Self.bastion],
+                jumpHostCredentials: [Self.bastion.id: .privateKey(key: "HOP KEY", passphrase: nil)]
+            )
+        }
+
+        #expect(stages.discardCount == 1)
+    }
+
+    @Test(
+        "A named failure at a hop names the hop and keeps its words",
+        arguments: zip(
+            [SpyTunnelStages.Step.handshake, .authenticatePrivateKey, .authenticatePrivateKey, .authenticatePrivateKey],
+            [
+                SSHTunnelError.negotiationFailed(SSHNegotiationFailure(
+                    stage: .keyExchangeOrHostKey,
+                    serverSoftware: "OpenSSH_10.3",
+                    supported: ["curve25519-sha256"],
+                    supportedHostKeys: ["ssh-ed25519"]
+                )),
+                .passphraseIncorrect,
+                .securityKeyUnsupported,
+                .additionalFactorRequired(["keyboard-interactive"]),
+            ]
+        )
+    )
+    func namedHopFailureNamesTheHop(step: SpyTunnelStages.Step, failure: SSHTunnelError) async {
+        let stages = SpyTunnelStages(failingAt: step, with: failure)
+
+        await #expect(throws: SSHTunnelError.jumpHostFailed(host: Self.bastion.host, reason: failure.localizedDescription)) {
             try await Self.create(
                 stages: stages,
                 authMethod: .password,
@@ -452,8 +481,7 @@ struct SSHTunnelFactoryTests {
         tunnelConfig.jumpHosts = jumpHosts
         return try await SSHTunnelFactory.create(
             config: tunnelConfig,
-            remoteHost: "db.internal",
-            remotePort: 5_432,
+            destination: .tcp(host: "db.internal", port: 5_432),
             credentials: credentials ?? Self.credentials(for: authMethod),
             jumpHostCredentials: jumpHostCredentials,
             prompter: prompter,

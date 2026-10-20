@@ -20,12 +20,15 @@ public enum ChannelReadResult: Equatable, Sendable {
     case bytes(Int)
     case wouldBlock
     case closed
+    // The session is gone, not only this channel: the relay ends .transportHangup so the owner marks the tunnel dead now, not at the next keep-alive.
+    case transportFailed
 }
 
 public enum ChannelWriteResult: Equatable, Sendable {
     case bytes(Int)
     case wouldBlock
     case closed
+    case transportFailed
 }
 
 public protocol SSHChannelIO {
@@ -41,13 +44,7 @@ public enum RelayTermination: Equatable, Sendable {
     case cancelled
 }
 
-/// Bidirectional relay between a local socket fd and an SSH channel.
-/// Polls the local fd and the SSH transport fd, draining buffered data before
-/// tearing down on hangup so the last bytes are not dropped. Hangup and error
-/// on either fd terminate the loop instead of spinning on a permanently
-/// poll-ready, closed fd. Because libssh2 reports EAGAIN rather than a channel
-/// close when only the transport dies, a transport that polls readable but is
-/// at EOF is detected directly so a half-closed transport cannot spin.
+// A hangup drains buffered data before the loop ends, so the last bytes reach the client.
 public struct SSHChannelRelay {
     public let localFD: Int32
     public let transportFD: Int32
@@ -164,6 +161,8 @@ public struct SSHChannelRelay {
                 return .drained
             case .closed:
                 return .channelClosed
+            case .transportFailed:
+                return .transportHangup
             }
         }
         return .cappedWithMoreQueued
@@ -172,7 +171,7 @@ public struct SSHChannelRelay {
     private func sendToLocal(_ buffer: UnsafeMutablePointer<CChar>, count: Int) -> Bool {
         var totalSent = 0
         while totalSent < count {
-            // Without the flag, a send to a peer that closed first raises SIGPIPE and kills the app.
+            // Per send, not SO_NOSIGPIPE: setsockopt fails with EINVAL once a client has already closed, and the send then raises SIGPIPE.
             let sent = send(localFD, buffer.advanced(by: totalSent), count - totalSent, MSG_NOSIGNAL)
             if sent <= 0 { return false }
             totalSent += sent
@@ -197,6 +196,8 @@ public struct SSHChannelRelay {
                 }
             case .closed:
                 return .channelClosed
+            case .transportFailed:
+                return .transportHangup
             }
         }
         return .drained

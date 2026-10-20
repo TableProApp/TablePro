@@ -31,7 +31,7 @@ struct DataBrowserView: View {
     @State private var showMatchedRow = false
     @State private var showGoToPage = false
     @State private var goToPageInput = ""
-    @State private var deleteTarget: [(column: String, value: String)]?
+    @State private var deleteTarget: RowLocator?
     @State private var fkPreviewItem: FKPreviewItem?
     @State private var shareText = ""
     @State private var isCompletingCells = false
@@ -65,7 +65,7 @@ struct DataBrowserView: View {
     }
 
     private var canDeleteRows: Bool {
-        allowsRowEditing && browsesSQLRows && viewModel.hasPrimaryKeys && !connection.safeModeLevel.blocksWrites
+        allowsRowEditing && browsesSQLRows && viewModel.canLocateRows && !connection.safeModeLevel.blocksWrites
     }
 
     private var columns: [ColumnInfo] { viewModel.columns }
@@ -177,8 +177,8 @@ struct DataBrowserView: View {
             }
             .confirmationDialog("Delete Row", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) {
-                    if let pkValues = deleteTarget {
-                        Task { await performDelete(pkValues) }
+                    if let deleteTarget {
+                        Task { await performDelete(deleteTarget) }
                     }
                 }
             } message: {
@@ -333,9 +333,17 @@ struct DataBrowserView: View {
             onSaved: { Task { await viewModel.load() } },
             loadFullValue: { [schema = viewModel.schema] ref in
                 guard let session else { return nil }
-                return try await viewModel.loadFullValue(
-                    driver: session.driver, ref: ref, databaseType: connection.type, schema: schema
-                )
+                // With autocommit off, a MySQL read opens a transaction; a failed read refreshes too, and never redials.
+                do {
+                    let value = try await viewModel.loadFullValue(
+                        driver: session.driver, ref: ref, databaseType: connection.type, schema: schema
+                    )
+                    await coordinator.refreshTransaction()
+                    return value
+                } catch {
+                    await coordinator.refreshTransaction()
+                    throw error
+                }
             },
             coordinator: coordinator
         )
@@ -343,7 +351,7 @@ struct DataBrowserView: View {
 
     private func rowLink(index: Int, row: [String?]) -> some View {
         let cells = viewModel.cells(at: index)
-        let deleteKeys = canDeleteRows ? viewModel.primaryKeyValues(forRowAt: index) : nil
+        let deleteKeys = canDeleteRows ? viewModel.rowLocator(forRowAt: index) : nil
         return NavigationLink {
             rowDetail(index: index)
         } label: {
@@ -373,8 +381,8 @@ struct DataBrowserView: View {
         }
     }
 
-    private func confirmDelete(_ keys: [(column: String, value: String)]) {
-        deleteTarget = keys
+    private func confirmDelete(_ locator: RowLocator) {
+        deleteTarget = locator
         showDeleteConfirmation = true
     }
 
@@ -610,8 +618,8 @@ struct DataBrowserView: View {
         }
     }
 
-    private func performDelete(_ pkValues: [(column: String, value: String)]) async {
-        let success = await coordinator.track(failed: { !$0 }) { await viewModel.deleteRow(pkValues: pkValues) }
+    private func performDelete(_ locator: RowLocator) async {
+        let success = await coordinator.track(failed: { !$0 }) { await viewModel.deleteRow(locator) }
         if success {
             hapticSuccess.toggle()
         } else {

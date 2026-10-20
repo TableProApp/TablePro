@@ -137,4 +137,33 @@ struct SavedQueryLedgerTests {
         #expect(SavedQueryName.derived(from: String(repeating: "a", count: 80)) == String(repeating: "a", count: 50))
         #expect(SavedQueryName.derived(from: " \n\r\n") == "Untitled")
     }
+
+    @Test("A keyword nobody holds is available in any scope")
+    func unheldKeywordIsAvailable() {
+        #expect(SavedQueryKeyword.isAvailable("dau", scope: nil, holderScopes: []))
+        #expect(SavedQueryKeyword.isAvailable("dau", scope: scope, holderScopes: []))
+    }
+
+    @Test("A global keyword collides with a holder in any connection")
+    func globalKeywordCollidesWithScopedHolder() {
+        #expect(!SavedQueryKeyword.isAvailable("dau", scope: nil, holderScopes: [scope]))
+        #expect(!SavedQueryKeyword.isAvailable("dau", scope: nil, holderScopes: [nil]))
+    }
+
+    @Test("A scoped keyword collides with a global holder and one in its own connection")
+    func scopedKeywordCollidesWithGlobalAndSameScope() {
+        #expect(!SavedQueryKeyword.isAvailable("dau", scope: scope, holderScopes: [nil]))
+        #expect(!SavedQueryKeyword.isAvailable("dau", scope: scope, holderScopes: [scope]))
+        #expect(!SavedQueryKeyword.isAvailable("dau", scope: scope, holderScopes: [otherScope, scope]))
+    }
+
+    @Test("A scoped keyword held only in another connection is available")
+    func otherScopeIsFree() {
+        #expect(SavedQueryKeyword.isAvailable("dau", scope: scope, holderScopes: [otherScope]))
+    }
+
+    @Test("An empty keyword is no keyword and never collides")
+    func emptyKeywordIsAvailable() {
+        #expect(SavedQueryKeyword.isAvailable(" ", scope: nil, holderScopes: [nil]))
+    }
 }

@@ -12,54 +12,74 @@ nonisolated internal enum ClickHouseParameterBinding {
         let params: [String: String?]
     }
 
-    /// A ClickHouse HTTP parameter is text: `{p1:String}` takes the characters of `param_p1`
-    /// verbatim, so bytes handed over as `0xDEADBEEF` compare as those ten characters and every
-    /// predicate on a binary column matches nothing. Bytes are written into the statement as
-    /// `unhex('…')` instead, which the server turns back into the value the read produced. The hex
-    /// is generated here and holds nothing but `0-9A-F`, so it closes no quote.
+    // A `{p1:String}` parameter is text, so bytes are inlined as `unhex('...')` instead of compared as hex characters,
+    // and NULL, which a String parameter cannot hold, is inlined as NULL.
     static func bind(query: String, parameters: [PluginCellValue]) -> Bound {
-        var converted = ""
-        converted.reserveCapacity((query as NSString).length)
+        var converted = String.UnicodeScalarView()
+        converted.reserveCapacity(query.utf8.count)
         var paramMap: [String: String?] = [:]
         var consumed = 0
         var namedCount = 0
-        var inSingleQuote = false
-        var inDoubleQuote = false
+        // Scalars, not Characters: a combining mark after a quote would merge with it into one Character.
+        var openQuote: Unicode.Scalar?
         var isEscaped = false
 
-        for char in query {
+        for scalar in query.unicodeScalars {
             if isEscaped {
                 isEscaped = false
-                converted.append(char)
+                converted.append(scalar)
                 continue
             }
-            if char == "\\" && (inSingleQuote || inDoubleQuote) {
-                isEscaped = true
-                converted.append(char)
+            if let quote = openQuote {
+                // ClickHouse reads backslash escapes inside all three quote forms.
+                if scalar == "\\" {
+                    isEscaped = true
+                } else if scalar == quote {
+                    openQuote = nil
+                }
+                converted.append(scalar)
                 continue
             }
-            if char == "'" && !inDoubleQuote {
-                inSingleQuote.toggle()
-            } else if char == "\"" && !inSingleQuote {
-                inDoubleQuote.toggle()
+            if scalar == "'" || scalar == "\"" || scalar == "`" {
+                openQuote = scalar
+                converted.append(scalar)
+                continue
             }
-            guard char == "?", !inSingleQuote, !inDoubleQuote, consumed < parameters.count else {
-                converted.append(char)
+            guard scalar == "?", consumed < parameters.count else {
+                converted.append(scalar)
                 continue
             }
             let parameter = parameters[consumed]
             consumed += 1
-            if case .bytes(let data) = parameter {
-                converted.append(hexLiteral(data))
-                continue
+            switch parameter {
+            case .bytes(let data):
+                converted.append(contentsOf: hexLiteral(data).unicodeScalars)
+            case .null:
+                converted.append(contentsOf: "NULL".unicodeScalars)
+            case .text(let text):
+                namedCount += 1
+                let name = "p\(namedCount)"
+                converted.append(contentsOf: "{\(name):String}".unicodeScalars)
+                paramMap[name] = escapedParameterValue(text)
             }
-            namedCount += 1
-            let name = "p\(namedCount)"
-            converted.append("{\(name):String}")
-            paramMap[name] = parameter.asText
         }
 
-        return Bound(query: converted, params: paramMap)
+        return Bound(query: String(converted), params: paramMap)
+    }
+
+    // The server reads a parameter in its escaped text format: a backslash starts an escape and a raw tab ends the value.
+    static func escapedParameterValue(_ text: String) -> String {
+        var escaped = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            switch scalar {
+            case "\\": escaped.append(contentsOf: "\\\\".unicodeScalars)
+            case "\t": escaped.append(contentsOf: "\\t".unicodeScalars)
+            case "\n": escaped.append(contentsOf: "\\n".unicodeScalars)
+            case "\r": escaped.append(contentsOf: "\\r".unicodeScalars)
+            default: escaped.append(scalar)
+            }
+        }
+        return String(escaped)
     }
 
     static func hexLiteral(_ data: Data) -> String {

@@ -28,6 +28,8 @@ final class AppState {
     }
 
     private(set) var sampleResetRevision = 0
+    private var sessionRevisions: [UUID: Int] = [:]
+    private var editorHolders: [UUID: Set<ObjectIdentifier>] = [:]
     let onboarding: OnboardingPreferences
     let connectionManager: ConnectionManager
     let sessionTransactions: SessionTransactionMonitor
@@ -39,11 +41,15 @@ final class AppState {
 
     @ObservationIgnored private var automaticPresentationOwner: UUID?
     @ObservationIgnored private var pastedSSHKeysAwaitingKeychain: [UUID: String] = [:]
+    // A failed save leaves the change in memory only, so sync must not take an equal download as already saved.
+    @ObservationIgnored private var unsavedLibraryParts: Set<LibraryPart> = []
     let libraryPreferences: ConnectionLibraryPreferences
     let sshProvider: IOSSSHProvider
     let secureStore: any SecureStore
     let localDatabaseFiles: LocalDatabaseFileLocator
     let queryHistory: QueryHistoryStorage
+    // Outside `loadStatus`, so a saved queries file that fails to load never locks the connections.
+    let savedQueries: SavedQueryLibrary
 
     private let sampleInstaller: SampleDatabaseInstaller
     private let libraryPublisher: ConnectionLibraryPublisher
@@ -71,6 +77,7 @@ final class AppState {
         syncCoordinator = injectedSyncCoordinator ?? IOSSyncCoordinator()
         storage = ConnectionPersistence(directory: libraryDirectory)
         queryHistory = QueryHistoryStorage(directory: libraryDirectory)
+        savedQueries = SavedQueryLibrary(directory: libraryDirectory, syncCoordinator: syncCoordinator)
         groupStorage = GroupPersistence(directory: libraryDirectory)
         tagStorage = TagPersistence(directory: libraryDirectory)
         let driverFactory: any DriverFactory = injectedDriverFactory
@@ -84,18 +91,20 @@ final class AppState {
             sshProvider: sshProvider
         )
         self.connectionManager = connectionManager
-        let sessionTransactions = SessionTransactionMonitor { [connectionManager] id in
+        self.sessionTransactions = SessionTransactionMonitor { [connectionManager] id in
             connectionManager.session(for: id)?.driver
-        }
-        self.sessionTransactions = sessionTransactions
-        connectionManager.observeSessionEnds { [weak sessionTransactions] id, driver in
-            Task { @MainActor in
-                sessionTransactions?.sessionEnded(id, driver: driver)
-            }
         }
         self.sessionRedialer = SessionRedialer(connectionManager: connectionManager)
         self.backgroundRelease = BackgroundReleaseCoordinator(connectionManager: connectionManager)
+        connectionManager.observeSessionEnds { [weak self] id, driver in
+            Task { @MainActor in
+                self?.sessionEnded(id, driver: driver)
+            }
+        }
         loadPersistedData()
+        savedQueries.syncsOwner = { [weak self] id in
+            self?.syncsConnection(id) ?? true
+        }
 
         guard !TestRuntime.isActive else { return }
 
@@ -106,26 +115,70 @@ final class AppState {
             }
         }
 
+        connectSync()
+    }
+
+    // Separate from init, which skips it under tests, so a test can run the wiring the app runs.
+    func connectSync() {
         syncCoordinator.onConnectionsChanged = { [weak self] merged in
-            self?.applySyncedConnections(merged)
+            self?.applySyncedConnections(merged) ?? false
         }
 
         syncCoordinator.onGroupsChanged = { [weak self] merged in
-            guard let self else { return }
-            guard merged != self.groups else { return }
-            self.persist(groups: merged)
+            guard let self else { return false }
+            guard merged != self.groups || self.unsavedLibraryParts.contains(.groups) else { return true }
+            return self.persist(groups: merged, onlyIfSaved: true)
         }
 
         syncCoordinator.onTagsChanged = { [weak self] merged in
-            guard let self else { return }
-            guard merged != self.tags else { return }
-            self.persist(tags: merged)
+            guard let self else { return false }
+            guard merged != self.tags || self.unsavedLibraryParts.contains(.tags) else { return true }
+            return self.persist(tags: merged, onlyIfSaved: true)
         }
 
         syncCoordinator.getCurrentState = { [weak self] in
             guard let self, self.loadStatus == .ready else { return nil }
             return (self.connections, self.groups, self.tags)
         }
+
+        syncCoordinator.getSavedQueries = { [weak self] in
+            self?.savedQueries.syncContents
+        }
+
+        syncCoordinator.onSavedQueriesChanged = { [weak self] merged in
+            self?.savedQueries.applySynced(merged) ?? false
+        }
+    }
+
+    // MARK: - Sessions
+
+    // Every window of a connection shares one session, so each follows when another window ends, replaces or moves it.
+    func sessionRevision(for connectionId: UUID) -> Int {
+        sessionRevisions[connectionId, default: 0]
+    }
+
+    func bumpSessionRevision(_ connectionId: UUID) {
+        sessionRevisions[connectionId, default: 0] += 1
+    }
+
+    // A window with unsaved row edits names its table without a database, so no other window may move the shared session.
+    func setEditorHold(_ isHolding: Bool, by holder: AnyObject, on connectionId: UUID) {
+        let id = ObjectIdentifier(holder)
+        if isHolding {
+            editorHolders[connectionId, default: []].insert(id)
+        } else {
+            editorHolders[connectionId]?.remove(id)
+            if editorHolders[connectionId]?.isEmpty == true { editorHolders[connectionId] = nil }
+        }
+    }
+
+    func holdsEditor(_ connectionId: UUID, besides holder: AnyObject) -> Bool {
+        !(editorHolders[connectionId] ?? []).subtracting([ObjectIdentifier(holder)]).isEmpty
+    }
+
+    private func sessionEnded(_ connectionId: UUID, driver: any DatabaseDriver) {
+        sessionTransactions.sessionEnded(connectionId, driver: driver)
+        bumpSessionRevision(connectionId)
     }
 
     // MARK: - Load / Retry
@@ -135,6 +188,7 @@ final class AppState {
     }
 
     func retryLoadIfFailed() {
+        savedQueries.retryLoadIfFailed()
         guard loadStatus == .failed else { return }
         Self.logger.info("Retrying persistence load after previous failure")
         loadPersistedData()
@@ -155,13 +209,16 @@ final class AppState {
         libraryPublisher.publish(connections)
     }
 
-    func applySyncedConnections(_ merged: [DatabaseConnection]) {
-        guard !refuseWriteIfNotReady() else { return }
-        guard merged != connections else { return }
+    @discardableResult
+    func applySyncedConnections(_ merged: [DatabaseConnection]) -> Bool {
+        guard !refuseWriteIfNotReady() else { return false }
+        guard merged != connections || unsavedLibraryParts.contains(.connections) else { return true }
         let removedIds = Set(connections.map(\.id)).subtracting(merged.map(\.id))
-        persist(connections: merged)
+        guard persist(connections: merged, onlyIfSaved: true) else { return false }
         localState.purge(removedIds)
+        savedQueries.removeRecords(ofConnections: removedIds, tombstoning: false)
         publishLibrary()
+        return true
     }
 
     private func syncsConnection(_ id: UUID) -> Bool {
@@ -212,36 +269,62 @@ final class AppState {
 
     // MARK: - Persistence Bridges
 
-    private func persist(connections: [DatabaseConnection]) {
-        connectionsState = .loaded(connections)
-        pastedSSHKeysAwaitingKeychain = PastedSSHKeyMigration.keysStillHeld(
-            pastedSSHKeysAwaitingKeychain,
-            by: connections
-        )
+    // A pulled change shown but not saved would make the next equal merge report it saved and move the token past it.
+    // A local change whose save failed is in memory only, so an equal pull saves it again rather than skip it.
+    @discardableResult
+    private func persist(connections: [DatabaseConnection], onlyIfSaved: Bool = false) -> Bool {
+        let heldKeys = PastedSSHKeyMigration.keysStillHeld(pastedSSHKeysAwaitingKeychain, by: connections)
+        var saved = true
         do {
-            try storage.save(connections, keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain)
+            try storage.save(connections, keepingPastedSSHKeys: heldKeys)
         } catch {
+            saved = false
             Self.logger.error("Failed to save connections: \(error.localizedDescription, privacy: .public)")
         }
+        guard saved || !onlyIfSaved else { return false }
+        markLibraryPart(.connections, saved: saved)
+        connectionsState = .loaded(connections)
+        pastedSSHKeysAwaitingKeychain = heldKeys
         pruneLibraryPreferences()
+        return saved
     }
 
-    private func persist(groups: [ConnectionGroup]) {
-        groupsState = .loaded(groups)
+    @discardableResult
+    private func persist(groups: [ConnectionGroup], onlyIfSaved: Bool = false) -> Bool {
+        var saved = true
         do {
             try groupStorage.save(groups)
         } catch {
+            saved = false
             Self.logger.error("Failed to save groups: \(error.localizedDescription, privacy: .public)")
         }
+        guard saved || !onlyIfSaved else { return false }
+        markLibraryPart(.groups, saved: saved)
+        groupsState = .loaded(groups)
         pruneLibraryPreferences()
+        return saved
     }
 
-    private func persist(tags: [ConnectionTag]) {
-        tagsState = .loaded(tags)
+    @discardableResult
+    private func persist(tags: [ConnectionTag], onlyIfSaved: Bool = false) -> Bool {
+        var saved = true
         do {
             try tagStorage.save(tags)
         } catch {
+            saved = false
             Self.logger.error("Failed to save tags: \(error.localizedDescription, privacy: .public)")
+        }
+        guard saved || !onlyIfSaved else { return false }
+        markLibraryPart(.tags, saved: saved)
+        tagsState = .loaded(tags)
+        return saved
+    }
+
+    private func markLibraryPart(_ part: LibraryPart, saved: Bool) {
+        if saved {
+            unsavedLibraryParts.remove(part)
+        } else {
+            unsavedLibraryParts.insert(part)
         }
     }
 
@@ -337,6 +420,9 @@ final class AppState {
         guard !removed.isEmpty else { return }
         persist(connections: connections.filter { !ids.contains($0.id) })
         localState.purge(Set(removed.map(\.id)))
+        let syncedIds = Set(removed.filter(\.participatesInSync).map(\.id))
+        savedQueries.removeRecords(ofConnections: syncedIds, tombstoning: true)
+        savedQueries.removeRecords(ofConnections: Set(removed.map(\.id)).subtracting(syncedIds), tombstoning: false)
         publishLibrary()
         for connection in removed where connection.participatesInSync {
             syncCoordinator.markDeleted(connection.id)
@@ -564,6 +650,12 @@ nonisolated enum LibraryStorage {
     }
 }
 
+private enum LibraryPart {
+    case connections
+    case groups
+    case tags
+}
+
 private struct StoredConnections {
     let connections: [DatabaseConnection]
     let pastedSSHKeys: [UUID: String]
@@ -579,7 +671,9 @@ private struct ConnectionPersistence {
 
     func save(_ connections: [DatabaseConnection], keepingPastedSSHKeys pastedSSHKeys: [UUID: String]) throws {
         guard let fileURL else { return }
-        let data = try PastedSSHKeyMigration.libraryFile(JSONEncoder().encode(connections), keeping: pastedSSHKeys)
+        let encoder = JSONEncoder()
+        encoder.userInfo[.deviceLibraryFile] = true
+        let data = try PastedSSHKeyMigration.libraryFile(encoder.encode(connections), keeping: pastedSSHKeys)
         try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 

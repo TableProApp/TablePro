@@ -32,8 +32,8 @@ struct TableListView: View {
     }
 
     @FocusState private var searchFocused: Bool
-    @State private var tableToTruncate: TableInfo?
-    @State private var tableToDrop: TableInfo?
+    @State private var tableToTruncate: PendingTableAction?
+    @State private var tableToDrop: PendingTableAction?
     @State private var errorMessage = ""
     @State private var showError = false
 
@@ -96,7 +96,7 @@ struct TableListView: View {
 
                                 if table.type.allowsTruncate {
                                     Button(role: .destructive) {
-                                        tableToTruncate = table
+                                        tableToTruncate = PendingTableAction(table: table, placement: coordinator.tablePlacement)
                                     } label: {
                                         Label("Truncate Table", systemImage: "trash.slash")
                                     }
@@ -104,7 +104,7 @@ struct TableListView: View {
 
                                 if table.type.allowsDrop {
                                     Button(role: .destructive) {
-                                        tableToDrop = table
+                                        tableToDrop = PendingTableAction(table: table, placement: coordinator.tablePlacement)
                                     } label: {
                                         Label("Drop Table", systemImage: "trash")
                                     }
@@ -157,12 +157,12 @@ struct TableListView: View {
             titleVisibility: .visible
         ) {
             Button(String(localized: "Truncate"), role: .destructive) {
-                if let table = tableToTruncate {
+                if let action = tableToTruncate {
                     Task {
-                        guard let driver = session?.driver else { return }
+                        guard let driver = driver(for: action) else { return }
                         do {
                             let quoted = SQLBuilder.qualifiedIdentifier(
-                                table: table.name, schema: activeSchema, for: connection.type
+                                table: action.table.name, schema: action.placement.schema, for: connection.type
                             )
                             _ = try await coordinator.track { try await driver.executeWrite(["TRUNCATE TABLE \(quoted)"]) }
                             await coordinator.refreshTables()
@@ -174,8 +174,11 @@ struct TableListView: View {
                 }
             }
         } message: {
-            if let table = tableToTruncate {
-                Text("All data in \"\(table.name)\" will be permanently deleted.")
+            if let action = tableToTruncate {
+                Text(ddlConfirmation(String(
+                    format: String(localized: "All data in \"%@\" will be permanently deleted."),
+                    action.table.name
+                )))
             }
         }
         .confirmationDialog(
@@ -184,12 +187,12 @@ struct TableListView: View {
             titleVisibility: .visible
         ) {
             Button(String(localized: "Drop"), role: .destructive) {
-                if let table = tableToDrop {
+                if let action = tableToDrop {
                     Task {
-                        guard let driver = session?.driver else { return }
+                        guard let driver = driver(for: action) else { return }
                         do {
                             let quoted = SQLBuilder.qualifiedIdentifier(
-                                table: table.name, schema: activeSchema, for: connection.type
+                                table: action.table.name, schema: action.placement.schema, for: connection.type
                             )
                             _ = try await coordinator.track { try await driver.executeWrite(["DROP TABLE \(quoted)"]) }
                             await coordinator.refreshTables()
@@ -202,9 +205,16 @@ struct TableListView: View {
                 }
             }
         } message: {
-            if let table = tableToDrop {
-                Text("The table \"\(table.name)\" and all its data will be permanently deleted.")
+            if let action = tableToDrop {
+                Text(ddlConfirmation(String(
+                    format: String(localized: "The table \"%@\" and all its data will be permanently deleted."),
+                    action.table.name
+                )))
             }
+        }
+        .onChange(of: coordinator.tablePlacement) {
+            tableToTruncate = nil
+            tableToDrop = nil
         }
         .alert("Error", isPresented: $showError) {
             Button("OK", role: .cancel) {}
@@ -212,6 +222,30 @@ struct TableListView: View {
             Text(errorMessage)
         }
     }
+
+    // Another window can switch the shared session between the tap and the confirmation; the table named in the dialog
+    // may then sit in another database or schema, so nothing runs.
+    private func driver(for action: PendingTableAction) -> (any DatabaseDriver)? {
+        guard action.placement == coordinator.tablePlacement, let driver = session?.driver else {
+            errorMessage = String(localized: "The connection moved to another database or schema. Choose the table again.")
+            showError = true
+            return nil
+        }
+        return driver
+    }
+
+    private func ddlConfirmation(_ message: String) -> String {
+        OpenTransactionWarning.ddlConfirmation(
+            message,
+            type: connection.type,
+            holdsTransaction: coordinator.transactionHold != nil
+        )
+    }
+}
+
+private struct PendingTableAction {
+    let table: TableInfo
+    let placement: ConnectionCoordinator.TablePlacement
 }
 
 private struct TableRow: View {
