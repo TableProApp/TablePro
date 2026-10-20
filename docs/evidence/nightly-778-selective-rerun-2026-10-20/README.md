@@ -32,3 +32,9 @@ Forgejo reports run #778 cancelled. At 00:51 UTC, its job list showed eight succ
 7. **Only rerun downstream package/value/GTK jobs when their required mutation and Docker prerequisites are available.** Their cancellation gives no pass or fail evidence.
 
 The local workstation plan in [workstation test reuse](../../proposals/workstation-test-reuse.md) remains the low-write path for focused checks: reuse its existing Cargo target tree and nextest artifacts, run one compile-heavy task at a time, and avoid `cargo clean`. No local or Forgejo rerun is claimed by this document.
+
+## Cancellation follow-up
+
+The maintainer subsequently cancelled the remaining run, including the intentional GTK soak retries. The final job inventory is eight successes, ten failures, and nine cancellations. Read-only process checks on both inspected executors found no remaining mutation, Cargo build/test, or GTK safety command. The successful jobs remain reusable evidence for this source SHA; the cancelled soak jobs provide no completed soak result.
+
+Tomorrow's recovery starts from this terminal inventory. Skip the eight successful jobs. Retry cancelled PostgreSQL mutation separately if needed. Keep Core and Policy mutation retries isolated until their memory requirements are controlled. Completed mutation-gap jobs need regression tests before a useful rerun; job retries at the old SHA cannot include new tests. A dispatch at a new SHA currently expands the whole nightly, so selective dispatch support must be implemented and validated before using it to avoid repeating successful jobs.
