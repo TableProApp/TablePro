@@ -1,0 +1,63 @@
+{
+  "run": 800,
+  "revision": "d291ee662c83da53011d6d7805deacb7c6edea85",
+  "measurement": "First to last timestamp in each job log; excludes queue time and is not a benchmark.",
+  "jobs": [
+    {
+      "job": "guards",
+      "status": "success",
+      "first_log": "2026-10-20 10:45:33.374577+00:00",
+      "last_log": "2026-10-20 10:48:18.051593+00:00",
+      "logged_wall_seconds": 164.7
+    },
+    {
+      "job": "unit",
+      "status": "success",
+      "first_log": "2026-10-20 10:45:33.909450+00:00",
+      "last_log": "2026-10-20 10:48:32.590861+00:00",
+      "logged_wall_seconds": 178.7
+    },
+    {
+      "job": "sandbox",
+      "status": "success",
+      "first_log": "2026-10-20 10:45:33.900342+00:00",
+      "last_log": "2026-10-20 10:48:48.828942+00:00",
+      "logged_wall_seconds": 194.9
+    },
+    {
+      "job": "widgets",
+      "status": "success",
+      "first_log": "2026-10-20 10:45:33.907579+00:00",
+      "last_log": "2026-10-20 10:49:08.860973+00:00",
+      "logged_wall_seconds": 215.0
+    },
+    {
+      "job": "distro-floor (debian:13, 11)",
+      "status": "success",
+      "first_log": "2026-10-20 10:49:11.387860+00:00",
+      "last_log": "2026-10-20 11:03:41.931230+00:00",
+      "logged_wall_seconds": 870.5
+    },
+    {
+      "job": "distro-floor (ubuntu:24.04, 10)",
+      "status": "success",
+      "first_log": "2026-10-20 10:49:11.350235+00:00",
+      "last_log": "2026-10-20 11:04:46.423053+00:00",
+      "logged_wall_seconds": 935.1
+    },
+    {
+      "job": "driver (postgres)",
+      "status": "success",
+      "first_log": "2026-10-20 10:49:13.773049+00:00",
+      "last_log": "2026-10-20 10:54:54.550605+00:00",
+      "logged_wall_seconds": 340.8
+    },
+    {
+      "job": "gtk (1)",
+      "status": "success",
+      "first_log": "2026-10-20 10:49:14.106071+00:00",
+      "last_log": "2026-10-20 10:55:32.123935+00:00",
+      "logged_wall_seconds": 378.0
+    }
+  ]
+}

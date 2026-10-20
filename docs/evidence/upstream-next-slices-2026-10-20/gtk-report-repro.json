@@ -1,0 +1,8 @@
+{
+  "input": "One early failed scenario and its assertion, followed by 40 successful scenarios and the failure summary.",
+  "exit_status": 1,
+  "early_failed_line_retained": false,
+  "assertion_retained": false,
+  "final_summary_retained": true,
+  "interpretation": "The helper preserves the failing exit status and scenario summary, but loses the failure line and assertion after enough later passes."
+}

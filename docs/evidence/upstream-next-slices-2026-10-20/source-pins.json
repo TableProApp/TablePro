@@ -1,0 +1,8 @@
+{
+  "review_date": "2026-10-20",
+  "bookie_linux": "d291ee662c83da53011d6d7805deacb7c6edea85",
+  "bookie_main": "e1b11a1d116c6b789fdf473f2910bffe3bfb7a5b",
+  "tablepro_main": "c584da5a763014e154b7386dbe7e3ec9811a53d4",
+  "previous_upstream_review": "3222542a4f66d24dc03c36478f97bf1ce34dbbf3",
+  "native_oracle_image": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+}

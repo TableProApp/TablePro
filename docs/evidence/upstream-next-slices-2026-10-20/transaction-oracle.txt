@@ -1,0 +1,24 @@
+CASE_1_ABORTED_COMMIT
+CREATE TABLE
+BEGIN
+INSERT 0 1
+ERROR:  division by zero
+ROLLBACK
+ aborted_commit_kept_no_rows 
+-----------------------------
+ t
+(1 row)
+
+CASE_2_SAVEPOINT_RECOVERY
+BEGIN
+INSERT 0 1
+SAVEPOINT
+ERROR:  division by zero
+ROLLBACK
+INSERT 0 1
+COMMIT
+ rows_committed_after_recovery 
+-------------------------------
+ {2,3}
+(1 row)
+
