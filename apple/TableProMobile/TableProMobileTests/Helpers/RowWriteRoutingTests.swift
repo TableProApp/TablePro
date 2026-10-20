@@ -71,7 +71,6 @@ struct RowWriteRoutingTests {
     @Test("A row edit on an engine that writes its own rows goes to its writer with the row as read")
     func rowDetailSavesThroughTheWriter() async throws {
         let plugin = StubPluginDriver()
-        plugin.rowCounts = [1, 1, 1]
         let vm = RowDetailViewModel(
             columns: columns,
             rows: [Row(cells: [.text("1"), .text("signup")])],
@@ -136,7 +135,7 @@ struct RowWriteRoutingTests {
     @Test("A change runs in the part of the one row its lookup found, then waits for the mutation")
     func changeIsPinnedToTheRowItFound() async throws {
         let plugin = StubPluginDriver()
-        plugin.rowCounts = [1, 1]
+        plugin.rowCounts = [1, 0]
         let driver = PluginBackedDriver(
             plugin: plugin,
             dialedHosts: [],
@@ -151,13 +150,13 @@ struct RowWriteRoutingTests {
         )
 
         _ = try await driver.run(writes, changing: RowTarget(
-            table: "events", columns: ["id", "name"], row: ["1", "signup"], changedRow: ["1", "purchase"]
+            table: "events", columns: ["id", "name"], row: ["1", "signup"], changes: [(column: "name", value: "purchase")]
         ))
 
         let write = try #require(plugin.parameterizedQueries.first)
         #expect(write.query == #"WRITE update events AND "_part" = ? SETTINGS mutations_sync = 1"#)
         #expect(write.parameters == ["1", "signup", "all_1_1_0"])
-        #expect(plugin.rowLookups.map { $0.parameters } == [["1", "signup"], ["1", "purchase"]])
+        #expect(plugin.rowLookups.map { $0.parameters } == [["1", "signup"], ["1", "signup"]])
     }
 
     @Test("A save whose row gained an identical twin after the first check is refused and writes nothing")
@@ -186,7 +185,7 @@ struct RowWriteRoutingTests {
     @Test("A save the server did not apply says the row is gone and keeps the typed value")
     func unappliedSaveSaysTheRowIsGone() async {
         let plugin = StubPluginDriver()
-        plugin.rowCounts = [1, 1, 0]
+        plugin.rowCounts = [1, 1, 1, 0]
         let vm = RowDetailViewModel(
             columns: columns,
             rows: [Row(cells: [.text("1"), .text("signup")])],
@@ -204,6 +203,27 @@ struct RowWriteRoutingTests {
         #expect(vm.operationError?.title == String(localized: "Row Not Found"))
         #expect(vm.isEditing)
         #expect(plugin.parameterizedQueries.count == 1)
+    }
+
+    @Test("A save whose new values read the same as the old counts as saved")
+    func sameValueSaveCountsAsSaved() async {
+        let plugin = StubPluginDriver()
+        plugin.rowCounts = [1, 1, 1, 1]
+        let vm = RowDetailViewModel(
+            columns: columns,
+            rows: [Row(cells: [.text("1"), .text("signup")])],
+            initialIndex: 0,
+            table: TableInfo(name: "events"),
+            session: session(plugin),
+            columnDetails: columns
+        )
+        vm.startEditing()
+        vm.setEditedValue("signup ", at: 1)
+
+        let saved = await vm.saveChanges()
+
+        #expect(saved)
+        #expect(plugin.rowLookups.last?.parameters == ["1", "signup", "signup "])
     }
 
     @Test("A delete whose row another client removed first sends no write and counts as done")
