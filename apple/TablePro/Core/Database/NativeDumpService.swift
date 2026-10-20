@@ -255,19 +255,18 @@ final class NativeDumpService: ObservableObject {
             }
         }
 
-        let effective = session?.effectiveConnection ?? connection
-        /// The same resolution the connect used. Reading the Keychain directly, which this used to
-        /// do, meant a dump of a connection whose password comes from a `PasswordSource`, from
-        /// `~/.pgpass` or from an AWS IAM token ran with no password at all.
-        /// The error is raised, not swallowed. A password source whose file is missing, whose
-        /// command failed, or whose store is untrusted used to become a missing password and a
-        /// misleading authentication failure from the server.
-        let password = try await ConnectionCredentialResolver.resolvePassword(
+        var effective = session?.effectiveConnection ?? connection
+        // The connect's own resolution, errors included: a Keychain read misses every other source.
+        let signIn = try await ConnectionCredentialResolver.resolveSignIn(
             for: effective,
             fields: DatabaseDriverFactory.resolvedAdditionalFields(for: effective)
                 ?? effective.additionalFields,
             override: session?.cachedPassword
         )
+        if let username = signIn.username {
+            effective.username = username
+        }
+        let password = signIn.password
         let localFilePath = Self.localFilePath(for: effective)
         let catalog = descriptor.engineStatements == nil
             ? nil

@@ -67,6 +67,14 @@ extension PostgreSQLPluginDriver {
         PostgreSQLObjectQueries.createTypeTemplate(schema: schema ?? currentSchema ?? "public")
     }
 
+    func generateDropTypeSQL(type: PluginUserDefinedTypeInfo) -> String? {
+        PostgreSQLObjectQueries.dropType(
+            schema: type.schema ?? currentSchema ?? "public",
+            name: type.name,
+            kind: type.kind
+        )
+    }
+
     func generateAddEnumLabelSQL(
         type: PluginUserDefinedTypeInfo,
         label: String,

@@ -1011,6 +1011,7 @@ struct MainEditorContentView: View {
                 showRowNumbers: settingsManager.dataGrid.showRowNumbers,
                 hiddenColumns: tab.columnLayout.hiddenColumns,
                 appliesRowSortPreferences: true,
+                appliesRowCopyFormat: true,
                 supportsColumnSort: tab.tabType != .table
                     || PluginManager.shared.supportsColumnSort(for: connection.type),
                 editRefusalMessage: refusal?.message
@@ -1119,7 +1120,8 @@ struct MainEditorContentView: View {
             hasStructureActions: structureFooter.isActive,
             isQueryPlan: tab.display.activeExplainResult != nil,
             paginationCapability: coordinator.paginationCapability,
-            hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true)
+            hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true),
+            activeResultStatusMessage: tab.display.activeResultSet?.statusMessage
         )
         return ResultStatusBar(
             model: ResultStatusModel(

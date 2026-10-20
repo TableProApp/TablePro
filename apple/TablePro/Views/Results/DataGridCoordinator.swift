@@ -121,6 +121,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         return AppSettingsManager.shared.dataGrid.defaultSortDirection
     }
 
+    var appliesRowCopyFormat: Bool = false
+
+    var rowCopyFormat: RowCopyFormat {
+        guard appliesRowCopyFormat else { return .rows }
+        return AppSettingsManager.shared.dataGrid.rowCopyFormat
+    }
+
     private var columnIndexByDataIndex: [Int: Int] = [:]
     /// Display position to data index, rebuilt lazily. `presentedDataColumns` reads it; a drag and
     /// the cell-range fill both ask per event and per row, and deriving it walks every attached
@@ -277,6 +284,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         primaryKeyColumns = configuration.primaryKeyColumns
         tabType = configuration.tabType
         appliesRowSortPreferences = configuration.appliesRowSortPreferences
+        appliesRowCopyFormat = configuration.appliesRowCopyFormat
         supportsColumnSort = configuration.supportsColumnSort
     }
 

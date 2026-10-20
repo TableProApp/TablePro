@@ -55,7 +55,7 @@ public enum TrinoError: Error, LocalizedError, Equatable {
         case .invalidConfiguration(let detail):
             return detail
         case .notConnected:
-            return "Not connected to Trino"
+            return "Not connected to the coordinator"
         case .transport(let detail):
             return detail
         case .httpStatus(let code, let body):
@@ -78,7 +78,7 @@ public enum TrinoError: Error, LocalizedError, Equatable {
         case .cancelled:
             return "Query was cancelled"
         case .timedOut:
-            return "Timed out waiting for Trino"
+            return "Timed out waiting for the coordinator"
         }
     }
 
@@ -113,7 +113,7 @@ public enum TrinoError: Error, LocalizedError, Equatable {
     private static func describeRedirect(statusCode: Int, location: String?, advice: TrinoRedirectAdvice) -> String {
         guard let location else {
             return "The server answered with HTTP \(statusCode) and no address. "
-                + "Trino never redirects, so a proxy in front of it sent this. Check the host, port and SSL Mode."
+                + "The coordinator never redirects, so a proxy in front of it sent this. Check the host, port and SSL Mode."
         }
         switch advice {
         case .turnOnTLS(let port):
@@ -121,7 +121,7 @@ public enum TrinoError: Error, LocalizedError, Equatable {
                 + "Set Port to \(port) and SSL Mode to Verify Identity."
         case .checkAddress:
             return "The server redirected the request to \(location). TablePro does not follow redirects, "
-                + "and Trino never sends one, so a proxy in front of it did. Check the host, port and SSL Mode."
+                + "and the coordinator never sends one, so a proxy in front of it did. Check the host, port and SSL Mode."
         }
     }
 }
