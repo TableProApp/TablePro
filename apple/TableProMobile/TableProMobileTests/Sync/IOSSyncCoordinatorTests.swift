@@ -275,6 +275,28 @@ struct IOSSyncCoordinatorTests {
         #expect(box.connections.first?.sshProfileId == profileId)
     }
 
+    @Test("A cached profile link is not taken by a copy whose tunnel names another server")
+    func copyNamingAnotherServerTakesNoCachedLink() async throws {
+        let box = LibraryStateBox()
+        let server = DatabaseConnection(
+            name: "Profile",
+            type: .postgresql,
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "bastion.example.com", username: "deploy")
+        )
+        var local = server
+        local.sshConfiguration?.host = "bastion.attacker.example"
+        box.connections = [local]
+        let cached = SyncRecordMapper.toRecord(server, zoneID: zoneID)
+        cached[ConnectionSyncField.sshProfileId.key] = UUID().uuidString as CKRecordValue
+        SyncRecordCache(directory: cacheDirectory, defaults: nil).store([cached])
+        let coordinator = makeCoordinator(box: box, transport: FakeSyncTransport(remoteRecords: [], box: box))
+
+        await coordinator.sync()
+
+        #expect(box.connections.first?.sshProfileId == nil)
+    }
+
     @Test("A profile unlinked here is not linked again from the cached record")
     func unlinkedCopyIsNotRelinkedFromTheCache() async throws {
         let box = LibraryStateBox()
