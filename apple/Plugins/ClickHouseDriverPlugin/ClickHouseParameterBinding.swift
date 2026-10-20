@@ -12,7 +12,8 @@ nonisolated internal enum ClickHouseParameterBinding {
         let params: [String: String?]
     }
 
-    // A `{p1:String}` parameter is text, so bytes are inlined as `unhex('...')` instead of compared as hex characters.
+    // A `{p1:String}` parameter is text, so bytes are inlined as `unhex('...')` instead of compared as hex characters,
+    // and NULL, which a String parameter cannot hold, is inlined as NULL.
     static func bind(query: String, parameters: [PluginCellValue]) -> Bound {
         var converted = String.UnicodeScalarView()
         converted.reserveCapacity(query.utf8.count)
@@ -50,17 +51,35 @@ nonisolated internal enum ClickHouseParameterBinding {
             }
             let parameter = parameters[consumed]
             consumed += 1
-            if case .bytes(let data) = parameter {
+            switch parameter {
+            case .bytes(let data):
                 converted.append(contentsOf: hexLiteral(data).unicodeScalars)
-                continue
+            case .null:
+                converted.append(contentsOf: "NULL".unicodeScalars)
+            case .text(let text):
+                namedCount += 1
+                let name = "p\(namedCount)"
+                converted.append(contentsOf: "{\(name):String}".unicodeScalars)
+                paramMap[name] = escapedParameterValue(text)
             }
-            namedCount += 1
-            let name = "p\(namedCount)"
-            converted.append(contentsOf: "{\(name):String}".unicodeScalars)
-            paramMap[name] = parameter.asText
         }
 
         return Bound(query: String(converted), params: paramMap)
+    }
+
+    // The server reads a parameter in its escaped text format: a backslash starts an escape and a raw tab ends the value.
+    static func escapedParameterValue(_ text: String) -> String {
+        var escaped = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            switch scalar {
+            case "\\": escaped.append(contentsOf: "\\\\".unicodeScalars)
+            case "\t": escaped.append(contentsOf: "\\t".unicodeScalars)
+            case "\n": escaped.append(contentsOf: "\\n".unicodeScalars)
+            case "\r": escaped.append(contentsOf: "\\r".unicodeScalars)
+            default: escaped.append(scalar)
+            }
+        }
+        return String(escaped)
     }
 
     static func hexLiteral(_ data: Data) -> String {

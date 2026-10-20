@@ -19,14 +19,24 @@ struct ClickHouseParameterBindingTests {
         #expect(bound.params["p2"] == "two")
     }
 
-    @Test("A null parameter keeps its slot with no value")
-    func nullParameterKeepsItsSlot() {
+    // A String parameter cannot hold NULL: sent with no value it reaches a Nullable column as '' and fails a number.
+    @Test("A null parameter is written into the statement as NULL")
+    func nullParameterIsInlinedAsNull() {
         let bound = ClickHouseParameterBinding.bind(
-            query: "SELECT * FROM t WHERE a = ?",
-            parameters: [.null]
+            query: "ALTER TABLE t UPDATE a = ?, b = ? WHERE id = ?",
+            parameters: [.null, .text("x"), .text("7")]
         )
-        #expect(bound.query == "SELECT * FROM t WHERE a = {p1:String}")
-        #expect(bound.params["p1"] == .some(nil))
+        #expect(bound.query == "ALTER TABLE t UPDATE a = NULL, b = {p1:String} WHERE id = {p2:String}")
+        #expect(bound.params == ["p1": "x", "p2": "7"])
+    }
+
+    @Test("Text is sent in the server's escaped format, so a backslash, tab or line break arrives as typed")
+    func textIsEscapedForTheServer() {
+        let bound = ClickHouseParameterBinding.bind(
+            query: "SELECT ?",
+            parameters: [.text("a\\nb\tc\nd\re\\")]
+        )
+        #expect(bound.params["p1"] == "a\\\\nb\\tc\\nd\\re\\\\")
     }
 
     @Test("A binary parameter is written into the statement as unhex, never as text")
