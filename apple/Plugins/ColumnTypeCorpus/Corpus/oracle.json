@@ -1,7 +1,7 @@
 {
   "engine": "oracle",
   "databaseTypeId": "Oracle",
-  "typeList": "Plugins/OracleDriverPlugin/OracleTypeCatalog.swift",
+  "typeList": "Packages/TableProCore/Sources/TableProSQLVocabulary/SQLEngineVocabulary+Oracle.swift",
   "createTable": "CREATE TABLE {table} ({id} NUMBER(10) PRIMARY KEY, {column} {type})",
   "dropTable": "DROP TABLE {table} PURGE",
   "columns": [
