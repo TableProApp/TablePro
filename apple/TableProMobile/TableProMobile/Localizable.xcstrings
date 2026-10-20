@@ -1662,6 +1662,34 @@
         }
       }
     },
+    "Accept Suggestion" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "제안 수락"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chấp nhận gợi ý"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接受建议"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接受建議"
+          }
+        }
+      }
+    },
     "Accepted" : {
       "localizations" : {
         "ko" : {
@@ -2481,6 +2509,34 @@
     "Alert" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Alias" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "별칭"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bí danh"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "别名"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別名"
+          }
+        }
+      }
     },
     "All" : {
       "extractionState" : "stale",
@@ -10409,6 +10465,34 @@
         }
       }
     },
+    "Hide Suggestions" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "제안 숨기기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ẩn gợi ý"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏建议"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏建議"
+          }
+        }
+      }
+    },
     "Histogram" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -11849,6 +11933,34 @@
     },
     "Keys of type %@ cannot be opened here." : {
 
+    },
+    "Keyword" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키워드"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Từ khoá"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关键字"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關鍵字"
+          }
+        }
+      }
     },
     "Laptop" : {
       "extractionState" : "manual",
