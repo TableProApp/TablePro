@@ -163,7 +163,7 @@ crates/storage/src/connection_bundle.rs 43
 crates/storage/src/connection_bundle_crypto.rs 17
 crates/storage/src/connection_color.rs 12
 crates/storage/src/connection_organization.rs 32
-crates/storage/src/connection_url.rs 14
+crates/storage/src/connection_url.rs 12
 crates/storage/src/connections.rs 39
 crates/storage/src/connections_copy.rs 5
 crates/storage/src/query_history.rs 19

@@ -57,9 +57,11 @@ pub fn parse_connection_url(input: &str) -> Result<ParsedConnectionUrl, StorageE
         return Err(invalid(&format!("{scheme} is not a database scheme TablePro knows")));
     };
 
-    // Strip the query string before splitting on '/' so a database name
-    // is never taken from a parameter value.
-    let remainder = remainder.split(['?', '#']).next().unwrap_or_default();
+    if remainder.contains('#') {
+        return Err(invalid("connection URL fragments are not supported"));
+    }
+    let (remainder, query) = remainder.split_once('?').unwrap_or((remainder, ""));
+    let tls_mode = query_tls_mode(driver_id, query)?.unwrap_or(TlsMode::Disabled);
     let (authority, path) = match remainder.split_once('/') {
         Some((authority, path)) => (authority, path),
         None => (remainder, ""),
@@ -108,8 +110,8 @@ pub fn parse_connection_url(input: &str) -> Result<ParsedConnectionUrl, StorageE
         socket_path: None,
         database,
         username,
-        use_tls: false,
-        tls_mode: Some(TlsMode::Disabled),
+        use_tls: tls_mode.encrypts(),
+        tls_mode: Some(tls_mode),
         tls_root_cert: None,
         tls_client_cert: None,
         tls_client_key: None,
@@ -123,6 +125,39 @@ pub fn parse_connection_url(input: &str) -> Result<ParsedConnectionUrl, StorageE
     };
 
     Ok(ParsedConnectionUrl { connection, password })
+}
+
+fn query_tls_mode(driver: &str, query: &str) -> Result<Option<TlsMode>, StorageError> {
+    if query.is_empty() {
+        return Ok(None);
+    }
+    if query.contains('&') {
+        return Err(invalid(
+            "duplicate or additional connection URL options are not supported",
+        ));
+    }
+    let (key, value) = query
+        .split_once('=')
+        .ok_or_else(|| invalid("connection URL options require a name and value"))?;
+    let key = decode_field(key, "option name")?;
+    let value = decode_field(value, "option value")?;
+    let mode = match (driver, key.as_str(), value.as_str()) {
+        ("postgres", "sslmode", "disable") | ("mysql", "ssl-mode", "DISABLED") | ("mongodb", "tls", "false") => {
+            TlsMode::Disabled
+        }
+        ("postgres", "sslmode", "prefer") | ("mysql", "ssl-mode", "PREFERRED") => TlsMode::Prefer,
+        ("postgres", "sslmode", "require") | ("mysql", "ssl-mode", "REQUIRED") => TlsMode::Require,
+        ("postgres", "sslmode", "verify-ca") | ("mysql", "ssl-mode", "VERIFY_CA") => TlsMode::VerifyCa,
+        ("postgres", "sslmode", "verify-full")
+        | ("mysql", "ssl-mode", "VERIFY_IDENTITY")
+        | ("mongodb", "tls", "true") => TlsMode::VerifyFull,
+        _ => {
+            return Err(invalid(
+                "unsupported connection URL option; configure this connection in the form",
+            ));
+        }
+    };
+    Ok(Some(mode))
 }
 
 fn split_host_port(authority: &str, default_port: u16) -> Result<(String, u16), StorageError> {
@@ -345,6 +380,58 @@ mod tests {
     fn an_over_long_url_is_refused_before_decoding() {
         let long = format!("postgres://u@db.example.com/{}", "a".repeat(MAX_URL_LEN));
         assert!(parse_connection_url(&long).is_err());
+    }
+
+    #[test]
+    fn explicit_url_tls_modes_survive_import() {
+        for (url, mode) in [
+            ("postgres://u@db/app?sslmode=disable", TlsMode::Disabled),
+            ("postgres://u@db/app?sslmode=prefer", TlsMode::Prefer),
+            ("postgres://u@db/app?sslmode=require", TlsMode::Require),
+            ("postgres://u@db/app?sslmode=verify-ca", TlsMode::VerifyCa),
+            ("postgres://u@db/app?sslmode=verify-full", TlsMode::VerifyFull),
+            ("postgres://u@db/app?sslmode=verify%2Dfull", TlsMode::VerifyFull),
+            ("mysql://u@db/app?ssl-mode=DISABLED", TlsMode::Disabled),
+            ("mysql://u@db/app?ssl-mode=PREFERRED", TlsMode::Prefer),
+            ("mysql://u@db/app?ssl-mode=REQUIRED", TlsMode::Require),
+            ("mysql://u@db/app?ssl-mode=VERIFY_CA", TlsMode::VerifyCa),
+            ("mysql://u@db/app?ssl-mode=VERIFY_IDENTITY", TlsMode::VerifyFull),
+            ("mongodb://u@db/app?tls=true", TlsMode::VerifyFull),
+            ("mongodb://u@db/app?tls=false", TlsMode::Disabled),
+        ] {
+            let parsed = parse_connection_url(url).expect("supported TLS mode");
+            assert_eq!(parsed.connection.effective_tls_mode(), mode, "{url}");
+            assert_eq!(parsed.connection.use_tls, mode.encrypts(), "{url}");
+        }
+    }
+
+    #[test]
+    fn unsupported_or_ambiguous_url_options_refuse_import_without_echoing_secrets() {
+        for options in [
+            "sslmode=allow",
+            "sslmode=invalid",
+            "sslmode=",
+            "sslmode",
+            "sslmode=require&sslmode=disable",
+            "sslrootcert=/secret/root.pem",
+            "sslmode=require&password=secret",
+            "sslmode=require&",
+            "sslmode=%ZZ",
+        ] {
+            let url = format!("postgres://u:secret@db/app?{options}");
+            let error = parse_connection_url(&url).err().expect("refuse unsupported option");
+            assert!(!error.to_string().contains("secret"));
+        }
+        for url in [
+            "mongodb://u@db/app?authSource=admin",
+            "mongodb://u@db/app?tlsAllowInvalidCertificates=true",
+            "mongodb://u@db/app?tls=invalid",
+            "mysql://u@db/app?ssl-mode=invalid",
+            "redis://u@db/app?tls=true",
+            "postgres://u@db/app?sslmode=require#sslmode=disable",
+        ] {
+            assert!(parse_connection_url(url).is_err(), "{url}");
+        }
     }
 
     #[test]
