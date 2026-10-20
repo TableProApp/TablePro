@@ -652,6 +652,12 @@ final class ConnectionCoordinator {
             }
         }
         if snapshot == nil {
+            // A server that has a catalog connection but could not open one keeps its lists: a read on the session would
+            // replace what the user's last statement left there. Only its own uncommitted DDL sends the read there.
+            if catalogSeesSessionDDL, appState.connectionManager.opensCatalogConnections(for: connection.id) {
+                seenCatalogGeneration = generation
+                return
+            }
             // A stream on the session would end under this read, so it waits for the session to go idle.
             guard !monitor.isBusy(connection.id) else { return }
             snapshot = try? await monitor.track(connection.id, reading: true) {

@@ -297,6 +297,13 @@ public final class ConnectionManager: @unchecked Sendable {
         }
     }
 
+    public func opensCatalogConnections(for connectionId: UUID) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let dial = dials[connectionId] else { return false }
+        return driverFactory.opensCatalogConnections(for: dial.connection)
+    }
+
     // Nil when there is no catalog connection, or it stopped answering and was dropped: the caller reads elsewhere.
     public func readCatalog<T: Sendable>(
         for connectionId: UUID,

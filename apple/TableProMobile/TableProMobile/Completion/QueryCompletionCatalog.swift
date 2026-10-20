@@ -32,6 +32,8 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
     private var reads: [ColumnKey: Task<[ColumnInfo]?, any Error>] = [:]
     private var sessionReads: [ColumnKey: Task<[ColumnInfo]?, any Error>] = [:]
     private let readSchemaTables: QuerySchemaTableReader?
+    private let readCatalogSchemaTables: QuerySchemaTableReader?
+    private var sessionSchemaReads: [String: Task<[TableInfo]?, any Error>] = [:]
     private var schemas: [String]
     private var databases: [String]
     private var schemaTables: [String: [TableInfo]] = [:]
@@ -46,6 +48,7 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         readColumns: @escaping QueryColumnReader,
         readCatalogColumns: QueryColumnReader? = nil,
         readSchemaTables: QuerySchemaTableReader? = nil,
+        readCatalogSchemaTables: QuerySchemaTableReader? = nil,
         schemas: [String] = [],
         databases: [String] = []
     ) {
@@ -55,6 +58,7 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         self.readColumns = readColumns
         self.readCatalogColumns = readCatalogColumns
         self.readSchemaTables = readSchemaTables
+        self.readCatalogSchemaTables = readCatalogSchemaTables
         self.schemas = schemas
         self.databases = databases
     }
@@ -82,6 +86,15 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         for read in Array(sessionReads.values) {
             _ = try? await read.value
         }
+        for read in Array(sessionSchemaReads.values) {
+            _ = try? await read.value
+        }
+    }
+
+    // In one actor turn, so no session read can start between the check and the run it would collide with.
+    func closeSessionReads() async {
+        columnReadsAllowed = false
+        await finishReads()
     }
 
     func resolveAlias(_ aliasOrName: String, in references: [TableReference]) -> String? {
@@ -165,24 +178,56 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         SQLCompletionItem(label: name, kind: .schema, insertText: asWritten(name))
     }
 
-    // One read per schema at a time; an answer is kept for the catalog's life, a failure is not.
+    // One read per schema at a time; an answer is kept until the catalog goes stale, a failure is not.
     private func tables(inSchema schema: String) async -> [TableInfo] {
         let key = schema.lowercased()
         if let known = schemaTables[key] { return known }
         if let pending = schemaTableReads[key] { return (try? await pending.value).flatMap { $0 } ?? [] }
-        guard let readSchemaTables else { return [] }
         let generation = columnGeneration
-        let read = Task<[TableInfo]?, any Error> { try await readSchemaTables(schema) }
+        if let readCatalogSchemaTables {
+            switch await readTables(key, schema, with: readCatalogSchemaTables, generation: generation) {
+            case .answered(let answer): return answer
+            case .failed: return []
+            case .unavailable: break
+            }
+        }
+        guard columnReadsAllowed, let readSchemaTables else { return [] }
+        if case .answered(let answer) = await readTables(
+            key, schema, with: readSchemaTables, generation: generation, onSession: true
+        ) {
+            return answer
+        }
+        return []
+    }
+
+    private enum TableRead {
+        case answered([TableInfo])
+        case unavailable
+        case failed
+    }
+
+    private func readTables(
+        _ key: String,
+        _ schema: String,
+        with reader: @escaping QuerySchemaTableReader,
+        generation: Int,
+        onSession: Bool = false
+    ) async -> TableRead {
+        let read = Task<[TableInfo]?, any Error> { try await reader(schema) }
         schemaTableReads[key] = read
-        defer { if schemaTableReads[key] == read { schemaTableReads[key] = nil } }
+        if onSession { sessionSchemaReads[key] = read }
+        defer {
+            if schemaTableReads[key] == read { schemaTableReads[key] = nil }
+            if sessionSchemaReads[key] == read { sessionSchemaReads[key] = nil }
+        }
         do {
-            guard let answer = try await read.value else { return [] }
+            guard let answer = try await read.value else { return .unavailable }
             // A run that ended during the read may have changed the schema, so the answer is not kept.
             if generation == columnGeneration { schemaTables[key] = answer }
-            return answer
+            return .answered(answer)
         } catch {
             Self.logger.warning("Reading a schema's tables for completion failed: \(error.localizedDescription, privacy: .private)")
-            return []
+            return .failed
         }
     }
 

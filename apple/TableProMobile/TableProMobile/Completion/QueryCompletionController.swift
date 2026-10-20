@@ -76,7 +76,8 @@ final class QueryCompletionController {
         scope newScope: QueryCompletionScope,
         readColumns: @escaping QueryColumnReader,
         readCatalogColumns: QueryColumnReader? = nil,
-        readSchemaTables: QuerySchemaTableReader? = nil
+        readSchemaTables: QuerySchemaTableReader? = nil,
+        readCatalogSchemaTables: QuerySchemaTableReader? = nil
     ) {
         let previous = scope
         guard previous != newScope else { return }
@@ -132,6 +133,7 @@ final class QueryCompletionController {
             readColumns: readColumns,
             readCatalogColumns: readCatalogColumns,
             readSchemaTables: readSchemaTables,
+            readCatalogSchemaTables: readCatalogSchemaTables,
             schemas: newScope.schemas,
             databases: newScope.databases
         )
@@ -213,7 +215,7 @@ final class QueryCompletionController {
 
     // A read already sent can issue its next statement mid-run, which ends a PostgreSQL stream, so a run waits for it.
     func finishColumnReads() async {
-        await engine?.catalog.finishReads()
+        await engine?.catalog.closeSessionReads()
     }
 
     func hide() {
@@ -222,29 +224,31 @@ final class QueryCompletionController {
         show([], answer: nil)
     }
 
-    // A busy session is streaming a page or a run that a read would end, so it reads nothing then.
+    // A busy session is streaming a page or a run that a read would end, so it reads nothing then; `tracked` marks the
+    // read as session work, so Commit and Roll Back wait for it.
     static func columnReader(
         session: @escaping @MainActor () -> ConnectionSession?,
-        isBusy: @escaping @MainActor () -> Bool = { false }
+        isBusy: @escaping @MainActor () -> Bool = { false },
+        tracked: @escaping @MainActor (_ read: () async throws -> [ColumnInfo]) async throws -> [ColumnInfo] = {
+            try await $0()
+        }
     ) -> QueryColumnReader {
-        { table, schema in
-            guard let driver = await session()?.driver, await !isBusy() else { return nil }
-            return try await driver.fetchColumns(table: table, schema: schema)
+        { @MainActor table, schema in
+            guard let driver = session()?.driver, !isBusy() else { return nil }
+            return try await tracked { try await driver.fetchColumns(table: table, schema: schema) }
         }
     }
 
-    // Another schema's tables: on the catalog connection, else on the session only while it is idle.
-    static func schemaTableReader(
-        catalog: @escaping QuerySchemaTableReader,
+    static func tableReader(
         session: @escaping @MainActor () -> ConnectionSession?,
-        isBusy: @escaping @MainActor () -> Bool
+        isBusy: @escaping @MainActor () -> Bool,
+        tracked: @escaping @MainActor (_ read: () async throws -> [TableInfo]) async throws -> [TableInfo] = {
+            try await $0()
+        }
     ) -> QuerySchemaTableReader {
-        { schema in
-            if let tables = try await catalog(schema) {
-                return tables
-            }
-            guard let driver = await session()?.driver, await !isBusy() else { return nil }
-            return try await driver.fetchTables(schema: schema)
+        { @MainActor schema in
+            guard let driver = session()?.driver, !isBusy() else { return nil }
+            return try await tracked { try await driver.fetchTables(schema: schema) }
         }
     }
 

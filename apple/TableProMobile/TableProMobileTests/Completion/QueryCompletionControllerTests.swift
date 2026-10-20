@@ -478,29 +478,29 @@ extension QueryCompletionControllerTests {
         #expect(await source.reads == ["orders", "orders"])
     }
 
-    @Test("another schema's tables come from the catalog connection, else from an idle session")
-    func schemaTablesPreferTheCatalog() async throws {
+    @Test("the session table reader reads only while idle, inside the session work it is handed")
+    func sessionTableReaderIsTracked() async throws {
         let driver = MockDatabaseDriver()
-        driver.scriptedTables = [TableInfo(name: "from_session")]
+        driver.scriptedTables = [TableInfo(name: "invoices")]
         let holder = SessionHolder()
         holder.session = ConnectionSession(connectionId: Self.connectionId, driver: driver, activeDatabase: "main")
-        holder.catalogTables = [TableInfo(name: "from_catalog")]
-        let reader = QueryCompletionController.schemaTableReader(
-            catalog: { _ in await holder.catalogTables },
+        holder.isBusy = true
+        let reader = QueryCompletionController.tableReader(
             session: { holder.session },
-            isBusy: { holder.isBusy }
+            isBusy: { holder.isBusy },
+            tracked: { read in
+                holder.trackedReads += 1
+                return try await read()
+            }
         )
 
-        let fromCatalog = try await reader("sales")
-        holder.catalogTables = nil
-        holder.isBusy = true
         let whileBusy = try await reader("sales")
         holder.isBusy = false
-        let fromSession = try await reader("sales")
+        let idle = try await reader("sales")
 
-        #expect(fromCatalog?.map(\.name) == ["from_catalog"])
         #expect(whileBusy == nil)
-        #expect(fromSession?.map(\.name) == ["from_session"])
+        #expect(idle?.map(\.name) == ["invoices"])
+        #expect(holder.trackedReads == 1)
     }
 }
 
@@ -508,7 +508,7 @@ extension QueryCompletionControllerTests {
 private final class SessionHolder {
     var session: ConnectionSession?
     var isBusy = false
-    var catalogTables: [TableInfo]?
+    var trackedReads = 0
 }
 
 private actor ControllerColumnSource {

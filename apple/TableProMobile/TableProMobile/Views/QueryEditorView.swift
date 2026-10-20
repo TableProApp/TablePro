@@ -73,7 +73,18 @@ struct QueryEditorView: View {
         let connectionId = connectionId
         return QueryCompletionController.columnReader(
             session: { coordinator.session },
-            isBusy: { transactions.isBusy(connectionId) }
+            isBusy: { transactions.isBusy(connectionId) },
+            tracked: { read in try await transactions.track(connectionId, reading: true) { try await read() } }
+        )
+    }
+
+    private var sessionTableReader: QuerySchemaTableReader {
+        let transactions = appState.sessionTransactions
+        let connectionId = connectionId
+        return QueryCompletionController.tableReader(
+            session: { coordinator.session },
+            isBusy: { transactions.isBusy(connectionId) },
+            tracked: { read in try await transactions.track(connectionId, reading: true) { try await read() } }
         )
     }
 
@@ -92,22 +103,17 @@ struct QueryEditorView: View {
         }
     }
 
-    private var schemaTableReader: QuerySchemaTableReader {
+    private var catalogTableReader: QuerySchemaTableReader {
         let manager = appState.connectionManager
-        let transactions = appState.sessionTransactions
         let connectionId = connectionId
         let database = coordinator.supportsDatabaseSwitching ? coordinator.activeDatabase : ""
         let coordinator = coordinator
-        return QueryCompletionController.schemaTableReader(
-            catalog: { schema in
-                guard await coordinator.catalogSeesSessionDDL else { return nil }
-                return try await manager.readCatalog(for: connectionId, database: database) { driver in
-                    try await driver.fetchTables(schema: schema)
-                }
-            },
-            session: { coordinator.session },
-            isBusy: { transactions.isBusy(connectionId) }
-        )
+        return { schema in
+            guard await coordinator.catalogSeesSessionDDL else { return nil }
+            return try await manager.readCatalog(for: connectionId, database: database) { driver in
+                try await driver.fetchTables(schema: schema)
+            }
+        }
     }
 
     var body: some View {
@@ -175,7 +181,8 @@ struct QueryEditorView: View {
                 scope: scope,
                 readColumns: sessionColumnReader,
                 readCatalogColumns: catalogColumnReader,
-                readSchemaTables: schemaTableReader
+                readSchemaTables: sessionTableReader,
+                readCatalogSchemaTables: catalogTableReader
             )
         }
         .alert(String(localized: "Write Query Blocked"), isPresented: $showWriteBlockedAlert) {

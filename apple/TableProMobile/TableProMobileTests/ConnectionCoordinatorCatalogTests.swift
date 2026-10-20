@@ -149,6 +149,20 @@ struct ConnectionCoordinatorCatalogTests {
         #expect(factory.dialed.count == 2)
     }
 
+    @Test("A server whose catalog connection cannot open keeps its lists rather than reading the session")
+    func unavailableCatalogKeepsTheLists() async {
+        let session = driver(tables: ["orders"])
+        let coordinator = await connected(session)
+        factory.opensCatalogs = true
+        session.scriptedTables = [TableInfo(name: "orders"), TableInfo(name: "invoices")]
+
+        coordinator.noteCatalogChanged(.tables)
+        await coordinator.reloadChangedCatalog()
+
+        #expect(names(coordinator) == ["orders"])
+        #expect(factory.dialed.count == 2)
+    }
+
     @Test("A reload that would read a busy session waits until it is idle")
     func busySessionWaits() async {
         let session = driver(tables: ["orders"])
