@@ -105,6 +105,11 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         guard let sshTunnel else {
             connection.sshEnabled = false
             connection.sshConfiguration = nil
+            // The Mac rebuilds a profile tunnel from this link alone.
+            if connection.sshProfileId != nil {
+                connection.clearsSSHProfileLink = true
+            }
+            connection.sshProfileId = nil
             return
         }
         func changed<Value: Equatable>(_ field: KeyPath<SSHTunnel, Value>) -> Bool {

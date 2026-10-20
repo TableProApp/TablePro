@@ -29,6 +29,8 @@ public enum ConnectionSyncField: String, SyncSchemaField {
     case redisDatabase
     case startupCommands
     case sshProfileId
+    // Written once the Production schema has it; until then the gate below drops every write.
+    case sshRouteJson
     case isFavorite
     case modifiedAtLocal
     case schemaVersion

@@ -22,8 +22,7 @@ nonisolated enum TunnelOpener {
         )
         return try await SSHTunnelFactory.create(
             config: config,
-            remoteHost: destination.host,
-            remotePort: destination.port,
+            destination: .tcp(host: destination.host, port: destination.port),
             credentials: credentials,
             jumpHostCredentials: try hopCredentials(options, hops: config.jumpHosts),
             prompter: prompter,

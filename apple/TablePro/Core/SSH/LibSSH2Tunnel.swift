@@ -16,6 +16,7 @@ import TableProSSHTransport
 internal final class LibSSH2Tunnel: @unchecked Sendable {
     let connectionId: UUID
     let localPort: Int
+    let dialedRoute: DialedSSHRoute?
     let createdAt: Date
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LibSSH2Tunnel")
@@ -84,10 +85,12 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         listenFD: Int32,
         connectionDeadline: ConnectionDeadline,
         timeoutEndpoint: ConnectionTimeoutEndpoint,
-        jumpChain: [JumpHop] = []
+        jumpChain: [JumpHop] = [],
+        dialedRoute: DialedSSHRoute? = nil
     ) {
         self.connectionId = connectionId
         self.localPort = localPort
+        self.dialedRoute = dialedRoute
         self.session = session
         self.socketFD = socketFD
         self.listenFD = listenFD

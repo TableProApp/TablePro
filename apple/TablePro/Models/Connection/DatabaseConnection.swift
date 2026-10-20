@@ -10,6 +10,7 @@ import Foundation
 import SwiftUI
 import TableProPluginKit
 import TableProSSHConfig
+import TableProSSHTransport
 
 // MARK: - External Access
 
@@ -186,6 +187,8 @@ struct DatabaseConnection: Identifiable, Hashable {
     var isSample: Bool = false
     var isFavorite: Bool = false
     var passwordSource: PasswordSource?
+    // What a Mac last dialed for this tunnel, for devices without its ~/.ssh/config. Never dialed here.
+    var sshRoute: PublishedSSHRoute?
 
     var mongoAuthSource: String? {
         get { additionalFields["mongoAuthSource"]?.nilIfEmpty }

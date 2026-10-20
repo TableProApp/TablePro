@@ -192,6 +192,10 @@ actor SSHTunnelManager: TunnelManaging {
     }
 
     /// Get the local port for an existing tunnel
+    func dialedRoute(connectionId: UUID) -> DialedSSHRoute? {
+        tunnels[connectionId]?.dialedRoute
+    }
+
     func getLocalPort(connectionId: UUID) -> Int? {
         guard let tunnel = tunnels[connectionId], tunnel.isRunning else {
             return nil

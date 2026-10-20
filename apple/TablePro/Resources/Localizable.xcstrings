@@ -228,6 +228,9 @@
         }
       }
     },
+    "~/.ssh/config sets IdentityAgent none for this host, so no SSH agent can sign in. Remove that line, or choose Private Key." : {
+
+    },
     "—" : {
       "extractionState" : "stale",
       "localizations" : {

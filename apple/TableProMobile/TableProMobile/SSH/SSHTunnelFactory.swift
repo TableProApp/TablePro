@@ -31,8 +31,7 @@ nonisolated enum SSHTunnelFactory {
     // steps once left two descriptors open per failed handshake. `Stages` lets a spy test that.
     static func create<Stages: SSHTunnelStages>(
         config: SSHConfiguration,
-        remoteHost: String,
-        remotePort: Int,
+        destination: SSHForwardDestination,
         credentials: SSHTunnelCredentials,
         jumpHostCredentials: [UUID: JumpHostCredential] = [:],
         prompter: (any ConnectionPrompter)?,
@@ -44,7 +43,9 @@ nonisolated enum SSHTunnelFactory {
     ) async throws -> Stages.Tunnel {
         _ = initialized
 
-        try requireValidPort(remotePort, of: remoteHost)
+        if case .tcp(let remoteHost, let remotePort) = destination {
+            try requireValidPort(remotePort, of: remoteHost)
+        }
         let targets = try dialOrder(config: config, credentials: credentials, jumpHostCredentials: jumpHostCredentials)
 
         // Only the first host is dialed from the device; every later one is opened by the hop before it.
@@ -76,9 +77,7 @@ nonisolated enum SSHTunnelFactory {
             }
         }
 
-        let tunnel = try await stages.beginForwarding(
-            destination: .tcp(host: remoteHost, port: remotePort)
-        )
+        let tunnel = try await stages.beginForwarding(destination: destination)
         handedOver = true
         return tunnel
     }

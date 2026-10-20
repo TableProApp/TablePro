@@ -132,6 +132,7 @@ struct SyncRecordMapper {
         fields[.redisDatabase] = connection.redisDatabase.map { Int64($0) }
         fields[.startupCommands] = connection.startupCommands.flatMap { $0.isEmpty ? nil : $0 }
         fields[.sshProfileId] = connection.sshProfileId?.uuidString
+        fields[.sshRouteJson] = connection.sshRoute?.encoded()
 
         // Encode complex structs as JSON Data — contract device-local paths
         // to portable ~/… form so they resolve correctly on other devices.
@@ -283,6 +284,7 @@ struct SyncRecordMapper {
         if let queryTimeoutSeconds = validQueryTimeout(queryTimeoutSeconds ?? legacyQueryTimeout) {
             connection.queryTimeoutSeconds = queryTimeoutSeconds
         }
+        connection.sshRoute = (fields[.sshRouteJson] as? Data).flatMap(PublishedSSHRoute.decoded(from:))
         return connection
     }
 
@@ -691,13 +693,11 @@ struct SyncRecordMapper {
         let recordID = recordID(type: .sshProfile, id: profile.id.uuidString, in: zone)
         let record = CKRecord(recordType: SyncRecordType.sshProfile.rawValue, recordID: recordID)
 
-        let fields = record.fields(SSHProfileSyncField.self)
+        let fields = record.fields(SSHProfileSyncField.self, absentValues: .clear)
         fields[.profileId] = profile.id.uuidString
         fields[.name] = profile.name
         fields[.host] = profile.host
-        if let port = profile.port {
-            fields[.port] = Int64(port)
-        }
+        fields[.port] = profile.port.map { Int64($0) }
         fields[.username] = profile.username
         fields[.authMethod] = profile.authMethod.rawValue
         fields[.privateKeyPath] = PathPortability.contractHome(profile.privateKeyPath)
@@ -709,7 +709,9 @@ struct SyncRecordMapper {
         fields[.modifiedAtLocal] = Date()
         fields[.schemaVersion] = schemaVersion
 
-        if !profile.jumpHosts.isEmpty {
+        if profile.jumpHosts.isEmpty {
+            fields[.jumpHostsJson] = nil
+        } else {
             do {
                 let portableJumpHosts = Self.makePortable(profile.jumpHosts)
                 fields[.jumpHostsJson] = try encoder.encode(portableJumpHosts)
@@ -779,7 +781,7 @@ struct SyncRecordMapper {
         let recordID = recordID(type: .credentialProfile, id: profile.id.uuidString, in: zone)
         let record = CKRecord(recordType: SyncRecordType.credentialProfile.rawValue, recordID: recordID)
 
-        let fields = record.fields(CredentialProfileSyncField.self)
+        let fields = record.fields(CredentialProfileSyncField.self, absentValues: .clear)
         fields[.profileId] = profile.id.uuidString
         fields[.name] = profile.name
         fields[.username] = profile.username
@@ -788,7 +790,9 @@ struct SyncRecordMapper {
         fields[.modifiedAtLocal] = Date()
         fields[.schemaVersion] = schemaVersion
 
-        if !profile.secureFieldIds.isEmpty {
+        if profile.secureFieldIds.isEmpty {
+            fields[.secureFieldIdsJson] = nil
+        } else {
             do {
                 fields[.secureFieldIdsJson] = try encoder.encode(profile.secureFieldIds)
             } catch {

@@ -2,6 +2,7 @@ import Foundation
 import os
 import TableProDatabase
 import TableProModels
+import TableProSSHTransport
 
 nonisolated protocol ProvidedTunnel: AnyObject, Sendable {
     var localPort: Int { get }
@@ -13,8 +14,7 @@ extension SSHTunnel: ProvidedTunnel {}
 
 nonisolated struct TunnelRequest: Sendable {
     let config: SSHConfiguration
-    let remoteHost: String
-    let remotePort: Int
+    let destination: SSHForwardDestination
     let credentials: SSHTunnelCredentials
     let jumpHostCredentials: [UUID: JumpHostCredential]
     let prompter: (any ConnectionPrompter)?
@@ -37,8 +37,7 @@ final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
         openTunnel: @escaping OpenTunnel = { request in
             try await SSHTunnelFactory.create(
                 config: request.config,
-                remoteHost: request.remoteHost,
-                remotePort: request.remotePort,
+                destination: request.destination,
                 credentials: request.credentials,
                 jumpHostCredentials: request.jumpHostCredentials,
                 prompter: request.prompter
@@ -58,8 +57,8 @@ final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
     func createTunnel(
         config: SSHConfiguration,
         connectionId: UUID,
-        remoteHost: String,
-        remotePort: Int,
+        sshProfileId: UUID?,
+        destination: SSHForwardDestination,
         prompter: (any ConnectionPrompter)?
     ) async throws -> TableProDatabase.SSHTunnel {
         var resolvedConfig = config
@@ -68,9 +67,12 @@ final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
 
         let tunnel = try await openTunnel(TunnelRequest(
             config: resolvedConfig,
-            remoteHost: remoteHost,
-            remotePort: remotePort,
-            credentials: SSHTunnelCredentials(connectionId: connectionId, secureStore: secureStore),
+            destination: destination,
+            credentials: SSHTunnelCredentials(
+                connectionId: connectionId,
+                sshProfileId: sshProfileId,
+                secureStore: secureStore
+            ),
             jumpHostCredentials: hopCredentials,
             prompter: prompter
         ))

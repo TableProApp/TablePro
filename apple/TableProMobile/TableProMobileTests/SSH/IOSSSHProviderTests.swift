@@ -32,7 +32,8 @@ struct IOSSSHProviderTests {
         var reported = deaths(of: provider).makeAsyncIterator()
 
         _ = try await provider.createTunnel(
-            config: config, connectionId: connectionId, remoteHost: "db", remotePort: 5_432, prompter: nil
+            config: config, connectionId: connectionId, sshProfileId: nil,
+            destination: .tcp(host: "db", port: 5_432), prompter: nil
         )
         tunnel.die()
 
@@ -46,7 +47,8 @@ struct IOSSSHProviderTests {
         var reported = deaths(of: provider).makeAsyncIterator()
 
         _ = try await provider.createTunnel(
-            config: config, connectionId: connectionId, remoteHost: "db", remotePort: 5_432, prompter: nil
+            config: config, connectionId: connectionId, sshProfileId: nil,
+            destination: .tcp(host: "db", port: 5_432), prompter: nil
         )
         tunnel.die()
         _ = await reported.next()
@@ -63,7 +65,8 @@ struct IOSSSHProviderTests {
         var reported = deaths(of: provider).makeAsyncIterator()
 
         _ = try await provider.createTunnel(
-            config: config, connectionId: connectionId, remoteHost: "db", remotePort: 5_432, prompter: nil
+            config: config, connectionId: connectionId, sshProfileId: nil,
+            destination: .tcp(host: "db", port: 5_432), prompter: nil
         )
 
         #expect(await reported.next() == connectionId)
@@ -77,13 +80,15 @@ struct IOSSSHProviderTests {
         var reported = deaths(of: provider).makeAsyncIterator()
 
         let first = try await provider.createTunnel(
-            config: config, connectionId: connectionId, remoteHost: "db", remotePort: 5_432, prompter: nil
+            config: config, connectionId: connectionId, sshProfileId: nil,
+            destination: .tcp(host: "db", port: 5_432), prompter: nil
         )
         try await provider.closeTunnel(id: first.id)
         closed.die()
         let otherConnection = UUID()
         _ = try await provider.createTunnel(
-            config: config, connectionId: otherConnection, remoteHost: "db", remotePort: 5_432, prompter: nil
+            config: config, connectionId: otherConnection, sshProfileId: nil,
+            destination: .tcp(host: "db", port: 5_432), prompter: nil
         )
         next.die()
 

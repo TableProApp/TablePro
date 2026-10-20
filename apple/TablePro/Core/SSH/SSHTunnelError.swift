@@ -23,6 +23,7 @@ enum AuthFailureReason: Sendable, Hashable, CaseIterable {
     case agentIdentityFileUnreadable
     case agentRejected
     case agentServerClosedConnection
+    case agentDisabledByConfig
     case passwordlessRejected
     case keyboardInteractive
     case methodUnavailable
@@ -36,7 +37,8 @@ enum AuthFailureReason: Sendable, Hashable, CaseIterable {
             + AgentSocketOrigin.allCases.map(AuthFailureReason.agentUnavailable)
             + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoIdentities)
             + AgentSocketOrigin.allCases.map(AuthFailureReason.agentNoMatchingIdentity)
-            + [.agentIdentityFileUnreadable, .agentRejected, .agentServerClosedConnection, .passwordlessRejected,
+            + [.agentIdentityFileUnreadable, .agentRejected, .agentServerClosedConnection, .agentDisabledByConfig,
+               .passwordlessRejected,
                .keyboardInteractive, .methodUnavailable, .cancelled, .generic]
     }
 }
@@ -158,6 +160,10 @@ enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
                     before the right one. Name the key with IdentityFile and IdentitiesOnly yes for this host in \
                     ~/.ssh/config, or set Identity File on this connection.
                     """
+                )
+            case .agentDisabledByConfig:
+                return String(
+                    localized: "~/.ssh/config sets IdentityAgent none for this host, so no SSH agent can sign in. Remove that line, or choose Private Key."
                 )
             case .passwordlessRejected:
                 return String(localized: "The SSH server did not accept passwordless authentication. Choose Password, Private Key, or SSH Agent.")

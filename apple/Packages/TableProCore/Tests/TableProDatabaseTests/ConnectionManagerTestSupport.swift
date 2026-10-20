@@ -1,6 +1,7 @@
 import Foundation
 @testable import TableProDatabase
 @testable import TableProModels
+import TableProSSHTransport
 import TableProTestSupport
 import Testing
 
@@ -53,8 +54,10 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
 
 final class MockDriverFactory: DriverFactory, @unchecked Sendable {
     var drivers: [String: any DatabaseDriver] = [:]
+    var receivedConnections: [DatabaseConnection] = []
 
     func createDriver(for connection: DatabaseConnection, password: String?) throws -> any DatabaseDriver {
+        receivedConnections.append(connection)
         guard let driver = drivers[connection.type.rawValue] else {
             throw ConnectionError.driverNotFound(connection.type.rawValue)
         }
@@ -142,16 +145,22 @@ final class MockSSHProvider: SSHProvider, @unchecked Sendable {
     var openedTunnelIds: [UUID] = []
     var tunnelledConnectionIds: [UUID] = []
     var receivedPrompters: [(any ConnectionPrompter)?] = []
+    var receivedConfigs: [SSHConfiguration] = []
+    var receivedDestinations: [SSHForwardDestination] = []
+    var receivedProfileIds: [UUID?] = []
     var beforeCloseTunnel: (@Sendable (UUID) async -> Void)?
 
     func createTunnel(
         config: SSHConfiguration,
         connectionId: UUID,
-        remoteHost: String,
-        remotePort: Int,
+        sshProfileId: UUID?,
+        destination: SSHForwardDestination,
         prompter: (any ConnectionPrompter)?
     ) async throws -> SSHTunnel {
         tunnelledConnectionIds.append(connectionId)
+        receivedConfigs.append(config)
+        receivedDestinations.append(destination)
+        receivedProfileIds.append(sshProfileId)
         receivedPrompters.append(prompter)
         let id = UUID()
         openedTunnelIds.append(id)

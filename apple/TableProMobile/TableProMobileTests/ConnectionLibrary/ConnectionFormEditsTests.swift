@@ -2,6 +2,7 @@ import Foundation
 @testable import TableProMobile
 import TableProModels
 import TableProOracleCore
+import TableProSSHTransport
 import Testing
 
 @MainActor
@@ -390,6 +391,41 @@ struct ConnectionFormEditsTests {
 
         #expect(!saved.sshEnabled)
         #expect(saved.sshConfiguration == nil)
+    }
+
+    @Test("Turning SSH off drops the Mac's SSH profile link, which would otherwise keep the tunnel on there")
+    func sshOffDropsTheProfileLink() {
+        var snapshot = storedConnection()
+        snapshot.sshEnabled = true
+        snapshot.sshConfiguration = SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy")
+        snapshot.sshProfileId = UUID()
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        viewModel.sshEnabled = false
+        let saved = viewModel.applyingEdits(to: snapshot)
+        #expect(saved.sshProfileId == nil)
+        #expect(saved.clearsSSHProfileLink)
+    }
+
+    @Test("An edit with the tunnel on keeps the Mac's route and profile link")
+    func editKeepsRouteAndProfileLink() {
+        var snapshot = storedConnection()
+        snapshot.sshEnabled = true
+        let ssh = SSHConfiguration(host: "db", username: "")
+        snapshot.sshConfiguration = ssh
+        snapshot.sshProfileId = UUID()
+        snapshot.sshRoute = PublishedSSHRoute(
+            publisher: UUID(),
+            input: ssh.publishedRouteInput,
+            hops: [],
+            target: .init(alias: "db", host: "10.0.0.5", port: 22, username: "deploy")
+        )
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        viewModel.name = "Renamed"
+        let saved = viewModel.applyingEdits(to: snapshot)
+        #expect(saved.sshProfileId == snapshot.sshProfileId)
+        #expect(saved.sshRoute == snapshot.sshRoute)
     }
 
     @Test("An SSL mode change keeps certificate paths set after the form opened")
