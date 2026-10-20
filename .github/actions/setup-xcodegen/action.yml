@@ -10,8 +10,7 @@ runs:
       # generated pbxproj output differs between XcodeGen versions. install.sh copies
       # both bin/xcodegen and share/xcodegen/SettingPresets; without the presets,
       # generation silently drops build settings and still exits 0.
-      # It goes to the runner's tool cache, not /usr/local: the self-hosted Mac has no
-      # passwordless sudo, and the xcodegen already on its PATH is Homebrew's, unverified.
+      # It goes to the runner's tool cache, not /usr/local, so it needs no sudo.
       env:
         XCODEGEN_VERSION: "2.46.0"
         XCODEGEN_SHA256: "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806"
