@@ -682,7 +682,8 @@ internal enum LibSSH2TunnelFactory {
 
         do {
             try authenticator.authenticate(session: session, username: username)
-        } catch SSHTunnelError.authenticationFailed(reason: .agentRejected) where transportClosed(socketFD) {
+        } catch SSHTunnelError.authenticationFailed(reason: .agentRejected)
+            where transportClosed(socketFD, waitingMilliseconds: serverHangUpWaitMs) {
             try attempt.check(for: endpoint)
             throw SSHTunnelError.authenticationFailed(reason: .agentServerClosedConnection)
         } catch {
@@ -699,13 +700,19 @@ internal enum LibSSH2TunnelFactory {
         try attempt.check(for: endpoint)
     }
 
+    // The connection closes just after the server's DISCONNECT, which libssh2 has already read by the
+    // time sign-in gives up, so the check waits a moment for it.
+    private static let serverHangUpWaitMs: Int32 = 1_000
+
     // libssh2 reports the server's MaxAuthTries hang-up as an ordinary refusal, so the socket says it.
-    internal static func transportClosed(_ socketFD: Int32) -> Bool {
+    internal static func transportClosed(_ socketFD: Int32, waitingMilliseconds: Int32 = 0) -> Bool {
         var descriptor = pollfd(fd: socketFD, events: Int16(POLLIN), revents: 0)
-        guard poll(&descriptor, 1, 0) > 0 else { return false }
+        guard poll(&descriptor, 1, waitingMilliseconds) > 0 else { return false }
         if descriptor.revents & Int16(POLLHUP | POLLERR) != 0 { return true }
         var byte: UInt8 = 0
-        return recv(socketFD, &byte, 1, MSG_PEEK | MSG_DONTWAIT) == 0
+        let peeked = recv(socketFD, &byte, 1, MSG_PEEK | MSG_DONTWAIT)
+        // A reset (libssh2 wrote to the closed connection) reads as an error, not as end of stream.
+        return peeked == 0 || (peeked < 0 && errno != EAGAIN && errno != EINTR)
     }
 
     internal static func buildAuthenticator(

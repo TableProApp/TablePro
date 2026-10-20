@@ -61,6 +61,7 @@ done
 APP_SOURCES+=(
     "$APP/Platform/LocalNetworkPermission.swift"
     "$APP/Platform/ConnectionSecretKind.swift"
+    "$APP/Platform/SSHProfileSecretKind.swift"
     "$APP/Security/PEMDocument.swift"
 )
 SHARED=0
