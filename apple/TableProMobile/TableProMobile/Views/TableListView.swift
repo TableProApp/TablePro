@@ -174,7 +174,10 @@ struct TableListView: View {
             }
         } message: {
             if let table = tableToTruncate {
-                Text("All data in \"\(table.name)\" will be permanently deleted.")
+                Text(ddlConfirmation(String(
+                    format: String(localized: "All data in \"%@\" will be permanently deleted."),
+                    table.name
+                )))
             }
         }
         .confirmationDialog(
@@ -201,7 +204,10 @@ struct TableListView: View {
             }
         } message: {
             if let table = tableToDrop {
-                Text("The table \"\(table.name)\" and all its data will be permanently deleted.")
+                Text(ddlConfirmation(String(
+                    format: String(localized: "The table \"%@\" and all its data will be permanently deleted."),
+                    table.name
+                )))
             }
         }
         .alert("Error", isPresented: $showError) {
@@ -209,6 +215,14 @@ struct TableListView: View {
         } message: {
             Text(errorMessage)
         }
+    }
+
+    private func ddlConfirmation(_ message: String) -> String {
+        OpenTransactionWarning.ddlConfirmation(
+            message,
+            type: connection.type,
+            holdsTransaction: coordinator.transactionHold != nil
+        )
     }
 }
 

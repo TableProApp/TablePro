@@ -658,7 +658,10 @@ struct QueryEditorView: View {
 
         let progressUpdater = startActivityProgressUpdater(token: token)
 
-        await coordinator.track(failed: { _ in QueryExecutionOutcome(phase: viewModel.phase) == .failed }) {
+        await coordinator.track(
+            failed: { _ in QueryExecutionOutcome(phase: viewModel.phase) == .failed },
+            rolledBack: { _ in viewModel.ranTransactionRollBack }
+        ) {
             await viewModel.run(driver: session.driver, script: script)
         }
 

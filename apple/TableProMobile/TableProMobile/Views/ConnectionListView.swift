@@ -320,11 +320,7 @@ struct ConnectionListView: View {
                 confirmConnectionDeletion()
             }
         } message: {
-            if connectionsPendingDeletion.count > 1 {
-                Text("Saved credentials for these connections will be permanently removed.")
-            } else {
-                Text("Are you sure you want to delete this connection? Saved credentials will be permanently removed.")
-            }
+            Text(deletionMessage)
         }
         .confirmationDialog(
             String(localized: "Delete Group"),
@@ -760,6 +756,17 @@ struct ConnectionListView: View {
         Binding(
             get: { groupPendingDeletion != nil },
             set: { if !$0 { groupPendingDeletion = nil } }
+        )
+    }
+
+    // Deleting a connection drops its session, and the server rolls back a transaction it held.
+    private var deletionMessage: String {
+        let holding = appState.connections.filter {
+            connectionsPendingDeletion.contains($0.id) && appState.sessionTransactions.hold(for: $0.id) != nil
+        }
+        return OpenTransactionWarning.deletion(
+            deletingCount: connectionsPendingDeletion.count,
+            holdingTransactions: holding.map { $0.name.isEmpty ? $0.host : $0.name }
         )
     }
 

@@ -28,6 +28,8 @@ final class AppState {
     }
 
     private(set) var sampleResetRevision = 0
+    private var sessionRevisions: [UUID: Int] = [:]
+    private var editorHolders: [UUID: Set<ObjectIdentifier>] = [:]
     let onboarding: OnboardingPreferences
     let connectionManager: ConnectionManager
     let sessionTransactions: SessionTransactionMonitor
@@ -85,17 +87,16 @@ final class AppState {
             sshProvider: sshProvider
         )
         self.connectionManager = connectionManager
-        let sessionTransactions = SessionTransactionMonitor { [connectionManager] id in
+        self.sessionTransactions = SessionTransactionMonitor { [connectionManager] id in
             connectionManager.session(for: id)?.driver
-        }
-        self.sessionTransactions = sessionTransactions
-        connectionManager.observeSessionEnds { [weak sessionTransactions] id, driver in
-            Task { @MainActor in
-                sessionTransactions?.sessionEnded(id, driver: driver)
-            }
         }
         self.sessionRedialer = SessionRedialer(connectionManager: connectionManager)
         self.backgroundRelease = BackgroundReleaseCoordinator(connectionManager: connectionManager)
+        connectionManager.observeSessionEnds { [weak self] id, driver in
+            Task { @MainActor in
+                self?.sessionEnded(id, driver: driver)
+            }
+        }
         loadPersistedData()
 
         guard !TestRuntime.isActive else { return }
@@ -127,6 +128,37 @@ final class AppState {
             guard let self, self.loadStatus == .ready else { return nil }
             return (self.connections, self.groups, self.tags)
         }
+    }
+
+    // MARK: - Sessions
+
+    // Every window of a connection shares one session, so each follows when another window ends, replaces or moves it.
+    func sessionRevision(for connectionId: UUID) -> Int {
+        sessionRevisions[connectionId, default: 0]
+    }
+
+    func bumpSessionRevision(_ connectionId: UUID) {
+        sessionRevisions[connectionId, default: 0] += 1
+    }
+
+    // A window with unsaved row edits names its table without a database, so no other window may move the shared session.
+    func setEditorHold(_ isHolding: Bool, by holder: AnyObject, on connectionId: UUID) {
+        let id = ObjectIdentifier(holder)
+        if isHolding {
+            editorHolders[connectionId, default: []].insert(id)
+        } else {
+            editorHolders[connectionId]?.remove(id)
+            if editorHolders[connectionId]?.isEmpty == true { editorHolders[connectionId] = nil }
+        }
+    }
+
+    func holdsEditor(_ connectionId: UUID, besides holder: AnyObject) -> Bool {
+        !(editorHolders[connectionId] ?? []).subtracting([ObjectIdentifier(holder)]).isEmpty
+    }
+
+    private func sessionEnded(_ connectionId: UUID, driver: any DatabaseDriver) {
+        sessionTransactions.sessionEnded(connectionId, driver: driver)
+        bumpSessionRevision(connectionId)
     }
 
     // MARK: - Load / Retry
