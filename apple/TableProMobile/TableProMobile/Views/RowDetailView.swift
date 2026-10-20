@@ -13,6 +13,8 @@ struct RowDetailView: View {
     @State private var hapticError = false
     @State private var hapticSelection = 0
     @State private var showSaveConfirmation = false
+    @State private var jsonEditorField: IndexedRow<String>?
+    @State private var jsonViewerRoute: JSONValueViewer.Route?
     private let coordinator: ConnectionCoordinator?
 
     init(
@@ -87,6 +89,10 @@ struct RowDetailView: View {
         .holdsScene(withUnsavedChanges: viewModel.hasUnsavedEdits)
         .navigationTitle(viewModel.table?.name ?? String(format: String(localized: "Row %d of %d"), viewModel.currentIndex + 1, viewModel.rows.count))
         .navigationBarTitleDisplayMode(.inline)
+        // A NavigationLink inside the paged TabView cannot reach the stack: it pushes a blank screen.
+        .navigationDestination(item: $jsonViewerRoute) { route in
+            JSONValueViewer(route: route)
+        }
         .toolbar { rowDetailToolbar }
         .sensoryFeedback(.success, trigger: hapticSuccess)
         .sensoryFeedback(.error, trigger: hapticError)
@@ -124,6 +130,12 @@ struct RowDetailView: View {
         .sheet(isPresented: $showShareSheet) {
             ActivityViewController(items: [shareText])
         }
+        .sheet(item: $jsonEditorField) { field in
+            JSONValueEditorSheet(title: viewModel.columns[field.id].name, text: field.values, onDone: { text in
+                guard text != field.values else { return }
+                viewModel.setEditedValue(text, at: field.id)
+            })
+        }
     }
 
     @ToolbarContentBuilder
@@ -142,7 +154,7 @@ struct RowDetailView: View {
                     ConfirmButton(title: "Save", isInProgress: viewModel.isSaving) {
                         Task { await handleSave() }
                     }
-                    .disabled(viewModel.isSaving)
+                    .disabled(viewModel.isSaving || viewModel.hasInvalidJSONEdit)
                 } else {
                     Button { viewModel.startEditing() } label: {
                         Label("Edit", systemImage: "pencil")
@@ -183,11 +195,11 @@ struct RowDetailView: View {
         Section("Share") {
             ForEach(ExportFormat.allCases) { format in
                 Button {
-                    shareText = ClipboardExporter.exportRow(
-                        columns: viewModel.columns, row: viewModel.currentRow,
-                        format: format, tableName: viewModel.table?.name,
-                        databaseType: viewModel.databaseType, driver: viewModel.session?.driver
-                    )
+                    guard let text = viewModel.exportCurrentRow(as: format) else {
+                        hapticError.toggle()
+                        return
+                    }
+                    shareText = text
                     showShareSheet = true
                 } label: {
                     Label(format.rawValue, systemImage: "square.and.arrow.up")
@@ -197,11 +209,10 @@ struct RowDetailView: View {
         Section("Copy to Clipboard") {
             ForEach(ExportFormat.allCases) { format in
                 Button {
-                    let text = ClipboardExporter.exportRow(
-                        columns: viewModel.columns, row: viewModel.currentRow,
-                        format: format, tableName: viewModel.table?.name,
-                        databaseType: viewModel.databaseType, driver: viewModel.session?.driver
-                    )
+                    guard let text = viewModel.exportCurrentRow(as: format) else {
+                        hapticError.toggle()
+                        return
+                    }
                     ClipboardExporter.copyToClipboard(text)
                 } label: {
                     Label(format.rawValue, systemImage: "doc.on.clipboard")
@@ -224,10 +235,14 @@ struct RowDetailView: View {
                 Section {
                     if takesEdits {
                         editableField(index: index, value: value)
+                        if viewModel.isJSON(at: index) {
+                            editJSONButton(index: index)
+                        }
                     } else {
-                        fieldContent(value: value)
+                        let jsonText = viewModel.jsonText(forRow: rowIndex, at: index)
+                        fieldContent(value: value, jsonPreview: viewModel.isJSON(at: index) ? jsonText : nil)
                             .contextMenu {
-                                if let value {
+                                if let value = viewModel.completeValue(forRow: rowIndex, at: index) {
                                     Button {
                                         ClipboardExporter.copyToClipboard(value)
                                     } label: {
@@ -240,6 +255,13 @@ struct RowDetailView: View {
                                     Label("Copy Column Name", systemImage: "textformat")
                                 }
                             }
+                        if let jsonText {
+                            Button {
+                                jsonViewerRoute = JSONValueViewer.Route(title: column.name, text: jsonText)
+                            } label: {
+                                Label("View as JSON", systemImage: "curlybraces")
+                            }
+                        }
                         if index < cells.count, cells[index].isLoadable,
                            !viewModel.hasOverride(forRow: rowIndex, cellIndex: index) {
                             lazyLoadButton(cell: cells[index], rowIndex: rowIndex, cellIndex: index)
@@ -330,9 +352,14 @@ struct RowDetailView: View {
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .italic()
+            } else if viewModel.isJSON(at: index) {
+                if let value, !value.isEmpty {
+                    JSONFieldPreview(text: value)
+                } else {
+                    Spacer(minLength: 0)
+                }
             } else {
-                TextField("Value", text: textBinding)
-                    .font(.body)
+                LiteralTextField("Value", text: textBinding)
             }
 
             if offersNull {
@@ -352,9 +379,20 @@ struct RowDetailView: View {
         }
     }
 
+    private func editJSONButton(index: Int) -> some View {
+        Button {
+            let text = index < viewModel.editedValues.count ? viewModel.editedValues[index] : nil
+            jsonEditorField = IndexedRow(id: index, values: text ?? "")
+        } label: {
+            Label("Edit JSON", systemImage: "pencil")
+        }
+    }
+
     @ViewBuilder
-    private func fieldContent(value: String?) -> some View {
-        if let value {
+    private func fieldContent(value: String?, jsonPreview: String? = nil) -> some View {
+        if let jsonPreview {
+            JSONFieldPreview(text: jsonPreview)
+        } else if let value {
             Text(verbatim: value)
                 .font(.body)
                 .textSelection(.enabled)

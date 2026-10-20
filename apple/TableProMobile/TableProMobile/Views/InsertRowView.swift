@@ -25,6 +25,7 @@ struct InsertRowView: View {
     @State private var writeGate = ConfirmedWriteGate()
     @State private var hapticSuccess = false
     @State private var hapticError = false
+    @State private var jsonEditorColumn: IndexedRow<ColumnInfo>?
 
     private var columnNames: [String] { columnDetails.map(\.name) }
     private var hasChanges: Bool { !fields.isEmpty }
@@ -96,6 +97,9 @@ struct InsertRowView: View {
             } message: {
                 Text(String(format: String(localized: "This will insert a row into %@. Continue?"), table.name))
             }
+            .sheet(item: $jsonEditorColumn) { field in
+                jsonEditor(for: field.values)
+            }
         }
     }
 
@@ -120,14 +124,15 @@ struct InsertRowView: View {
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .italic()
+                } else if ColumnInfo.isJSONType(typeName: column.typeName) {
+                    jsonPreview(for: column)
                 } else {
-                    TextField(text: literalBinding(for: column), prompt: placeholder(for: column)) {
-                        Text(verbatim: column.name)
-                    }
-                    .font(.body)
-                    .keyboardType(keyboardType(for: column))
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
+                    LiteralTextField(
+                        placeholder(for: column),
+                        text: literalBinding(for: column),
+                        keyboardType: keyboardType(for: column)
+                    )
+                    .accessibilityLabel(Text(verbatim: column.name))
                 }
 
                 Spacer()
@@ -135,6 +140,33 @@ struct InsertRowView: View {
                 stateMenu(for: column)
             }
         }
+        if ColumnInfo.isJSONType(typeName: column.typeName), !column.isGenerated, !column.rejectsWrittenValues {
+            Button {
+                guard let index = columnDetails.firstIndex(where: { $0.name == column.name }) else { return }
+                jsonEditorColumn = IndexedRow(id: index, values: column)
+            } label: {
+                Label("Edit JSON", systemImage: "pencil")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func jsonPreview(for column: ColumnInfo) -> some View {
+        if case .text(let value) = fields[column.name], !value.isEmpty {
+            JSONFieldPreview(text: value)
+        } else {
+            Text(placeholder(for: column))
+                .font(.body)
+                .foregroundStyle(Color(.placeholderText))
+        }
+    }
+
+    private func jsonEditor(for column: ColumnInfo) -> some View {
+        let literal = literalBinding(for: column)
+        return JSONValueEditorSheet(title: column.name, text: literal.wrappedValue, onDone: { text in
+            guard text != literal.wrappedValue else { return }
+            literal.wrappedValue = text
+        })
     }
 
     private func stateMenu(for column: ColumnInfo) -> some View {
@@ -239,20 +271,15 @@ struct InsertRowView: View {
         )
     }
 
-    private func placeholder(for column: ColumnInfo) -> Text {
-        if column.isAutoIncrement { return Text("Auto") }
-        if let defaultValue = column.defaultValue { return Text("Default: \(defaultValue)") }
-        return Text("Default")
+    private func placeholder(for column: ColumnInfo) -> String {
+        if column.isAutoIncrement { return String(localized: "Auto") }
+        if let defaultValue = column.defaultValue { return String(format: String(localized: "Default: %@"), defaultValue) }
+        return String(localized: "Default")
     }
 
+    // The decimal pad has no minus sign, so a negative number could not be typed.
     private func keyboardType(for column: ColumnInfo) -> UIKeyboardType {
-        let type = column.typeName.uppercased()
-        if type.contains("INT") || type.contains("REAL") || type.contains("FLOAT")
-            || type.contains("DOUBLE") || type.contains("NUMERIC") || type.contains("DECIMAL")
-        {
-            return .decimalPad
-        }
-        return .default
+        ColumnInfo.isNumericType(typeName: column.typeName) ? .numbersAndPunctuation : .default
     }
 
     // MARK: - Insert
