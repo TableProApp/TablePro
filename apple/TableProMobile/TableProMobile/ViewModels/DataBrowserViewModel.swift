@@ -54,7 +54,6 @@ final class DataBrowserViewModel {
     @ObservationIgnored private var keyReadTask: Task<KeyContentsPage, Error>?
     @ObservationIgnored private var loadGeneration = 0
     @ObservationIgnored private var hasSeededFilters = false
-    @ObservationIgnored private var seededKeyColumns: [String] = []
     @ObservationIgnored private var singleRowMatch = SingleRowMatch.inactive
 
     private enum SingleRowMatch {
@@ -115,7 +114,6 @@ final class DataBrowserViewModel {
         guard !hasSeededFilters else { return }
         hasSeededFilters = true
         filters = seeded
-        seededKeyColumns = seeded.map(\.columnName)
         filterLogicMode = .and
         singleRowMatch = hasActiveFilters ? .awaitingFirstLoad : .inactive
     }
@@ -169,15 +167,6 @@ final class DataBrowserViewModel {
         isPageLoading = false
         guard case .awaitingFirstLoad = singleRowMatch else { return }
         singleRowMatch = loadError == nil && legacyRows.count == 1 ? .found : .inactive
-    }
-
-    // The preview quotes every key value, and a column without a type (a typeless SQLite key) keeps 5 and '5'
-    // apart, so such a seeded key column compares as text here too and the browser lists the previewed row.
-    private var filterColumns: [ColumnInfo] {
-        let untyped = seededKeyColumns.filter {
-            FilterColumnKind.kind(of: FilterColumnKind.column(named: $0, in: columnDetails)) == nil
-        }
-        return untyped.map { ColumnInfo(name: $0, typeName: "TEXT") } + columnDetails
     }
 
     private func loadRows(session: ConnectionSession, table: TableInfo, isInitial: Bool, generation: Int) async {
@@ -282,7 +271,7 @@ final class DataBrowserViewModel {
             return SQLBuilder.buildSearchSelect(
                 table: table.name, schema: schema, type: databaseType,
                 searchText: activeSearchText, searchColumns: searchableColumns(),
-                filters: filters, logicMode: filterLogicMode, columns: filterColumns,
+                filters: filters, logicMode: filterLogicMode, columns: columnDetails,
                 sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
@@ -290,7 +279,7 @@ final class DataBrowserViewModel {
         if hasActiveFilters {
             return SQLBuilder.buildFilteredSelect(
                 table: table.name, schema: schema, type: databaseType,
-                filters: filters, logicMode: filterLogicMode, columns: filterColumns,
+                filters: filters, logicMode: filterLogicMode, columns: columnDetails,
                 sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
@@ -334,12 +323,12 @@ final class DataBrowserViewModel {
                 countQuery = SQLBuilder.buildSearchCount(
                     table: table.name, schema: schema, type: databaseType,
                     searchText: activeSearchText, searchColumns: searchableColumns(),
-                    filters: filters, logicMode: filterLogicMode, columns: filterColumns
+                    filters: filters, logicMode: filterLogicMode, columns: columnDetails
                 )
             } else if hasActiveFilters {
                 countQuery = SQLBuilder.buildFilteredCount(
                     table: table.name, schema: schema, type: databaseType,
-                    filters: filters, logicMode: filterLogicMode, columns: filterColumns
+                    filters: filters, logicMode: filterLogicMode, columns: columnDetails
                 )
             } else {
                 countQuery = SQLBuilder.buildCount(table: table.name, schema: schema, type: databaseType)
@@ -444,6 +433,13 @@ final class DataBrowserViewModel {
     func deleteRow(pkValues: [(column: String, value: String)]) async -> Bool {
         guard let session, let table, !pkValues.isEmpty else { return false }
         let schema = schema
+        if let shared = await SharedRowKey.error(
+            table: table.name, schema: schema, key: pkValues,
+            columns: columnDetails, type: databaseType, driver: session.driver
+        ) {
+            operationError = shared
+            return false
+        }
         do {
             let deleted = try await session.driver.executeWrite([
                 SQLBuilder.buildDelete(
@@ -451,7 +447,8 @@ final class DataBrowserViewModel {
                     schema: schema,
                     type: databaseType,
                     driver: session.driver,
-                    primaryKeys: pkValues
+                    primaryKeys: pkValues,
+                    columns: columnDetails
                 )
             ])
             // SQL Server under SET NOCOUNT ON reports 0 for every delete, so a zero is checked against the table.
@@ -504,7 +501,7 @@ final class DataBrowserViewModel {
         let components = primaryKey.map { PrimaryKeyComponent(column: $0.column, value: $0.value) }
         let ref = CellRef(table: table, column: components[0].column, primaryKey: components)
         do {
-            _ = try await loadFullValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema)
+            _ = try await readValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema, ofOneRow: false)
             return true
         } catch CellLookupError.rowNotFound {
             return false
@@ -513,12 +510,22 @@ final class DataBrowserViewModel {
 
     // The caller passes the schema its rows came from: a schema switch while a read is in flight must not move it.
     func loadFullValue(driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType, schema: String?) async throws -> String? {
-        let predicates = ref.primaryKey.map { component in
-            "\(SQLBuilder.quoteIdentifier(component.column, for: databaseType)) = '\(driver.escapeStringLiteral(component.value))'"
-        }
-        let predicate = predicates.joined(separator: " AND ")
-        let column = SQLBuilder.quoteIdentifier(ref.column, for: databaseType)
+        try await readValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema, ofOneRow: true)
+    }
+
+    // A full value is read only from a key that names one row; whether a deleted row is still there is not.
+    private func readValue(
+        driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType, schema: String?, ofOneRow: Bool
+    ) async throws -> String? {
         let table = SQLBuilder.qualifiedIdentifier(table: ref.table, schema: schema, for: databaseType)
+        let predicate = SQLBuilder.keyPredicate(
+            ref.primaryKey.map { (column: $0.column, value: $0.value) },
+            columns: columnDetails,
+            type: databaseType,
+            driver: driver,
+            uniqueIn: ofOneRow ? table : nil
+        )
+        let column = SQLBuilder.quoteIdentifier(ref.column, for: databaseType)
         let query: String
         switch databaseType {
         case .mssql:

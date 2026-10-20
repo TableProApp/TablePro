@@ -1,12 +1,16 @@
 import Foundation
+import TableProCoreTypes
 import TableProModels
 import TableProPluginKit
+import TableProSQLGrammar
 
 public struct FilterSQLGenerator: Sendable {
     private let dialect: SQLDialectDescriptor
+    private let databaseType: DatabaseType?
 
-    public init(dialect: SQLDialectDescriptor) {
+    public init(dialect: SQLDialectDescriptor, databaseType: DatabaseType? = nil) {
         self.dialect = dialect
+        self.databaseType = databaseType
     }
 
     public func generateWhereClause(
@@ -31,15 +35,22 @@ public struct FilterSQLGenerator: Sendable {
         }
 
         let quotedColumn = quoteIdentifier(filter.columnName)
-        let kind = FilterColumnKind.kind(of: FilterColumnKind.column(named: filter.columnName, in: columns))
+        let column = FilterColumnKind.column(named: filter.columnName, in: columns)
+        let kind = FilterColumnKind.kind(of: column, databaseType: databaseType)
+        let eitherStorageClass = FilterColumnKind.comparesEitherStorageClass(column, databaseType: databaseType)
         let escapedValue = escapeValue(filter.value, kind: kind)
-        let folding = caseFolding(for: filter)
+        let folding = caseFolding(for: filter, column: column)
+        let operand = textOperand(quotedColumn, for: column)
 
         switch filter.filterOperator {
+        case .equal where eitherStorageClass:
+            return eitherStorageComparison(quotedColumn, filter.value, negated: false)
+        case .notEqual where eitherStorageClass:
+            return eitherStorageComparison(quotedColumn, filter.value, negated: true)
         case .equal:
-            return comparisonCondition(quotedColumn, "=", escapedValue, folding: folding)
+            return comparisonCondition(quotedColumn, operand, "=", escapedValue, folding: folding)
         case .notEqual:
-            return comparisonCondition(quotedColumn, "!=", escapedValue, folding: folding)
+            return comparisonCondition(quotedColumn, operand, "!=", escapedValue, folding: folding)
         case .greaterThan:
             return "\(quotedColumn) > \(escapedValue)"
         case .greaterThanOrEqual:
@@ -49,47 +60,84 @@ public struct FilterSQLGenerator: Sendable {
         case .lessThanOrEqual:
             return "\(quotedColumn) <= \(escapedValue)"
         case .like:
-            return likeCondition(quotedColumn, escapedValue, negated: false, folding: folding)
+            return likeCondition(operand, escapedValue, negated: false, folding: folding)
         case .notLike:
-            return likeCondition(quotedColumn, escapedValue, negated: true, folding: folding)
+            return likeCondition(operand, escapedValue, negated: true, folding: folding)
         case .isNull:
             return "\(quotedColumn) IS NULL"
         case .isNotNull:
             return "\(quotedColumn) IS NOT NULL"
+        case .in where eitherStorageClass:
+            return eitherStorageList(quotedColumn, listItems(filter.value), negated: false)
+        case .notIn where eitherStorageClass:
+            return eitherStorageList(quotedColumn, listItems(filter.value), negated: true)
         case .in:
-            return listCondition(quotedColumn, filter.value, kind: kind, negated: false, folding: folding)
+            return listCondition(quotedColumn, operand, filter.value, kind: kind, negated: false, folding: folding)
         case .notIn:
-            return listCondition(quotedColumn, filter.value, kind: kind, negated: true, folding: folding)
+            return listCondition(quotedColumn, operand, filter.value, kind: kind, negated: true, folding: folding)
         case .between:
             let escapedSecond = escapeValue(filter.secondValue, kind: kind)
             return "\(quotedColumn) BETWEEN \(escapedValue) AND \(escapedSecond)"
         case .contains:
             let pattern = escapeLikePattern(filter.value)
-            return likeCondition(quotedColumn, "'%\(pattern)%'", negated: false, folding: folding)
+            return likeCondition(operand, "'%\(pattern)%'", negated: false, folding: folding)
         case .startsWith:
             let pattern = escapeLikePattern(filter.value)
-            return likeCondition(quotedColumn, "'\(pattern)%'", negated: false, folding: folding)
+            return likeCondition(operand, "'\(pattern)%'", negated: false, folding: folding)
         case .endsWith:
             let pattern = escapeLikePattern(filter.value)
-            return likeCondition(quotedColumn, "'%\(pattern)'", negated: false, folding: folding)
+            return likeCondition(operand, "'%\(pattern)'", negated: false, folding: folding)
         }
     }
 
-    private func caseFolding(for filter: TableFilter) -> PluginSQLCaseFolding {
-        PluginSQLCaseFolding.resolve(
+    // A number, a boolean or a bit has no case, and compared folded as text `5.50` would no longer equal `5.5`.
+    // A pattern still folds: `contains TRUE` finds PostgreSQL's `true`.
+    private func caseFolding(for filter: TableFilter, column: ColumnInfo?) -> PluginSQLCaseFolding {
+        let comparesWithoutCase = Self.comparisonOperators.contains(filter.filterOperator)
+            && FilterColumnKind.kind(of: column).map { $0 != .text } ?? false
+        return PluginSQLCaseFolding.resolve(
             style: dialect.caseSensitivityStyle,
             foldFunction: dialect.caseFoldFunction,
             isCaseSensitive: filter.isCaseSensitive || !filter.filterOperator.supportsCaseSensitivity
+                || comparesWithoutCase
         )
     }
 
+    private static let comparisonOperators: Set<FilterOperator> = [.equal, .notEqual, .in, .notIn]
+
+    // A plain comparison keeps the column's own type and its index; only a case fold reads it as text.
     private func comparisonCondition(
-        _ column: String, _ operatorText: String, _ literal: String, folding: PluginSQLCaseFolding
+        _ column: String, _ operand: String, _ operatorText: String, _ literal: String, folding: PluginSQLCaseFolding
     ) -> String {
         guard folding.foldsComparisonOperands, literal.hasPrefix("'") else {
             return "\(column) \(operatorText) \(literal)"
         }
-        return "\(folding.fold(column)) \(operatorText) \(folding.fold(literal))"
+        return "\(folding.fold(operand)) \(operatorText) \(folding.fold(literal))"
+    }
+
+    private func eitherStorageComparison(_ column: String, _ value: String, negated: Bool) -> String {
+        guard SQLiteNumberText.isStoredSpelling(value) else {
+            return "\(column) \(negated ? "!=" : "=") \(escapeValue(value, kind: .text))"
+        }
+        return eitherStorageList(column, [value], negated: negated)
+    }
+
+    private func eitherStorageList(_ column: String, _ values: [String], negated: Bool) -> String {
+        let literals = values.flatMap { value -> [String] in
+            let quoted = escapeValue(value, kind: .text)
+            return SQLiteNumberText.isStoredSpelling(value) ? [value, quoted] : [quoted]
+        }
+        return "\(column) \(negated ? "NOT IN" : "IN") (\(literals.joined(separator: ", ")))"
+    }
+
+    // PostgreSQL and DuckDB have no LIKE or lower() for uuid, numbers or enums, and a text cast is valid on every column.
+    private func textOperand(_ quotedColumn: String, for column: ColumnInfo?) -> String {
+        guard let castType = dialect.textCastTypeName, !FilterColumnKind.isCharacterType(column) else { return quotedColumn }
+        return "CAST(\(quotedColumn) AS \(castType))"
+    }
+
+    private func listItems(_ rawValue: String) -> [String] {
+        rawValue.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
     }
 
     private func likeCondition(
@@ -100,14 +148,18 @@ public struct FilterSQLGenerator: Sendable {
     }
 
     private func listCondition(
-        _ column: String, _ rawValue: String, kind: PluginColumnKind?, negated: Bool, folding: PluginSQLCaseFolding
+        _ column: String,
+        _ operand: String,
+        _ rawValue: String,
+        kind: PluginColumnKind?,
+        negated: Bool,
+        folding: PluginSQLCaseFolding
     ) -> String {
         let keyword = negated ? "NOT IN" : "IN"
-        let items = rawValue.split(separator: ",")
-            .map { escapeValue($0.trimmingCharacters(in: .whitespaces), kind: kind) }
+        let items = listItems(rawValue).map { escapeValue($0, kind: kind) }
         let foldable = folding.foldsComparisonOperands && items.allSatisfy { $0.hasPrefix("'") }
         let rendered = foldable ? items.map { folding.fold($0) } : items
-        let subject = foldable ? folding.fold(column) : column
+        let subject = foldable ? folding.fold(operand) : column
         return "\(subject) \(keyword) (\(rendered.joined(separator: ", ")))"
     }
 
@@ -128,7 +180,7 @@ public struct FilterSQLGenerator: Sendable {
     }
 
     private func escapeValue(_ value: String, kind: PluginColumnKind?) -> String {
-        if isBareNumber(value, kind: kind) {
+        if FilterColumnKind.isBareNumber(value, kind: kind) {
             return value
         }
         var escaped = value.replacingOccurrences(of: "\0", with: "")
@@ -137,13 +189,6 @@ public struct FilterSQLGenerator: Sendable {
         }
         escaped = escaped.replacingOccurrences(of: "'", with: "''")
         return "'\(escaped)'"
-    }
-
-    // Character.isNumber takes digits of every script, and no engine parses those as a number.
-    // An integer column takes a fraction bare too: PostgreSQL and SQL Server reject `int_col > '5.5'`.
-    private func isBareNumber(_ value: String, kind: PluginColumnKind?) -> Bool {
-        guard value.unicodeScalars.allSatisfy(\.isASCII) else { return false }
-        return kind != .text && PluginNumericLiteral.isValid(value)
     }
 
     private func escapeLikePattern(_ value: String) -> String {

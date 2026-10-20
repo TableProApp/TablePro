@@ -365,13 +365,22 @@ final class RowDetailViewModel {
             return false
         }
 
+        if let shared = await SharedRowKey.error(
+            table: table.name, schema: schema, key: pkValues,
+            columns: columnDetails, type: databaseType, driver: session.driver
+        ) {
+            operationError = shared
+            return false
+        }
+
         let sql = SQLBuilder.buildUpdate(
             table: table.name,
             schema: schema,
             type: databaseType,
             driver: session.driver,
             changes: changes,
-            primaryKeys: pkValues
+            primaryKeys: pkValues,
+            columns: columnDetails
         )
 
         switch writeGate.submit(sql, under: safeModeLevel) {

@@ -315,4 +315,141 @@ struct FilterSQLGeneratorTests {
     func typeNameKind(typeName: String, kind: PluginColumnKind) {
         #expect(FilterColumnKind.kind(forTypeName: typeName) == kind)
     }
+
+    private func engineClause(
+        _ type: DatabaseType,
+        _ column: ColumnInfo,
+        _ value: String,
+        op filterOperator: FilterOperator = .equal,
+        isCaseSensitive: Bool? = nil,
+        dialect: SQLDialectDescriptor? = nil
+    ) -> String {
+        FilterSQLGenerator(dialect: dialect ?? self.dialect, databaseType: type).generateWhereClause(
+            from: [TableFilter(
+                columnName: column.name, filterOperator: filterOperator, value: value, isCaseSensitive: isCaseSensitive
+            )],
+            logicMode: .and,
+            columns: [column]
+        )
+    }
+
+    // Measured on PostgreSQL 17: `bit = 101` and `boolean = 1` have no operator, and `real = 0.1` finds no row.
+    @Test("PostgreSQL compares every column but an integer one to a quoted literal",
+          arguments: ["bit(3)", "bit", "boolean", "real", "double precision", "numeric(10,2)"])
+    func postgresQuotesNonIntegerColumns(typeName: String) {
+        let column = ColumnInfo(name: "v", typeName: typeName)
+        #expect(engineClause(.postgresql, column, "1") == "WHERE \"v\" = '1'")
+        #expect(engineClause(.redshift, column, "1") == "WHERE \"v\" = '1'")
+    }
+
+    @Test("A PostgreSQL integer column keeps a bare number, a fraction included")
+    func postgresIntegerStaysBare() {
+        let column = ColumnInfo(name: "id", typeName: "integer")
+        #expect(engineClause(.postgresql, column, "5") == "WHERE \"id\" = 5")
+        #expect(engineClause(.postgresql, column, "5.5", op: .greaterThan) == "WHERE \"id\" > 5.5")
+    }
+
+    // DuckDB runs `bit = 101` and returns no row; MySQL 8.4 and MariaDB 13 return no row for `bit = '5'`.
+    @Test("A BIT column is a bit string on DuckDB and a number on MySQL")
+    func bitFollowsTheEngine() {
+        let bit = ColumnInfo(name: "b", typeName: "BIT")
+        #expect(engineClause(.duckdb, bit, "101") == "WHERE \"b\" = '101'")
+        #expect(engineClause(.mysql, ColumnInfo(name: "b", typeName: "bit(8)"), "5") == "WHERE \"b\" = 5")
+        #expect(engineClause(.duckdb, ColumnInfo(name: "f", typeName: "FLOAT"), "0.1") == "WHERE \"f\" = 0.1")
+    }
+
+    // SQLite keeps integer 5 and text '5' apart in a column with no affinity, and the grid shows both as 5.
+    @Test("A SQLite column with no affinity matches a number either way it was stored", arguments: ["", "BLOB", "ANY"])
+    func sqliteUntypedMatchesEitherStorageClass(typeName: String) {
+        let column = ColumnInfo(name: "v", typeName: typeName)
+        #expect(engineClause(.sqlite, column, "5") == "WHERE \"v\" IN (5, '5')")
+        #expect(engineClause(.sqlite, column, "5", op: .notEqual) == "WHERE \"v\" NOT IN (5, '5')")
+        #expect(engineClause(.sqlite, column, "5, abc, 05", op: .in) == "WHERE \"v\" IN (5, '5', 'abc', '05')")
+        #expect(engineClause(.sqlite, column, "-2.5", op: .notIn) == "WHERE \"v\" NOT IN (-2.5, '-2.5')")
+        #expect(engineClause(.sqlite, column, "02134") == "WHERE \"v\" = '02134'")
+        #expect(engineClause(.sqlite, column, "1.0e+20") == "WHERE \"v\" IN (1.0e+20, '1.0e+20')")
+        #expect(engineClause(.sqlite, column, "5", op: .greaterThan) == "WHERE \"v\" > 5")
+    }
+
+    @Test("A typed SQLite column keeps its literal")
+    func sqliteTypedColumnUnchanged() {
+        #expect(engineClause(.sqlite, ColumnInfo(name: "id", typeName: "INTEGER"), "5") == "WHERE \"id\" = 5")
+        #expect(engineClause(.sqlite, ColumnInfo(name: "code", typeName: "TEXT"), "5") == "WHERE \"code\" = '5'")
+    }
+
+    private var castingDialect: SQLDialectDescriptor {
+        SQLDialectDescriptor(
+            identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+            likeEscapeStyle: .explicit, caseSensitivityStyle: .ilikeOperator, textCastTypeName: "TEXT"
+        )
+    }
+
+    // PostgreSQL 17 and DuckDB 1.5: `numeric ~~* unknown`, `lower(uuid)` and `~~(INTEGER, ...)` do not exist.
+    @Test("Pattern and case-folded matches read a non-character column as text")
+    func nonCharacterColumnIsCastForPatterns() {
+        let uuid = ColumnInfo(name: "u", typeName: "uuid")
+        let dialect = castingDialect
+        #expect(engineClause(.postgresql, uuid, "a0", op: .contains, dialect: dialect)
+            == "WHERE CAST(\"u\" AS TEXT) ILIKE '%a0%' ESCAPE '!'")
+        #expect(engineClause(.postgresql, uuid, "A0", isCaseSensitive: false, dialect: dialect)
+            == "WHERE LOWER(CAST(\"u\" AS TEXT)) = LOWER('A0')")
+        #expect(engineClause(.postgresql, uuid, "A0", dialect: dialect) == "WHERE \"u\" = 'A0'")
+        #expect(engineClause(.postgresql, ColumnInfo(name: "mood", typeName: "USER-DEFINED"), "a, b", op: .in,
+                             isCaseSensitive: false, dialect: dialect)
+            == "WHERE LOWER(CAST(\"mood\" AS TEXT)) IN (LOWER('a'), LOWER('b'))")
+        #expect(engineClause(.postgresql, ColumnInfo(name: "n", typeName: "numeric"), "5", op: .startsWith, dialect: dialect)
+            == "WHERE CAST(\"n\" AS TEXT) ILIKE '5%' ESCAPE '!'")
+    }
+
+    @Test("Match Case off compares a number, boolean or bit column as itself and still folds a pattern")
+    func noCaseColumnsAreNotFolded() {
+        let dialect = castingDialect
+        let price = ColumnInfo(name: "price", typeName: "numeric(10,2)")
+        #expect(engineClause(.postgresql, price, "5.5", isCaseSensitive: false, dialect: dialect) == "WHERE \"price\" = '5.5'")
+        #expect(engineClause(.postgresql, price, "5.5, 6", op: .in, isCaseSensitive: false, dialect: dialect)
+            == "WHERE \"price\" IN ('5.5', '6')")
+        #expect(engineClause(.postgresql, ColumnInfo(name: "b", typeName: "bit"), "1", isCaseSensitive: false, dialect: dialect)
+            == "WHERE \"b\" = '1'")
+        #expect(engineClause(.postgresql, ColumnInfo(name: "f", typeName: "boolean"), "TRUE", op: .contains,
+                             isCaseSensitive: false, dialect: dialect)
+            == "WHERE CAST(\"f\" AS TEXT) ILIKE '%TRUE%' ESCAPE '!'")
+    }
+
+    @Test("A character column keeps its own operand", arguments: ["character varying", "text", "citext", "bpchar", "name"])
+    func characterColumnIsNotCast(typeName: String) {
+        let column = ColumnInfo(name: "c", typeName: typeName)
+        #expect(engineClause(.postgresql, column, "x", op: .contains, dialect: castingDialect)
+            == "WHERE \"c\" ILIKE '%x%' ESCAPE '!'")
+    }
+
+    @Test("Engine type names map to a column kind", arguments: [
+        ("bit(3)", DatabaseType.postgresql, PluginColumnKind.text),
+        ("boolean", .postgresql, .text),
+        ("real", .postgresql, .text),
+        ("bigint", .postgresql, .integer),
+        ("smallint", .redshift, .integer),
+        ("BIT", .duckdb, .text),
+        ("BOOLEAN", .duckdb, .integer),
+        ("FLOAT", .duckdb, .decimal),
+        ("bit(8)", .mysql, .integer),
+        ("bit", .mssql, .integer),
+        ("REAL", .sqlite, .decimal)
+    ])
+    func engineTypeNameKind(typeName: String, type: DatabaseType, kind: PluginColumnKind) {
+        #expect(FilterColumnKind.kind(forTypeName: typeName, databaseType: type) == kind)
+    }
+
+    @Test("A key value takes the literal its column's engine compares exactly")
+    func keyLiterals() {
+        #expect(FilterColumnKind.keyLiteral("5", column: nil, databaseType: .postgresql) == .text("5"))
+        #expect(FilterColumnKind.keyLiteral("5", column: ColumnInfo(name: "id", typeName: "int"), databaseType: .postgresql)
+            == .number("5"))
+        #expect(FilterColumnKind.keyLiteral("5", column: ColumnInfo(name: "b", typeName: "bit(8)"), databaseType: .mysql)
+            == .number("5"))
+        #expect(FilterColumnKind.keyLiteral("5", column: nil, databaseType: .sqlite) == .numberOrText("5"))
+        #expect(FilterColumnKind.keyLiteral("05", column: nil, databaseType: .sqlite) == .text("05"))
+        #expect(FilterColumnKind.keyLiteral("2.5", column: nil, databaseType: .sqlite) == .text("2.5"))
+        #expect(FilterColumnKind.keyLiteral("0.3333333333333333", column: nil, databaseType: .sqlite)
+            == .text("0.3333333333333333"))
+    }
 }

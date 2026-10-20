@@ -359,7 +359,8 @@ extension PluginMetadataRegistry {
             booleanLiteralStyle: .truefalse,
             likeEscapeStyle: .explicit,
             paginationStyle: .limit,
-            caseSensitivityStyle: .ilikeOperator
+            caseSensitivityStyle: .ilikeOperator,
+            textCastTypeName: "VARCHAR"
         )
 
         let duckdbColumnTypes: [String: [String]] = [

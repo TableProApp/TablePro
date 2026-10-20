@@ -286,6 +286,148 @@ struct SQLiteDriverFileTests {
         #expect(reference?.parts == [ForeignKeyReference.Part(column: "id", value: "2")])
     }
 
+    // A column declared with no type keeps integer 5 and text '6' apart, so a quoted key missed the integer row.
+    @Test("A key column with no type finds its row whether it holds an integer or text")
+    func untypedKeyFindsEitherStorageClass() async throws {
+        let driver = try await connectedDriver("untyped-key.db")
+        _ = try await driver.execute(query: "CREATE TABLE p (id PRIMARY KEY, name)")
+        _ = try await driver.execute(query: "INSERT INTO p VALUES (5, 'integer'), ('6', 'text'), ('05', 'padded'), (7, 'seven')")
+        let columns = try await driver.fetchColumns(table: "p", schema: nil)
+
+        var names: [String: String] = [:]
+        for value in ["5", "6", "05"] {
+            let query = SQLBuilder.buildSingleRowLookup(
+                table: "p", schema: nil, key: [(column: "id", value: value)],
+                columns: columns, type: .sqlite, driver: driver
+            )
+            let rows = try await driver.execute(query: query).rows
+            names[value] = rows.count == 1 ? rows[0][1] : nil
+        }
+        try await driver.disconnect()
+
+        #expect(names == ["5": "integer", "6": "text", "05": "padded"])
+    }
+
+    @Test("Update and delete through a key column with no type reach the integer row and only it")
+    func untypedKeyUpdatesAndDeletes() async throws {
+        let driver = try await connectedDriver("untyped-write.db")
+        _ = try await driver.execute(query: "CREATE TABLE p (id PRIMARY KEY, name)")
+        _ = try await driver.execute(query: "INSERT INTO p VALUES (5, 'before'), (7, 'kept')")
+        let columns = try await driver.fetchColumns(table: "p", schema: nil)
+        let key = [(column: "id", value: "5")]
+
+        try await driver.executeWrite([SQLBuilder.buildUpdate(
+            table: "p", schema: nil, type: .sqlite, driver: driver,
+            changes: [(column: "name", value: "after")], primaryKeys: key, columns: columns
+        )])
+        let updated = try await driver.execute(query: "SELECT name FROM p WHERE id = 5")
+        try await driver.executeWrite([SQLBuilder.buildDelete(
+            table: "p", schema: nil, type: .sqlite, driver: driver, primaryKeys: key, columns: columns
+        )])
+        let remaining = try await driver.execute(query: "SELECT id, name FROM p")
+        try await driver.disconnect()
+
+        #expect((updated.rows.first?.first ?? nil) == "after")
+        #expect(remaining.rows == [["7", "kept"]])
+    }
+
+    // Integer 5 and text '5' are two keys in a column with no type, and both read as 5.
+    @MainActor
+    @Test("A delete through a key two rows share is refused and both rows stay")
+    func sharedUntypedKeyRefusesTheWrite() async throws {
+        let driver = try await connectedDriver("shared-key.db")
+        _ = try await driver.execute(query: "CREATE TABLE p (id PRIMARY KEY, name)")
+        _ = try await driver.execute(query: "INSERT INTO p VALUES (5, 'integer'), ('5', 'text'), (6, 'alone')")
+        let browser = DataBrowserViewModel()
+        browser.attach(
+            session: ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "main"),
+            table: TableInfo(name: "p"), databaseType: .sqlite, host: ""
+        )
+        await browser.load(isInitial: true)
+
+        let shared = await browser.deleteRow(pkValues: [(column: "id", value: "5")])
+        let sharedError = browser.operationError?.title
+        let alone = await browser.deleteRow(pkValues: [(column: "id", value: "6")])
+        let remaining = try await driver.execute(query: "SELECT name FROM p ORDER BY name")
+        try await driver.disconnect()
+
+        #expect(!shared)
+        #expect(sharedError == String(localized: "Key Matches Several Rows"))
+        #expect(alone)
+        #expect(remaining.rows == [["integer"], ["text"]])
+    }
+
+    @Test("An update through a key two rows share changes neither, even without the check before it")
+    func sharedKeyUpdateChangesNothing() async throws {
+        let driver = try await connectedDriver("shared-update.db")
+        _ = try await driver.execute(query: "CREATE TABLE p (id PRIMARY KEY, name)")
+        _ = try await driver.execute(query: "INSERT INTO p VALUES (5, 'integer'), ('5', 'text')")
+        let columns = try await driver.fetchColumns(table: "p", schema: nil)
+
+        try await driver.executeWrite([SQLBuilder.buildUpdate(
+            table: "p", schema: nil, type: .sqlite, driver: driver,
+            changes: [(column: "name", value: "both")], primaryKeys: [(column: "id", value: "5")], columns: columns
+        )])
+        let names = try await driver.execute(query: "SELECT name FROM p ORDER BY name")
+        try await driver.disconnect()
+
+        #expect(names.rows == [["integer"], ["text"]])
+    }
+
+    @MainActor
+    @Test("A preview through a key two rows share says so instead of showing either row")
+    func sharedUntypedKeyPreviewFails() async throws {
+        let driver = try await connectedDriver("shared-preview.db")
+        _ = try await driver.execute(query: "CREATE TABLE p (id PRIMARY KEY, name)")
+        _ = try await driver.execute(query: "INSERT INTO p VALUES (5, 'integer'), ('5', 'text')")
+        let model = ForeignKeyPreviewModel(
+            reference: ForeignKeyReference(table: "p", schema: nil, parts: [.init(column: "id", value: "5")]),
+            session: ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "main"),
+            databaseType: .sqlite
+        )
+        await model.load()
+        try await driver.disconnect()
+
+        guard case .failed(let error) = model.phase else {
+            Issue.record("Expected a failure, got \(model.phase)")
+            return
+        }
+        #expect(error.title == String(localized: "Key Matches Several Rows"))
+        #expect(!model.canOpen)
+    }
+
+    @Test("A result column with no declared type that holds only blobs reads as BLOB")
+    func untypedBlobColumnReadsAsBlob() async throws {
+        let driver = try await connectedDriver("untyped-blob.db")
+        _ = try await driver.execute(query: "CREATE TABLE p (id INTEGER PRIMARY KEY, tag, note)")
+        _ = try await driver.execute(query: "INSERT INTO p VALUES (1, x'0102', 'a'), (2, NULL, x'03')")
+        let result = try await driver.execute(query: "SELECT tag, note, id FROM p ORDER BY id")
+        try await driver.disconnect()
+
+        #expect(result.columns.map(\.typeName) == ["BLOB", "", "INTEGER"])
+    }
+
+    @MainActor
+    @Test("A preview finds a row behind a key with no type, and a blob in a key column with no type is no link")
+    func previewOverUntypedKeys() async throws {
+        let driver = try await connectedDriver("untyped-preview.db")
+        _ = try await driver.execute(query: "CREATE TABLE q (k PRIMARY KEY)")
+        _ = try await driver.execute(query: "CREATE TABLE p (id PRIMARY KEY, tag REFERENCES q (k))")
+        _ = try await driver.execute(query: "INSERT INTO q VALUES (x'0102')")
+        _ = try await driver.execute(query: "INSERT INTO p VALUES (5, x'0102')")
+        let model = ForeignKeyPreviewModel(
+            reference: ForeignKeyReference(table: "p", schema: nil, parts: [.init(column: "id", value: "5")]),
+            session: ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "main"),
+            databaseType: .sqlite
+        )
+        await model.load()
+        try await driver.disconnect()
+
+        #expect(model.isLoaded)
+        #expect(model.fields.map(\.name) == ["id", "tag"])
+        #expect(model.fields.allSatisfy { $0.reference == nil })
+    }
+
     // MARK: - Helpers
 
     private static let createStudent = """

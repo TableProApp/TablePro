@@ -29,8 +29,6 @@ enum ForeignKeyLookupService {
         case noDialect
     }
 
-    private static let classifier = ColumnTypeClassifier()
-
     /// The referenced table's columns, for the label picker and for typing the search predicate.
     ///
     /// A metadata read, so it goes through `withMetadataDriver` like every other one.
@@ -45,6 +43,7 @@ enum ForeignKeyLookupService {
         let columns = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
             try await driver.fetchColumns(table: table, schema: schema)
         }
+        let classifier = ColumnTypeClassifier(family: SQLTypeFamily.of(databaseType))
         return columns.map {
             ForeignKeyLookupColumn(name: $0.name, type: classifier.classify(rawTypeName: $0.typeNameForClassification))
         }
@@ -87,6 +86,7 @@ enum ForeignKeyLookupService {
                 searchTerm: term,
                 dialect: dialect,
                 stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType),
+                databaseType: databaseType,
                 quoteIdentifier: driver.quoteIdentifier
             ) else {
                 return .termNotSearchable

@@ -367,4 +367,84 @@ struct FilterSQLGeneratorColumnTypeTests {
         )
         #expect(result == "\"id\" LIKE '%ab%' ESCAPE '!'")
     }
+
+    // MARK: - Engine literals
+
+    private static let sqliteDialect = SQLDialectDescriptor(
+        identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+        booleanLiteralStyle: .numeric, likeEscapeStyle: .explicit, paginationStyle: .limit
+    )
+
+    private static func engineCondition(
+        _ databaseType: DatabaseType,
+        type: ColumnType?,
+        op: FilterOperator = .equal,
+        value: String,
+        dialect: SQLDialectDescriptor
+    ) -> String? {
+        let generator = FilterSQLGenerator(
+            dialect: dialect,
+            columns: type == nil ? [] : ["v"],
+            columnTypes: type.map { [$0] } ?? [],
+            databaseType: databaseType
+        )
+        return generator.generateCondition(from: TableFilter(columnName: "v", filterOperator: op, value: value))
+    }
+
+    // Measured on PostgreSQL 17: `real = 0.1` finds no row and `real = '0.1'` finds it.
+    @Test("A PostgreSQL decimal column compares a quoted value, an integer column a bare one")
+    func postgresDecimalIsQuoted() {
+        let real = Self.engineCondition(.postgresql, type: .decimal(rawType: "real"), value: "0.1", dialect: Self.postgresqlDialect)
+        let integer = Self.engineCondition(.postgresql, type: .integer(rawType: "integer"), value: "5", dialect: Self.postgresqlDialect)
+        #expect(real == "\"v\" = '0.1'")
+        #expect(integer == "\"v\" = 5")
+        #expect(Self.condition(column: "v", type: .decimal(rawType: "real"), value: "0.1", dialect: Self.postgresqlDialect)
+            == "\"v\" = 0.1")
+    }
+
+    // MySQL 8.4 and MariaDB 13 find no row for `bit_col = '5'`; the grid shows a BIT as its decimal value.
+    @Test("A MySQL BIT compares the number it holds bare")
+    func mysqlBitIsBare() {
+        let five = Self.engineCondition(.mysql, type: .boolean(rawType: "BIT"), value: "5", dialect: Self.mysqlDialect)
+        let truth = Self.engineCondition(.mysql, type: .boolean(rawType: "BIT"), value: "true", dialect: Self.mysqlDialect)
+        let tinyint = Self.engineCondition(.mysql, type: .boolean(rawType: "TINYINT(1)"), value: "5", dialect: Self.mysqlDialect)
+        #expect(five == "`v` = 5")
+        #expect(truth == "`v` = 1")
+        #expect(tinyint == "`v` = '5'")
+    }
+
+    @Test("A PostgreSQL bit read as a string of digits compares quoted")
+    func postgresBitIsQuoted() {
+        let type = ColumnTypeClassifier(family: .postgres).classify(rawTypeName: "bit")
+        #expect(Self.engineCondition(.postgresql, type: type, value: "1", dialect: Self.postgresqlDialect) == "\"v\" = '1'")
+    }
+
+    // SQLite keeps integer 5 and text '5' apart in a column with no affinity, and the grid shows both as 5.
+    @Test("A SQLite column with no affinity matches a number either way it was stored")
+    func sqliteUntypedMatchesEitherStorageClass() {
+        for type in [ColumnType.text(rawType: ""), .blob(rawType: "BLOB"), .text(rawType: "ANY"), nil] {
+            #expect(Self.engineCondition(.sqlite, type: type, value: "5", dialect: Self.sqliteDialect) == "\"v\" IN (5, '5')")
+            #expect(Self.engineCondition(.sqlite, type: type, op: .notEqual, value: "5", dialect: Self.sqliteDialect)
+                == "\"v\" NOT IN (5, '5')")
+            #expect(Self.engineCondition(.sqlite, type: type, op: .inList, value: "5, x", dialect: Self.sqliteDialect)
+                == "\"v\" IN (5, '5', 'x')")
+        }
+        #expect(Self.engineCondition(.sqlite, type: .text(rawType: ""), value: "05", dialect: Self.sqliteDialect) == "\"v\" = '05'")
+        #expect(Self.engineCondition(.sqlite, type: .integer(rawType: "INTEGER"), value: "5", dialect: Self.sqliteDialect)
+            == "\"v\" = 5")
+        #expect(Self.engineCondition(.mysql, type: .text(rawType: ""), value: "5", dialect: Self.mysqlDialect) == "`v` = '5'")
+    }
+
+    @Test("Match Case off compares a number column as a number and still folds a pattern on it")
+    func numberColumnIsNotFolded() {
+        let decimal = Self.castingCondition(
+            column: "price", type: .decimal(rawType: "numeric"), op: .equal, value: "5.5", isCaseSensitive: false
+        )
+        let pattern = Self.castingCondition(
+            column: "price", type: .decimal(rawType: "numeric"), op: .contains, value: "5", isCaseSensitive: false
+        )
+        #expect(decimal == "\"price\" = 5.5")
+        #expect(pattern == "CAST(\"price\" AS TEXT) ILIKE '%5%' ESCAPE '!'")
+    }
 }
+
