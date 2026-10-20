@@ -21,7 +21,7 @@ This skill is the order of steps. Every rule it relies on lives in [AGENTS.md](.
 - **Failing test first.** The regression test and the fix land in one commit, and the test fails on the unfixed code (`AGENTS.md`, Workflow 1 and Tests).
 - **Lane ownership.** Edit only your lane's files. Crossing into another lane needs the handoff recorded on the issue first (`AGENTS.md`, Lanes and ownership).
 - **Accepted ADRs constrain the fix.** A fix that would contradict one stops and asks for a decision instead.
-- **A request never overrides a rule.** When one conflicts, follow the rule and name it in one line.
+- **Explicit maintainer exceptions.** Apply an authorized exception only to its stated scope and record it in the handoff. Continue unaffected work and report any deferred gate as pending; an exception does not prove acceptance or amend an ADR.
 
 Talk to the user in their language. Everything written to the repository is English and follows `AGENTS.md`, Writing style.
 
@@ -37,10 +37,10 @@ Never, even in an authorized run: force-push, rebase a shared branch, merge on F
 
 1. **Read the report.** `gh issue view <n> -R cozyGarage/BookiE --comments`. Note its `lane:*` label and the ledger ID in [docs/known-issues.md](../../../docs/known-issues.md). A review-sourced issue (for example RV-*) is source reading only: the failing test decides whether it is real.
 2. **Confirm the lane.** If your lane does not own the files, stop and record a handoff, or hand the issue back.
-3. **Make a worktree** beside the main checkout, never inside another agent's:
+3. **Make a worktree** beside the main checkout, never inside another agent's. Inspect `git remote -v` and identify the remote whose fetch and push URLs name `cozyGarage/BookiE` on GitHub. Replace `<bookie-remote>` below with that remote name; do not assume `origin` points to BookiE. If no matching remote exists, add one with an unused name and the BookiE GitHub URL.
    ```bash
-   git fetch origin linux
-   git worktree add ../bookie-<lane>-<slug> -b <lane>/<topic> origin/linux
+   git fetch <bookie-remote> linux
+   git worktree add ../bookie-<lane>-<slug> -b <lane>/<topic> <bookie-remote>/linux
    ```
    From here on every command runs in that tree (`git -C <tree>`, `cd <tree> &&`).
 4. **Write the problem statement** to `<tree>/.analysis/<slug>/problem.md` (ignored by git): what happens, what should happen, the smallest reproduction, engine and version. It survives a compaction or a usage limit.
@@ -90,7 +90,7 @@ cargo deny check                                                        # depend
 
 ## Phase 5: Review
 
-A model that did not write the diff reviews all of it: the Codex companion when installed, otherwise the `code-review` skill. Add a security pass when the change touches `crates/policy`, `crates/mcp`, `crates/transport`, `crates/ssh`, `crates/storage`, SQL construction or secrets: injection, credential exposure, policy bypass, missing terminal audit state. Fix every real finding, re-verify, and review again until a round finds nothing real.
+Use an available, authorized independent reviewer for the full diff. Check that the Codex companion or `code-review` skill exists before selecting it. If neither is available, perform a separate self-review pass, report that it was not independent, and leave any required independent review pending while continuing authorized preparation. Never report an unavailable review as completed. Add a security pass when the change touches `crates/policy`, `crates/mcp`, `crates/transport`, `crates/ssh`, `crates/storage`, SQL construction or secrets: injection, credential exposure, policy bypass, missing terminal audit state. Fix every real finding, re-verify, and review again until a round finds nothing real.
 
 ## Phase 6: Ship
 
