@@ -79,9 +79,6 @@ public final class ConnectionManager: @unchecked Sendable {
             var effectiveConnection = connection
             effectiveConnection.host = effectiveHost
             effectiveConnection.port = effectivePort
-            if tunnelId != nil {
-                effectiveConnection.additionalFields[DatabaseConnection.preTunnelHostKey] = connection.host
-            }
             // A server refuses TLS on a unix socket, as the Mac's tunnel path already accounts for.
             if forwardsToUnixSocket {
                 effectiveConnection.sslEnabled = false

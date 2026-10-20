@@ -482,6 +482,11 @@ final class ConnectionCoordinator {
             metadataRefused = true
             tables = []
         }
+        // SQL Server lists another database's schemas.
+        if moved.database != nil {
+            await loadSchemas()
+            guard attemptToken == token else { return }
+        }
         await refreshTransaction()
     }
 

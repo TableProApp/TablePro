@@ -147,6 +147,32 @@ struct RowWriteRoutingTests {
         #expect(plugin.parameterizedQueries.isEmpty)
     }
 
+    @Test("A save confirmed after its row changed elsewhere says the row is gone and writes nothing")
+    func confirmedSaveRechecksTheRow() async {
+        let plugin = StubPluginDriver()
+        plugin.rowCounts = [1, 0]
+        let vm = RowDetailViewModel(
+            columns: columns,
+            rows: [Row(cells: [.text("1"), .text("signup")])],
+            initialIndex: 0,
+            table: TableInfo(name: "events"),
+            session: session(plugin),
+            columnDetails: columns,
+            safeModeLevel: { .confirmWrites }
+        )
+        vm.startEditing()
+        vm.setEditedValue("purchase", at: 1)
+
+        let ranAtOnce = await vm.saveChanges()
+        let confirmed = await vm.executePendingSave()
+
+        #expect(!ranAtOnce)
+        #expect(!confirmed)
+        #expect(vm.operationError?.title == String(localized: "Row Not Found"))
+        #expect(vm.isEditing)
+        #expect(plugin.parameterizedQueries.isEmpty)
+    }
+
     @Test("A delete is refused when another row holds the same value in every column")
     func identicalRowDeleteIsRefused() async {
         let plugin = StubPluginDriver()

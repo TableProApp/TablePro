@@ -157,7 +157,12 @@ nonisolated final class IOSDriverFactory: DriverFactory {
             return OracleDriver(connection: connection, password: password)
         case .clickhouse:
             return PluginBackedDriver(
-                plugin: ClickHousePluginDriver(config: pluginConfig(for: connection, password: password, ssl: try ssl(for: connection, serverName: preTunnelHost))),
+                plugin: ClickHousePluginDriver(config: pluginConfig(
+                    for: connection,
+                    password: password,
+                    ssl: try ssl(for: connection, serverName: preTunnelHost),
+                    preTunnelHost: preTunnelHost
+                )),
                 dialedHosts: [connection.host],
                 queryTimeoutSeconds: connection.queryTimeoutSeconds,
                 rowChangeSuffix: Self.clickHouseWaitsForMutation,
@@ -178,15 +183,23 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         .clickhouse
     ]
 
-    func pluginConfig(for connection: DatabaseConnection, password: String?, ssl: DriverSSLConfiguration) -> DriverConnectionConfig {
-        DriverConnectionConfig(
+    // A plugin reads the server behind a tunnel from its fields; one stored or imported there never stands in for it.
+    func pluginConfig(
+        for connection: DatabaseConnection,
+        password: String?,
+        ssl: DriverSSLConfiguration,
+        preTunnelHost: String?
+    ) -> DriverConnectionConfig {
+        var fields = connection.additionalFields
+        fields[DatabaseConnection.preTunnelHostKey] = preTunnelHost
+        return DriverConnectionConfig(
             host: connection.host,
             port: connection.port,
             username: connection.username,
             password: password ?? "",
             database: connection.database,
             ssl: ssl.pluginConfiguration,
-            additionalFields: connection.additionalFields
+            additionalFields: fields
         )
     }
 
