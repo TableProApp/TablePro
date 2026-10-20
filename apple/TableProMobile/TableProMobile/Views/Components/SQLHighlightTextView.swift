@@ -4,16 +4,18 @@ import UIKit
 struct SQLHighlightTextView: UIViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
+    let completion: QueryCompletionController?
 
     private static let font = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
 
-    init(text: Binding<String>, isFocused: Binding<Bool> = .constant(false)) {
+    init(text: Binding<String>, isFocused: Binding<Bool> = .constant(false), completion: QueryCompletionController? = nil) {
         self._text = text
         self._isFocused = isFocused
+        self.completion = completion
     }
 
     func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
+        let textView = SQLEditorTextView()
         context.coordinator.textView = textView
         textView.delegate = context.coordinator
         textView.font = Self.font
@@ -23,11 +25,13 @@ struct SQLHighlightTextView: UIViewRepresentable {
         textView.smartDashesType = .no
         textView.smartInsertDeleteType = .no
         textView.keyboardType = .asciiCapable
+        textView.inlinePredictionType = .no
         textView.textColor = .label
         textView.backgroundColor = .clear
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
         textView.textStorage.delegate = context.coordinator
         textView.inputAccessoryView = context.coordinator.makeAccessoryToolbar()
+        context.coordinator.connectCompletion(to: textView)
         return textView
     }
 
@@ -40,6 +44,7 @@ struct SQLHighlightTextView: UIViewRepresentable {
                 SQLSyntaxHighlighter.highlight(textView.textStorage, in: NSRange(location: 0, length: length))
             }
             context.coordinator.isUpdating = false
+            context.coordinator.requestSuggestions(for: textView)
         }
         if isFocused, !textView.isFirstResponder {
             textView.becomeFirstResponder()
@@ -54,6 +59,8 @@ struct SQLHighlightTextView: UIViewRepresentable {
         var parent: SQLHighlightTextView
         var isUpdating = false
         weak var textView: UITextView?
+        private weak var suggestionBar: QuerySuggestionBar?
+        private weak var accessoryScrollView: UIScrollView?
 
         init(_ parent: SQLHighlightTextView) {
             self.parent = parent
@@ -62,6 +69,11 @@ struct SQLHighlightTextView: UIViewRepresentable {
         func textViewDidChange(_ textView: UITextView) {
             guard !isUpdating else { return }
             parent.text = textView.text
+            requestSuggestions(for: textView)
+        }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            requestSuggestions(for: textView)
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
@@ -112,6 +124,12 @@ struct SQLHighlightTextView: UIViewRepresentable {
             stackView.spacing = 8
             stackView.translatesAutoresizingMaskIntoConstraints = false
 
+            let suggestionBar = QuerySuggestionBar()
+            suggestionBar.onSelect = { [weak self] suggestion in self?.accept(suggestion) }
+            stackView.addArrangedSubview(suggestionBar)
+            self.suggestionBar = suggestionBar
+            accessoryScrollView = scrollView
+
             let keywords = ["SELECT", "FROM", "WHERE", "JOIN", "AND", "OR", "INSERT", "UPDATE", "DELETE", "*", "(", ")", ";"]
             for keyword in keywords {
                 stackView.addArrangedSubview(makeKeywordButton(keyword))
@@ -155,16 +173,7 @@ struct SQLHighlightTextView: UIViewRepresentable {
         }
 
         private func makeKeywordButton(_ keyword: String) -> UIButton {
-            var config = UIButton.Configuration.gray()
-            config.title = keyword
-            config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
-                var attrs = incoming
-                attrs.font = UIFont.monospacedSystemFont(ofSize: 14, weight: .medium)
-                return attrs
-            }
-            config.cornerStyle = .capsule
-            config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)
-            let button = UIButton(configuration: config)
+            let button = UIButton(configuration: QuerySuggestionBar.keyConfiguration(title: keyword))
             button.addTarget(self, action: #selector(keywordTapped(_:)), for: .touchUpInside)
             return button
         }
@@ -177,6 +186,62 @@ struct SQLHighlightTextView: UIViewRepresentable {
 
         @objc private func dismissKeyboard() {
             textView?.resignFirstResponder()
+        }
+
+        func connectCompletion(to textView: SQLEditorTextView) {
+            guard let completion = parent.completion else { return }
+            completion.onSuggestionsChange = { [weak self] suggestions in self?.showSuggestions(suggestions) }
+            textView.onAcceptSuggestion = { [weak self] in
+                guard let first = self?.parent.completion?.suggestions.first else { return }
+                self?.accept(first)
+            }
+            textView.onHideSuggestions = { [weak self] in
+                guard let completion = self?.parent.completion else { return }
+                completion.hide()
+                self?.showSuggestions(completion.suggestions)
+            }
+        }
+
+        func requestSuggestions(for textView: UITextView) {
+            parent.completion?.request(
+                text: textView.text,
+                selection: textView.selectedRange,
+                hasMarkedText: textView.markedTextRange != nil
+            )
+        }
+
+        func accept(_ suggestion: QuerySuggestion) {
+            guard let completion = parent.completion, let textView, textView.markedTextRange == nil,
+                  let edit = completion.edit(for: suggestion, in: textView.text, selection: textView.selectedRange)
+            else { return }
+            apply(edit, to: textView)
+            showSuggestions(completion.suggestions)
+        }
+
+        // If replace(_:withText:) skips textViewDidChange, the next updateUIView would put the old text back.
+        func apply(_ edit: QueryCompletionEdit, to textView: UITextView) {
+            guard let start = textView.position(from: textView.beginningOfDocument, offset: edit.range.location),
+                  let end = textView.position(from: start, offset: edit.range.length),
+                  let range = textView.textRange(from: start, to: end) else { return }
+            textView.replace(range, withText: edit.text)
+            textView.selectedRange = NSRange(location: edit.caret, length: 0)
+            if parent.text != textView.text {
+                parent.text = textView.text
+            }
+        }
+
+        private func showSuggestions(_ suggestions: [QuerySuggestion]) {
+            (textView as? SQLEditorTextView)?.showsSuggestions = !suggestions.isEmpty
+            guard let suggestionBar, suggestionBar.suggestions != suggestions else { return }
+            suggestionBar.show(suggestions)
+            scrollAccessoryToLeadingEdge()
+        }
+
+        // scrollRectToVisible would line up the trailing edge of a bar wider than the scroll view, which is zero wide
+        // while the keyboard is off screen.
+        private func scrollAccessoryToLeadingEdge() {
+            guard let scrollView = accessoryScrollView else { return }
+            scrollView.contentOffset.x = -scrollView.adjustedContentInset.left
         }
     }
 }

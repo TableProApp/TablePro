@@ -1,41 +1,29 @@
-// Regression tests for fuzzy matching used by autocomplete.
-
+import TableProAutocomplete
 import TableProPluginKit
 @testable import TablePro
 import Testing
 
 struct SQLCompletionAdapterFuzzyTests {
-    /// Helper: wraps SQLCompletionProvider.fuzzyMatchScore as a bool match
-    /// to preserve existing test semantics after the fuzzy logic was unified.
     private func fuzzyMatch(pattern: String, target: String) -> Bool {
         let provider = makeDummyProvider()
-        // Empty pattern is a vacuous match
         if pattern.isEmpty { return true }
         return provider.fuzzyMatchScore(pattern: pattern, target: target) != nil
     }
 
     private func makeDummyProvider() -> SQLCompletionProvider {
-        // Provider only needs schemaProvider for candidate generation,
-        // fuzzyMatchScore is pure and doesn't touch the schema.
         let schema = SQLSchemaProvider()
         return SQLCompletionProvider(schemaProvider: schema)
     }
-
-    // MARK: - Exact Match
 
     @Test("Exact match returns true")
     func exactMatch() {
         #expect(fuzzyMatch(pattern: "select", target: "select") == true)
     }
 
-    // MARK: - Prefix Match
-
     @Test("Prefix match returns true")
     func prefixMatch() {
         #expect(fuzzyMatch(pattern: "sel", target: "select") == true)
     }
-
-    // MARK: - Scattered Match
 
     @Test("Scattered characters in order returns true")
     func scatteredMatch() {
@@ -52,18 +40,12 @@ struct SQLCompletionAdapterFuzzyTests {
         #expect(fuzzyMatch(pattern: "usr", target: "users_table") == true)
     }
 
-    // MARK: - No Match
-
-    /// No matching characters, the right characters in the wrong order, a pattern longer than the
-    /// target, a case that differs, and one character the target lacks.
     @Test("A pattern that is not an in-order subsequence of the target does not match", arguments: [
         "xyz", "tces", "selectfromwhere", "SELECT", "z",
     ])
     func patternOutsideTheTargetDoesNotMatch(pattern: String) {
         #expect(fuzzyMatch(pattern: pattern, target: "select") == false)
     }
-
-    // MARK: - Empty Pattern
 
     @Test("Empty pattern matches anything")
     func emptyPatternMatchesAnything() {
@@ -75,9 +57,6 @@ struct SQLCompletionAdapterFuzzyTests {
         #expect(fuzzyMatch(pattern: "", target: "") == true)
     }
 
-
-    // MARK: - Unicode
-
     @Test("ASCII pattern against accented target")
     func asciiPatternAccentedTarget() {
         #expect(fuzzyMatch(pattern: "tbl", target: "table") == true)
@@ -87,8 +66,6 @@ struct SQLCompletionAdapterFuzzyTests {
     func unicodeInBoth() {
         #expect(fuzzyMatch(pattern: "cafe", target: "cafe") == true)
     }
-
-    // MARK: - Large Strings
 
     @Test("Fuzzy match with large target string")
     func largeTargetString() {
@@ -107,8 +84,6 @@ struct SQLCompletionAdapterFuzzyTests {
         let largeTarget = "xyz" + String(repeating: "a", count: 10_000)
         #expect(fuzzyMatch(pattern: "xyz", target: largeTarget) == true)
     }
-
-    // MARK: - Single Characters
 
     @Test("Single character present returns true")
     func singleCharPresent() {

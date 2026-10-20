@@ -1984,6 +1984,10 @@
         }
       }
     },
+    "All columns" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "All data in \"%@\" will be permanently deleted." : {
       "localizations" : {
         "ko" : {
@@ -5007,6 +5011,10 @@
           }
         }
       }
+    },
+    "Count all rows" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Create" : {
       "localizations" : {
@@ -10223,6 +10231,10 @@
         }
       }
     },
+    "lowercase" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Mac socket %@" : {
 
     },
@@ -10406,6 +10418,14 @@
           }
         }
       }
+    },
+    "Match what I type, otherwise lowercase" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Match what I type, otherwise UPPERCASE" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Materialized View" : {
 
@@ -21266,6 +21286,10 @@
     },
     "Upload Again" : {
 
+    },
+    "UPPERCASE" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Uptrend" : {
       "extractionState" : "manual",
