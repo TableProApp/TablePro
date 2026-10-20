@@ -1,21 +1,13 @@
 name: Release Build
 
 # The Release configuration of the app and every registry plugin, universal and unsigned, packaged
-# the way a tag packages it, so a packaging failure shows before the tag: nightly on main, weekly on
-# the hosted runner, and on demand.
+# the way a tag packages it, so a packaging failure shows before the tag: nightly on main and on
+# demand.
 
 on:
   schedule:
     - cron: '0 19 * * *'
-    # Always hosted, so the MAC_RUNNER fallback stays tested. runs-on matches this string.
-    - cron: '0 7 * * 0'
   workflow_dispatch:
-    inputs:
-      runner:
-        description: Where the build runs. default follows the MAC_RUNNER repository variable.
-        type: choice
-        options: [default, self-hosted, github]
-        default: default
 
 permissions:
   contents: read
@@ -23,8 +15,7 @@ permissions:
 jobs:
   build:
     name: Release Build
-    # The dispatch input wins, then the weekly schedule, then MAC_RUNNER; unset is the Mac.
-    runs-on: ${{ (inputs.runner == 'github' || (inputs.runner != 'self-hosted' && (github.event.schedule == '0 7 * * 0' || vars.MAC_RUNNER == 'github'))) && 'xcode-27' || fromJSON('["self-hosted", "macOS", "ARM64", "tablepro-release"]') }}
+    runs-on: xcode-27
     timeout-minutes: 150
     # The tag's version settings run here first; 9999999 is the largest build at MAJOR 0 (apple/RELEASING.md, Versions).
     env:

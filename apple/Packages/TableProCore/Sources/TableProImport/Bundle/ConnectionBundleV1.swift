@@ -1,8 +1,11 @@
 import Foundation
 
-/// The format 1 file shape, kept frozen: the only place a v1 file is read.
+/// The format 1 file shape, kept frozen: the only place a v1 file is read or written. Builds before format 2
+/// read nothing else, so a bundle that fits it is written in it.
 enum ConnectionBundleV1 {
-    struct Envelope: Decodable {
+    static let formatVersion = 1
+
+    struct Envelope: Codable {
         let formatVersion: Int
         let exportedAt: Date
         let appVersion: String
@@ -54,7 +57,7 @@ enum ConnectionBundleV1 {
         }
     }
 
-    struct Connection: Decodable {
+    struct Connection: Codable {
         let settings: ExportableConnection
         let groupName: String?
         let tagName: String?
@@ -65,6 +68,15 @@ enum ConnectionBundleV1 {
             case groupName, tagName, tagNames, credentialProfileName
         }
 
+        /// `tagName` repeats the first tag for builds that read only it.
+        init(settings: ExportableConnection, groupName: String?, tagNames: [String], credentialProfileName: String?) {
+            self.settings = settings
+            self.groupName = groupName
+            self.tagName = tagNames.first
+            self.tagNames = tagNames.isEmpty ? nil : tagNames
+            self.credentialProfileName = credentialProfileName
+        }
+
         init(from decoder: any Decoder) throws {
             settings = try ExportableConnection(from: decoder)
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -73,20 +85,29 @@ enum ConnectionBundleV1 {
             tagNames = try container.decodeIfPresent([String].self, forKey: .tagNames)
             credentialProfileName = try container.decodeIfPresent(String.self, forKey: .credentialProfileName)
         }
+
+        func encode(to encoder: any Encoder) throws {
+            try settings.encode(to: encoder)
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encodeIfPresent(groupName, forKey: .groupName)
+            try container.encodeIfPresent(tagName, forKey: .tagName)
+            try container.encodeIfPresent(tagNames, forKey: .tagNames)
+            try container.encodeIfPresent(credentialProfileName, forKey: .credentialProfileName)
+        }
     }
 
-    struct Group: Decodable {
+    struct Group: Codable {
         let name: String
         let color: String?
         let iconName: String?
     }
 
-    struct Tag: Decodable {
+    struct Tag: Codable {
         let name: String
         let color: String?
     }
 
-    struct CredentialProfile: Decodable {
+    struct CredentialProfile: Codable {
         let name: String
         let username: String
         let passwordMode: String
@@ -104,5 +125,60 @@ enum ConnectionBundleV1 {
             values[key(entry.name)] = value
         }
         return values
+    }
+}
+
+extension ConnectionBundleV1.Envelope {
+    /// Nil unless the envelope reads back as the same bundle, connection `i` as ref "i". Saved queries, query
+    /// folders, a group inside a group, and names that differ only in case fail that, and so does any field
+    /// format 2 gains later, so format 1 never drops what format 2 keeps.
+    init?(_ bundle: ConnectionBundle) {
+        var credentials: [String: ExportableCredentials] = [:]
+        for (index, connection) in bundle.connections.enumerated() {
+            credentials[String(index)] = bundle.credentials[connection.ref]
+        }
+        let envelope = Self(
+            formatVersion: ConnectionBundleV1.formatVersion,
+            exportedAt: bundle.exportedAt,
+            appVersion: bundle.appVersion,
+            connections: bundle.connections.map { connection in
+                ConnectionBundleV1.Connection(
+                    settings: connection.settings,
+                    groupName: bundle.groupChain(connection.groupRef).last?.name,
+                    tagNames: connection.tagNames,
+                    credentialProfileName: bundle.credentialProfile(connection.credentialProfileRef)?.name
+                )
+            },
+            groups: bundle.groups.isEmpty ? nil : bundle.groups.map {
+                ConnectionBundleV1.Group(name: $0.name, color: $0.color, iconName: $0.iconName)
+            },
+            tags: bundle.tags.isEmpty ? nil : bundle.tags.map { ConnectionBundleV1.Tag(name: $0.name, color: $0.color) },
+            credentials: credentials.isEmpty ? nil : credentials,
+            credentialProfiles: bundle.credentialProfiles.isEmpty ? nil : bundle.credentialProfiles.map {
+                ConnectionBundleV1.CredentialProfile(
+                    name: $0.name,
+                    username: $0.username,
+                    passwordMode: $0.passwordMode.rawValue,
+                    secureFieldIds: $0.secureFieldIds.isEmpty ? nil : $0.secureFieldIds
+                )
+            }
+        )
+        let renumbered = ConnectionBundle(
+            unchecked: bundle.exportedAt,
+            appVersion: bundle.appVersion,
+            connections: bundle.connections.enumerated().map { index, connection in
+                var copy = connection
+                copy.ref = BundleRef(String(index))
+                return copy
+            },
+            groups: bundle.groups,
+            tags: bundle.tags,
+            credentialProfiles: bundle.credentialProfiles,
+            credentials: Dictionary(uniqueKeysWithValues: credentials.map { (BundleRef($0.key), $0.value) }),
+            queryFolders: bundle.queryFolders,
+            savedQueries: bundle.savedQueries
+        )
+        guard (try? envelope.upgraded()) == renumbered else { return nil }
+        self = envelope
     }
 }

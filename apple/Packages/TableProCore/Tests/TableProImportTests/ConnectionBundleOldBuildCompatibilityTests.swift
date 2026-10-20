@@ -3,9 +3,43 @@ import TableProImport
 import Testing
 
 /// The frozen copy of the format 1 reader references no live type, so editing a live type cannot make this pass
-/// while an older build would fail to decode a new file instead of reporting its version.
-@Suite("An older build reports a format 2 file as needing a newer version")
+/// while an older build would fail to decode a new file instead of opening it or reporting its version.
+@Suite("An older build opens a format 1 file and reports a format 2 file as needing a newer version")
 struct ConnectionBundleOldBuildCompatibilityTests {
+    @Test("A file without saved queries or nested groups opens in an older build, linked by name")
+    func flatFileOpens() throws {
+        let data = try ConnectionBundleCodec.encode(ConnectionBundleCodecTests.flatBundle().withoutCredentials())
+
+        let envelope = try OldBuild.decode(data)
+
+        #expect(envelope.formatVersion == 1)
+        #expect(envelope.appVersion == "0.70.0")
+        #expect(envelope.connections.map(\.name) == ["Orders", "Cache"])
+        #expect(envelope.connections.map(\.groupName) == ["Production", "Production"])
+        #expect(envelope.connections.first?.tagName == "prod")
+        #expect(envelope.connections.first?.tagNames == ["prod", "team"])
+        #expect(envelope.connections.map(\.credentialProfileName) == ["reader", "reader"])
+        #expect(envelope.connections.first?.sshConfig?.jumpHosts?.first?.host == "jump")
+        #expect(envelope.groups?.map(\.name) == ["Production"])
+        #expect(envelope.groups?.first?.color == "Blue")
+        #expect(envelope.tags?.map(\.name) == ["prod", "team"])
+        #expect(envelope.credentialProfiles?.first?.passwordMode == "pgpass")
+        #expect(envelope.credentialProfiles?.first?.secureFieldIds == ["token"])
+    }
+
+    @Test("An encrypted format 1 file opens in an older build with each password under its connection's position")
+    func encryptedFlatFileOpens() async throws {
+        let sealed = try await ConnectionBundleCodec.encode(ConnectionBundleCodecTests.flatBundle(), passphrase: "pw")
+
+        let json = try await ConnectionExportCrypto.decrypt(data: sealed, passphrase: "pw")
+        let envelope = try OldBuild.decode(json)
+
+        #expect(envelope.formatVersion == 1)
+        #expect(envelope.credentials?.keys.sorted() == ["1"])
+        #expect(envelope.credentials?["1"]?.password == "hunter2")
+        #expect(envelope.credentials?["1"]?.pluginSecureFields == ["token": "secret"])
+    }
+
     @Test("A plain format 2 file decodes with the format 1 types and reads version 2")
     func plainFileDecodesAsVersionTwo() throws {
         let data = try ConnectionBundleCodec.encode(ConnectionBundleCodecTests.fullBundle())
@@ -34,13 +68,13 @@ struct ConnectionBundleOldBuildCompatibilityTests {
         #expect(orders.tunnelCommand?.kubernetesResource == "svc/postgres")
     }
 
-    @Test("A format 2 file with no connections still has every key a format 1 build requires")
-    func emptyFileDecodes() throws {
+    @Test("A file with no connections opens in an older build")
+    func emptyFileOpens() throws {
         let bundle = try ConnectionBundle(appVersion: "0.70.0", connections: [])
 
-        let envelope = try OldBuild.decodeWithoutGate(ConnectionBundleCodec.encode(bundle))
+        let envelope = try OldBuild.decode(ConnectionBundleCodec.encode(bundle))
 
-        #expect(envelope.formatVersion == 2)
+        #expect(envelope.formatVersion == 1)
         #expect(envelope.connections.isEmpty)
     }
 
@@ -57,7 +91,8 @@ struct ConnectionBundleOldBuildCompatibilityTests {
     func encryptedFileDecodesAsVersionTwo() async throws {
         let bundle = try ConnectionBundle(
             appVersion: "0.70.0",
-            connections: [BundleConnection(ref: "c1", settings: ConnectionBundleCodecTests.fullSettings())],
+            connections: [BundleConnection(ref: "c1", settings: ConnectionBundleCodecTests.fullSettings(), groupRef: "g2")],
+            groups: [BundleGroup(ref: "g1", name: "Client A"), BundleGroup(ref: "g2", name: "Production", parentRef: "g1")],
             credentials: ["c1": ExportableCredentials(
                 password: "hunter2",
                 sshPassword: nil,
