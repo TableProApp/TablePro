@@ -87,8 +87,10 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         options: StreamOptions,
         into continuation: AsyncThrowingStream<StreamElement, Error>.Continuation
     ) {
-        let converted = QueryResult(from: result)
-        continuation.yield(.columns(converted.columns))
+        let columns = zip(result.columns, result.columnTypeNames).enumerated().map { index, pair in
+            ColumnInfo(name: pair.0, typeName: pair.1, ordinalPosition: index)
+        }
+        continuation.yield(.columns(columns))
         let keyIndices = options.lazyContext.map { context in
             context.primaryKeyColumns.map { key in result.columns.firstIndex(of: key) }
         }
@@ -117,7 +119,7 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
                 case .bytes(let data):
                     return .binary(byteCount: data.count, ref: ref)
                 case .text(let text):
-                    let typeName = index < converted.columns.count ? converted.columns[index].typeName : nil
+                    let typeName = index < columns.count ? columns[index].typeName : nil
                     return Cell.from(legacyValue: text, columnTypeName: typeName, options: options, ref: ref)
                 }
             }
@@ -125,14 +127,14 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
             emitted += 1
         }
 
-        if let message = converted.statusMessage {
+        if let message = result.statusMessage {
             continuation.yield(.statusMessage(message))
         }
-        if converted.rowsAffected != 0 {
-            continuation.yield(.rowsAffected(converted.rowsAffected))
+        if result.rowsAffected != 0 {
+            continuation.yield(.rowsAffected(result.rowsAffected))
         }
         // A plugin that capped the read itself returns exactly the cap and says it stopped there.
-        if converted.isTruncated {
+        if result.isTruncated {
             let reason: TruncationReason = emitted >= options.maxRows
                 ? .rowCap(options.maxRows)
                 : .driverLimit("driver returned isTruncated=true")
