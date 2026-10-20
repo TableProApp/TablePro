@@ -1,13 +1,13 @@
 import Foundation
 import TableProAutocomplete
 import TableProPluginKit
+import TableProSQLGrammar
 
 @MainActor
 final class SQLCompletionService: QueryCompletionService {
     private let engine: CompletionEngine
+    private let grammar: SQLLexicalGrammar
     private var lastContext = SQLContext.unanalyzed
-
-    private static let windowRadius = 5_000
 
     init(
         schemaProvider: SQLSchemaProvider?,
@@ -25,12 +25,12 @@ final class SQLCompletionService: QueryCompletionService {
             dialect: dialect,
             statementCompletions: statementCompletions
         )
+        self.grammar = databaseType?.lexicalGrammar ?? .ansi
     }
 
     var triggerCharacters: Set<String> { [".", " ", ":", "(", ","] }
 
-    /// Read per request rather than captured, so changing the setting applies to the next
-    /// keystroke instead of the next connection.
+    // Read per request, so a changed setting applies to the next keystroke rather than the next connection.
     private var keywordCase: SQLKeywordCase { AppSettingsManager.shared.editor.keywordCase }
 
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
@@ -38,17 +38,11 @@ final class SQLCompletionService: QueryCompletionService {
     }
 
     func tokenStart(in text: NSString, endingAt offset: Int) -> Int {
-        SQLTokenBoundary.segmentStart(in: text, endingAt: offset)
+        SQLTokenBoundary.segmentStart(in: text, endingAt: offset, grammar: grammar)
     }
 
-    /// The incremental path reads its own prefix off the live token, which carries an opening
-    /// identifier quote, so it takes the same match text the analyzer resolves for a fresh request.
-    ///
-    /// A token that is nothing but quotes declines instead of widening to every candidate: a
-    /// re-rank cannot tell an identifier quote from the opening of a string, which `"` is on
-    /// MySQL, and matching everything there would hold the popup open inside a string literal.
-    /// Declining closes it, and the next character asks the analyzer, which reads the quote in
-    /// its own context.
+    // A quotes-only token declines instead of matching everything: a re-rank cannot tell an identifier quote from a
+    // MySQL string's `"`, and the next character asks the analyzer, which can.
     func rank(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
         let matchText = SQLTokenBoundary.matchText(of: prefix)
         guard !matchText.isEmpty || prefix.isEmpty else { return [] }
@@ -62,15 +56,13 @@ final class SQLCompletionService: QueryCompletionService {
     }
 
     func completions(in text: NSString, at offset: Int, isManualTrigger: Bool) async -> QueryCompletionSession? {
-        guard !suppressesAfterStatementBreak(in: text, at: offset) else { return nil }
+        guard !SQLCompletionTriggerPolicy.suppressesAfterStatementBreak(in: text, at: offset) else { return nil }
 
-        let windowStart = max(0, offset - Self.windowRadius)
-        let windowEnd = min(text.length, offset + Self.windowRadius)
-        let window = text.substring(with: NSRange(location: windowStart, length: windowEnd - windowStart))
+        let window = SQLCompletionWindow.cut(text, around: offset)
 
         guard let context = await engine.getCompletions(
-            text: window,
-            cursorPosition: offset - windowStart,
+            text: window.text,
+            cursorPosition: offset - window.start,
             keywordCase: keywordCase
         ) else {
             return nil
@@ -85,21 +77,9 @@ final class SQLCompletionService: QueryCompletionService {
             items: context.items,
             candidates: context.candidates,
             replacementRange: NSRange(
-                location: context.replacementRange.location + windowStart,
+                location: context.replacementRange.location + window.start,
                 length: context.replacementRange.length
             )
         )
-    }
-
-    private func suppressesAfterStatementBreak(in text: NSString, at offset: Int) -> Bool {
-        guard offset > 0, offset - 1 < text.length else { return false }
-
-        let previous = text.character(at: offset - 1)
-        let semicolon = UInt16(UnicodeScalar(";").value)
-        let newline = UInt16(UnicodeScalar("\n").value)
-        guard previous == semicolon || previous == newline else { return false }
-        guard offset < text.length else { return true }
-
-        return text.substring(from: offset).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }

@@ -5,8 +5,6 @@ import Testing
 struct SQLContextAnalyzerTests {
     let analyzer = SQLContextAnalyzer()
 
-    // MARK: - Clause Detection Tests
-
     @Test("Detects SELECT clause at beginning")
     func testSelectClause() {
         let context = analyzer.analyze(query: "SELECT ", cursorPosition: 7)
@@ -112,8 +110,6 @@ struct SQLContextAnalyzerTests {
     @Test("Detects SELECT clause for function call in SELECT")
     func testFunctionArgClause() {
         let context = analyzer.analyze(query: "SELECT COUNT(", cursorPosition: 13)
-        // The SELECT regex matches before the function-arg fallback,
-        // because regex-based clause detection runs before function detection
         #expect(context.clauseType == .select)
     }
 
@@ -156,7 +152,6 @@ struct SQLContextAnalyzerTests {
     @Test("Detects ON clause for CREATE INDEX ... ON")
     func testCreateIndexClause() {
         let context = analyzer.analyze(query: "CREATE INDEX idx ON ", cursorPosition: 20)
-        // The ON regex matches before the CREATE INDEX regex (which needs a table name after ON)
         #expect(context.clauseType == .on)
     }
 
@@ -184,8 +179,6 @@ struct SQLContextAnalyzerTests {
         #expect(context.clauseType == .using)
     }
 
-    // MARK: - Prefix Extraction Tests
-
     @Test("Extracts partial prefix")
     func testPartialPrefix() {
         let context = analyzer.analyze(query: "SELECT us", cursorPosition: 9)
@@ -212,8 +205,7 @@ struct SQLContextAnalyzerTests {
         #expect(context.dotPrefix == "u")
     }
 
-    /// The quote is part of the segment an accepted completion replaces, but no candidate's filter
-    /// text carries one, so leaving it in the prefix dropped every candidate and closed the popup.
+    // No candidate's filter text carries the quote, so keeping it in the prefix dropped every candidate.
     @Test(
         "A quoted identifier matches on the name without its quote",
         arguments: [
@@ -227,19 +219,27 @@ struct SQLContextAnalyzerTests {
         #expect(context.prefix == expected)
     }
 
-    /// An unterminated double quote reads as an open string literal, which is what it is on MySQL
-    /// and MariaDB. Every other engine quotes identifiers with it, and reaching that needs the
-    /// dialect the analyzer is not given, so a double-quoted identifier still completes nothing.
-    @Test("An unterminated double quote is still read as an open string")
-    func unterminatedDoubleQuoteReadsAsAString() {
+    @Test("An unterminated double quote opens an identifier in standard SQL")
+    func unterminatedDoubleQuoteIsAnIdentifierPrefix() {
         let query = "SELECT * FROM \"cat"
         let context = analyzer.analyze(query: query, cursorPosition: (query as NSString).length)
+        #expect(!context.isInsideString)
+        #expect(context.prefix == "cat")
+        #expect(context.prefixRange == 14..<18)
+        #expect(context.clauseType == .from)
+    }
+
+    @Test("An unterminated double quote still opens a string on MySQL")
+    func unterminatedDoubleQuoteReadsAsAStringOnMySQL() {
+        let query = "SELECT * FROM \"cat"
+        let context = analyzer.analyze(
+            query: query, cursorPosition: (query as NSString).length, grammar: .engine("MySQL")
+        )
         #expect(context.isInsideString)
         #expect(context.prefix == "")
     }
 
-    /// The replacement still covers the quote, so accepting a suggestion overwrites it instead of
-    /// leaving the opening quote stranded before the inserted name.
+    // Accepting a suggestion overwrites the quote instead of stranding it before the name.
     @Test("A quoted identifier's replacement range still starts at the quote")
     func quotedPrefixRangeCoversTheQuote() {
         let query = "SELECT * FROM `cat"
@@ -281,8 +281,6 @@ struct SQLContextAnalyzerTests {
         let context = analyzer.analyze(query: "FROM `users`.", cursorPosition: 13)
         #expect(context.dotPrefix != nil)
     }
-
-    // MARK: - Table Reference Tests
 
     @Test("Extracts table reference from FROM")
     func testTableReferenceFromClause() {
@@ -346,8 +344,6 @@ struct SQLContextAnalyzerTests {
     @Test("Extracts table reference from comma-separated list")
     func testMultipleTablesCommaSeparated() {
         let context = analyzer.analyze(query: "SELECT * FROM users, orders", cursorPosition: 27)
-        // The FROM regex only captures the first table after FROM;
-        // comma-separated tables beyond the first are not captured
         #expect(context.tableReferences.count >= 1)
     }
 
@@ -356,8 +352,6 @@ struct SQLContextAnalyzerTests {
         let context = analyzer.analyze(query: "", cursorPosition: 0)
         #expect(context.tableReferences.isEmpty)
     }
-
-    // MARK: - String/Comment Boundary Tests
 
     @Test("Detects cursor inside string with unclosed quote")
     func testInsideStringUnclosed() {
@@ -408,8 +402,6 @@ struct SQLContextAnalyzerTests {
         #expect(context.isInsideComment == false)
     }
 
-    // MARK: - CTE Tests
-
     @Test("Extracts single CTE name")
     func testSingleCTEName() {
         let context = analyzer.analyze(query: "WITH cte AS (SELECT 1) SELECT * FROM ", cursorPosition: 37)
@@ -442,8 +434,6 @@ struct SQLContextAnalyzerTests {
         #expect(context.tableReferences.contains { $0.tableName == "cte" })
     }
 
-    // MARK: - Nesting Level Tests
-
     @Test("Detects nesting level zero for simple query")
     func testNestingLevelZero() {
         let context = analyzer.analyze(query: "SELECT * FROM users", cursorPosition: 19)
@@ -467,8 +457,6 @@ struct SQLContextAnalyzerTests {
         let context = analyzer.analyze(query: "SELECT * FROM (SELECT *) WHERE ", cursorPosition: 31)
         #expect(context.nestingLevel == 0)
     }
-
-    // MARK: - Function Context Tests
 
     @Test("Detects function name for COUNT")
     func testFunctionNameCount() {
@@ -494,8 +482,6 @@ struct SQLContextAnalyzerTests {
         #expect(context.currentFunction == "COALESCE")
     }
 
-    // MARK: - Comma Detection Tests
-
     @Test("Detects cursor after comma in SELECT")
     func testAfterCommaInSelect() {
         let context = analyzer.analyze(query: "SELECT a, ", cursorPosition: 10)
@@ -514,33 +500,24 @@ struct SQLContextAnalyzerTests {
         #expect(context.isAfterComma == true)
     }
 
-    // MARK: - Multi-Statement Tests
-
     @Test("Analyzes second statement in multi-statement query")
     func testMultiStatementAnalysis() {
         let context = analyzer.analyze(query: "SELECT 1; SELECT ", cursorPosition: 17)
         #expect(context.clauseType == .select)
     }
 
-    // MARK: - P0: CF-3 - SELECT clause for wildcard
-
     @Test("SELECT with star prefix returns select context")
     func testSelectStarPrefix() {
         let context = analyzer.analyze(query: "SELECT *", cursorPosition: 8)
         #expect(context.clauseType == .select)
-        // '*' is not an identifier char, so prefix extraction yields empty string
         #expect(context.prefix == "")
     }
-
-    // MARK: - P0: CF-4 - Function context detection
 
     @Test("SUM( detected as function context")
     func testSumFunctionContext() {
         let context = analyzer.analyze(query: "SELECT SUM(", cursorPosition: 11)
         #expect(context.currentFunction == "SUM")
     }
-
-    // MARK: - P1: HP-1 - New Clause Types
 
     @Test("RETURNING is detected after INSERT VALUES, DELETE and UPDATE", arguments: [
         "INSERT INTO users (name) VALUES ('test') RETURNING ",
@@ -610,8 +587,6 @@ struct SQLContextAnalyzerTests {
         #expect(context.clauseType == .createView)
     }
 
-    // MARK: - P1: HP-4 - Double-quote Identifier Handling
-
     @Test("Double-quoted dot prefix extracts correctly")
     func testDoubleQuotedDotPrefix() {
         let context = analyzer.analyze(query: "SELECT \"users\".", cursorPosition: 15)
@@ -624,8 +599,6 @@ struct SQLContextAnalyzerTests {
         #expect(context.dotPrefix == "orders")
         #expect(context.prefix == "s")
     }
-
-    // MARK: - P1: HP-6 - Static Regex CTE/Table Refs
 
     @Test("CTE with recursive keyword extracted")
     func testRecursiveCTE() {
@@ -657,11 +630,8 @@ struct SQLContextAnalyzerTests {
         #expect(context.tableReferences.contains { $0.tableName == "products" })
     }
 
-    // MARK: - Bugfix Regressions
-
     @Test("CREATE TABLE not detected as functionArg")
     func testCreateTableNotFunctionArg() {
-        // Regression: "CREATE TABLE test (" looked like function call "test("
         let query = "CREATE TABLE test (id "
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
         #expect(context.clauseType == .createTable)
@@ -699,13 +669,9 @@ struct SQLContextAnalyzerTests {
         #expect(context.tableReferences.contains { $0.tableName == "users" })
     }
 
-    // MARK: - P2: MP-3 - Schema-Qualified Names
-
     @Test("Double dot extracts schema and table prefix")
     func testDoubleDotSchemaPrefix() {
         let context = analyzer.analyze(query: "SELECT public.users.na", cursorPosition: 22)
-        // After implementation, dotPrefix should contain the table reference
-        // The prefix should be the column part being typed
         #expect(context.prefix == "na")
         #expect(context.dotPrefix != nil)
     }
@@ -724,11 +690,8 @@ struct SQLContextAnalyzerTests {
         #expect(context.dotPrefix != nil)
     }
 
-    // MARK: - P2: MP-10 - Block Comment Edge Cases
-
     @Test("Nested block comments handled correctly")
     func testNestedBlockComments() {
-        // MySQL supports nested comments differently
         let context = analyzer.analyze(query: "/* outer /* inner */ still comment */SELECT ", cursorPosition: 43)
         #expect(context.isInsideComment == false)
     }
@@ -765,8 +728,6 @@ struct SQLContextAnalyzerTests {
         #expect(context.isInsideComment == false)
     }
 
-    // MARK: - P3: LP-6 - Subquery Context Detection
-
     @Test("A subquery in WHERE IN, in FROM and in EXISTS is a nested select", arguments: [
         "SELECT * FROM users WHERE id IN (SELECT ",
         "SELECT * FROM (SELECT ",
@@ -797,7 +758,6 @@ struct SQLContextAnalyzerTests {
     func testSubqueryIncludesOuterTableRefs() {
         let query = "SELECT * FROM users u WHERE id IN (SELECT user_id FROM orders WHERE "
         let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        // Should find both inner and outer table references
         #expect(context.tableReferences.contains { $0.tableName == "orders" })
         #expect(context.tableReferences.contains { $0.tableName == "users" })
     }
@@ -809,8 +769,6 @@ struct SQLContextAnalyzerTests {
         #expect(context.clauseType == .and)
         #expect(context.nestingLevel == 0)
     }
-
-    // MARK: - Schema-Qualified Table Name Tests
 
     @Test("FROM with schema-qualified table strips schema prefix")
     func testFromSchemaQualifiedTable() {
@@ -878,12 +836,9 @@ struct SQLContextAnalyzerTests {
         #expect(context.tableReferences.contains { $0.tableName == "orders" })
     }
 
-    // MARK: - Parse-Ahead Table Reference Tests
-
     @Test("Table references extracted from full statement even when cursor is before FROM")
     func testTableRefsExtractedAheadOfCursor() {
         let query = "SELECT  FROM users"
-        // Cursor at position 7 (after "SELECT ")
         let context = analyzer.analyze(query: query, cursorPosition: 7)
         #expect(context.tableReferences.contains { $0.tableName == "users" })
     }
@@ -891,13 +846,10 @@ struct SQLContextAnalyzerTests {
     @Test("All table references extracted from full statement regardless of cursor position")
     func testAllTableRefsExtractedAheadOfCursor() {
         let query = "SELECT na FROM users JOIN orders"
-        // Cursor at position 9 (after "SELECT na")
         let context = analyzer.analyze(query: query, cursorPosition: 9)
         #expect(context.tableReferences.contains { $0.tableName == "users" })
         #expect(context.tableReferences.contains { $0.tableName == "orders" })
     }
-
-    // MARK: - Schema Segment Tests
 
     @Test("Captures schema from schema-qualified table reference")
     func testSchemaQualifiedReference() {
@@ -926,8 +878,6 @@ struct SQLContextAnalyzerTests {
         let context = analyzer.analyze(query: "SELECT * FROM \"sales\".orders", cursorPosition: 28)
         #expect(context.tableReferences.contains { $0.tableName == "orders" && $0.schema == "sales" })
     }
-
-    // MARK: - Nearest-Clause Detection (multi-clause statements)
 
     @Test("JOIN after an ON condition, or right after the keyword, detects JOIN and expects an object name", arguments: [
         "SELECT * FROM a JOIN b ON a.id = b.id INNER JOIN ",
@@ -969,8 +919,6 @@ struct SQLContextAnalyzerTests {
         #expect(context.clauseType == .select)
     }
 
-    // MARK: - Table-Operand Slot Detection
-
     @Test("Cursor after a complete FROM table does not expect an object name")
     func testFromAfterTableDoesNotExpectObjectName() {
         let query = "SELECT * FROM users "
@@ -986,8 +934,6 @@ struct SQLContextAnalyzerTests {
         #expect(context.clauseType == .from)
         #expect(context.expectsObjectName)
     }
-
-    // MARK: - Comma-Separated FROM List
 
     @Test("Extracts every table from a comma-separated FROM list")
     func testCommaSeparatedFromTables() {

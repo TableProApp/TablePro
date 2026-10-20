@@ -15,6 +15,7 @@ struct QueryEditorView: View {
     @State private var editorFocused = false
     @State private var editorHandle = SQLEditorHandle()
     @State private var viewModel = QueryEditorViewModel()
+    @State private var completion = QueryCompletionController()
     @State private var appError: AppError?
     @State private var isExecuting = false
     @State private var executionTime: TimeInterval?
@@ -44,6 +45,18 @@ struct QueryEditorView: View {
     private var activeSchema: String? { coordinator.supportsSchemas ? coordinator.activeSchema : nil }
     private var safeModeLevel: SafeModeLevel { coordinator.connection.safeModeLevel }
     private var connectionId: UUID { coordinator.connection.id }
+
+    private var completionScope: QueryCompletionScope {
+        QueryCompletionScope(
+            connectionId: connectionId,
+            sessionID: session.map { ObjectIdentifier($0.driver) },
+            database: coordinator.activeDatabase,
+            schema: activeSchema ?? "",
+            databaseType: databaseType,
+            tables: tables,
+            isRunning: isExecuting
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -86,6 +99,9 @@ struct QueryEditorView: View {
         }
         .onChange(of: MemoryPressureMonitor.shared.currentLevel) { _, level in
             Task { await viewModel.handlePressure(level) }
+        }
+        .onChange(of: completionScope, initial: true) { _, scope in
+            completion.update(scope: scope, readColumns: QueryCompletionController.columnReader { coordinator.session })
         }
         .alert(String(localized: "Write Query Blocked"), isPresented: $showWriteBlockedAlert) {
             Button("OK", role: .cancel) {}
@@ -145,7 +161,7 @@ struct QueryEditorView: View {
 
     private var editorSection: some View {
         VStack(spacing: 0) {
-            SQLHighlightTextView(text: $query, isFocused: $editorFocused, handle: editorHandle)
+            SQLHighlightTextView(text: $query, isFocused: $editorFocused, handle: editorHandle, completion: completion)
                 .frame(minHeight: 80, maxHeight: editorMaxHeight)
 
             actionBar
@@ -640,6 +656,7 @@ struct QueryEditorView: View {
         appError = nil
         editorHandle.clearRunNote()
 
+        await completion.finishColumnReads()
         let script = await plan(trimmed, on: session)
         guard !script.isEmpty else {
             isExecuting = false
