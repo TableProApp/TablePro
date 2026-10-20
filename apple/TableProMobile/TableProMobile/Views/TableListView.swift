@@ -163,7 +163,7 @@ struct TableListView: View {
                             let quoted = SQLBuilder.qualifiedIdentifier(
                                 table: table.name, schema: activeSchema, for: connection.type
                             )
-                            try await driver.executeWrite(["TRUNCATE TABLE \(quoted)"])
+                            _ = try await coordinator.track { try await driver.executeWrite(["TRUNCATE TABLE \(quoted)"]) }
                             await coordinator.refreshTables()
                         } catch {
                             errorMessage = error.localizedDescription
@@ -190,7 +190,7 @@ struct TableListView: View {
                             let quoted = SQLBuilder.qualifiedIdentifier(
                                 table: table.name, schema: activeSchema, for: connection.type
                             )
-                            try await driver.executeWrite(["DROP TABLE \(quoted)"])
+                            _ = try await coordinator.track { try await driver.executeWrite(["DROP TABLE \(quoted)"]) }
                             await coordinator.refreshTables()
                         } catch {
                             errorMessage = error.localizedDescription

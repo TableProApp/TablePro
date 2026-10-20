@@ -3,8 +3,8 @@ name: fix-issue
 description: >-
   Take a TablePro problem from report to an open pull request: read the GitHub issue,
   discussion, user feedback, screen recording or plain description, find the real cause, fix it
-  together with every defect the investigation and review prove, verify it, open one PR per app
-  for all of it, and keep it green through CI. Use for bugs, behavior gaps, small features and "make
+  together with every defect the investigation and review prove, verify it, open one PR for all
+  of it, and keep it green through CI. Use for bugs, behavior gaps, small features and "make
   this work the native way" requests on any TablePro app, whether phrased as "fix #1234", an issue
   or discussion URL, a pasted complaint, or a Vietnamese description ("sửa lỗi ...", "tại sao ...
   không chạy", "làm lại cho đúng native"). The repo's documented standard decides every step over
@@ -14,7 +14,7 @@ description: >-
 
 # Fix Issue
 
-One run ends in an open, green pull request per app that fixes the reported problem at its cause, plus every defect the run proved.
+One run ends in one open, green pull request that fixes the reported problem at its cause, plus every defect the run proved.
 
 ## The standard decides
 
@@ -38,7 +38,7 @@ TablePro is one native app per platform, each with its own code, toolchain, base
 Pick the platform from the report: the issue's Platform field, a `platform-*` label, the operating system the reporter names, or the app the user means. Ask when the report does not say. Then read the one profile whose Covers section matches. It gives the base branch, the guide that defines done, the native standard, the verify steps and how to capture the screen. It names two more files, each read only when needed: `references/research-<name>.md` for the research lane, and `references/verification-<name>.md` when a verdict or a red check needs reading.
 
 - **No profile, no run.** A platform with no profile in this checkout cannot be fixed from it: say so and stop. The same goes for a value the profile leaves empty. Never borrow another platform's base branch, commands or guidelines.
-- **One pull request per app.** The code, the base branch and the verify steps of two apps are separate, so a defect the run proves in another app ships in a second pull request from the same run, built and verified under that app's profile.
+- **One pull request per run.** A defect the run proves in another app ships in the same pull request, verified with that app's profile as well; every profile's pull request base is `main`. The same problem in two apps is one run.
 - `verify.sh` runs the steps of the machine's own platform unless `--platform <name>` names another.
 
 ## Autonomy
@@ -68,7 +68,7 @@ Answer three questions. Full mode gives each to a lane (`references/lanes.md`).
 - **Correct behavior** (`research`, skipped for purely internal logic). For UI, the design guideline and the documented API, checked against the platform's API ground truth and its version floor. For a driver, the dependency's own source at the version we ship. For a new feature or a changed interaction, also comparable clients. Sources: the profile's research file.
 - **Related defects** (`hunt`). What else is broken in the code this change touches, and where else the same cause or pattern lives. Only defects with a concrete failure scenario count.
 
-**What ships.** Every verified defect ships, wherever it sits: in code the change touches, in code that shares its cause or pattern, or in code a lane or reviewer walked past. So does every gap a lane finds in the behavior the report asks for. A defect in this app ships in this PR; one in another app ships in that app's PR (Platform). There is no "Not in this PR" list.
+**What ships.** Every verified defect ships, wherever it sits: in code the change touches, in code that shares its cause or pattern, or in code a lane or reviewer walked past. So does every gap a lane finds in the behavior the report asks for. All of it ships in this run's one PR, another app's code included (Platform), and so does a defect found after the PR opened, while it is still open. There is no "Not in this PR" list.
 
 - **A trade-off is not a reason to leave a defect.** When every fix seems to break something else, keep looking for the design that holds both; when none exists, it is a product decision: ask (Autonomy).
 - **Only a forbidden step is left for the user**: a library or plugin publish, a CloudKit schema deploy, a tag (Autonomy). Build and verify everything up to it, and name the step in the PR body under "Needs the maintainer".
@@ -143,4 +143,4 @@ Stop after two rounds of CI fixes. Never merge the PR.
 
 ## Phase 8: Report
 
-At most eight lines, in the user's language: the PR links first, what they fix (the issue and each bundled defect, one line each at most), the root cause in one sentence, the CI state, who reviewed it, and any step that needs the maintainer.
+At most eight lines, in the user's language: the PR link first, what it fixes (the issue and each bundled defect, one line each at most), the root cause in one sentence, the CI state, who reviewed it, and any step that needs the maintainer.

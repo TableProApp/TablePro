@@ -114,6 +114,7 @@ targets:
       - package: TableProCore
         products:
           - TableProAnalytics
+          - TableProAutocomplete
           - TableProConnectionLibrary
           - TableProCoreTypes
           - TableProDatabase

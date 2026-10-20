@@ -17,6 +17,7 @@ public final class ConnectionManager: @unchecked Sendable {
     private var blockingTeardowns: Set<UUID> = []
     private var attemptGenerations: [UUID: Int] = [:]
     private var lastTeardownId = 0
+    private var sessionEndObservers: [@Sendable (UUID, any DatabaseDriver) -> Void] = []
 
     public init(
         driverFactory: DriverFactory,
@@ -221,9 +222,10 @@ public final class ConnectionManager: @unchecked Sendable {
     /// `retireTeardown` cannot clear an entry that is not installed yet.
     private func claimTeardown(for connectionId: UUID) -> ConnectionTeardown? {
         lock.lock()
-        defer { lock.unlock() }
         guard let session = sessions.removeValue(forKey: connectionId) else {
-            return teardowns[connectionId]
+            let running = teardowns[connectionId]
+            lock.unlock()
+            return running
         }
         lastTeardownId += 1
         let teardown = ConnectionTeardown(id: lastTeardownId)
@@ -240,7 +242,19 @@ public final class ConnectionManager: @unchecked Sendable {
         if session.driver.holdsSuspensionBlockingResource {
             blockingTeardowns.insert(connectionId)
         }
+        let observers = sessionEndObservers
+        lock.unlock()
+        // After the unlock: an observer may call back into the manager, and this lock is not recursive.
+        for observer in observers {
+            observer(connectionId, session.driver)
+        }
         return teardown
+    }
+
+    public func observeSessionEnds(_ observer: @escaping @Sendable (UUID, any DatabaseDriver) -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        sessionEndObservers.append(observer)
     }
 
     /// Runs before `ConnectionTeardown.finish()`, so a waiter it wakes already reads the cleared state.
