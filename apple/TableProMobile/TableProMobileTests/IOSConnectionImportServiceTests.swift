@@ -501,11 +501,12 @@ struct IOSConnectionImportServiceTests {
     // The link makes this device send the Mac profile's password to whatever server the tunnel names.
     @Test("Replacing a profile-linked connection keeps the link only when the file names the same SSH server")
     func replaceKeepsTheProfileLinkOnlyForTheSameServer() async throws {
+        // Each case gets its own database host: a second connection on the same one would be the duplicate the file matches.
         for (host, keepsLink) in [("bastion.example.com", true), ("bastion.attacker.example", false)] {
             var existing = DatabaseConnection(
                 name: "Linked \(host)",
                 type: .postgresql,
-                host: "db.example.com",
+                host: "db.\(host)",
                 port: 5_432,
                 sshEnabled: true,
                 sshConfiguration: SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy", authMethod: .password)
