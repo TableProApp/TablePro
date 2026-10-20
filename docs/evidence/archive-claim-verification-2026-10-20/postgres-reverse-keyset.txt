@@ -1,0 +1,7 @@
+
+running 3 tests
+test reverse_keyset_paging::reverse_composite_keyset_pages_keep_native_identity_and_skip_gaps ... ok
+test reverse_keyset_paging::reverse_deep_page_plan_uses_the_composite_primary_key_index ... ok
+test reverse_keyset_paging::reverse_keyset_handles_empty_exact_and_partial_pages_with_gapped_keys ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 282 filtered out; finished in 4.09s

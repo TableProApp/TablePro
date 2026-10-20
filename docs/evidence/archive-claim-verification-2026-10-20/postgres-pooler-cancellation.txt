@@ -1,0 +1,7 @@
+
+running 3 tests
+test connection_paths::network_paths::session_pool_cancellation_stops_its_query_without_stopping_another_client ... ok
+test connection_paths::network_paths::transaction_pool_cancellation_does_not_stop_another_clients_query ... ok
+test connection_paths::network_paths::transaction_pool_cancellation_does_not_stop_another_clients_write ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 282 filtered out; finished in 5.42s

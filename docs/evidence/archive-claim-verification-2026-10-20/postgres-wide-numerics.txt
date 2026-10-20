@@ -1,0 +1,9 @@
+
+running 5 tests
+test wide_numeric_contract::value_contract_max_precision_numeric_grid_edit_preserves_exact_value ... ok
+test wide_numeric_contract::value_contract_numeric_domain_preserves_wide_value_across_consumers ... ok
+test wide_numeric_contract::value_contract_numeric_special_grid_edits_match_server_text ... ok
+test wide_numeric_contract::value_contract_rust_decimal_capacity_edges_round_trip_through_postgres ... ok
+test wide_numeric_contract::value_contract_wide_numeric_grid_edit_preserves_exact_value ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 280 filtered out; finished in 6.38s

@@ -1,0 +1,4050 @@
+{
+  "source_sha": "8c92a24456e455899c0760f8ef8d39b2eb791b7f",
+  "scope": "Baseline inventory, declaration existence and live issue state; behavioral evidence is restricted to the README claim-to-test matrix.",
+  "documents": [
+    {
+      "path": "docs/archive/2026-10-15-dbx-review.md",
+      "sha256": "d0ad1ac352866193ab7cc5931d4b29b0552335f3f7bdfb6695c26e90b78530e7",
+      "title": "dbx and BookiE: architecture, adoption and defect review",
+      "lines": 194,
+      "bookie_issues": [
+        {
+          "number": 887,
+          "state": "CLOSED"
+        },
+        {
+          "number": 891,
+          "state": "OPEN"
+        },
+        {
+          "number": 892,
+          "state": "CLOSED"
+        },
+        {
+          "number": 893,
+          "state": "OPEN"
+        },
+        {
+          "number": 894,
+          "state": "OPEN"
+        },
+        {
+          "number": 895,
+          "state": "CLOSED"
+        },
+        {
+          "number": 896,
+          "state": "CLOSED"
+        },
+        {
+          "number": 897,
+          "state": "CLOSED"
+        }
+      ],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "d906624642a28f3a2a35bdec3578607458315c49",
+        "12139b55df9b4bf0ae89d4fab459bf1871e8a783",
+        "9007199254740993",
+        "9007199254740992"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/2026-10-15-postgresql-client-research/review.md",
+      "sha256": "07f0b6bd7c3c4820dea931fd34644ae3b11a67128622719597cdc9fd89fbc396",
+      "title": "PostgreSQL client research for BookiE",
+      "lines": 154,
+      "bookie_issues": [
+        {
+          "number": 547,
+          "state": "OPEN"
+        },
+        {
+          "number": 550,
+          "state": "OPEN"
+        },
+        {
+          "number": 790,
+          "state": "OPEN"
+        },
+        {
+          "number": 809,
+          "state": "CLOSED"
+        },
+        {
+          "number": 892,
+          "state": "CLOSED"
+        },
+        {
+          "number": 900,
+          "state": "CLOSED"
+        },
+        {
+          "number": 901,
+          "state": "CLOSED"
+        },
+        {
+          "number": 902,
+          "state": "OPEN"
+        },
+        {
+          "number": 923,
+          "state": "CLOSED"
+        },
+        {
+          "number": 933,
+          "state": "CLOSED"
+        },
+        {
+          "number": 934,
+          "state": "CLOSED"
+        },
+        {
+          "number": 937,
+          "state": "CLOSED"
+        }
+      ],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "split_table_reference": [
+          "crates/app-services/src/completion_identifiers.rs"
+        ]
+      },
+      "source_pins": [
+        "f08746024561e90ade4f7d3e34de3aefb34aa7a2",
+        "12139b55df9b4bf0ae89d4fab459bf1871e8a783",
+        "e97f23bcbd68db782b5300591dc4b61366f30c92",
+        "607c9eccbffdd1c17f437cb236f7c63d176df4c5",
+        "baf0f01db64e5ed20337eb9c4dee050dabd5705c"
+      ],
+      "evidence_links": [
+        "../../evidence/2026-10-15-postgres-safe-cache-retry.md",
+        "../../evidence/2026-10-15-postgres-completion-routing.md"
+      ]
+    },
+    {
+      "path": "docs/archive/agent-tooling-review-2026-10-20.md",
+      "sha256": "9232c406288a4e9db57128720c7e2834055f80a249d4949934508b6baf656e43",
+      "title": "Agent tooling review: TablePro and dbx, October 20",
+      "lines": 63,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "3222542a4",
+        "d1e88ab4b"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/app-layer-external-audit-2026-10-06.md",
+      "sha256": "39fe8d7bad3704253e1c75249850d7ec130b6e4f43160ba37bc8f88d4f71f6a0",
+      "title": "App layer external audit and UX lane plan",
+      "lines": 263,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "list_databases": [
+          "crates/drivers/mysql/src/lib.rs",
+          "crates/drivers/mssql/src/lib.rs",
+          "crates/drivers/clickhouse/src/lib.rs",
+          "crates/drivers/mongodb/src/lib.rs",
+          "crates/agentd/src/session_forwarding_tests.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/policy/src/guard/connection.rs",
+          "crates/policy/src/guard_tests_passthrough.rs",
+          "crates/drivers/postgres/src/lib.rs",
+          "crates/core/src/connection.rs"
+        ]
+      },
+      "source_pins": [
+        "2931da3ba",
+        "976cf4798053715eef90ed8eb47eebcc4718c590",
+        "d9338d1a3594e5b36fdfeb7d0b67d10e686adbfc",
+        "cffde8ff2",
+        "56990e9f2",
+        "c1da1e39a",
+        "d8cb8464d",
+        "b00c5601a",
+        "209ca7fc7"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/architecture-consistency-2026-10-03-inventory.md",
+      "sha256": "0e78564eb44d7e2005a3b869c5fe0434d3110917a1b89fa08034d6dcee606102",
+      "title": "Documentation and evidence review inventory",
+      "lines": 137,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "4b7814f5e1f586c3761c1454e66d3394ad2c9609"
+      ],
+      "evidence_links": [
+        "../evidence/architecture-review-2026-10-03/manifest.json",
+        "../evidence/2026-09-29-regression-audit/binary-before.txt",
+        "../evidence/2026-09-29-regression-audit/change-contracts-before.txt",
+        "../evidence/2026-09-29-regression-audit/decimal-before.txt",
+        "../evidence/2026-09-29-regression-audit/isolated-before.txt",
+        "../evidence/2026-09-29-regression-audit/validation.json",
+        "../evidence/2026-09-bug-consistency/validation.json",
+        "../evidence/2026-09-stabilization/postgres-after.jsonl",
+        "../evidence/2026-09-stabilization/postgres-before.jsonl",
+        "../evidence/2026-09-stabilization/validation.json",
+        "../evidence/b3-review-2026-10-01/manifest.json",
+        "../evidence/b3-review-2026-10-01/probe.rs",
+        "../evidence/b3-review-2026-10-01/probe.txt",
+        "../evidence/b3-review-2026-10-01/xlsx-float-precision.txt",
+        "../evidence/upstream-u1-2026-10-03/native-after.txt",
+        "../evidence/upstream-u1-2026-10-03/native-before.txt",
+        "../evidence/upstream-u1-2026-10-03/validation.json"
+      ]
+    },
+    {
+      "path": "docs/archive/architecture-consistency-review-2026-10-03.md",
+      "sha256": "93289e0673c61d0d815a1b6e73e366ee686ab0f17591dc849fddeb2a98fcb0d6",
+      "title": "Linux architecture and evidence consistency review",
+      "lines": 147,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "4b7814f5e1f586c3761c1454e66d3394ad2c9609",
+        "6822efa42",
+        "4b7814f5e"
+      ],
+      "evidence_links": [
+        "../evidence/architecture-review-2026-10-03/manifest.json"
+      ]
+    },
+    {
+      "path": "docs/archive/b3-review-2026-10-01.md",
+      "sha256": "c3ed19dbcda9c2b634c236bd936053b9974ef2568fddb4210b690a07553c25b8",
+      "title": "B3 code and coverage review, October 1",
+      "lines": 425,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "execute_query": [
+          "crates/mcp/src/bridge.rs"
+        ],
+        "parse_input_for_column": [
+          "apps/linux/app/src/ui/browse_tab/value_parse.rs"
+        ],
+        "parse_input_for_driver": [
+          "apps/linux/app/src/ui/browse_tab/value_parse.rs"
+        ],
+        "postgres_numeric_cast_type": [
+          "crates/core/src/sql_dialect.rs"
+        ],
+        "postgres_numeric_parser_outputs_round_trip_through_server": [
+          "apps/linux/app/tests/support/postgres_numeric_csv.rs"
+        ],
+        "postgres_temporal_text": [
+          "crates/core/src/sql_literal.rs"
+        ],
+        "swap_connection": [
+          "apps/linux/app/src/services/connection_monitor.rs"
+        ],
+        "value_contract_mongodb_collection_wide_mixed_metadata_refuses_edit": [
+          "apps/linux/app/src/ui/browse_tab/tests.rs"
+        ],
+        "value_contract_mongodb_date_grid_edit_preserves_millisecond_instant": [
+          "apps/linux/app/tests/support/value_parse.rs"
+        ],
+        "value_contract_mongodb_decimal128_grid_edit_preserves_wide_precision": [
+          "apps/linux/app/tests/support/value_parse.rs"
+        ],
+        "value_contract_mongodb_int32_grid_edit_preserves_integer_width": [
+          "apps/linux/app/tests/support/mongodb_integer_width.rs"
+        ],
+        "value_contract_mongodb_nested_document_edit_preserves_extended_bson_and_row_identity": [
+          "apps/linux/app/tests/support/mongodb_nested_edit_contract.rs"
+        ],
+        "value_contract_mysql_bit_parser_edits_preserve_native_values": [
+          "apps/linux/app/tests/support/value_parse.rs"
+        ],
+        "value_contract_mysql_spatial_grid_refusal_preserves_native_bytes": [
+          "apps/linux/app/tests/support/mysql_spatial_contract.rs"
+        ],
+        "value_contract_mysql_unsigned_integer_grid_edits_refuse_coercion_and_preserve_u64": [
+          "apps/linux/app/tests/support/mysql_integer_contract.rs"
+        ],
+        "value_to_bson": [
+          "crates/drivers/mongodb/src/codec.rs"
+        ]
+      },
+      "source_pins": [
+        "b90cb4e38c1a98f41b552e03f739f9c51c67810f",
+        "f142d3fea",
+        "37039255022",
+        "37039255289",
+        "37039255134",
+        "111c0f5af",
+        "b47e2b1d3",
+        "d7007a6a6"
+      ],
+      "evidence_links": [
+        "../evidence/postgres-enum-results-2026-10-03/manifest.json",
+        "../evidence/b3-review-2026-10-01/xlsx-float-precision.txt",
+        "../evidence/b3-review-2026-10-01/manifest.json",
+        "../evidence/b3-review-2026-10-01/probe.rs",
+        "../evidence/b3-review-2026-10-01/probe.txt"
+      ]
+    },
+    {
+      "path": "docs/archive/b3-test-scenario-survey.md",
+      "sha256": "bc35b4a601a7dc82c141191579121001be56aa0fdeea76b84d47b2de7f16e939",
+      "title": "B3 external test-scenario survey",
+      "lines": 168,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "2eb9414c2",
+        "35d457fa488768a5204a26d785c90114073d4acd",
+        "62dc257c7",
+        "9007199254740993"
+      ],
+      "evidence_links": [
+        "../evidence/postgres-pg-lsn-array-results-2026-10-06/manifest.json",
+        "../evidence/postgres-bit-arrays-results-2026-10-06/manifest.json",
+        "../evidence/postgres-bit-array-grid-edit-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-csv-shadow-search-path-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-csv-search-path-transition-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-scalar-csv-whitespace-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-csv-quoted-identifiers-results-2026-10-05/manifest.json",
+        "../evidence/mariadb-empty-enum-set-empty-string-is-null-results-2026-10-05/manifest.json",
+        "../evidence/mariadb-empty-varchar-import-empty-string-mode-results-2026-10-05/manifest.json",
+        "../evidence/mariadb-empty-enum-set-combined-mode-results-2026-10-05/manifest.json",
+        "../evidence/mariadb-empty-enum-set-grid-empty-string-mode-results-2026-10-05/manifest.json",
+        "../evidence/mariadb-empty-enum-set-sql-file-empty-string-mode-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-label-byte-boundary-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-overlength-refusal-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-order-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-csv-quoted-lines-results-2026-10-04/manifest.json",
+        "../evidence/postgres-numeric-array-filewriter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-min-max-shadowed-path-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-shape-functions-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-to-string-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-fill-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-multi-array-unnest-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-random-arrays-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-agg-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-add-value-session-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-rename-value-session-results-2026-10-05/manifest.json",
+        "../evidence/mssql-smalldatetime-year-rollover-results-2026-10-05/manifest.json",
+        "../evidence/mssql-datetimeoffset-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/postgres-timestamp-array-datestyle-results-2026-10-05/manifest.json",
+        "../evidence/finite-float-consumer-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-xlsx-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/duckdb-malformed-tail-results-2026-10-06/manifest.json",
+        "../evidence/mssql-malformed-go-tail-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-malformed-tail-results-2026-10-05/manifest.json",
+        "../evidence/mysql-word-delimiter-identifier-boundary-results-2026-10-05/manifest.json",
+        "../evidence/mysql-delimiter-comment-boundary-results-2026-10-05/manifest.json",
+        "../evidence/mysql-word-delimiter-results-2026-10-04/manifest.json",
+        "../evidence/mysql-quoted-delimiter-results-2026-10-04/manifest.json",
+        "../evidence/mysql-malformed-human-approval-results-2026-10-04/manifest.json",
+        "../evidence/gtk-unparseable-approval-results-2026-10-04/manifest.json",
+        "../evidence/mysql-unparseable-approval-results-2026-10-04/manifest.json",
+        "../evidence/mysql-gtk-unparseable-approval-results-2026-10-04/manifest.json",
+        "../evidence/mysql-colon-delimiter-parameter-results-2026-10-05/manifest.json",
+        "../evidence/mysql-hash-prefixed-delimiter-results-2026-10-05/manifest.json"
+      ]
+    },
+    {
+      "path": "docs/archive/b4-history.md",
+      "sha256": "31810c9ec15ba9908d1488cabd9bd1118ed2d1a1ed6447b6f9161101d9a5a8b5",
+      "title": "B4 historical implementation packets",
+      "lines": 969,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 9
+      },
+      "current_source_symbols": {
+        "a_session_whose_driver_panicked_is_not_reused_even_though_its_ping_is_healthy": [
+          "crates/agentd/src/audit_isolation_tests.rs"
+        ],
+        "agentd_refuses_without_learning_an_unknown_system_openssh_key_then_queries_after_trust": [
+          "crates/agentd/tests/g5_system_openssh.rs"
+        ],
+        "candidate_catalog_reads_use_the_durable_policy_audit_journal": [
+          "apps/linux/app/src/services/database_service.rs"
+        ],
+        "candidate_metadata_read_refuses_when_its_audit_intent_cannot_be_written": [
+          "apps/linux/app/src/services/database_service.rs"
+        ],
+        "closing_a_session_with_an_open_transaction_rolls_it_back_and_audits_it": [
+          "crates/policy/src/guard_tests_session.rs"
+        ],
+        "closing_a_session_with_an_open_transaction_rolls_it_back_on_real_postgres": [
+          "crates/policy/tests/session_postgres.rs"
+        ],
+        "open_session": [
+          "crates/drivers/sqlite/src/lib.rs",
+          "crates/drivers/mysql/src/lib.rs",
+          "crates/drivers/mssql/src/lib.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/policy/src/guard/connection.rs",
+          "crates/policy/src/guard_tests_cursor.rs",
+          "crates/policy/src/guard_tests_session.rs",
+          "apps/linux/app/src/ui/editor/session_mode.rs",
+          "crates/drivers/postgres/src/lib.rs",
+          "crates/core/src/connection.rs"
+        ],
+        "saved_system_openssh_refuses_deterministically_in_flatpak_without_fallback": [
+          "crates/transport/src/lib.rs"
+        ],
+        "shared_connection_decision": [
+          "crates/policy/src/rules.rs"
+        ],
+        "ssh_reconnect_replaces_the_tunnel_and_the_session": [
+          "tests/release/tests/reconnect.rs"
+        ],
+        "supports_server_cancellation": [
+          "crates/drivers/sqlite/src/lib.rs",
+          "crates/drivers/mysql/src/lib.rs",
+          "crates/drivers/mssql/src/lib.rs",
+          "crates/policy/tests/guard_transparency.rs",
+          "crates/drivers/clickhouse/src/lib.rs",
+          "crates/agentd/src/session_forwarding_tests.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/policy/src/guard/connection.rs",
+          "crates/policy/src/guard_tests_session.rs",
+          "crates/drivers/postgres/src/lib.rs",
+          "crates/core/src/connection.rs"
+        ],
+        "the_shared_transport_verifies_the_database_hostname_through_the_bastion": [
+          "tests/release/tests/agent_transport.rs"
+        ],
+        "verify_full_through_ssh_reaches_the_unpublished_server_and_runs_a_query": [
+          "tests/driver-tls/tests/mysql_tls.rs",
+          "tests/driver-tls/tests/mssql_tls.rs"
+        ],
+        "verify_full_through_ssh_rejects_a_wrong_or_local_identity": [
+          "tests/driver-tls/tests/mysql_tls.rs",
+          "tests/driver-tls/tests/mssql_tls.rs"
+        ],
+        "verify_full_through_ssh_rejects_an_untrusted_authority": [
+          "tests/driver-tls/tests/mysql_tls.rs",
+          "tests/driver-tls/tests/mssql_tls.rs"
+        ]
+      },
+      "source_pins": [
+        "aeac107a4",
+        "5fac54059",
+        "d1434438e",
+        "4b7814f5e",
+        "573435766",
+        "ecadbe204",
+        "4b7814f5e1f586c3761c1454e66d3394ad2c9609",
+        "7054a7867",
+        "d80bade4c",
+        "768188734",
+        "ad807c61b",
+        "7b08dd478"
+      ],
+      "evidence_links": [
+        "../evidence/ssh-reconnect-session-gtk-2026-10-07/manifest.json",
+        "../evidence/ssh-gtk-multihop-2026-10-07/manifest.json",
+        "../evidence/postgres-release-relay-no-expose-2026-10-07/manifest.json",
+        "../evidence/b4-candidate-acceptance-2026-10-07/manifest.json",
+        "../evidence/b4-current-linux-tip-2026-10-09/manifest.json",
+        "../evidence/b4-current-linux-tip-2026-10-09/README.md",
+        "../evidence/b4-arch-package-lifecycle-2026-10-09/manifest.json",
+        "../evidence/b4-hosted-acceptance-2026-10-09/manifest.json",
+        "../evidence/b4-deb-package-lifecycle-2026-10-09/manifest.json",
+        "../evidence/gtk-ui-workflows-installed-linux-b4ee-2026-10-09/manifest.json",
+        "../evidence/b4-ssh-installed-linux-tip-b4ee-2026-10-09/manifest.json",
+        "../evidence/gtk-mysql-approval-linux-b4ee-2026-10-09/manifest.json",
+        "../evidence/b4-hosted-acceptance-2026-10-09/focused.txt",
+        "../evidence/b4-ssh-native-current-2026-10-09/manifest.json",
+        "../evidence/b4-mssql-kerberos-current-2026-10-09/manifest.json",
+        "../evidence/b4-acceptance-2026-10-08/manifest.json",
+        "../evidence/b4-ssh-current-tip-2026-10-08/manifest.json",
+        "../evidence/b4-mssql-kerberos-2026-10-08/manifest.json",
+        "../evidence/ssh-gtk-setup-failure-2026-10-07/manifest.json",
+        "../evidence/gtk-postgres-session-confirmation-2026-10-07/manifest.json",
+        "../evidence/ssh-gtk-audit-linux-fb82ea1-2026-10-07/manifest.json",
+        "../evidence/b4-ssh-release-linux-tip-2026-10-09/manifest.json",
+        "../evidence/b4-mssql-kerberos-linux-tip-2026-10-10/manifest.json",
+        "../evidence/b4-gtk-ssh-audit-2026-10-07/manifest.json",
+        "../evidence/ssh-gtk-trust-accept-2026-10-07/manifest.json",
+        "../evidence/mysql-atomic-results-2026-10-03/manifest.json",
+        "../evidence/mysql-rollback-engine-effects-2026-10-07/manifest.json",
+        "../evidence/postgres-rollback-failure-results-2026-10-07/manifest.json",
+        "../evidence/mysql-nontransactional-trigger-engines-2026-10-07/manifest.json",
+        "../evidence/mysql-csv-trigger-rollback-2026-10-07/manifest.json",
+        "../evidence/mysql-archive-rollback-effects-2026-10-07/manifest.json",
+        "../evidence/mysql-update-delete-multiengine-rollback-2026-10-07/manifest.json"
+      ]
+    },
+    {
+      "path": "docs/archive/b4-release-wrapup-review-2026-10-11.md",
+      "sha256": "bcd2323be24e2e69bef5cd35c1bcd790c55d1d61afef65b84746fb496d2b6209",
+      "title": "B4 release wrap-up review, 2026-10-11",
+      "lines": 158,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "c320e68565a87ea85da9d09712e9bea3e6aaf52b"
+      ],
+      "evidence_links": [
+        "../evidence/b4-release-review-2026-10-11/manifest.json"
+      ]
+    },
+    {
+      "path": "docs/archive/b4-task-board-pre-project-migration-2026-10-12.md",
+      "sha256": "dde0b0fcbff4c8c84bc89eb266432d4bc07969fb116f957ab9a0ecec5e8122b6",
+      "title": "B4 task board: transport and sessions",
+      "lines": 163,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 7
+      },
+      "current_source_symbols": {
+        "a_committed_insert_with_a_lost_http_ack_is_not_replayed": [
+          "crates/drivers/clickhouse/tests/support/disconnection.rs"
+        ],
+        "a_committed_update_with_a_lost_ack_is_not_replayed": [
+          "crates/drivers/mssql/tests/support/disconnection.rs"
+        ],
+        "a_committed_update_with_a_lost_ack_is_not_replayed_after_reconnect": [
+          "crates/drivers/mongodb/tests/support/disconnection.rs"
+        ],
+        "a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect": [
+          "crates/drivers/mysql/tests/support/disconnection.rs",
+          "crates/drivers/postgres/tests/support/disconnection.rs"
+        ],
+        "a_lost_eval_ack_is_not_replayed_after_redis_reconnects": [
+          "crates/drivers/redis/tests/support/disconnection.rs"
+        ],
+        "explain_query": [
+          "crates/mcp/src/bridge.rs"
+        ],
+        "transport_attempt": [
+          "crates/policy/src/audit.rs"
+        ]
+      },
+      "source_pins": [
+        "aeac107a4",
+        "63f6d2eb3",
+        "bbdc39a430ede9382bc5dfa7164e51a065e2bd88",
+        "c2f3f78b9",
+        "227d846b95d14c2d55c366843bdf6ddc386b1c72",
+        "43b718ee2dc4b20bff03ac75ad87f4f571501406",
+        "80b998ef971a94b9600d28e4797a6f4715eb478a"
+      ],
+      "evidence_links": [
+        "../evidence/b4-release-triage-2026-10-11/triage.md",
+        "../evidence/test15-bbdc39a/manifest.json",
+        "../evidence/aud9-explain-plan-mask-2026-10-10/manifest.json",
+        "../evidence/aud2-mysql-approval-dialog-current-pr-head-2026-10-10/manifest.json",
+        "../evidence/b4-current-postgres-release-227d846b-2026-10-10/manifest.json",
+        "../evidence/b4-hosted-acceptance-2026-10-09/manifest.json",
+        "../evidence/b4-deb-package-lifecycle-2026-10-09/manifest.json",
+        "../evidence/b4-ui1b-bundle-gtk-3f67c1bf-2026-10-10/manifest.json",
+        "../evidence/b4-22-bundle-current-tip-d0debc6-2026-10-10/manifest.json",
+        "../evidence/b4-22-bundle-current-tip-d916b3aa-2026-10-10/manifest.json",
+        "../evidence/b4-rollback-linux-tip-2026-10-09/manifest.json",
+        "../evidence/mysql-atomic-linux-43b718ee-2026-10-10/manifest.json",
+        "../evidence/mysql-aria-batch-effects-linux-2b79ae3-2026-10-10/manifest.json",
+        "../evidence/mysql-lock-release-rollback-5f2367e6-2026-10-10/manifest.json",
+        "../evidence/mysql-session-variable-rollback-80b998ef-2026-10-10/manifest.json",
+        "../evidence/mysql-advisory-lock-rollback-2026-10-09/manifest.json",
+        "../evidence/mysql-session-state-rollback-2026-10-09/manifest.json",
+        "../evidence/b4-arch-package-wayland-2026-10-09/manifest.json",
+        "../evidence/b4-ssh-native-current-2026-10-09/manifest.json",
+        "../evidence/b4-21-mssql-kerberos-current-3b9f2c84-2026-10-10/manifest.json",
+        "../evidence/mysql-lock-release-2026-10-10/manifest.json"
+      ]
+    },
+    {
+      "path": "docs/archive/baseline-review-2026-09-17.md",
+      "sha256": "9db4aec4ea6213f852e8ccb780866efe37e372f4441ea9dc405318efae1d82fd",
+      "title": "Fork baseline review: September 17, 2026",
+      "lines": 155,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "32ce81f9c",
+        "e9bba1f5b24575b4eb959b492421ff50c9117063",
+        "6e22badc4",
+        "72238a6c2",
+        "310329a98",
+        "b121b2abb",
+        "2c5499947",
+        "471f11301",
+        "74f6aef16",
+        "aefb33b51",
+        "e9bba1f5b",
+        "a69cef734"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/bookie-0.2-completion-handoff-2026-10-18.md",
+      "sha256": "8f0bffed274ec5e31e500aa3535751a229a0c528e057e306f7b66e03d66ea946",
+      "title": "BookiE 0.2.0 completion handoff",
+      "lines": 170,
+      "bookie_issues": [
+        {
+          "number": 556,
+          "state": "OPEN"
+        },
+        {
+          "number": 560,
+          "state": "OPEN"
+        },
+        {
+          "number": 573,
+          "state": "OPEN"
+        }
+      ],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "value_contract_mssql_server_owned_columns_use_native_defaults_across_consumers": [
+          "apps/linux/app/tests/support/mssql_server_owned_columns.rs"
+        ]
+      },
+      "source_pins": [
+        "6e4edf5d0"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/bookie-0.2-history.md",
+      "sha256": "546542fd6b6c1253875d3fb1211a018284cbd596d991e723ceffd1d73e950c1d",
+      "title": "Historical record: bookie-0.2-sprint.md",
+      "lines": 2488,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 5,
+        "unchecked": 7
+      },
+      "current_source_symbols": {
+        "boxed_params": [
+          "crates/drivers/mssql/src/lib.rs"
+        ],
+        "bson_type_name": [
+          "crates/drivers/mongodb/src/codec.rs"
+        ],
+        "column_kind": [
+          "crates/core/src/import/cell.rs"
+        ],
+        "configured_timeout_secs": [
+          "apps/linux/app/src/services/operation_control.rs"
+        ],
+        "connect_and_auth": [
+          "crates/ssh/src/lib.rs"
+        ],
+        "decode_by_type": [
+          "crates/drivers/mysql/src/decode.rs"
+        ],
+        "duck_value_ref_to_value": [
+          "crates/drivers/duckdb/src/lib.rs"
+        ],
+        "extract_value": [
+          "crates/drivers/sqlite/src/lib.rs",
+          "crates/drivers/mysql/src/decode.rs",
+          "crates/drivers/postgres/src/query.rs"
+        ],
+        "fetch_columns": [
+          "crates/drivers/sqlite/src/lib.rs",
+          "crates/mcp/tests/timeout_bounds.rs",
+          "crates/mcp/tests/timeout_audit.rs",
+          "crates/mcp/tests/shutdown_write_audit.rs",
+          "crates/mcp/tests/postgres_custom_enum.rs",
+          "crates/mcp/tests/enforce_policy.rs",
+          "crates/mcp/src/server.rs",
+          "crates/drivers/mysql/src/lib.rs",
+          "crates/drivers/redis/src/lib.rs",
+          "crates/drivers/mssql/src/lib.rs",
+          "crates/policy/tests/guard_transparency.rs",
+          "crates/drivers/clickhouse/src/lib.rs",
+          "crates/drivers/mongodb/src/lib.rs",
+          "crates/agentd/src/session_tests.rs",
+          "crates/agentd/src/session_forwarding_tests.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/agentd/src/audit_isolation_tests.rs",
+          "crates/policy/src/guard/connection.rs",
+          "crates/policy/src/guard_tests_cursor.rs",
+          "crates/policy/src/guard_tests_checked.rs",
+          "crates/policy/src/guard_tests_bulk.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests_session.rs",
+          "crates/policy/src/guard_tests_passthrough.rs",
+          "apps/linux/app/src/services/connection_monitor.rs",
+          "crates/drivers/duckdb/src/lib.rs",
+          "crates/app-services/src/database_backup.rs",
+          "crates/drivers/postgres/src/lib.rs",
+          "crates/core/src/connection.rs",
+          "crates/core/src/connection.rs"
+        ],
+        "fetch_columns_reports_composite_primary_key_columns": [
+          "crates/drivers/duckdb/tests/integration.rs"
+        ],
+        "list_objects": [
+          "crates/mcp/src/bridge.rs",
+          "crates/agentd/src/session_tests.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/policy/src/guard/connection.rs",
+          "crates/policy/src/guard_tests_passthrough.rs",
+          "crates/drivers/postgres/src/catalog.rs",
+          "crates/drivers/postgres/src/lib.rs",
+          "crates/core/src/connection.rs"
+        ],
+        "open_session": [
+          "crates/drivers/sqlite/src/lib.rs",
+          "crates/drivers/mysql/src/lib.rs",
+          "crates/drivers/mssql/src/lib.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/policy/src/guard/connection.rs",
+          "crates/policy/src/guard_tests_cursor.rs",
+          "crates/policy/src/guard_tests_session.rs",
+          "apps/linux/app/src/ui/editor/session_mode.rs",
+          "crates/drivers/postgres/src/lib.rs",
+          "crates/core/src/connection.rs"
+        ],
+        "patched_mongodb_caps_scram_iterations": [
+          "crates/drivers/mongodb/src/lib.rs"
+        ],
+        "render_json": [
+          "crates/core/src/export/json.rs"
+        ],
+        "row_to_json": [
+          "crates/core/src/export/json.rs"
+        ],
+        "run_statements": [
+          "apps/linux/app/src/ui/editor/outcomes.rs"
+        ],
+        "script_statements": [
+          "apps/linux/app/src/ui/editor/statement_cursor.rs"
+        ],
+        "socket_dir_path_fits": [
+          "crates/ssh/src/lib.rs"
+        ],
+        "start_background": [
+          "apps/linux/app/src/services/mcp_service.rs"
+        ],
+        "timestamp_param": [
+          "crates/drivers/duckdb/src/temporal.rs"
+        ],
+        "value_contract_interval_grid_edit_persists_native_components": [
+          "crates/drivers/duckdb/tests/integration.rs"
+        ],
+        "value_to_json": [
+          "crates/mcp/src/tools.rs",
+          "crates/core/src/export/json.rs"
+        ]
+      },
+      "source_pins": [
+        "0cf70382eed72c144ea94208dfef5f5706e0a7dd",
+        "4b7814f5e",
+        "6822efa42",
+        "37004687278",
+        "37004687104",
+        "37004687157",
+        "37039255022",
+        "37039255289",
+        "37039255134",
+        "37017482014",
+        "37017482002",
+        "37017481489"
+      ],
+      "evidence_links": [
+        "../evidence/b4-rollback-frozen-candidate-2026-10-08/manifest.json",
+        "../evidence/b4-ssh-native-wayland-2026-10-08/manifest.json"
+      ]
+    },
+    {
+      "path": "docs/archive/bug-consistency-2026-09.md",
+      "sha256": "985abd942af793464f4e2b62ba150a28c2a2fc3e5e074d2856e3374001e92e36",
+      "title": "Bug and consistency stabilization",
+      "lines": 69,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "89979e51a3d70b52c2a4082d0fa44ac72528c8ea",
+        "f8a0ba7055dfe609308aa5326fb10c82982c70b9"
+      ],
+      "evidence_links": [
+        "../evidence/2026-09-bug-consistency/validation.json"
+      ]
+    },
+    {
+      "path": "docs/archive/capability-evidence-2026-09-07.md",
+      "sha256": "225f9f84d13ff5840ec090a4c71ea0fdec94932198f055c1c06fa34a0520d4ca",
+      "title": "Capability evidence",
+      "lines": 38,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/changelog-fragment-evaluation-2026-10-19.md",
+      "sha256": "0d3c9df32871106eb03ae506f2ab9df0d140faef3bd862fe1fb1bd2b672b2d56",
+      "title": "Changelog fragment evaluation, 2026-10-19",
+      "lines": 20,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/ci-audit-2026-09-27.md",
+      "sha256": "e1f1717eadf68b75954ef57248df55fd970fd4f108e0f17adfda631165e1b074",
+      "title": "CI evidence audit, 2026-09-27",
+      "lines": 103,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "9b7a996ca",
+        "6de5351ee",
+        "c57ac7715",
+        "422c5a4d7"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/code-and-ui-audit-2026-10-18.md",
+      "sha256": "790cbaf48393a4264b9e9a8fe8061af2a4ba7e32795660119c8ff994c51e4578",
+      "title": "Code and UI audit: BookiE and peer clients",
+      "lines": 74,
+      "bookie_issues": [
+        {
+          "number": 550,
+          "state": "OPEN"
+        },
+        {
+          "number": 561,
+          "state": "OPEN"
+        },
+        {
+          "number": 1026,
+          "state": "OPEN"
+        }
+      ],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "a_long_cell_remains_searchable_beyond_its_visible_preview": [
+          "apps/linux/app/src/ui/grid/row_find.rs"
+        ],
+        "band_char_range": [
+          "apps/linux/app/src/ui/editor/statement_band.rs"
+        ],
+        "show_matches": [
+          "apps/linux/app/src/ui/grid/row_find.rs"
+        ]
+      },
+      "source_pins": [
+        "f6991889b13319d929571424471dbf37dd9ea951",
+        "d8df6d5741d971905ca531a403dc0a70d0f76e5d",
+        "cfd84dcdd552a285c6c8b1f70d648b6d9a91d291",
+        "de00ff46e437ba00423cd4293119857d508dfef8",
+        "01d4f42e5d72d2b72099e206538effe395c8ed71"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/connections-history.md",
+      "sha256": "0e6e9d4759c2447ef93aabdc6698dfe5e2461c7c3af5c956259e34a8c65dc371",
+      "title": "Historical connection audits",
+      "lines": 314,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "connect_options_for": [
+          "crates/transport/src/lib.rs"
+        ],
+        "install_crypto_provider": [
+          "crates/transport/src/lib.rs"
+        ]
+      },
+      "source_pins": [
+        "aeac107a4"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/disconnection-contracts-history-2026-10-01.md",
+      "sha256": "645e50c8bf09e636960b7caf24a20f4ff2ed7e717dd596f0db41ddae8776688f",
+      "title": "Disconnect and cancellation verification history: 2026-10-01",
+      "lines": 12,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "eef09bbd13cf92f21f91d5691ba665eb4ecda24a",
+        "ed07e553e9f7e5a6f48bcd3b2d822092987e5308",
+        "31d4ed081b9daa263bfb7065e259db73c66012b4"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/duckdb-read-only-aud10-2026-10-10.md",
+      "sha256": "463bd8923bb9fcc0f60b72a9f7bac3992cd531eacad3cc0101c6ae3cca1cce59",
+      "title": "AUD-10: DuckDB read-only file access",
+      "lines": 19,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/evidence-index-2026-10-10.md",
+      "sha256": "e5f93aa94da87418f482bff8c88b7f3fd2e3a63861b23ee7c99cff8279e38599",
+      "title": "Evidence directory index (2026-10-10 consolidation pass 4)",
+      "lines": 67,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [],
+      "evidence_links": [
+        "../evidence/aud2-current-linux-tip-735baf1e-2026-10-10/manifest.json",
+        "../evidence/b4-aud2-gtk-rerun-2026-10-09/manifest.json",
+        "../evidence/b4-aud2-repeat-2026-10-09/manifest.json",
+        "../evidence/mssql-datetimeoffset-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/architecture-review-2026-10-03/manifest.json",
+        "../evidence/b3-review-2026-10-01/manifest.json",
+        "../evidence/2026-09-29-regression-audit/manifest.json",
+        "../evidence/2026-09-bug-consistency/manifest.json",
+        "../evidence/2026-09-stabilization/manifest.json",
+        "../evidence/sql-lex-mutation-results-2026-10-06/manifest.json",
+        "../evidence/upstream-u1-2026-10-03/manifest.json"
+      ]
+    },
+    {
+      "path": "docs/archive/external-audit-2026-10-06.md",
+      "sha256": "ca9cb5d2334586ea7b7261c92fb3b37d051f13e86b3b0ac095700b2f685d5cf7",
+      "title": "External audit: BookiE after 0.2.0",
+      "lines": 430,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "300e50502092a2184cef9eec7fd93b0a7e9de7a9",
+        "70022ac3710c50a8d3b8071fa0f8a9bb3c25b098",
+        "1ed598308a4c6264c7c6460ae812be8ddde69268",
+        "27b962eb15cfa272585defdb4e585d28beee57da"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/external-audit-client-review-2026-10-06.md",
+      "sha256": "cfa66b286a57367763f586ab9cb38eee683529b446deb507687cd9e0b2ae32b6",
+      "title": "Database-client lessons and BookiE source review",
+      "lines": 222,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "is_numeric_input": [
+          "crates/core/src/numeric_input.rs"
+        ],
+        "parse_float_input": [
+          "crates/core/src/numeric_input.rs"
+        ],
+        "read_text_file": [
+          "crates/core/src/text_file.rs"
+        ],
+        "sqlite_affinity_decimal": [
+          "crates/core/src/numeric_input.rs"
+        ]
+      },
+      "source_pins": [
+        "2d114d424",
+        "fc755878333ed4973a773c5a0dca39abe8b3a456",
+        "1ed598308a4c6264c7c6460ae812be8ddde69268",
+        "ecb6446c313b69ec1310b5816178e79040f98a92",
+        "c8693a56045e34543ded668aaa78614495a7d01a",
+        "9dda0687c5213556f4cbc26f83f26e80be0a9606"
+      ],
+      "evidence_links": [
+        "../evidence/sqlite-numeric-affinity-grid-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-affinity-check-constraint-results-2026-10-06/manifest.json"
+      ]
+    },
+    {
+      "path": "docs/archive/grid-memory-and-fetch-action-plan-2026-10-07.md",
+      "sha256": "194b59f1ab233d88cac35d98854462d3b5582aced83f6e5e53519da60cfc6dfa",
+      "title": "Grid memory and fetch action plan, 2026-10-07",
+      "lines": 157,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "400e09bb9453c343162a6e017adf52db131f8405",
+        "4d0ee77d1"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/known-issues-pre-project-migration-2026-10-12.md",
+      "sha256": "06610043460564c40ff88d0fb4a4d0191b79d7c5c2a6b4a736410a4cca03f76b",
+      "title": "Known issues ledger",
+      "lines": 295,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "a_committed_insert_with_a_lost_http_ack_is_not_replayed": [
+          "crates/drivers/clickhouse/tests/support/disconnection.rs"
+        ],
+        "a_committed_update_with_a_lost_ack_is_not_replayed": [
+          "crates/drivers/mssql/tests/support/disconnection.rs"
+        ],
+        "a_committed_update_with_a_lost_ack_is_not_replayed_after_reconnect": [
+          "crates/drivers/mongodb/tests/support/disconnection.rs"
+        ],
+        "a_controlled_unbounded_query_returns_the_capped_rows_instead_of_timing_out": [
+          "crates/drivers/postgres/tests/integration.rs"
+        ],
+        "a_credential_failure_ends_the_retry_loop_and_reports_the_reason": [
+          "apps/linux/app/src/services/connection_monitor.rs"
+        ],
+        "a_directory_or_missing_path_is_not_a_bundle": [
+          "apps/linux/app/src/ui/app/bundle.rs"
+        ],
+        "a_driver_panic_message_never_reaches_the_logs_or_the_error": [
+          "crates/policy/src/guard_tests_audit.rs"
+        ],
+        "a_failed_statement_offers_a_copy_button": [
+          "apps/linux/app/src/ui/editor/outcomes/tests.rs"
+        ],
+        "a_failed_statement_reports_the_character_position_of_the_error": [
+          "crates/drivers/postgres/tests/support/connection_contracts.rs"
+        ],
+        "a_family_that_could_break_out_of_the_rule_is_ignored": [
+          "apps/linux/app/src/ui/editor/schema.rs"
+        ],
+        "a_few_results_keep_their_buttons_and_many_collapse_into_a_drop_down": [
+          "apps/linux/app/src/ui/editor/outcomes/tests.rs"
+        ],
+        "a_file_at_the_limit_is_read_whole": [
+          "apps/linux/app/src/ui/app/bundle.rs"
+        ],
+        "a_file_over_the_limit_is_refused_before_it_is_read": [
+          "apps/linux/app/src/ui/app/bundle.rs"
+        ],
+        "a_group_row_shows_a_chevron_that_follows_its_collapse_state": [
+          "apps/linux/app/src/ui/sidebar_row.rs"
+        ],
+        "a_json_value_is_measured_without_serialising_small_documents_twice": [
+          "apps/linux/app/src/ui/row_object.rs"
+        ],
+        "a_key_material_rotation_during_connect_is_not_cached_under_the_stale_digest": [
+          "crates/agentd/src/lib.rs"
+        ],
+        "a_lost_eval_ack_is_not_replayed_after_redis_reconnects": [
+          "crates/drivers/redis/tests/support/disconnection.rs"
+        ],
+        "a_newer_read_of_the_same_kind_cancels_the_older_one": [
+          "crates/app-services/src/read_scopes.rs"
+        ],
+        "a_pinned_result_is_named_by_its_statement_without_a_run_number": [
+          "apps/linux/app/src/ui/editor/outcomes/tests.rs"
+        ],
+        "a_search_shows_matches_with_their_parents_and_ignores_the_collapse_state": [
+          "apps/linux/app/src/services/sidebar_tree.rs"
+        ],
+        "a_second_profile_receives_every_exported_connection_unchanged": [
+          "crates/storage/src/connection_bundle_tests.rs"
+        ],
+        "a_session_stays_usable_after_a_capped_result": [
+          "crates/drivers/postgres/tests/integration.rs"
+        ],
+        "a_session_whose_driver_panicked_is_not_reused_even_though_its_ping_is_healthy": [
+          "crates/agentd/src/audit_isolation_tests.rs"
+        ],
+        "a_statement_is_named_by_its_verb_and_the_table_it_touches": [
+          "apps/linux/app/src/ui/editor/outcomes/tests.rs"
+        ],
+        "agentd_refuses_without_learning_an_unknown_system_openssh_key_then_queries_after_trust": [
+          "crates/agentd/tests/g5_system_openssh.rs"
+        ],
+        "an_agent_cannot_expose_sensitive_json_through_an_outer_alias": [
+          "crates/policy/tests/session_postgres.rs"
+        ],
+        "an_all_null_column_has_no_stats": [
+          "apps/linux/app/src/ui/browse_tab/selection/stats.rs"
+        ],
+        "an_old_preferences_file_without_a_color_scheme_loads_with_the_system_default": [
+          "apps/linux/app/src/services/preferences.rs"
+        ],
+        "an_unbounded_query_is_cut_at_the_cap_and_the_server_stops_producing": [
+          "crates/drivers/postgres/tests/integration.rs"
+        ],
+        "arbitrary_query_previews_can_recover_full_values_from_the_shared_result": [
+          "apps/linux/app/src/ui/row_store.rs"
+        ],
+        "bounded_metadata_sample_merges_types_from_the_requested_page": [
+          "crates/drivers/mongodb/tests/integration.rs"
+        ],
+        "bson_to_value": [
+          "crates/drivers/mongodb/src/codec.rs"
+        ],
+        "build_insert_literal": [
+          "crates/core/src/sql_literal.rs"
+        ],
+        "build_keyed_update": [
+          "crates/core/src/sql_dialect/updates.rs"
+        ],
+        "build_openssh_config": [
+          "crates/transport/src/route.rs"
+        ],
+        "catalog_objects_are_listed_per_kind_and_filtered_by_schema": [
+          "crates/drivers/postgres/tests/integration.rs"
+        ],
+        "closing_a_tab_cancels_every_read_it_owns_and_only_those": [
+          "crates/app-services/src/read_scopes.rs"
+        ],
+        "collapsed_groups_are_bounded_when_saved": [
+          "crates/app-services/src/workspace_state/tests.rs"
+        ],
+        "collapsed_groups_round_trip_and_an_older_file_has_none": [
+          "crates/app-services/src/workspace_state/tests.rs"
+        ],
+        "color_scheme_rows_keys_and_styles_agree": [
+          "apps/linux/app/src/services/preferences.rs"
+        ],
+        "columns_and_page": [
+          "crates/drivers/mongodb/src/lib.rs"
+        ],
+        "commands_stay_out_of_the_empty_list_and_are_the_only_hits_after_a_prompt_character": [
+          "apps/linux/app/src/services/quick_switcher.rs"
+        ],
+        "connection_id_to_restore": [
+          "crates/app-services/src/window_state.rs"
+        ],
+        "copied_insert_uses_the_engine_identity_default": [
+          "crates/core/src/sql_literal.rs"
+        ],
+        "copying_a_previewed_cell_copies_the_full_value": [
+          "apps/linux/app/src/ui/grid/context_menu.rs"
+        ],
+        "decode_by_type": [
+          "crates/drivers/mysql/src/decode.rs"
+        ],
+        "decode_fallback": [
+          "crates/drivers/sqlite/src/lib.rs"
+        ],
+        "decode_vector": [
+          "crates/drivers/postgres/src/array.rs"
+        ],
+        "disconnecting_cancels_everything": [
+          "crates/app-services/src/read_scopes.rs"
+        ],
+        "each_statement_gets_a_gutter_mark_for_its_outcome": [
+          "apps/linux/app/src/ui/editor/run_marks.rs"
+        ],
+        "each_statement_is_placed_on_the_line_where_it_starts": [
+          "apps/linux/app/src/ui/editor/run_marks.rs"
+        ],
+        "escape_csv_field": [
+          "crates/core/src/export/csv.rs"
+        ],
+        "establish_classified_with_cancellation": [
+          "apps/linux/app/src/services/connection_service.rs"
+        ],
+        "every_command_names_an_action_the_window_registers": [
+          "apps/linux/app/src/services/quick_switcher.rs"
+        ],
+        "every_palette_colour_has_a_strip_class": [
+          "crates/storage/src/connection_color.rs"
+        ],
+        "every_window_shortcut_is_listed_in_the_shortcuts_window": [
+          "apps/linux/app/src/ui/app/shortcuts.rs"
+        ],
+        "every_window_shortcut_names_an_action_the_window_registers": [
+          "apps/linux/app/src/ui/app/shortcuts.rs"
+        ],
+        "extract_value": [
+          "crates/drivers/sqlite/src/lib.rs",
+          "crates/drivers/mysql/src/decode.rs",
+          "crates/drivers/postgres/src/query.rs"
+        ],
+        "fetch_enum_labels": [
+          "crates/policy/tests/guard_transparency.rs",
+          "crates/agentd/src/session_forwarding_tests.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/policy/src/guard/connection.rs",
+          "crates/policy/src/guard_tests_passthrough.rs",
+          "crates/drivers/postgres/src/lib.rs",
+          "crates/core/src/connection.rs"
+        ],
+        "filtered_keyset_page_keeps_the_filter_and_cursor": [
+          "crates/drivers/mongodb/tests/support/browse_keyset.rs"
+        ],
+        "filtered_offset_pages_keep_filters_with_and_without_parameters": [
+          "crates/drivers/mongodb/tests/support/browse_keyset.rs"
+        ],
+        "forgetting_a_connection_drops_its_widths_hidden_columns_and_order_only": [
+          "crates/app-services/src/column_widths.rs"
+        ],
+        "format_csv_cell": [
+          "crates/core/src/export/csv.rs"
+        ],
+        "groups_and_schemas_carry_how_many_objects_they_hold": [
+          "apps/linux/app/src/services/sidebar_tree.rs"
+        ],
+        "header_title_omits_an_unknown_type": [
+          "apps/linux/app/src/ui/grid/column.rs"
+        ],
+        "header_title_shows_type_and_key_markers": [
+          "apps/linux/app/src/ui/grid/column.rs"
+        ],
+        "invalid_declared_temporal_values_remain_text": [
+          "crates/drivers/sqlite/tests/runtime_typed_values.rs"
+        ],
+        "is_permanent_failure": [
+          "apps/linux/app/src/services/connection_service.rs"
+        ],
+        "is_plain_decimal": [
+          "crates/core/src/export/csv.rs"
+        ],
+        "is_unknown_type": [
+          "crates/core/src/sqlite_any_csv.rs"
+        ],
+        "json_to_value": [
+          "crates/drivers/clickhouse/src/lib.rs"
+        ],
+        "keyset_page_query_keeps_mixed_bson_id_types_in_sort_order": [
+          "crates/drivers/mongodb/tests/support/browse_keyset.rs"
+        ],
+        "loaded_row_search_uses_full_shared_value_without_materializing_it_in_the_grid": [
+          "apps/linux/app/src/ui/row_store.rs"
+        ],
+        "merge_page_types": [
+          "crates/drivers/mongodb/src/codec.rs"
+        ],
+        "mixed_or_text_columns_have_no_stats": [
+          "apps/linux/app/src/ui/browse_tab/selection/stats.rs"
+        ],
+        "mongodb_scram_rejects_hostile_server_challenges_before_sending_proof": [
+          "crates/drivers/mongodb/tests/support/hostile_scram.rs"
+        ],
+        "non_generic_binary_subtypes_keep_their_extended_json_metadata": [
+          "crates/drivers/mongodb/src/codec.rs"
+        ],
+        "null_filtered_keyset_page_excludes_missing_fields": [
+          "crates/drivers/mongodb/tests/support/browse_keyset.rs"
+        ],
+        "observe_bson_type": [
+          "crates/drivers/mongodb/src/codec.rs"
+        ],
+        "only_the_latest_full_value_response_is_current": [
+          "apps/linux/app/src/ui/browse_tab/requests.rs"
+        ],
+        "open_candidate": [
+          "apps/linux/app/src/ui/connect_dialog/mod.rs"
+        ],
+        "optimistic_predicate": [
+          "crates/core/src/sql_dialect/updates.rs"
+        ],
+        "parse_clipboard_grid": [
+          "apps/linux/app/src/ui/browse_tab/paste.rs"
+        ],
+        "pattern_keyset_filters_match_like_wildcards_without_matching_nulls": [
+          "crates/drivers/mongodb/tests/support/browse_keyset.rs"
+        ],
+        "pinned_results_stay_ahead_of_the_next_run": [
+          "apps/linux/app/tests/support/pinned_tests.rs"
+        ],
+        "preview_binding_does_not_retain_a_second_full_value": [
+          "apps/linux/app/src/ui/grid/column.rs"
+        ],
+        "quote_field": [
+          "crates/core/src/export/csv.rs"
+        ],
+        "quote_literal": [
+          "crates/core/src/sql_literal.rs"
+        ],
+        "reads_of_other_kinds_or_tabs_are_left_running": [
+          "crates/app-services/src/read_scopes.rs"
+        ],
+        "redis_value_to_result": [
+          "crates/drivers/redis/src/lib.rs"
+        ],
+        "reference_target": [
+          "apps/linux/app/src/ui/browse_tab/reference.rs"
+        ],
+        "rfc4180_options": [
+          "crates/core/src/export/csv.rs"
+        ],
+        "run_statements": [
+          "apps/linux/app/src/ui/editor/outcomes.rs"
+        ],
+        "should_mask": [
+          "crates/policy/src/guard.rs"
+        ],
+        "sql_export_uses_engine_generated_identity_values": [
+          "crates/core/src/export/sql.rs"
+        ],
+        "sql_server_batches_with_mutations_are_classified_and_denied_before_dispatch": [
+          "crates/policy/tests/session_mssql.rs"
+        ],
+        "sql_variant_columns_refuse_untyped_values_but_preserve_null": [
+          "crates/drivers/mssql/src/codec.rs"
+        ],
+        "sqlite_csv_tagged_values_follow_any_unknown_and_blob_column_contracts": [
+          "crates/core/src/import/cell/tests/sqlite_affinity.rs"
+        ],
+        "sqlite_json_group_object_any_csv_round_trip_preserves_native_text": [
+          "apps/linux/app/tests/support/sqlite_any_contract/aggregate_csv.rs"
+        ],
+        "string_literal": [
+          "crates/core/src/sql_literal.rs"
+        ],
+        "test_result_text": [
+          "apps/linux/app/src/ui/connect_dialog/form.rs"
+        ],
+        "the_cell_menu_opens_with_the_menu_key_and_shift_f10": [
+          "apps/linux/app/src/ui/grid/context_menu.rs"
+        ],
+        "the_color_scheme_survives_a_gsettings_round_trip_and_defaults_to_the_system": [
+          "apps/linux/app/src/services/preferences.rs"
+        ],
+        "the_editor_font_family_survives_a_gsettings_round_trip_and_defaults_to_empty": [
+          "apps/linux/app/src/services/preferences.rs"
+        ],
+        "the_elapsed_time_of_a_statement_excludes_the_wait_for_approval": [
+          "apps/linux/app/src/ui/editor/outcomes/tests.rs"
+        ],
+        "the_null_display_style_changes_the_marker_and_never_the_meaning": [
+          "apps/linux/app/src/ui/grid/display.rs"
+        ],
+        "the_null_display_survives_a_gsettings_round_trip_and_defaults_to_standard": [
+          "apps/linux/app/src/services/preferences.rs"
+        ],
+        "the_oldest_pins_are_dropped_past_the_limit": [
+          "apps/linux/app/tests/support/pinned_tests.rs"
+        ],
+        "unpinning_returns_the_latest_run_alone": [
+          "apps/linux/app/tests/support/pinned_tests.rs"
+        ],
+        "untyped_value": [
+          "crates/drivers/sqlite/src/lib.rs"
+        ],
+        "value_contract_bc_dates_survive_default_csv_import": [
+          "crates/drivers/postgres/tests/support/date_contract.rs"
+        ],
+        "value_contract_dimension_product_must_fit_element_length_words": [
+          "crates/drivers/postgres/src/array.rs"
+        ],
+        "value_contract_mongodb_census_is_not_a_snapshot_for_already_read_documents": [
+          "apps/linux/app/src/ui/browse_tab/tests.rs"
+        ],
+        "value_contract_mongodb_census_scan_cost_profile": [
+          "crates/drivers/mongodb/tests/support/census_cost.rs"
+        ],
+        "value_contract_mongodb_grid_value_comparison_does_not_detect_aba": [
+          "crates/drivers/mongodb/tests/support/stale_grid_edit_contract.rs"
+        ],
+        "value_contract_mongodb_off_page_type_change_during_census_refuses_edit": [
+          "apps/linux/app/src/ui/browse_tab/tests.rs"
+        ],
+        "value_contract_mssql_max_values_survive_connection_session_and_consumers": [
+          "apps/linux/app/tests/support/mssql_max_value_contract.rs"
+        ],
+        "value_contract_mssql_server_owned_columns_use_native_defaults_across_consumers": [
+          "apps/linux/app/tests/support/mssql_server_owned_columns.rs"
+        ],
+        "value_contract_vector_capacity_is_bounded_by_element_length_words": [
+          "crates/drivers/postgres/src/array.rs"
+        ],
+        "value_to_text": [
+          "apps/linux/app/src/ui/grid/display.rs",
+          "crates/core/src/export/mod.rs"
+        ],
+        "vector_capacity": [
+          "crates/drivers/postgres/src/array.rs"
+        ],
+        "verify_full_through_ssh_reaches_the_unpublished_server_and_runs_a_query": [
+          "tests/driver-tls/tests/mysql_tls.rs",
+          "tests/driver-tls/tests/mssql_tls.rs"
+        ],
+        "vim_keys_are_attached_only_when_enabled": [
+          "apps/linux/app/src/ui/editor/schema.rs"
+        ],
+        "vim_mode_is_off_by_default_and_survives_a_gsettings_round_trip": [
+          "apps/linux/app/src/services/preferences.rs"
+        ],
+        "withhold_panic_messages": [
+          "crates/policy/src/lib.rs"
+        ]
+      },
+      "source_pins": [
+        "ca1080a55",
+        "c2f3f78b9",
+        "11672cbe6",
+        "227d846b95d14c2d55c366843bdf6ddc386b1c72",
+        "43b718ee2dc4b20bff03ac75ad87f4f571501406",
+        "46ea86897",
+        "55467e720",
+        "daec4a7dc",
+        "9156d3c50",
+        "400643944",
+        "7d8288132",
+        "b1206e9aa"
+      ],
+      "evidence_links": [
+        "../evidence/b4-current-postgres-release-227d846b-2026-10-10/manifest.json",
+        "../evidence/b4-hosted-acceptance-2026-10-09/manifest.json",
+        "../evidence/mysql-atomic-linux-43b718ee-2026-10-10/manifest.json",
+        "../evidence/mysql-aria-batch-effects-linux-2b79ae3-2026-10-10/manifest.json",
+        "../evidence/mysql-advisory-lock-rollback-2026-10-09/manifest.json",
+        "../evidence/mysql-session-state-rollback-2026-10-09/manifest.json",
+        "../evidence/b4-rollback-linux-tip-2026-10-09/manifest.json",
+        "../evidence/b4-connection-cancel-switch-2026-10-07/manifest.json",
+        "../evidence/b4-21-mssql-kerberos-bd798f2-2026-10-10/manifest.json",
+        "../evidence/b4-ui1b-bundle-gtk-3f67c1bf-2026-10-10/manifest.json",
+        "../evidence/b4-22-bundle-current-tip-d0debc6-2026-10-10/manifest.json",
+        "../evidence/b4-22-bundle-current-tip-d916b3aa-2026-10-10/manifest.json",
+        "../evidence/sql-lex-mutation-results-2026-10-06/README.md",
+        "../evidence/test-quality-2026-10-11/storage-mutants.md",
+        "../evidence/test-quality-2026-10-11/transport-mutants.md",
+        "../evidence/test-quality-2026-10-11/ssh-mutants.md",
+        "../evidence/test-6-triage-2026-10-10/triage.md",
+        "../evidence/gtk-ui-workflows-installed-linux-b4ee-2026-10-09/manifest.json",
+        "../evidence/test-quality-2026-10-11/policy-mutants.md",
+        "../evidence/test-quality-2026-10-11/core-mutants.md",
+        "../evidence/b4-aud2-gtk-rerun-2026-10-09/manifest.json",
+        "../evidence/b4-deb-package-lifecycle-2026-10-09/manifest.json",
+        "../evidence/aud2-current-linux-tip-735baf1e-2026-10-10/manifest.json",
+        "../evidence/b4-aud2-repeat-2026-10-09/manifest.json",
+        "../evidence/aud2-ui-installed-local-ee017ac/manifest.json",
+        "../evidence/b4-release-triage-2026-10-11/triage.md"
+      ]
+    },
+    {
+      "path": "docs/archive/linux-peer-review-2026-10-16.md",
+      "sha256": "7c2124646e9c2c727a224b5db2abb852b993c1e406cb91c2a97c9a2524e4252b",
+      "title": "Linux documentation and peer review, 2026-10-16",
+      "lines": 189,
+      "bookie_issues": [
+        {
+          "number": 550,
+          "state": "OPEN"
+        },
+        {
+          "number": 554,
+          "state": "OPEN"
+        },
+        {
+          "number": 891,
+          "state": "OPEN"
+        },
+        {
+          "number": 983,
+          "state": "OPEN"
+        }
+      ],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "empty_on_not_null_with_default_yields_null": [
+          "apps/linux/app/tests/support/value_parse.rs"
+        ],
+        "parse_input_for_grid_cell": [
+          "apps/linux/app/src/ui/browse_tab/value_parse.rs"
+        ],
+        "resolved_order_by": [
+          "crates/app-services/src/browse_query/order.rs"
+        ]
+      },
+      "source_pins": [
+        "5ebc01d118b8e18447bc5fbd31374cc5a4873811",
+        "45d49a23fa107b5e84636ae9e8e18dabf989f464",
+        "3a7d96511a4a75153aa783f1c116758575a79737",
+        "f441d781ec57d85dee1b5d4e3e1aa83a6dc23216",
+        "b27cd8046fed70146c1bc28c92143fd1294a0dcc",
+        "19b1372dfa9fd955605777fefaf2a2ee659903b6",
+        "20ed72497",
+        "2d7089204",
+        "0dc391484",
+        "45d49a23f",
+        "c423710ba",
+        "1155d3eb1"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/linux-peer-review-2026-10-17.md",
+      "sha256": "f248fce260152da83486d993c94b821acecf34feffb8e2c401cac97456fb1a8c",
+      "title": "Linux peer review: source and issue refresh",
+      "lines": 78,
+      "bookie_issues": [
+        {
+          "number": 580,
+          "state": "OPEN"
+        },
+        {
+          "number": 970,
+          "state": "CLOSED"
+        },
+        {
+          "number": 1026,
+          "state": "OPEN"
+        },
+        {
+          "number": 1073,
+          "state": "OPEN"
+        }
+      ],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "fetch_columns": [
+          "crates/drivers/sqlite/src/lib.rs",
+          "crates/mcp/tests/timeout_bounds.rs",
+          "crates/mcp/tests/timeout_audit.rs",
+          "crates/mcp/tests/shutdown_write_audit.rs",
+          "crates/mcp/tests/postgres_custom_enum.rs",
+          "crates/mcp/tests/enforce_policy.rs",
+          "crates/mcp/src/server.rs",
+          "crates/drivers/mysql/src/lib.rs",
+          "crates/drivers/redis/src/lib.rs",
+          "crates/drivers/mssql/src/lib.rs",
+          "crates/policy/tests/guard_transparency.rs",
+          "crates/drivers/clickhouse/src/lib.rs",
+          "crates/drivers/mongodb/src/lib.rs",
+          "crates/agentd/src/session_tests.rs",
+          "crates/agentd/src/session_forwarding_tests.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/agentd/src/audit_isolation_tests.rs",
+          "crates/policy/src/guard/connection.rs",
+          "crates/policy/src/guard_tests_cursor.rs",
+          "crates/policy/src/guard_tests_checked.rs",
+          "crates/policy/src/guard_tests_bulk.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests_session.rs",
+          "crates/policy/src/guard_tests_passthrough.rs",
+          "apps/linux/app/src/services/connection_monitor.rs",
+          "crates/drivers/duckdb/src/lib.rs",
+          "crates/app-services/src/database_backup.rs",
+          "crates/drivers/postgres/src/lib.rs",
+          "crates/core/src/connection.rs",
+          "crates/core/src/connection.rs"
+        ],
+        "json_field_names": [
+          "crates/core/src/export/json.rs"
+        ]
+      },
+      "source_pins": [
+        "fe310a20763b1025c325b33e993c58358b020420",
+        "6fd0d19326c2aa7404215972e9b0bb53948f9542",
+        "2be4682f3faf924237225f7662174b8a26e36216",
+        "ab921297529deb9a996ebf43622340916f2a84a4",
+        "61c9529849c9fa500c303d1a385897a4088d6656",
+        "f7ff968f39699c22d4f9a4674f38a5ecfbfbe586",
+        "6ab7d79e1e43facb3f931fffc99d7148c3ea69c4",
+        "7cd300f82eaa4743d18ab049bf40a374d3ecf927",
+        "bdbcb7de95a267aab261e258fc6d5c745261848f",
+        "1065bf89ac8b7271388b5e513ac0971d2b179273",
+        "834e5b63e",
+        "35d06151f"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/mongodb-consistency-2026-10-03.md",
+      "sha256": "1999d07d27e039fa9f097009ff89f27679538f297491a8cdd5ef994602d60b33",
+      "title": "MongoDB browse consistency boundary",
+      "lines": 35,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [],
+      "evidence_links": [
+        "../evidence/mongodb-current-census-results-2026-10-04/manifest.json",
+        "../evidence/mongodb-census-results-2026-10-03/manifest.json"
+      ]
+    },
+    {
+      "path": "docs/archive/offline-release-input-audit-2026-10-19.md",
+      "sha256": "515f7659c26f9b3513f5b6d8b419e1c9d63d43177de3754e5f87393f02d0b925",
+      "title": "Offline release input audit, 2026-10-19",
+      "lines": 17,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/performance-2026-09.md",
+      "sha256": "7c58e53ffcf0ae506f33ab13a4e96a51044e1aa1bcd1b5799c86ddabaf60bd43",
+      "title": "PostgreSQL browse measurements \u2014 September 2026",
+      "lines": 44,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "7d8288132",
+        "751a458293eca384e8747d7661db1fe9f713401b"
+      ],
+      "evidence_links": [
+        "../evidence/2026-09-stabilization/postgres-before.jsonl",
+        "../evidence/2026-09-stabilization/postgres-after.jsonl"
+      ]
+    },
+    {
+      "path": "docs/archive/production-audit.md",
+      "sha256": "d51ab40f18de209ff09a0f26607baffd09e0ad970e60cc2b68ce8a4f7122a745",
+      "title": "Production readiness audit",
+      "lines": 124,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/reconciliation-2026-09-26.md",
+      "sha256": "7aaa28dfacce9fc0140380bbffc83597e6166b3ef70cb72ad4b179ffca1f9f18",
+      "title": "Linux local/remote reconciliation \u2014 2026-09-26",
+      "lines": 63,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "8ae99ad66",
+        "d5583c75e0bcf44833e112614aae10e8f3495816",
+        "47c4dd5d4"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/regression-audit-2026-09-29.md",
+      "sha256": "5184a21c4f64bd8830d98c37100ee86207c5dc0b9ee3ea6ccb64de3698c30a52",
+      "title": "Regression audit, 2026-09-29",
+      "lines": 151,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "value_contract_formula_safe_decimal_import_rejects_excess_precision": [
+          "crates/core/src/import/cell.rs"
+        ]
+      },
+      "source_pins": [
+        "f142d3fea"
+      ],
+      "evidence_links": [
+        "../evidence/2026-09-29-regression-audit/validation.json",
+        "../evidence/2026-09-29-regression-audit/decimal-before.txt",
+        "../evidence/2026-09-29-regression-audit/binary-before.txt",
+        "../evidence/2026-09-29-regression-audit/isolated-before.txt",
+        "../evidence/2026-09-29-regression-audit/change-contracts-before.txt"
+      ]
+    },
+    {
+      "path": "docs/archive/release-0.1.4.md",
+      "sha256": "6f58ce798ad2bd2007ceddf68cadf74ccb97afd447f821b1905966606908e267",
+      "title": "BookiE 0.1.4: correctness and executable quality gates",
+      "lines": 65,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "2c5499947"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/release-audit-2026-10-03.md",
+      "sha256": "b9cf09a097349062616fd5ee19a74cf63af6631d75931dd0ee02673bd9884712",
+      "title": "BookiE 0.2 release documentation and source audit",
+      "lines": 266,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "abandoning_an_old_write_after_replacement_keeps_the_new_generation_writable": [
+          "crates/policy/src/guard_tests_audit.rs"
+        ],
+        "execute_query": [
+          "crates/mcp/src/bridge.rs"
+        ],
+        "render_json": [
+          "crates/core/src/export/json.rs"
+        ]
+      },
+      "source_pins": [
+        "aeac107a4"
+      ],
+      "evidence_links": [
+        "../evidence/release-audit-2026-10-03/manifest.json",
+        "../evidence/postgres-enum-results-2026-10-03/manifest.json",
+        "../evidence/release-audit-2026-10-03/mysql_probe.rs",
+        "../evidence/release-audit-2026-10-03/mysql-probe-native.txt",
+        "../evidence/mysql-atomic-results-2026-10-03/manifest.json",
+        "../evidence/postgres-three-level-domain-results-2026-10-03/manifest.json",
+        "../evidence/postgres-nested-domain-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-strict-any-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-xlsx-calc-formula-text-results-2026-10-04/manifest.json",
+        "../evidence/duckdb-enum-keyed-results-2026-10-03/manifest.json"
+      ]
+    },
+    {
+      "path": "docs/archive/sprint-2026-09-14.md",
+      "sha256": "2cd6c9ab4c5b27243e2076f42e5e0c4ac94a2e3af21ef3d2df0cda4653dd70a6",
+      "title": "Linux sprint: security, correctness and SQL character warnings",
+      "lines": 110,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 7,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "30b7e530f",
+        "5dbf87a44",
+        "6e6396c59",
+        "035ffe8f771797345ad86032e3aead16f18181fe",
+        "c180dbcac",
+        "558502f87",
+        "44c0ca4cb",
+        "04a7d22bb",
+        "c6265c1ba",
+        "3df2bb875",
+        "a45fb4672"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/sprint-review-2026-09-28.md",
+      "sha256": "ded330f33374c9c854b33a033ec40cc8f8d44b997301eaa6218d328e5881e059",
+      "title": "Archived sprint review: 2026-09-26 to 2026-09-28",
+      "lines": 191,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "85fecbe0b1d86d2deac3c040c63f24712333854a",
+        "85fecbe0b",
+        "07137ecec",
+        "34ea8c0a8",
+        "2b2698d55",
+        "8d66449c8",
+        "daff036d1",
+        "6b18f9e60",
+        "01f892ac2",
+        "6b8297616",
+        "0aef65e82",
+        "73f5b4e08"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/stabilization-2026-09.md",
+      "sha256": "391942140d33ed8da8ead847001f6f41b49e654ee4a338792115dbab9d1288f6",
+      "title": "September Linux stabilization audit",
+      "lines": 87,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "7d82881323af083dc6e045971f31d505fdf03164",
+        "751a458293eca384e8747d7661db1fe9f713401b"
+      ],
+      "evidence_links": [
+        "../evidence/2026-09-stabilization/validation.json"
+      ]
+    },
+    {
+      "path": "docs/archive/tablepro-dbx-review-2026-10-20/README.md",
+      "sha256": "cbabbd2cb99864c8a68d74381ad5a38c9531611ba47f0caf8c89246c8d9a5828",
+      "title": "TablePro and dbx deep review, October 20",
+      "lines": 181,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "split_statements": [
+          "crates/core/src/sql_lex.rs"
+        ],
+        "transaction_control": [
+          "crates/policy/src/transaction_control.rs"
+        ]
+      },
+      "source_pins": [
+        "7c4cb3929",
+        "3222542a4",
+        "d1e88ab4b",
+        "d51b92998"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/tablepro-dbx-review-2026-10-20/a-tablepro-linux-features.md",
+      "sha256": "f7c0c27bc51e3791f1d6ed9d0c070bef8218ef04e0e3f3342661e4fa53f3d0ec",
+      "title": "A. TablePro Linux feature inventory mapped to BookiE",
+      "lines": 251,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "error_chain_text": [
+          "crates/drivers/mongodb/src/error.rs",
+          "crates/core/src/tls.rs"
+        ],
+        "execute_delete_connection": [
+          "apps/linux/app/src/ui/app/connection.rs"
+        ]
+      },
+      "source_pins": [],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/tablepro-dbx-review-2026-10-20/b-tablepro-fixes.md",
+      "sha256": "12f73a50c4e3d50864042c14c6c14d1694101e6e60d39e05c437b748f4dca976",
+      "title": "B. TablePro fix-commit mining: bug classes and edge cases for BookiE",
+      "lines": 119,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "a_bigint_unsigned_value_past_i64_max_keeps_its_digits": [
+          "crates/drivers/mysql/tests/integration.rs"
+        ],
+        "a_foreign_key_to_the_implicit_parent_key_names_the_primary_key_columns": [
+          "crates/drivers/sqlite/tests/integration.rs"
+        ],
+        "a_keyed_delete_matches_a_null_key_component_with_is_null": [
+          "crates/core/src/sql_dialect.rs"
+        ],
+        "a_malformed_previous_file_is_preserved_and_blocks_a_save": [
+          "crates/storage/src/connections.rs"
+        ],
+        "a_mssql_identity_column_remains_server_owned": [
+          "crates/core/src/import/plan.rs"
+        ],
+        "a_query_string_never_becomes_the_database_name": [
+          "crates/storage/src/connection_url.rs"
+        ],
+        "an_empty_field_stays_an_empty_string_for_a_text_column": [
+          "crates/core/src/import/cell.rs"
+        ],
+        "build_drop_table": [
+          "crates/core/src/sql_ddl/table.rs"
+        ],
+        "clickhouse_identifier_quoting_escapes_a_trailing_backslash": [
+          "crates/core/src/sql_dialect.rs"
+        ],
+        "csv_decimal_comma_only_rewrites_signed_plain_decimals": [
+          "crates/core/src/export/csv.rs"
+        ],
+        "engines_with_a_default_escape_keep_the_plain_like": [
+          "crates/core/src/filter_tests.rs"
+        ],
+        "escape_like": [
+          "crates/core/src/filter.rs"
+        ],
+        "foreign_keys": [
+          "crates/agentd/src/session_forwarding_tests.rs"
+        ],
+        "foreign_keys_pair_composite_columns_and_report_the_referential_actions": [
+          "crates/drivers/postgres/tests/support/schema_introspection.rs"
+        ],
+        "grid_row_edits_find_rows_by_uuid_composite_and_wide_bigint_keys": [
+          "crates/drivers/sqlite/tests/integration.rs",
+          "crates/drivers/mssql/tests/integration.rs",
+          "crates/drivers/mysql/tests/integration.rs",
+          "crates/drivers/postgres/tests/integration.rs"
+        ],
+        "load_password": [
+          "crates/storage/src/secrets.rs"
+        ],
+        "mysql_column_comment_backslash_literals_depend_on_sql_mode": [
+          "crates/drivers/mysql/tests/integration.rs"
+        ],
+        "names_an_object": [
+          "crates/core/src/sql_credentials.rs"
+        ],
+        "nested_block_comment_kept_verbatim": [
+          "crates/core/src/sql_format/mod.rs"
+        ],
+        "page_and_count_share_filter_and_keyset_parameters_follow_it": [
+          "crates/app-services/src/browse_query/tests/reverse_paging.rs"
+        ],
+        "plan_import": [
+          "crates/storage/src/connection_bundle.rs"
+        ],
+        "postgres_backslash_literals_do_not_depend_on_session_mode": [
+          "crates/core/src/sql_literal.rs"
+        ],
+        "postgres_pattern_search_casts_values_but_typed_comparisons_do_not": [
+          "crates/core/src/filter_tests.rs"
+        ],
+        "previous_keyset_keeps_null_prefixes_as_is_null": [
+          "crates/core/src/pagination.rs"
+        ],
+        "quote_ident_doubles_embedded_delimiter": [
+          "crates/core/src/sql_dialect.rs"
+        ],
+        "redis_value_to_result_preserves_invalid_utf8_binary": [
+          "crates/drivers/redis/src/tests.rs"
+        ],
+        "split_statements": [
+          "crates/core/src/sql_lex.rs"
+        ],
+        "sql_export_uses_engine_generated_identity_values": [
+          "crates/core/src/export/sql.rs"
+        ],
+        "the_same_id_on_a_different_endpoint_never_overwrites_the_local_record": [
+          "crates/storage/src/connection_bundle_tests.rs"
+        ],
+        "valid_tokens_are_not_throttled_by_the_failed_attempt_budget": [
+          "crates/mcp/src/bridge.rs"
+        ],
+        "value_contract_bit_payloads_become_integers_until_they_pass_i64": [
+          "crates/drivers/mysql/src/packed.rs"
+        ]
+      },
+      "source_pins": [
+        "3bcd8df75",
+        "55528b854",
+        "92aea7112"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/tablepro-dbx-review-2026-10-20/c-tablepro-macos-ux.md",
+      "sha256": "44830e4b6c228f57d98b2bbc8021b537709c03d18746df89e0dcce1956702fc8",
+      "title": "C. TablePro macOS feature surface: UX ideas portable to BookiE GTK",
+      "lines": 369,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "apply_editor_scheme": [
+          "apps/linux/app/src/ui/editor/schema.rs"
+        ],
+        "format_script": [
+          "crates/core/src/sql_format/mod.rs"
+        ]
+      },
+      "source_pins": [],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/tablepro-dbx-review-2026-10-20/d-dbx-features.md",
+      "sha256": "3f24c601ed6c40e116505fa1f5547a3a7d360a38771c165437d28780a6b5f282",
+      "title": "D. dbx feature and architecture review against BookiE",
+      "lines": 212,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "diff_to_ops": [
+          "crates/core/src/sql_ddl/diff.rs"
+        ],
+        "resolve_qualifier": [
+          "crates/app-services/src/completion.rs"
+        ],
+        "table_references": [
+          "crates/app-services/src/completion.rs"
+        ]
+      },
+      "source_pins": [],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/tablepro-dbx-review-2026-10-20/e-dbx-backend-fixes.md",
+      "sha256": "008921295d9fa87f025d08d557dd672ee9a1ea7d9000373d0c3019df9d312d2b",
+      "title": "E: dbx backend fix mining mapped to BookiE",
+      "lines": 175,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "a_backslash_is_escaped_only_where_the_engine_treats_it_as_an_escape": [
+          "crates/core/src/sql_literal.rs"
+        ],
+        "a_bigint_unsigned_value_past_i64_max_keeps_its_digits": [
+          "crates/drivers/mysql/tests/integration.rs"
+        ],
+        "a_bracketed_ipv6_host_dials_the_bare_address": [
+          "crates/core/src/connection.rs"
+        ],
+        "a_byte_order_mark_is_not_part_of_the_first_column_name": [
+          "crates/core/src/import/csv_import.rs"
+        ],
+        "a_cancelled_query_is_interrupted_and_the_pool_stays_usable": [
+          "crates/drivers/sqlite/tests/integration.rs"
+        ],
+        "a_cancelled_session_statement_is_interrupted_and_the_session_stays_usable": [
+          "crates/drivers/sqlite/tests/integration.rs"
+        ],
+        "a_decimal_value_past_rust_decimals_range_keeps_its_digits": [
+          "crates/drivers/mysql/tests/integration.rs"
+        ],
+        "a_mysql_double_dash_needs_whitespace_to_start_a_comment": [
+          "crates/core/src/sql_lex.rs"
+        ],
+        "a_mysql_hash_comment_does_not_end_a_statement": [
+          "crates/core/src/sql_lex.rs"
+        ],
+        "a_postgres_dollar_quoted_body_stays_one_statement": [
+          "crates/core/src/sql_lex.rs"
+        ],
+        "a_query_string_never_becomes_the_database_name": [
+          "crates/storage/src/connection_url.rs"
+        ],
+        "a_real_keeps_the_digits_sql_server_shows": [
+          "crates/drivers/mssql/src/codec.rs"
+        ],
+        "a_server_that_declines_encryption_is_reported_as_a_tls_failure": [
+          "crates/drivers/mssql/src/tests.rs"
+        ],
+        "a_session_keeps_temp_tables_and_its_transaction_between_statements": [
+          "crates/drivers/sqlite/tests/integration.rs",
+          "crates/drivers/mssql/tests/integration.rs"
+        ],
+        "a_session_keeps_variables_temp_tables_and_its_transaction_between_statements": [
+          "crates/drivers/mysql/tests/integration.rs"
+        ],
+        "a_single_host_connection_always_requests_a_direct_connection": [
+          "crates/drivers/mongodb/src/lib.rs"
+        ],
+        "a_timed_out_query_reports_an_unknown_outcome": [
+          "crates/drivers/duckdb/src/lib.rs"
+        ],
+        "a_tinyint_one_outside_zero_and_one_keeps_its_stored_integer": [
+          "crates/drivers/mysql/tests/support/unsigned_subtraction.rs"
+        ],
+        "all_result_sets_keep_order_and_metadata_when_the_first_is_empty": [
+          "crates/drivers/mssql/tests/support/result_sets.rs"
+        ],
+        "an_error_raised_after_the_first_result_set_is_reported": [
+          "crates/drivers/mssql/tests/support/result_sets.rs"
+        ],
+        "binary_literal": [
+          "crates/core/src/sql_literal.rs"
+        ],
+        "binary_sql_exports_round_trip_null_empty_and_every_byte": [
+          "crates/drivers/sqlite/tests/integration.rs",
+          "crates/drivers/mssql/tests/integration.rs",
+          "crates/drivers/mysql/tests/integration.rs",
+          "crates/drivers/clickhouse/tests/integration.rs",
+          "crates/drivers/postgres/tests/integration.rs",
+          "crates/drivers/duckdb/src/lib.rs"
+        ],
+        "blob_affinity_values_are_decoded_by_their_runtime_storage_class": [
+          "crates/drivers/sqlite/tests/runtime_typed_values.rs"
+        ],
+        "bounded_unicode_corpus_is_safe_and_idempotent": [
+          "crates/core/src/sql_format/mod.rs"
+        ],
+        "browse_next_page_is_disabled_when_known_total_matches_page_end": [
+          "apps/linux/app/src/ui/browse_tab/tests.rs"
+        ],
+        "browse_next_page_uses_known_total_and_page_size_fallback": [
+          "apps/linux/app/src/ui/browse_tab/tests.rs"
+        ],
+        "build_target": [
+          "crates/drivers/mssql/src/lib.rs"
+        ],
+        "bytes_to_value": [
+          "crates/drivers/redis/src/lib.rs"
+        ],
+        "can_stage_full_value": [
+          "apps/linux/app/src/ui/grid/full_value_editor.rs"
+        ],
+        "client_config_enables_keepalive_so_a_dead_bastion_is_eventually_detected": [
+          "crates/ssh/src/lib.rs"
+        ],
+        "collect_result_sets": [
+          "crates/drivers/mssql/src/lib.rs"
+        ],
+        "csv_if_needed_quotes_each_structural_and_sanitization_trigger": [
+          "crates/core/src/export/csv.rs"
+        ],
+        "csv_null_marker_skips_values_already_in_the_result": [
+          "crates/core/src/export/csv.rs"
+        ],
+        "data_modifying_cte_is_write": [
+          "crates/policy/src/classify.rs"
+        ],
+        "delimiter_procedure_preserved": [
+          "crates/core/src/sql_format/mod.rs"
+        ],
+        "dialect_boundaries_and_unicode_cursor_are_preserved": [
+          "apps/linux/app/src/ui/editor/statement_cursor.rs"
+        ],
+        "dollar_tag_body_is_untouched": [
+          "crates/core/src/sql_format/mod.rs"
+        ],
+        "escaped_quotes_and_nested_comments_keep_statement_boundaries": [
+          "crates/core/src/sql_lex.rs"
+        ],
+        "execute_query": [
+          "crates/mcp/src/bridge.rs"
+        ],
+        "execute_write": [
+          "crates/mcp/src/bridge.rs"
+        ],
+        "fetch_columns": [
+          "crates/drivers/sqlite/src/lib.rs",
+          "crates/mcp/tests/timeout_bounds.rs",
+          "crates/mcp/tests/timeout_audit.rs",
+          "crates/mcp/tests/shutdown_write_audit.rs",
+          "crates/mcp/tests/postgres_custom_enum.rs",
+          "crates/mcp/tests/enforce_policy.rs",
+          "crates/mcp/src/server.rs",
+          "crates/drivers/mysql/src/lib.rs",
+          "crates/drivers/redis/src/lib.rs",
+          "crates/drivers/mssql/src/lib.rs",
+          "crates/policy/tests/guard_transparency.rs",
+          "crates/drivers/clickhouse/src/lib.rs",
+          "crates/drivers/mongodb/src/lib.rs",
+          "crates/agentd/src/session_tests.rs",
+          "crates/agentd/src/session_forwarding_tests.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/agentd/src/audit_isolation_tests.rs",
+          "crates/policy/src/guard/connection.rs",
+          "crates/policy/src/guard_tests_cursor.rs",
+          "crates/policy/src/guard_tests_checked.rs",
+          "crates/policy/src/guard_tests_bulk.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests_session.rs",
+          "crates/policy/src/guard_tests_passthrough.rs",
+          "apps/linux/app/src/services/connection_monitor.rs",
+          "crates/drivers/duckdb/src/lib.rs",
+          "crates/app-services/src/database_backup.rs",
+          "crates/drivers/postgres/src/lib.rs",
+          "crates/core/src/connection.rs",
+          "crates/core/src/connection.rs"
+        ],
+        "floor_char_boundary": [
+          "crates/app-services/src/workspace_state.rs",
+          "crates/app-services/src/completion.rs"
+        ],
+        "go_lines_preserved": [
+          "crates/core/src/sql_format/mod.rs"
+        ],
+        "gtk_character_offset_after_multibyte_text_selects_the_following_statement": [
+          "apps/linux/app/src/ui/editor/statement_cursor.rs"
+        ],
+        "has_unclosed_shared_transaction": [
+          "crates/policy/src/rules.rs"
+        ],
+        "host_key_prompt_does_not_consume_the_ssh_handshake_timeout": [
+          "crates/ssh/src/lib.rs"
+        ],
+        "imported_urls_default_to_a_local_read_write_password_connection": [
+          "crates/storage/src/connection_url.rs"
+        ],
+        "is_stale_type_cache_error": [
+          "crates/drivers/postgres/src/query.rs"
+        ],
+        "json_field_names": [
+          "crates/core/src/export/json.rs"
+        ],
+        "json_field_names_make_progress_when_duplicate_names_have_gaps": [
+          "crates/core/src/export/json.rs"
+        ],
+        "keyless_tab_rejects_inline_edits_and_insert_actions": [
+          "apps/linux/app/src/ui/browse_tab/save_in_flight_tests.rs"
+        ],
+        "local_server_shorthand_dials_localhost": [
+          "crates/drivers/mssql/src/tests.rs"
+        ],
+        "mariadb_non_utf8_enum_and_set_results_preserve_bytes": [
+          "crates/drivers/mysql/tests/support/result_charset.rs"
+        ],
+        "merge_delete_needs_human_approval_in_local_and_staging": [
+          "crates/policy/tests/aud11_s6_s7.rs"
+        ],
+        "mysql_block_comments_close_at_the_first_terminator": [
+          "crates/core/src/sql_lex.rs"
+        ],
+        "mysql_delimiter_directives_agree_across_script_consumers": [
+          "apps/linux/app/src/ui/editor/statement_cursor.rs"
+        ],
+        "mysql_minus_minus_arithmetic_stays_arithmetic": [
+          "crates/core/src/sql_format/mod.rs"
+        ],
+        "mysql_slash_delimiter_is_preserved_across_planner_editor_and_parameters": [
+          "apps/linux/app/src/ui/editor/statement_cursor.rs"
+        ],
+        "native_time_zero_date_and_year_values_survive_reads_parameters_and_exports": [
+          "crates/drivers/mysql/tests/support/value_contracts.rs"
+        ],
+        "needs_text_protocol": [
+          "crates/drivers/mysql/src/session.rs"
+        ],
+        "nested_block_comment_kept_verbatim": [
+          "crates/core/src/sql_format/mod.rs"
+        ],
+        "one_result_budget_is_shared_across_later_sql_server_sets": [
+          "crates/drivers/mssql/tests/support/result_sets.rs"
+        ],
+        "only_prefer_may_continue_without_encryption": [
+          "crates/drivers/mssql/src/tests.rs"
+        ],
+        "only_zero_and_one_read_as_a_flag": [
+          "crates/drivers/mysql/src/decode.rs"
+        ],
+        "optimistic_predicate": [
+          "crates/core/src/sql_dialect/updates.rs"
+        ],
+        "parse_connection_url": [
+          "crates/storage/src/connection_url.rs"
+        ],
+        "postgres_backslash_literals_do_not_depend_on_session_mode": [
+          "crates/core/src/sql_literal.rs"
+        ],
+        "query_result_sets_controlled": [
+          "crates/mcp/tests/enforce_policy.rs",
+          "crates/drivers/mssql/src/lib.rs",
+          "crates/policy/tests/guard_transparency.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/policy/src/guard/connection.rs",
+          "crates/core/src/connection.rs"
+        ],
+        "read_text_file": [
+          "crates/core/src/text_file.rs"
+        ],
+        "reject_keyless_mutation": [
+          "apps/linux/app/src/ui/browse_tab/row_ops.rs"
+        ],
+        "render_sql_literal": [
+          "crates/core/src/sql_literal.rs"
+        ],
+        "reserved_credentials_remain_encoded_and_keep_the_database_auth_source": [
+          "crates/drivers/mongodb/src/lib.rs"
+        ],
+        "server_name_resolves_to_the_service_host_not_the_tunnel_address": [
+          "crates/drivers/clickhouse/src/tls.rs"
+        ],
+        "server_version": [
+          "crates/drivers/sqlite/src/lib.rs",
+          "crates/drivers/mysql/src/lib.rs",
+          "crates/drivers/redis/src/lib.rs",
+          "crates/drivers/mongodb/src/lib.rs",
+          "crates/agentd/src/session_forwarding_tests.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/policy/src/guard/connection.rs",
+          "crates/policy/src/guard_tests_passthrough.rs",
+          "crates/drivers/duckdb/src/lib.rs",
+          "crates/drivers/postgres/src/lib.rs",
+          "crates/core/src/connection.rs"
+        ],
+        "session_non_utc_time_zone_refuses_mysql_timestamp_instant": [
+          "crates/drivers/mysql/tests/support/timezone_contract.rs"
+        ],
+        "shared_connection_decision": [
+          "crates/policy/src/rules.rs"
+        ],
+        "spacing_alone_does_not_change_a_statement": [
+          "crates/core/src/sql_format/significant_tokens.rs"
+        ],
+        "split_statements": [
+          "crates/core/src/sql_lex.rs"
+        ],
+        "sql_looks_like_write": [
+          "crates/mcp/src/bridge.rs"
+        ],
+        "sql_variant_values_are_undecodable_and_keep_connections_usable": [
+          "crates/drivers/mssql/tests/support/sql_variant.rs"
+        ],
+        "stream_candidate": [
+          "apps/linux/app/src/ui/editor/outcomes.rs"
+        ],
+        "string_literal": [
+          "crates/core/src/sql_literal.rs"
+        ],
+        "transaction_control": [
+          "crates/policy/src/transaction_control.rs"
+        ],
+        "tsv_renderer_keeps_null_empty_marker_and_formula_text_distinct": [
+          "crates/core/src/export/csv.rs"
+        ],
+        "undecodable": [
+          "crates/drivers/mysql/src/decode.rs",
+          "crates/drivers/mssql/src/codec.rs",
+          "crates/drivers/postgres/src/query.rs"
+        ],
+        "unique_csv_null_marker": [
+          "crates/core/src/export/csv.rs"
+        ],
+        "value_contract_all_legacy_datetime_ticks_round_trip_through_parameters": [
+          "crates/drivers/mssql/tests/integration.rs"
+        ],
+        "value_contract_bit_enum_set_and_geometry_survive_reads_parameters_and_exports": [
+          "crates/drivers/mysql/tests/support/value_contracts.rs"
+        ],
+        "value_contract_builtin_range_families_are_refused_without_losing_native_text": [
+          "crates/drivers/postgres/tests/support/value_contracts.rs"
+        ],
+        "value_contract_composite_result_is_explicitly_unsupported": [
+          "crates/drivers/postgres/tests/support/value_contracts.rs"
+        ],
+        "value_contract_csv_keeps_empty_text_distinct_from_null": [
+          "crates/core/src/export/csv.rs"
+        ],
+        "value_contract_datetimeoffset_keeps_its_offset_through_results_parameters_and_exports": [
+          "crates/drivers/mssql/tests/integration.rs"
+        ],
+        "value_contract_geometric_types_keep_native_oracles_when_projection_is_refused": [
+          "crates/drivers/postgres/tests/support/value_contracts.rs"
+        ],
+        "value_contract_inet_and_cidr_preserve_ipv6_prefix_semantics": [
+          "crates/drivers/postgres/tests/support/value_contracts.rs"
+        ],
+        "value_contract_intervals_preserve_independent_fields_in_every_style": [
+          "crates/drivers/postgres/tests/support/value_contracts.rs"
+        ],
+        "value_contract_jsonb_domain_keeps_json_null_distinct_from_sql_null": [
+          "crates/drivers/postgres/tests/support/value_contracts.rs"
+        ],
+        "value_contract_list_array_and_struct_refusals_keep_native_oracles": [
+          "crates/drivers/duckdb/tests/integration.rs"
+        ],
+        "value_contract_mongodb_date_parser_preserves_milliseconds_and_refuses_rounding": [
+          "apps/linux/app/tests/support/value_parse.rs"
+        ],
+        "value_contract_mongodb_integer_parser_preserves_int32_and_int64_widths": [
+          "apps/linux/app/tests/support/mongodb_integer_width.rs"
+        ],
+        "value_contract_numeric_preserves_base_groups_sign_scale_and_specials": [
+          "crates/drivers/postgres/src/numeric.rs"
+        ],
+        "value_contract_numeric_wire_extremes_have_bounded_exact_output": [
+          "crates/drivers/postgres/src/numeric.rs"
+        ],
+        "value_contract_postgres_money_is_refused_with_exact_server_oracle": [
+          "crates/drivers/postgres/tests/support/value_contracts.rs"
+        ],
+        "value_contract_scalar_types_with_server_text_are_read_as_text": [
+          "crates/drivers/postgres/tests/support/value_contracts.rs"
+        ],
+        "value_contract_server_owned_columns_and_identity_copy_inserts_use_defaults": [
+          "crates/drivers/mssql/tests/support/server_owned_columns.rs"
+        ],
+        "value_contract_vectors_keep_space_separated_elements_through_exports": [
+          "crates/drivers/postgres/tests/support/value_contracts.rs"
+        ],
+        "value_contract_wide_decimal_csv_bound_and_literal_round_trips_preserve_all_digits": [
+          "crates/drivers/mysql/tests/integration.rs"
+        ],
+        "value_contract_wide_numeric_text_keeps_sign_scale_and_every_digit": [
+          "crates/drivers/mssql/src/codec.rs"
+        ],
+        "value_contract_workbook_preserves_temporal_precision_and_timezone_as_text": [
+          "crates/core/src/export/xlsx.rs"
+        ],
+        "value_contract_workbook_preserves_wide_integers_and_exact_decimals_as_text": [
+          "crates/core/src/export/xlsx.rs"
+        ],
+        "with_locking_backstop": [
+          "crates/policy/src/select_writes.rs"
+        ]
+      },
+      "source_pins": [
+        "d1e88ab4b5b196d8b920b56ee8bc1735dcdc6269",
+        "7c4cb3929",
+        "12345678901234567890123",
+        "9007199254740993"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/tablepro-dbx-review-2026-10-20/f-dbx-ux-fixes.md",
+      "sha256": "573915f483b15a342230be8c38ee3f2547b50f35ed9aa8225eddd0304c52cc46",
+      "title": "F. dbx frontend/UX fix mining against BookiE",
+      "lines": 86,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "a_clean_preview_can_be_replaced": [
+          "crates/app-services/tests/workspace_model.rs"
+        ],
+        "a_dirty_refresh_can_be_confirmed_after_the_save_finishes": [
+          "apps/linux/app/src/ui/app/browse.rs"
+        ],
+        "a_newer_gsettings_migration_marker_is_not_downgraded": [
+          "apps/linux/app/src/services/preferences.rs"
+        ],
+        "a_preview_with_pending_changes_is_promoted": [
+          "crates/app-services/tests/workspace_model.rs"
+        ],
+        "a_semicolon_inside_a_line_comment_does_not_split_the_statement": [
+          "crates/app-services/src/completion.rs"
+        ],
+        "a_semicolon_inside_a_literal_does_not_split_the_statement": [
+          "crates/app-services/src/completion.rs"
+        ],
+        "binary_bytes_show_a_hex_dump_and_utf8_bytes_show_text": [
+          "apps/linux/app/src/ui/grid/value_viewer.rs"
+        ],
+        "browse_next_page_is_disabled_when_known_total_matches_page_end": [
+          "apps/linux/app/src/ui/browse_tab/tests.rs"
+        ],
+        "browse_next_page_uses_known_total_and_page_size_fallback": [
+          "apps/linux/app/src/ui/browse_tab/tests.rs"
+        ],
+        "browse_page_response_must_match_the_current_offset": [
+          "apps/linux/app/src/ui/browse_tab/tests.rs"
+        ],
+        "clamp_truncates_tabs_beyond_limit": [
+          "crates/app-services/src/workspace_state/tests.rs"
+        ],
+        "clearing_connection_metadata_removes_cached_candidates_and_retires_requests": [
+          "crates/app-services/src/completion.rs"
+        ],
+        "clipboard_csv_keeps_null_empty_enum_and_marker_labels_distinct": [
+          "apps/linux/app/src/ui/grid/export.rs"
+        ],
+        "clipboard_tsv_is_published_and_keeps_null_and_formula_cells_distinct": [
+          "apps/linux/app/src/ui/grid/export.rs"
+        ],
+        "confirm_session_teardown": [
+          "apps/linux/app/src/ui/app/workspace_close.rs"
+        ],
+        "copying_a_previewed_cell_copies_the_full_value": [
+          "apps/linux/app/src/ui/grid/context_menu.rs"
+        ],
+        "current_sort": [
+          "apps/linux/app/src/ui/browse_tab/accessors.rs"
+        ],
+        "dialect_boundaries_and_unicode_cursor_are_preserved": [
+          "apps/linux/app/src/ui/editor/statement_cursor.rs"
+        ],
+        "explicit_sort_appends_primary_key_tie_breakers": [
+          "crates/app-services/src/browse_query.rs"
+        ],
+        "failed_legacy_mirror_rolls_back_the_gsettings_update": [
+          "apps/linux/app/src/services/preferences.rs"
+        ],
+        "formatting_json_is_explicit_and_preserves_large_number_lexemes": [
+          "apps/linux/app/src/ui/grid/full_value_editor.rs"
+        ],
+        "invalidate_columns": [
+          "crates/app-services/src/completion.rs"
+        ],
+        "literals_and_comments_do_not_offer_sql_identifiers": [
+          "crates/app-services/src/completion_proposals.rs"
+        ],
+        "next_page_available": [
+          "apps/linux/app/src/ui/browse_tab/chrome.rs"
+        ],
+        "only_the_latest_row_count_request_is_accepted": [
+          "apps/linux/app/src/ui/browse_tab/tests.rs"
+        ],
+        "parse_clipboard_grid": [
+          "apps/linux/app/src/ui/browse_tab/paste.rs"
+        ],
+        "parse_grid_cell_input": [
+          "apps/linux/app/src/ui/browse_tab/value_parse.rs"
+        ],
+        "refresh_decision": [
+          "apps/linux/app/src/ui/app/browse.rs"
+        ],
+        "refresh_is_blocked_while_a_save_is_in_flight": [
+          "apps/linux/app/src/ui/app/browse.rs"
+        ],
+        "schema_requests_are_accepted_only_by_their_generation": [
+          "crates/app-services/src/completion.rs"
+        ],
+        "table_references": [
+          "crates/app-services/src/completion.rs"
+        ],
+        "text_payload_refuses_values_above_the_edit_budget": [
+          "apps/linux/app/src/ui/grid/full_value_editor.rs"
+        ],
+        "the_plain_csv_writers_keep_formula_text_and_render_null_as_an_empty_field": [
+          "crates/core/src/export/csv.rs"
+        ],
+        "the_statement_range_covers_the_trimmed_statement_under_the_cursor": [
+          "apps/linux/app/src/ui/editor/statement_cursor.rs"
+        ],
+        "the_statement_under_the_cursor_decides_the_scope": [
+          "crates/app-services/src/completion.rs"
+        ]
+      },
+      "source_pins": [
+        "d1e88ab4b5b196d8b920b56ee8bc1735dcdc6269",
+        "7c4cb3929"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/tablepro-issue-review-2026-10-20.md",
+      "sha256": "11b87ca52f4b6f21795b4aff4314b49173ac79fba3b3b92ba5783f59d8ead7a5",
+      "title": "TablePro issue review, 2026-10-20",
+      "lines": 46,
+      "bookie_issues": [
+        {
+          "number": 580,
+          "state": "OPEN"
+        }
+      ],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "84f03a0385562d97554c47a06e6cebab189c3004"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/testing-history.md",
+      "sha256": "abf64281fe603917d886c2c58110451c3ce7515d5748a5a600d1d8dcdea36f8d",
+      "title": "Historical test adoption",
+      "lines": 98,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "extract_named_parameters": [
+          "crates/core/src/params.rs",
+          "crates/core/src/params.rs"
+        ],
+        "map_connect_error": [
+          "crates/ssh/src/lib.rs"
+        ],
+        "map_redis_error": [
+          "crates/drivers/redis/src/lib.rs"
+        ],
+        "outcome_summary": [
+          "crates/storage/src/query_history.rs"
+        ],
+        "redis_scalar": [
+          "crates/drivers/redis/src/lib.rs"
+        ],
+        "redis_value_to_result": [
+          "crates/drivers/redis/src/lib.rs"
+        ],
+        "render_json": [
+          "crates/core/src/export/json.rs"
+        ],
+        "render_markdown": [
+          "crates/core/src/export/markdown.rs"
+        ],
+        "statement_spans": [
+          "crates/core/src/sql_lex.rs"
+        ],
+        "urlencoding_lite": [
+          "crates/drivers/redis/src/lib.rs"
+        ]
+      },
+      "source_pins": [
+        "aeac107a4"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/third-party-notice-inventory-2026-10-19.md",
+      "sha256": "0f46ff3d0aa3a26447d3def7bdb7dfbb795f9dbc6fe923d6a11b0bff09dc4b76",
+      "title": "Third-party notice inventory, 2026-10-19",
+      "lines": 21,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/type-contract-history.md",
+      "sha256": "6a70d66fd057d00e7e2f1c9dbf9b5e1383b64e5ec3eb08869f38750a8f3d8441",
+      "title": "Historical record: type-contract-strategy.md",
+      "lines": 1768,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "browse_table": [
+          "crates/mcp/src/bridge.rs"
+        ],
+        "build_insert_plan": [
+          "crates/core/src/import/plan.rs"
+        ],
+        "columns_for_browse_page": [
+          "apps/linux/app/src/ui/browse_tab/mod.rs"
+        ],
+        "decode_by_type": [
+          "crates/drivers/mysql/src/decode.rs"
+        ],
+        "execute_query": [
+          "crates/mcp/src/bridge.rs"
+        ],
+        "json_field_names_make_progress_when_duplicate_names_have_gaps": [
+          "crates/core/src/export/json.rs"
+        ],
+        "mariadb_session_non_utc_time_zone_refuses_timestamp_instant": [
+          "crates/drivers/mysql/tests/support/timezone_contract.rs"
+        ],
+        "mariadb_unsigned_subtraction_obeys_session_mode_and_signed_boundaries": [
+          "crates/drivers/mysql/tests/support/unsigned_subtraction.rs"
+        ],
+        "mssql_value_query_refetches_the_exact_blob_for_a_composite_key": [
+          "apps/linux/app/src/services/browse_query.rs"
+        ],
+        "mysql_copy_as_insert_preserves_auto_increment_id_and_next_value": [
+          "crates/drivers/mysql/tests/support/mysql_identity_copy_contract.rs"
+        ],
+        "mysql_sql_copy_export_preserves_auto_increment_ids_and_next_value": [
+          "crates/drivers/mysql/tests/support/mysql_identity_copy_contract.rs"
+        ],
+        "mysql_unsigned_subtraction_obeys_session_mode_and_signed_boundaries": [
+          "crates/drivers/mysql/tests/support/unsigned_subtraction.rs"
+        ],
+        "quote_literal": [
+          "crates/core/src/sql_literal.rs"
+        ],
+        "render_markdown": [
+          "crates/core/src/export/markdown.rs"
+        ],
+        "row_to_json": [
+          "crates/core/src/export/json.rs"
+        ],
+        "session_non_utc_time_zone_refuses_mysql_timestamp_instant": [
+          "crates/drivers/mysql/tests/support/timezone_contract.rs"
+        ],
+        "sql_server_numeric_values_outside_rust_decimal_round_trip_as_exact_text": [
+          "crates/drivers/mssql/tests/wide_numeric.rs"
+        ],
+        "sqlite_json_group_array_any_csv_round_trip_preserves_json_null_and_text": [
+          "apps/linux/app/tests/support/sqlite_any_contract/aggregate_csv.rs"
+        ],
+        "sqlite_json_group_object_any_csv_round_trip_preserves_native_text": [
+          "apps/linux/app/tests/support/sqlite_any_contract/aggregate_csv.rs"
+        ],
+        "string_literal": [
+          "crates/core/src/sql_literal.rs"
+        ],
+        "valid_names_with_only_one_reserved_prefix_letter_are_not_prefixed": [
+          "crates/core/src/export/xml.rs"
+        ],
+        "value_contract_array_grid_edit_preserves_array_elements": [
+          "crates/drivers/postgres/tests/support/array_contract.rs"
+        ],
+        "value_contract_arrays_preserve_elements_dimensions_and_exports": [
+          "crates/drivers/postgres/tests/support/value_contracts.rs"
+        ],
+        "value_contract_cidr_array_xlsx_preserves_native_network_text": [
+          "crates/drivers/postgres/tests/support/array_contract_parts/network_array_consumers.rs"
+        ],
+        "value_contract_citext_array_decodes_and_rebinds_exact_values": [
+          "crates/drivers/postgres/tests/support/array_contract_parts/citext_array_consumers.rs"
+        ],
+        "value_contract_custom_composite_array_refusal_preserves_rows": [
+          "crates/drivers/postgres/tests/support/custom_array_contract.rs"
+        ],
+        "value_contract_custom_range_array_refusal_preserves_target_and_sibling_rows": [
+          "crates/drivers/postgres/tests/support/range_array_contract.rs"
+        ],
+        "value_contract_custom_range_scalar_refusal_preserves_target_and_sibling_rows": [
+          "crates/drivers/postgres/tests/support/range_array_contract.rs"
+        ],
+        "value_contract_deep_domain_levels_over_enum_ignore_shadowed_search_path": [
+          "crates/drivers/postgres/tests/support/domain_contract_parts/deep_domains.rs"
+        ],
+        "value_contract_deep_enum_domain_refuses_incompatible_typed_assignments": [
+          "crates/drivers/postgres/tests/support/domain_depth_boundary_contract.rs"
+        ],
+        "value_contract_dimension_product_must_fit_element_length_words": [
+          "crates/drivers/postgres/src/array.rs"
+        ],
+        "value_contract_enum_parameter_resolves_without_target_schema_in_session_path": [
+          "crates/drivers/postgres/tests/support/enum_parameter_context_contract.rs"
+        ],
+        "value_contract_geometric_array_refusals_preserve_target_and_sibling_rows": [
+          "crates/drivers/postgres/tests/support/custom_array_contract.rs"
+        ],
+        "value_contract_inet_array_xlsx_preserves_native_network_text": [
+          "crates/drivers/postgres/tests/support/array_contract_parts/network_array_consumers.rs"
+        ],
+        "value_contract_money_array_refusal_preserves_target_and_sibling_rows": [
+          "crates/drivers/postgres/tests/support/custom_array_contract.rs"
+        ],
+        "value_contract_mongodb_grid_value_comparison_does_not_detect_aba": [
+          "crates/drivers/mongodb/tests/support/stale_grid_edit_contract.rs"
+        ],
+        "value_contract_mssql_server_owned_columns_use_native_defaults_across_consumers": [
+          "apps/linux/app/tests/support/mssql_server_owned_columns.rs"
+        ],
+        "value_contract_pg_lsn_array_result_bind_keyed_edit_and_csv_are_exact": [
+          "crates/drivers/postgres/tests/support/array_contract_parts/result_consumers_temporal.rs"
+        ],
+        "value_contract_point_array_refusal_preserves_target_and_sibling_rows": [
+          "crates/drivers/postgres/tests/support/custom_array_contract.rs"
+        ],
+        "value_contract_postgres_citext_array_grid_edit_preserves_case_nulls_and_sibling": [
+          "apps/linux/app/tests/support/postgres_citext_array_grid.rs"
+        ],
+        "value_contract_postgres_enum_identifiers_at_catalog_byte_limit_preserve_typed_edits": [
+          "crates/drivers/postgres/tests/support/quoted_enum_identifier_contract.rs"
+        ],
+        "value_contract_submicro_text_parameters_keep_precision_after_explicit_casts": [
+          "crates/drivers/duckdb/tests/support/submicro_parameter_expression.rs"
+        ],
+        "value_contract_timestamptz_array_rebinding_preserves_instants_after_timezone_change": [
+          "crates/drivers/postgres/tests/support/array_contract_parts/result_consumers_timestamptz_timezone.rs"
+        ],
+        "value_contract_xml_array_file_exports_preserve_native_text": [
+          "crates/drivers/postgres/tests/support/array_contract_parts/xml_array_file_exports.rs"
+        ],
+        "value_to_bson": [
+          "crates/drivers/mongodb/src/codec.rs"
+        ]
+      },
+      "source_pins": [
+        "0cf70382eed72c144ea94208dfef5f5706e0a7dd",
+        "35d457fa488768a5204a26d785c90114073d4acd",
+        "62dc257c7",
+        "8ed0f66ed54b1411feaac5d7a8e49abc6999fb18",
+        "f88159dcb23dd74a960c638a6af42b608a1b4345",
+        "736a73f8434a57fd33dbe9d6212956e29351b168",
+        "7fd33187c1f9bfa024a09be85e203bb82e8f24c4",
+        "9007199254740993",
+        "2978efe67",
+        "4294967295"
+      ],
+      "evidence_links": [
+        "../evidence/clickhouse-nested-map-array-tuple-results-2026-10-06/manifest.json",
+        "../evidence/clickhouse-nested-xlsx-consumers-2026-10-06/manifest.json",
+        "../evidence/finite-float-consumer-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-scalar-csv-whitespace-2026-10-06/manifest.json",
+        "../evidence/postgres-citext-array-roundtrip-results-2026-10-06/manifest.json",
+        "../evidence/postgres-citext-array-refusal-results-2026-10-06/manifest.json",
+        "../evidence/postgres-bit-arrays-results-2026-10-06/manifest.json",
+        "../evidence/postgres-bit-array-grid-edit-results-2026-10-06/manifest.json",
+        "../evidence/postgres-pg-lsn-array-results-2026-10-06/manifest.json",
+        "../evidence/postgres-network-array-roundtrip-results-2026-10-06/manifest.json",
+        "evidence/postgres-macaddr-array-roundtrip-results-2026-10-06/manifest.json",
+        "evidence/postgres-macaddr8-array-roundtrip-results-2026-10-06/manifest.json",
+        "../evidence/value-uuid-multidriver-results-2026-10-05/manifest.json",
+        "../evidence/duckdb-uuid-mixed-projection-results-2026-10-06/manifest.json",
+        "../evidence/postgres-domain-enum-array-remove-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-position-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-replace-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-replace-shadowed-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-enum-array-input-functions-shadowed-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-enum-array-cat-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-positions-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-equality-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-functions-shadowed-results-2026-10-04/manifest.json",
+        "../evidence/postgres-trim-array-enum-inference-boundary-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-unnest-inference-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-generate-subscripts-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-shape-functions-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-quoted-shadow-path-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-to-string-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-fill-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-multi-array-unnest-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-random-arrays-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-agg-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-agg-distinct-filter-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-union-values-inference-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-agg-shadowed-path-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-range-shadowed-path-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-range-bounds-shadowed-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-first-last-shadowed-path-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-min-max-shadowed-path-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-add-value-default-append-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-add-value-positions-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-add-value-session-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-rename-value-session-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-cross-session-add-after-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-cross-session-catalog-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-type-rename-schema-move-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-cross-session-type-move-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-type-recreate-cache-results-2026-10-06/manifest.json",
+        "../evidence/postgres-domain-enum-any-array-parameter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-operators-results-2026-10-04/manifest.json",
+        "../evidence/postgres-shadowed-enum-array-operator-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-array-codec-boundaries-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-quantifier-shadowed-path-results-2026-10-05/manifest.json",
+        "../evidence/postgres-inferred-enum-array-depth-results-2026-10-04/manifest.json",
+        "../evidence/mariadb-empty-enum-set-empty-string-is-null-results-2026-10-05/manifest.json",
+        "../evidence/mariadb-empty-enum-set-combined-mode-results-2026-10-05/manifest.json",
+        "../evidence/mariadb-empty-enum-set-grid-empty-string-mode-results-2026-10-05/manifest.json",
+        "../evidence/mariadb-empty-enum-set-sql-file-empty-string-mode-results-2026-10-05/manifest.json",
+        "../evidence/mariadb-empty-varchar-import-empty-string-mode-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-301-level-results-2026-10-06/manifest.json",
+        "../evidence/postgres-domain-300-level-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-260-level-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-259-level-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-258-level-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-257-level-results-2026-10-04/manifest.json",
+        "../evidence/postgres-deep-domain-followup-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-array-functions-results-2026-10-04/manifest.json",
+        "../evidence/mysql-binary-enum-collation-results-2026-10-05/manifest.json",
+        "../evidence/mysql-binary-set-collation-results-2026-10-05/manifest.json",
+        "../evidence/mysql-latin1-enum-set-collation-results-2026-10-05/manifest.json",
+        "../evidence/mysql-enum-set-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/mysql-strict-zero-date-results-2026-10-04/manifest.json",
+        "../evidence/mysql-enum-sql-mode-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-time-mode-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-time-tie-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-half-boundary-matrix-results-2026-10-04/manifest.json",
+        "../evidence/mysql-time-precision-matrix-results-2026-10-04/manifest.json",
+        "../evidence/mysql-datetime-timestamp-precision-matrix-results-2026-10-04/manifest.json",
+        "../evidence/mysql-temporal-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-datetime-mode-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-timestamp-mode-results-2026-10-04/manifest.json",
+        "../evidence/mysql-atomic-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-numeric-affinity-grid-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-affinity-check-constraint-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-computed-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-coalesce-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-union-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-nullif-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-min-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-group-concat-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-max-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-sum-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-total-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-avg-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-arithmetic-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-json-extract-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-cast-blob-any-csv-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-abs-any-csv-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-round-any-csv-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-quote-any-csv-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-instr-any-csv-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-length-any-csv-results-2026-10-06/manifest.json",
+        "../evidence/local-gtk-duckdb-value-tier-results-2026-10-06-cfc99dd1/manifest.json",
+        "../evidence/sqlite-union-any-export-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-union-any-csv-roundtrip-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-strict-any-query-csv-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-query-empty-metadata-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-attached-any-metadata-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-xlsx-calc-formula-text-results-2026-10-04/manifest.json",
+        "../evidence/mssql-legacy-datetime-ticks-results-2026-10-04/manifest.json",
+        "../evidence/mssql-legacy-datetime-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/mssql-datetimeoffset-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/mongodb-stale-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/mongodb-stale-grid-delete-results-2026-10-04/manifest.json",
+        "../evidence/mongodb-stale-grid-delete-new-field-results-2026-10-07/manifest.json",
+        "../evidence/duckdb-rust-decimal-boundaries-results-2026-10-06/manifest.json",
+        "../evidence/duckdb-enum-csv-roundtrip-results-2026-10-04/manifest.json",
+        "../evidence/duckdb-enum-list-result-refusal-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-clipboard-csv-results-2026-10-04/manifest.json",
+        "../evidence/gtk-clipboard-csv-delivery-results-2026-10-05/manifest.json",
+        "../evidence/gtk-calc-tsv-clipboard-paste-results-2026-10-05/manifest.json",
+        "evidence/postgres-text-array-calc-reimport-results-2026-10-05/manifest.json",
+        "evidence/postgres-uuid-array-calc-reimport-results-2026-10-05/manifest.json",
+        "evidence/postgres-date-array-calc-reimport-results-2026-10-05/manifest.json",
+        "evidence/postgres-timestamp-array-calc-reimport-results-2026-10-05/manifest.json",
+        "evidence/postgres-time-array-calc-reimport-results-2026-10-05/manifest.json",
+        "evidence/postgres-timetz-array-calc-reimport-results-2026-10-05/manifest.json",
+        "evidence/postgres-boolean-array-calc-reimport-results-2026-10-05/manifest.json",
+        "evidence/postgres-int8-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-integer-arrays-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-float4-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/local-gtk-duckdb-value-tier-tsv-clipboard-results-2026-10-05/manifest.json",
+        "../evidence/local-integration-tier-results-2026-10-04/manifest.json",
+        "../evidence/sql-lex-mutation-results-2026-10-06/README.md",
+        "../evidence/sql-lex-zero-progress-guards-results-2026-10-06/manifest.json",
+        "../evidence/sql-lex-cursor-arithmetic-guard-results-2026-10-06/manifest.json",
+        "../evidence/sql-lex-mysql-dollar-boundary-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-substr-any-csv-results-2026-10-05/manifest.json",
+        "../evidence/mssql-datetimeoffset-xlsx-consumer-results-2026-10-05/manifest.json",
+        "../evidence/postgres-date-array-sql-dmy-results-2026-10-05/manifest.json",
+        "../evidence/postgres-timestamp-array-datestyle-results-2026-10-05/manifest.json",
+        "../evidence/postgres-interval-array-style-transition-results-2026-10-05/manifest.json",
+        "../evidence/duckdb-nanosecond-keyed-grid-edit-results-2026-10-05/manifest.json",
+        "../evidence/duckdb-nanosecond-parameter-dml-results-2026-10-06/manifest.json",
+        "../evidence/duckdb-nested-collection-refusal-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-case-any-csv-roundtrip-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-hex-any-csv-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-scalar-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-scalar-gnumeric-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-whitespace-reimport-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-scalar-whitespace-reimport-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-array-shapes-calc-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-array-shapes-gnumeric-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-csv-quoted-lines-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-sql-literal-session-modes-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-sql-literal-session-modes-full-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-csv-shapes-results-2026-10-04/manifest.json",
+        "../evidence/postgres-shadowed-enum-array-import-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-csv-shadow-search-path-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-csv-search-path-transition-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-array-grid-null-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-array-default-null-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-import-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-shadowed-import-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-grid-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-filter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-filewriter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-gnumeric-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-gnumeric-reimport-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-array-calc-reimport-results-2026-10-06/manifest.json",
+        "../evidence/postgres-domain-uuid-array-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-array-family-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-bytea-array-results-2026-10-04/manifest.json",
+        "../evidence/postgres-shadowed-domain-bytea-array-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-array-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-array-gnumeric-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-formula-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-bytea-array-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/postgres-timestamptz-array-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/postgres-timestamptz-array-non-utc-session-results-2026-10-05/manifest.json",
+        "../evidence/postgres-timestamptz-array-non-utc-calc-results-2026-10-05/manifest.json",
+        "../evidence/postgres-temporal-arrays-gnumeric-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-interval-array-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/postgres-temporal-array-grid-edit-results-2026-10-05/manifest.json",
+        "../evidence/postgres-integer-array-grid-edit-results-2026-10-05/manifest.json",
+        "../evidence/postgres-text-array-grid-edit-results-2026-10-05/manifest.json",
+        "../evidence/postgres-interval-array-grid-edit-results-2026-10-05/manifest.json",
+        "../evidence/postgres-float4-array-grid-edit-results-2026-10-05/manifest.json",
+        "../evidence/sqlite-coalesce-any-csv-roundtrip-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-case-any-xlsx-refusal-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-coalesce-any-xlsx-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-xlsx-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/postgres-array-filewriter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-numeric-array-markup-export-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-array-markup-export-results-2026-10-06/manifest.json",
+        "evidence/postgres-numeric-array-calc-reimport-results-2026-10-04/manifest.json",
+        "evidence/postgres-float8-array-calc-reimport-results-2026-10-04/manifest.json",
+        "evidence/postgres-float4-array-calc-reimport-results-2026-10-05/manifest.json",
+        "evidence/postgres-enum-array-calc-reimport-results-2026-10-04/manifest.json",
+        "evidence/postgres-bytea-array-calc-reimport-results-2026-10-04/manifest.json",
+        "evidence/postgres-timestamptz-array-calc-reimport-results-2026-10-04/manifest.json",
+        "evidence/postgres-interval-array-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/postgres-numeric-array-gnumeric-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-float8-array-gnumeric-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-uuid-array-filewriter-results-2026-10-05/manifest.json",
+        "../evidence/postgres-boolean-array-filewriter-results-2026-10-06/manifest.json",
+        "../evidence/postgres-float8-array-filewriter-results-2026-10-06/manifest.json",
+        "../evidence/postgres-bytea-array-filewriter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-bytea-array-output-escape-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-array-sql-mode-results-2026-10-05/manifest.json",
+        "../evidence/postgres-shadowed-enum-filter-results-2026-10-03/manifest.json",
+        "../evidence/postgres-shadowed-enum-filter-matrix-results-2026-10-03/manifest.json",
+        "../evidence/postgres-shadowed-enum-parameter-results-2026-10-03/manifest.json",
+        "../evidence/postgres-enum-session-search-path-results-2026-10-04/manifest.json",
+        "../evidence/postgres-quoted-enum-identifiers-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-filter-matrix-results-2026-10-03/manifest.json",
+        "../evidence/postgres-domain-enum-query-operators-results-2026-10-03/manifest.json",
+        "../evidence/postgres-domain-enum-param-operator-results-2026-10-03/manifest.json",
+        "../evidence/postgres-domain-enum-param-list-results-2026-10-03/manifest.json",
+        "../evidence/postgres-domain-enum-distinct-parameter-results-2026-10-03/manifest.json",
+        "../evidence/postgres-enum-expression-parameter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-case-parameter-inference-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-greatest-least-parameter-inference-results-2026-10-05/manifest.json",
+        "../evidence/postgres-shadowed-enum-parameter-context-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-nullif-parameter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-nullif-parameter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-coalesce-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-case-shadowed-parameter-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-coalesce-shadowed-results-2026-10-05/manifest.json",
+        "../evidence/postgres-three-level-enum-query-operator-results-2026-10-03/manifest.json",
+        "../evidence/postgres-four-level-domain-results-2026-10-04/manifest.json",
+        "../evidence/postgres-five-level-domain-results-2026-10-04/manifest.json",
+        "../evidence/postgres-deep-domain-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-parameter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-bounds-results-2026-10-04/manifest.json",
+        "../evidence/postgres-seven-domain-results-2026-10-04/manifest.json",
+        "../evidence/postgres-eight-domain-results-2026-10-04/manifest.json",
+        "../evidence/postgres-nine-domain-results-2026-10-04/manifest.json",
+        "../evidence/postgres-six-level-domain-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-set-role-shadow-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-role-default-search-path-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-label-byte-boundary-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-overlength-refusal-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-order-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-quoted-identifiers-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-csv-quoted-identifiers-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-identifier-escaping-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-unicode-identifiers-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-unicode-csv-import-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-shadowed-quoted-search-path-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-quoted-csv-shadow-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-mixed-case-identifiers-results-2026-10-07/manifest.json"
+      ]
+    },
+    {
+      "path": "docs/archive/type-contract-strategy-pre-project-migration-2026-10-12.md",
+      "sha256": "8172043136d62d0e92ad1df0bac3aaa208d48c54d9e2e56f3068b066ed69a589",
+      "title": "B3 type and consumer work board",
+      "lines": 83,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "a_column_comment_round_trips_from_its_extended_property": [
+          "crates/drivers/mssql/tests/integration.rs"
+        ],
+        "execute_query": [
+          "crates/mcp/src/bridge.rs"
+        ],
+        "filtered_keyset_page_keeps_the_filter_and_cursor": [
+          "crates/drivers/mongodb/tests/support/browse_keyset.rs"
+        ],
+        "filtered_offset_pages_keep_filters_with_and_without_parameters": [
+          "crates/drivers/mongodb/tests/support/browse_keyset.rs"
+        ],
+        "json_each_values_keep_their_runtime_storage_classes": [
+          "crates/drivers/sqlite/tests/runtime_typed_values.rs"
+        ],
+        "mssql_value_query_refetches_the_exact_blob_for_a_composite_key": [
+          "apps/linux/app/src/services/browse_query.rs"
+        ],
+        "null_filtered_keyset_page_excludes_missing_fields": [
+          "crates/drivers/mongodb/tests/support/browse_keyset.rs"
+        ],
+        "pattern_keyset_filters_match_like_wildcards_without_matching_nulls": [
+          "crates/drivers/mongodb/tests/support/browse_keyset.rs"
+        ],
+        "replacing_shared_rows_preserves_edits_on_held_rows": [
+          "apps/linux/app/src/ui/row_store.rs"
+        ],
+        "shared_result_rows_do_not_clone_large_cell_payloads_into_row_objects": [
+          "apps/linux/app/src/ui/row_object.rs"
+        ],
+        "value_contract_deep_enum_domain_refuses_incompatible_typed_assignments": [
+          "crates/drivers/postgres/tests/support/domain_depth_boundary_contract.rs"
+        ],
+        "value_contract_deep_enum_scalar_contexts_resolve_under_shadowed_search_path": [
+          "crates/drivers/postgres/tests/support/domain_depth_boundary_contract.rs"
+        ],
+        "value_contract_mongodb_grid_value_comparison_does_not_detect_aba": [
+          "crates/drivers/mongodb/tests/support/stale_grid_edit_contract.rs"
+        ],
+        "value_contract_mssql_server_owned_columns_use_native_defaults_across_consumers": [
+          "apps/linux/app/tests/support/mssql_server_owned_columns.rs"
+        ]
+      },
+      "source_pins": [
+        "4f552035b2",
+        "db051ced7",
+        "da6b85129"
+      ],
+      "evidence_links": [
+        "../evidence/postgres-domain-301-level-results-2026-10-06/manifest.json",
+        "../evidence/postgres-domain-300-level-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-260-level-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-259-level-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-258-level-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-257-level-results-2026-10-04/manifest.json",
+        "../evidence/postgres-deep-domain-followup-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-any-array-parameter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-array-functions-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-remove-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-position-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-replace-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-cat-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-positions-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-equality-results-2026-10-04/manifest.json",
+        "../evidence/mysql-binary-enum-collation-results-2026-10-05/manifest.json",
+        "../evidence/mysql-binary-set-collation-results-2026-10-05/manifest.json",
+        "../evidence/mysql-latin1-enum-set-collation-results-2026-10-05/manifest.json",
+        "../evidence/mysql-enum-set-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/mysql-strict-zero-date-results-2026-10-04/manifest.json",
+        "../evidence/mysql-enum-sql-mode-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-time-mode-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-time-tie-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-half-boundary-matrix-results-2026-10-04/manifest.json",
+        "../evidence/mysql-time-precision-matrix-results-2026-10-04/manifest.json",
+        "../evidence/mysql-datetime-timestamp-precision-matrix-results-2026-10-04/manifest.json",
+        "../evidence/mysql-temporal-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-datetime-mode-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-timestamp-mode-results-2026-10-04/manifest.json",
+        "../evidence/mysql-atomic-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-numeric-affinity-grid-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-affinity-check-constraint-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-computed-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-coalesce-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-union-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-nullif-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-min-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-group-concat-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-max-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-sum-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-total-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-avg-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-arithmetic-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-json-extract-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-cast-blob-any-csv-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-abs-any-csv-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-round-any-csv-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-quote-any-csv-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-instr-any-csv-results-2026-10-06/manifest.json",
+        "../evidence/sqlite-length-any-csv-results-2026-10-06/manifest.json",
+        "../evidence/local-gtk-duckdb-value-tier-results-2026-10-06-cfc99dd1/manifest.json",
+        "../evidence/sqlite-union-any-export-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-union-any-csv-roundtrip-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-strict-any-query-csv-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-query-empty-metadata-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-attached-any-metadata-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-xlsx-calc-formula-text-results-2026-10-04/manifest.json",
+        "../evidence/mssql-legacy-datetime-ticks-results-2026-10-04/manifest.json",
+        "../evidence/mssql-legacy-datetime-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/mssql-datetimeoffset-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/mongodb-stale-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/mongodb-stale-grid-delete-results-2026-10-04/manifest.json",
+        "../evidence/mongodb-stale-grid-delete-new-field-results-2026-10-07/manifest.json",
+        "../evidence/duckdb-rust-decimal-boundaries-results-2026-10-06/manifest.json",
+        "../evidence/duckdb-enum-csv-roundtrip-results-2026-10-04/manifest.json",
+        "../evidence/duckdb-enum-list-result-refusal-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-clipboard-csv-results-2026-10-04/manifest.json",
+        "../evidence/gtk-clipboard-csv-delivery-results-2026-10-05/manifest.json",
+        "../evidence/gtk-calc-tsv-clipboard-paste-results-2026-10-05/manifest.json",
+        "../evidence/postgres-text-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-uuid-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-date-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-timestamp-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-time-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-timetz-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-boolean-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-int8-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-integer-arrays-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/finite-float-consumer-results-2026-10-04/manifest.json",
+        "../evidence/postgres-float4-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-generate-subscripts-results-2026-10-05/manifest.json",
+        "../evidence/local-gtk-duckdb-value-tier-tsv-clipboard-results-2026-10-05/manifest.json",
+        "../evidence/local-integration-tier-results-2026-10-04/manifest.json",
+        "../evidence/sql-lex-mutation-results-2026-10-06/README.md",
+        "../evidence/sql-lex-zero-progress-guards-results-2026-10-06/manifest.json",
+        "../evidence/sql-lex-cursor-arithmetic-guard-results-2026-10-06/manifest.json"
+      ]
+    },
+    {
+      "path": "docs/archive/ui-refresh-upstream-review-2026-10-14.md",
+      "sha256": "7ae445068ab3ccb50878c2602fa801e269a4bb70b354780a6e85469b446f8435",
+      "title": "Settings and icon review: 2026-10-14",
+      "lines": 43,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/upstream-adoption.md",
+      "sha256": "4d2f7b42dde936df6018695952e94b06a1d89278a1d3ba37c7ca959136d9b99f",
+      "title": "Upstream adoption through macOS 0.72",
+      "lines": 73,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "7d8288132",
+        "6e6396c590bc1cc37f5e71e6d98d563dfcf8a2d6"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/upstream-linux-adoption-2026-10-18.md",
+      "sha256": "6df0f74d1915af031bb7611e894437be91b54fd3343f6616278c0694f04dab4b",
+      "title": "Upstream Linux adoption and development workflow review",
+      "lines": 84,
+      "bookie_issues": [
+        {
+          "number": 1140,
+          "state": "CLOSED"
+        },
+        {
+          "number": 1141,
+          "state": "CLOSED"
+        },
+        {
+          "number": 1142,
+          "state": "CLOSED"
+        },
+        {
+          "number": 1143,
+          "state": "CLOSED"
+        },
+        {
+          "number": 1144,
+          "state": "CLOSED"
+        },
+        {
+          "number": 1145,
+          "state": "CLOSED"
+        },
+        {
+          "number": 1146,
+          "state": "CLOSED"
+        },
+        {
+          "number": 1147,
+          "state": "CLOSED"
+        },
+        {
+          "number": 1148,
+          "state": "CLOSED"
+        },
+        {
+          "number": 1149,
+          "state": "OPEN"
+        }
+      ],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "0ab322ea1d7576cfd858ab5946edb9e84cba9e5b",
+        "8626129e60c8f62661cf6d64a70067a6cbfbe654"
+      ],
+      "evidence_links": [
+        "../evidence/upstream-linux-audit-2026-10-18/source-pins.json"
+      ]
+    },
+    {
+      "path": "docs/archive/upstream-linux-movement-2026-10-18.md",
+      "sha256": "4a31ae78a06178a8bdef18746114a265c7720504939bae933f77d5eb1d204003",
+      "title": "TablePro upstream movement and BookiE lessons",
+      "lines": 227,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "0ab322ea1d7576cfd858ab5946edb9e84cba9e5b",
+        "8a06bc0559012ae7181c5f8450ec54536003a5a7",
+        "dabe00beae720725a10d0905193b69e2856c4f7e",
+        "8626129e60c8f62661cf6d64a70067a6cbfbe654",
+        "014bdf580f4dfb0d453e4b35b02b4c617246034b"
+      ],
+      "evidence_links": [
+        "../evidence/upstream-linux-audit-2026-10-18/source-pins.json"
+      ]
+    },
+    {
+      "path": "docs/archive/upstream-main-analysis-2026-10-20.md",
+      "sha256": "84347bdfee88c79509044013123f08be0aa09a94e2023f3491588495f7c55533",
+      "title": "Upstream main analysis, 2026-10-20",
+      "lines": 125,
+      "bookie_issues": [
+        {
+          "number": 1149,
+          "state": "OPEN"
+        }
+      ],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect": [
+          "crates/drivers/mysql/tests/support/disconnection.rs",
+          "crates/drivers/postgres/tests/support/disconnection.rs"
+        ],
+        "a_restarted_postgres_server_restores_the_existing_pool": [
+          "crates/drivers/postgres/tests/support/disconnection.rs"
+        ]
+      },
+      "source_pins": [
+        "3222542a4f66d24dc03c36478f97bf1ce34dbbf3",
+        "cc21ad81d81e0e47ca87e6ab382ec15a4bb2b747",
+        "0ab322ea1d7576cfd858ab5946edb9e84cba9e5b",
+        "2996dc2731798235b373e3906e628458efb037bd"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/upstream-main-review-2026-10-03-inventory.md",
+      "sha256": "7a745edc616a88c15f204265b42839c80846a1779f14299c3e56cdde666762e8",
+      "title": "Upstream main fix inventory: 2026-10-03",
+      "lines": 275,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "5c2df3b60cd40c25ba86c57e3d1c87499340cb3c",
+        "5c2df3b60c",
+        "aa2419dcd3",
+        "e837cd59d5",
+        "ff80b43a9d",
+        "32028b7b6b",
+        "3ca03357aa",
+        "f9486e3852",
+        "aa365865e1",
+        "3767a03396",
+        "c0da4955f1",
+        "1047ad01fe"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/upstream-main-review-2026-10-03.md",
+      "sha256": "2ccc53867fb1a2ee0d7a1ca54f39aea852d8cbd543a439897751ceca12ca3b43",
+      "title": "macOS main fixes: Linux applicability review",
+      "lines": 218,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "bare_table_names": [
+          "crates/app-services/src/completion.rs"
+        ],
+        "build_insert_from_draft": [
+          "crates/core/src/sql_dialect/inserts.rs"
+        ],
+        "classify_explain": [
+          "crates/policy/src/classify.rs"
+        ],
+        "fetch_columns": [
+          "crates/drivers/sqlite/src/lib.rs",
+          "crates/mcp/tests/timeout_bounds.rs",
+          "crates/mcp/tests/timeout_audit.rs",
+          "crates/mcp/tests/shutdown_write_audit.rs",
+          "crates/mcp/tests/postgres_custom_enum.rs",
+          "crates/mcp/tests/enforce_policy.rs",
+          "crates/mcp/src/server.rs",
+          "crates/drivers/mysql/src/lib.rs",
+          "crates/drivers/redis/src/lib.rs",
+          "crates/drivers/mssql/src/lib.rs",
+          "crates/policy/tests/guard_transparency.rs",
+          "crates/drivers/clickhouse/src/lib.rs",
+          "crates/drivers/mongodb/src/lib.rs",
+          "crates/agentd/src/session_tests.rs",
+          "crates/agentd/src/session_forwarding_tests.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/agentd/src/audit_isolation_tests.rs",
+          "crates/policy/src/guard/connection.rs",
+          "crates/policy/src/guard_tests_cursor.rs",
+          "crates/policy/src/guard_tests_checked.rs",
+          "crates/policy/src/guard_tests_bulk.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests_session.rs",
+          "crates/policy/src/guard_tests_passthrough.rs",
+          "apps/linux/app/src/services/connection_monitor.rs",
+          "crates/drivers/duckdb/src/lib.rs",
+          "crates/app-services/src/database_backup.rs",
+          "crates/drivers/postgres/src/lib.rs",
+          "crates/core/src/connection.rs",
+          "crates/core/src/connection.rs"
+        ],
+        "is_generated": [
+          "apps/linux/app/src/services/csv_import_mappings.rs"
+        ],
+        "split_table_reference": [
+          "crates/app-services/src/completion_identifiers.rs"
+        ],
+        "try_reconnect": [
+          "apps/linux/app/src/services/connection_monitor.rs"
+        ]
+      },
+      "source_pins": [
+        "5c2df3b60cd40c25ba86c57e3d1c87499340cb3c",
+        "7b08dd4786db22ac38bc341f29d0f350412af82d",
+        "aeac107a4"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/upstream-older-releases-2026-10-03-inventory.md",
+      "sha256": "a7a0c577aea8bb4b248b360d3992d82d206e463b9ae69d4e34f3f2698a1835b0",
+      "title": "Older TablePro app-release inventory",
+      "lines": 146,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [],
+      "evidence_links": [
+        "../evidence/architecture-review-2026-10-03/older-release-manifest.json"
+      ]
+    },
+    {
+      "path": "docs/archive/upstream-older-releases-review-2026-10-03.md",
+      "sha256": "aa9e42e034e7de79d44067968e6c942ee1f2c40969f381ee25ae624a8c740e60",
+      "title": "Older TablePro app releases: Linux follow-up review",
+      "lines": 125,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "value_contract_mssql_max_values_survive_connection_session_and_consumers": [
+          "apps/linux/app/tests/support/mssql_max_value_contract.rs"
+        ]
+      },
+      "source_pins": [
+        "4b7814f5e1f586c3761c1454e66d3394ad2c9609"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/upstream-u1-sql-server-2026-10-03.md",
+      "sha256": "f4acaaa0105d66507f88ee72449b31779298011b38015bbe43bf096d7bf51478",
+      "title": "U1 handoff: SQL Server server-owned columns",
+      "lines": 103,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "is_generated": [
+          "apps/linux/app/src/services/csv_import_mappings.rs"
+        ]
+      },
+      "source_pins": [
+        "7b08dd4786db22ac38bc341f29d0f350412af82d",
+        "5cdb2eeadaa747b3b8d7724a20205862d945d6a0"
+      ],
+      "evidence_links": [
+        "../evidence/upstream-u1-2026-10-03/validation.json",
+        "../evidence/upstream-u1-2026-10-03/native-before.txt",
+        "../evidence/upstream-u1-2026-10-03/native-after.txt"
+      ]
+    },
+    {
+      "path": "docs/archive/validation-history.md",
+      "sha256": "8849350ad4eb4a28d3aab747b5df5eb3ad5f4a77c6e624c5a8afae296018f934",
+      "title": "Historical local validation",
+      "lines": 49,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {},
+      "source_pins": [
+        "aeac107a4",
+        "1b771214d"
+      ],
+      "evidence_links": []
+    },
+    {
+      "path": "docs/archive/value-contract-history.md",
+      "sha256": "1a33f8ee44ee4bebbe057a4f92d9648d16b4b323866226cb21975eb440899ba2",
+      "title": "Historical record: value-contracts.md",
+      "lines": 6492,
+      "bookie_issues": [],
+      "checklists": {
+        "checked": 0,
+        "unchecked": 0
+      },
+      "current_source_symbols": {
+        "build_insert_plan": [
+          "crates/core/src/import/plan.rs"
+        ],
+        "cell_column": [
+          "crates/core/src/export/xlsx.rs"
+        ],
+        "classify_type": [
+          "apps/linux/app/src/ui/browse_tab/value_parse.rs"
+        ],
+        "clickhouse_datetime64_fits_precision": [
+          "crates/core/src/sql_literal.rs"
+        ],
+        "column_kind": [
+          "crates/core/src/import/cell.rs"
+        ],
+        "columns_for_browse_page": [
+          "apps/linux/app/src/ui/browse_tab/mod.rs"
+        ],
+        "csv_row_line": [
+          "crates/core/src/export/csv.rs"
+        ],
+        "decode_binary": [
+          "crates/drivers/postgres/src/numeric.rs",
+          "crates/drivers/postgres/src/array.rs"
+        ],
+        "document_to_row": [
+          "crates/drivers/mongodb/src/codec.rs"
+        ],
+        "execute_query": [
+          "crates/mcp/src/bridge.rs"
+        ],
+        "fetch_columns": [
+          "crates/drivers/sqlite/src/lib.rs",
+          "crates/mcp/tests/timeout_bounds.rs",
+          "crates/mcp/tests/timeout_audit.rs",
+          "crates/mcp/tests/shutdown_write_audit.rs",
+          "crates/mcp/tests/postgres_custom_enum.rs",
+          "crates/mcp/tests/enforce_policy.rs",
+          "crates/mcp/src/server.rs",
+          "crates/drivers/mysql/src/lib.rs",
+          "crates/drivers/redis/src/lib.rs",
+          "crates/drivers/mssql/src/lib.rs",
+          "crates/policy/tests/guard_transparency.rs",
+          "crates/drivers/clickhouse/src/lib.rs",
+          "crates/drivers/mongodb/src/lib.rs",
+          "crates/agentd/src/session_tests.rs",
+          "crates/agentd/src/session_forwarding_tests.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/agentd/src/lib.rs",
+          "crates/agentd/src/audit_isolation_tests.rs",
+          "crates/policy/src/guard/connection.rs",
+          "crates/policy/src/guard_tests_cursor.rs",
+          "crates/policy/src/guard_tests_checked.rs",
+          "crates/policy/src/guard_tests_bulk.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests.rs",
+          "crates/policy/src/guard_tests_session.rs",
+          "crates/policy/src/guard_tests_passthrough.rs",
+          "apps/linux/app/src/services/connection_monitor.rs",
+          "crates/drivers/duckdb/src/lib.rs",
+          "crates/app-services/src/database_backup.rs",
+          "crates/drivers/postgres/src/lib.rs",
+          "crates/core/src/connection.rs",
+          "crates/core/src/connection.rs"
+        ],
+        "json_to_value": [
+          "crates/drivers/clickhouse/src/lib.rs"
+        ],
+        "mixed_string_and_decimal128_columns_keep_values_and_refuse_lossy_edit_metadata": [
+          "crates/drivers/mongodb/tests/integration.rs"
+        ],
+        "ordinary_text_columns_remain_editable": [
+          "apps/linux/app/src/ui/grid/presentation.rs"
+        ],
+        "parse_duckdb_temporal_input": [
+          "apps/linux/app/src/ui/browse_tab/value_parse.rs"
+        ],
+        "parse_filter_value": [
+          "crates/core/src/filter.rs"
+        ],
+        "parse_input_for_driver": [
+          "apps/linux/app/src/ui/browse_tab/value_parse.rs"
+        ],
+        "parse_mysql_spatial_input": [
+          "apps/linux/app/src/ui/browse_tab/value_parse.rs"
+        ],
+        "postgres_array_cast_type": [
+          "crates/core/src/sql_dialect/pg_native_text.rs"
+        ],
+        "read_csv_file": [
+          "crates/core/src/import/csv_import.rs"
+        ],
+        "render_json": [
+          "crates/core/src/export/json.rs"
+        ],
+        "response_row": [
+          "crates/drivers/clickhouse/src/lib.rs"
+        ],
+        "row_to_json": [
+          "crates/core/src/export/json.rs"
+        ],
+        "sql_export_uses_engine_generated_identity_values": [
+          "crates/core/src/export/sql.rs"
+        ],
+        "sqlite_json_group_array_any_csv_round_trip_preserves_json_null_and_text": [
+          "apps/linux/app/tests/support/sqlite_any_contract/aggregate_csv.rs"
+        ],
+        "sqlite_json_group_object_any_csv_round_trip_preserves_native_text": [
+          "apps/linux/app/tests/support/sqlite_any_contract/aggregate_csv.rs"
+        ],
+        "sqlite_real_binding_refuses_negative_zero_and_nan": [
+          "crates/drivers/sqlite/tests/integration.rs"
+        ],
+        "sqlite_real_storage_preserves_float_edge_bits": [
+          "crates/drivers/sqlite/tests/integration.rs"
+        ],
+        "sqlite_strict_any_blob_values_are_read_only_and_keep_exact_bytes": [
+          "apps/linux/app/tests/support/sqlite_any_contract/table_and_compound.rs"
+        ],
+        "sqlite_strict_any_grid_edit_preserves_each_rows_runtime_storage_class": [
+          "apps/linux/app/tests/support/sqlite_any_contract/table_and_compound.rs"
+        ],
+        "sqlite_strict_any_null_and_new_cells_use_text_unless_blank": [
+          "apps/linux/app/tests/support/sqlite_any_contract/table_and_compound.rs"
+        ],
+        "temporal_kind": [
+          "crates/core/src/import/cell.rs"
+        ],
+        "timestamp_param": [
+          "crates/drivers/duckdb/src/temporal.rs"
+        ],
+        "value_contract_array_grid_edit_preserves_array_elements": [
+          "crates/drivers/postgres/tests/support/array_contract.rs"
+        ],
+        "value_contract_arrays_preserve_elements_dimensions_and_exports": [
+          "crates/drivers/postgres/tests/support/value_contracts.rs"
+        ],
+        "value_contract_bc_dates_survive_default_csv_import": [
+          "crates/drivers/postgres/tests/support/date_contract.rs"
+        ],
+        "value_contract_builtin_array_families_survive_typed_csv_insert": [
+          "crates/drivers/postgres/tests/support/array_contract.rs"
+        ],
+        "value_contract_dates_preserve_eras_large_years_and_instants": [
+          "crates/drivers/postgres/tests/support/value_contracts.rs"
+        ],
+        "value_contract_geometric_array_refusals_preserve_target_and_sibling_rows": [
+          "crates/drivers/postgres/tests/support/custom_array_contract.rs"
+        ],
+        "value_contract_json_keeps_null_and_booleans_distinct_from_text": [
+          "crates/core/src/export/json.rs"
+        ],
+        "value_contract_mssql_server_owned_columns_use_native_defaults_across_consumers": [
+          "apps/linux/app/tests/support/mssql_server_owned_columns.rs"
+        ],
+        "value_contract_postgres_copy_insert_regenerates_identity_values": [
+          "crates/drivers/postgres/tests/support/identity_copy_contract.rs"
+        ],
+        "value_contract_server_owned_columns_and_identity_copy_inserts_use_defaults": [
+          "crates/drivers/mssql/tests/support/server_owned_columns.rs"
+        ],
+        "value_contract_times_preserve_midnight_fraction_and_offset": [
+          "crates/drivers/postgres/tests/support/value_contracts.rs"
+        ],
+        "value_contract_unlisted_builtin_arrays_refuse_with_native_oracles": [
+          "crates/drivers/postgres/tests/support/array_contract_parts/result_consumers_temporal.rs"
+        ],
+        "value_contract_wide_numeric_grid_edit_preserves_exact_value": [
+          "crates/drivers/postgres/tests/support/wide_numeric_contract.rs"
+        ],
+        "value_contract_xml_array_file_exports_preserve_native_text": [
+          "crates/drivers/postgres/tests/support/array_contract_parts/xml_array_file_exports.rs"
+        ],
+        "value_to_bson": [
+          "crates/drivers/mongodb/src/codec.rs"
+        ],
+        "value_to_json": [
+          "crates/mcp/src/tools.rs",
+          "crates/core/src/export/json.rs"
+        ]
+      },
+      "source_pins": [
+        "0cf70382eed72c144ea94208dfef5f5706e0a7dd",
+        "f88159dcb23dd74a960c638a6af42b608a1b4345",
+        "12e795cec416fca9da92ed1c95ae6bd9b77e754e",
+        "064b4947d07d4fddbc2a210c0d658f62cef59805",
+        "8680cc0d38a917218163eaf3ce9fe4b9c190a6da",
+        "8ed0f66ed54b1411feaac5d7a8e49abc6999fb18",
+        "736a73f8434a57fd33dbe9d6212956e29351b168",
+        "b2bc42729b145b91f0f75f8d40b3fa0a69e7a31d",
+        "af46f18461e98a5ec83833e9c18556211b7f1b56",
+        "887a1bd61060e5c604e9d4e52cb821de4dcf2202",
+        "9007199254740993",
+        "123456700"
+      ],
+      "evidence_links": [
+        "../evidence/finite-float-consumer-results-2026-10-04/manifest.json",
+        "../evidence/mssql-legacy-datetime-ticks-results-2026-10-04/manifest.json",
+        "../evidence/mssql-legacy-datetime-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-results-2026-10-03/before-fix.txt",
+        "../evidence/postgres-domain-enum-array-parameter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-bounds-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-results-2026-10-03/manifest.json",
+        "../evidence/postgres-shadowed-enum-filter-results-2026-10-03/manifest.json",
+        "../evidence/postgres-enum-results-2026-10-03/",
+        "../evidence/postgres-domain-bytea-array-results-2026-10-04/manifest.json",
+        "../evidence/mysql-strict-zero-date-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-time-mode-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-time-tie-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-half-boundary-matrix-results-2026-10-04/manifest.json",
+        "../evidence/mysql-time-precision-matrix-results-2026-10-04/manifest.json",
+        "../evidence/mysql-datetime-timestamp-precision-matrix-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-datetime-mode-results-2026-10-04/manifest.json",
+        "../evidence/mysql-fractional-timestamp-mode-results-2026-10-04/manifest.json",
+        "../evidence/mysql-enum-sql-mode-results-2026-10-04/manifest.json",
+        "../evidence/mysql-enum-set-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/b3-review-2026-10-01/manifest.json",
+        "../evidence/clickhouse-nested-tuple-map-results-2026-10-04/manifest.json",
+        "../evidence/mongodb-missing-null-results-2026-10-03/manifest.json",
+        "../evidence/postgres-enum-clipboard-csv-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-filter-results-2026-10-03/manifest.json",
+        "../evidence/postgres-domain-enum-query-operators-results-2026-10-03/manifest.json",
+        "../evidence/mongodb-stale-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/mongodb-stale-grid-delete-results-2026-10-04/manifest.json",
+        "../evidence/mongodb-census-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-real-results-2026-10-03/manifest.json",
+        "../evidence/postgres-nested-domain-results-2026-10-03/manifest.json",
+        "../evidence/postgres-three-level-domain-results-2026-10-03/manifest.json",
+        "../evidence/postgres-three-level-enum-query-operator-results-2026-10-03/manifest.json",
+        "../evidence/postgres-four-level-domain-results-2026-10-04/manifest.json",
+        "../evidence/postgres-five-level-domain-results-2026-10-04/manifest.json",
+        "../evidence/postgres-six-level-domain-results-2026-10-04/manifest.json",
+        "../evidence/postgres-seven-domain-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-strict-any-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-union-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-union-any-export-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-union-any-csv-roundtrip-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-case-any-csv-roundtrip-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-case-any-xlsx-refusal-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-coalesce-any-csv-roundtrip-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-coalesce-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-coalesce-any-xlsx-results-2026-10-04/manifest.json",
+        "../evidence/duckdb-enum-keyed-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-strict-any-csv-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-strict-any-query-csv-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-query-empty-metadata-results-2026-10-03/manifest.json",
+        "../evidence/sqlite-computed-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-attached-any-metadata-results-2026-10-03/manifest.json",
+        "../evidence/postgres-enum-filter-matrix-results-2026-10-03/manifest.json",
+        "../evidence/postgres-domain-enum-param-operator-results-2026-10-03/manifest.json",
+        "../evidence/postgres-domain-enum-param-list-results-2026-10-03/manifest.json",
+        "../evidence/postgres-domain-enum-distinct-parameter-results-2026-10-03/manifest.json",
+        "../evidence/postgres-shadowed-enum-filter-matrix-results-2026-10-03/manifest.json",
+        "../evidence/postgres-shadowed-enum-parameter-results-2026-10-03/manifest.json",
+        "../evidence/postgres-shadowed-domain-enum-results-2026-10-03/manifest.json",
+        "../evidence/postgres-shadowed-domain-enum-operator-results-2026-10-03/manifest.json",
+        "../evidence/mysql-temporal-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/postgres-array-filewriter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-label-byte-boundary-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-overlength-refusal-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-order-results-2026-10-04/manifest.json",
+        "../evidence/postgres-eight-domain-results-2026-10-04/manifest.json",
+        "../evidence/postgres-nine-domain-results-2026-10-04/manifest.json",
+        "../evidence/postgres-deep-domain-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-257-level-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-session-search-path-results-2026-10-04/manifest.json",
+        "../evidence/mysql-word-delimiter-results-2026-10-04/manifest.json",
+        "../evidence/mysql-malformed-human-approval-results-2026-10-04/manifest.json",
+        "../evidence/gtk-unparseable-approval-results-2026-10-04/manifest.json",
+        "../evidence/mysql-quoted-delimiter-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-nullif-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-max-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-json-extract-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-sum-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-avg-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-arithmetic-any-results-2026-10-04/manifest.json",
+        "../evidence/postgres-numeric-array-filewriter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-array-filewriter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-filewriter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-array-csv-import-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-array-csv-shapes-results-2026-10-04/manifest.json",
+        "../evidence/postgres-shadowed-enum-array-import-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-array-grid-edit-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-array-grid-null-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-array-default-null-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-import-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-grid-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-filter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-shadowed-import-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-uuid-array-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-array-family-results-2026-10-04/manifest.json",
+        "../evidence/postgres-timestamptz-array-filewriter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-interval-array-filewriter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-array-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/duckdb-enum-null-label-results-2026-10-04/manifest.json",
+        "../evidence/duckdb-enum-csv-roundtrip-results-2026-10-04/manifest.json",
+        "../evidence/postgres-shadowed-domain-bytea-array-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-csv-quoted-lines-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-sql-literal-session-modes-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-xlsx-calc-formula-text-results-2026-10-04/manifest.json",
+        "../evidence/postgres-bytea-array-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-cast-blob-any-csv-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-identifier-escaping-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-quoted-identifiers-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-shadowed-quoted-search-path-results-2026-10-04/manifest.json",
+        "../evidence/postgres-numeric-array-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/postgres-float8-array-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/mssql-malformed-go-tail-results-2026-10-04/manifest.json",
+        "../evidence/mysql-gtk-unparseable-approval-results-2026-10-04/manifest.json",
+        "../evidence/mysql-short-delimiter-results-2026-10-04/manifest.json",
+        "../evidence/clickhouse-malformed-heredoc-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-258-level-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-259-level-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-coalesce-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-array-functions-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-remove-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-position-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-replace-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-any-array-parameter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-operators-results-2026-10-04/manifest.json",
+        "../evidence/postgres-shadowed-enum-array-operator-results-2026-10-04/manifest.json",
+        "../evidence/postgres-inferred-enum-array-depth-results-2026-10-04/manifest.json",
+        "../evidence/full-value-tier-enum-array-depth-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-cat-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-positions-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-equality-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/local-gtk-duckdb-value-tier-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-range-shadowed-path-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-range-bounds-shadowed-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-first-last-shadowed-path-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-min-max-shadowed-path-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-add-value-session-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-rename-value-session-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-type-rename-schema-move-results-2026-10-05/manifest.json",
+        "../evidence/local-gtk-duckdb-value-tier-results-2026-10-06-cfc99dd1/manifest.json",
+        "../evidence/postgres-timestamp-array-datestyle-results-2026-10-05/manifest.json",
+        "../evidence/postgres-timestamp-array-file-consumers-dmy-results-2026-10-05/manifest.json",
+        "../evidence/rust-decimal-boundary-contract-results-2026-10-06/manifest.json",
+        "../evidence/value-uuid-multidriver-results-2026-10-05/manifest.json",
+        "../evidence/duckdb-uuid-mixed-projection-results-2026-10-06/manifest.json",
+        "../evidence/postgres-pg-lsn-array-results-2026-10-06/manifest.json",
+        "../evidence/postgres-macaddr-array-roundtrip-results-2026-10-06/manifest.json",
+        "../evidence/postgres-macaddr8-array-roundtrip-results-2026-10-06/manifest.json",
+        "../evidence/postgres-network-array-roundtrip-results-2026-10-06/manifest.json",
+        "../evidence/postgres-bytea-array-filewriter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-union-values-inference-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-unicode-identifiers-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-unicode-csv-import-results-2026-10-05/manifest.json",
+        "../evidence/postgres-temporal-array-grid-edit-results-2026-10-05/manifest.json",
+        "../evidence/postgres-integer-array-grid-edit-results-2026-10-05/manifest.json",
+        "../evidence/postgres-text-array-grid-edit-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-gnumeric-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-formula-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-scalar-gnumeric-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-temporal-arrays-gnumeric-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-text-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-uuid-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-uuid-array-filewriter-results-2026-10-05/manifest.json",
+        "../evidence/postgres-date-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-timestamp-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-time-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-timetz-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-timetz-array-file-consumers-timezone-results-2026-10-05/manifest.json",
+        "../evidence/postgres-boolean-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-int8-array-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-integer-arrays-calc-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-timestamptz-array-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/postgres-interval-array-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/postgres-numeric-array-gnumeric-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-float8-array-gnumeric-reimport-results-2026-10-05/manifest.json",
+        "../evidence/sqlite-xlsx-calc-reimport-results-2026-10-04/manifest.json",
+        "../evidence/mariadb-empty-enum-empty-string-is-null-results-2026-10-05/manifest.json",
+        "../evidence/mariadb-empty-enum-set-combined-mode-results-2026-10-05/manifest.json",
+        "../evidence/mysql-mariadb-enum-collation-results-2026-10-05/manifest.json",
+        "../evidence/mysql-binary-enum-collation-results-2026-10-05/manifest.json",
+        "../evidence/mysql-binary-set-collation-results-2026-10-05/manifest.json",
+        "../evidence/mysql-latin1-enum-set-collation-results-2026-10-05/manifest.json",
+        "../evidence/mysql-executable-comment-policy-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-max-label-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-whitespace-label-results-2026-10-05/manifest.json",
+        "../evidence/postgres-malformed-dollar-quote-consumers-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-260-level-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-300-level-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-add-value-default-append-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-add-value-positions-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-agg-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-unnest-inference-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-cross-session-add-after-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-cross-session-catalog-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-cross-session-type-move-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-csv-shadow-search-path-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-quoted-shadow-path-results-2026-10-05/manifest.json",
+        "evidence/postgres-float4-array-grid-edit-results-2026-10-05/manifest.json",
+        "evidence/postgres-interval-array-grid-edit-results-2026-10-05/manifest.json",
+        "evidence/postgres-interval-array-style-transition-results-2026-10-05/manifest.json",
+        "../evidence/sqlite-declared-affinity-results-2026-10-05/manifest.json",
+        "../evidence/sqlite-utf8-blob-result-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-case-shadowed-parameter-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-coalesce-shadowed-results-2026-10-05/manifest.json",
+        "../evidence/postgres-shadowed-enum-parameter-context-results-2026-10-05/manifest.json",
+        "../evidence/mariadb-empty-varchar-import-empty-string-mode-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-enum-array-gnumeric-reimport-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-gnumeric-reimport-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-array-calc-reimport-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-array-shapes-calc-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-array-shapes-gnumeric-results-2026-10-06/manifest.json",
+        "../evidence/postgres-deep-domain-followup-results-2026-10-04/manifest.json",
+        "../evidence/postgres-quoted-enum-identifiers-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-quoted-csv-shadow-results-2026-10-06/manifest.json",
+        "../evidence/postgres-enum-expression-parameter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-nullif-parameter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-nullif-parameter-results-2026-10-04/manifest.json",
+        "../evidence/postgres-domain-enum-array-replace-shadowed-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-enum-array-input-functions-shadowed-results-2026-10-05/manifest.json",
+        "../evidence/postgres-domain-enum-array-functions-shadowed-results-2026-10-04/manifest.json",
+        "../evidence/postgres-enum-sql-literal-session-modes-full-results-2026-10-05/manifest.json",
+        "../evidence/postgres-enum-array-sql-mode-results-2026-10-05/manifest.json",
+        "../evidence/postgres-timestamptz-array-non-utc-session-results-2026-10-05/manifest.json",
+        "../evidence/postgres-timestamptz-array-non-utc-calc-results-2026-10-05/manifest.json",
+        "../evidence/sqlite-min-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-group-concat-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-total-any-results-2026-10-04/manifest.json",
+        "../evidence/sqlite-substr-any-csv-results-2026-10-05/manifest.json"
+      ]
+    }
+  ]
+}

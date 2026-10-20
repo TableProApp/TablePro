@@ -1,0 +1,6 @@
+
+running 2 tests
+test connection_paths::decoded_text_oracle::decoded_arrays_are_the_same_array_when_the_server_reads_them_back ... ok
+test connection_paths::decoded_text_oracle::decoded_text_matches_what_the_server_prints ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 283 filtered out; finished in 2.60s

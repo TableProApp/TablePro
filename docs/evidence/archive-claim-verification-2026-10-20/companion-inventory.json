@@ -1,0 +1,22 @@
+[
+  {
+    "path": "docs/archive/2026-10-15-postgresql-client-research/cases.csv",
+    "bytes": 13797,
+    "sha256": "43967dd4159195e5c35efdab15ca78d3c2bec7ff627ce3c4229d3c58d48b2b2e"
+  },
+  {
+    "path": "docs/archive/2026-10-15-postgresql-client-research/cases.json",
+    "bytes": 22148,
+    "sha256": "2e7efe1d2f1f3d385ee20eb761a86317d549c0b0534523f5c1340fd21c7bfd4b"
+  },
+  {
+    "path": "docs/archive/2026-10-15-postgresql-client-research/identifier-probe.rs",
+    "bytes": 896,
+    "sha256": "504084480d1cf3f507325e58dd30764b7c62f5f57bd5afe739101744766b86c7"
+  },
+  {
+    "path": "docs/archive/2026-10-15-postgresql-client-research/manifest.json",
+    "bytes": 741,
+    "sha256": "c98ca676290ca72f21425cd38ff9496cde3641cf3fc6791b8c6728c1b61b62d0"
+  }
+]

@@ -1,0 +1,178 @@
+Focused output: 1162 individual passing-test lines omitted; build output, selected contracts and final total retained.
+   Compiling tokio v1.53.3
+   Compiling rustls v0.23.46
+   Compiling rustls-webpki v0.103.15
+   Compiling tempfile v3.27.0
+   Compiling zip v8.6.0
+   Compiling rand_chacha v0.9.0
+   Compiling libsqlite3-sys v0.37.0
+   Compiling rand v0.9.5
+   Compiling md-5 v0.11.0
+   Compiling ssh-encoding v0.3.0
+   Compiling ssh-cipher v0.3.0
+   Compiling rust_xlsxwriter v0.99.1
+   Compiling num-bigint-dig v0.9.1
+   Compiling ssh-key v0.7.0-rc.11
+   Compiling russh-cryptovec v0.62.0
+   Compiling asynchronous-codec v0.7.0
+   Compiling tiberius v0.13.0
+   Compiling rusty-fork v0.3.1
+   Compiling tracing-subscriber v0.3.23
+   Compiling tokio-util v0.7.19
+   Compiling tokio-stream v0.1.19
+   Compiling h2 v0.4.19
+   Compiling tower v0.5.3
+   Compiling sqlx-core v0.9.0
+   Compiling tablepro-core v0.1.0 ([worktree]/crates/core)
+   Compiling axum v0.8.9
+   Compiling ureq v3.4.2
+   Compiling tokio-rustls v0.26.5
+   Compiling astral-tokio-tar v0.6.4
+   Compiling zbus v5.19.0
+   Compiling russh-util v0.52.0
+   Compiling russh v0.64.1
+   Compiling sqlx-postgres v0.9.0 ([worktree]/vendor/sqlx-postgres)
+   Compiling hyper v1.11.1
+   Compiling sqlx-sqlite v0.9.0
+   Compiling hyper-util v0.1.20
+   Compiling tablepro-policy v0.1.0 ([worktree]/crates/policy)
+   Compiling hyper-timeout v0.5.2
+   Compiling tonic v0.14.6
+   Compiling hyper-rustls v0.27.9
+   Compiling hyperlocal v0.9.1
+   Compiling proptest v1.12.0
+   Compiling tonic-prost v0.14.6
+   Compiling bollard-buildkit-proto v0.7.0
+   Compiling sqlx v0.9.0
+   Compiling ashpd v0.13.13
+   Compiling tablepro-driver-postgres v0.1.0 ([worktree]/crates/drivers/postgres)
+   Compiling tablepro-ssh v0.1.0 ([worktree]/crates/ssh)
+   Compiling oo7 v0.6.0
+   Compiling tablepro-driver-mssql v0.1.0 ([worktree]/crates/drivers/mssql)
+   Compiling tablepro-dump v0.1.0 ([worktree]/crates/dump)
+   Compiling bollard-stubs v1.52.1-rc.29.1.3
+   Compiling tablepro-storage v0.1.0 ([worktree]/crates/storage)
+   Compiling tablepro-transport v0.1.0 ([worktree]/crates/transport)
+   Compiling bollard v0.20.2
+   Compiling testcontainers v0.27.3
+   Compiling testcontainers-modules v0.15.0
+   Compiling tablepro-app-services v0.1.0 ([worktree]/crates/app-services)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 22.73s
+────────────
+ Nextest run ID f0add203-2a49-4fcf-bd46-5c16ffa920ed with nextest profile: default
+    Starting 1275 tests across 4 binaries
+        PASS [   0.003s] (  11/1275) tablepro-app-services browse_query::tests::reverse_paging::explicit_sort_ignores_a_keyset_cursor_and_keeps_offset_pagination
+        PASS [   0.003s] (  15/1275) tablepro-app-services browse_query::tests::reverse_paging::keyset_cursor_is_ignored_when_the_table_has_no_primary_key
+        PASS [   0.003s] (  18/1275) tablepro-app-services browse_query::tests::reverse_paging::page_and_count_share_filter_and_keyset_parameters_follow_it
+        PASS [   0.003s] (  19/1275) tablepro-app-services browse_query::tests::reverse_paging::previous_deep_page_uses_reverse_keyset_and_marks_rows_for_display_reversal
+        PASS [   0.003s] (  59/1275) tablepro-app-services change_tracker::tests::discard_draft_no_op_for_unknown_id
+        PASS [   0.003s] (  79/1275) tablepro-app-services column_widths::tests::a_saved_order_is_applied_and_unknown_or_new_columns_keep_their_place_at_the_end
+        PASS [   0.003s] (  95/1275) tablepro-app-services completion::tests::a_schema_qualifier_in_table_position_offers_tables
+        PASS [   0.003s] ( 103/1275) tablepro-app-services completion::tests::an_unqualified_name_that_matches_two_schemas_offers_no_columns
+        PASS [   0.003s] ( 105/1275) tablepro-app-services completion::tests::an_unknown_qualifier_offers_nothing_rather_than_every_column
+        PASS [   0.003s] ( 106/1275) tablepro-app-services completion::tests::an_unqualified_name_resolves_when_only_one_schema_has_it
+        PASS [   0.003s] ( 115/1275) tablepro-app-services completion::tests::same_named_tables_in_two_schemas_keep_separate_columns
+        PASS [   0.003s] ( 117/1275) tablepro-app-services completion::tests::schema_requests_are_accepted_only_by_their_generation
+        PASS [   0.003s] ( 118/1275) tablepro-app-services completion::tests::table_key_keeps_the_schema_and_ignores_quoting_and_case
+        PASS [   0.003s] ( 141/1275) tablepro-app-services database_backup::tests::a_cancelled_tool_or_tunnel_is_reported_as_cancelled
+        PASS [   0.003s] ( 149/1275) tablepro-app-services filter_settings::tests::a_table_without_a_schema_is_stored_apart_from_the_same_table_in_a_schema
+        PASS [   0.003s] ( 152/1275) tablepro-app-services filter_settings::tests::schema_none_distinct_from_some
+        PASS [   0.003s] ( 159/1275) tablepro-app-services read_scopes::tests::closing_a_tab_cancels_every_read_it_owns_and_only_those
+        PASS [   0.003s] ( 162/1275) tablepro-app-services read_scopes::tests::a_newer_read_of_the_same_kind_cancels_the_older_one
+        PASS [   0.003s] ( 165/1275) tablepro-app-services read_scopes::tests::disconnecting_cancels_everything
+        PASS [   0.003s] ( 171/1275) tablepro-app-services request_generation::tests::a_cancelled_generation_must_not_apply
+        PASS [   0.003s] ( 178/1275) tablepro-app-services request_generation::tests::replacing_the_in_flight_token_cancels_the_previous_one_only
+        PASS [   0.003s] ( 194/1275) tablepro-app-services window_state::tests::restore_skips_an_unknown_or_absent_connection
+        PASS [   0.003s] ( 214/1275) tablepro-app-services workspace_state::tests::an_older_workspace_defaults_to_no_hidden_schemas
+        PASS [   0.003s] ( 220/1275) tablepro-app-services workspace_state::tests::dropping_unknown_tabs_preserves_the_selected_editor
+        PASS [   0.003s] ( 223/1275) tablepro-app-services workspace_state::tests::hidden_schemas_round_trip_and_are_bounded_when_saved
+        PASS [   0.003s] ( 240/1275) tablepro-core connection::controlled_default_tests::a_begin_interrupted_after_dispatch_reports_an_unknown_outcome
+        PASS [   0.003s] ( 241/1275) tablepro-core connection::controlled_default_tests::a_cancelled_control_stops_begin_before_dispatch
+        PASS [   0.003s] ( 242/1275) tablepro-core connection::controlled_default_tests::a_driver_declares_no_server_cancellation_by_default
+        PASS [   0.003s] ( 243/1275) tablepro-core connection::controlled_default_tests::a_cancelled_control_stops_every_metadata_read_before_dispatch
+        PASS [   0.003s] ( 244/1275) tablepro-core connection::controlled_default_tests::a_deadline_reached_mid_flight_reports_an_unknown_outcome
+        PASS [   0.003s] ( 295/1275) tablepro-core export::file::tests::every_format_stops_at_the_first_cancelled_row_without_touching_the_destination
+        PASS [   0.003s] ( 299/1275) tablepro-core export::file::tests::file_and_clipboard_agree_and_cancellation_preserves_destination
+        PASS [   0.003s] ( 303/1275) tablepro-core export::file::tests::value_contract_workbook_mid_export_cancellation_preserves_destination
+        PASS [   0.003s] ( 324/1275) tablepro-core export::paged::tests::cancelling_between_rows_publishes_nothing
+        PASS [   0.003s] ( 401/1275) tablepro-core filter::tests::postgres_enum_filters_cast_values_to_the_schema_qualified_type
+        PASS [   0.003s] ( 405/1275) tablepro-core filter::tests::unknown_column_errors_with_name
+        PASS [   0.003s] ( 414/1275) tablepro-core import::cell::tests::an_unknown_type_is_read_as_text_rather_than_refused
+        PASS [   0.003s] ( 430/1275) tablepro-core import::cell::tests::sqlite_affinity_tests::sqlite_csv_tagged_values_follow_any_unknown_and_blob_column_contracts
+        PASS [   0.002s] ( 469/1275) tablepro-core import::csv_import::tests::file_size_limit_accepts_exact_boundary_and_refuses_one_byte_more
+        PASS [   0.002s] ( 475/1275) tablepro-core import::extended_temporal::tests::extended_dates_accept_far_future_leap_days_plus_years_and_bc_era
+        PASS [   0.002s] ( 476/1275) tablepro-core import::extended_temporal::tests::extended_dates_enforce_each_thirty_day_month_boundary
+        PASS [   0.003s] ( 477/1275) tablepro-core import::extended_temporal::tests::extended_dates_pin_bc_year_month_day_and_gregorian_leap_boundaries
+        PASS [   0.002s] ( 478/1275) tablepro-core import::extended_temporal::tests::extended_dates_reject_ordinary_years_year_zero_and_invalid_leap_days
+        PASS [   0.002s] ( 479/1275) tablepro-core import::extended_temporal::tests::timestamptz_nanos_keep_fractional_seconds_across_zone_forms
+        PASS [   0.003s] ( 480/1275) tablepro-core import::extended_temporal::tests::timestamptz_nanos_refuse_invalid_dates_zones_and_clocks
+        PASS [   0.003s] ( 525/1275) tablepro-core operation::tests::a_completed_operation_never_dispatches_server_cancellation
+        PASS [   0.003s] ( 526/1275) tablepro-core operation::tests::a_cancel_after_dispatch_is_an_unknown_outcome_not_a_clean_cancel
+        PASS [   0.003s] ( 528/1275) tablepro-core operation::tests::cancellation_wins_when_both_controls_are_ready
+        PASS [   0.003s] ( 529/1275) tablepro-core operation::tests::reports_pre_dispatch_cancellation
+        PASS [   0.003s] ( 530/1275) tablepro-core operation::tests::completed_operation_waits_for_an_in_flight_server_cancel_dispatch
+        PASS [   0.003s] ( 531/1275) tablepro-core operation::tests::reports_pre_dispatch_timeout
+        PASS [   0.003s] ( 532/1275) tablepro-core operation::tests::with_timeout_sets_a_deadline_in_the_future
+        PASS [   0.003s] ( 538/1275) tablepro-core pagination::tests::previous_keyset_keeps_null_prefixes_as_is_null
+        PASS [   0.003s] ( 539/1275) tablepro-core pagination::tests::previous_keyset_uses_strict_less_than_and_preserves_composite_tie_breakers
+        PASS [   0.003s] ( 542/1275) tablepro-core params::boundary_tests::a_parameter_after_a_dollar_identifier_is_still_found
+        PASS [   0.003s] ( 543/1275) tablepro-core params::boundary_tests::value_contract_boolean_parameters_preserve_both_truth_values_and_reject_other_text
+        PASS [   0.003s] ( 544/1275) tablepro-core params::boundary_tests::value_contract_explicit_text_keeps_whitespace_and_placeholder_spelling
+        PASS [   0.003s] ( 545/1275) tablepro-core params::boundary_tests::value_contract_parameter_lexer_preserves_nested_and_escaped_regions
+        PASS [   0.003s] ( 683/1275) tablepro-core sql_ddl::tests::create_table_with_schema
+        PASS [   0.003s] ( 703/1275) tablepro-core sql_ddl::tests::rejects_unknown_fk_action
+        PASS [   0.003s] ( 719/1275) tablepro-core sql_dialect::postgres_enum_tests::postgres_enum_write_casts_quote_catalog_schema_and_type_names
+        PASS [   0.003s] ( 731/1275) tablepro-core sql_dialect::tests::insert_from_draft_qualifies_with_schema
+        PASS [   0.002s] ( 832/1275) tablepro-core sql_literal::tests::an_insert_qualifies_with_the_schema_and_quotes_per_dialect
+        PASS [   0.003s] ( 904/1275) tablepro-driver-postgres decode::tests::value_contract_unknown_binary_types_stay_undecoded
+        PASS [   0.003s] ( 925/1275) tablepro-driver-postgres temporal::tests::value_contract_temporal_array_text_keeps_eras_instants_and_fractions
+        PASS [   0.003s] ( 926/1275) tablepro-driver-postgres temporal::tests::value_contract_time_keeps_end_of_day_and_microseconds
+        PASS [   0.002s] ( 927/1275) tablepro-driver-postgres temporal::tests::value_contract_time_rejects_invalid_lengths_times_and_offsets
+        PASS [   0.002s] ( 928/1275) tablepro-driver-postgres tests::a_pool_startup_timeout_is_not_mapped_as_an_established_disconnect
+        PASS [   0.003s] ( 943/1275) tablepro-driver-postgres tests::server_termination_states_are_disconnections_but_query_cancel_is_not
+        PASS [   0.003s] ( 953/1275) tablepro-policy blast_radius::tests::a_batch_mixing_a_known_and_an_unknown_statement_stays_unknown
+        PASS [   0.003s] ( 969/1275) tablepro-policy classify::tests::broader_schema_and_privilege_changes_are_ddl
+        PASS [   0.003s] ( 982/1275) tablepro-policy classify::tests::mixed_script_preserves_unknown_writes_in_both_orders
+        PASS [   0.003s] (1007/1275) tablepro-policy config::tests::an_unknown_field_in_an_environment_override_is_refused_at_load
+        PASS [   0.003s] (1024/1275) tablepro-policy guard::guard_tests::administrative::a_cancelled_operation_records_a_cancelled_outcome
+        PASS [   0.003s] (1025/1275) tablepro-policy guard::guard_tests::administrative::a_cancelled_restore_after_dispatch_is_unknown_and_disables_governed_writes
+        PASS [   0.003s] (1027/1275) tablepro-policy guard::guard_tests::administrative::a_failed_restore_after_dispatch_is_unknown_and_disables_governed_writes
+        PASS [   0.003s] (1032/1275) tablepro-policy guard::guard_tests::administrative::cancelling_a_restore_before_dispatch_keeps_the_session_available
+        PASS [   0.003s] (1040/1275) tablepro-policy guard::guard_tests::audit::a_panicking_driver_write_records_an_unknown_terminal_outcome
+        PASS [   0.003s] (1046/1275) tablepro-policy guard::guard_tests::audit::ambiguous_commit_records_unknown_transaction_outcome
+        PASS [   0.003s] (1047/1275) tablepro-policy guard::guard_tests::audit::ambiguous_driver_error_records_unknown_and_poisons_state
+        PASS [   0.003s] (1048/1275) tablepro-policy guard::guard_tests::audit::an_interrupted_begin_with_an_unknown_outcome_poisons_governed_writes
+        PASS [   0.003s] (1050/1275) tablepro-policy guard::guard_tests::audit::an_unknown_write_blocks_only_its_connection_and_generation
+        PASS [   0.003s] (1052/1275) tablepro-policy guard::guard_tests::audit::batch_query_error_records_unknown_and_poisons_state
+        PASS [   0.003s] (1054/1275) tablepro-policy guard::guard_tests::audit::cancelling_a_pending_approval_records_a_terminal_cancelled_outcome
+        PASS [   0.003s] (1055/1275) tablepro-policy guard::guard_tests::audit::confirmed_controlled_timeout_records_timeout_without_poisoning_state
+        PASS [   0.003s] (1056/1275) tablepro-policy guard::guard_tests::audit::controlled_read_unknown_outcome_does_not_poison_governed_writes
+        PASS [   0.003s] (1058/1275) tablepro-policy guard::guard_tests::audit::controlled_unknown_outcome_records_unknown_and_poisons_state
+        PASS [   0.003s] (1059/1275) tablepro-policy guard::guard_tests::audit::disconnected_batch_outcome_is_audited_unknown_and_blocks_redispatch
+        PASS [   0.003s] (1069/1275) tablepro-policy guard::guard_tests::audit::pre_dispatch_write_cancellation_records_one_terminal_outcome_without_execution
+        PASS [   0.003s] (1074/1275) tablepro-policy guard::guard_tests::bulk::a_cancelled_import_writes_the_cancelled_terminal_state
+        PASS [   0.003s] (1082/1275) tablepro-policy guard::guard_tests::bulk::a_scope_granted_for_one_table_is_denied_on_another_schema
+        PASS [   0.003s] (1092/1275) tablepro-policy guard::guard_tests::bulk::an_import_scope_is_refused_when_its_statement_targets_another_schema
+        PASS [   0.003s] (1100/1275) tablepro-policy guard::guard_tests::checked::controlled_transaction_approval_cancellation_is_audited
+        PASS [   0.003s] (1102/1275) tablepro-policy guard::guard_tests::cursor::a_cursor_timeout_closes_and_audits_the_cursor
+        PASS [   0.003s] (1104/1275) tablepro-policy guard::guard_tests::cursor::cancellation_after_a_delivered_page_closes_and_audits_the_cursor
+        PASS [   0.003s] (1105/1275) tablepro-policy guard::guard_tests::cursor::closing_a_session_closes_an_open_cursor_and_audits_cancellation
+        PASS [   0.003s] (1119/1275) tablepro-policy guard::guard_tests::gating::an_approved_controlled_write_never_cancels_the_callers_token
+        PASS [   0.003s] (1129/1275) tablepro-policy guard::guard_tests::gating::list_objects_audit_target_leaves_out_the_schema_for_unscoped_kinds
+        PASS [   0.003s] (1142/1275) tablepro-policy guard::guard_tests::gating::unknown_effects_require_approval_when_unparseable_human_sql_is_allowed
+        PASS [   0.003s] (1144/1275) tablepro-policy guard::guard_tests::guard_tests_passthrough::a_cancelled_control_stops_every_controlled_read_before_it_reaches_the_driver
+        PASS [   0.003s] (1147/1275) tablepro-policy guard::guard_tests::guard_tests_passthrough::a_failed_guarded_call_never_cancels_the_callers_control
+        PASS [   0.003s] (1158/1275) tablepro-policy guard::guard_tests::guard_tests_passthrough::no_read_under_a_cancelled_control_writes_two_outcomes
+        PASS [   0.003s] (1166/1275) tablepro-policy guard::guard_tests::outcomes::confirmed_transaction_rollback_is_not_audited_as_an_unknown_outcome
+        PASS [   0.002s] (1168/1275) tablepro-policy guard::guard_tests::outcomes::rollback_failure_is_audited_as_an_unknown_transaction_outcome
+        PASS [   0.206s] (1170/1275) tablepro-policy guard::guard_tests::checked::controlled_transaction_approval_timeout_is_audited
+        PASS [   0.003s] (1173/1275) tablepro-policy guard::guard_tests::session::a_disconnected_commit_writes_an_unknown_terminal_state_and_retires_the_session
+        PASS [   0.003s] (1188/1275) tablepro-policy guard::guard_tests::session::a_session_lost_mid_transaction_after_a_write_records_an_unknown_outcome
+        PASS [   0.003s] (1196/1275) tablepro-policy guard::guard_tests::session::closing_after_a_failed_rollback_surfaces_and_audits_unknown_outcome
+        PASS [   0.003s] (1226/1275) tablepro-policy rules::tests::agent_denied_when_blast_radius_unknown
+        PASS [   0.003s] (1227/1275) tablepro-policy rules::tests::blast_radius_limit_is_inclusive_and_unknown_estimates_are_not_allowed
+        PASS [   0.003s] (1234/1275) tablepro-policy rules::tests::human_requires_approval_when_blast_radius_unknown
+        PASS [   0.003s] (1263/1275) tablepro-policy sensitive_projection::tests::record_serialization_matching_requires_a_function_name_boundary_and_call
+        PASS [   1.004s] (1274/1275) tablepro-policy guard::guard_tests::administrative::a_timed_out_restore_after_dispatch_is_unknown_and_disables_governed_writes
+────────────
+     Summary [   2.646s] 1275 tests run: 1275 passed, 0 skipped

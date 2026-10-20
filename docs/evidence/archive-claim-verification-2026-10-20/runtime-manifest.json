@@ -1,0 +1,121 @@
+{
+  "source_sha": "8c92a24456e455899c0760f8ef8d39b2eb791b7f",
+  "cargo_lock_sha256": "840875ba2dd1436cd02e1f9d571e481b035078640fa660f7b016ea6cc9a63510",
+  "test_binary": "target/debug/deps/integration-2bbe88d0fc417a9d",
+  "binary_sha256_before": "25e234a21e415213803e3f7458efeecb5ab314daa862ddbdf572ad8e598c6150",
+  "binary_sha256_after": "25e234a21e415213803e3f7458efeecb5ab314daa862ddbdf572ad8e598c6150",
+  "tests": [
+    {
+      "selector": "native_oracle_contract::",
+      "exit_code": 0,
+      "seconds": 2.58,
+      "summary": [
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 283 filtered out; finished in 2.58s"
+      ],
+      "log": "postgres-native-oracles.txt"
+    },
+    {
+      "selector": "wide_numeric_contract::",
+      "exit_code": 0,
+      "seconds": 6.384,
+      "summary": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 280 filtered out; finished in 6.38s"
+      ],
+      "log": "postgres-wide-numerics.txt"
+    },
+    {
+      "selector": "reverse_keyset_paging::",
+      "exit_code": 0,
+      "seconds": 4.089,
+      "summary": [
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 282 filtered out; finished in 4.09s"
+      ],
+      "log": "postgres-reverse-keyset.txt"
+    },
+    {
+      "selector": "pool_cancellation_",
+      "exit_code": 0,
+      "seconds": 5.426,
+      "summary": [
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 282 filtered out; finished in 5.42s"
+      ],
+      "log": "postgres-pooler-cancellation.txt"
+    },
+    {
+      "selector": "connection_paths::stale_plan::",
+      "exit_code": 0,
+      "seconds": 2.598,
+      "summary": [
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 283 filtered out; finished in 2.60s"
+      ],
+      "log": "postgres-stale-plan.txt"
+    },
+    {
+      "selector": "completion_metadata_preserves_exact_postgresql_catalog_names",
+      "exit_code": 0,
+      "seconds": 1.319,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 284 filtered out; finished in 1.32s"
+      ],
+      "log": "postgres-completion.txt"
+    },
+    {
+      "selector": "value_contract_dates_preserve_eras_large_years_and_instants",
+      "exit_code": 0,
+      "seconds": 1.462,
+      "summary": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 284 filtered out; finished in 1.46s"
+      ],
+      "log": "postgres-temporal.txt"
+    },
+    {
+      "selector": "connection_paths::decoded_text_oracle::",
+      "exit_code": 0,
+      "seconds": 2.607,
+      "summary": [
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 283 filtered out; finished in 2.60s"
+      ],
+      "log": "postgres-decoded-text.txt"
+    }
+  ],
+  "execution": "Same current-source integration binary; no Cargo invocation between selections.",
+  "toolchain": [
+    "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "binary: rustc",
+    "commit-hash: 48a229ceaefd4985c50990b14116b6d856af0985",
+    "commit-date: 2026-09-01",
+    "host: x86_64-unknown-linux-gnu",
+    "release: 1.98.1",
+    "LLVM version: 22.1.8"
+  ],
+  "nextest": "cargo-nextest 0.9.148\nrelease: 0.9.148\nhost: x86_64-unknown-linux-gnu",
+  "initial_build_results": {
+    "headless": {
+      "exit_code": 0,
+      "passed": 1275,
+      "skipped": 0,
+      "log": "headless-tests.txt"
+    },
+    "postgres_disconnection": {
+      "exit_code": 0,
+      "passed": 10,
+      "ignored": 0,
+      "log": "postgres-disconnection.txt"
+    },
+    "harness": {
+      "exit_code": 0,
+      "python_tests": 280,
+      "debian_package_validation": "skipped: dpkg-deb unavailable",
+      "log": "harness-tests.txt"
+    }
+  },
+  "image_identities": [
+    [
+      "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+    ],
+    [
+      "edoburu/pgbouncer@sha256:3db3d7223e93af52b4116f642951a1a5fa44702a88c2a59cf7562cac19320c9e"
+    ]
+  ],
+  "scope": "Only documentation changed after the source SHA. No current GTK, mutation, memory, package or non-PostgreSQL runtime acceptance is claimed."
+}

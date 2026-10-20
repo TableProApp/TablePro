@@ -1,0 +1,6 @@
+
+running 2 tests
+test connection_paths::stale_plan::application_errors_never_replay_nontransactional_effects ... ok
+test connection_paths::stale_plan::select_star_sees_a_column_added_after_the_statement_was_first_prepared ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 283 filtered out; finished in 2.60s

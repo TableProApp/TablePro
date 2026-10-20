@@ -1,0 +1,5 @@
+
+running 1 test
+test value_contracts::value_contract_dates_preserve_eras_large_years_and_instants ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 284 filtered out; finished in 1.46s

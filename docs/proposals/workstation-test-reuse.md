@@ -91,7 +91,7 @@ The private infrastructure design already describes an image registry/pull cache
 
 ## Nightly boundary and next work
 
-The inspected nightly is Forgejo #778 at `84f03a0385562d97554c47a06e6cebab189c3004`. Its run-level status says failure, but its jobs endpoint still reports active work: 8 successful, 1 failed, 6 running, 4 waiting and 8 blocked at the recorded observation. The failed job is agentd mutation. Core/policy mutation shards are still running. This is not a finished-nightly result. The agentd mutation log reports 115 mutants tested: 8 missed, 65 caught and 42 unviable. Six missed mutants match the baseline; the two new survivors replace the sequence-synchronization forwarding methods with `Ok(())`. This establishes a coverage gap in that run, not a reproduced production bug or an infrastructure failure. Triage the forwarding behavior under existing #559 before considering a rerun; rerunning unchanged tests does not address the missing assertion. Poll the same run's jobs endpoint until no job remains active; blocked jobs need a final disposition rather than being counted as passed. Do not dispatch another nightly or full gate while waiting.
+Forgejo nightly #778 at `84f03a0385562d97554c47a06e6cebab189c3004` is now terminal: eight jobs succeeded, ten failed and nine were cancelled. The [final inventory and selective rerun plan](../evidence/nightly-778-selective-rerun-2026-10-20/README.md) owns those results. Its OOM-interrupted Core/Policy shards and cancelled jobs are not completed mutation or soak results. The new agentd sequence-forwarding survivors have regression coverage merged through #1162; that later source does not change #778's result. Completed mutation-gap jobs need focused tests before another useful run. No nightly remains active in that recorded run.
 
 Existing PostgreSQL coverage must be reused before selecting new cases:
 
@@ -109,9 +109,9 @@ The maintainer subsequently directed local implementation and tests to proceed w
 
 Next work:
 
-1. Record final job outcomes and identify real test gaps versus infrastructure failures. Reuse existing mutation and CI issues; rerun only a justified failed job after diagnosis. Check the night's source against the current Linux source before assigning a regression to a branch.
-2. Refresh the analysis branch against latest GitHub Linux, preserving the separate documentation-cleanup worktree. Finalize the documentation contribution using the docs-only checks and current repository merge rules; it needs no heavy gate.
-3. Run the Core build/metadata reuse pilot locally while the nightly proceeds. Measure first build, unchanged rerun, one-file change, compiler-cache behavior, target size and memory. Keep the existing warm tree until the measurements support a switch. No benchmark is claimed yet.
+1. Completed: record final job outcomes and separate completed test gaps from OOM interruptions and cancellations in the linked nightly inventory. Use its selective rerun plan; an unchanged old-source retry cannot execute newly merged regression tests.
+2. Completed: publish the source-pinned analysis and workstation plan. The [archive claim verification](../evidence/archive-claim-verification-2026-10-20/README.md) records the later source trace and focused tests. The proposed implementation work remains on its existing issues.
+3. Partly completed: the Core build/metadata pilot below proves unchanged-binary reuse. One-file change behavior, compiler-cache hits and physical NVMe write deltas remain unmeasured. Keep the warm incremental target until measurements justify switching cache strategy.
 4. Start the first PostgreSQL restart/lost-ack investigation under existing #593/#590, with recorded B3/B4/UX handoffs as required. Use #594 for the cross-consumer corpus, then #1029/#593 for the crash-save scenario and #1032/#554 for retained memory. Keep #947's reconciliation design separate from automatic write replay.
 5. Use the existing tier for each case and the serialized Forgejo gate for code changes. Run a full tier once when required by the change; avoid repeating an unchanged heavy run simply to reproduce evidence already available from its owning gate.
 

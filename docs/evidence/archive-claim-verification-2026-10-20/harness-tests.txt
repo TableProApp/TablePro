@@ -1,0 +1,48 @@
+ignored-test inventory and isolated registrations: OK
+gtk-blocking: ok (production UI has no blocking sleep or block_on call)
+doc links: ok
+doc symbols: ok
+translation catalogues: ok
+moved paths: ok
+known issues: ok
+...........................................................................[worktree]/scripts/check-moved-paths.py:26: ResourceWarning: unclosed file <_io.TextIOWrapper name='[temporary-fixture]/old.sh' mode='r' encoding='utf-8'>
+  text = open(name, encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.[worktree]/scripts/check-moved-paths.py:26: ResourceWarning: unclosed file <_io.TextIOWrapper name='[temporary-fixture]/a.md' mode='r' encoding='utf-8'>
+  text = open(name, encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+[worktree]/scripts/check-moved-paths.py:26: ResourceWarning: unclosed file <_io.TextIOWrapper name='[temporary-fixture]/b.md' mode='r' encoding='utf-8'>
+  text = open(name, encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.[worktree]/scripts/check-moved-paths.py:26: ResourceWarning: unclosed file <_io.TextIOWrapper name='[temporary-fixture]/a.md' mode='r' encoding='utf-8'>
+  text = open(name, encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+[worktree]/scripts/check-moved-paths.py:26: ResourceWarning: unclosed file <_io.TextIOWrapper name='[temporary-fixture]/b.md' mode='r' encoding='utf-8'>
+  text = open(name, encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.................................................................................................................................................................usage: runner [-h] [--list] [layers ...]
+runner: error: another layer runner owns this checkout; wait for it to finish
+.1 missed, 0 in the baseline
+NEW missed mutant: a.rs: replace f with 1
+1 missed, 1 in the baseline
+Evidence: [temporary-fixture]/evidence/report.json
+cancel/1: /usr/bin/python3 -c pass
+  cancelled: not executed
+cancel/2: /usr/bin/python3 -c pass
+  not_run: not executed
+....Evidence: [temporary-fixture]/evidence/report.json
+bad/1: /usr/bin/python3 -c raise SystemExit(9)
+  failed: bad-1.log
+
+good/1: /usr/bin/python3 -c print('done')
+  passed: good-1.log
+.....................................
+----------------------------------------------------------------------
+Ran 280 tests in 11.528s
+
+OK
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  [temporary-fixture]/bookie-0.1.1-1-x86_64.pkg.tar.zst
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  [temporary-fixture]/bookie-0.1.1-1-x86_64.pkg.tar.zst
+candidate archive and rejection checks passed
+Debian package validation skipped: dpkg-deb is unavailable
+function-size checker: OK

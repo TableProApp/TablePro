@@ -1,0 +1,16 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.32s
+     Running tests/integration.rs (target/debug/deps/integration-2bbe88d0fc417a9d)
+
+running 10 tests
+test disconnection::a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect ... ok
+test disconnection::a_disconnected_session_is_retired_without_affecting_the_shared_pool ... ok
+test disconnection::a_restarted_postgres_server_restores_the_existing_pool ... ok
+test disconnection::backend_loss_during_row_stream_fails_the_whole_query_as_disconnected ... ok
+test disconnection::controlled_cancel_stops_server_query_and_keeps_pool_usable ... ok
+test disconnection::controlled_parameterized_cancel_stops_server_query_and_keeps_pool_usable ... ok
+test disconnection::controlled_timeout_stops_server_query_and_keeps_pool_usable ... ok
+test disconnection::controlled_transaction_cancel_allows_rollback ... ok
+test disconnection::dropped_transaction_discards_uncommitted_session ... ok
+test disconnection::server_terminated_query_reports_disconnection_and_pool_recovers ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 275 filtered out; finished in 33.00s

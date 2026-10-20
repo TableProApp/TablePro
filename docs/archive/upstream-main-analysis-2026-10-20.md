@@ -2,6 +2,13 @@
 
 Reviewed 2026-10-20. This is a dated source review and adoption proposal. It does not change accepted ADRs, select a release scope, or establish new runtime defects.
 
+**Completion clarification, 2026-10-20:** The research and execution plan are complete. The implementation proposals below are not completed features. The [archive claim verification](../evidence/archive-claim-verification-2026-10-20/README.md) records the current issue snapshot, source trace and focused test results, including their limits.
+
+- [x] Record source pins, architecture comparison and adoption costs.
+- [x] Map regression ideas to existing issues and validation tiers.
+- [x] Record the workstation hardware, artifact reuse plan and measured local reuse evidence.
+- [ ] Complete the proposed application reconnect, consumer corpus, crash-save, retained-memory, reconciliation and accessibility work through the owning issues in the recommended sequence.
+
 ## Sources and comparison boundary
 
 | Source | Verified revision or state |

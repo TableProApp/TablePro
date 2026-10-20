@@ -1,0 +1,6 @@
+
+running 2 tests
+test native_oracle_contract::value_contract_integer_text_and_bytea_match_native_oracles ... ok
+test native_oracle_contract::value_contract_json_and_jsonb_match_native_type_oracles ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 283 filtered out; finished in 2.58s

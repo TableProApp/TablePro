@@ -1,0 +1,345 @@
+[
+  {
+    "closedAt": null,
+    "number": 1149,
+    "state": "OPEN",
+    "title": "Post-0.2.0 upstream Linux adoption: driver contracts and development workflow",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1149"
+  },
+  {
+    "closedAt": "2026-10-19T10:15:43Z",
+    "number": 1148,
+    "state": "CLOSED",
+    "title": "Post-0.2.0: detect stale documentation symbols and generated UI catalogues",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1148"
+  },
+  {
+    "closedAt": "2026-10-19T10:31:41Z",
+    "number": 1147,
+    "state": "CLOSED",
+    "title": "Post-0.2.0: evaluate changelog fragments for concurrent lane contributions",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1147"
+  },
+  {
+    "closedAt": "2026-10-19T12:50:10Z",
+    "number": 1146,
+    "state": "CLOSED",
+    "title": "Post-0.2.0: qualify offline release inputs and consistent package metadata",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1146"
+  },
+  {
+    "closedAt": "2026-10-19T11:15:45Z",
+    "number": 1145,
+    "state": "CLOSED",
+    "title": "Post-0.2.0: generate third-party notices from the shipped dependency graph",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1145"
+  },
+  {
+    "closedAt": "2026-10-19T08:06:17Z",
+    "number": 1144,
+    "state": "CLOSED",
+    "title": "Post-0.2.0: enforce selected GTK task and lifecycle boundaries mechanically",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1144"
+  },
+  {
+    "closedAt": "2026-10-19T14:51:24Z",
+    "number": 1143,
+    "state": "CLOSED",
+    "title": "Post-0.2.0: extend existing keyset paging with reverse navigation and plan evidence",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1143"
+  },
+  {
+    "closedAt": "2026-10-19T09:01:22Z",
+    "number": 1142,
+    "state": "CLOSED",
+    "title": "Post-0.2.0: share cancellation and write-outcome conformance across drivers",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1142"
+  },
+  {
+    "closedAt": "2026-10-19T17:16:09Z",
+    "number": 1141,
+    "state": "CLOSED",
+    "title": "Post-0.2.0: verify MySQL server-zone defaults, DST keys and save-mode semantics",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1141"
+  },
+  {
+    "closedAt": "2026-10-19T18:00:54Z",
+    "number": 1140,
+    "state": "CLOSED",
+    "title": "Post-0.2.0: qualify PostgreSQL cancellation and session isolation through PgBouncer",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1140"
+  },
+  {
+    "closedAt": null,
+    "number": 1073,
+    "state": "OPEN",
+    "title": "test(core): pin duplicate result-label exports across formats",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1073"
+  },
+  {
+    "closedAt": null,
+    "number": 1065,
+    "state": "OPEN",
+    "title": "Audit and model per-object write capabilities for browse metadata",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1065"
+  },
+  {
+    "closedAt": null,
+    "number": 1054,
+    "state": "OPEN",
+    "title": "fix(app): scope saved workspace to the selected database",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1054"
+  },
+  {
+    "closedAt": null,
+    "number": 1032,
+    "state": "OPEN",
+    "title": "Measure and bound retained streamed-result resources across pins, export and teardown",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1032"
+  },
+  {
+    "closedAt": null,
+    "number": 1029,
+    "state": "OPEN",
+    "title": "Pin active grid edit ownership through focus changes, close, quit and disconnect",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1029"
+  },
+  {
+    "closedAt": null,
+    "number": 1026,
+    "state": "OPEN",
+    "title": "Peer-review delivery: guarded actions, owned lifecycles, cumulative budgets and UI regressions",
+    "url": "https://github.com/cozyGarage/BookiE/issues/1026"
+  },
+  {
+    "closedAt": null,
+    "number": 983,
+    "state": "OPEN",
+    "title": "Checks from upstream TablePro Linux, dbx, DBeaver and Beekeeper through 2026-10-17",
+    "url": "https://github.com/cozyGarage/BookiE/issues/983"
+  },
+  {
+    "closedAt": "2026-10-17T22:25:08Z",
+    "number": 970,
+    "state": "CLOSED",
+    "title": "SSH jump hosts reached through system OpenSSH skip the forced host key options",
+    "url": "https://github.com/cozyGarage/BookiE/issues/970"
+  },
+  {
+    "closedAt": null,
+    "number": 947,
+    "state": "OPEN",
+    "title": "Audit journal: unresolved writes need reconciliation; append verification scales with journal size",
+    "url": "https://github.com/cozyGarage/BookiE/issues/947"
+  },
+  {
+    "closedAt": "2026-10-15T18:56:20Z",
+    "number": 937,
+    "state": "CLOSED",
+    "title": "Distro-floor failure summaries can exit before showing the captured GTK error",
+    "url": "https://github.com/cozyGarage/BookiE/issues/937"
+  },
+  {
+    "closedAt": "2026-10-15T20:00:53Z",
+    "number": 934,
+    "state": "CLOSED",
+    "title": "SQL completion needs exact identifier proposals beyond the word provider",
+    "url": "https://github.com/cozyGarage/BookiE/issues/934"
+  },
+  {
+    "closedAt": "2026-10-15T14:51:16Z",
+    "number": 933,
+    "state": "CLOSED",
+    "title": "PostgreSQL completion still truncates quoted names and republishes unquoted catalog identities",
+    "url": "https://github.com/cozyGarage/BookiE/issues/933"
+  },
+  {
+    "closedAt": "2026-10-15T14:51:16Z",
+    "number": 923,
+    "state": "CLOSED",
+    "title": "PostgreSQL completion: fixture test for quoted names and search_path-aware bare names",
+    "url": "https://github.com/cozyGarage/BookiE/issues/923"
+  },
+  {
+    "closedAt": null,
+    "number": 902,
+    "state": "OPEN",
+    "title": "Qualify exact PostgreSQL extension paths for pgvector and PostGIS before adding rich viewers",
+    "url": "https://github.com/cozyGarage/BookiE/issues/902"
+  },
+  {
+    "closedAt": "2026-10-15T09:00:37Z",
+    "number": 901,
+    "state": "CLOSED",
+    "title": "PostgreSQL completion merges quoted case and misparses dots or doubled quotes in names",
+    "url": "https://github.com/cozyGarage/BookiE/issues/901"
+  },
+  {
+    "closedAt": "2026-10-15T11:41:31Z",
+    "number": 900,
+    "state": "CLOSED",
+    "title": "PostgreSQL stale-plan recovery retries arbitrary 0A000 errors after execution",
+    "url": "https://github.com/cozyGarage/BookiE/issues/900"
+  },
+  {
+    "closedAt": "2026-10-15T09:31:52Z",
+    "number": 897,
+    "state": "CLOSED",
+    "title": "Declare shared MCP tool safety annotations in both server implementations",
+    "url": "https://github.com/cozyGarage/BookiE/issues/897"
+  },
+  {
+    "closedAt": "2026-10-15T12:24:22Z",
+    "number": 896,
+    "state": "CLOSED",
+    "title": "Preserve structured operation and transaction outcomes through MCP errors",
+    "url": "https://github.com/cozyGarage/BookiE/issues/896"
+  },
+  {
+    "closedAt": "2026-10-17T19:12:13Z",
+    "number": 895,
+    "state": "CLOSED",
+    "title": "Define a lossless MCP numeric boundary for JavaScript consumers",
+    "url": "https://github.com/cozyGarage/BookiE/issues/895"
+  },
+  {
+    "closedAt": null,
+    "number": 894,
+    "state": "OPEN",
+    "title": "MongoDB metadata sampling retains 128 full documents before applying the result byte budget",
+    "url": "https://github.com/cozyGarage/BookiE/issues/894"
+  },
+  {
+    "closedAt": null,
+    "number": 893,
+    "state": "OPEN",
+    "title": "Editor SQL planning ignores the owning session string-escape mode",
+    "url": "https://github.com/cozyGarage/BookiE/issues/893"
+  },
+  {
+    "closedAt": "2026-10-15T11:20:26Z",
+    "number": 892,
+    "state": "CLOSED",
+    "title": "Measure cargo-nextest for the existing unit and sandbox tiers without weakening execution evidence",
+    "url": "https://github.com/cozyGarage/BookiE/issues/892"
+  },
+  {
+    "closedAt": null,
+    "number": 891,
+    "state": "OPEN",
+    "title": "Record executable architecture boundaries and regression evidence in Principles and an ADR",
+    "url": "https://github.com/cozyGarage/BookiE/issues/891"
+  },
+  {
+    "closedAt": "2026-10-15T01:38:17Z",
+    "number": 887,
+    "state": "CLOSED",
+    "title": "app-services guard rails: lints are not enforced and nothing checks the no-GTK boundary",
+    "url": "https://github.com/cozyGarage/BookiE/issues/887"
+  },
+  {
+    "closedAt": "2026-10-15T18:22:31Z",
+    "number": 809,
+    "state": "CLOSED",
+    "title": "Render streamed query pages with safe editor lifecycle",
+    "url": "https://github.com/cozyGarage/BookiE/issues/809"
+  },
+  {
+    "closedAt": null,
+    "number": 790,
+    "state": "OPEN",
+    "title": "Checks to run, taken from bugs other database clients fixed (DBeaver, TablePro, dbx, dbflux)",
+    "url": "https://github.com/cozyGarage/BookiE/issues/790"
+  },
+  {
+    "closedAt": null,
+    "number": 594,
+    "state": "OPEN",
+    "title": "TEST-32: Oracle review of value and policy test expectations",
+    "url": "https://github.com/cozyGarage/BookiE/issues/594"
+  },
+  {
+    "closedAt": null,
+    "number": 593,
+    "state": "OPEN",
+    "title": "TEST-15: Lost-ack writes must not replay after reconnect",
+    "url": "https://github.com/cozyGarage/BookiE/issues/593"
+  },
+  {
+    "closedAt": null,
+    "number": 590,
+    "state": "OPEN",
+    "title": "PostgreSQL first: connection paths and cases to confirm for 0.2.0",
+    "url": "https://github.com/cozyGarage/BookiE/issues/590"
+  },
+  {
+    "closedAt": null,
+    "number": 580,
+    "state": "OPEN",
+    "title": "backlog: Filter Schemas and PostgreSQL many-schema catalog performance",
+    "url": "https://github.com/cozyGarage/BookiE/issues/580"
+  },
+  {
+    "closedAt": null,
+    "number": 575,
+    "state": "OPEN",
+    "title": "TEST-6: finish triage of the manual verification checklist",
+    "url": "https://github.com/cozyGarage/BookiE/issues/575"
+  },
+  {
+    "closedAt": null,
+    "number": 573,
+    "state": "OPEN",
+    "title": "Lab runners: Hyper-Threading, executor sizing and overlapping gates",
+    "url": "https://github.com/cozyGarage/BookiE/issues/573"
+  },
+  {
+    "closedAt": null,
+    "number": 561,
+    "state": "OPEN",
+    "title": "Accessibility pass (Orca, high contrast) and a value comparison with DBeaver and dbx",
+    "url": "https://github.com/cozyGarage/BookiE/issues/561"
+  },
+  {
+    "closedAt": null,
+    "number": 560,
+    "state": "OPEN",
+    "title": "Native Ubuntu AT-SPI menu reachability and a fake connection for the GTK tier",
+    "url": "https://github.com/cozyGarage/BookiE/issues/560"
+  },
+  {
+    "closedAt": null,
+    "number": 559,
+    "state": "OPEN",
+    "title": "Mutation testing: triage surviving mutants into tests",
+    "url": "https://github.com/cozyGarage/BookiE/issues/559"
+  },
+  {
+    "closedAt": null,
+    "number": 556,
+    "state": "OPEN",
+    "title": "Installed GTK suite is intermittent on Forgejo",
+    "url": "https://github.com/cozyGarage/BookiE/issues/556"
+  },
+  {
+    "closedAt": null,
+    "number": 554,
+    "state": "OPEN",
+    "title": "Stream large results instead of holding them in memory",
+    "url": "https://github.com/cozyGarage/BookiE/issues/554"
+  },
+  {
+    "closedAt": null,
+    "number": 550,
+    "state": "OPEN",
+    "title": "Show server output (NOTICE, PRINT) and a timing breakdown for queries",
+    "url": "https://github.com/cozyGarage/BookiE/issues/550"
+  },
+  {
+    "closedAt": null,
+    "number": 547,
+    "state": "OPEN",
+    "title": "Database snapshots: PostgreSQL, SQL Server, then SQLite and DuckDB file copies",
+    "url": "https://github.com/cozyGarage/BookiE/issues/547"
+  }
+]

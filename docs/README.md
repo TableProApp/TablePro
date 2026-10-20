@@ -61,6 +61,8 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 
 [archive/](archive/) holds dated reviews, audits, inventories and long histories. They are source-pinned evidence, not instructions; open items from them live on [Project #3](https://github.com/users/cozyGarage/projects/3). The [changelog engineering history index](../CHANGELOG.md#historical-engineering-records) locates dated records.
 
+[Archive claim verification, October 20](evidence/archive-claim-verification-2026-10-20/README.md) inventories every archived document, traces explicit BookiE issue links and source symbols, and identifies the focused current-source tests actually rerun. Research completion, issue closure and runtime acceptance are separate claims.
+
 - [Sprint history](archive/bookie-0.2-history.md) (includes 2026-10-08/09 continuation snapshots)
 - [B4 history](archive/b4-history.md) (includes superseded tip checkpoints, [completed local slices](archive/b4-history.md#archived-completed-local-slices-2026-10-10-consolidation) and [remaining-task prose](archive/b4-history.md#archived-remaining-task-prose-2026-10-10-pass-4))
 - [Evidence directory index](archive/evidence-index-2026-10-10.md) (failed / incomplete / retest vs historical pass; do not delete red manifests)
