@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Builds the harness scripts/probes/check-ssh-tunnel-matrix.sh runs in the iOS simulator:
-# ios-harness.swift compiled into one module with the iOS app's SSH tunnel sources, linked against
-# the simulator slices of libssh2 and OpenSSL the app ships.
+# ios-harness.swift and harness-common.swift compiled into one module with the iOS app's SSH tunnel
+# sources, linked against the simulator slices of libssh2 and OpenSSL the app ships.
 #
 # The TableProCore modules those sources import come first, with the dependency order and source
 # lists `swift package describe` reads from the manifest, so a new file or dependency there needs no
@@ -69,7 +69,7 @@ while IFS= read -r shared; do
     SHARED=$((SHARED + 1))
 done < <(sed -n 's|^[[:space:]]*- \(\.\./TablePro/Core/SSH/[^[:space:]]*\.swift\)[[:space:]]*$|\1|p' "$MOBILE/project.yml")
 [ "$SHARED" -gt 0 ] || setup_failure "TableProMobile/project.yml lists no file from TablePro/Core/SSH"
-APP_SOURCES+=("$HERE/ios-harness.swift")
+APP_SOURCES+=("$HERE/harness-common.swift" "$HERE/ios-harness.swift")
 for source in "${APP_SOURCES[@]}"; do
     [ -f "$source" ] || setup_failure "missing $source"
 done
