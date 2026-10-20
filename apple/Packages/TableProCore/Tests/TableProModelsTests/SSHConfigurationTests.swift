@@ -139,7 +139,7 @@ struct SSHConfigurationTests {
         #expect(!text.contains("b3BlbnNzaC1rZXktdjE"))
     }
 
-    @Test("A configuration this model creates omits the macOS-only keys, so the host inference is unchanged")
+    @Test("A configuration this model creates omits the macOS-only keys")
     func iosCreatedConfigOmitsMacKeys() throws {
         let config = SSHConfiguration(host: "prod-1", username: "deploy")
         let reencoded = try JSONEncoder().encode(config)
@@ -168,6 +168,22 @@ struct SSHConfigurationTests {
         #expect(config.jumpHosts[0].host == "bastion-1")
         #expect(config.jumpHosts[0].port == nil)
         #expect(config.jumpHosts[1].port == 2_222)
+    }
+
+    @Test("A hop without a port dials the SSH default")
+    func portlessHopDialsDefaultPort() throws {
+        let config = try JSONDecoder().decode(SSHConfiguration.self, from: Data(Self.macJumpHostsJSON.utf8))
+
+        #expect(config.jumpHosts[0].resolvedPort == 22)
+        #expect(SSHJumpHost(host: "bastion-1").resolvedPort == 22)
+    }
+
+    @Test("A hop port the user set is the one dialed")
+    func setHopPortIsDialed() throws {
+        let config = try JSONDecoder().decode(SSHConfiguration.self, from: Data(Self.macJumpHostsJSON.utf8))
+
+        #expect(config.jumpHosts[1].resolvedPort == 2_222)
+        #expect(SSHJumpHost(host: "bastion-1", port: 2_200).resolvedPort == 2_200)
     }
 
     @Test("A hop's auth method and key path survive an iOS round trip")

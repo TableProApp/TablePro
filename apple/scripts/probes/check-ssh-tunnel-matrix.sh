@@ -168,32 +168,48 @@ done
 cell keytotp/ed25519/file "$SECOND_FACTOR" "$SSH_TEST_PORT_KEYTOTP" --auth key --key-file "$SSH_TEST_KEYS/ed25519"
 cell passtotp/password "$SECOND_FACTOR" "$SSH_TEST_PORT_PASSTOTP" "${PASSWORD[@]}"
 cell totp/password "ERROR promptUnanswerable(*" "$SSH_TEST_PORT_TOTP" "${PASSWORD[@]}"
-cell maxauth/agent "ERROR authMethodUnsupported(*sshAgent)*" "$SSH_TEST_PORT_MAXAUTH" --auth agent
+# iOS has no agent, so an agent connection signs in with the key on the device.
+cell v10/agent/memory "$CONNECTED" "$SSH_TEST_PORT_V10" --auth agent --key-memory "$SSH_TEST_KEYS/ed25519"
 cell totp/keyboard-interactive "ERROR authMethodUnsupported(*keyboardInteractive)*" "$SSH_TEST_PORT_TOTP" \
     --auth kbdint --password "$SSH_TEST_PASSWORD"
-# hop2 is reachable only from hop1, under its network alias.
-cell two-hops/password "ERROR jumpHostsUnsupported |*" "${SSH_TEST_HOP2##*:}" --host "${SSH_TEST_HOP2%:*}" \
-    --jump "$SSH_TEST_HOST:$SSH_TEST_PORT_HOP1" "${PASSWORD[@]}"
+# hop2 is reachable only from the other servers, under its network alias.
+HOP2=(--host "${SSH_TEST_HOP2%:*}")
+HOP2_PORT="${SSH_TEST_HOP2##*:}"
+HOP1=(--jump "$SSH_TEST_HOST:$SSH_TEST_PORT_HOP1")
+cell two-hops/password "$CONNECTED" "$HOP2_PORT" "${HOP2[@]}" "${HOP1[@]}" --jump-key "$SSH_TEST_KEYS/ed25519" \
+    "${PASSWORD[@]}"
+cell two-hops/server-key "$CONNECTED" "$HOP2_PORT" "${HOP2[@]}" "${HOP1[@]}" --jump-key server \
+    --auth key --key-memory "$SSH_TEST_KEYS/ed25519-pass" --passphrase "$SSH_TEST_KEY_PASSPHRASE"
+cell two-hops/hop-wrong-passphrase "ERROR jumpHostFailed(*passphrase for this SSH private key is incorrect*" \
+    "$HOP2_PORT" "${HOP2[@]}" "${HOP1[@]}" --jump-key "$SSH_TEST_KEYS/ed25519-pass" \
+    --jump-passphrase "not-$SSH_TEST_KEY_PASSPHRASE" "${PASSWORD[@]}"
+cell two-hops/pq-hop "ERROR jumpHostFailed(*no key exchange or host key method in common*" "$HOP2_PORT" \
+    "${HOP2[@]}" --jump "$SSH_TEST_HOST:$SSH_TEST_PORT_PQ10" --jump-key "$SSH_TEST_KEYS/ed25519" "${PASSWORD[@]}"
+cell two-hops/30-clients-one-tunnel "CONNECTED clients=30" "$HOP2_PORT" "${HOP2[@]}" "${HOP1[@]}" \
+    --jump-key "$SSH_TEST_KEYS/ed25519" --mode clients --count 30 "${PASSWORD[@]}"
 
 cell v10/30-clients-one-tunnel "CONNECTED clients=30" "$SSH_TEST_PORT_V10" --mode clients --count 30 "${PASSWORD[@]}"
 cell v10/10-tunnels-one-process "CONNECTED tunnels=10" "$SSH_TEST_PORT_V10" --mode tunnels --count 10 "${PASSWORD[@]}"
 
 # docker kill drops the server mid-session. A tunnel relaying a client should notice at once from the
 # transport; an idle one only through keep-alive (sent every 10s, failing on the second miss after
-# 30s). Neither may spin while it waits.
+# 30s). Neither may spin while it waits. With a hop killed, its relay ends and the next session's
+# transport closes under it.
 loss_cell() {
-    local name="loss/docker-kill" expected="LOSS relaying<=3 idle<=75 cpu<1"
+    local name="$1" server="$2" port="$3" expected="LOSS relaying<=3 idle<=75 cpu<1"
     local marker="$WORK/loss-marker" output="$WORK/loss.out" pid result verdict
+    shift 3
     selected "$name" || return 0
+    rm -f "$marker"
     xcrun simctl spawn -s "$UDID" "$HARNESS" --mode loss --marker "$marker" --wait 75 --deadline 180 \
-        --known-hosts "$WORK" --port "$SSH_TEST_PORT_LOSS" --user "$SSH_TEST_USER" \
-        --target "$SSH_TEST_TARGET" "${PASSWORD[@]}" > "$output" 2>&1 &
+        --known-hosts "$WORK" --port "$port" --user "$SSH_TEST_USER" \
+        --target "$SSH_TEST_TARGET" "$@" > "$output" 2>&1 &
     pid=$!
     while kill -0 "$pid" 2> /dev/null && ! grep -q '^READY' "$output"; do
         sleep 0.2
     done
     if grep -q '^READY' "$output"; then
-        "$SERVERS" kill loss > /dev/null
+        "$SERVERS" kill "$server" > /dev/null
         touch "$marker"
     fi
     wait "$pid"
@@ -209,10 +225,12 @@ loss_cell() {
         }
         { print "miss"; exit }
     ')"
-    "$SERVERS" start loss > /dev/null || echo "warning: the loss server did not come back" >&2
+    "$SERVERS" start "$server" > /dev/null || echo "warning: $server did not come back" >&2
     report "$name" "$expected" "$result" "$verdict"
 }
-loss_cell
+loss_cell loss/docker-kill loss "$SSH_TEST_PORT_LOSS" "${PASSWORD[@]}"
+loss_cell loss/hop-docker-kill hop1 "$HOP2_PORT" "${HOP2[@]}" "${HOP1[@]}" --jump-key "$SSH_TEST_KEYS/ed25519" \
+    "${PASSWORD[@]}"
 
 echo ""
 [ "$RAN" -gt 0 ] || setup_failure "no cell name holds \"$FILTER\""

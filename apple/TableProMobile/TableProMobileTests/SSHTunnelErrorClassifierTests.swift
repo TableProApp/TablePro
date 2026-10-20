@@ -16,7 +16,6 @@ struct SSHTunnelErrorClassifierTests {
         .channelOpenFailed("Channel open failure"),
         .hostKeyRejected("The server's host key was not trusted."),
         .hostKeyUnverified("The server's host key could not be checked."),
-        .jumpHostsUnsupported,
         .tunnelClosed,
     ]
 

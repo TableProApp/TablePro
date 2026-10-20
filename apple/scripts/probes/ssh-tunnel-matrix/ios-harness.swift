@@ -22,6 +22,8 @@ nonisolated struct HarnessOptions: Sendable {
     var keyMemory: String?
     var passphrase: String?
     var jumps: [String] = []
+    var jumpKey: String?
+    var jumpPassphrase: String?
     var target = "redis:6379"
     var count = 1
     var marker: String?
@@ -47,6 +49,8 @@ nonisolated struct HarnessOptions: Sendable {
             case "--key-memory": keyMemory = value
             case "--passphrase": passphrase = value
             case "--jump": jumps.append(value)
+            case "--jump-key": jumpKey = value
+            case "--jump-passphrase": jumpPassphrase = value
             case "--target": target = value
             case "--count": count = try Self.number(value, flag)
             case "--marker": marker = value
@@ -147,7 +151,7 @@ nonisolated enum LocalClient {
                 throw HarnessFailure(description: "recv: \(lastError())")
             }
         }
-        let text = String(decoding: reply, as: UTF8.self)
+        let text = String(bytes: reply, encoding: .utf8) ?? reply.description
         guard text == "+PONG\r\n" else { throw HarnessFailure(description: "expected +PONG, got \(text.debugDescription)") }
     }
 
@@ -175,9 +179,19 @@ nonisolated enum TunnelOpener {
             remoteHost: destination.host,
             remotePort: destination.port,
             credentials: credentials,
+            jumpHostCredentials: try hopCredentials(options, hops: config.jumpHosts),
             prompter: prompter,
             hostKeyStore: store
         )
+    }
+
+    // "server" is Same Key as SSH Server; any other value is a key file, read in as the app keeps a hop key.
+    private static func hopCredentials(_ options: HarnessOptions, hops: [SSHJumpHost]) throws -> [UUID: JumpHostCredential] {
+        guard let jumpKey = options.jumpKey else { return [:] }
+        let credential: JumpHostCredential = jumpKey == "server"
+            ? .sshServerKey
+            : .privateKey(key: try String(contentsOfFile: jumpKey, encoding: .utf8), passphrase: options.jumpPassphrase)
+        return Dictionary(uniqueKeysWithValues: hops.map { ($0.id, credential) })
     }
 
     private static func request(_ options: HarnessOptions) throws -> (SSHConfiguration, SSHTunnelCredentials) {
@@ -189,16 +203,14 @@ nonisolated enum TunnelOpener {
         switch options.auth {
         case "password":
             config.authMethod = .password
-        case "key":
-            config.authMethod = .privateKey
+        case "key", "agent":
+            config.authMethod = options.auth == "agent" ? .sshAgent : .privateKey
             if let path = options.keyMemory {
                 let key = try String(contentsOfFile: path, encoding: .utf8)
                 return (config, SSHTunnelCredentials(keyPassphrase: options.passphrase, privateKey: key))
             }
             config.privateKeyPath = options.keyFile
             return (config, SSHTunnelCredentials(keyPassphrase: options.passphrase))
-        case "agent":
-            config.authMethod = .sshAgent
         case "kbdint":
             config.authMethod = .keyboardInteractive
         case "none":

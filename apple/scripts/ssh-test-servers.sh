@@ -9,7 +9,7 @@
 # at init and includes the drop-in near the top, and sshd keeps the first value it reads. A drop-in
 # is ssh-test-servers/<variant>.conf followed by common.conf. The TOTP servers run an image built
 # from ssh-test-servers/totp.Dockerfile. Every server shares one Docker network with redis, the
-# query target behind each tunnel, and with hop2, which only hop1 reaches. Neither is published.
+# query target behind each tunnel, and with hop2, which only the other servers reach. Neither is published.
 #
 # Usage:
 #   ssh-test-servers.sh up [server...]   # start the servers, every one by default, and wait for each

@@ -10,7 +10,11 @@ nonisolated enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
     case channelOpenFailed(String)
     case hostKeyRejected(String)
     case hostKeyUnverified(String)
-    case jumpHostsUnsupported
+    case usernameMissing(host: String)
+    case jumpHostNeedsKey(host: String)
+    case jumpHostSharedKeyMissing(host: String)
+    case jumpHostFailed(host: String, reason: String)
+    case jumpHostKeysUnreadable(String)
     case tunnelClosed
     case negotiationFailed(SSHNegotiationFailure)
     case authMethodUnsupported(SSHConfiguration.SSHAuthMethod)
@@ -29,11 +33,19 @@ nonisolated enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
         case .channelOpenFailed(let msg): return "SSH channel open failed: \(msg)"
         case .hostKeyRejected(let msg): return msg
         case .hostKeyUnverified(let msg): return msg
-        case .jumpHostsUnsupported:
-            return String(localized: """
-                This connection goes through an SSH jump host, which TablePro on iPhone and iPad \
-                cannot dial. Open it in TablePro on the Mac.
-                """)
+        case .usernameMissing(let host):
+            return String(format: String(localized: "No SSH username is set for %@."), host)
+        case .jumpHostNeedsKey(let host):
+            return String(format: String(localized: "Jump host %@ has no key on this device."), host)
+        case .jumpHostSharedKeyMissing(let host):
+            return String(
+                format: String(localized: "Jump host %@ uses the SSH server's key, which is not on this device."),
+                host
+            )
+        case .jumpHostFailed(let host, let reason):
+            return String(format: String(localized: "Jump host %1$@ failed: %2$@"), host, reason)
+        case .jumpHostKeysUnreadable(let reason):
+            return String(format: String(localized: "The jump host keys on this device could not be read: %@"), reason)
         case .tunnelClosed: return "SSH tunnel is closed"
         case .negotiationFailed(let failure):
             return Self.describe(failure)

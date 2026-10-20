@@ -161,11 +161,13 @@ struct SSHChannelRelayTests {
         var dummy: UInt8 = 1
         _ = Darwin.send(transport.b, &dummy, 1, 0)
 
-        let io = FakeChannelIO(actions: [.data(Data("rows".utf8))], fallback: .wouldBlock)
+        let payload = Data("rows".utf8)
+        let io = FakeChannelIO(actions: [.data(payload)], fallback: .wouldBlock)
         let result = runRelay(localFD: local.a, transportFD: transport.a, io: io)
 
         #expect(result == .localClosed)
         #expect(io.readCount == 1)
+        #expect(io.deliveredCount == payload.count)
     }
 
     @Test("Channel data is forwarded to the local socket")

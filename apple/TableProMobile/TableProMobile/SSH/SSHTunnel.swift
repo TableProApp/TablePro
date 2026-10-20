@@ -23,6 +23,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     private let session: OpaquePointer
     private let socketFD: Int32
     private let listenFD: Int32
+    private let jumpHops: [SSHJumpHop]
 
     /// Serial: every libssh2 call on this session. libssh2 is not thread-safe per session.
     private let sessionQueue: DispatchQueue
@@ -70,13 +71,15 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
         socketFD: Int32,
         listenFD: Int32,
         localPort: Int,
-        sessionQueue: DispatchQueue
+        sessionQueue: DispatchQueue,
+        jumpHops: [SSHJumpHop] = []
     ) {
         self.session = session
         self.socketFD = socketFD
         self.listenFD = listenFD
         self.localPort = localPort
         self.sessionQueue = sessionQueue
+        self.jumpHops = jumpHops
         let label = UUID().uuidString
         self.relayQueue = DispatchQueue(label: "com.TablePro.ssh.relay.\(label)", qos: .utility, attributes: .concurrent)
         self.acceptQueue = DispatchQueue(label: "com.TablePro.ssh.accept.\(label)", qos: .utility)
@@ -160,6 +163,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     // shutdown wakes every poll on the transport but keeps the number, so no other socket can take it mid-poll.
     // Darwin's shutdown does not wake a poll on a listening socket, so the accept loop ends on the latch instead.
     // The relays are awaited after the accept loop, the only thing that starts one, so the group can only empty.
+    // The hops go last, in the Mac's order.
     private func performTeardown() {
         forwardingTask?.cancel()
         keepAliveTask?.cancel()
@@ -172,6 +176,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
         let session = self.session
         let socketFD = self.socketFD
         let listenFD = self.listenFD
+        let jumpHops = self.jumpHops
         let localPort = self.localPort
         let forwardingTask = self.forwardingTask
         let keepAliveTask = self.keepAliveTask
@@ -190,6 +195,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
                 Darwin.close(socketFD)
                 Darwin.close(listenFD)
             }
+            await SSHJumpChain.tearDown(jumpHops)
 
             Self.logger.info("Tunnel closed (local port \(localPort))")
         }

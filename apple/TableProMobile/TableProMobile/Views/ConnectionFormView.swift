@@ -18,6 +18,7 @@ struct ConnectionFormView: View {
     @State private var hapticError = false
     @State private var pasteTarget: CertificateRole?
     @State private var showPKCS12Password = false
+    @State private var pushedJumpHostId: UUID?
 
     var onSaved: (UUID) -> Void
 
@@ -169,6 +170,9 @@ struct ConnectionFormView: View {
                     showPKCS12Password = viewModel.pendingPKCS12 != nil
                 case nil: break
                 }
+            }
+            .navigationDestination(item: $pushedJumpHostId) { hopId in
+                JumpHostEditorView(viewModel: viewModel, hopId: hopId)
             }
             .connectionPrompts(viewModel.prompts)
             .onDisappear { viewModel.prompts.cancelAll() }
@@ -439,7 +443,7 @@ struct ConnectionFormView: View {
         }
 
         if viewModel.sshEnabled {
-            Section("SSH Server") {
+            Section {
                 TextField("SSH Host", text: $viewModel.sshHost)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
@@ -453,15 +457,23 @@ struct ConnectionFormView: View {
                     Text("Private Key").tag(SSHConfiguration.SSHAuthMethod.privateKey)
                 }
                 .pickerStyle(.segmented)
+            } header: {
+                Text("SSH Server")
+            } footer: {
+                if let note = viewModel.sshAuthMethodNote {
+                    Text(note)
+                }
             }
 
             if viewModel.sshAuthMethod == .password {
                 Section("SSH Password") {
                     SecureField("Password", text: $viewModel.sshPassword)
                 }
-            } else {
+            } else if viewModel.sshAuthMethod == .privateKey {
                 privateKeySection(viewModel: viewModel)
             }
+
+            JumpHostsSection(viewModel: viewModel) { pushedJumpHostId = $0 }
         }
     }
 

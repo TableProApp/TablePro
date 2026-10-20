@@ -276,7 +276,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProSSHTransportTests",
-            dependencies: ["TableProSSHTransport"],
+            dependencies: ["TableProSSHTransport", "TableProTestSupport"],
             path: "Tests/TableProSSHTransportTests"
         ),
         .testTarget(
