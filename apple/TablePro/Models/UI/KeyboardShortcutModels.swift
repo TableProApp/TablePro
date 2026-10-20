@@ -70,6 +70,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case openFile
     case saveChanges
     case saveAs
+    case copyPath
+    case copyRelativePath
     case executeQuery
     case executeAllStatements
     case executeQueryWithoutLimit
@@ -177,8 +179,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .manageConnections, .newConnection, .openDatabase, .switchConnection, .moveTabToConnection:
             return .connections
-        case .openFile, .saveChanges, .saveAs, .executeQuery, .executeAllStatements,
-             .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
+        case .openFile, .saveChanges, .saveAs, .copyPath, .copyRelativePath,
+             .executeQuery, .executeAllStatements, .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
              .removeInvisibleCharacters, .foldAll, .unfoldAll, .toggleFold,
              .previousStatement, .nextStatement, .runStatementAndAdvance,
              .previewSQL, .find, .findAndReplace, .findNext, .findPrevious, .useSelectionForFind,
@@ -263,6 +265,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .moveTabToConnection: return String(localized: "Move Tab to Connection")
         case .saveChanges: return String(localized: "Save Changes")
         case .saveAs: return String(localized: "Save As")
+        case .copyPath: return String(localized: "Copy Path")
+        case .copyRelativePath: return String(localized: "Copy Relative Path")
         case .previewSQL: return String(localized: "Preview SQL")
         case .closeTab: return String(localized: "Close Tab")
         case .closeOtherTabs: return String(localized: "Close Other Tabs")
@@ -600,6 +604,8 @@ struct KeyboardSettings: Codable, Equatable {
         .openFile: .character("o", command: true),
         .saveChanges: .character("s", command: true),
         .saveAs: .character("s", command: true, shift: true),
+        // Not Finder's Option-Command-C, which is Copy with Headers. Copy Relative Path has no default.
+        .copyPath: .character("c", command: true, shift: true, option: true),
         .executeQuery: .special(.return, command: true),
         .executeAllStatements: .special(.return, command: true, shift: true),
         .executeQueryWithoutLimit: .special(.return, command: true, option: true),

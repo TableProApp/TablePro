@@ -72,11 +72,13 @@ struct CassandraResumePoints {
     }
 }
 
-/// One browse's walk: the statement, its page size, and the key its resume points are kept under.
+/// One browse's walk: the statement, its page size, the key its resume points are kept under, and the levels
+/// every page reads at.
 struct CassandraBrowseWalk {
     let browse: CassandraBrowseStatement
     let pageSize: Int
     let key: CassandraResumePoints.Key
+    let consistency: CassandraConsistency?
 }
 
 /// Stops a browse walk between pages. The walk runs inside the connection actor while the driver blocks on each

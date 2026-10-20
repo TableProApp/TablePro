@@ -184,6 +184,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
                 let adopted = gate.resume(with: .success(()))
                 finishConnect(generation: generation, succeeded: true, adopted: adopted, error: nil)
             } catch {
+                // Every sign-in fails here, pooled and per-database ones included, so a rejected reused password goes.
+                PasswordCommandCache.shared.forget(connectionId: connection.id)
                 let adopted = gate.resume(with: .failure(error))
                 finishConnect(generation: generation, succeeded: false, adopted: adopted, error: error)
             }
@@ -742,6 +744,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo {
         UserDefinedTypeInfo(try await pluginDriver.fetchUserDefinedType(type.pluginType))
+    }
+
+    func generateDropTypeSQL(type: UserDefinedTypeInfo) -> String? {
+        pluginDriver.generateDropTypeSQL(type: type.pluginType)
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {

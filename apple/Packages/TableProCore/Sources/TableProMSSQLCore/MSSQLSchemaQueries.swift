@@ -287,16 +287,20 @@ public enum MSSQLSchemaQueries {
             """
     }
 
-    public static func foreignKeys(schema: String, table: String) -> String {
+    // One statement for a table's keys and a schema's, so the two reads cannot drift apart.
+    public static func foreignKeys(schema: String, table: String?) -> String {
         let s = MSSQLStringLiteral.quoted(schema)
-        let t = MSSQLStringLiteral.quoted(table)
+        let tableFilter = table.map { " AND tp.name = \(MSSQLStringLiteral.quoted($0))" } ?? ""
         return """
             SELECT
                 fk.name AS constraint_name,
                 cp.name AS column_name,
                 tr.name AS ref_table,
                 cr.name AS ref_column,
-                sr.name AS ref_schema
+                sr.name AS ref_schema,
+                fk.delete_referential_action_desc AS on_delete,
+                fk.update_referential_action_desc AS on_update,
+                tp.name AS table_name
             FROM sys.foreign_keys fk
             JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
             JOIN sys.tables tp ON fkc.parent_object_id = tp.object_id
@@ -307,8 +311,8 @@ public enum MSSQLSchemaQueries {
             JOIN sys.schemas sr ON tr.schema_id = sr.schema_id
             JOIN sys.columns cr
                 ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id
-            WHERE tp.name = \(t) AND s.name = \(s)
-            ORDER BY fk.name
+            WHERE s.name = \(s)\(tableFilter)
+            ORDER BY tp.name, fk.name, fkc.constraint_column_id
             """
     }
 }
@@ -411,19 +415,28 @@ public struct MSSQLForeignKeyRow: Sendable, Equatable {
     public let referencedTable: String
     public let referencedColumn: String
     public let referencedSchema: String?
+    public let onDelete: String
+    public let onUpdate: String
+    public let table: String?
 
     public init(
         constraintName: String,
         columnName: String,
         referencedTable: String,
         referencedColumn: String,
-        referencedSchema: String? = nil
+        referencedSchema: String? = nil,
+        onDelete: String = "NO ACTION",
+        onUpdate: String = "NO ACTION",
+        table: String? = nil
     ) {
         self.constraintName = constraintName
         self.columnName = columnName
         self.referencedTable = referencedTable
         self.referencedColumn = referencedColumn
         self.referencedSchema = referencedSchema
+        self.onDelete = onDelete
+        self.onUpdate = onUpdate
+        self.table = table
     }
 }
 
@@ -474,8 +487,17 @@ public extension MSSQLSchemaQueries {
             columnName: column,
             referencedTable: refTable,
             referencedColumn: refColumn,
-            referencedSchema: row[safe: 4] ?? nil
+            referencedSchema: row[safe: 4] ?? nil,
+            onDelete: referentialAction(row[safe: 5] ?? nil),
+            onUpdate: referentialAction(row[safe: 6] ?? nil),
+            table: row[safe: 7] ?? nil
         )
+    }
+
+    // sys.foreign_keys spells the actions `NO_ACTION`, `SET_NULL` and `SET_DEFAULT`.
+    static func referentialAction(_ description: String?) -> String {
+        guard let description, !description.isEmpty else { return "NO ACTION" }
+        return description.replacingOccurrences(of: "_", with: " ")
     }
 }
 

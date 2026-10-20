@@ -13,6 +13,8 @@ final class AdvancedPaneViewModel: ObservableObject {
     @Published var additionalFieldValues: [String: String] = [:]
     @Published var startupCommands: String = ""
     @Published var preConnectScript: String = ""
+    @Published var postDisconnectScript: String = ""
+    @Published var scriptTimeoutSeconds: Int?
     @Published var externalAccess: ExternalAccessLevel = .readOnly
     @Published var localOnly: Bool = false
     @Published var aiPolicy: AIConnectionPolicy?
@@ -49,6 +51,9 @@ final class AdvancedPaneViewModel: ObservableObject {
         issues += advancedFields.filter(isFieldVisible).compactMap { $0.rangeIssue(in: additionalFieldValues[$0.id] ?? "") }
         if let extensionIssue {
             issues.append(extensionIssue)
+        }
+        if let scriptTimeoutSeconds, !ConnectionScriptRunner.timeoutSecondsRange.contains(scriptTimeoutSeconds) {
+            issues.append(String(localized: "Script timeout must be between 1 and 300 seconds."))
         }
         return issues
     }
@@ -112,6 +117,8 @@ final class AdvancedPaneViewModel: ObservableObject {
             .flatMap { (try? LoadableExtensionList.decode(connection.additionalFields[$0.id])) ?? [] }
         startupCommands = connection.startupCommands ?? ""
         preConnectScript = connection.preConnectScript ?? ""
+        postDisconnectScript = connection.postDisconnectScript ?? ""
+        scriptTimeoutSeconds = connection.scriptTimeoutSeconds
         aiPolicy = connection.aiPolicy
         externalAccess = connection.externalAccess
         localOnly = connection.localOnly

@@ -312,6 +312,10 @@ nonisolated public enum PostgreSQLObjectQueries {
         "ALTER TYPE \(qualifiedName(schema: schema, name: name)) RENAME VALUE \(quoteLiteral(oldLabel)) TO \(quoteLiteral(newLabel))"
     }
 
+    public static func dropType(schema: String, name: String, kind: PluginUserDefinedTypeKind) -> String {
+        "\(kind == .domain ? "DROP DOMAIN" : "DROP TYPE") \(qualifiedName(schema: schema, name: name))"
+    }
+
     public static func createTypeTemplate(schema: String) -> String {
         """
         CREATE TYPE \(qualifiedName(schema: schema, name: "type_name")) AS ENUM (

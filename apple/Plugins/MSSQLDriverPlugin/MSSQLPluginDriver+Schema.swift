@@ -133,16 +133,21 @@ extension MSSQLPluginDriver {
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         let sql = MSSQLSchemaQueries.foreignKeys(schema: effectiveSchema(schema), table: table)
         let result = try await execute(query: sql)
-        return result.rows.compactMap { row -> PluginForeignKeyInfo? in
-            guard let parsed = MSSQLSchemaQueries.parseForeignKeyRow(row.map { $0.asText }) else { return nil }
-            return PluginForeignKeyInfo(
-                name: parsed.constraintName,
-                column: parsed.columnName,
-                referencedTable: parsed.referencedTable,
-                referencedColumn: parsed.referencedColumn,
-                referencedSchema: parsed.referencedSchema
-            )
+        return result.rows.compactMap { row in
+            MSSQLSchemaQueries.parseForeignKeyRow(row.map { $0.asText }).map(Self.foreignKey)
         }
+    }
+
+    private static func foreignKey(_ row: MSSQLForeignKeyRow) -> PluginForeignKeyInfo {
+        PluginForeignKeyInfo(
+            name: row.constraintName,
+            column: row.columnName,
+            referencedTable: row.referencedTable,
+            referencedColumn: row.referencedColumn,
+            referencedSchema: row.referencedSchema,
+            onDelete: row.onDelete,
+            onUpdate: row.onUpdate
+        )
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
@@ -201,44 +206,12 @@ extension MSSQLPluginDriver {
     var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        let schemaLiteral = effectiveSchemaQuoted(schema)
-        let sql = """
-            SELECT
-                tp.name AS table_name,
-                fk.name AS constraint_name,
-                cp.name AS column_name,
-                tr.name AS ref_table,
-                cr.name AS ref_column,
-                sr.name AS ref_schema
-            FROM sys.foreign_keys fk
-            JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
-            JOIN sys.tables tp ON fkc.parent_object_id = tp.object_id
-            JOIN sys.schemas s ON tp.schema_id = s.schema_id
-            JOIN sys.columns cp
-                ON fkc.parent_object_id = cp.object_id AND fkc.parent_column_id = cp.column_id
-            JOIN sys.tables tr ON fkc.referenced_object_id = tr.object_id
-            JOIN sys.schemas sr ON tr.schema_id = sr.schema_id
-            JOIN sys.columns cr
-                ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id
-            WHERE s.name = \(schemaLiteral)
-            ORDER BY tp.name, fk.name
-            """
-        let result = try await execute(query: sql)
+        let result = try await execute(query: MSSQLSchemaQueries.foreignKeys(schema: effectiveSchema(schema), table: nil))
         var fksByTable: [String: [PluginForeignKeyInfo]] = [:]
         for row in result.rows {
-            guard let tableName = row[safe: 0]?.asText,
-                  let constraintName = row[safe: 1]?.asText,
-                  let columnName = row[safe: 2]?.asText,
-                  let refTable = row[safe: 3]?.asText,
-                  let refColumn = row[safe: 4]?.asText else { continue }
-            let fk = PluginForeignKeyInfo(
-                name: constraintName,
-                column: columnName,
-                referencedTable: refTable,
-                referencedColumn: refColumn,
-                referencedSchema: row[safe: 5]?.asText
-            )
-            fksByTable[tableName, default: []].append(fk)
+            guard let parsed = MSSQLSchemaQueries.parseForeignKeyRow(row.map { $0.asText }),
+                  let table = parsed.table else { continue }
+            fksByTable[table, default: []].append(Self.foreignKey(parsed))
         }
         return fksByTable
     }

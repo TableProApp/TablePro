@@ -27,6 +27,7 @@ struct CredentialProfileEditorSheet: View {
     @State private var sourceKind: PasswordSourceKind = .file
     @State private var sourceValue: String = ""
     @State private var sourceField: String = ""
+    @State private var commandReuseSeconds: Int?
 
     @State private var secureFieldType: DatabaseType = .mysql
     @State private var secureFieldValues: [String: String] = [:]
@@ -149,7 +150,23 @@ struct CredentialProfileEditorSheet: View {
                 if sourceKind == .awsSecretsManager {
                     TextField(String(localized: "JSON Key"), text: $sourceField, prompt: Text("password"))
                 }
-                Text("Resolved on every connect. It stays on this Mac and never syncs, because it can name a command to run.")
+                if sourceKind == .command {
+                    Picker(String(localized: "Reuse Result For"), selection: $commandReuseSeconds) {
+                        Text("Never").tag(Int?.none)
+                        ForEach(Self.reuseChoices(including: commandReuseSeconds), id: \.self) { seconds in
+                            Text(Self.reuseLabel(seconds)).tag(Int?.some(seconds))
+                        }
+                    }
+                    .accessibilityIdentifier("credential-profile-command-reuse")
+                    Text(String(localized: """
+                        {host}, {port}, {user} and {database} become the opening connection's values, \
+                        already quoted. The command also gets them as TABLEPRO_HOST, TABLEPRO_PORT, \
+                        TABLEPRO_USER and TABLEPRO_DATABASE.
+                        """))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("It stays on this Mac and never syncs, because it can name a command to run.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -279,6 +296,9 @@ struct CredentialProfileEditorSheet: View {
         case .source(let source):
             passwordKind = .source
             (sourceKind, sourceValue, sourceField) = Self.decompose(source)
+            if case .command(_, let reuseSeconds) = source {
+                commandReuseSeconds = reuseSeconds
+            }
         }
     }
 
@@ -336,8 +356,19 @@ struct CredentialProfileEditorSheet: View {
         case .stored: .stored
         case .prompt: .prompt
         case .pgpass: .pgpass
-        case .source: .source(sourceKind.source(value: sourceValue, field: sourceField))
+        case .source: .source(sourceKind.source(value: sourceValue, field: sourceField, reuseSeconds: commandReuseSeconds))
         }
+    }
+
+    private static let reusePresets = [300, 900, 3_600, 28_800]
+
+    private static func reuseChoices(including current: Int?) -> [Int] {
+        guard let current, !reusePresets.contains(current) else { return reusePresets }
+        return (reusePresets + [current]).sorted()
+    }
+
+    private static func reuseLabel(_ seconds: Int) -> String {
+        Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))
     }
 
     private func deleteProfile() {
@@ -354,7 +385,7 @@ struct CredentialProfileEditorSheet: View {
         switch source {
         case .file(let path): (.file, path, "")
         case .env(let variable): (.env, variable, "")
-        case .command(let shell): (.command, shell, "")
+        case .command(let shell, _): (.command, shell, "")
         case .onePassword(let reference): (.onePassword, reference, "")
         case .vault(let path, let field): (.vault, path, field)
         case .awsSecretsManager(let secretId, let jsonKey): (.awsSecretsManager, secretId, jsonKey ?? "")
@@ -418,13 +449,13 @@ extension CredentialProfileEditorSheet {
             }
         }
 
-        func source(value: String, field: String) -> PasswordSource {
+        func source(value: String, field: String, reuseSeconds: Int?) -> PasswordSource {
             let trimmedValue = value.trimmingCharacters(in: .whitespaces)
             let trimmedField = field.trimmingCharacters(in: .whitespaces)
             switch self {
             case .file: return .file(path: trimmedValue)
             case .env: return .env(variable: trimmedValue)
-            case .command: return .command(shell: value)
+            case .command: return .command(shell: value, reuseSeconds: reuseSeconds)
             case .onePassword: return .onePassword(reference: trimmedValue)
             case .vault: return .vault(path: trimmedValue, field: trimmedField)
             case .awsSecretsManager:

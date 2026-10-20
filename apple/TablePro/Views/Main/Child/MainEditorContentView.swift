@@ -1119,7 +1119,8 @@ struct MainEditorContentView: View {
             hasStructureActions: structureFooter.isActive,
             isQueryPlan: tab.display.activeExplainResult != nil,
             paginationCapability: coordinator.paginationCapability,
-            hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true)
+            hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true),
+            activeResultStatusMessage: tab.display.activeResultSet?.statusMessage
         )
         return ResultStatusBar(
             model: ResultStatusModel(

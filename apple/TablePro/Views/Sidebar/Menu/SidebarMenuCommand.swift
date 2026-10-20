@@ -72,6 +72,7 @@ internal enum SidebarMenuCommand: Equatable {
     case refreshHierarchicalSchema(String)
     case copyText(String)
     case showObjectSource(DatabaseObjectRef)
+    case dropUserType(DatabaseTreeUserTypeRef)
     case refreshRedisKeys
     case copyRedisNamespacePrefix(String)
     case copyRedisKey(String)

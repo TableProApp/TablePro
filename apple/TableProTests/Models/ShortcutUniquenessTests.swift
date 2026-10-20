@@ -59,12 +59,11 @@ struct ShortcutUniquenessTests {
         }
     }
 
-    /// The eight are new rows in Settings, so each needs a category to be listed under and a name to
-    /// be listed by. Both switches are exhaustive, so the compiler already forces an arm; what this
-    /// holds is that the arm is not an empty string nobody would recognise.
+    // Each is a new row in Settings; the exhaustive switches force an arm, this holds that it names something.
     @Test("Each newly rebindable command is listed under a category with a name", arguments: [
         ShortcutAction.showTablesList, .showFavoritesList, .restorePreviousValues,
         .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
+        .copyPath, .copyRelativePath,
     ])
     func newlyRebindableCommandsAreListable(action: ShortcutAction) {
         #expect(!action.displayName.isEmpty)
