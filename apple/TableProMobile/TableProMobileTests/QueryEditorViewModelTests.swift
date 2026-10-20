@@ -376,6 +376,7 @@ struct QueryEditorViewModelTests {
         await vm.run(driver: driver, script: script)
 
         #expect(driver.executedQueries == ["SET sql_mode = 'NO_BACKSLASH_ESCAPES'", "SELECT 'a\\'", "SELECT 2"])
+        #expect(vm.sentStatements == driver.executedQueries)
         #expect(vm.requestCount == 3)
         #expect(QueryExecutionOutcome(phase: vm.phase) == .completed)
     }

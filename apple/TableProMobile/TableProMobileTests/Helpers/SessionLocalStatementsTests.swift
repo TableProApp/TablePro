@@ -13,7 +13,12 @@ struct SessionLocalStatementsTests {
             of: [#"CREATE TEMP TABLE "Scratch Pad" AS SELECT 1"#], databaseType: .postgresql
         )
 
+        let commented = SessionLocalStatements.effect(
+            of: ["CREATE TEMPORARY TABLE /* scratch */ orders (id INT)"], databaseType: .mysql
+        )
+
         #expect(mysql.temporaryTables == ["scratch"])
+        #expect(commented.temporaryTables == ["orders"])
         #expect(postgres.temporaryTables == ["scratch pad"])
     }
 

@@ -57,14 +57,10 @@ final class CatalogChangeBoard {
         temporary[connectionId] = SessionTables(driver: driver, names: names)
     }
 
-    // Until a database switch puts the session back on the database the window shows.
+    // For the rest of that session: a database switch moves it back, but a role or a temporary table stays.
     func sessionLeftCatalog(for connectionId: UUID, driver: ObjectIdentifier?) -> Bool {
         guard let driver else { return false }
         return movedSessions[connectionId] == driver
-    }
-
-    func noteSessionDatabaseSwitched(for connectionId: UUID) {
-        movedSessions[connectionId] = nil
     }
 
     // A list reload that reads the session runs more than one statement, and a run started between them would have

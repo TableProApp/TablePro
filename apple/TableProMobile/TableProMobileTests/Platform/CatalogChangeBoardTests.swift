@@ -59,18 +59,17 @@ struct CatalogChangeBoardTests {
         #expect(board.temporaryTables(for: id, driver: nil).isEmpty)
     }
 
-    @Test("A USE leaves the session off the window's database until a switch, and a new session starts on it")
+    @Test("A session that left the catalog stays off it, and a new session starts on it")
     func sessionLeftCatalog() {
         let board = CatalogChangeBoard()
         let first = NSObject()
         let second = NSObject()
         board.noteSessionEffect(.init(leavesCatalog: true), for: id, driver: ObjectIdentifier(first))
+        board.noteSessionEffect(.init(), for: id, driver: ObjectIdentifier(first))
 
         #expect(board.sessionLeftCatalog(for: id, driver: ObjectIdentifier(first)))
         #expect(!board.sessionLeftCatalog(for: id, driver: ObjectIdentifier(second)))
         #expect(!board.sessionLeftCatalog(for: UUID(), driver: ObjectIdentifier(first)))
-        board.noteSessionDatabaseSwitched(for: id)
-        #expect(!board.sessionLeftCatalog(for: id, driver: ObjectIdentifier(first)))
     }
 
     @Test("A run waits for a list reload reading the session, and goes at once when none is")

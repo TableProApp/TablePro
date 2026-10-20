@@ -797,7 +797,7 @@ struct QueryEditorView: View {
         }
 
         progressUpdater.cancel()
-        postCatalogChanges(of: script, on: session)
+        postCatalogChanges(on: session)
         let phase = viewModel.phase
         let outcome = QueryExecutionOutcome(phase: phase)
 
@@ -834,18 +834,21 @@ struct QueryEditorView: View {
         await appState.queryActivities.end(token: token, outcome: outcome.activityOutcome)
     }
 
-    // Every statement counts as run, a failed batch's too: a missed reload leaves the lists naming what is gone.
-    private func postCatalogChanges(of script: QueryScript, on session: ConnectionSession) {
+    // Every statement sent counts as run, a failed one's too: a missed reload leaves the lists naming what is gone.
+    // They are read as sent, since a run splits the rest of its text again after a statement that changes how the
+    // session reads literals.
+    private func postCatalogChanges(on session: ConnectionSession) {
         guard databaseType.speaksSQL else { return }
+        let statements = viewModel.sentStatements
         appState.catalogChanges.noteSessionEffect(
-            SessionLocalStatements.effect(of: script.units.map(\.sql), databaseType: databaseType),
+            SessionLocalStatements.effect(of: statements, databaseType: databaseType),
             for: connectionId,
             driver: ObjectIdentifier(session.driver)
         )
         let grammar = SQLLexicalReadings.resolve(
             databaseTypeId: databaseType.rawValue, declared: nil, session: nil
         ).execution
-        let effect = SQLCatalogEffectClassifier.effect(ofStatements: script.units.map(\.sql), grammar: grammar)
+        let effect = SQLCatalogEffectClassifier.effect(ofStatements: statements, grammar: grammar)
         var kinds = effect.kinds
         // A commit shows the transaction's DDL to the catalog connection, a rollback takes it back from the session.
         if effect.endsTransaction { kinds.formUnion([.tables, .schemas, .databases]) }

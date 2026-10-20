@@ -35,8 +35,7 @@ nonisolated enum SessionLocalStatements {
         options: [.caseInsensitive]
     )
 
-    // The keyword match stops before the blank the projection put where a quoted name was.
-    private static let namePattern = try? NSRegularExpression(pattern: #"^\s+"# + qualified)
+    private static let namePattern = try? NSRegularExpression(pattern: "^" + qualified)
 
     static func effect(of statements: [String], databaseType: DatabaseType) -> Effect {
         let grammar = SQLLexicalReadings.resolve(
@@ -46,7 +45,7 @@ nonisolated enum SessionLocalStatements {
         for statement in statements {
             // Read on the code alone, with its quoted names kept, so a comment or a string never names a table.
             let code = SQLCodeProjection.code(of: statement, grammar: grammar, revealingExecutableComments: true)
-            if let name = tableName(matching: createPattern, in: code, source: statement as NSString) {
+            if let name = tableName(matching: createPattern, in: code, source: statement as NSString, grammar: grammar) {
                 effect.temporaryTables.insert(name)
             }
             let range = NSRange(location: 0, length: (code as NSString).length)
@@ -59,17 +58,38 @@ nonisolated enum SessionLocalStatements {
         return effect
     }
 
-    // The keywords are matched on the code, where quoted names are blanked; the name is read from the source after them.
-    private static func tableName(matching pattern: NSRegularExpression?, in code: String, source: NSString) -> String? {
+    // The keywords are matched on the code, where quoted names are blanked; the name is read from the source after
+    // them, past any blank or comment.
+    private static func tableName(
+        matching pattern: NSRegularExpression?,
+        in code: String,
+        source: NSString,
+        grammar: SQLLexicalGrammar
+    ) -> String? {
         let range = NSRange(location: 0, length: (code as NSString).length)
         guard let pattern, let namePattern, let match = pattern.firstMatch(in: code, range: range),
               NSMaxRange(match.range) <= source.length else { return nil }
-        let tail = source.substring(from: NSMaxRange(match.range))
+        let start = nameStart(after: NSMaxRange(match.range), in: source, grammar: grammar)
+        let tail = source.substring(from: start)
         let tailRange = NSRange(location: 0, length: (tail as NSString).length)
         guard let name = namePattern.firstMatch(in: tail, range: tailRange) else { return nil }
         let nameRange = name.range(at: name.numberOfRanges - 1)
         guard nameRange.location != NSNotFound else { return nil }
         return unquoted((tail as NSString).substring(with: nameRange)).lowercased()
+    }
+
+    private static func nameStart(after offset: Int, in source: NSString, grammar: SQLLexicalGrammar) -> Int {
+        var index = offset
+        while index < source.length {
+            if let span = SQLNonCodeSpan.span(at: index, in: source, grammar: grammar), span.kind.isComment {
+                index = max(span.end, index + 1)
+                continue
+            }
+            let blank = StatementBlank.blankLength(in: source, at: index)
+            guard blank > 0 else { return index }
+            index += blank
+        }
+        return index
     }
 
     private static func unquoted(_ name: String) -> String {

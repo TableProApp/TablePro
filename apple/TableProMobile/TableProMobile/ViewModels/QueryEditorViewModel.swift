@@ -53,6 +53,8 @@ final class QueryEditorViewModel {
     private(set) var currentRequest = 0
     private(set) var rowsAffectedTotal = 0
     private(set) var interruption: ScriptInterruption?
+    // Each request as it went to the server, split again after a statement changed how the session reads literals.
+    @ObservationIgnored private(set) var sentStatements: [String] = []
 
     @ObservationIgnored private var unitKind: QueryScript.UnitKind = .statement
     @ObservationIgnored private var runID: UInt64 = 0
@@ -224,6 +226,7 @@ final class QueryEditorViewModel {
         runID &+= 1
         let run = runID
         phase = .running
+        sentStatements = []
         buffer.reset()
         executionTime = 0
         rowsAffectedTotal = 0
@@ -294,6 +297,7 @@ final class QueryEditorViewModel {
                 }
                 position += 1
                 currentRequest = position
+                sentStatements.append(unit.sql)
                 if position > 1 {
                     buffer.reset()
                 }

@@ -213,7 +213,7 @@ struct ConnectionCoordinatorCatalogTests {
         #expect(coordinator.schemas == ["public", "sales"])
     }
 
-    @Test("After a USE in the editor completion reads the session, until a database switch puts it back")
+    @Test("After a USE or a SET ROLE in the editor completion reads the session, a database switch included")
     func useKeepsCompletionOnTheSession() async {
         let session = driver(tables: ["orders"])
         let coordinator = await connected(session)
@@ -226,7 +226,7 @@ struct ConnectionCoordinatorCatalogTests {
 
         await coordinator.switchDatabase(to: "archive")
         #expect(coordinator.activeDatabase == "archive")
-        #expect(coordinator.catalogMatchesSession)
+        #expect(!coordinator.catalogMatchesSession)
     }
 }
 

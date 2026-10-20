@@ -541,7 +541,6 @@ final class ConnectionCoordinator {
         } else {
             do {
                 try await appState.connectionManager.switchDatabase(connection.id, to: name)
-                appState.catalogChanges.noteSessionDatabaseSwitched(for: connection.id)
                 if let freshSession = appState.connectionManager.session(for: connection.id) {
                     self.session = freshSession
                 }
