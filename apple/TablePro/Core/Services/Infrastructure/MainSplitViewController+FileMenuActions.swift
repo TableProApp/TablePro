@@ -119,6 +119,10 @@ extension MainSplitViewController {
         commandActions?.selectTab(offsetBy: -1)
     }
 
+    @objc func togglePinnedEditorTab(_ sender: Any?) {
+        commandActions?.togglePinnedTab()
+    }
+
     @objc func closeOtherTabs(_ sender: Any?) {
         commandActions?.closeOtherTabs()
     }

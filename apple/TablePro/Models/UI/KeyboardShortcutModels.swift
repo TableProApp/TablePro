@@ -137,6 +137,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case closeTabsForOtherDatabases
     case closeAllTabs
     case reopenClosedTab
+    case pinTab
     case quickSwitcher
     case toggleTableBrowser
     case showTablesList
@@ -194,7 +195,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
             return .dataGrid
         case .navigateBack, .navigateForward,
              .newTab, .closeTab, .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs,
-             .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
+             .reopenClosedTab, .pinTab, .quickSwitcher, .toggleTableBrowser,
              .showTablesList, .showFavoritesList,
              .toggleInspector, .toggleAssistant, .toggleAgentMode, .toggleFilters, .toggleHistory, .toggleResults,
              .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
@@ -272,6 +273,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .closeTabsForOtherDatabases: return String(localized: "Close Tabs for Other Databases")
         case .closeAllTabs: return String(localized: "Close All Tabs")
         case .reopenClosedTab: return String(localized: "Reopen Closed Tab")
+        case .pinTab: return String(localized: "Pin Tab")
         case .refresh: return String(localized: "Refresh")
         case .explainQuery: return String(localized: "Explain Query")
         case .formatQuery: return String(localized: "Format Query")

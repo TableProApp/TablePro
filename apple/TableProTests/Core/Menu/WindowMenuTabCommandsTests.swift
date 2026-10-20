@@ -59,6 +59,34 @@ struct WindowMenuTabCommandsTests {
         #expect(items.filter { $0.keyEquivalent == "\t" }.count == 2)
     }
 
+    @Test("Pin Tab follows the editor-tab commands and ships unbound")
+    func pinTabSitsWithTheEditorTabCommands() throws {
+        let items = try windowItems()
+        let selector = #selector(MainSplitViewController.togglePinnedEditorTab(_:))
+        let pin = try #require(item(for: selector, in: items))
+        let index = try #require(items.firstIndex(of: pin))
+
+        #expect(pin.title == String(localized: "Pin Tab"))
+        #expect(pin.keyEquivalent.isEmpty)
+        #expect(items[index - 1].action == #selector(MainSplitViewController.switchToLeastRecentTab(_:)))
+        #expect(KeyboardSettings.defaultShortcuts[.pinTab] == nil)
+        #expect(ShortcutAction.pinTab.category == .navigation)
+    }
+
+    @Test("Pin Tab needs a connected strip with a tab to act on")
+    func pinTabEnablement() {
+        let selector = #selector(MainSplitViewController.togglePinnedEditorTab(_:))
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!MainSplitViewController.isEnabled(selector, context: context))
+
+        context.canPinEditorTab = true
+        #expect(MainSplitViewController.isEnabled(selector, context: context))
+
+        context.isAgentMode = true
+        #expect(!MainSplitViewController.isEnabled(selector, context: context))
+    }
+
     @Test("Show Previous Tab and Show Next Tab keep the strip-order shortcuts")
     func stripOrderCommandsUnchanged() throws {
         let items = try windowItems()

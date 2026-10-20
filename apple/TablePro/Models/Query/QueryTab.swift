@@ -63,6 +63,7 @@ struct QueryTab: Identifiable, Equatable {
     var title: String
     var tabType: TabType
     var isPreview: Bool
+    var isPinned: Bool
 
     var content: TabQueryContent
     var execution: TabExecutionState
@@ -188,6 +189,7 @@ struct QueryTab: Identifiable, Equatable {
         self.title = title
         self.tabType = tabType
         self.isPreview = false
+        self.isPinned = false
         self.content = TabQueryContent(query: query)
         self.execution = TabExecutionState()
         self.tableContext = TabTableContext(tableName: tableName, isEditable: tabType == .table)
@@ -221,6 +223,7 @@ struct QueryTab: Identifiable, Equatable {
         self.title = persisted.title
         self.tabType = persisted.tabType
         self.isPreview = false
+        self.isPinned = persisted.isPinned
         self.content = TabQueryContent(
             query: persisted.query,
             queryParameters: persisted.queryParameters ?? [],
@@ -432,7 +435,8 @@ struct QueryTab: Identifiable, Equatable {
             ),
             collapsedFoldRanges: Self.foldBounds(collapsedFoldRanges, in: persistedQuery),
             columnWidths: widths,
-            columnContentWidths: contentWidths
+            columnContentWidths: contentWidths,
+            isPinned: isPinned
         )
     }
 
@@ -454,6 +458,7 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.tableContext.objectType == rhs.tableContext.objectType
             && lhs.tabType == rhs.tabType
             && lhs.isPreview == rhs.isPreview
+            && lhs.isPinned == rhs.isPinned
             && lhs.hasUserInteraction == rhs.hasUserInteraction
             && lhs.loadEpoch == rhs.loadEpoch
     }
