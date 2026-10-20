@@ -185,6 +185,50 @@ struct PasswordSourceResolverTests {
         }
     }
 
+    @Test("A command's result is reused for as long as it says, and run again after")
+    func commandResultIsReusedForItsLifetime() async throws {
+        let counter = FileManager.default.temporaryDirectory.appendingPathComponent("tablepro-runs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: counter) }
+        let clockStart = ContinuousClock.now
+        let elapsed = LockedDuration()
+        let cache = PasswordCommandCache(now: { clockStart + elapsed.value })
+        let context = ConnectionScriptContext(
+            connectionId: UUID(), connectionName: "c", host: "h", port: 1, user: "u", database: "d"
+        )
+        let source = PasswordSource.command(
+            shell: "echo run >> '\(counter.path)'; wc -l < '\(counter.path)' | tr -d ' '",
+            reuseSeconds: 60
+        )
+
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "1")
+        elapsed.value = .seconds(59)
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "1")
+        elapsed.value = .seconds(61)
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "2")
+        cache.forget(connectionId: context.connectionId)
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "3")
+
+        let shorter = PasswordSource.command(
+            shell: "echo run >> '\(counter.path)'; wc -l < '\(counter.path)' | tr -d ' '",
+            reuseSeconds: 30
+        )
+        #expect(try await PasswordSourceResolver.resolve(shorter, for: context, cache: cache) == "4")
+    }
+
+    @Test("Without a lifetime the command runs on every connect")
+    func commandWithoutLifetimeRunsEachTime() async throws {
+        let counter = FileManager.default.temporaryDirectory.appendingPathComponent("tablepro-runs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: counter) }
+        let cache = PasswordCommandCache()
+        let context = ConnectionScriptContext(
+            connectionId: UUID(), connectionName: "c", host: "h", port: 1, user: "u", database: "d"
+        )
+        let source = PasswordSource.command(shell: "echo run >> '\(counter.path)'; wc -l < '\(counter.path)' | tr -d ' '")
+
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "1")
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "2")
+    }
+
     @Test("Large stdout drains in full while stderr is also draining")
     func drainsLargeStdoutWithoutTruncation() async throws {
         let shell = """
@@ -281,5 +325,15 @@ struct PasswordSourceResolverTests {
 
     private func uniqueEnvName() -> String {
         "TABLEPRO_PWTEST_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+    }
+}
+
+private final class LockedDuration: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Duration = .zero
+
+    var value: Duration {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
     }
 }

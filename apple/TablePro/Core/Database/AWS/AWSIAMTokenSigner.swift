@@ -12,21 +12,10 @@ struct AWSIAMTokenSigner: Sendable {
     let target: Target
 
     func token(deadline: ConnectionDeadline?) async throws -> String {
-        let credentials = try await resolveCredentials(deadline: deadline)
-        return try target.token(username: username, fields: fields, credentials: credentials)
-    }
-
-    private func resolveCredentials(deadline: ConnectionDeadline?) async throws -> AWSCredentials {
-        guard let deadline else {
-            return try await AWSCredentialResolver.resolve(source: source, fields: fields)
+        let credentials = try await AWSDeadlineSession.run(within: deadline) { session in
+            try await AWSCredentialResolver.resolve(source: source, fields: fields, session: session)
         }
-        let timeout = ConnectionCredentialResolver.credentialRequestTimeout(for: deadline)
-        let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = timeout
-        configuration.timeoutIntervalForResource = timeout
-        let session = URLSession(configuration: configuration)
-        defer { session.invalidateAndCancel() }
-        return try await AWSCredentialResolver.resolve(source: source, fields: fields, session: session)
+        return try target.token(username: username, fields: fields, credentials: credentials)
     }
 }
 

@@ -27,6 +27,16 @@ struct PasswordSourceCodableTests {
         try decoder.decode([String: String].self, from: encoder.encode(source))
     }
 
+    @Test("A command keeps how long its result may be reused, and drops a value out of range")
+    func commandReuseSeconds() throws {
+        let reused = PasswordSource.command(shell: "aws rds generate-db-auth-token", reuseSeconds: 600)
+        #expect(try decoder.decode(PasswordSource.self, from: encoder.encode(reused)) == reused)
+
+        let json = #"{"kind":"command","shell":"s","reuseSeconds":0}"#
+        let decoded = try decoder.decode(PasswordSource.self, from: try #require(json.data(using: .utf8)))
+        #expect(decoded == .command(shell: "s"))
+    }
+
     @Test("Round-trips every kind")
     func roundTrips() throws {
         let sources: [PasswordSource] = [

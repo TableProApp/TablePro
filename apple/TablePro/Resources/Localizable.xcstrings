@@ -877,6 +877,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "\"%@\" is not a Redshift cluster or Serverless workgroup endpoint." : {
+
+    },
     "\"%@\" is not a row limit. Use a whole number above 0." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -24109,6 +24112,9 @@
         }
       }
     },
+    "And one that will run after this session ends:\n\n%@" : {
+
+    },
     "ANALYZE (update statistics afterwards)" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -29509,6 +29515,12 @@
           }
         }
       }
+    },
+    "AWS answered without the Redshift user and password." : {
+
+    },
+    "AWS did not issue Redshift credentials: %@" : {
+
     },
     "Back" : {
       "localizations" : {
@@ -88180,6 +88192,9 @@
         }
       }
     },
+    "How long each script may run, from 1 to 300 seconds." : {
+
+    },
     "How long it has run" : {
       "localizations" : {
         "fr" : {
@@ -94814,6 +94829,9 @@
           }
         }
       }
+    },
+    "It stays on this Mac and never syncs, because it can name a command to run." : {
+
     },
     "is empty" : {
       "localizations" : {
@@ -132485,6 +132503,9 @@
         }
       }
     },
+    "Post-Disconnect Script" : {
+
+    },
     "PostgreSQL %1$@ needs %2$@ %3$@ or later." : {
       "localizations" : {
         "fr" : {
@@ -132734,6 +132755,9 @@
           }
         }
       }
+    },
+    "Pre-connect script timed out after %d seconds" : {
+
     },
     "Pre-connect script timed out after 10 seconds" : {
       "localizations" : {
@@ -141595,6 +141619,9 @@
         }
       }
     },
+    "Redshift Endpoint" : {
+
+    },
     "Ref Columns" : {
       "localizations" : {
         "fr" : {
@@ -148383,6 +148410,9 @@
         }
       }
     },
+    "Reuse Result For" : {
+
+    },
     "Reveal token" : {
       "localizations" : {
         "fr" : {
@@ -151980,6 +152010,12 @@
     "Runs every statement in one transaction, so a failure rolls back what the import changed. A database that commits CREATE, ALTER and DROP as they run, such as MySQL, keeps those statements and everything before them." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Runs in bash before connecting. A non-zero exit aborts the connection. TABLEPRO_CONNECTION_NAME, TABLEPRO_HOST, TABLEPRO_PORT, TABLEPRO_USER and TABLEPRO_DATABASE describe the connection." : {
+
+    },
+    "Runs in bash once the session ends, only after its pre-connect script ran. A failure is logged, not shown." : {
+
     },
     "Runs on '%@'." : {
       "localizations" : {
@@ -155647,6 +155683,9 @@
           }
         }
       }
+    },
+    "Script timeout must be between 1 and 300 seconds." : {
+
     },
     "Scripts import with the connection they run on. Scripts with a default name start unchecked." : {
 
@@ -176224,6 +176263,9 @@
         }
       }
     },
+    "TablePro cannot tell which Redshift cluster or workgroup \"%@\" is. Set Host to the endpoint AWS issued, such as my-cluster.abc123.us-east-1.redshift.amazonaws.com, or enter that endpoint as the Redshift Endpoint when you connect through a port forward." : {
+
+    },
     "TablePro cannot upload changes until there is space in iCloud. Changes from this Mac are kept here and upload once you free up space or add storage. To manage storage, open System Settings, click your name, then click iCloud." : {
 
     },
@@ -186023,6 +186065,9 @@
     "The Realtime Database sorts only by the column it filters on." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The Redshift Endpoint applies only when Host is a local port forward or that same endpoint, and \"%@\" is neither." : {
+
     },
     "The redirect address is not a local callback, so pairing was refused." : {
       "localizations" : {
@@ -196913,6 +196958,9 @@
           }
         }
       }
+    },
+    "Timeout" : {
+
     },
     "Timeouts" : {
       "localizations" : {
@@ -210807,6 +210855,9 @@
     "write a row of %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "{host}, {port}, {user} and {database} become the opening connection's values, already quoted. The command also gets them as TABLEPRO_HOST, TABLEPRO_PORT, TABLEPRO_USER and TABLEPRO_DATABASE." : {
+
     },
     "Write and Run SQL" : {
       "localizations" : {
