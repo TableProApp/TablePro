@@ -370,6 +370,31 @@ struct ConnectionCoordinatorReconnectTests {
         #expect(tableNames(following) == ["staging_facts"])
     }
 
+    @Test("A follow that another switch overtakes while its tables load lands on the newer placement")
+    func followOvertakenBySecondSwitchFollowsTheNewest() async throws {
+        let first = driver(tables: ["facts"])
+        first.currentSchema = "public"
+        let (switching, following) = try await warehouseCoordinators(on: first)
+        await switching.switchSchema(to: "staging")
+
+        let fetch = TestGate()
+        first.scriptedTables = [TableInfo(name: "staging_facts")]
+        first.beforeFetchTables = { await fetch.enter() }
+        let follow = Task { await following.followLiveSession() }
+        await fetch.waitUntilEntered()
+        first.beforeFetchTables = nil
+        first.currentSchema = "archive"
+        first.scriptedTables = [TableInfo(name: "archive_facts")]
+        await fetch.open()
+        await follow.value
+        let afterOvertaken = following.tablePlacement.schema
+        await following.resumedFollow?.value
+
+        #expect(afterOvertaken == "public")
+        #expect(following.tablePlacement.schema == "archive")
+        #expect(tableNames(following) == ["archive_facts"])
+    }
+
     @Test("A window closed while its database switch waits on another window's dial leaves that dial's session alone")
     func closedWindowSwitchDoesNotTearDownTheSharedSession() async throws {
         let first = driver(tables: ["facts"])

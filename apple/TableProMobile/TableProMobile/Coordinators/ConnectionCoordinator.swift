@@ -407,6 +407,7 @@ final class ConnectionCoordinator {
         dialedHere: Bool,
         yieldingToEdits: Bool = false
     ) async -> Bool {
+        let placementAsked = movedPlacement(of: newSession, includingDatabase: !dialedHere)
         let fetched: [TableInfo]?
         do {
             fetched = try await newSession.driver.fetchTables(schema: nil)
@@ -415,8 +416,10 @@ final class ConnectionCoordinator {
             fetched = nil
         }
         guard attemptToken == token else { return false }
-        // A row edit started while the tables loaded lives on a screen this would rebuild.
-        if yieldingToEdits, !canFollowLiveSession {
+        // A row edit started while the tables loaded lives on a screen this would rebuild, and another switch that
+        // landed meanwhile made these tables the wrong database's.
+        if yieldingToEdits,
+           !canFollowLiveSession || movedPlacement(of: newSession, includingDatabase: !dialedHere) != placementAsked {
             followPending = true
             return false
         }
@@ -489,8 +492,9 @@ final class ConnectionCoordinator {
             fetched = nil
         }
         guard attemptToken == token, session?.driver === live.driver else { return }
-        // A row edit started while the tables loaded lives on a screen the new placement would rebuild.
-        guard canFollowLiveSession else {
+        // A row edit started while the tables loaded lives on a screen the new placement would rebuild, and another
+        // switch that landed meanwhile made these tables the wrong database's.
+        guard canFollowLiveSession, movedPlacement(of: live, includingDatabase: true) == moved else {
             followPending = true
             return
         }
