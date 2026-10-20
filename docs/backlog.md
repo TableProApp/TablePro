@@ -7,23 +7,15 @@ criteria and current technical boundaries. An item becomes backlog work only
 after selection; add an owner, acceptance layer and GitHub issue when promoting
 it. Do not treat a capability gap as a release commitment.
 
-## Linux code adoption after 0.2.0
+## Completed Linux code-adoption packets
 
-Tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149) owns the selected packets from the [development-process review](archive/upstream-linux-adoption-2026-10-18.md). Reuse compatible Rust/Linux code, tests and tooling only after checking provenance, licensing and BookiE's accepted contracts. These tasks do not reopen 0.2.0 or authorize publishing it.
+The nine selected packets under [#1149](https://github.com/cozyGarage/BookiE/issues/1149), [#1140](https://github.com/cozyGarage/BookiE/issues/1140) through [#1148](https://github.com/cozyGarage/BookiE/issues/1148), are closed. Their native-driver investigations, conformance, paging, lifecycle checks, notices, release-input checks and tooling evaluations are completed packets, not the active queue. The [dated review](archive/upstream-linux-adoption-2026-10-18.md) preserves the selection rationale. Their completion does not publish a release or close separate qualification issues.
 
-Start with the two native driver investigations and common conformance. Tooling can proceed independently in its lane. Reverse keyset paging and PostgreSQL query-plan coverage have landed in #1153; check #1143 for any remaining acceptance before scheduling follow-up. Existing server output #550/#1033/#1034, stream retention #554/#1032, active edits #1029, workspace identity #1054, diagnostics #666 and CI capacity #573 retain their owners. Full export stays behind ADR 0014; framework replacement and broad vendor removal are separate decisions.
+## Current development order
 
-| ID / issue | Selected work | Lane | Acceptance focus |
-|---|---|---|---|
-| UP-2 / [#1140](https://github.com/cozyGarage/BookiE/issues/1140) | PgBouncer cancellation, backend identity and cross-client isolation | B3 | Native concurrent-client oracle before any client-library decision |
-| UP-3 / [#1141](https://github.com/cozyGarage/BookiE/issues/1141) | MySQL server-zone defaults, DST keys and save modes | B3 | Native mysql-client oracle; B4 review before session mutation |
-| UP-4 / [#1142](https://github.com/cozyGarage/BookiE/issues/1142) | Cancellation and write-outcome conformance | B4 | Map existing tests, then common fault/real-engine and governed cases |
-| UP-5 / [#1143](https://github.com/cozyGarage/BookiE/issues/1143) | Confirm remaining acceptance for reverse keyset paging | UX | Reverse navigation and PostgreSQL backward-index plan checks landed in #1153; the issue index owns the current lane and live status |
-| UP-6 / [#1144](https://github.com/cozyGarage/BookiE/issues/1144) | Mechanical GTK task and lifecycle boundaries | UX | Targeted compatible checks; retain Relm4 and current code conventions |
-| UP-7 / [#1145](https://github.com/cozyGarage/BookiE/issues/1145) | Third-party notices from shipped dependency graphs | UX | Inventory first, deterministic provenance and package-content coverage |
-| UP-8 / [#1146](https://github.com/cozyGarage/BookiE/issues/1146) | Offline release inputs and metadata consistency | UX | Extend pinned candidates; keep publication a separate action |
-| UP-9 / [#1147](https://github.com/cozyGarage/BookiE/issues/1147) | Changelog fragment evaluation | UX | Measured conflict benefit and unpublished draft before a convention change |
-| UP-10 / [#1148](https://github.com/cozyGarage/BookiE/issues/1148) | Stale documentation symbols and generated catalogues | UX | Bounded active-doc checks and deterministic gettext drift checks |
+Finish existing pull requests first, then address destructive operations [#1176](https://github.com/cozyGarage/BookiE/issues/1176) and [#1175](https://github.com/cozyGarage/BookiE/issues/1175), value preservation [#1184](https://github.com/cozyGarage/BookiE/issues/1184) and [#1177](https://github.com/cozyGarage/BookiE/issues/1177), and the security findings below. Reproduce each report before changing behavior. Keep one lane-owned fix and one serialized Forgejo gate at a time.
+
+Continue existing dependency chains after those fixes: object write capabilities #1065 before shared grid guards #1031, and bounded server messages #1033 before the GTK consumer #1034. Edit ownership #1029, workspace identity #1054 and stream budgets #1032 retain their acceptance. New features remain selected separately; issue status and lane belong to Project #3.
 
 ## TablePro and dbx review defects
 
@@ -32,7 +24,7 @@ The [October 20 TablePro and dbx review](archive/tablepro-dbx-review-2026-10-20/
 | ID / issue | Defect | Lane | Acceptance focus |
 |---|---|---|---|
 | RV-1 / [#1171](https://github.com/cozyGarage/BookiE/issues/1171) | Ctrl+Enter during a running query starts a second run | UX | Keyboard run follows the Run button guard |
-| RV-2 / [#1172](https://github.com/cozyGarage/BookiE/issues/1172) | URL import drops `sslmode` and saves TLS Disabled | B4 | Storage unit cases per `sslmode`; pinned default changed with maintainer agreement |
+| RV-2 / [#1172](https://github.com/cozyGarage/BookiE/issues/1172) | URL import drops `sslmode` and saves TLS Disabled | B4 | Storage unit cases per `sslmode`; omitted TLS options retain Disabled by maintainer decision; explicit modes survive import |
 | RV-3 / [#1173](https://github.com/cozyGarage/BookiE/issues/1173) | Missing SQLite or DuckDB file becomes a new empty database | B3 | Driver refusal on a missing path; explicit create through UX |
 | RV-4 / [#1174](https://github.com/cozyGarage/BookiE/issues/1174) | Every TLS error advises disabling TLS | B4 | Typed failure kinds; only "server has no TLS" suggests Disabled |
 | RV-5 / [#1175](https://github.com/cozyGarage/BookiE/issues/1175) | ClickHouse edit keys on a non-unique sorting key | B3 | One edit changes one row or is refused |

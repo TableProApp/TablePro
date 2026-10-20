@@ -10,7 +10,7 @@ The [0.2.0 scope](0.2.0-scope.md) records the completed delivery boundary. The p
 
 The [post-0.2.0 backlog](backlog.md) owns selected development order. [Project #3](https://github.com/users/cozyGarage/projects/3) owns issue status and Lane; the [ledger index](known-issues.md) maps IDs to issues. Existing open correctness, qualification and infrastructure issues keep their evidence and follow-up scope. They are not silently closed by a milestone-status change.
 
-The Linux code-adoption tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149) selects driver investigations, shared conformance and development-tooling improvements. Start with PgBouncer cancellation and MySQL native-value oracles, then extend existing contracts. The [dated audit](archive/upstream-linux-adoption-2026-10-18.md) records candidate behavior, existing coverage and choices that need a separate decision.
+The Linux code-adoption tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149) selects driver investigations, shared conformance and development-tooling improvements. The selected packets #1140 through #1148 are closed. Follow the backlog's current correctness and security order for subsequent work. The [dated audit](archive/upstream-linux-adoption-2026-10-18.md) records candidate behavior, existing coverage and choices that need a separate decision.
 
 ## Standing decisions
 
