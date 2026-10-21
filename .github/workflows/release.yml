@@ -1,0 +1,221 @@
+name: Release
+
+on:
+  push:
+    tags: ["linux-v*"]
+  pull_request:
+    branches: [linux]
+    paths:
+      - ".github/workflows/release.yml"
+      - "scripts/build-appimage.sh"
+      - "scripts/release-notes.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+  prepare:
+    name: Verify version and notes
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      publish: ${{ steps.version.outputs.publish }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+      - id: version
+        env:
+          REF: ${{ github.ref }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          version="$(python3 scripts/check-release-version.py --print)"
+          python3 scripts/check-release-version.py
+          publish=false
+          if [[ "$EVENT" == push && "$REF" == refs/tags/linux-v* ]]; then
+            [[ "$REF" == "refs/tags/linux-v${version}" ]] || { echo "tag $REF does not match source version $version" >&2; exit 1; }
+            python3 scripts/release-notes.py notes "$version" > release-notes.md
+            publish=true
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        if: steps.version.outputs.publish == 'true'
+        with:
+          name: release-notes
+          path: release-notes.md
+
+  deb:
+    name: Debian package
+    needs: prepare
+    runs-on: ubuntu-24.04
+    container: debian:testing
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential ca-certificates curl git nodejs pkg-config \
+            libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libssl-dev libsecret-1-dev libkrb5-dev \
+            libsqlite3-dev clang python3 dpkg-dev
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: "1.98"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          prefix-key: release-deb
+      - name: Build and validate
+        run: |
+          scripts/build-deb.sh
+          package="$(ls apps/linux/packaging/out/*.deb)"
+          scripts/validate-deb-package.sh "$package"
+          (cd "$(dirname "$package")" && sha256sum "$(basename "$package")" > "$(basename "$package").sha256")
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: package-deb
+          path: apps/linux/packaging/out/*.deb*
+
+  appimage:
+    name: AppImage
+    needs: prepare
+    runs-on: ubuntu-24.04
+    container: debian:testing
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential ca-certificates curl git nodejs pkg-config \
+            libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libssl-dev libsecret-1-dev libkrb5-dev \
+            libsqlite3-dev clang python3 dpkg-dev file patchelf desktop-file-utils squashfs-tools xz-utils \
+            gettext binutils libgdk-pixbuf-2.0-dev librsvg2-common shared-mime-info ibus-gtk4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: "1.98"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          prefix-key: release-appimage
+      - name: Build
+        env:
+          APPIMAGE_OUT: ${{ runner.temp }}/bookie-appimage-output-sentinel
+        run: |
+          mkdir -p "$APPIMAGE_OUT"
+          touch "$APPIMAGE_OUT/preserve"
+          scripts/build-appimage.sh
+          test -f "$APPIMAGE_OUT/preserve"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: package-appimage
+          path: |
+            target/appimage/*.AppImage
+            target/appimage/*.AppImage.sha256
+
+  arch:
+    name: Arch package
+    needs: prepare
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm --needed base-devel git rust pkgconf clang gettext sudo nodejs \
+            gtk4 libadwaita gtksourceview5 libsecret krb5 sqlite openssl desktop-file-utils appstream namcap
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+      - name: Build and validate
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          chown -R builder .
+          sudo -u builder bash -ceu '
+            git config --global --add safe.directory "$PWD"
+            export TABLEPRO_RC_COMMIT="$(git rev-parse HEAD)" TABLEPRO_RC_VERSION="'"$VERSION"'"
+            export TABLEPRO_RC_DATE="$(date -u +%F)" TABLEPRO_RC_PKGREL=1
+            bash scripts/build-arch-rc.sh
+            cd apps/linux/packaging/arch
+            for package in bookie-'"$VERSION"'-*.pkg.tar.zst; do sha256sum "$package" > "$package.sha256"; done
+          '
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: package-arch
+          path: |
+            apps/linux/packaging/arch/bookie-*.pkg.tar.zst
+            apps/linux/packaging/arch/bookie-*.pkg.tar.zst.sha256
+
+  flatpak:
+    name: Flatpak bundle
+    needs: prepare
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@401fe28a8384095fc1531b9d320b292f0ee45adb
+        with:
+          bundle: bookie.flatpak
+          manifest-path: apps/linux/flatpak/com.tablepro.linux.json
+          cache-key: flatpak-release-${{ hashFiles('apps/linux/flatpak/**') }}
+          upload-artifact: false
+      - name: Checksum
+        run: sha256sum bookie.flatpak > bookie.flatpak.sha256
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: package-flatpak
+          path: |
+            bookie.flatpak
+            bookie.flatpak.sha256
+
+  publish:
+    name: Draft GitHub release
+    if: needs.prepare.outputs.publish == 'true'
+    needs: [prepare, deb, appimage, arch, flatpak]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Collect release files
+        run: |
+          mkdir release
+          cd artifacts
+          cp -- *.deb *.AppImage *.pkg.tar.zst bookie.flatpak ../release/
+          cp release-notes.md ../release-notes.md
+          cd ../release
+          sha256sum -- * > SHA256SUMS
+          ls -l
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
+        with:
+          subject-path: release/*
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          flags=(--draft --verify-tag --title "BookiE $VERSION" --notes-file release-notes.md)
+          [[ "$VERSION" == 0.* ]] && flags+=(--prerelease)
+          gh release create "$TAG" "${flags[@]}" release/* --repo "$GITHUB_REPOSITORY"
