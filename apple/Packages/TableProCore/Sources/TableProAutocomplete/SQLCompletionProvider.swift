@@ -202,7 +202,8 @@ public final class SQLCompletionProvider {
                         kind: .keyword,
                         insertText: "\(qualifier).*",
                         detail: "All columns from \(ref.tableName)",
-                        sortPriority: 60
+                        sortPriority: 60,
+                        identifier: SQLCompletionIdentifier([Self.qualifierPart(for: ref), .statement("*", quoted: false)])
                     ))
                 }
                 items += await columnItems(for: context.tableReferences)
@@ -226,7 +227,10 @@ public final class SQLCompletionProvider {
                         insertText: "\(qualifier).\(col.label)",
                         detail: col.detail,
                         documentation: "Column from \(ref.tableName)",
-                        sortPriority: 80
+                        sortPriority: 80,
+                        identifier: col.identifier.map {
+                            SQLCompletionIdentifier([Self.qualifierPart(for: ref)] + $0.parts)
+                        }
                     ))
                 }
             }
@@ -518,6 +522,11 @@ public final class SQLCompletionProvider {
             return await catalog?.allColumnsFromCachedTables() ?? []
         }
         return await catalog?.allColumnsInScope(for: references) ?? []
+    }
+
+    // A reference is spelled as the statement wrote it, and stays quoted when it was, or it would fold to another name.
+    public static func qualifierPart(for reference: TableReference) -> SQLCompletionIdentifier.Part {
+        .statement(reference.identifier, quoted: reference.isIdentifierQuoted)
     }
 
     private func filterKeywords(_ keywords: [String]) -> [SQLCompletionItem] {

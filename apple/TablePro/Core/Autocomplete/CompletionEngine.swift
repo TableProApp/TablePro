@@ -24,6 +24,7 @@ final class CompletionEngine {
     // MARK: - Properties
 
     private let provider: SQLCompletionProvider
+    private let identifierRules: SQLIdentifierRules?
 
     /// Size threshold (in UTF-16 code units) above which we extract a local
     /// window around the cursor instead of passing the full document to the
@@ -46,6 +47,7 @@ final class CompletionEngine {
             dialect: dialect,
             statementCompletions: statementCompletions
         )
+        self.identifierRules = databaseType?.identifierRules
     }
 
     // MARK: - Public API
@@ -55,21 +57,36 @@ final class CompletionEngine {
         provider.updateFavoriteKeywords(keywords)
     }
 
-    /// Filters, ranks and cases an open session's candidates for `prefix`.
-    ///
-    /// The engine is the single gate every SQL completion item passes through on its way to a UI
-    /// surface, so the case policy is applied here rather than at each surface. `prefix` arrives in
-    /// the case the user typed it; the matcher lowercases internally.
+    // Every SQL completion item passes through the engine on its way to a surface, so both case policies apply here.
     func rank(
         _ items: [SQLCompletionItem],
         prefix: String,
         context: SQLContext,
-        keywordCase: SQLKeywordCase
+        keywordCase: SQLKeywordCase,
+        identifierCase: SQLIdentifierCase = .default
     ) -> [SQLCompletionItem] {
-        SQLCompletionCasing.applied(
-            to: provider.filterRankAndLimit(items, prefix: prefix, context: context),
+        spelled(
+            provider.filterRankAndLimit(items, prefix: prefix, context: context),
             typedPrefix: prefix,
-            policy: keywordCase
+            context: context,
+            keywordCase: keywordCase,
+            identifierCase: identifierCase
+        )
+    }
+
+    private func spelled(
+        _ items: [SQLCompletionItem],
+        typedPrefix: String,
+        context: SQLContext,
+        keywordCase: SQLKeywordCase,
+        identifierCase: SQLIdentifierCase
+    ) -> [SQLCompletionItem] {
+        let cased = SQLCompletionCasing.applied(to: items, typedPrefix: typedPrefix, policy: keywordCase)
+        guard let identifierRules else { return cased }
+        return SQLIdentifierSpelling(rules: identifierRules, policy: identifierCase).applied(
+            to: cased,
+            typedPrefix: typedPrefix,
+            quoting: SQLIdentifierTokenQuoting(context.quotedName)
         )
     }
 
@@ -81,7 +98,8 @@ final class CompletionEngine {
         fragment: String,
         cursorPosition: Int,
         tableName: String,
-        keywordCase: SQLKeywordCase = .default
+        keywordCase: SQLKeywordCase = .default,
+        identifierCase: SQLIdentifierCase = .default
     ) async -> CompletionContext? {
         let clausePrefix = "WHERE "
         let prefixLength = (clausePrefix as NSString).length
@@ -92,6 +110,7 @@ final class CompletionEngine {
             text: analysisText,
             cursorPosition: cursorPosition + prefixLength,
             keywordCase: keywordCase,
+            identifierCase: identifierCase,
             forcedTableReferences: references
         ) else {
             return nil
@@ -115,6 +134,7 @@ final class CompletionEngine {
         text: String,
         cursorPosition: Int,
         keywordCase: SQLKeywordCase = .default,
+        identifierCase: SQLIdentifierCase = .default,
         forcedTableReferences: [TableReference]? = nil
     ) async -> CompletionContext? {
         let nsText = text as NSString
@@ -169,11 +189,21 @@ final class CompletionEngine {
             nestingLevel: context.nestingLevel,
             currentFunction: context.currentFunction,
             isAfterComma: context.isAfterComma,
-            expectsObjectName: context.expectsObjectName
+            expectsObjectName: context.expectsObjectName,
+            comparisonColumn: context.comparisonColumn,
+            quotedName: context.quotedName.map {
+                SQLQuotedName(open: $0.open + windowOffset, close: $0.close.map { $0 + windowOffset })
+            }
         )
 
         return CompletionContext(
-            items: SQLCompletionCasing.applied(to: items, typedPrefix: context.prefix, policy: keywordCase),
+            items: spelled(
+                items,
+                typedPrefix: context.prefix,
+                context: context,
+                keywordCase: keywordCase,
+                identifierCase: identifierCase
+            ),
             candidates: candidates,
             replacementRange: replacementRange,
             sqlContext: adjustedContext

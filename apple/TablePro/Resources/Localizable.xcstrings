@@ -26957,6 +26957,9 @@
         }
       }
     },
+    "As stored" : {
+
+    },
     "Ascending" : {
       "localizations" : {
         "fr" : {
@@ -28791,6 +28794,9 @@
           }
         }
       }
+    },
+    "Autocomplete" : {
+
     },
     "Autocomplete from your schema, editor tabs, and a searchable query history." : {
       "localizations" : {
@@ -105168,6 +105174,9 @@
         }
       }
     },
+    "Match what I type" : {
+
+    },
     "Match what I type, otherwise UPPERCASE" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -176292,6 +176301,9 @@
           }
         }
       }
+    },
+    "Table, column and schema names take this case in autocomplete and in Copy as INSERT and UPDATE when the server reads the new spelling as the same name. Other names are quoted as stored." : {
+
     },
     "Table-level CHECK constraints" : {
       "localizations" : {

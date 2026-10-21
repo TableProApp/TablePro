@@ -25,6 +25,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         let schemaProvider: ObjectIdentifier?
         let databaseType: DatabaseType?
         let profileRevision: String?
+        let connectionId: UUID?
     }
 
     private var service: QueryCompletionService
@@ -47,19 +48,22 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
     func configure(
         schemaProvider: SQLSchemaProvider?,
         databaseType: DatabaseType?,
-        profile: QueryCompletionProfile? = nil
+        profile: QueryCompletionProfile? = nil,
+        connectionId: UUID? = nil
     ) {
         let requested = Configuration(
             schemaProvider: schemaProvider.map(ObjectIdentifier.init),
             databaseType: databaseType,
-            profileRevision: profile?.revision
+            profileRevision: profile?.revision,
+            connectionId: connectionId
         )
         guard requested != configuration else { return }
         configuration = requested
         service = QueryCompletionServiceFactory.make(
             schemaProvider: schemaProvider,
             databaseType: databaseType,
-            profile: profile
+            profile: profile,
+            connectionId: connectionId
         )
         service.updateFavoriteKeywords(favoriteKeywords)
         session = nil

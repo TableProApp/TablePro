@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProAutocomplete
 import TableProPluginKit
 
 /// What TablePro is allowed to do with this connection, and what it runs when it opens it.
@@ -24,6 +25,7 @@ struct OptionsPaneView: View {
             driverSection
             extensionsSection
             timeoutSection
+            completionSection
             startupSection
             preConnectSection
             postDisconnectSection
@@ -130,6 +132,44 @@ struct OptionsPaneView: View {
                 """),
             globalQueryTimeoutSeconds
         )
+    }
+
+    // MARK: - Autocomplete
+
+    @ViewBuilder
+    private var completionSection: some View {
+        if databaseType.identifierRules != nil {
+            Section {
+                Picker(
+                    String(localized: "Identifier case"),
+                    selection: $coordinator.customization.completionIdentifierCase
+                ) {
+                    ForEach(SQLIdentifierCase.allCases, id: \.self) { identifierCase in
+                        Text(Self.title(for: identifierCase)).tag(identifierCase)
+                    }
+                }
+                .accessibilityIdentifier("connection-form-identifier-case")
+            } header: {
+                Text(String(localized: "Autocomplete"))
+            } footer: {
+                Text(String(localized: """
+                    Table, column and schema names take this case in autocomplete and in Copy as INSERT \
+                    and UPDATE when the server reads the new spelling as the same name. Other names are \
+                    quoted as stored.
+                    """))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private static func title(for identifierCase: SQLIdentifierCase) -> String {
+        switch identifierCase {
+        case .asStored: return String(localized: "As stored")
+        case .lower: return String(localized: "lowercase")
+        case .upper: return String(localized: "UPPERCASE")
+        case .matchTyped: return String(localized: "Match what I type")
+        }
     }
 
     // MARK: - Driver options

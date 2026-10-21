@@ -8,6 +8,7 @@
 import AppKit
 import Foundation
 import SwiftUI
+import TableProAutocomplete
 import TableProPluginKit
 import TableProSSHConfig
 
@@ -153,6 +154,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
     static let postDisconnectScriptKey = "postDisconnectScript"
     static let scriptTimeoutSecondsKey = "scriptTimeoutSeconds"
+    static let completionIdentifierCaseKey = "completionIdentifierCase"
 
     let id: UUID
     var name: String
@@ -309,6 +311,19 @@ struct DatabaseConnection: Identifiable, Hashable {
                 additionalFields[Self.queryTimeoutSecondsKey] = String(newValue)
             } else {
                 additionalFields.removeValue(forKey: Self.queryTimeoutSecondsKey)
+            }
+        }
+    }
+
+    var completionIdentifierCase: SQLIdentifierCase {
+        get {
+            additionalFields[Self.completionIdentifierCaseKey].flatMap(SQLIdentifierCase.init(rawValue:)) ?? .default
+        }
+        set {
+            if newValue == .default {
+                additionalFields.removeValue(forKey: Self.completionIdentifierCaseKey)
+            } else {
+                additionalFields[Self.completionIdentifierCaseKey] = newValue.rawValue
             }
         }
     }

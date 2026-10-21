@@ -26,7 +26,8 @@ enum QueryCompletionServiceFactory {
     static func make(
         schemaProvider: SQLSchemaProvider?,
         databaseType: DatabaseType?,
-        profile: QueryCompletionProfile? = nil
+        profile: QueryCompletionProfile? = nil,
+        connectionId: UUID? = nil
     ) -> QueryCompletionService {
         let language = databaseType.map { PluginManager.shared.editorLanguage(for: $0) } ?? .sql
 
@@ -37,7 +38,8 @@ enum QueryCompletionServiceFactory {
             return SQLCompletionService(
                 schemaProvider: schemaProvider,
                 databaseType: databaseType,
-                profile: profile
+                profile: profile,
+                identifierCase: { SQLIdentifierCase.stored(for: connectionId) }
             )
         }
     }

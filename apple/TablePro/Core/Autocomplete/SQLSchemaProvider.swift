@@ -210,6 +210,13 @@ actor SQLSchemaProvider {
         return "\(schema).\(canonicalName)"
     }
 
+    // The cache key holds the names lowercased, so only a table the list names keeps its stored spelling.
+    private func fallbackTableParts(for key: ColumnCacheKey, storedName: String?) -> [SQLCompletionIdentifier.Part] {
+        let table: SQLCompletionIdentifier.Part = storedName.map { .catalog($0) } ?? .statement(key.name, quoted: false)
+        guard let schema = key.schema, schema != getDefaultSchema()?.lowercased() else { return [table] }
+        return [.statement(schema, quoted: false), table]
+    }
+
     /// The schema a table can be named in without its schema: the engine's implicit schema when it
     /// has one, otherwise the schema the driver was on when this scope loaded.
     func getDefaultSchema() -> String? {
@@ -570,7 +577,8 @@ actor SQLSchemaProvider {
                 SQLCompletionItem.column(
                     $0.name, dataType: $0.type, tableName: tableName,
                     isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
-                    defaultValue: $0.defaultValue, comment: $0.comment
+                    defaultValue: $0.defaultValue, comment: $0.comment,
+                    identifier: .catalog($0.name)
                 )
             }
         }
@@ -625,12 +633,14 @@ actor SQLSchemaProvider {
         // swiftlint:disable:next large_tuple
         var itemDataBuilder: [(
             label: String, insertText: String, type: String?, table: String,
-            isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?
+            isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?,
+            identifier: SQLCompletionIdentifier?
         )] = []
 
         let hasMultipleRefs = references.count > 1
         for ref in references {
             let refId = ref.identifier
+            let qualifier = SQLCompletionProvider.qualifierPart(for: ref)
             if let derivedColumns = ref.derivedColumns {
                 for name in derivedColumns {
                     let label = hasMultipleRefs ? "\(refId).\(name)" : name
@@ -638,7 +648,10 @@ actor SQLSchemaProvider {
                         (
                             label: label, insertText: label, type: nil,
                             table: refId, isPK: false, isNullable: true,
-                            defaultValue: nil, comment: nil
+                            defaultValue: nil, comment: nil,
+                            identifier: hasMultipleRefs
+                                ? SQLCompletionIdentifier([qualifier, .statement(name, quoted: false)])
+                                : nil
                         ))
                 }
                 continue
@@ -653,7 +666,10 @@ actor SQLSchemaProvider {
                         label: label, insertText: insertText, type: column.dataType,
                         table: ref.tableName, isPK: column.isPrimaryKey,
                         isNullable: column.isNullable, defaultValue: column.defaultValue,
-                        comment: column.comment
+                        comment: column.comment,
+                        identifier: SQLCompletionIdentifier(
+                            hasMultipleRefs ? [qualifier, .catalog(column.name)] : [.catalog(column.name)]
+                        )
                     ))
             }
         }
@@ -666,7 +682,8 @@ actor SQLSchemaProvider {
                 SQLCompletionItem.column(
                     $0.label, dataType: $0.type, tableName: $0.table,
                     isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
-                    defaultValue: $0.defaultValue, comment: $0.comment
+                    defaultValue: $0.defaultValue, comment: $0.comment,
+                    identifier: $0.identifier
                 )
             }
         }
@@ -682,8 +699,13 @@ actor SQLSchemaProvider {
             tables.map { ($0.name.lowercased(), $0.name) },
             uniquingKeysWith: { first, _ in first }
         )
+        // Keyed by schema too: a table's spelling in one schema says nothing about a namesake in another.
+        let storedNames = Dictionary(
+            tables.map { (cacheKey(table: $0.name, schema: $0.schema), $0.name) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
-        var allEntries: [(table: String, col: ColumnInfo)] = []
+        var allEntries: [(table: String, tableParts: [SQLCompletionIdentifier.Part], col: ColumnInfo)] = []
         var nameCount: [String: Int] = [:]
 
         // Sorted, because this emission order is what `rankResults` falls back to for candidates
@@ -694,8 +716,9 @@ actor SQLSchemaProvider {
         for key in columnCache.keys.sorted(by: Self.isOrderedBefore) {
             guard let columns = columnCache[key] else { continue }
             let tableName = fallbackTableLabel(for: key, canonicalName: canonicalNames[key.name] ?? key.name)
+            let tableParts = fallbackTableParts(for: key, storedName: storedNames[key])
             for col in columns {
-                allEntries.append((table: tableName, col: col))
+                allEntries.append((table: tableName, tableParts: tableParts, col: col))
                 nameCount[col.name.lowercased(), default: 0] += 1
             }
         }
@@ -703,7 +726,8 @@ actor SQLSchemaProvider {
         // swiftlint:disable:next large_tuple
         var itemDataBuilder: [(
             label: String, insertText: String, type: String, table: String,
-            isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?
+            isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?,
+            identifier: SQLCompletionIdentifier
         )] = []
 
         for entry in allEntries {
@@ -715,7 +739,10 @@ actor SQLSchemaProvider {
                 label: label, insertText: insertText, type: entry.col.dataType,
                 table: entry.table, isPK: entry.col.isPrimaryKey,
                 isNullable: entry.col.isNullable, defaultValue: entry.col.defaultValue,
-                comment: entry.col.comment
+                comment: entry.col.comment,
+                identifier: SQLCompletionIdentifier(
+                    isAmbiguous ? entry.tableParts + [.catalog(entry.col.name)] : [.catalog(entry.col.name)]
+                )
             ))
         }
 
@@ -726,7 +753,8 @@ actor SQLSchemaProvider {
                 var item = SQLCompletionItem.column(
                     $0.label, dataType: $0.type, tableName: $0.table,
                     isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
-                    defaultValue: $0.defaultValue, comment: $0.comment
+                    defaultValue: $0.defaultValue, comment: $0.comment,
+                    identifier: $0.identifier
                 )
                 item.sortPriority = 150
                 return item
