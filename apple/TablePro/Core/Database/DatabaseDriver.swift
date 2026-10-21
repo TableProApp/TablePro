@@ -101,6 +101,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// rest of the fetch, which for some drivers cancels the statement on the server.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult?
 
+    /// Runs a statement the app wrote to read, telling the driver it may only read. A driver that
+    /// evaluates statements in a scripting engine with state refuses any write the script reaches,
+    /// whatever an earlier statement redefined.
+    func executeRead(query: String) async throws -> QueryResult
+
     /// Whether ``executeBatch(query:rowCap:parameters:)`` sends a text to the server whole and answers with every
     /// result set it produced.
     var supportsResultSetBatches: Bool { get }
@@ -469,6 +474,10 @@ extension DatabaseDriver {
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? { nil }
+
+    func executeRead(query: String) async throws -> QueryResult {
+        try await execute(query: query)
+    }
 
     var supportsResultSetBatches: Bool { false }
 

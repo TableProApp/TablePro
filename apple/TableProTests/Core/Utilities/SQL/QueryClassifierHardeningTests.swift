@@ -434,6 +434,18 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.isWriteQuery("DB 3", databaseType: .redis))
     }
 
+    /// `OUTSIDEBLOCK` is the Server Dashboard's prefix for a command held out of the user's MULTI
+    /// block. Read as the bare word, `OUTSIDEBLOCK FLUSHALL` passed as an ordinary write.
+    @Test("Redis OUTSIDEBLOCK prefix is classified by the command it wraps")
+    func redisOutsideBlockPrefix() {
+        #expect(QueryClassifier.classifyTier("OUTSIDEBLOCK FLUSHALL", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("outsideblock DB 0 FLUSHDB", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("DB 0 OUTSIDEBLOCK FLUSHDB", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode("OUTSIDEBLOCK EVAL \"return 1\" 0", databaseType: .redis))
+        #expect(!QueryClassifier.isWriteQuery("OUTSIDEBLOCK GET key", databaseType: .redis))
+        #expect(QueryClassifier.isWriteQuery("OUTSIDEBLOCK", databaseType: .redis))
+    }
+
     /// The driver strips redis-cli quoting before it sends, so a quoted command runs as the bare
     /// one. Read as written, `"FLUSHALL"` matched no set and passed as an ordinary write.
     @Test("A quoted Redis command is classified as the command the driver runs")

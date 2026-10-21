@@ -787,7 +787,7 @@ private extension QueryClassifier {
         guard let arguments = RedisArgumentCodec.split(trimmed) else {
             return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
         }
-        let statement = redisCommandPastDatabasePrefix(arguments.map { String(bytes: $0, encoding: .utf8) ?? "" })
+        let statement = redisCommandPastPrefixes(arguments.map { String(bytes: $0, encoding: .utf8) ?? "" })
         guard let command = statement.first?.uppercased() else { return .safe }
 
         let touchesUnsafeSurface = redisCodeExecutionCommands.contains(command)
@@ -812,14 +812,20 @@ private extension QueryClassifier {
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: touchesUnsafeSurface)
     }
 
-    /// `DB <index> <command>` runs the command on the database it names, so the command decides
-    /// the tier: read as the bare `DB`, `DB 0 FLUSHDB` would pass as an ordinary write. A prefix
-    /// with nothing after its index is left whole, which classifies as a write. The words are read
-    /// the way the driver reads them, so a quoted `"FLUSHALL"` is the command it runs.
-    static func redisCommandPastDatabasePrefix(_ words: [String]) -> ArraySlice<String> {
+    /// `DB <index> <command>` and `OUTSIDEBLOCK <command>` run the command they wrap, so that
+    /// command decides the tier: read as the bare prefix, `DB 0 FLUSHDB` would pass as an ordinary
+    /// write. A prefix with nothing after it is left whole, which classifies as a write. The words are
+    /// read the way the driver reads them, so a quoted `"FLUSHALL"` is the command it runs.
+    static func redisCommandPastPrefixes(_ words: [String]) -> ArraySlice<String> {
         var rest = words[...]
-        while rest.first?.uppercased() == "DB", rest.count > 2 {
-            rest = rest.dropFirst(2)
+        while let first = rest.first?.uppercased() {
+            if first == "DB", rest.count > 2 {
+                rest = rest.dropFirst(2)
+            } else if first == "OUTSIDEBLOCK", rest.count > 1 {
+                rest = rest.dropFirst()
+            } else {
+                break
+            }
         }
         return rest
     }

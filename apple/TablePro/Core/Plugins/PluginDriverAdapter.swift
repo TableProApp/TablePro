@@ -382,6 +382,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         return mapQueryResult(pluginResult)
     }
 
+    func executeRead(query: String) async throws -> QueryResult {
+        try StatementTextValidator.validate(query)
+        var context = PluginStatementContext()
+        context.readOnly = true
+        return mapQueryResult(try await pluginDriver.execute(query: query, context: context))
+    }
+
     func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult {
         try StatementTextValidator.validate(query)
         let cellParams: [PluginCellValue] = parameters.map(Self.cellValue(for:))
