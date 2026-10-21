@@ -8,6 +8,8 @@ import Foundation
 import os
 @testable import TablePro
 import TableProImport
+import TableProSSHConfig
+import TableProSSHTransport
 import TableProSyncTransport
 import Testing
 
@@ -207,6 +209,25 @@ struct ConnectionStorageImportTests {
         #expect(replaced.passwordSource == .command(shell: "pass show db"))
         #expect(replaced.externalAccess == .blocked)
         #expect(replaced.sortOrder == storedOrder)
+    }
+
+    @Test("A replace keeps the SSH route this Mac dialed, which a file never carries")
+    func replaceKeepsTheDialedRoute() throws {
+        let storage = try makeStorage()
+        var stored = DatabaseConnection(name: "Alias", sshConfig: SSHConfiguration(enabled: true, host: "db", authMethod: .sshAgent))
+        stored.sshRoute = PublishedSSHRoute(
+            publisher: storage.sshRoutePublisherId,
+            input: stored.sshConfig.publishedRouteInput,
+            hops: [],
+            target: .init(alias: "db", host: "10.0.0.5", port: 22, username: "deploy")
+        )
+        #expect(storage.addConnection(stored))
+
+        let incoming = DatabaseConnection(id: stored.id, name: "Alias, from the file", sshConfig: stored.sshConfig)
+        _ = storage.applyImport(adding: [], replacing: [incoming])
+
+        storage.invalidateCache()
+        #expect(storage.loadConnection(id: stored.id)?.sshRoute == stored.sshRoute)
     }
 
     @Test("A replace that changes group goes to the end of the new group")

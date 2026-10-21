@@ -165,8 +165,8 @@ final class ConnectionStorage {
         return true
     }
 
-    /// A replace keeps the stored row's device-local state, except a credential profile the import
-    /// created and a tunnel command the user agreed to import. A replace whose row is gone is not written.
+    // A replace keeps the stored row's device-local state, except a credential profile the import
+    // created and a tunnel command the user agreed to import. A replace whose row is gone is not written.
     func applyImport(adding: [DatabaseConnection], replacing: [DatabaseConnection]) -> ConnectionImportWrite? {
         var connections = loadConnections()
         guard !lastLoadFailed else {
@@ -185,6 +185,8 @@ final class ConnectionStorage {
             if incoming.isTunnelCommandEnabled {
                 updated.tunnelCommandMode = incoming.tunnelCommandMode
             }
+            // A file carries no route, and readers drop the stored one once it no longer describes the tunnel.
+            updated.sshRoute = stored.sshRoute
             updated.sortOrder = stored.groupId == updated.groupId
                 ? stored.sortOrder
                 : Self.nextSortOrder(in: connections, groupId: updated.groupId)

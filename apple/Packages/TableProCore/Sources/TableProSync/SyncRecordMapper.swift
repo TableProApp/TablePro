@@ -209,6 +209,8 @@ public enum SyncRecordMapper {
         connection.connectTimeoutSeconds = validConnectTimeout(legacyConnectTimeout)
         connection.adoptConfigurationSwitches()
         connection.sshProfileId = (fields[.sshProfileId] as? String).flatMap { UUID(uuidString: $0) }
+        // Only the Mac writes the route, from its ~/.ssh/config.
+        connection.sshRoute = (fields[.sshRouteJson] as? Data).flatMap(PublishedSSHRoute.decoded(from:))
         return connection
     }
 

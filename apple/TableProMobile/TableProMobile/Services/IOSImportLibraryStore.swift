@@ -122,6 +122,8 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                         from: stored.sshConfiguration,
                         into: updated.sshConfiguration
                     )
+                    // A file carries no route, and the stored one is dialed only while it still describes the tunnel.
+                    updated.sshRoute = stored.sshRoute
                     // A Mac SSH profile's password goes to whatever server this connection's tunnel names, so the link
                     // survives only when the file names the same one.
                     if stored.sshProfileId != nil {

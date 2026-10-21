@@ -32,7 +32,12 @@ enum SyncDecodeError: Error, LocalizedError {
 /// Pure-function mapper between local models and CKRecord
 struct SyncRecordMapper {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncRecordMapper")
-    private static let encoder = JSONEncoder()
+    // Unsorted keys come out in another order on each encode, and a merge compares fields by their bytes.
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return encoder
+    }()
     private static let decoder = JSONDecoder()
 
     /// Current schema version stamped on every record
@@ -85,11 +90,8 @@ struct SyncRecordMapper {
 
     // MARK: - Connection
 
-    /// Writes the optional fields whether or not they hold anything, for the reason
-    /// `toCKRecord(sqlFavorite:in:)` gives: a connection moved out of its group, stripped of its
-    /// tags or of its AI rules pushed a record that said nothing about them, and the next pull put
-    /// them back. On the server's own record a nil names the key only where the server still has a
-    /// value; a record built fresh has nothing to compare against, so it names every empty key.
+    // Optional fields are written even when empty: under `.changedKeys` a key the record never names
+    // keeps the server's value, so an emptied group, tag or AI rule came back on the next pull.
     static func toCKRecord(
         _ connection: DatabaseConnection,
         in zone: CKRecordZone.ID,
@@ -108,10 +110,7 @@ struct SyncRecordMapper {
         fields[.color] = connection.color.rawValue
         fields[.iconName] = LibrarySymbolCatalog.normalizedName(connection.iconName)
         fields[.safeModeLevel] = connection.preferredSafeModeLevel.rawValue
-        /// `safeModeLevel` superseded `isReadOnly`, but both are still on the wire and this mapper
-        /// still reads the old one when the new one is absent. Writing only the new one left the
-        /// old one holding whatever it last held, so a connection taken out of read-only on a Mac
-        /// stayed read-only for anything reading the legacy field.
+        // Older readers still read `isReadOnly` when `safeModeLevel` is absent.
         fields[.isReadOnly] = Int64(connection.preferredSafeModeLevel == .readOnly ? 1 : 0)
         fields[.modifiedAtLocal] = Date()
         fields[.schemaVersion] = schemaVersion
@@ -121,7 +120,7 @@ struct SyncRecordMapper {
 
         let tagIdStrings = connection.tagIds.map(\.uuidString)
         fields[.tagIds] = tagIdStrings.isEmpty ? nil : tagIdStrings
-        /// Cleared with `tagIds`, because a record with no `tagIds` is read through this one.
+        // Cleared with `tagIds`, because a record with no `tagIds` is read through this one.
         fields[.tagId] = tagIdStrings.first
         fields[.groupId] = connection.groupId?.uuidString
         fields[.aiPolicy] = connection.aiPolicy?.rawValue ?? unrecognizedAIPolicy(in: fields)
@@ -132,6 +131,10 @@ struct SyncRecordMapper {
         fields[.redisDatabase] = connection.redisDatabase.map { Int64($0) }
         fields[.startupCommands] = connection.startupCommands.flatMap { $0.isEmpty ? nil : $0 }
         fields[.sshProfileId] = connection.sshProfileId?.uuidString
+        // A route another build wrote and this one cannot read stays as it is.
+        if record !== base || connection.sshRoute != Self.sshRoute(in: fields) {
+            fields[.sshRouteJson] = connection.sshRoute?.encoded()
+        }
 
         // Encode complex structs as JSON Data — contract device-local paths
         // to portable ~/… form so they resolve correctly on other devices.
@@ -189,8 +192,7 @@ struct SyncRecordMapper {
         let port = (fields[.port] as? Int64).map { Int($0) } ?? 0
         let database = fields[.database] as? String ?? ""
         let username = fields[.username] as? String ?? ""
-        /// `colorTag` is where iOS wrote a connection's colour as hex before the two platforms
-        /// converged on this enum, so a colour set on an iPhone shows up here rather than nowhere.
+        // Older iOS builds wrote the colour as hex to `colorTag`.
         let colorRaw = fields[.color] as? String
             ?? fields[.colorTag] as? String
             ?? ConnectionColor.none.rawValue
@@ -283,7 +285,28 @@ struct SyncRecordMapper {
         if let queryTimeoutSeconds = validQueryTimeout(queryTimeoutSeconds ?? legacyQueryTimeout) {
             connection.queryTimeoutSeconds = queryTimeoutSeconds
         }
+        connection.sshRoute = sshRoute(in: fields)
         return connection
+    }
+
+    private static func sshRoute(in fields: SyncRecordFields<ConnectionSyncField>) -> PublishedSSHRoute? {
+        (fields[.sshRouteJson] as? Data).flatMap(PublishedSSHRoute.decoded(from:))
+    }
+
+    // Only the Mac that published a route clears it, so a copy cached before this build read the
+    // field does not wipe the route another Mac published.
+    static func keepingForeignRoute(
+        of connection: DatabaseConnection,
+        in base: CKRecord?,
+        publisher: UUID
+    ) -> DatabaseConnection {
+        guard connection.sshRoute == nil,
+              let route = base.flatMap({ sshRoute(in: $0.fields(ConnectionSyncField.self)) }),
+              route.publisher != publisher
+        else { return connection }
+        var kept = connection
+        kept.sshRoute = route
+        return kept
     }
 
     /// A policy a newer release added reads as nil on this Mac. Writing that nil back would clear

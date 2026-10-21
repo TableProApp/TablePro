@@ -907,12 +907,20 @@ final class SyncCoordinator: ObservableObject {
     @discardableResult
     private func mergeLocalEdits(into remoteRecord: CKRecord, localConnection: DatabaseConnection) -> DatabaseConnection? {
         guard let base = recordCache.record(for: remoteRecord.recordID) else { return nil }
+        let zoneID = remoteRecord.recordID.zoneID
 
-        let localRecord = SyncRecordMapper.toCKRecord(localConnection, in: remoteRecord.recordID.zoneID)
+        let local = SyncRecordMapper.keepingForeignRoute(
+            of: localConnection,
+            in: base,
+            publisher: services.connectionStorage.sshRoutePublisherId
+        )
+        let localRecord = SyncRecordMapper.toCKRecord(local, in: zoneID)
+        // Written again the way this Mac writes, so iOS's spelling of a value this Mac never changed is not an edit.
+        let baseAsWritten = (try? SyncRecordMapper.toConnection(base)).map { SyncRecordMapper.toCKRecord($0, in: zoneID) } ?? base
         guard let merged = remoteRecord.copy() as? CKRecord else { return nil }
 
         let localFields = localRecord.fields(ConnectionSyncField.self)
-        let baseFields = base.fields(ConnectionSyncField.self)
+        let baseFields = baseAsWritten.fields(ConnectionSyncField.self)
         let mergedFields = merged.fields(ConnectionSyncField.self)
         for field in ConnectionSyncField.allCases where field != .modifiedAtLocal {
             guard !CKRecord.isEqualRecordValue(localFields[field], baseFields[field]) else { continue }

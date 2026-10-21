@@ -63,17 +63,20 @@ extension SyncCoordinator {
         if boundary.includes(.connection) {
             let storage = services.connectionStorage
             let profiles = services.sshProfileStorage
+            let routePublisher = storage.sshRoutePublisherId
             await collectRecords(of: .connection, snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID) {
                 let connections = storage.loadConnections()
                 return storage.lastLoadFailed ? nil : connections
             } disposition: { (connection: DatabaseConnection) in
                 guard connection.participatesInSync else { return .drop }
                 let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
-                return .push(SyncRecordMapper.toCKRecord(
-                    Self.syncedTunnel(of: connection, profiles: profiles),
-                    in: zoneID,
-                    base: recordCache.record(for: recordID)
-                ))
+                let base = recordCache.record(for: recordID)
+                let synced = SyncRecordMapper.keepingForeignRoute(
+                    of: Self.syncedTunnel(of: connection, profiles: profiles),
+                    in: base,
+                    publisher: routePublisher
+                )
+                return .push(SyncRecordMapper.toCKRecord(synced, in: zoneID, base: base))
             }
         }
 

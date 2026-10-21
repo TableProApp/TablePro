@@ -42,7 +42,7 @@ struct SyncFieldParityTests {
     ]
 
     // Derived on the Mac from a file only the Mac has, so only the Mac writes it; both apps read it.
-    private static let connectionMacPublished: Set<String> = []
+    private static let connectionMacPublished: Set<String> = ["sshRouteJson"]
 
     private static let connectionIosOnly: Set<String> = [
         "sshEnabled", "sslEnabled",

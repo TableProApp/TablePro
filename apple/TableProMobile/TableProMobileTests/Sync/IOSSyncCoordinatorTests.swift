@@ -2,6 +2,7 @@ import CloudKit
 import Foundation
 @testable import TableProMobile
 import TableProModels
+import TableProSSHTransport
 import TableProSync
 import TableProSyncTransport
 import Testing
@@ -244,6 +245,59 @@ struct IOSSyncCoordinatorTests {
         await coordinator.sync()
 
         #expect(box.connections.first?.sshProfileId == profileId)
+    }
+
+    @Test("A build that reads the Mac's SSH route fetches everything once")
+    func routeReaderFetchesEverythingOnce() async throws {
+        let box = LibraryStateBox()
+        metadata.lastAccountId = "account-a"
+        var older = IOSSyncCoordinator.readableRecordTypes
+        older.remove(ConnectionSyncField.sshRouteContentKind)
+        _ = metadata.adoptReadableRecordTypes(older)
+        metadata.userDefaults.set(Data([1, 2, 3]), forKey: tokenKey)
+        let coordinator = makeCoordinator(box: box, transport: FakeSyncTransport(remoteRecords: [], box: box))
+
+        await coordinator.sync()
+        #expect(metadata.userDefaults.data(forKey: tokenKey) == nil)
+
+        metadata.userDefaults.set(Data([1, 2, 3]), forKey: tokenKey)
+        await coordinator.sync()
+        #expect(metadata.userDefaults.data(forKey: tokenKey) == Data([1, 2, 3]))
+    }
+
+    @Test("A copy with an edit waiting to go up still takes the route a pull brings, and its push keeps it")
+    func dirtyCopyTakesThePulledRoute() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(
+            name: "Alias",
+            type: .postgresql,
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "db", username: "")
+        )
+        box.connections = [local]
+        let route = PublishedSSHRoute(
+            publisher: UUID(),
+            input: try #require(local.sshConfiguration).publishedRouteInput,
+            hops: [.init(id: UUID(), alias: "bastion", host: "b.example", port: 22, username: "jump")],
+            target: .init(alias: "db", host: "10.0.0.5", port: 22, username: "deploy")
+        )
+        let routeData = try #require(route.encoded())
+        let remote = SyncRecordMapper.toRecord(local, zoneID: zoneID)
+        remote[ConnectionSyncField.sshRouteJson.key] = routeData as CKRecordValue
+        let transport = FakeSyncTransport(remoteRecords: [remote], box: box)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        box.duringPull = {
+            box.connections[0].name = "Renamed here"
+            coordinator.markDirty(local.id)
+        }
+
+        await coordinator.sync()
+
+        let stored = try #require(box.connections.first)
+        #expect(stored.name == "Renamed here")
+        #expect(stored.sshRoute == route)
+        let pushed = try #require(await transport.pushedRecords.first { $0.recordID == remote.recordID })
+        #expect(pushed[ConnectionSyncField.sshRouteJson.key] as? Data == routeData)
     }
 
     @Test("A cached profile link whose save failed is read again on the next sync")

@@ -87,8 +87,31 @@ public struct PublishedSSHRoute: Codable, Hashable, Sendable {
         version == Self.currentVersion && basis == Self.basis(of: input)
     }
 
+    // Aliases, and the hop ids derived from them, are each Mac's own names for the hosts a device dials.
     public func leadsToSameHosts(as other: PublishedSSHRoute) -> Bool {
-        version == other.version && basis == other.basis && hops == other.hops && target == other.target
+        version == other.version && basis == other.basis
+            && hops.map(Endpoint.init) == other.hops.map(Endpoint.init)
+            && Endpoint(target) == Endpoint(other.target)
+    }
+
+    private struct Endpoint: Equatable {
+        let host: String
+        let port: Int
+        let username: String
+
+        init(_ hop: Hop) {
+            self.init(host: hop.host, port: hop.port, username: hop.username)
+        }
+
+        init(_ target: Target) {
+            self.init(host: target.host, port: target.port, username: target.username)
+        }
+
+        init(host: String, port: Int, username: String) {
+            self.host = host
+            self.port = port
+            self.username = username
+        }
     }
 
     // True when dialing the input as typed reaches the same hosts, so there is nothing to publish.

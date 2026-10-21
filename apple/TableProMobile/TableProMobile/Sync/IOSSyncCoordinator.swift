@@ -38,9 +38,10 @@ final class IOSSyncCoordinator {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "Sync")
 
+    // Plus a kind for each field an older build pulled without reading.
     static let readableRecordTypes = Set(
         [SyncRecordType.connection, .group, .tag, .favorite, .favoriteFolder].map(\.rawValue)
-    )
+    ).union([ConnectionSyncField.sshRouteContentKind])
 
     private(set) var status: SyncStatus
     private(set) var lastSyncDate: Date?
@@ -881,7 +882,10 @@ final class IOSSyncCoordinator {
         local: [DatabaseConnection],
         remote: PullChanges
     ) -> (connections: [DatabaseConnection], adoptedFromCache: Set<UUID>) {
-        let pulledIds = Set(remote.changedConnections.map(\.id))
+        let pulledRoutes = Dictionary(
+            remote.changedConnections.map { ($0.id, $0.sshRoute) },
+            uniquingKeysWith: { _, last in last }
+        )
         var adopted: Set<UUID> = []
         let connections = merge(
             local: local,
@@ -890,9 +894,13 @@ final class IOSSyncCoordinator {
             dirtyIds: metadata.dirtyIds(for: .connection),
             tombstonedIds: tombstonedIds(for: .connection)
         ).map { connection -> DatabaseConnection in
-            guard !pulledIds.contains(connection.id), let cached = adoptingCachedSSHFields(connection) else {
-                return connection
+            // Only a Mac writes the route, so a copy with edits waiting to go up still takes the pulled one.
+            if let pulledRoute = pulledRoutes[connection.id] {
+                var routed = connection
+                routed.sshRoute = pulledRoute
+                return routed
             }
+            guard let cached = adoptingCachedSSHFields(connection) else { return connection }
             adopted.insert(connection.id)
             return cached
         }

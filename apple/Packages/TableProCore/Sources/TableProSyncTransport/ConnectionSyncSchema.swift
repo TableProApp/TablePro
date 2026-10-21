@@ -29,6 +29,7 @@ public enum ConnectionSyncField: String, SyncSchemaField {
     case redisDatabase
     case startupCommands
     case sshProfileId
+    case sshRouteJson
     case isFavorite
     case modifiedAtLocal
     case schemaVersion
@@ -39,6 +40,12 @@ public enum ConnectionSyncField: String, SyncSchemaField {
         .isReadOnly, .sshEnabled, .sslEnabled, .queryTimeoutSeconds,
         .sshConfigJson, .sslConfigJson, .additionalFieldsJson,
         .aiPolicy, .aiRules, .aiAlwaysAllowedTools, .redisDatabase, .startupCommands,
-        .sshProfileId, .isFavorite, .modifiedAtLocal, .schemaVersion
+        .sshProfileId, .sshRouteJson, .isFavorite, .modifiedAtLocal, .schemaVersion
     ]
+}
+
+public extension ConnectionSyncField {
+    // In each app's readable content, so the first pull on this build fetches everything once and
+    // reads the routes an older build cached without reading them.
+    static let sshRouteContentKind = "\(SyncRecordType.connection.rawValue)/\(Self.sshRouteJson.rawValue).v1"
 }

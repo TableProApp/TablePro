@@ -2,6 +2,7 @@ import Foundation
 import TableProConnectionLibrary
 @testable import TableProMobile
 import TableProModels
+import TableProSSHTransport
 import Testing
 
 @Suite("Connection library editing")
@@ -141,6 +142,27 @@ struct ConnectionLibraryEditingTests {
         #expect(result.copy.tagIds == [tagId])
         #expect(!result.copy.isFavorite)
         #expect(result.change.changedConnectionIds.contains(b.id))
+    }
+
+    @Test("A duplicate starts without the Mac's SSH route, which its record never carries")
+    func duplicateDropsTheMacRoute() throws {
+        var source = DatabaseConnection(
+            name: "Alias",
+            type: .postgresql,
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "db", username: "")
+        )
+        source.sshRoute = PublishedSSHRoute(
+            publisher: UUID(),
+            input: try #require(source.sshConfiguration).publishedRouteInput,
+            hops: [],
+            target: .init(alias: "db", host: "10.0.0.5", port: 22, username: "deploy")
+        )
+
+        let result = ConnectionLibraryEditing.duplicating(source, named: "Alias Copy", in: [source], validGroupIds: [])
+
+        #expect(result.copy.sshRoute == nil)
+        #expect(result.copy.sshConfiguration == source.sshConfiguration)
     }
 
     @Test("Deleting a group deletes its subgroups and moves all their connections to Ungrouped")
