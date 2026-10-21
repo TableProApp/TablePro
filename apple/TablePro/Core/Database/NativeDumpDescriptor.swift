@@ -157,7 +157,7 @@ struct NativeDumpDescriptor: Sendable {
         let environment: @Sendable (Request) -> [String: String]
 
         // Asked before the arguments are built; the answer lands in `Request.serverOffersTLS`.
-        let serverOffersTLS: @Sendable (Request, NativeDumpResolvedTool) async -> Bool?
+        let serverOffersTLS: @Sendable (Request, NativeDumpResolvedTool) async throws -> Bool?
 
         let clientPluginFolder: @Sendable (Request, NativeDumpResolvedTool) throws -> MariaDBClientPluginFolder?
 
@@ -176,7 +176,7 @@ struct NativeDumpDescriptor: Sendable {
             restoreArguments: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> [String],
             environment: @escaping @Sendable (Request) -> [String: String] = { _ in [:] },
             configurationFileEntries: @escaping @Sendable (Request) -> [ConfigurationEntry] = { _ in [] },
-            serverOffersTLS: @escaping @Sendable (Request, NativeDumpResolvedTool) async -> Bool? = { _, _ in nil },
+            serverOffersTLS: @escaping @Sendable (Request, NativeDumpResolvedTool) async throws -> Bool? = { _, _ in nil },
             clientPluginFolder: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> MariaDBClientPluginFolder? = { _, _ in nil }
         ) {
             self.backupBinaries = backupBinaries

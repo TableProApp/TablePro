@@ -42,6 +42,7 @@ enum NativeDumpError: LocalizedError, Equatable {
     case sourceUnreadable
     case engineStatementUnavailable
     case incompatibleTool(message: String)
+    case unreachableServer(message: String)
 
     var errorDescription: String? {
         switch self {
@@ -61,7 +62,7 @@ enum NativeDumpError: LocalizedError, Equatable {
             return String(localized: "The selected backup file is not readable.")
         case .engineStatementUnavailable:
             return String(localized: "TablePro could not read the database's own name from the connection.")
-        case .incompatibleTool(let message):
+        case .incompatibleTool(let message), .unreachableServer(let message):
             return message
         }
     }
@@ -309,7 +310,7 @@ final class NativeDumpService: ObservableObject {
                 serverVersion: serverVersion
             )
             toolName = resolved.name
-            request.serverOffersTLS = await tool.serverOffersTLS(request, resolved)
+            request.serverOffersTLS = try await tool.serverOffersTLS(request, resolved)
             let command = try Self.buildCommand(
                 kind: kind,
                 tool: tool,

@@ -11,17 +11,22 @@ import os
 // password when caching_sha2_password asks for full authentication. Reading the server's greeting first, which carries
 // no credentials, lets the dump pick TLS or plaintext up front instead.
 enum MySQLServerGreeting {
+    enum Answer: Equatable, Sendable {
+        case offersTLS(Bool)
+        case serverError(String)
+        case unreadable
+    }
+
     private static let clientSSL: UInt16 = 0x0800
     private static let errorPacket: UInt8 = 0xFF
     private static let queue = DispatchQueue(label: "com.TablePro.MySQLServerGreeting", qos: .userInitiated)
 
-    // Nil when the server cannot be read, which a caller treats as no TLS.
-    static func offersTLS(host: String, port: Int, deadline: Duration = .seconds(10)) async -> Bool? {
-        guard let nwPort = NWEndpoint.Port(rawValue: UInt16(clamping: port)), port > 0 else { return nil }
+    static func read(host: String, port: Int, deadline: Duration = .seconds(10)) async -> Answer {
+        guard port > 0, let nwPort = NWEndpoint.Port(rawValue: UInt16(clamping: port)) else { return .unreadable }
         let connection = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
-        let answer: Bool? = await withCheckedContinuation { continuation in
+        return await withCheckedContinuation { continuation in
             let resumed = OSAllocatedUnfairLock(initialState: false)
-            let complete: @Sendable (Bool?) -> Void = { value in
+            let complete: @Sendable (Answer) -> Void = { value in
                 let shouldResume = resumed.withLock { done -> Bool in
                     guard !done else { return false }
                     done = true
@@ -36,54 +41,63 @@ enum MySQLServerGreeting {
                 case .ready:
                     readGreeting(from: connection, complete: complete)
                 case .failed, .cancelled, .waiting:
-                    complete(nil)
+                    complete(.unreadable)
                 default:
                     break
                 }
             }
             connection.start(queue: queue)
-            queue.asyncAfter(deadline: .now() + deadline.timeInterval) { complete(nil) }
+            let parts = deadline.components
+            let seconds = Double(parts.seconds) + Double(parts.attoseconds) / 1e18
+            queue.asyncAfter(deadline: .now() + seconds) { complete(.unreadable) }
         }
-        return answer
     }
 
-    static func offersTLS(greeting payload: [UInt8]) -> Bool? {
-        guard let protocolVersion = payload.first, protocolVersion != errorPacket else { return nil }
-        guard let versionEnd = payload.dropFirst().firstIndex(of: 0) else { return nil }
+    static func answer(greeting payload: [UInt8]) -> Answer {
+        guard let first = payload.first else { return .unreadable }
+        if first == errorPacket {
+            return serverError(payload).map { .serverError($0) } ?? .unreadable
+        }
+        guard let versionEnd = payload.dropFirst().firstIndex(of: 0) else { return .unreadable }
         // Thread id (4), the first part of the scramble (8) and a filler byte sit before the capability flags.
         let flagsStart = versionEnd + 1 + 4 + 8 + 1
-        guard payload.count >= flagsStart + 2 else { return nil }
+        guard payload.count >= flagsStart + 2 else { return .unreadable }
         let flags = UInt16(payload[flagsStart]) | UInt16(payload[flagsStart + 1]) << 8
-        return flags & clientSSL != 0
+        return .offersTLS(flags & clientSSL != 0)
     }
 
-    private static func readGreeting(from connection: NWConnection, complete: @escaping @Sendable (Bool?) -> Void) {
+    // A server refusing the connection outright, such as "Too many connections", answers with an error packet in place
+    // of the greeting. Before the handshake it carries no SQL state marker.
+    private static func serverError(_ payload: [UInt8]) -> String? {
+        guard payload.count > 3 else { return nil }
+        var message = payload.dropFirst(3)
+        if message.first == UInt8(ascii: "#"), message.count >= 6 {
+            message = message.dropFirst(6)
+        }
+        let text = String(bytes: message, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text?.isEmpty == false ? text : nil
+    }
+
+    private static func readGreeting(from connection: NWConnection, complete: @escaping @Sendable (Answer) -> Void) {
         connection.receive(minimumIncompleteLength: 4, maximumLength: 4) { header, _, _, error in
             guard error == nil, let header, header.count == 4 else {
-                complete(nil)
+                complete(.unreadable)
                 return
             }
             let length = Int(header[header.startIndex])
                 | Int(header[header.startIndex + 1]) << 8
                 | Int(header[header.startIndex + 2]) << 16
             guard length > 0 else {
-                complete(nil)
+                complete(.unreadable)
                 return
             }
             connection.receive(minimumIncompleteLength: length, maximumLength: length) { payload, _, _, error in
                 guard error == nil, let payload, payload.count == length else {
-                    complete(nil)
+                    complete(.unreadable)
                     return
                 }
-                complete(offersTLS(greeting: Array(payload)))
+                complete(answer(greeting: Array(payload)))
             }
         }
-    }
-}
-
-private extension Duration {
-    var timeInterval: TimeInterval {
-        let parts = components
-        return TimeInterval(parts.seconds) + TimeInterval(parts.attoseconds) / 1e18
     }
 }

@@ -159,39 +159,66 @@ struct MySQLDumpPlaintextPasswordTests {
                 password: nil
             )
             let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: "/t", flavor: flavor)
-            #expect(await tool.serverOffersTLS(request, resolved) == nil, "\(mode.rawValue) \(flavor)")
+            #expect(try await tool.serverOffersTLS(request, resolved) == nil, "\(mode.rawValue) \(flavor)")
         }
     }
 
-    @Test("A server that cannot be read counts as one without TLS")
-    func unreadableServerCountsAsNoTLS() async throws {
-        let tool = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
-        var closed = connection(.preferred)
-        closed.host = "127.0.0.1"
-        closed.port = try #require(LoopbackPort.allocateFree())
-        let request = NativeDumpDescriptor.Request(
-            connection: closed,
+    private func preferredRequest(port: Int) -> NativeDumpDescriptor.Request {
+        var preferred = connection(.preferred)
+        preferred.host = "127.0.0.1"
+        preferred.port = port
+        return NativeDumpDescriptor.Request(
+            connection: preferred,
             database: "sales",
             fileURL: URL(fileURLWithPath: "/tmp/out.sql"),
             password: nil
         )
-        let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: "/t", flavor: .mariadb)
-        #expect(await tool.serverOffersTLS(request, resolved) == false)
     }
 
-    @Test("The greeting's capability flags say whether the server offers TLS", arguments: [true, false])
-    func greetingFromAServer(offersTLS: Bool) async throws {
+    @Test("Preferred takes the server's own answer from its greeting", arguments: [true, false])
+    func preferredReadsTheGreeting(offersTLS: Bool) async throws {
         let server = try await FakeGreetingServer.start(payload: Self.greeting(offersTLS: offersTLS))
         defer { server.stop() }
-        #expect(await MySQLServerGreeting.offersTLS(host: "127.0.0.1", port: server.port) == offersTLS)
+        let tool = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
+        let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: "/t", flavor: .mariadb)
+        #expect(try await tool.serverOffersTLS(preferredRequest(port: server.port), resolved) == offersTLS)
+        #expect(await MySQLServerGreeting.read(host: "127.0.0.1", port: server.port) == .offersTLS(offersTLS))
     }
 
-    @Test("An error packet or a short greeting tells nothing")
-    func unreadableGreetings() {
-        #expect(MySQLServerGreeting.offersTLS(greeting: [0xFF, 0x69, 0x04] + Array("Host blocked".utf8)) == nil)
-        #expect(MySQLServerGreeting.offersTLS(greeting: [10] + Array("8.0.36".utf8)) == nil)
-        #expect(MySQLServerGreeting.offersTLS(greeting: Array(Self.greeting(offersTLS: true).prefix(20))) == nil)
-        #expect(MySQLServerGreeting.offersTLS(greeting: []) == nil)
+    // Guessing no TLS would dump in plaintext from a server that has it; guessing TLS brings back the fallback.
+    @Test("A server that cannot be read fails the run instead of a guess")
+    func unreadableServerFailsTheRun() async throws {
+        let tool = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
+        let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: "/t", flavor: .mariadb)
+        let closed = try #require(LoopbackPort.allocateFree())
+        await #expect(throws: NativeDumpError.self) {
+            try await tool.serverOffersTLS(preferredRequest(port: closed), resolved)
+        }
+
+        let busy = [0xFF, 0x10, 0x04] + Array("Too many connections".utf8)
+        let server = try await FakeGreetingServer.start(payload: busy)
+        defer { server.stop() }
+        await #expect(throws: NativeDumpError.unreachableServer(message: "Too many connections")) {
+            try await tool.serverOffersTLS(preferredRequest(port: server.port), resolved)
+        }
+    }
+
+    @Test("An error packet carries the server's words, and a short greeting tells nothing")
+    func greetingParsing() {
+        #expect(MySQLServerGreeting.answer(greeting: Self.greeting(offersTLS: true)) == .offersTLS(true))
+        #expect(MySQLServerGreeting.answer(greeting: Self.greeting(offersTLS: false)) == .offersTLS(false))
+        #expect(
+            MySQLServerGreeting.answer(greeting: [0xFF, 0x69, 0x04] + Array("Host 'x' is blocked".utf8))
+                == .serverError("Host 'x' is blocked")
+        )
+        #expect(
+            MySQLServerGreeting.answer(greeting: [0xFF, 0x10, 0x04] + Array("#08004Too many connections".utf8))
+                == .serverError("Too many connections")
+        )
+        #expect(MySQLServerGreeting.answer(greeting: [0xFF, 0x10, 0x04]) == .unreadable)
+        #expect(MySQLServerGreeting.answer(greeting: [10] + Array("8.0.36".utf8)) == .unreadable)
+        #expect(MySQLServerGreeting.answer(greeting: Array(Self.greeting(offersTLS: true).prefix(20))) == .unreadable)
+        #expect(MySQLServerGreeting.answer(greeting: []) == .unreadable)
     }
 
     @Test("The plugin folder is found beside a Homebrew tool, through its link")

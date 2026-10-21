@@ -219,11 +219,7 @@ enum NativeDumpRegistry {
                         return ["MYSQL_PWD": password]
                     },
                     serverOffersTLS: { request, resolved in
-                        guard MySQLClientArguments.needsServerGreeting(request.connection, flavor: resolved.flavor) else {
-                            return nil
-                        }
-                        return await MySQLServerGreeting.offersTLS(host: request.host, port: request.connection.port)
-                            ?? false
+                        try await mysqlServerOffersTLS(request, resolved)
                     },
                     clientPluginFolder: { request, resolved in
                         try mysqlPluginFolder(request, resolved)
@@ -253,6 +249,30 @@ enum NativeDumpRegistry {
     /// `--` in front of the database, both are names again.
     private static func mysqlObjectArguments(_ request: NativeDumpDescriptor.Request) -> [String] {
         ["--", request.database] + request.scope.objects.map(\.name)
+    }
+
+    // Unreadable fails the run: guessing no TLS would dump in plaintext from a server that has it, and guessing TLS
+    // brings back the fallback that sends the typed password.
+    private static func mysqlServerOffersTLS(
+        _ request: NativeDumpDescriptor.Request,
+        _ resolved: NativeDumpResolvedTool
+    ) async throws -> Bool? {
+        guard MySQLClientArguments.needsServerGreeting(request.connection, flavor: resolved.flavor) else { return nil }
+        switch await MySQLServerGreeting.read(host: request.host, port: request.connection.port) {
+        case .offersTLS(let offered):
+            return offered
+        case .serverError(let message):
+            throw NativeDumpError.unreachableServer(message: message)
+        case .unreadable:
+            throw NativeDumpError.unreachableServer(
+                message: String(
+                    format: String(
+                        localized: "TablePro could not reach %@ to see whether it offers TLS. Check that the server is running and reachable, then try again."
+                    ),
+                    "\(request.host):\(request.connection.port)"
+                )
+            )
+        }
     }
 
     private static func mysqlPluginFolder(
