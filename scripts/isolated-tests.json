@@ -615,6 +615,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::split_view::tests::opening_an_editor_moves_focus_out_of_sidebar_search"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::grid::lifetime_tests::a_dropped_result_grid_releases_its_page"
     ],
     [

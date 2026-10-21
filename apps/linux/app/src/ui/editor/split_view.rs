@@ -18,6 +18,12 @@ impl SplitEditorView {
         primary_scroll: &gtk::ScrolledWindow,
         primary: &sourceview5::View,
     ) -> Self {
+        let first_map = std::cell::Cell::new(true);
+        primary.connect_map(move |view| {
+            if first_map.replace(false) {
+                view.grab_focus();
+            }
+        });
         let secondary_view = sourceview5::View::builder()
             .show_line_numbers(primary.shows_line_numbers())
             .monospace(true)
@@ -193,5 +199,38 @@ mod tests {
             .chain((1..200).map(|line| format!("SELECT {line};")))
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn opening_an_editor_moves_focus_out_of_sidebar_search() {
+        gtk::init().unwrap();
+        let sidebar = gtk::SearchEntry::new();
+        let workspace = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        workspace.append(&sidebar);
+        let window = gtk::Window::builder().child(&workspace).build();
+        window.present();
+        let context = gtk::glib::MainContext::default();
+        while context.iteration(false) {}
+        assert!(sidebar.grab_focus());
+        let previous = gtk::prelude::RootExt::focus(&window).unwrap();
+        assert!(previous == sidebar || previous.is_ancestor(&sidebar));
+        let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let primary = sourceview5::View::new();
+        let scroll = gtk::ScrolledWindow::builder().child(&primary).build();
+        holder.append(&scroll);
+        let _split = SplitEditorView::install(&holder, &scroll, &primary);
+        workspace.append(&holder);
+        while context.iteration(false) {}
+        assert_eq!(
+            gtk::prelude::RootExt::focus(&window).as_ref(),
+            Some(primary.upcast_ref())
+        );
+        assert!(sidebar.grab_focus());
+        primary.set_visible(false);
+        primary.set_visible(true);
+        while context.iteration(false) {}
+        assert_eq!(gtk::prelude::RootExt::focus(&window).as_ref(), Some(&previous));
+        window.destroy();
     }
 }

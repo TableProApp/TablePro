@@ -90,6 +90,7 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 ## Engineering review records (October 2026)
 
+- [Initial SQL editor focus, October 21](evidence/editor-focus-2026-10-21/README.md): failing-then-passing GTK focus regression and remapping behavior.
 - [Grid lifetime and memory investigation, October 21](evidence/grid-lifetime-2026-10-21/README.md): reproduced GTK ownership cycles, original/fixed heap profiles, PostgreSQL RSS probe and remaining manual acceptance.
 
 - [Public documentation language review, October 21](evidence/public-documentation-language-2026-10-21/README.md): repository-wide Markdown screening, neutral wording corrections and independent adoption criteria.
