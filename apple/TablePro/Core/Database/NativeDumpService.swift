@@ -100,7 +100,7 @@ struct NativeDumpCommand: Equatable {
     /// standard input. Removed once the process exits, however it exits.
     let temporaryCredentialsFileURL: URL?
 
-    let clientPluginFolder: NativeDumpDescriptor.ClientPluginFolder?
+    let clientPluginFolder: MariaDBClientPluginFolder?
 
     /// Which direction a redirected file goes: a restore feeds it in as standard input, a backup
     /// takes standard output and writes it out.
@@ -116,7 +116,7 @@ struct NativeDumpCommand: Equatable {
         delivery: NativeDumpDescriptor.OutputDelivery = .toolWritesFile,
         redirectedFileURL: URL? = nil,
         temporaryCredentialsFileURL: URL? = nil,
-        clientPluginFolder: NativeDumpDescriptor.ClientPluginFolder? = nil,
+        clientPluginFolder: MariaDBClientPluginFolder? = nil,
         isRestore: Bool = false,
         exitPolicy: NativeDumpExitPolicy = .zeroExitOnly
     ) {
@@ -155,7 +155,7 @@ internal extension NativeDumpJob {
         return command.exitPolicy
     }
 
-    var clientPluginFolder: NativeDumpDescriptor.ClientPluginFolder? {
+    var clientPluginFolder: MariaDBClientPluginFolder? {
         guard case .process(let command) = self else { return nil }
         return command.clientPluginFolder
     }
@@ -629,7 +629,7 @@ final class NativeDumpService: ObservableObject {
         database: String,
         fileURL: URL,
         exitPolicy: NativeDumpExitPolicy,
-        pluginFolder: NativeDumpDescriptor.ClientPluginFolder?
+        pluginFolder: MariaDBClientPluginFolder?
     ) {
         byteSizeTask?.cancel()
         byteSizeTask = nil

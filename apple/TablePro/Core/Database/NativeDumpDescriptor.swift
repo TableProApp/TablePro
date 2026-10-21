@@ -81,7 +81,7 @@ struct NativeDumpDescriptor: Sendable {
         var serverOffersTLS: Bool?
 
         // Set by `NativeDumpService.buildCommand` before the arguments are built.
-        var clientPluginFolder: ClientPluginFolder?
+        var clientPluginFolder: MariaDBClientPluginFolder?
 
         init(
             connection: DatabaseConnection,
@@ -113,18 +113,6 @@ struct NativeDumpDescriptor: Sendable {
     internal struct ConfigurationEntry: Sendable, Equatable {
         let key: String
         let value: String
-    }
-
-    // A private folder of the tool's client plugins with some left out, removed once the process exits.
-    struct ClientPluginFolder: Sendable, Equatable {
-        let url: URL
-        // What the tool prints when the server asked for a hidden plugin, and what the user reads instead.
-        let refusalMarkers: [String]
-        let refusalMessage: String
-
-        func refusal(in stderr: String) -> String? {
-            refusalMarkers.contains { stderr.contains($0) } ? refusalMessage : nil
-        }
     }
 
     /// A tool on the user's Mac that the app spawns.
@@ -171,7 +159,7 @@ struct NativeDumpDescriptor: Sendable {
         // Asked before the arguments are built; the answer lands in `Request.serverOffersTLS`.
         let serverOffersTLS: @Sendable (Request, NativeDumpResolvedTool) async -> Bool?
 
-        let clientPluginFolder: @Sendable (Request, NativeDumpResolvedTool) throws -> ClientPluginFolder?
+        let clientPluginFolder: @Sendable (Request, NativeDumpResolvedTool) throws -> MariaDBClientPluginFolder?
 
         init(
             backupBinaries: [String],
@@ -189,7 +177,7 @@ struct NativeDumpDescriptor: Sendable {
             environment: @escaping @Sendable (Request) -> [String: String] = { _ in [:] },
             configurationFileEntries: @escaping @Sendable (Request) -> [ConfigurationEntry] = { _ in [] },
             serverOffersTLS: @escaping @Sendable (Request, NativeDumpResolvedTool) async -> Bool? = { _, _ in nil },
-            clientPluginFolder: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> ClientPluginFolder? = { _, _ in nil }
+            clientPluginFolder: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> MariaDBClientPluginFolder? = { _, _ in nil }
         ) {
             self.backupBinaries = backupBinaries
             self.restoreBinaries = restoreBinaries

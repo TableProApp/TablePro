@@ -11,9 +11,9 @@ import sys
 parser = argparse.ArgumentParser()
 parser.add_argument("--cert")
 parser.add_argument("--key")
-# dialog is how PAM asks; sha2-full is caching_sha2_password asking for full authentication, which a client
-# answers with the typed password once it thinks the session is secure.
-parser.add_argument("--auth", choices=["cleartext", "dialog", "sha2-full"])
+# dialog is how PAM asks; qa is the test plugin Homebrew's MariaDB ships; sha2-full is caching_sha2_password asking
+# for full authentication, which a client answers with the typed password once it thinks the session is secure.
+parser.add_argument("--auth", choices=["cleartext", "dialog", "qa", "sha2-full"])
 parser.add_argument("--secret", default="")
 args = parser.parse_args()
 
@@ -78,8 +78,10 @@ try:
         send(b"\xfemysql_clear_password\0", (sequence + 1) & 0xFF)
         sequence, answer = read_packet()
         state["answer"] = answer.split(b"\0")[0].decode(errors="replace")
-    elif args.auth == "dialog":
-        send(b"\xfedialog\0\x05Password: ", (sequence + 1) & 0xFF)
+    elif args.auth in ("dialog", "qa"):
+        # 0x05 asks for the password as the last question; qa_auth_client answers it only with an empty prompt.
+        request = b"dialog\0\x05Password: " if args.auth == "dialog" else b"qa_auth_client\0\x05"
+        send(b"\xfe" + request, (sequence + 1) & 0xFF)
         sequence, answer = read_packet()
         state["answer"] = answer.split(b"\0")[0].decode(errors="replace")
     elif args.auth == "sha2-full":

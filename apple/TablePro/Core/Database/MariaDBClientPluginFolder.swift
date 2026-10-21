@@ -5,16 +5,30 @@
 
 import Foundation
 
-// MariaDB's client tools answer a server that asks for the password as typed (mysql_clear_password, or dialog for PAM)
-// without TLS, and have no option that refuses it. Both are loaded from the plugin folder, so a run that might go
-// without TLS points the tool at a folder that links every plugin but those two. Measured with mariadb-dump and mariadb
-// 13.0.2 from Homebrew: they then fail with 2059 "Plugin dialog could not be loaded" before sending anything.
-enum MariaDBClientPluginFolder {
-    static let plaintextPasswordPlugins = ["mysql_clear_password", "dialog"]
+// MariaDB's client tools answer a server that asks for the password as typed (mysql_clear_password, dialog for PAM, and
+// the test plugins Homebrew ships) without TLS, and have no option that refuses it. Every one of them is loaded from
+// the plugin folder, so a run that might go without TLS points the tool at a private folder that links only the
+// plugins that never send it. Measured with mariadb-dump and mariadb 13.0.2 from Homebrew: a server asking for any
+// other plugin gets 2059 "Plugin dialog could not be loaded" before anything is sent.
+struct MariaDBClientPluginFolder: Sendable, Equatable {
+    // The app's MySQL driver allows the same sign-in methods without TLS (MySQLPlaintextPassword.methodsWithoutTLS).
+    // mysql_native_password and mysql_old_password are built into the tools, and zstd is compression.
+    static let allowedPlugins: Set<String> = [
+        "caching_sha2_password",
+        "sha256_password",
+        "client_ed25519",
+        "parsec",
+        "auth_gssapi_client",
+        "zstd"
+    ]
 
     // The two install layouts MariaDB's build defines for this platform, relative to the prefix that holds bin.
     // Homebrew uses the first.
     private static let layouts = ["lib/plugin", "lib/mysql/plugin"]
+
+    private static let refusedPluginPattern = #/Plugin ([A-Za-z0-9_]+) could not be loaded/#
+
+    let url: URL
 
     static func pluginDirectory(forTool path: String) -> URL? {
         let tool = URL(fileURLWithPath: path).resolvingSymlinksInPath()
@@ -24,22 +38,31 @@ enum MariaDBClientPluginFolder {
             .first { isDirectory($0) }
     }
 
-    // A tool whose folder cannot be found gets an empty one: logins built into the tool still work, and none that
-    // could send the password as typed.
-    static func make(hiding hidden: [String], from source: URL?, in parent: URL = FileManager.default.temporaryDirectory) throws -> URL {
+    // A tool whose folder cannot be found gets an empty one: the built-in sign-ins still work, and nothing that could
+    // send the password as typed.
+    static func make(
+        from source: URL?,
+        in parent: URL = FileManager.default.temporaryDirectory
+    ) throws -> MariaDBClientPluginFolder {
         let manager = FileManager.default
         let folder = parent.appendingPathComponent("tablepro-client-plugins-\(UUID().uuidString)", isDirectory: true)
         try manager.createDirectory(at: folder, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-        guard let source else { return folder }
-        let hiddenFiles = Set(hidden.map { "\($0).so" })
-        let entries = (try? manager.contentsOfDirectory(atPath: source.path)) ?? []
-        for entry in entries where !hiddenFiles.contains(entry) {
-            try manager.createSymbolicLink(
-                at: folder.appendingPathComponent(entry),
-                withDestinationURL: source.appendingPathComponent(entry)
-            )
+        guard let source else { return MariaDBClientPluginFolder(url: folder) }
+        for name in allowedPlugins.sorted() {
+            let file = "\(name).so"
+            let target = source.appendingPathComponent(file)
+            guard manager.fileExists(atPath: target.path) else { continue }
+            try manager.createSymbolicLink(at: folder.appendingPathComponent(file), withDestinationURL: target)
         }
-        return folder
+        return MariaDBClientPluginFolder(url: folder)
+    }
+
+    // A plugin left out of the folder is one that sends the password as typed. One that was allowed but could not be
+    // loaded keeps the tool's own words.
+    func refusal(in stderr: String) -> String? {
+        let refused = stderr.matches(of: Self.refusedPluginPattern).map { String($0.output.1) }
+        guard refused.contains(where: { !Self.allowedPlugins.contains($0) }) else { return nil }
+        return MySQLClientArguments.plaintextPasswordRefusal
     }
 
     private static func isDirectory(_ url: URL) -> Bool {

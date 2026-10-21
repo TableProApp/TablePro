@@ -213,70 +213,65 @@ struct MySQLDumpPlaintextPasswordTests {
         #expect(MariaDBClientPluginFolder.pluginDirectory(forTool: root.appendingPathComponent("nowhere/x").path) == nil)
     }
 
-    @Test("The private folder links every plugin but the hidden ones")
-    func privateFolderLeavesOutHiddenPlugins() throws {
+    @Test("The private folder links only the plugins that never send the password as typed")
+    func privateFolderLinksOnlyAllowedPlugins() throws {
         let source = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: source) }
-        let names = ["caching_sha2_password.so", "client_ed25519.so", "mysql_clear_password.so", "dialog.so", "parsec.so"]
-        for name in names {
+        let shipped = [
+            "caching_sha2_password.so", "client_ed25519.so", "mysql_clear_password.so", "dialog.so", "parsec.so",
+            "qa_auth_client.so", "qa_auth_interface.so", "auth_test_plugin.so", "zstd.so", "ha_archive.so"
+        ]
+        for name in shipped {
             #expect(FileManager.default.createFile(atPath: source.appendingPathComponent(name).path, contents: Data(name.utf8)))
         }
 
-        let folder = try MariaDBClientPluginFolder.make(
-            hiding: MariaDBClientPluginFolder.plaintextPasswordPlugins,
-            from: source
-        )
-        defer { try? FileManager.default.removeItem(at: folder) }
-        let linked = try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
-        #expect(linked == ["caching_sha2_password.so", "client_ed25519.so", "parsec.so"])
+        let folder = try MariaDBClientPluginFolder.make(from: source)
+        defer { try? FileManager.default.removeItem(at: folder.url) }
+        let linked = try FileManager.default.contentsOfDirectory(atPath: folder.url.path).sorted()
+        #expect(linked == ["caching_sha2_password.so", "client_ed25519.so", "parsec.so", "zstd.so"])
         let destination = try FileManager.default.destinationOfSymbolicLink(
-            atPath: folder.appendingPathComponent("parsec.so").path
+            atPath: folder.url.appendingPathComponent("parsec.so").path
         )
         #expect(destination == source.appendingPathComponent("parsec.so").path)
 
-        let empty = try MariaDBClientPluginFolder.make(hiding: ["dialog"], from: nil)
-        defer { try? FileManager.default.removeItem(at: empty) }
-        #expect(try FileManager.default.contentsOfDirectory(atPath: empty.path).isEmpty)
+        let empty = try MariaDBClientPluginFolder.make(from: nil)
+        defer { try? FileManager.default.removeItem(at: empty.url) }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: empty.url.path).isEmpty)
     }
 
-    @Test("The refusal is recognized in both tools' wording and nothing else")
-    func refusalMarkers() throws {
-        let built = try command(connection(.disabled))
-        defer { discard(built) }
-        let folder = try #require(built.clientPluginFolder)
+    @Test("A plugin left out of the folder reads as the plain-text refusal, an allowed one keeps the tool's words")
+    func refusalFollowsTheAllowList() throws {
+        let folder = MariaDBClientPluginFolder(url: URL(fileURLWithPath: "/nonexistent/folder"))
+        let refusal = MySQLClientArguments.plaintextPasswordRefusal
         let dump = #"mariadb-dump: Got error: 2059: "Plugin dialog could not be loaded: dlopen(/x/dialog.so, 0x0002)" when trying to connect"#
-        let client = "ERROR 2059 (HY000): Plugin mysql_clear_password could not be loaded: dlopen(/x/mysql_clear_password.so)"
-        #expect(folder.refusal(in: dump) == MySQLClientArguments.plaintextPasswordRefusal)
-        #expect(folder.refusal(in: client) == MySQLClientArguments.plaintextPasswordRefusal)
-        #expect(folder.refusal(in: "ERROR 2059 (HY000): Plugin caching_sha2_password could not be loaded") == nil)
-        #expect(folder.refusal(in: "ERROR 1045 (28000): Access denied") == nil)
+        #expect(folder.refusal(in: dump) == refusal)
+        #expect(folder.refusal(in: "ERROR 2059 (HY000): Plugin mysql_clear_password could not be loaded: dlopen(/x)") == refusal)
+        #expect(folder.refusal(in: "ERROR 2059 (HY000): Plugin qa_auth_client could not be loaded: dlopen(/x)") == refusal)
+        #expect(folder.refusal(in: "ERROR 2059 (HY000): Plugin caching_sha2_password could not be loaded: dlopen(/x)") == nil)
+        #expect(folder.refusal(in: "ERROR 1045 (28000): Access denied for user 'alice'") == nil)
     }
 
     @Test("The plugin folder is removed when the tool exits and when it cannot launch")
     func runnerRemovesThePluginFolder() async throws {
-        let ran = try MariaDBClientPluginFolder.make(hiding: [], from: nil)
+        let ran = try MariaDBClientPluginFolder.make(from: nil)
         let runner = ProcessNativeDumpRunner(command: runnerCommand("/bin/sh", folder: ran))
         try runner.start()
         _ = await runner.result
-        #expect(!FileManager.default.fileExists(atPath: ran.path))
+        #expect(!FileManager.default.fileExists(atPath: ran.url.path))
 
-        let unlaunched = try MariaDBClientPluginFolder.make(hiding: [], from: nil)
+        let unlaunched = try MariaDBClientPluginFolder.make(from: nil)
         let failing = ProcessNativeDumpRunner(command: runnerCommand("/nonexistent/tool", folder: unlaunched))
         #expect(throws: (any Error).self) { try failing.start() }
-        #expect(!FileManager.default.fileExists(atPath: unlaunched.path))
+        #expect(!FileManager.default.fileExists(atPath: unlaunched.url.path))
     }
 
-    private func runnerCommand(_ executable: String, folder: URL) -> NativeDumpCommand {
+    private func runnerCommand(_ executable: String, folder: MariaDBClientPluginFolder) -> NativeDumpCommand {
         NativeDumpCommand(
             executable: URL(fileURLWithPath: executable),
             arguments: ["-c", "exit 0"],
             environment: [:],
             stderrByteCap: 64_000,
-            clientPluginFolder: NativeDumpDescriptor.ClientPluginFolder(
-                url: folder,
-                refusalMarkers: [],
-                refusalMessage: ""
-            )
+            clientPluginFolder: folder
         )
     }
 
@@ -326,11 +321,7 @@ struct MySQLDumpPlaintextPasswordServiceTests {
                 arguments: [],
                 environment: [:],
                 stderrByteCap: 64_000,
-                clientPluginFolder: NativeDumpDescriptor.ClientPluginFolder(
-                    url: folder,
-                    refusalMarkers: ["Plugin dialog could not be loaded"],
-                    refusalMessage: MySQLClientArguments.plaintextPasswordRefusal
-                )
+                clientPluginFolder: MariaDBClientPluginFolder(url: folder)
             )
         )
     }
@@ -365,14 +356,14 @@ struct MySQLDumpPlaintextPasswordServiceTests {
 
     @Test("A cancel before the tool runs removes the plugin folder it never used")
     func cancelBeforeRunRemovesTheFolder() throws {
-        let folder = try MariaDBClientPluginFolder.make(hiding: [], from: nil)
-        defer { try? FileManager.default.removeItem(at: folder) }
+        let folder = try MariaDBClientPluginFolder.make(from: nil)
+        defer { try? FileManager.default.removeItem(at: folder.url) }
         let runner = FinishingRunner(.init(exitCode: 0, stderr: "", wasCancelled: false))
         let service = NativeDumpService(kind: .backup, runnerFactory: { _ in runner })
         service.cancel()
-        try service.run(job: job(folder: folder), database: "sales", fileURL: URL(fileURLWithPath: "/tmp/cancelled.sql"))
+        try service.run(job: job(folder: folder.url), database: "sales", fileURL: URL(fileURLWithPath: "/tmp/cancelled.sql"))
         #expect(!runner.started)
-        #expect(!FileManager.default.fileExists(atPath: folder.path))
+        #expect(!FileManager.default.fileExists(atPath: folder.url.path))
     }
 }
 

@@ -258,22 +258,13 @@ enum NativeDumpRegistry {
     private static func mysqlPluginFolder(
         _ request: NativeDumpDescriptor.Request,
         _ resolved: NativeDumpResolvedTool
-    ) throws -> NativeDumpDescriptor.ClientPluginFolder? {
+    ) throws -> MariaDBClientPluginFolder? {
         guard MySQLClientArguments.hidesPlaintextPasswordPlugins(
             request.connection,
             flavor: resolved.flavor,
             serverOffersTLS: request.serverOffersTLS
         ) else { return nil }
-        let hidden = MariaDBClientPluginFolder.plaintextPasswordPlugins
-        let folder = try MariaDBClientPluginFolder.make(
-            hiding: hidden,
-            from: MariaDBClientPluginFolder.pluginDirectory(forTool: resolved.path)
-        )
-        return NativeDumpDescriptor.ClientPluginFolder(
-            url: folder,
-            refusalMarkers: hidden.map { "Plugin \($0) could not be loaded" },
-            refusalMessage: MySQLClientArguments.plaintextPasswordRefusal
-        )
+        return try MariaDBClientPluginFolder.make(from: MariaDBClientPluginFolder.pluginDirectory(forTool: resolved.path))
     }
 
     private static func mysqlConnectionFlags(

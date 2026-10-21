@@ -2,8 +2,8 @@
 # Checks that MariaDB's backup and restore tools, given the options NativeDumpRegistry builds for each SSL mode, never
 # send the password as typed without TLS.
 #
-# The tools answer mysql_clear_password and dialog (PAM) without TLS and have no option that refuses them, so the app
-# points them at a plugin folder without those two. Their --ssl without verification also falls back to plaintext and
+# The tools answer mysql_clear_password, dialog (PAM) and the test plugins Homebrew ships without TLS, and have no
+# option that refuses them, so the app points them at a plugin folder that links only the plugins that never do. Their --ssl without verification also falls back to plaintext and
 # then answers caching_sha2_password's full authentication with the typed password, so Preferred dials with
 # --skip-ssl unless the server's greeting offered TLS. Every row runs a real tool against
 # mariadb-tls-modes/fake-mysql-server.py. MySQL's own tools are not checked here: the app leaves them as they are.
@@ -47,9 +47,9 @@ CLIENT="$(find_tool mariadb mysql)" || {
     exit 3
 }
 
-# The folder the app builds: every entry of the tool's own plugin folder but the two that send the password as typed.
+# The folder the app builds: only the plugins of the tool's own folder that never send the password as typed.
 plugin_folder() {
-    local tool prefix source="" layout folder entry
+    local tool prefix source="" layout folder name
     tool="$(python3 -I -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1")"
     prefix="$(dirname "$(dirname "$tool")")"
     for layout in lib/plugin lib/mysql/plugin; do
@@ -61,11 +61,20 @@ plugin_folder() {
     }
     folder="$WORK/plugins-$(basename "$1")"
     mkdir -p "$folder"
-    for entry in "$source"/*; do
-        case "$(basename "$entry")" in mysql_clear_password.so | dialog.so) continue ;; esac
-        ln -s "$entry" "$folder/$(basename "$entry")"
+    for name in $(allowed_plugins); do
+        [ -e "$source/$name.so" ] && ln -s "$source/$name.so" "$folder/$name.so"
     done
     echo "$folder"
+}
+
+# Read from the Swift source, so the probe checks the list the app ships.
+allowed_plugins() {
+    sed -n '/static let allowedPlugins/,/\]/p' "$ROOT/TablePro/Core/Database/MariaDBClientPluginFolder.swift" \
+        | grep -o '"[a-z0-9_]*"' | tr -d '"'
+}
+[ -n "$(allowed_plugins)" ] || {
+    echo "could not read allowedPlugins from MariaDBClientPluginFolder.swift" >&2
+    exit 2
 }
 
 openssl req -x509 -newkey rsa:2048 -nodes -keyout "$WORK/self.key" -out "$WORK/self.pem" -days 2 \
@@ -118,6 +127,8 @@ for tool in "$DUMP" "$CLIENT"; do
     check "Disabled, server asks for mysql_clear_password" "$tool" refused-mysql_clear_password "--auth cleartext" \
         "${hidden[@]}"
     check "Disabled, server asks through PAM dialog" "$tool" refused-dialog "--auth dialog" "${hidden[@]}"
+    check "Disabled, server asks for the shipped qa_auth_client" "$tool" refused-qa_auth_client "--auth qa" \
+        "${hidden[@]}"
     check "Disabled, caching_sha2_password full authentication" "$tool" public-key "--auth sha2-full" "${hidden[@]}"
     check "Disabled, mysql_native_password" "$tool" login "" "${hidden[@]}"
     check "Preferred, server offers TLS, mysql_clear_password" "$tool" tls \
