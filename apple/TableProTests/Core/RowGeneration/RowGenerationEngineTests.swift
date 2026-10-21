@@ -270,6 +270,30 @@ struct RowGenerationEngineTests {
         #expect(rows.allSatisfy { row in projects.contains([row[0], row[2]]) })
     }
 
+    @Test("A chain of foreign keys that share columns draws in dependency order, whatever the column order")
+    func foreignKeyChainFollowsDependencies() throws {
+        let ab: [[PluginCellValue]] = [["1", "10"], ["2", "20"]]
+        let bc: [[PluginCellValue]] = [["10", "100"], ["20", "200"]]
+        let cd: [[PluginCellValue]] = [["100", "1000"], ["200", "2000"]]
+        let table = RowGenerationTable(
+            columns: [
+                Self.referencing("d", "fk3", at: 1),
+                Self.referencing("c", "fk2", at: 1),
+                Self.referencing("b", "fk1", at: 1),
+                Self.referencing("a", "fk1", at: 0)
+            ],
+            references: [
+                RowGenerationReferenceSource(id: "fk1", referencedTable: "t1", columns: ["a", "b"], tuples: ab),
+                RowGenerationReferenceSource(id: "fk2", referencedTable: "t2", columns: ["b", "c"], tuples: bc),
+                RowGenerationReferenceSource(id: "fk3", referencedTable: "t3", columns: ["c", "d"], tuples: cd)
+            ]
+        )
+        let settings = ["a": Self.generator(.reference), "b": Self.generator(.reference), "c": Self.generator(.reference), "d": Self.generator(.reference)]
+        let rows = try Self.engine(table, settings).nextRows(20)
+
+        #expect(rows.allSatisfy { row in ab.contains([row[3], row[2]]) && bc.contains([row[2], row[1]]) && cd.contains([row[1], row[0]]) })
+    }
+
     @Test("A key over a foreign key's columns walks the referenced rows when random draws run out")
     func compositeKeyOverAForeignKey() throws {
         let parents: [[PluginCellValue]] = (1...100).map { [.text(String($0)), .text(String($0 * 7))] }
@@ -437,6 +461,15 @@ struct RowGenerationValueTextTests {
         #expect(RowGenerationValueText.date(dayNumber: 0) == "1970-01-01")
         #expect(RowGenerationValueText.date(dayNumber: 19_782) == "2024-02-29")
         #expect(RowGenerationValueText.dateTime(second: 86_399) == "1970-01-01 23:59:59")
+    }
+
+    @Test("A date picked under another calendar is written as its Gregorian day")
+    func nonGregorianCalendarsWriteGregorianDays() throws {
+        var buddhist = Calendar(identifier: .buddhist)
+        buddhist.timeZone = TimeZone(identifier: "UTC") ?? .current
+        let picked = try #require(buddhist.date(from: DateComponents(year: 2_567, month: 2, day: 29)))
+
+        #expect(RowGenerationValueText.date(dayNumber: RowGenerationValueText.dayNumber(of: picked, calendar: buddhist)) == "2024-02-29")
     }
 
     @Test("A decimal is written from whole steps, signs and leading zeros included")

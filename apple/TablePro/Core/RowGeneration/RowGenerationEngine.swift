@@ -112,7 +112,7 @@ internal final class RowGenerationEngine: @unchecked Sendable {
             sources[id] = state
         }
         self.sources = sources
-        sourceOrder = order.filter { sources[$0]?.bindings.isEmpty != false } + order.filter { sources[$0]?.bindings.isEmpty == false }
+        sourceOrder = Self.dependencyOrder(order, sources: sources, columns: written)
 
         let groups = table.uniqueGroups.compactMap { group -> [Int]? in
             var indices: [Int] = []
@@ -133,6 +133,25 @@ internal final class RowGenerationEngine: @unchecked Sendable {
         self.groups = groups
         groupSeen = Array(repeating: [], count: groups.count)
         groupGenerators = groups.indices.map { SeededGenerator(seed: settings.seed, stream: "key:\($0)") }
+    }
+
+    // A foreign key bound to a column of another draws after it, however far the chain runs. A cycle keeps the order
+    // the columns came in.
+    private static func dependencyOrder(_ order: [String], sources: [String: SourceState], columns: [ColumnState]) -> [String] {
+        func owners(of id: String) -> Set<String> {
+            Set(sources[id]?.bindings.compactMap { columns[$0.owner].column.reference?.sourceId } ?? [])
+        }
+        var placed: [String] = []
+        var remaining = order
+        while !remaining.isEmpty {
+            guard let next = remaining.first(where: { owners(of: $0).isSubset(of: Set(placed)) }) else {
+                placed += remaining
+                break
+            }
+            placed.append(next)
+            remaining.removeAll { $0 == next }
+        }
+        return placed
     }
 
     internal func nextRows(_ count: Int) throws -> [[PluginCellValue]] {
@@ -373,13 +392,27 @@ internal final class RowGenerationEngine: @unchecked Sendable {
 
     private func redraw(group: Int, row: inout [PluginCellValue], drawn: inout [String: Int]) throws {
         let members = groups[group]
-        var touched: [String] = []
-        for index in members {
-            guard columns[index].settings.kind == .reference, let id = columns[index].column.reference?.sourceId,
-                  !touched.contains(id) else { continue }
-            touched.append(id)
+        var touched = Set(members.compactMap { index -> String? in
+            guard columns[index].settings.kind == .reference else { return nil }
+            return columns[index].column.reference?.sourceId
+        })
+        // A foreign key bound to a column of a redrawn one has to agree with its new value, so it is redrawn too.
+        var grew = true
+        while grew {
+            grew = false
+            for id in sourceOrder where !touched.contains(id) {
+                let owners = sources[id]?.bindings.compactMap { columns[$0.owner].column.reference?.sourceId } ?? []
+                if owners.contains(where: touched.contains) {
+                    touched.insert(id)
+                    grew = true
+                }
+            }
+        }
+        for id in sourceOrder where touched.contains(id) {
             release(id, drawn: drawn)
             drawn[id] = nil
+        }
+        for id in sourceOrder where touched.contains(id) {
             guard try drawSource(id, drawn: &drawn) else {
                 throw RowGenerationError.noMatchingReference(sources[id]?.source.columns ?? [])
             }

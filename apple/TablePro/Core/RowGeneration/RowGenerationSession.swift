@@ -272,9 +272,9 @@ internal final class RowGenerationSession: ObservableObject, Identifiable {
             settings.seed = Self.randomSeed()
             store.save(settings, for: scope)
         }
-        for column in table.columns where column.isUnique {
+        for column in table.columns {
             updateColumn(column.name) { settings in
-                guard settings.kind == .sequence, settings.sequenceStep > 0 else { return }
+                guard settings.kind == .sequence else { return }
                 let advance = settings.sequenceStep.multipliedReportingOverflow(by: Int64(kept))
                 let next = settings.integerMinimum.addingReportingOverflow(advance.partialValue)
                 guard !advance.overflow, !next.overflow else { return }

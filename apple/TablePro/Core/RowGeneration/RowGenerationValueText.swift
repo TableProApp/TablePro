@@ -20,8 +20,11 @@ internal enum RowGenerationValueText {
         return era * 146_097 + dayOfEra - 719_468
     }
 
+    // The day the person picked, read in their time zone but always as a Gregorian date, the one SQL writes.
     internal static func dayNumber(of date: Date, calendar: Calendar) -> Int64 {
-        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        let parts = gregorian.dateComponents([.year, .month, .day], from: date)
         return dayNumber(year: Int64(parts.year ?? 1_970), month: Int64(parts.month ?? 1), day: Int64(parts.day ?? 1))
     }
 

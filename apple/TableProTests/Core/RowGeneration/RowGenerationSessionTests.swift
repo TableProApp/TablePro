@@ -171,6 +171,18 @@ struct RowGenerationSessionTests {
         #expect(session.columnSettings("id")?.integerMinimum == 51)
     }
 
+    @Test("A descending sequence also continues after the rows a run added")
+    func descendingSequenceContinues() async {
+        let session = await makeSession(RecordingRowSource(table: Self.table))
+        session.settings.rowCount = 10
+        session.updateColumn("id") { $0.integerMinimum = 100; $0.sequenceStep = -1 }
+
+        session.start()
+        await session.runTask?.value
+
+        #expect(session.columnSettings("id")?.integerMinimum == 90)
+    }
+
     @Test("A remembered generator the column's type no longer takes gives way to the default")
     func staleGeneratorFallsBack() async {
         let store = RowGenerationSettingsStore(defaults: suite.defaults)

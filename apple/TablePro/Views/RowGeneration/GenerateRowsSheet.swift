@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import SwiftUI
 
 internal struct GenerateRowsSheet: View {
@@ -127,10 +128,16 @@ internal struct GenerateRowsSheet: View {
         case .configuring:
             Button(String(localized: "Cancel"), role: .cancel) { dismiss() }
                 .keyboardShortcut(.cancelAction)
-            Button(String(localized: "Open in Query Editor")) { openScript() }
+            Button(String(localized: "Open in Query Editor")) {
+                commitEditing()
+                openScript()
+            }
                 .disabled(!session.canOpenScript)
                 .accessibilityIdentifier("generate-rows-open-script")
-            Button(String(localized: "Generate")) { session.start() }
+            Button(String(localized: "Generate")) {
+                commitEditing()
+                session.start()
+            }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!session.canGenerate)
                 .accessibilityIdentifier("generate-rows-start")
@@ -145,6 +152,11 @@ internal struct GenerateRowsSheet: View {
                 .keyboardShortcut(.defaultAction)
                 .accessibilityIdentifier("generate-rows-done")
         }
+    }
+
+    // A number field writes its value when editing ends, and clicking a button does not end it.
+    private func commitEditing() {
+        NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
     private func openScript() {
