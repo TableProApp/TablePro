@@ -114,6 +114,18 @@ pub fn build_drop_table(
     Ok(parts.join(" "))
 }
 
+pub fn build_truncate_table(driver_id: &str, schema: Option<&str>, table: &str) -> Result<String, BuildDdlError> {
+    validate_table(table)?;
+    let qualified = qualified_table(driver_id, schema, table);
+    match driver_id {
+        "sqlite" => Err(BuildDdlError::SqliteNotSupported(
+            "TRUNCATE; emulating it would run child ON DELETE actions",
+        )),
+        "postgres" | "mysql" | "mssql" | "clickhouse" | "duckdb" => Ok(format!("TRUNCATE TABLE {qualified}")),
+        other => Err(BuildDdlError::UnsupportedDriver(other.to_string())),
+    }
+}
+
 pub fn build_rename_table(
     driver_id: &str,
     schema: Option<&str>,

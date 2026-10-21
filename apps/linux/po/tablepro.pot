@@ -360,13 +360,14 @@ msgstr ""
 #: apps/linux/app/src/ui/app/browse.rs:60
 #: apps/linux/app/src/ui/app/import.rs:108
 #: apps/linux/app/src/ui/app/import.rs:248
-#: apps/linux/app/src/ui/app/structure.rs:150
-#: apps/linux/app/src/ui/app/structure.rs:243
-#: apps/linux/app/src/ui/app/structure.rs:372
-#: apps/linux/app/src/ui/app/structure.rs:418
-#: apps/linux/app/src/ui/app/structure.rs:431
-#: apps/linux/app/src/ui/app/structure.rs:621
-#: apps/linux/app/src/ui/app/structure.rs:745
+#: apps/linux/app/src/ui/app/structure.rs:145
+#: apps/linux/app/src/ui/app/structure.rs:238
+#: apps/linux/app/src/ui/app/structure.rs:331
+#: apps/linux/app/src/ui/app/structure.rs:460
+#: apps/linux/app/src/ui/app/structure.rs:506
+#: apps/linux/app/src/ui/app/structure.rs:519
+#: apps/linux/app/src/ui/app/structure.rs:709
+#: apps/linux/app/src/ui/app/structure.rs:833
 msgid "No active connection."
 msgstr ""
 
@@ -476,8 +477,9 @@ msgstr ""
 #: apps/linux/app/src/ui/app/organization.rs:149
 #: apps/linux/app/src/ui/app/referenced_row.rs:18
 #: apps/linux/app/src/ui/app/status_pages.rs:52
-#: apps/linux/app/src/ui/app/structure.rs:99
-#: apps/linux/app/src/ui/app/structure.rs:185
+#: apps/linux/app/src/ui/app/structure.rs:97
+#: apps/linux/app/src/ui/app/structure.rs:187
+#: apps/linux/app/src/ui/app/structure.rs:273
 #: apps/linux/app/src/ui/app/workspace_close.rs:29
 #: apps/linux/app/src/ui/app/workspace_close.rs:142
 #: apps/linux/app/src/ui/app/workspace_tabs.rs:639
@@ -944,11 +946,11 @@ msgstr ""
 msgid "Line {line}, column {column}: {reason}"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/init_sidebar.rs:138
+#: apps/linux/app/src/ui/app/init_sidebar.rs:139
 msgid "No tables"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/init_sidebar.rs:140
+#: apps/linux/app/src/ui/app/init_sidebar.rs:141
 msgid "Nothing matches the current search, or this connection has no tables yet."
 msgstr ""
 
@@ -1044,15 +1046,15 @@ msgstr ""
 msgid "Retry"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:941
+#: apps/linux/app/src/ui/app/mod.rs:945
 msgid "Saved as favorite"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:957 apps/linux/app/src/ui/app/mod.rs:964
+#: apps/linux/app/src/ui/app/mod.rs:961 apps/linux/app/src/ui/app/mod.rs:968
 msgid "Connect to a database first to run SQL."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:1036
+#: apps/linux/app/src/ui/app/mod.rs:1040
 msgid "Open a result grid to jump to a column."
 msgstr ""
 
@@ -1573,90 +1575,113 @@ msgid "Connect to a database first."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/structure.rs:89
-#: apps/linux/app/src/ui/app/structure.rs:136
-#: apps/linux/app/src/ui/app/structure.rs:149
+#: apps/linux/app/src/ui/app/structure.rs:131
+#: apps/linux/app/src/ui/app/structure.rs:144
+msgid "Cannot truncate table"
+msgstr ""
+
+#: apps/linux/app/src/ui/app/structure.rs:92
+#, rust-format
+msgid "Truncate {table}?"
+msgstr ""
+
+#: apps/linux/app/src/ui/app/structure.rs:94
+msgid "All rows will be removed and the table definition kept. This can't be undone from inside BookiE."
+msgstr ""
+
+#: apps/linux/app/src/ui/app/structure.rs:98
+msgid "Truncate"
+msgstr ""
+
+#: apps/linux/app/src/ui/app/structure.rs:157
+msgid "Truncate failed"
+msgstr ""
+
+#: apps/linux/app/src/ui/app/structure.rs:177
+#: apps/linux/app/src/ui/app/structure.rs:224
+#: apps/linux/app/src/ui/app/structure.rs:237
 msgid "Cannot rename table"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:90
+#: apps/linux/app/src/ui/app/structure.rs:178
 #, rust-format
 msgid "Close the open tabs for {table} first, so no pending changes are lost."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:95
+#: apps/linux/app/src/ui/app/structure.rs:183
 #, rust-format
 msgid "Rename {table}"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:100
+#: apps/linux/app/src/ui/app/structure.rs:188
 #: apps/linux/app/src/ui/filter_presets.rs:49
 #: apps/linux/app/src/ui/saved_queries_dialog.rs:101
 #: apps/linux/app/src/ui/saved_queries_dialog.rs:200
 msgid "Rename"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:162
+#: apps/linux/app/src/ui/app/structure.rs:250
 msgid "Rename failed"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:181
+#: apps/linux/app/src/ui/app/structure.rs:269
 #, rust-format
 msgid "Drop {table}?"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:183
+#: apps/linux/app/src/ui/app/structure.rs:271
 msgid "All rows and the table definition will be removed. This can't be undone from inside BookiE."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:186
+#: apps/linux/app/src/ui/app/structure.rs:274
 msgid "Drop"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:227
-#: apps/linux/app/src/ui/app/structure.rs:242
+#: apps/linux/app/src/ui/app/structure.rs:315
+#: apps/linux/app/src/ui/app/structure.rs:330
 msgid "Cannot drop table"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:258
+#: apps/linux/app/src/ui/app/structure.rs:346
 msgid "Drop failed"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:632
+#: apps/linux/app/src/ui/app/structure.rs:720
 #, rust-format
 msgid "Couldn't read columns: {error}"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:639
+#: apps/linux/app/src/ui/app/structure.rs:727
 #, rust-format
 msgid "Table {table} has no columns."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:645
-#: apps/linux/app/src/ui/app/structure.rs:656
+#: apps/linux/app/src/ui/app/structure.rs:733
+#: apps/linux/app/src/ui/app/structure.rs:744
 #, rust-format
 msgid "Couldn't read indexes: {error}"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:663
-#: apps/linux/app/src/ui/app/structure.rs:674
+#: apps/linux/app/src/ui/app/structure.rs:751
+#: apps/linux/app/src/ui/app/structure.rs:762
 #, rust-format
 msgid "Couldn't read foreign keys: {error}"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:704
+#: apps/linux/app/src/ui/app/structure.rs:792
 msgid "Nothing to show."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:708
+#: apps/linux/app/src/ui/app/structure.rs:796
 #, rust-format
 msgid "Couldn't build SQL: {error}"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:906
+#: apps/linux/app/src/ui/app/structure.rs:994
 msgid "Catalog refresh failed"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/structure.rs:928
+#: apps/linux/app/src/ui/app/structure.rs:1016
 #: apps/linux/app/src/ui/app/workspace_tabs.rs:321
 msgid "New Table"
 msgstr ""
@@ -3734,7 +3759,7 @@ msgid "Pin"
 msgstr ""
 
 #: apps/linux/app/src/ui/history_dialog.rs:859
-#: apps/linux/app/src/ui/sidebar_row.rs:331
+#: apps/linux/app/src/ui/sidebar_row.rs:336
 msgid "Open in new tab"
 msgstr ""
 
@@ -4108,7 +4133,7 @@ msgid "Save a query as a favorite, or open a tab to switch to it."
 msgstr ""
 
 #: apps/linux/app/src/ui/quick_switcher_dialog.rs:107
-#: apps/linux/app/src/ui/sidebar_row.rs:209
+#: apps/linux/app/src/ui/sidebar_row.rs:214
 #, rust-format
 msgid "Open {name}"
 msgstr ""
@@ -4163,46 +4188,50 @@ msgstr ""
 msgid "Saved queries are unavailable"
 msgstr ""
 
-#: apps/linux/app/src/ui/sidebar_row.rs:232
+#: apps/linux/app/src/ui/sidebar_row.rs:237
 #, rust-format
 msgid "New Table in {schema}…"
 msgstr ""
 
-#: apps/linux/app/src/ui/sidebar_row.rs:233
+#: apps/linux/app/src/ui/sidebar_row.rs:238
 #, rust-format
 msgid "Table from CSV in {schema}…"
 msgstr ""
 
-#: apps/linux/app/src/ui/sidebar_row.rs:235
+#: apps/linux/app/src/ui/sidebar_row.rs:240
 msgid "New Table…"
 msgstr ""
 
-#: apps/linux/app/src/ui/sidebar_row.rs:235
+#: apps/linux/app/src/ui/sidebar_row.rs:240
 msgid "Table from CSV…"
 msgstr ""
 
-#: apps/linux/app/src/ui/sidebar_row.rs:337
+#: apps/linux/app/src/ui/sidebar_row.rs:342
 msgid "Edit Structure"
 msgstr ""
 
-#: apps/linux/app/src/ui/sidebar_row.rs:339
+#: apps/linux/app/src/ui/sidebar_row.rs:344
 msgid "Show CREATE TABLE"
 msgstr ""
 
-#: apps/linux/app/src/ui/sidebar_row.rs:344
+#: apps/linux/app/src/ui/sidebar_row.rs:349
 msgid "Import CSV…"
 msgstr ""
 
-#: apps/linux/app/src/ui/sidebar_row.rs:346
+#: apps/linux/app/src/ui/sidebar_row.rs:351
 msgid "Rename Table…"
 msgstr ""
 
-#: apps/linux/app/src/ui/sidebar_row.rs:349
+#: apps/linux/app/src/ui/sidebar_row.rs:355
+msgid "Truncate Table…"
+msgstr ""
+
+#: apps/linux/app/src/ui/sidebar_row.rs:358
 #: apps/linux/app/src/ui/structure_tab/mod.rs:723
 msgid "Drop Table…"
 msgstr ""
 
-#: apps/linux/app/src/ui/sidebar_row.rs:497
+#: apps/linux/app/src/ui/sidebar_row.rs:512
 msgid "Hide schema"
 msgstr ""
 

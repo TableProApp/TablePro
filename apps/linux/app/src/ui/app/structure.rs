@@ -75,6 +75,94 @@ impl App {
         })
     }
 
+    pub(super) fn on_truncate_table_prompt(
+        &mut self,
+        schema: Option<String>,
+        table: String,
+        sender: ComponentSender<Self>,
+    ) {
+        let Some(origin) = CatalogOrigin::capture(self.connection_id, &self.database) else {
+            return;
+        };
+        let driver_id = self.driver_id().to_string();
+        if let Err(e) = tablepro_core::sql_ddl::build_truncate_table(&driver_id, schema.as_deref(), &table) {
+            self.show_error_alert(&crate::tr!("Cannot truncate table"), &format!("{e}"));
+            return;
+        }
+        let title = crate::tr!("Truncate {table}?").replace("{table}", &table);
+        let body = crate::tr!(
+            "All rows will be removed and the table definition kept. This can't be undone from inside BookiE."
+        );
+        let dialog = adw::AlertDialog::new(Some(&title), Some(&body));
+        dialog.add_response("cancel", &crate::tr!("Cancel"));
+        dialog.add_response("truncate", &crate::tr!("Truncate"));
+        dialog.set_response_appearance("truncate", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        dialog.connect_response(None, move |dlg, response| {
+            dlg.close();
+            if response == "truncate" {
+                sender.input(AppMsg::TruncateTableConfirmed {
+                    origin: origin.clone(),
+                    schema: schema.clone(),
+                    table: table.clone(),
+                });
+            }
+        });
+        dialog.present(Some(&self.window));
+    }
+
+    pub(super) fn on_truncate_table_confirmed(
+        &mut self,
+        origin: CatalogOrigin,
+        schema: Option<String>,
+        table: String,
+        sender: ComponentSender<Self>,
+    ) {
+        if !origin.owns_window(self.connection_id, &self.database) {
+            return;
+        }
+        let Some(driver_id) = self.current_driver_id.clone() else {
+            return;
+        };
+        let sql = match tablepro_core::sql_ddl::build_truncate_table(&driver_id, schema.as_deref(), &table) {
+            Ok(sql) => sql,
+            Err(e) => {
+                self.show_error_alert(&crate::tr!("Cannot truncate table"), &format!("{e}"));
+                return;
+            }
+        };
+        let connection = origin.connection(&self.database);
+        let timeout_secs =
+            crate::services::operation_control::timeout_for(&self.preferences, &self.database, self.connection_id);
+        let sender_for_cmd = sender.clone();
+        sender.command(move |_, shutdown| {
+            shutdown
+                .register(async move {
+                    let Some(conn) = connection else {
+                        sender_for_cmd.input(AppMsg::ShowAlert {
+                            title: crate::tr!("Cannot truncate table"),
+                            body: crate::tr!("No active connection."),
+                        });
+                        return;
+                    };
+                    let control = crate::services::operation_control::bounded(timeout_secs);
+                    match conn.execute_controlled(&sql, &control).await {
+                        Ok(_) => sender_for_cmd.input(AppMsg::SchemaChanged {
+                            origin,
+                            schema,
+                            table: Some(table),
+                        }),
+                        Err(e) => sender_for_cmd.input(AppMsg::ShowAlert {
+                            title: crate::tr!("Truncate failed"),
+                            body: format!("{e}"),
+                        }),
+                    }
+                })
+                .drop_on_shutdown()
+        });
+    }
+
     pub(super) fn on_rename_table_prompt(
         &mut self,
         schema: Option<String>,

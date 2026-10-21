@@ -869,6 +869,10 @@ impl SimpleComponent for App {
                 table,
                 new_name,
             } => self.on_rename_table_confirmed(origin, schema, table, new_name, sender),
+            AppMsg::TruncateTablePrompt { schema, table } => self.on_truncate_table_prompt(schema, table, sender),
+            AppMsg::TruncateTableConfirmed { origin, schema, table } => {
+                self.on_truncate_table_confirmed(origin, schema, table, sender)
+            }
             AppMsg::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table, sender),
             AppMsg::DropTableConfirmed { origin, schema, table } => {
                 self.on_drop_table_confirmed(origin, schema, table, sender)
