@@ -2,7 +2,9 @@
 
 ## [Unreleased]
 
-Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). This section is the user-facing map for the completed 0.2.0 delivery since the last tagged package, [0.1.5](#015---2026-09-27). Compare: [`linux-v0.1.5...linux`](https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux). Entries stay here until the next tagged release.
+## [0.2.0] - 2026-10-21
+
+Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). This section is the user-facing map for the 0.2.0 release since the last tagged package, [0.1.5](#015---2026-09-27). Compare: [`linux-v0.1.5...linux-v0.2.0`](https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux-v0.2.0).
 
 ### Added
 
@@ -801,6 +803,6 @@ not current task instructions.
 - **External audit (post-0.2 plan):** [deferred restructuring plan](docs/archive/external-audit-2026-10-06.md) and [client review](docs/archive/external-audit-client-review-2026-10-06.md) (moved from the repository root on 2026-10-10).
 - **BookiE 0.1.1:** retired and superseded by the 0.2 sprint; the earlier release review remains in [September 14 evidence](docs/archive/sprint-2026-09-14.md).
 
-[Unreleased]: https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux
+[Unreleased]: https://github.com/cozyGarage/BookiE/compare/linux-v0.2.0...linux
 [0.1.5]: https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5
-[0.2.0]: https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux
+[0.2.0]: https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.2.0
