@@ -96,6 +96,7 @@ enum ActiveSheet: Identifiable {
     /// browser points by the time Save is pressed.
     case documentEditor(DocumentEditorRequest)
     case searchDatabase(DatabaseSearchSession)
+    case joinBuilder(JoinBuilderLaunchRequest)
     case generateRows(RowGenerationSession)
 
     var id: String {
@@ -126,6 +127,7 @@ enum ActiveSheet: Identifiable {
         case .tableRebuildReview: "tableRebuildReview"
         case .documentEditor(let request): "documentEditor-\(request.id.uuidString)"
         case .searchDatabase(let session): "searchDatabase-\(session.id.uuidString)"
+        case .joinBuilder(let launch): "joinBuilder-\(launch.id.uuidString)"
         case .generateRows(let session): "generateRows-\(session.id.uuidString)"
         }
     }

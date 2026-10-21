@@ -528,6 +528,14 @@ final class MainContentCommandActions: ObservableObject {
         !selectedTables.wrappedValue.isEmpty
     }
 
+    var canBuildJoinQuery: Bool {
+        isConnected && coordinator?.canBuildJoinQuery == true
+    }
+
+    func buildJoinQuery() {
+        coordinator?.openJoinBuilder(seededWith: selectedTables.wrappedValue)
+    }
+
     /// A selection can be perfectly valid and still hold nothing truncatable, so the menu bar asks
     /// this rather than `hasTableSelection`, which is what let it stage a `TRUNCATE` on a view.
     var canTruncateSelectedTables: Bool {

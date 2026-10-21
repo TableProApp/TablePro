@@ -88,8 +88,15 @@ enum ERDiagramGraphBuilder {
     static func build(
         allColumns: [String: [ColumnInfo]],
         allForeignKeys: [String: [ForeignKeyInfo]],
-        allIndexes: [String: [IndexInfo]] = [:]
+        allIndexes: [String: [IndexInfo]] = [:],
+        isLocal: (ForeignKeyInfo) -> Bool = { _ in true }
     ) -> ERDiagramGraph {
+        let allForeignKeys = ForeignKeyCatalogNames.canonicalized(
+            allForeignKeys,
+            columns: allColumns.mapValues { $0.map(\.name) }
+        )
+        // A key into another schema still badges its column, but draws no edge to a same-named local table.
+        let localForeignKeys = allForeignKeys.mapValues { $0.filter(isLocal) }
         var nodeIndex: [String: UUID] = [:]
         var nodes: [ERTableNode] = []
 
@@ -136,7 +143,7 @@ enum ERDiagramGraphBuilder {
             let isJunction = junctionParents(
                 tableName: tableName,
                 columns: columns,
-                foreignKeys: allForeignKeys[tableName] ?? []
+                foreignKeys: localForeignKeys[tableName] ?? []
             ) != nil
             if isJunction { junctionTableIds.insert(id) }
 
@@ -154,8 +161,8 @@ enum ERDiagramGraphBuilder {
         var seenFKNames: Set<String> = []
 
         // Sorted, because a dictionary's order changes per launch and decides port order on ties.
-        for tableName in allForeignKeys.keys.sorted() {
-            for fk in allForeignKeys[tableName] ?? [] {
+        for tableName in localForeignKeys.keys.sorted() {
+            for fk in localForeignKeys[tableName] ?? [] {
                 let edgeKey = "\(tableName).\(fk.name).\(fk.column)"
                 guard !seenFKNames.contains(edgeKey) else { continue }
                 seenFKNames.insert(edgeKey)
@@ -179,7 +186,7 @@ enum ERDiagramGraphBuilder {
 
         let manyToManyEdges = buildManyToManyEdges(
             allColumns: allColumns,
-            allForeignKeys: allForeignKeys,
+            allForeignKeys: localForeignKeys,
             nodeIndex: nodeIndex
         )
 

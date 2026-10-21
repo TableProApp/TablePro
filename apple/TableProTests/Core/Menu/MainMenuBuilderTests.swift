@@ -1105,6 +1105,20 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.duplicateCurrentDatabase(_:)), context))
     }
 
+    @Test("Build Join Query needs a connection and an engine that can join on foreign keys")
+    func buildJoinQueryNeedsAnEligibleEngine() {
+        var context = MenuValidationContext()
+        context.canBuildJoinQuery = true
+        #expect(!enabled(#selector(MainSplitViewController.buildJoinQuery(_:)), context))
+        context.isConnected = true
+        #expect(enabled(#selector(MainSplitViewController.buildJoinQuery(_:)), context))
+        context.isAgentMode = true
+        #expect(!enabled(#selector(MainSplitViewController.buildJoinQuery(_:)), context))
+        context.isAgentMode = false
+        context.canBuildJoinQuery = false
+        #expect(!enabled(#selector(MainSplitViewController.buildJoinQuery(_:)), context))
+    }
+
     @Test("Search Database needs a connection and an engine it can search")
     func searchDatabaseNeedsAnEligibleEngine() {
         var context = MenuValidationContext()

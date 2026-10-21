@@ -43,7 +43,7 @@ struct ERDiagramVectorExportTests {
             nodeRects: [users.id: usersRect, orders.id: ordersRect],
             nodeIndex: [usersName: users.id, "orders": orders.id],
             clusterColors: [users.id: .systemBlue, orders.id: .systemBlue],
-            selectedNodeId: selected ? users.id : nil,
+            selectedNodeIds: selected ? [users.id] : [],
             size: CGSize(width: ordersRect.maxX + 80, height: ordersRect.maxY + 80)
         )
     }

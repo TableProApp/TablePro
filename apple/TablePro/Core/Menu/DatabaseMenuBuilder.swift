@@ -128,6 +128,10 @@ enum DatabaseMenuBuilder {
                 action: #selector(MainSplitViewController.showERDiagram(_:))
             ),
             MenuItemFactory.item(
+                String(localized: "Build Join Query…"),
+                action: #selector(MainSplitViewController.buildJoinQuery(_:))
+            ),
+            MenuItemFactory.item(
                 String(localized: "Server Dashboard"),
                 action: #selector(MainSplitViewController.showServerDashboard(_:))
             ),

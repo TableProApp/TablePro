@@ -36,6 +36,8 @@ struct ERDiagramCanvasActions {
     let endDrag: () -> Void
     let scrollBy: (CGSize) -> Void
     let copyImage: () -> Void
+    var toggleSelection: (UUID) -> Void = { _ in }
+    var buildJoinQuery: (() -> Void)?
     var edgeAt: (CGPoint, CGFloat) -> UUID? = { _, _ in nil }
     var columnAt: (CGPoint) -> ERDiagramColumnHit? = { _ in nil }
     var selectEdge: (UUID?) -> Void = { _ in }
@@ -60,7 +62,7 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
             if accessibilityTree.hasBeenAsked {
                 _ = accessibilityTree.elements(for: scene, owner: self)
             }
-            announceSelectionChange(from: oldValue.selectedNodeId)
+            announceSelectionChange(from: oldValue.selectedNodeIds)
             // A table that moved or grew under a still pointer moves its column rows with it.
             hoveredColumn = nil
             if let lastHoverPoint, press == nil {
@@ -76,6 +78,7 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
         let windowStart: CGPoint
         var lastWindowPoint: CGPoint
         let nodeId: UUID?
+        var togglesSelection = false
         var edgeId: UUID?
         var link: ERDiagramColumnHit?
         var isDragging = false
@@ -244,6 +247,11 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
         actions?.copyImage()
     }
 
+    // While the diagram has focus, Database > Build Join Query starts from its tables, not the sidebar's.
+    @objc func buildJoinQuery(_ sender: Any?) {
+        actions?.buildJoinQuery?()
+    }
+
     @objc func delete(_ sender: Any?) {
         if actions?.deleteSelection() != true {
             NSSound.beep()
@@ -254,6 +262,8 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
         switch menuItem.action {
         case #selector(delete(_:)):
             return actions?.canDeleteSelection() ?? false
+        case #selector(buildJoinQuery(_:)):
+            return actions?.buildJoinQuery != nil
         default:
             return true
         }
@@ -284,10 +294,10 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
         let point = convert(event.locationInWindow, from: nil)
         let target: ERDiagramMenuTarget
         if let column = actions.columnAt(point) {
-            actions.select(column.nodeId)
+            selectKeepingSelection(column.nodeId)
             target = .column(table: column.tableName, column: column.columnName)
         } else if let nodeId = actions.nodeAt(point), let table = tableName(of: nodeId) {
-            actions.select(nodeId)
+            selectKeepingSelection(nodeId)
             target = .table(table)
         } else if let edgeId = actions.edgeAt(point, Self.edgeHitTolerance / magnification) {
             actions.selectEdge(edgeId)
@@ -296,23 +306,61 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
             actions.select(nil)
             target = .canvas(point)
         }
-        return ERDiagramMenuBuilder.menu(
-            sections: actions.menuSections(target),
-            target: self,
-            action: #selector(performMenuCommand(_:))
-        )
+        return contextMenu(for: target)
+    }
+
+    // A table already in a multiple selection keeps it, so the menu can join all of them.
+    private func selectKeepingSelection(_ nodeId: UUID) {
+        guard !scene.selectedNodeIds.contains(nodeId) else { return }
+        actions?.select(nodeId)
     }
 
     // VoiceOver's Show Menu on a table or column element, opened over the element it was asked from.
     func showMenu(for target: ERDiagramMenuTarget, at rect: CGRect) {
-        guard let actions,
-              let menu = ERDiagramMenuBuilder.menu(
-                  sections: actions.menuSections(target),
-                  target: self,
-                  action: #selector(performMenuCommand(_:))
-              )
-        else { return }
+        guard let menu = contextMenu(for: target) else { return }
         menu.popUp(positioning: nil, at: CGPoint(x: rect.midX, y: rect.midY), in: self)
+    }
+
+    private func contextMenu(for target: ERDiagramMenuTarget) -> NSMenu? {
+        guard let actions else { return nil }
+        let menu = ERDiagramMenuBuilder.menu(
+            sections: actions.menuSections(target),
+            target: self,
+            action: #selector(performMenuCommand(_:))
+        )
+        switch target {
+        case .table, .column:
+            guard actions.buildJoinQuery != nil else { return menu }
+            return addingJoinItem(to: menu ?? NSMenu())
+        case .edge, .canvas:
+            return menu
+        }
+    }
+
+    // Placed after the section that opens the table, so destructive items stay last.
+    private func addingJoinItem(to menu: NSMenu) -> NSMenu {
+        let item = NSMenuItem(
+            title: String(localized: "Build Join Query…"),
+            action: #selector(buildJoinQuery(_:)),
+            keyEquivalent: ""
+        )
+        item.target = self
+        let opener = menu.items.firstIndex { menuItem in
+            guard let box = menuItem.representedObject as? ERDiagramMenuCommandBox,
+                  case .openTable = box.command else { return false }
+            return true
+        }
+        guard let opener else {
+            if !menu.items.isEmpty {
+                menu.insertItem(.separator(), at: 0)
+            }
+            menu.insertItem(item, at: 0)
+            return menu
+        }
+        let sectionEnd = menu.items[opener...].firstIndex { $0.isSeparatorItem } ?? menu.items.count
+        menu.insertItem(.separator(), at: sectionEnd)
+        menu.insertItem(item, at: sectionEnd + 1)
+        return menu
     }
 
     @objc private func performMenuCommand(_ sender: NSMenuItem) {
@@ -347,12 +395,14 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
             return
         }
         updateHover(at: nil)
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let nodeId = actions?.nodeAt(point)
         press = Press(
             documentStart: point,
             windowStart: event.locationInWindow,
             lastWindowPoint: event.locationInWindow,
             nodeId: nodeId,
+            togglesSelection: modifiers.contains(.command) || modifiers.contains(.shift),
             edgeId: nodeId == nil ? actions?.edgeAt(point, Self.edgeHitTolerance / magnification) : nil
         )
     }
@@ -411,6 +461,10 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
             }
         } else if press.isDragging {
             actions?.endDrag()
+        } else if press.togglesSelection {
+            if let nodeId = press.nodeId {
+                actions?.toggleSelection(nodeId)
+            }
         } else if let nodeId = press.nodeId {
             actions?.select(nodeId)
             if event.clickCount == 2 {
@@ -545,7 +599,9 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
     }
 
     override func accessibilitySelectedChildren() -> [Any]? {
-        selectedElement.map { [$0] } ?? []
+        guard !scene.selectedNodeIds.isEmpty else { return [] }
+        _ = accessibilityTree.elements(for: scene, owner: self)
+        return scene.selectedNodeIds.compactMap { accessibilityTree.element(for: $0) }
     }
 
     /// A layout area answers for its focus as well as its selection, or VoiceOver never moves to
@@ -560,8 +616,8 @@ final class ERDiagramSceneView: NSView, NSMenuItemValidation {
         return accessibilityTree.element(for: selected)
     }
 
-    private func announceSelectionChange(from previous: UUID?) {
-        guard accessibilityTree.hasBeenAsked, previous != scene.selectedNodeId else { return }
+    private func announceSelectionChange(from previous: [UUID]) {
+        guard accessibilityTree.hasBeenAsked, previous != scene.selectedNodeIds else { return }
         NSAccessibility.post(element: self, notification: .selectedChildrenChanged)
         guard let element = selectedElement else { return }
         NSAccessibility.post(element: element, notification: .focusedUIElementChanged)

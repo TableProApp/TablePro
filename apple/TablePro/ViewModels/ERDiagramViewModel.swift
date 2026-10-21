@@ -89,8 +89,27 @@ final class ERDiagramViewModel: ObservableObject {
     /// back at 100% scrolled to the origin every time the user left the tab and returned.
     let viewport = DiagramViewportController()
 
-    /// Selection outlives the view for the same reason.
-    @Published var selectedNodeId: UUID?
+    // Outlives the view for the same reason, in pick order so a join starts at the first table.
+    @Published var selectedNodeIds: [UUID] = []
+
+    var selectedNodeId: UUID? {
+        get { selectedNodeIds.last }
+        set { selectedNodeIds = newValue.map { [$0] } ?? [] }
+    }
+
+    func toggleSelection(_ nodeId: UUID) {
+        selectedEdgeId = nil
+        if let index = selectedNodeIds.firstIndex(of: nodeId) {
+            selectedNodeIds.remove(at: index)
+        } else {
+            selectedNodeIds.append(nodeId)
+        }
+    }
+
+    var selectedTableNames: [String] {
+        selectedNodeIds.compactMap { id in graph.nodes.first { $0.id == id }?.tableName }
+    }
+
     @Published var selectedEdgeId: UUID?
 
     // MARK: - Editing
@@ -226,6 +245,16 @@ final class ERDiagramViewModel: ObservableObject {
         }
     }
 
+    private func isLocalKey(in scope: DatabaseScope) -> (ForeignKeyInfo) -> Bool {
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return { _ in true } }
+        let slot = EngineNamespaceSlot(databaseType: driver.connection.type)
+        return { key in
+            ForeignKeyTargetScope.pointsWithin(
+                scope, referencedDatabase: key.referencedDatabase, referencedSchema: key.referencedSchema, slot: slot
+            )
+        }
+    }
+
     private func fetchGraph(
         in scope: DatabaseScope
     ) async throws -> (ERDiagramGraph, [String: TableInfo.TableType]?) {
@@ -247,7 +276,12 @@ final class ERDiagramViewModel: ObservableObject {
         }
         let kinds = tables.map { Dictionary($0.map { ($0.name, $0.type) }, uniquingKeysWith: { first, _ in first }) }
         return (
-            ERDiagramGraphBuilder.build(allColumns: columns, allForeignKeys: foreignKeys, allIndexes: indexes),
+            ERDiagramGraphBuilder.build(
+                allColumns: columns,
+                allForeignKeys: foreignKeys,
+                allIndexes: indexes,
+                isLocal: isLocalKey(in: scope)
+            ),
             kinds
         )
     }
@@ -288,9 +322,8 @@ final class ERDiagramViewModel: ObservableObject {
             let visibleGraph = makeVisibleGraph()
             placeNewNodes(of: visibleGraph)
             graph = visibleGraph
-            if let selected = selectedNodeId, visibleGraph.nodes.allSatisfy({ $0.id != selected }) {
-                selectedNodeId = nil
-            }
+            let visibleIds = Set(visibleGraph.nodes.map(\.id))
+            selectedNodeIds.removeAll { !visibleIds.contains($0) }
             if let selected = selectedEdgeId, visibleGraph.edges.allSatisfy({ $0.id != selected }) {
                 selectedEdgeId = nil
             }

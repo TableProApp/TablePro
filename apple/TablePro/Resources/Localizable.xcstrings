@@ -82,6 +82,9 @@
     "\"%@\" is an attached database. Change its tables' structure from a connection that opens it." : {
 
     },
+    "%1$@ column of %2$@" : {
+
+    },
     "%1$d only left, %2$d only right, %3$d changed, %4$d same" : {
 
     },
@@ -188,6 +191,15 @@
     "Both results stopped at the row cap and are compared on the rows they hold. A row past the cap can show as only on one side." : {
 
     },
+    "Build Join Query" : {
+
+    },
+    "Build Join Query…" : {
+
+    },
+    "Build a join query from the selected tables" : {
+
+    },
     "Cannot Compare" : {
 
     },
@@ -249,6 +261,12 @@
     "First Value" : {
 
     },
+    "Inner Join" : {
+
+    },
+    "Joins" : {
+
+    },
     "KB" : {
 
     },
@@ -259,6 +277,9 @@
 
     },
     "Left" : {
+
+    },
+    "Left Join" : {
 
     },
     "Line %lld of the file is not valid %@ text." : {
@@ -293,6 +314,15 @@
     "No data was provided to add." : {
 
     },
+    "No foreign key links %@ to the tables before it, so it is cross joined." : {
+
+    },
+    "No tables picked" : {
+
+    },
+    "None (Cross Join)" : {
+
+    },
     "Not loaded, %@" : {
 
     },
@@ -308,10 +338,16 @@
     "Only in the right result, not compared: %@" : {
 
     },
+    "Open in Query Tab" : {
+
+    },
     "Opens a database connection in TablePro" : {
 
     },
     "Pick the result to compare this one with." : {
+
+    },
+    "Pick the tables to join. Their foreign keys become the join conditions." : {
 
     },
     "Provide a JSON object or an array of objects." : {
@@ -357,6 +393,9 @@
 
     },
     "Run another query in this tab, or pin a result in another tab." : {
+
+    },
+    "Second value" : {
 
     },
     "Shortcuts" : {
@@ -451,6 +490,9 @@
 
     },
     "This connection's startup commands leave a transaction open, so rows added from Shortcuts could not be committed." : {
+
+    },
+    "This database reports no tables to join." : {
 
     },
     "Too many rows. Add up to %lld rows at a time." : {

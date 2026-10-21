@@ -219,6 +219,7 @@
     {"path": "Database > Truncate Table", "identifier": "shortcut.truncateTable", "action": "truncateTable:", "key": "backspace", "modifiers": ["option"]},
     {"path": "Database", "separator": true},
     {"path": "Database > View ER Diagram", "action": "showERDiagram:"},
+    {"path": "Database > Build Join Query…", "action": "buildJoinQuery:"},
     {"path": "Database > Server Dashboard", "action": "showServerDashboard:"},
     {"path": "Database > Users & Roles", "action": "showUsersAndRoles:"},
     {"path": "Database > Query Insights", "action": "showQueryInsights:"},

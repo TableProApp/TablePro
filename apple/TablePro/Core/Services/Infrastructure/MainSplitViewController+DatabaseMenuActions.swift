@@ -237,6 +237,10 @@ extension MainSplitViewController {
         commandActions?.showERDiagram()
     }
 
+    @objc func buildJoinQuery(_ sender: Any?) {
+        commandActions?.buildJoinQuery()
+    }
+
     @objc func showServerDashboard(_ sender: Any?) {
         commandActions?.showServerDashboard()
     }

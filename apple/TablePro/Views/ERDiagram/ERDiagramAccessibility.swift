@@ -165,7 +165,7 @@ final class ERDiagramAccessibilityTree {
                 node: node,
                 rect: rect,
                 relationships: joins.description(of: node.tableName),
-                isSelected: scene.selectedNodeId == node.id
+                isSelected: scene.selectedNodeIds.contains(node.id)
             )
             kept[node.id] = element
             next.append(element)
