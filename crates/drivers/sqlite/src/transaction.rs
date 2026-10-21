@@ -8,7 +8,10 @@ pub(super) async fn execute_in_transaction_checked(
     let mut tx = pool.begin().await.map_err(map_sqlx_error)?;
     let mut affected = Vec::with_capacity(statements.len());
     for (idx, (sql, params)) in statements.iter().enumerate() {
-        let query = match bind_sqlite_params(sqlx::query(sqlx::AssertSqlSafe(sql.as_str())), params) {
+        let query = match drop_guard::refuse_referenced_drop(&mut tx, sql)
+            .await
+            .and_then(|()| bind_sqlite_params(sqlx::query(sqlx::AssertSqlSafe(sql.as_str())), params))
+        {
             Ok(query) => query,
             Err(error) => {
                 let _ = tx.rollback().await;

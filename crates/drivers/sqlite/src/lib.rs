@@ -21,6 +21,7 @@ use tablepro_core::{
     run_controlled_setup, run_server_cancellable,
 };
 
+mod drop_guard;
 mod interrupt;
 mod session;
 mod transaction;
@@ -271,21 +272,12 @@ impl Connection for SqliteConnection {
     }
 
     async fn execute(&self, sql: &str) -> Result<ExecResult, DriverError> {
-        let res = sqlx::query(sqlx::AssertSqlSafe(sql))
-            .execute(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(ExecResult {
-            rows_affected: res.rows_affected(),
-        })
+        self.execute_params(sql, &[]).await
     }
 
     async fn execute_params(&self, sql: &str, params: &[Value]) -> Result<ExecResult, DriverError> {
-        let q = bind_sqlite_params(sqlx::query(sqlx::AssertSqlSafe(sql)), params)?;
-        let res = q.execute(&self.pool).await.map_err(map_sqlx_error)?;
-        Ok(ExecResult {
-            rows_affected: res.rows_affected(),
-        })
+        let mut connection = self.pool.acquire().await.map_err(map_sqlx_error)?;
+        execute_on(&mut connection, sql, params).await
     }
 
     async fn execute_controlled(&self, sql: &str, control: &OperationControl) -> Result<ExecResult, DriverError> {
@@ -301,7 +293,7 @@ impl Connection for SqliteConnection {
         let mut connection = acquire_controlled(&self.pool, control).await?;
         let handle = InterruptHandle::of(&mut connection).await?;
         let result = run_server_cancellable(
-            execute_on(&mut *connection, sql, params),
+            execute_on(&mut connection, sql, params),
             request_interrupt(&handle),
             confirms_cancellation,
             control,
@@ -477,13 +469,7 @@ impl tablepro_core::Transaction for SqliteTransaction {
             .tx
             .as_mut()
             .ok_or_else(|| DriverError::Internal("transaction closed".into()))?;
-        let res = sqlx::query(sqlx::AssertSqlSafe(sql))
-            .execute(&mut **tx)
-            .await
-            .map_err(map_sqlx_error)?;
-        Ok(ExecResult {
-            rows_affected: res.rows_affected(),
-        })
+        execute_on(tx, sql, &[]).await
     }
 
     async fn commit(mut self: Box<Self>) -> Result<(), DriverError> {
@@ -508,6 +494,7 @@ async fn stream_into_result(
     sql: &str,
     limit: usize,
 ) -> Result<QueryResult, DriverError> {
+    drop_guard::refuse_referenced_drop(connection, sql).await?;
     let statement = connection
         .prepare(sqlx::AssertSqlSafe(sql).into_sql_str())
         .await
@@ -899,12 +886,14 @@ async fn params_into_result(
     })
 }
 
-async fn execute_on<'e, E>(executor: E, sql: &str, params: &[Value]) -> Result<ExecResult, DriverError>
-where
-    E: sqlx::Executor<'e, Database = Sqlite>,
-{
+async fn execute_on(
+    connection: &mut SqlxSqliteConnection,
+    sql: &str,
+    params: &[Value],
+) -> Result<ExecResult, DriverError> {
+    drop_guard::refuse_referenced_drop(connection, sql).await?;
     let query = bind_sqlite_params(sqlx::query(sqlx::AssertSqlSafe(sql)), params)?;
-    let result = query.execute(executor).await.map_err(map_sqlx_error)?;
+    let result = query.execute(connection).await.map_err(map_sqlx_error)?;
     Ok(ExecResult {
         rows_affected: result.rows_affected(),
     })
