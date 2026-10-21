@@ -29,6 +29,18 @@ pub fn default_level(profile: Profile) -> &'static str {
     }
 }
 
+pub const STATEMENT_LOG_TARGET: &str = "sqlx::query";
+
+pub fn without_statement_text(filter: EnvFilter, requested: Option<&str>) -> EnvFilter {
+    if requested.is_some_and(|requested| requested.contains(STATEMENT_LOG_TARGET)) {
+        return filter;
+    }
+    match format!("{STATEMENT_LOG_TARGET}=off").parse() {
+        Ok(directive) => filter.add_directive(directive),
+        Err(_) => filter,
+    }
+}
+
 pub fn log_format(requested: Option<&str>) -> Option<LogFormat> {
     let Some(raw) = requested else {
         return Some(LogFormat::Human);
@@ -61,7 +73,10 @@ pub fn init(profile: Profile) -> Result<(), LoggingError> {
     let requested = std::env::var_os("RUST_LOG");
     let parsed = EnvFilter::try_from_default_env();
     let unparsable = requested.is_some() && parsed.is_err();
-    let filter = parsed.unwrap_or_else(|_| EnvFilter::new(default_level(profile)));
+    let filter = without_statement_text(
+        parsed.unwrap_or_else(|_| EnvFilter::new(default_level(profile))),
+        requested.as_deref().and_then(|requested| requested.to_str()),
+    );
 
     let requested_format = std::env::var(LOG_FORMAT_ENV).ok();
     let selected = log_format(requested_format.as_deref());
@@ -86,6 +101,50 @@ pub fn init(profile: Profile) -> Result<(), LoggingError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Clone, Default)]
+    struct Captured(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Captured {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn logged(filter: &str, requested: Option<&str>) -> String {
+        let captured = Captured::default();
+        let writer = captured.clone();
+        let filter = without_statement_text(EnvFilter::new(filter), requested);
+        let subscriber = build_subscriber(LogFormat::Human, filter, move || writer.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::warn!(target: "sqlx::query", statement = "CREATE USER u PASSWORD 'secret-marker'", "slow statement");
+            tracing::debug!(target: "sqlx::query", statement = "SELECT 'debug-marker'", "statement");
+            tracing::warn!("ordinary warning");
+        });
+        String::from_utf8(captured.0.lock().unwrap().clone()).unwrap()
+    }
+
+    #[test]
+    fn sql_statement_text_never_reaches_the_log_unless_asked_for_by_name() {
+        for (filter, requested) in [
+            ("info", None),
+            ("debug", None),
+            ("debug", Some("debug")),
+            ("trace", Some("trace")),
+        ] {
+            let output = logged(filter, requested);
+            assert!(output.contains("ordinary warning"), "{filter}: {output}");
+            assert!(!output.contains("secret-marker"), "{filter}: {output}");
+            assert!(!output.contains("debug-marker"), "{filter}: {output}");
+        }
+        let output = logged("info,sqlx::query=warn", Some("info,sqlx::query=warn"));
+        assert!(output.contains("secret-marker"), "{output}");
+    }
 
     #[test]
     fn default_level_per_profile() {

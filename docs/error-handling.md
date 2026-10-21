@@ -75,7 +75,7 @@ Do not display raw `Debug` or `Display` for domain errors. Always go through tha
 
 ## Logging
 
-Use the `tracing` crate. `app::logging::init` installs a `tracing_subscriber` formatter that writes to stderr; the GNOME session journals that for both Flatpak and system installs, so panics and logs interleave in order without a journald writer. `RUST_LOG` overrides the per-profile default level. Levels:
+Use the `tracing` crate. `app::logging::init` installs a `tracing_subscriber` formatter that writes to stderr; the GNOME session journals that for both Flatpak and system installs, so panics and logs interleave in order without a journald writer. `RUST_LOG` overrides the per-profile default level. SQL statement text from sqlx (target `sqlx::query`) is always switched off, because it can carry passwords and row values; name the target explicitly in `RUST_LOG` (for example `RUST_LOG=info,sqlx::query=debug`) to see it while debugging. Levels:
 
 - `error!`: something the user must see, or a contract was violated.
 - `warn!`: recoverable but suspicious.
