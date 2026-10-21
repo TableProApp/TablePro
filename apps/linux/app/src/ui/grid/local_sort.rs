@@ -186,3 +186,41 @@ mod tests {
         assert_eq!(descending, vec![0, 1, 2]);
     }
 }
+
+#[cfg(test)]
+mod duplicate_name_tests {
+    use tablepro_core::{ColumnInfo, QueryResult, Value};
+
+    use super::sorted_source_indices;
+
+    fn column(name: &str) -> ColumnInfo {
+        ColumnInfo {
+            name: name.into(),
+            data_type: "int".into(),
+            nullable: true,
+            primary_key: false,
+            is_auto_increment: false,
+            default_value: None,
+            is_generated: false,
+            comment: None,
+            collation: None,
+            enum_type: None,
+            domain_type: None,
+        }
+    }
+
+    #[test]
+    fn columns_whose_names_differ_only_in_case_sort_by_their_own_position() {
+        let result = QueryResult {
+            columns: vec![column("id"), column("ID")],
+            rows: vec![
+                vec![Value::Int(1), Value::Int(30)],
+                vec![Value::Int(2), Value::Int(10)],
+                vec![Value::Int(3), Value::Int(20)],
+            ],
+            truncated: false,
+        };
+        assert_eq!(sorted_source_indices(&result, 1, true), Some(vec![1, 2, 0]));
+        assert_eq!(sorted_source_indices(&result, 0, false), Some(vec![2, 1, 0]));
+    }
+}

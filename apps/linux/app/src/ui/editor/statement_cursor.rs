@@ -106,6 +106,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_mysql_double_dash_without_a_space_is_subtraction_not_a_comment() {
+        let planned = script_statements("SELECT 5--2; SELECT 1", "mysql").unwrap();
+        assert_eq!(planned.statements, ["SELECT 5--2", "SELECT 1"]);
+        let commented = script_statements("SELECT 5-- 2; SELECT 1\nSELECT 3", "mysql").unwrap();
+        assert_eq!(commented.statements, ["SELECT 5-- 2; SELECT 1\nSELECT 3"]);
+    }
+
+    #[test]
     fn jumping_moves_to_the_start_of_the_next_and_previous_statement() {
         let sql = "SELECT 1;
   SELECT 2;
