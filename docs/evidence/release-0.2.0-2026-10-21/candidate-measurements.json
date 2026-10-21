@@ -1,0 +1,206 @@
+{
+  "source": "bd31a1d8b3dc83200c324b9f37fa83f3660d8aab",
+  "backend": "X11/Xvfb, Cairo",
+  "runs": [
+    {
+      "name": "candidate-100k",
+      "result": {
+        "pid": 1549295,
+        "command_exit": 0,
+        "aborted": null,
+        "elapsed_seconds": 73.776,
+        "profiler_exit": 0
+      },
+      "peak_rss_mib": 266.91,
+      "peak_pss_mib": 227.33,
+      "cpu_seconds": 57.95
+    },
+    {
+      "name": "file-8MiB-retry",
+      "result": {
+        "pid": 1559492,
+        "command_exit": 0,
+        "aborted": null,
+        "elapsed_seconds": 16.183,
+        "profiler_exit": 0
+      },
+      "peak_rss_mib": 329.76,
+      "peak_pss_mib": 290.73,
+      "cpu_seconds": 6.71
+    },
+    {
+      "name": "file-over-limit",
+      "result": {
+        "pid": 1564785,
+        "command_exit": 0,
+        "aborted": null,
+        "elapsed_seconds": 15.655,
+        "profiler_exit": 0
+      },
+      "peak_rss_mib": 163.5,
+      "peak_pss_mib": 125.32,
+      "cpu_seconds": 0.61
+    },
+    {
+      "name": "file-long-line",
+      "result": {
+        "pid": 1569661,
+        "command_exit": 0,
+        "aborted": null,
+        "elapsed_seconds": 20.404,
+        "profiler_exit": 0
+      },
+      "peak_rss_mib": 1220.72,
+      "peak_pss_mib": 1181.5,
+      "cpu_seconds": 5.45
+    },
+    {
+      "name": "candidate-10k-heap-direct",
+      "result": {
+        "pid": 1554220,
+        "command_exit": 1,
+        "aborted": null,
+        "elapsed_seconds": 36.622,
+        "profiler_exit": null
+      },
+      "peak_rss_mib": 256.89,
+      "peak_pss_mib": 216.42,
+      "cpu_seconds": 21.08
+    },
+    {
+      "name": "postgres-profile",
+      "result": {
+        "pid": 1574821,
+        "command_exit": 0,
+        "aborted": null,
+        "elapsed_seconds": 108.529,
+        "profiler_exit": 0
+      },
+      "peak_rss_mib": 197.53,
+      "cpu_seconds": 2.86,
+      "phases": [
+        {
+          "pid": 1574821,
+          "rss_kib": 170436,
+          "hwm_kib": 170436,
+          "pss_kib": 133165,
+          "private_kib": 119216,
+          "cpu_seconds": 0.68,
+          "available_kib": 26503924,
+          "phase": "connected-idle",
+          "monotonic": 103645.538601938
+        },
+        {
+          "pid": 1574821,
+          "rss_kib": 170436,
+          "hwm_kib": 170436,
+          "pss_kib": 133165,
+          "private_kib": 119216,
+          "cpu_seconds": 0.68,
+          "available_kib": 26503924,
+          "phase": "cycle-1-before-stream",
+          "monotonic": 103645.540420501
+        },
+        {
+          "pid": 1574821,
+          "rss_kib": 186884,
+          "hwm_kib": 186884,
+          "pss_kib": 149705,
+          "private_kib": 135664,
+          "cpu_seconds": 1.29,
+          "available_kib": 26469436,
+          "phase": "cycle-1-before-cancel",
+          "monotonic": 103680.750109893
+        },
+        {
+          "pid": 1574821,
+          "rss_kib": 187036,
+          "hwm_kib": 187036,
+          "pss_kib": 149766,
+          "private_kib": 135816,
+          "cpu_seconds": 1.37,
+          "available_kib": 26458100,
+          "phase": "cycle-1-after-cancel",
+          "monotonic": 103686.191834838
+        },
+        {
+          "pid": 1574821,
+          "rss_kib": 187040,
+          "hwm_kib": 187040,
+          "pss_kib": 149861,
+          "private_kib": 135820,
+          "cpu_seconds": 1.58,
+          "available_kib": 26458952,
+          "phase": "cycle-1-after-replacement",
+          "monotonic": 103691.678264286
+        },
+        {
+          "pid": 1574821,
+          "rss_kib": 186936,
+          "hwm_kib": 186936,
+          "pss_kib": 149657,
+          "private_kib": 135708,
+          "cpu_seconds": 1.65,
+          "available_kib": 26458008,
+          "phase": "cycle-1-after-close",
+          "monotonic": 103695.728203335
+        },
+        {
+          "pid": 1574821,
+          "rss_kib": 187172,
+          "hwm_kib": 187172,
+          "pss_kib": 149893,
+          "private_kib": 135944,
+          "cpu_seconds": 1.74,
+          "available_kib": 26458256,
+          "phase": "cycle-2-before-stream",
+          "monotonic": 103696.030374938
+        },
+        {
+          "pid": 1574821,
+          "rss_kib": 202268,
+          "hwm_kib": 202268,
+          "pss_kib": 163436,
+          "private_kib": 151048,
+          "cpu_seconds": 2.49,
+          "available_kib": 26391144,
+          "phase": "cycle-2-before-cancel",
+          "monotonic": 103731.229866793
+        },
+        {
+          "pid": 1574821,
+          "rss_kib": 198848,
+          "hwm_kib": 200732,
+          "pss_kib": 125188,
+          "private_kib": 86460,
+          "cpu_seconds": 2.56,
+          "available_kib": 26314740,
+          "phase": "cycle-2-after-cancel",
+          "monotonic": 103736.673612426
+        },
+        {
+          "pid": 1574821,
+          "rss_kib": 198848,
+          "hwm_kib": 200732,
+          "pss_kib": 122474,
+          "private_kib": 81700,
+          "cpu_seconds": 2.81,
+          "available_kib": 26289844,
+          "phase": "cycle-2-after-replacement",
+          "monotonic": 103742.186575171
+        },
+        {
+          "pid": 1574821,
+          "rss_kib": 200512,
+          "hwm_kib": 200732,
+          "pss_kib": 127036,
+          "private_kib": 88496,
+          "cpu_seconds": 2.86,
+          "available_kib": 26287508,
+          "phase": "cycle-2-after-close",
+          "monotonic": 103746.230715331
+        }
+      ]
+    }
+  ]
+}
