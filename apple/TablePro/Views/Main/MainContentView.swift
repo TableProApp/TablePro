@@ -237,6 +237,10 @@ struct MainContentView: View {
             CopyObjectsSheet(launch: launch, connection: connection)
         case .editObjectComment(let target):
             ObjectCommentSheet(target: target, connection: connection)
+        case .setSequenceNextValue(let target):
+            SetSequenceValueSheet(target: target, connection: connection)
+        case .editSequence(let target):
+            EditSequenceSheet(target: target, connection: connection)
         case .documentEditor(let request):
             DocumentEditorSheet(request: request, databaseType: connection.type)
         case .searchDatabase(let session):

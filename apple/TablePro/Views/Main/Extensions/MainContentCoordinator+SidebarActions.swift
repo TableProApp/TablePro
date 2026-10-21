@@ -131,6 +131,19 @@ extension MainContentCoordinator {
         WindowManager.shared.openTab(payload: payload)
     }
 
+    func createSequence() {
+        guard !safeModeLevel.blocksAllWrites,
+              let template = DatabaseManager.shared.driver(for: connection.id)?.createSequenceTemplate()
+        else { return }
+
+        WindowManager.shared.openTab(payload: EditorTabPayload(
+            connectionId: connection.id,
+            tabType: .query,
+            databaseName: browseDatabaseName,
+            initialQuery: template
+        ))
+    }
+
     /// Reads the view the row names, in the database and schema the row names, and opens the query
     /// tab there. It used to read through the browse scope with the name alone, so a view selected
     /// in another schema opened the definition of a same-named view in the browsed one, and running

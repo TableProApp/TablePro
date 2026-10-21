@@ -273,6 +273,46 @@ struct SQLStatementGenerator {
         return ParameterizedStatement(sql: sql, parameters: bindParameters)
     }
 
+    // The server compares, so its casting and collation decide a match, as they do for the UPDATE that follows.
+    func keyMatchCountStatement(keyColumns: [String], keys: [[PluginCellValue]]) -> ParameterizedStatement? {
+        guard !keyColumns.isEmpty, !keys.isEmpty, keys.allSatisfy({ $0.count == keyColumns.count }) else { return nil }
+
+        var bindParameters: [Any?] = []
+        let quotedKey = keyColumns.map(quoteIdentifierFn)
+        let selects = keys.enumerated().map { position, values -> String in
+            let conditions = zip(quotedKey, values).map { column, value -> String in
+                bindParameters.append(value.asAny)
+                return "\(column) = \(placeholder(at: bindParameters.count - 1))"
+            }.joined(separator: " AND ")
+            return "SELECT \(position), COUNT(*) FROM \(qualifiedTableName) WHERE \(conditions)"
+        }
+
+        return ParameterizedStatement(sql: selects.joined(separator: " UNION ALL "), parameters: bindParameters)
+    }
+
+    func keyedUpdateStatement(
+        columns setColumns: [String],
+        values: [PluginCellValue],
+        keyColumns: [String],
+        keyValues: [PluginCellValue]
+    ) -> ParameterizedStatement? {
+        guard !setColumns.isEmpty, setColumns.count == values.count,
+              !keyColumns.isEmpty, keyColumns.count == keyValues.count else { return nil }
+
+        var bindParameters: [Any?] = []
+        func bound(_ column: String, _ value: PluginCellValue) -> String {
+            bindParameters.append(value.asAny)
+            return "\(quoteIdentifierFn(column)) = \(placeholder(at: bindParameters.count - 1))"
+        }
+        let assignments = zip(setColumns, values).map(bound).joined(separator: ", ")
+        let conditions = zip(keyColumns, keyValues).map(bound).joined(separator: " AND ")
+
+        return ParameterizedStatement(
+            sql: "UPDATE \(qualifiedTableName) SET \(assignments) WHERE \(conditions)",
+            parameters: bindParameters
+        )
+    }
+
     var maxBindParameters: Int {
         switch databaseType {
         case .sqlite: 32_766

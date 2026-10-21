@@ -211,9 +211,13 @@ struct QueryPlanDiagramNodeView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
+                if !node.warnings.isEmpty {
+                    Spacer(minLength: 0)
+                    QueryPlanWarningBadge(count: node.warnings.count)
+                }
             }
 
-            if let relation = node.relation {
+            if let relation = node.relation ?? node.properties["Index Name"] {
                 Text(relation)
                     .font(.caption)
                     .foregroundStyle(.secondary)

@@ -28,10 +28,13 @@ final class ServerDashboardViewModel: ObservableObject {
             if refreshTask != nil || refreshInterval != .off {
                 startAutoRefresh()
             }
+            updateTileActivity()
         }
     }
 
-    @Published var isPaused: Bool = false
+    @Published var isPaused: Bool = false {
+        didSet { updateTileActivity() }
+    }
     @Published var isRefreshing: Bool = false
     @Published var lastRefreshDate: Date?
     @Published var panelErrors: [DashboardPanel: String] = [:]
@@ -55,9 +58,14 @@ final class ServerDashboardViewModel: ObservableObject {
     /// Kept here, not in the sessions pane, so the refresh that stops listing a session also drops it.
     let sessionSelection = StructureListSelection<String>()
 
+    // MARK: - Saved Query Tiles
+
+    let tileBoard: DashboardTileBoard
+
     // MARK: - Private
 
     nonisolated(unsafe) private var refreshTask: Task<Void, Never>?
+    private var isOnScreen = false
     private let services: AppServices
     private var providerServerVersion: String?
     private var hasAdoptedServerVersion = false
@@ -89,11 +97,22 @@ final class ServerDashboardViewModel: ObservableObject {
 
     // MARK: - Initialization
 
-    init(connectionId: UUID, databaseType: DatabaseType, services: AppServices = .live) {
+    init(
+        connectionId: UUID,
+        databaseType: DatabaseType,
+        services: AppServices = .live,
+        tileEnvironment: DashboardTileBoard.Environment? = nil
+    ) {
         self.connectionId = connectionId
         self.databaseType = databaseType
         self.provider = ServerDashboardQueryProviderFactory.provider(for: databaseType)
         self.services = services
+        self.tileBoard = DashboardTileBoard(
+            connectionId: connectionId,
+            databaseType: databaseType,
+            environment: tileEnvironment ?? .live(services: services),
+            execute: Self.tileExecutor(connectionId: connectionId, services: services)
+        )
     }
 
     deinit {
@@ -104,6 +123,8 @@ final class ServerDashboardViewModel: ObservableObject {
 
     func startAutoRefresh() {
         refreshTask?.cancel()
+        isOnScreen = true
+        updateTileActivity()
 
         guard refreshInterval != .off else {
             refreshTask = nil
@@ -114,7 +135,7 @@ final class ServerDashboardViewModel: ObservableObject {
             while !Task.isCancelled {
                 guard let self else { return }
                 if !self.isPaused {
-                    await self.refreshNow()
+                    await self.refresh(forcingTiles: false)
                 }
                 let interval = self.refreshInterval.rawValue
                 guard interval > 0 else { break }
@@ -127,6 +148,12 @@ final class ServerDashboardViewModel: ObservableObject {
         refreshTask?.cancel()
         refreshTask = nil
         isRefreshing = false
+        isOnScreen = false
+        updateTileActivity()
+    }
+
+    private func updateTileActivity() {
+        tileBoard.isActive = isOnScreen && !isPaused && refreshInterval != .off
     }
 
     // MARK: - Data Fetching
@@ -144,6 +171,35 @@ final class ServerDashboardViewModel: ObservableObject {
     }
 
     func refreshNow() async {
+        await refresh(forcingTiles: true)
+    }
+
+    private static func readExecutor(connectionId: UUID, services: AppServices) -> DashboardTileBoard.Execute {
+        { [connectionId, services] query in
+            try await liveDriver(connectionId: connectionId, services: services).executeRead(query: query)
+        }
+    }
+
+    /// A saved query can return a whole table, so a tile stops at the rows it can draw. A driver
+    /// with no bounded fetch gets `executeRead`, which is also where a scripting engine refuses writes.
+    private static func tileExecutor(connectionId: UUID, services: AppServices) -> DashboardTileBoard.Execute {
+        { [connectionId, services] query in
+            let driver = try liveDriver(connectionId: connectionId, services: services)
+            if let bounded = try await driver.executeBoundedQuery(query: query, rowCap: DashboardTileTable.rowCap) {
+                return bounded
+            }
+            return try await driver.executeRead(query: query)
+        }
+    }
+
+    private static func liveDriver(connectionId: UUID, services: AppServices) throws -> DatabaseDriver {
+        guard let driver = services.databaseManager.driver(for: connectionId) else {
+            throw DatabaseError.connectionFailed(String(localized: "No active connection"))
+        }
+        return driver
+    }
+
+    private func refresh(forcingTiles: Bool) async {
         guard !isRefreshing else { return }
         guard provider != nil else {
             Self.logger.warning("No query provider available for \(self.databaseType.rawValue)")
@@ -157,14 +213,7 @@ final class ServerDashboardViewModel: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
 
-        let execute: (String) async throws -> QueryResult = { [connectionId, services] query in
-            guard let driver = services.databaseManager.driver(for: connectionId) else {
-                throw DatabaseError.connectionFailed(
-                    String(localized: "No active connection")
-                )
-            }
-            return try await driver.executeRead(query: query)
-        }
+        let execute = Self.readExecutor(connectionId: connectionId, services: services)
 
         var newPanelErrors: [DashboardPanel: String] = [:]
 
@@ -197,6 +246,7 @@ final class ServerDashboardViewModel: ObservableObject {
         }
 
         panelErrors = newPanelErrors
+        await tileBoard.refresh(force: forcingTiles)
         lastRefreshDate = Date()
     }
 
@@ -233,7 +283,7 @@ final class ServerDashboardViewModel: ObservableObject {
             }
             _ = try await driver.execute(query: sql)
             Self.logger.info("Killed session \(processId)")
-            await refreshNow()
+            await refresh(forcingTiles: false)
         } catch {
             Self.logger.error("Failed to kill session \(processId): \(error.localizedDescription)")
             actionError = error.localizedDescription
@@ -273,7 +323,7 @@ final class ServerDashboardViewModel: ObservableObject {
             }
             _ = try await driver.execute(query: sql)
             Self.logger.info("Cancelled query for process \(processId)")
-            await refreshNow()
+            await refresh(forcingTiles: false)
         } catch {
             Self.logger.error("Failed to cancel query for process \(processId): \(error.localizedDescription)")
             actionError = error.localizedDescription

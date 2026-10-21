@@ -83,6 +83,8 @@ enum ActiveSheet: Identifiable {
     /// carries them: the comment is written to the object the user right-clicked, not to a
     /// same-named one wherever the browser points by the time Save is pressed.
     case editObjectComment(DatabaseObjectTarget)
+    case setSequenceNextValue(DatabaseObjectTarget)
+    case editSequence(DatabaseObjectTarget)
     /// Copying carries the whole launch request, because the source database, the source schema
     /// and the objects the user right-clicked are all part of what the sheet opens onto, and the
     /// object browser may be pointed somewhere else by the time the sheet appears.
@@ -115,6 +117,10 @@ enum ActiveSheet: Identifiable {
         case .editSchema(let container): "editSchema-\(container.id)"
         case .editObjectComment(let target):
             "editObjectComment-\(target.scope.database)-\(target.scope.schema ?? "")-\(target.name)"
+        case .setSequenceNextValue(let target):
+            "setSequenceNextValue-\(target.scope.database)-\(target.scope.schema ?? "")-\(target.name)"
+        case .editSequence(let target):
+            "editSequence-\(target.scope.database)-\(target.scope.schema ?? "")-\(target.name)"
         case .copyObjects(let launch): "copyObjects-\(launch.id)"
         case .rewind: "rewind"
         case .tableRebuildReview: "tableRebuildReview"

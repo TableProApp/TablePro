@@ -18,6 +18,7 @@ internal final class RowImportMapping: ObservableObject {
     }
 
     @Published internal private(set) var columns: [String] = []
+    @Published internal private(set) var matchKeys: [ImportMatchKey] = []
     @Published internal var rows: [Row] = []
     @Published internal private(set) var table: TableScope?
 
@@ -80,6 +81,7 @@ internal final class RowImportMapping: ObservableObject {
     internal func clear() {
         table = nil
         columns = []
+        matchKeys = []
         rows = []
         saved = [:]
         showsSavedMapping = false
@@ -90,6 +92,7 @@ internal final class RowImportMapping: ObservableObject {
     internal func load(
         fields: [PluginImportField],
         columns: [String],
+        matchKeys: [ImportMatchKey] = [],
         for scope: TableScope,
         read: AnyHashable? = nil
     ) {
@@ -106,6 +109,7 @@ internal final class RowImportMapping: ObservableObject {
         table = scope
         saved = remembered
         self.columns = columns
+        self.matchKeys = matchKeys
         let names = fields.map(\.name)
         apply(ImportColumnMatcher.resolve(fields: names, columns: columns, preferring: tiers), to: fields)
         showsSavedMapping = (reloading ? showsSavedMapping : true) && appliesSavedChoice

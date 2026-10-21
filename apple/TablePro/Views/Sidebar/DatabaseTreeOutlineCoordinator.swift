@@ -662,7 +662,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         case .procedure, .function: Task { await mainCoordinator.refreshRoutines() }
         case .trigger: Task { await mainCoordinator.refreshTriggers() }
         case .type: Task { await mainCoordinator.refreshUserDefinedTypes() }
-        case .table, .view, .materializedView, .foreignTable:
+        case .table, .view, .materializedView, .foreignTable, .sequence:
             CatalogChangeService.shared.record(.changed(CatalogChange(
                 connectionId: connectionId,
                 database: mainCoordinator.browseDatabaseName,

@@ -18,9 +18,13 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
         splitViewController.splitView.dividerStyle = .thin
         splitViewController.splitView.autosaveName = SplitViewAutosaveName.current("ServerDashboardSplit")
 
-        for panel in orderedPanels() {
-            let item = makeItem(for: panel, coordinator: context.coordinator)
-            splitViewController.addSplitViewItem(item)
+        for pane in orderedPanes() {
+            switch pane {
+            case .panel(let panel):
+                splitViewController.addSplitViewItem(makeItem(for: panel, coordinator: context.coordinator))
+            case .savedQueries:
+                splitViewController.addSplitViewItem(makeTilesItem())
+            }
         }
 
         return splitViewController
@@ -56,10 +60,29 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
         )
     }
 
-    private func orderedPanels() -> [DashboardPanel] {
+    private enum Pane {
+        case panel(DashboardPanel)
+        case savedQueries
+    }
+
+    private func orderedPanes() -> [Pane] {
         let supported = viewModel.supportedPanels
-        let order: [DashboardPanel] = [.activeSessions, .serverMetrics, .slowQueries]
-        return order.filter { supported.contains($0) }
+        let leading: [Pane] = [DashboardPanel.activeSessions, .serverMetrics]
+            .filter { supported.contains($0) }
+            .map { .panel($0) }
+        let trailing: [Pane] = supported.contains(.slowQueries) ? [.panel(.slowQueries)] : []
+        return leading + [.savedQueries] + trailing
+    }
+
+    /// Watches the tile board itself, as the sessions pane watches the model, so it needs no push
+    /// from `updateNSViewController`.
+    private func makeTilesItem() -> NSSplitViewItem {
+        let controller = NSHostingController(rootView: DashboardTilesView(board: viewModel.tileBoard))
+        controller.sizingOptions = []
+        let item = NSSplitViewItem(viewController: controller)
+        item.minimumThickness = 110
+        item.holdingPriority = .splitPaneHolding
+        return item
     }
 
     private func makeItem(for panel: DashboardPanel, coordinator: Coordinator) -> NSSplitViewItem {

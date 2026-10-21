@@ -213,6 +213,20 @@ internal enum DatabaseTreeMenuSpec {
     ) -> [DatabaseTreeMenuItem] {
         guard !context.isReadOnly else { return [] }
         var items: [DatabaseTreeMenuItem] = []
+        if DatabaseObjectToolEligibility.canSetSequenceValue(
+            ref.table.type,
+            support: context.objectToolSupport,
+            isReadOnly: context.isReadOnly
+        ) {
+            items.append(.command(String(localized: "Set Next Value…"), .setSequenceNextValue(ref)))
+        }
+        if DatabaseObjectToolEligibility.canEditSequence(
+            ref.table.type,
+            support: context.objectToolSupport,
+            isReadOnly: context.isReadOnly
+        ) {
+            items.append(.command(String(localized: "Edit Sequence…"), .editSequence(ref)))
+        }
         if DatabaseObjectToolEligibility.canEditComment(
             ref.table.type,
             support: context.objectToolSupport,

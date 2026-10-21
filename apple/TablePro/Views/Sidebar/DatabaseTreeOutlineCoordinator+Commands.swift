@@ -17,6 +17,8 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.createNewTable()
         case .createView:
             mainCoordinator?.createView()
+        case .createSequence:
+            mainCoordinator?.createSequence()
         case .createDatabase:
             mainCoordinator?.createDatabase()
         case .createSchema(let database):
@@ -39,12 +41,8 @@ extension DatabaseTreeOutlineCoordinator {
             activateThen(ref) { [weak self] in
                 self?.mainCoordinator?.editViewDefinition(ref)
             }
-        case .copyDDL(let ref):
-            mainCoordinator?.copyDDL(of: ref)
-        case .refreshMaterializedView(let ref):
-            mainCoordinator?.refreshMaterializedView(ref)
-        case .editComment(let ref):
-            mainCoordinator?.editComment(of: ref)
+        case .copyDDL, .refreshMaterializedView, .editComment, .setSequenceNextValue, .editSequence:
+            performObjectTool(command)
         case .showStructure(let ref):
             activateThen(ref) { [weak self] in
                 self?.mainCoordinator?.openTableTab(
@@ -154,6 +152,23 @@ extension DatabaseTreeOutlineCoordinator {
         case .toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers, .togglePartitions,
              .setRowSize:
             _ = SidebarViewOptionsMenu.apply(command)
+        }
+    }
+
+    private func performObjectTool(_ command: SidebarMenuCommand) {
+        switch command {
+        case .copyDDL(let ref):
+            mainCoordinator?.copyDDL(of: ref)
+        case .refreshMaterializedView(let ref):
+            mainCoordinator?.refreshMaterializedView(ref)
+        case .editComment(let ref):
+            mainCoordinator?.editComment(of: ref)
+        case .setSequenceNextValue(let ref):
+            mainCoordinator?.setSequenceNextValue(of: ref)
+        case .editSequence(let ref):
+            mainCoordinator?.editSequence(ref)
+        default:
+            break
         }
     }
 

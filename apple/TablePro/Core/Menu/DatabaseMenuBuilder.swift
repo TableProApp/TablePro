@@ -52,6 +52,10 @@ enum DatabaseMenuBuilder {
                 action: #selector(MainSplitViewController.createNewView(_:))
             ),
             MenuItemFactory.item(
+                String(localized: "New Sequence…"),
+                action: #selector(MainSplitViewController.createNewSequence(_:))
+            ),
+            MenuItemFactory.item(
                 String(localized: "New Folder"),
                 action: #selector(MainSplitViewController.createTableFolder(_:))
             ),
@@ -98,6 +102,14 @@ enum DatabaseMenuBuilder {
             MenuItemFactory.item(
                 String(localized: "Edit Comment…"),
                 action: #selector(MainSplitViewController.editObjectComment(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Set Next Value…"),
+                action: #selector(MainSplitViewController.setSequenceNextValue(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Edit Sequence…"),
+                action: #selector(MainSplitViewController.editSequence(_:))
             ),
             schemaSubmenu(),
             sessionContextSubmenu(),

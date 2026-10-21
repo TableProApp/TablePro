@@ -19,6 +19,7 @@ struct ImportState {
     var statusMessage: String = ""
     var errorMessage: String?
     var transactionOutcome: ImportTransactionOutcome = .untracked
+    var rowTally: ImportRowTally?
     var fileCount: Int = 0
     var fileIndex: Int = 0
     var fileName: String = ""
@@ -74,6 +75,7 @@ final class ImportService: ObservableObject {
         targetTable: String? = nil,
         columnMapping: [String: String] = [:],
         sourceFields: Set<String> = [],
+        rowWriting: ImportRowWriting = .insert,
         authorization: OperationReceipt? = nil
     ) async throws -> PluginImportResult {
         guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else {
@@ -140,7 +142,8 @@ final class ImportService: ObservableObject {
                     progress: progress,
                     targetTable: targetTable,
                     columnMapping: columnMapping,
-                    sourceFields: sourceFields
+                    sourceFields: sourceFields,
+                    rowWriting: rowWriting
                 )
             }
         } catch {
@@ -501,7 +504,8 @@ final class ImportService: ObservableObject {
         progress: PluginImportProgress,
         targetTable: String?,
         columnMapping: [String: String],
-        sourceFields: Set<String>
+        sourceFields: Set<String>,
+        rowWriting: ImportRowWriting
     ) async throws -> PluginImportResult {
         let sink = ImportDataSinkAdapter(
             driver: driver,
@@ -509,11 +513,13 @@ final class ImportService: ObservableObject {
             targetTable: targetTable,
             columnMapping: columnMapping,
             sourceFields: sourceFields,
+            rowWriting: rowWriting,
             isCancelled: { progress.isCancelled }
         )
         defer {
             reportNameHazards(sink.nameHazardStatements)
             state.transactionOutcome = sink.transactionOutcome
+            state.rowTally = targetTable == nil ? nil : sink.rowTally
         }
         let sessionScope = await openPreservingScope(on: driver)
         let result: PluginImportResult
