@@ -16,6 +16,14 @@ struct RedisDashboardProvider: ServerDashboardQueryProvider {
 
     let supportedPanels: Set<DashboardPanel> = [.activeSessions, .serverMetrics, .slowQueries]
 
+    /// CLIENT UNBLOCK arrived in Redis 5.0.
+    let hasClientUnblock: Bool
+
+    init(serverVersion: String?) {
+        let major = serverVersion?.split(separator: ".").first.flatMap { Int($0) }
+        hasClientUnblock = major.map { $0 >= 5 } ?? true
+    }
+
     func fetchSessions(execute: (String) async throws -> QueryResult) async throws -> [DashboardSession] {
         // CLIENT ID arrived in Redis 5.0; before that the dashboard's own connection stays listed.
         let ownId = try? await firstCell(of: execute("OUTSIDEBLOCK CLIENT ID"))
@@ -32,7 +40,7 @@ struct RedisDashboardProvider: ServerDashboardQueryProvider {
                 durationSeconds: idle,
                 duration: DurationFormatting.string(seconds: idle),
                 query: client["cmd"] ?? "",
-                canCancel: state == Self.blockedState
+                canCancel: hasClientUnblock && state == Self.blockedState
             )
         }
     }
@@ -124,9 +132,9 @@ struct RedisDashboardProvider: ServerDashboardQueryProvider {
     }
 
     /// Only a client blocked in BLPOP, XREAD or the like has a command still running. ERROR ends the
-    /// wait with an error reply and leaves the connection open. CLIENT UNBLOCK arrived in Redis 5.0.
+    /// wait with an error reply and leaves the connection open.
     func cancelQuerySQL(processId: String) -> String? {
-        guard acceptsProcessId(processId) else { return nil }
+        guard hasClientUnblock, acceptsProcessId(processId) else { return nil }
         return "OUTSIDEBLOCK CLIENT UNBLOCK \(processId) ERROR"
     }
 

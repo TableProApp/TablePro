@@ -26,6 +26,8 @@ struct RedisDashboardProviderTests {
 
     private struct Refusal: Error {}
 
+    private let provider = RedisDashboardProvider(serverVersion: "8.10.2")
+
     private static func result(_ columns: [String], _ rows: [[String?]]) -> QueryResult {
         QueryResult(
             columns: columns,
@@ -56,7 +58,7 @@ struct RedisDashboardProviderTests {
         let server = Server { command in
             command.hasSuffix("CLIENT ID") ? Self.cell("15") : Self.cell(Self.listing)
         }
-        let sessions = try await RedisDashboardProvider().fetchSessions { try server.execute($0) }
+        let sessions = try await provider.fetchSessions { try server.execute($0) }
         #expect(sessions.map { $0.id } == ["21", "22"])
         #expect(server.commands == ["OUTSIDEBLOCK CLIENT ID", "OUTSIDEBLOCK CLIENT LIST"])
 
@@ -78,7 +80,7 @@ struct RedisDashboardProviderTests {
             if command.hasSuffix("CLIENT ID") { throw Refusal() }
             return Self.cell(Self.listing)
         }
-        let sessions = try await RedisDashboardProvider().fetchSessions { try server.execute($0) }
+        let sessions = try await provider.fetchSessions { try server.execute($0) }
         #expect(sessions.count == 3)
     }
 
@@ -113,7 +115,7 @@ struct RedisDashboardProviderTests {
             keyspace_misses:10\r
 
             """
-        let metrics = try await RedisDashboardProvider().fetchMetrics { _ in Self.result(["info"], [[info]]) }
+        let metrics = try await provider.fetchMetrics { _ in Self.result(["info"], [[info]]) }
         #expect(metrics.map { $0.id } == ["connected_clients", "used_memory", "operations", "keyspace_hit_ratio", "uptime"])
         #expect(metrics.first { $0.id == "used_memory" }?.value == ByteSizeFormatting.string(bytes: Int64(1_778_512)))
         #expect(metrics.first { $0.id == "used_memory" }?.unit.isEmpty == false)
@@ -124,7 +126,7 @@ struct RedisDashboardProviderTests {
     @Test("Memory with no limit set carries no share of one")
     func memoryWithoutLimit() async throws {
         let info = "used_memory:1024\r\nmaxmemory:0\r\n"
-        let metrics = try await RedisDashboardProvider().fetchMetrics { _ in Self.result(["info"], [[info]]) }
+        let metrics = try await provider.fetchMetrics { _ in Self.result(["info"], [[info]]) }
         #expect(metrics.first { $0.id == "used_memory" }?.unit == "")
     }
 
@@ -135,7 +137,7 @@ struct RedisDashboardProviderTests {
             ["9", "1792537207", "12345", "KEYS *", "10.0.0.4:51022", "worker"],
         ]
         let server = Server { _ in Self.result(RedisSlowLogGrid.columns, rows) }
-        let slow = try await RedisDashboardProvider().fetchSlowQueries { try server.execute($0) }
+        let slow = try await provider.fetchSlowQueries { try server.execute($0) }
         #expect(server.commands == ["OUTSIDEBLOCK SLOWLOG GET 20"])
         #expect(slow.map { $0.query } == ["KEYS *", #"SET foo "a b""#])
         #expect(slow.first?.duration == DurationFormatting.string(microseconds: 12_345))
@@ -150,17 +152,28 @@ struct RedisDashboardProviderTests {
         ("", false),
     ] as [(String, Bool)])
     func terminateAndCancelNameOneClient(processId: String, accepted: Bool) {
-        let provider = RedisDashboardProvider()
         #expect(provider.killSessionSQL(processId: processId)
             == (accepted ? "OUTSIDEBLOCK CLIENT KILL ID \(processId)" : nil))
         #expect(provider.cancelQuerySQL(processId: processId)
             == (accepted ? "OUTSIDEBLOCK CLIENT UNBLOCK \(processId) ERROR" : nil))
     }
 
+    @Test("Redis before 5.0 has no CLIENT UNBLOCK, so a blocked client there offers only Terminate", arguments: [
+        ("4.0.14", false), ("5.0.0", true), ("7.2.4", true), (nil, true),
+    ] as [(String?, Bool)])
+    func cancelNeedsRedis5(serverVersion: String?, cancellable: Bool) async throws {
+        let provider = RedisDashboardProvider(serverVersion: serverVersion)
+        #expect((provider.cancelQuerySQL(processId: "21") != nil) == cancellable)
+        let sessions = try await provider.fetchSessions { command in
+            command.hasSuffix("CLIENT ID") ? Self.cell("15") : Self.cell(Self.listing)
+        }
+        #expect(sessions.first { $0.id == "21" }?.canCancel == cancellable)
+        #expect(sessions.first { $0.id == "21" }?.canKill == true)
+    }
+
     @Test("Every command goes outside the user's MULTI block")
     func everyCommandIsHeldOutsideTheBlock() async throws {
         let server = Server { _ in .empty }
-        let provider = RedisDashboardProvider()
         _ = try await provider.fetchSessions { try server.execute($0) }
         _ = try await provider.fetchMetrics { try server.execute($0) }
         _ = try await provider.fetchSlowQueries { try server.execute($0) }

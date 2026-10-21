@@ -47,7 +47,7 @@ enum ServerDashboardQueryProviderFactory {
         case .mongodb:
             return MongoDBDashboardProvider()
         case .redis:
-            return RedisDashboardProvider()
+            return RedisDashboardProvider(serverVersion: serverVersion)
         }
     }
 }
