@@ -22,9 +22,9 @@ struct MariaDBClientPluginFolder: Sendable, Equatable {
         "zstd"
     ]
 
-    // The two install layouts MariaDB's build defines for this platform, relative to the prefix that holds bin.
-    // Homebrew uses the first.
-    private static let layouts = ["lib/plugin", "lib/mysql/plugin"]
+    // Relative to the folder that holds bin: MariaDB's own layouts (Homebrew uses the first), then MacPorts', which
+    // keeps bin and plugin side by side under lib/mariadb-<version>.
+    private static let layouts = ["lib/plugin", "lib/mysql/plugin", "plugin"]
 
     let url: URL
 

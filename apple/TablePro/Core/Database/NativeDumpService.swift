@@ -310,7 +310,7 @@ final class NativeDumpService: ObservableObject {
                 serverVersion: serverVersion
             )
             toolName = resolved.name
-            request.serverOffersTLS = try await tool.serverOffersTLS(request, resolved)
+            request = try await tool.prepare(request, resolved)
             let command = try Self.buildCommand(
                 kind: kind,
                 tool: tool,

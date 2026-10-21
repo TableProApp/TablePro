@@ -162,7 +162,7 @@ struct MySQLDumpPlaintextPasswordTests {
                 password: nil
             )
             let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: "/t", flavor: flavor)
-            #expect(try await tool.serverOffersTLS(request, resolved) == nil, "\(mode.rawValue) \(flavor)")
+            #expect(try await tool.prepare(request, resolved).serverOffersTLS == nil, "\(mode.rawValue) \(flavor)")
         }
     }
 
@@ -184,7 +184,7 @@ struct MySQLDumpPlaintextPasswordTests {
         defer { server.stop() }
         let tool = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
         let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: "/t", flavor: .mariadb)
-        #expect(try await tool.serverOffersTLS(preferredRequest(port: server.port), resolved) == offersTLS)
+        #expect(try await tool.prepare(preferredRequest(port: server.port), resolved).serverOffersTLS == offersTLS)
         #expect(await MySQLServerGreeting.read(host: "127.0.0.1", port: server.port) == .offersTLS(offersTLS))
     }
 
@@ -195,14 +195,14 @@ struct MySQLDumpPlaintextPasswordTests {
         let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: "/t", flavor: .mariadb)
         let closed = try #require(LoopbackPort.allocateFree())
         await #expect(throws: NativeDumpError.self) {
-            try await tool.serverOffersTLS(preferredRequest(port: closed), resolved)
+            try await tool.prepare(preferredRequest(port: closed), resolved)
         }
 
         let busy = [0xFF, 0x10, 0x04] + Array("Too many connections".utf8)
         let server = try await FakeGreetingServer.start(payload: busy)
         defer { server.stop() }
         await #expect(throws: NativeDumpError.unreachableServer(message: "Too many connections")) {
-            try await tool.serverOffersTLS(preferredRequest(port: server.port), resolved)
+            try await tool.prepare(preferredRequest(port: server.port), resolved)
         }
     }
 
@@ -243,6 +243,20 @@ struct MySQLDumpPlaintextPasswordTests {
         #expect(MariaDBClientPluginFolder.pluginDirectory(forTool: root.appendingPathComponent("nowhere/x").path) == nil)
     }
 
+    @Test("MacPorts keeps the plugin folder beside bin")
+    func pluginDirectoryInMacPortsLayout() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let version = root.appendingPathComponent("lib/mariadb-11.4")
+        try FileManager.default.createDirectory(at: version.appendingPathComponent("bin"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: version.appendingPathComponent("plugin"), withIntermediateDirectories: true)
+        let binary = version.appendingPathComponent("bin/mariadb-dump")
+        #expect(FileManager.default.createFile(atPath: binary.path, contents: nil))
+
+        let found = try #require(MariaDBClientPluginFolder.pluginDirectory(forTool: binary.path))
+        #expect(found.resolvingSymlinksInPath().path == version.appendingPathComponent("plugin").resolvingSymlinksInPath().path)
+    }
+
     @Test("The private folder links only the plugins that never send the password as typed")
     func privateFolderLinksOnlyAllowedPlugins() throws {
         let source = try temporaryDirectory()
@@ -279,6 +293,70 @@ struct MySQLDumpPlaintextPasswordTests {
         #expect(folder.refusal(in: "ERROR 2059 (HY000): Plugin qa_auth_client could not be loaded: dlopen(/x)") == refusal)
         #expect(folder.refusal(in: "ERROR 2059 (HY000): Plugin caching_sha2_password could not be loaded: dlopen(/x)") == nil)
         #expect(folder.refusal(in: "ERROR 1045 (28000): Access denied for user 'alice'") == nil)
+    }
+
+    // Stand-ins for a client build: one that answers a plain-text request from a plugin built into it, and one that
+    // hangs up because the plugin is not in the folder.
+    private func fakeClient(sendsPassword: Bool) throws -> URL {
+        let script = """
+            #!/usr/bin/python3
+            import os, socket, struct, sys
+            args = sys.argv[1:]
+            connection = socket.create_connection(("127.0.0.1", int(args[args.index("-P") + 1])))
+            def read():
+                header = b""
+                while len(header) < 4:
+                    header += connection.recv(4 - len(header))
+                length = header[0] | header[1] << 8 | header[2] << 16
+                payload = b""
+                while len(payload) < length:
+                    payload += connection.recv(length - len(payload))
+                return header[3], payload
+            def write(sequence, payload):
+                connection.sendall(struct.pack("<I", len(payload))[:3] + bytes([sequence]) + payload)
+            sequence, _ = read()
+            write(sequence + 1, bytes(32) + b"tablepro\\0")
+            sequence, _ = read()
+            if \(sendsPassword ? "True" : "False"):
+                write(sequence + 1, os.environ["MYSQL_PWD"].encode() + b"\\0")
+            connection.close()
+            """
+        let url = try temporaryDirectory().appendingPathComponent("mariadb-dump")
+        try script.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        return url
+    }
+
+    @Test("A client with a plain-text plugin built in is caught by asking it", arguments: [true, false])
+    func builtInPlaintextPluginIsCaught(sendsPassword: Bool) async throws {
+        let client = try fakeClient(sendsPassword: sendsPassword)
+        defer { try? FileManager.default.removeItem(at: client.deletingLastPathComponent()) }
+        #expect(await MariaDBBuiltInPlaintextCheck.sendsPlaintext(toolPath: client.path) == sendsPassword)
+    }
+
+    @Test("A dump that would hide the plugins refuses a client that has them built in")
+    func builtInPlaintextPluginRefusesTheRun() async throws {
+        let client = try fakeClient(sendsPassword: true)
+        defer { try? FileManager.default.removeItem(at: client.deletingLastPathComponent()) }
+        let tool = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
+        let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: client.path, flavor: .mariadb)
+        let request = NativeDumpDescriptor.Request(
+            connection: connection(.disabled),
+            database: "sales",
+            fileURL: URL(fileURLWithPath: "/tmp/out.sql"),
+            password: nil
+        )
+        await #expect(throws: NativeDumpError.self) {
+            try await tool.prepare(request, resolved)
+        }
+
+        let required = NativeDumpDescriptor.Request(
+            connection: connection(.required),
+            database: "sales",
+            fileURL: URL(fileURLWithPath: "/tmp/out.sql"),
+            password: nil
+        )
+        _ = try await tool.prepare(required, resolved)
     }
 
     @Test("The plugin folder is removed when the tool exits and when it cannot launch")

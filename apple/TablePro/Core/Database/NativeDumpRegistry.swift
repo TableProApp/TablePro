@@ -218,8 +218,8 @@ enum NativeDumpRegistry {
                         guard let password = request.password, !password.isEmpty else { return [:] }
                         return ["MYSQL_PWD": password]
                     },
-                    serverOffersTLS: { request, resolved in
-                        try await mysqlServerOffersTLS(request, resolved)
+                    prepare: { request, resolved in
+                        try await mysqlPrepare(request, resolved)
                     },
                     clientPluginFolder: { request, resolved in
                         try mysqlPluginFolder(request, resolved)
@@ -249,6 +249,33 @@ enum NativeDumpRegistry {
     /// `--` in front of the database, both are names again.
     private static func mysqlObjectArguments(_ request: NativeDumpDescriptor.Request) -> [String] {
         ["--", request.database] + request.scope.objects.map(\.name)
+    }
+
+    private static func mysqlPrepare(
+        _ request: NativeDumpDescriptor.Request,
+        _ resolved: NativeDumpResolvedTool
+    ) async throws -> NativeDumpDescriptor.Request {
+        var request = request
+        request.serverOffersTLS = try await mysqlServerOffersTLS(request, resolved)
+        let hidesPlugins = MySQLClientArguments.hidesPlaintextPasswordPlugins(
+            request.connection,
+            flavor: resolved.flavor,
+            serverOffersTLS: request.serverOffersTLS
+        )
+        if hidesPlugins, await MariaDBBuiltInPlaintextCheck.sendsPlaintext(toolPath: resolved.path) {
+            throw NativeDumpError.incompatibleTool(
+                message: String(
+                    format: String(
+                        localized: """
+                            %@ sends the password in plain text when a server asks, even without TLS, and TablePro \
+                            cannot turn that off. Set SSL Mode to Required, or install another build of the client tools.
+                            """
+                    ),
+                    resolved.path
+                )
+            )
+        }
+        return request
     }
 
     // Unreadable fails the run: guessing no TLS would dump in plaintext from a server that has it, and guessing TLS
