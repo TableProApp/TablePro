@@ -2588,6 +2588,9 @@
         }
       }
     },
+    "%@ available" : {
+
+    },
     "%@ can only be compared with a whole number." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -43829,6 +43832,9 @@
         }
       }
     },
+    "Commands" : {
+
+    },
     "Commands for the current tab and connection" : {
       "localizations" : {
         "fr" : {
@@ -57104,6 +57110,9 @@
         }
       }
     },
+    "Database CPU" : {
+
+    },
     "Database default" : {
       "localizations" : {
         "fr" : {
@@ -61956,6 +61965,9 @@
           }
         }
       }
+    },
+    "Deletes" : {
+
     },
     "Deletes %lld rows from %@" : {
       "localizations" : {
@@ -93363,6 +93375,9 @@
         }
       }
     },
+    "Inserts" : {
+
+    },
     "Inside an array" : {
       "localizations" : {
         "fr" : {
@@ -97341,6 +97356,9 @@
           }
         }
       }
+    },
+    "Keyspace Hit Ratio" : {
+
     },
     "Keyword" : {
       "extractionState" : "manual",
@@ -103743,6 +103761,9 @@
           }
         }
       }
+    },
+    "Logical Reads" : {
+
     },
     "Login Handshake Timed Out" : {
       "extractionState" : "manual",
@@ -126614,6 +126635,9 @@
         }
       }
     },
+    "Operations" : {
+
+    },
     "Operations, sorted by name" : {
       "localizations" : {
         "fr" : {
@@ -140363,6 +140387,9 @@
         }
       }
     },
+    "Read the live server panels TablePro shows: active sessions, server metrics, and slow queries. Available on every engine that has a Server Dashboard in TablePro." : {
+
+    },
     "Read the live server panels TablePro shows: active sessions, server metrics, and slow queries. Available on PostgreSQL, MySQL, SQL Server, ClickHouse, and Typesense." : {
 
     },
@@ -146703,6 +146730,9 @@
           }
         }
       }
+    },
+    "Resident Memory" : {
+
     },
     "Resolved on every connect. It stays on this Mac and never syncs, because it can name a command to run." : {
       "localizations" : {
@@ -204114,6 +204144,9 @@
         }
       }
     },
+    "Updates" : {
+
+    },
     "Updates when TablePro restarts" : {
 
     },
@@ -205199,6 +205232,9 @@
           }
         }
       }
+    },
+    "Used Memory" : {
+
     },
     "User" : {
       "localizations" : {
