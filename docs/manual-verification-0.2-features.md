@@ -37,6 +37,30 @@ Build first:
 cargo build -p tablepro-app
 ```
 
+## AppImage run on 2026-10-21
+
+Package: the CI-built `BookiE-0.2.0-x86_64.AppImage` from [#1264](https://github.com/cozyGarage/BookiE/pull/1264) run 39586177455 (commit `8fdc5c384`), SHA-256 `f34dd1f3f8bf509310f53927b2c59102b49d91b6aac739fd83f08a7da82f9b0f`, checked against the published `.sha256`. Arch Linux / Omarchy, Hyprland 0.56.2, display scale 1.25, bundled GTK from Debian testing (exact GTK and libadwaita versions not recorded). PostgreSQL 16.15 in Docker with synthetic data (250 customers, 600 orders, a 16-column table; NULL, empty, long and multiline values). The test instance ran with its own config, data, runtime directory and message bus, so it did not touch a real profile.
+
+The published AppImage ran under **XWayland**, not native Wayland: the GTK plugin's launch hook exports `GDK_BACKEND=x11`. The checks below ran on a copy of the same AppImage with that line changed to `wayland,x11` (Hyprland reported `xwayland: False`). The packaging fix is in #1264. The dark theme was forced with `ADW_DEBUG_COLOR_SCHEME=prefer-dark` because the isolated bus had no theme portal. Input was by keyboard only (no pointer tool), so everything below is keyboard-reachable behavior.
+
+- [ ] Welcome screen and connection list render. **2026-10-21 Hyprland native Wayland, light and dark:** passed. The two text lines of a connection row sit very close together.
+- [ ] Tab order on the welcome screen reaches every control and shows focus. **2026-10-21 Hyprland dark and light:** passed. Order: header buttons, filter, export, add, the connection row, then the row's buttons.
+- [ ] A saved connection opens and the header shows the server version. **2026-10-21 Hyprland dark:** passed (`UX test shop · Local · PostgreSQL 16.15`). The first connect showed a system keyring prompt to create a keyring; that came from the isolated message bus, not from the app.
+- [ ] Grid distinguishes NULL, empty text and Boolean states; multiline and long values. **2026-10-21 Hyprland dark:** passed. NULL shows `<NULL>`, empty text is blank, Boolean shows checked, unchecked and a dash for NULL, multiline text wraps and grows the row, long text is cut with an ellipsis, the primary key column carries a key icon. Light theme, edited, inserted, deleted and failed cell states were not run.
+- [ ] Filter bar opens with Ctrl+F. **2026-10-21 Hyprland dark:** inconclusive. Nothing appeared, but keyboard focus may not have been in the grid.
+- [ ] SQL editor opens, highlights SQL and runs a statement. **2026-10-21 Hyprland dark:** editor opened and highlighted correctly; a run that the policy could not parse asked for approval, and Deny produced "Statement 1 failed" with a Copy error button. A successful run and its result pane were not seen: part of the typed text was lost to a focus problem in the test input (see below), so the statement was truncated.
+- [ ] Narrow window, 2x scale, high contrast, enlarged text, Orca. **Not run.**
+- [ ] Cell edit, paste, export, import, SSH, structure tab and the other sections below. **Not run** on the AppImage.
+
+Defects found. Screenshots are kept by the tester, not in the repository.
+
+- **AppImage forced X11 on a Wayland desktop.** Fixed in #1264; the rebuilt AppImage still needs this run repeated.
+- **Approval dialog overlay is not opaque.** With a failed result behind it, the earlier "failed" text shows through beside the Deny and Approve buttons, and the heading is wider than the body text. Owner: UX.
+- **The approval title says "Approve write" for an unparseable statement** that may be a read. Owner: UX and policy.
+- **The Group and tags dialog is flush against the list above it,** with Cancel and Save touching the rows. Owner: UX.
+- **Unexplained:** the tab overview opened during scripted input and received typed text. Not reproduced; most likely a test-input focus problem, but not confirmed.
+- **Benign:** a second instance logs `MCP HTTP server stopped: Address already in use` because port 17432 is taken by the first.
+
 ## Export dialog
 
 Open a result, then Export Results.
