@@ -9,9 +9,28 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 struct CockroachRelationSQLTests {
+    @Test("A schema set is listed in one query that names each schema and projects it")
+    func schemaSetListing() {
+        let statement = CockroachRelationSQL.tablesQuery(inSchemas: ["public", "o'brien"])
+        #expect(statement.contains("WHERE table_schema IN ('public', 'o''brien')"))
+        #expect(statement.contains("SELECT table_name, table_type, table_schema"))
+        #expect(CockroachRelationSQL.tablesQuery(inSchemas: []).contains("WHERE false"))
+    }
+
+    @Test("A listing row keeps its schema when the query projects one")
+    func listingRowSchema() {
+        let view = CockroachRelationSQL.table(fromRow: ["daily", "VIEW", "analytics"])
+        #expect(view?.name == "daily")
+        #expect(view?.type == "VIEW")
+        #expect(view?.schema == "analytics")
+        #expect(CockroachRelationSQL.table(fromRow: ["orders", "BASE TABLE"])?.schema == nil)
+        #expect(CockroachRelationSQL.table(fromRow: [nil, "VIEW"]) == nil)
+    }
+
     @Test("SHOW CREATE TABLE names the requested schema")
     func showCreateTableNamesRequestedSchema() {
         let statement = CockroachRelationSQL.showCreateTable(table: "orders", schema: "analytics")

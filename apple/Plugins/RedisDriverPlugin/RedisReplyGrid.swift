@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 
 struct RedisReplyGrid: Equatable {
     let columns: [String]
@@ -77,6 +78,14 @@ struct RedisReplyGrid: Equatable {
         )
     }
 
+    static func slowLog(_ reply: RedisReply) -> RedisReplyGrid {
+        RedisReplyGrid(
+            columns: RedisSlowLogGrid.columns,
+            columnTypeNames: RedisSlowLogGrid.columnTypeNames,
+            rows: (reply.arrayValue ?? []).compactMap(slowLogRow)
+        )
+    }
+
     static func generic(_ reply: RedisReply) -> RedisReplyGrid {
         switch reply {
         case .integer(let value):
@@ -102,6 +111,25 @@ struct RedisReplyGrid: Equatable {
         stride(from: 0, to: items.count - 1, by: 2).map { index in
             [.text(items[index].displayText), .text(items[index + 1].displayText)]
         }
+    }
+
+    // Redis before 4.0 sends four fields per entry, without the client's address and name.
+    private static func slowLogRow(_ entry: RedisReply) -> PluginRow? {
+        guard let fields = entry.arrayValue, fields.count >= 4 else { return nil }
+        let command = (fields[3].arrayValue ?? []).map(quotedArgument).joined(separator: " ")
+        return [
+            .text(fields[0].displayText),
+            .text(fields[1].displayText),
+            .text(fields[2].displayText),
+            .text(command),
+            fields.count > 4 ? .text(fields[4].displayText) : .null,
+            fields.count > 5 ? .text(fields[5].displayText) : .null,
+        ]
+    }
+
+    private static func quotedArgument(_ argument: RedisReply) -> String {
+        if case .data(let bytes) = argument { return RedisArgumentCodec.quote(bytes) }
+        return RedisArgumentCodec.quote(argument.displayText)
     }
 
     private static func streamRow(_ entry: RedisReply) -> PluginRow? {

@@ -12,10 +12,19 @@ nonisolated enum RedshiftTableCatalog {
         """
     }
 
+    static func listingQuery(inSchemas schemas: [String]) -> String {
+        """
+        SELECT table_name, table_type, table_schema
+        FROM information_schema.tables
+        WHERE \(PostgreSQLObjectQueries.membership("table_schema", in: schemas))
+        ORDER BY table_schema, table_name
+        """
+    }
+
     static func table(fromListingRow row: [String?]) -> PluginTableInfo? {
         guard let name = row[safe: 0] ?? nil else { return nil }
         let listedType = (row[safe: 1] ?? nil) ?? "BASE TABLE"
-        return PluginTableInfo(name: name, type: listedType.contains("VIEW") ? "VIEW" : "TABLE")
+        return PluginTableInfo(name: name, type: listedType.contains("VIEW") ? "VIEW" : "TABLE", schema: row[safe: 2] ?? nil)
     }
 
     static func keysQuery(schema: String, table: String) -> String {

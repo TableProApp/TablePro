@@ -20,7 +20,7 @@ internal extension TableStructureView {
         StructureTableCommentPolicy.resolve(
             objectKind: objectKind,
             support: tableCommentSupport,
-            isReadOnly: toolbarState.safeModeLevel.blocksAllWrites,
+            isReadOnly: toolbarState.safeModeLevel.blocksAllWrites || isSessionBound,
             load: session.tableComment.erased,
             isSaving: structureChangeManager.isHeldForSave
         )

@@ -143,7 +143,14 @@ extension MainContentCoordinator {
             // the incoming grid its rows had changed and made it re-format the whole result. The
             // reload a switch does need is already forced by the freshly mounted grid's zero row
             // count, and a real content change still arrives through `configureForTable`. (#2424)
+            let needsReload = needsRowReload(newId)
             lazyLoadCurrentTabIfNeeded()
+            TabSwitchTracer.shared.selectionApplied(
+                tabId: newId,
+                rows: TabSwitchRows(loads: isLoadingRows(newId), needsReload: needsReload),
+                window: contentWindow,
+                isShowing: { [weak manager = tabManager] in manager?.isShowing(newId) ?? false }
+            )
         } else {
             /// An entry with no tab of its own. The outgoing tab's edits were saved onto it above,
             /// and the live copy goes: the change manager is the selected tab's, and with none
@@ -162,6 +169,24 @@ extension MainContentCoordinator {
             toolbarState.isQueryTab = false
             toolbarState.hasQueryText = false
         }
+    }
+
+    // For a tab that comes on screen without a selection change, before its pane restarts any load.
+    func arrivingRows(for tabId: UUID) -> TabSwitchRows {
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return .resident }
+        return TabSwitchRows(
+            loads: isLoadingRows(tabId) || canAutoLoadTableTab(tab),
+            needsReload: needsRowReload(tabId)
+        )
+    }
+
+    private func needsRowReload(_ tabId: UUID) -> Bool {
+        tabSessionRegistry.isEvicted(tabId) || tabSessionRegistry.isStale(tabId)
+    }
+
+    // Only a traced load reports its end; a multi-statement run does not, and would hold the switch open.
+    private func isLoadingRows(_ tabId: UUID) -> Bool {
+        TableLoadTracer.shared.activeToken(for: tabId) != nil
     }
 
     /// What the toolbar's Run, Explain, Format and Favorite items validate against.

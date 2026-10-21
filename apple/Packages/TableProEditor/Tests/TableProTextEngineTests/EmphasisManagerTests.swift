@@ -64,6 +64,21 @@ struct EmphasisManagerTests {
         #expect(textView.layer?.sublayers?.count == 2)
     }
 
+    // The copy is drawn in the find highlight's black, over text that keeps its own colors under a bare outline.
+    @Test()
+    @MainActor
+    func anUnfilledOutlineDrawsNoCopyOfItsText() {
+        let textView = makeLaidOutTextView()
+
+        textView.emphasisManager?.addEmphasis(
+            Emphasis(range: NSRange(location: 0, length: 5), style: .outline(color: .red)),
+            for: "e"
+        )
+
+        #expect(textView.layer?.sublayers?.count == 1)
+        #expect(textView.layer?.sublayers?.contains { $0 is CATextLayer } == false)
+    }
+
     @Test()
     @MainActor
     func testEmphasisOutlivingTheTextItMarksSurvivesRedraw() {

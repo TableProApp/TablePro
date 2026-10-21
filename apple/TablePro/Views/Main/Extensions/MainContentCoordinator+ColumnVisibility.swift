@@ -127,8 +127,11 @@ extension MainContentCoordinator {
         requeryWithColumnScope(debounced: false)
     }
 
+    // A temporary table's layout is not kept: the key would be the permanent table's of the same name.
     private func columnLayoutTableKey(for tab: QueryTab) -> ColumnLayoutTableKey? {
-        guard let tableName = tab.tableContext.tableName, !tableName.isEmpty else { return nil }
+        guard !tab.tableContext.isTemporary, let tableName = tab.tableContext.tableName, !tableName.isEmpty else {
+            return nil
+        }
         return ColumnLayoutTableKey(
             connectionId: connectionId,
             databaseName: tab.tableContext.databaseName,

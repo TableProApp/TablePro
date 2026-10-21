@@ -26,14 +26,15 @@ nonisolated public enum PostgreSQLObjectQueries {
     /// A NUL is dropped rather than escaped. libpq takes a NUL-terminated C string, so a NUL would
     /// truncate the statement, and PostgreSQL rejects `\000` in a literal outright ("invalid byte
     /// sequence for encoding UTF8"). This matches the PluginKit default's own NUL strip.
+    // Every match is by code unit: a grapheme match skips a quote or backslash a combining mark follows.
     public static func quoteLiteral(_ value: String) -> String {
-        let stripped = value.replacingOccurrences(of: "\0", with: "")
-        guard stripped.contains("\\") else { return "'\(escapeQuotes(stripped))'" }
-        return "E'\(escapeQuotes(stripped.replacingOccurrences(of: "\\", with: "\\\\")))'"
+        let stripped = value.replacingOccurrences(of: "\0", with: "", options: .literal)
+        guard stripped.unicodeScalars.contains("\\") else { return "'\(escapeQuotes(stripped))'" }
+        return "E'\(escapeQuotes(stripped.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)))'"
     }
 
     private static func escapeQuotes(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     /// `IN ()` does not parse, so an empty list is `false`.
@@ -43,7 +44,7 @@ nonisolated public enum PostgreSQLObjectQueries {
     }
 
     public static func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     public static func qualifiedName(schema: String, name: String) -> String {

@@ -112,6 +112,38 @@ struct CatalogTableListingTests {
         #expect(kept.unlistedSchemas == ["attendance"])
     }
 
+    @Test("A set read that fails falls back to one read per schema, which names only the schema that fails")
+    func failedSetReadFallsBackPerSchema() async throws {
+        let driver = MockDatabaseDriver()
+        driver.schemasToReturn = ["public", "attendance"]
+        driver.tablesInSchemasError = ListingFailed()
+        driver.schemaTablesToReturn = ["public": [table("users", "public")]]
+        driver.schemaTablesErrors = ["attendance": ListingFailed()]
+
+        let listing = try await CatalogTableListing.tables(
+            in: scope, excludingSchemas: [], metadata: RecordingMetadataProvider(driver: driver)
+        )
+
+        #expect(driver.fetchTablesInSchemasCallCount == 1)
+        #expect(driver.fetchSchemaTablesCalls == ["public", "attendance"])
+        #expect(listing.tables.map(\.name) == ["users"])
+        #expect(listing.unlistedSchemas == ["attendance"])
+    }
+
+    @Test("A set read that loses the connection fails the listing without a read per schema")
+    func setReadLostConnectionFailsTheListing() async {
+        let driver = MockDatabaseDriver()
+        driver.schemasToReturn = ["public", "attendance"]
+        driver.tablesInSchemasError = DatabaseError.notConnected
+
+        await #expect(throws: DatabaseError.self) {
+            try await CatalogTableListing.tables(
+                in: scope, excludingSchemas: [], metadata: RecordingMetadataProvider(driver: driver)
+            )
+        }
+        #expect(driver.fetchSchemaTablesCalls.isEmpty)
+    }
+
     @Test("A lost connection fails the whole listing rather than reading as empty")
     func lostConnectionFailsTheListing() async {
         let driver = MockDatabaseDriver()
@@ -200,6 +232,32 @@ struct CatalogTableListingSelectionTests {
         #expect(driver.reads == ["tablesIn(a,b)"])
         #expect(result.tables.map(\.name) == ["orders", "invoices"])
         #expect(result.unlistedSchemas.isEmpty)
+    }
+
+    @Test("Every schema on an engine with a set read and no all-schema read takes the schema list and one set read")
+    func everySchemaThroughTheSetRead() async throws {
+        let driver = driver()
+        driver.schemasToReturn = ["c", "SYS", "a", "b"]
+        driver.answersTablesInSchemas = true
+
+        let result = try await listing(.all, excluding: ["SYS", "b"], on: driver)
+
+        #expect(driver.reads == ["allSchemaTables", "schemas", "tablesIn(c,a)"])
+        #expect(driver.perSchemaReads.isEmpty)
+        #expect(result.tables.map(\.name) == ["payslips", "orders"])
+        #expect(result.unlistedSchemas.isEmpty)
+    }
+
+    @Test("Every schema being excluded reads no tables at all")
+    func everySchemaExcludedReadsNoTables() async throws {
+        let driver = driver()
+        driver.schemasToReturn = ["SYS"]
+        driver.answersTablesInSchemas = true
+
+        let result = try await listing(.all, excluding: ["SYS"], on: driver)
+
+        #expect(driver.reads == ["allSchemaTables", "schemas"])
+        #expect(result.tables.isEmpty)
     }
 
     @Test("A filtered listing never calls fetchTablesInAllSchemas, even on an engine that answers it")

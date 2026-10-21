@@ -15,10 +15,10 @@ import Foundation
 internal enum DatabaseTreeSelection {
     internal static func isSelectable(_ kind: DatabaseTreeNode.Kind) -> Bool {
         switch kind {
-        case .status, .recentSection, .foldersSection, .objectKindSection, .hierarchicalSchemaSection,
-             .redisKeysSection:
+        case .status, .recentSection, .temporarySection, .foldersSection, .objectKindSection,
+             .hierarchicalSchemaSection, .redisKeysSection:
             return false
-        case .database, .schema, .table, .partition, .routine, .trigger, .userType, .recentTable,
+        case .database, .schema, .table, .partition, .routine, .trigger, .userType, .recentTable, .temporaryTable,
              .containerObjectKindSection, .tableFolder, .redisNode:
             return true
         }
@@ -27,6 +27,12 @@ internal enum DatabaseTreeSelection {
     /// A Recent entry is a second row for a table the tree already lists, so it resolves to the
     /// same reference and opens through the same selection-driven path as the table itself.
     internal static func tableRef(of node: DatabaseTreeNode) -> DatabaseTreeTableRef? {
+        commandableRef(of: node) ?? node.temporaryTableRef
+    }
+
+    // A temporary table opens but takes no Table menu command: those run on a pooled connection, where its name
+    // reaches the database's own table of that name, if any.
+    private static func commandableRef(of node: DatabaseTreeNode) -> DatabaseTreeTableRef? {
         node.tableRef ?? node.recentTableRef
     }
 
@@ -37,6 +43,10 @@ internal enum DatabaseTreeSelection {
     /// A table reachable from two rows, its own and its Recent entry, is one table, so a set built
     /// from these collapses them.
     internal static func tableRefs(of nodes: [DatabaseTreeNode]) -> [DatabaseTreeTableRef] {
+        nodes.compactMap(commandableRef)
+    }
+
+    internal static func openableRefs(of nodes: [DatabaseTreeNode]) -> [DatabaseTreeTableRef] {
         nodes.compactMap(tableRef)
     }
 

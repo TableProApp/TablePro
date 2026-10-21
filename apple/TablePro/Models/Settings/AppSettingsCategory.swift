@@ -18,6 +18,8 @@ internal enum AppSettingsCategory {
     internal static let keyboard = "keyboard"
     internal static let ai = "ai"
     internal static let notifications = "notifications"
+    // Not a field of `editor`: an older build re-uploads that blob without it, which would reset it here.
+    internal static let formatter = "formatter"
     internal static let appearanceMode = "appearanceMode"
 
     // `sync` holds the switch that turns syncing on, `mcp` a port and server setup for one machine,
@@ -25,6 +27,6 @@ internal enum AppSettingsCategory {
     internal static let deviceLocal: Set<String> = ["sync", "mcp", appearanceMode]
 
     internal static let synced: [String] = [
-        general, appearance, editor, dataGrid, history, tabs, keyboard, ai, notifications
+        general, appearance, editor, dataGrid, history, tabs, keyboard, ai, notifications, formatter
     ]
 }

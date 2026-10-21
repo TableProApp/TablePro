@@ -42,6 +42,12 @@ enum ServerDashboardQueryProviderFactory {
             return ClickHouseDashboardProvider(serverVersion: serverVersion)
         case .typesense:
             return TypesenseDashboardProvider()
+        case .oracle:
+            return OracleDashboardProvider(serverVersion: serverVersion)
+        case .mongodb:
+            return MongoDBDashboardProvider()
+        case .redis:
+            return RedisDashboardProvider(serverVersion: serverVersion)
         }
     }
 }
@@ -55,6 +61,9 @@ private enum DashboardEngine {
     case mssql
     case clickhouse
     case typesense
+    case oracle
+    case mongodb
+    case redis
 
     init?(_ databaseType: DatabaseType) {
         switch databaseType {
@@ -72,6 +81,12 @@ private enum DashboardEngine {
             self = .clickhouse
         case .typesense:
             self = .typesense
+        case .oracle:
+            self = .oracle
+        case .mongodb:
+            self = .mongodb
+        case .redis:
+            self = .redis
         default:
             return nil
         }

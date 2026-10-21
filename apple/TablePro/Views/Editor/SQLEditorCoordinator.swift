@@ -39,6 +39,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     private var contextMenu: AIEditorContextMenu?
     private var inlineSuggestionManager: InlineSuggestionManager?
     private var aiChatInlineSource: AIChatInlineSource?
+    private var appleIntelligenceInlineSource: AppleIntelligenceInlineSource?
     private var copilotDocumentSync: CopilotDocumentSync?
     private var copilotInlineSource: CopilotInlineSource?
     private var editorSettingsCancellable: AnyCancellable?
@@ -120,6 +121,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     var databaseType: DatabaseType?
     var tabID: UUID?
     var connectionId: UUID?
+    var sourceFileURL: URL?
 
     /// Whether the editor text view is currently the first responder.
     /// Used to guard cursor propagation — when the find panel highlights
@@ -313,6 +315,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         copilotDocumentSync = nil
         copilotInlineSource = nil
         aiChatInlineSource = nil
+        appleIntelligenceInlineSource = nil
 
         // Release closure captures to break potential retain cycles
         releaseWindowSentinel()
@@ -473,8 +476,20 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     }
 
     private func formatSQL(selectedRange: NSRange) {
-        guard let textView = controller?.textView,
-              let formatter = QueryFormatterFactory.make(for: databaseType) else { return }
+        guard let textView = controller?.textView else { return }
+        let formatter: QueryFormatting
+        do {
+            guard let made = try QueryFormatterFactory.make(for: databaseType, sourceFileURL: sourceFileURL) else { return }
+            formatter = made
+        } catch {
+            Self.logger.error("Formatter rules unreadable: \(error.publicLogShape, privacy: .public)")
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Couldn't Format Query"),
+                message: error.localizedDescription,
+                window: textView.window
+            )
+            return
+        }
         let scope = FormatScopeResolver.resolve(
             fullText: textView.string,
             selectedRange: selectedRange
@@ -541,6 +556,17 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             aiChatInlineSource?.schemaProvider = schemaProvider
             aiChatInlineSource?.connectionId = connectionId
             return aiChatInlineSource
+        case .appleIntelligence:
+            if appleIntelligenceInlineSource == nil {
+                appleIntelligenceInlineSource = AppleIntelligenceInlineSource(
+                    schemaProvider: schemaProvider,
+                    connectionId: connectionId,
+                    accessGate: inlineAccessGate
+                )
+            }
+            appleIntelligenceInlineSource?.schemaProvider = schemaProvider
+            appleIntelligenceInlineSource?.connectionId = connectionId
+            return appleIntelligenceInlineSource
         }
     }
 
@@ -588,6 +614,9 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         }
         if kind != .chatCompletion {
             aiChatInlineSource = nil
+        }
+        if kind != .appleIntelligence {
+            appleIntelligenceInlineSource = nil
         }
     }
 

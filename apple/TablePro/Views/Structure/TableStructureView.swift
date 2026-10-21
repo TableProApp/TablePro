@@ -41,8 +41,12 @@ struct TableStructureView: View {
 
     /// Derived from the tab's own binding on every render so it can never go stale.
     var scope: DatabaseScope {
-        DatabaseScope(connectionId: connection.id, database: databaseName, schema: schemaName)
+        DatabaseScope(
+            connectionId: connection.id, database: databaseName, schema: schemaName, isSessionBound: isSessionBound
+        )
     }
+
+    var isSessionBound: Bool { session.isSessionBound }
 
     var structureLoader: TableStructureLoader {
         TableStructureLoader(scope: scope, tableName: tableName)

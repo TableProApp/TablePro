@@ -173,9 +173,19 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
 
         let text = textView.textView.textStorage?.string as NSString?
         let cursor = cursorPosition?.range.location
+
+        if entry.item.kind == .favorite, let snippet = SQLSnippet.parse(entry.item.insertText) {
+            let range = resolvedReplacementRange(in: text, cursor: cursor, fallback: session.replacementRange)
+            textView.insertSnippet(EditorSnippet(snippet), replacing: range)
+            return
+        }
+
         let edit = quotedNameEdit(for: entry.item, in: text, cursor: cursor, session: session)
             ?? tokenEdit(for: entry.item, in: text, cursor: cursor, fallback: session.replacementRange)
 
+        if textView.replaceInSnippetMirrors(edit.range, with: edit.text, caretOffset: edit.caret - edit.range.location) {
+            return
+        }
         textView.textView.replaceCharacters(in: [edit.range], with: edit.text)
         textView.setCursorPositions([CursorPosition(range: NSRange(location: edit.caret, length: 0))])
     }
@@ -222,6 +232,16 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
             range: inner,
             text: close == nil ? name + closeText : name,
             caret: open + 1 + (name as NSString).length + 1
+        )
+    }
+}
+
+extension EditorSnippet {
+    init(_ snippet: SQLSnippet) {
+        self.init(
+            text: snippet.text,
+            fields: snippet.fields.map { Field(ranges: $0.ranges, choices: $0.choices) },
+            finalRange: snippet.finalRange
         )
     }
 }

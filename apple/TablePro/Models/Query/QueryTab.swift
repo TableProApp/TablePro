@@ -237,7 +237,8 @@ struct QueryTab: Identifiable, Equatable {
             schemaName: persisted.schemaName,
             isEditable: persisted.tabType == .table && !persisted.isView,
             isView: persisted.isView,
-            objectType: persisted.objectTypeRawValue.flatMap(TableInfo.TableType.init(rawValue:))
+            objectType: persisted.objectTypeRawValue.flatMap(TableInfo.TableType.init(rawValue:)),
+            isTemporary: persisted.isTemporary
         )
         self.display = TabDisplayState(
             erDiagramSchemaKey: persisted.erDiagramSchemaKey,
@@ -436,7 +437,8 @@ struct QueryTab: Identifiable, Equatable {
             collapsedFoldRanges: Self.foldBounds(collapsedFoldRanges, in: persistedQuery),
             columnWidths: widths,
             columnContentWidths: contentWidths,
-            isPinned: isPinned
+            isPinned: isPinned,
+            isTemporary: tableContext.isTemporary
         )
     }
 
@@ -456,6 +458,7 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.tableContext.isEditable == rhs.tableContext.isEditable
             && lhs.tableContext.isView == rhs.tableContext.isView
             && lhs.tableContext.objectType == rhs.tableContext.objectType
+            && lhs.tableContext.isTemporary == rhs.tableContext.isTemporary
             && lhs.tabType == rhs.tabType
             && lhs.isPreview == rhs.isPreview
             && lhs.isPinned == rhs.isPinned

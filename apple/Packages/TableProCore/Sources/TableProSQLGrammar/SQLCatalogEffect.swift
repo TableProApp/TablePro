@@ -98,6 +98,9 @@ public enum SQLCatalogEffectClassifier {
         if attachKeywords.contains(keyword) {
             return SQLCatalogEffect(kinds: .everything, endsTransaction: false)
         }
+        if keyword == "DISCARD", let target = tokens.dropFirst().first, discardedTableTargets.contains(target) {
+            return SQLCatalogEffect(kinds: .tables, endsTransaction: false)
+        }
         if rowKeywords.contains(keyword) || quietKeywords.contains(keyword) {
             return .none
         }
@@ -148,6 +151,9 @@ public enum SQLCatalogEffectClassifier {
     }
 
     private static let transactionEndKeywords: Set<String> = ["COMMIT", "END", "ROLLBACK", "ABORT"]
+
+    // PostgreSQL's `DISCARD TEMP` and `DISCARD ALL` drop the session's temporary tables.
+    private static let discardedTableTargets: Set<String> = ["TEMP", "TEMPORARY", "ALL"]
 
     private static let definitionKeywords: Set<String> = [
         "CREATE", "DROP", "ALTER", "RENAME", "COMMENT", "DEFINE", "REMOVE", "MSCK"

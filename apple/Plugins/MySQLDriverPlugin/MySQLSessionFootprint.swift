@@ -53,6 +53,9 @@ struct MySQLSessionFootprint: Equatable {
     /// passes through `observe`, and a reconnect would carry on without them.
     private(set) var heldSessionScopes = 0
 
+    // Candidates only: `SHOW CREATE TABLE` on the session decides which are still temporary.
+    private(set) var temporaryTableNames: [String] = []
+
     var isClean: Bool {
         self == MySQLSessionFootprint()
     }
@@ -102,6 +105,7 @@ struct MySQLSessionFootprint: Equatable {
             let body = Self.executableBody(of: statement)
             observeTransaction(body, lexicalFeatures: lexicalFeatures)
             observeStatement(body)
+            observeTemporaryTableNames(body)
         }
     }
 
@@ -160,6 +164,25 @@ struct MySQLSessionFootprint: Equatable {
     /// that would have blocked it are tracked, so a clean footprint is the whole precondition.
     mutating func reset() {
         self = MySQLSessionFootprint()
+    }
+
+    private mutating func observeTemporaryTableNames(_ statement: String) {
+        let head = Self.collapsedHead(of: statement.prefix(Self.headLength).uppercased())
+        guard head.hasPrefix("CREATE") || head.hasPrefix("RENAME") || head.hasPrefix("ALTER") else { return }
+        if let created = MySQLTemporaryTableNames.created(by: statement) {
+            // `observeStatement` reads only the head, which misses `CREATE /*!32312 TEMPORARY */ TABLE`.
+            hasTemporaryTables = true
+            noteTemporaryTableName(created)
+        }
+        for rename in MySQLTemporaryTableNames.renames(in: statement)
+        where temporaryTableNames.contains(where: { $0.caseInsensitiveCompare(rename.from) == .orderedSame }) {
+            noteTemporaryTableName(rename.to)
+        }
+    }
+
+    private mutating func noteTemporaryTableName(_ name: String) {
+        guard !temporaryTableNames.contains(name) else { return }
+        temporaryTableNames.append(name)
     }
 
     mutating func holdSessionScope() {

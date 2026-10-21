@@ -207,17 +207,32 @@ final class QueryTabManager: ObservableObject {
     }
 
     func selectTab(at index: Int) {
-        let strip = visibleTabs
-        guard strip.indices.contains(index) else { return }
-        selectedTabId = strip[index].id
+        guard let id = tabId(at: index) else { return }
+        selectedTabId = id
     }
 
     func selectTab(offsetBy offset: Int) {
+        guard let id = tabId(offsetBy: offset) else { return }
+        selectedTabId = id
+    }
+
+    // On screen: the selected tab of the connection the key window shows.
+    func isShowing(_ id: UUID) -> Bool {
+        isFrontmost && selectedTabId == id
+    }
+
+    func tabId(at index: Int) -> UUID? {
         let strip = visibleTabs
-        guard !strip.isEmpty else { return }
+        guard strip.indices.contains(index) else { return nil }
+        return strip[index].id
+    }
+
+    func tabId(offsetBy offset: Int) -> UUID? {
+        let strip = visibleTabs
+        guard !strip.isEmpty else { return nil }
         let current = selectedTab.flatMap { tab in strip.firstIndex { $0.id == tab.id } } ?? 0
         let count = strip.count
-        selectedTabId = strip[((current + offset) % count + count) % count].id
+        return strip[((current + offset) % count + count) % count].id
     }
 
     // MARK: - Recency
@@ -454,13 +469,14 @@ final class QueryTabManager: ObservableObject {
     /// A table can legitimately hold more than one tab now, so plain array order would send a
     /// sidebar click on the table you are already looking at to the other copy of it.
     func tabShowingTable(
-        named tableName: String, databaseName: String, schemaName: String?
+        named tableName: String, databaseName: String, schemaName: String?, isTemporary: Bool = false
     ) -> QueryTab? {
         func matches(_ tab: QueryTab) -> Bool {
             tab.tabType == .table
                 && tab.tableContext.tableName == tableName
                 && tab.tableContext.databaseName == databaseName
                 && tab.tableContext.schemaName == schemaName
+                && tab.tableContext.isTemporary == isTemporary
         }
         if let selected = selectedTab, matches(selected) { return selected }
         return tabs.first(where: matches)
@@ -479,12 +495,13 @@ final class QueryTabManager: ObservableObject {
         schemaName: String? = nil,
         isView: Bool = false,
         objectType: TableInfo.TableType? = nil,
+        isTemporary: Bool = false,
         isPreview: Bool = false,
         allowsDuplicate: Bool = false,
         quoteIdentifier: ((String) -> String)? = nil
     ) throws -> Bool {
         if !allowsDuplicate, let existingTab = tabShowingTable(
-            named: tableName, databaseName: databaseName, schemaName: schemaName
+            named: tableName, databaseName: databaseName, schemaName: schemaName, isTemporary: isTemporary
         ) {
             selectedTabId = existingTab.id
             notifyTableOpened(
@@ -511,6 +528,7 @@ final class QueryTabManager: ObservableObject {
         newTab.pagination = PaginationState(pageSize: pageSize)
         newTab.tableContext.databaseName = databaseName
         newTab.tableContext.objectType = objectType
+        newTab.tableContext.isTemporary = isTemporary
         newTab.tableContext.schemaName = schemaName
         newTab.isPreview = isPreview
         tabs.append(newTab)
@@ -686,6 +704,7 @@ final class QueryTabManager: ObservableObject {
     func replaceTabContent(
         tableName: String, databaseType: DatabaseType = .mysql,
         isView: Bool = false, objectType: TableInfo.TableType? = nil,
+        isTemporary: Bool = false,
         databaseName: String = "",
         schemaName: String? = nil, isPreview: Bool = false,
         quoteIdentifier: ((String) -> String)? = nil
@@ -718,7 +737,8 @@ final class QueryTabManager: ObservableObject {
             schemaName: schemaName,
             isEditable: !isView,
             isView: isView,
-            objectType: objectType
+            objectType: objectType,
+            isTemporary: isTemporary
         )
         /// Fresh for the same reason. A query tab keeps the file it was opened from, and a table
         /// carried that binding, so Save wrote the table's query into the file.

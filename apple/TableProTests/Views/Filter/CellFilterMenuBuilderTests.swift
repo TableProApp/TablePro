@@ -83,6 +83,13 @@ struct CellFilterMenuBuilderTests {
         #expect(operators(.bytes(Data([0x01, 0x02])), type: .blob(rawType: "BLOB")).isEmpty)
     }
 
+    @Test("SQL Server's legacy TEXT offers nothing, TEXT on other engines compares")
+    func sqlServerTextHasNoEquality() {
+        let text = ColumnType.text(rawType: "text")
+        #expect(CellFilterMenuBuilder.conditions(columnName: "c", columnType: text, value: "x", family: .mssql).isEmpty)
+        #expect(CellFilterMenuBuilder.conditions(columnName: "c", columnType: text, value: "x", family: .mysql).count == 2)
+    }
+
     @Test("A value over the length cap offers nothing")
     func overlongValue() {
         let atCap = String(repeating: "x", count: CellFilterMenuBuilder.maxValueLength)
