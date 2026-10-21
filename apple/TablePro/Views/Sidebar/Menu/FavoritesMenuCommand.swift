@@ -35,6 +35,10 @@ internal enum FavoritesMenuCommand: Equatable {
     case showLinkedFileHistory(LinkedSQLFavorite)
     case discardLinkedFileChanges(LinkedSQLFavorite)
 
+    case copyPath(String)
+    case copyRelativePath(String)
+    case revealLinkedSubfolder(URL)
+
     case revealLinkedFolder(LinkedSQLFolder)
     case setLinkedFolderEnabled(LinkedSQLFolder, Bool)
     case reloadLinkedFolders

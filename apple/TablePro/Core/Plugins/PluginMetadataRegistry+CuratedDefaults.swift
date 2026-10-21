@@ -219,6 +219,16 @@ extension PluginMetadataRegistry {
 
         let awsIAMFields = AWSAuthFields.standard() + [AWSAuthFields.rdsEndpointField()]
 
+        let redshiftIAMFields = AWSAuthFields.standard() + [
+            ConnectionField(
+                id: RedshiftIAMSignIn.endpointFieldId,
+                label: String(localized: "Redshift Endpoint"),
+                placeholder: "my-cluster.abc123.us-east-1.redshift.amazonaws.com",
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "awsAuth", values: ["accessKey", "profile", "sso"])
+            )
+        ]
+
         /// Cloud SQL signs IAM principals in to MySQL and PostgreSQL only, so SQL Server and the
         /// MySQL and PostgreSQL forks keep the AWS-only picker.
         let cloudIAMFields = GoogleCloudSQLAuthFields.standardWithAWS() + [AWSAuthFields.rdsEndpointField()]
@@ -453,7 +463,8 @@ extension PluginMetadataRegistry {
                     additionalConnectionFields: [pgpassField, connectionOptionsField] + cloudIAMFields,
                     category: .relational,
                     tagline: String(localized: "Advanced object-relational SQL"),
-                    defaultUnixSocketPath: "/var/run/postgresql/.s.PGSQL.5432"
+                    defaultUnixSocketPath: "/var/run/postgresql/.s.PGSQL.5432",
+                    defaultLocalSocketPath: PostgreSQLLocalSocket.defaultDirectory
                 )
             )),
             ("Redshift", PluginMetadataSnapshot(
@@ -506,7 +517,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: postgresqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [pgpassField, connectionOptionsField],
+                    additionalConnectionFields: [pgpassField, connectionOptionsField] + redshiftIAMFields,
                     category: .analytical,
                     tagline: String(localized: "Amazon's columnar warehouse on Postgres")
                 )

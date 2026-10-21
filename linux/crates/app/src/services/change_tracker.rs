@@ -834,9 +834,9 @@ impl TabChangeTracker {
         }
     }
 
-    /// Take what Save writes, and hold it as in flight until it settles.
-    /// `None` when there is nothing to save.
-    pub(crate) fn begin_save(&mut self) -> Result<Option<SaveBatch>, SaveRejection> {
+    /// What Save would write now, leaving it all in place. `None` when
+    /// there is nothing to save.
+    pub(crate) fn preview_save(&self) -> Result<Option<(SaveTarget, TrackedChanges)>, SaveRejection> {
         if self.outcome_unknown.is_some() {
             return Err(SaveRejection::OutcomeUnknown);
         }
@@ -853,9 +853,15 @@ impl TabChangeTracker {
             return Err(SaveRejection::ColumnsNotRead);
         };
         let changes = self.change_set(&target.columns).map_err(SaveRejection::Build)?;
-        if changes.changes.is_empty() {
+        Ok((!changes.changes.is_empty()).then_some((target, changes)))
+    }
+
+    /// Take what Save writes, and hold it as in flight until it settles.
+    /// `None` when there is nothing to save.
+    pub(crate) fn begin_save(&mut self) -> Result<Option<SaveBatch>, SaveRejection> {
+        let Some((target, changes)) = self.preview_save()? else {
             return Ok(None);
-        }
+        };
         let snapshot = SaveSnapshot(self.next_touch);
         let written = self
             .updates

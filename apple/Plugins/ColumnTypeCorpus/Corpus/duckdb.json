@@ -1,0 +1,239 @@
+{
+  "engine": "duckdb",
+  "databaseTypeId": "DuckDB",
+  "typeList": "Plugins/DuckDBDriverPlugin/DuckDBPlugin.swift",
+  "createTable": "CREATE TABLE {table} ({id} INTEGER PRIMARY KEY, {column} {type})",
+  "columns": [
+    {
+      "type": "TINYINT",
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "-128", "cell": "-128"}, {"sql": "127", "cell": "127"}],
+      "edit": {"text": "12", "cell": "12"}
+    },
+    {
+      "type": "SMALLINT",
+      "values": [{"sql": "-32768", "cell": "-32768"}],
+      "edit": {"text": "1", "cell": "1"}
+    },
+    {
+      "type": "INTEGER",
+      "values": [{"sql": "2147483647", "cell": "2147483647"}],
+      "edit": {"text": "-2", "cell": "-2"}
+    },
+    {
+      "type": "BIGINT",
+      "values": [{"sql": "-9223372036854775808", "cell": "-9223372036854775808"}],
+      "edit": {"text": "9223372036854775807", "cell": "9223372036854775807"}
+    },
+    {
+      "type": "HUGEINT",
+      "values": [
+        {"sql": "170141183460469231731687303715884105727", "cell": "170141183460469231731687303715884105727"}
+      ],
+      "edit": {"text": "-3", "cell": "-3"}
+    },
+    {
+      "type": "UTINYINT",
+      "values": [{"sql": "255", "cell": "255"}],
+      "edit": {"text": "4", "cell": "4"}
+    },
+    {
+      "type": "USMALLINT",
+      "values": [{"sql": "65535", "cell": "65535"}],
+      "edit": {"text": "5", "cell": "5"}
+    },
+    {
+      "type": "UINTEGER",
+      "values": [{"sql": "4294967295", "cell": "4294967295"}],
+      "edit": {"text": "6", "cell": "6"}
+    },
+    {
+      "type": "UBIGINT",
+      "values": [{"sql": "18446744073709551615", "cell": "18446744073709551615"}],
+      "edit": {"text": "7", "cell": "7"}
+    },
+    {
+      "type": "UHUGEINT",
+      "covers": [],
+      "values": [
+        {"sql": "340282366920938463463374607431768211455", "cell": "340282366920938463463374607431768211455"}
+      ],
+      "edit": {"text": "8", "cell": "8"}
+    },
+    {
+      "type": "FLOAT",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "1.5", "cell": "1.5"},
+        {"sql": "'-inf'", "cell": "-inf"},
+        {"sql": "'nan'", "cell": "nan"}
+      ],
+      "edit": {"text": "2.25", "cell": "2.25"}
+    },
+    {
+      "type": "DOUBLE",
+      "values": [
+        {"sql": "0.1", "cell": "0.1"},
+        {"sql": "1.7976931348623157e308", "cell": "1.7976931348623157e+308"}
+      ],
+      "edit": {"text": "-0.5", "cell": "-0.5"}
+    },
+    {
+      "type": "DECIMAL(38,10)",
+      "covers": ["DECIMAL"],
+      "values": [
+        {"sql": "1234567890123456789012345678.0123456789", "cell": "1234567890123456789012345678.0123456789"},
+        {"sql": "-0.5", "cell": "-0.5000000000"}
+      ],
+      "edit": {"text": "1.1", "cell": "1.1000000000"}
+    },
+    {
+      "type": "NUMERIC(10,2)",
+      "covers": ["NUMERIC"],
+      "values": [{"sql": "123.4", "cell": "123.40"}],
+      "edit": {"text": "99.99", "cell": "99.99"}
+    },
+    {
+      "type": "VARCHAR",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "''", "cell": ""},
+        {"sql": "'Ünïcödé ✓ 日本語 🦄'", "cell": "Ünïcödé ✓ 日本語 🦄"},
+        {"sql": "'line one' || chr(10) || 'line two'", "cell": "line one\nline two"},
+        {"sql": "'back\\slash ''quote'' \"double\"'", "cell": "back\\slash 'quote' \"double\""},
+        {"sql": "'true'", "cell": "true"},
+        {"sql": "'=1+1'", "cell": "=1+1"}
+      ],
+      "edit": {"text": "edited, \"quoted\"", "cell": "edited, \"quoted\""}
+    },
+    {
+      "type": "TEXT",
+      "values": [{"sql": "'text'", "cell": "text"}],
+      "edit": {"text": "", "cell": ""}
+    },
+    {
+      "type": "CHAR",
+      "values": [{"sql": "'c'", "cell": "c"}],
+      "edit": {"text": "d", "cell": "d"}
+    },
+    {
+      "type": "BPCHAR",
+      "values": [{"sql": "'bp'", "cell": "bp"}],
+      "edit": {"text": "q", "cell": "q"}
+    },
+    {
+      "type": "DATE",
+      "values": [
+        {"sql": "'2026-10-20'", "cell": "2026-10-20"},
+        {"sql": "'0001-01-01'", "cell": "0001-01-01"},
+        {"sql": "'infinity'", "cell": "infinity"}
+      ],
+      "edit": {"text": "2000-02-29", "cell": "2000-02-29"}
+    },
+    {
+      "type": "TIME",
+      "values": [{"sql": "'23:59:59.999999'", "cell": "23:59:59.999999"}],
+      "edit": {"text": "12:00:00", "cell": "12:00:00"}
+    },
+    {
+      "type": "TIMESTAMP",
+      "values": [{"sql": "'2026-10-20 15:22:20.123456'", "cell": "2026-10-20 15:22:20.123456"}],
+      "edit": {"text": "1999-12-31 23:59:59", "cell": "1999-12-31 23:59:59"}
+    },
+    {
+      "type": "TIMESTAMPTZ",
+      "values": [{"sql": "'2026-10-20 15:22:20+00'", "cell": "2026-10-20 15:22:20+00"}],
+      "edit": {"text": "2000-01-01 00:00:00+00", "cell": "2000-01-01 00:00:00+00"}
+    },
+    {
+      "type": "TIMESTAMP_S",
+      "values": [{"sql": "'2026-10-20 15:22:20'", "cell": "2026-10-20 15:22:20"}],
+      "edit": {"text": "2000-01-01 00:00:01", "cell": "2000-01-01 00:00:01"}
+    },
+    {
+      "type": "TIMESTAMP_MS",
+      "values": [{"sql": "'2026-10-20 15:22:20.123'", "cell": "2026-10-20 15:22:20.123"}],
+      "edit": {"text": "2000-01-01 00:00:00.5", "cell": "2000-01-01 00:00:00.5"}
+    },
+    {
+      "type": "TIMESTAMP_NS",
+      "values": [{"sql": "'2026-10-20 15:22:20.123456789'", "cell": "2026-10-20 15:22:20.123456789"}],
+      "edit": {"text": "2000-01-01 00:00:00.000000001", "cell": "2000-01-01 00:00:00.000000001"}
+    },
+    {
+      "type": "INTERVAL",
+      "values": [{"sql": "INTERVAL '1 year 2 months 3 days 04:05:06'", "cell": "1 year 2 months 3 days 04:05:06"}],
+      "edit": {"text": "2 hours", "cell": "02:00:00"}
+    },
+    {
+      "type": "BLOB",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "'\\xAA\\xBB'::BLOB", "cell": "0xAABB"},
+        {"sql": "''::BLOB", "cell": "0x"}
+      ],
+      "edit": {"hex": "DEADBEEF", "cell": "0xDEADBEEF"}
+    },
+    {
+      "type": "BYTEA",
+      "values": [{"sql": "'\\x00\\xFF'::BLOB", "cell": "0x00FF"}],
+      "edit": {"hex": "01", "cell": "0x01"}
+    },
+    {
+      "type": "BIT",
+      "values": [{"sql": "'101010'::BIT", "cell": "101010"}],
+      "edit": {"text": "1111", "cell": "1111"}
+    },
+    {
+      "type": "BITSTRING",
+      "values": [{"sql": "'0001'::BITSTRING", "cell": "0001"}],
+      "edit": {"text": "10", "cell": "10"}
+    },
+    {
+      "type": "BOOLEAN",
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "true", "cell": "true"}, {"sql": "false", "cell": "false"}],
+      "edit": {"text": "false", "cell": "false"}
+    },
+    {
+      "type": "JSON",
+      "values": [{"sql": "'{\"b\": 1, \"a\": [2, 3]}'", "cell": "{\"b\": 1, \"a\": [2, 3]}"}],
+      "edit": {"text": "[1,2]", "cell": "[1,2]"}
+    },
+    {
+      "type": "UUID",
+      "values": [{"sql": "'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'", "cell": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"}],
+      "edit": {"text": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12", "cell": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12"}
+    },
+    {
+      "type": "INTEGER[]",
+      "covers": ["LIST"],
+      "values": [{"sql": "[1, 2, NULL]", "cell": "[1, 2, NULL]"}, {"sql": "[]", "cell": "[]"}],
+      "edit": {"text": "[4, 5]", "cell": "[4, 5]"}
+    },
+    {
+      "type": "VARCHAR[][]",
+      "covers": [],
+      "values": [{"sql": "[['a', 'b'], ['it''s']]", "cell": "[[a, b], ['it\\'s']]"}],
+      "edit": {"text": "[[x]]", "cell": "[[x]]"}
+    },
+    {
+      "type": "STRUCT(a INTEGER, b VARCHAR)",
+      "values": [{"sql": "{'a': 1, 'b': 'x'}", "cell": "{'a': 1, 'b': x}"}],
+      "edit": {"text": "{'a': 2, 'b': 'y'}", "cell": "{'a': 2, 'b': y}"}
+    },
+    {
+      "type": "MAP(VARCHAR, INTEGER)",
+      "values": [{"sql": "MAP {'a': 1, 'b': 2}", "cell": "{a=1, b=2}"}],
+      "edit": {"text": "{c=3}", "cell": "{c=3}"}
+    },
+    {
+      "type": "UNION(num INTEGER, str VARCHAR)",
+      "values": [{"sql": "union_value(num := 2)", "cell": "2"}, {"sql": "union_value(str := 'x')", "cell": "x"}],
+      "edit": {"text": "9", "cell": "9"}
+    },
+    {
+      "type": "ENUM('sad', 'ok', 'happy')",
+      "values": [{"sql": "'sad'", "cell": "sad"}, {"sql": "NULL", "cell": null}],
+      "edit": {"text": "happy", "cell": "happy"}
+    }
+  ]
+}

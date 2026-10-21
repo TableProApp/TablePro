@@ -117,6 +117,11 @@ jobs:
       - name: Check every test target is in its test plan
         run: python3 apple/scripts/ci/check-test-plans.py
 
+      # The corpora run by hand against servers (scripts/probes/check-column-type-corpus.sh), so a type a driver
+      # starts listing is caught here.
+      - name: Check every listed column type has a corpus column
+        run: python3 apple/scripts/ci/check-column-type-corpus.py
+
       - name: Set up Go
         if: inputs.hana
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

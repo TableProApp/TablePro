@@ -209,6 +209,8 @@ struct ConnectionFormEditsTests {
     @Test("The app-managed field set covers the keys no plugin declares")
     func appManagedFieldSet() {
         #expect(ConnectionFormEdits.appManagedAdditionalFieldIDs.contains("preConnectScript"))
+        #expect(ConnectionFormEdits.appManagedAdditionalFieldIDs.contains(DatabaseConnection.postDisconnectScriptKey))
+        #expect(ConnectionFormEdits.appManagedAdditionalFieldIDs.contains(DatabaseConnection.scriptTimeoutSecondsKey))
         #expect(ConnectionFormEdits.appManagedAdditionalFieldIDs.contains("promptForPassword"))
         #expect(
             ConnectionFormEdits.appManagedAdditionalFieldIDs

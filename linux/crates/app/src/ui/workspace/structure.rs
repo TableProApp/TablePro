@@ -11,7 +11,7 @@ use uuid::Uuid;
 use tablepro_core::ddl::{BuildDdlError, DdlOperation, DropTableOptions, InboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{ObjectScope, TableRef};
-use tablepro_core::{DriverError, WriteKind};
+use tablepro_core::{DriverError, SafeModeLevel, WriteKind};
 use tablepro_session::runtime::TaskFailure;
 use tablepro_session::{OperationError, OperationKind, Session};
 
@@ -23,6 +23,12 @@ use crate::ui::workspace::{WorkspaceInput, WorkspaceModel, WorkspaceTab};
 use super::structure_target::StructureTarget;
 use super::tab_spec::{TabSpec, TablePage};
 use crate::workspace::run_schema_plan;
+
+/// The drop the prompt shows is the drop that runs.
+const DROP_OPTIONS: DropTableOptions = DropTableOptions {
+    if_exists: true,
+    cascade: false,
+};
 
 impl WorkspaceModel {
     /// Sidebar right-click → "New Table…" or schema-header "+" button.
@@ -113,6 +119,12 @@ impl WorkspaceModel {
             "All rows and the table definition will be removed. This can't be undone from inside TablePro.",
         );
         let dialog = adw::AlertDialog::new(Some(&title), Some(&body));
+        if let Some((connection, sql)) = self.drop_asked_first(table) {
+            let asks = crate::ui::write_confirmation::asks_before_writes(&connection);
+            dialog.set_body(&format!("{asks}\n{body}"));
+            dialog.set_prefer_wide_layout(true);
+            dialog.set_extra_child(Some(&crate::ui::review_dialog::sql_view(&sql, &dialog)));
+        }
         dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
         dialog.add_response("drop", &crate::i18n::gettext("Drop"));
         dialog.set_response_appearance("drop", adw::ResponseAppearance::Destructive);
@@ -129,6 +141,19 @@ impl WorkspaceModel {
             }
         });
         dialog.present(self.dialog_parent().as_ref());
+    }
+
+    /// The connection and the DROP it would run, when its Safe Mode asks
+    /// before every write and so shows the statement too.
+    fn drop_asked_first(&self, table: &TableRef) -> Option<(String, String)> {
+        let session = self
+            .context
+            .active
+            .get()
+            .filter(|session| session.safe_mode() == SafeModeLevel::ConfirmWrites)?;
+        let dialect = session.current_dialect()?;
+        let plan = dialect.ddl()?.plan_drop_table(table, DROP_OPTIONS).ok()?;
+        Some((session.metadata().name.clone(), plan.preview()))
     }
 
     /// User confirmed the drop. Run DROP TABLE async; only close any
@@ -155,10 +180,7 @@ impl WorkspaceModel {
             return;
         };
         let dropped = TableRef::new(schema, table);
-        let options = DropTableOptions {
-            if_exists: true,
-            cascade: false,
-        };
+        let options = DROP_OPTIONS;
         let table = dropped.clone();
         let cancel = ticket.cancel.clone();
         let work = async move {

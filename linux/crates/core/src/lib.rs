@@ -46,6 +46,7 @@ mod result_event;
 mod result_sink;
 mod row_limit;
 mod run_options;
+mod safe_mode_level;
 pub mod save;
 mod server_diagnostics;
 mod server_info;
@@ -123,6 +124,7 @@ pub use result_event::{ResultEvent, RunEnd, RunSummary, ServerNotice, Truncation
 pub use result_sink::{ResultSink, SinkFlow};
 pub use row_limit::RowLimit;
 pub use run_options::RunOptions;
+pub use safe_mode_level::{SafeModeLevel, WriteGate};
 pub use server_diagnostics::{ServerCode, ServerDiagnostics};
 pub use server_info::ServerInfo;
 pub use server_name_override::ServerNameOverride;

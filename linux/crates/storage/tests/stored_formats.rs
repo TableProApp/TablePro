@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use tablepro_core::{AuthMode, ClientIdentity, TlsConfig, TlsMode};
+use tablepro_core::{AuthMode, ClientIdentity, SafeModeLevel, TlsConfig, TlsMode};
 use tablepro_storage::{
     ConnectionColor, ConnectionGroupName, ConnectionStore, SavedConnection, SavedSshAuth, SavedSshConfig, StoragePaths,
 };
@@ -19,6 +19,7 @@ use uuid::Uuid;
 type TestResult = Result<(), Box<dyn Error>>;
 
 const CONNECTIONS_V1: &[u8] = include_bytes!("fixtures/connections-v1.json");
+const CONNECTIONS_V2: &[u8] = include_bytes!("fixtures/connections-v2.json");
 
 fn connections_from(root: &Path, bytes: &[u8]) -> Result<Arc<[SavedConnection]>, Box<dyn Error>> {
     let paths = StoragePaths::under(root, "tablepro", "app.tablepro.TablePro");
@@ -55,7 +56,7 @@ fn saved(id: &str, name: &str, driver_id: &str, host: &str, port: u16) -> Result
         database: String::new(),
         username: String::new(),
         tls: tls(TlsMode::Disable),
-        read_only: false,
+        safe_mode: SafeModeLevel::Off,
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,
@@ -142,6 +143,21 @@ fn connections_v1_model() -> Result<Vec<SavedConnection>, Box<dyn Error>> {
     ])
 }
 
+/// Version 2 replaced the read-only switch with the Safe Mode level;
+/// its fixture has Staging asking before writes.
+fn connections_v2_model() -> Result<Vec<SavedConnection>, Box<dyn Error>> {
+    Ok(connections_v1_model()?
+        .into_iter()
+        .map(|connection| match connection.name.as_str() {
+            "Staging" => SavedConnection {
+                safe_mode: SafeModeLevel::ConfirmWrites,
+                ..connection
+            },
+            _ => connection,
+        })
+        .collect())
+}
+
 fn production_orders(group: Option<ConnectionGroupName>) -> Result<SavedConnection, Box<dyn Error>> {
     Ok(SavedConnection {
         database: "orders".to_owned(),
@@ -155,7 +171,7 @@ fn production_orders(group: Option<ConnectionGroupName>) -> Result<SavedConnecti
             }),
             server_name: Some("mysql.example.com".to_owned()),
         },
-        read_only: true,
+        safe_mode: SafeModeLevel::ReadOnly,
         ssh: Some(SavedSshConfig {
             port: Some(2222),
             username: Some("deploy".to_owned()),
@@ -214,6 +230,52 @@ fn a_version_1_connection_list_reads_as_it_was_written() -> TestResult {
     let read = connections_from(root.path(), CONNECTIONS_V1)?;
 
     assert_eq!(read.as_ref(), connections_v1_model()?.as_slice());
+    Ok(())
+}
+
+#[test]
+fn a_version_1_read_only_switch_reads_as_a_safe_mode_level() -> TestResult {
+    let root = tempfile::tempdir()?;
+
+    let read = connections_from(root.path(), CONNECTIONS_V1)?;
+
+    let levels: Vec<(&str, SafeModeLevel)> = read
+        .iter()
+        .map(|connection| (connection.name.as_str(), connection.safe_mode))
+        .collect();
+    assert!(levels.contains(&("Production orders", SafeModeLevel::ReadOnly)));
+    assert!(
+        levels
+            .iter()
+            .filter(|(name, _)| *name != "Production orders")
+            .all(|(_, level)| *level == SafeModeLevel::Off)
+    );
+    Ok(())
+}
+
+#[test]
+fn a_version_2_connection_list_reads_as_it_was_written() -> TestResult {
+    let root = tempfile::tempdir()?;
+
+    let read = connections_from(root.path(), CONNECTIONS_V2)?;
+
+    assert_eq!(read.as_ref(), connections_v2_model()?.as_slice());
+    Ok(())
+}
+
+#[test]
+fn a_version_2_list_writes_back_as_it_was_read() -> TestResult {
+    let root = tempfile::tempdir()?;
+    let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
+    let store = ConnectionStore::new(&paths);
+    store.import_blocking(Path::new("/tmp/connections-v2.json"), CONNECTIONS_V2)?;
+
+    let exported = store.export_blocking()?;
+    let again = tempfile::tempdir()?;
+    let read = connections_from(again.path(), &exported)?;
+
+    assert_eq!(read.as_ref(), store.load_blocking()?.as_ref());
+    assert!(String::from_utf8_lossy(&exported).contains("\"safe_mode\": \"confirm_writes\""));
     Ok(())
 }
 

@@ -330,6 +330,23 @@ struct NativeDumpRegistryTests {
         }
     }
 
+    @Test("A PostgreSQL socket goes to -h as its directory, with the port its file is named after", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func postgresEndpointFollowsTheSocket(kind: NativeDumpKind) throws {
+        var socket = connection(type: .postgresql, host: "db.example.com", port: 5_432, sslMode: .verifyIdentity, sslEnabled: true)
+        socket.additionalFields[MySQLLocalSocket.fieldKey] = "/tmp/.s.PGSQL.5433"
+        let built = try command(.postgresql, kind: kind, connection: socket)
+        #expect(built.arguments.starts(with: ["--no-password", "-h", "/tmp", "-p", "5433"]))
+        #expect(!built.arguments.contains("db.example.com"))
+        #expect(built.environment["PGSSLMODE"] == nil)
+
+        var directory = connection(type: .postgresql, port: 5_434)
+        directory.additionalFields[MySQLLocalSocket.fieldKey] = "/var/run/postgresql"
+        let fromDirectory = try command(.postgresql, kind: kind, connection: directory)
+        #expect(fromDirectory.arguments.starts(with: ["--no-password", "-h", "/var/run/postgresql", "-p", "5434"]))
+    }
+
     /// Measured, MariaDB 12.3.3 answers any `--ssl-mode` with `unknown variable` and exit 7, and
     /// MySQL 8.4.11 answers `--ssl` with `unknown option` and exit 2, so neither spelling may reach
     /// the other family's tool in either direction (#3046).

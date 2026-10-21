@@ -51,7 +51,7 @@ extension DatabaseManager {
             try await preConnectScriptConsent.authorize(connection, trigger: trigger)
             /// The answer can take a minute, long enough for the person to cancel the attempt.
             guard !isAttemptCancelled(attempt, for: connection.id) else { throw CancellationError() }
-            try await runPreConnectScriptIfNeeded(resolvedConnection, attempt: attempt)
+            try await runPreConnectScriptIfNeeded(connection, resolvedConnection: resolvedConnection, attempt: attempt)
         } catch {
             finalizeConnectionFailure(
                 for: connection.id,
@@ -280,17 +280,43 @@ extension DatabaseManager {
         return queryTimeoutSeconds
     }
 
+    // Runs the text consent showed: bash expands its variables, never `EnvVarResolver`.
     private func runPreConnectScriptIfNeeded(
         _ connection: DatabaseConnection,
+        resolvedConnection: DatabaseConnection,
         attempt: Int
     ) async throws {
-        guard let script = connection.preConnectScript,
-              !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else {
-            return
-        }
+        guard let script = connection.trimmedPreConnectScript else { return }
         reportStage(.runningPreConnectScript, attempt: attempt, for: connection.id)
-        try await PreConnectHookRunner.run(script: script)
+        await postDisconnectScripts.finish(for: connection.id)
+        guard !postDisconnectScripts.isDraining else { throw CancellationError() }
+        postDisconnectScripts.setupStarted()
+        defer { postDisconnectScripts.setupEnded() }
+        let context = ConnectionScriptContext(connection: resolvedConnection)
+        let timeoutSeconds = connection.effectiveScriptTimeoutSeconds
+        let outcome = try await ConnectionScriptRunner.run(
+            script,
+            environment: context.environment,
+            timeoutSeconds: timeoutSeconds
+        )
+        switch outcome {
+        case .succeeded:
+            break
+        case let .failed(exitCode, stderr):
+            throw PreConnectScriptError.failed(exitCode: exitCode, stderr: stderr)
+        case .timedOut:
+            throw PreConnectScriptError.timedOut(seconds: timeoutSeconds)
+        }
+
+        guard let postDisconnectScript = connection.trimmedPostDisconnectScript else { return }
+        postDisconnectScripts.arm(
+            PendingPostDisconnectScript(script: postDisconnectScript, context: context, timeoutSeconds: timeoutSeconds),
+            for: connection.id
+        )
+        // A cancel that already removed the session entry would otherwise leave it armed until quit.
+        if isAttemptCancelled(attempt, for: connection.id), activeSessions[connection.id] == nil {
+            postDisconnectScripts.fire(for: connection.id)
+        }
     }
 
     private func isAttemptCancelled(_ attempt: Int, for connectionId: UUID) -> Bool {
@@ -315,15 +341,8 @@ extension DatabaseManager {
         return resolved
     }
 
-    /// The classified error is recorded before the session entry goes away. Only the window that
-    /// started an attempt learns the outcome directly, so without this a connect kicked off from
-    /// anywhere else leaves the window to infer "the connection was closed" from an empty slot
-    /// while the real reason is thrown away.
-    /// `attempt` is what keeps a late failure from clearing a newer attempt's step. A cancelled
-    /// connect blocked in a C call returns after the retry has already begun and reported its own
-    /// step, and a clear keyed on the connection alone would take that one away, leaving a window
-    /// that joins the retry seeding nothing. Omitting it means the caller owns no attempt, which
-    /// is the tunnel teardown path.
+    // The reason is recorded before the entry goes, for windows that did not start the attempt.
+    // `attempt` keeps a late failure from clearing a newer attempt's step; nil is the tunnel teardown.
     internal func finalizeConnectionFailure(
         for connectionId: UUID,
         cancelled: Bool,
@@ -782,6 +801,18 @@ extension DatabaseManager {
         )
     }
 
+    // Closes the connections a cleanup script may need gone, but keeps the entries "Reopen Last Session" reads.
+    func runPostDisconnectScriptsBeforeQuit() async {
+        await postDisconnectScripts.fireAllAndWait { connectionIds in
+            for connectionId in connectionIds {
+                await self.stopHealthMonitor(for: connectionId)
+                self.activeSessions[connectionId]?.driver?.disconnect()
+                MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
+                self.sessionLanes.closeAll(for: connectionId)
+            }
+        }
+    }
+
     func disconnectAll() async {
         let monitorIds = Array(healthMonitors.keys)
         for sessionId in monitorIds {
@@ -1040,13 +1071,10 @@ extension DatabaseManager {
         userRequestedDisconnects.contains(connectionId)
     }
 
-    /// Drains the driver gate in the same step the entry goes, so nothing still queued for this
-    /// session wakes to find a reopened one under the same id and runs there.
-    /// The pooled connections go with the entry, whichever path removed it. Only a user disconnect
-    /// used to close them, so a connect that failed or was cancelled left them open on the server
-    /// until the idle sweep, and a new session under the same id could be answered by the old ones.
+    // Every path that ends a session comes through here, so the gate, the pool and the post-disconnect script go with the entry.
     internal func removeSessionEntry(for connectionId: UUID) {
         activeSessions.removeValue(forKey: connectionId)
+        postDisconnectScripts.fire(for: connectionId)
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
         sessionLanes.closeAll(for: connectionId)
         monitorPingedDrivers.removeValue(forKey: connectionId)

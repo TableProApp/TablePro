@@ -123,7 +123,7 @@ impl SessionWindow {
                     .drivers
                     .get(&saved.driver_id)
                     .is_some_and(|driver| driver.capabilities().is_file_based());
-                (file_based && !saved.read_only).then(|| PathBuf::from(&saved.database))
+                (file_based && !saved.safe_mode.blocks_writes()).then(|| PathBuf::from(&saved.database))
             }
             ConnectSource::Intent(intent) => match &intent.request.target {
                 RequestTarget::File(endpoint)
@@ -300,7 +300,7 @@ mod tests {
         let test = TestWindow::picker("ShareSavedReadOnly");
         test.window.imp().classify_location.set(Some(on_a_share));
         let mut saved = test.saved.clone();
-        saved.read_only = true;
+        saved.safe_mode = tablepro_core::SafeModeLevel::ReadOnly;
         test.services
             .storage
             .connections()

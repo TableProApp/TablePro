@@ -15,6 +15,13 @@ internal extension DatabaseConnection {
     var hasPreConnectScript: Bool {
         trimmedPreConnectScript != nil
     }
+
+    // Runs only for a session whose pre-connect script ran, so it never stands on its own.
+    var trimmedPostDisconnectScript: String? {
+        guard hasPreConnectScript, let script = postDisconnectScript else { return nil }
+        let trimmed = script.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 }
 
 internal enum ConnectTrigger: Sendable, Equatable {
@@ -26,7 +33,7 @@ internal enum ConnectTrigger: Sendable, Equatable {
 
 @MainActor
 internal protocol PreConnectScriptAsking {
-    func ask(connectionName: String, script: String) async -> ConsentAnswer
+    func ask(connectionName: String, script: String, postDisconnectScript: String?) async -> ConsentAnswer
 }
 
 internal enum PreConnectScriptConsentError: Error, Equatable, Sendable {
@@ -69,6 +76,7 @@ extension PreConnectScriptConsentError: LocalizedError {
 internal final class PreConnectScriptConsent {
     private struct Approval {
         let script: String
+        let postDisconnectScript: String?
         let expiresAt: ContinuousClock.Instant
     }
 
@@ -89,8 +97,17 @@ internal final class PreConnectScriptConsent {
 
     internal func confirm(_ connection: DatabaseConnection) async -> Bool {
         guard let script = connection.trimmedPreConnectScript else { return true }
-        guard await asker.ask(connectionName: connection.name, script: script) == .approved else { return false }
-        approvals[connection.id] = Approval(script: script, expiresAt: now() + Self.approvalLifetime)
+        let postDisconnectScript = connection.trimmedPostDisconnectScript
+        guard await asker.ask(
+            connectionName: connection.name,
+            script: script,
+            postDisconnectScript: postDisconnectScript
+        ) == .approved else { return false }
+        approvals[connection.id] = Approval(
+            script: script,
+            postDisconnectScript: postDisconnectScript,
+            expiresAt: now() + Self.approvalLifetime
+        )
         return true
     }
 
@@ -101,13 +118,19 @@ internal final class PreConnectScriptConsent {
     /// An approval is spent by one connect, and only for the script text it was given for.
     internal func authorize(_ connection: DatabaseConnection, trigger: ConnectTrigger) async throws {
         guard let script = connection.trimmedPreConnectScript else { return }
+        let postDisconnectScript = connection.trimmedPostDisconnectScript
         if let approval = approvals.removeValue(forKey: connection.id),
            approval.script == script,
+           approval.postDisconnectScript == postDisconnectScript,
            approval.expiresAt > now() {
             return
         }
         guard trigger == .request else { throw PreConnectScriptConsentError.needsPerson }
-        switch await asker.ask(connectionName: connection.name, script: script) {
+        switch await asker.ask(
+            connectionName: connection.name,
+            script: script,
+            postDisconnectScript: postDisconnectScript
+        ) {
         case .approved:
             return
         case .declined:

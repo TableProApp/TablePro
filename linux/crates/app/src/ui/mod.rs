@@ -28,6 +28,7 @@ mod picker;
 mod plain_toast;
 mod preferences_dialog;
 mod result_pane;
+pub(crate) mod safe_mode;
 mod saved_queries_dialog;
 mod session_window;
 mod shell;
@@ -40,6 +41,7 @@ mod tab_load;
 mod welcome_view;
 mod window_geometry;
 mod workspace;
+pub(crate) mod write_confirmation;
 
 pub(crate) use plain_toast::plain_toast;
 pub(crate) use preferences_dialog::PreferencesDialog;

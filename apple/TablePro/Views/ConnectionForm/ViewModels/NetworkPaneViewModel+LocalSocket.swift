@@ -20,8 +20,20 @@ extension NetworkPaneViewModel {
         supportsLocalSocket && endpoint == .localSocket
     }
 
+    var localSocketIsDirectory: Bool {
+        type.localSocketIsDirectory
+    }
+
+    var localSocketSkipsTLS: Bool {
+        usesLocalSocket && localSocketIsDirectory
+    }
+
     var localSocketPrompt: String {
         PluginManager.shared.defaultLocalSocketPath(for: type) ?? MySQLLocalSocket.defaultPath
+    }
+
+    var localSocketSuggestions: [String] {
+        localSocketIsDirectory ? PostgreSQLLocalSocket.commonDirectories : []
     }
 
     // The driver hands the path to connect(2) unchanged, so `~` is expanded here.
@@ -31,22 +43,30 @@ extension NetworkPaneViewModel {
         return (trimmed as NSString).expandingTildeInPath
     }
 
+    var resolvedLocalSocketEndpoint: LocalSocketEndpoint? {
+        guard usesLocalSocket, let path = resolvedLocalSocketPath else { return nil }
+        return LocalSocketEndpoint(path: path, port: resolvedPort, type: type)
+    }
+
+    var pgpassEndpoint: (host: String, port: Int) {
+        if localSocketIsDirectory, let socket = resolvedLocalSocketEndpoint {
+            return (PostgreSQLLocalSocket.pgpassHost(forHost: socket.path), socket.port)
+        }
+        return (PostgreSQLLocalSocket.pgpassHost(forHost: resolvedHost), resolvedPort)
+    }
+
     var localSocketIssues: [String] {
         guard usesLocalSocket else { return [] }
-        guard let path = resolvedLocalSocketPath else {
+        guard let endpoint = resolvedLocalSocketEndpoint else {
             return [String(format: String(localized: "%@ is required"), String(localized: "Socket"))]
         }
-        guard let issue = MySQLLocalSocket.issue(for: path) else { return [] }
-        return [issue.message]
+        return endpoint.issue.map { [$0] } ?? []
     }
 
     // Advisory only: the server may start after the connection is saved.
     var localSocketFileStatus: LocalSocketFileStatus? {
-        guard usesLocalSocket,
-              let path = resolvedLocalSocketPath,
-              MySQLLocalSocket.issue(for: path) == nil
-        else { return nil }
-        return Self.localSocketFileStatus(atPath: path)
+        guard let endpoint = resolvedLocalSocketEndpoint, endpoint.issue == nil else { return nil }
+        return Self.localSocketFileStatus(atPath: endpoint.socketFile)
     }
 
     // stat, not attributesOfItem, which reports a symlink to the socket as a symlink.

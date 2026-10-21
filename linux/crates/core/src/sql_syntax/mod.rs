@@ -8,6 +8,7 @@ mod parse_expression;
 mod parse_type;
 mod reserved_words;
 pub mod script;
+mod statement_access;
 mod statement_tokens;
 
 pub use credential_rules::CredentialRules;
@@ -17,3 +18,4 @@ pub use history_recording::{HistoryRecording, WithholdReason, classify_for_histo
 pub use literal_token::LiteralToken;
 pub use parse_expression::{MAX_EXPRESSION_LEN, ValidatedExpression, parse_expression};
 pub use parse_type::{MAX_TYPE_LEN, TypeShape, ValidatedType, parse_type};
+pub use statement_access::{StatementAccess, statement_access};

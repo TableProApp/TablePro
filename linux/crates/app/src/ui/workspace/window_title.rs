@@ -1,3 +1,5 @@
+use tablepro_core::SafeModeLevel;
+
 use super::tab_title::TabTitle;
 
 /// What the window is called: in the window list and Alt+Tab, and in its
@@ -15,7 +17,7 @@ pub(crate) fn resolve_window_title(
     active: Option<&TabTitle>,
     connection: &str,
     driver: &str,
-    read_only: bool,
+    safe_mode: SafeModeLevel,
 ) -> WindowTitle {
     let (window, heading, subtitle) = match active {
         Some(tab) => (
@@ -32,9 +34,12 @@ pub(crate) fn resolve_window_title(
             driver.to_owned(),
         ),
     };
-    let subtitle = match read_only {
-        true => crate::i18n::gettext_f("{name} · Read-Only", &[("name", &subtitle)]),
-        false => subtitle,
+    let subtitle = match safe_mode {
+        SafeModeLevel::Off => subtitle,
+        level => crate::i18n::gettext_f(
+            "{name} · {level}",
+            &[("name", &subtitle), ("level", &crate::ui::safe_mode::label(level))],
+        ),
     };
     WindowTitle {
         window,
@@ -56,7 +61,7 @@ mod tests {
 
     #[test]
     fn window_title_names_tab_and_connection_without_em_dash() {
-        let title = resolve_window_title(Some(&tab("orders")), "Shop", "PostgreSQL", false);
+        let title = resolve_window_title(Some(&tab("orders")), "Shop", "PostgreSQL", SafeModeLevel::Off);
 
         assert_eq!(title.window, "orders (Shop) - TablePro");
         assert_eq!(title.heading, "orders");
@@ -67,7 +72,7 @@ mod tests {
 
     #[test]
     fn with_no_tab_the_connection_heads_the_window() {
-        let title = resolve_window_title(None, "Shop", "PostgreSQL", false);
+        let title = resolve_window_title(None, "Shop", "PostgreSQL", SafeModeLevel::Off);
 
         assert_eq!(title.window, "Shop - TablePro");
         assert_eq!(title.heading, "Shop");
@@ -75,14 +80,18 @@ mod tests {
     }
 
     #[test]
-    fn read_only_subtitle() {
+    fn the_subtitle_names_a_safe_mode_level_that_guards() {
         assert_eq!(
-            resolve_window_title(None, "Shop", "PostgreSQL", true).subtitle,
+            resolve_window_title(None, "Shop", "PostgreSQL", SafeModeLevel::ReadOnly).subtitle,
             "PostgreSQL · Read-Only"
         );
         assert_eq!(
-            resolve_window_title(Some(&tab("orders")), "Shop", "PostgreSQL", true).subtitle,
+            resolve_window_title(Some(&tab("orders")), "Shop", "PostgreSQL", SafeModeLevel::ReadOnly).subtitle,
             "Shop · Read-Only"
+        );
+        assert_eq!(
+            resolve_window_title(Some(&tab("orders")), "Shop", "PostgreSQL", SafeModeLevel::ConfirmWrites).subtitle,
+            "Shop · Confirm Writes"
         );
     }
 }

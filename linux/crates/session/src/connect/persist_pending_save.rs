@@ -139,7 +139,7 @@ mod tests {
             database: "shop".into(),
             username: "app".into(),
             tls: TlsConfig::verify_full(),
-            read_only: false,
+            safe_mode: tablepro_core::SafeModeLevel::Off,
             auth_mode: AuthMode::Password,
             ssh: Some(SavedSshConfig {
                 host: "bastion.example.com".into(),

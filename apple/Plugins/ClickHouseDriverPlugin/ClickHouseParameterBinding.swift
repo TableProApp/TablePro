@@ -56,10 +56,28 @@ nonisolated internal enum ClickHouseParameterBinding {
             namedCount += 1
             let name = "p\(namedCount)"
             converted.append("{\(name):String}")
-            paramMap[name] = parameter.asText
+            paramMap.updateValue(parameter.asText.map(escaped), forKey: name)
         }
 
         return Bound(query: converted, params: paramMap)
+    }
+
+    // ClickHouse reads an HTTP parameter in TabSeparated's escaped form: a backslash starts an escape and a raw tab or
+    // newline is refused, so `C:\new` arrived as `C:`, a newline and `ew`. Measured on ClickHouse 25.8.
+    static func escaped(_ value: String) -> String {
+        var result = ""
+        result.unicodeScalars.reserveCapacity(value.unicodeScalars.count)
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\\": result += "\\\\"
+            case "\t": result += "\\t"
+            case "\n": result += "\\n"
+            case "\r": result += "\\r"
+            case "\0": result += "\\0"
+            default: result.unicodeScalars.append(scalar)
+            }
+        }
+        return result
     }
 
     static func hexLiteral(_ data: Data) -> String {

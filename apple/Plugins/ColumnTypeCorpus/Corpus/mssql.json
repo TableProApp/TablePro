@@ -1,0 +1,240 @@
+{
+  "engine": "mssql",
+  "databaseTypeId": "SQL Server",
+  "typeList": "Plugins/MSSQLDriverPlugin/MSSQLPlugin.swift",
+  "createTable": "CREATE TABLE {table} ({id} INT PRIMARY KEY, {column} {type} NULL)",
+  "notColumnTypes": {
+    "CURSOR": "a cursor is a variable or parameter type; CREATE TABLE refuses it",
+    "TABLE": "a table type is for variables and parameters; CREATE TABLE refuses it"
+  },
+  "columns": [
+    {
+      "type": "TINYINT",
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "0", "cell": "0"}, {"sql": "255", "cell": "255"}],
+      "edit": {"text": "12", "cell": "12"}
+    },
+    {
+      "type": "SMALLINT",
+      "values": [{"sql": "-32768", "cell": "-32768"}],
+      "edit": {"text": "1", "cell": "1"}
+    },
+    {
+      "type": "INT",
+      "values": [{"sql": "-2147483648", "cell": "-2147483648"}],
+      "edit": {"text": "2147483647", "cell": "2147483647"}
+    },
+    {
+      "type": "BIGINT",
+      "values": [{"sql": "-9223372036854775808", "cell": "-9223372036854775808"}],
+      "edit": {"text": "9223372036854775807", "cell": "9223372036854775807"}
+    },
+    {
+      "type": "FLOAT",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "0.1", "cell": "0.1"},
+        {"sql": "1.7976931348623157E+308", "cell": "1.7976931348623157e+308"}
+      ],
+      "edit": {"text": "-0.5", "cell": "-0.5"},
+      "known": {
+        "browse": {"defect": "a float reads with 17 significant digits, so 0.1 shows as 0.10000000000000001", "matches": "reads \"0\\.10000000000000001\""}
+      }
+    },
+    {
+      "type": "REAL",
+      "values": [{"sql": "1.5", "cell": "1.5"}],
+      "edit": {"text": "2.25", "cell": "2.25"}
+    },
+    {
+      "type": "DECIMAL(38,10)",
+      "covers": ["DECIMAL"],
+      "values": [
+        {"sql": "1234567890123456789012345678.0123456789", "cell": "1234567890123456789012345678.0123456789"},
+        {"sql": "-0.5", "cell": "-0.5000000000"}
+      ],
+      "edit": {"text": "1.1", "cell": "1.1000000000"}
+    },
+    {
+      "type": "NUMERIC(10,2)",
+      "covers": ["NUMERIC"],
+      "values": [{"sql": "123.4", "cell": "123.40"}],
+      "edit": {"text": "99.99", "cell": "99.99"}
+    },
+    {
+      "type": "MONEY",
+      "values": [{"sql": "922337203685477.5807", "cell": "922337203685477.5807"}, {"sql": "-1", "cell": "-1.0000"}],
+      "edit": {"text": "5.25", "cell": "5.2500"}
+    },
+    {
+      "type": "SMALLMONEY",
+      "values": [{"sql": "214748.3647", "cell": "214748.3647"}],
+      "edit": {"text": "1", "cell": "1.0000"}
+    },
+    {
+      "type": "CHAR(5)",
+      "covers": ["CHAR"],
+      "values": [{"sql": "'ab'", "cell": "ab   "}],
+      "edit": {"text": "xyz", "cell": "xyz  "}
+    },
+    {
+      "type": "VARCHAR(MAX)",
+      "covers": ["VARCHAR"],
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "''", "cell": ""},
+        {"sql": "'line one' + CHAR(10) + 'line two'", "cell": "line one\nline two"},
+        {"sql": "'back\\slash ''quote'' \"double\"'", "cell": "back\\slash 'quote' \"double\""},
+        {"sql": "'true'", "cell": "true"},
+        {"sql": "'=1+1'", "cell": "=1+1"},
+        {"sql": "REPLICATE(CAST('x' AS VARCHAR(MAX)), 70000)", "cell": "x", "repeat": 70000}
+      ],
+      "edit": {"text": "edited, \"quoted\"", "cell": "edited, \"quoted\""}
+    },
+    {
+      "type": "TEXT",
+      "values": [{"sql": "'text'", "cell": "text"}],
+      "edit": {"text": "t", "cell": "t"}
+    },
+    {
+      "type": "NCHAR(3)",
+      "covers": ["NCHAR"],
+      "values": [{"sql": "N'é'", "cell": "é  "}],
+      "edit": {"text": "ü", "cell": "ü  "}
+    },
+    {
+      "type": "NVARCHAR(MAX)",
+      "covers": ["NVARCHAR"],
+      "values": [{"sql": "N'Ünïcödé ✓ 日本語 🦄'", "cell": "Ünïcödé ✓ 日本語 🦄"}],
+      "edit": {"text": "ñandú 日本", "cell": "ñandú 日本"}
+    },
+    {
+      "type": "NTEXT",
+      "values": [{"sql": "N'ntext ✓'", "cell": "ntext ✓"}],
+      "edit": {"text": "n", "cell": "n"}
+    },
+    {
+      "type": "DATE",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "'0001-01-01'", "cell": "0001-01-01"},
+        {"sql": "'9999-12-31'", "cell": "9999-12-31"}
+      ],
+      "edit": {"text": "2000-02-29", "cell": "2000-02-29"}
+    },
+    {
+      "type": "TIME(7)",
+      "covers": ["TIME"],
+      "values": [{"sql": "'23:59:59.9999999'", "cell": "23:59:59.9999999"}],
+      "edit": {"text": "12:00:00", "cell": "12:00:00.0000000"}
+    },
+    {
+      "type": "DATETIME",
+      "values": [{"sql": "'2026-10-20 15:22:20.123'", "cell": "2026-10-20 15:22:20.123"}],
+      "edit": {"text": "1999-12-31 23:59:59", "cell": "1999-12-31 23:59:59.000"}
+    },
+    {
+      "type": "DATETIME2(7)",
+      "covers": ["DATETIME2"],
+      "values": [
+        {"sql": "'2026-10-20 15:22:20.1234567'", "cell": "2026-10-20 15:22:20.1234567"},
+        {"sql": "'0001-01-01 00:00:00'", "cell": "0001-01-01 00:00:00.0000000"}
+      ],
+      "edit": {"text": "2000-01-01 00:00:00.5", "cell": "2000-01-01 00:00:00.5000000"}
+    },
+    {
+      "type": "SMALLDATETIME",
+      "values": [{"sql": "'2026-10-20 15:22:00'", "cell": "2026-10-20 15:22:00.000"}],
+      "edit": {"text": "2000-01-01 12:30:00", "cell": "2000-01-01 12:30:00.000"}
+    },
+    {
+      "type": "DATETIMEOFFSET(7)",
+      "covers": ["DATETIMEOFFSET"],
+      "values": [{"sql": "'2026-10-20 15:22:20.1234567 +05:30'", "cell": "2026-10-20T15:22:20.1234567+05:30"}],
+      "edit": {"text": "2000-01-01 00:00:00 -08:00", "cell": "2000-01-01T00:00:00.0000000-08:00"}
+    },
+    {
+      "type": "BINARY(4)",
+      "covers": ["BINARY"],
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "0x00FF", "cell": "0x00FF0000"}],
+      "edit": {"hex": "DEADBEEF", "cell": "0xDEADBEEF"}
+    },
+    {
+      "type": "VARBINARY(MAX)",
+      "covers": ["VARBINARY"],
+      "values": [{"sql": "0x", "cell": "0x"}, {"sql": "0x00FF7F80", "cell": "0x00FF7F80"}],
+      "edit": {"hex": "0102", "cell": "0x0102"}
+    },
+    {
+      "type": "IMAGE",
+      "values": [{"sql": "0xCAFE", "cell": "0xCAFE"}],
+      "edit": {"hex": "BABE", "cell": "0xBABE"}
+    },
+    {
+      "type": "BIT",
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "1", "cell": "1"}, {"sql": "0", "cell": "0"}],
+      "edit": {"text": "0", "cell": "0"}
+    },
+    {
+      "type": "XML",
+      "values": [{"sql": "'<a>1</a>'", "cell": "<a>1</a>"}],
+      "edit": {"text": "<b x=\"y\"/>", "cell": "<b x=\"y\"/>"}
+    },
+    {
+      "type": "UNIQUEIDENTIFIER",
+      "values": [{"sql": "'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'", "cell": "A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11"}],
+      "edit": {"text": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12", "cell": "A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A12"}
+    },
+    {
+      "type": "GEOMETRY",
+      "values": [
+        {"sql": "NULL", "cell": null},
+        {"sql": "geometry::STGeomFromText('POINT(1 2)', 0)", "cell": "POINT (1 2)"}
+      ],
+      "edit": {"text": "POINT (3 4)", "cell": "POINT (3 4)"},
+      "known": {
+        "browse": {"defect": "a geometry reads as its CLR serialization in hex", "matches": "reads \"0x[0-9A-F]+\""},
+        "edit": {"defect": "the saved geometry reads back as its CLR serialization in hex", "matches": "reads back \"0x[0-9A-F]+\""}
+      }
+    },
+    {
+      "type": "GEOGRAPHY",
+      "values": [{"sql": "geography::Point(47.65, -122.34, 4326)", "cell": "POINT (-122.34 47.65)"}],
+      "edit": {"text": "POINT (1 2)", "cell": "POINT (1 2)"},
+      "known": {
+        "browse": {"defect": "a geography reads as its CLR serialization in hex", "matches": "reads \"0x[0-9A-F]+\""},
+        "edit": {"defect": "the saved geography reads back as its CLR serialization in hex", "matches": "reads back \"0x[0-9A-F]+\""}
+      }
+    },
+    {
+      "type": "HIERARCHYID",
+      "values": [{"sql": "'/1/2/'", "cell": "/1/2/"}],
+      "edit": {"text": "/3/", "cell": "/3/"},
+      "known": {
+        "browse": {"defect": "a hierarchyid reads as its CLR serialization in hex", "matches": "reads \"0x[0-9A-F]+\""},
+        "edit": {"defect": "the saved hierarchyid reads back as its CLR serialization in hex", "matches": "reads back \"0x[0-9A-F]+\""}
+      }
+    },
+    {
+      "type": "SQL_VARIANT",
+      "values": [{"sql": "CAST(1 AS INT)", "cell": "1"}, {"sql": "CAST(N'text' AS NVARCHAR(10))", "cell": "text"}],
+      "edit": {"text": "x", "cell": "x"},
+      "known": {
+        "browse": {"defect": "a sql_variant reads as NULL", "matches": "reads NULL"},
+        "edit": {"defect": "the grid binds the value as nvarchar(max), which a sql_variant column refuses (206)", "matches": "Operand type clash"}
+      }
+    },
+    {
+      "type": "ROWVERSION",
+      "values": [{"sql": "DEFAULT", "matches": "^0x[0-9A-F]{16}$"}],
+      "skip": {"edit": "the server writes a rowversion", "sql": "a restore writes a new rowversion"}
+    },
+    {
+      "type": "TIMESTAMP",
+      "values": [{"sql": "DEFAULT", "matches": "^0x[0-9A-F]{16}$"}],
+      "skip": {
+        "edit": "TIMESTAMP is ROWVERSION, which the server writes",
+        "sql": "a restore writes a new rowversion"
+      }
+    }
+  ]
+}

@@ -43,7 +43,7 @@ public struct TrinoClientConfig: Sendable {
     public var timeZone: String?
     public var auth: TrinoAuth
     public var clientTags: [String]
-    public var protocolHeaders: TrinoProtocolHeaders
+    public var flavor: TrinoServerFlavor
     public var requestTimeoutSeconds: Int
 
     public init(
@@ -58,7 +58,7 @@ public struct TrinoClientConfig: Sendable {
         timeZone: String? = nil,
         auth: TrinoAuth = .none,
         clientTags: [String] = [],
-        protocolHeaders: TrinoProtocolHeaders = .trino,
+        flavor: TrinoServerFlavor = .trino,
         requestTimeoutSeconds: Int = 60
     ) {
         self.host = host
@@ -72,9 +72,11 @@ public struct TrinoClientConfig: Sendable {
         self.timeZone = timeZone
         self.auth = auth
         self.clientTags = clientTags
-        self.protocolHeaders = protocolHeaders
+        self.flavor = flavor
         self.requestTimeoutSeconds = requestTimeoutSeconds
     }
+
+    public var protocolHeaders: TrinoProtocolHeaders { flavor.protocolHeaders }
 
     public var scheme: String { useTLS ? "https" : "http" }
 

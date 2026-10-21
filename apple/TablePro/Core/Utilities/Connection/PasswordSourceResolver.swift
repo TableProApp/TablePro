@@ -15,7 +15,7 @@ enum PasswordSourceResolver {
     private static let commandTimeoutSeconds: UInt64 = 30
     private static let maxOutputBytes = 1_048_576
 
-    enum ResolutionError: LocalizedError {
+    enum ResolutionError: LocalizedError, Equatable {
         case fileNotFound(path: String)
         case fileUnreadable(path: String)
         case environmentVariableNotSet(name: String)
@@ -26,6 +26,7 @@ enum PasswordSourceResolver {
         case invalidSecretJson
         case jsonKeyNotFound(key: String)
         case storeNotTrusted
+        case profileStoreNotTrusted
 
         var errorDescription: String? {
             switch self {
@@ -64,21 +65,51 @@ enum PasswordSourceResolver {
                     password source was not run. Open the connection and save it again to \
                     confirm the change.
                     """)
+            case .profileStoreNotTrusted:
+                return String(localized: """
+                    Your credential profiles file was changed outside TablePro, so this profile's \
+                    password source was not run.
+                    """)
             }
         }
     }
 
+    // A test reports what the source returns right now, so it neither reads nor fills the reuse cache.
+    static func test(_ source: PasswordSource, for context: ConnectionScriptContext) async throws -> String {
+        try await resolve(source.withoutReuse, for: context)
+    }
+
     static func resolve(
         _ source: PasswordSource,
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        for context: ConnectionScriptContext? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        cache: PasswordCommandCache = .shared
     ) async throws -> String {
         switch source {
         case let .file(path):
             return try resolveFile(path: path)
         case let .env(variable):
             return try resolveEnvironment(variable: variable, in: environment)
-        case let .command(shell):
-            return try await resolveCommand(shell: shell, timeoutSeconds: commandTimeoutSeconds)
+        case let .command(shell, reuseSeconds):
+            let command = context?.substitutingPlaceholders(in: shell) ?? shell
+            let commandEnvironment = context?.environment ?? [:]
+            let run = {
+                try await resolveCommand(
+                    shell: command,
+                    environment: commandEnvironment,
+                    timeoutSeconds: commandTimeoutSeconds
+                )
+            }
+            guard let context, let reuseSeconds = PasswordSource.validReuseSeconds(reuseSeconds) else {
+                return try await run()
+            }
+            return try await cache.password(
+                connectionId: context.connectionId,
+                command: command,
+                environment: commandEnvironment,
+                lifetime: .seconds(reuseSeconds),
+                resolve: run
+            )
         case .onePassword, .vault:
             return try await resolveExternalTool(source)
         case let .awsSecretsManager(_, jsonKey):
@@ -153,6 +184,7 @@ enum PasswordSourceResolver {
 
     static func resolveCommand(
         shell: String,
+        environment: [String: String] = [:],
         timeoutSeconds: UInt64,
         clock: any Clock<Duration> = ContinuousClock()
     ) async throws -> String {
@@ -160,7 +192,7 @@ enum PasswordSourceResolver {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
             process.arguments = ["-c", shell]
-            process.environment = CLIToolEnvironment.augmented()
+            process.environment = CLIToolEnvironment.augmented().merging(environment) { _, connection in connection }
             process.standardInput = FileHandle.nullDevice
 
             let stdoutPipe = Pipe()

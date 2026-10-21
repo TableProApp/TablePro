@@ -25,8 +25,8 @@ extension TrinoError {
             return String(
                 format: String(
                     localized: """
-                        The server answered with HTTP %lld and no address. Trino never redirects, so a proxy in \
-                        front of it sent this. Check the host, port and SSL Mode.
+                        The server answered with HTTP %lld and no address. The coordinator never redirects, so a \
+                        proxy in front of it sent this. Check the host, port and SSL Mode.
                         """
                 ),
                 Int64(statusCode)
@@ -45,8 +45,8 @@ extension TrinoError {
             return String(
                 format: String(
                     localized: """
-                        The server redirected the request to %@. TablePro does not follow redirects, and Trino never \
-                        sends one, so a proxy in front of it did. Check the host, port and SSL Mode.
+                        The server redirected the request to %@. TablePro does not follow redirects, and the \
+                        coordinator never sends one, so a proxy in front of it did. Check the host, port and SSL Mode.
                         """
                 ),
                 location

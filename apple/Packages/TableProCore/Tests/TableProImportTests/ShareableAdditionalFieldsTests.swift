@@ -6,6 +6,7 @@ struct ShareableAdditionalFieldsTests {
     @Test func testLeavesOutEveryImportBlockedKeyInAnyCase() {
         let fields = [
             "preConnectScript": "export PGTOKEN=secret-token",
+            "postDisconnectScript": "networksetup -disconnectpppoeservice corp",
             "usePgpass": "true",
             "PROMPTFORPASSWORD": "true",
             "awsRegion": "us-east-1",

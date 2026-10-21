@@ -50,6 +50,7 @@ extension DatabaseType {
     static let typesense = DatabaseType(rawValue: "Typesense")
     static let teradata = DatabaseType(rawValue: "Teradata")
     static let trino = DatabaseType(rawValue: "Trino")
+    static let presto = DatabaseType(rawValue: "Presto")
     static let weaviate = DatabaseType(rawValue: "Weaviate")
     static let bigtable = DatabaseType(rawValue: "Bigtable")
     static let firestore = DatabaseType(rawValue: "Firestore")

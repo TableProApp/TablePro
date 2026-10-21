@@ -47,13 +47,32 @@ extension FavoriteSelection: RawRepresentable {
     }
 }
 
+internal struct FavoriteFilePath: Equatable {
+    let absolute: String
+    let relative: String?
+}
+
 internal struct FavoriteNode: Identifiable, Hashable {
     enum Content: Hashable {
         case folder(SQLFavoriteFolder)
         case favorite(SQLFavorite)
         case linkedFolder(LinkedSQLFolder)
-        case linkedSubfolder(folderId: UUID, displayName: String, pathPrefix: String)
+        case linkedSubfolder(folderId: UUID, displayName: String, pathPrefix: String, url: URL)
         case linkedFavorite(LinkedSQLFavorite)
+
+        var filePath: FavoriteFilePath? {
+            switch self {
+            case .linkedFavorite(let file):
+                return FavoriteFilePath(absolute: file.fileURL.path, relative: file.relativePath)
+            case .linkedSubfolder(_, _, let pathPrefix, let url):
+                return FavoriteFilePath(absolute: url.path, relative: pathPrefix)
+            case .linkedFolder(let folder):
+                // Relative to itself the root is empty, so it has no relative path to copy.
+                return FavoriteFilePath(absolute: folder.expandedURL.path, relative: nil)
+            case .folder, .favorite:
+                return nil
+            }
+        }
     }
 
     let id: String
@@ -111,11 +130,12 @@ internal struct FavoriteNode: Identifiable, Hashable {
         folderId: UUID,
         displayName: String,
         pathPrefix: String,
+        url: URL,
         children: [FavoriteNode]
     ) -> FavoriteNode {
         FavoriteNode(
             id: "linked-subfolder-\(folderId)-\(pathPrefix)",
-            content: .linkedSubfolder(folderId: folderId, displayName: displayName, pathPrefix: pathPrefix),
+            content: .linkedSubfolder(folderId: folderId, displayName: displayName, pathPrefix: pathPrefix, url: url),
             children: children
         )
     }
@@ -190,7 +210,7 @@ internal final class FavoritesSidebarViewModel: ObservableObject {
                 continue
             }
             let files = cache.linkedFilesByFolderId[folder.id] ?? []
-            let children = buildLinkedTree(files: files, folderId: folder.id)
+            let children = Self.linkedTree(files: files, in: folder)
             roots.append(.linkedFolder(folder, children: children))
         }
         return roots
@@ -219,14 +239,14 @@ internal final class FavoritesSidebarViewModel: ObservableObject {
             }
     }
 
-    private func buildLinkedTree(files: [LinkedSQLFavorite], folderId: UUID) -> [FavoriteNode] {
+    static func linkedTree(files: [LinkedSQLFavorite], in folder: LinkedSQLFolder) -> [FavoriteNode] {
         let entries = files.map { (file: $0, components: $0.relativePath.split(separator: "/").map(String.init)) }
-        return groupLinkedFiles(entries: entries, folderId: folderId, prefix: "", depth: 0)
+        return groupLinkedFiles(entries: entries, folder: folder, prefix: "", depth: 0)
     }
 
-    private func groupLinkedFiles(
+    private static func groupLinkedFiles(
         entries: [(file: LinkedSQLFavorite, components: [String])],
-        folderId: UUID,
+        folder: LinkedSQLFolder,
         prefix: String,
         depth: Int
     ) -> [FavoriteNode] {
@@ -249,14 +269,15 @@ internal final class FavoritesSidebarViewModel: ObservableObject {
             let nestedPrefix = prefix.isEmpty ? name : "\(prefix)/\(name)"
             let children = groupLinkedFiles(
                 entries: subfolderBuckets[name] ?? [],
-                folderId: folderId,
+                folder: folder,
                 prefix: nestedPrefix,
                 depth: depth + 1
             )
             subfolderNodes.append(.linkedSubfolder(
-                folderId: folderId,
+                folderId: folder.id,
                 displayName: name,
                 pathPrefix: nestedPrefix,
+                url: folder.expandedURL.appendingPathComponent(nestedPrefix, isDirectory: true),
                 children: children
             ))
         }

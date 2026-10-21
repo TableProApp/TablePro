@@ -50,21 +50,20 @@ struct ShortcutUniquenessTests {
     }
 
     // Counted, not listed: a default for any of these takes a combo already in use, so it has to be on purpose.
-    @Test("Twenty-one actions ship unbound")
+    @Test("Twenty-nine actions ship unbound")
     func unboundActionsAreCounted() {
         let unbound = ShortcutAction.allCases.filter { KeyboardSettings.defaultShortcuts[$0] == nil }
-        #expect(unbound.count == 21, "Unbound: \(unbound.map(\.rawValue).sorted())")
+        #expect(unbound.count == 29, "Unbound: \(unbound.map(\.rawValue).sorted())")
         for action in unbound {
             #expect(KeyboardSettings.default.shortcut(for: action) == nil, "\(action.rawValue)")
         }
     }
 
-    /// The eight are new rows in Settings, so each needs a category to be listed under and a name to
-    /// be listed by. Both switches are exhaustive, so the compiler already forces an arm; what this
-    /// holds is that the arm is not an empty string nobody would recognise.
+    // Each is a new row in Settings; the exhaustive switches force an arm, this holds that it names something.
     @Test("Each newly rebindable command is listed under a category with a name", arguments: [
         ShortcutAction.showTablesList, .showFavoritesList, .restorePreviousValues,
         .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
+        .copyPath, .copyRelativePath,
     ])
     func newlyRebindableCommandsAreListable(action: ShortcutAction) {
         #expect(!action.displayName.isEmpty)

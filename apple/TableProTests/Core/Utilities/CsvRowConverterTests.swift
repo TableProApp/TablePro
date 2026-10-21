@@ -89,6 +89,21 @@ struct CsvRowConverterTests {
         #expect(result == "\"line1\nline2\"\n")
     }
 
+    // `\r\n` is one Character, so a Character test let it through unquoted and split the row.
+    @Test("Windows line breaks and lone carriage returns force quoting")
+    func carriageReturnQuoting() {
+        let converter = makeConverter(columns: ["note"], columnTypes: [.text(rawType: nil)])
+        let result = converter.generateCsv(rows: [["line1\r\nline2"], ["a\rb"]], includeHeaders: false)
+        #expect(result == "\"line1\r\nline2\"\n\"a\rb\"\n")
+    }
+
+    @Test("A tab forces quoting and a formula-like value is copied as it is")
+    func tabQuotingWithoutNeutralising() {
+        let converter = makeConverter(columns: ["note"], columnTypes: [.text(rawType: nil)])
+        let result = converter.generateCsv(rows: [["a\tb"], ["=1+1"], ["-5"]], includeHeaders: false)
+        #expect(result == "\"a\tb\"\n=1+1\n-5\n")
+    }
+
     @Test("Header containing comma is quoted")
     func quotedHeader() {
         let converter = makeConverter(

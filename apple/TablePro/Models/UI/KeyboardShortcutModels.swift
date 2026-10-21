@@ -70,6 +70,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case openFile
     case saveChanges
     case saveAs
+    case copyPath
+    case copyRelativePath
     case executeQuery
     case executeAllStatements
     case executeQueryWithoutLimit
@@ -98,9 +100,16 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case redo
     case cut
     case copy
+    case copyCellValue
     case copyRowsExplicit
     case copyWithHeaders
     case copyAsJson
+    case copyAsCsv
+    case copyAsCsvWithHeaders
+    case copyAsMarkdown
+    case copyAsInClause
+    case copyAsInsert
+    case copyAsUpdate
     case paste
     case delete
     case selectAll
@@ -176,14 +185,15 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .manageConnections, .newConnection, .openDatabase, .switchConnection, .moveTabToConnection:
             return .connections
-        case .openFile, .saveChanges, .saveAs, .executeQuery, .executeAllStatements,
-             .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
+        case .openFile, .saveChanges, .saveAs, .copyPath, .copyRelativePath,
+             .executeQuery, .executeAllStatements, .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
              .removeInvisibleCharacters, .foldAll, .unfoldAll, .toggleFold,
              .previousStatement, .nextStatement, .runStatementAndAdvance,
              .previewSQL, .find, .findAndReplace, .findNext, .findPrevious, .useSelectionForFind,
              .aiReviewQuery, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
-        case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
+        case .undo, .redo, .cut, .copy, .copyCellValue, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
+             .copyAsCsv, .copyAsCsvWithHeaders, .copyAsMarkdown, .copyAsInClause, .copyAsInsert, .copyAsUpdate,
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
              .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7,
              .restorePreviousValues,
@@ -222,6 +232,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7,
              .delete, .truncateTable, .previewFKReference, .saveAsFavorite,
              .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .toggleFilters, .jumpToColumn,
+             .copyCellValue, .copyAsCsv, .copyAsCsvWithHeaders, .copyAsMarkdown, .copyAsInClause,
+             .copyAsInsert, .copyAsUpdate,
              /// Named rather than left to the `default:` below. It reverses a row the grid is
              /// showing, so it belongs in the grid's context the way Add Row and Delete do, and
              /// inheriting `.global` would let the recorder call a grid combo free for it.
@@ -262,6 +274,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .moveTabToConnection: return String(localized: "Move Tab to Connection")
         case .saveChanges: return String(localized: "Save Changes")
         case .saveAs: return String(localized: "Save As")
+        case .copyPath: return String(localized: "Copy Path")
+        case .copyRelativePath: return String(localized: "Copy Relative Path")
         case .previewSQL: return String(localized: "Preview SQL")
         case .closeTab: return String(localized: "Close Tab")
         case .closeOtherTabs: return String(localized: "Close Other Tabs")
@@ -298,6 +312,13 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .copyRowsExplicit: return String(localized: "Copy Rows")
         case .copyWithHeaders: return String(localized: "Copy with Headers")
         case .copyAsJson: return String(localized: "Copy as JSON")
+        case .copyCellValue: return String(localized: "Copy Cell Value")
+        case .copyAsCsv: return String(localized: "Copy as CSV")
+        case .copyAsCsvWithHeaders: return String(localized: "Copy as CSV with Headers")
+        case .copyAsMarkdown: return String(localized: "Copy as Markdown")
+        case .copyAsInClause: return String(localized: "Copy as IN Clause")
+        case .copyAsInsert: return String(localized: "Copy as INSERT Statements")
+        case .copyAsUpdate: return String(localized: "Copy as UPDATE Statements")
         case .paste: return String(localized: "Paste")
         case .delete: return String(localized: "Delete")
         case .selectAll: return String(localized: "Select All")
@@ -598,6 +619,8 @@ struct KeyboardSettings: Codable, Equatable {
         .openFile: .character("o", command: true),
         .saveChanges: .character("s", command: true),
         .saveAs: .character("s", command: true, shift: true),
+        // Not Finder's Option-Command-C, which is Copy with Headers. Copy Relative Path has no default.
+        .copyPath: .character("c", command: true, shift: true, option: true),
         .executeQuery: .special(.return, command: true),
         .executeAllStatements: .special(.return, command: true, shift: true),
         .executeQueryWithoutLimit: .special(.return, command: true, option: true),

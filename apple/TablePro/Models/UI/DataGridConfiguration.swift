@@ -49,6 +49,10 @@ struct DataGridConfiguration: Equatable {
     /// question is what the grid holds, not which tab it sits in.
     var appliesRowSortPreferences: Bool = false
 
+    // Records: a table, a query, a file or a listing. Off on the Structure grids, whose Copy writes column and
+    // index definitions a paste reads back, and which have no INSERT or UPDATE to offer.
+    var appliesRowCopyFormat: Bool = false
+
     /// Whether a heading click or the heading menu orders the rows. A Cassandra table cannot be ordered by an
     /// arbitrary column, so its table grid offers no sort rather than one the server refuses.
     var supportsColumnSort: Bool = true

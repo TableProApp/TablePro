@@ -14,6 +14,7 @@ struct UserDefinedTypeInfo: Identifiable, Hashable, Sendable {
         case aliasType
         case tableType
         case clrType
+        case udt
         case other
 
         /// The engine's own word for the shape. A SQL Server reader has never met a domain or a
@@ -28,6 +29,7 @@ struct UserDefinedTypeInfo: Identifiable, Hashable, Sendable {
             case .aliasType:   return String(localized: "Alias Type")
             case .tableType:   return String(localized: "Table Type")
             case .clrType:     return String(localized: "CLR Type")
+            case .udt:         return String(localized: "User-Defined Type")
             case .other:       return String(localized: "Type")
             }
         }
@@ -41,6 +43,7 @@ struct UserDefinedTypeInfo: Identifiable, Hashable, Sendable {
             case .aliasType:   return "character.textbox"
             case .tableType:   return "tablecells"
             case .clrType:     return "shippingbox"
+            case .udt:         return "rectangle.split.3x1"
             case .other:       return SidebarObjectKind.type.iconName
             }
         }

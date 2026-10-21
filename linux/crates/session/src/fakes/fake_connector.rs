@@ -117,6 +117,7 @@ impl FakeConnector {
             )),
             target: RequestTarget::File(FileEndpoint::open_existing(PathBuf::from("/fake.db"))?),
             workspace_settings: WorkspaceSettings::workspace(false),
+            safe_mode: tablepro_core::SafeModeLevel::Off,
         })
     }
 

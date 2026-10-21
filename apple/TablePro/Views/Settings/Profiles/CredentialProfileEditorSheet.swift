@@ -23,10 +23,11 @@ struct CredentialProfileEditorSheet: View {
     @State private var username: String = ""
     @State private var passwordKind: PasswordKind = .stored
     @State private var password: String = ""
-    @State private var revealsPassword = false
+    @State private var passwordWasPrefilled = false
     @State private var sourceKind: PasswordSourceKind = .file
     @State private var sourceValue: String = ""
     @State private var sourceField: String = ""
+    @State private var commandReuseSeconds: Int?
 
     @State private var secureFieldType: DatabaseType = .mysql
     @State private var secureFieldValues: [String: String] = [:]
@@ -120,14 +121,11 @@ struct CredentialProfileEditorSheet: View {
 
             switch passwordKind {
             case .stored:
-                /// Revealing swaps the control rather than unmasking one: `NSSecureTextField` has
-                /// no reveal of its own, and this is how the system's own password fields do it.
-                if revealsPassword {
-                    TextField(String(localized: "Password"), text: $password)
-                } else {
-                    SecureField(String(localized: "Password"), text: $password)
-                }
-                Toggle(String(localized: "Show password"), isOn: $revealsPassword)
+                RevealablePasswordField(
+                    title: String(localized: "Password"),
+                    text: $password,
+                    requiresAuthentication: passwordWasPrefilled
+                )
             case .prompt:
                 Text("Every connection using this profile asks for the password once each time TablePro runs.")
                     .font(.caption)
@@ -143,17 +141,91 @@ struct CredentialProfileEditorSheet: View {
                     }
                 }
                 TextField(sourceKind.valueLabel, text: $sourceValue, prompt: Text(sourceKind.placeholder))
-                if sourceKind == .vault {
-                    TextField(String(localized: "Field"), text: $sourceField, prompt: Text("password"))
+                if let fieldLabel = sourceKind.fieldLabel {
+                    TextField(fieldLabel, text: $sourceField, prompt: Text("password"))
                 }
-                if sourceKind == .awsSecretsManager {
-                    TextField(String(localized: "JSON Key"), text: $sourceField, prompt: Text("password"))
+                if sourceKind == .command {
+                    Picker(String(localized: "Reuse Result For"), selection: $commandReuseSeconds) {
+                        Text("Never").tag(Int?.none)
+                        ForEach(Self.reuseChoices(including: commandReuseSeconds), id: \.self) { seconds in
+                            Text(Self.reuseLabel(seconds)).tag(Int?.some(seconds))
+                        }
+                    }
+                    .accessibilityIdentifier("credential-profile-command-reuse")
+                    Text(String(localized: """
+                        {host}, {port}, {user} and {database} become the opening connection's values, \
+                        already quoted. The command also gets them as TABLEPRO_HOST, TABLEPRO_PORT, \
+                        TABLEPRO_USER and TABLEPRO_DATABASE.
+                        """))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                Text("Resolved on every connect. It stays on this Mac and never syncs, because it can name a command to run.")
+                Text("It stays on this Mac and never syncs, because it can name a command to run.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let testedSource {
+                    PasswordSourceTestView(
+                        source: testedSource,
+                        context: { testContext },
+                        refusal: {
+                            Self.testRefusal(
+                                for: testedSource,
+                                storedSource: storedSource,
+                                storeIsTrusted: storage.storeIsTrusted
+                            )
+                        }
+                    )
+                    if sourceKind == .command, mentionsConnectionDetails {
+                        Text("A test here has no connection to take the host, port and database from.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
         }
+    }
+
+    // MARK: - Test Source
+
+    private var testedSource: PasswordSource? {
+        guard !sourceValue.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return sourceKind.source(value: sourceValue, field: sourceField, reuseSeconds: nil)
+    }
+
+    private var storedSource: PasswordSource? {
+        guard isStored, case .source(let source) = existingProfile?.passwordMode else { return nil }
+        return source
+    }
+
+    private var testContext: ConnectionScriptContext {
+        ConnectionScriptContext(
+            connectionId: existingProfile?.id ?? UUID(),
+            connectionName: "",
+            host: "",
+            port: 0,
+            user: username.trimmingCharacters(in: .whitespaces),
+            database: ""
+        )
+    }
+
+    private var mentionsConnectionDetails: Bool {
+        sourceValue.contains("TABLEPRO_") || testContext.substitutingPlaceholders(in: sourceValue) != sourceValue
+    }
+
+    // A source typed here is the user's own; one read back unchanged from a profiles file something else wrote is not.
+    static func testRefusal(
+        for source: PasswordSource,
+        storedSource: PasswordSource?,
+        storeIsTrusted: Bool
+    ) -> PasswordSourceResolver.ResolutionError? {
+        guard !storeIsTrusted, let storedSource, source == normalizedLikeTheFields(storedSource) else { return nil }
+        return .profileStoreNotTrusted
+    }
+
+    // The fields trim what they hold, so the stored value is compared the same way or padding alone would pass for an edit.
+    private static func normalizedLikeTheFields(_ source: PasswordSource) -> PasswordSource {
+        let (kind, value, field) = PasswordSourceKind.decompose(source)
+        return kind.source(value: value, field: field, reuseSeconds: nil)
     }
 
     // MARK: - Secure fields
@@ -272,13 +344,17 @@ struct CredentialProfileEditorSheet: View {
             } else if isStored {
                 secretsWereReadable = false
             }
+            passwordWasPrefilled = !password.isEmpty
         case .prompt:
             passwordKind = .prompt
         case .pgpass:
             passwordKind = .pgpass
         case .source(let source):
             passwordKind = .source
-            (sourceKind, sourceValue, sourceField) = Self.decompose(source)
+            (sourceKind, sourceValue, sourceField) = PasswordSourceKind.decompose(source)
+            if case .command(_, let reuseSeconds) = source {
+                commandReuseSeconds = reuseSeconds
+            }
         }
     }
 
@@ -336,8 +412,19 @@ struct CredentialProfileEditorSheet: View {
         case .stored: .stored
         case .prompt: .prompt
         case .pgpass: .pgpass
-        case .source: .source(sourceKind.source(value: sourceValue, field: sourceField))
+        case .source: .source(sourceKind.source(value: sourceValue, field: sourceField, reuseSeconds: commandReuseSeconds))
         }
+    }
+
+    private static let reusePresets = [300, 900, 3_600, 28_800]
+
+    private static func reuseChoices(including current: Int?) -> [Int] {
+        guard let current, !reusePresets.contains(current) else { return reusePresets }
+        return (reusePresets + [current]).sorted()
+    }
+
+    private static func reuseLabel(_ seconds: Int) -> String {
+        Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))
     }
 
     private func deleteProfile() {
@@ -348,17 +435,6 @@ struct CredentialProfileEditorSheet: View {
         }
         onDelete?()
         dismiss()
-    }
-
-    private static func decompose(_ source: PasswordSource) -> (PasswordSourceKind, String, String) {
-        switch source {
-        case .file(let path): (.file, path, "")
-        case .env(let variable): (.env, variable, "")
-        case .command(let shell): (.command, shell, "")
-        case .onePassword(let reference): (.onePassword, reference, "")
-        case .vault(let path, let field): (.vault, path, field)
-        case .awsSecretsManager(let secretId, let jsonKey): (.awsSecretsManager, secretId, jsonKey ?? "")
-        }
     }
 }
 
@@ -376,59 +452,6 @@ extension CredentialProfileEditorSheet {
             case .prompt: String(localized: "Ask every time")
             case .pgpass: String(localized: "~/.pgpass")
             case .source: String(localized: "Read from elsewhere")
-            }
-        }
-    }
-
-    enum PasswordSourceKind: String, CaseIterable, Identifiable {
-        case file, env, command, onePassword, vault, awsSecretsManager
-
-        var id: String { rawValue }
-
-        var displayName: String {
-            switch self {
-            case .file: String(localized: "A file")
-            case .env: String(localized: "An environment variable")
-            case .command: String(localized: "The output of a command")
-            case .onePassword: "1Password"
-            case .vault: "HashiCorp Vault"
-            case .awsSecretsManager: "AWS Secrets Manager"
-            }
-        }
-
-        var valueLabel: String {
-            switch self {
-            case .file: String(localized: "Path")
-            case .env: String(localized: "Variable")
-            case .command: String(localized: "Command")
-            case .onePassword: String(localized: "Reference")
-            case .vault: String(localized: "Path")
-            case .awsSecretsManager: String(localized: "Secret ID")
-            }
-        }
-
-        var placeholder: String {
-            switch self {
-            case .file: "~/.secrets/db-password"
-            case .env: "DB_PASSWORD"
-            case .command: "security find-generic-password -w -s db"
-            case .onePassword: "op://vault/item/password"
-            case .vault: "secret/data/db"
-            case .awsSecretsManager: "prod/db/credentials"
-            }
-        }
-
-        func source(value: String, field: String) -> PasswordSource {
-            let trimmedValue = value.trimmingCharacters(in: .whitespaces)
-            let trimmedField = field.trimmingCharacters(in: .whitespaces)
-            switch self {
-            case .file: return .file(path: trimmedValue)
-            case .env: return .env(variable: trimmedValue)
-            case .command: return .command(shell: value)
-            case .onePassword: return .onePassword(reference: trimmedValue)
-            case .vault: return .vault(path: trimmedValue, field: trimmedField)
-            case .awsSecretsManager:
-                return .awsSecretsManager(secretId: trimmedValue, jsonKey: trimmedField.isEmpty ? nil : trimmedField)
             }
         }
     }
