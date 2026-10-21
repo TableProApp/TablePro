@@ -227,7 +227,6 @@ struct CellInteractionResolverBinaryTests {
         "A binary decoder format opens the decoded viewer, read-only, on an editable table too",
         arguments: [
             (ValueDisplayFormat.messagePack, BinaryValueFormat.messagePack),
-            (.igbinary, .igbinary),
             (.protobuf, .protobuf),
         ]
     )

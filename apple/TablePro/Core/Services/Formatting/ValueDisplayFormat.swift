@@ -19,7 +19,6 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
     case json
     case phpSerialized
     case messagePack
-    case igbinary
     case protobuf
 
     var id: String { rawValue }
@@ -34,14 +33,13 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
         case .unixTimestampMillis: return String(localized: "Unix Timestamp (milliseconds)")
         case .json: return String(localized: "JSON")
         case .phpSerialized: return String(localized: "PHP Serialized")
-        case .messagePack, .igbinary, .protobuf: return binaryValueFormat?.displayName ?? rawValue
+        case .messagePack, .protobuf: return binaryValueFormat?.displayName ?? rawValue
         }
     }
 
     var binaryValueFormat: BinaryValueFormat? {
         switch self {
         case .messagePack: return .messagePack
-        case .igbinary: return .igbinary
         case .protobuf: return .protobuf
         case .raw, .text, .uuid, .uuidSwappedTime, .unixTimestamp, .unixTimestampMillis, .json, .phpSerialized:
             return nil
@@ -53,7 +51,7 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .raw:
             return []
-        case .text, .uuidSwappedTime, .messagePack, .igbinary, .protobuf:
+        case .text, .uuidSwappedTime, .messagePack, .protobuf:
             return ["blob"]
         case .uuid:
             return ["blob", "text"]
@@ -86,7 +84,7 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
     /// searching exactly when one of these is on it; hex is not what anyone types into Find.
     var rendersBinaryAsText: Bool {
         switch self {
-        case .text, .uuid, .uuidSwappedTime, .messagePack, .igbinary, .protobuf:
+        case .text, .uuid, .uuidSwappedTime, .messagePack, .protobuf:
             return true
         case .raw, .unixTimestamp, .unixTimestampMillis, .json, .phpSerialized:
             return false

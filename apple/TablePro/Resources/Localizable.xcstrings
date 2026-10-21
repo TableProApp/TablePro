@@ -83855,9 +83855,6 @@
         }
       }
     },
-    "Format version %lld is not one this viewer reads." : {
-
-    },
     "Format:" : {
       "localizations" : {
         "fr" : {
@@ -142627,16 +142624,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Référence"
-          }
-        }
-      }
-    },
-    "Reference %lld at byte %lld points to no earlier value." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Reference %1$lld at byte %2$lld points to no earlier value."
           }
         }
       }

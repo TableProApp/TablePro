@@ -7,13 +7,11 @@ import Foundation
 
 internal enum BinaryValueFormat: String, Equatable, Sendable {
     case messagePack
-    case igbinary
     case protobuf
 
     var displayName: String {
         switch self {
         case .messagePack: return "MessagePack"
-        case .igbinary: return "igbinary"
         case .protobuf: return "Protobuf"
         }
     }
@@ -21,7 +19,6 @@ internal enum BinaryValueFormat: String, Equatable, Sendable {
 
 internal enum BinaryValueTree: Sendable {
     case json(JSONTreeNode)
-    case php(PhpTreeNode)
     case protobuf(ProtobufTreeNode)
 }
 
@@ -34,7 +31,7 @@ internal enum BinaryValueDocument: Sendable {
 internal enum BinaryValueDecoding {
     static let maxTextLength = BinaryTextDecoder.maxDisplayBytes
     // The grid stops here too, so a cell never shows a value the viewer then refuses.
-    static let maxInputBytes = PhpSerializeParser.sizeCapBytes
+    static let maxInputBytes = 5_000_000
     static let maxViewerTextLength = 500_000
 
     // Budgeted to what the cell can show, so a fault past that point is the viewer's to report.
@@ -48,8 +45,6 @@ internal enum BinaryValueDecoding {
             case .messagePack:
                 let value = try MessagePackDecoder.decode(data, maxValues: budget)
                 text = MessagePackTextWriter.json(value, pretty: false, limit: limit)
-            case .igbinary:
-                text = PhpSerializeWriter.serialize(try IgbinaryDecoder.decode(data, maxValues: budget), limit: limit)
             case .protobuf:
                 let fields = try ProtobufWireDecoder.decode(data, maxValues: budget).fields
                 text = ProtobufTextWriter.text(fields, multiLine: false, limit: limit)
@@ -83,16 +78,6 @@ internal enum BinaryValueDecoding {
                     tree: .json(MessagePackTreeBuilder.build(from: value)),
                     text: capped(
                         MessagePackTextWriter.json(value, pretty: true, limit: writerLimit(forCap: maxViewerTextLength)),
-                        at: maxViewerTextLength
-                    ),
-                    note: nil
-                )
-            case .igbinary:
-                let value = try IgbinaryDecoder.decode(data)
-                return .decoded(
-                    tree: .php(PhpTreeBuilder.build(from: value)),
-                    text: capped(
-                        PhpSerializeWriter.serialize(value, limit: writerLimit(forCap: maxViewerTextLength)),
                         at: maxViewerTextLength
                     ),
                     note: nil

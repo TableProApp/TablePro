@@ -11,16 +11,11 @@ internal indirect enum PhpValue: Equatable {
     case int(Int)
     case float(Double)
     case string(String)
-    // A string that is not UTF-8. Only igbinary produces it; serialized text is read as UTF-8.
-    case bytes(Data)
     case array([PhpKeyValue])
     case object(className: String, properties: [PhpProperty])
     case serializable(className: String, rawPayload: String)
     case enumCase(className: String, caseName: String)
-    // `r:`, the same object again.
     case reference(id: Int)
-    // `R:`, a PHP reference (`&`), which PHP refuses as `r:` for anything but an object.
-    case variableReference(id: Int)
     case unsupported(token: String)
     case depthExceeded
     case tooLarge
@@ -34,7 +29,6 @@ internal indirect enum PhpValue: Equatable {
             if a.isNaN && b.isNaN { return true }
             return a == b
         case (.string(let a), .string(let b)): return a == b
-        case (.bytes(let a), .bytes(let b)): return a == b
         case (.array(let a), .array(let b)): return a == b
         case (.object(let aName, let aProps), .object(let bName, let bProps)):
             return aName == bName && aProps == bProps
@@ -43,7 +37,6 @@ internal indirect enum PhpValue: Equatable {
         case (.enumCase(let aName, let aCase), .enumCase(let bName, let bCase)):
             return aName == bName && aCase == bCase
         case (.reference(let a), .reference(let b)): return a == b
-        case (.variableReference(let a), .variableReference(let b)): return a == b
         case (.unsupported(let a), .unsupported(let b)): return a == b
         case (.depthExceeded, .depthExceeded): return true
         case (.tooLarge, .tooLarge): return true
@@ -118,7 +111,7 @@ private struct Cursor {
         case UInt8(ascii: "E"): return parseEnumCase()
         case UInt8(ascii: "o"):
             return .unsupported(token: "o")
-        case UInt8(ascii: "r"), UInt8(ascii: "R"): return parseReference(token: token)
+        case UInt8(ascii: "r"), UInt8(ascii: "R"): return parseReference()
         default: return nil
         }
     }
@@ -221,7 +214,7 @@ private struct Cursor {
         properties.reserveCapacity(count)
         for _ in 0..<count {
             guard case let .string(rawKey)? = parseValue(depth: depth + 1) else { return nil }
-            let decoded = PhpSerializeParser.decodePropertyKey(rawKey)
+            let decoded = decodePropertyKey(rawKey)
             guard let value = parseValue(depth: depth + 1) else { return nil }
             properties.append(PhpProperty(name: decoded.name, visibility: decoded.visibility, value: value))
         }
@@ -264,13 +257,13 @@ private struct Cursor {
         return .enumCase(className: String(name[..<colon]), caseName: String(name[name.index(after: colon)...]))
     }
 
-    private mutating func parseReference(token: UInt8) -> PhpValue? {
+    private mutating func parseReference() -> PhpValue? {
         index += 1
         guard expect(UInt8(ascii: ":")) else { return nil }
         guard let raw = readUntil(UInt8(ascii: ";")) else { return nil }
         guard let value = Int(raw) else { return nil }
         guard expect(UInt8(ascii: ";")) else { return nil }
-        return token == UInt8(ascii: "R") ? .variableReference(id: value) : .reference(id: value)
+        return .reference(id: value)
     }
 
     private mutating func readUntil(_ terminator: UInt8) -> String? {
@@ -283,22 +276,20 @@ private struct Cursor {
     }
 }
 
-extension PhpSerializeParser {
-    static func decodePropertyKey(_ raw: String) -> (name: String, visibility: PhpVisibility) {
-        let scalars = Array(raw.unicodeScalars)
-        guard scalars.first?.value == 0 else {
-            return (raw, .publicVisibility)
-        }
-        let secondNullIndex = scalars.dropFirst().firstIndex { $0.value == 0 }
-        guard let nullIndex = secondNullIndex, nullIndex < scalars.count - 1 else {
-            return (raw, .publicVisibility)
-        }
-        let middle = String(String.UnicodeScalarView(scalars[1..<nullIndex]))
-        let nameScalars = scalars[(nullIndex + 1)...]
-        let name = String(String.UnicodeScalarView(nameScalars))
-        if middle == "*" {
-            return (name, .protectedVisibility)
-        }
-        return (name, .privateVisibility(className: middle))
+private func decodePropertyKey(_ raw: String) -> (name: String, visibility: PhpVisibility) {
+    let scalars = Array(raw.unicodeScalars)
+    guard scalars.first?.value == 0 else {
+        return (raw, .publicVisibility)
     }
+    let secondNullIndex = scalars.dropFirst().firstIndex { $0.value == 0 }
+    guard let nullIndex = secondNullIndex, nullIndex < scalars.count - 1 else {
+        return (raw, .publicVisibility)
+    }
+    let middle = String(String.UnicodeScalarView(scalars[1..<nullIndex]))
+    let nameScalars = scalars[(nullIndex + 1)...]
+    let name = String(String.UnicodeScalarView(nameScalars))
+    if middle == "*" {
+        return (name, .protectedVisibility)
+    }
+    return (name, .privateVisibility(className: middle))
 }

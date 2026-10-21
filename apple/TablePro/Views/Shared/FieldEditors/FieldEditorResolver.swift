@@ -52,7 +52,7 @@ internal enum FieldEditorResolver {
                 return .phpSerialized
             case .json:
                 return .json
-            case .messagePack, .igbinary, .protobuf:
+            case .messagePack, .protobuf:
                 // A NULL keeps the hex editor, the way bytes get into it.
                 if type.isBlobType || isBinaryValue, originalValue != nil, let format = override.binaryValueFormat {
                     return .binaryValue(format)

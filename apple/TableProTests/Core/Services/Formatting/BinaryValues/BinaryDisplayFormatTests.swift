@@ -62,9 +62,6 @@ struct BinaryDisplayFormatTests {
             .bytes(BinaryFixture.data("82a7636f6d70616374c3a6736368656d6100")), columnType: blob, displayFormat: .messagePack
         ) == #"{"compact":true,"schema":0}"#)
         #expect(CellDisplayFormatter.format(
-            .bytes(BinaryFixture.data("00000002110568656c6c6f")), columnType: blob, displayFormat: .igbinary
-        ) == #"s:5:"hello";"#)
-        #expect(CellDisplayFormatter.format(
             .bytes(BinaryFixture.data("0801131a08687474703a2f2f782002142a03656e64")), columnType: blob, displayFormat: .protobuf
         ) == #"1: 1 2 { 3: "http://x" 4: 2 } 5: "end""#)
     }
@@ -74,7 +71,6 @@ struct BinaryDisplayFormatTests {
         let blob = ColumnType.blob(rawType: "BLOB")
         let broken = BinaryFixture.data("82a7636f6d70")
         #expect(CellDisplayFormatter.format(.bytes(broken), columnType: blob, displayFormat: .messagePack) == "0x82A7636F6D70")
-        #expect(CellDisplayFormatter.format(.bytes(broken), columnType: blob, displayFormat: .igbinary) == "0x82A7636F6D70")
         #expect(CellDisplayFormatter.format(.bytes(broken), columnType: blob, displayFormat: .protobuf) == "0x82A7636F6D70")
     }
 

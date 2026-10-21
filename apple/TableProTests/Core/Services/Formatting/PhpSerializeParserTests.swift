@@ -233,10 +233,9 @@ struct PhpSerializeParserSpecialTests {
         #expect(PhpSerializeParser.parse("r:7;") == .reference(id: 7))
     }
 
-    @Test("R token returns .variableReference, which writes back as R:")
+    @Test("R token returns .reference")
     func referenceUpperR() {
-        #expect(PhpSerializeParser.parse("R:42;") == .variableReference(id: 42))
-        #expect(PhpSerializeWriter.serialize(.variableReference(id: 42)) == "R:42;")
+        #expect(PhpSerializeParser.parse("R:42;") == .reference(id: 42))
     }
 
     @Test("A length past the end is refused, not added up until it overflows")

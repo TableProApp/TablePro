@@ -20,7 +20,6 @@ struct ValueDisplayFormatTests {
         #expect(ValueDisplayFormat.phpSerialized.rawValue == "phpSerialized")
         #expect(ValueDisplayFormat.uuidSwappedTime.rawValue == "uuidSwappedTime")
         #expect(ValueDisplayFormat.messagePack.rawValue == "messagePack")
-        #expect(ValueDisplayFormat.igbinary.rawValue == "igbinary")
         #expect(ValueDisplayFormat.protobuf.rawValue == "protobuf")
     }
 
@@ -30,7 +29,6 @@ struct ValueDisplayFormatTests {
         #expect(ValueDisplayFormat.uuid.rendersBinaryAsText)
         #expect(ValueDisplayFormat.uuidSwappedTime.rendersBinaryAsText)
         #expect(ValueDisplayFormat.messagePack.rendersBinaryAsText)
-        #expect(ValueDisplayFormat.igbinary.rendersBinaryAsText)
         #expect(ValueDisplayFormat.protobuf.rendersBinaryAsText)
         #expect(!ValueDisplayFormat.raw.rendersBinaryAsText)
         #expect(!ValueDisplayFormat.unixTimestamp.rendersBinaryAsText)
@@ -62,7 +60,7 @@ struct ValueDisplayFormatTests {
         let formats = ValueDisplayFormat.applicableFormats(for: .blob(rawType: "BLOB"))
         #expect(!formats.contains(.json))
         #expect(!formats.contains(.phpSerialized))
-        #expect(formats == [.raw, .text, .uuid, .uuidSwappedTime, .messagePack, .igbinary, .protobuf])
+        #expect(formats == [.raw, .text, .uuid, .uuidSwappedTime, .messagePack, .protobuf])
     }
 
     @Test("The binary decoders and the swapped UUID stay off text and integer columns")
@@ -71,7 +69,6 @@ struct ValueDisplayFormatTests {
             let formats = ValueDisplayFormat.applicableFormats(for: columnType)
             #expect(!formats.contains(.uuidSwappedTime))
             #expect(!formats.contains(.messagePack))
-            #expect(!formats.contains(.igbinary))
             #expect(!formats.contains(.protobuf))
         }
     }
@@ -84,7 +81,7 @@ struct ValueDisplayFormatTests {
         )
 
         #expect(!formats.contains(.uuid))
-        #expect(formats == [.raw, .text, .messagePack, .igbinary, .protobuf])
+        #expect(formats == [.raw, .text, .messagePack, .protobuf])
     }
 
     @Test("nil column type returns only raw")

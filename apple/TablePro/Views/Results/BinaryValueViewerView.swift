@@ -122,8 +122,6 @@ internal struct BinaryValueViewerView: View {
         switch tree {
         case .json(let root):
             JSONTreeView(rootNode: root, searchText: $searchText)
-        case .php(let root):
-            PhpTreeView(rootNode: root, searchText: $searchText)
         case .protobuf(let root):
             FilterableTreeView(
                 rootNode: root,

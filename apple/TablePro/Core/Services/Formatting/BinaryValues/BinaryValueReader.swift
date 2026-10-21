@@ -12,8 +12,6 @@ internal struct BinaryValueDecodeError: Error, Equatable, Sendable {
         case trailingBytes(Int)
         case nestingTooDeep
         case tooLarge
-        case unsupportedVersion(UInt32)
-        case unknownReference(Int)
         case integerOutOfRange
         case invalidField
         case unmatchedGroupEnd
@@ -38,10 +36,6 @@ internal struct BinaryValueDecodeError: Error, Equatable, Sendable {
             return String(localized: "The value is nested too deeply to show.")
         case .tooLarge:
             return String(localized: "The value is too large to decode.")
-        case .unsupportedVersion(let version):
-            return String(format: String(localized: "Format version %lld is not one this viewer reads."), Int(version))
-        case .unknownReference(let index):
-            return String(format: String(localized: "Reference %lld at byte %lld points to no earlier value."), index, offset)
         case .integerOutOfRange:
             return String(format: String(localized: "The integer at byte %lld is out of range."), offset)
         case .invalidField:
