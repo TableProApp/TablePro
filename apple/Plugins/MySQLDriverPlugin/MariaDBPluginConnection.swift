@@ -671,8 +671,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     // Connector/C turns TLS on for any CA, certificate or key it is given, so a plaintext attempt gets none.
     private func applyTLS(_ mode: SSLMode, to handle: UnsafeMutablePointer<MYSQL>) {
         MariaDBTLSMode.apply(mode, to: handle)
-        // A local socket never leaves this Mac, and the mysql client trusts it the same way. The Cloud SQL Auth Proxy
-        // encrypts the hop to the instance, which its loopback listener cannot show as TLS.
+        // A local socket never leaves this Mac, and the mysql client trusts it the same way. The Cloud SQL Auth Proxy and
+        // an SSH forward to the server's socket encrypt the way there, which their loopback listener cannot show as TLS.
         if mode == .disabled || mode == .preferred, !transport.isUnixSocket, !tunnelSecuresTransport {
             _ = MySQLPlaintextPassword.methodsWithoutTLS.withCString {
                 mysql_options(handle, MARIADB_OPT_RESTRICTED_AUTH, $0)
