@@ -187393,6 +187393,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The server asked for the password in plain text, which TablePro sends only over TLS. Set SSL Mode to Required, or turn TLS on for the server." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server chose this row's key." : {
       "localizations" : {
         "fr" : {
