@@ -163,6 +163,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::outcomes::tests::a_select_that_calls_a_writing_function_runs_outside_a_read_only_cursor"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "services::browse_query::tests::mysql_value_query_refetches_the_exact_blob_for_a_composite_key"
     ],
     [

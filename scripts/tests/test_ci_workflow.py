@@ -114,6 +114,7 @@ class CiWorkflowTests(unittest.TestCase):
                 "value_contract_mongodb_census_is_not_a_snapshot_for_already_read_documents",
                 "value_contract_mongodb_run_find_merges_page_types_and_exports_materialized_values",
                 "postgres_value_query_refetches_by_enum_and_domain_composite_key",
+                "a_select_that_calls_a_writing_function_runs_outside_a_read_only_cursor",
                 "mysql_value_query_refetches_the_exact_blob_for_a_composite_key",
                 "mssql_value_query_refetches_the_exact_blob_for_a_composite_key",
                 "clickhouse_value_query_refetches_the_exact_text_for_a_composite_key",

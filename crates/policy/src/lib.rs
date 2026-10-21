@@ -20,6 +20,7 @@ mod principal;
 mod rules;
 mod select_writes;
 mod sensitive_projection;
+mod single_read;
 mod transaction_control;
 mod tsql_transaction;
 mod verdict;

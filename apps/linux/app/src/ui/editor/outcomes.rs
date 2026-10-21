@@ -344,12 +344,8 @@ fn stream_candidate(sql: &str, driver_id: &str) -> bool {
     if driver_id != "postgres" {
         return false;
     }
-    let facts = tablepro_policy::classify(sql, driver_id);
-    facts.class == tablepro_policy::StatementClass::Select
-        && !facts.is_multi_statement
-        && !facts.contains_unknown_write()
-        && !facts.contains_mutating_dml()
-        && !facts.contains_ddl()
+    tablepro_policy::classify(sql, driver_id).is_single_read()
+        && super::stream_functions::calls_only_read_only_functions(sql)
 }
 
 struct StreamExecution<'a> {

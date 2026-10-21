@@ -379,3 +379,23 @@ fn only_a_provable_read_skips_the_write_capability_check() {
         assert!(statement_requires_write_capability(sql, "postgres"), "{sql}");
     }
 }
+
+#[test]
+fn a_single_read_has_no_write_session_file_or_admin_effect() {
+    for sql in [
+        "SELECT * FROM accounts",
+        "SELECT lower(name) FROM accounts WHERE id = 1",
+    ] {
+        assert!(classify(sql, "postgres").is_single_read(), "{sql}");
+    }
+    for sql in [
+        "SELECT 1; SELECT 2",
+        "SELECT * FROM accounts FOR UPDATE",
+        "DELETE FROM accounts",
+        "SELECT set_config('search_path', 'x', false)",
+        "SELECT pg_read_file('/etc/hostname')",
+        "SELECT pg_terminate_backend(1)",
+    ] {
+        assert!(!classify(sql, "postgres").is_single_read(), "{sql}");
+    }
+}

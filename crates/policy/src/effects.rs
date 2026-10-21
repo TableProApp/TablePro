@@ -23,6 +23,10 @@ impl Effects {
         self.0 & other.0 == other.0
     }
 
+    pub(crate) const fn intersects(self, other: Self) -> bool {
+        self.0 & other.0 != 0
+    }
+
     pub(crate) const fn writes(self) -> bool {
         let write_effects = Self::WRITES_ROWS
             .union(Self::WRITES_SCHEMA)
