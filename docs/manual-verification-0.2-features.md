@@ -6,7 +6,7 @@ The 0.2.0 desktop target is **Arch Linux / Omarchy / Hyprland, native Wayland**.
 
 The source-matched installed GTK safety run passed 93 scenarios under Xvfb/AT-SPI on 2026-10-21; see its [package identity, result and limitations](evidence/installed-gtk-0.2.0-2026-10-21/README.md). It does not close the native Wayland visual checklist below.
 
-The partial native Wayland run on 2026-10-22 records package identity, synthetic PostgreSQL value checks, responsive widths and a single resource sample in [its evidence note](evidence/installed-wayland-0.2.0-2026-10-22/README.md). It does not complete this checklist; appearance restoration and test-profile cleanup were not verified.
+The ongoing native Wayland run on 2026-10-22 records package identity, synthetic PostgreSQL value checks, responsive widths, About and Preferences observations, a resource sample, and one GTK/GLib abort in [its evidence note](evidence/installed-wayland-0.2.0-2026-10-22/README.md). System appearance restoration and test-profile cleanup were verified; the remaining checklist items are still open unless a dated result is recorded beside them.
 
 Record the full binary/package SHA, package checksum when installed, GTK backend, OS/Hyprland/GTK/libadwaita versions, display scale, light/dark mode, result and screenshot paths. Test both normal size and a narrow/resized window, keyboard focus, clipboard and popover/dialog placement. Mark blocked and not-run items explicitly.
 
@@ -69,7 +69,7 @@ Defects found. Screenshots are kept by the tester, not in the repository.
 
 Open a result, then Export Results.
 
-- [ ] The Format list offers CSV, JSON, Markdown, HTML, XML, SQL and Excel. **2026-10-12 Hyprland dark:** passed.
+- [ ] The Format list offers CSV, JSON, Markdown, HTML, XML, SQL and Excel. **2026-10-12 Hyprland dark:** passed. **2026-10-22 native Wayland, editor query result:** CSV, JSON, Markdown, HTML, XML and SQL were present; Excel was absent. This export was "All rows from a fresh guarded run of this query" with no known total. The current export implementation filters Excel for an unknown total, so this observation does not establish a defect or verify Excel availability for a browse table with a known total.
 - [ ] SQL is absent for a MongoDB or Redis connection, present for the others.
 - [ ] The CSV options group shows for CSV and hides for every other format. **2026-10-12 Hyprland dark:** passed for CSV and SQL only.
 - [ ] A SQL options group with an editable Table name shows only for SQL. **2026-10-12 Hyprland dark:** passed.
@@ -337,10 +337,10 @@ Use a keyed table with a nullable text column and values above 8 KiB. Include CR
 
 ## Preferences, About and application icons
 
-- [ ] Open Preferences and confirm the page navigation separates General, Appearance, Editor and MCP.
-- [ ] Change Appearance between System, Light and Dark; confirm the active application style changes and the choice survives a restart.
+- [x] Open Preferences and confirm the page navigation separates General, Appearance, Editor and MCP. **2026-10-22 native Wayland, dark:** all four page tabs rendered and were keyboard reachable. General showed Data browser and Query history groups; Editor showed font family and Vim keys; MCP showed client name, scope and Issue token controls. No MCP token was issued. Preference value persistence outside the Appearance check remains untested.
+- [ ] Change Appearance between System, Light and Dark; confirm the active application style changes and the choice survives a restart. **2026-10-22 native Wayland, dark:** System was read back as the selected mode after a Light comparison and restored to System. Dark selection and persistence across app restart were not tested.
 - [ ] Confirm the Data browser, Query history and SQL editor controls retain their current values and live-save behavior.
-- [ ] Open About and confirm project credits and third-party attribution are presented separately, and the copyright attribution remains visible.
+- [x] Open About and confirm project credits and third-party attribution are presented separately, and the copyright attribution remains visible. **2026-10-22 native Wayland, dark:** Details showed BookiE contributors and version 0.2.0; Credits lists BookiE contributors separately from "TablePro Authors (upstream project)"; Legal displays `© 2025–2026 TablePro Authors` and a GNU AGPL version 3 or later link. Screenshots: `/tmp/bookie-about-details.png`, `/tmp/bookie-about-credits.png`, `/tmp/bookie-about-legal.png`.
 - [ ] Check the BookiE launcher icon at small and large sizes in the application menu and task switcher; confirm the same artwork is used by the installed package.
 
 ## SQL code folding
