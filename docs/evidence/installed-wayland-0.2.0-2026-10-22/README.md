@@ -31,6 +31,8 @@ After relaunching the installed app at 00:57 CEST, an idle sample at 00:59:43 CE
 
 A follow-up sample at 01:03:26 CEST, after 6 minutes 23 seconds of process uptime and including the isolated scenario run, showed 99,156 KiB RSS and 0.1% average CPU for the visible native Wayland process. RSS remained near the previous idle sample; this short interval does not establish long-duration behavior.
 
+At 01:12:29–01:12:49 CEST, the native process RSS held at 112,624 KiB across five samples; CPU time increased by 0.03 seconds over 20 seconds. This is about 13 MiB above the 01:08:23 sample, but it did not continue rising during this window. The cause of that step increase is not isolated, so this does not establish a leak or a long-duration memory trend.
+
 ## Coverage limits
 
 The 93-scenario installed GTK run under Xvfb/AT-SPI is recorded separately in [the 2026-10-21 GTK evidence](../installed-gtk-0.2.0-2026-10-21/README.md). This native run did not cover keyboard-only navigation across every dialog, clipboard round trips, Orca announcements, high contrast, SSH, other database engines, window restart restoration or long-duration memory behavior. The local PostgreSQL switcher recovery and test-resource cleanup were verified; broader live-server restart behavior remains untested. Screenshots and raw profiles are temporary under `/tmp/bookie-installed-gtk-2026-10-21/` and `/tmp/` and are not committed. The current native test session was interrupted by the 00:51:48 CEST abort during AT-SPI tree inspection and needs a clean relaunch before further GUI checks. Avoid AT-SPI queries during the next visual-only pass; this isolates ordinary interaction from the observed trigger path but does not resolve the crash cause.
