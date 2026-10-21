@@ -94,6 +94,10 @@ xcodebuild -project TableProMobile/TableProMobile.xcodeproj -scheme TableProMobi
     -destination 'platform=iOS Simulator,name=<iPhone>' -parallel-testing-enabled NO -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO ARCHS=arm64
 ```
 
+## Performance
+
+`scripts/benchmark-app-paths.sh` times cold launch, opening a 1,000,000-row table and switching tabs, 10 runs each, and checks the median and 95th percentile against the budgets in `scripts/benchmark/app-paths/baseline.json`. Usage, permissions and the fixtures are in its header. In Instruments the same three paths are the `AppLaunch`, `TableLoad` and `TabSwitch` intervals under Points of Interest.
+
 ## Code style
 
 `.swiftlint.yml` is the source of truth. Run `swiftlint lint --strict <changed .swift files>`; CI lints all of `apple/` the same way on every pull request, and nothing lints during an Xcode build. Formatting the linter leaves to you:

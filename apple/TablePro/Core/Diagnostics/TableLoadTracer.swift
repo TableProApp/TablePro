@@ -172,6 +172,7 @@ internal final class TableLoadTracer {
     /// error's Swift type name still reaches a developer reading `log stream`, while the recorded
     /// outcome stays a closed set an external report can group by.
     internal func finish(token: TableLoadTraceToken, outcome: TableLoadOutcome, detail: String? = nil) {
+        let ownsTab = recorder.activeToken(for: token.tabId) == token
         guard let timing = recorder.finish(token: token, outcome: outcome, at: clock.now) else { return }
         let label = Self.label(for: outcome, detail: detail)
         logger.debug(
@@ -183,6 +184,9 @@ internal final class TableLoadTracer {
         )
         endInterval(for: timing.token, outcome: label)
         drainCompletedTraces()
+        // A superseded load ending late says nothing about the rows the tab now waits for.
+        guard ownsTab else { return }
+        TabSwitchTracer.shared.tableLoadFinished(tabId: timing.token.tabId, outcome: outcome)
     }
 
     private static func label(for outcome: TableLoadOutcome, detail: String?) -> String {

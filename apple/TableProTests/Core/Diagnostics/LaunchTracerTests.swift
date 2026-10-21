@@ -58,6 +58,21 @@ final class LaunchTracerTests {
     }
 
     @Test
+    func theReportLinesUpTheTimingsOfShortAndLongStageNames() {
+        let tracer = LaunchTracer(processStart: Date())
+
+        tracer.mark(.main)
+        tracer.mark(.didFinishLaunchingBegan)
+
+        let rows = tracer.report().split(separator: "\n").dropFirst()
+        let columns = rows.compactMap { row in
+            row.range(of: "(+").map { row.distance(from: row.startIndex, to: $0.lowerBound) }
+        }
+        #expect(columns.count == 2)
+        #expect(Set(columns).count == 1)
+    }
+
+    @Test
     func processStartIsInThePast() {
         #expect(LaunchTracer.processStartDate() < Date())
     }

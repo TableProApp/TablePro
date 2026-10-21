@@ -83,9 +83,10 @@ internal final class LaunchTracer {
         var lines = ["launch trace (ms since exec)"]
         var previous: TimeInterval = 0
         for mark in marks {
+            // String(format:) ignores the width of a %@ argument, so the name is padded here.
             lines.append(String(
-                format: "  %-26@ %8.1f  (+%6.1f)",
-                mark.stage.rawValue as NSString,
+                format: "  %@ %8.1f  (+%6.1f)",
+                mark.stage.rawValue.padding(toLength: 26, withPad: " ", startingAt: 0),
                 mark.offset * 1_000,
                 (mark.offset - previous) * 1_000
             ))
