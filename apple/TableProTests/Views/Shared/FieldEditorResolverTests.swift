@@ -73,6 +73,14 @@ struct FieldEditorResolverTests {
             isBinaryValue: true
         )
         #expect(kind == .binaryValue(.protobuf))
+        let null = FieldEditorResolver.resolve(
+            for: .blob(rawType: "BLOB"),
+            isLongText: false,
+            originalValue: nil,
+            displayFormatOverride: .protobuf,
+            isBinaryValue: true
+        )
+        #expect(null == .blobHex)
         let onText = FieldEditorResolver.resolve(
             for: .text(rawType: "TEXT"),
             isLongText: false,

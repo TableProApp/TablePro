@@ -172,7 +172,7 @@ internal extension Data {
             hex.append(digits[Int(byte >> 4)])
             hex.append(digits[Int(byte & 0x0F)])
         }
-        return String(decoding: hex, as: UTF8.self)
+        return String(bytes: hex, encoding: .ascii) ?? ""
     }
 }
 

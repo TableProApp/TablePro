@@ -138,6 +138,9 @@ extension JSONTreeNode: FilterableTreeNode {
         )
     }
 
+    // MessagePack floats can be these; JSON has no spelling for them, so they copy as strings.
+    private static let nonFiniteNumbers: Set<String> = ["NaN", "Infinity", "-Infinity"]
+
     private var jsonRepresentation: String {
         switch valueType {
         case .object:
@@ -157,6 +160,8 @@ extension JSONTreeNode: FilterableTreeNode {
             return "null"
         case .truncated:
             return "null"
+        case .number where Self.nonFiniteNumbers.contains(rawValue ?? ""):
+            return TreeDisplayText.jsonQuoted(rawValue ?? "")
         case .number, .boolean:
             return rawValue ?? displayValue
         }

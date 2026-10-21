@@ -25,6 +25,9 @@ internal enum PhpSerializeWriter {
             output += "d:\(floatText(number));"
         case .string(let text):
             writeString(text, into: &output, limit: limit)
+        case .bytes(let bytes):
+            let shown = escaped(bytes.prefix(Swift.max(0, limit - output.utf8.count)))
+            output += "s:\(bytes.count):\"\(shown)\";"
         case .array(let entries):
             output += "a:\(entries.count):{"
             for entry in entries {
@@ -54,6 +57,24 @@ internal enum PhpSerializeWriter {
         case .depthExceeded, .tooLarge:
             output += "…"
         }
+    }
+
+    // Bytes as a PHP double-quoted literal spells them, so `s:1:"\xFF";` keeps its true length.
+    static func escaped(_ bytes: Data) -> String {
+        let digits = Array("0123456789ABCDEF".utf8)
+        var output: [UInt8] = []
+        output.reserveCapacity(bytes.count)
+        for byte in bytes {
+            switch byte {
+            case UInt8(ascii: "\\"):
+                output += [byte, byte]
+            case 0x20...0x7E:
+                output.append(byte)
+            default:
+                output += [UInt8(ascii: "\\"), UInt8(ascii: "x"), digits[Int(byte >> 4)], digits[Int(byte & 0x0F)]]
+            }
+        }
+        return String(bytes: output, encoding: .ascii) ?? ""
     }
 
     private static func writeString(_ text: String, into output: inout String, limit: Int) {

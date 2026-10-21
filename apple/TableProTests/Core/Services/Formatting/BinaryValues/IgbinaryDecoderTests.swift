@@ -73,6 +73,16 @@ struct IgbinaryDecoderTests {
         #expect(try Self.serialized(hex) == expected)
     }
 
+    @Test("A string that is not UTF-8 stays bytes, with its true length")
+    func binaryString() throws {
+        #expect(try IgbinaryDecoder.decode(BinaryFixture.data("000000021101ff")) == .bytes(Data([0xFF])))
+        #expect(try Self.serialized("000000021101ff") == #"s:1:"\xFF";"#)
+        #expect(try Self.serialized("0000000211035cff41") == #"s:3:"\\\xFFA";"#)
+        let tree = PhpTreeBuilder.build(from: .bytes(Data([0xFF])), formats: BinaryFixture.english)
+        #expect(tree.badgeLabel == "bin")
+        #expect(tree.copyableValue == #"\xFF"#)
+    }
+
     @Test("A Serializable object keeps its payload")
     func serializable() throws {
         #expect(try Self.serialized("000000021705506f696e741d03312c32") == #"C:5:"Point":3:{1,2}"#)

@@ -88,6 +88,17 @@ struct BinaryDisplayFormatTests {
         #expect((text as NSString).length <= BinaryValueDecoding.maxTextLength + 1)
     }
 
+    @Test("Text cut short by non-ASCII characters still carries the marker")
+    func nonASCIITruncationIsMarked() {
+        var messagePack = Data([0xDC, 0x2E, 0xE0])
+        for _ in 0..<12_000 {
+            messagePack.append(contentsOf: [0xA2, 0xC3, 0xA9])
+        }
+        let text = BinaryValueDecoding.text(messagePack, format: .messagePack) ?? ""
+        #expect(text.hasPrefix(#"["é","é""#))
+        #expect(text.hasSuffix(BinaryTextDecoder.truncationMarker))
+    }
+
     @Test("One large scalar is written only as far as the cell can show")
     func largeScalarIsBounded() {
         let payload = Data(repeating: 0xAB, count: 1_000_000)

@@ -48,7 +48,7 @@ internal enum IgbinaryDecoder {
         var reader: BinaryValueReader
         var budget: Int
         var isTruncated = false
-        private var strings: [String] = []
+        private var strings: [Data] = []
         // Indexed by igbinary's reference number, holding the number PHP's serialize() gives the same value.
         private var references: [Int] = []
         private var valueNumber = 0
@@ -75,7 +75,7 @@ internal enum IgbinaryDecoder {
             case Tag.reference:
                 let inner = try value(depth: depth + 1)
                 switch inner {
-                case .null, .bool, .int, .float, .string:
+                case .null, .bool, .int, .float, .string, .bytes:
                     references.append(valueNumber)
                 default:
                     break
@@ -100,9 +100,9 @@ internal enum IgbinaryDecoder {
             case Tag.stringEmpty:
                 return .string("")
             case Tag.stringID8, Tag.stringID16, Tag.stringID32:
-                return .string(try storedString(tag))
+                return Self.phpString(try storedString(tag))
             case Tag.string8, Tag.string16, Tag.string32, Tag.string64:
-                return .string(try characters(tag))
+                return Self.phpString(try characters(tag))
             case Tag.array8, Tag.array16, Tag.array32:
                 references.append(number)
                 return .array(try entries(tag, depth: depth))
@@ -146,7 +146,7 @@ internal enum IgbinaryDecoder {
             return Int(magnitude)
         }
 
-        private mutating func characters(_ tag: UInt8) throws -> String {
+        private mutating func characters(_ tag: UInt8) throws -> Data {
             let length: UInt64
             switch tag {
             case Tag.string8, Tag.object8: length = UInt64(try reader.readByte())
@@ -155,17 +155,23 @@ internal enum IgbinaryDecoder {
             default: length = try reader.readUInt64()
             }
             guard length <= UInt64(reader.remaining) else { throw reader.error(.unexpectedEnd) }
-            let text = Self.phpString(try reader.readBytes(Int(length)))
-            strings.append(text)
-            return text
+            let bytes = try reader.readBytes(Int(length))
+            strings.append(bytes)
+            return bytes
         }
 
-        // A PHP string is bytes: one that is not UTF-8 keeps a character per byte.
-        private static func phpString(_ bytes: Data) -> String {
+        // A PHP string is bytes; one that is not UTF-8 stays bytes rather than be transcoded.
+        private static func phpString(_ bytes: Data) -> PhpValue {
+            guard let text = String(bytes: bytes, encoding: .utf8) else { return .bytes(bytes) }
+            return .string(text)
+        }
+
+        // A class, property or enum case name is source text, so a stray byte keeps one character.
+        private static func name(_ bytes: Data) -> String {
             String(bytes: bytes, encoding: .utf8) ?? String(bytes: bytes, encoding: .isoLatin1) ?? ""
         }
 
-        private mutating func storedString(_ tag: UInt8) throws -> String {
+        private mutating func storedString(_ tag: UInt8) throws -> Data {
             let start = reader.offset
             let index = Int(try readSized(
                 tag,
@@ -213,9 +219,9 @@ internal enum IgbinaryDecoder {
             case Tag.stringEmpty:
                 return .string("")
             case Tag.stringID8, Tag.stringID16, Tag.stringID32:
-                return .string(try storedString(tag))
+                return Self.phpString(try storedString(tag))
             case Tag.string8, Tag.string16, Tag.string32, Tag.string64:
-                return .string(try characters(tag))
+                return Self.phpString(try characters(tag))
             default:
                 throw BinaryValueDecodeError(kind: .invalidByte(tag), offset: start)
             }
@@ -225,9 +231,9 @@ internal enum IgbinaryDecoder {
             let className: String
             switch tag {
             case Tag.object8, Tag.object16, Tag.object32:
-                className = try characters(tag)
+                className = Self.name(try characters(tag))
             default:
-                className = try storedString(tag)
+                className = Self.name(try storedString(tag))
             }
             references.append(number)
             let start = reader.offset
@@ -241,15 +247,15 @@ internal enum IgbinaryDecoder {
                 return .object(className: className, properties: properties)
             case Tag.objectSer8, Tag.objectSer16, Tag.objectSer32:
                 let payload = try reader.readBytes(try count(inner))
-                return .serializable(className: className, rawPayload: Self.phpString(payload))
+                return .serializable(className: className, rawPayload: Self.name(payload))
             case Tag.enumCase:
                 let caseStart = reader.offset
                 let caseTag = try reader.readByte()
                 switch caseTag {
                 case Tag.string8, Tag.string16, Tag.string32, Tag.string64:
-                    return .enumCase(className: className, caseName: try characters(caseTag))
+                    return .enumCase(className: className, caseName: Self.name(try characters(caseTag)))
                 case Tag.stringID8, Tag.stringID16, Tag.stringID32:
-                    return .enumCase(className: className, caseName: try storedString(caseTag))
+                    return .enumCase(className: className, caseName: Self.name(try storedString(caseTag)))
                 default:
                     throw BinaryValueDecodeError(kind: .invalidByte(caseTag), offset: caseStart)
                 }
@@ -262,6 +268,7 @@ internal enum IgbinaryDecoder {
             switch key {
             case .int(let number): return String(number)
             case .string(let text): return text
+            case .bytes(let bytes): return name(bytes)
             default: return ""
             }
         }

@@ -71,6 +71,18 @@ struct MessagePackDecoderTests {
         #expect(try MessagePackDecoder.decode(BinaryFixture.data("cb3fb999999999999a")) == .double(0.1))
     }
 
+    @Test("Non-finite floats are quoted, in the text and in a copied tree")
+    func nonFiniteFloats() throws {
+        #expect(try Self.json("91cb7ff0000000000000") == #"["Infinity"]"#)
+        #expect(try Self.json("91cbfff0000000000000") == #"["-Infinity"]"#)
+        #expect(try Self.json("91ca7fc00000") == #"["NaN"]"#)
+        let tree = MessagePackTreeBuilder.build(
+            from: try MessagePackDecoder.decode(BinaryFixture.data("91cb7ff0000000000000")),
+            formats: BinaryFixture.english
+        )
+        #expect(tree.copyableValue == #"["Infinity"]"#)
+    }
+
     @Test("A value cut short says where it ends")
     func truncated() {
         #expect(throws: BinaryValueDecodeError(kind: .unexpectedEnd, offset: 6)) {

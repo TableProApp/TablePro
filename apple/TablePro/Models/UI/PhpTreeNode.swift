@@ -11,6 +11,7 @@ internal enum PhpNodeType {
     case int
     case float
     case string
+    case bytes
     case array
     case object
     case serializable
@@ -26,6 +27,7 @@ internal enum PhpNodeType {
         case .int: return "int"
         case .float: return "float"
         case .string: return "str"
+        case .bytes: return "bin"
         case .array: return "arr"
         case .object: return "obj"
         case .serializable: return "ser"
@@ -42,7 +44,7 @@ internal enum PhpNodeType {
         case .string: return .string
         case .int, .float: return .number
         case .bool, .null, .enumCase: return .literal
-        case .serializable: return .serialized
+        case .serializable, .bytes: return .serialized
         case .reference: return .reference
         case .unsupported, .truncated: return .muted
         }
@@ -105,7 +107,8 @@ extension PhpTreeNode: FilterableTreeNode {
         case .array, .truncated: return ""
         case .object: return className ?? ""
         case .serializable: return [className, rawValue].compactMap { $0 }.joined(separator: " ")
-        case .null, .bool, .int, .float, .string, .enumCase, .reference, .unsupported: return rawValue ?? displayValue
+        case .null, .bool, .int, .float, .string, .bytes, .enumCase, .reference, .unsupported:
+            return rawValue ?? displayValue
         }
     }
 
@@ -199,6 +202,14 @@ internal enum PhpTreeBuilder {
                 key: key, keyPath: keyPath, path: path, nodeType: .string,
                 displayValue: display.text, isDisplayCut: display.isCut,
                 rawValue: stringValue, visibilityBadge: badge
+            )
+
+        case .bytes(let bytes):
+            let display = TreeDisplayText.cut(PhpSerializeWriter.escaped(bytes.prefix(maxDisplayLength)), limit: maxDisplayLength)
+            return PhpTreeNode(
+                key: key, keyPath: keyPath, path: path, nodeType: .bytes,
+                displayValue: "\"\(display.text)\(bytes.count > maxDisplayLength || display.isCut ? "…" : "")\"",
+                rawValue: PhpSerializeWriter.escaped(bytes), visibilityBadge: badge
             )
 
         case .array(let entries):
@@ -307,6 +318,7 @@ internal enum PhpTreeBuilder {
         switch key {
         case .int(let intValue): return "[\(intValue)]"
         case .string(let stringValue): return stringValue
+        case .bytes(let bytes): return PhpSerializeWriter.escaped(bytes)
         default: return "?"
         }
     }
@@ -315,6 +327,7 @@ internal enum PhpTreeBuilder {
         switch key {
         case .int(let intValue): return "\(parent)[\(intValue)]"
         case .string(let stringValue): return "\(parent).\(TreeKeyPathSyntax.member(stringValue))"
+        case .bytes(let bytes): return "\(parent).\(TreeKeyPathSyntax.member(PhpSerializeWriter.escaped(bytes)))"
         default: return parent
         }
     }

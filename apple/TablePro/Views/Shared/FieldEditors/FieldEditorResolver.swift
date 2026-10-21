@@ -53,7 +53,8 @@ internal enum FieldEditorResolver {
             case .json:
                 return .json
             case .messagePack, .igbinary, .protobuf:
-                if type.isBlobType || isBinaryValue, let format = override.binaryValueFormat {
+                // A NULL keeps the hex editor, the way bytes get into it.
+                if type.isBlobType || isBinaryValue, originalValue != nil, let format = override.binaryValueFormat {
                     return .binaryValue(format)
                 }
                 structuredAllowed = true

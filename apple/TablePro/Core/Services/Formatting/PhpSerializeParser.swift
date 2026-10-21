@@ -11,6 +11,8 @@ internal indirect enum PhpValue: Equatable {
     case int(Int)
     case float(Double)
     case string(String)
+    // A string that is not UTF-8. Only igbinary produces it; serialized text is read as UTF-8.
+    case bytes(Data)
     case array([PhpKeyValue])
     case object(className: String, properties: [PhpProperty])
     case serializable(className: String, rawPayload: String)
@@ -32,6 +34,7 @@ internal indirect enum PhpValue: Equatable {
             if a.isNaN && b.isNaN { return true }
             return a == b
         case (.string(let a), .string(let b)): return a == b
+        case (.bytes(let a), .bytes(let b)): return a == b
         case (.array(let a), .array(let b)): return a == b
         case (.object(let aName, let aProps), .object(let bName, let bProps)):
             return aName == bName && aProps == bProps

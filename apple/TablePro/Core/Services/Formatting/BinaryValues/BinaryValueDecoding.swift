@@ -41,22 +41,29 @@ internal enum BinaryValueDecoding {
     static func text(_ data: Data, format: BinaryValueFormat) -> String? {
         guard data.count <= maxInputBytes else { return nil }
         let budget = maxTextLength + 1
+        let limit = writerLimit(forCap: maxTextLength)
         let text: String
         do {
             switch format {
             case .messagePack:
                 let value = try MessagePackDecoder.decode(data, maxValues: budget)
-                text = MessagePackTextWriter.json(value, pretty: false, limit: budget)
+                text = MessagePackTextWriter.json(value, pretty: false, limit: limit)
             case .igbinary:
-                text = PhpSerializeWriter.serialize(try IgbinaryDecoder.decode(data, maxValues: budget), limit: budget)
+                text = PhpSerializeWriter.serialize(try IgbinaryDecoder.decode(data, maxValues: budget), limit: limit)
             case .protobuf:
                 let fields = try ProtobufWireDecoder.decode(data, maxValues: budget).fields
-                text = ProtobufTextWriter.text(fields, multiLine: false, limit: budget)
+                text = ProtobufTextWriter.text(fields, multiLine: false, limit: limit)
             }
         } catch {
             return nil
         }
         return capped(text, at: maxTextLength)
+    }
+
+    // Writers count UTF-8 bytes and the cap counts UTF-16 units. Three bytes per unit at most, so text
+    // a writer cut short is always past the cap, and always gets the marker.
+    private static func writerLimit(forCap cap: Int) -> Int {
+        cap * 3 + 3
     }
 
     private static func capped(_ text: String, at limit: Int) -> String {
@@ -75,7 +82,7 @@ internal enum BinaryValueDecoding {
                 return .decoded(
                     tree: .json(MessagePackTreeBuilder.build(from: value)),
                     text: capped(
-                        MessagePackTextWriter.json(value, pretty: true, limit: maxViewerTextLength + 1),
+                        MessagePackTextWriter.json(value, pretty: true, limit: writerLimit(forCap: maxViewerTextLength)),
                         at: maxViewerTextLength
                     ),
                     note: nil
@@ -84,7 +91,10 @@ internal enum BinaryValueDecoding {
                 let value = try IgbinaryDecoder.decode(data)
                 return .decoded(
                     tree: .php(PhpTreeBuilder.build(from: value)),
-                    text: capped(PhpSerializeWriter.serialize(value, limit: maxViewerTextLength + 1), at: maxViewerTextLength),
+                    text: capped(
+                        PhpSerializeWriter.serialize(value, limit: writerLimit(forCap: maxViewerTextLength)),
+                        at: maxViewerTextLength
+                    ),
                     note: nil
                 )
             case .protobuf:
@@ -92,7 +102,7 @@ internal enum BinaryValueDecoding {
                 return .decoded(
                     tree: .protobuf(ProtobufTreeBuilder.build(from: message.fields)),
                     text: capped(
-                        ProtobufTextWriter.text(message.fields, multiLine: true, limit: maxViewerTextLength + 1),
+                        ProtobufTextWriter.text(message.fields, multiLine: true, limit: writerLimit(forCap: maxViewerTextLength)),
                         at: maxViewerTextLength
                     ),
                     note: message.framing.map(framingNote)

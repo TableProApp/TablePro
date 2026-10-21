@@ -53,6 +53,10 @@ internal enum MessagePackTextWriter {
             output += TreeDisplayText.jsonQuoted(text.scalarPrefix(room))
         case .binary, .ext, .timestamp:
             output += TreeDisplayText.jsonQuoted(scalarText(value, limit: room) ?? "")
+        case .float(let number) where !number.isFinite:
+            output += TreeDisplayText.jsonQuoted(scalarText(value) ?? "")
+        case .double(let number) where !number.isFinite:
+            output += TreeDisplayText.jsonQuoted(scalarText(value) ?? "")
         case .null, .bool, .int, .uint, .float, .double:
             output += scalarText(value) ?? ""
         case .truncated:
