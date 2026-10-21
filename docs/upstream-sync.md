@@ -16,7 +16,7 @@ For each adopted Rust/Linux change, record the source commit/path, user case, ex
 
 Current GitHub refs checked: BookiE `linux` `bc0a0c3f2418483e93b288a46f5879eefd6e0815`, TablePro `linux` `6fd0d19326c2aa7404215972e9b0bb53948f9542`, TablePro `main` `2be4682f3faf924237225f7662174b8a26e36216`, dbx `main` `44905e021b94b32b6061f2c2c87e72d3f714f5cd`, DBeaver `devel` `61c9529849c9fa500c303d1a385897a4088d6656`, and Beekeeper Studio `master` `f7ff968f39699c22d4f9a4674f38a5ecfbfbe586`.
 
-dbx merged [#12532](https://github.com/t8y2/dbx/pull/12532), adding MySQL procedure parameter and local-variable completion. Its coverage is layered: parser-focused cases for parameter directions and nested routine syntax, actual editor completion-and-insertion tests, and a documented local MySQL execution check. The useful transfer is to test the scanner's exclusions and nested boundaries as well as proposal display and inserted SQL. This is a feature candidate for Bookie, not a confirmed defect: our exact, dialect-quoted identifier proposals in [#934](https://github.com/cozyGarage/BookiE/issues/934) cover a different completion source. First check whether routine metadata can be parsed safely from the current editor buffer and whether MySQL/MariaDB behavior warrants a separate UX issue; do not add routine names from another connection's catalog.
+dbx merged [#12532](https://github.com/t8y2/dbx/pull/12532), adding MySQL procedure parameter and local-variable completion. Its coverage is layered: parser-focused cases for parameter directions and nested routine syntax, actual editor completion-and-insertion tests, and a documented local MySQL execution check. The useful transfer is to test the scanner's exclusions and nested boundaries as well as proposal display and inserted SQL. This is a feature candidate for Bookie, not a confirmed defect: BookiE's exact, dialect-quoted identifier proposals in [#934](https://github.com/cozyGarage/BookiE/issues/934) cover a different completion source. First check whether routine metadata can be parsed safely from the current editor buffer and whether MySQL/MariaDB behavior warrants a separate UX issue; do not add routine names from another connection's catalog.
 
 ## 2026-10-17 06:25 UTC: source refresh and exact-page regression
 
@@ -28,11 +28,11 @@ The new dbx MySQL fix [#12522](https://github.com/t8y2/dbx/pull/12522) covers th
 
 Other new dbx merges are useful prompts, not assumed Bookie defects: [#12500](https://github.com/t8y2/dbx/pull/12500) isolates tab-title collision numbering by tab mode; [#12499](https://github.com/t8y2/dbx/pull/12499) wires a newline-before-semicolon formatter option through its default layout; and [#12498](https://github.com/t8y2/dbx/pull/12498) rebuilds an edited MySQL index in one `ALTER TABLE` to respect the tested permission boundary. Only pursue the first two after checking Bookie's corresponding tab identity and formatter tests; the DDL permission case needs its own Bookie reproduction.
 
-TablePro [#3428](https://github.com/TableProApp/TablePro/pull/3428) and [#3436](https://github.com/TableProApp/TablePro/pull/3436) remain the NULL/default and database-scoped-tab references already linked to #1030 and #1054. Their main-branch behavior is input to our contracts, not code to transplant. TablePro Linux [#3462](https://github.com/TableProApp/TablePro/pull/3462) also narrows what its accessibility audit and paging implementation actually cover; continue to report each platform's evidence at its measured scope.
+TablePro [#3428](https://github.com/TableProApp/TablePro/pull/3428) and [#3436](https://github.com/TableProApp/TablePro/pull/3436) remain the NULL/default and database-scoped-tab references already linked to #1030 and #1054. Their main-branch behavior is input to BookiE's contracts, not code to transplant. TablePro Linux [#3462](https://github.com/TableProApp/TablePro/pull/3462) also narrows what its accessibility audit and paging implementation actually cover; continue to report each platform's evidence at its measured scope.
 
-## 2026-10-17 05:15 UTC: live comments and competitor refresh
+## 2026-10-17 05:15 UTC: live comments and reference-project refresh
 
-Verified GitHub tips: BookiE `linux` `e22c90f83ca981ec8ea46ac1fccf314ac8a3f6fd`, TablePro `linux` `7cd300f82eaa4743d18ab049bf40a374d3ecf927`, TablePro `main` `bdbcb7de95a267aab261e258fc6d5c745261848f`, dbx `main` `1065bf89ac8b7271388b5e513ac0971d2b179273`, DBeaver `devel` `61c9529849c9fa500c303d1a385897a4088d6656`, and Beekeeper Studio `master` `f7ff968f39699c22d4f9a4674f38a5ecfbfbe586`. The competitor heads and latest releases remain unchanged from the 04:20 snapshot. After the documentation-only `1ccaed41` and `852cd718` commits, #1012 landed at `e22c90f8`; it preserves a Session editor after a failed streamed save and strengthens PostgreSQL reconnect test support.
+Verified GitHub tips: BookiE `linux` `e22c90f83ca981ec8ea46ac1fccf314ac8a3f6fd`, TablePro `linux` `7cd300f82eaa4743d18ab049bf40a374d3ecf927`, TablePro `main` `bdbcb7de95a267aab261e258fc6d5c745261848f`, dbx `main` `1065bf89ac8b7271388b5e513ac0971d2b179273`, DBeaver `devel` `61c9529849c9fa500c303d1a385897a4088d6656`, and Beekeeper Studio `master` `f7ff968f39699c22d4f9a4674f38a5ecfbfbe586`. The reference-project heads and latest releases remain unchanged from the 04:20 snapshot. After the documentation-only `1ccaed41` and `852cd718` commits, #1012 landed at `e22c90f8`; it preserves a Session editor after a failed streamed save and strengthens PostgreSQL reconnect test support.
 
 The PR discussion pass found no new human inline review comments after 04:00 UTC. New human PR-thread comments are mainly branch-sync and check updates. One substantive gate finding is PR [#1039](https://github.com/cozyGarage/BookiE/pull/1039): Forgejo run #618 failed only `pg-release` because `postgres_ssh_tunnel_loss_retires_session_and_reconnects` did not expose the accessible `42` result after reconnect. The same scenario failed on #617; it is tracked on [#998](https://github.com/cozyGarage/BookiE/pull/998), and #1039 is held for that fix. Do not assign it to the policy diff without an exact-head reproduction.
 
@@ -48,7 +48,7 @@ BookiE advanced from `834e5b63e` through #1006, which preserves MySQL `TINYINT(1
 
 The current PR-conversation refresh found no new human-authored blocking feedback on #996, #1020, #1046 or the synced UX PRs; recent new comments were automated SonarCloud results. #1020 and #1046 are merged; #996 remains open. Thirteen UX-owned branches now include Linux `6ab7d79e1`; their sync comments record exact heads and check snapshots. At this read there were no failed GitHub checks, while some checks remained in progress. Forgejo/native acceptance was not run; the maintainer owns that gate. The live peer tracker #1026 is still open, and its #1028 completion checkbox now agrees with merged #1037.
 
-## 2026-10-17: PR discussion and competitor follow-up
+## 2026-10-17: PR discussion and reference-project follow-up
 
 Earlier 2026-10-17 snapshot: BookiE `linux` `333c79006a5823bfbffbf2cc7847bab77d43d0c7`, TablePro `linux` `7cd300f82eaa4743d18ab049bf40a374d3ecf927`, TablePro `main` `bdbcb7de95a267aab261e258fc6d5c745261848f`, dbx `538b8183cd15ba03eaea1e544e585dba896551f9`, DBeaver `61c9529849c9fa500c303d1a385897a4088d6656`, and Beekeeper Studio `f7ff968f39699c22d4f9a4674f38a5ecfbfbe586`. This captured the PR-discussion refresh before the later source-head update above. Its selected merged fixes remain useful; the latest source pins and two later dbx commits are recorded in the 04:20 follow-up.
 
@@ -60,7 +60,7 @@ Reviewed the live GitHub discussion on PRs #996, #1020, #1046, #1037, #1047, #10
 - PRs #1002 and #1012 still own the streamed-tab/session prerequisites for #1032; #1016's recovery disposition remains open. The source audit and synthetic profile show that page-count limits do not bound all retained owners. Do not start overlapping retention implementation before the dependencies land.
 - Issue #1030 has native NULL/default observations and a proposed UX contract, but the B3 decision is still required before changing shared parsing or app adapters. Issues #1033/#1034 retain the B3 typed-message then GTK-consumer order. Issue #1054 waits for #1051. Issue #1056 has the documented B3-to-UX handoff and a narrowed SQLite PRAGMA-shadowing scope.
 
-At this refresh, #1026 and its active peer-review children remain open; PEER-6/#1028 is complete and its parent checkbox is now checked. #1020, #1046 and #1037 are merged. #996 remains open, and #1055 merged as commit `258c5c0e1`. The TablePro/dbx/DBeaver/Beekeeper source heads match the October 17 comparison, so there are no newly landed competitor source commits to add. Release-note dates remain those recorded in the comparison.
+At this refresh, #1026 and its active peer-review children remain open; PEER-6/#1028 is complete and its parent checkbox is now checked. #1020, #1046 and #1037 are merged. #996 remains open, and #1055 merged as commit `258c5c0e1`. The TablePro/dbx/DBeaver/Beekeeper source heads match the October 17 comparison, so there are no newly landed reference-project source commits to add. Release-note dates remain those recorded in the comparison.
 
 The refreshed dbx issue and merge feed adds cases for Bookie to test or monitor, not claims that Bookie is affected: [#12484](https://github.com/t8y2/dbx/issues/12484) reports a phantom second page when a MySQL result has exactly 100 rows; [#12504](https://github.com/t8y2/dbx/issues/12504) reports MySQL LONGTEXT writes truncated at 4096 characters; [#12478](https://github.com/t8y2/dbx/issues/12478) reports query-tab renaming mutating an object-tab label; and [#12523](https://github.com/t8y2/dbx/issues/12523) reports the formatter merging multiple no-semicolon SQL statements onto one line. Bookie's formatter uses `ScriptPlan` statement ranges and verifies significant-token preservation, so #12523 is a regression prompt for #893's dialect corpus, not a confirmed Bookie defect. Proposed dbx PR [#12509](https://github.com/t8y2/dbx/pull/12509) is closed without merge, so it is not evidence that the tab-identity bug was fixed. Merged PRs [#12434](https://github.com/t8y2/dbx/pull/12434), [#12435](https://github.com/t8y2/dbx/pull/12435) and [#12468](https://github.com/t8y2/dbx/pull/12468) reinforce exact page-boundary, bounded-metadata and budget-execution tests.
 
@@ -70,7 +70,7 @@ The latest dbx issue feed also adds an ArgoDB table-comment compatibility report
 
 The October 16 DBeaver [SQLite metadata shadowing fix](https://github.com/dbeaver/dbeaver/pull/42376) exposed a related Bookie edge case. Local reproduction now covers same-named user tables in both `temp` and `main`; [#1056](https://github.com/cozyGarage/BookiE/issues/1056) tracks a fix that must retain metadata visibility across pooled SQLite connections. The earlier peer-review note that Bookie did not use the same table-valued PRAGMA pattern is superseded by this reproduction; the archived review remains unchanged as a historical record. The workspace identity follow-up [#1054](https://github.com/cozyGarage/BookiE/issues/1054) also remains open under parent #1026.
 
-## 2026-10-17: second live refresh and newly landed competitor work
+## 2026-10-17: second live refresh and newly landed reference-project work
 
 Verified live GitHub heads after the earlier October 17 snapshot: Bookie `linux` is `f88dc6a009bdab784f5ad6e1aa6daa59de875d72`; TablePro `linux` remains `7cd300f82eaa4743d18ab049bf40a374d3ecf927`, TablePro `main` remains `bdbcb7de95a267aab261e258fc6d5c745261848f`, dbx is now `1065bf89ac8b7271388b5e513ac0971d2b179273`, DBeaver remains `61c9529849c9fa500c303d1a385897a4088d6656`, and Beekeeper Studio remains `f7ff968f39699c22d4f9a4674f38a5ecfbfbe586`.
 
@@ -112,9 +112,9 @@ No upstream implementation was copied, and no new BookiE issue was opened by thi
 
 ## 2026-10-15: upstream Linux changelog review
 
-Reviewed upstream `linux` at `20ed72497` (`fix(linux): require the GLES library GTK loads at runtime in the rpm`) from `0e542e3c1` (`chore(linux): drop files main already deleted`, 2026-09-18), against BookiE `linux` at `46a4979b3`. Fourteen commits touch `linux/`. Most are the driver contract v2 switch and remediation steps 31 to 66 on a session crate we do not share. Upstream also rewrote `linux/CHANGELOG.md`, so its Fixed and Security lines were screened as hypotheses against our code. Upstream is AGPL-3.0; every fix below is reimplemented here, not copied.
+Reviewed upstream `linux` at `20ed72497` (`fix(linux): require the GLES library GTK loads at runtime in the rpm`) from `0e542e3c1` (`chore(linux): drop files main already deleted`, 2026-09-18), against BookiE `linux` at `46a4979b3`. Fourteen commits touch `linux/`. Most are the driver contract v2 switch and remediation steps 31 to 66 on a session crate BookiE does not use. Upstream also rewrote `linux/CHANGELOG.md`, so its Fixed and Security lines were screened as hypotheses against BookiE's code. Upstream is AGPL-3.0; every fix below is reimplemented here, not copied.
 
-Applies to us, confirmed by reading our code and filed:
+Applicable cases confirmed by BookiE source inspection and filed:
 
 | Upstream | BookiE issue |
 | --- | --- |
@@ -128,13 +128,13 @@ Applies to us, confirmed by reading our code and filed:
 
 Does not apply:
 
-- `c423710ba` waits for the server to close a cancel request, because tokio-postgres returns once the request is written and a late signal cancels the next statement. We cancel with `SELECT pg_cancel_backend($1)` on a separate pooled connection, which returns after the signal is sent. A "query right after Stop" regression probe is listed in [#983](https://github.com/cozyGarage/BookiE/issues/983).
-- `1155d3eb1` disarms a `CancellationToken::drop_guard` on completion. We have no `drop_guard`.
+- `c423710ba` waits for the server to close a cancel request, because tokio-postgres returns once the request is written and a late signal cancels the next statement. At this review, BookiE cancels with `SELECT pg_cancel_backend($1)` on a separate pooled connection, which returns after the signal is sent. A "query right after Stop" regression probe is listed in [#983](https://github.com/cozyGarage/BookiE/issues/983).
+- `1155d3eb1` disarms a `CancellationToken::drop_guard` on completion. BookiE has no `drop_guard`.
 - Driver contract v2, owned calls, the session and health crates, the ClickHouse fixture and rpm packaging.
 
 The remaining changelog lines that touch shared behaviour, together with the dbx and DBeaver probes, are in the intake issue [#983](https://github.com/cozyGarage/BookiE/issues/983).
 
-Addendum 2026-10-16: three later commits to `45d49a23f` (`build(linux): allow the yanked zip 8.6.0 rust_xlsxwriter still needs`). `2d7089204` (cell edits asked about on close, and a close hang on GTK 4.22) is recorded as two checks on [#983](https://github.com/cozyGarage/BookiE/issues/983); we run GTK 4.22.4. `45d49a23f` does not apply because our `deny.toml` only warns on yanked crates, and `0dc391484` is their release channels. For `1155d3eb1`, a guardrail test now pins that a finished call never cancels its caller's operation control ([#1035](https://github.com/cozyGarage/BookiE/pull/1035)).
+Addendum 2026-10-16: three later commits to `45d49a23f` (`build(linux): allow the yanked zip 8.6.0 rust_xlsxwriter still needs`). `2d7089204` (cell edits asked about on close, and a close hang on GTK 4.22) is recorded as two checks on [#983](https://github.com/cozyGarage/BookiE/issues/983); the reviewed environment runs GTK 4.22.4. `45d49a23f` does not apply because BookiE's `deny.toml` only warns on yanked crates, and `0dc391484` is their release channels. For `1155d3eb1`, a guardrail test now pins that a finished call never cancels its caller's operation control ([#1035](https://github.com/cozyGarage/BookiE/pull/1035)).
 
 ## 2026-10-03: macOS main applicability review
 
@@ -167,38 +167,38 @@ At this checkpoint, `-J` hops ran a separate `ssh` that received none of Bookie'
 
 ## 2026-09-19: re-survey after upstream rewrote its Linux branch
 
-`origin/linux` is 1,017 commits ahead of ours and 396 behind. The number is misleading in three ways, and each one matters more than the total.
+`origin/linux` is 1,017 commits ahead of the reviewed BookiE branch and 396 behind. The count needs the following source-history context.
 
 **The old pins are gone.** Upstream force-pushed `linux`, so `5730238f5c72b4924669efbb7c0e79372de50a36`, the pin this document and the sprint plan both cite, no longer resolves in the repository. `807d280944a9…` resolves but is no longer an ancestor of `origin/linux`. Every "commits after X" count in those documents is unverifiable against the current remote. Pin by subject as well as SHA from now on; upstream `5730238f5` is the commit now called `f3cbf7361 fix(linux): rebuild the GSettings schema when it changes and cover SQLite in dev-env`.
 
-**Only 200 of the 1,017 touch `linux/`.** The other 817 are Apple targets, the plugin system, iOS sync and AI chat, all excluded by `AGENTS.md`. Upstream now ships database engines as versioned plugins (`plugin-teradata`, `plugin-trino`, `plugin-typesense`, `plugin-weaviate` tags). That is the opposite of [ADR 0001](decisions/0001-no-plugin-system.md) and of compile-time driver registration. No action; recorded so the divergence is not rediscovered as a gap.
+**Only 200 of the 1,017 touch `linux/`.** The other 817 are Apple targets, the plugin system, iOS sync and AI chat, all excluded by `AGENTS.md`. Upstream now ships database engines as versioned plugins (`plugin-teradata`, `plugin-trino`, `plugin-typesense`, `plugin-weaviate` tags). That differs from [ADR 0001](decisions/0001-no-plugin-system.md) and of compile-time driver registration. No action; recorded so the divergence is not rediscovered as a gap.
 
-**Of those 200, 19 are new since our last review.** The rest are the rewritten SHAs of commits the sprint plan already dispositioned. The 19 are:
+**Of those 200, 19 are new since the preceding review.** The rest are the rewritten SHAs of commits the sprint plan already dispositioned. The 19 are:
 
 | Kind | Commits |
 | --- | --- |
-| Features we do not have (13) | CSV import, Excel export, INSERT-statement export, Markdown/HTML/XML export, connection groups, connection import/export, connection colour tags, duplicate a connection, named saved queries, column comments, open a SQL file, JSON log format, recording the statements the app itself runs in history |
-| Fixes in code we share (1) | `3bcd8df75` column rename |
-| Fixes in code we do not have (1) | `55528b854` OpenSSH 9 askpass fingerprint parsing |
+| Features absent from the reviewed BookiE tree (13) | CSV import, Excel export, INSERT-statement export, Markdown/HTML/XML export, connection groups, connection import/export, connection colour tags, duplicate a connection, named saved queries, column comments, open a SQL file, JSON log format, recording the statements the app itself runs in history |
+| Fixes in related code (1) | `3bcd8df75` column rename |
+| Fixes in code absent from BookiE (1) | `55528b854` OpenSSH 9 askpass fingerprint parsing |
 | Housekeeping (4) | roadmap, i18n extraction, two test-stability fixes |
 
-### What the shared fixes cost us
+### Shared-fix applicability
 
-`3bcd8df75` found a real defect in our tree. We already emit `RenameColumn` ahead of the alter, but our alter guard still counted the name as a change, so a column whose name alone changed raised an `AlterColumn` with nothing to do. PostgreSQL and SQL Server swallowed it as `NoChange`. SQLite refused the entire save, because it refuses every alter. MySQL emitted a redundant `MODIFY COLUMN` that restates the definition from a model carrying no collation, character set or comment. Fixed with a cross-dialect regression test.
+`3bcd8df75` found a real defect in BookiE's tree. The reviewed implementation already emits `RenameColumn` ahead of the alter, but BookiE's alter guard still counted the name as a change, so a column whose name alone changed raised an `AlterColumn` with nothing to do. PostgreSQL and SQL Server swallowed it as `NoChange`. SQLite refused the entire save, because it refuses every alter. MySQL emitted a redundant `MODIFY COLUMN` that restates the definition from a model carrying no collation, character set or comment. Fixed with a cross-dialect regression test.
 
 `55528b854` now applies and is covered: BookiE has an askpass bridge (`crates/ssh/src/openssh/askpass_bridge.rs`), and `crates/ssh/src/openssh/prompt.rs` matches the host-key prompt of both OpenSSH 9 and 10, with a 9.6 prompt test beside the bridge. Rechecked 2026-10-20.
 
-One older commit deserves a separate check rather than a claim. `92aea7112 fix(core): export values at the precision their column declares` sits below the boundary, inside the 60 the sprint plan already dispositioned, under "converge serializers". That row records an intention, not a verification, so whether our exporter matches the declared precision is still unconfirmed. The [October 20 fix review](archive/tablepro-dbx-review-2026-10-20/b-tablepro-fixes.md) settles it from source: JSON numbers and decimal scale are covered, and the remaining timestamp fraction padding difference is cosmetic.
+One older commit deserves a separate check rather than a claim. `92aea7112 fix(core): export values at the precision their column declares` sits below the boundary, inside the 60 the sprint plan already dispositioned, under "converge serializers". That row records an intention, not a verification, so whether BookiE's exporter matches the declared precision is still unconfirmed. The [October 20 fix review](archive/tablepro-dbx-review-2026-10-20/b-tablepro-fixes.md) settles it from source: JSON numbers and decimal scale are covered, and the remaining timestamp fraction padding difference is cosmetic.
 
-### What we imported
+### Imported parser provenance
 
-`crates/core/src/import/csv_import.rs` is adapted from upstream `d91c70a92` (`crates/core/src/import/csv_import.rs`). Only the parser came across, and it was rewritten against our `ColumnInfo` and `Value`: upstream's `CellInput`/`ColumnType` model is part of their B3 contract and does not exist here. Nothing of their write path was taken. Upstream's importer has no policy layer, so ours builds its statements with `sql_dialect::build_insert_from_draft` and commits through a scoped approval on `PolicyGuard` instead.
+`crates/core/src/import/csv_import.rs` is adapted from upstream `d91c70a92` (`crates/core/src/import/csv_import.rs`). Only the parser came across, and it was rewritten against BookiE's `ColumnInfo` and `Value`: upstream's `CellInput`/`ColumnType` model is part of their B3 contract and does not exist here. Nothing of their write path was taken. BookiE's importer builds its statements with `sql_dialect::build_insert_from_draft` and commits through a scoped approval on `PolicyGuard` instead.
 
-### What the excluded trees still taught us
+### Applicable behavior from other source trees
 
-`242b76e02 fix(plugin-postgresql): quote every catalog literal so a backslash cannot escape it` is a whole bug class we are immune to: our PostgreSQL catalog queries bind `$1`/`$2` rather than interpolating literals. The optional DuckDB driver is the one place that still interpolates a schema and table name into a quoted literal, through an `escape_literal` that doubles quotes and ignores backslashes. DuckDB does not treat a backslash as an escape in an ordinary string, so this is not the same defect, but binding the parameters would remove the question.
+`242b76e02 fix(plugin-postgresql): quote every catalog literal so a backslash cannot escape it` concerns interpolated catalog literals; BookiE's PostgreSQL catalog queries bind `$1`/`$2` rather than interpolating literals. The optional DuckDB driver is the one place that still interpolates a schema and table name into a quoted literal, through an `escape_literal` that doubles quotes and ignores backslashes. DuckDB does not treat a backslash as an escape in an ordinary string, so this is not the same defect, but binding the parameters would remove the question.
 
-`fix(plugin-postgresql): report each column's declared type, and compare it` (#2959) is the most useful thing in the whole survey for B3. Upstream concluded that a column needs both the name it is classified by and the spelling its own schema declares, because collapsing them loses collation, MySQL display width, enum label case and schema-qualified spellings. Our `ColumnInfo.data_type` is a single string. Design B3 for two fields, not one.
+`fix(plugin-postgresql): report each column's declared type, and compare it` (#2959) provides a relevant metadata-design case for B3. Upstream concluded that a column needs both the name it is classified by and the spelling its own schema declares, because collapsing them loses collation, MySQL display width, enum label case and schema-qualified spellings. BookiE's `ColumnInfo.data_type` is a single string. Design B3 for two fields, not one.
 
 ## 2026-09-16: script planner and safe formatting
 

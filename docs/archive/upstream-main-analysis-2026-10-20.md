@@ -28,7 +28,7 @@ The review read current implementation and tests for connection replay, write ou
 
 ## Assessment
 
-The alignment is strongest in native Linux architecture, explicit outcomes, connection ownership and engine-backed regression testing. Recent changes emphasize finishing observable workflows and proving failures: recovery after a server restart, exact values through different consumer paths, process death during a save, keyboard operation and translated errors.
+The most directly comparable areas are native Linux architecture, explicit outcomes, connection ownership and engine-backed regression testing. Recent changes emphasize finishing observable workflows and proving failures: recovery after a server restart, exact values through different consumer paths, process death during a save, keyboard operation and translated errors.
 
 This is useful because BookiE already shares the layered Rust/native GTK approach and has substantial value, policy and test infrastructure. Reusing a bounded test scenario is cheaper than adopting a parallel framework. Common ancestry and similar goals explain some overlap; this review does not establish who originated a particular idea.
 

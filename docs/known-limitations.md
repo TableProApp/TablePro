@@ -1,6 +1,6 @@
 # Known limitations of BookiE 0.2
 
-What the application does not do, or does differently from what you might expect, and the bugs we know about. Entries link to their owning issue, decision or evidence when one exists. Issues own current work and acceptance status; this page records user-visible behavior.
+Documented application limits, behavior differences and known defects. Entries link to their owning issue, decision or evidence when one exists. Issues own current work and acceptance status; this page records user-visible behavior.
 
 ## Data and values
 

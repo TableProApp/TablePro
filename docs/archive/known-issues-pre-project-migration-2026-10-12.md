@@ -269,7 +269,7 @@ Read from dbx at `d9338d1` (a Tauri and Vue app over a Rust core), source only; 
 - truncated cell previews with the full value fetched on demand, and hidden columns left out of the query;
 - a canvas renderer with a fixed row height that paints only visible cells.
 
-Our grid uses widget virtualization (`GtkColumnView`) and shares the result. `RowStore` weakly caches requested shared rows, preserving object identity while consumers hold references and recreating a clean row after those references are released. Draft and replacement rows stay strongly owned. Three-run scroll profiles reduced retained RSS growth by 80–93%; the query result itself remains fully resident. PERF-7 to PERF-10 track the remaining work. See the [October 7 profile and action record](../archive/grid-memory-and-fetch-action-plan-2026-10-07.md).
+BookiE's grid uses widget virtualization (`GtkColumnView`) and shares the result. `RowStore` weakly caches requested shared rows, preserving object identity while consumers hold references and recreating a clean row after those references are released. Draft and replacement rows stay strongly owned. Three-run scroll profiles reduced retained RSS growth by 80–93%; the query result itself remains fully resident. PERF-7 to PERF-10 track the remaining work. See the [October 7 profile and action record](../archive/grid-memory-and-fetch-action-plan-2026-10-07.md).
 
 ### Performance baseline, 2026-10-07
 

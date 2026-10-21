@@ -46,7 +46,7 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 | A user-visible change | The [changelog](../CHANGELOG.md) | One line of user impact; no test or evidence notes |
 | What a user can do and how | The [user guide](user-guide.md) | Update with the feature that changes it |
 | Run-specific proof (manifests, focused logs) | `evidence/<topic>[-<sha>]-<YYYY-MM-DD>/` | A `manifest.json` or concise `README.md`, with only the artifacts needed to check the claim; link it from the owning row or board |
-| A finished review, audit or long history | [archive/](archive/) | Dated file name; never edited after archiving except for broken links |
+| A finished review, audit or long history | [archive/](archive/) | Dated file name; corrections to links or neutral wording must preserve the recorded evidence, dates and decisions |
 
 The [runner maintenance and isolation proposal](proposals/runner-maintenance-and-isolation.md) records the observed cleanup risks and the staged mini PC runner migration. It is not deployed acceptance.
 
@@ -89,6 +89,8 @@ The [runner maintenance and isolation proposal](proposals/runner-maintenance-and
 Record a rule once in an ADR and a task once on Project #3. Do not copy old test counts into a current claim. Keep ignored `target/quality` paths as plain text, and when output is unavailable, say so instead of leaving a dead link.
 
 ## Engineering review records (October 2026)
+
+- [Public documentation language review, October 21](evidence/public-documentation-language-2026-10-21/README.md): repository-wide Markdown screening, neutral wording corrections and independent adoption criteria.
 
 - [TablePro adoption and collaboration, October 21](archive/tablepro-collaboration-2026-10-21.md): current Linux performance, SSH, export and translation changes, PostgreSQL behavior candidates and concrete upstream contribution routes.
 

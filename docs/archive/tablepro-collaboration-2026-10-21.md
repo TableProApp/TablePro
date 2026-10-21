@@ -4,13 +4,13 @@ Completed source review; implementation proposals are not completed work. This e
 
 ## Scope and recommendation
 
-TablePro is now a particularly useful upstream for BookiE's native Linux work. Adopt small Rust/Linux changes with provenance, and exchange database scenarios and test fixtures across platforms. Maintain separate application composition, policy enforcement and durable identities. A whole-tree merge would cross incompatible crate paths, runtime ownership, driver contracts and product decisions.
+External implementations are evaluated against BookiE's product goals, accepted decisions and demonstrated user needs. Upstream compatibility is not an acceptance criterion by itself. Select Rust/Linux changes only when they improve an identified behavior, and record provenance for reused code or fixtures. Maintain separate application composition, policy enforcement and durable identities. A whole-tree merge would cross incompatible crate paths, runtime ownership, driver contracts and product decisions.
 
 Pinned upstream: [`9541927e2d8336ef425c7005ba2254982e423b8f`](https://github.com/TableProApp/TablePro/tree/9541927e2d8336ef425c7005ba2254982e423b8f), October 21. BookiE: `be3ce4099`. The comparison starts at the previous review's `c584da5a763014e154b7386dbe7e3ec9811a53d4`. It has 45 commits, eight touching Linux. All subjects were screened; selected source, tests and PR bodies were inspected. The [evidence inventory](../evidence/tablepro-collaboration-2026-10-21/README.md) preserves each commit and the reviewed paths.
 
 No upstream build scripts were executed. No builds, database experiments or GTK acceptance runs back this review. Performance numbers and upstream test results below are attributed reports. Candidate defects need a failing BookiE regression before implementation. Open PRs are not shipped main-branch behavior.
 
-## Architecture alignment and costs
+## Architecture comparison and adaptation costs
 
 | Concern | Upstream at the pin | BookiE | Consequence |
 |---|---|---|---|
@@ -48,9 +48,9 @@ A subtle GTK lesson: replacing a selected model's contents in one remove-and-add
 
 BookiE `sidebar_row.rs` still uses ListBox. `completion_provider.rs::model` reads the buffer, computes candidates and builds a Proposal object for every match on the GTK path; `populate_future` computes that model before returning its ready future. An async signature alone does not move this work off the main loop. Current generation checks protect correctness and must survive a performance change.
 
-Recommended slice: first a synthetic large-catalog fixture that measures event-loop stall and counts constructed proposals; then off-thread headless candidate work with request identity; then lazy GTK proposals. Treat sidebar migration separately. Upstream uses flat schema sections; BookiE's accepted tree-model ADR requires a design reconciliation before copying that model literally. Measure our scope rather than claiming its architectural target is already implemented.
+Recommended slice: first a synthetic large-catalog fixture that measures event-loop stall and counts constructed proposals; then off-thread headless candidate work with request identity; then lazy GTK proposals. Treat sidebar migration separately. Upstream uses flat schema sections; BookiE's accepted tree-model ADR requires a design reconciliation before copying that model literally. Measure BookiE's scope rather than claiming its architectural target is already implemented.
 
-The upstream fixture uses PostgreSQL with 100 schemas of 500 tables and MySQL with 50,000 tables. It separately bounds total step latency, longest main-loop stall and resident-memory growth. The PR reports up to 53 ms stalls after its change, but MySQL completion can still take seconds off GTK. Responsiveness and total latency are separate acceptance criteria. Reuse existing tiers and calibrate budgets on our runner hardware; no extra parallel gate is proposed.
+The upstream fixture uses PostgreSQL with 100 schemas of 500 tables and MySQL with 50,000 tables. It separately bounds total step latency, longest main-loop stall and resident-memory growth. The PR reports up to 53 ms stalls after its change, but MySQL completion can still take seconds off GTK. Responsiveness and total latency are separate acceptance criteria. Reuse existing tiers and calibrate budgets on BookiE's runner hardware; no extra parallel gate is proposed.
 
 ### 3. Fixed column widths that stay fixed
 
@@ -66,7 +66,7 @@ Priority P2, B4; compatibility lead, no confirmed BookiE defect.
 
 Merged [#3720](https://github.com/TableProApp/TablePro/pull/3720) supersedes upstream ADR 0019 with 0020. Always forcing IdentitiesOnly for a selected key file broke agent-held certificates and encrypted PEM keys lacking a readable public half. The revised implementation fingerprints the file, asks the configured agent and pins only where needed, with bounded helper subprocesses. Tests include decoy keys beyond MaxAuthTries, certificate-only server trust, encrypted keys and key-exchange failures.
 
-BookiE's system OpenSSH `argv.rs` currently adds `-i` for a key path and does not force IdentitiesOnly. Therefore importing their final conditional pinning logic without the original need can introduce unnecessary subprocesses and failure modes. First port the test scenarios to both our applicable system/OpenSSH and built-in routes, then change only a demonstrated failing route. Respect per-hop auth: options for the destination are not automatically the right options for every jump host.
+BookiE's system OpenSSH `argv.rs` currently adds `-i` for a key path and does not force IdentitiesOnly. Therefore importing the conditional pinning logic without the original need can introduce unnecessary subprocesses and failure modes. First adapt the test scenarios to BookiE's applicable system/OpenSSH and built-in routes, then change only a demonstrated failing route. Preserve per-hop authentication: options for the destination are not automatically the right options for every jump host.
 
 The same upstream range adds typed SSH algorithm/runtime-directory failures and distinct TLS remedies. BookiE [#1174](https://github.com/cozyGarage/BookiE/issues/1174) and open PR #1226 already own the broad TLS downgrade advice; do not duplicate them. Check error redaction before reusing library diagnostic text.
 
@@ -76,7 +76,7 @@ Priority P3, UX; direct source adaptation opportunity with review.
 
 Merged [#3727](https://github.com/TableProApp/TablePro/pull/3727) ships `linux/po/vi.po`, publishes a template artifact and checks catalogue placeholders and package installation. BookiE currently has a template and LINGUAS but no locale catalogue in `apps/linux/po` at this pin.
 
-Reuse matching translated msgids with attribution, merge against BookiE's own POT and review branding, policy terminology and placeholders. Our `tr!` extraction and their gettext wrapper extraction differ. Do not replace our extraction pipeline just to import one language. Package smoke acceptance should exercise an actual generated locale; C/C.UTF-8 is insufficient to establish translated output. This is a useful contribution channel for the maintainer's Vietnamese review, with consistent corrections sent to each application's own catalogue.
+Reuse matching translated msgids with attribution, merge against BookiE's own POT and review branding, policy terminology and placeholders. BookiE uses `tr!` extraction; the referenced implementation extracts gettext wrapper calls. Do not replace BookiE's extraction pipeline just to import one language. Package smoke acceptance should exercise an actual generated locale; C/C.UTF-8 is insufficient to establish translated output. Translation corrections can be contributed to each application's catalogue where the source strings and terminology match.
 
 ## PostgreSQL ideas from Apple, adapted as behavior
 
@@ -86,7 +86,7 @@ Reuse matching translated msgids with attribution, merge against BookiE's own PO
 | [pgvector display, #3725](https://github.com/TableProApp/TablePro/pull/3725) | Discover dynamic OIDs, arrays and dimensions; keep vector, halfvec and sparsevec distinct | Existing [#902](https://github.com/cozyGarage/BookiE/issues/902) and `vector_contract.rs` own extension qualification. The upstream probe checks base type and name; that alone does not prove extension ownership. Do not treat an arbitrary user base type named vector as pgvector. Preserve raw/native values through rich display. |
 | [Temporary tables, #3746](https://github.com/TableProApp/TablePro/pull/3746) | Objects created by an editor session need discovery through that owning session | A global pool cannot discover another backend's temp schema reliably. Key any UI model by session identity and generation; never display stale objects after reconnect. Candidate feature, not a claim that BookiE supports it. |
 | [PostgreSQL socket connection, #3721](https://github.com/TableProApp/TablePro/pull/3721) | Local-socket workflow and transport-specific validation | BookiE's PostgreSQL driver already supports socket directories. URL import work is in open #1231. Test user entry and import routes before claiming a driver gap. |
-| [Policy matrix, #3704](https://github.com/TableProApp/TablePro/pull/3704) | Every write/query-capable tool has a row; denied outcomes assert zero driver calls; prompt refusal is tested | Adapt registry-completeness assertions into current MCP/policy tests. Linux Safe Mode and Apple's six-level policy matrix are different source surfaces. Retain our scopes, allowlists, audit and masking contracts. |
+| [Policy matrix, #3704](https://github.com/TableProApp/TablePro/pull/3704) | Every write/query-capable tool has a row; denied outcomes assert zero driver calls; prompt refusal is tested | Adapt registry-completeness assertions into current MCP/policy tests. Linux Safe Mode and Apple's six-level policy matrix are different source surfaces. Retain BookiE's scopes, allowlists, audit and masking contracts. |
 | [Sequences, open #3722](https://github.com/TableProApp/TablePro/pull/3722); [types, open #3736](https://github.com/TableProApp/TablePro/pull/3736) | Review their future metadata and mutation tests after merge | Later PostgreSQL-first feature candidates. Generated DDL must use PolicyGuard; preview, unsupported metadata and cancellation outcomes need explicit acceptance. |
 
 ## Existing coverage and deliberate differences
@@ -95,7 +95,7 @@ Reuse matching translated msgids with attribution, merge against BookiE's own PO
 - BookiE already has Unix-socket connection handling, headless services, architecture checks, driver conformance cases, query cancellation, export tests and typed values. Add missing cases to these systems.
 - Do not import Linux Safe Mode's second statement classifier into core as a replacement for `tablepro-policy`. Shared lexical facts can inform the existing classifier, but one authorization path must remain authoritative.
 - Do not copy paid Starter/Team feature gates, Apple Intelligence, Swift plugin ABI or platform UI into the Linux product. Upstream main contains multiple product directions; a newer commit is not automatically useful scope.
-- The upstream PostgreSQL client-library choice does not justify removing our SQLx patches. The [patch removal rule](../proposals/upstream-patches.md) requires a released replacement and equivalent contract evidence.
+- The upstream PostgreSQL client-library choice does not justify removing BookiE's SQLx patches. The [patch removal rule](../proposals/upstream-patches.md) requires a released replacement and equivalent contract evidence.
 - The fetched BookiE `origin/main` mirror is `a420dda83ab9890a3f1404d7b79eb126aae3084a` at this review, behind the pinned upstream. Updating that mirror and adapting code to `linux` are distinct actions. This review changes neither mirror history nor product code.
 
 ## Concrete collaboration plan
@@ -104,18 +104,18 @@ Start with one bounded test contribution and its equivalent BookiE fixture. Upst
 
 | Proposed contribution | What BookiE can supply | Where it should land | Condition before sending |
 |---|---|---|---|
-| PostgreSQL export/import edge fixtures | Exact SQL inputs for quoted NULL arrays, BC/far dates, negative zero, identity and sequence state; typed assertions | Collaborate with open #3714 or follow after it merges; adapt a narrow equivalent into BookiE's current driver/release tier | Compare their current corpus first; contribute a missing failing case, not duplicate coverage or an entire harness. |
-| Pooler/cancel/session scenario | Existing PostgreSQL qualification inputs and observer assertions from completed UP-2/UP-4 | Upstream PostgreSQL/session conformance suite | Trace the same failure in their client implementation; preserve cancellation versus unknown-write outcomes. |
+| PostgreSQL export/import edge fixtures | Exact SQL inputs for quoted NULL arrays, BC/far dates, negative zero, identity and sequence state; typed assertions | Collaborate with open #3714 or follow after it merges; adapt a narrow equivalent into BookiE's current driver/release tier | Compare the current upstream corpus first; contribute a missing failing case, not duplicate coverage or an entire harness. |
+| Pooler/cancel/session scenario | Existing PostgreSQL qualification inputs and observer assertions from completed UP-2/UP-4 | Upstream PostgreSQL/session conformance suite | Trace the same failure in the target client implementation; preserve cancellation versus unknown-write outcomes. |
 | Boundary guard | Small negative test proving a forbidden crate edge/test hook is rejected | Upstream Linux CI harness | Architecture docs say edges are review-enforced; check current main and open work before implementing a mechanical guard. Keep their allowed net/driver edges. |
-| GTK lifecycle or stale-result regression | Deterministic out-of-order completion/search case; close while operation is in flight | Upstream existing GTK tests and BookiE gtk-widgets | Verify it adds coverage beyond their generation and lazy-allocation tests. No wall-clock-only flaky repro. |
+| GTK lifecycle or stale-result regression | Deterministic out-of-order completion/search case; close while operation is in flight | Upstream existing GTK tests and BookiE gtk-widgets | Verify it adds coverage beyond the existing generation and lazy-allocation tests. No wall-clock-only flaky repro. |
 | Vietnamese terminology and placeholders | Language review and shared correction where msgids match | Separate small locale PR per app | Review the rendered UI and translator placeholders. Preserve project-owned branding. |
 
 Suggested contribution sequence:
 
 1. Refresh upstream and the existing PR before each packet. Record exact source commit, local mapping, owner and acceptance in the BookiE issue. Reuse #1149's completed work as evidence; do not reopen its nine closed packets.
 2. Implement the minimal regression in the repository that owns the bug. If the behavior differs intentionally, share the scenario rather than changing the other project's rule.
-3. For reused Rust code, preserve relevant author notices and record source commit/path and adaptation. For fixtures, record provenance and differences in expected outcomes. Both repositories carry AGPLv3 licenses and upstream explicitly licenses contributions under AGPLv3; check notices for each copied file/dependency under our existing policy.
-4. Submit upstream PRs from a clean branch based on upstream main, changing linux paths. Keep our branding, private lab configuration and BookiE-only policy code out of that diff. Cross-link the corresponding BookiE work after there is a concrete reviewable contribution.
-5. Validate each repository with its own existing workflow. BookiE code still uses the serialized Forgejo gate. A green upstream run is evidence for its tree, not acceptance of our adaptation.
+3. For reused Rust code, preserve relevant author notices and record source commit/path and adaptation. For fixtures, record provenance and differences in expected outcomes. Both repositories carry AGPLv3 licenses and upstream explicitly licenses contributions under AGPLv3; check notices for each copied file/dependency under BookiE's existing policy.
+4. Submit upstream PRs from a clean branch based on upstream main, changing linux paths. Keep BookiE's branding, private lab configuration and BookiE-only policy code out of that diff. Cross-link the corresponding BookiE work after there is a concrete reviewable contribution.
+5. Validate each repository with its own existing workflow. BookiE code still uses the serialized Forgejo gate. A green upstream run is evidence for its tree, not acceptance of BookiE's adaptation.
 
 No upstream PR or message was sent in this review. The next implementation recommendation is one missing PostgreSQL round-trip fixture, then the narrow column-width behavior, then measured large-catalog work. Security and existing failing gates retain priority over these feature candidates.

@@ -10,11 +10,11 @@ The blast-radius count query and `PolicySession::close` now use the guarded pani
 
 ## Context
 
-Drivers decode whatever the server sends. A hostile, compromised, or merely buggy server can drive a decoder into a state its author did not anticipate, and some of our dependencies answer that with a panic rather than an error. The SQL Server driver is the concrete case: `tiberius` panics inside its codec on input it cannot parse. The original decision used a pinned Git revision; the workspace now uses crates.io `tiberius` 0.13. This boundary remains necessary until the panic is fixed in a reviewed release or maintained patch.
+Drivers decode whatever the server sends. A hostile, compromised, or merely buggy server can drive a decoder into a state its author did not anticipate, and some of BookiE's dependencies answer that with a panic rather than an error. The SQL Server driver is the concrete case: `tiberius` panics inside its codec on input it cannot parse. The original decision used a pinned Git revision; the workspace now uses crates.io `tiberius` 0.13. This boundary remains necessary until the panic is fixed in a reviewed release or maintained patch.
 
 At the time, nothing in the application caught that. There was no `catch_unwind`, no `JoinError` inspection, and no panic hook anywhere in `app`, `mcp`, or `agentd`. A panic inside a Relm4 command killed that task silently. The component that dispatched it was waiting for a message that would now never arrive, so the interface kept showing "Loading" forever with no error, no log entry tying the hang to a cause, and no audit outcome for an operation that had already recorded its intent.
 
-The workspace lints deny `unwrap`, `expect` and `panic!` in our own code. They say nothing about a dependency's code, which is where this panic originates.
+The workspace lints deny `unwrap`, `expect` and `panic!` in BookiE's own code. They say nothing about a dependency's code, which is where this panic originates.
 
 ## Decision
 
@@ -33,7 +33,7 @@ Returned errors, audit fields and UI messages must omit the raw panic payload.
 
 Converting to an error rather than swallowing the panic means the existing audit path handles it with no new plumbing: it sees an ordinary `Err`, records the required terminal state, and poisons governed writes exactly as it does for any other ambiguous write failure.
 
-The read and write split is not cosmetic. When a driver stops in the middle of a write, the client genuinely does not know whether the server applied it. `OperationOutcomeUnknown` already carries that meaning in this codebase, and it already drives the poisoning behaviour that such an outcome requires. Reporting a write panic as a plain failure would be a claim we cannot support.
+The read and write split is not cosmetic. When a driver stops in the middle of a write, the client does not know whether the server applied it. `OperationOutcomeUnknown` already carries that meaning in this codebase, and it already drives the poisoning behaviour that such an outcome requires. Reporting a write panic as a plain failure would assert an outcome the client cannot establish.
 
 Replacing the connection is a separate necessity from reporting the error. A panic midway through a protocol exchange leaves unread bytes and unverified state on the wire, so the next statement on that connection cannot be trusted. Waiting for the 30-second ping was not sufficient, and not only because of the delay: a desynchronised connection can still answer a ping. The fault path therefore skips the ping and reconnects.
 
@@ -41,7 +41,7 @@ Replacing the connection is a separate necessity from reporting the error. A pan
 
 The application survives a panicking driver with an honest error, a correct audit record, and a fresh connection, instead of a permanent silent hang.
 
-Containment is not a repair. A caught panic means a dependency reached a state its author did not expect, and we resume on a new connection without knowing why.
+Containment is not a repair. A caught panic means a dependency reached a state its author did not expect, and operation resumes on a new connection without establishing the original cause.
 
 The app and `agentd` install a panic hook that always withholds the payload. `TABLEPRO_DEBUG_PANICS=1` enables a backtrace without restoring Rust's payload-printing hook; `RUST_BACKTRACE=1` also requests one. Both modes retain the source location and stack frames while keeping the panic message out of logs and stderr. [#666](https://github.com/cozyGarage/BookiE/issues/666) records the installed-launch investigation steps. `PolicyGuard` separately catches driver panics and logs only the operation and payload byte count; returned errors withhold the payload. These hooks do not cover arbitrary panics in other processes or code that does not install the hook.
 

@@ -97,7 +97,7 @@ The layer took 984 seconds, reflecting the Docker-backed end-to-end coverage.
 
 ## B3 mutation survivor re-audit, 2026-10-01
 
-I reran two old survivor groups against the current source and test set. The
+The review reran two earlier survivor groups against the current source and test set. The
 ClickHouse `clickhouse_datetime64_fits_precision` scope caught all 16 viable
 mutations; the former `precision > 9` to `precision >= 9` survivor is now
 caught by the exact scale-9 boundary assertion. The core CSV `column_kind`
@@ -2918,7 +2918,7 @@ Docker regression creates the same DDL under default mode and
 `NO_BACKSLASH_ESCAPES`; the server stores one backslash versus two, confirming
 that mode-independent output needs session-aware DDL execution. Run it with
 `cargo test --locked -p tablepro-driver-mysql --test integration mysql_column_comment_backslash_literals_depend_on_sql_mode -- --include-ignored --exact --test-threads=1`.
-I tested reusing the SQL export's `_utf8mb4 X'…'` literal in a generated
+The review tested reusing the SQL export's `_utf8mb4 X'…'` literal in a generated
 `COMMENT` clause; the MySQL server rejects it with syntax error 42000. The DDL
 builder therefore continues to refuse backslash comments safely. Supporting
 them requires controlled session-mode handling around DDL, including reliable

@@ -4,7 +4,7 @@ This page describes the engineering checks used to assess database-client capabi
 
 ## How to evaluate a capability
 
-Evaluate the complete path a user or consumer takes, not a feature label or isolated helper.
+Evaluate the complete path a user or consumer takes, not a feature label or isolated helper. External implementations are research inputs. Adoption requires a demonstrated benefit within BookiE's product goals and accepted contracts; matching another project is not a goal. Retain a different implementation when it better satisfies those requirements.
 
 1. **Define the contract.** State inputs, outputs, limits, cancellation behavior, and what happens when the engine or metadata cannot provide a safe answer.
 2. **Trace ownership.** Follow the request through UI or MCP, application services, transport, policy, driver, and result consumers. Keep responsibilities in their owning crate.

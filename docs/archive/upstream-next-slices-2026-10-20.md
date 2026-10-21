@@ -30,7 +30,7 @@ The release-version change centralizes 0.2.0 workspace versions and adds release
 - **What this is:** PostgreSQL lets a transaction recover from an error with `ROLLBACK TO SAVEPOINT` and subsequently commit.
 - **Problem:** `PolicySession::note_statement` sets `OpenBatch.aborted` on an error, but successful recovery does not clear it. `finish_outcome` therefore labels the later successful commit RolledBack. The native oracle commits IDs `{2,3}` after recovery; the policy consequence is established by source tracing, not a guarded real-driver run.
 - **Fix:** [#1186](https://github.com/cozyGarage/BookiE/issues/1186), B4, P1. Start with an error/recovery/commit regression, then carry sound recovery evidence through existing transaction analysis. Keep failed recovery and unknown outcomes distinct.
-- **If we skip it:** The journal can say data was rolled back when it was committed. Confidence: high from source plus native server evidence.
+- **Impact:** The journal can say data was rolled back when it was committed. Confidence: high from source plus native server evidence.
 
 Relevant source: `crates/policy/src/guard/session.rs`, `note_statement`, `finish` and `finish_outcome`; `crates/policy/src/transaction_control.rs`. Existing savepoint tests cover staying inside the transaction, and an aborted-commit test covers rollback, but neither combines recovery and commit.
 
@@ -39,7 +39,7 @@ Relevant source: `crates/policy/src/guard/session.rs`, `note_statement`, `finish
 - **What this is:** PostgreSQL can successfully process COMMIT in an aborted transaction and answer with ROLLBACK.
 - **Problem:** `commit_session` discards the query result and returns unit success; `on_session_commit_finished` then displays “Session committed.” The native oracle stores zero rows. The policy already knows the aborted outcome in its existing regression, but that distinction does not reach this UI handler.
 - **Fix:** [#1187](https://github.com/cozyGarage/BookiE/issues/1187), UX, P1, coordinated with B4. Preserve an explicit committed/rolled-back/unknown outcome through the service boundary and test the rendered result against real stored rows.
-- **If we skip it:** Users can believe earlier writes were saved after PostgreSQL discarded them. Confidence: high from source and native server behavior; the installed GTK workflow was not executed.
+- **Impact:** Users can believe earlier writes were saved after PostgreSQL discarded them. Confidence: high from source and native server behavior; the installed GTK workflow was not executed.
 
 Relevant source: `apps/linux/app/src/ui/editor/session_mode.rs`, `commit_session` and `on_session_commit_finished`. Do not solve this by replacing every outcome with an uninformative generic success.
 
@@ -48,7 +48,7 @@ Relevant source: `apps/linux/app/src/ui/editor/session_mode.rs`, `commit_session
 - **What this is:** A PostgreSQL connection URL can carry a required TLS mode.
 - **Problem:** `connection_url.rs` strips the query string and creates a connection with TLS Disabled, including for `sslmode=require`. Separately, `error_text.rs` advises Disabled for the broad TLS error class, including verification failures.
 - **Fix:** Existing [#1172](https://github.com/cozyGarage/BookiE/issues/1172) and [#1174](https://github.com/cozyGarage/BookiE/issues/1174), B4, P1 recommendation. Preserve recognized requirements or refuse unsupported modes; then distinguish certificate/authentication problems from a server that offers no TLS.
-- **If we skip it:** URL import can silently weaken the requested connection, and recovery advice can encourage another downgrade. Confidence: high source confirmation; no TLS fixture was rerun here.
+- **Impact:** URL import can silently weaken the requested connection, and recovery advice can encourage another downgrade. Confidence: high source confirmation; no TLS fixture was rerun here.
 
 Keep these as separate behavior changes with shared connection-path acceptance. Do not silently replace VerifyFull with a weaker mode to make a test connect.
 
@@ -57,7 +57,7 @@ Keep these as separate behavior changes with shared connection-path acceptance. 
 - **What this is:** Ctrl+Return and the Run button should obey one execution rule.
 - **Problem:** The shortcut emits Run even when the button is disabled. `begin_run` checks teardown, while `execute_sql` starts a new generation and cancels the previous token. A repeated shortcut can replace the current operation while the previous database operation has not necessarily stopped.
 - **Fix:** Existing [#1171](https://github.com/cozyGarage/BookiE/issues/1171), UX, P1 recommendation. Put the shared operation guard before dispatch and cover keyboard, toolbar and parameter-dialog callbacks under [#1031](https://github.com/cozyGarage/BookiE/issues/1031).
-- **If we skip it:** A write can have an uncertain outcome while the UI starts another run. Confidence: high source confirmation; a fresh GTK reproduction remains acceptance work.
+- **Impact:** A write can have an uncertain outcome while the UI starts another run. Confidence: high source confirmation; a fresh GTK reproduction remains acceptance work.
 
 Relevant source: `editor/split_view.rs`, `editor/mod.rs` and `editor/run_lifecycle.rs`. Keep cancellation distinct from confirmation that the server stopped.
 
@@ -66,7 +66,7 @@ Relevant source: `editor/split_view.rs`, `editor/mod.rs` and `editor/run_lifecyc
 - **What this is:** Workspace persistence is the recovery path for unsaved SQL.
 - **Problem:** `clamp_connection` truncates the combined tab list to 32 on both save and load. An unsaved editor after the first 32 tabs can disappear from the recoverable workspace. This is distinct from the existing database-scoped identity work in #1054.
 - **Fix:** Existing [#1182](https://github.com/cozyGarage/BookiE/issues/1182), UX, P1 recommendation. Bound admission or preserve drafts separately with an explicit recovery path; test 33 or more tabs and the active editor beyond the limit.
-- **If we skip it:** A resource limit becomes silent loss of user-authored SQL. Confidence: high source confirmation; process-death and desktop acceptance were not rerun.
+- **Impact:** A resource limit becomes silent loss of user-authored SQL. Confidence: high source confirmation; process-death and desktop acceptance were not rerun.
 
 Relevant source: `crates/app-services/src/workspace_state.rs`, `save_locked`, `load_locked` and `clamp_connection`. Keep atomic file writes and existing failed-save preservation.
 
@@ -75,7 +75,7 @@ Relevant source: `crates/app-services/src/workspace_state.rs`, `save_locked`, `l
 - **What this is:** Copying from one BookiE grid to another should preserve the selected values.
 - **Problem:** `render_tsv` inherits spreadsheet formula sanitization and emits a text NULL marker; paste operates on text cells without the original value tags. A formula-like string or SQL NULL can therefore change meaning. Spreadsheet safety and an internal transfer have different requirements.
 - **Fix:** Existing [#1184](https://github.com/cozyGarage/BookiE/issues/1184), UX, P1 recommendation. Test the actual copy-to-paste composition using NULL, literal marker text, empty text, quotes, tabs, line breaks and formula prefixes. Preserve safe spreadsheet export behavior.
-- **If we skip it:** A routine transfer can stage different data without the user editing it. Confidence: high source confirmation; no new clipboard/display run was made.
+- **Impact:** A routine transfer can stage different data without the user editing it. Confidence: high source confirmation; no new clipboard/display run was made.
 
 Relevant source: `crates/core/src/export/csv.rs`, grid/context-menu export and `browse_tab/paste.rs`. ADR 0007 governs the value boundary.
 
@@ -86,7 +86,7 @@ Relevant source: `crates/core/src/export/csv.rs`, grid/context-menu export and `
 - **What this is:** The distro-floor script captures GTK output and prints a summary when it finishes.
 - **Problem:** The failure reporter keeps only the last 30 matching lines, including successful scenarios, then the last 20 raw lines. A focused reproduction with one early failure and 40 later passes loses both FAILED and AssertionError while preserving only the final scenario name.
 - **Fix:** [#1188](https://github.com/cozyGarage/BookiE/issues/1188), UX, P2. Extend the existing harness with that early-failure case and prioritize bounded failure/retry diagnostics over pass summaries. Use the existing gate.
-- **If we skip it:** Each red run can require another expensive run merely to recover the reason it failed. Confidence: confirmed by executing the helper.
+- **Impact:** Each red run can require another expensive run merely to recover the reason it failed. Confidence: confirmed by executing the helper.
 
 An important correction to earlier runtime guesses: silence after `debconf` does not prove apt is stuck. `test-distro-floor.sh` redirects the whole GTK suite to a file, so successful test execution can also be invisible until completion. Add phase/progress reporting before changing timeouts, runner counts or gate coverage.
 

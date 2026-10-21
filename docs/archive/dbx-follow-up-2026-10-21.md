@@ -17,7 +17,7 @@ For BookiE, application orchestration belongs in `tablepro-app-services`; domain
 
 The [architecture guard](https://github.com/t8y2/dbx/blob/b9690840adff74d02a59d69a8d053b0427437519/scripts/core-architecture.test.mjs) checks Cargo metadata, explicit dependency edges, production use of test-support features, shared transfer orchestration, workspace inputs in Docker dependency caching, and protocol asset agreement. Some checks assert filenames or source text; adopt the invariant when useful, rather than copying those assertions.
 
-BookiE already has `scripts/check-crate-boundaries.py`, which checks direct workspace edges, transitive GUI dependencies and preflight crate inclusion. Treat architecture guards as existing infrastructure to extend, not a missing feature. Further candidates are production test-hook exclusion and packaging/cache completeness when a new workspace member appears. First prove that our current guards miss the relevant failure. These are proposals, not newly confirmed defects or a request for another CI gate.
+BookiE already has `scripts/check-crate-boundaries.py`, which checks direct workspace edges, transitive GUI dependencies and preflight crate inclusion. Treat architecture guards as existing infrastructure to extend, not a missing feature. Further candidates are production test-hook exclusion and packaging/cache completeness when a new workspace member appears. First prove that BookiE's current guards miss the relevant failure. These are proposals, not newly confirmed defects or a request for another CI gate.
 
 ## Changes with the strongest PostgreSQL relevance
 

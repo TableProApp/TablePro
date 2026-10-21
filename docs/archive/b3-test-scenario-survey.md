@@ -56,7 +56,7 @@ No external source code or fixtures were copied.
 - [sqlfluff/sqlfluff / corpus_test.py](https://github.com/sqlfluff/sqlfluff/blob/c7401613e851a6913ec3de8e003247e6fe8e5387/test/core/parser/parity/corpus_test.py)
 
 Commit-pinned links above identify the reviewed snapshots. Source ideas are
-adapted to our contracts; verbatim code or fixture reuse needs recorded source
+adapted to BookiE's contracts; verbatim code or fixture reuse needs recorded source
 license and retained attribution before import.
 
 ## What the assertions teach us
@@ -77,10 +77,10 @@ These establish useful failure patterns, not confirmed BookiE bugs. BookiE does
 not need pgcli backslash-command support to benefit from comment/dispatch tests.
 
 The sampled Beekeeper common suite has capability returns and a runSoft helper
-that catches some non-SQLite failures. Our gates must record exclusions and
+that catches some non-SQLite failures. BookiE's gates must record exclusions and
 unsupported outcomes explicitly; an assertion failure must fail its suite.
 SQLFluff parser agreement is a useful differential signal, but agreement alone
-does not establish server semantics or satisfy our authorization rules.
+does not establish server semantics or satisfy BookiE's authorization rules.
 
 ## Prioritized candidate matrix
 

@@ -27,9 +27,9 @@ Items already owned by an earlier archive, the feature comparison or a backlog r
 
 Each detail table row carries the upstream commit or changelog version, the BookiE path, a verdict, a proposed test with its tier, a lane and a priority.
 
-## Where BookiE is already ahead
+## BookiE contracts relevant to adaptation
 
-Do not trade these away when adopting an upstream idea.
+Preserve the following contracts when evaluating an external implementation.
 
 - Typed values under [ADR 0007](../../decisions/0007-type-and-value-preservation.md). dbx carries decimals and datetimes as JSON strings in cells.
 - One `PolicyGuard` path for the GUI, MCP and `bookie-agentd`, with terminal audit states and fail-closed masking. dbx's SQL guard and timed write unlock sit beside its execution path, not under it.

@@ -72,7 +72,7 @@ Source: [backend error envelope](https://github.com/t8y2/dbx/blob/12139b55df9b4b
 
 dbx's running-query registry tracks execution and registration identity, runs late interrupt handles immediately after an earlier cancellation request, and exposes `{requested, terminal}`. The registration identity prevents an old guard's destruction from removing a newer execution with the same public ID.
 
-BookiE's `run_server_cancellable` already requires server confirmation and reports unknown outcomes otherwise. Keep that stronger behavior. Borrow the registry test sequences and UI distinction between stopping, stopped and outcome unknown. A dropped future, removed registry item or aborted task is not server confirmation.
+BookiE's `run_server_cancellable` already requires server confirmation and reports unknown outcomes otherwise. Preserve that confirmation requirement. Borrow the registry test sequences and UI distinction between stopping, stopped and outcome unknown. A dropped future, removed registry item or aborted task is not server confirmation.
 
 Source: [query cancellation lifecycle and tests](https://github.com/t8y2/dbx/blob/12139b55df9b4bf0ae89d4fab459bf1871e8a783/crates/dbx-core/src/query/query_cancel.rs).
 

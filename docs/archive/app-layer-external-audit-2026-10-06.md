@@ -116,12 +116,12 @@ Adopt these patterns:
    `apps/desktop/src/lib/backend/api.ts`. About 222 UI spec files mock it, so
    UI work never waits on the backend.
 2. **Pure logic beside the widget.** `lib/dataGrid/` holds about 90 small
-   tested modules (sort, clipboard, selection, transpose, widths). Our
+   tested modules (sort, clipboard, selection, transpose, widths). BookiE's
    `services/` already does this. Keep doing it for every new UI feature.
 3. **Typed action registry.** `lib/editor/shortcutRegistry.ts` drives
    shortcuts, Quick Open and the tab switcher from one table of action ids.
 4. **Cancel answers `{requested, terminal}`.** The UI shows "stopping" and
-   "stopped" as different states. This matches our operation control.
+   "stopped" as different states. This matches BookiE's operation control.
 5. **Large values as preview plus byte count**, fetched in full on demand.
 6. **Versioned error envelope** with stable code and an
    `operation_outcome: not_started | unknown` field that forbids automatic
@@ -134,7 +134,7 @@ Do not adopt:
 - Cells as `serde_json::Value`, binary as `"0x…"` text and BLOB previews as
   strings. ADR 0007 forbids losing the binary/text distinction.
 - Grid edits and user WHERE input spliced into SQL text with embedded
-  literals (`crates/dbx-sql-data/src/data_grid_sql.rs`). We bind values and
+  literals (`crates/dbx-sql-data/src/data_grid_sql.rs`). BookiE binds values and
   quote identifiers.
 - Regex production-safety and a "write unlock" toggle in place of policy.
 - Passwords crossing the UI boundary as plain strings.

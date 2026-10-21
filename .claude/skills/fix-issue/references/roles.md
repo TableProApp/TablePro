@@ -21,7 +21,7 @@ The lead gives each role the path of `<tree>/.analysis/<slug>/problem.md` (and `
 
 ## research
 
-- **Engine or dependency behaviour:** the engine documentation and the dependency source at the shipped version, including what a call returns when it cannot do the job. Where the source does not settle it, run a probe against what we link and report its output verbatim.
+- **Engine or dependency behaviour:** the engine documentation and the dependency source at the shipped version, including what a call returns when it cannot do the job. Where the source does not settle it, run a probe against the linked dependency version and report its output verbatim.
 - **UI or interaction:** the GNOME Human Interface Guidelines section, quoted, and the GTK or libadwaita API with its version against the GNOME 50 floor.
 - **New behaviour:** how TablePro, dbx and DBeaver handle it, one line each, marked confirmed or inferred. Agreement across clients is a signal; an accepted BookiE ADR still wins.
 

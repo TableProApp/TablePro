@@ -483,7 +483,7 @@ for the 30-commit review, remaining risks, and revised handoff order.
 
 | Source | Pin | Review |
 | --- | --- | --- |
-| Our Linux | `143a389ae2b9e5abc13306d7c6f22299a94a6fb7` | Current implementation and plans |
+| BookiE Linux | `143a389ae2b9e5abc13306d7c6f22299a94a6fb7` | Current implementation and plans |
 | Upstream main | `fc8b887af7cf2b2e72c5d01f5b5b5c952c93f4e3` | 74 commits after `035ffe8f`, targeted source inspection |
 | Upstream Linux | `5730238f5c72b4924669efbb7c0e79372de50a36` (dangling) | All 60 subjects after `807d28094`, targeted source inspection |
 
@@ -527,13 +527,13 @@ cancellation, verified TLS, atomic exports, Redis, MongoDB, and optional DuckDB.
 | `3c596b066`, `ca95de3ec`, `3a96a7c15`, `df6c57207`, `dc95e8f80` | Copy/export, ClickHouse quoting, textual CSV protection, CSV library, precision: converge serializers, retain atomic/cancellable exports |
 | `5bd1716e9`, `511df958b`, `9e32d5b8e`, `4b081374a`, `b6aec666b`, `dc07edd56`, `2bc2e1008`, `f85964342` | Cleanup, tiberius, gettext, russh, Rust 1.98, crypto, optional Kerberos, SQLx 0.9/system SQLite: B1 with transport/optional-driver checks |
 | `2273baa64`, `75d2fdd8f`, `3f382d978`, `cb2348df6`, `52b0315de`, `f32d44ae0`, `ddd3cadb0`, `4a58098da` | Library split, identity, GResource/Meson, GNOME 50, shortcuts/icons, gettext/logging: adopt structure/platform with approved identity exceptions |
-| `47c5b90e1`, `088a034ee`, `b9cba9fff`, `3ba64e756`, `5730238f5` | Nextest, GTK helpers, CI simplification, fixtures, schema rebuild/SQLite dev environment: adopt conventions, retain our safety/release/soak gates |
+| `47c5b90e1`, `088a034ee`, `b9cba9fff`, `3ba64e756`, `5730238f5` | Nextest, GTK helpers, CI simplification, fixtures, schema rebuild/SQLite dev environment: adopt conventions, retain BookiE's safety/release/soak gates |
 | `4ae0bfb1e`, `00c8c650d` | GSettings/preferences/window/font: adopt with migration and rollback |
 | `6cd0209d4`, `057478973`, `d81e1e055`, `5d1c9d496`, `203804a44` | Paths/private durable files/history migrations/unreadable connections/keyring/isolated stores: adopt ownership, retain stronger validation/locking/unknown-field retention |
 | `ae733dba6`, `ee82e56e6`, `10650cabf`, `cf9abd789`, `aa84cb92f` | Runtime/tasks/coalesced persistence/session-health: adopt with audit-aware lifecycle |
 | `33b5ec872` | Complete drafts: bring forward to 0.1.1 |
 | `a4acba78f`, `21a05fb28` | Enter submits/defaults/secret reporting: 0.1.1 fixes; preserve user-entered ports |
-| `1fb43c9c9` | History retention/clearing: retention already reread by our timer; adopt service ownership in B2 |
+| `1fb43c9c9` | History retention/clearing: retention already reread by BookiE's timer; adopt service ownership in B2 |
 | `75ad43753`, `97b04de5a`, `e685a042b`, `26ea9fe24` | Endpoints/TLS/credentials/OpenSSH/saved SSH/network: integrate GUI/daemon with service identity and legacy compatibility |
 | `793ee3456`, `0572de7d6`, `7e120bc94`, `e2661d450`, `96ecbcb35`, `6c100ec40`, `400aade12` | Lossless values/typed columns/statements/results/metadata/input/errors/decoding: B3 across all consumers/eight drivers |
 | `f483e4169`, `50a515a36`, `933c5ad95` | Script planner/safe formatting/current statement: reuse upstream; preserve existing shortcuts/run-at-cursor |
@@ -1000,8 +1000,7 @@ backup bytes, but an installed-package rollback is still a release gate.
   Ported 5 items — SSH (host-key/socket-path/connect-error edge cases),
   cell/value display (binary edge cases; surfaced but did not fix an
   `is_cell_editable` type-affinity gap needing GTK visual verification), row
-  copy/paste (TSV escaping, paste normalization), storage (found already
-  ahead of main's equivalent suite; one real gap in query-history export
+  copy/paste (TSV escaping, paste normalization), storage (existing migration coverage; a gap in query-history export
   formatting), and Redis (reply-to-value mapping, error classification) — 34
   new tests, workspace suite 879 → 911. A follow-on mutation-testing pass
   (`cargo mutants` against the newly touched files, not yet wired into CI at

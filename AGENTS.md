@@ -179,4 +179,4 @@ The [documentation map](docs/README.md) says where each fact lives and where a n
 
 ## Writing style
 
-Short, plain sentences. Be specific. No em dashes, sales language or generic praise. User-facing text describes behaviour and next steps without internal errors or secrets.
+Short, plain sentences. Be specific. No em dashes, sales language or generic praise. User-facing text describes behaviour and next steps without internal errors or secrets. Public documentation uses neutral, impersonal language. Describe behavior and evidence without judging people or organizations; retain factual source attribution.

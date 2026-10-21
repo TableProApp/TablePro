@@ -51,7 +51,7 @@ Never, even in an authorized run: force-push, rebase a shared branch, merge on F
 Answer three questions. In Full mode give each to a role, as background agents in one message, each writing its report to `<tree>/.analysis/<slug>/roles/<role>.md` and returning a short digest.
 
 - **Cause** (`trace`): the real code path, the mechanism, and the blast radius across engines, consumers (grid, export, MCP, agentd) and sibling paths.
-- **Correct behaviour** (`research`): the governing ADR and spec, the engine's documentation, and the dependency source at the version we ship. Upstream TablePro and dbx are research input, never code to copy without provenance.
+- **Correct behaviour** (`research`): the governing ADR and spec, the engine's documentation, and the dependency source at the shipped version. Upstream TablePro and dbx are research input, never code to copy without provenance.
 - **Related defects** (`hunt`): the same cause elsewhere. Only findings with a concrete failure scenario count. A `verify` role tries to refute each one before it enters scope.
 
 A related defect outside your lane is filed as its own issue with that lane's label, not fixed in this run.

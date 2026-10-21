@@ -51,7 +51,7 @@ own change with a regression test that fails against the current code first:
    `crates/storage/src/connections.rs` already has 29 tests covering
    truncated files, oversized files/entries, legacy-version rejection,
    legacy-field defaults, and forward-compatible unknown-field carrying
-   across a downgrade — ahead of main's equivalent suite in places. The
+   across a downgrade. The
    one real gap found: `outcome_summary` in `query_history.rs` (formats a
    history entry's outcome for SQL/CSV export) had zero tests. Added 6
    covering all branches.

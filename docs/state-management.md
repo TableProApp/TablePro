@@ -1,6 +1,6 @@
 # State management with Relm4
 
-The `tablepro-app` crate (`apps/linux/app`) uses [Relm4](https://relm4.org) on top of gtk4-rs. The choice is recorded in [decisions/0003-relm4-architecture.md](decisions/0003-relm4-architecture.md). This file describes the patterns we follow inside the codebase. Read the official Relm4 book first; this document only covers the conventions specific to BookiE.
+The `tablepro-app` crate (`apps/linux/app`) uses [Relm4](https://relm4.org) on top of gtk4-rs. The choice is recorded in [decisions/0003-relm4-architecture.md](decisions/0003-relm4-architecture.md). This file describes the patterns used inside the codebase. Read the official Relm4 book first; this document only covers the conventions specific to BookiE.
 
 GTK-free service modules are moving incrementally into `tablepro-app-services` under [ADR 0018](decisions/0018-headless-app-services-crate.md). The app re-exports those modules from `services` so callers keep their paths; services that own GTK or application wiring stay in the app.
 
@@ -107,10 +107,10 @@ The read-modify-write under a file lock is the point: two windows save different
 
 ## Testing components
 
-Relm4 ships test helpers but they require a running GTK main loop, which is awkward in CI. Our policy:
+Relm4 ships test helpers but they require a running GTK main loop, which requires a display fixture in CI. BookiE's policy:
 
 - Test pure logic by extracting it into plain Rust functions or a separate `services` module. Test those.
-- Do not write component-level tests until we hit a bug that they would have caught.
+- Do not write component-level tests until a reproduced defect requires that layer of coverage.
 - Prefer integration tests at the driver layer and unit tests at the model layer.
 
 ## Regression cases: browse planning and metadata identity
