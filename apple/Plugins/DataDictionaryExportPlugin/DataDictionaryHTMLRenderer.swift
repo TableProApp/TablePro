@@ -51,6 +51,8 @@ enum DataDictionaryHTMLRenderer {
         html += "<p><span class=\"kind\">\(escape(object.kindLabel)).</span>"
         if let comment = object.comment {
             html += " \(escape(comment))"
+        } else if let error = object.commentError {
+            html += " <span class=\"error\">Comment could not be read: \(escape(error))</span>"
         }
         html += "</p>\n"
 
@@ -63,7 +65,9 @@ enum DataDictionaryHTMLRenderer {
         }
 
         let indexes = document.indexRows(at: index)
-        if !indexes.isEmpty {
+        if let error = object.indexesError {
+            html += "<h3>Indexes</h3>\n<p class=\"error\">Indexes could not be read: \(escape(error))</p>\n"
+        } else if !indexes.isEmpty {
             html += "<h3>Indexes</h3>\n"
             html += table(
                 header: ["Name", "Columns", "Kind", "Method"],
@@ -72,7 +76,9 @@ enum DataDictionaryHTMLRenderer {
         }
 
         let keys = document.foreignKeyRows(at: index)
-        if !keys.isEmpty {
+        if let error = object.foreignKeysError {
+            html += "<h3>Foreign keys</h3>\n<p class=\"error\">Foreign keys could not be read: \(escape(error))</p>\n"
+        } else if !keys.isEmpty {
             html += "<h3>Foreign keys</h3>\n"
             html += table(
                 header: ["Name", "Columns", "References", "On delete", "On update"],

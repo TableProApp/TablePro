@@ -15,6 +15,9 @@ struct DataDictionaryObject: Sendable {
     var indexes: [PluginIndexInfo] = []
     var foreignKeys: [PluginForeignKeyInfo] = []
     var columnsError: String?
+    var indexesError: String?
+    var foreignKeysError: String?
+    var commentError: String?
 
     var kindLabel: String {
         switch kind {

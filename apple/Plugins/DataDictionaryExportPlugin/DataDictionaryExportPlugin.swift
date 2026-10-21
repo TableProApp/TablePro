@@ -17,6 +17,8 @@ final class DataDictionaryExportPlugin: ObservableObject, ExportFormatPlugin, Se
     static let defaultFileExtension = "md"
     static let iconName = "book.closed"
     static let supportedObjectKinds: [PluginExportObjectKind] = [.table, .view, .materializedView, .foreignTable]
+    // Both read items to list a table's fields, though their snapshots do not mark the columns as sampled.
+    static let excludedDatabaseTypeIds = ["DynamoDB", "SurrealDB"]
 
     typealias Settings = DataDictionaryExportOptions
     static let settingsStorageId = "datadict"
@@ -137,13 +139,13 @@ enum DataDictionaryReader {
             failures.columns.append(table.qualifiedName)
         }
 
-        if table.kind == .table || table.kind == .materializedView {
-            do {
-                object.indexes = try await dataSource.fetchIndexes(table: table.name, databaseName: table.databaseName)
-            } catch {
-                try rethrowIfCancelled(error, progress: progress)
-                failures.indexes.append(table.qualifiedName)
-            }
+        // Every kind, as the Structure tab reads them: SQL Server indexes a view.
+        do {
+            object.indexes = try await dataSource.fetchIndexes(table: table.name, databaseName: table.databaseName)
+        } catch {
+            try rethrowIfCancelled(error, progress: progress)
+            object.indexesError = error.localizedDescription
+            failures.indexes.append(table.qualifiedName)
         }
 
         if table.kind == .table {
@@ -151,6 +153,7 @@ enum DataDictionaryReader {
                 object.foreignKeys = try await dataSource.fetchForeignKeys(table: table.name, databaseName: table.databaseName)
             } catch {
                 try rethrowIfCancelled(error, progress: progress)
+                object.foreignKeysError = error.localizedDescription
                 failures.foreignKeys.append(table.qualifiedName)
             }
         }
@@ -159,6 +162,7 @@ enum DataDictionaryReader {
             object.comment = try await dataSource.fetchObjectComment(table)
         } catch {
             try rethrowIfCancelled(error, progress: progress)
+            object.commentError = error.localizedDescription
             failures.comments.append(table.qualifiedName)
         }
         return object

@@ -270,16 +270,14 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         return try await pluginDriver.fetchIndexes(table: table, schema: exportSchema(for: databaseName))
     }
 
-    // Gated before the read: SQLite's table metadata counts rows, and it stores no comments.
+    // Gated before the read: an engine that stores no comments may still count rows to answer.
     func fetchObjectComment(_ object: PluginExportTable) async throws -> String? {
         guard let pluginDriver, commentableKinds.contains(object.kind) else { return nil }
-        let metadata = try await pluginDriver.fetchTableMetadata(
+        let comment = try await pluginDriver.fetchObjectComment(
             table: object.name,
             schema: exportSchema(for: object.databaseName)
         )
-        guard let comment = metadata.comment,
-              !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else { return nil }
+        guard let comment, !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return comment
     }
 

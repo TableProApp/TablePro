@@ -136,6 +136,7 @@ struct DataDictionaryExportTests {
         for kind in DataDictionaryExportPlugin.supportedObjectKinds {
             #expect(!plugin.readsRows(optionValues: [], kind: kind))
         }
+        #expect(Set(DataDictionaryExportPlugin.excludedDatabaseTypeIds) == ["DynamoDB", "SurrealDB"])
         #expect(DataDictionaryFileType.markdown.fileExtension == "md")
         #expect(DataDictionaryFileType.html.fileExtension == "html")
     }
@@ -148,7 +149,7 @@ struct DataDictionaryExportTests {
 
         #expect(source.rowReads == 0)
         #expect(failures.warnings.isEmpty)
-        #expect(source.indexReads == ["orgs", "users"])
+        #expect(source.indexReads == ["orgs", "users", "active_users"])
         #expect(source.foreignKeyReads == ["orgs", "users"])
         #expect(document.objects.map { $0.columns.count } == [2, 2, 1])
         #expect(document.objects[0].comment == "Companies that own accounts")
@@ -276,6 +277,7 @@ struct DataDictionaryExportTests {
         let markdown = DataDictionaryMarkdownRenderer.render(document)
 
         #expect(markdown.contains("Columns could not be read: permission denied"))
+        #expect(markdown.contains("### Indexes\n\nIndexes could not be read: permission denied"))
         #expect(failures.columns == ["orgs"])
         #expect(failures.indexes.count == 1)
         #expect(failures.warnings.count == 2)

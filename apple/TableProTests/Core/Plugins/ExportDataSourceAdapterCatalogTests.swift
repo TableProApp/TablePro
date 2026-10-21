@@ -27,6 +27,23 @@ private final class CommentingStubDriver: PluginDriverStub, @unchecked Sendable 
     }
 }
 
+private final class CatalogCommentStubDriver: PluginDriverStub, @unchecked Sendable {
+    private(set) var metadataReads = 0
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        "COMMENT ON \(objectType) \(name)"
+    }
+
+    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
+        metadataReads += 1
+        return PluginTableMetadata(tableName: table, rowCount: 100_001, comment: "from metadata")
+    }
+
+    func fetchObjectComment(table: String, schema: String?) async throws -> String? {
+        "from the catalog"
+    }
+}
+
 struct ExportDataSourceAdapterCatalogTests {
     private func adapter(_ stub: CommentingStubDriver) -> ExportDataSourceAdapter {
         let driver = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .postgresql), pluginDriver: stub)
@@ -55,6 +72,17 @@ struct ExportDataSourceAdapterCatalogTests {
 
         #expect(try await source.fetchObjectComment(object("orders", kind: .table)) == nil)
         #expect(stub.metadataReads.isEmpty)
+    }
+
+    @Test("A driver that reads its comment from the catalog is never asked for table metadata")
+    func catalogCommentSkipsTheMetadataRead() async throws {
+        let stub = CatalogCommentStubDriver()
+        let driver = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .duckdb), pluginDriver: stub)
+        let source = ExportDataSourceAdapter(driver: driver, databaseType: .duckdb)
+
+        #expect(try await source.fetchObjectComment(object("orders", kind: .table)) == "from the catalog")
+        #expect(try await driver.fetchObjectComment(tableName: "orders") == "from the catalog")
+        #expect(stub.metadataReads == 0)
     }
 
     @Test("Indexes are read from the driver in the container the export named")

@@ -29,6 +29,8 @@ enum DataDictionaryMarkdownRenderer {
         var lines = ["<a id=\"\(document.anchors[index])\"></a>", "", "## \(code(document.displayName(at: index)))", ""]
         if let comment = object.comment {
             lines.append("**\(object.kindLabel).** \(text(comment))")
+        } else if let error = object.commentError {
+            lines.append("**\(object.kindLabel).** Comment could not be read: \(text(error))")
         } else {
             lines.append("**\(object.kindLabel).**")
         }
@@ -43,7 +45,9 @@ enum DataDictionaryMarkdownRenderer {
         }
 
         let indexes = document.indexRows(at: index)
-        if !indexes.isEmpty {
+        if let error = object.indexesError {
+            lines += ["### Indexes", "", "Indexes could not be read: \(text(error))", ""]
+        } else if !indexes.isEmpty {
             lines += ["### Indexes", ""]
             lines += table(
                 header: ["Name", "Columns", "Kind", "Method"],
@@ -53,7 +57,9 @@ enum DataDictionaryMarkdownRenderer {
         }
 
         let keys = document.foreignKeyRows(at: index)
-        if !keys.isEmpty {
+        if let error = object.foreignKeysError {
+            lines += ["### Foreign keys", "", "Foreign keys could not be read: \(text(error))", ""]
+        } else if !keys.isEmpty {
             lines += ["### Foreign keys", ""]
             lines += table(
                 header: ["Name", "Columns", "References", "On delete", "On update"],
