@@ -108,7 +108,7 @@ struct ERDiagramSelfReferenceTests {
             nodeRects: [table.id: nodeRect],
             nodeIndex: ["employees": table.id],
             clusterColors: [:],
-            selectedNodeId: nil,
+            selectedNodeIds: [],
             size: CGSize(width: 800, height: 600)
         )
 
@@ -218,7 +218,7 @@ struct ERDiagramSelfReferenceTests {
             nodeRects: [node.id: nodeRect],
             nodeIndex: ["employees": node.id],
             clusterColors: [:],
-            selectedNodeId: nil,
+            selectedNodeIds: [],
             size: CGSize(width: nodeRect.maxX + 160, height: nodeRect.maxY + 160)
         )
 

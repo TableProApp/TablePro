@@ -41,6 +41,22 @@ struct ERDiagramGraphBuilderTests {
         return node.isJunctionTable
     }
 
+    @Test("A key spelled in another case than the catalog, as SQLite reports one, still draws its edge")
+    func referenceSpellingFollowsTheCatalog() {
+        let graph = ERDiagramGraphBuilder.build(
+            allColumns: [
+                "Parent": [column("ID", primaryKey: true)],
+                "child": [column("id", primaryKey: true), column("Parent_Id")]
+            ],
+            allForeignKeys: ["child": [foreignKey(column: "parent_id", references: "parent", "id")]]
+        )
+
+        #expect(graph.edges.map { "\($0.fromTable).\($0.fromColumn) -> \($0.toTable).\($0.toColumn)" } == [
+            "child.Parent_Id -> Parent.ID"
+        ])
+        #expect(graph.nodes.first { $0.tableName == "child" }?.columns.first { $0.name == "Parent_Id" }?.isForeignKey == true)
+    }
+
     // MARK: - Cardinality
 
     @Test("Primary-key foreign key that is NOT NULL is one-to-one")

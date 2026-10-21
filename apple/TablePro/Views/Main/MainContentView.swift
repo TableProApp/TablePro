@@ -256,6 +256,10 @@ struct MainContentView: View {
             DatabaseSearchSheet(session: session) { result in
                 coordinator.openDatabaseSearchResult(result, in: session)
             }
+        case .joinBuilder(let launch):
+            JoinBuilderSheet(model: JoinBuilderViewModel(launch: launch, connection: connection)) { sql in
+                coordinator.openJoinQuery(sql, database: launch.database)
+            }
         case .generateRows(let session):
             GenerateRowsSheet(session: session)
         case .exportDialog, .exportQueryResults, .importDialog, .rowImport, .rowImportBatch,

@@ -98,6 +98,7 @@ enum ActiveSheet: Identifiable {
     /// The database and schema the Types section was right-clicked in travel with the request.
     case createUserType(database: String?, schema: String?)
     case searchDatabase(DatabaseSearchSession)
+    case joinBuilder(JoinBuilderLaunchRequest)
     case generateRows(RowGenerationSession)
 
     var id: String {
@@ -129,6 +130,7 @@ enum ActiveSheet: Identifiable {
         case .documentEditor(let request): "documentEditor-\(request.id.uuidString)"
         case .createUserType(let database, let schema): "createUserType-\(database ?? "")-\(schema ?? "")"
         case .searchDatabase(let session): "searchDatabase-\(session.id.uuidString)"
+        case .joinBuilder(let launch): "joinBuilder-\(launch.id.uuidString)"
         case .generateRows(let session): "generateRows-\(session.id.uuidString)"
         }
     }

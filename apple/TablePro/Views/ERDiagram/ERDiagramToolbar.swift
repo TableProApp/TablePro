@@ -5,6 +5,7 @@ struct ERDiagramToolbar: View {
     @ObservedObject var viewport: DiagramViewportController
     let onExport: (ERDiagramExportFormat) -> Void
     let onCopyMermaid: () -> Void
+    var onBuildJoinQuery: (() -> Void)?
 
     var body: some View {
         DiagramZoomToolbar(viewport: viewport) {
@@ -45,6 +46,15 @@ struct ERDiagramToolbar: View {
             .help(String(localized: "Refresh"))
             .accessibilityLabel(String(localized: "Refresh"))
             .accessibilityIdentifier("er-diagram-refresh")
+
+            if let onBuildJoinQuery {
+                Button(action: onBuildJoinQuery) {
+                    Image(systemName: "arrow.triangle.merge")
+                }
+                .help(String(localized: "Build a join query from the selected tables"))
+                .accessibilityLabel(String(localized: "Build Join Query"))
+                .accessibilityIdentifier("er-diagram-build-join")
+            }
 
             exportMenu
 
