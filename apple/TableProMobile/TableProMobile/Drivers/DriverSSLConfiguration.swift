@@ -103,24 +103,6 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
         }
     }
 
-    var pluginConfiguration: TableProPluginKit.SSLConfiguration {
-        TableProPluginKit.SSLConfiguration(
-            mode: pluginMode,
-            caCertificatePath: caCertificatePath ?? "",
-            clientCertificatePath: clientCertificatePath ?? "",
-            clientKeyPath: clientKeyPath ?? ""
-        )
-    }
-
-    private var pluginMode: TableProPluginKit.SSLMode {
-        switch mode {
-        case .disable: return .disabled
-        case .require: return .required
-        case .verifyCa: return .verifyCa
-        case .verifyFull: return .verifyIdentity
-        }
-    }
-
     var oracleTLSDescription: OracleTLSDescription {
         OracleTLSDescription(
             mode: oracleMode,
