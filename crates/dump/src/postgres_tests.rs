@@ -8,6 +8,7 @@ use super::*;
 
 fn options() -> ConnectOptions {
     ConnectOptions {
+        auth_source: None,
         host: "db.example".into(),
         port: 5432,
         database: "appdb".into(),

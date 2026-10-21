@@ -41,6 +41,7 @@ pub struct ConnectOptions {
     pub application_name: Option<String>,
     pub connect_timeout_secs: Option<u32>,
     pub read_only: bool,
+    pub auth_source: Option<String>,
 }
 
 pub fn bare_host(host: &str) -> &str {
@@ -130,6 +131,7 @@ impl Default for ConnectOptions {
             application_name: None,
             connect_timeout_secs: None,
             read_only: false,
+            auth_source: None,
         }
     }
 }

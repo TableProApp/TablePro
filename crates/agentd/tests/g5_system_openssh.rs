@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 fn saved_connection(fixture: &Fixture, id: Uuid) -> SavedConnection {
     SavedConnection {
+        auth_source: None,
         id,
         name: "G5 system OpenSSH fixture".into(),
         driver_id: "postgres".into(),

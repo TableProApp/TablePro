@@ -54,6 +54,7 @@ pub const BUNDLE_INCLUDED_FIELDS: &[&str] = &[
     "auth_mode",
     "environment",
     "ssh",
+    "auth_source",
 ];
 
 /// Fields a bundle deliberately drops. `use_tls` is the legacy boolean
@@ -121,6 +122,8 @@ pub struct BundleConnection {
     pub environment: Environment,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh: Option<SavedSshConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_source: Option<String>,
 }
 
 impl BundleConnection {
@@ -143,6 +146,7 @@ impl BundleConnection {
             auth_mode: saved.auth_mode,
             environment: saved.environment,
             ssh: saved.ssh.clone(),
+            auth_source: saved.auth_source.clone(),
         }
     }
 
@@ -169,6 +173,7 @@ impl BundleConnection {
             last_opened_at: None,
             connect_timeout_secs: None,
             query_timeout_secs: None,
+            auth_source: self.auth_source.clone(),
         }
     }
 }

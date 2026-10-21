@@ -100,6 +100,7 @@ async fn mongodb_extended_json_survives_the_mcp_query_tool_round_trip() {
 
     let connection_id = Uuid::new_v4();
     let saved = SavedConnection {
+        auth_source: None,
         id: connection_id,
         name: "MongoDB fixture".into(),
         driver_id: "mongodb".into(),

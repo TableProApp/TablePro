@@ -17,6 +17,7 @@ use uuid::Uuid;
 fn saved_connection(fixture: &Fixture, id: Uuid, cert: Option<&str>, key: Option<&str>) -> SavedConnection {
     let materials = fixture.ca_cert.parent().expect("fixture materials directory");
     SavedConnection {
+        auth_source: None,
         id,
         name: "agentd mTLS fixture".into(),
         driver_id: "postgres".into(),

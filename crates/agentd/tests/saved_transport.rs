@@ -89,6 +89,7 @@ impl DatabaseDriver for ParallelDriver {
 
 fn saved_with_bastion(host: &str, bastion_port: u16) -> SavedConnection {
     SavedConnection {
+        auth_source: None,
         id: Uuid::new_v4(),
         name: "Tunnelled warehouse".into(),
         driver_id: "postgres".into(),
@@ -129,6 +130,7 @@ fn saved_with_bastion(host: &str, bastion_port: u16) -> SavedConnection {
 fn saved_sqlite(path: &std::path::Path) -> SavedConnection {
     std::fs::File::create(path).expect("an empty SQLite database file");
     SavedConnection {
+        auth_source: None,
         id: Uuid::new_v4(),
         name: "Local database".into(),
         driver_id: "sqlite".into(),

@@ -21,6 +21,7 @@ pub(crate) fn key_hop(host: &str) -> SavedSshConfig {
 
 fn networked_saved(driver_id: &str, auth_mode: AuthMode) -> SavedConnection {
     SavedConnection {
+        auth_source: None,
         id: Uuid::new_v4(),
         name: "networked".into(),
         driver_id: driver_id.into(),

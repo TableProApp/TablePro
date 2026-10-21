@@ -43,6 +43,7 @@ impl FixtureProvider {
 impl ConnectionProvider for FixtureProvider {
     async fn list_saved_connections(&self) -> Result<Vec<SavedConnection>, String> {
         Ok(vec![SavedConnection {
+            auth_source: None,
             id: self.connection_id,
             name: "postgres-release-fixture".into(),
             driver_id: "postgres".into(),

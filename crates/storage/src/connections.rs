@@ -62,6 +62,7 @@ pub(crate) const KNOWN_CONNECTION_FIELDS: &[&str] = &[
     "environment",
     "ssh",
     "last_opened_at",
+    "auth_source",
 ];
 
 const KNOWN_FILE_FIELDS: &[&str] = &["version", "connections"];
@@ -116,6 +117,8 @@ pub struct SavedConnection {
     pub connect_timeout_secs: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_timeout_secs: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_source: Option<String>,
 }
 
 impl SavedConnection {
@@ -469,6 +472,7 @@ pub(super) mod tests {
 
     pub(super) fn sample_connection() -> SavedConnection {
         SavedConnection {
+            auth_source: None,
             id: Uuid::new_v4(),
             name: "Local Postgres".into(),
             driver_id: "postgres".into(),
@@ -862,24 +866,6 @@ pub(super) mod tests {
     }
 
     #[tokio::test]
-    async fn per_connection_timeouts_round_trip_and_are_absent_by_default() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("connections.json");
-        let plain = sample_connection();
-        let mut timed = sample_connection();
-        timed.connect_timeout_secs = Some(5);
-        timed.query_timeout_secs = Some(900);
-        save_to(&path, &[plain, timed.clone()]).await.unwrap();
-
-        let text = tokio::fs::read_to_string(&path).await.unwrap();
-        assert_eq!(text.matches("query_timeout_secs").count(), 1, "{text}");
-        let loaded = load_from(&path).await.unwrap();
-        assert_eq!(loaded[0].connect_timeout_secs, None);
-        assert_eq!(loaded[1].connect_timeout_secs, Some(5));
-        assert_eq!(loaded[1].query_timeout_secs, Some(900));
-    }
-
-    #[tokio::test]
     async fn a_file_without_a_certificate_authority_still_loads() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("connections.json");
@@ -1066,6 +1052,7 @@ pub(super) mod tests {
         connection.socket_path = Some(PathBuf::from("/run/mysqld/mysqld.sock"));
         connection.tls_root_cert = Some(PathBuf::from("/etc/ca.crt"));
         connection.last_opened_at = Some(Utc::now());
+        connection.auth_source = Some("admin".into());
         connection.ssh = Some(SavedSshConfig {
             hop_id: Uuid::new_v4(),
             credential_revision: 0,

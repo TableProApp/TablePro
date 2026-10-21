@@ -150,6 +150,7 @@ mod tests {
 
     fn sqlite_saved() -> SavedConnection {
         SavedConnection {
+            auth_source: None,
             id: Uuid::new_v4(),
             name: "Local".into(),
             driver_id: "sqlite".into(),

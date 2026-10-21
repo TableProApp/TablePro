@@ -12,6 +12,7 @@ use drivers_postgres::PgDriver;
 
 fn saved(fixture: &Fixture, mode: TlsMode, root_cert: Option<PathBuf>) -> SavedConnection {
     SavedConnection {
+        auth_source: None,
         id: Uuid::new_v4(),
         name: "Fixture warehouse".into(),
         driver_id: "postgres".into(),

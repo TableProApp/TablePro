@@ -6,6 +6,7 @@ use super::*;
 
 fn connection(name: &str, driver_id: &str) -> SavedConnection {
     SavedConnection {
+        auth_source: None,
         id: Uuid::new_v4(),
         name: name.into(),
         driver_id: driver_id.into(),
@@ -417,4 +418,29 @@ async fn a_malformed_organization_file_survives_a_write() {
 
     assert!(save_to(&path, &index).await.is_err());
     assert_eq!(tokio::fs::read(&path).await.unwrap(), malformed);
+}
+
+#[tokio::test]
+async fn per_connection_timeouts_and_auth_database_round_trip_and_are_absent_by_default() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("connections.json");
+    let mut timed = connection("timed", "mongodb");
+    timed.connect_timeout_secs = Some(5);
+    timed.query_timeout_secs = Some(900);
+    timed.auth_source = Some("admin".into());
+    crate::connections::save_to(&path, &[connection("plain", "mongodb"), timed])
+        .await
+        .unwrap();
+
+    let text = tokio::fs::read_to_string(&path).await.unwrap();
+    assert_eq!(text.matches("query_timeout_secs").count(), 1, "{text}");
+    assert_eq!(text.matches("auth_source").count(), 1, "{text}");
+    let loaded = crate::connections::load_from(&path).await.unwrap();
+    assert_eq!(
+        (loaded[0].connect_timeout_secs, loaded[0].auth_source.clone()),
+        (None, None)
+    );
+    assert_eq!(loaded[1].connect_timeout_secs, Some(5));
+    assert_eq!(loaded[1].query_timeout_secs, Some(900));
+    assert_eq!(loaded[1].auth_source.as_deref(), Some("admin"));
 }

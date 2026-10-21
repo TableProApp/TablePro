@@ -40,6 +40,7 @@ apps/linux/app/src/ui/browse_tab/selection/stats.rs
 apps/linux/app/src/ui/browse_tab/selection.rs
 apps/linux/app/src/ui/browse_tab/value_parse.rs
 apps/linux/app/src/ui/catalog_dialog.rs
+apps/linux/app/src/ui/connect_dialog/auth_source.rs
 apps/linux/app/src/ui/connect_dialog/browse.rs
 apps/linux/app/src/ui/connect_dialog/controls.rs
 apps/linux/app/src/ui/connect_dialog/form.rs

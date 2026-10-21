@@ -108,6 +108,7 @@ fn provider() -> DaemonProvider {
 
 fn local_connection() -> SavedConnection {
     SavedConnection {
+        auth_source: None,
         id: Uuid::new_v4(),
         name: "Local".into(),
         driver_id: "postgres".into(),

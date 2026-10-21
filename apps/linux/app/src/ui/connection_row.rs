@@ -286,6 +286,7 @@ mod tests {
 
     fn saved(username: &str, auth_mode: AuthMode) -> SavedConnection {
         SavedConnection {
+            auth_source: None,
             id: Uuid::new_v4(),
             name: "Corp".into(),
             driver_id: "mssql".into(),

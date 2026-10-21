@@ -825,6 +825,7 @@ impl RecordingProvider {
 
     fn saved(&self, connection_id: Uuid) -> SavedConnection {
         SavedConnection {
+            auth_source: None,
             id: connection_id,
             name: "stub".into(),
             driver_id: self.driver_id.clone(),

@@ -19,6 +19,27 @@ pub(super) fn apply_driver_values(
     Some(driver)
 }
 
+impl super::ConnectDialog {
+    pub(super) fn apply_driver_form_visibility(&mut self, driver: &dyn tablepro_core::DatabaseDriver) {
+        self.form.file_based = driver.is_file_based();
+        self.form.supports_integrated = driver.supports_integrated_auth();
+        self.form.supports_local_socket = driver.supports_local_socket();
+        if !self.form.supports_local_socket {
+            self.endpoint_combo.set_selected(0);
+        }
+        self.apply_form_state();
+        self.configure_socket_field(driver.id());
+        self.apply_tls_visibility();
+        self.database_file_picker.set_visible(self.form.file_based);
+        self.auth_source.set_visible(driver.id() == "mongodb");
+        self.database.set_title(&if self.form.file_based {
+            crate::tr!("File path")
+        } else {
+            crate::tr!("Database")
+        });
+    }
+}
+
 fn apply_values(
     port: &relm4::gtk::SpinButton,
     database: &relm4::adw::EntryRow,

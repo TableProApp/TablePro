@@ -12,6 +12,7 @@ use drivers_postgres::PgDriver;
 
 fn verifying_options(fixture: &Fixture) -> tablepro_core::ConnectOptions {
     tablepro_core::ConnectOptions {
+        auth_source: None,
         host: fixture.database_hostname.clone(),
         port: fixture.database_port,
         database: fixture.database.clone(),

@@ -17,6 +17,7 @@ use uuid::Uuid;
 async fn saved_socket_is_available_through_the_agent_provider() {
     let socket_dir = std::env::var("TABLEPRO_PG_SOCKET_DIR").expect("socket fixture directory");
     let saved = SavedConnection {
+        auth_source: None,
         id: Uuid::new_v4(),
         name: "Socket fixture".into(),
         driver_id: "postgres".into(),

@@ -372,6 +372,7 @@ mod tests {
 
     fn saved(name: &str) -> SavedConnection {
         SavedConnection {
+            auth_source: None,
             id: Uuid::new_v4(),
             name: name.into(),
             driver_id: "postgres".into(),

@@ -961,6 +961,7 @@ mod recovery_tests {
 
     fn saved() -> SavedConnection {
         SavedConnection {
+            auth_source: None,
             id: Uuid::new_v4(),
             name: "db".into(),
             driver_id: "postgres".into(),

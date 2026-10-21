@@ -60,6 +60,7 @@ fn mcp_context(
 ) -> (Uuid, McpBridge, tablepro_mcp::McpToken, tempfile::TempDir) {
     let connection_id = Uuid::new_v4();
     let saved = SavedConnection {
+        auth_source: None,
         id: connection_id,
         name: "PostgreSQL enum fixture".into(),
         driver_id: "postgres".into(),
@@ -595,6 +596,7 @@ async fn postgres_lost_write_ack_is_structured_and_never_retried() {
     let audit = Arc::new(OutcomeAudit(Mutex::new(Vec::new())));
     let audit_state = Arc::new(AuditState::new());
     let saved = SavedConnection {
+        auth_source: None,
         id: connection_id,
         name: "PostgreSQL lost acknowledgement fixture".into(),
         driver_id: "postgres".into(),

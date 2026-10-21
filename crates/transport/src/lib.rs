@@ -181,6 +181,7 @@ pub async fn connect_options_for(saved: &SavedConnection) -> Result<ConnectOptio
         application_name: None,
         connect_timeout_secs: saved.connect_timeout_secs,
         read_only: saved.read_only,
+        auth_source: saved.auth_source.clone(),
     })
 }
 
@@ -562,6 +563,7 @@ mod tests {
 
     fn saved_ssh_connection(client: SshClient) -> SavedConnection {
         SavedConnection {
+            auth_source: None,
             id: Uuid::new_v4(),
             name: "sandbox routing test".into(),
             driver_id: "postgres".into(),

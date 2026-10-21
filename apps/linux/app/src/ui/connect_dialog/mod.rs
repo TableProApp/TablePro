@@ -30,6 +30,7 @@ pub struct ConnectDialog {
     resolved_socket: adw::ActionRow,
     database: adw::EntryRow,
     database_file_picker: gtk::Box,
+    auth_source: adw::EntryRow,
     username: adw::EntryRow,
     password: adw::PasswordEntryRow,
     auth_row: adw::ActionRow,
@@ -81,6 +82,7 @@ fn selected_path(row: &adw::EntryRow) -> Option<std::path::PathBuf> {
     (!path.is_empty()).then(|| std::path::PathBuf::from(path))
 }
 
+mod auth_source;
 mod browse;
 mod controls;
 mod entry_activation;
@@ -224,6 +226,7 @@ impl Component for ConnectDialog {
         let database = adw::EntryRow::builder().title(crate::tr!("Database")).build();
         let database_file_picker = browse::attach_database_file_picker(&database);
         database_file_picker.set_visible(false);
+        let auth_source = auth_source::row();
         let username = adw::EntryRow::builder().title(crate::tr!("Username")).build();
         let password = adw::PasswordEntryRow::builder().title(crate::tr!("Password")).build();
         let tls_choices = TlsMode::ALL.iter().map(|mode| mode.label().to_string()).collect();
@@ -289,6 +292,7 @@ impl Component for ConnectDialog {
         connection_group.add(&socket_dir);
         connection_group.add(&resolved_socket);
         connection_group.add(&database);
+        connection_group.add(&auth_source);
 
         let auth_labels: Vec<String> = AUTH_MODE_ROWS.iter().map(|mode| auth_mode_label(*mode)).collect();
         let (auth_row, auth_combo) = choice_row(crate::tr!("Method"), None, auth_labels);
@@ -375,6 +379,7 @@ impl Component for ConnectDialog {
             resolved_socket,
             database,
             database_file_picker,
+            auth_source,
             username,
             password,
             auth_row,
@@ -803,24 +808,6 @@ impl ConnectDialog {
         self.tls_client_key.set_visible(visible);
     }
 
-    fn apply_driver_form_visibility(&mut self, driver: &dyn tablepro_core::DatabaseDriver) {
-        self.form.file_based = driver.is_file_based();
-        self.form.supports_integrated = driver.supports_integrated_auth();
-        self.form.supports_local_socket = driver.supports_local_socket();
-        if !self.form.supports_local_socket {
-            self.endpoint_combo.set_selected(0);
-        }
-        self.apply_form_state();
-        self.configure_socket_field(driver.id());
-        self.apply_tls_visibility();
-        self.database_file_picker.set_visible(self.form.file_based);
-        self.database.set_title(&if self.form.file_based {
-            crate::tr!("File path")
-        } else {
-            crate::tr!("Database")
-        });
-    }
-
     fn apply_form_state(&self) {
         let endpoint = self.endpoint_state();
         let socket = endpoint.uses_local_socket();
@@ -862,6 +849,7 @@ impl ConnectDialog {
             host: self.host.text().to_string(),
             port: self.port.value() as u16,
             database: self.database.text().to_string(),
+            auth_source: auth_source::value(&self.auth_source),
             username,
             password: SecretString::new(password.into()),
             tls: self.tls_config_for(driver),
@@ -1111,6 +1099,7 @@ async fn run_connect(request: ConnectRequest) -> Result<Option<connection_servic
         last_opened_at: None,
         connect_timeout_secs: opts_clone.connect_timeout_secs,
         query_timeout_secs,
+        auth_source: opts_clone.auth_source.clone(),
     };
 
     save_one(&saved).await.map_err(|e| format!("save: {e}"))?;

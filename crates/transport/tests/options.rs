@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 fn saved(tls_mode: Option<TlsMode>, use_tls: bool) -> SavedConnection {
     SavedConnection {
+        auth_source: None,
         id: Uuid::new_v4(),
         name: "Warehouse".into(),
         driver_id: "postgres".into(),

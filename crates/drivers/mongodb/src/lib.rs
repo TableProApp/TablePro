@@ -103,8 +103,13 @@ async fn build_client_options(opts: &ConnectOptions) -> Result<ClientOptions, Dr
     } else {
         format!("/{}", encode_uri(&opts.database))
     };
+    let auth_source = match opts.auth_source.as_deref().filter(|source| !source.is_empty()) {
+        Some(source) if db_path.is_empty() => format!("/?authSource={}", encode_uri(source)),
+        Some(source) => format!("?authSource={}", encode_uri(source)),
+        None => String::new(),
+    };
     let uri = secrecy::SecretString::from(format!(
-        "{scheme}://{}{host}:{}{db_path}",
+        "{scheme}://{}{host}:{}{db_path}{auth_source}",
         auth.expose_secret(),
         opts.port
     ));
@@ -803,6 +808,28 @@ mod tests {
         };
         let client_opts = build_client_options(&opts).await.expect("build client options");
         assert_eq!(client_opts.direct_connection, Some(true));
+    }
+
+    #[tokio::test]
+    async fn the_auth_source_defaults_to_the_database_and_can_be_overridden() {
+        let mut opts = ConnectOptions {
+            host: "db.internal".into(),
+            port: 27017,
+            database: "app".into(),
+            username: "root".into(),
+            ..Default::default()
+        };
+        let source = |options: mongodb::options::ClientOptions| options.credential.and_then(|c| c.source);
+        assert_eq!(
+            source(build_client_options(&opts).await.unwrap()).as_deref(),
+            Some("app")
+        );
+
+        opts.auth_source = Some("ad min/&".into());
+        let overridden = source(build_client_options(&opts).await.unwrap());
+        assert_eq!(overridden.as_deref(), Some("ad min/&"));
+        opts.database.clear();
+        assert!(build_client_options(&opts).await.is_ok());
     }
 
     #[tokio::test]

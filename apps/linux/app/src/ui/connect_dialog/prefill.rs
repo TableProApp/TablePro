@@ -98,6 +98,7 @@ impl ConnectDialog {
         self.host.set_text(&saved.host);
         self.port.set_value(f64::from(saved.port));
         self.database.set_text(&saved.database);
+        super::auth_source::set(&self.auth_source, saved);
         self.username.set_text(&saved.username);
         if let Some(dir) = &saved.socket_dir {
             self.endpoint_combo.set_selected(1);
@@ -168,6 +169,7 @@ mod tests {
 
     fn saved_with_ssh(ssh: Option<SavedSshConfig>) -> SavedConnection {
         SavedConnection {
+            auth_source: None,
             id: Uuid::new_v4(),
             name: "db".into(),
             driver_id: "postgres".into(),

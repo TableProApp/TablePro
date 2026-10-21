@@ -323,6 +323,7 @@ fn empty_query_result() -> QueryResult {
 
 fn saved_connection(id: Uuid) -> SavedConnection {
     SavedConnection {
+        auth_source: None,
         id,
         name: "timeout-bounds".into(),
         driver_id: "postgres".into(),

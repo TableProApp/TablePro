@@ -101,6 +101,7 @@ pub fn parse_connection_url(input: &str) -> Result<ParsedConnectionUrl, StorageE
     };
 
     let connection = SavedConnection {
+        auth_source: None,
         id: Uuid::new_v4(),
         name,
         driver_id: driver_id.to_string(),

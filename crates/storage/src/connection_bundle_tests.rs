@@ -10,6 +10,7 @@ const PASSPHRASE: &str = "correct horse battery staple";
 
 fn saved(name: &str) -> SavedConnection {
     SavedConnection {
+        auth_source: None,
         id: Uuid::new_v4(),
         name: name.into(),
         driver_id: "postgres".into(),
@@ -110,7 +111,13 @@ fn the_exported_record_carries_exactly_the_included_fields() {
     for field in BUNDLE_INCLUDED_FIELDS {
         let optional = matches!(
             *field,
-            "socket_dir" | "socket_path" | "tls_root_cert" | "tls_client_cert" | "tls_client_key" | "ssh"
+            "socket_dir"
+                | "socket_path"
+                | "tls_root_cert"
+                | "tls_client_cert"
+                | "tls_client_key"
+                | "ssh"
+                | "auth_source"
         );
         assert!(
             optional || record.contains_key(*field),
@@ -131,6 +138,16 @@ fn client_tls_paths_round_trip_in_connection_bundles_without_key_bytes() {
     assert_eq!(record.tls_client_key, connection.tls_client_key);
     assert!(!String::from_utf8_lossy(&bytes).contains("PRIVATE KEY"));
     assert_eq!(record.to_saved().tls_client_key, connection.tls_client_key);
+}
+
+#[test]
+fn an_authentication_database_round_trips_through_a_bundle() {
+    let mut connection = saved("mongo");
+    connection.auth_source = Some("admin".into());
+    let bytes = export_plaintext(&export_of(vec![connection.clone()], Vec::new())).expect("export");
+    let record = &plaintext_body(&bytes).connections[0];
+
+    assert_eq!(record.to_saved().auth_source.as_deref(), Some("admin"));
 }
 
 #[test]

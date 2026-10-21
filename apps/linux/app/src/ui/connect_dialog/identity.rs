@@ -70,7 +70,8 @@ pub(super) fn select_existing<'a>(
 
 fn matches_endpoint(saved: &SavedConnection, identity: &ConnectionIdentity<'_>) -> bool {
     let opts = identity.opts;
-    if saved.driver_id != identity.driver_id || saved.database != opts.database {
+    if saved.driver_id != identity.driver_id || saved.database != opts.database || saved.auth_source != opts.auth_source
+    {
         return false;
     }
     if saved.tls_client_cert != opts.tls.client_cert || saved.tls_client_key != opts.tls.client_key {
@@ -127,6 +128,7 @@ mod tests {
 
     fn saved(driver_id: &str, username: &str, auth_mode: AuthMode) -> SavedConnection {
         SavedConnection {
+            auth_source: None,
             id: Uuid::new_v4(),
             name: "saved".into(),
             driver_id: driver_id.into(),
@@ -178,6 +180,21 @@ mod tests {
         assert!(matches_existing(&entry, &identity("mssql", &same, false)));
         assert!(!matches_existing(&entry, &identity("mssql", &other_user, false)));
         assert!(!matches_existing(&entry, &identity("mssql", &kerberos, false)));
+    }
+
+    #[test]
+    fn mongodb_entries_distinguish_authentication_databases() {
+        let mut entry = saved("mongodb", "reader", AuthMode::Password);
+        entry.auth_source = Some("admin".into());
+        let same = ConnectOptions {
+            auth_source: Some("admin".into()),
+            ..opts("reader", AuthMode::Password)
+        };
+        let different = opts("reader", AuthMode::Password);
+
+        let existing = [entry];
+        assert!(select_existing(&existing, &identity("mongodb", &same, false)).is_some());
+        assert!(select_existing(&existing, &identity("mongodb", &different, false)).is_none());
     }
 
     #[test]
