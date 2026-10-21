@@ -492,6 +492,32 @@ struct MySQLDumpPlaintextPasswordServiceTests {
         #expect(message == stderr)
     }
 
+    @Test("A cancel while the checks run stops them and reads as cancelled", .timeLimit(.minutes(1)))
+    func cancelDuringPreparation() async throws {
+        let service = NativeDumpService(kind: .restore, runnerFactory: { _ in
+            FinishingRunner(.init(exitCode: 0, stderr: "", wasCancelled: false))
+        })
+        let request = NativeDumpDescriptor.Request(
+            connection: DatabaseConnection(name: "Test", host: "db.example.com", port: 3_306, type: .mysql),
+            database: "sales",
+            fileURL: URL(fileURLWithPath: "/tmp/cancelled.sql"),
+            password: nil
+        )
+        let (started, signal) = AsyncStream<Void>.makeStream()
+        let pending = Task {
+            try await service.prepare(request) { request in
+                signal.yield()
+                try await Task.sleep(for: .seconds(60))
+                return request
+            }
+        }
+        for await _ in started { break }
+        service.cancel()
+        let prepared = try await pending.value
+        #expect(prepared == nil)
+        #expect(service.state == .cancelled)
+    }
+
     @Test("A cancel before the tool runs removes the plugin folder it never used")
     func cancelBeforeRunRemovesTheFolder() throws {
         let folder = try MariaDBClientPluginFolder.make(from: nil)

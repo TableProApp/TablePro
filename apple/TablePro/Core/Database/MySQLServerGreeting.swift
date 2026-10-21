@@ -26,6 +26,15 @@ enum MySQLServerGreeting {
     static func read(host: String, port: Int, deadline: Duration = .seconds(10)) async -> Answer {
         guard port > 0, let nwPort = NWEndpoint.Port(rawValue: UInt16(clamping: port)) else { return .unreadable }
         let connection = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
+        return await withTaskCancellationHandler {
+            await answer(from: connection, deadline: deadline)
+        } onCancel: {
+            connection.cancel()
+        }
+    }
+
+    private static func answer(from connection: NWConnection, deadline: Duration) async -> Answer {
+        guard !Task.isCancelled else { return .unreadable }
         return await withCheckedContinuation { continuation in
             let resumed = OSAllocatedUnfairLock(initialState: false)
             let complete: @Sendable (Answer) -> Void = { value in

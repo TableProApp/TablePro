@@ -203,6 +203,7 @@ final class NativeDumpService: ObservableObject {
     private var stateObservers: [UUID: AsyncStream<NativeDumpState>.Continuation] = [:]
     private var toolName = "dump"
     private var cancelRequested = false
+    private var preparation: Task<NativeDumpDescriptor.Request, any Error>?
 
     func stateUpdates() -> AsyncStream<NativeDumpState> {
         let (stream, continuation) = AsyncStream<NativeDumpState>.makeStream()
@@ -310,7 +311,10 @@ final class NativeDumpService: ObservableObject {
                 serverVersion: serverVersion
             )
             toolName = resolved.name
-            request = try await tool.prepare(request, resolved)
+            guard let prepared = try await prepare(request, with: { try await tool.prepare($0, resolved) }) else {
+                return
+            }
+            request = prepared
             let command = try Self.buildCommand(
                 kind: kind,
                 tool: tool,
@@ -342,6 +346,30 @@ final class NativeDumpService: ObservableObject {
         }
 
         Self.logger.info("\(self.toolName, privacy: .public) started db=\(database, privacy: .private(mask: .hash))")
+    }
+
+    // Nil when a cancel arrived while it ran: the checks it was making stop, and the run reads as cancelled rather than
+    // as the error the stop caused.
+    func prepare(
+        _ request: NativeDumpDescriptor.Request,
+        with preparation: @escaping @Sendable (NativeDumpDescriptor.Request) async throws -> NativeDumpDescriptor.Request
+    ) async throws -> NativeDumpDescriptor.Request? {
+        guard !cancelRequested else {
+            setState(.cancelled)
+            return nil
+        }
+        let task = Task { try await preparation(request) }
+        self.preparation = task
+        defer { self.preparation = nil }
+        do {
+            return try await task.value
+        } catch {
+            guard !cancelRequested else {
+                setState(.cancelled)
+                return nil
+            }
+            throw error
+        }
     }
 
     /// Test-friendly entry: hands the job to the runner and wires up termination and progress.
@@ -397,6 +425,7 @@ final class NativeDumpService: ObservableObject {
     /// the user just said to leave alone.
     func cancel() {
         cancelRequested = true
+        preparation?.cancel()
         guard case .running = state else { return }
         setState(.cancelling)
         runner?.cancel()

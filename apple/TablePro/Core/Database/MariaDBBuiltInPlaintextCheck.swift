@@ -29,9 +29,10 @@ enum MariaDBBuiltInPlaintextCheck {
         if let key, let known = verdicts.withLock({ $0[key] }) {
             return known
         }
-        let verdict = await Task.detached(priority: .userInitiated) {
+        let asking = Task.detached(priority: .userInitiated) {
             var combined = Verdict.refusesPlaintext
             for plugin in Self.plugins {
+                guard !Task.isCancelled else { return Verdict.unknown }
                 switch Self.ask(toolPath: toolPath, plugin: plugin, timeout: timeout) {
                 case .sendsPlaintext: return Verdict.sendsPlaintext
                 case .unknown: combined = .unknown
@@ -39,7 +40,12 @@ enum MariaDBBuiltInPlaintextCheck {
                 }
             }
             return combined
-        }.value
+        }
+        let verdict = await withTaskCancellationHandler {
+            await asking.value
+        } onCancel: {
+            asking.cancel()
+        }
         if let key, verdict != .unknown {
             verdicts.withLock { $0[key] = verdict }
         }
