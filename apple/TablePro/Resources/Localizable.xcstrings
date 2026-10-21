@@ -20591,6 +20591,9 @@
         }
       }
     },
+    "After keyword expansion, Tab moves through fields such as %1$@, and %2$@ marks where the cursor ends up." : {
+
+    },
     "Agent" : {
       "localizations" : {
         "fr" : {

@@ -404,6 +404,50 @@ extension GlobalStateSuites {
             #expect(controller.textView.string == "SELECT o.total FROM orders o, customers c")
         }
 
+        // MARK: - Saved query templates
+
+        @MainActor
+        @Test("accepting a saved query with fields expands it, selects the first field and keeps $1")
+        func favoriteWithFieldsStartsASnippet() async throws {
+            let controller = EditorControllerFixture.make(string: "upd")
+            let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .postgresql)
+            adapter.updateFavoriteKeywords(["upd": (name: "Update", query: "UPDATE ${1:t} SET ${2:c} = $1;;")])
+            let caret = CursorPosition(range: NSRange(location: 3, length: 0))
+
+            let response = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: caret,
+                isManualTrigger: true
+            )
+            let item = try #require(response?.items.first { $0.label == "upd" })
+            adapter.completionWindowApplyCompletion(item: item, textView: controller, cursorPosition: caret)
+
+            #expect(controller.textView.string == "UPDATE t SET c = $1")
+            #expect(controller.isSnippetSessionActive)
+            #expect(controller.textView.selectionManager.textSelections.map { $0.range } == [NSRange(location: 7, length: 1)])
+        }
+
+        @MainActor
+        @Test("accepting a saved query with only ;; places the caret as before")
+        func favoriteWithMarkerPlacesTheCaret() async throws {
+            let controller = EditorControllerFixture.make(string: "cnt")
+            let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .postgresql)
+            adapter.updateFavoriteKeywords(["cnt": (name: "Count", query: "SELECT COUNT(*) FROM ;; WHERE 1")])
+            let caret = CursorPosition(range: NSRange(location: 3, length: 0))
+
+            let response = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: caret,
+                isManualTrigger: true
+            )
+            let item = try #require(response?.items.first { $0.label == "cnt" })
+            adapter.completionWindowApplyCompletion(item: item, textView: controller, cursorPosition: caret)
+
+            #expect(controller.textView.string == "SELECT COUNT(*) FROM  WHERE 1")
+            #expect(controller.isSnippetSessionActive == false)
+            #expect(controller.textView.selectionManager.textSelections.map { $0.range } == [NSRange(location: 21, length: 0)])
+        }
+
         // MARK: - Helpers
 
         @MainActor
