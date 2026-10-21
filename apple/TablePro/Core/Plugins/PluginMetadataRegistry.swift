@@ -141,6 +141,9 @@ struct PluginMetadataSnapshot: Sendable {
 
         var supportsPrincipalConnectionLimit: Bool = true
 
+        // False where users and roles are different kinds: there a role never logs in, and Can log in is a user's lock.
+        var supportsRoleLogin: Bool = true
+
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
             supportsImport: true,
@@ -769,7 +772,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsRemoteDatabaseSession: existingSnapshot?.capabilities
                     .supportsRemoteDatabaseSession ?? false,
                 supportsPrincipalConnectionLimit: existingSnapshot?.capabilities
-                    .supportsPrincipalConnectionLimit ?? true
+                    .supportsPrincipalConnectionLimit ?? true,
+                supportsRoleLogin: existingSnapshot?.capabilities.supportsRoleLogin ?? true
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,

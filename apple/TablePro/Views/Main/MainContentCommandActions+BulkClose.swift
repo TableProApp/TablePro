@@ -38,7 +38,11 @@ extension MainContentCommandActions {
 
     var canCloseOtherTabs: Bool {
         guard let anchor = coordinator?.tabManager.selectedTab?.id else { return false }
-        return !tabsToClose(kind: .others(anchor: anchor)).isEmpty
+        return canCloseOtherTabs(anchoredOn: anchor)
+    }
+
+    func canCloseOtherTabs(anchoredOn anchor: UUID) -> Bool {
+        !tabsToClose(kind: .others(anchor: anchor)).isEmpty
     }
 
     var canCloseTabsForOtherDatabases: Bool {
@@ -69,7 +73,9 @@ extension MainContentCommandActions {
         let victims = tabsToClose(kind: kind)
         guard !victims.isEmpty else { return }
         guard case .close(let closable) = await resolveUnsavedWork(in: victims) else { return }
-        coordinator.closeTabsByUser(ids: victims.map(\.id).filter { closable.contains($0) })
+        // A save can suspend long enough for a victim to be pinned.
+        let unpinned = Set(coordinator.tabManager.tabs.filter { !$0.isPinned }.map(\.id))
+        coordinator.closeTabsByUser(ids: victims.map(\.id).filter { closable.contains($0) && unpinned.contains($0) })
     }
 
     /// What a close should do about the work it is going to destroy.
@@ -193,23 +199,23 @@ extension MainContentCommandActions {
     /// Close All and Close Other Tabs act on the strip, which lists one entry: a close never takes
     /// tabs the user cannot see. Close Tabs for Other Databases is the one that reaches behind the
     /// other entries, and it takes every tab there, an empty one too, since each would keep its
-    /// entry listed.
+    /// entry listed. None of the three takes a pinned tab.
     private func tabsToClose(kind: BatchCloseKind) -> [QueryTab] {
         guard let coordinator else { return [] }
         let manager = coordinator.tabManager
 
         switch kind {
         case .all:
-            return manager.visibleTabs
+            return manager.visibleTabs.filter { !$0.isPinned }
         case .others(let anchor):
-            return manager.visibleTabs.filter { $0.id != anchor }
+            return manager.visibleTabs.filter { $0.id != anchor && !$0.isPinned }
         case .otherDatabases:
             let current = shownContainerName
             /// A tab that cannot name its container is not in another one, it is in every one, and
             /// `containerName` returning nil compared against a non-optional name made every such
             /// tab foreign.
             return manager.tabs.filter { tab in
-                guard let name = manager.containerName(of: tab) else { return false }
+                guard !tab.isPinned, let name = manager.containerName(of: tab) else { return false }
                 return name != current
             }
         }

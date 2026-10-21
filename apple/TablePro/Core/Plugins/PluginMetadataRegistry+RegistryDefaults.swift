@@ -284,7 +284,9 @@ extension PluginMetadataRegistry {
                     supportsDropSchema: true,
                     supportsRenameColumn: true,
                     defaultSSLMode: .preferred,
-                    supportsPerConnectionCertificatePaths: false
+                    supportsPerConnectionCertificatePaths: false,
+                    supportsPrincipalConnectionLimit: false,
+                    supportsRoleLogin: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "dbo",
@@ -450,7 +452,9 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsRenameColumn: true,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    supportsPrincipalConnectionLimit: false,
+                    supportsRoleLogin: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",

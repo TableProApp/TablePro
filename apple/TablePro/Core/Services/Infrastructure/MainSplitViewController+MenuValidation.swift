@@ -90,6 +90,7 @@ struct MenuValidationContext: Equatable {
     var canCloseOtherTabs = false
     var canCloseTabsForOtherDatabases = false
     var canCloseAllTabs = false
+    var canPinEditorTab = false
     var canMoveTabToConnection = false
     /// How many editor tabs the connection on screen has open.
     var editorTabCount = 0
@@ -241,6 +242,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.canCloseTabsForOtherDatabases
         case #selector(closeAllTabs(_:)):
             return context.canCloseAllTabs
+        case #selector(togglePinnedEditorTab(_:)):
+            return context.isConnected && !context.isAgentMode && context.canPinEditorTab
 
         case #selector(importData(_:)), #selector(importDataFormat(_:)):
             return context.isConnected && !context.isReadOnly && context.hasImportFormats
@@ -654,6 +657,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canCloseOtherTabs: actions.canCloseOtherTabs,
             canCloseTabsForOtherDatabases: actions.canCloseTabsForOtherDatabases,
             canCloseAllTabs: actions.canCloseAllTabs,
+            canPinEditorTab: actions.canTogglePinnedTab,
             canMoveTabToConnection: canMoveSelectedTabToConnection,
             editorTabCount: actions.openTabCount,
             hasRecentTabToSwitchTo: hasRecentTabToSwitchTo,
@@ -788,6 +792,11 @@ extension MainSplitViewController: NSMenuItemValidation {
             setTitle(commandActions?.isResultsVisible == true ? "Hide Results" : "Show Results", on: menuItem)
         case #selector(pinResult(_:)):
             setTitle(commandActions?.isResultTabPinned == true ? "Unpin Result" : "Pin Result", on: menuItem)
+        case #selector(togglePinnedEditorTab(_:)):
+            setResolvedTitle(
+                EditorTabContextMenuBuilder.pinTitle(isPinned: commandActions?.isSelectedTabPinned == true),
+                on: menuItem
+            )
         case #selector(closeTabsForOtherContainers(_:)):
             setResolvedTitle(
                 commandActions?.closeTabsForOtherDatabasesTitle

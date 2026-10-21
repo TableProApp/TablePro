@@ -37,6 +37,14 @@ extension TableViewCoordinator {
             showBlobViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .viewPhpSerialized:
             showPhpViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
+        case .viewVector, .editVector:
+            showVectorPopover(
+                tableView: tableView,
+                row: row,
+                column: tableColumn,
+                columnIndex: columnIndex,
+                isEditable: mode == .editVector && canStartInlineEdit(row: row, columnIndex: columnIndex)
+            )
         case .viewSvg, .editSvg:
             showSvgViewerPopover(
                 tableView: tableView,
@@ -113,6 +121,14 @@ extension TableViewCoordinator {
             showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         } else if columnType.supportsElementEditing {
             showArrayEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if columnType.isVectorType {
+            showVectorPopover(
+                tableView: tableView,
+                row: row,
+                column: column,
+                columnIndex: columnIndex,
+                isEditable: canStartInlineEdit(row: row, columnIndex: columnIndex)
+            )
         } else if let values = tableRows.columnEnumValues[columnName], !values.isEmpty {
             if columnType.isSetType {
                 showSetPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)

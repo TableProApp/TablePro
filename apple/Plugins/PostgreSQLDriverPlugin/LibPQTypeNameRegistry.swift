@@ -39,6 +39,10 @@ final class LibPQTypeNameRegistry: Sendable {
             ?? PostgreSQLCatalogTypeNames.unresolved
     }
 
+    func name(for oid: UInt32, modifier: Int32) -> String {
+        PgvectorTypes.spelling(of: name(for: oid), modifier: modifier)
+    }
+
     func unresolvedOids(in oids: [UInt32]) -> [UInt32] {
         state.withLock { state in
             oids.filter { state.learnedNames[$0] == nil && PostgreSQLCatalogTypeNames.builtinTypeName(for: $0) == nil }

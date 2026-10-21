@@ -1,13 +1,12 @@
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Output, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use tempfile::TempDir;
 use tokio::time::Instant;
 
 use crate::host_command::run_host_command_with_env;
-use crate::{FixtureError, SshKeyPair};
+use crate::{FixtureError, ScriptedAskpass, SshKeyPair};
 
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(10);
 const SOCKET_RETRY: Duration = Duration::from_millis(20);
@@ -50,9 +49,26 @@ impl SshAgent {
     }
 
     /// Load a key, and its `-cert.pub` certificate when one sits beside
-    /// it, the way `ssh-add` does.
+    /// it, the way `ssh-add` does. A key with a passphrase is unlocked
+    /// with it.
     pub async fn add(&self, key: &SshKeyPair) -> Result<(), FixtureError> {
-        self.ssh_add([key.private_key().as_os_str()]).await.map(drop)
+        let mut environment = vec![("SSH_AUTH_SOCK", self.socket.as_os_str().to_owned())];
+        // Kept until ssh-add has run, since dropping it deletes the script.
+        let _askpass = match key.passphrase() {
+            Some(passphrase) => {
+                let askpass = ScriptedAskpass::new()?;
+                environment.extend([
+                    ("SSH_ASKPASS", askpass.path().as_os_str().to_owned()),
+                    ("SSH_ASKPASS_REQUIRE", "force".into()),
+                    (ScriptedAskpass::ANSWER_VARIABLE, passphrase.into()),
+                ]);
+                Some(askpass)
+            }
+            None => None,
+        };
+        run_host_command_with_env("ssh-add", [key.private_key().as_os_str()], environment)
+            .await
+            .map(drop)
     }
 
     /// The public keys the agent holds, one OpenSSH line each.
@@ -77,11 +93,6 @@ impl SshAgent {
                 stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             }),
         }
-    }
-
-    async fn ssh_add<'a>(&self, arguments: impl IntoIterator<Item = &'a OsStr>) -> Result<Output, FixtureError> {
-        let environment = [("SSH_AUTH_SOCK", self.socket.as_os_str())];
-        run_host_command_with_env("ssh-add", arguments, environment).await
     }
 
     async fn wait_for_socket(&self) -> Result<(), FixtureError> {
@@ -116,6 +127,18 @@ mod tests {
         let agent = SshAgent::start().await.unwrap();
         let key = SshKeyPair::generate("tablepro-agent-test").await.unwrap();
         assert_eq!(agent.identities().await.unwrap(), Vec::<String>::new());
+
+        agent.add(&key).await.unwrap();
+
+        assert_eq!(agent.identities().await.unwrap(), vec![key.public_key().to_owned()]);
+    }
+
+    #[tokio::test]
+    async fn a_key_with_a_passphrase_is_unlocked_into_the_agent() {
+        let agent = SshAgent::start().await.unwrap();
+        let key = SshKeyPair::generate_with(crate::SshKeyType::Ed25519, Some("open sesame"), "tablepro-agent-test")
+            .await
+            .unwrap();
 
         agent.add(&key).await.unwrap();
 

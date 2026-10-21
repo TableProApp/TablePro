@@ -122,6 +122,53 @@ struct DataFileControllerTests {
         #expect(column(controller, 0) == ["y"])
     }
 
+    @Test("Set Cells to Value from the grid writes the cells it resolved, not the focused column")
+    func setCellsToValueWritesTheGridCells() async throws {
+        let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\nC,Rome\n")
+        let target = try #require(controller.cellTarget(for: [
+            SetValueTarget(displayRow: 0, columnIndex: 1),
+            SetValueTarget(displayRow: 2, columnIndex: 1)
+        ]))
+        #expect(target.cells.map { $0.column } == [controller.columnNames.ids[1]])
+        #expect(!target.coversWholeColumns)
+
+        controller.applyCleanup(.setValue("Oslo"), target: target, actionName: "Set Cells to Value")
+        await controller.waitForPendingWork()
+
+        #expect(column(controller, 0) == ["A", "B", "C"])
+        #expect(column(controller, 1) == ["Oslo", "London", "Oslo"])
+    }
+
+    @Test("Cell edits made as one batch are one commit and one undo step")
+    func batchedCellEditsAreOneUndoStep() async throws {
+        let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\nC,Rome\n")
+
+        controller.batchCellEdits(actionName: "Paste Cells") {
+            controller.setCell(pageRow: 0, column: 1, text: "Oslo")
+            controller.setCell(pageRow: 2, column: 1, text: "Oslo")
+        }
+
+        #expect(column(controller, 1) == ["Oslo", "London", "Oslo"])
+        #expect(undoManager.undoActionName == "Paste Cells")
+        undoManager.undo()
+        #expect(column(controller, 1) == ["Paris", "London", "Rome"])
+    }
+
+    @Test("Separate cells in two columns change only those cells, not the rows and columns between them")
+    func separateCellsStaySeparate() async throws {
+        let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\n")
+        let target = try #require(controller.cellTarget(for: [
+            SetValueTarget(displayRow: 0, columnIndex: 0),
+            SetValueTarget(displayRow: 1, columnIndex: 1)
+        ]))
+
+        controller.applyCleanup(.setValue("x"), target: target, actionName: "Set Cells to Value")
+        await controller.waitForPendingWork()
+
+        #expect(column(controller, 0) == ["x", "B"])
+        #expect(column(controller, 1) == ["Paris", "x"])
+    }
+
     @Test("Changing the query goes back to the first page")
     func queryChangeResetsPage() async throws {
         let rows = (1...30).map { "row\($0)" }.joined(separator: "\n")

@@ -333,9 +333,6 @@
     "right value, differs" : {
 
     },
-    "~/.ssh/config sets IdentityAgent none for this host, so no SSH agent can sign in. Remove that line, or choose Private Key." : {
-
-    },
     "—" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1993,6 +1990,9 @@
         }
       }
     },
+    "{host}, {port}, {user} and {database} become the opening connection's values, already quoted. The command also gets them as TABLEPRO_HOST, TABLEPRO_PORT, TABLEPRO_USER and TABLEPRO_DATABASE." : {
+
+    },
     "**Available commands:**" : {
       "localizations" : {
         "fr" : {
@@ -2693,6 +2693,9 @@
         }
       }
     },
+    "%@ bytes" : {
+
+    },
     "%@ can only be compared with a whole number." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -3116,6 +3119,9 @@
           }
         }
       }
+    },
+    "%@ characters" : {
+
     },
     "%@ completed" : {
       "localizations" : {
@@ -3971,9 +3977,6 @@
         }
       }
     },
-    "%@ is not a socket." : {
-
-    },
     "%@ is not a Redis database index." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -3989,6 +3992,9 @@
     "%@ is not a serial consistency level. Use SERIAL or LOCAL_SERIAL." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "%@ is not a socket." : {
+
     },
     "%@ is not a start position. Use NEWEST, OLDEST, OFFSET, TIME, ANCHOR or TAIL." : {
       "extractionState" : "manual",
@@ -5643,7 +5649,6 @@
       }
     },
     "%@, pinned" : {
-      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -7203,6 +7208,9 @@
           }
         }
       }
+    },
+    "%1$@ takes %2$lld dimensions, and the value has %3$lld." : {
+
     },
     "%1$@ wants to run a query on \"%2$@\"" : {
       "localizations" : {
@@ -10350,6 +10358,9 @@
         }
       }
     },
+    "%lld dims" : {
+
+    },
     "%lld in, %lld out" : {
       "localizations" : {
         "en" : {
@@ -12144,6 +12155,19 @@
         }
       }
     },
+    "^[%lld dimension](inflect: true)" : {
+
+    },
+    "^[%lld dimension](inflect: true), %lld nonzero" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "^[%1$lld dimension](inflect: true), %2$lld nonzero"
+          }
+        }
+      }
+    },
     "^[%lld line](inflect: true)" : {
       "localizations" : {
         "fr" : {
@@ -12621,6 +12645,9 @@
         }
       }
     },
+    "~/.ssh/config sets IdentityAgent none for this host, so no SSH agent can sign in. Remove that line, or choose Private Key." : {
+
+    },
     "~/.ssh/id_ed25519.pub" : {
       "localizations" : {
         "fr" : {
@@ -12887,6 +12914,9 @@
         }
       }
     },
+    "1 byte" : {
+
+    },
     "1 cell" : {
       "localizations" : {
         "fr" : {
@@ -12896,6 +12926,9 @@
           }
         }
       }
+    },
+    "1 character" : {
+
     },
     "1 connection" : {
       "localizations" : {
@@ -13048,6 +13081,9 @@
           }
         }
       }
+    },
+    "1 dim" : {
+
     },
     "1 duplicate row" : {
       "localizations" : {
@@ -24261,9 +24297,6 @@
         }
       }
     },
-    "And one that will run after this session ends:\n\n%@" : {
-
-    },
     "ANALYZE (update statistics afterwards)" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -24370,6 +24403,9 @@
       }
     },
     "And %lld more" : {
+
+    },
+    "And one that will run after this session ends:\n\n%@" : {
 
     },
     "Animations" : {
@@ -29306,6 +29342,12 @@
         }
       }
     },
+    "AWS answered without the Redshift user and password." : {
+
+    },
+    "AWS did not issue Redshift credentials: %@" : {
+
+    },
     "AWS IAM" : {
       "localizations" : {
         "fr" : {
@@ -29667,12 +29709,6 @@
           }
         }
       }
-    },
-    "AWS answered without the Redshift user and password." : {
-
-    },
-    "AWS did not issue Redshift credentials: %@" : {
-
     },
     "Back" : {
       "localizations" : {
@@ -35560,6 +35596,9 @@
           }
         }
       }
+    },
+    "Characters are Unicode code points. Bytes are the length in UTF-8." : {
+
     },
     "Charset" : {
       "extractionState" : "manual",
@@ -48370,10 +48409,10 @@
     "Connects through the socket file on the General tab." : {
 
     },
-    "Connects to %@. The port names the socket file in the folder." : {
+    "Connects through the socket on the General tab. PostgreSQL sends no SSL over a socket, which stays on this Mac." : {
 
     },
-    "Connects through the socket on the General tab. PostgreSQL sends no SSL over a socket, which stays on this Mac." : {
+    "Connects to %@. The port names the socket file in the folder." : {
 
     },
     "Consistency" : {
@@ -68729,6 +68768,9 @@
         }
       }
     },
+    "Edit Vector…" : {
+
+    },
     "Edit View Definition" : {
       "localizations" : {
         "fr" : {
@@ -77437,6 +77479,46 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Facet" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Facette"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "패싯"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faset"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tách biểu đồ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分面"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分面"
+          }
+        }
+      }
+    },
     "Failed" : {
       "localizations" : {
         "fr" : {
@@ -83785,46 +83867,6 @@
         }
       }
     },
-    "Facet" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Facette"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "패싯"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Faset"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tách biểu đồ"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分面"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分面"
-          }
-        }
-      }
-    },
     "Full Access" : {
       "localizations" : {
         "fr" : {
@@ -87884,6 +87926,9 @@
           }
         }
       }
+    },
+    "Holds a bidirectional control, which can change the order the text is shown in" : {
+
     },
     "Holds a command that forwards a local port, such as kubectl port-forward." : {
       "localizations" : {
@@ -92007,6 +92052,9 @@
         }
       }
     },
+    "Index" : {
+
+    },
     "INDEX" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -95144,9 +95192,6 @@
         }
       }
     },
-    "It stays on this Mac and never syncs, because it can name a command to run." : {
-
-    },
     "is empty" : {
       "localizations" : {
         "fr" : {
@@ -95546,6 +95591,9 @@
           }
         }
       }
+    },
+    "It stays on this Mac and never syncs, because it can name a command to run." : {
+
     },
     "It was changed outside TablePro and no longer loads. Settings > Appearance lists it under Not Loaded with the reason." : {
 
@@ -103533,6 +103581,9 @@
         }
       }
     },
+    "Local Network Access Required" : {
+
+    },
     "Local only" : {
       "localizations" : {
         "fr" : {
@@ -103692,9 +103743,6 @@
           }
         }
       }
-    },
-    "Local Network Access Required" : {
-
     },
     "Local Secondary Indexes" : {
       "extractionState" : "manual",
@@ -104924,6 +104972,9 @@
     "Map Pin" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Mark zero-width, control and special space characters in cells and value fields" : {
+
     },
     "Markdown" : {
       "localizations" : {
@@ -119366,6 +119417,9 @@
         }
       }
     },
+    "Not a vector" : {
+
+    },
     "Not allowed" : {
       "localizations" : {
         "fr" : {
@@ -131319,6 +131373,9 @@
         }
       }
     },
+    "Pin Tab" : {
+
+    },
     "PING failed: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -140862,8 +140919,8 @@
       }
     },
     "Ready after restart" : {
-      "extractionState" : "stale",
       "comment" : "A description of a plugin that is ready to use after the app is restarted.",
+      "extractionState" : "stale",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "fr" : {
@@ -157247,9 +157304,6 @@
         }
       }
     },
-    "show a saved password" : {
-
-    },
     "Secret Access Key" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -160577,9 +160631,6 @@
         }
       }
     },
-    "Set in connections.json." : {
-
-    },
     "Set Cells to Value" : {
       "localizations" : {
         "fr" : {
@@ -160679,6 +160730,9 @@
           }
         }
       }
+    },
+    "Set in connections.json." : {
+
     },
     "Set NULL" : {
       "localizations" : {
@@ -161524,6 +161578,9 @@
           }
         }
       }
+    },
+    "show a saved password" : {
+
     },
     "Show All" : {
       "localizations" : {
@@ -163698,6 +163755,46 @@
         }
       }
     },
+    "Showing the first %@ facets" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Affichage des %@ premières facettes"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "처음 %@개 패싯을 표시 중"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İlk %@ faset gösteriliyor"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đang hiển thị %@ biểu đồ đầu tiên"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示前 %@ 个分面"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示前 %@ 個分面"
+          }
+        }
+      }
+    },
     "Showing the first %@ series" : {
       "localizations" : {
         "fr" : {
@@ -163774,46 +163871,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示已載入 %2$@ 列中的前 %1$@ 個點"
-          }
-        }
-      }
-    },
-    "Showing the first %@ facets" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Affichage des %@ premières facettes"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "처음 %@개 패싯을 표시 중"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "İlk %@ faset gösteriliyor"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đang hiển thị %@ biểu đồ đầu tiên"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示前 %@ 个分面"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "顯示前 %@ 個分面"
           }
         }
       }
@@ -177106,6 +177163,9 @@
         }
       }
     },
+    "TablePro does not have Local Network access, so it cannot reach the database at %@." : {
+
+    },
     "TablePro does not have Local Network access, so it cannot reach the SOCKS proxy at %@." : {
 
     },
@@ -177113,9 +177173,6 @@
 
     },
     "TablePro does not have Local Network access, so it cannot reach the SSH server at %@." : {
-
-    },
-    "TablePro does not have Local Network access, so it cannot reach the database at %@." : {
 
     },
     "TablePro does not run a pre-connect script on its own." : {
@@ -186598,9 +186655,6 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "The Redshift Endpoint applies only when Host is a local port forward or that same endpoint, and \"%@\" is neither." : {
-
-    },
     "The redirect address is not a local callback, so pairing was refused." : {
       "localizations" : {
         "fr" : {
@@ -186640,6 +186694,9 @@
           }
         }
       }
+    },
+    "The Redshift Endpoint applies only when Host is a local port forward or that same endpoint, and \"%@\" is neither." : {
+
     },
     "the reference “%@” is inside itself" : {
       "extractionState" : "manual",
@@ -191397,6 +191454,16 @@
         }
       }
     },
+    "This column takes ^[%lld dimension](inflect: true). The value has %lld." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This column takes ^[%1$lld dimension](inflect: true). The value has %2$lld."
+          }
+        }
+      }
+    },
     "This command needs some text." : {
       "localizations" : {
         "fr" : {
@@ -194093,6 +194160,9 @@
         }
       }
     },
+    "This is not a vector value. Write it as [1,2,3]." : {
+
+    },
     "This is not valid JavaScript." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -196011,6 +196081,12 @@
         }
       }
     },
+    "This sets %1$lld of %2$lld cells. The others cannot be edited." : {
+
+    },
+    "This sets %lld cells." : {
+
+    },
     "This sets %lld loaded rows. Review and Save to apply." : {
       "localizations" : {
         "fr" : {
@@ -196050,6 +196126,9 @@
           }
         }
       }
+    },
+    "This sets 1 cell." : {
+
     },
     "This sets 1 loaded row. Review and Save to apply." : {
       "localizations" : {
@@ -202979,6 +203058,9 @@
         }
       }
     },
+    "Unpin Tab" : {
+
+    },
     "Unsaved changes will be lost." : {
       "localizations" : {
         "fr" : {
@@ -207757,6 +207839,9 @@
         }
       }
     },
+    "View as Text" : {
+
+    },
     "View body" : {
       "localizations" : {
         "fr" : {
@@ -207796,6 +207881,9 @@
           }
         }
       }
+    },
+    "View Elements" : {
+
     },
     "View Elements…" : {
       "localizations" : {
@@ -208056,6 +208144,9 @@
           }
         }
       }
+    },
+    "View Vector…" : {
+
     },
     "View: %@" : {
       "localizations" : {
@@ -211484,9 +211575,6 @@
     "write a row of %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
-    },
-    "{host}, {port}, {user} and {database} become the opening connection's values, already quoted. The command also gets them as TABLEPRO_HOST, TABLEPRO_PORT, TABLEPRO_USER and TABLEPRO_DATABASE." : {
-
     },
     "Write and Run SQL" : {
       "localizations" : {

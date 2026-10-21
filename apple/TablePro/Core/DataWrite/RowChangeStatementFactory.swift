@@ -115,6 +115,7 @@ struct RowChangeStatementFactory {
         try refuseServerOwnedEdits(in: changes)
         try refuseDefaultOnUpdate(in: changes)
         try refuseUnwritableExpressions(in: changes, insertedRowData: insertedRowData)
+        try refuseMisdimensionedVectors(in: changes, insertedRowData: insertedRowData)
         let insertedRowData = insertedRowData.mapValues(leavingServerOwnedColumnsToTheServer)
         let changes = changes.map(droppingServerOwnedExpressions)
         if let driverStatements = try pluginRowWrites(
@@ -206,6 +207,42 @@ struct RowChangeStatementFactory {
                     first.columnName
                 )
             )
+        }
+    }
+
+    // The server refuses the whole save with `expected 3 dimensions, not 2`; this names the column first.
+    // Text the parser cannot read is left to the server, which owns the grammar.
+    private func refuseMisdimensionedVectors(
+        in changes: [RowChange],
+        insertedRowData: [RowID: [PluginCellValue]]
+    ) throws {
+        let classifier = ColumnTypeClassifier()
+        let expected = columnTypeNames.compactMapValues { classifier.classify(rawTypeName: $0).vectorDimensions }
+        guard !expected.isEmpty else { return }
+        for change in changes where change.type != .delete {
+            let kind: RowWriteKind = change.type == .insert ? .insert : .update
+            var written = change.cellChanges.filter { !$0.newIsExpression }.map { ($0.columnName, $0.newValue) }
+            if change.type == .insert, let stored = insertedRowData[change.rowID] {
+                written = zip(columns, stored).enumerated()
+                    .filter { !change.expressionColumns.contains($0.offset) }
+                    .map { ($0.element.0, $0.element.1) }
+            }
+            for (columnName, value) in written {
+                guard let dimensions = expected[columnName],
+                      case .text(let text) = value,
+                      let vector = VectorLiteral.parse(text),
+                      vector.dimensions != dimensions else { continue }
+                throw DataWriteError.changeRefused(
+                    table: tableName,
+                    kind: kind,
+                    reason: String(
+                        format: String(localized: "%1$@ takes %2$lld dimensions, and the value has %3$lld."),
+                        columnName,
+                        dimensions,
+                        vector.dimensions
+                    )
+                )
+            }
         }
     }
 

@@ -8,10 +8,12 @@ import AppKit
 public struct SpecialCharacterStyle: Equatable {
     public var color: NSColor
     public var maximumMarksPerLine: Int
+    public var marksLineBreaks: Bool
 
-    public init(color: NSColor = .systemOrange, maximumMarksPerLine: Int = 4_096) {
+    public init(color: NSColor = .systemOrange, maximumMarksPerLine: Int = 4_096, marksLineBreaks: Bool = false) {
         self.color = color
         self.maximumMarksPerLine = maximumMarksPerLine
+        self.marksLineBreaks = marksLineBreaks
     }
 }
 

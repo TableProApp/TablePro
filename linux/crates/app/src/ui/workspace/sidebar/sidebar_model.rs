@@ -1,84 +1,79 @@
-use gtk4 as gtk;
-use gtk4::gio;
-use gtk4::prelude::*;
-use tablepro_core::meta::{ObjectInfo, ObjectKind, SchemaInfo, TableRef};
+use std::cell::RefCell;
 
+use gtk4 as gtk;
+use gtk4::prelude::*;
+use tablepro_core::meta::{ObjectKind, TableRef};
+
+use super::sidebar_index::{SidebarIndex, search_key};
+use super::sidebar_list::SidebarList;
 use super::sidebar_object::SidebarObject;
 
-/// The sidebar's objects, sorted into schema sections and filtered by
-/// the search. A new object list replaces the store in one splice, and a
-/// search changes only the filter, so neither builds a widget per table.
+/// The sidebar's objects in schema sections, filtered by the search. A
+/// new index replaces the list in one change, and a search reads the
+/// index's search keys, so neither builds a widget or an object per
+/// table.
 pub(crate) struct SidebarModel {
-    store: gio::ListStore,
-    filter: gtk::StringFilter,
-    filtered: gtk::FilterListModel,
+    list: SidebarList,
     selection: gtk::SingleSelection,
+    /// The search as `search_key` gave it, empty for none.
+    query: RefCell<String>,
 }
 
 impl SidebarModel {
     pub(crate) fn new() -> Self {
-        let store = gio::ListStore::new::<SidebarObject>();
-        let by_name = gtk::StringSorter::new(Some(property("name")));
-        by_name.set_ignore_case(true);
-        let sorted = gtk::SortListModel::new(Some(store.clone()), Some(by_name));
-        let sections = gtk::MultiSorter::new();
-        sections.append(gtk::NumericSorter::new(Some(property("section-rank"))));
-        sections.append(gtk::StringSorter::new(Some(property("section-title"))));
-        sorted.set_section_sorter(Some(&sections));
-        let filter = gtk::StringFilter::new(Some(property("search-text")));
-        filter.set_match_mode(gtk::StringFilterMatchMode::Substring);
-        filter.set_ignore_case(true);
-        let filtered = gtk::FilterListModel::new(Some(sorted), Some(filter.clone()));
-        let selection = gtk::SingleSelection::new(Some(filtered.clone()));
+        let list = SidebarList::new();
+        let selection = gtk::SingleSelection::new(Some(list.clone()));
         selection.set_autoselect(false);
         selection.set_can_unselect(true);
         Self {
-            store,
-            filter,
-            filtered,
+            list,
             selection,
+            query: RefCell::new(String::new()),
         }
     }
 
-    /// Show `objects`, keeping only what the grid can page through.
-    pub(crate) fn replace(&self, objects: &[ObjectInfo], schemas: &[SchemaInfo]) {
-        let shown: Vec<SidebarObject> = objects
-            .iter()
-            .filter(|object| object.kind.is_browsable())
-            .map(|object| SidebarObject::new(object, schemas))
-            .collect();
-        self.store.splice(0, self.store.n_items(), &shown);
+    pub(crate) fn replace(&self, index: SidebarIndex) {
+        self.unselect();
+        self.list.replace(index, &self.query.borrow());
     }
 
     pub(crate) fn set_query(&self, query: &str) {
         let query = query.trim();
-        if self.filter.search().as_deref().unwrap_or_default() == query {
+        let prepared = if query.is_empty() {
+            String::new()
+        } else {
+            search_key(query)
+        };
+        let previous = self.query.replace(prepared.clone());
+        if previous == prepared {
             return;
         }
-        self.filter.set_search(Some(query).filter(|query| !query.is_empty()));
+        self.unselect();
+        self.list.filter(&prepared);
+    }
+
+    /// GtkSingleSelection looks for the selected row among every row a
+    /// change adds, which would make all of them. The caller selects
+    /// again once the list changed.
+    fn unselect(&self) {
+        self.selection.set_selected(gtk::INVALID_LIST_POSITION);
     }
 
     pub(crate) fn has_query(&self) -> bool {
-        self.filter.search().is_some_and(|search| !search.is_empty())
+        !self.query.borrow().is_empty()
     }
 
     /// Where `table` shows under the search, if it does.
     pub(crate) fn position_of(&self, table: &TableRef) -> Option<u32> {
-        (0..self.filtered.n_items()).find(|&position| {
-            self.object_at(position)
-                .is_some_and(|object| object.table_ref() == *table)
-        })
+        let entry = self.list.index().find(table)?;
+        self.list.position_of_entry(entry)
     }
 
     /// The kind of `table` when it is listed at all, searched for or not.
     pub(crate) fn kind_of(&self, table: &TableRef) -> Option<ObjectKind> {
-        (0..self.store.n_items()).find_map(|position| {
-            self.store
-                .item(position)
-                .and_downcast::<SidebarObject>()
-                .filter(|object| object.table_ref() == *table)
-                .map(|object| object.kind())
-        })
+        let index = self.list.index();
+        let entry = index.find(table)?;
+        index.entry(entry).map(|entry| entry.kind)
     }
 
     /// Select `table`'s row, or none. A table the search hides selects
@@ -93,7 +88,7 @@ impl SidebarModel {
     }
 
     pub(crate) fn object_at(&self, position: u32) -> Option<SidebarObject> {
-        self.filtered.item(position).and_downcast::<SidebarObject>()
+        self.list.item(position).and_downcast::<SidebarObject>()
     }
 
     pub(crate) fn selection(&self) -> &gtk::SingleSelection {
@@ -101,23 +96,21 @@ impl SidebarModel {
     }
 
     pub(crate) fn shown(&self) -> u32 {
-        self.filtered.n_items()
+        self.list.n_items()
     }
 
     #[cfg(test)]
-    pub(crate) fn store(&self) -> &gio::ListStore {
-        &self.store
+    pub(crate) fn list(&self) -> &SidebarList {
+        &self.list
     }
-}
-
-fn property(name: &str) -> gtk::PropertyExpression {
-    gtk::PropertyExpression::new(SidebarObject::static_type(), None::<&gtk::Expression>, name)
 }
 
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
     use std::rc::Rc;
+
+    use tablepro_core::meta::{ObjectInfo, SchemaInfo};
 
     use super::*;
 
@@ -135,6 +128,10 @@ mod tests {
             is_default,
             is_system,
         }
+    }
+
+    fn replace(model: &SidebarModel, objects: &[ObjectInfo], schemas: &[SchemaInfo]) {
+        model.replace(SidebarIndex::build(objects, schemas));
     }
 
     /// Each section's title and its rows' names, in list order.
@@ -168,7 +165,8 @@ mod tests {
             schema("audit", false, false),
         ];
 
-        model.replace(
+        replace(
+            &model,
             &[
                 object("sales", "orders"),
                 object("information_schema", "tables"),
@@ -192,34 +190,39 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn replace_emits_one_items_changed() {
+    fn replace_takes_every_row_out_then_puts_the_new_ones_in() {
         let model = SidebarModel::new();
-        model.replace(&[object("public", "old")], &[]);
+        replace(&model, &[object("public", "old")], &[]);
         let objects: Vec<ObjectInfo> = (0..5_000)
             .map(|index| object(if index % 2 == 0 { "public" } else { "sales" }, &format!("t{index}")))
             .collect();
-        let stored = Rc::new(Cell::new(0));
+        let listed = Rc::new(Cell::new(0));
         let shown = Rc::new(Cell::new(0));
-        let count = stored.clone();
+        let count = listed.clone();
         model
-            .store()
+            .list()
             .connect_items_changed(move |_, _, _, _| count.set(count.get() + 1));
         let count = shown.clone();
         model
             .selection()
             .connect_items_changed(move |_, _, _, _| count.set(count.get() + 1));
 
-        model.replace(&objects, &[schema("public", true, false)]);
+        replace(&model, &objects, &[schema("public", true, false)]);
 
-        assert_eq!(stored.get(), 1, "the store changed more than once");
-        assert_eq!(shown.get(), 1, "the list view was told more than once");
+        assert_eq!(
+            listed.get(),
+            2,
+            "the list did not take the old rows out, then put the new ones in"
+        );
+        assert_eq!(shown.get(), 2, "the list view was not told of both");
         assert_eq!(model.shown(), 5_000);
     }
 
     #[gtk4::test]
-    fn search_filters_case_insensitively_without_touching_store() {
+    fn search_filters_case_insensitively_without_rebuilding_the_index() {
         let model = SidebarModel::new();
-        model.replace(
+        replace(
+            &model,
             &[
                 object("public", "Users"),
                 object("auth", "tokens"),
@@ -227,11 +230,7 @@ mod tests {
             ],
             &[schema("public", true, false)],
         );
-        let changed = Rc::new(Cell::new(0));
-        let count = changed.clone();
-        model
-            .store()
-            .connect_items_changed(move |_, _, _, _| count.set(count.get() + 1));
+        let index = model.list().index();
 
         model.set_query("USE");
         let names = |model: &SidebarModel| -> Vec<String> {
@@ -245,11 +244,11 @@ mod tests {
         assert_eq!(names(&model), ["tokens"]);
         model.set_query("auth");
         assert_eq!(names(&model), ["tokens"], "the schema matches too");
-        model.set_query("");
+        model.set_query("  ");
+        assert!(!model.has_query(), "blank is no search");
         assert_eq!(model.shown(), 3);
 
-        assert_eq!(changed.get(), 0, "a search rebuilt the store");
-        assert_eq!(model.store().n_items(), 3);
+        assert!(Rc::ptr_eq(&index, &model.list().index()), "a search rebuilt the index");
     }
 
     #[gtk4::test]
@@ -264,7 +263,7 @@ mod tests {
             ..object("public", "active_users")
         };
 
-        model.replace(&[object("public", "users"), routine, view], &[]);
+        replace(&model, &[object("public", "users"), routine, view], &[]);
 
         assert_eq!(model.shown(), 2);
         assert_eq!(
@@ -278,9 +277,30 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn a_selected_row_does_not_make_every_row_of_a_new_list() {
+        let model = SidebarModel::new();
+        let objects: Vec<ObjectInfo> = (0..5_000).map(|at| object("public", &format!("t{at:05}"))).collect();
+        replace(&model, &objects, &[]);
+        let last = TableRef::new(Some("public".to_owned()), "t04999");
+        model.select(Some(&last));
+
+        replace(&model, &objects, &[]);
+        model.set_query("t0");
+        model.set_query("t");
+        model.select(Some(&last));
+
+        assert_eq!(model.selection().selected(), 4_999);
+        assert!(
+            model.list().made() < 10,
+            "{} rows made for one selected",
+            model.list().made()
+        );
+    }
+
+    #[gtk4::test]
     fn select_finds_the_table_under_the_search_or_clears() {
         let model = SidebarModel::new();
-        model.replace(&[object("public", "orders"), object("public", "users")], &[]);
+        replace(&model, &[object("public", "orders"), object("public", "users")], &[]);
         let users = TableRef::new(Some("public".to_owned()), "users");
 
         model.select(Some(&users));
@@ -289,6 +309,11 @@ mod tests {
         model.set_query("ord");
         model.select(Some(&users));
         assert_eq!(model.selection().selected(), gtk::INVALID_LIST_POSITION);
+        assert_eq!(
+            model.kind_of(&users),
+            Some(ObjectKind::Table),
+            "a hidden table is still listed"
+        );
 
         model.set_query("");
         model.select(Some(&users));

@@ -66,7 +66,8 @@ A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a v
 | [0016](0016-driver-contract-v2.md) | Driver contract v2 | Accepted | Owned calls with engine stops, phase-aware write outcomes, server-side row limits; PostgreSQL on tokio-postgres; no forks. |
 | [0017](0017-distribution-channels.md) | Distribution channels | Superseded by 0018 | Flathub, a .deb for Ubuntu 26.04 on GitHub Releases built with rustup, and an .rpm for Fedora 44 on COPR, all from `meson install` and one vendor tarball; no AppImage. |
 | [0018](0018-ppa-copr-and-flathub-later.md) | A PPA and COPR first, Flathub later | Accepted | A Launchpad PPA built with `rustc-1.97` and a COPR project built on each release are the primary channels; Flathub follows as a submission a maintainer writes; Rust 1.97 is the MSRV. |
-| [0019](0019-ssh-key-file-identities-only.md) | A chosen SSH key file limits the keys ssh offers | Accepted | A key file comes with `IdentitiesOnly=yes`, so the agent's other keys cannot use up `MaxAuthTries` first. |
+| [0019](0019-ssh-key-file-identities-only.md) | A chosen SSH key file limits the keys ssh offers | Superseded by 0020 | A key file comes with `IdentitiesOnly=yes`, so the agent's other keys cannot use up `MaxAuthTries` first. |
+| [0020](0020-pin-only-a-key-file-the-agent-lacks.md) | Pin only a key file the agent does not hold | Accepted | `IdentitiesOnly=yes` only for a key file the agent lacks, so an agent-held certificate or encrypted PEM key still signs. |
 
 0011 is not used. It was reserved for the DDL decision, which was recorded as 0010, and docs cite ADRs by number, so the later ones keep theirs.
 

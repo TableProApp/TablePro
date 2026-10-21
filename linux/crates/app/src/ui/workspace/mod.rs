@@ -48,7 +48,7 @@ use libadwaita::prelude::*;
 use relm4::{ComponentController, Controller};
 
 use tablepro_core::EditorSession;
-use tablepro_core::meta::{ObjectInfo, SchemaInfo};
+use tablepro_core::meta::SchemaInfo;
 use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
 use uuid::Uuid;
 
@@ -410,12 +410,11 @@ pub(crate) enum WorkspaceInput {
     RefreshCatalog,
     /// The default schema's list landed, as a reconnect commits it.
     DefaultListCommitted(ObjectListSnapshot),
-    /// The schemas the sidebar's sections are made from, read for
-    /// `objects`. `None` when they could not be read.
+    /// An object list indexed for the sidebar, with the schemas its
+    /// sections were made from.
     SidebarRead {
         read: u64,
-        objects: Arc<[ObjectInfo]>,
-        schemas: Option<Arc<[SchemaInfo]>>,
+        listing: sidebar::SidebarListing,
     },
     /// A reconnect replaced the connection.
     LinkChanged,
@@ -987,7 +986,7 @@ impl WorkspaceModel {
             WorkspaceInput::CatalogReadFailed(message) => self.on_catalog_read_failed(&message),
             WorkspaceInput::RefreshCatalog => self.refresh_catalog(),
             WorkspaceInput::DefaultListCommitted(snapshot) => self.on_default_list_committed(snapshot),
-            WorkspaceInput::SidebarRead { read, objects, schemas } => self.on_sidebar_read(read, &objects, schemas),
+            WorkspaceInput::SidebarRead { read, listing } => self.on_sidebar_read(read, listing),
             WorkspaceInput::LinkChanged => self.on_link_changed(),
             WorkspaceInput::TabCloseDecided { id, approved } => self.on_tab_close_decided(id, approved),
             WorkspaceInput::SelectTable {

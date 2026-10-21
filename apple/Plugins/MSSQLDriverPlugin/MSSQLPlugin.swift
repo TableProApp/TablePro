@@ -271,6 +271,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var freeTDSConn: FreeTDSConnection?
     var currentSchemaName: String
     private var _serverVersion: String?
+    let principalState = OSAllocatedUnfairLock(initialState: MSSQLPrincipalState())
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MSSQLPluginDriver")
 
@@ -300,12 +301,12 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .resultSetBatches,
             .cellExpressions,
             .uuidCellText,
+            .userManagement,
         ]
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        let escaped = name.replacingOccurrences(of: "]", with: "]]")
-        return "[\(escaped)]"
+        "[\(MSSQLSchemaQueries.escapeBracket(name))]"
     }
 
     // MARK: - View Templates

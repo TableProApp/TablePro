@@ -21,6 +21,12 @@ pub fn fuzzy_match(haystack: &str, casefold_needle: &str) -> Option<u32> {
     matched(haystack, casefold_needle).map(|found| found.score)
 }
 
+/// Whether `haystack` is offered for `word` as typed: everything is
+/// with nothing typed.
+pub fn matches_word(haystack: &str, word: &str) -> bool {
+    word.is_empty() || fuzzy_match(haystack, &casefold(word)).is_some()
+}
+
 /// Bold for the characters of `haystack` the needle matched.
 pub fn highlight(haystack: &str, casefold_needle: &str) -> Option<pango::AttrList> {
     let found = matched(haystack, casefold_needle)?;
@@ -80,6 +86,11 @@ fn matched(haystack: &str, casefold_needle: &str) -> Option<Match> {
 }
 
 fn same_letter(found: char, wanted: char) -> bool {
+    // Most names are ASCII, and the general case builds two iterators a
+    // character, which ranking a catalog of 50,000 tables feels.
+    if found.is_ascii() && wanted.is_ascii() {
+        return found.eq_ignore_ascii_case(&wanted);
+    }
     found == wanted || found.to_lowercase().eq(wanted.to_lowercase())
 }
 
@@ -114,6 +125,13 @@ mod tests {
         assert!(fuzzy_match("đơn_hàng", &needle).is_some());
         assert!(fuzzy_match("ĐƠN_HÀNG", &needle).is_some());
         assert_eq!(fuzzy_match("don_hang", &needle), None);
+    }
+
+    #[test]
+    fn a_proposal_is_offered_only_for_a_word_it_matches() {
+        assert!(matches_word("orders", ""));
+        assert!(matches_word("orders", "ORD"));
+        assert!(!matches_word("orders", "ordu"), "a proposal ranked for the last word");
     }
 
     #[test]

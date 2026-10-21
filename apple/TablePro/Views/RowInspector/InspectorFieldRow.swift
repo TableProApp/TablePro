@@ -218,7 +218,7 @@ internal struct InspectorFieldRow: View {
             return nil
         case .geometry:
             return nil
-        case .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker,
+        case .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .vector, .typePicker, .valuePicker,
              .schemaText, .multiLine, .singleLine:
             return ThemeEngine.shared.valueFontSwiftUI
         }
