@@ -128,7 +128,9 @@ extension TableViewCoordinator {
 
         let value = cell.asText ?? "NULL"
 
+        // A format saved before the column changed type is skipped here as the cell skips it.
         if columnIndex < columnDisplayFormats.count, let format = columnDisplayFormats[columnIndex], format != .raw,
+           format.isApplicable(to: columnType, databaseType: databaseType),
            let formatted = ValueDisplayFormatter.apply(value, format: format, columnType: columnType) {
             return formatted
         }

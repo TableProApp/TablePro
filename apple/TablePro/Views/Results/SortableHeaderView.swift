@@ -192,7 +192,7 @@ final class SortableHeaderView: NSTableHeaderView {
             object: clipView,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.pinnedRowNumberHeadingDidMove() }
+            MainActor.assumeIsolated { self?.pinnedHeadingsDidMove() }
         }
         scrollObserver.withLockUnchecked { $0 = observer }
     }
@@ -248,15 +248,29 @@ final class SortableHeaderView: NSTableHeaderView {
     override func draw(_ dirtyRect: NSRect) {
         let scope = themeScope
         SortableHeaderChrome.fillBackground(dirtyRect, scope: scope)
-        let rowNumberCell = rowNumberColumnIndex.flatMap {
-            tableView?.tableColumns[$0].headerCell as? SortableHeaderCell
-        }
-        rowNumberCell?.drawsInterior = false
+        let band = coordinator?.pinnedBand()
+        let pinnedCells = pinnedHeadingCells(band: band)
+        pinnedCells.forEach { $0.drawsInterior = false }
         drawHeadings(in: dirtyRect)
-        rowNumberCell?.drawsInterior = true
+        pinnedCells.forEach { $0.drawsInterior = true }
         drawOverhang(in: dirtyRect)
-        drawPinnedRowNumberHeading(in: dirtyRect)
+        drawPinnedHeadings(in: dirtyRect, band: band)
         SortableHeaderChrome.drawBottomSeparator(in: bounds.union(dirtyRect), scope: scope)
+    }
+
+    // Only the pinned pass paints these, so a bounce shows each once; a dragged heading keeps its own.
+    private func pinnedHeadingCells(band: DataGridPinnedBand?) -> [SortableHeaderCell] {
+        guard let tableView else { return [] }
+        var indexes = band?.frozenColumns ?? IndexSet()
+        if draggedColumn >= 0 {
+            indexes.remove(draggedColumn)
+        }
+        if let rowNumberColumnIndex {
+            indexes.insert(rowNumberColumnIndex)
+        }
+        return indexes.compactMap { index in
+            index < tableView.tableColumns.count ? tableView.tableColumns[index].headerCell as? SortableHeaderCell : nil
+        }
     }
 
     /// `NSTableHeaderView.draw` paints AppKit's band over the fill before the cells, measured on
@@ -323,7 +337,7 @@ final class SortableHeaderView: NSTableHeaderView {
         }
     }
 
-    // MARK: - Pinned row-number heading
+    // MARK: - Pinned headings
 
     /// The row-number heading's own rect held at the visible leading edge, where the pinned row gutter
     /// below it sits. Nil when row numbers are off.
@@ -345,42 +359,86 @@ final class SortableHeaderView: NSTableHeaderView {
         return index
     }
 
-    /// Paints the row-number heading at the visible leading edge, at every offset.
+    private func pinnedHeadingRect(band: DataGridPinnedBand?) -> NSRect? {
+        guard let band, band.width > 0 else { return pinnedRowNumberHeadingRect }
+        return NSRect(x: visibleRect.minX, y: bounds.minY, width: band.width, height: bounds.height)
+    }
+
+    // AppKit resolves a point over the band to the column scrolled underneath.
+    func frozenHeadingColumn(at point: NSPoint) -> Int? {
+        guard let band = coordinator?.freezingBand(), !isInPinnedRowNumberHeading(point) else { return nil }
+        let unscrolled = NSPoint(x: point.x - visibleRect.minX, y: point.y)
+        guard unscrolled.x >= 0, unscrolled.x < band.width, bounds.contains(point) else { return nil }
+        let index = column(at: unscrolled)
+        return band.pins(index) ? index : nil
+    }
+
+    func displayedColumn(at point: NSPoint) -> Int {
+        frozenHeadingColumn(at: point) ?? column(at: point)
+    }
+
+    func displayedHeaderRect(ofColumn index: Int) -> NSRect {
+        let heading = headerRect(ofColumn: index)
+        guard coordinator?.freezingBand()?.pins(index) == true else { return heading }
+        return heading.offsetBy(dx: visibleRect.minX, dy: 0)
+    }
+
+    /// Paints the pinned band's headings at the visible leading edge, at every offset.
     ///
-    /// It is the only pass that paints the "#". The heading underneath is drawn blank, because a
-    /// bounce past the leading edge slides it out from under this one, which showed it twice.
+    /// It is the only pass that paints the "#" and the frozen headings. The headings underneath are
+    /// drawn blank, because a bounce past the leading edge slides them out from under this one, which
+    /// showed them twice.
     ///
-    /// It is the drawing that paints the heading unscrolled, moved: the heading's rect goes through
+    /// It is the drawing that paints the headings unscrolled, moved: the band's rect goes through
     /// this view's own fill and `super.draw`, translated to the leading edge and clipped to it. No
     /// separate view can stand in for this. On macOS 27 `NSTableHeaderView.draw` lays its own
     /// translucent grey over the fill, measured at 50 against the fill's 30 in dark mode, and nothing
     /// else goes through it: the view that pinned this heading before was always darker than the
-    /// headings beside it. The fill replaces pixels rather than blending over them, so the heading
-    /// scrolled underneath is gone from the strip rather than showing through it.
-    private func drawPinnedRowNumberHeading(in dirtyRect: NSRect) {
-        guard let index = rowNumberColumnIndex, let pinned = pinnedRowNumberHeadingRect else {
+    /// headings beside it. The fill replaces pixels rather than blending over them, so the headings
+    /// scrolled underneath are gone from the band rather than showing through it.
+    private func drawPinnedHeadings(in dirtyRect: NSRect, band: DataGridPinnedBand?) {
+        guard let pinned = pinnedHeadingRect(band: band) else {
             drawnPinnedHeadingRect = nil
             return
         }
-        let heading = headerRect(ofColumn: index)
         guard pinned.intersects(dirtyRect), let context = NSGraphicsContext.current?.cgContext else { return }
+        let unscrolled = NSRect(x: 0, y: pinned.minY, width: pinned.width, height: pinned.height)
         context.saveGState()
         pinned.clip()
-        context.translateBy(x: pinned.minX - heading.minX, y: 0)
-        SortableHeaderChrome.fillBackground(heading, scope: themeScope)
-        drawHeadings(in: heading)
+        context.translateBy(x: pinned.minX, y: 0)
+        SortableHeaderChrome.fillBackground(unscrolled, scope: themeScope)
+        drawHeadings(in: unscrolled)
+        if band?.isFreezing == true {
+            SortableHeaderChrome.lineColor(scope: themeScope).setFill()
+            NSRect(
+                x: unscrolled.maxX - DataGridRowGutterView.frozenDividerThickness,
+                y: unscrolled.minY,
+                width: DataGridRowGutterView.frozenDividerThickness,
+                height: unscrolled.height
+            ).fill()
+        }
         context.restoreGState()
         drawnPinnedHeadingRect = pinned
     }
 
-    /// Clears the heading from where it was last painted and asks for it where it now belongs.
-    private func pinnedRowNumberHeadingDidMove() {
+    /// Clears the headings from where they were last painted and asks for them where they now belong.
+    private func pinnedHeadingsDidMove() {
         if let drawn = drawnPinnedHeadingRect {
             setNeedsDisplay(drawn)
         }
-        if let current = pinnedRowNumberHeadingRect {
+        if let current = pinnedHeadingRect(band: coordinator?.pinnedBand()) {
             setNeedsDisplay(current)
         }
+    }
+
+    // A frozen heading invalidated at its home has to repaint where the band shows it.
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        super.setNeedsDisplay(invalidRect)
+        let offset = visibleRect.minX
+        guard offset != 0, let band = coordinator?.freezingBand() else { return }
+        let frozen = NSRect(x: 0, y: bounds.minY, width: band.width, height: bounds.height).intersection(invalidRect)
+        guard !frozen.isEmpty else { return }
+        super.setNeedsDisplay(frozen.offsetBy(dx: offset, dy: 0))
     }
 
     /// The pinned heading answers for the row-number column, which has no header menu. Left to AppKit
@@ -392,7 +450,8 @@ final class SortableHeaderView: NSTableHeaderView {
 
     /// The pinned heading has the row-number column's tooltip, which is none. AppKit resolves the tooltip
     /// of the column under the point, which there is the column scrolled out of sight, and would show its
-    /// name, type and comment over the `#`. An empty string is AppKit's own "no tooltip here".
+    /// name, type and comment over the `#`. An empty string is AppKit's own "no tooltip here". A frozen
+    /// heading has its own column's.
     override func view(
         _ view: NSView,
         stringForToolTip tag: NSView.ToolTipTag,
@@ -400,6 +459,9 @@ final class SortableHeaderView: NSTableHeaderView {
         userData data: UnsafeMutableRawPointer?
     ) -> String {
         guard !isInPinnedRowNumberHeading(point) else { return "" }
+        if let frozen = frozenHeadingColumn(at: point), let tableView {
+            return tableView.tableColumns[frozen].headerToolTip ?? ""
+        }
         return super.view(view, stringForToolTip: tag, point: point, userData: data)
     }
 
@@ -454,17 +516,31 @@ final class SortableHeaderView: NSTableHeaderView {
     /// Nothing under the pinned row-number heading is a resize zone either: the edges scrolled under
     /// it belong to columns the reader cannot see there.
     internal func isInResizeZone(point: NSPoint) -> Bool {
-        guard let tableView, let coordinator, !isInPinnedRowNumberHeading(point) else { return false }
-        return tableView.tableColumns.enumerated().contains { index, column in
+        resizableColumn(at: point) != nil
+    }
+
+    // Over the band only a frozen column's edge resizes, measured where the band shows it.
+    private func resizableColumn(at point: NSPoint) -> Int? {
+        guard let tableView, let coordinator, !isInPinnedRowNumberHeading(point) else { return nil }
+        var probe = point
+        var pinnedBand: DataGridPinnedBand?
+        if let band = coordinator.freezingBand(),
+           point.x - visibleRect.minX >= 0, point.x - visibleRect.minX < band.width {
+            probe.x -= visibleRect.minX
+            pinnedBand = band
+        }
+        return tableView.tableColumns.indices.first { index in
+            let column = tableView.tableColumns[index]
             guard column.resizingMask.contains(.userResizingMask),
-                  coordinator.presentsColumn(column) else { return false }
-            return Self.resizeZone.contains(point.x - headerRect(ofColumn: index).maxX)
+                  coordinator.presentsColumn(column),
+                  pinnedBand?.pins(index) ?? true else { return false }
+            return Self.resizeZone.contains(probe.x - headerRect(ofColumn: index).maxX)
         }
     }
 
     private func hoverableColumn(at point: NSPoint) -> Int? {
         guard let tableView, !isInPinnedRowNumberHeading(point) else { return nil }
-        let columnIndex = column(at: point)
+        let columnIndex = displayedColumn(at: point)
         guard columnIndex >= 0, columnIndex < tableView.numberOfColumns else { return nil }
         guard tableView.tableColumns[columnIndex].identifier != ColumnIdentitySchema.rowNumberIdentifier else { return nil }
         return columnIndex
@@ -666,6 +742,10 @@ final class SortableHeaderView: NSTableHeaderView {
         /// A press on the pinned heading is a press on the row-number heading, which sorts, reorders
         /// and resizes nothing. Handed to AppKit it would track the column scrolled underneath.
         guard !isInPinnedRowNumberHeading(pointInHeader) else { return }
+        if visibleRect.minX != 0, let frozen = frozenHeadingColumn(at: pointInHeader) {
+            pressFrozenHeading(frozen, at: pointInHeader, event: event)
+            return
+        }
         if isInResizeZone(point: pointInHeader) {
             super.mouseDown(with: event)
             return
@@ -697,7 +777,6 @@ final class SortableHeaderView: NSTableHeaderView {
         let originalColumnOrder = tableView.tableColumns.map { $0.identifier }
         let originalColumnWidths = tableView.tableColumns.map { $0.width }
         let descriptorsBeforeClick = tableView.sortDescriptors
-        let isMultiSort = modifierFlags.contains(.shift)
 
         super.mouseDown(with: event)
 
@@ -713,6 +792,63 @@ final class SortableHeaderView: NSTableHeaderView {
             descriptorsAfterClick: tableView.sortDescriptors
         ) else { return }
 
+        performHeadingClick(dataIndex: dataIndex, modifierFlags: modifierFlags)
+    }
+
+    // AppKit would track the column scrolled underneath, so the band tracks its own; no drag reorders.
+    private func pressFrozenHeading(_ columnIndex: Int, at point: NSPoint, event: NSEvent) {
+        guard let tableView, let coordinator else { return }
+        if let resizing = resizableColumn(at: point) {
+            trackFrozenResize(columnIndex: resizing, event: event)
+            return
+        }
+        let column = tableView.tableColumns[columnIndex]
+        guard let dataIndex = coordinator.dataColumnIndex(from: column.identifier) else { return }
+        let modifierFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let heading = headerRect(ofColumn: columnIndex)
+        if modifierFlags.isEmpty, let cell = column.headerCell as? SortableHeaderCell {
+            let funnelRect = cell.funnelRect(forBounds: heading).offsetBy(dx: visibleRect.minX, dy: 0)
+            if funnelRect.insetBy(dx: -2, dy: -4).contains(point) {
+                coordinator.presentValueFilterPopover(forColumn: dataIndex, anchor: funnelRect, in: self)
+                return
+            }
+        }
+        guard trackClick(from: event) else { return }
+        performHeadingClick(dataIndex: dataIndex, modifierFlags: modifierFlags)
+    }
+
+    private func trackClick(from event: NSEvent) -> Bool {
+        guard let window else { return false }
+        while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            guard next.type == .leftMouseUp else { continue }
+            return abs(next.locationInWindow.x - event.locationInWindow.x) <= Self.clickDragThreshold
+                && abs(next.locationInWindow.y - event.locationInWindow.y) <= Self.clickDragThreshold
+        }
+        return false
+    }
+
+    private func trackFrozenResize(columnIndex: Int, event: NSEvent) {
+        guard let tableView, let coordinator, let window else { return }
+        let column = tableView.tableColumns[columnIndex]
+        if event.clickCount == 2 {
+            column.width = coordinator.tableView(tableView, sizeToFitWidthOfColumn: columnIndex)
+            return
+        }
+        let startWidth = column.width
+        Self.columnResizeCursor.set()
+        while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            let width = min(max(startWidth + next.locationInWindow.x - event.locationInWindow.x, column.minWidth), column.maxWidth)
+            if column.width != width {
+                column.width = width
+                needsDisplay = true
+            }
+            if next.type == .leftMouseUp { return }
+        }
+    }
+
+    private func performHeadingClick(dataIndex: Int, modifierFlags: NSEvent.ModifierFlags) {
+        guard let coordinator else { return }
+        let isMultiSort = modifierFlags.contains(.shift)
         if modifierFlags.contains(.command) && !modifierFlags.contains(.shift) {
             coordinator.extendColumnSelection(dataIndex)
             return

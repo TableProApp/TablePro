@@ -331,6 +331,50 @@ struct CoordinatorColumnVisibilityTests {
         #expect(!gridCoordinator.shouldRecalculateAutomaticColumnWidths)
     }
 
+    @Test("clearing a table's layout unfreezes its mounted grid, whose tab never recorded the freeze")
+    func clearingTheLayoutUnfreezesTheMountedGrid() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        _ = addTableTab(to: tabManager, tableName: "orders")
+        let target = try #require(coordinator.selectedColumnLayoutClearTarget())
+        var stored = ColumnLayoutState()
+        stored.columnOrder = ["id", "name"]
+        stored.frozenColumnCount = 2
+        FileColumnLayoutPersister.shared.save(stored, for: target.tableKey)
+        defer { FileColumnLayoutPersister.shared.clear(for: target.tableKey) }
+
+        let rows = TableRows.from(
+            queryRows: [[.text("1"), .text("Ada")]],
+            columns: ["id", "name"],
+            columnTypes: [.text(rawType: "TEXT"), .text(rawType: "TEXT")]
+        )
+        let gridCoordinator = TableViewCoordinator(
+            changeManager: AnyChangeManager(DataChangeManager()),
+            isEditable: true,
+            selectedRowIndices: .constant([]),
+            delegate: nil,
+            layoutPersister: FileColumnLayoutPersister.shared
+        )
+        gridCoordinator.connectionId = coordinator.connectionId
+        gridCoordinator.databaseName = ""
+        gridCoordinator.tableName = "orders"
+        gridCoordinator.tabType = .table
+        gridCoordinator.tableRowsProvider = { rows }
+        gridCoordinator.rebuildColumnMetadataCache(from: rows)
+        gridCoordinator.tableView = NSTableView()
+        gridCoordinator.frozenColumnCount = 2
+        #expect(gridCoordinator.columnLayoutKey == target.tableKey)
+        #expect(tabManager.selectedTab?.columnLayout.frozenColumnCount == 0)
+
+        let gridDelegate = DataTabGridDelegate()
+        gridDelegate.dataGridAttach(tableViewCoordinator: gridCoordinator)
+        coordinator.dataTabDelegate = gridDelegate
+
+        coordinator.clearColumnLayout(target)
+
+        #expect(gridCoordinator.frozenColumnCount == 0)
+        #expect(FileColumnLayoutPersister.shared.load(for: target.tableKey) == nil)
+    }
+
     @Test("showColumn removes from the active tab's hidden set")
     func showColumn() {
         let (coordinator, tabManager) = makeCoordinator()

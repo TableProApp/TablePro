@@ -37,6 +37,14 @@ extension TableViewCoordinator {
             showBlobViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .viewPhpSerialized:
             showPhpViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
+        case .viewBinaryValue(let format):
+            showBinaryValueViewerPopover(
+                tableView: tableView,
+                row: row,
+                column: tableColumn,
+                columnIndex: columnIndex,
+                format: format
+            )
         case .viewVector, .editVector:
             showVectorPopover(
                 tableView: tableView,
@@ -180,7 +188,7 @@ extension TableViewCoordinator {
         let dbType = databaseType ?? .mysql
         let scope = userDefinedTypeScope
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
@@ -215,7 +223,7 @@ extension TableViewCoordinator {
         let escape = resolveDriver()?.escapeStringLiteral ?? SQLEscaping.escapeStringLiteral
         let literalPrefix = SQLStringLiteralPrefix.forDatabaseType(databaseType)
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,

@@ -176,6 +176,8 @@ internal struct RowInspectorView: View {
             )
         case .php:
             PhpViewerWindowController.open(text: text, columnName: field.columnName)
+        case .binary(let format):
+            BinaryValueViewerWindowController.open(data: text.storedBytes, format: format, columnName: field.columnName)
         case .text:
             TextViewerWindowController.open(
                 text: text,
@@ -192,6 +194,7 @@ internal struct RowInspectorView: View {
 internal enum InspectorPopOutWindow: Equatable {
     case json
     case php
+    case binary(BinaryValueFormat)
     case text
 
     internal static func resolve(for kind: FieldEditorKind) -> InspectorPopOutWindow {
@@ -200,6 +203,8 @@ internal enum InspectorPopOutWindow: Equatable {
             return .json
         case .phpSerialized:
             return .php
+        case .binaryValue(let format):
+            return .binary(format)
         case .geometry(let descriptor):
             return resolve(for: descriptor.textEditorKind)
         case .multiLine, .singleLine, .schemaText, .blobHex, .image, .boolean,

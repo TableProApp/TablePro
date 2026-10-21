@@ -317,6 +317,50 @@ extension GlobalStateSuites {
 
         // MARK: - Copy Cell Value
 
+        private func formattedCellCoordinator(
+            value: PluginCellValue,
+            columnType: ColumnType,
+            format: ValueDisplayFormat
+        ) -> TableViewCoordinator {
+            let coordinator = TableViewCoordinator(
+                changeManager: AnyChangeManager(DataChangeManager()),
+                isEditable: false,
+                selectedRowIndices: .constant([]),
+                delegate: nil,
+                layoutPersister: RowCopyLayoutPersister()
+            )
+            let tableRows = TableRows.from(queryRows: [[value]], columns: ["payload"], columnTypes: [columnType])
+            coordinator.tableRowsProvider = { tableRows }
+            coordinator.updateCache()
+            coordinator.updateDisplayFormats([format])
+            return coordinator
+        }
+
+        @Test("A single binary cell under a decoder format copies the decoded text")
+        func decodedCellCopiesDecodedText() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+            let bytes = Data([0x82, 0xA1, 0x61, 0x01, 0xA1, 0x62, 0xC3])
+            let coordinator = formattedCellCoordinator(
+                value: .bytes(bytes), columnType: .blob(rawType: "BLOB"), format: .messagePack
+            )
+
+            coordinator.copyCellValue(at: 0, columnIndex: 0)
+
+            #expect(clipboard.text == #"{"a":1,"b":true}"#)
+        }
+
+        @Test("A format saved before the column changed type copies the stored value, as the cell draws it")
+        func inapplicableFormatCopiesStoredValue() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+            let coordinator = formattedCellCoordinator(
+                value: .text("1"), columnType: .text(rawType: "TEXT"), format: .messagePack
+            )
+
+            coordinator.copyCellValue(at: 0, columnIndex: 0)
+
+            #expect(clipboard.text == "1")
+        }
+
         @Test("Copy Cell Value copies the focused cell with several rows selected")
         func copyCellValueWithSeveralRows() throws {
             let clipboard = try #require(RecordingClipboard.current)

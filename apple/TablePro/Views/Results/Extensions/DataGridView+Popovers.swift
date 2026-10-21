@@ -61,7 +61,7 @@ extension TableViewCoordinator {
         guard let scope = gridOriginScope else { return }
 
         let model = FKPreviewModel(cellValue: cellValue, fkInfo: fkInfo)
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         let popover = PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
@@ -113,7 +113,7 @@ extension TableViewCoordinator {
             return
         }
         let newValue = cellValue(at: newRow, column: columnIndex)
-        let newRect = tableView.rect(ofRow: newRow).intersection(tableView.rect(ofColumn: tableColumnIndex))
+        let newRect = self.cellRect(row: newRow, tableColumnIndex: tableColumnIndex)
         guard !newRect.isEmpty else {
             popover.close()
             clearFKPreviewState()
@@ -143,7 +143,7 @@ extension TableViewCoordinator {
         /// window outlives all three.
         let rowID = displayRow(at: row)?.id
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
@@ -193,7 +193,7 @@ extension TableViewCoordinator {
 
         guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
@@ -242,7 +242,7 @@ extension TableViewCoordinator {
         let timeZone = parsed?.timeZone ?? DateEditingService.defaultTimeZone
         let components = DateEditingService.components(for: columnType)
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
@@ -280,7 +280,7 @@ extension TableViewCoordinator {
         let storedDefault = tableRows.columnDefaults[columnName] ?? nil
         let defaultValue = storedDefault.flatMap(SQLStringLiteral.unquoted) ?? storedDefault
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         EnumMenuPicker.presentEnum(
             relativeTo: cellRect,
             in: tableView,
@@ -328,7 +328,7 @@ extension TableViewCoordinator {
 
         let currentValue = cellValue(at: row, column: columnIndex)
         let isNullable = tableRows.columnNullable[columnName] ?? true
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
@@ -356,7 +356,7 @@ extension TableViewCoordinator {
         guard let allowedValues = tableRows.columnEnumValues[columnName] else { return }
 
         let currentValue = cellValue(at: row, column: columnIndex)
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         EnumMenuPicker.presentSet(
             relativeTo: cellRect,
             in: tableView,
@@ -394,7 +394,7 @@ extension TableViewCoordinator {
         let allowedValues = tableRows.columnEnumValues[columnName] ?? []
         let isNullable = tableRows.columnNullable[columnName] ?? true
         let elementEditor = columnType.arrayElementEditor ?? .scalar
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
 
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
@@ -429,7 +429,7 @@ extension TableViewCoordinator {
         // Bound to the record, as the JSON editor is: a sort or a filter can move another row under this position.
         let rowID = displayRow(at: row)?.id
         let expectedDimensions = tableRows.columnTypes[columnIndex].vectorDimensions
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
 
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
@@ -525,7 +525,7 @@ extension TableViewCoordinator {
             menu.addItem(nullItem)
         }
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         menu.popUp(positioning: nil, at: NSPoint(x: cellRect.minX, y: cellRect.maxY), in: tableView)
     }
 
@@ -595,7 +595,7 @@ extension TableViewCoordinator {
 
         guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
@@ -626,7 +626,7 @@ extension TableViewCoordinator {
 
         guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
@@ -644,6 +644,42 @@ extension TableViewCoordinator {
         }
     }
 
+    func showBinaryValueViewerPopover(
+        tableView: NSTableView,
+        row: Int,
+        column: Int,
+        columnIndex: Int,
+        format: BinaryValueFormat
+    ) {
+        let data: Data
+        switch cellTypedValue(at: row, column: columnIndex) {
+        case .null: return
+        case .bytes(let bytes): data = bytes
+        case .text(let text): data = text.storedBytes
+        }
+        let columnName = columnName(at: columnIndex)
+
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: NSSize(width: 560, height: 360)
+        ) { dismiss in
+            BinaryValueViewerView(
+                data: data,
+                format: format,
+                onPopOut: {
+                    dismiss()
+                    BinaryValueViewerWindowController.open(data: data, format: format, columnName: columnName)
+                }
+            )
+            .frame(width: 560)
+            .frame(minHeight: 200, maxHeight: 480)
+        }
+    }
+
     func showBlobViewerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let currentValue = blobStringValue(at: row, columnIndex: columnIndex)
         let columnName = columnName(at: columnIndex)
@@ -651,7 +687,7 @@ extension TableViewCoordinator {
 
         guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
@@ -678,7 +714,7 @@ extension TableViewCoordinator {
         let columnName = columnName(at: columnIndex)
         let value = cellValue(at: row, column: columnIndex) ?? ""
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,

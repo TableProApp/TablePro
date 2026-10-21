@@ -54,7 +54,9 @@ extension TableViewCoordinator {
 
         let mouseLocation = window.mouseLocationOutsideOfEventStream
         let pointInHeader = headerView.convert(mouseLocation, from: nil)
-        populateHeaderMenu(menu, forColumnAt: headerView.column(at: pointInHeader))
+        let columnIndex = (headerView as? SortableHeaderView)?.displayedColumn(at: pointInHeader)
+            ?? headerView.column(at: pointInHeader)
+        populateHeaderMenu(menu, forColumnAt: columnIndex)
     }
 
     func populateHeaderMenu(_ menu: NSMenu, forColumnAt columnIndex: Int) {
@@ -210,6 +212,7 @@ extension TableViewCoordinator {
         menu.addItem(sizeAllItem)
 
         menu.addItem(NSMenuItem.separator())
+        let visibilityGroupStart = menu.items.count
 
         if supportsColumnCommands {
             let hideItem = NSMenuItem(
@@ -231,6 +234,11 @@ extension TableViewCoordinator {
             showAllItem.target = self
             menu.addItem(showAllItem)
         }
+
+        if menu.items.count > visibilityGroupStart {
+            menu.addItem(NSMenuItem.separator())
+        }
+        addFreezeMenuItems(to: menu, forColumnIdentifier: column.identifier)
 
         appendColumnStructureItems(to: menu, forColumnIdentifier: column.identifier)
     }
@@ -273,6 +281,45 @@ extension TableViewCoordinator {
         let displayItem = NSMenuItem(title: String(localized: "Display As"), action: nil, keyEquivalent: "")
         displayItem.submenu = displaySubmenu
         menu.addItem(displayItem)
+    }
+
+    private func addFreezeMenuItems(to menu: NSMenu, forColumnIdentifier identifier: NSUserInterfaceItemIdentifier) {
+        guard let dataColumnIndex = dataColumnIndex(from: identifier),
+              let position = displayPosition(ofDataColumnIndex: dataColumnIndex) else { return }
+
+        if frozenColumnCount != position + 1 {
+            let fits = canFreezeColumns(throughDisplayPosition: position)
+            let freezeItem = NSMenuItem(
+                title: String(localized: "Freeze Up to This Column"),
+                action: fits ? #selector(freezeColumnsFromHeaderMenu(_:)) : nil,
+                keyEquivalent: ""
+            )
+            freezeItem.representedObject = position
+            freezeItem.target = self
+            if !fits {
+                freezeItem.toolTip = String(localized: "These columns would leave too little room to scroll the rest.")
+            }
+            menu.addItem(freezeItem)
+        }
+
+        if frozenColumnCount > 0 {
+            let unfreezeItem = NSMenuItem(
+                title: String(localized: "Unfreeze Columns"),
+                action: #selector(unfreezeColumnsFromHeaderMenu),
+                keyEquivalent: ""
+            )
+            unfreezeItem.target = self
+            menu.addItem(unfreezeItem)
+        }
+    }
+
+    @objc func freezeColumnsFromHeaderMenu(_ sender: NSMenuItem) {
+        guard let position = sender.representedObject as? Int else { return }
+        freezeColumns(throughDisplayPosition: position)
+    }
+
+    @objc func unfreezeColumnsFromHeaderMenu() {
+        unfreezeColumns()
     }
 
     private func appendColumnStructureItems(to menu: NSMenu, forColumnIdentifier identifier: NSUserInterfaceItemIdentifier) {
@@ -349,7 +396,7 @@ extension TableViewCoordinator {
               let header = tableView.headerView as? SortableHeaderView,
               let columnIndex = tableColumnIndex(for: dataIndex),
               let cell = tableView.tableColumns[columnIndex].headerCell as? SortableHeaderCell else { return }
-        let anchor = cell.funnelRect(forBounds: header.headerRect(ofColumn: columnIndex))
+        let anchor = cell.funnelRect(forBounds: header.displayedHeaderRect(ofColumn: columnIndex))
         presentValueFilterPopover(forColumn: dataIndex, anchor: anchor, in: header)
     }
 
