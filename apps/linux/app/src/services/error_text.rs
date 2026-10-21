@@ -24,12 +24,29 @@ pub fn build_sql_message(error: &BuildSqlError) -> String {
     }
 }
 
+fn server_lacks_tls(detail: &str) -> bool {
+    let detail = detail.to_ascii_lowercase();
+    [
+        "does not support tls",
+        "does not support ssl",
+        "tls is not enabled",
+        "ssl is not enabled",
+        "server does not use tls",
+    ]
+    .iter()
+    .any(|marker| detail.contains(marker))
+}
+
 pub fn driver_message(error: &DriverError) -> String {
     match error {
         DriverError::ConnectionRefused => crate::tr!("Could not reach the database. Is it running?"),
         DriverError::AuthFailed => crate::tr!("Username or password is wrong."),
+        DriverError::Tls(detail) if server_lacks_tls(detail) => crate::tr!(
+            "TLS handshake failed: {detail}. The server does not appear to use TLS. For a local container, set TLS to Disabled."
+        )
+        .replace("{detail}", detail),
         DriverError::Tls(detail) => crate::tr!(
-            "TLS handshake failed: {detail}. If this server does not use TLS, such as a local container, set TLS to Disabled."
+            "TLS handshake failed: {detail}. Check the server certificate, the certificate authority file and the TLS mode. Do not turn TLS off to get past a certificate error."
         )
         .replace("{detail}", detail),
         DriverError::Query {
@@ -123,9 +140,22 @@ pub fn keyring_message(failure: &tablepro_storage::KeyringFailure) -> String {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn a_tls_failure_points_at_the_tls_setting() {
-        let message = driver_message(&DriverError::Tls("certificate verify failed".into()));
-        assert!(message.contains("certificate verify failed"));
+    fn a_certificate_failure_never_advises_turning_tls_off() {
+        for detail in [
+            "certificate verify failed",
+            "unknown issuer",
+            "certificate hostname mismatch",
+        ] {
+            let message = driver_message(&DriverError::Tls(detail.into()));
+            assert!(message.contains(detail));
+            assert!(!message.contains("set TLS to Disabled"), "{detail}: {message}");
+            assert!(message.contains("certificate authority file"));
+        }
+    }
+
+    #[test]
+    fn only_a_server_without_tls_suggests_disabling_it() {
+        let message = driver_message(&DriverError::Tls("server does not support TLS".into()));
         assert!(message.contains("set TLS to Disabled"));
     }
 

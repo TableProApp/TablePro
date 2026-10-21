@@ -49,102 +49,107 @@ msgstr ""
 msgid "This table's columns changed after you started editing (for example, in a Structure tab). Reload the page and reapply your changes."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:29
+#: apps/linux/app/src/services/error_text.rs:42
 msgid "Could not reach the database. Is it running?"
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:30
+#: apps/linux/app/src/services/error_text.rs:43
 msgid "Username or password is wrong."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:32
+#: apps/linux/app/src/services/error_text.rs:45
 #, rust-format
-msgid "TLS handshake failed: {detail}. If this server does not use TLS, such as a local container, set TLS to Disabled."
+msgid "TLS handshake failed: {detail}. The server does not appear to use TLS. For a local container, set TLS to Disabled."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:39
+#: apps/linux/app/src/services/error_text.rs:49
+#, rust-format
+msgid "TLS handshake failed: {detail}. Check the server certificate, the certificate authority file and the TLS mode. Do not turn TLS off to get past a certificate error."
+msgstr ""
+
+#: apps/linux/app/src/services/error_text.rs:56
 #, rust-format
 msgid "Query failed (SQLSTATE {sqlstate}): {message}"
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:42
+#: apps/linux/app/src/services/error_text.rs:59
 #, rust-format
 msgid "Query failed: {message}"
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:43
+#: apps/linux/app/src/services/error_text.rs:60
 msgid "The connection was closed, or all connections are busy with other queries. Try reconnecting."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:45
+#: apps/linux/app/src/services/error_text.rs:62
 msgid "This row changed in the database after you loaded it. Your edits are still available; reload the row and reapply them."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:48
+#: apps/linux/app/src/services/error_text.rs:65
 msgid "This connection is read-only. Reopen it without read-only mode to make changes."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:50
+#: apps/linux/app/src/services/error_text.rs:67
 #, rust-format
 msgid "Blocked by policy: {detail}"
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:52
+#: apps/linux/app/src/services/error_text.rs:69
 #, rust-format
 msgid "This driver does not support: {detail}"
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:54
+#: apps/linux/app/src/services/error_text.rs:71
 #, rust-format
 msgid "Internal driver error: {detail}"
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:55
+#: apps/linux/app/src/services/error_text.rs:72
 msgid "The operation was cancelled."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:56
+#: apps/linux/app/src/services/error_text.rs:73
 msgid "The operation timed out."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:58
+#: apps/linux/app/src/services/error_text.rs:75
 #, rust-format
 msgid "The operation was interrupted, but the database outcome could not be confirmed: {detail}"
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:62
+#: apps/linux/app/src/services/error_text.rs:79
 #, rust-format
 msgid "Kerberos login failed: {detail}. Check that klist shows a valid ticket, run kinit if it does not, and make sure the server's SPN matches the host you typed."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:77
+#: apps/linux/app/src/services/error_text.rs:94
 #, rust-format
 msgid "Save failed at statement {n}: {error}. The rollback request succeeded; session state and other non-transactional side effects may remain."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:85
+#: apps/linux/app/src/services/error_text.rs:102
 #, rust-format
 msgid "Save failed at statement {n}: {error}. This database cannot roll a save back, so the statements before it were applied. Refresh the table before saving again."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:94
+#: apps/linux/app/src/services/error_text.rs:111
 #, rust-format
 msgid "Save failed at statement {n}: {error}. Rollback also failed: {rollback_error}. Database changes may have been applied."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:107
+#: apps/linux/app/src/services/error_text.rs:124
 msgid "No keyring is running, so saved passwords can't be read. Start GNOME Keyring, KeePassXC with Secret Service, or another Secret Service provider, then try again."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:110
+#: apps/linux/app/src/services/error_text.rs:127
 msgid "The keyring is locked. Unlock it, for example by signing in again or opening Passwords and Keys, then try again."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:114
+#: apps/linux/app/src/services/error_text.rs:131
 msgid "Unlocking the keyring was cancelled, so the saved password was not read. Try again and unlock it when asked."
 msgstr ""
 
-#: apps/linux/app/src/services/error_text.rs:118
+#: apps/linux/app/src/services/error_text.rs:135
 #, rust-format
 msgid "The keyring could not be used: {detail}"
 msgstr ""
