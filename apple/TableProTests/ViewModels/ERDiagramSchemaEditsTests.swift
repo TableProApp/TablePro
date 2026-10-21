@@ -12,6 +12,7 @@ private final class DiagramEditDriver: PluginDriverStub, @unchecked Sendable {
     private var queries: [String] = []
     private var schema: String?
     var executionGate: AsyncGate?
+    var baselineGate: AsyncGate?
 
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { false }
@@ -39,7 +40,8 @@ private final class DiagramEditDriver: PluginDriverStub, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        switch table {
+        await baselineGate?.wait()
+        return switch table {
         case "customers":
             [
                 PluginColumnInfo(name: "id", dataType: "integer", isNullable: false, isPrimaryKey: true),
@@ -433,6 +435,73 @@ struct ERDiagramSchemaEditsTests {
             try await fixture.edits.renameColumn("id", to: "customer_key", on: "customers")
         }
         #expect(fixture.edits.editedTables == ["orders"])
+    }
+
+    @Test("A key's own column is not renamed while the staged key still names it")
+    func renameOfAStagedKeysColumnIsRefused() async throws {
+        let fixture = try await Self.makeFixture()
+        defer { fixture.tearDown() }
+
+        try await fixture.edits.addForeignKey(Self.customerKey(), to: "orders")
+
+        await #expect(throws: ERDiagramEditError.referencedByStagedKey(table: "orders", column: "customer_id")) {
+            try await fixture.edits.renameColumn("customer_id", to: "buyer_id", on: "orders")
+        }
+    }
+
+    @Test("Dropping a replacement key drops the replacement, not the key it replaces")
+    func dropFindsTheReplacementKey() async throws {
+        let fixture = try await Self.makeFixture()
+        defer { fixture.tearDown() }
+        var replacement = EditableForeignKeyDefinition.placeholder()
+        replacement.name = "orders_shipper_fk"
+        replacement.columns = ["shipper_id"]
+        replacement.referencedTable = "shippers"
+        replacement.referencedColumns = ["id"]
+        replacement.onDelete = .cascade
+
+        try await fixture.edits.dropForeignKey(
+            named: "orders_shipper_fk", column: "shipper_id", referencing: "shippers", on: "orders"
+        )
+        try await fixture.edits.addForeignKey(replacement, to: "orders")
+        try await fixture.edits.dropForeignKey(
+            named: "orders_shipper_fk", column: "shipper_id", referencing: "shippers", on: "orders"
+        )
+
+        let orders = try #require(fixture.edits.tableEdits()["orders"])
+        #expect(orders.foreignKeys.allSatisfy { $0.id != replacement.id })
+        #expect(orders.foreignKeyEdits.values.allSatisfy { $0 == .dropped })
+    }
+
+    @Test("An edit still loading its baseline when Discard runs is discarded with the rest")
+    func discardCoversAnEditStillLoading() async throws {
+        let fixture = try await Self.makeFixture()
+        defer { fixture.tearDown() }
+        let gate = AsyncGate()
+        fixture.pooled.baselineGate = gate
+        var column = EditableColumnDefinition.placeholder()
+        column.name = "notes"
+        column.dataType = "text"
+        let edits = fixture.edits
+
+        let staging = Task { try await edits.addColumn(column, to: "customers") }
+        await gate.arrived(1)
+        edits.discardAll()
+        await gate.open()
+        try await staging.value
+
+        #expect(!edits.hasChanges)
+    }
+
+    @Test("A key on an unchanged column of an edited table keeps the order the edits were made in")
+    func unrelatedEditsKeepTheirOrder() async throws {
+        let fixture = try await Self.makeFixture()
+        defer { fixture.tearDown() }
+
+        try await fixture.edits.addForeignKey(Self.customerKey(), to: "orders")
+        try await fixture.edits.renameColumn("email", to: "contact_email", on: "customers")
+
+        #expect(fixture.edits.saveOrder == ["orders", "customers"])
     }
 
     @Test("Discard clears every table's staged edits")

@@ -15520,7 +15520,7 @@
         }
       }
     },
-    "A foreign key staged in this diagram references “%1$@.%2$@”. Save or undo that key before renaming the column." : {
+    "A foreign key staged in this diagram uses “%1$@.%2$@”. Save or undo that key before renaming the column." : {
 
     },
     "A foreign table" : {

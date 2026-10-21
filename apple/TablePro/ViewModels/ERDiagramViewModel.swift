@@ -202,7 +202,9 @@ final class ERDiagramViewModel: ObservableObject {
         }
 
         do {
-            (fullGraph, objectKinds) = try await fetchGraph(in: scope)
+            let (fetched, kinds) = try await fetchGraph(in: scope)
+            fullGraph = fetched
+            objectKinds = kinds ?? [:]
 
             nodeIdToName = Dictionary(uniqueKeysWithValues: fullGraph.nodes.map { ($0.id, $0.tableName) })
             let visibleGraph = makeVisibleGraph()
@@ -226,23 +228,24 @@ final class ERDiagramViewModel: ObservableObject {
 
     private func fetchGraph(
         in scope: DatabaseScope
-    ) async throws -> (ERDiagramGraph, [String: TableInfo.TableType]) {
+    ) async throws -> (ERDiagramGraph, [String: TableInfo.TableType]?) {
         let (columns, foreignKeys, indexes, tables) = try await services.databaseManager.withMetadataDriver(
             scope: scope, workload: .bulk
         ) { driver in
             let cols = try await driver.fetchAllColumns()
             let fks = try await driver.fetchAllForeignKeys()
             let idx = try await driver.fetchIndexes(forTables: Array(fks.keys))
-            let tables: [TableInfo]
+            // Nil keeps the kinds already known, so a failed read never turns a view into a table.
+            let tables: [TableInfo]?
             do {
                 tables = try await driver.fetchTables()
             } catch {
                 Self.logger.error("ER diagram could not read object kinds: \(error.localizedDescription)")
-                tables = []
+                tables = nil
             }
             return (cols, fks, idx, tables)
         }
-        let kinds = Dictionary(tables.map { ($0.name, $0.type) }, uniquingKeysWith: { first, _ in first })
+        let kinds = tables.map { Dictionary($0.map { ($0.name, $0.type) }, uniquingKeysWith: { first, _ in first }) }
         return (
             ERDiagramGraphBuilder.build(allColumns: columns, allForeignKeys: foreignKeys, allIndexes: indexes),
             kinds
@@ -277,7 +280,9 @@ final class ERDiagramViewModel: ObservableObject {
         do {
             let (fetched, kinds) = try await fetchGraph(in: scope)
             fullGraph = fetched
-            objectKinds = kinds
+            if let kinds {
+                objectKinds = kinds
+            }
             nodeIdToName = Dictionary(uniqueKeysWithValues: fetched.nodes.map { ($0.id, $0.tableName) })
             editsStorage?.forgetUnedited()
             let visibleGraph = makeVisibleGraph()

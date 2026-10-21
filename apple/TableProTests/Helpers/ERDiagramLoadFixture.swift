@@ -83,9 +83,14 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
     }
 
     private var listedTables: [TableInfo] = []
+    private var failsTableListing = false
 
     internal func list(_ tables: [TableInfo]) {
         lock.withLock { listedTables = tables }
+    }
+
+    internal func failTableListing() {
+        lock.withLock { failsTableListing = true }
     }
 
     internal func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] { [:] }
@@ -106,7 +111,11 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
         Self.emptyResult
     }
 
-    internal func fetchTables() async throws -> [TableInfo] { lock.withLock { listedTables } }
+    internal func fetchTables() async throws -> [TableInfo] {
+        let (tables, fails) = lock.withLock { (listedTables, failsTableListing) }
+        guard !fails else { throw CatalogReadFailure() }
+        return tables
+    }
     internal func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
     internal func fetchColumns(table: String) async throws -> [ColumnInfo] { lock.withLock { columns[table] ?? [] } }
     internal func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }

@@ -413,7 +413,7 @@ extension ERDiagramViewModel {
             await refresh()
         }
         // Work staged while the reload ran is still unsaved, so a close must not go ahead over it.
-        if result.outcome == .applied, edits.hasChanges {
+        if result.outcome == .applied, holdsUnsavedWork {
             return .refused
         }
         return result.outcome

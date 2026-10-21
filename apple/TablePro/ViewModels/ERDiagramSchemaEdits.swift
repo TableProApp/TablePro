@@ -16,7 +16,7 @@ enum ERDiagramEditError: LocalizedError, Equatable {
         switch self {
         case .referencedByStagedKey(let table, let column):
             String(
-                format: String(localized: "A foreign key staged in this diagram references “%1$@.%2$@”. Save or undo that key before renaming the column."),
+                format: String(localized: "A foreign key staged in this diagram uses “%1$@.%2$@”. Save or undo that key before renaming the column."),
                 table,
                 column
             )
@@ -48,6 +48,7 @@ final class ERDiagramSchemaEdits {
     private var loading: [String: Task<StructureEditingSession, any Error>] = [:]
     private var appliedSubscriptions: [String: AnyCancellable] = [:]
     private var isApplyingQueue = false
+    private var generation = 0
 
     var onChange: (() -> Void)?
     // A SQLite rebuild runs from its review sheet after Save has returned.
@@ -82,8 +83,8 @@ final class ERDiagramSchemaEdits {
     }
 
     // A key added here may name a column another table only gains in this save, so that table goes
-    // first; a key dropped here may hold a column another table drops, so this one goes first. A cycle
-    // keeps the order the edits were made in.
+    // first; a key dropped here may hold a column another table drops or changes, so this one goes
+    // first. Only the referenced columns count, and a cycle keeps the order the edits were made in.
     var saveOrder: [String] {
         let tables = editedTables
         var prerequisites: [String: Set<String>] = [:]
@@ -92,10 +93,14 @@ final class ERDiagramSchemaEdits {
             for change in changes {
                 switch change {
                 case .addForeignKey(let key), .modifyForeignKey(_, let key):
-                    guard key.referencedTable != table, tables.contains(key.referencedTable) else { continue }
+                    guard key.referencedTable != table, tables.contains(key.referencedTable),
+                          !gainedColumns(of: key.referencedTable).isDisjoint(with: key.referencedColumns)
+                    else { continue }
                     prerequisites[table, default: []].insert(key.referencedTable)
                 case .deleteForeignKey(let key):
-                    guard key.referencedTable != table, tables.contains(key.referencedTable) else { continue }
+                    guard key.referencedTable != table, tables.contains(key.referencedTable),
+                          !changedColumns(of: key.referencedTable).isDisjoint(with: key.referencedColumns)
+                    else { continue }
                     prerequisites[key.referencedTable, default: []].insert(table)
                 default:
                     continue
@@ -121,6 +126,28 @@ final class ERDiagramSchemaEdits {
     var canRedo: Bool {
         guard !isSaving, let table = redoTables.last else { return false }
         return sessions[table]?.changeManager.canRedo ?? false
+    }
+
+    private func gainedColumns(of table: String) -> Set<String> {
+        guard let changes = sessions[table]?.changeManager.pendingChanges.values else { return [] }
+        return Set(changes.compactMap { change -> String? in
+            switch change {
+            case .addColumn(let column): column.name
+            case .modifyColumn(let old, let new) where old.name != new.name: new.name
+            default: nil
+            }
+        })
+    }
+
+    private func changedColumns(of table: String) -> Set<String> {
+        guard let changes = sessions[table]?.changeManager.pendingChanges.values else { return [] }
+        return Set(changes.compactMap { change -> String? in
+            switch change {
+            case .deleteColumn(let column): column.name
+            case .modifyColumn(let old, _): old.name
+            default: nil
+            }
+        })
     }
 
     func tableEdits() -> [String: ERDiagramStagedOverlay.TableEdits] {
@@ -208,42 +235,47 @@ final class ERDiagramSchemaEdits {
 
     // A save visits the tables it found when it started, so nothing is staged until it has ended:
     // an edit accepted mid-save would be left out of the save that then reports itself complete.
-    private func stagingManager(for table: String) async throws -> StructureChangeManager {
+    private func stagingManager(for table: String) async throws -> StructureChangeManager? {
         guard !isSaving else { throw ERDiagramEditError.saveInProgress }
+        let started = generation
         let manager = try await session(for: table).changeManager
         guard !isSaving else { throw ERDiagramEditError.saveInProgress }
+        // A Discard while the baseline loaded covers this edit too: it was confirmed before the Discard.
+        guard generation == started else { return nil }
         return manager
     }
 
     func addForeignKey(_ foreignKey: EditableForeignKeyDefinition, to table: String) async throws {
-        let manager = try await stagingManager(for: table)
+        guard let manager = try await stagingManager(for: table) else { return }
         manager.addForeignKey(foreignKey)
         recordEdit(on: table)
     }
 
     func dropForeignKey(named name: String, column: String, referencing referencedTable: String, on table: String) async throws {
-        let manager = try await stagingManager(for: table)
+        guard let manager = try await stagingManager(for: table) else { return }
         let previousName = manager.pendingChanges.values.lazy.compactMap { change -> String? in
             guard case .modifyColumn(let old, let new) = change, new.name == column else { return nil }
             return old.name
         }.first
+        // A key already staged for dropping keeps its row, and its replacement may share its name.
         guard let foreignKey = manager.workingForeignKeys.first(where: { key in
-            key.name == name && key.referencedTable == referencedTable
+            if case .deleteForeignKey = manager.pendingChanges[.foreignKey(key.id)] { return false }
+            return key.name == name && key.referencedTable == referencedTable
                 && (key.columns.contains(column) || previousName.map { key.columns.contains($0) } == true)
         }) else {
             throw ERDiagramEditError.foreignKeyNotFound(table: table, name: name)
         }
-        if case .deleteForeignKey = manager.pendingChanges[.foreignKey(foreignKey.id)] { return }
         manager.deleteForeignKey(id: foreignKey.id)
         recordEdit(on: table)
     }
 
     private func isReferencedByStagedKey(table: String, column: String) -> Bool {
-        sessions.values.contains { session in
+        sessions.contains { owner, session in
             session.changeManager.pendingChanges.values.contains { change in
                 switch change {
                 case .addForeignKey(let key), .modifyForeignKey(_, let key):
-                    key.referencedTable == table && key.referencedColumns.contains(column)
+                    (key.referencedTable == table && key.referencedColumns.contains(column))
+                        || (owner == table && key.columns.contains(column))
                 default:
                     false
                 }
@@ -252,13 +284,13 @@ final class ERDiagramSchemaEdits {
     }
 
     func addColumn(_ column: EditableColumnDefinition, to table: String) async throws {
-        let manager = try await stagingManager(for: table)
+        guard let manager = try await stagingManager(for: table) else { return }
         manager.addColumn(column)
         recordEdit(on: table)
     }
 
     func renameColumn(_ name: String, to newName: String, on table: String) async throws {
-        let manager = try await stagingManager(for: table)
+        guard let manager = try await stagingManager(for: table) else { return }
         guard name != newName else { return }
         // The staged key would still name the old column, and its table saves after this one.
         if isReferencedByStagedKey(table: table, column: name) {
@@ -273,7 +305,7 @@ final class ERDiagramSchemaEdits {
     }
 
     func dropColumn(_ name: String, on table: String) async throws {
-        let manager = try await stagingManager(for: table)
+        guard let manager = try await stagingManager(for: table) else { return }
         guard let column = manager.workingColumns.first(where: { $0.name == name }) else {
             throw ERDiagramEditError.columnNotFound(table: table, column: name)
         }
@@ -300,6 +332,7 @@ final class ERDiagramSchemaEdits {
 
     func discardAll() {
         guard !isSaving else { return }
+        generation += 1
         for session in sessions.values {
             session.changeManager.discardChanges()
         }

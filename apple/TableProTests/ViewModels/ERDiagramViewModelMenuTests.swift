@@ -74,6 +74,24 @@ struct ERDiagramViewModelMenuTests {
         #expect(viewModel.referenceableTables == ["table_0"])
     }
 
+    @Test("A refresh that cannot list object kinds keeps the ones it knew, so a view stays a view")
+    func failedKindReadKeepsKnownKinds() async throws {
+        let fixture = ERDiagramLoadFixture(tableCount: 2, columnsPerTable: 2)
+        defer { fixture.tearDown() }
+        fixture.driver.list([
+            TestFixtures.makeTableInfo(name: "table_0", type: .table),
+            TestFixtures.makeTableInfo(name: "table_1", type: .view)
+        ])
+        let viewModel = fixture.viewModel
+        await viewModel.loadDiagram()
+
+        fixture.driver.failTableListing()
+        await viewModel.refresh()
+
+        #expect(viewModel.kind(of: "table_1") == .view)
+        #expect(viewModel.referenceableTables == ["table_0"])
+    }
+
     @Test("The canvas offers Refresh, and New Table only where a table can be created")
     func canvasMenu() {
         let sections = viewModel(.postgresql).menuSections(for: .canvas(CGPoint(x: 10, y: 20)))
