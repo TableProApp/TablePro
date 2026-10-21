@@ -361,6 +361,7 @@ final class ConnectionFormCoordinator: ObservableObject {
             externalAccess: advanced.externalAccess,
             connectTimeoutSeconds: customization.connectTimeoutSeconds,
             queryTimeoutSeconds: customization.queryTimeoutSeconds,
+            binaryInlineLimitKilobytes: customization.binaryInlineLimitKilobytes,
             completionIdentifierCase: customization.completionIdentifierCase,
             redisDatabase: advanced.additionalFieldValues[RedisDatabaseIndex.fieldName].map {
                 RedisDatabaseIndex.parse($0) ?? 0

@@ -177,6 +177,11 @@ extension TableViewCoordinator {
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return nil }
         guard isColumnWritable(tableRows.columns[columnIndex]) else { return nil }
         guard columnIndex < row.values.count else { return nil }
+        // Its `.null` stands for a value still on the server, which no edit may replace unread.
+        guard row.unloadedByteCount(columnIndex) == nil else {
+            NSSound.beep()
+            return nil
+        }
         let oldValue = row.values[columnIndex]
         let absence = FieldAbsence(
             wasAbsent: row.isAbsent(columnIndex),

@@ -89,7 +89,11 @@ extension TableViewCoordinator {
             content: DataGridCellContent(
                 displayText: formattedValue ?? "",
                 rawValue: rawValue.asText,
-                placeholder: DataGridCellContent.placeholder(for: rawValue, isAbsent: displayRow.isAbsent(columnIndex))
+                placeholder: DataGridCellContent.placeholder(
+                    for: rawValue,
+                    isAbsent: displayRow.isAbsent(columnIndex),
+                    unloadedByteCount: displayRow.unloadedByteCount(columnIndex)
+                )
             ),
             state: DataGridCellState(
                 visualState: visualState(of: displayRow, atDisplayRow: row),
@@ -129,11 +133,16 @@ extension TableViewCoordinator {
         ) ?? ""
         guard text.isEmpty else { return spokenText(of: text) }
 
-        switch DataGridCellContent.placeholder(for: rawValue, isAbsent: displayRow.isAbsent(columnIndex)) {
+        switch DataGridCellContent.placeholder(
+            for: rawValue,
+            isAbsent: displayRow.isAbsent(columnIndex),
+            unloadedByteCount: displayRow.unloadedByteCount(columnIndex)
+        ) {
         case .null: return String(localized: "NULL")
         case .empty: return String(localized: "Empty")
         case .defaultMarker: return String(localized: "DEFAULT")
         case .absent: return DataGridCellContent.absentFieldText
+        case .unloaded(let byteCount): return DataGridCellContent.unloadedSpokenText(byteCount: byteCount)
         case .none: return text
         }
     }

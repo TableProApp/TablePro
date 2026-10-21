@@ -24,6 +24,7 @@ struct QueryFetchResult {
     var rowLocators: [String?]?
     /// Row index to the columns that row has no field for. See `PluginQueryResult.absentCells`.
     var absentCells: [Int: Set<Int>] = [:]
+    var unloadedCells: [Int: [Int: Int]] = [:]
 
     var resolvedTiming: PluginQueryTiming {
         timing ?? PluginQueryTiming(total: executionTime)

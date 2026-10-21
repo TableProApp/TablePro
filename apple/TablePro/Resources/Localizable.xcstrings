@@ -107,6 +107,9 @@
     "A dictionary for each row, keyed by column" : {
 
     },
+    "A larger binary value stays on the server until you open, copy or export it. Applies to tables with a primary key." : {
+
+    },
     "A transaction is open on this connection. Commit or roll it back in TablePro, then run the shortcut again." : {
 
     },
@@ -167,6 +170,9 @@
     "Attached each time the connection opens. Reach a table as name.table, and browse each database in the sidebar." : {
 
     },
+    "Binary values limit must be between 1 and 1,048,576 KB." : {
+
+    },
     "Both results stopped at the row cap and are compared on the rows they hold. A row past the cap can show as only on one side." : {
 
     },
@@ -197,6 +203,9 @@
     "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope." : {
 
     },
+    "Could Not Load Value" : {
+
+    },
     "Could not attach \"%@\": %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -211,6 +220,9 @@
 
     },
     "First Value" : {
+
+    },
+    "KB" : {
 
     },
     "Key %@ matches more than one row in the left result. Choose key columns that identify a single row, or match whole rows." : {
@@ -232,6 +244,9 @@
         }
       }
     },
+    "Load binary values up to" : {
+
+    },
     "Match Whole Rows" : {
 
     },
@@ -249,6 +264,9 @@
 
     },
     "No data was provided to add." : {
+
+    },
+    "Not loaded, %@" : {
 
     },
     "Only Left" : {
@@ -318,6 +336,12 @@
 
     },
     "Shortcuts wants to add a row to \"%@\"" : {
+
+    },
+    "Some rows are no longer in the table, so their values could not be read." : {
+
+    },
+    "Table Data" : {
 
     },
     "That connection no longer exists in TablePro." : {
@@ -10626,6 +10650,9 @@
         }
       }
     },
+    "%lld bytes follow the end of the value." : {
+
+    },
     "%lld change could not be uploaded to iCloud. It stays on this Mac and goes again on the next sync. Everything else is up to date." : {
 
     },
@@ -10687,6 +10714,9 @@
 
     },
     "%lld failed" : {
+
+    },
+    "%lld fields" : {
 
     },
     "%lld files" : {
@@ -13434,6 +13464,9 @@
           }
         }
       }
+    },
+    "1 field" : {
+
     },
     "1 file" : {
 
@@ -32435,6 +32468,19 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "購買授權"
+          }
+        }
+      }
+    },
+    "Byte %lld does not start a valid field." : {
+
+    },
+    "Byte 0x%@ at offset %lld is not valid here." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Byte 0x%1$@ at offset %2$lld is not valid here."
           }
         }
       }
@@ -121776,6 +121822,16 @@
         }
       }
     },
+    "Not valid %@. %@ Showing the stored bytes." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not valid %1$@. %2$@ Showing the stored bytes."
+          }
+        }
+      }
+    },
     "Not valid JSON" : {
       "localizations" : {
         "fr" : {
@@ -156099,6 +156155,16 @@
         }
       }
     },
+    "Schema Registry framing: schema ID %lld, message index %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Schema Registry framing: schema ID %1$lld, message index %2$@"
+          }
+        }
+      }
+    },
     "Schema response was empty." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -185235,6 +185301,9 @@
         }
       }
     },
+    "The group end at byte %lld matches no group start." : {
+
+    },
     "The host cannot be passed to FreeTDS. Use a host name or an IP address, without spaces, brackets, “=”, “;” or “#”." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -185346,6 +185415,9 @@
           }
         }
       }
+    },
+    "The integer at byte %lld is out of range." : {
+
     },
     "The item %@ changed after it was loaded. Refresh the table and edit it again." : {
       "extractionState" : "manual",
@@ -191420,6 +191492,9 @@
         }
       }
     },
+    "The value ends early, at byte %lld." : {
+
+    },
     "The value in %@ is shortened for display, so saving it would store only the part shown. Change this field with a query." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -191431,6 +191506,12 @@
           }
         }
       }
+    },
+    "The value is nested too deeply to show." : {
+
+    },
+    "The value is too large to decode." : {
+
     },
     "The value of “%@” is not valid." : {
 
@@ -207220,6 +207301,9 @@
           }
         }
       }
+    },
+    "UUID (Swapped Time)" : {
+
     },
     "UUID of the connection" : {
       "extractionState" : "manual",

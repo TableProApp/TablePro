@@ -14,11 +14,12 @@ extension GlobalStateSuites {
         )
 
         private func makeCoordinator(
-            filter: TableFilter
+            filter: TableFilter,
+            type: DatabaseType = .mysql
         ) -> (coordinator: MainContentCoordinator, tabManager: QueryTabManager, tabId: UUID) {
             let tabManager = QueryTabManager()
             let coordinator = MainContentCoordinator(
-                connection: TestFixtures.makeConnection(),
+                connection: TestFixtures.makeConnection(type: type),
                 tabManager: tabManager,
                 changeManager: DataChangeManager(),
                 toolbarState: ConnectionToolbarState()
@@ -103,7 +104,8 @@ extension GlobalStateSuites {
         @Test("Applied filters make the first load wait for the schema", .noDefaultSort)
         func appliedFiltersNeedTheSchema() {
             let (coordinator, tabManager, tabId) = makeCoordinator(
-                filter: TestFixtures.makeTableFilter(column: "code", value: "0123")
+                filter: TestFixtures.makeTableFilter(column: "code", value: "0123"),
+                type: .postgresql
             )
             defer { coordinator.teardown() }
 

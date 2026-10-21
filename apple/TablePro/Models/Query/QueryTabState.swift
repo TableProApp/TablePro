@@ -192,6 +192,10 @@ struct TabChangeSnapshot: Equatable {
     var hasChanges: Bool {
         !changes.isEmpty || !insertedRowIDs.isEmpty || !deletedRowIDs.isEmpty
     }
+
+    mutating func adoptLoadedValues(_ values: [RowID: [Int: PluginCellValue]]) {
+        RowChange.adoptLoadedValues(values, into: &changes)
+    }
 }
 
 enum SortDirection: String, Equatable, Codable, CaseIterable, Identifiable {
