@@ -12544,6 +12544,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Kerberos Unavailable" : {
+
+    },
     "Key" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -15840,6 +15843,9 @@
 
     },
     "Open it on the Mac, or change it there to connect by host and port." : {
+
+    },
+    "Open it on the Mac, or change it there to sign in with a password." : {
 
     },
     "Open Sample Database" : {
