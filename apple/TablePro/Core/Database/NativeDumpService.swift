@@ -100,6 +100,8 @@ struct NativeDumpCommand: Equatable {
     /// standard input. Removed once the process exits, however it exits.
     let temporaryCredentialsFileURL: URL?
 
+    let clientPluginFolder: NativeDumpDescriptor.ClientPluginFolder?
+
     /// Which direction a redirected file goes: a restore feeds it in as standard input, a backup
     /// takes standard output and writes it out.
     let isRestore: Bool
@@ -114,6 +116,7 @@ struct NativeDumpCommand: Equatable {
         delivery: NativeDumpDescriptor.OutputDelivery = .toolWritesFile,
         redirectedFileURL: URL? = nil,
         temporaryCredentialsFileURL: URL? = nil,
+        clientPluginFolder: NativeDumpDescriptor.ClientPluginFolder? = nil,
         isRestore: Bool = false,
         exitPolicy: NativeDumpExitPolicy = .zeroExitOnly
     ) {
@@ -124,6 +127,7 @@ struct NativeDumpCommand: Equatable {
         self.delivery = delivery
         self.redirectedFileURL = redirectedFileURL
         self.temporaryCredentialsFileURL = temporaryCredentialsFileURL
+        self.clientPluginFolder = clientPluginFolder
         self.isRestore = isRestore
         self.exitPolicy = exitPolicy
     }
@@ -149,6 +153,19 @@ internal extension NativeDumpJob {
     var exitPolicy: NativeDumpExitPolicy {
         guard case .process(let command) = self else { return .zeroExitOnly }
         return command.exitPolicy
+    }
+
+    var clientPluginFolder: NativeDumpDescriptor.ClientPluginFolder? {
+        guard case .process(let command) = self else { return nil }
+        return command.clientPluginFolder
+    }
+
+    // For a job that never reaches a runner, which is what removes these otherwise.
+    func discardTemporaryFiles() {
+        guard case .process(let command) = self else { return }
+        for url in [command.temporaryCredentialsFileURL, command.clientPluginFolder?.url].compactMap(\.self) {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 }
 
@@ -273,7 +290,7 @@ final class NativeDumpService: ObservableObject {
             : await Self.resolvedCatalog(connectionId: connection.id, database: database)
 
         let serverVersion = session?.driver?.serverVersion
-        let request = NativeDumpDescriptor.Request(
+        var request = NativeDumpDescriptor.Request(
             connection: effective,
             database: database,
             fileURL: fileURL,
@@ -292,6 +309,7 @@ final class NativeDumpService: ObservableObject {
                 serverVersion: serverVersion
             )
             toolName = resolved.name
+            request.serverOffersTLS = await tool.serverOffersTLS(request, resolved)
             let command = try Self.buildCommand(
                 kind: kind,
                 tool: tool,
@@ -333,9 +351,16 @@ final class NativeDumpService: ObservableObject {
         fileURL: URL,
         totalBytesEstimate: Int64? = nil
     ) throws {
-        if case .running = state { throw NativeDumpError.alreadyRunning }
-        if case .cancelling = state { throw NativeDumpError.alreadyRunning }
+        if case .running = state {
+            job.discardTemporaryFiles()
+            throw NativeDumpError.alreadyRunning
+        }
+        if case .cancelling = state {
+            job.discardTemporaryFiles()
+            throw NativeDumpError.alreadyRunning
+        }
         guard !cancelRequested else {
+            job.discardTemporaryFiles()
             setState(.cancelled)
             return
         }
@@ -344,6 +369,7 @@ final class NativeDumpService: ObservableObject {
         try runner.start()
         self.runner = runner
         let exitPolicy = job.exitPolicy
+        let pluginFolder = job.clientPluginFolder
 
         setState(.running(database: database, fileURL: fileURL, bytesProcessed: 0, totalBytes: totalBytesEstimate))
         if kind == .backup {
@@ -352,7 +378,13 @@ final class NativeDumpService: ObservableObject {
 
         Task { @MainActor [weak self] in
             guard let result = await self?.runner?.result else { return }
-            self?.handleTermination(result: result, database: database, fileURL: fileURL, exitPolicy: exitPolicy)
+            self?.handleTermination(
+                result: result,
+                database: database,
+                fileURL: fileURL,
+                exitPolicy: exitPolicy,
+                pluginFolder: pluginFolder
+            )
         }
     }
 
@@ -490,7 +522,16 @@ final class NativeDumpService: ObservableObject {
         resolved: NativeDumpResolvedTool,
         request: NativeDumpDescriptor.Request
     ) throws -> NativeDumpCommand {
-        var arguments = try tool.arguments(for: kind, request: request, resolved: resolved)
+        var request = request
+        let pluginFolder = try tool.clientPluginFolder(request, resolved)
+        request.clientPluginFolder = pluginFolder
+        var arguments: [String]
+        do {
+            arguments = try tool.arguments(for: kind, request: request, resolved: resolved)
+        } catch {
+            if let pluginFolder { try? FileManager.default.removeItem(at: pluginFolder.url) }
+            throw error
+        }
         var environment = minimalEnvironment()
         environment.merge(tool.environment(request)) { _, new in new }
         if tool.requiresUntranslatedMessages {
@@ -514,6 +555,7 @@ final class NativeDumpService: ObservableObject {
             delivery: delivery,
             redirectedFileURL: delivery == .standardOutput ? request.fileURL : nil,
             temporaryCredentialsFileURL: credentialsFileURL,
+            clientPluginFolder: pluginFolder,
             isRestore: kind == .restore,
             exitPolicy: tool.exitPolicy(for: kind)
         )
@@ -586,7 +628,8 @@ final class NativeDumpService: ObservableObject {
         result: NativeDumpRunResult,
         database: String,
         fileURL: URL,
-        exitPolicy: NativeDumpExitPolicy
+        exitPolicy: NativeDumpExitPolicy,
+        pluginFolder: NativeDumpDescriptor.ClientPluginFolder?
     ) {
         byteSizeTask?.cancel()
         byteSizeTask = nil
@@ -625,9 +668,10 @@ final class NativeDumpService: ObservableObject {
         }
 
         if kind == .backup { Self.removeDestination(fileURL) }
-        let summary = result.stderr.isEmpty
-            ? String(format: String(localized: "Process exited with code %d"), Int(result.exitCode))
-            : result.stderr
+        let summary = pluginFolder?.refusal(in: result.stderr)
+            ?? (result.stderr.isEmpty
+                ? String(format: String(localized: "Process exited with code %d"), Int(result.exitCode))
+                : result.stderr)
         setState(.failed(message: summary, targetMayBeModified: kind == .restore))
         Self.logger.error("\(self.toolName, privacy: .public) failed code=\(result.exitCode) db=\(database, privacy: .private(mask: .hash)) stderr=\(result.stderr)")
     }

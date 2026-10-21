@@ -217,6 +217,16 @@ enum NativeDumpRegistry {
                     environment: { request in
                         guard let password = request.password, !password.isEmpty else { return [:] }
                         return ["MYSQL_PWD": password]
+                    },
+                    serverOffersTLS: { request, resolved in
+                        guard MySQLClientArguments.needsServerGreeting(request.connection, flavor: resolved.flavor) else {
+                            return nil
+                        }
+                        return await MySQLServerGreeting.offersTLS(host: request.host, port: request.connection.port)
+                            ?? false
+                    },
+                    clientPluginFolder: { request, resolved in
+                        try mysqlPluginFolder(request, resolved)
                     }
                 )
             ),
@@ -245,6 +255,27 @@ enum NativeDumpRegistry {
         ["--", request.database] + request.scope.objects.map(\.name)
     }
 
+    private static func mysqlPluginFolder(
+        _ request: NativeDumpDescriptor.Request,
+        _ resolved: NativeDumpResolvedTool
+    ) throws -> NativeDumpDescriptor.ClientPluginFolder? {
+        guard MySQLClientArguments.hidesPlaintextPasswordPlugins(
+            request.connection,
+            flavor: resolved.flavor,
+            serverOffersTLS: request.serverOffersTLS
+        ) else { return nil }
+        let hidden = MariaDBClientPluginFolder.plaintextPasswordPlugins
+        let folder = try MariaDBClientPluginFolder.make(
+            hiding: hidden,
+            from: MariaDBClientPluginFolder.pluginDirectory(forTool: resolved.path)
+        )
+        return NativeDumpDescriptor.ClientPluginFolder(
+            url: folder,
+            refusalMarkers: hidden.map { "Plugin \($0) could not be loaded" },
+            refusalMessage: MySQLClientArguments.plaintextPasswordRefusal
+        )
+    }
+
     private static func mysqlConnectionFlags(
         _ request: NativeDumpDescriptor.Request,
         _ resolved: NativeDumpResolvedTool
@@ -261,11 +292,15 @@ enum NativeDumpRegistry {
             contentsOf: try MySQLClientArguments.tls(
                 request.connection.transportSSLConfiguration,
                 flavor: resolved.flavor,
-                toolPath: resolved.path
+                toolPath: resolved.path,
+                serverOffersTLS: request.serverOffersTLS
             )
         )
         if request.connection.usesIAMToken {
             flags.append(contentsOf: MySQLClientArguments.cleartextAuthentication(flavor: resolved.flavor))
+        }
+        if let folder = request.clientPluginFolder {
+            flags.append(contentsOf: MySQLClientArguments.pluginDirectory(folder.url))
         }
         return flags
     }

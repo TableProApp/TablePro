@@ -55,7 +55,7 @@ SECRET="probe-secret-token"
 check() {
     local label=$1 app=$2 expect=$3 server_args=$4 host=$5
     shift 5
-    python3 -I "$PROBE/fake-mysql-server.py" $server_args --cleartext --secret "$SECRET" > "$WORK/server.log" 2>&1 &
+    python3 -I "$PROBE/fake-mysql-server.py" $server_args --auth cleartext --secret "$SECRET" > "$WORK/server.log" 2>&1 &
     local server=$!
     local port=""
     for _ in $(seq 1 50); do

@@ -77,6 +77,12 @@ struct NativeDumpDescriptor: Sendable {
         /// flags that server needs. `mysqldump` 8.0 reads a table no MariaDB server has.
         let serverVersion: String?
 
+        // Whether the server's greeting offered TLS, for a tool whose SSL options depend on it. Nil when not read.
+        var serverOffersTLS: Bool?
+
+        // Set by `NativeDumpService.buildCommand` before the arguments are built.
+        var clientPluginFolder: ClientPluginFolder?
+
         init(
             connection: DatabaseConnection,
             database: String,
@@ -85,7 +91,8 @@ struct NativeDumpDescriptor: Sendable {
             scope: NativeDumpScope = .wholeDatabase,
             currentCatalog: String? = nil,
             localFilePath: String? = nil,
-            serverVersion: String? = nil
+            serverVersion: String? = nil,
+            serverOffersTLS: Bool? = nil
         ) {
             self.connection = connection
             self.database = database
@@ -95,6 +102,7 @@ struct NativeDumpDescriptor: Sendable {
             self.currentCatalog = currentCatalog
             self.localFilePath = localFilePath
             self.serverVersion = serverVersion
+            self.serverOffersTLS = serverOffersTLS
         }
 
         var host: String {
@@ -105,6 +113,18 @@ struct NativeDumpDescriptor: Sendable {
     internal struct ConfigurationEntry: Sendable, Equatable {
         let key: String
         let value: String
+    }
+
+    // A private folder of the tool's client plugins with some left out, removed once the process exits.
+    struct ClientPluginFolder: Sendable, Equatable {
+        let url: URL
+        // What the tool prints when the server asked for a hidden plugin, and what the user reads instead.
+        let refusalMarkers: [String]
+        let refusalMessage: String
+
+        func refusal(in stderr: String) -> String? {
+            refusalMarkers.contains { stderr.contains($0) } ? refusalMessage : nil
+        }
     }
 
     /// A tool on the user's Mac that the app spawns.
@@ -148,6 +168,11 @@ struct NativeDumpDescriptor: Sendable {
         let restoreArguments: @Sendable (Request, NativeDumpResolvedTool) throws -> [String]
         let environment: @Sendable (Request) -> [String: String]
 
+        // Asked before the arguments are built; the answer lands in `Request.serverOffersTLS`.
+        let serverOffersTLS: @Sendable (Request, NativeDumpResolvedTool) async -> Bool?
+
+        let clientPluginFolder: @Sendable (Request, NativeDumpResolvedTool) throws -> ClientPluginFolder?
+
         init(
             backupBinaries: [String],
             restoreBinaries: [String],
@@ -162,7 +187,9 @@ struct NativeDumpDescriptor: Sendable {
             backupArguments: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> [String],
             restoreArguments: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> [String],
             environment: @escaping @Sendable (Request) -> [String: String] = { _ in [:] },
-            configurationFileEntries: @escaping @Sendable (Request) -> [ConfigurationEntry] = { _ in [] }
+            configurationFileEntries: @escaping @Sendable (Request) -> [ConfigurationEntry] = { _ in [] },
+            serverOffersTLS: @escaping @Sendable (Request, NativeDumpResolvedTool) async -> Bool? = { _, _ in nil },
+            clientPluginFolder: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> ClientPluginFolder? = { _, _ in nil }
         ) {
             self.backupBinaries = backupBinaries
             self.restoreBinaries = restoreBinaries
@@ -178,6 +205,8 @@ struct NativeDumpDescriptor: Sendable {
             self.restoreArguments = restoreArguments
             self.environment = environment
             self.configurationFileEntries = configurationFileEntries
+            self.serverOffersTLS = serverOffersTLS
+            self.clientPluginFolder = clientPluginFolder
         }
 
         func binaries(for kind: NativeDumpKind) -> [String] {
