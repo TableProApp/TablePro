@@ -5,7 +5,7 @@ use relm4::gtk;
 use relm4::gtk::prelude::*;
 
 use super::StatementOutcome;
-use super::outcomes::{build_result_set_widget, result_view_key, stream_page_label, stream_progress_text};
+use super::outcomes::{build_stream_page_widget, result_view_key, stream_page_label, stream_progress_text};
 use super::stream_pages::StreamedResult;
 use crate::ui::grid::GridMsg;
 use crate::ui::grid::local_filter::LocalResultSettingsStore;
@@ -77,7 +77,7 @@ pub(super) fn update_live_stream(
         if shown.contains(&page_index) {
             continue;
         }
-        let widget = build_result_set_widget(
+        let widget = build_stream_page_widget(
             page,
             target.grid_sender,
             target.connection_id,
@@ -202,5 +202,77 @@ mod tests {
             stream_progress_text(&result),
             "Received 7 rows · 10 pages\nRetained rows 5-7. Earlier rows are no longer available."
         );
+    }
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn hidden_stream_pages_build_their_grid_only_when_selected() {
+        relm4::adw::init().unwrap();
+        let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let (outcome, _) = streamed(&[0, 1], vec![page(&[1, 2]), page(&[3, 4])], 4);
+        let (sender, _receiver) = relm4::channel::<GridMsg>();
+        super::super::outcomes::render_outcomes(
+            &holder,
+            &[outcome],
+            &sender,
+            None,
+            Arc::new(crate::services::database_service::DatabaseService::new_isolated()),
+            LocalResultSettingsStore::default(),
+        );
+        let root = holder.clone().upcast::<gtk::Widget>();
+        let pages = named::<gtk::Notebook>(&root, LIVE_PAGES).unwrap();
+        let first = pages.nth_page(Some(0)).unwrap();
+        assert!(named::<gtk::ColumnView>(&first, "GtkColumnView").is_none());
+        let window = gtk::Window::builder()
+            .default_width(900)
+            .default_height(600)
+            .child(&holder)
+            .build();
+        window.present();
+        let context = gtk::glib::MainContext::default();
+        while context.iteration(false) {}
+        assert!(named::<gtk::ColumnView>(&first, "GtkColumnView").is_none());
+        pages.set_current_page(Some(0));
+        while context.iteration(false) {}
+        let grid = named::<gtk::ColumnView>(&first, "GtkColumnView").unwrap();
+        pages.set_current_page(Some(1));
+        pages.set_current_page(Some(0));
+        while context.iteration(false) {}
+        assert_eq!(named::<gtk::ColumnView>(&first, "GtkColumnView"), Some(grid));
+        window.destroy();
+    }
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn a_terminal_status_keeps_retained_grids_unbuilt_until_selected() {
+        relm4::adw::init().unwrap();
+        let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let (mut outcome, mut result) = streamed(&[0], vec![page(&[1, 2])], 2);
+        result.terminal = StreamTerminal::Cancelled;
+        outcome.kind = StatementOutcomeKind::Streamed(Box::new(result));
+        let (sender, _receiver) = relm4::channel::<GridMsg>();
+        super::super::outcomes::render_outcomes(
+            &holder,
+            &[outcome],
+            &sender,
+            None,
+            Arc::new(crate::services::database_service::DatabaseService::new_isolated()),
+            LocalResultSettingsStore::default(),
+        );
+        let root = holder.clone().upcast::<gtk::Widget>();
+        let pages = named::<gtk::Notebook>(&root, "GtkNotebook").unwrap();
+        let data = pages.nth_page(Some(0)).unwrap();
+        let window = gtk::Window::builder()
+            .default_width(900)
+            .default_height(600)
+            .child(&holder)
+            .build();
+        window.present();
+        let context = gtk::glib::MainContext::default();
+        while context.iteration(false) {}
+        assert_eq!(pages.current_page(), Some(1));
+        assert!(named::<gtk::ColumnView>(&data, "GtkColumnView").is_none());
+        pages.set_current_page(Some(0));
+        while context.iteration(false) {}
+        assert!(named::<gtk::ColumnView>(&data, "GtkColumnView").is_some());
+        window.destroy();
     }
 }

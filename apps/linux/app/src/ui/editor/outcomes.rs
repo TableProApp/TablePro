@@ -564,7 +564,7 @@ fn build_streamed_result_widget(
     let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let page_switcher = gtk::Notebook::new();
     for (position, (page_index, page)) in result.page_indices.iter().copied().zip(&result.pages).enumerate() {
-        let widget = build_result_set_widget(
+        let widget = build_stream_page_widget(
             page,
             grid_sender,
             connection_id,
@@ -728,6 +728,36 @@ fn error_page(idx: usize, message: &str) -> adw::StatusPage {
         .child(&copy)
         .vexpand(true)
         .build()
+}
+
+pub(super) fn build_stream_page_widget(
+    result: &std::sync::Arc<tablepro_core::QueryResult>,
+    grid_sender: &relm4::Sender<GridMsg>,
+    connection_id: Option<uuid::Uuid>,
+    database: std::sync::Arc<crate::services::database_service::DatabaseService>,
+    settings_store: LocalResultSettingsStore,
+    settings_key: ResultViewKey,
+) -> gtk::Widget {
+    let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    holder.set_vexpand(true);
+    let result = result.clone();
+    let grid_sender = grid_sender.clone();
+    let build = std::cell::RefCell::new(Some(move || {
+        build_result_set_widget(
+            &result,
+            &grid_sender,
+            connection_id,
+            database,
+            settings_store,
+            settings_key,
+        )
+    }));
+    holder.connect_map(move |holder| {
+        if let Some(build) = build.borrow_mut().take() {
+            holder.append(&build());
+        }
+    });
+    holder.upcast()
 }
 
 pub(super) fn build_result_set_widget(

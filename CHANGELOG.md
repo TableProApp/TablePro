@@ -164,6 +164,8 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 
 ### Fixed
 
+- Streamed queries build a retained page’s grid only when it is first displayed, avoiding work for hidden pages.
+
 - Large SQL results use Previous/Next controls with row ranges and state when earlier rows are no longer retained.
 
 - Failed MCP token guesses can no longer lock out a valid token: the shared failed-attempt limit applies only after a token fails verification.
