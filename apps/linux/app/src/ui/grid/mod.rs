@@ -5,6 +5,8 @@ mod column;
 mod column_jump;
 mod column_order;
 mod column_visibility;
+#[cfg(test)]
+mod column_width_tests;
 mod context_menu;
 mod display;
 mod editing;

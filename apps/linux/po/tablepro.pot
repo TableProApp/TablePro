@@ -3277,18 +3277,18 @@ msgstr ""
 msgid "(empty)"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/column.rs:362
-#: apps/linux/app/src/ui/grid/column.rs:505
+#: apps/linux/app/src/ui/grid/column.rs:363
+#: apps/linux/app/src/ui/grid/column.rs:506
 msgid "Pending deletion"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/column.rs:365
-#: apps/linux/app/src/ui/grid/column.rs:501
+#: apps/linux/app/src/ui/grid/column.rs:366
+#: apps/linux/app/src/ui/grid/column.rs:502
 msgid "New row"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/column.rs:369
-#: apps/linux/app/src/ui/grid/column.rs:497
+#: apps/linux/app/src/ui/grid/column.rs:370
+#: apps/linux/app/src/ui/grid/column.rs:498
 msgid "Modified"
 msgstr ""
 

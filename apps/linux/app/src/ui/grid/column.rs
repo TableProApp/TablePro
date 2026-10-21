@@ -310,15 +310,15 @@ pub(super) fn build_column(
             .as_ref()
             .and_then(|store| store.load(id, &table_for_persist, &info.name))
         {
+            column.set_expand(false);
             column.set_fixed_width(saved);
         } else if let Some(min) = default_min_width {
             column.set_fixed_width(min);
         }
-        let column_for_save = column.clone();
         let column_name = info.name.clone();
         let column_widths = column_widths.clone();
-        column.connect_fixed_width_notify(move |_| {
-            let width = column_for_save.fixed_width();
+        column.connect_fixed_width_notify(move |column| {
+            let width = column.fixed_width();
             if width > 0
                 && let Some(store) = &column_widths
                 && let Err(error) = store.save(id, &table_for_persist, &column_name, width)
@@ -329,6 +329,7 @@ pub(super) fn build_column(
     } else if let Some(min) = default_min_width {
         column.set_fixed_width(min);
     }
+    column.connect_fixed_width_notify(|column| column.set_expand(column.fixed_width() < 0));
     column
 }
 

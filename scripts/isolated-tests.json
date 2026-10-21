@@ -576,6 +576,21 @@
       "tablepro-app",
       "--lib",
       "ui::editor::dispatch_tests::editor_dispatch_resumes_after_success_cancel_and_timeout"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::column_width_tests::saved_grid_width_stays_fixed_when_the_window_grows"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::column_width_tests::resized_grid_width_stays_fixed_when_the_window_grows"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::column_width_tests::unsaved_result_grid_width_stays_fixed_when_the_window_grows"
     ]
   ],
   "keyring": [

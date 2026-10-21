@@ -120,6 +120,8 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 - PostgreSQL databases can be backed up to a file and restored from one with the installed client tools, through SSH tunnels and TLS; restores need approval and both are audited.
 
 ### Changed
+
+- Manually resized and restored grid columns keep their width when the window grows; unsized columns continue to fill the available space.
 - Imported connection URLs preserve supported TLS settings and reject options they cannot preserve.
 - Ending an aborted PostgreSQL editor transaction reports that it rolled back instead of saying its changes were committed.
 - PostgreSQL session audit records distinguish committed transactions recovered through savepoints from aborted transactions that roll back.
