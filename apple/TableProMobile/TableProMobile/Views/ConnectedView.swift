@@ -9,9 +9,11 @@ struct ConnectedView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(SceneMenuState.self) private var menuState: SceneMenuState?
     let connection: DatabaseConnection
 
     @State private var coordinator: ConnectionCoordinator?
+    @State private var menuOwner = UUID()
     @State private var hapticSuccess = false
     @State private var hapticError = false
     @State private var showDeletedAlert = false
@@ -89,6 +91,9 @@ struct ConnectedView: View {
             if phase == .active {
                 Task { await coordinator?.reconnectIfNeeded() }
             }
+        }
+        .onChange(of: appState.tunnelDeaths[connection.id]) {
+            Task { await coordinator?.reconnectIfNeeded() }
         }
         .sensoryFeedback(.success, trigger: hapticSuccess)
         .sensoryFeedback(.error, trigger: hapticError)
@@ -188,7 +193,7 @@ struct ConnectedView: View {
             }
             Tab("Query", systemImage: "terminal", value: .query) {
                 NavigationStack {
-                    tabChrome(coordinator) { QueryEditorView() }
+                    tabChrome(coordinator) { QueryEditorView(connectionId: connection.id) }
                         .transactionBar(for: coordinator)
                 }
             }
@@ -210,26 +215,27 @@ struct ConnectedView: View {
         .onChange(of: appState.sessionTransactions.rollBackCount(for: connection.id)) {
             Task { await coordinator.reloadAfterRollBack() }
         }
+        .onChange(of: appState.catalogChanges.generation(for: connection.id)) {
+            Task { await coordinator.reloadChangedCatalog() }
+        }
+        // A reload that would have read a busy session waits for it.
+        .onChange(of: appState.sessionTransactions.isBusy(connection.id)) { _, busy in
+            guard !busy else { return }
+            Task { await coordinator.reloadChangedCatalog() }
+        }
+        .onChange(of: appState.sessionRevision(for: connection.id)) {
+            Task { await coordinator.followLiveSession() }
+        }
+        .onChange(of: presenter.isHeldByEditor, initial: true) { _, held in
+            coordinator.isHeldByEditor = held
+        }
+        .onDisappear { coordinator.isHeldByEditor = false }
         // tabChrome sits inside each stack; this also reaches pushed row screens and their sheets, which track writes.
         .environment(coordinator)
-        .background {
-            Button("") { coordinator.selectedTab = .tables }
-                .keyboardShortcut("1", modifiers: .command)
-                .accessibilityLabel(Text("Tables"))
-                .hidden()
-            Button("") { coordinator.selectedTab = .query }
-                .keyboardShortcut("2", modifiers: .command)
-                .accessibilityLabel(Text("Query"))
-                .hidden()
-            Button("") { coordinator.selectedTab = .history }
-                .keyboardShortcut("3", modifiers: .command)
-                .accessibilityLabel(Text("History"))
-                .hidden()
-            Button("") { coordinator.selectedTab = .info }
-                .keyboardShortcut("4", modifiers: .command)
-                .accessibilityLabel(Text("Info"))
-                .hidden()
+        .onAppear {
+            menuState?.publishTabs(ConnectedTabActions { coordinator.selectedTab = $0 }, from: menuOwner)
         }
+        .onDisappear { menuState?.withdrawTabs(menuOwner) }
         .overlay(alignment: .top) {
             if coordinator.isReconnecting {
                 HStack(spacing: 6) {
@@ -339,7 +345,7 @@ struct ConnectedView: View {
                     Label(coordinator.activeDatabase, systemImage: "cylinder.split.1x2")
                         .font(.subheadline)
                 }
-                .disabled(coordinator.isSwitching || presenter.isHeldByEditor)
+                .disabled(coordinator.isSwitching || presenter.isHeldByEditor || coordinator.anotherWindowHoldsEditor)
             }
         }
         if coordinator.supportsSchemas && coordinator.schemas.count > 1 {

@@ -11,6 +11,7 @@ import SwiftUI
 import TableProAutocomplete
 import TableProPluginKit
 import TableProSSHConfig
+import TableProSSHTransport
 
 // MARK: - External Access
 
@@ -190,6 +191,8 @@ struct DatabaseConnection: Identifiable, Hashable {
     var isSample: Bool = false
     var isFavorite: Bool = false
     var passwordSource: PasswordSource?
+    // What a Mac last dialed for this tunnel, for devices without its ~/.ssh/config. Never dialed here.
+    var sshRoute: PublishedSSHRoute?
 
     var mongoAuthSource: String? {
         get { additionalFields["mongoAuthSource"]?.nilIfEmpty }
@@ -480,6 +483,8 @@ internal extension DatabaseConnection {
         adopted.cloudSQLProxyMode = local.cloudSQLProxyMode
         adopted.socksProxyMode = local.socksProxyMode
         adopted.tunnelCommandMode = local.tunnelCommandMode
+        // The Connection record has no route field yet, so the route this Mac dialed stays on it.
+        adopted.sshRoute = local.sshRoute
         return adopted
     }
 }
@@ -495,6 +500,7 @@ extension DatabaseConnection: Codable {
         case safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
         case redisDatabase, startupCommands, sortOrder, localOnly, isSample, isFavorite
         case passwordSource
+        case sshRoute
     }
 
     init(from decoder: Decoder) throws {
@@ -518,6 +524,7 @@ extension DatabaseConnection: Codable {
         }
         groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
         sshProfileId = try container.decodeIfPresent(UUID.self, forKey: .sshProfileId)
+        sshRoute = try container.decodeIfPresent(PublishedSSHRoute.self, forKey: .sshRoute)
         credentialMode = try container.decodeIfPresent(CredentialMode.self, forKey: .credentialMode) ?? .inline
         preferredSafeModeLevel = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) ?? .silent
         aiPolicy = try container.decodeIfPresent(AIConnectionPolicy.self, forKey: .aiPolicy)
@@ -571,6 +578,7 @@ extension DatabaseConnection: Codable {
         }
         try container.encodeIfPresent(groupId, forKey: .groupId)
         try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
+        try container.encodeIfPresent(sshRoute, forKey: .sshRoute)
         try container.encode(credentialMode, forKey: .credentialMode)
         try container.encode(sshTunnelMode, forKey: .sshTunnelMode)
         if case .inline = cloudflareTunnelMode {

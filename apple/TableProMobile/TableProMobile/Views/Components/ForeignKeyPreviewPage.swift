@@ -5,6 +5,7 @@ import TableProModels
 struct ForeignKeyPreviewPage: View {
     let currentSchema: String?
     let allowsOpen: Bool
+    let refreshTransaction: () async -> Void
     let onOpen: ((ForeignKeyReference) -> Void)?
     let close: () -> Void
 
@@ -16,11 +17,13 @@ struct ForeignKeyPreviewPage: View {
         databaseType: DatabaseType,
         currentSchema: String?,
         allowsOpen: Bool,
+        refreshTransaction: @escaping () async -> Void,
         onOpen: ((ForeignKeyReference) -> Void)?,
         close: @escaping () -> Void
     ) {
         self.currentSchema = currentSchema
         self.allowsOpen = allowsOpen
+        self.refreshTransaction = refreshTransaction
         self.onOpen = onOpen
         self.close = close
         _model = State(initialValue: ForeignKeyPreviewModel(
@@ -37,7 +40,11 @@ struct ForeignKeyPreviewPage: View {
             .tableTitle(reference.table, schema: reference.displaySchema(current: currentSchema))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
-            .task { await model.load() }
+            .task {
+                await model.load()
+                // With autocommit off, a MySQL read opens a transaction.
+                await refreshTransaction()
+            }
     }
 
     @ViewBuilder

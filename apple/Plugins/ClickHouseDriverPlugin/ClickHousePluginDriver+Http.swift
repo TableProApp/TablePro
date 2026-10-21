@@ -7,7 +7,7 @@ import Foundation
 import os
 import TableProPluginKit
 
-extension ClickHousePluginDriver {
+nonisolated extension ClickHousePluginDriver {
     // MARK: - Private HTTP Layer
 
     var executionTimeLimit: Int? {
@@ -56,7 +56,16 @@ extension ClickHousePluginDriver {
             shape: .buffered(parameters: params)
         )
         request.timeoutInterval = requestTimeout ?? _queryTimeout.requestTimeoutInterval
-        return try await perform(request: request, session: session)
+        return try await killingOnCancel(queryId: queryId) {
+            try await perform(request: request, session: session)
+        }
+    }
+
+    // Two callers can share this driver, so a cancelled statement stops its own query, never the one sent last.
+    func killingOnCancel<T>(queryId: String?, _ operation: () async throws -> T) async throws -> T {
+        try await withTaskCancellationHandler(operation: operation) {
+            if let queryId { self.killQuery(queryId: queryId) }
+        }
     }
 
     static func executionTimeLimitItems(_ seconds: Int?) -> [URLQueryItem] {
@@ -66,8 +75,6 @@ extension ClickHousePluginDriver {
 
     private func perform(request: URLRequest, session: URLSession) async throws -> CHQueryResult {
         let (data, response) = try await send(request: request, session: session)
-
-        lock.withLock { currentTask = nil }
 
         let httpResponse = response as? HTTPURLResponse
         if let httpResponse, Self.isFailure(httpResponse) {
@@ -93,9 +100,15 @@ extension ClickHousePluginDriver {
     }
 
     private func send(request: URLRequest, session: URLSession) async throws -> (Data, URLResponse) {
-        try await withTaskCancellationHandler {
+        let ownTask = OSAllocatedUnfairLock<URLSessionDataTask?>(initialState: nil)
+        return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
                 let task = session.dataTask(with: request) { data, response, error in
+                    if let finished = ownTask.withLock({ $0 }) {
+                        self.lock.withLock {
+                            if self.currentTask === finished { self.currentTask = nil }
+                        }
+                    }
                     if let error {
                         continuation.resume(throwing: error)
                         return
@@ -107,17 +120,14 @@ extension ClickHousePluginDriver {
                     continuation.resume(returning: (data, response))
                 }
 
-                self.lock.lock()
-                self.currentTask = task
-                self.lock.unlock()
-
+                ownTask.withLock { $0 = task }
+                self.lock.withLock { self.currentTask = task }
                 task.resume()
+                // A cancel that came before the task existed found nothing to stop.
+                if Task.isCancelled { task.cancel() }
             }
         } onCancel: {
-            self.lock.lock()
-            self.currentTask?.cancel()
-            self.currentTask = nil
-            self.lock.unlock()
+            ownTask.withLock { $0 }?.cancel()
         }
     }
 
@@ -245,7 +255,7 @@ extension ClickHousePluginDriver {
 }
 
 /// How the server hands a result back.
-enum ClickHouseResponseShape: Equatable {
+nonisolated enum ClickHouseResponseShape: Equatable {
     /// The server holds the whole result until the query ends, so a failure is an HTTP status and
     /// `X-ClickHouse-Summary` carries the totals.
     case buffered(parameters: [String: String?]?)

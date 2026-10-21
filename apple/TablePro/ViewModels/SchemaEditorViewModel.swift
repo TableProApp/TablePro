@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Drives the Create Schema and Edit Schema sheets: what the schema is now, what the user wants it
 /// to be, and the statements between the two.

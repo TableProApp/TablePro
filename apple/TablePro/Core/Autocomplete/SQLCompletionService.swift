@@ -61,31 +61,28 @@ final class SQLCompletionService: QueryCompletionService {
     }
 
     func completions(in text: NSString, at offset: Int, isManualTrigger: Bool) async -> QueryCompletionSession? {
-        guard !SQLCompletionTriggerPolicy.suppressesAfterStatementBreak(in: text, at: offset) else { return nil }
-
-        let window = SQLCompletionWindow.cut(text, around: offset)
-
-        guard let context = await engine.getCompletions(
-            text: window.text,
-            cursorPosition: offset - window.start,
-            keywordCase: keywordCase,
-            identifierCase: identifierCase
-        ) else {
+        guard !SQLCompletionTriggerPolicy.suppressesAfterStatementBreak(in: text, at: offset),
+              let window = await SQLCompletionWindow.cut(text as String, around: offset, grammar: grammar),
+              let result = await engine.getCompletions(
+                  text: window.text,
+                  cursorPosition: offset - window.start,
+                  keywordCase: keywordCase,
+                  identifierCase: identifierCase
+              ) else {
             return nil
         }
-        guard !SQLCompletionTriggerPolicy.suppressesEmptyPrefix(
-            context.sqlContext,
-            isManualTrigger: isManualTrigger
-        ) else { return nil }
 
-        lastContext = context.sqlContext
+        let context = result.sqlContext.offset(by: window.start)
+        guard !SQLCompletionTriggerPolicy.suppressesEmptyPrefix(context, isManualTrigger: isManualTrigger) else {
+            return nil
+        }
+
+        lastContext = context
         return QueryCompletionSession(
-            items: context.items,
-            candidates: context.candidates,
-            replacementRange: NSRange(
-                location: context.replacementRange.location + window.start,
-                length: context.replacementRange.length
-            )
+            items: result.items,
+            candidates: result.candidates,
+            replacementRange: NSRange(context.prefixRange),
+            quotedName: context.quotedName
         )
     }
 }

@@ -243,6 +243,44 @@ struct SessionTransactionMonitorTests {
         #expect(!monitor.isBusy(id))
     }
 
+    @Test("A page read keeps the connection busy, never counts as statements, and stales a commit dialog")
+    func pageReadIsBusyButNotStatements() async throws {
+        let driver = attach(.explicitTransaction)
+        await monitor.track(id) {}
+        let token = try #require(monitor.token(for: id, on: driver))
+        let gate = TestGate()
+
+        let read = Task { await monitor.track(id, reading: true) { await gate.enter() } }
+        await gate.waitUntilEntered()
+        let busyDuring = monitor.isBusy(id)
+        let statementsDuring = monitor.isRunningStatements(id)
+        await gate.open()
+        await read.value
+
+        #expect(busyDuring)
+        #expect(!statementsDuring)
+        #expect(!monitor.isBusy(id))
+        await #expect(throws: TransactionActionError.transactionChanged) {
+            try await monitor.commit(id, as: token)
+        }
+        #expect(!driver.didCommitTransaction)
+    }
+
+    @Test("A run counts as statements while it runs")
+    func runCountsAsStatements() async {
+        attach()
+        let gate = TestGate()
+
+        let work = Task { await monitor.track(id) { await gate.enter() } }
+        await gate.waitUntilEntered()
+        let during = monitor.isRunningStatements(id)
+        await gate.open()
+        await work.value
+
+        #expect(during)
+        #expect(!monitor.isRunningStatements(id))
+    }
+
     @Test("A real SQLite session shows BEGIN as open and Commit clears it")
     func sqliteBeginThenCommit() async throws {
         let driver = SQLiteDriver(source: .inMemory)

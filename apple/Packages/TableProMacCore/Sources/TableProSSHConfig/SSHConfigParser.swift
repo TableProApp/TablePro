@@ -90,7 +90,19 @@ public enum SSHConfigParser {
     }
 
     static func parseProxyJump(_ value: String) -> [SSHJumpHost] {
-        splitProxyJumpHops(value).compactMap(parseProxyJumpHop)
+        guard !isNone(value) else { return [] }
+        return splitProxyJumpHops(value).compactMap(parseProxyJumpHop)
+    }
+
+    // ssh_config(5): `none` turns ProxyJump and IdentityAgent off rather than naming a host or a socket.
+    private static let sshURIScheme = "ssh://"
+
+    static func isSSHURI(_ hop: String) -> Bool {
+        hop.lowercased().hasPrefix(sshURIScheme)
+    }
+
+    static func isNone(_ value: String) -> Bool {
+        value.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("none") == .orderedSame
     }
 
     static func parseProxyJumpHop(_ hop: String) -> SSHJumpHost? {
@@ -98,11 +110,18 @@ public enum SSHConfigParser {
 
         var jumpHost = SSHJumpHost()
         var remaining = hop
+        let isURI = isSSHURI(remaining)
+        if isURI {
+            remaining = String(remaining.dropFirst(sshURIScheme.count))
+            if remaining.hasSuffix("/") { remaining.removeLast() }
+            guard !remaining.isEmpty else { return nil }
+        }
 
         // The LAST `@` separates the user: `%r` expands to the remote username, and a
         // UPN-style one carries its own `@`, which splitting on the first left inside the host.
         if let atIndex = remaining.lastIndex(of: "@") {
-            jumpHost.username = String(remaining[remaining.startIndex..<atIndex])
+            let username = String(remaining[remaining.startIndex..<atIndex])
+            jumpHost.username = isURI ? (username.removingPercentEncoding ?? username) : username
             remaining = String(remaining[remaining.index(after: atIndex)...])
         }
 
@@ -321,6 +340,8 @@ public enum SSHConfigParser {
             return .identityAgent(value)
         case "proxyjump":
             return .proxyJump(value)
+        case "tag":
+            return .tag(value)
         case "identitiesonly":
             return .identitiesOnly(parseBool(value))
         case "addkeystoagent":
@@ -389,9 +410,19 @@ public enum SSHConfigParser {
                 test = takeArgument(&tokens).map { .localUser(patterns: matchPatterns($0)) }
             case "exec":
                 test = takeArgument(&tokens).map { .exec(command: $0) }
+            case "localnetwork":
+                test = takeArgument(&tokens).map { .localNetwork(networks: $0) }
+            case "tagged":
+                test = takeArgument(&tokens).map { .tagged(patterns: matchPatterns($0)) }
+            case "command":
+                test = takeArgument(&tokens).map { .command(patterns: matchPatterns($0)) }
+            case "sessiontype":
+                test = takeArgument(&tokens).map { .sessionType(patterns: matchPatterns($0)) }
+            case "version":
+                test = takeArgument(&tokens).map { .version(patterns: matchPatterns($0)) }
             default:
                 if !tokens.isEmpty { tokens.removeFirst() }
-                test = nil
+                test = .unsupported(keyword: keyword)
             }
 
             if let test {

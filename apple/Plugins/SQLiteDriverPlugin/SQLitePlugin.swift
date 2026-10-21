@@ -7,6 +7,7 @@ import CSQLite
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLVocabulary
 
 final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "SQLite Driver"
@@ -83,36 +84,35 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
             "REPLACE", "ABORT", "FAIL", "IGNORE", "ROLLBACK",
             "TEMP", "TEMPORARY", "VACUUM", "EXPLAIN", "QUERY", "PLAN"
         ],
-        functions: [
-            "COUNT", "SUM", "AVG", "MAX", "MIN", "GROUP_CONCAT", "TOTAL",
-            "LENGTH", "SUBSTR", "SUBSTRING", "LOWER", "UPPER", "TRIM", "LTRIM", "RTRIM",
-            "REPLACE", "INSTR", "PRINTF",
-            "DATE", "TIME", "DATETIME", "JULIANDAY", "STRFTIME",
-            "ABS", "ROUND", "RANDOM",
-            "CAST", "TYPEOF",
-            "COALESCE", "IFNULL", "NULLIF", "HEX", "QUOTE"
-        ],
-        dataTypes: [
-            "INTEGER", "REAL", "TEXT", "BLOB", "NUMERIC",
-            "INT", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT",
-            "UNSIGNED", "BIG", "INT2", "INT8",
-            "CHARACTER", "VARCHAR", "VARYING", "NCHAR", "NATIVE",
-            "NVARCHAR", "CLOB",
-            "DOUBLE", "PRECISION", "FLOAT",
-            "DECIMAL", "BOOLEAN", "DATE", "DATETIME"
-        ],
-        tableOptions: [
-            "WITHOUT ROWID", "STRICT"
-        ],
+        functions: SQLEngineVocabulary.sqlite.functions,
+        dataTypes: SQLEngineVocabulary.sqlite.dataTypes,
+        tableOptions: SQLEngineVocabulary.sqlite.tableOptions,
         regexSyntax: .unsupported,
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
         paginationStyle: .limit,
-        caseSensitivityStyle: .collationDefined
+        caseSensitivityStyle: .collationDefined,
+        operators: SQLEngineVocabulary.sqlite.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
+        textCastTypeName: nil,
+        functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlite.functionNamesAreCaseInsensitive
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         SQLitePluginDriver(config: config)
+    }
+}
+
+private extension SQLOperatorDescriptor {
+    init?(vocabulary entry: SQLEngineVocabulary.Operator) {
+        guard let category = Category(rawValue: entry.category),
+              let placement = Placement(rawValue: entry.placement) else { return nil }
+        self.init(
+            symbol: entry.symbol,
+            summary: entry.summary,
+            category: category,
+            placement: placement,
+            appliesToTypes: entry.appliesToTypes
+        )
     }
 }
 
@@ -323,7 +323,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let query = """
             SELECT name, type FROM sqlite_master
             WHERE type IN ('table', 'view')
-            AND name NOT LIKE 'sqlite_%'
+            AND name NOT GLOB 'sqlite_*'
             ORDER BY name
         """
         let result = try await execute(query: query)
@@ -403,7 +403,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk,
                    p.hidden, m.sql
             FROM sqlite_master m, pragma_table_xinfo(m.name) p
-            WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'
+            WHERE m.type = 'table' AND m.name NOT GLOB 'sqlite_*'
             ORDER BY m.name, p.cid
             """
         let result = try await execute(query: query)
@@ -459,51 +459,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        /// Selected in `PRAGMA foreign_key_list`'s own column order, behind the table name, so the
-        /// rows can be handed to the same grouping the single-table read uses.
-        let query = """
-            SELECT m.name AS table_name, p.id, p.seq, p."table", p."from", p."to",
-                   p.on_update, p.on_delete
-            FROM sqlite_master m, pragma_foreign_key_list(m.name) p
-            WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'
-            ORDER BY m.name, p.id, p.seq
-            """
-        let result = try await execute(query: query)
-
-        var pragmaRowsByTable: [String: [[PluginCellValue]]] = [:]
-        for row in result.rows {
-            guard row.count >= 8, let tableName = row[0].asText else { continue }
-            pragmaRowsByTable[tableName, default: []].append(Array(row.dropFirst()))
-        }
-        guard !pragmaRowsByTable.isEmpty else { return [:] }
-
-        let createStatements = try await createTableStatements()
-        /// One query for every parent the whole database references, rather than one per table.
-        /// Omitting it made a shorthand `REFERENCES parent` resolve to the child's own column name.
-        let primaryKeysByTable = try await primaryKeys(
-            ofTablesReferencedIn: SQLiteForeignKeyParents.referencedTables(in: pragmaRowsByTable)
-        )
-        return pragmaRowsByTable.reduce(into: [:]) { foreignKeys, entry in
-            foreignKeys[entry.key] = SQLiteForeignKeyGrouping.infos(
-                table: entry.key,
-                pragmaRows: entry.value,
-                createTableSQL: createStatements[entry.key],
-                primaryKeysByTable: primaryKeysByTable
-            )
-        }
-    }
-
-    /// The stored `CREATE TABLE` text for every ordinary table, keyed by name. Read in one query so
-    /// recovering constraint names costs one round trip rather than one per table.
-    private func createTableStatements() async throws -> [String: String] {
-        let rows = try await execute(query: """
-            SELECT name, sql FROM sqlite_master
-            WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL
-            """).rows
-        return rows.reduce(into: [:]) { statements, row in
-            guard let name = row[safe: 0]?.asText, let sql = row[safe: 1]?.asText else { return }
-            statements[name] = sql
-        }
+        let result = try await execute(query: SQLiteForeignKeyGrouping.schemaForeignKeysQuery())
+        return SQLiteForeignKeyGrouping.foreignKeysByTable(fromRows: result.rows)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
@@ -512,45 +469,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        let safeTable = escapeStringLiteral(table)
-        let pragmaRows = try await execute(query: "PRAGMA foreign_key_list('\(safeTable)')").rows
-        guard !pragmaRows.isEmpty else { return [] }
-
-        let createTableSQL = try await execute(query: """
-            SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '\(safeTable)'
-            """).rows.first?[safe: 0]?.asText
-
-        return SQLiteForeignKeyGrouping.infos(
-            table: table,
-            pragmaRows: pragmaRows,
-            createTableSQL: createTableSQL,
-            primaryKeysByTable: try await primaryKeys(
-                ofTablesReferencedIn: SQLiteForeignKeyParents.referencedTables(in: pragmaRows)
-            )
-        )
-    }
-
-    /// The primary key columns of each named table, in key order, keyed by lower-cased table name.
-    ///
-    /// A foreign key written `REFERENCES parent` with no column list points at the parent's primary
-    /// key, and `PRAGMA foreign_key_list` reports null rather than resolving it, so the parent has
-    /// to be asked. One query covers every parent a table references.
-    private func primaryKeys(ofTablesReferencedIn tables: [String]) async throws -> [String: [String]] {
-        let names = Set(tables.map { $0.lowercased() })
-        guard !names.isEmpty else { return [:] }
-        let literals = names.map { "'\(escapeStringLiteral($0))'" }.joined(separator: ", ")
-
-        let rows = try await execute(query: """
-            SELECT m.name, i.name
-            FROM sqlite_master m, pragma_table_info(m.name) i
-            WHERE m.type = 'table' AND lower(m.name) IN (\(literals)) AND i.pk > 0
-            ORDER BY m.name, i.pk
-            """).rows
-
-        return rows.reduce(into: [:]) { keys, row in
-            guard let table = row[safe: 0]?.asText, let column = row[safe: 1]?.asText else { return }
-            keys[table.lowercased(), default: []].append(column)
-        }
+        let result = try await execute(query: SQLiteForeignKeyGrouping.foreignKeysQuery(table: table))
+        return SQLiteForeignKeyGrouping.foreignKeys(table: table, fromRows: result.rows)
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
@@ -667,7 +587,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             '' as comment
         FROM sqlite_master
         WHERE type IN ('table', 'view')
-        AND name NOT LIKE 'sqlite_%'
+        AND name NOT GLOB 'sqlite_*'
         ORDER BY name
         """
     }

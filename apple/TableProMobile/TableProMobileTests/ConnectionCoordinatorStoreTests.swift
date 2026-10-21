@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 @testable import TableProMobile
 @testable import TableProModels
+import TableProSSHTransport
 import Testing
 
 @Suite("Connection redial detection")
@@ -81,6 +82,48 @@ struct ConnectionRedialTests {
         var sampled = original
         sampled.isSample = true
         #expect(!sampled.dialsTheSameWay(as: original))
+
+        var verified = original
+        verified.sslEnabled = true
+        verified.sslConfiguration = SSLConfiguration(mode: .verifyFull)
+        #expect(!verified.dialsTheSameWay(as: secured))
+    }
+
+    @Test("A tunnel that follows another SSH profile or route redials, and one with SSH off does not")
+    func tunnelCredentialSourceChangesRedial() {
+        var tunnelled = connection()
+        tunnelled.sshEnabled = true
+        tunnelled.sshConfiguration = SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy")
+
+        var relinked = tunnelled
+        relinked.sshProfileId = UUID()
+        #expect(!relinked.dialsTheSameWay(as: tunnelled))
+
+        var rerouted = tunnelled
+        rerouted.sshRoute = PublishedSSHRoute(
+            publisher: UUID(),
+            input: SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy").publishedRouteInput,
+            hops: [],
+            target: .init(alias: "bastion", host: "10.0.0.5", port: 22, username: "deploy")
+        )
+        #expect(!rerouted.dialsTheSameWay(as: tunnelled))
+
+        var direct = connection()
+        let unlinked = direct
+        direct.sshProfileId = UUID()
+        #expect(direct.dialsTheSameWay(as: unlinked))
+    }
+
+    @Test("The Mac's Preferred falls back to plaintext where Required refuses, so switching between them redials")
+    func macPreferredRedials() {
+        var required = connection()
+        required.sslEnabled = true
+        required.sslConfiguration = SSLConfiguration(mode: .require)
+
+        var preferred = required
+        preferred.sslConfiguration = SSLConfiguration(mode: .require, isMacPreferred: true)
+
+        #expect(!preferred.dialsTheSameWay(as: required))
     }
 }
 

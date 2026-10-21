@@ -23,10 +23,13 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
     public var macAgentSocketPath: String?
     public var macRemoteFilePath: String?
     public var macRemoteFileAccess: String?
-    public var macTotpMode: String?
-    public var macTotpAlgorithm: String?
-    public var macTotpDigits: Int?
-    public var macTotpPeriod: Int?
+
+    // TOTP in the Mac's spelling: the mode and algorithm raw values of TOTPMode and TOTPAlgorithm.
+    // Optional, so a configuration that never set them omits them.
+    public var totpMode: String?
+    public var totpAlgorithm: String?
+    public var totpDigits: Int?
+    public var totpPeriod: Int?
 
     /// The raw values are the spellings the macOS app writes, because they are the only ones it
     /// reads back: its own `SSHAuthMethod(rawValue:)` is strict and falls back to Password, so a
@@ -98,10 +101,10 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
         macAgentSocketPath = try container.decodeIfPresent(String.self, forKey: .agentSocketPath)
         macRemoteFilePath = try container.decodeIfPresent(String.self, forKey: .remoteFilePath)
         macRemoteFileAccess = try container.decodeIfPresent(String.self, forKey: .remoteFileAccess)
-        macTotpMode = try container.decodeIfPresent(String.self, forKey: .totpMode)
-        macTotpAlgorithm = try container.decodeIfPresent(String.self, forKey: .totpAlgorithm)
-        macTotpDigits = try container.decodeIfPresent(Int.self, forKey: .totpDigits)
-        macTotpPeriod = try container.decodeIfPresent(Int.self, forKey: .totpPeriod)
+        totpMode = try container.decodeIfPresent(String.self, forKey: .totpMode)
+        totpAlgorithm = try container.decodeIfPresent(String.self, forKey: .totpAlgorithm)
+        totpDigits = try container.decodeIfPresent(Int.self, forKey: .totpDigits)
+        totpPeriod = try container.decodeIfPresent(Int.self, forKey: .totpPeriod)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -117,10 +120,10 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
         try container.encodeIfPresent(macAgentSocketPath, forKey: .agentSocketPath)
         try container.encodeIfPresent(macRemoteFilePath, forKey: .remoteFilePath)
         try container.encodeIfPresent(macRemoteFileAccess, forKey: .remoteFileAccess)
-        try container.encodeIfPresent(macTotpMode, forKey: .totpMode)
-        try container.encodeIfPresent(macTotpAlgorithm, forKey: .totpAlgorithm)
-        try container.encodeIfPresent(macTotpDigits, forKey: .totpDigits)
-        try container.encodeIfPresent(macTotpPeriod, forKey: .totpPeriod)
+        try container.encodeIfPresent(totpMode, forKey: .totpMode)
+        try container.encodeIfPresent(totpAlgorithm, forKey: .totpAlgorithm)
+        try container.encodeIfPresent(totpDigits, forKey: .totpDigits)
+        try container.encodeIfPresent(totpPeriod, forKey: .totpPeriod)
     }
 }
 

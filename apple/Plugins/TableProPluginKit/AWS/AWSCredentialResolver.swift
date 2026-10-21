@@ -389,10 +389,9 @@ public enum AWSCredentialResolver {
         }
 
         let settings = try AWSSSO.parseProfileSettings(configContent: configContent, profileName: profileName)
-        let accessToken = try AWSSSO.readAccessToken(
-            cacheDirectory: cacheDir,
-            settings: settings,
-            profileName: profileName
+        let accessToken = try await AWSSSO.accessToken(
+            store: AWSSSOFileTokenStore(cacheDirectory: cacheDir, settings: settings, profileName: profileName),
+            session: session
         )
         let credentials = try await AWSSSO.fetchRoleCredentials(
             accessToken: accessToken,

@@ -10,9 +10,10 @@ import Testing
 @testable import TablePro
 
 struct QueryStatementModelTests {
-    @Test("MongoDB splits as JavaScript, everything else as SQL")
+    @Test("MongoDB splits as JavaScript, Redis as Redis commands, everything else as SQL")
     func modelPerType() {
         #expect(QueryStatementModel.forDatabaseType(.mongodb) == .javascript)
+        #expect(QueryStatementModel.forDatabaseType(.redis) == .redis)
         #expect(QueryStatementModel.forDatabaseType(.postgresql) == .sql)
         #expect(QueryStatementModel.forDatabaseType(.mysql) == .sql)
         #expect(QueryStatementModel.forDatabaseType(DatabaseType(rawValue: "SomeFuturePlugin")) == .sql)
@@ -89,5 +90,66 @@ struct QueryStatementModelTests {
         #expect(located.sql.contains("db.a.find()"))
         #expect(QueryStatementScanner.navigableStatements(in: script, model: .javascript).count == 1)
         #expect(QueryStatementScanner.executableStatements(in: script, model: .javascript).count == 1)
+    }
+
+    @Test("Each line of a Redis script runs as its own command, a semicolon ending one too")
+    func redisLinesAreCommands() {
+        let script = """
+            SET mykey "hello" EX 60
+            HGETALL myhash; LRANGE mylist 0 -1
+            SCAN 0 MATCH user:* COUNT 100
+            """
+        let statements = QueryStatementScanner.executableStatements(
+            in: script, model: .redis, grammar: DatabaseType.redis.lexicalGrammar
+        )
+        #expect(statements.map(\.sql) == [
+            "SET mykey \"hello\" EX 60", "HGETALL myhash", "LRANGE mylist 0 -1", "SCAN 0 MATCH user:* COUNT 100",
+        ])
+        let text = script as NSString
+        for statement in statements {
+            #expect(text.substring(with: statement.range) == statement.sql)
+        }
+    }
+
+    @Test("Redis has no comments or backtick quotes, so a dash line is a command and a backtick is a byte")
+    func redisHasNoSQLSyntax() {
+        let grammar = DatabaseType.redis.lexicalGrammar
+        let sqls = { (script: String) in
+            QueryStatementScanner.executableStatements(in: script, model: .redis, grammar: grammar).map(\.sql)
+        }
+        #expect(sqls("-- note\nGET a") == ["-- note", "GET a"])
+        #expect(sqls("SET k `a;b`") == ["SET k `a", "b`"])
+        #expect(sqls("SET k a--b") == ["SET k a--b"])
+    }
+
+    @Test("The caret picks the Redis command on its line, and the band covers the whole command")
+    func redisCommandAtCursor() {
+        let script = "GET a\nSET k v\u{A0}\nGET b"
+        let located = QueryStatementScanner.locatedStatementAtCursor(
+            in: script, cursorPosition: 8, model: .redis, grammar: DatabaseType.redis.lexicalGrammar
+        )
+        #expect(located.hasContent)
+        #expect(located.contentRange == NSRange(location: 6, length: 8))
+        let past = QueryStatementScanner.locatedStatementAtCursor(
+            in: "GET a\n", cursorPosition: 6, model: .redis, grammar: DatabaseType.redis.lexicalGrammar
+        )
+        #expect(!past.hasContent)
+    }
+
+    @Test("Statement navigation steps between Redis lines")
+    func redisNavigation() {
+        let script = "GET a\nGET b; GET c"
+        let grammar = DatabaseType.redis.lexicalGrammar
+        #expect(QueryStatementScanner.statementStart(after: 0, in: script, model: .redis, grammar: grammar) == 6)
+        #expect(QueryStatementScanner.statementStart(after: 6, in: script, model: .redis, grammar: grammar) == 13)
+        #expect(QueryStatementScanner.statementStart(before: 13, in: script, model: .redis, grammar: grammar) == 6)
+        #expect(QueryStatementScanner.navigableStatements(in: script, model: .redis, grammar: grammar).count == 3)
+    }
+
+    @Test("A Redis text sent whole spans its first command to its last")
+    func redisExecutableText() {
+        let grammar = DatabaseType.redis.lexicalGrammar
+        #expect(QueryStatementScanner.executableText(of: " \nSET k a--b ;\n", model: .redis, grammar: grammar) == "SET k a--b")
+        #expect(QueryStatementScanner.executableText(of: " ; \n", model: .redis, grammar: grammar).isEmpty)
     }
 }

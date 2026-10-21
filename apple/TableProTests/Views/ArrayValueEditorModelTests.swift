@@ -141,6 +141,8 @@ struct ArrayValueEditorModelTests {
         #expect(ArrayValueEditorModel.jsonDisplay(of: .null).summary == nil)
         #expect(ArrayValueEditorModel.jsonDisplay(of: .null).isValid)
         #expect(ArrayValueEditorModel.jsonDisplay(of: .value("{oops")).isValid == false)
+        #expect(ArrayValueEditorModel.jsonDisplay(of: .value(#"{"qty": 01}"#)).isValid == false)
+        #expect(ArrayValueEditorModel.jsonDisplay(of: .value(#"{"path": "C:\q"}"#)).isValid == false)
         let long = ArrayValueEditorModel.jsonDisplay(of: .value(String(repeating: "a", count: 40)), limit: 8)
         #expect(long.summary?.count == 9)
     }

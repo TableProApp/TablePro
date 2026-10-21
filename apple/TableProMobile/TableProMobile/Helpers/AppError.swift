@@ -3,6 +3,7 @@ import os
 import TableProDatabase
 import TableProModels
 import TableProOracleCore
+import TableProPluginKit
 import TableProRedisCore
 
 // MARK: - Error Category
@@ -139,6 +140,10 @@ nonisolated enum ErrorClassifier {
 
         if let signInError = signInFailure(error, context: context) {
             return signInError
+        }
+
+        if let tlsError = error as? SSLHandshakeError {
+            return tlsFailure(tlsError)
         }
 
         if let tunnelError = error as? SSHTunnelError, let classified = sshTunnelFailure(tunnelError) {

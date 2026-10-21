@@ -9,6 +9,13 @@ public enum MariaDBSSLClassifier {
             return .serverRejectedPlaintext(serverMessage: message)
         }
         if sslOnlyErrorCodes.contains(code) {
+            // Connector/C's own wording, from my_auth.c and ma_tls.c.
+            if lower.contains("server does not support it") {
+                return .serverRequiresPlaintext(serverMessage: message)
+            }
+            if lower.contains("hostname verification failed") {
+                return .hostnameMismatch(serverMessage: message)
+            }
             if lower.contains("certificate") {
                 return .untrustedCertificate(serverMessage: message)
             }

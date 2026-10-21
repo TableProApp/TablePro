@@ -40,8 +40,10 @@ final class ConnectionLibraryPublisher {
         )
     }
 
+    // The widget only opens connections, so one this device cannot open would take a slot and end in an alert.
     nonisolated static func widgetItems(for connections: [DatabaseConnection]) -> [WidgetConnectionItem] {
         connections
+            .filter { !MacOnlyConnection.isMacOnly($0) }
             .sorted { ($0.sortOrder, $0.name) < ($1.sortOrder, $1.name) }
             .map { connection in
                 WidgetConnectionItem(

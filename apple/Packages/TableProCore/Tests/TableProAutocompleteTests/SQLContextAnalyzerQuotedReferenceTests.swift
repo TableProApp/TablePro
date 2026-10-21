@@ -158,4 +158,13 @@ struct SQLContextAnalyzerQuotedReferenceTests {
         let result = context("UPDATE orders o SET to", on: "PostgreSQL")
         #expect(result.tableReferences.contains { $0.tableName == "orders" && $0.alias == "o" })
     }
+
+    @Test("A table joined with MySQL's STRAIGHT_JOIN is in scope")
+    func straightJoinReference() {
+        let query = "SELECT c. FROM orders o STRAIGHT_JOIN customers c ON o.customer_id = c.id"
+        let result = context(query, on: "MySQL", cursor: cursor(after: "SELECT c.", in: query))
+
+        #expect(result.tableReferences.contains { $0.tableName == "customers" && $0.alias == "c" })
+        #expect(result.tableReferences.contains { $0.tableName == "orders" && $0.alias == "o" })
+    }
 }

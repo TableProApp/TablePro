@@ -4,12 +4,15 @@ import TableProSQLGrammar
 public final class SQLCompletionProvider {
     private let contextAnalyzer = SQLContextAnalyzer()
     private let catalog: (any SQLCompletionCatalog)?
-    private var grammar: SQLLexicalGrammar
+    public private(set) var grammar: SQLLexicalGrammar
     private var vocabulary: SQLCompletionVocabulary
     private var cachedFunctionItems: [SQLCompletionItem]?
     private var favoriteKeywords: [String: (name: String, query: String)] = [:]
 
     private let defaultMaxSuggestions = 20
+
+    // What a quoted name can hold: a keyword or a call typed between the quotes would be read as a name.
+    private static let nameKinds: Set<SQLCompletionKind> = [.table, .view, .column, .schema, .alias]
 
     private func maxSuggestions(for clauseType: SQLClauseType) -> Int {
         switch clauseType {
@@ -69,6 +72,9 @@ public final class SQLCompletionProvider {
         }
 
         var candidates = await getCandidates(for: context)
+        if context.quotedName != nil {
+            candidates = candidates.filter { Self.nameKinds.contains($0.kind) }
+        }
 
         if !context.prefix.isEmpty {
             candidates = filterByPrefix(candidates, prefix: context.prefix)
@@ -96,13 +102,18 @@ public final class SQLCompletionProvider {
 
     private func functionItems() -> [SQLCompletionItem] {
         if let cachedFunctionItems { return cachedFunctionItems }
-        var items = SQLKeywords.functionItems()
+        // The generic list writes SYSDATE() and CURRENT_DATE() too, which the engine may reject.
+        var items = SQLKeywords.functionItems().map { item in
+            guard vocabulary.bareFunctions.contains(item.label.uppercased()) else { return item }
+            return SQLCompletionItem.function(item.label, signature: item.label, documentation: item.documentation)
+        }
         if !vocabulary.functions.isEmpty {
             let folding: SQLCompletionCaseFolding =
                 vocabulary.functionNamesAreCaseInsensitive ? .caseInsensitive : .fixed
             var seen = Set(items.map { $0.label.uppercased() })
             for name in vocabulary.functions.sorted() where seen.insert(name.uppercased()).inserted {
-                items.append(SQLCompletionItem.function(name, signature: "\(name)(…)", caseFolding: folding))
+                let signature = vocabulary.bareFunctions.contains(name.uppercased()) ? name : "\(name)(…)"
+                items.append(SQLCompletionItem.function(name, signature: signature, caseFolding: folding))
             }
         }
         cachedFunctionItems = items
@@ -221,7 +232,7 @@ public final class SQLCompletionProvider {
                 let qualifier = ref.alias ?? ref.tableName
                 let cols = await catalog?.columnCompletionItems(for: ref.tableName, schema: ref.schema) ?? []
                 for col in cols {
-                    items.append(SQLCompletionItem(
+                    var item = SQLCompletionItem(
                         label: "\(qualifier).\(col.label)",
                         kind: .column,
                         insertText: "\(qualifier).\(col.label)",
@@ -231,7 +242,9 @@ public final class SQLCompletionProvider {
                         identifier: col.identifier.map {
                             SQLCompletionIdentifier([Self.qualifierPart(for: ref)] + $0.parts)
                         }
-                    ))
+                    )
+                    item.isQualifiedReference = true
+                    items.append(item)
                 }
             }
             items += SQLKeywords.operatorItems()
@@ -451,7 +464,7 @@ public final class SQLCompletionProvider {
             var item = SQLCompletionItem(
                 label: "'\(value)'",
                 kind: .keyword,
-                insertText: "'\(value)'",
+                insertText: "'\(value.replacingOccurrences(of: "'", with: "''"))'",
                 detail: column,
                 filterText: value.lowercased()
             )

@@ -61,6 +61,11 @@ jobs:
             CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO COMPILATION_CACHE_ENABLE_CACHING=NO \
             | xcbeautify --renderer github-actions
 
+      # Only Xcode adds a new string to the catalog. A command-line build extracts it and moves on.
+      - name: Check the app's strings reach its catalog
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: python3 scripts/localization.py extracted --derived-data DerivedData
+
       # The TablePro scheme builds only the bundled plugins. AllPlugins also compiles the
       # registry-only drivers.
       - name: Set up Go for the SAP HANA helper

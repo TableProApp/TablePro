@@ -137,6 +137,17 @@ struct SQLIdentifierSpellingTests {
         #expect(opened.insertText == "\"MY_TABLE\"")
     }
 
+    @Test("A qualified column inside a closed quote is spelled, since it replaces the quotes")
+    func qualifiedColumnInsideClosedQuote() {
+        var item = SQLCompletionItem(
+            label: "o.MixedCase",
+            kind: .column,
+            identifier: SQLCompletionIdentifier([.statement("o", quoted: false), .catalog("MixedCase")])
+        )
+        item.isQualifiedReference = true
+        #expect(applied([item], .lower, quoting: .enclosed)[0].insertText == "o.\"MixedCase\"")
+    }
+
     @Test("Keywords and items without a catalog name are untouched")
     func otherItemsUntouched() {
         let keyword = SQLCompletionItem.keyword("SELECT")

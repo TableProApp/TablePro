@@ -134,7 +134,8 @@ public struct SQLIdentifierSpelling: Sendable {
             let text = quoting == .enclosed ? name.replacingOccurrences(of: quote, with: quote + quote) : quoted(name)
             return item.recased(label: name, insertText: text)
         }
-        guard quoting != .enclosed else { return item }
+        // A qualified reference replaces the user's quotes, so it is spelled as if none were typed.
+        guard quoting != .enclosed || item.isQualifiedReference else { return item }
 
         var labels: [String] = []
         var texts: [String] = []

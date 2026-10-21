@@ -484,6 +484,7 @@ crates/app/src/ui/workspace/table_naming.rs
 crates/app/src/ui/workspace/tests/close_tab.rs
 crates/app/src/ui/workspace/tests/mod.rs
 crates/app/src/ui/workspace/tests/tab_title.rs
+crates/app/src/ui/workspace/transaction_banner.rs
 crates/app/src/ui/workspace/unsaved_icon.rs
 crates/app/src/ui/workspace/window_tabs.rs
 crates/app/src/ui/workspace/window_title.rs

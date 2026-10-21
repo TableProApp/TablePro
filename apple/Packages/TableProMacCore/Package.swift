@@ -39,7 +39,8 @@ let package = Package(
             name: "TableProSSHConfig",
             dependencies: [
                 "TableProUtilities",
-                .product(name: "TableProLogRedaction", package: "TableProCore")
+                .product(name: "TableProLogRedaction", package: "TableProCore"),
+                .product(name: "TableProSSHTransport", package: "TableProCore")
             ],
             path: "Sources/TableProSSHConfig",
             swiftSettings: appModuleSettings

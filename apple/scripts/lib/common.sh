@@ -24,8 +24,8 @@ LIBS_DIR="${LIBS_DIR:-$REPO_ROOT/Libs}"
 # OpenSSL is built from source on both platforms so it carries the right deployment target; a
 # Homebrew build targets whatever macOS that machine runs, which is what produced the
 # "Symbol not found" crashes these scripts exist to avoid. Digests from https://openssl.org/source/.
-OPENSSL_VERSION="3.4.3"
-OPENSSL_SHA256="fa727ed1399a64e754030a033435003991aee36bda9a5b080995cb2ac5cf7f37"
+OPENSSL_VERSION="3.5.9"
+OPENSSL_SHA256="603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"
 
 # Runs a command silently and shows its output only when it fails.
 run_quiet() {

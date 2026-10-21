@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLVocabulary
 import TableProUtilities
 
 /// What the app knows about a database type before its plugin loads.
@@ -38,33 +39,18 @@ extension PluginMetadataRegistry {
                 "FORCE", "USE", "IGNORE", "STRAIGHT_JOIN", "DUAL",
                 "SHOW", "DESCRIBE", "EXPLAIN"
             ],
-            functions: [
-                "COUNT", "SUM", "AVG", "MAX", "MIN", "GROUP_CONCAT",
-                "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LENGTH", "LOWER", "UPPER",
-                "TRIM", "LTRIM", "RTRIM", "REPLACE",
-                "NOW", "CURDATE", "CURTIME", "DATE", "TIME", "YEAR", "MONTH", "DAY",
-                "DATE_ADD", "DATE_SUB", "DATEDIFF", "TIMESTAMPDIFF",
-                "ROUND", "CEIL", "FLOOR", "ABS", "MOD", "POW", "SQRT",
-                "CAST", "CONVERT"
-            ],
-            dataTypes: [
-                "INT", "INTEGER", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT",
-                "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL",
-                "CHAR", "VARCHAR", "TEXT", "TINYTEXT", "MEDIUMTEXT", "LONGTEXT",
-                "BLOB", "TINYBLOB", "MEDIUMBLOB", "LONGBLOB",
-                "DATE", "TIME", "DATETIME", "TIMESTAMP", "YEAR",
-                "ENUM", "SET", "JSON", "BOOL", "BOOLEAN"
-            ],
-            tableOptions: [
-                "ENGINE=InnoDB", "DEFAULT CHARSET=utf8mb4", "COLLATE=utf8mb4_unicode_ci",
-                "AUTO_INCREMENT=", "COMMENT=", "ROW_FORMAT="
-            ],
+            functions: SQLEngineVocabulary.mySQL.functions,
+            dataTypes: SQLEngineVocabulary.mySQL.dataTypes,
+            tableOptions: SQLEngineVocabulary.mySQL.tableOptions,
             regexSyntax: .regexp,
             booleanLiteralStyle: .numeric,
             likeEscapeStyle: .implicit,
             paginationStyle: .limit,
             requiresBackslashEscaping: true,
-            caseSensitivityStyle: .collationDefined
+            caseSensitivityStyle: .collationDefined,
+            operators: SQLEngineVocabulary.mySQL.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
+            textCastTypeName: nil,
+            functionNamesAreCaseInsensitive: SQLEngineVocabulary.mySQL.functionNamesAreCaseInsensitive
         )
 
         let mysqlColumnTypes: [String: [String]] = [
@@ -96,35 +82,23 @@ extension PluginMetadataRegistry {
                 "WINDOW", "OVER", "PARTITION",
                 "LATERAL", "ORDINALITY"
             ],
-            functions: [
-                "COUNT", "SUM", "AVG", "MAX", "MIN", "STRING_AGG", "ARRAY_AGG",
-                "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LENGTH", "LOWER", "UPPER",
-                "TRIM", "LTRIM", "RTRIM", "REPLACE", "SPLIT_PART",
-                "NOW", "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP",
-                "DATE_TRUNC", "EXTRACT", "AGE", "TO_CHAR", "TO_DATE",
-                "ROUND", "CEIL", "CEILING", "FLOOR", "ABS", "MOD", "POW", "POWER", "SQRT",
-                "CAST", "TO_NUMBER", "TO_TIMESTAMP",
-                "JSON_BUILD_OBJECT", "JSON_AGG", "JSONB_BUILD_OBJECT"
-            ],
-            dataTypes: [
-                "INTEGER", "INT", "SMALLINT", "BIGINT", "SERIAL", "BIGSERIAL", "SMALLSERIAL",
-                "DECIMAL", "NUMERIC", "REAL", "DOUBLE", "PRECISION",
-                "CHAR", "CHARACTER", "VARCHAR", "TEXT",
-                "DATE", "TIME", "TIMESTAMP", "TIMESTAMPTZ", "INTERVAL",
-                "BOOLEAN", "BOOL", "JSON", "JSONB", "UUID", "BYTEA", "ARRAY"
-            ],
-            tableOptions: [
-                "INHERITS", "PARTITION BY", "TABLESPACE", "WITH", "WITHOUT OIDS"
-            ],
+            functions: SQLEngineVocabulary.postgreSQL.functions,
+            dataTypes: SQLEngineVocabulary.postgreSQL.dataTypes,
+            tableOptions: SQLEngineVocabulary.postgreSQL.tableOptions,
             regexSyntax: .tilde,
             booleanLiteralStyle: .truefalse,
             likeEscapeStyle: .explicit,
             paginationStyle: .limit,
-            caseSensitivityStyle: .ilikeOperator
+            caseSensitivityStyle: .ilikeOperator,
+            operators: SQLEngineVocabulary.postgreSQL.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
+            textCastTypeName: nil,
+            functionNamesAreCaseInsensitive: SQLEngineVocabulary.postgreSQL.functionNamesAreCaseInsensitive
         )
 
         // Redshift ILIKE only folds ASCII, so it uses LOWER on both sides instead.
-        let redshiftDialect = postgresqlDialect.withCaseSensitivityStyle(.caseFoldFunction)
+        let redshiftDialect = postgresqlDialect
+            .withVocabulary(.redshift)
+            .withCaseSensitivityStyle(.caseFoldFunction)
 
         let postgresqlColumnTypes: [String: [String]] = [
             "Integer": ["SMALLINT", "INTEGER", "BIGINT", "SERIAL", "BIGSERIAL", "SMALLSERIAL"],
@@ -163,32 +137,17 @@ extension PluginMetadataRegistry {
                 "REPLACE", "ABORT", "FAIL", "IGNORE", "ROLLBACK",
                 "TEMP", "TEMPORARY", "VACUUM", "EXPLAIN", "QUERY", "PLAN"
             ],
-            functions: [
-                "COUNT", "SUM", "AVG", "MAX", "MIN", "GROUP_CONCAT", "TOTAL",
-                "LENGTH", "SUBSTR", "SUBSTRING", "LOWER", "UPPER", "TRIM", "LTRIM", "RTRIM",
-                "REPLACE", "INSTR", "PRINTF",
-                "DATE", "TIME", "DATETIME", "JULIANDAY", "STRFTIME",
-                "ABS", "ROUND", "RANDOM",
-                "CAST", "TYPEOF",
-                "COALESCE", "IFNULL", "NULLIF", "HEX", "QUOTE"
-            ],
-            dataTypes: [
-                "INTEGER", "REAL", "TEXT", "BLOB", "NUMERIC",
-                "INT", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT",
-                "UNSIGNED", "BIG", "INT2", "INT8",
-                "CHARACTER", "VARCHAR", "VARYING", "NCHAR", "NATIVE",
-                "NVARCHAR", "CLOB",
-                "DOUBLE", "PRECISION", "FLOAT",
-                "DECIMAL", "BOOLEAN", "DATE", "DATETIME"
-            ],
-            tableOptions: [
-                "WITHOUT ROWID", "STRICT"
-            ],
+            functions: SQLEngineVocabulary.sqlite.functions,
+            dataTypes: SQLEngineVocabulary.sqlite.dataTypes,
+            tableOptions: SQLEngineVocabulary.sqlite.tableOptions,
             regexSyntax: .unsupported,
             booleanLiteralStyle: .numeric,
             likeEscapeStyle: .explicit,
             paginationStyle: .limit,
-            caseSensitivityStyle: .collationDefined
+            caseSensitivityStyle: .collationDefined,
+            operators: SQLEngineVocabulary.sqlite.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
+            textCastTypeName: nil,
+            functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlite.functionNamesAreCaseInsensitive
         )
 
         let sqliteColumnTypes: [String: [String]] = [
@@ -464,7 +423,8 @@ extension PluginMetadataRegistry {
                     additionalConnectionFields: [pgpassField, connectionOptionsField] + cloudIAMFields,
                     category: .relational,
                     tagline: String(localized: "Advanced object-relational SQL"),
-                    defaultUnixSocketPath: "/var/run/postgresql/.s.PGSQL.5432"
+                    defaultUnixSocketPath: "/var/run/postgresql/.s.PGSQL.5432",
+                    defaultLocalSocketPath: PostgreSQLLocalSocket.defaultDirectory
                 )
             )),
             ("Redshift", PluginMetadataSnapshot(
@@ -745,6 +705,45 @@ extension PluginMetadataRegistry {
         ]
         return defaults + mysqlVariantDefaults(
             dialect: mysqlDialect, mysqlColumnTypes: mysqlColumnTypes, idleReleaseField: mysqlIdleReleaseField
+        )
+    }
+}
+
+extension SQLOperatorDescriptor {
+    init?(vocabulary entry: SQLEngineVocabulary.Operator) {
+        guard let category = Category(rawValue: entry.category),
+              let placement = Placement(rawValue: entry.placement) else { return nil }
+        self.init(
+            symbol: entry.symbol,
+            summary: entry.summary,
+            category: category,
+            placement: placement,
+            appliesToTypes: entry.appliesToTypes
+        )
+    }
+}
+
+private extension SQLDialectDescriptor {
+    func withVocabulary(_ vocabulary: SQLEngineVocabulary) -> SQLDialectDescriptor {
+        SQLDialectDescriptor(
+            identifierQuote: identifierQuote,
+            keywords: keywords,
+            functions: vocabulary.functions,
+            dataTypes: vocabulary.dataTypes,
+            tableOptions: vocabulary.tableOptions,
+            regexSyntax: regexSyntax,
+            booleanLiteralStyle: booleanLiteralStyle,
+            likeEscapeStyle: likeEscapeStyle,
+            paginationStyle: paginationStyle,
+            offsetFetchOrderBy: offsetFetchOrderBy,
+            requiresBackslashEscaping: requiresBackslashEscaping,
+            autoLimitStyle: autoLimitStyle,
+            caseSensitivityStyle: caseSensitivityStyle,
+            caseFoldFunction: caseFoldFunction,
+            operators: vocabulary.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
+            textCastTypeName: textCastTypeName,
+            functionNamesAreCaseInsensitive: vocabulary.functionNamesAreCaseInsensitive,
+            lexicalFeatures: lexicalFeatures
         )
     }
 }

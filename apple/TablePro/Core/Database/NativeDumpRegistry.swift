@@ -137,8 +137,12 @@ enum NativeDumpRegistry {
         }
     }
 
+    // A socket goes to `-h` as its directory, the way libpq reads a host starting with `/`.
     private static func connectionFlags(_ request: NativeDumpDescriptor.Request) -> [String] {
-        var flags = ["--no-password", "-h", request.host, "-p", String(request.connection.port)]
+        let socket = request.connection.type.localSocketIsDirectory ? request.connection.localSocketEndpoint : nil
+        let host = socket?.path ?? request.host
+        let port = socket?.port ?? request.connection.port
+        var flags = ["--no-password", "-h", host, "-p", String(port)]
         if !request.connection.username.isEmpty {
             flags.append(contentsOf: ["-U", request.connection.username])
         }

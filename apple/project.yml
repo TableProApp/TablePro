@@ -155,7 +155,7 @@ targetTemplates:
   MySQLLinkage:
     dependencies:
       - package: TableProCore
-        products: [TableProGeometry, TableProLogRedaction, TableProMySQLCore]
+        products: [TableProGeometry, TableProLogRedaction, TableProMySQLCore, TableProSQLVocabulary]
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -182,7 +182,7 @@ targetTemplates:
   PostgreSQLLinkage:
     dependencies:
       - package: TableProCore
-        products: [TableProLogRedaction, TableProPostgreSQLCore]
+        products: [TableProLogRedaction, TableProPostgreSQLCore, TableProSQLVocabulary]
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -239,7 +239,7 @@ targetTemplates:
   SQLiteLinkage:
     dependencies:
       - package: TableProCore
-        products: [CSQLite, TableProSQLiteCore]
+        products: [CSQLite, TableProSQLiteCore, TableProSQLVocabulary]
     settings:
       base:
         OTHER_LDFLAGS:
@@ -311,6 +311,8 @@ targets:
       # The MySQL plugin's socket key and path rules, so the app writes and checks the socket path
       # exactly as the driver reads it.
       - Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
+      # The PostgreSQL plugin's socket directory rules, for the same reason.
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLLocalSocket.swift
     dependencies:
       - target: TableProPluginKit
         embed: true
@@ -390,7 +392,7 @@ targets:
       - package: Sparkle
       - package: Yams
       - package: TableProCore
-        products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
+        products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
       - package: TableProMacCore
         products: [TableProMCP, TableProSSHConfig, TableProUtilities]
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
@@ -922,6 +924,9 @@ targets:
     templateAttributes:
       folder: DuckDBDriverPlugin
       principalClass: DuckDBPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProSQLVocabulary
     settings:
       base:
         # Links no OpenSSL dylib, so no Libs/dylibs search path.
@@ -1036,7 +1041,7 @@ targets:
       principalClass: MSSQLPlugin
     dependencies:
       - package: TableProCore
-        products: [TableProCoreTypes, TableProLogRedaction, TableProMSSQLCore]
+        products: [TableProCoreTypes, TableProLogRedaction, TableProMSSQLCore, TableProSQLVocabulary]
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -1106,7 +1111,7 @@ targets:
       principalClass: OraclePlugin
     dependencies:
       - package: TableProCore
-        product: TableProLogRedaction
+        products: [TableProLogRedaction, TableProSQLVocabulary]
       - package: TableProOracle
         product: TableProOracleCore
 

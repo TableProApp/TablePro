@@ -79,6 +79,10 @@ impl FixtureImage {
         name: "linuxserver/openssh-server",
         tag: "version-10.3_p1-r1",
     };
+    pub const OPENSSH_9_9: Self = Self {
+        name: "linuxserver/openssh-server",
+        tag: "version-9.9_p2-r0",
+    };
 
     pub fn generic(self) -> GenericImage {
         GenericImage::new(self.name, self.tag)

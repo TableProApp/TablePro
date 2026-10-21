@@ -97,11 +97,15 @@ internal enum LibPQConnectionString {
         applicationName: String? = nil,
         connectTimeoutSeconds: Int? = nil
     ) -> String {
-        var parameters: [(String, String)] = [
-            ("host", host),
+        var parameters: [(String, String)] = [("host", host)]
+        if host.hasPrefix("/") {
+            // An inherited PGHOSTADDR would otherwise send a socket connection over TCP.
+            parameters.append(("hostaddr", ""))
+        }
+        parameters.append(contentsOf: [
             ("port", String(port)),
             ("dbname", database)
-        ]
+        ])
 
         if !user.isEmpty {
             parameters.append(("user", user))

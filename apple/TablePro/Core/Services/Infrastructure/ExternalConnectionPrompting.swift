@@ -93,7 +93,7 @@ internal struct ExternalConnectionAlertPrompt: ExternalConnectionPrompting {
 
     private static func details(for connection: DatabaseConnection) -> [String] {
         var details: [String] = [
-            connection.localSocketPath.map { String(format: String(localized: "Socket: %@"), $0) }
+            connection.localSocketFile.map { String(format: String(localized: "Socket: %@"), $0) }
                 ?? String(format: String(localized: "Host: %@"), "\(connection.host):\(connection.port)")
         ]
         if !connection.username.isEmpty {

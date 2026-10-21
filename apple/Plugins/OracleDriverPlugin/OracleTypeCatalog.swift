@@ -5,35 +5,12 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLVocabulary
 
-/// The Oracle column types the app offers, and what the plugin knows about a type from its name alone.
-///
-/// The Structure type picker and the dialect's completion list used to be two hand-kept copies that disagreed (the
-/// picker's Boolean group was empty while completion offered `BOOLEAN`) and both missed 21c and 23ai types. Both read
-/// this list now.
 internal enum OracleTypeCatalog {
-    static let categories: [(name: String, types: [String])] = [
-        ("Integer", ["NUMBER", "INTEGER", "INT", "SMALLINT"]),
-        ("Float", ["FLOAT", "BINARY_FLOAT", "BINARY_DOUBLE", "DECIMAL", "NUMERIC", "REAL", "DOUBLE PRECISION"]),
-        ("String", ["VARCHAR2", "NVARCHAR2", "CHAR", "NCHAR", "CLOB", "NCLOB", "LONG"]),
-        ("Date", [
-            "DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITH LOCAL TIME ZONE",
-            "INTERVAL YEAR TO MONTH", "INTERVAL DAY TO SECOND"
-        ]),
-        ("Binary", ["RAW", "LONG RAW", "BLOB", "BFILE"]),
-        ("Boolean", ["BOOLEAN"]),
-        ("JSON", ["JSON"]),
-        ("Vector", ["VECTOR"]),
-        ("XML", ["XMLTYPE"]),
-        ("Spatial", ["SDO_GEOMETRY"]),
-        ("Other", ["ROWID", "UROWID"])
-    ]
-
     static let columnTypesByCategory: [String: [String]] = Dictionary(
-        uniqueKeysWithValues: categories.map { ($0.name, $0.types) }
+        uniqueKeysWithValues: SQLEngineVocabulary.oracleDataTypeCategories.map { ($0.name, $0.types) }
     )
-
-    static let dataTypes = Set(categories.flatMap(\.types))
 
     /// DATE holds a time of day to the second, so the app has to classify it as a timestamp; classified by its name it
     /// reads as a calendar date, and the grid, export, copy and compare all drop the time. `TIMESTAMP(0)` is the type

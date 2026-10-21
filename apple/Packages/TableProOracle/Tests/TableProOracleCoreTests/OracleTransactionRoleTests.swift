@@ -90,6 +90,32 @@ struct OracleTransactionRoleTests {
         }
     }
 
+    @Test func testBlocksAndCallsAreProcedural() {
+        for sql in [
+            "BEGIN NULL; END;",
+            "begin execute immediate 'CREATE TABLE t (a NUMBER)'; end;",
+            "DECLARE v NUMBER; BEGIN v := 1; END;",
+            "declare v number; begin null; end;",
+            "CALL p()",
+            "call hr.p(1)",
+            "-- rebuild\nBEGIN NULL; END;",
+            "/* load */ DECLARE v NUMBER; BEGIN NULL; END;",
+            "<<outer>> BEGIN NULL; END;",
+            "/* labelled */ <<outer>>\nDECLARE v NUMBER; BEGIN NULL; END;",
+        ] {
+            #expect(OracleTransactionRole(of: sql) == .procedural, "\(sql)")
+        }
+    }
+
+    @Test func testOnlyARefusalThatMayHaveEndedTheTransactionAsksTheServer() {
+        #expect(OracleTransactionRole.procedural.mayEndTransactionWhenRefused)
+        #expect(OracleTransactionRole.dataDefinition.mayEndTransactionWhenRefused)
+        #expect(OracleTransactionRole.endsTransaction.mayEndTransactionWhenRefused)
+        #expect(!OracleTransactionRole.other.mayEndTransactionWhenRefused)
+        #expect(!OracleTransactionRole.query.mayEndTransactionWhenRefused)
+        #expect(!OracleTransactionRole.opensTransaction.mayEndTransactionWhenRefused)
+    }
+
     @Test func testSessionAndSystemControlCommitNothing() {
         for sql in [
             "ALTER SESSION SET CURRENT_SCHEMA = \"HR\"",
@@ -108,9 +134,6 @@ struct OracleTransactionRoleTests {
             "UPDATE emp SET sal = sal * 2",
             "DELETE FROM emp",
             "MERGE INTO emp USING dual ON (1 = 1) WHEN MATCHED THEN UPDATE SET sal = 1",
-            "BEGIN NULL; END;",
-            "DECLARE v NUMBER; BEGIN v := 1; END;",
-            "CALL p()",
             "ALTER SESSION SET CURRENT_SCHEMA = hr",
             "SET ROLE ALL",
             "LOCK",

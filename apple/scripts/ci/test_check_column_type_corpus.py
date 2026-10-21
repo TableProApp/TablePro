@@ -81,6 +81,11 @@ class CheckColumnTypeCorpusTests(unittest.TestCase):
         problems = self.problems(CATEGORIES, [column("NUMBER(10)"), column("DATE")])
         self.assertEqual(problems, ["Plugins/Example.swift lists TIMESTAMP WITH TIME ZONE with no corpus column"])
 
+    def test_a_named_categories_list_is_read(self):
+        named = CATEGORIES.replace("static let categories", "static let oracleDataTypeCategories")
+        problems = self.problems(named, [column("NUMBER(10)"), column("DATE")])
+        self.assertEqual(problems, ["Plugins/Example.swift lists TIMESTAMP WITH TIME ZONE with no corpus column"])
+
     def test_a_list_it_cannot_read_fails(self):
         with self.assertRaises(check.Unreadable):
             self.problems(COMPUTED, [column("INT")])

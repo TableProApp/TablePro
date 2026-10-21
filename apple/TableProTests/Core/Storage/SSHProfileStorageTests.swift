@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import CloudKit
 import Foundation
 import TableProSSHConfig
 import TableProSyncTransport
@@ -228,6 +229,23 @@ struct SSHProfileStorageTests {
         #expect(!lockedStorage.deleteProfile(profile))
         #expect(lockedStorage.profile(for: profile.id) != nil)
         #expect(lockedConnections.loadConnection(id: connection.id)?.sshProfileId == profile.id)
+    }
+
+    // iPhone and iPad send the profile's password to the server the record names.
+    @Test("A linked connection goes up to sync with the server its profile names, not an imported copy of it")
+    func syncedTunnelIsTheProfiles() throws {
+        let profile = makeProfile()
+        #expect(storage.addProfile(profile))
+        var imported = profile.toSSHConfiguration()
+        imported.host = "bastion.attacker.example"
+        var connection = TestFixtures.makeConnection()
+        connection.sshTunnelMode = .profile(id: profile.id, snapshot: imported)
+        connection.sshConfig = imported
+
+        let synced = SyncCoordinator.syncedTunnel(of: connection, profiles: storage)
+        let record = SyncRecordMapper.toCKRecord(synced, in: CKRecordZone.default().zoneID)
+
+        #expect(try SyncRecordMapper.toConnection(record).sshConfig.host == "bastion.example.com")
     }
 
     @Test("Resolving a linked profile answers with the profile's current values")

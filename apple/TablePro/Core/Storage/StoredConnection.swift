@@ -7,6 +7,7 @@ import Foundation
 import TableProConnectionLibrary
 import TableProPluginKit
 import TableProSSHConfig
+import TableProSSHTransport
 
 struct StoredConnection: Codable {
     let id: UUID
@@ -82,6 +83,8 @@ struct StoredConnection: Codable {
     let socksProxyModeJson: Data?
 
     let tunnelCommandModeJson: Data?
+
+    let sshRouteJson: Data?
 
     let additionalFields: [String: String]?
 
@@ -170,6 +173,8 @@ struct StoredConnection: Codable {
             ? (try? JSONEncoder().encode(connection.tunnelCommandMode))
             : nil
 
+        self.sshRouteJson = connection.sshRoute?.encoded()
+
         self.additionalFields = connection.additionalFields.isEmpty ? nil : connection.additionalFields
 
         self.passwordSource = connection.passwordSource
@@ -196,6 +201,7 @@ struct StoredConnection: Codable {
         case cloudSQLProxyModeJson
         case socksProxyModeJson
         case tunnelCommandModeJson
+        case sshRouteJson
         case additionalFields
         case localOnly
         case isSample
@@ -247,6 +253,7 @@ struct StoredConnection: Codable {
         try container.encodeIfPresent(cloudSQLProxyModeJson, forKey: .cloudSQLProxyModeJson)
         try container.encodeIfPresent(socksProxyModeJson, forKey: .socksProxyModeJson)
         try container.encodeIfPresent(tunnelCommandModeJson, forKey: .tunnelCommandModeJson)
+        try container.encodeIfPresent(sshRouteJson, forKey: .sshRouteJson)
         try container.encodeIfPresent(additionalFields, forKey: .additionalFields)
         try container.encode(localOnly, forKey: .localOnly)
         try container.encode(isSample, forKey: .isSample)
@@ -321,6 +328,7 @@ struct StoredConnection: Codable {
         cloudSQLProxyModeJson = try container.decodeIfPresent(Data.self, forKey: .cloudSQLProxyModeJson)
         socksProxyModeJson = try container.decodeIfPresent(Data.self, forKey: .socksProxyModeJson)
         tunnelCommandModeJson = try container.decodeIfPresent(Data.self, forKey: .tunnelCommandModeJson)
+        sshRouteJson = try? container.decodeIfPresent(Data.self, forKey: .sshRouteJson)
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
         passwordSource = PasswordSource.resilientlyDecoded(from: container, forKey: .passwordSource)
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
@@ -436,7 +444,7 @@ struct StoredConnection: Codable {
             return fields.isEmpty ? nil : fields
         }()
 
-        return DatabaseConnection(
+        var connection = DatabaseConnection(
             id: id,
             name: name,
             host: host,
@@ -471,5 +479,7 @@ struct StoredConnection: Codable {
             passwordSource: passwordSource,
             additionalFields: mergedFields
         )
+        connection.sshRoute = sshRouteJson.flatMap(PublishedSSHRoute.decoded(from:))
+        return connection
     }
 }

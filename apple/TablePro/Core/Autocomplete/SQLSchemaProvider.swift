@@ -634,7 +634,7 @@ actor SQLSchemaProvider {
         var itemDataBuilder: [(
             label: String, insertText: String, type: String?, table: String,
             isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?,
-            identifier: SQLCompletionIdentifier?
+            identifier: SQLCompletionIdentifier?, isQualified: Bool
         )] = []
 
         let hasMultipleRefs = references.count > 1
@@ -651,7 +651,8 @@ actor SQLSchemaProvider {
                             defaultValue: nil, comment: nil,
                             identifier: hasMultipleRefs
                                 ? SQLCompletionIdentifier([qualifier, .statement(name, quoted: false)])
-                                : nil
+                                : nil,
+                            isQualified: hasMultipleRefs
                         ))
                 }
                 continue
@@ -669,7 +670,8 @@ actor SQLSchemaProvider {
                         comment: column.comment,
                         identifier: SQLCompletionIdentifier(
                             hasMultipleRefs ? [qualifier, .catalog(column.name)] : [.catalog(column.name)]
-                        )
+                        ),
+                        isQualified: hasMultipleRefs
                     ))
             }
         }
@@ -679,12 +681,14 @@ actor SQLSchemaProvider {
 
         return await MainActor.run {
             itemData.map {
-                SQLCompletionItem.column(
+                var item = SQLCompletionItem.column(
                     $0.label, dataType: $0.type, tableName: $0.table,
                     isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
                     defaultValue: $0.defaultValue, comment: $0.comment,
                     identifier: $0.identifier
                 )
+                item.isQualifiedReference = $0.isQualified
+                return item
             }
         }
     }
@@ -727,7 +731,7 @@ actor SQLSchemaProvider {
         var itemDataBuilder: [(
             label: String, insertText: String, type: String, table: String,
             isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?,
-            identifier: SQLCompletionIdentifier
+            identifier: SQLCompletionIdentifier, isQualified: Bool
         )] = []
 
         for entry in allEntries {
@@ -742,7 +746,8 @@ actor SQLSchemaProvider {
                 comment: entry.col.comment,
                 identifier: SQLCompletionIdentifier(
                     isAmbiguous ? entry.tableParts + [.catalog(entry.col.name)] : [.catalog(entry.col.name)]
-                )
+                ),
+                isQualified: isAmbiguous
             ))
         }
 
@@ -757,6 +762,7 @@ actor SQLSchemaProvider {
                     identifier: $0.identifier
                 )
                 item.sortPriority = 150
+                item.isQualifiedReference = $0.isQualified
                 return item
             }
         }

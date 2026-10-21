@@ -98,7 +98,7 @@ enum IOSConnectionExportService {
                     settings: portableSettings(for: connection),
                     groupId: connection.groupId,
                     tagIds: connection.tagIds,
-                    credentials: includeCredentials ? credentials(of: connection.id, in: appState.secureStore) : nil
+                    credentials: includeCredentials ? credentials(of: connection, in: appState.secureStore) : nil
                 )
             },
             groups: appState.groups.map {
@@ -129,17 +129,20 @@ enum IOSConnectionExportService {
         )
     }
 
-    private static func credentials(of connectionId: UUID, in store: any SecureStore) -> ExportableCredentials? {
-        let password = secret(.password, of: connectionId, in: store)
-        let sshPassword = secret(.sshPassword, of: connectionId, in: store)
-        let keyPassphrase = secret(.keyPassphrase, of: connectionId, in: store)
-        guard password != nil || sshPassword != nil || keyPassphrase != nil else { return nil }
+    // The tunnel's secrets are the ones it signs in with, a linked SSH profile's included.
+    private static func credentials(of connection: DatabaseConnection, in store: any SecureStore) -> ExportableCredentials? {
+        let password = secret(.password, of: connection.id, in: store)
+        let tunnel = SSHTunnelCredentials(connectionId: connection.id, sshProfileId: connection.sshProfileId, secureStore: store)
+        let sshPassword = tunnel.password
+        let keyPassphrase = tunnel.keyPassphrase
+        let totpSecret = tunnel.totpSecret
+        guard password != nil || sshPassword != nil || keyPassphrase != nil || totpSecret != nil else { return nil }
         return ExportableCredentials(
             password: password,
             sshPassword: sshPassword,
             keyPassphrase: keyPassphrase,
             sslClientKeyPassphrase: nil,
-            totpSecret: nil,
+            totpSecret: totpSecret,
             pluginSecureFields: nil
         )
     }
@@ -177,12 +180,14 @@ enum IOSConnectionExportService {
             username: ssh.username,
             authMethod: ssh.authMethod.rawValue,
             privateKeyPath: PathPortability.contractHome(ssh.privateKeyPath ?? ""),
-            agentSocketPath: "",
+            agentSocketPath: PathPortability.contractHome(ssh.macAgentSocketPath ?? ""),
             jumpHosts: jumpHosts,
-            totpMode: nil,
-            totpAlgorithm: nil,
-            totpDigits: nil,
-            totpPeriod: nil
+            totpMode: ssh.totpMode.flatMap { $0 == "none" ? nil : $0 },
+            totpAlgorithm: ssh.totpAlgorithm.flatMap { $0 == "SHA1" ? nil : $0 },
+            totpDigits: ssh.totpDigits.flatMap { $0 == 6 ? nil : $0 },
+            totpPeriod: ssh.totpPeriod.flatMap { $0 == 30 ? nil : $0 },
+            remoteFilePath: ssh.macRemoteFilePath.flatMap { $0.isEmpty ? nil : $0 },
+            remoteFileAccess: ssh.macRemoteFileAccess.flatMap { $0 == "readOnlyCopy" ? nil : $0 }
         )
     }
 
