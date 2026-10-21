@@ -14,6 +14,11 @@ extension MainContentCoordinator {
     /// and the connection knows its saved default. Only the browse-cursor fallback, for a
     /// tab that never recorded one, needs a live session.
     func scope(for tab: QueryTab) -> DatabaseScope? {
+        guard let scope = storedScope(for: tab) else { return nil }
+        return tab.tabType == .table && tab.tableContext.isTemporary ? scope.sessionBound : scope
+    }
+
+    private func storedScope(for tab: QueryTab) -> DatabaseScope? {
         if let resolved = services.databaseManager.resolvedScope(
             database: tab.tableContext.databaseName,
             schema: tab.tableContext.schemaName,

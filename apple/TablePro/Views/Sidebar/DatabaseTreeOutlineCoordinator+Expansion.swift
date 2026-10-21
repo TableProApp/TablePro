@@ -14,8 +14,15 @@ extension DatabaseTreeOutlineCoordinator {
         isApplyingExpansion = true
         defer { isApplyingExpansion = false }
         let searching = !searchText.isEmpty
-        for rootNode in resolvedChildren(of: nil) where rootNode.id == DatabaseTreeNode.recentSectionId {
-            setExpanded(rootNode, searching || (viewModel?.isRecentsExpanded ?? true))
+        for rootNode in resolvedChildren(of: nil) {
+            switch rootNode.kind {
+            case .recentSection:
+                setExpanded(rootNode, searching || (viewModel?.isRecentsExpanded ?? true))
+            case .temporarySection:
+                setExpanded(rootNode, searching || (viewModel?.isTemporaryExpanded ?? true))
+            default:
+                break
+            }
         }
         for sectionNode in resolvedChildren(of: nil) {
             switch sectionNode.kind {
@@ -181,7 +188,7 @@ extension DatabaseTreeOutlineCoordinator {
             restoreFolderExpansion(under: node)
         case .objectKindSection, .containerObjectKindSection, .tableFolder, .table, .partition:
             restorePartitionExpansion(under: node)
-        case .recentSection, .recentTable, .database, .routine, .trigger,
+        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .database, .routine, .trigger,
              .userType, .status, .redisKeysSection, .redisNode:
             break
         }
@@ -200,6 +207,8 @@ extension DatabaseTreeOutlineCoordinator {
         switch node.kind {
         case .recentSection:
             viewModel?.isRecentsExpanded = expanded
+        case .temporarySection:
+            viewModel?.isTemporaryExpanded = expanded
         case .foldersSection:
             viewModel?.isFoldersExpanded = expanded
         case .tableFolder(let ref):
@@ -238,7 +247,7 @@ extension DatabaseTreeOutlineCoordinator {
         case .partition(let ref):
             guard let tableRef = ref.tableRef else { break }
             recordTableExpansion(tableRef, expanded: expanded)
-        case .recentTable, .routine, .trigger, .userType, .status, .redisNode:
+        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status, .redisNode:
             break
         }
     }
@@ -265,8 +274,8 @@ extension DatabaseTreeOutlineCoordinator {
             loadPartitions(ref.tableRef ?? ref.parent)
         case .hierarchicalSchemaSection(let schema):
             loadHierarchicalSchemaObjects(schema)
-        case .recentSection, .recentTable, .foldersSection, .tableFolder, .routine, .trigger, .userType,
-             .status, .objectKindSection, .containerObjectKindSection,
+        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+             .routine, .trigger, .userType, .status, .objectKindSection, .containerObjectKindSection,
              .redisKeysSection, .redisNode:
             break
         }

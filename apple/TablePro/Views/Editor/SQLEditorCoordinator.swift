@@ -120,6 +120,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     var databaseType: DatabaseType?
     var tabID: UUID?
     var connectionId: UUID?
+    var sourceFileURL: URL?
 
     /// Whether the editor text view is currently the first responder.
     /// Used to guard cursor propagation — when the find panel highlights
@@ -473,8 +474,20 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     }
 
     private func formatSQL(selectedRange: NSRange) {
-        guard let textView = controller?.textView,
-              let formatter = QueryFormatterFactory.make(for: databaseType) else { return }
+        guard let textView = controller?.textView else { return }
+        let formatter: QueryFormatting
+        do {
+            guard let made = try QueryFormatterFactory.make(for: databaseType, sourceFileURL: sourceFileURL) else { return }
+            formatter = made
+        } catch {
+            Self.logger.error("Formatter rules unreadable: \(error.publicLogShape, privacy: .public)")
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Couldn't Format Query"),
+                message: error.localizedDescription,
+                window: textView.window
+            )
+            return
+        }
         let scope = FormatScopeResolver.resolve(
             fullText: textView.string,
             selectedRange: selectedRange

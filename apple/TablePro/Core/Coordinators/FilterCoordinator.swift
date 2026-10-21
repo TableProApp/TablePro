@@ -163,7 +163,9 @@ final class FilterCoordinator: ObservableObject {
     /// `executedFilters`, which is the record of what the rows on screen were fetched with. That
     /// tab has no rows. Its first selection runs the first load, which rebuilds the query properly.
     func restoreFilters(forTabAt index: Int) {
+        // Saved filters are keyed by name, which a temporary table shares with the permanent table it hides.
         guard index < parent.tabManager.tabs.count,
+              !parent.tabManager.tabs[index].tableContext.isTemporary,
               let tableName = parent.tabManager.tabs[index].tableContext.tableName else { return }
         restoreLastFilters(for: tableName, at: index)
         restoreBrowseSearch(for: tableName, at: index)
@@ -469,7 +471,7 @@ final class FilterCoordinator: ObservableObject {
     /// Takes the tab rather than reading the selection: a tab switch saves the outgoing tab after
     /// the selection has already moved to the incoming one.
     func saveLastFilters(of tab: QueryTab) {
-        guard let tableName = tab.tableContext.tableName else { return }
+        guard !tab.tableContext.isTemporary, let tableName = tab.tableContext.tableName else { return }
         /// Turning saving off stops writing, and leaves what is already on disk alone. Falling
         /// through to an empty write would delete it, so the setting could never be turned back on.
         guard FilterSettingsStorage.shared.loadSettings().restoreBehavior.savesToDisk else { return }

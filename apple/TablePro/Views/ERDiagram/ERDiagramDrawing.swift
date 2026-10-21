@@ -1,11 +1,3 @@
-//
-//  ERDiagramDrawing.swift
-//  TablePro
-//
-//  Text and symbol drawing for the ER diagram's CoreGraphics renderers, matching what the
-//  SwiftUI `GraphicsContext.draw(_:at:anchor:)` calls they replaced put on screen.
-//
-
 import AppKit
 
 enum ERDiagramTextAnchor {
@@ -24,13 +16,9 @@ enum ERDiagramTextRenderer {
 
     private static let lineCacheLimit = 4_000
     private static var lineCache: [LineKey: CTLine] = [:]
+    private static let ellipsis = "\u{2026}"
 
-    /// The anchor point is the text's visual centre on the vertical axis, which is where
-    /// `GraphicsContext.draw(_:at:anchor:)` put it. The context is flipped, so the baseline sits
-    /// below that centre by half the difference between ascent and descent.
-    ///
-    /// Text wider than `maxWidth` is cut at its end with an ellipsis, the way a truncating label is,
-    /// so two texts given widths that add up to their room can never draw over each other.
+    // The point is the text's visual centre, not its baseline.
     static func draw(
         _ text: String,
         font: NSFont,
@@ -53,20 +41,49 @@ enum ERDiagramTextRenderer {
 
         context.saveGState()
         context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
-        context.textPosition = CGPoint(x: originX, y: point.y + (font.ascender + font.descender) / 2)
+        context.textPosition = CGPoint(x: originX, y: baseline(for: point.y, font: font))
         CTLineDraw(line, context)
         context.restoreGState()
     }
 
-    /// The width `draw` lays `text` out at before any truncation.
+    static func baseline(for centerY: CGFloat, font: NSFont) -> CGFloat {
+        centerY + (font.ascender + font.descender) / 2
+    }
+
     static func width(of text: String, font: NSFont) -> CGFloat {
         guard !text.isEmpty else { return 0 }
         return CGFloat(CTLineGetTypographicBounds(line(for: text, font: font, color: .labelColor), nil, nil, nil))
     }
 
+    // What `draw` shows: the longest prefix that fits beside an ellipsis, as an end-truncated `CTLine` keeps.
+    static func fittedText(_ text: String, font: NSFont, maxWidth: CGFloat) -> String {
+        guard !text.isEmpty, maxWidth > 0 else { return "" }
+        guard measure(text, font: font) > maxWidth else { return text }
+
+        let characters = Array(text)
+        var low = 0
+        var high = characters.count - 1
+        while low < high {
+            let mid = (low + high + 1) / 2
+            if measure(String(characters[..<mid]) + ellipsis, font: font) <= maxWidth {
+                low = mid
+            } else {
+                high = mid - 1
+            }
+        }
+        return String(characters[..<low]) + ellipsis
+    }
+
+    // Uncached, so a search over prefixes does not flush the drawing cache.
+    private static func measure(_ text: String, font: NSFont) -> CGFloat {
+        let attributed = NSAttributedString(string: text, attributes: [.font: font])
+        let line = CTLineCreateWithAttributedString(attributed as CFAttributedString)
+        return CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+    }
+
     private static func fitted(_ line: CTLine, to maxWidth: CGFloat, font: NSFont, color: NSColor) -> CTLine {
         guard CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)) > maxWidth else { return line }
-        let ellipsis = self.line(for: "\u{2026}", font: font, color: color)
+        let ellipsis = self.line(for: ellipsis, font: font, color: color)
         return CTLineCreateTruncatedLine(line, Double(maxWidth), .end, ellipsis) ?? ellipsis
     }
 
@@ -83,14 +100,7 @@ enum ERDiagramTextRenderer {
     }
 }
 
-/// Configuring a symbol resolves its dynamic colour, so a cached image belongs to exactly one
-/// appearance and contrast setting, the same rule `DataGridCellAccessoryGlyph` follows.
-///
-/// What is cached is the configured `NSImage`, not a bitmap of it. A symbol is vector art and the
-/// diagram is drawn at whatever scale the scroll view is magnified to, so rasterising once at 1x
-/// and stretching that bitmap would leave every badge soft on a Retina display, in the 2x PNG
-/// export, and worse again at 300%. `NSImage.draw(in:)` renders into the current context at its
-/// resolution instead.
+// A configured symbol bakes its colour, so the cache is keyed by appearance and contrast.
 @MainActor
 enum ERDiagramSymbolRenderer {
     private struct Key: Hashable {
@@ -101,7 +111,7 @@ enum ERDiagramSymbolRenderer {
         let increasedContrast: Bool
     }
 
-    private struct Glyph {
+    struct Glyph {
         let image: NSImage
         let size: CGSize
     }
@@ -116,24 +126,33 @@ enum ERDiagramSymbolRenderer {
         anchor: ERDiagramTextAnchor
     ) {
         guard let glyph = glyph(named: name, pointSize: pointSize, color: color) else { return }
+        // Every diagram context is flipped, and without `respectFlipped` a symbol draws upside down.
+        glyph.image.draw(
+            in: frame(of: glyph, at: point, anchor: anchor),
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1,
+            respectFlipped: true,
+            hints: nil
+        )
+    }
 
+    static func frame(of glyph: Glyph, at point: CGPoint, anchor: ERDiagramTextAnchor) -> CGRect {
         let originX: CGFloat
         switch anchor {
         case .leading: originX = point.x
         case .trailing: originX = point.x - glyph.size.width
         case .center: originX = point.x - glyph.size.width / 2
         }
-        let rect = CGRect(
+        return CGRect(
             x: originX,
             y: point.y - glyph.size.height / 2,
             width: glyph.size.width,
             height: glyph.size.height
         )
-
-        glyph.image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
     }
 
-    private static func glyph(named name: String, pointSize: CGFloat, color: NSColor) -> Glyph? {
+    static func glyph(named name: String, pointSize: CGFloat, color: NSColor) -> Glyph? {
         let key = Key(
             name: name,
             pointSize: pointSize,

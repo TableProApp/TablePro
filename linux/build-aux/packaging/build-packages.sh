@@ -59,10 +59,11 @@ if [ "$which" != rpm ]; then
     for changes in "$out"/source/*_source.changes; do
         series="$(sed -n 's/^Distribution: //p' "$changes")"
         "$here/build-deb.sh" "${changes%_source.changes}.dsc" "$out/deb/$series"
-        run "ubuntu:$series" "$here/smoke-test.sh" "$(find "$out/deb/$series" -name 'tablepro_*.deb')"
+        run "ubuntu:$series" "$here/smoke-test.sh" "$(find "$out/deb/$series" -name 'tablepro_*.deb')" "$root/po/LINGUAS"
     done
 fi
 if [ "$which" != deb ]; then
     run fedora:44 "$here/build-rpm.sh" "$dist" "$vendor" "$out/rpm"
-    run fedora:44 "$here/smoke-test.sh" "$(find "$out/rpm" -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')"
+    run fedora:44 "$here/smoke-test.sh" "$(find "$out/rpm" -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')" \
+        "$root/po/LINGUAS"
 fi

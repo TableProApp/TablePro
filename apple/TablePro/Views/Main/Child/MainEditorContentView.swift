@@ -524,6 +524,7 @@ struct MainEditorContentView: View {
                         databaseScope: queryScope,
                         connectionId: coordinator.connection.id,
                         tabID: tab.id,
+                        sourceFileURL: tab.content.sourceFileURL,
                         claimFocusOnAppear: claimFocus,
                         onFocusClaimed: {
                             if coordinator.tabManager.pendingFocusTabId == tab.id {
@@ -717,7 +718,8 @@ struct MainEditorContentView: View {
     @ViewBuilder
     private func structureContent(tab: QueryTab, tableName: String) -> some View {
         let scope = structureScope(for: tab)
-        let identity = "\(scope?.qualifiedDescription ?? "").\(tableName)"
+        let binding = scope?.isSessionBound == true ? "#session" : ""
+        let identity = "\(scope?.qualifiedDescription ?? "").\(tableName)\(binding)"
         Group {
             if let session = coordinator.structureSessions[tab.id], session.identity == identity {
                 TableStructureView(
@@ -738,6 +740,7 @@ struct MainEditorContentView: View {
                             connection: connection,
                             databaseName: scope?.database ?? "",
                             schemaName: scope?.schema,
+                            isSessionBound: scope?.isSessionBound ?? false,
                             tableName: tableName,
                             objectKind: tab.tableContext.resolvedObjectKind(),
                             serverSupport: StructureServerSupport.forConnection(connection.id)
@@ -1178,6 +1181,7 @@ struct MainEditorContentView: View {
             resultSetMenu: resultSetMenuModel(for: tab),
             onActivateResultSet: { coordinator.switchActiveResultSet(to: $0, in: tab.id) },
             onToggleResultSetPin: { coordinator.togglePinResultSet(id: $0) },
+            onCompareResultSet: { coordinator.compareResultSet(id: $0) },
             onCloseResultSet: { coordinator.closeResultSet(id: $0) },
             onCloseOtherResultSets: { keptId in
                 for other in tab.display.resultSets where other.id != keptId && !other.isPinned {
@@ -1212,7 +1216,8 @@ struct MainEditorContentView: View {
                 label: resultSet.label,
                 isPinned: resultSet.isPinned,
                 isActive: resultSet.id == activeId,
-                ordinal: index + 1
+                ordinal: index + 1,
+                isComparable: coordinator.isComparable(resultSet, in: tab)
             )
         }
         return ResultSetMenuModel(

@@ -19,6 +19,7 @@ struct CellPosition: Hashable {
 enum DataGridChangeVocabulary: Equatable {
     case pendingEdit
     case comparison
+    case resultComparison
 }
 
 struct RowVisualState: Equatable {

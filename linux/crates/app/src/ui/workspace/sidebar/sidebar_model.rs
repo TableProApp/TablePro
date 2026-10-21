@@ -1,22 +1,50 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::sync::Arc;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use tablepro_core::meta::{ObjectKind, TableRef};
 
 use super::sidebar_index::{SidebarIndex, search_key};
-use super::sidebar_list::SidebarList;
+use super::sidebar_list::{SidebarList, SidebarRows};
 use super::sidebar_object::SidebarObject;
 
 /// The sidebar's objects in schema sections, filtered by the search. A
-/// new index replaces the list in one change, and a search reads the
-/// index's search keys, so neither builds a widget or an object per
-/// table.
+/// new index or search is worked out into rows apart from the list, and
+/// the list takes them in one change, so neither builds a widget or an
+/// object per table.
 pub(crate) struct SidebarModel {
     list: SidebarList,
     selection: gtk::SingleSelection,
+    /// The index last given, which the list shows once its rows land.
+    index: RefCell<Arc<SidebarIndex>>,
     /// The search as `search_key` gave it, empty for none.
     query: RefCell<String>,
+    /// Counts the indexes and searches given, so rows worked out for an
+    /// older one never replace a newer one's.
+    asked: Cell<u64>,
+}
+
+/// The rows to work out for the index and search last given.
+pub(crate) struct RowsAsked {
+    index: Arc<SidebarIndex>,
+    query: String,
+    asked: u64,
+}
+
+impl RowsAsked {
+    pub(crate) fn work_out(self) -> RowsWorkedOut {
+        RowsWorkedOut {
+            rows: SidebarRows::new(self.index, &self.query),
+            asked: self.asked,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct RowsWorkedOut {
+    rows: SidebarRows,
+    asked: u64,
 }
 
 impl SidebarModel {
@@ -26,30 +54,52 @@ impl SidebarModel {
         selection.set_autoselect(false);
         selection.set_can_unselect(true);
         Self {
+            index: RefCell::new(list.index()),
             list,
             selection,
             query: RefCell::new(String::new()),
+            asked: Cell::new(0),
         }
     }
 
-    pub(crate) fn replace(&self, index: SidebarIndex) {
-        self.unselect();
-        self.list.replace(index, &self.query.borrow());
+    pub(crate) fn replace(&self, index: SidebarIndex) -> RowsAsked {
+        self.index.replace(Arc::new(index));
+        self.ask()
     }
 
-    pub(crate) fn set_query(&self, query: &str) {
+    /// None when the search is the one already given.
+    pub(crate) fn set_query(&self, query: &str) -> Option<RowsAsked> {
         let query = query.trim();
         let prepared = if query.is_empty() {
             String::new()
         } else {
             search_key(query)
         };
-        let previous = self.query.replace(prepared.clone());
-        if previous == prepared {
-            return;
+        if self.query.replace(prepared.clone()) == prepared {
+            return None;
+        }
+        Some(self.ask())
+    }
+
+    fn ask(&self) -> RowsAsked {
+        let asked = self.asked.get() + 1;
+        self.asked.set(asked);
+        RowsAsked {
+            index: self.index.borrow().clone(),
+            query: self.query.borrow().clone(),
+            asked,
+        }
+    }
+
+    /// Show rows worked out for the index and search last given. Rows a
+    /// later one overtook change nothing and come back.
+    pub(crate) fn show(&self, worked_out: RowsWorkedOut) -> Result<(), RowsWorkedOut> {
+        if worked_out.asked != self.asked.get() {
+            return Err(worked_out);
         }
         self.unselect();
-        self.list.filter(&prepared);
+        self.list.show(worked_out.rows);
+        Ok(())
     }
 
     /// GtkSingleSelection looks for the selected row among every row a
@@ -57,6 +107,11 @@ impl SidebarModel {
     /// again once the list changed.
     fn unselect(&self) {
         self.selection.set_selected(gtk::INVALID_LIST_POSITION);
+    }
+
+    /// The index the list shows now.
+    pub(crate) fn shown_index(&self) -> Arc<SidebarIndex> {
+        self.list.index()
     }
 
     pub(crate) fn has_query(&self) -> bool {
@@ -131,7 +186,14 @@ mod tests {
     }
 
     fn replace(model: &SidebarModel, objects: &[ObjectInfo], schemas: &[SchemaInfo]) {
-        model.replace(SidebarIndex::build(objects, schemas));
+        let asked = model.replace(SidebarIndex::build(objects, schemas));
+        model.show(asked.work_out()).expect("the newest list's rows");
+    }
+
+    fn search(model: &SidebarModel, query: &str) {
+        if let Some(asked) = model.set_query(query) {
+            model.show(asked.work_out()).expect("the newest search's rows");
+        }
     }
 
     /// Each section's title and its rows' names, in list order.
@@ -232,7 +294,7 @@ mod tests {
         );
         let index = model.list().index();
 
-        model.set_query("USE");
+        search(&model, "USE");
         let names = |model: &SidebarModel| -> Vec<String> {
             (0..model.shown())
                 .filter_map(|at| model.object_at(at))
@@ -240,15 +302,52 @@ mod tests {
                 .collect()
         };
         assert_eq!(names(&model), ["Users"]);
-        model.set_query("auth.TOK");
+        search(&model, "auth.TOK");
         assert_eq!(names(&model), ["tokens"]);
-        model.set_query("auth");
+        search(&model, "auth");
         assert_eq!(names(&model), ["tokens"], "the schema matches too");
-        model.set_query("  ");
+        search(&model, "  ");
         assert!(!model.has_query(), "blank is no search");
         assert_eq!(model.shown(), 3);
 
-        assert!(Rc::ptr_eq(&index, &model.list().index()), "a search rebuilt the index");
+        assert!(Arc::ptr_eq(&index, &model.list().index()), "a search rebuilt the index");
+    }
+
+    #[gtk4::test]
+    fn rows_worked_out_for_an_older_list_or_search_are_dropped() {
+        let model = SidebarModel::new();
+        replace(&model, &[object("public", "orders")], &[]);
+        let names = |model: &SidebarModel| -> Vec<String> {
+            (0..model.shown())
+                .filter_map(|at| model.object_at(at))
+                .map(|object| object.name())
+                .collect()
+        };
+
+        let listing = model.replace(SidebarIndex::build(
+            &[object("public", "orders"), object("public", "users")],
+            &[],
+        ));
+        let older = model.set_query("ord").expect("a new search");
+        let newer = model.set_query("us").expect("a new search");
+
+        assert!(
+            model.show(newer.work_out()).is_ok(),
+            "the last search's rows were dropped"
+        );
+        assert!(
+            model.show(older.work_out()).is_err(),
+            "an older search's rows replaced the last"
+        );
+        assert!(
+            model.show(listing.work_out()).is_err(),
+            "a list's rows replaced a later search's"
+        );
+        assert_eq!(names(&model), ["users"], "the search did not filter the new list");
+        assert!(
+            model.set_query(" US ").is_none(),
+            "the same search was worked out again"
+        );
     }
 
     #[gtk4::test]
@@ -285,8 +384,8 @@ mod tests {
         model.select(Some(&last));
 
         replace(&model, &objects, &[]);
-        model.set_query("t0");
-        model.set_query("t");
+        search(&model, "t0");
+        search(&model, "t");
         model.select(Some(&last));
 
         assert_eq!(model.selection().selected(), 4_999);
@@ -306,7 +405,7 @@ mod tests {
         model.select(Some(&users));
         assert_eq!(model.selection().selected(), 1);
 
-        model.set_query("ord");
+        search(&model, "ord");
         model.select(Some(&users));
         assert_eq!(model.selection().selected(), gtk::INVALID_LIST_POSITION);
         assert_eq!(
@@ -315,7 +414,7 @@ mod tests {
             "a hidden table is still listed"
         );
 
-        model.set_query("");
+        search(&model, "");
         model.select(Some(&users));
         model.select(None);
         assert_eq!(model.selection().selected(), gtk::INVALID_LIST_POSITION);

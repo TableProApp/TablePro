@@ -46,5 +46,7 @@ extension TextView: @retroactive TextInterface {
             replacementLength: (mutation.string as NSString).length
         )
         layoutManager.invalidateLayoutForRange(mutation.range)
+        // A typing filter edits here, past `replaceCharacters` and its delegate calls, so a snippet's fields hear it here.
+        (delegate as? TextViewController)?.snippetTextDidReplace(in: mutation.range, with: mutation.string)
     }
 }

@@ -49,7 +49,7 @@ struct NativeDumpRegistryTests {
     ) throws -> NativeDumpCommand {
         let tool = try #require(NativeDumpRegistry.descriptor(for: type)?.commandLineTool)
         let effective = overrideConnection ?? connection(type: type)
-        return try NativeDumpService.buildCommand(
+        let built = try NativeDumpService.buildCommand(
             kind: kind,
             tool: tool,
             resolved: NativeDumpResolvedTool(
@@ -68,6 +68,10 @@ struct NativeDumpRegistryTests {
                 serverVersion: serverVersion
             )
         )
+        if let folder = built.clientPluginFolder {
+            try? FileManager.default.removeItem(at: folder.url)
+        }
+        return built
     }
 
     private func configuration(of built: NativeDumpCommand) throws -> String {

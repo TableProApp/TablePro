@@ -1,5 +1,6 @@
-# One loopback MySQL session for check-mariadb-tls-modes.sh. Prints the port, then a JSON line saying
-# whether TLS came up, whether the login and a cleartext answer arrived, and whether the secret crossed in plaintext.
+# One loopback MySQL session for check-mariadb-tls-modes.sh and check-mysql-dump-plaintext-password.sh. Prints the
+# port, then a JSON line saying whether TLS came up, whether the login and the answer to the --auth request arrived,
+# and whether the secret crossed in plaintext.
 import argparse
 import json
 import socket
@@ -10,7 +11,9 @@ import sys
 parser = argparse.ArgumentParser()
 parser.add_argument("--cert")
 parser.add_argument("--key")
-parser.add_argument("--cleartext", action="store_true")
+# dialog is how PAM asks; qa is the test plugin Homebrew's MariaDB ships; sha2-full is caching_sha2_password asking
+# for full authentication, which a client answers with the typed password once it thinks the session is secure.
+parser.add_argument("--auth", choices=["cleartext", "dialog", "qa", "sha2-full"])
 parser.add_argument("--secret", default="")
 args = parser.parse_args()
 
@@ -28,7 +31,7 @@ connection, _ = listener.accept()
 connection.settimeout(10)
 
 plaintext = bytearray()
-state = {"askedForTLS": False, "encrypted": False, "sawLogin": False, "cleartext": None, "loggedIn": False}
+state = {"askedForTLS": False, "encrypted": False, "sawLogin": False, "answer": None, "loggedIn": False}
 stream = connection
 
 
@@ -71,10 +74,24 @@ try:
         state["encrypted"] = True
         sequence, login = read_packet()
     state["sawLogin"] = True
-    if args.cleartext:
+    if args.auth == "cleartext":
         send(b"\xfemysql_clear_password\0", (sequence + 1) & 0xFF)
         sequence, answer = read_packet()
-        state["cleartext"] = answer.split(b"\0")[0].decode(errors="replace")
+        state["answer"] = answer.split(b"\0")[0].decode(errors="replace")
+    elif args.auth in ("dialog", "qa"):
+        # 0x05 asks for the password as the last question; qa_auth_client answers it only with an empty prompt.
+        request = b"dialog\0\x05Password: " if args.auth == "dialog" else b"qa_auth_client\0\x05"
+        send(b"\xfe" + request, (sequence + 1) & 0xFF)
+        sequence, answer = read_packet()
+        state["answer"] = answer.split(b"\0")[0].decode(errors="replace")
+    elif args.auth == "sha2-full":
+        send(b"\xfecaching_sha2_password\0abcdefghijklmnopqrst\0", (sequence + 1) & 0xFF)
+        sequence, _ = read_packet()
+        send(b"\x01\x04", (sequence + 1) & 0xFF)
+        sequence, answer = read_packet()
+        # 0x02 asks for the server's RSA key, which is how a client that knows it is in plaintext answers.
+        state["answer"] = "public key request" if answer == b"\x02" else answer.split(b"\0")[0].decode(errors="replace")
+        raise EOFError
     send(ok, (sequence + 1) & 0xFF)
     state["loggedIn"] = True
     while True:

@@ -5,27 +5,18 @@
 
 import Foundation
 
-/// One entry in the result-set chooser.
 struct ResultSetMenuEntry: Equatable, Identifiable {
     let id: UUID
     let label: String
     let isPinned: Bool
     let isActive: Bool
-    /// What the entry is called when the reader is counting rather than reading: "Result 2 of 4".
+    // What the entry is called when the reader is counting rather than reading: "Result 2 of 4".
     let ordinal: Int
+    // Whether it holds columns to compare: a plan, an error or a statement that returned no rows does not.
+    let isComparable: Bool
 }
 
-/// The result-set chooser, resolved before any view exists.
-///
-/// Replaces the 32pt strip of hand-drawn tabs. macOS has no native tab control that closes, pins or
-/// reorders anything but windows: `NSTabViewItem` carries ten properties and not one of them is a
-/// close affordance, `NSWindowTabGroup` takes `NSWindow` only, and SwiftUI's `Tab` and `TabSection`
-/// are macOS 15 with no close either. So the collection is re-expressed rather than redrawn, and
-/// the HIG names the control to re-express it with: a pop-up button is the "reasonable alternative
-/// in cases where there are too many panes" for a tab view, and result sets are unbounded.
-///
-/// It is absent at one result, which is the common case and the strip's worst habit: a lone tab
-/// spending a band of height to say "this is the result".
+// A pull-down rather than tabs: macOS has no native tab control that closes or pins anything but windows.
 struct ResultSetMenuModel: Equatable {
     let entries: [ResultSetMenuEntry]
     let activeOrdinal: Int
@@ -77,5 +68,9 @@ struct ResultSetMenuModel: Equatable {
 
     func canCloseOthers(_ entry: ResultSetMenuEntry) -> Bool {
         entries.contains { $0.id != entry.id && !$0.isPinned }
+    }
+
+    func canCompare(_ entry: ResultSetMenuEntry) -> Bool {
+        entry.isComparable
     }
 }
