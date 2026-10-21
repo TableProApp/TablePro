@@ -15,6 +15,7 @@ mod decode;
 mod filter;
 mod metadata;
 mod read_only;
+mod round_trip;
 mod sessions;
 mod support;
 mod tls;

@@ -49,6 +49,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     /// the user's own: a `BEGIN` there would join it, and the import's `COMMIT` would commit work the
     /// user never asked to commit, so the import then runs inside it and leaves ending it to them.
     private let ownsTransaction = OSAllocatedUnfairLock(initialState: false)
+    /// One file of several imported in one run. The run opened the transaction and ends it, so this sink sends no
+    /// `BEGIN`, `COMMIT` or `ROLLBACK`: reading the session would not stop it, since `.unknown` permits a `BEGIN`
+    /// and MySQL commits the open transaction on one.
+    private let joinsTransaction: Bool
     private let transactionRecord = OSAllocatedUnfairLock(initialState: TransactionRecord())
 
     private struct TransactionRecord {
@@ -78,9 +82,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         targetTable: String? = nil,
         columnMapping: [String: String] = [:],
         sourceFields: Set<String> = [],
+        joinsTransaction: Bool = false,
         isCancelled: @escaping @Sendable () -> Bool = { false }
     ) {
         self.isCancelled = isCancelled
+        self.joinsTransaction = joinsTransaction
         self.driver = driver
         self.databaseType = databaseType
         self.grammar = databaseType.lexicalGrammar
@@ -310,6 +316,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     }
 
     func beginTransaction() async throws {
+        guard !joinsTransaction else { return }
         let owner = WriteTransactionOwner.resolve(
             supportsTransactions: driver.supportsTransactions,
             sessionState: await driver.heldSessionTransactionState()

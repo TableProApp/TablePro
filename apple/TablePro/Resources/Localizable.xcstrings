@@ -75,7 +75,34 @@
         }
       }
     },
+    "\"%@\" is a name the database keeps for itself. Choose another name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "\"%@\" is an attached database. Change its tables' structure from a connection that opens it." : {
+
+    },
     "%1$d only left, %2$d only right, %3$d changed, %4$d same" : {
+
+    },
+    "Attach" : {
+
+    },
+    "Attach Database" : {
+
+    },
+    "Attach Database…" : {
+
+    },
+    "Attached Databases" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Attached databases open only for a database file on this Mac, not for a database on a server." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Attached each time the connection opens. Reach a table as name.table, and browse each database in the sidebar." : {
 
     },
     "Both results stopped at the row cap and are compared on the rows they hold. A row past the cap can show as only on one side." : {
@@ -85,6 +112,9 @@
 
     },
     "Choose a Result" : {
+
+    },
+    "Choose the database files to attach each time this connection opens." : {
 
     },
     "Compare Result With…" : {
@@ -102,6 +132,10 @@
     "Comparing…" : {
 
     },
+    "Could not attach \"%@\": %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Key %@ matches more than one row in the left result. Choose key columns that identify a single row, or match whole rows." : {
 
     },
@@ -112,6 +146,13 @@
 
     },
     "Match Whole Rows" : {
+
+    },
+    "More than one attached database is named \"%@\"." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "No Attached Databases" : {
 
     },
     "No Columns in Common" : {
@@ -135,6 +176,9 @@
     "Pick the result to compare this one with." : {
 
     },
+    "Remove Attached Database" : {
+
+    },
     "Result %1$d: %2$@" : {
 
     },
@@ -153,11 +197,33 @@
     "That result is no longer open. Choose another one." : {
 
     },
+    "The attached database \"%@\" has no file." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The attached file \"%@\" has no name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The left result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the right." : {
+
+    },
+    "The name a statement uses for this database, as in name.table." : {
 
     },
     "The right result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the left." : {
 
+    },
+    "The saved list could not be read. Adding a database replaces it." : {
+
+    },
+    "The saved list of attached databases is not in a format TablePro can read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The structure of a table in an attached database cannot be changed here." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The two results share no column name, so there is nothing to compare." : {
 
@@ -845,16 +911,12 @@
     "“%@” Changed on Disk" : {
 
     },
-    "\"%@\" is a name the database keeps for itself. Choose another name." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
+    "“%@” holds no file to import." : {
+
     },
     "\"%@\" is a reserved theme identifier." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
-    },
-    "\"%@\" is an attached database. Change its tables' structure from a connection that opens it." : {
-
     },
     "“%@” is compressed." : {
       "localizations" : {
@@ -3521,6 +3583,9 @@
         }
       }
     },
+    "%@ files cannot be imported together with other files." : {
+
+    },
     "%@ had no rows to transfer." : {
       "localizations" : {
         "fr" : {
@@ -3556,6 +3621,9 @@
           }
         }
       }
+    },
+    "%@ has no column to create." : {
+
     },
     "%@ holds a document or an array, and this text is not valid JSON." : {
       "extractionState" : "manual",
@@ -5119,6 +5187,9 @@
         }
       }
     },
+    "%@ sends the password in plain text when a server asks, even without TLS, and TablePro cannot turn that off. Set SSL Mode to Required, or install another build of the client tools." : {
+
+    },
     "%@ shapes" : {
       "comment" : "Number of distinct query shapes, %@ is a count",
       "localizations" : {
@@ -5353,6 +5424,9 @@
         }
       }
     },
+    "%@ tables could not be searched." : {
+
+    },
     "%@ takes no ORDER BY, LIMIT or OFFSET" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -5380,6 +5454,9 @@
     "%@ takes one level. End it with a semicolon before the next statement." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "%@ takes rows from two files, so Delete existing rows before import would remove the first file's rows." : {
+
     },
     "%@ to %@ characters" : {
       "localizations" : {
@@ -6083,6 +6160,9 @@
         }
       }
     },
+    "%@+ rows" : {
+
+    },
     "%@×" : {
       "comment" : "Number of times a query ran, %@ is a count\nSlowdown multiple, %@ is a number",
       "localizations" : {
@@ -6669,6 +6749,9 @@
         }
       }
     },
+    "%1$@ cannot be read. %2$@" : {
+
+    },
     "%1$@ chart of %2$@ by %3$@ with %4$d points" : {
       "localizations" : {
         "en" : {
@@ -6900,6 +6983,12 @@
         }
       }
     },
+    "%1$@ failed, and the files imported before it were kept. %2$@" : {
+
+    },
+    "%1$@ failed, so every file was rolled back. %2$@" : {
+
+    },
     "%1$@ for %2$@" : {
       "localizations" : {
         "fr" : {
@@ -7029,6 +7118,12 @@
         }
       }
     },
+    "%1$@ maps no field to a column of %2$@." : {
+
+    },
+    "%1$@ maps two fields to one column of %2$@." : {
+
+    },
     "%1$@ must be at least %2$lld." : {
       "localizations" : {
         "fr" : {
@@ -7149,6 +7244,9 @@
         }
       }
     },
+    "%1$@ of %2$@ tables" : {
+
+    },
     "%1$@ of about %2$@ rows" : {
       "localizations" : {
         "fr" : {
@@ -7219,7 +7317,13 @@
         }
       }
     },
+    "%1$@ tables hold “%2$@”." : {
+
+    },
     "%1$@ takes %2$lld dimensions, and the value has %3$lld." : {
+
+    },
+    "%1$@ to %2$@: %3$@" : {
 
     },
     "%1$@ wants to run a query on \"%2$@\"" : {
@@ -7925,6 +8029,9 @@
         }
       }
     },
+    "%1$lld of %2$lld fields mapped" : {
+
+    },
     "%1$lld of %2$lld members" : {
       "localizations" : {
         "fr" : {
@@ -8064,6 +8171,9 @@
           }
         }
       }
+    },
+    "%1$lld rows from %2$lld files in %3$@ seconds." : {
+
     },
     "%1$lld rows from %3$lld tables written to %2$@." : {
       "localizations" : {
@@ -10377,6 +10487,12 @@
     "%lld dims" : {
 
     },
+    "%lld failed" : {
+
+    },
+    "%lld files" : {
+
+    },
     "%lld in, %lld out" : {
       "localizations" : {
         "en" : {
@@ -10597,6 +10713,9 @@
           }
         }
       }
+    },
+    "%lld new columns" : {
+
     },
     "%lld objects" : {
       "localizations" : {
@@ -11268,6 +11387,12 @@
           }
         }
       }
+    },
+    "%lld rows before it were kept." : {
+
+    },
+    "%lld rows before it were rolled back." : {
+
     },
     "%lld rows do not match the foreign keys this change asks for, so nothing was changed. Correct or remove those rows, then try again." : {
       "extractionState" : "manual",
@@ -13111,6 +13236,9 @@
         }
       }
     },
+    "1 file" : {
+
+    },
     "1 item" : {
       "localizations" : {
         "fr" : {
@@ -13143,6 +13271,9 @@
           }
         }
       }
+    },
+    "1 new column" : {
+
     },
     "1 of %lld conflicts" : {
       "extractionState" : "stale",
@@ -13283,6 +13414,12 @@
           }
         }
       }
+    },
+    "1 row before it was kept." : {
+
+    },
+    "1 row before it was rolled back." : {
+
     },
     "1 row does not fit a %1$@ INSERT on its own, so its statement passes that size." : {
       "extractionState" : "manual",
@@ -13464,6 +13601,12 @@
           }
         }
       }
+    },
+    "1 table could not be searched." : {
+
+    },
+    "1 table holds “%@”." : {
+
     },
     "1 visible row" : {
       "localizations" : {
@@ -15479,6 +15622,9 @@
     "A Firestore document is a JSON object of fields." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "A folder imports the %@ files directly inside it." : {
+
     },
     "A foreign key change recreates the table, and these cannot travel with it:\n\n%@\n\nSave them on their own first, then change the foreign key." : {
       "localizations" : {
@@ -25398,6 +25544,15 @@
         }
       }
     },
+    "Apple Intelligence could not answer: %@" : {
+
+    },
+    "Apple Intelligence is not available on this Mac right now." : {
+
+    },
+    "Apple Intelligence needs macOS 26 or later." : {
+
+    },
     "AppleScript" : {
       "localizations" : {
         "fr" : {
@@ -27821,9 +27976,6 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "Attach" : {
-
-    },
     "Attach a connection to this conversation first." : {
       "localizations" : {
         "fr" : {
@@ -27874,12 +28026,6 @@
         }
       }
     },
-    "Attach Database" : {
-
-    },
-    "Attach Database…" : {
-
-    },
     "Attached %1$d of %2$d files. %3$@" : {
       "localizations" : {
         "fr" : {
@@ -27889,17 +28035,6 @@
           }
         }
       }
-    },
-    "Attached Databases" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Attached databases open only for a database file on this Mac, not for a database on a server." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Attached each time the connection opens. Reach a table as name.table, and browse each database in the sidebar." : {
-
     },
     "Attachments" : {
       "extractionState" : "stale",
@@ -33621,6 +33756,9 @@
         }
       }
     },
+    "Cannot read the file" : {
+
+    },
     "Cannot Read the Source" : {
       "localizations" : {
         "fr" : {
@@ -33630,6 +33768,9 @@
           }
         }
       }
+    },
+    "Cannot Read the Tables" : {
+
     },
     "Cannot Read This Connection" : {
       "localizations" : {
@@ -37389,6 +37530,9 @@
         }
       }
     },
+    "Choose a table for %@." : {
+
+    },
     "Choose a target to compare against." : {
       "localizations" : {
         "fr" : {
@@ -37611,6 +37755,9 @@
         }
       }
     },
+    "Choose at least one file to import." : {
+
+    },
     "Choose at least one object to copy." : {
       "localizations" : {
         "fr" : {
@@ -37620,6 +37767,9 @@
           }
         }
       }
+    },
+    "Choose at least one table to search." : {
+
     },
     "Choose Backup Folder" : {
       "localizations" : {
@@ -37922,9 +38072,6 @@
           }
         }
       }
-    },
-    "Choose the database files to attach each time this connection opens." : {
-
     },
     "Choose the extension's file again in Edit Connection." : {
       "extractionState" : "manual",
@@ -45490,6 +45637,9 @@
         }
       }
     },
+    "Configure an active provider or turn on Apple Intelligence to enable inline suggestions." : {
+
+    },
     "Configure an active provider to enable inline suggestions." : {
       "localizations" : {
         "fr" : {
@@ -48683,6 +48833,9 @@
         }
       }
     },
+    "Contains" : {
+
+    },
     "Content" : {
       "localizations" : {
         "fr" : {
@@ -51373,10 +51526,6 @@
           }
         }
       }
-    },
-    "Could not attach \"%@\": %@" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "Could not attach %1$d files. %2$@" : {
       "localizations" : {
@@ -68783,6 +68932,9 @@
         }
       }
     },
+    "Edit Search" : {
+
+    },
     "Edit the connection and choose its database type." : {
       "localizations" : {
         "fr" : {
@@ -68792,6 +68944,9 @@
           }
         }
       }
+    },
+    "Edit the import of %@" : {
+
     },
     "Edit Trigger" : {
       "localizations" : {
@@ -71444,6 +71599,9 @@
           }
         }
       }
+    },
+    "Enter the value to search for." : {
+
     },
     "Enter this code on GitHub:" : {
       "localizations" : {
@@ -81269,6 +81427,9 @@
         }
       }
     },
+    "Filter Tables" : {
+
+    },
     "Filter value" : {
       "localizations" : {
         "fr" : {
@@ -90778,6 +90939,9 @@
         }
       }
     },
+    "Import the rows of each file into its own table" : {
+
+    },
     "Import Tunnel Commands?" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -91362,6 +91526,9 @@
           }
         }
       }
+    },
+    "Include binary columns" : {
+
     },
     "Include byte order mark" : {
       "extractionState" : "stale",
@@ -92860,6 +93027,9 @@
           }
         }
       }
+    },
+    "Inline suggestions and Review, Explain, Optimize and Fix run on this Mac and send nothing over the network." : {
+
     },
     "Insert" : {
       "extractionState" : "manual",
@@ -99357,6 +99527,9 @@
         }
       }
     },
+    "Left out, because they do not import into a table: %@" : {
+
+    },
     "left parenthesis" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -105657,6 +105830,9 @@
     "Matches “%@”" : {
 
     },
+    "Matches Exactly" : {
+
+    },
     "matches regex" : {
       "localizations" : {
         "fr" : {
@@ -109085,10 +109261,6 @@
           }
         }
       }
-    },
-    "More than one attached database is named \"%@\"." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "More than one check constraint is named %@. Change or delete all of them in the same save." : {
       "localizations" : {
@@ -112713,6 +112885,9 @@
         }
       }
     },
+    "New table %@" : {
+
+    },
     "New table:" : {
       "localizations" : {
         "fr" : {
@@ -113550,9 +113725,6 @@
           }
         }
       }
-    },
-    "No Attached Databases" : {
-
     },
     "No available local port for SSH tunnel" : {
       "localizations" : {
@@ -118046,6 +118218,9 @@
         }
       }
     },
+    "No searched column holds this value." : {
+
+    },
     "No selection" : {
       "localizations" : {
         "fr" : {
@@ -119480,6 +119655,9 @@
         }
       }
     },
+    "None of these files import into a table: %@." : {
+
+    },
     "None selected" : {
       "localizations" : {
         "fr" : {
@@ -120437,6 +120615,9 @@
           }
         }
       }
+    },
+    "not imported" : {
+
     },
     "not in list" : {
       "localizations" : {
@@ -121577,6 +121758,9 @@
           }
         }
       }
+    },
+    "Nothing to Import" : {
+
     },
     "Nothing to Restore" : {
       "localizations" : {
@@ -127370,6 +127554,9 @@
           }
         }
       }
+    },
+    "Options for" : {
+
     },
     "Options the engine offers" : {
       "localizations" : {
@@ -141046,6 +141233,9 @@
         }
       }
     },
+    "Reading the files…" : {
+
+    },
     "Reading the source…" : {
       "localizations" : {
         "fr" : {
@@ -141056,6 +141246,9 @@
         }
       }
     },
+    "Reading the tables…" : {
+
+    },
     "Reading this connection's database options…" : {
       "localizations" : {
         "fr" : {
@@ -141065,6 +141258,9 @@
           }
         }
       }
+    },
+    "Reading…" : {
+
     },
     "Reads every table inside one transaction, so a dump of several tables is consistent with itself. The transaction stays open for the whole export." : {
       "extractionState" : "manual",
@@ -143879,9 +144075,6 @@
           }
         }
       }
-    },
-    "Remove Attached Database" : {
-
     },
     "Remove attachment" : {
       "localizations" : {
@@ -149723,6 +149916,9 @@
           }
         }
       }
+    },
+    "rolled back" : {
+
     },
     "root" : {
       "extractionState" : "stale",
@@ -156467,6 +156663,9 @@
         }
       }
     },
+    "Search %@…" : {
+
+    },
     "Search activity" : {
       "localizations" : {
         "fr" : {
@@ -156716,6 +156915,12 @@
           }
         }
       }
+    },
+    "Search Database" : {
+
+    },
+    "Search Database…" : {
+
     },
     "Search databases" : {
       "localizations" : {
@@ -157144,6 +157349,15 @@
           }
         }
       }
+    },
+    "Searched %@ tables." : {
+
+    },
+    "Searched 1 table." : {
+
+    },
+    "Searching %1$@ (%2$@)" : {
+
     },
     "Searching…" : {
       "localizations" : {
@@ -158437,6 +158651,9 @@
         }
       }
     },
+    "Select files or a folder to import" : {
+
+    },
     "Select files to open" : {
       "localizations" : {
         "fr" : {
@@ -159110,6 +159327,9 @@
           }
         }
       }
+    },
+    "Send to %@" : {
+
     },
     "Sends the code to %@" : {
       "localizations" : {
@@ -160958,6 +161178,9 @@
           }
         }
       }
+    },
+    "Set On error and Wrap in transaction the same for %@." : {
+
     },
     "Set Password" : {
       "localizations" : {
@@ -170155,6 +170378,9 @@
         }
       }
     },
+    "Starts With" : {
+
+    },
     "Starts with %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -172097,6 +172323,9 @@
         }
       }
     },
+    "Stopped after %1$@ of %2$@ tables." : {
+
+    },
     "Stopped after %d seconds, the query timeout" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -172109,6 +172338,12 @@
         }
       }
     },
+    "Stopped at %@. Every file was rolled back." : {
+
+    },
+    "Stopped at %@. The files imported before it were kept." : {
+
+    },
     "Stopped at %lld rows, the most R2 SQL returns from one query." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -172120,6 +172355,9 @@
           }
         }
       }
+    },
+    "Stopped." : {
+
     },
     "Stopping…" : {
       "extractionState" : "stale",
@@ -177074,6 +177312,9 @@
         }
       }
     },
+    "TablePro could not check whether %@ sends the password in plain text without TLS. Try again, or set SSL Mode to Required." : {
+
+    },
     "TablePro could not do this for you. Run this in Terminal instead:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -177156,6 +177397,9 @@
           }
         }
       }
+    },
+    "TablePro could not reach %@ to see whether it offers TLS. Check that the server is running and reachable, then try again." : {
+
     },
     "TablePro could not reach the SAP HANA server within %lld seconds." : {
       "extractionState" : "manual",
@@ -179906,6 +180150,9 @@
         }
       }
     },
+    "Text columns are always searched. Number, date and UUID columns are searched when the value reads as one, and are compared exactly." : {
+
+    },
     "Text contrast is %@:1. Aim for at least 4.5:1." : {
 
     },
@@ -181113,6 +181360,9 @@
         }
       }
     },
+    "The Apple Intelligence model is still downloading." : {
+
+    },
     "The assistant answers once the connection is up" : {
       "localizations" : {
         "fr" : {
@@ -181122,14 +181372,6 @@
           }
         }
       }
-    },
-    "The attached database \"%@\" has no file." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The attached file \"%@\" has no name." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "The authenticity of host '%@' can't be established.\n\n%@ key fingerprint is:\n%@\n\nAre you sure you want to continue connecting?" : {
       "localizations" : {
@@ -181700,6 +181942,9 @@
       }
     },
     "The changes were edited while the save was checking other tables. Save again to include them." : {
+
+    },
+    "The chat and Agent mode keep the active provider." : {
 
     },
     "The ChatGPT account could not be identified." : {
@@ -185425,9 +185670,6 @@
         }
       }
     },
-    "The name a statement uses for this database, as in name.table." : {
-
-    },
     "The name of a DIRECTORY object, not a path. The DBA who created it chose where it points." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -187430,9 +187672,6 @@
         }
       }
     },
-    "The saved list could not be read. Adding a database replaces it." : {
-
-    },
     "The saved list could not be read. Adding an extension replaces it." : {
       "localizations" : {
         "fr" : {
@@ -187442,10 +187681,6 @@
           }
         }
       }
-    },
-    "The saved list of attached databases is not in a format TablePro can read." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "The saved Microsoft Entra ID sign-in expired. Sign in again." : {
       "extractionState" : "manual",
@@ -189315,10 +189550,6 @@
           }
         }
       }
-    },
-    "The structure of a table in an attached database cannot be changed here." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "The structure of the tables this query uses is read when the request is sent." : {
       "localizations" : {
@@ -192896,6 +193127,9 @@
         }
       }
     },
+    "This database reports no tables to search." : {
+
+    },
     "This database type has no dump TablePro can drive." : {
       "localizations" : {
         "fr" : {
@@ -195145,6 +195379,9 @@
         }
       }
     },
+    "This Mac does not support Apple Intelligence." : {
+
+    },
     "this Mac needs %@ free to open that database" : {
       "localizations" : {
         "fr" : {
@@ -195895,6 +196132,12 @@
           }
         }
       }
+    },
+    "This request is too large for Apple Intelligence, even with only the columns the statement uses. Select a smaller part of the statement." : {
+
+    },
+    "This request is too large for Apple Intelligence. Select a smaller part of the statement." : {
+
     },
     "This result has no column named %@" : {
       "localizations" : {
@@ -201101,6 +201344,9 @@
         }
       }
     },
+    "Turn on Apple Intelligence in System Settings > Apple Intelligence & Siri." : {
+
+    },
     "Turn on Set time automatically in System Settings > General > Date & Time, then reconnect." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -201165,6 +201411,9 @@
           }
         }
       }
+    },
+    "Two files create a table named %@." : {
+
     },
     "Two People" : {
       "extractionState" : "manual",
@@ -205316,6 +205565,9 @@
       }
     },
     "Use for Dark Appearance" : {
+
+    },
+    "Use for inline suggestions and query actions" : {
 
     },
     "Use for Light Appearance" : {

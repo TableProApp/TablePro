@@ -14,6 +14,15 @@ struct RedshiftTableCatalogTests {
         #expect(RedshiftTableCatalog.table(fromListingRow: [nil, "VIEW"]) == nil)
     }
 
+    @Test("a schema set is listed in one query that names each schema and projects it")
+    func schemaSetListing() {
+        let statement = RedshiftTableCatalog.listingQuery(inSchemas: ["public", "sales"])
+        #expect(statement.contains("WHERE table_schema IN ('public', 'sales')"))
+        #expect(statement.contains("SELECT table_name, table_type, table_schema"))
+        #expect(RedshiftTableCatalog.table(fromListingRow: ["orders", "BASE TABLE", "sales"])?.schema == "sales")
+        #expect(RedshiftTableCatalog.table(fromListingRow: ["orders", "BASE TABLE"])?.schema == nil)
+    }
+
     @Test("a distribution key and the sort key columns in sort order")
     func distributionAndSortKeys() {
         let rows: [[String?]] = [

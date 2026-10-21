@@ -25,6 +25,11 @@ extension AIChatViewModel {
             errorMessage = rejection
             return
         }
+        let onDevice = services.appSettings.ai.useAppleIntelligence
+        if onDevice, let unavailable = onDeviceModel.availability.unavailableExplanation {
+            errorMessage = unavailable
+            return
+        }
 
         if let invocationText {
             messages.append(ChatTurn(role: .user, blocks: [.text(invocationText)]))
@@ -39,7 +44,9 @@ extension AIChatViewModel {
         if let attachment {
             blocks.append(.attachment(.queryContext(attachment)))
         }
-        messages.append(ChatTurn(role: .user, blocks: blocks))
+        let turn = ChatTurn(role: .user, blocks: blocks)
+        messages.append(turn)
+        onDeviceTurnID = onDevice ? turn.id : nil
         trimMessagesIfNeeded()
         clearError()
         pendingWalkthroughBeforeSQL = request.statement
@@ -87,7 +94,7 @@ extension AIChatViewModel {
         }
     }
 
-    private func buildQueryContext(for attachment: QueryContextAttachment) async -> QueryContextSnapshot {
+    func buildQueryContext(for attachment: QueryContextAttachment) async -> QueryContextSnapshot {
         guard let connection, connection.id == attachment.connectionId else {
             return QueryContextSnapshot(engineName: "", databaseName: attachment.database, schemaName: attachment.schema)
         }

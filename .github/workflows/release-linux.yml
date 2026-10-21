@@ -1,7 +1,7 @@
 name: Release Linux
 
 # A linux-vX.Y.Z tag publishes the Linux release: the source and vendor
-# tarballs on GitHub Releases, the signed Debian source package for each
+# tarballs and the translation template on GitHub Releases, the signed Debian source package for each
 # Ubuntu series to the Launchpad PPA, which builds and publishes the .deb,
 # and the tag to the COPR project's custom webhook, which builds the
 # Fedora packages from the release (linux/build-aux/rpm/copr-sources.sh).
@@ -93,9 +93,46 @@ jobs:
       deb-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
       rpm-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
 
+  # The release carries the template translators start from, made with
+  # gettext 1.0 as build-linux.yml's Translations job makes it.
+  template:
+    name: Translation template
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: ubuntu:26.10
+      env:
+        DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential pkgconf meson ninja-build gettext \
+            desktop-file-utils appstream libglib2.0-bin libglib2.0-dev libxml2-utils \
+            libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev \
+            libsqlite3-dev libkrb5-dev clang libclang-dev cargo rustc
+        working-directory: /
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Generate tablepro.pot
+        run: |
+          meson setup _build --fatal-meson-warnings
+          meson compile -C _build tablepro-pot
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-pot
+          path: linux/po/tablepro.pot
+          if-no-files-found: error
+
   github-release:
     name: GitHub release
-    needs: [verify, packages]
+    needs: [verify, packages, template]
     runs-on: ubuntu-24.04
     environment: linux-release
     timeout-minutes: 15
@@ -108,6 +145,10 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: linux-sources
+          path: release
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-pot
           path: release
       # A pre-release has no CHANGELOG.md section; its notes are a draft of the fragments at the tag.
       - name: Install towncrier

@@ -39,7 +39,7 @@ meson setup _build -Dprofile=development
 dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
-Four suites: `unit` is `cargo test --workspace --exclude tablepro`. `gtk`
+Five suites: `unit` is `cargo test --workspace --exclude tablepro`. `gtk`
 is `cargo test -p tablepro` with `GSK_RENDERER=cairo`, `GTK_A11Y=test`,
 `GDK_BACKEND=x11` and the build tree's schema directory, under a
 `dbus-run-session` of its own when one is installed, so its bus names
@@ -50,7 +50,9 @@ that bus. `data` runs `desktop-file-validate` and `appstreamcli
 validate`; the schema compiles with `--strict` as part of the build.
 `packaging` runs the unit tests in `build-aux/tests` and checks that
 `debian/copyright`, the RPM spec and the metainfo agree with `data/licenses`
-and the version Meson builds. In a `-Dprofile=default` build, which the
+and the version Meson builds. `po` runs `msgfmt --check` on each catalogue
+in `po/LINGUAS`; gettext 0.26 and newer also check its `{name}`
+placeholders. In a `-Dprofile=default` build, which the
 packages run, the unit and gtk suites build with `--release` but without
 its fat LTO, which would cost gigabytes and minutes per test binary.
 Tests that need Docker or a Secret Service are ignored. Without a display
@@ -211,6 +213,24 @@ tablepro_test_support::value_corpus_suite! {
 The corpus is a list of `CorpusColumn`s: a column clause, values of it written as SQL, and the text each one shows, or NULL. It covers the engine's dates and times at their extremes and in other zones, high-precision and negative decimals at their scale, JSON, UUIDs, Unicode text, binary values and the engine's other common types. `value_corpus_reads_as_the_grid_shows` adds each column to a scratch table, inserts its values, and reads them back three times: through `read_page`, as a table tab reads a page, through `build_export` and `stream_read` behind a `DeclaredPrecisionSink`, as Export All reads one, and through an editor run of a plain SELECT. The export has to show what the page shows. Each value's text is `value_text` on the type of the column it came back in, the text the grid draws, `<unreadable type>` for a value the driver could not read, and every value that differs is listed in one failure, with a column the server refused. Where the two paths differ on purpose, the value says what each shows (`CorpusColumn::shows_apart`): a MySQL TIMESTAMP is an instant in a table tab and the server's wall time in the editor, and a PostgreSQL run shows the server's own text, as psql does. A value that shows the wrong text is a decoder bug: fix the decoder, never the corpus.
 
 Every target runs it, the MySQL target on MariaDB as well, and SQLite's runs in the unit suite.
+
+### Export round trip
+
+`round_trip_suite!` checks that a file the export writes loads back with the same rows. Each driver's `crates/drivers/<engine>/tests/integration/round_trip.rs` invokes it with an engine that implements `ValueCorpusEngine` and `LargeTableEngine`:
+
+```rust
+tablepro_test_support::round_trip_suite! {
+    engine: PgEngine,
+    docker: true,
+    near_limit: true,
+}
+```
+
+- `csv_export_imports_back_as_the_same_rows` loads each corpus column into a table, exports it as CSV and imports the file into an empty copy, through `import_csv`, which runs the plan the import dialog runs. It does this under four pairings of export and import options that are meant to lose nothing: every delimiter, quoting always or where needed, LF, CRLF and CR line breaks, NULL written and read as `NULL`, and formulas left as they are. Row count and the text of every row have to match. A column of a kind `read_only_reason` names (bytes, arrays, spatial, variant and composite values) and a value `edit_text` gives no text for, such as a blob in a SQLite column typed by its values, have no CSV text the import reads back, so the SQL case covers them.
+- `sql_insert_export_runs_back_as_the_same_rows` exports each corpus column as SQL INSERT into an empty copy and runs the file as the editor runs one: split by the engine's grammar and sent a batch at a time. Every value has to come back with the same text and of the same kind.
+- `csv_export_near_the_import_limit_imports_back`, with `near_limit: true`, fills a table through `LargeTableEngine` so its CSV under the export defaults lands within 1 MiB under `MAX_CSV_FILE_BYTES`, imports it into an empty copy, and compares a hash of every row. ClickHouse passes `false`: its import sends values in the request URL, 8 KiB a statement, so such a file takes some 8,000 statements and longer than a case may run.
+
+Each case has four minutes (`ROUND_TRIP_CASE_LIMIT`). Every target runs the suite, the MySQL target on MariaDB as well, and SQLite's runs in the unit suite.
 
 ### TLS conformance
 

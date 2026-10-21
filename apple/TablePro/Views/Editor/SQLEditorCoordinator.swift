@@ -39,6 +39,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     private var contextMenu: AIEditorContextMenu?
     private var inlineSuggestionManager: InlineSuggestionManager?
     private var aiChatInlineSource: AIChatInlineSource?
+    private var appleIntelligenceInlineSource: AppleIntelligenceInlineSource?
     private var copilotDocumentSync: CopilotDocumentSync?
     private var copilotInlineSource: CopilotInlineSource?
     private var editorSettingsCancellable: AnyCancellable?
@@ -314,6 +315,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         copilotDocumentSync = nil
         copilotInlineSource = nil
         aiChatInlineSource = nil
+        appleIntelligenceInlineSource = nil
 
         // Release closure captures to break potential retain cycles
         releaseWindowSentinel()
@@ -554,6 +556,17 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             aiChatInlineSource?.schemaProvider = schemaProvider
             aiChatInlineSource?.connectionId = connectionId
             return aiChatInlineSource
+        case .appleIntelligence:
+            if appleIntelligenceInlineSource == nil {
+                appleIntelligenceInlineSource = AppleIntelligenceInlineSource(
+                    schemaProvider: schemaProvider,
+                    connectionId: connectionId,
+                    accessGate: inlineAccessGate
+                )
+            }
+            appleIntelligenceInlineSource?.schemaProvider = schemaProvider
+            appleIntelligenceInlineSource?.connectionId = connectionId
+            return appleIntelligenceInlineSource
         }
     }
 
@@ -601,6 +614,9 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         }
         if kind != .chatCompletion {
             aiChatInlineSource = nil
+        }
+        if kind != .appleIntelligence {
+            appleIntelligenceInlineSource = nil
         }
     }
 

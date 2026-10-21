@@ -29,8 +29,8 @@ enum QueryTableReferenceResolver {
         return parser.references()
     }
 
-    static func identifierTokens(in text: String) -> [String] {
-        let tokens = QueryTokenScanner.tokens(in: scannedText(text), grammar: .ansi, literalsAsIdentifiers: true)
+    static func identifierTokens(in text: String, grammar: SQLLexicalGrammar = .ansi) -> [String] {
+        let tokens = QueryTokenScanner.tokens(in: scannedText(text), grammar: grammar, literalsAsIdentifiers: true)
         var seen = Set<String>()
         var result: [String] = []
         for token in tokens {

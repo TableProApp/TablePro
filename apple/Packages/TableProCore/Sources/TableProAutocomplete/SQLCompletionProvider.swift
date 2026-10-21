@@ -133,8 +133,11 @@ public final class SQLCompletionProvider {
             guard let catalog else { return [] }
             if let derived = context.tableReferences.first(where: {
                 $0.isDerived && $0.identifier.caseInsensitiveCompare(dotPrefix) == .orderedSame
-            }), let columns = derived.derivedColumns, !columns.isEmpty {
-                return columns.map { SQLCompletionItem.column($0, dataType: nil, tableName: derived.identifier) }
+            }) {
+                let columns = await derivedColumns(of: derived)
+                if !columns.isEmpty {
+                    return columns.map { SQLCompletionItem.column($0, dataType: nil, tableName: derived.identifier) }
+                }
             }
             if let tableName = await catalog.resolveAlias(dotPrefix, in: context.tableReferences) {
                 let schema = context.tableReferences.first {
@@ -286,7 +289,10 @@ public final class SQLCompletionProvider {
             ])
 
         case .orderBy:
-            items += await columnItems(for: context.tableReferences)
+            let columns = await columnItems(for: context.tableReferences)
+            // Only a closed quote stays outside the replaced text; an open one is replaced with the token.
+            items += outputAliasItems(context.outputAliases, besides: columns, insideQuotes: context.quotedName?.close != nil)
+            items += columns
             items += filterKeywords([
                 "ASC", "DESC", "NULLS FIRST", "NULLS LAST",
                 "LIMIT", "OFFSET",
@@ -294,14 +300,14 @@ public final class SQLCompletionProvider {
             ])
 
         case .set:
-            if let firstTable = context.tableReferences.first {
-                items = await catalog?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
+            if let target = context.targetTable ?? context.tableReferences.first {
+                items = await catalog?.columnCompletionItems(for: target.tableName, schema: target.schema) ?? []
             }
             items += filterKeywords(["WHERE", "RETURNING"])
 
         case .insertColumns:
-            if let firstTable = context.tableReferences.first {
-                items = await catalog?.columnCompletionItems(for: firstTable.tableName, schema: firstTable.schema) ?? []
+            if let target = context.targetTable ?? context.tableReferences.first {
+                items = await catalog?.columnCompletionItems(for: target.tableName, schema: target.schema) ?? []
             }
 
         case .values:
@@ -534,7 +540,59 @@ public final class SQLCompletionProvider {
         if references.isEmpty {
             return await catalog?.allColumnsFromCachedTables() ?? []
         }
-        return await catalog?.allColumnsInScope(for: references) ?? []
+        var resolved: [TableReference] = []
+        for reference in references {
+            guard reference.derivedProjection != nil else {
+                resolved.append(reference)
+                continue
+            }
+            resolved.append(reference.resolvingDerivedColumns(await derivedColumns(of: reference)))
+        }
+        return await catalog?.allColumnsInScope(for: resolved) ?? []
+    }
+
+    // ORDER BY sorts by an output alias before a source column of the same name, so the alias leads.
+    private func outputAliasItems(
+        _ spellings: [String], besides columns: [SQLCompletionItem], insideQuotes: Bool
+    ) -> [SQLCompletionItem] {
+        let columnNames = Set(columns.map(\.label))
+        let foldedColumnNames = Set(columns.map { $0.label.lowercased() })
+        var seen = Set<String>()
+        return spellings.compactMap { spelling in
+            let name = SQLTokenStream.unquoted(spelling)
+            // A quoted alias keeps its case, so `"Status"` is another name than a `status` column.
+            let isQuoted = name != spelling
+            let repeatsColumn = isQuoted ? columnNames.contains(name) : foldedColumnNames.contains(name.lowercased())
+            guard !name.isEmpty, !repeatsColumn, seen.insert(spelling).inserted else { return nil }
+            return SQLCompletionItem(
+                label: name,
+                kind: .column,
+                insertText: insideQuotes ? name : identifierSpelling(of: spelling, name: name),
+                sortPriority: 10
+            )
+        }
+    }
+
+    // `AS 'Total'` names the column on MySQL and SQLite, but ORDER BY 'Total' sorts by a constant.
+    private func identifierSpelling(of spelling: String, name: String) -> String {
+        guard spelling.hasPrefix("'") else { return spelling }
+        let isBare = name.unicodeScalars.first.map { CharacterSet.letters.contains($0) || $0 == "_" } == true
+            && name.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) || $0 == "_" }
+        guard !isBare || SQLKeywords.isKeyword(name) else { return name }
+        // The analyzer reads a backslash-escaped `"` as a string, which is where a backtick quotes a name instead.
+        let quote = grammar.isSuperset(of: [.backslashEscapesInDoubleQuotes, .backtickQuotes]) ? "`" : "\""
+        return quote + name.replacingOccurrences(of: quote, with: quote + quote) + quote
+    }
+
+    // CTEs were bound to their own scope by the parser, so what is left to expand is a table the catalog knows.
+    private func derivedColumns(of reference: TableReference) async -> [String] {
+        guard let projection = reference.derivedProjection else { return reference.derivedColumns ?? [] }
+        var expanded: [DerivedProjection.Table: [String]] = [:]
+        for table in projection.tables where expanded[table] == nil {
+            expanded[table] = await catalog?.columnCompletionItems(for: table.name, schema: table.schema).map(\.label) ?? []
+        }
+        // The catalog answers no columns for a table it does not know, which must not count as a zero-width `*`.
+        return projection.columns { table in expanded[table].flatMap { $0.isEmpty ? nil : $0 } }
     }
 
     // A reference is spelled as the statement wrote it, and stays quoted when it was, or it would fold to another name.

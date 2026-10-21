@@ -119,7 +119,11 @@ internal extension MainSplitViewController {
         let manager = sessionState.tabManager
         let target = workspace.connection.flatMap { PluginManager.shared.containerSwitchTarget(for: $0.type) }
         interaction.commands = EditorTabCommands(
-            activate: { [weak manager] id in manager?.selectedTabId = id },
+            activate: { [weak manager] id in
+                guard let manager, manager.selectedTabId != id else { return }
+                TabSwitchTracer.shared.requestSwitch(.tabStrip, to: id)
+                manager.selectedTabId = id
+            },
             keepOpen: { [weak manager] id in
                 manager?.promotePreviewTab(id: id)
                 if #available(macOS 14.0, *) {

@@ -235,18 +235,26 @@ extension MainContentCoordinator {
     /// The menu bar's Import Data…, the Actions pull-down's leaf of the same name, and ⇧⌘I. The
     /// file decides the format, so every format this connection imports is offered and the sheet
     /// follows what the user picked. Resolving a format first is what made the command a permanent
-    /// alias for SQL (#3047).
+    /// alias for SQL (#3047). Several files, or a folder, import as rows into a table each.
     func openImportPanel() {
         guard let options = offeredImportFormats() else { return }
+        let lookup = importFormatLookup
+        let readsRows: (String) -> Bool = { lookup.requiresTargetTable($0) == true }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let url = await ImportFilePanel.present(
+            let urls = await ImportFilePanel.presentFiles(
                 matching: options,
-                message: String(localized: "Select a file to import"),
+                readsRows: readsRows,
+                message: String(localized: "Select files or a folder to import"),
                 in: self.contentWindow
             )
-            guard let url, case .format(let formatId) = ImportFileFormatResolver.match(url, among: options) else { return }
-            self.presentImportSheet(fileURL: url, formatId: formatId)
+            if urls.count == 1, let url = urls.first, !ImportBatchFiles.isDirectory(url) {
+                guard case .format(let formatId) = ImportFileFormatResolver.match(url, among: options) else { return }
+                self.presentImportSheet(fileURL: url, formatId: formatId)
+                return
+            }
+            guard !urls.isEmpty else { return }
+            self.presentRowImportBatch(ImportBatchFiles.resolve(urls, among: options, readsRows: readsRows))
         }
     }
 

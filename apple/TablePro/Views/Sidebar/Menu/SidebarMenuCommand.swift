@@ -66,6 +66,7 @@ internal enum SidebarMenuCommand: Equatable {
     case copyObjectsTo(objects: [ObjectCopySelection], ref: DatabaseTreeTableRef?)
     case copyContainerTo(DatabaseContainerRef)
     case duplicateDatabase(DatabaseContainerRef)
+    case searchContainer(DatabaseContainerRef)
     case showAllTablesMetadata
     case refreshObjectKind(SidebarObjectKind)
     case refreshContainerObjectKind(DatabaseTreeObjectGroup)

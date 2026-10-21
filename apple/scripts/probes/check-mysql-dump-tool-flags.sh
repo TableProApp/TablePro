@@ -58,6 +58,7 @@ MARIADB_FLAGS=(
     "--ssl-ca=/dev/null"
     "--ssl-cert=/dev/null"
     "--ssl-key=/dev/null"
+    "--plugin-dir=/dev/null"
 )
 
 failures=0

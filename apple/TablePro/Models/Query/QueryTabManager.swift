@@ -207,17 +207,32 @@ final class QueryTabManager: ObservableObject {
     }
 
     func selectTab(at index: Int) {
-        let strip = visibleTabs
-        guard strip.indices.contains(index) else { return }
-        selectedTabId = strip[index].id
+        guard let id = tabId(at: index) else { return }
+        selectedTabId = id
     }
 
     func selectTab(offsetBy offset: Int) {
+        guard let id = tabId(offsetBy: offset) else { return }
+        selectedTabId = id
+    }
+
+    // On screen: the selected tab of the connection the key window shows.
+    func isShowing(_ id: UUID) -> Bool {
+        isFrontmost && selectedTabId == id
+    }
+
+    func tabId(at index: Int) -> UUID? {
         let strip = visibleTabs
-        guard !strip.isEmpty else { return }
+        guard strip.indices.contains(index) else { return nil }
+        return strip[index].id
+    }
+
+    func tabId(offsetBy offset: Int) -> UUID? {
+        let strip = visibleTabs
+        guard !strip.isEmpty else { return nil }
         let current = selectedTab.flatMap { tab in strip.firstIndex { $0.id == tab.id } } ?? 0
         let count = strip.count
-        selectedTabId = strip[((current + offset) % count + count) % count].id
+        return strip[((current + offset) % count + count) % count].id
     }
 
     // MARK: - Recency

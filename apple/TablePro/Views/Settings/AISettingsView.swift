@@ -25,6 +25,7 @@ struct AISettingsView: View {
             if settings.enabled {
                 activeProviderSection
                 providersSection
+                appleIntelligenceSection
                 inlineSuggestionsSection
                 agentSection
                 contextSection
@@ -230,15 +231,41 @@ struct AISettingsView: View {
         }
     }
 
+    // MARK: - Apple Intelligence
+
+    private var appleIntelligenceSection: some View {
+        let availability = SystemOnDeviceLanguageModel().availability
+        return Section {
+            Toggle("Use for inline suggestions and query actions", isOn: $settings.useAppleIntelligence)
+                .disabled(!availability.isAvailable && !settings.useAppleIntelligence)
+        } header: {
+            Text(AppleIntelligenceAvailability.displayName)
+        } footer: {
+            Text(Self.appleIntelligenceFooter(availability))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private static func appleIntelligenceFooter(_ availability: AppleIntelligenceAvailability) -> String {
+        if let unavailable = availability.unavailableExplanation { return unavailable }
+        return String(localized: "Inline suggestions and Review, Explain, Optimize and Fix run on this Mac and send nothing over the network.")
+            + " " + String(localized: "The chat and Agent mode keep the active provider.")
+    }
+
     // MARK: - Inline Suggestions
+
+    private var canSuggestInline: Bool {
+        settings.hasActiveProvider || settings.useAppleIntelligence
+    }
 
     private var inlineSuggestionsSection: some View {
         Section {
             Toggle("Enable inline suggestions while typing", isOn: $settings.inlineSuggestionsEnabled)
-                .disabled(!settings.hasActiveProvider)
-                .help(settings.hasActiveProvider
+                .disabled(!canSuggestInline)
+                .help(canSuggestInline
                     ? ""
-                    : String(localized: "Configure an active provider to enable inline suggestions."))
+                    : String(localized: "Configure an active provider or turn on Apple Intelligence to enable inline suggestions."))
             Stepper(
                 String(format: String(localized: "Debounce: %d ms"), settings.inlineSuggestionDebounceMs),
                 value: $settings.inlineSuggestionDebounceMs,

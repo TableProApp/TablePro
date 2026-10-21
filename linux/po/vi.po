@@ -1,0 +1,6263 @@
+# Vietnamese translation for TablePro.
+# Copyright (C) 2026 TablePro Authors
+# This file is distributed under the same license as the tablepro package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: tablepro\n"
+"Report-Msgid-Bugs-To: https://github.com/TableProApp/TablePro/issues\n"
+"POT-Creation-Date: 2026-10-20 20:56+0000\n"
+"PO-Revision-Date: 2026-10-21 04:30+0700\n"
+"Last-Translator: TablePro Authors <hello@tablepro.app>\n"
+"Language-Team: Vietnamese\n"
+"Language: vi\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#. Translators: your names, one per line, as "Name <email>" or "Name https://site".
+#: crates/app/src/application/about_dialog.rs
+msgid "translator-credits"
+msgstr ""
+
+#: crates/app/src/application/imp.rs
+msgid "Open a new window"
+msgstr "Mở cửa sổ mới"
+
+#: crates/app/src/i18n.rs crates/app/src/ui/export/export_scope.rs
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+#: crates/app/src/ui/result_pane/mod.rs
+#, rust-format
+msgid "{n} row"
+msgid_plural "{n} rows"
+msgstr[0] "{n} dòng"
+
+#: crates/app/src/services/deletion_error.rs
+#: crates/app/src/ui/session_window/connections.rs
+msgid "The stored passwords could not be deleted, so the connection was kept."
+msgstr "Không xóa được các mật khẩu đã lưu, nên kết nối vẫn được giữ lại."
+
+#: crates/app/src/services/deletion_error.rs
+#, rust-format
+msgid ""
+"“{name}” is still listed, but its stored passwords were deleted. Connecting "
+"will ask for them."
+msgstr ""
+"“{name}” vẫn còn trong danh sách, nhưng các mật khẩu đã lưu của nó đã bị "
+"xóa. Khi kết nối, ứng dụng sẽ hỏi lại."
+
+#: crates/app/src/services/deletion_error.rs
+#, rust-format
+msgid "“{name}” could not be deleted"
+msgstr "Không xóa được “{name}”"
+
+#: crates/app/src/services/deletion_report.rs
+#, rust-format
+msgid ""
+"“{name}” was deleted, but some saved tabs or settings could not be removed"
+msgstr "Đã xóa “{name}”, nhưng không gỡ được một số tab hoặc thiết lập đã lưu"
+
+#: crates/app/src/services/deletion_report.rs
+#, rust-format
+msgid ""
+"“{name}” was deleted, but some of what was stored for it could not be removed"
+msgstr "Đã xóa “{name}”, nhưng không gỡ được một phần dữ liệu đã lưu cho nó"
+
+#: crates/app/src/services/deletion_report.rs
+#, rust-format
+msgid ""
+"“{name}” was deleted, but its saved queries and query history could not be "
+"removed"
+msgstr ""
+"Đã xóa “{name}”, nhưng không gỡ được các truy vấn đã lưu và lịch sử truy vấn "
+"của nó"
+
+#: crates/app/src/services/deletion_report.rs
+#, rust-format
+msgid "“{name}” was deleted, but its saved queries could not be removed"
+msgstr "Đã xóa “{name}”, nhưng không gỡ được các truy vấn đã lưu của nó"
+
+#: crates/app/src/services/deletion_report.rs
+#, rust-format
+msgid "“{name}” was deleted, but its query history could not be removed"
+msgstr "Đã xóa “{name}”, nhưng không gỡ được lịch sử truy vấn của nó"
+
+#: crates/app/src/services/duplicate_name.rs
+#, rust-format
+msgid "{name} (Copy)"
+msgstr "{name} (Bản sao)"
+
+#: crates/app/src/services/duplicate_name.rs
+#, rust-format
+msgid "{name} (Copy {n})"
+msgstr "{name} (Bản sao {n})"
+
+#: crates/app/src/services/history_availability.rs
+msgid ""
+"The query history was written by a newer version of TablePro. Update "
+"TablePro to read it."
+msgstr ""
+"Lịch sử truy vấn được ghi bởi một phiên bản TablePro mới hơn. Hãy cập nhật "
+"TablePro để đọc được nó."
+
+#: crates/app/src/services/history_availability.rs
+msgid "The query history could not be updated for this version of TablePro."
+msgstr "Không cập nhật được lịch sử truy vấn cho phiên bản TablePro này."
+
+#: crates/app/src/services/history_availability.rs
+#: crates/app/src/ui/error_text/files.rs
+#, rust-format
+msgid "TablePro is not allowed to write {path}."
+msgstr "TablePro không được phép ghi vào {path}."
+
+#: crates/app/src/services/history_availability.rs
+#, rust-format
+msgid "The disk that holds {path} is full."
+msgstr "Ổ đĩa chứa {path} đã đầy."
+
+#: crates/app/src/services/history_availability.rs
+#, rust-format
+msgid "{path} could not be created."
+msgstr "Không tạo được {path}."
+
+#: crates/app/src/services/history_availability.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "The query history file could not be read. It may be damaged."
+msgstr "Không đọc được tệp lịch sử truy vấn. Tệp có thể đã bị hỏng."
+
+#: crates/app/src/services/secret_labels.rs
+#, rust-format
+msgid "TablePro database password for {target}"
+msgstr "Mật khẩu cơ sở dữ liệu TablePro cho {target}"
+
+#: crates/app/src/services/secret_labels.rs
+#, rust-format
+msgid "TablePro SSH password for {target}"
+msgstr "Mật khẩu SSH TablePro cho {target}"
+
+#: crates/app/src/services/secret_labels.rs
+#, rust-format
+msgid "TablePro SSH key passphrase for {target}"
+msgstr "Cụm mật khẩu khóa SSH TablePro cho {target}"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid ""
+"No keyring is running, so the password was not saved. It will be asked for "
+"next time."
+msgstr ""
+"Không có chùm khóa nào đang chạy, nên mật khẩu chưa được lưu. Lần sau ứng "
+"dụng sẽ hỏi lại."
+
+#: crates/app/src/services/secret_save_report.rs
+msgid ""
+"The secret portal is unavailable, so the password was not saved. It will be "
+"asked for next time."
+msgstr ""
+"Cổng thông tin bí mật (secret portal) không khả dụng, nên mật khẩu chưa được "
+"lưu. Lần sau ứng dụng sẽ hỏi lại."
+
+#: crates/app/src/services/secret_save_report.rs
+msgid ""
+"The keyring stayed locked, so the password was not saved. It will be asked "
+"for next time."
+msgstr ""
+"Chùm khóa vẫn bị khóa, nên mật khẩu chưa được lưu. Lần sau ứng dụng sẽ hỏi "
+"lại."
+
+#: crates/app/src/services/secret_save_report.rs
+#, rust-format
+msgid "The keyring did not save the password: {reason}"
+msgstr "Chùm khóa không lưu mật khẩu: {reason}"
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "The keyring did not save the password."
+msgstr "Chùm khóa không lưu mật khẩu."
+
+#: crates/app/src/ui/browse_tab/browse_actions.rs
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+#: crates/app/src/ui/grid/grid_menus.rs data/resources/shortcuts-dialog.ui
+msgid "Insert Row"
+msgstr "Thêm dòng"
+
+#: crates/app/src/ui/browse_tab/browse_actions.rs
+#: crates/app/src/ui/browse_tab/selection_handlers.rs
+msgid "Delete Selected Rows"
+msgstr "Xóa các dòng đã chọn"
+
+#: crates/app/src/ui/browse_tab/browse_actions.rs
+#: crates/app/src/ui/browse_tab/layout.rs
+msgid "Export Rows…"
+msgstr "Xuất các dòng…"
+
+#: crates/app/src/ui/browse_tab/clipboard_handlers.rs
+#: crates/app/src/ui/editor/mod.rs
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+#: crates/app/src/ui/workspace/import.rs
+msgid "Connect to a database first."
+msgstr "Hãy kết nối tới một cơ sở dữ liệu trước."
+
+#: crates/app/src/ui/browse_tab/clipboard_handlers.rs
+msgid "Pasting rows isn't supported yet"
+msgstr "Chưa hỗ trợ dán dòng"
+
+#: crates/app/src/ui/browse_tab/clipboard_handlers.rs
+msgid "Nothing to export"
+msgstr "Không có gì để xuất"
+
+#: crates/app/src/ui/browse_tab/count_failure_text.rs
+#, rust-format
+msgid "Counting took longer than {seconds} second and was stopped."
+msgid_plural "Counting took longer than {seconds} seconds and was stopped."
+msgstr[0] "Việc đếm mất hơn {seconds} giây nên đã bị dừng."
+
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+msgid "This cell can't take the column's default"
+msgstr "Ô này không thể nhận giá trị mặc định của cột"
+
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+msgid "This row is being saved. Change it again once the save finishes."
+msgstr "Dòng này đang được lưu. Hãy sửa lại sau khi lưu xong."
+
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+msgid "This table has no primary key, so editing is turned off."
+msgstr "Bảng này không có khóa chính, nên tính năng sửa đã bị tắt."
+
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+#, rust-format
+msgid "Delete {n} Row?"
+msgid_plural "Delete {n} Rows?"
+msgstr[0] "Xóa {n} dòng?"
+
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+#: crates/app/src/ui/credential_prompt/prompt_form.rs
+#: crates/app/src/ui/delete_connection_dialog.rs
+#: crates/app/src/ui/discard_alert.rs crates/app/src/ui/editor/mod.rs
+#: crates/app/src/ui/grid/multiline_editor.rs
+#: crates/app/src/ui/history_dialog/mod.rs crates/app/src/ui/host_key_review.rs
+#: crates/app/src/ui/picker/new_group_dialog.rs
+#: crates/app/src/ui/preferences_dialog/history_group.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+#: crates/app/src/ui/session_window/connections.rs
+#: crates/app/src/ui/workspace/status_pages.rs
+#: crates/app/src/ui/workspace/structure.rs
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+#: data/resources/ui/connecting-page.ui
+msgid "Cancel"
+msgstr "Hủy"
+
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+#: crates/app/src/ui/delete_connection_dialog.rs
+#: crates/app/src/ui/grid/grid_menus.rs crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+#: data/resources/ui/history-dialog.ui data/resources/ui/history-row.ui
+msgid "Delete"
+msgstr "Xóa"
+
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+msgid ""
+"The table's primary key changed, so no rows were marked for deletion. Select "
+"them again."
+msgstr ""
+"Khóa chính của bảng đã thay đổi, nên không dòng nào được đánh dấu để xóa. "
+"Hãy chọn lại."
+
+#: crates/app/src/ui/browse_tab/layout.rs
+#: crates/app/src/ui/browse_tab/paging_handlers.rs
+#: data/resources/shortcuts-dialog.ui data/resources/ui/browse-tab.ui
+msgid "Filter Rows"
+msgstr "Lọc dòng"
+
+#: crates/app/src/ui/browse_tab/layout.rs
+#: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/ui/pager-bar.ui
+msgid "Count Rows"
+msgstr "Đếm dòng"
+
+#: crates/app/src/ui/browse_tab/layout.rs
+msgid "Rows per Page"
+msgstr "Số dòng mỗi trang"
+
+#: crates/app/src/ui/browse_tab/mod.rs
+#, rust-format
+msgid "Fetching rows from {table}"
+msgstr "Đang lấy dòng từ {table}"
+
+#: crates/app/src/ui/browse_tab/page_label.rs
+msgid "No rows"
+msgstr "Không có dòng"
+
+#: crates/app/src/ui/browse_tab/page_label.rs
+msgid "No rows match the filter"
+msgstr "Không có dòng nào khớp bộ lọc"
+
+#: crates/app/src/ui/browse_tab/page_label.rs
+msgid "No rows on this page"
+msgstr "Không có dòng nào trên trang này"
+
+#: crates/app/src/ui/browse_tab/pager_bar.rs
+msgid "Last Page"
+msgstr "Trang cuối"
+
+#: crates/app/src/ui/browse_tab/pager_bar.rs
+msgid "Count rows to go to the last page"
+msgstr "Đếm số dòng để đi tới trang cuối"
+
+#: crates/app/src/ui/browse_tab/pager_bar.rs
+msgid "Counting…"
+msgstr "Đang đếm…"
+
+#: crates/app/src/ui/browse_tab/pager_bar.rs
+#: crates/app/src/ui/saved_queries_dialog.rs data/resources/ui/browse-tab.ui
+#: data/resources/ui/structure-tab.ui
+msgid "Try Again"
+msgstr "Thử lại"
+
+#: crates/app/src/ui/browse_tab/pager_bar.rs
+#, rust-format
+msgid "Couldn't count the rows. {reason}"
+msgstr "Không đếm được số dòng. {reason}"
+
+#: crates/app/src/ui/browse_tab/pager_bar.rs
+msgid "First Page"
+msgstr "Trang đầu"
+
+#: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/shortcuts-dialog.ui
+msgid "Previous Page"
+msgstr "Trang trước"
+
+#: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/shortcuts-dialog.ui
+msgid "Next Page"
+msgstr "Trang sau"
+
+#: crates/app/src/ui/browse_tab/paging_handlers.rs
+#, rust-format
+msgid "{n} Filter Rule Active"
+msgid_plural "{n} Filter Rules Active"
+msgstr[0] "{n} quy tắc lọc đang bật"
+
+#: crates/app/src/ui/browse_tab/pending_changes_bar.rs
+msgid "1 unsaved change"
+msgstr "1 thay đổi chưa lưu"
+
+#: crates/app/src/ui/browse_tab/pending_changes_bar.rs
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+#, rust-format
+msgid "{n} unsaved change"
+msgid_plural "{n} unsaved changes"
+msgstr[0] "{n} thay đổi chưa lưu"
+
+#: crates/app/src/ui/browse_tab/pending_changes_bar.rs
+#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
+#: data/resources/ui/workspace.ui
+msgid "Saving…"
+msgstr "Đang lưu…"
+
+#: crates/app/src/ui/browse_tab/row_deletion.rs
+msgid ""
+"These rows will be marked for deletion. They aren't removed until you click "
+"Save."
+msgstr ""
+"Các dòng này sẽ được đánh dấu để xóa. Chúng chỉ bị xóa khi bạn bấm Lưu."
+
+#: crates/app/src/ui/browse_tab/row_deletion.rs
+msgid ""
+"These rows were never saved. They're removed now, and Undo won't bring them "
+"back."
+msgstr ""
+"Các dòng này chưa từng được lưu. Chúng bị gỡ ngay bây giờ và Hoàn tác không "
+"khôi phục được."
+
+#: crates/app/src/ui/browse_tab/row_deletion.rs
+msgid ""
+"Saved rows will be marked for deletion and aren't removed until you click "
+"Save. Rows never saved are removed now, and Undo won't bring them back."
+msgstr ""
+"Các dòng đã lưu sẽ được đánh dấu để xóa và chỉ bị xóa khi bạn bấm Lưu. Các "
+"dòng chưa từng lưu bị gỡ ngay bây giờ và Hoàn tác không khôi phục được."
+
+#: crates/app/src/ui/browse_tab/row_total.rs
+#, rust-format
+msgid "Rows {start} – {end} of {total}"
+msgstr "Dòng {start} – {end} trên {total}"
+
+#: crates/app/src/ui/browse_tab/row_total.rs
+#, rust-format
+msgid "Rows {start} – {end} of about {total}"
+msgstr "Dòng {start} – {end} trên khoảng {total}"
+
+#: crates/app/src/ui/browse_tab/row_total.rs
+#, rust-format
+msgid "Rows {start} – {end}"
+msgstr "Dòng {start} – {end}"
+
+#: crates/app/src/ui/browse_tab/save_handlers.rs
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+msgid "Save Failed"
+msgstr "Lưu thất bại"
+
+#: crates/app/src/ui/browse_tab/save_handlers.rs
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+#: crates/app/src/workspace/unknown_outcome_dialog.rs
+msgid "Save Result Unknown"
+msgstr "Không rõ kết quả lưu"
+
+#: crates/app/src/ui/browse_tab/selection_handlers.rs
+#, rust-format
+msgid "{n} selected · press Delete to remove"
+msgstr "Đã chọn {n} · bấm Delete để gỡ"
+
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+msgid "Copied to clipboard"
+msgstr "Đã sao chép vào bảng nhớ tạm"
+
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+#, rust-format
+msgid "Copied {n} row"
+msgid_plural "Copied {n} rows"
+msgstr[0] "Đã sao chép {n} dòng"
+
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+#, rust-format
+msgid "Copied {n} value"
+msgid_plural "Copied {n} values"
+msgstr[0] "Đã sao chép {n} giá trị"
+
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+msgid "Couldn't copy the selection"
+msgstr "Không sao chép được vùng chọn"
+
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+#, rust-format
+msgid "{n} NULL or binary values left out of the IN clause"
+msgstr "Đã bỏ {n} giá trị NULL hoặc nhị phân ra khỏi mệnh đề IN"
+
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+#, rust-format
+msgid ""
+"Couldn't copy: the column “{column}” holds a value TablePro couldn't read"
+msgstr ""
+"Không sao chép được: cột “{column}” chứa một giá trị TablePro không đọc được"
+
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+#, rust-format
+msgid "Couldn't copy: the column “{column}” holds a control character"
+msgstr "Không sao chép được: cột “{column}” chứa một ký tự điều khiển"
+
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+msgid "This row has a value that can't be written as SQL"
+msgstr "Dòng này có một giá trị không thể viết thành SQL"
+
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+msgid "This row has no value to put in an INSERT"
+msgstr "Dòng này không có giá trị nào để đưa vào câu INSERT"
+
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+msgid "This column has a value that can't be written as SQL"
+msgstr "Cột này có một giá trị không thể viết thành SQL"
+
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+msgid "Nothing to copy: an IN clause can't carry NULL or binary values"
+msgstr ""
+"Không có gì để sao chép: mệnh đề IN không thể chứa giá trị NULL hoặc nhị phân"
+
+#: crates/app/src/ui/clipboard/clipboard_writer.rs
+msgid "Values with a NUL character can't be copied"
+msgstr "Không thể sao chép giá trị có ký tự NUL"
+
+#: crates/app/src/ui/clipboard/clipboard_writer.rs
+msgid "Couldn't copy to the clipboard"
+msgstr "Không sao chép được vào bảng nhớ tạm"
+
+#: crates/app/src/ui/connect_dialog/connect_form.rs
+msgid "Choose a database file, or create a new one."
+msgstr "Chọn một tệp cơ sở dữ liệu, hoặc tạo tệp mới."
+
+#: crates/app/src/ui/connect_dialog/connect_form.rs
+msgid "Enter the username to log in with."
+msgstr "Nhập tên người dùng để đăng nhập."
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+#: crates/app/src/ui/grid/multiline_editor.rs
+#: crates/app/src/ui/workspace/status_pages.rs
+#: data/resources/ui/pending-changes-bar.ui data/resources/ui/sql-editor.ui
+#: data/resources/ui/structure-tab.ui
+msgid "Save"
+msgstr "Lưu"
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "Leave password fields empty to keep the saved passwords."
+msgstr "Để trống các ô mật khẩu để giữ các mật khẩu đã lưu."
+
+#: crates/app/src/ui/connect_dialog/mod.rs data/resources/ui/connect-dialog.ui
+msgid "Database"
+msgstr "Cơ sở dữ liệu"
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "Database (optional)"
+msgstr "Cơ sở dữ liệu (không bắt buộc)"
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "Edit Connection"
+msgstr "Sửa kết nối"
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+#, rust-format
+msgid "Connect to {name}"
+msgstr "Kết nối tới {name}"
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "Checking the certificate files…"
+msgstr "Đang kiểm tra các tệp chứng chỉ…"
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "No driver selected"
+msgstr "Chưa chọn trình điều khiển"
+
+#: crates/app/src/ui/connect_dialog/mod.rs data/resources/ui/sql-editor.ui
+msgid "Stop"
+msgstr "Dừng"
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "Stop the Test"
+msgstr "Dừng kiểm tra"
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "Connection works"
+msgstr "Kết nối hoạt động"
+
+#: crates/app/src/ui/connect_dialog/mod.rs data/resources/ui/connect-dialog.ui
+msgid "Test"
+msgstr "Kiểm tra"
+
+#: crates/app/src/ui/connect_dialog/mod.rs data/resources/ui/connect-dialog.ui
+msgid "Connect Once to Check the Settings"
+msgstr "Kết nối thử một lần để kiểm tra thiết lập"
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+#: crates/app/src/ui/credential_prompt/prompt_form.rs
+#: crates/app/src/ui/ssh_inputs.rs data/resources/ui/connect-dialog.ui
+#: data/resources/ui/ssh-section.ui
+msgid "Password"
+msgstr "Mật khẩu"
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "Windows (Kerberos)"
+msgstr "Windows (Kerberos)"
+
+#: crates/app/src/ui/connect_dialog/sqlite_file_row.rs
+msgid "Open Database File"
+msgstr "Mở tệp cơ sở dữ liệu"
+
+#: crates/app/src/ui/connect_dialog/sqlite_file_row.rs
+msgid "New Database File"
+msgstr "Tệp cơ sở dữ liệu mới"
+
+#: crates/app/src/ui/connect_dialog/sqlite_file_row.rs
+#: data/resources/ui/sqlite-file-row.ui
+msgid "No file chosen"
+msgstr "Chưa chọn tệp"
+
+#: crates/app/src/ui/connect_dialog/sqlite_file_row.rs
+#, rust-format
+msgid "{path}, created when you connect"
+msgstr "{path}, được tạo khi bạn kết nối"
+
+#: crates/app/src/ui/connect_dialog/sqlite_file_row.rs
+msgid "SQLite databases"
+msgstr "Cơ sở dữ liệu SQLite"
+
+#: crates/app/src/ui/connect_dialog/sqlite_file_row.rs
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+#: crates/app/src/ui/ssh_section.rs
+msgid "All files"
+msgstr "Mọi tệp"
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "The system's certificate authorities"
+msgstr "Các tổ chức cấp chứng chỉ của hệ thống"
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+#: crates/app/src/ui/structure_tab/table_choice_object.rs
+msgid "None"
+msgstr "Không"
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+#: data/resources/ui/tls-section.ui
+msgid "Choose CA Certificate"
+msgstr "Chọn chứng chỉ CA"
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+#: data/resources/ui/tls-section.ui
+msgid "Choose Client Certificate"
+msgstr "Chọn chứng chỉ máy khách"
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+#: data/resources/ui/tls-section.ui
+msgid "Choose Client Key"
+msgstr "Chọn khóa máy khách"
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "Disable"
+msgstr "Tắt"
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "Require"
+msgstr "Bắt buộc"
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "Verify full"
+msgstr "Xác minh đầy đủ"
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid ""
+"Not encrypted. Anyone on the network can read or change the traffic, "
+"password included."
+msgstr ""
+"Không mã hóa. Bất kỳ ai trong mạng đều có thể đọc hoặc sửa dữ liệu truyền "
+"đi, kể cả mật khẩu."
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "Encrypted. The server certificate is not checked."
+msgstr "Có mã hóa. Chứng chỉ của máy chủ không được kiểm tra."
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "Encrypted. The certificate must be valid for the server name."
+msgstr "Có mã hóa. Chứng chỉ phải hợp lệ với tên máy chủ."
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "PEM certificates and keys"
+msgstr "Chứng chỉ và khóa PEM"
+
+#: crates/app/src/ui/connection_list_banner.rs
+msgid "Reset…"
+msgstr "Đặt lại…"
+
+#: crates/app/src/ui/connection_list_banner.rs
+msgid "Saved connections were created by a newer version of TablePro"
+msgstr "Các kết nối đã lưu được tạo bởi một phiên bản TablePro mới hơn"
+
+#: crates/app/src/ui/connection_list_banner.rs
+msgid "Saved connections could not be read"
+msgstr "Không đọc được các kết nối đã lưu"
+
+#: crates/app/src/ui/connection_list_banner.rs
+#, rust-format
+msgid "Saved connections were reset. The old file is {name}."
+msgstr "Các kết nối đã lưu đã được đặt lại. Tệp cũ là {name}."
+
+#: crates/app/src/ui/credential_prompt/prompt_form.rs
+#: data/resources/ui/ssh-section.ui
+msgid "Passphrase"
+msgstr "Cụm mật khẩu"
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "Password Required"
+msgstr "Yêu cầu mật khẩu"
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#, rust-format
+msgid "Enter the database password for {target}."
+msgstr "Nhập mật khẩu cơ sở dữ liệu cho {target}."
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#: crates/app/src/ui/host_key_review.rs
+#: crates/app/src/ui/picker/connection_menu.rs
+#: data/resources/ui/connect-dialog.ui
+msgid "Connect"
+msgstr "Kết nối"
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#, rust-format
+msgid "Enter the SSH password for {target}."
+msgstr "Nhập mật khẩu SSH cho {target}."
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "Passphrase Required"
+msgstr "Yêu cầu cụm mật khẩu"
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#, rust-format
+msgid "Enter the passphrase for the SSH key {path}."
+msgstr "Nhập cụm mật khẩu cho khóa SSH {path}."
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "Authentication Required"
+msgstr "Yêu cầu xác thực"
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#, rust-format
+msgid "The SSH server {target} asks for more."
+msgstr "Máy chủ SSH {target} yêu cầu thêm thông tin."
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "Continue"
+msgstr "Tiếp tục"
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#, rust-format
+msgid "Trust {host}?"
+msgstr "Tin cậy {host}?"
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#, rust-format
+msgid ""
+"This is the first connection to {host}. Its {algorithm} key fingerprint is "
+"{fingerprint}. Connect only if it matches the fingerprint the server's "
+"administrator gave you."
+msgstr ""
+"Đây là lần đầu kết nối tới {host}. Dấu vân tay khóa {algorithm} của nó là "
+"{fingerprint}. Chỉ kết nối nếu dấu vân tay này khớp với dấu vân tay mà quản "
+"trị viên máy chủ đã đưa cho bạn."
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#: crates/app/src/ui/host_key_review.rs
+msgid "Trust and Connect"
+msgstr "Tin cậy và kết nối"
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "Remember Passphrase"
+msgstr "Nhớ cụm mật khẩu"
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#: data/resources/ui/connect-dialog.ui
+msgid "Remember Password"
+msgstr "Nhớ mật khẩu"
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "No password is saved for this connection."
+msgstr "Chưa có mật khẩu nào được lưu cho kết nối này."
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "No passphrase is saved for this key."
+msgstr "Chưa có cụm mật khẩu nào được lưu cho khóa này."
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "The keyring is locked, so the saved one could not be read."
+msgstr "Chùm khóa đang bị khóa, nên không đọc được giá trị đã lưu."
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "No keyring is available, so it cannot be read or saved."
+msgstr "Không có chùm khóa nào, nên không thể đọc hay lưu."
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "The server refused the one it was given."
+msgstr "Máy chủ đã từ chối giá trị được gửi."
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "The one given before did not unlock the key."
+msgstr "Giá trị nhập trước đó không mở khóa được."
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+#, rust-format
+msgid "Delete “{name}”?"
+msgstr "Xóa “{name}”?"
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+msgid ""
+"The connection, its stored passwords and its saved queries will be removed. "
+"This cannot be undone."
+msgstr ""
+"Kết nối, các mật khẩu đã lưu và các truy vấn đã lưu của nó sẽ bị xóa. Không "
+"thể hoàn tác thao tác này."
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+msgid "Delete Query History"
+msgstr "Xóa lịch sử truy vấn"
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+msgid "No queries were run on this connection"
+msgstr "Chưa có truy vấn nào được chạy trên kết nối này"
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+#, rust-format
+msgid "Removes {n} query run on this connection"
+msgid_plural "Removes {n} queries run on this connection"
+msgstr[0] "Xóa {n} truy vấn đã chạy trên kết nối này"
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+msgid "The query history is not available"
+msgstr "Lịch sử truy vấn không khả dụng"
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+#, rust-format
+msgid "“{name}” Is Open"
+msgstr "“{name}” đang mở"
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+msgid "Disconnect it or close its window, then delete it."
+msgstr "Hãy ngắt kết nối hoặc đóng cửa sổ của nó, rồi xóa."
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+msgid "Show Window"
+msgstr "Hiện cửa sổ"
+
+#: crates/app/src/ui/discard_alert.rs
+#, rust-format
+msgid ""
+"{n} unsaved change on this tab will be lost, and Undo cannot bring it back."
+msgid_plural ""
+"{n} unsaved changes on this tab will be lost, and Undo cannot bring them "
+"back."
+msgstr[0] ""
+"{n} thay đổi chưa lưu trên tab này sẽ bị mất và Hoàn tác không khôi phục "
+"được."
+
+#: crates/app/src/ui/discard_alert.rs
+msgid "Discard Changes?"
+msgstr "Loại bỏ thay đổi?"
+
+#: crates/app/src/ui/discard_alert.rs data/resources/ui/pending-changes-bar.ui
+#: data/resources/ui/structure-tab.ui
+msgid "Discard"
+msgstr "Loại bỏ"
+
+#: crates/app/src/ui/editor/completion/sql_completion_provider_imp.rs
+msgctxt "completion group"
+msgid "Database"
+msgstr "Cơ sở dữ liệu"
+
+#: crates/app/src/ui/editor/editor_file.rs
+msgid "Save SQL File"
+msgstr "Lưu tệp SQL"
+
+#: crates/app/src/ui/editor/editor_file.rs
+msgid "This tab is already being saved."
+msgstr "Tab này đang được lưu."
+
+#: crates/app/src/ui/editor/editor_file.rs
+#, rust-format
+msgid "“{name}” could not be saved: {error}"
+msgstr "Không lưu được “{name}”: {error}"
+
+#: crates/app/src/ui/editor/editor_file.rs
+msgid "Could Not Save File"
+msgstr "Không lưu được tệp"
+
+#: crates/app/src/ui/editor/editor_file.rs
+#: crates/app/src/ui/export/export_failure_text.rs
+#: crates/app/src/ui/grid/row_json_dialog.rs
+#: crates/app/src/ui/history_dialog/history_export.rs
+#: crates/app/src/workspace/close_guard.rs
+msgid "_Close"
+msgstr "_Đóng"
+
+#: crates/app/src/ui/editor/editor_file.rs
+#: crates/app/src/ui/history_dialog/history_export.rs
+msgid "SQL files"
+msgstr "Tệp SQL"
+
+#: crates/app/src/ui/editor/editor_file.rs
+msgid "query"
+msgstr "truy-van"
+
+#: crates/app/src/ui/editor/editor_session_slot.rs
+#, rust-format
+msgid "Could not open a connection for this editor: {error}"
+msgstr "Không mở được kết nối cho trình soạn thảo này: {error}"
+
+#: crates/app/src/ui/editor/find_bar.rs data/resources/shortcuts-dialog.ui
+msgid "Previous Match"
+msgstr "Kết quả trước"
+
+#: crates/app/src/ui/editor/find_bar.rs data/resources/shortcuts-dialog.ui
+msgid "Next Match"
+msgstr "Kết quả sau"
+
+#: crates/app/src/ui/editor/find_bar.rs
+msgid "Search Options"
+msgstr "Tùy chọn tìm kiếm"
+
+#: crates/app/src/ui/editor/find_bar.rs data/resources/shortcuts-dialog.ui
+msgid "Find and Replace"
+msgstr "Tìm và thay thế"
+
+#: crates/app/src/ui/editor/find_bar.rs
+#, rust-format
+msgid "Replaced {count} occurrence"
+msgid_plural "Replaced {count} occurrences"
+msgstr[0] "Đã thay thế {count} chỗ"
+
+#: crates/app/src/ui/editor/find_state.rs
+msgid "No results"
+msgstr "Không có kết quả"
+
+#: crates/app/src/ui/editor/find_state.rs
+#, rust-format
+msgid "{position} of {count}"
+msgstr "{position} trên {count}"
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Query replaced"
+msgstr "Đã thay thế truy vấn"
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "There is nothing to run."
+msgstr "Không có gì để chạy."
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "No statement at the cursor."
+msgstr "Không có câu lệnh nào tại con trỏ."
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Connect to a database to run a query."
+msgstr "Hãy kết nối tới một cơ sở dữ liệu để chạy truy vấn."
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Running…"
+msgstr "Đang chạy…"
+
+#: crates/app/src/ui/editor/mod.rs
+msgctxt "completion group"
+msgid "Document"
+msgstr "Tài liệu"
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Replace the Editor Contents?"
+msgstr "Thay thế nội dung trình soạn thảo?"
+
+#: crates/app/src/ui/editor/mod.rs
+msgid ""
+"The file is loaded into this tab, and what is written here now is replaced. "
+"Undo brings it back."
+msgstr ""
+"Tệp sẽ được nạp vào tab này và nội dung hiện có ở đây sẽ bị thay thế. Hoàn "
+"tác có thể khôi phục lại."
+
+#: crates/app/src/ui/editor/mod.rs data/resources/ui/find-bar.ui
+msgid "Replace"
+msgstr "Thay thế"
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Open SQL File"
+msgstr "Mở tệp SQL"
+
+#: crates/app/src/ui/editor/mod.rs
+#, rust-format
+msgid "Ln {line}, Col {column}"
+msgstr "Dòng {line}, Cột {column}"
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Run Selection"
+msgstr "Chạy vùng chọn"
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Run the Selected Text"
+msgstr "Chạy đoạn văn bản đã chọn"
+
+#: crates/app/src/ui/editor/mod.rs data/resources/ui/sql-editor.ui
+msgid "Run"
+msgstr "Chạy"
+
+#: crates/app/src/ui/editor/mod.rs data/resources/ui/sql-editor.ui
+msgid "Run the Script"
+msgstr "Chạy toàn bộ script"
+
+#: crates/app/src/ui/editor/mod.rs crates/app/src/ui/editor/tests.rs
+msgid "query-results"
+msgstr "ket-qua-truy-van"
+
+#: crates/app/src/ui/editor/mod.rs
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+msgid "Empty Query"
+msgstr "Truy vấn trống"
+
+#: crates/app/src/ui/editor/result_widgets.rs
+#: crates/app/src/ui/editor/results_pane.rs
+#, rust-format
+msgid "{n} Row Affected"
+msgid_plural "{n} Rows Affected"
+msgstr[0] "{n} dòng bị ảnh hưởng"
+
+#: crates/app/src/ui/editor/result_widgets.rs
+#: crates/app/src/ui/editor/results_pane.rs
+msgid "Command Completed"
+msgstr "Lệnh đã hoàn tất"
+
+#: crates/app/src/ui/editor/result_widgets.rs
+#: crates/app/src/ui/editor/results_pane.rs
+msgid "Notice"
+msgstr "Thông báo"
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid "Statement Failed"
+msgstr "Câu lệnh thất bại"
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid "Go to Error"
+msgstr "Tới chỗ lỗi"
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid "Check the Script"
+msgstr "Kiểm tra script"
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid "Query Stopped"
+msgstr "Truy vấn đã dừng"
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid "The running query was stopped."
+msgstr "Truy vấn đang chạy đã bị dừng."
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid ""
+"The statement ran past the time limit set in Preferences, so the server "
+"stopped it."
+msgstr ""
+"Câu lệnh chạy quá giới hạn thời gian đặt trong Tùy chỉnh, nên máy chủ đã "
+"dừng nó."
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid ""
+"The statement ran past the time limit set in Preferences. The server may "
+"still be running it."
+msgstr ""
+"Câu lệnh chạy quá giới hạn thời gian đặt trong Tùy chỉnh. Máy chủ có thể vẫn "
+"đang chạy nó."
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid "Query Timed Out"
+msgstr "Truy vấn hết thời gian chờ"
+
+#: crates/app/src/ui/editor/result_widgets.rs
+#: crates/app/src/ui/editor/results_pane.rs
+msgid "Not Run"
+msgstr "Chưa chạy"
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid "Skipped because an earlier statement failed or the run was stopped."
+msgstr "Bị bỏ qua vì một câu lệnh trước đó thất bại hoặc lượt chạy đã bị dừng."
+
+#: crates/app/src/ui/editor/results_pane.rs
+msgid "Error"
+msgstr "Lỗi"
+
+#: crates/app/src/ui/editor/results_pane.rs
+msgid "Warning"
+msgstr "Cảnh báo"
+
+#: crates/app/src/ui/editor/results_pane.rs
+msgid "Stopped"
+msgstr "Đã dừng"
+
+#: crates/app/src/ui/editor/results_pane.rs
+msgid "Timed Out"
+msgstr "Hết thời gian chờ"
+
+#: crates/app/src/ui/editor/run_history.rs
+msgid "The statement ran past the time limit set in Preferences."
+msgstr "Câu lệnh chạy quá giới hạn thời gian đặt trong Tùy chỉnh."
+
+#: crates/app/src/ui/editor/run_log.rs
+#, rust-format
+msgid ""
+"{error} This tab's connection was lost, so the server rolled back its open "
+"transaction."
+msgstr ""
+"{error} Kết nối của tab này đã bị mất, nên máy chủ đã rollback giao dịch "
+"đang mở của nó."
+
+#: crates/app/src/ui/editor/run_log.rs
+#, rust-format
+msgid "{error} This tab's connection was lost; the next run opens a new one."
+msgstr ""
+"{error} Kết nối của tab này đã bị mất; lần chạy tiếp theo sẽ mở kết nối mới."
+
+#: crates/app/src/ui/editor/run_log.rs
+#, rust-format
+msgid "{n} result in {ms} ms"
+msgid_plural "{n} results in {ms} ms"
+msgstr[0] "{n} kết quả trong {ms} ms"
+
+#: crates/app/src/ui/editor/run_log.rs
+#, rust-format
+msgid "{n} failed"
+msgid_plural "{n} failed"
+msgstr[0] "{n} thất bại"
+
+#: crates/app/src/ui/editor/script_runner.rs
+msgid ""
+"This tab's connection was lost, so the server rolled back its open "
+"transaction. Nothing was run; run again to open a new connection."
+msgstr ""
+"Kết nối của tab này đã bị mất, nên máy chủ đã rollback giao dịch đang mở của "
+"nó. Chưa có gì được chạy; hãy chạy lại để mở kết nối mới."
+
+#: crates/app/src/ui/editor/sql_file.rs
+msgid "Only regular files can be opened in the editor."
+msgstr "Chỉ có thể mở tệp thông thường trong trình soạn thảo."
+
+#: crates/app/src/ui/editor/sql_file.rs
+msgid "That file is too large to open in the editor."
+msgstr "Tệp đó quá lớn để mở trong trình soạn thảo."
+
+#: crates/app/src/ui/editor/sql_file.rs
+msgid "That file is not UTF-8 text."
+msgstr "Tệp đó không phải văn bản UTF-8."
+
+#: crates/app/src/ui/editor/sql_file.rs
+#: crates/app/src/ui/session_window/connections.rs
+#: crates/app/src/ui/workspace/import.rs
+msgid "That file could not be read."
+msgstr "Không đọc được tệp đó."
+
+#: crates/app/src/ui/editor/transaction_dirty.rs
+msgid "Transaction open"
+msgstr "Giao dịch đang mở"
+
+#: crates/app/src/ui/editor/transaction_dirty.rs
+msgid "Transaction failed, roll back to continue"
+msgstr "Giao dịch thất bại, hãy rollback để tiếp tục"
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "This database can't make this change."
+msgstr "Cơ sở dữ liệu này không thể thực hiện thay đổi này."
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid ""
+"This column is part of the table's sorting or partition key, which only "
+"rebuilding the table can change."
+msgstr ""
+"Cột này thuộc khóa sắp xếp hoặc khóa phân vùng của bảng, chỉ có thể thay đổi "
+"bằng cách dựng lại bảng."
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "The database computes this column."
+msgstr "Cơ sở dữ liệu tự tính toán cột này."
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "The database numbers this column, so it has no default."
+msgstr "Cơ sở dữ liệu tự đánh số cột này, nên nó không có giá trị mặc định."
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "Only an integer column can number itself."
+msgstr "Chỉ cột số nguyên mới có thể tự đánh số."
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid ""
+"The database numbers this column while it is the table's integer primary "
+"key. Change its type or the primary key to stop it."
+msgstr ""
+"Cơ sở dữ liệu tự đánh số cột này khi nó là khóa chính số nguyên của bảng. "
+"Đổi kiểu của nó hoặc đổi khóa chính để dừng việc này."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "This column has an attribute TablePro can't restate: {attribute}"
+msgstr "Cột này có một thuộc tính mà TablePro không thể viết lại: {attribute}"
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Still used by {users}."
+msgstr "Vẫn đang được {users} sử dụng."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Foreign keys on other tables depend on it: {keys}"
+msgstr "Các khóa ngoại trên bảng khác phụ thuộc vào nó: {keys}"
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "The database didn't report this column's full definition."
+msgstr "Cơ sở dữ liệu không trả về định nghĩa đầy đủ của cột này."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "This column's {attribute} doesn't allow this change."
+msgstr "{attribute} của cột này không cho phép thay đổi này."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid ""
+"Its definition names column {column}, which this save renames. Save the "
+"rename on its own first."
+msgstr ""
+"Định nghĩa của nó dùng tới cột {column}, cột mà lần lưu này đổi tên. Hãy lưu "
+"việc đổi tên riêng trước."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid ""
+"Trigger {triggers} inserts into this table without naming its columns, so "
+"adding or removing a column would break it."
+msgid_plural ""
+"Triggers {triggers} insert into this table without naming its columns, so "
+"adding or removing a column would break them."
+msgstr[0] ""
+"Trigger {triggers} chèn vào bảng này mà không ghi rõ tên cột, nên thêm hoặc "
+"xóa một cột sẽ làm hỏng chúng."
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "Table name is required."
+msgstr "Cần nhập tên bảng."
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "At least one column is required."
+msgstr "Cần có ít nhất một cột."
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "Every column needs a name."
+msgstr "Mỗi cột đều cần có tên."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Duplicate column name: {name}"
+msgstr "Tên cột bị trùng: {name}"
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Column {name} needs a type."
+msgstr "Cột {name} cần có kiểu."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Primary key columns must be NOT NULL: {name}"
+msgstr "Các cột khóa chính phải là NOT NULL: {name}"
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Column {column} is removed but {users} still use it. Remove them first."
+msgstr "Cột {column} bị xóa nhưng {users} vẫn dùng nó. Hãy xóa chúng trước."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#: crates/app/src/ui/structure_tab/index_draft.rs
+msgid "Index name is required."
+msgstr "Cần nhập tên chỉ mục."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Index {name} has no columns."
+msgstr "Chỉ mục {name} không có cột nào."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#: crates/app/src/ui/structure_tab/foreign_key_draft.rs
+msgid "Foreign key name is required."
+msgstr "Cần nhập tên khóa ngoại."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Foreign key {name} needs as many referenced columns as source columns."
+msgstr "Khóa ngoại {name} cần có số cột được tham chiếu bằng số cột nguồn."
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "Fix the highlighted fields first."
+msgstr "Hãy sửa các trường được tô sáng trước."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Column {column} can't be changed this way. {reason}"
+msgstr "Không thể thay đổi cột {column} theo cách này. {reason}"
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid ""
+"A NOT NULL column needs a default here, since the rows already in the table "
+"need a value."
+msgstr ""
+"Cột NOT NULL cần có giá trị mặc định ở đây, vì các dòng đã có trong bảng cần "
+"một giá trị."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "The type of column {column} can't be used. {reason}"
+msgstr "Không dùng được kiểu của cột {column}. {reason}"
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "The default of column {column} can't be written as SQL. {reason}"
+msgstr "Không thể viết giá trị mặc định của cột {column} thành SQL. {reason}"
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "The database didn't report the type of column {column}."
+msgstr "Cơ sở dữ liệu không trả về kiểu của cột {column}."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "This database doesn't take {action} on a foreign key."
+msgstr "Cơ sở dữ liệu này không hỗ trợ {action} trên khóa ngoại."
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "The database gave no CREATE statement for this table."
+msgstr "Cơ sở dữ liệu không trả về câu lệnh CREATE cho bảng này."
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid ""
+"The table can't be rebuilt: the stored statement of {name}, which uses it, "
+"can't be run again."
+msgstr ""
+"Không thể dựng lại bảng: câu lệnh đã lưu của {name}, đối tượng dùng bảng "
+"này, không thể chạy lại."
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid ""
+"The changes were edited or the connection changed during the review, so "
+"nothing was saved. Save again to review them."
+msgstr ""
+"Các thay đổi đã bị sửa hoặc kết nối đã thay đổi trong lúc xem lại, nên chưa "
+"có gì được lưu. Hãy lưu lại để xem lại chúng."
+
+#: crates/app/src/ui/error_text/driver.rs crates/app/src/ui/error_text/tls.rs
+msgid "The secure connection failed."
+msgstr "Kết nối bảo mật thất bại."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The server refused the request."
+msgstr "Máy chủ đã từ chối yêu cầu."
+
+#: crates/app/src/ui/error_text/driver.rs
+#: crates/app/src/ui/error_text/operation.rs
+msgid "Stopped."
+msgstr "Đã dừng."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The connection was closed. Try reconnecting."
+msgstr "Kết nối đã bị đóng. Hãy thử kết nối lại."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"The server has no room for another connection right now. Try again shortly."
+msgstr "Máy chủ hiện không còn chỗ cho thêm kết nối. Hãy thử lại sau ít phút."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"Another program, or an editor tab with an open transaction, holds a lock on "
+"this database file. Try again when it has finished."
+msgstr ""
+"Một chương trình khác, hoặc một tab trình soạn thảo có giao dịch đang mở, "
+"đang khóa tệp cơ sở dữ liệu này. Hãy thử lại khi nó đã xong."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"This tab is still running a statement. Stop it or wait for it to finish."
+msgstr "Tab này vẫn đang chạy một câu lệnh. Hãy dừng nó hoặc chờ nó chạy xong."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The connection settings cannot be used."
+msgstr "Không dùng được thiết lập kết nối này."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "Enter the server's host name."
+msgstr "Nhập tên máy chủ."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The host name has spaces or control characters in it."
+msgstr "Tên máy chủ có chứa dấu cách hoặc ký tự điều khiển."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The port must be a number from 1 to 65535."
+msgstr "Cổng phải là một số từ 1 đến 65535."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "Use a full path, starting with /."
+msgstr "Hãy dùng đường dẫn đầy đủ, bắt đầu bằng /."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "This database does not offer that TLS mode."
+msgstr "Cơ sở dữ liệu này không có chế độ TLS đó."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "A CA certificate needs Verify full and a database that accepts one."
+msgstr ""
+"Chứng chỉ CA cần chế độ Xác minh đầy đủ và một cơ sở dữ liệu chấp nhận nó."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"A client certificate needs TLS turned on and a database that accepts one."
+msgstr "Chứng chỉ máy khách cần bật TLS và một cơ sở dữ liệu chấp nhận nó."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "A client certificate needs both its certificate file and its key file."
+msgstr "Chứng chỉ máy khách cần cả tệp chứng chỉ lẫn tệp khóa."
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "The CA certificate {path} cannot be used: {problem}"
+msgstr "Không dùng được chứng chỉ CA {path}: {problem}"
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "The client certificate {path} cannot be used: {problem}"
+msgstr "Không dùng được chứng chỉ máy khách {path}: {problem}"
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The TLS server name is not a valid host name or IP address."
+msgstr "Tên máy chủ TLS không phải là tên máy chủ hay địa chỉ IP hợp lệ."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"This database cannot check the certificate against another server name here."
+msgstr ""
+"Cơ sở dữ liệu này không thể đối chiếu chứng chỉ với một tên máy chủ khác ở "
+"đây."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "This database does not support that way of logging in."
+msgstr "Cơ sở dữ liệu này không hỗ trợ cách đăng nhập đó."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "Enter the name of the database to open."
+msgstr "Nhập tên cơ sở dữ liệu cần mở."
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "{host}:{port} refused the connection. Is the database running?"
+msgstr "{host}:{port} đã từ chối kết nối. Cơ sở dữ liệu có đang chạy không?"
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "Could not look up {host}."
+msgstr "Không tra cứu được {host}."
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "Could not reach {host}:{port}."
+msgstr "Không kết nối tới được {host}:{port}."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The server could not be reached."
+msgstr "Không kết nối tới được máy chủ."
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "Username or password is wrong. The server said: {detail}"
+msgstr "Tên người dùng hoặc mật khẩu không đúng. Máy chủ báo: {detail}"
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "The server refused this login. The server said: {detail}"
+msgstr "Máy chủ đã từ chối lần đăng nhập này. Máy chủ báo: {detail}"
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid ""
+"Kerberos login failed: {detail}. Check that klist shows a valid ticket, run "
+"kinit if it does not, and make sure the server's SPN matches the host you "
+"typed."
+msgstr ""
+"Đăng nhập Kerberos thất bại: {detail}. Hãy kiểm tra klist có hiện vé hợp lệ "
+"không, chạy kinit nếu không có, và đảm bảo SPN của máy chủ khớp với máy chủ "
+"bạn đã nhập."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "Username or password is wrong."
+msgstr "Tên người dùng hoặc mật khẩu không đúng."
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "The server refused the write: {message}"
+msgstr "Máy chủ đã từ chối thao tác ghi: {message}"
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"Safe Mode is Read-Only on this connection. Choose another level in the main "
+"menu to make changes."
+msgstr ""
+"Chế độ an toàn trên kết nối này là Chỉ đọc. Hãy chọn mức khác trong menu "
+"chính để thực hiện thay đổi."
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "Query failed ({code}): {message}"
+msgstr "Truy vấn thất bại ({code}): {message}"
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "Query failed: {message}"
+msgstr "Truy vấn thất bại: {message}"
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "Hint: {hint}"
+msgstr "Gợi ý: {hint}"
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "SQLSTATE {code}"
+msgstr "SQLSTATE {code}"
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "MySQL error {code}"
+msgstr "Lỗi MySQL {code}"
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "SQL Server error {code}"
+msgstr "Lỗi SQL Server {code}"
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "ClickHouse code {code}"
+msgstr "Mã ClickHouse {code}"
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "SQLite error {code}"
+msgstr "Lỗi SQLite {code}"
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The server took too long to answer."
+msgstr "Máy chủ phản hồi quá lâu."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The server did not answer the connection in time."
+msgstr "Máy chủ không phản hồi kết nối kịp thời."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The server did not finish the login in time."
+msgstr "Máy chủ không hoàn tất đăng nhập kịp thời."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The SSH server did not finish the handshake in time."
+msgstr "Máy chủ SSH không hoàn tất bắt tay kịp thời."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The SSH server did not open the tunnel to the database in time."
+msgstr "Máy chủ SSH không mở đường hầm tới cơ sở dữ liệu kịp thời."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"Another session holds a lock this needs. Try again when it has finished."
+msgstr ""
+"Một phiên khác đang giữ khóa mà thao tác này cần. Hãy thử lại khi nó đã xong."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The statement ran past its time limit, so the server stopped it."
+msgstr "Câu lệnh chạy quá giới hạn thời gian, nên máy chủ đã dừng nó."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"The statement ran past its time limit. The server may still be running it."
+msgstr "Câu lệnh chạy quá giới hạn thời gian. Máy chủ có thể vẫn đang chạy nó."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The server did not answer a check in time."
+msgstr "Máy chủ không trả lời lần kiểm tra kịp thời."
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid ""
+"Save failed at statement {n}: {error}. The transaction was rolled back; no "
+"rows were changed."
+msgstr ""
+"Lưu thất bại ở câu lệnh {n}: {error}. Giao dịch đã được rollback; không dòng "
+"nào bị thay đổi."
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid ""
+"The save matched {actual} rows where it expected {expected}, so the row is "
+"not the one that was loaded. Nothing was changed; reload and try again."
+msgstr ""
+"Lần lưu khớp {actual} dòng trong khi lẽ ra là {expected}, nên dòng này không "
+"phải dòng đã được tải. Chưa có gì thay đổi; hãy tải lại và thử lại."
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid ""
+"{applied} of the save's statements were applied before statement {n} failed, "
+"and this database has no transaction to undo them. Reload to see what the "
+"server has."
+msgstr ""
+"{applied} câu lệnh của lần lưu đã được áp dụng trước khi câu lệnh {n} thất "
+"bại, và cơ sở dữ liệu này không có giao dịch để hoàn tác chúng. Hãy tải lại "
+"để xem dữ liệu trên máy chủ."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"The connection was lost after the save was sent, so whether it was applied "
+"is not known. Reload to see what the server has."
+msgstr ""
+"Kết nối bị mất sau khi gửi lần lưu, nên không biết nó đã được áp dụng hay "
+"chưa. Hãy tải lại để xem dữ liệu trên máy chủ."
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "No database file at {path}."
+msgstr "Không có tệp cơ sở dữ liệu tại {path}."
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "No permission to open {path}."
+msgstr "Không có quyền mở {path}."
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "{path} is not a database file."
+msgstr "{path} không phải là tệp cơ sở dữ liệu."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The database file cannot be used."
+msgstr "Không dùng được tệp cơ sở dữ liệu này."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"This database does not report how many rows a statement changed, so the save "
+"cannot be checked. Use a table with a primary key."
+msgstr ""
+"Cơ sở dữ liệu này không cho biết một câu lệnh đã thay đổi bao nhiêu dòng, "
+"nên không thể kiểm tra lần lưu. Hãy dùng một bảng có khóa chính."
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "The driver could not read a value in column {column}."
+msgstr "Trình điều khiển không đọc được một giá trị trong cột {column}."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The driver could not read the server's reply."
+msgstr "Trình điều khiển không đọc được phản hồi của máy chủ."
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The driver hit an internal error."
+msgstr "Trình điều khiển gặp lỗi nội bộ."
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "This column needs a value"
+msgstr "Cột này cần có giá trị"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter a whole number"
+msgstr "Nhập một số nguyên"
+
+#: crates/app/src/ui/error_text/edit.rs
+#, rust-format
+msgid "Enter a whole number from {min} to {max}"
+msgstr "Nhập một số nguyên từ {min} đến {max}"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter a number"
+msgstr "Nhập một số"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter a decimal number, such as 12.50"
+msgstr "Nhập một số thập phân, ví dụ 12.50"
+
+#: crates/app/src/ui/error_text/edit.rs
+#, rust-format
+msgid "This column keeps at most {n} digit"
+msgid_plural "This column keeps at most {n} digits"
+msgstr[0] "Cột này giữ tối đa {n} chữ số"
+
+#: crates/app/src/ui/error_text/edit.rs
+#, rust-format
+msgid "This column keeps at most {n} decimal place"
+msgid_plural "This column keeps at most {n} decimal places"
+msgstr[0] "Cột này giữ tối đa {n} chữ số thập phân"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter true or false"
+msgstr "Nhập true hoặc false"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter a UUID"
+msgstr "Nhập một UUID"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter valid JSON: it ends too early"
+msgstr "Nhập JSON hợp lệ: nội dung kết thúc quá sớm"
+
+#: crates/app/src/ui/error_text/edit.rs
+#, rust-format
+msgid "Enter valid JSON: check line {line}, column {column}"
+msgstr "Nhập JSON hợp lệ: hãy kiểm tra dòng {line}, cột {column}"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter a date as YYYY-MM-DD"
+msgstr "Nhập ngày theo dạng YYYY-MM-DD"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter a time as HH:MM:SS"
+msgstr "Nhập giờ theo dạng HH:MM:SS"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "This time is outside the range the column can hold"
+msgstr "Thời điểm này nằm ngoài khoảng mà cột có thể chứa"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter a date and time as YYYY-MM-DD HH:MM:SS"
+msgstr "Nhập ngày giờ theo dạng YYYY-MM-DD HH:MM:SS"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Add a time zone offset, such as +02:00"
+msgstr "Thêm độ lệch múi giờ, ví dụ +02:00"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter an interval, such as 1 day 02:00:00"
+msgstr "Nhập một khoảng thời gian, ví dụ 1 day 02:00:00"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter bits as 0 and 1"
+msgstr "Nhập các bit dưới dạng 0 và 1"
+
+#: crates/app/src/ui/error_text/edit.rs
+#, rust-format
+msgid "Enter exactly {n} bit"
+msgid_plural "Enter exactly {n} bits"
+msgstr[0] "Nhập đúng {n} bit"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter one of the values this column allows"
+msgstr "Nhập một trong các giá trị mà cột này cho phép"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Binary values can't be edited here"
+msgstr "Không thể sửa giá trị nhị phân ở đây"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Spatial values can't be edited here"
+msgstr "Không thể sửa giá trị không gian ở đây"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "This value couldn't be read, so it can't be edited"
+msgstr "Không đọc được giá trị này, nên không thể sửa nó"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Arrays and composite values can't be edited here"
+msgstr "Không thể sửa mảng và giá trị tổng hợp ở đây"
+
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Values whose type changes by row can't be edited here"
+msgstr "Không thể sửa ở đây các giá trị có kiểu thay đổi theo từng dòng"
+
+#: crates/app/src/ui/error_text/files.rs
+#, rust-format
+msgid "Could not write {path}: the disk is full."
+msgstr "Không ghi được {path}: ổ đĩa đã đầy."
+
+#: crates/app/src/ui/error_text/files.rs
+#, rust-format
+msgid "Could not write {path}: the disk is read-only."
+msgstr "Không ghi được {path}: ổ đĩa chỉ cho phép đọc."
+
+#: crates/app/src/ui/error_text/files.rs
+#, rust-format
+msgid "Could not write {path}: the file is too large."
+msgstr "Không ghi được {path}: tệp quá lớn."
+
+#: crates/app/src/ui/error_text/files.rs
+#, rust-format
+msgid "Could not write {path}."
+msgstr "Không ghi được {path}."
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "the file does not exist"
+msgstr "tệp không tồn tại"
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "TablePro is not allowed to read it"
+msgstr "TablePro không được phép đọc nó"
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "the file could not be read"
+msgstr "không đọc được tệp"
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "it is not a plain file"
+msgstr "nó không phải là tệp thông thường"
+
+#: crates/app/src/ui/error_text/files.rs
+#, rust-format
+msgid "it is larger than {size}"
+msgstr "nó lớn hơn {size}"
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "it holds no certificates"
+msgstr "nó không chứa chứng chỉ nào"
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "a certificate in it is not valid"
+msgstr "có một chứng chỉ trong đó không hợp lệ"
+
+#: crates/app/src/ui/error_text/files.rs
+#, rust-format
+msgid "it holds {count} certificate, and only one is allowed"
+msgid_plural "it holds {count} certificates, and only one is allowed"
+msgstr[0] "nó chứa {count} chứng chỉ, trong khi chỉ được phép có một"
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "it holds no private key"
+msgstr "nó không chứa khóa riêng tư nào"
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "its private key is not valid"
+msgstr "khóa riêng tư của nó không hợp lệ"
+
+#: crates/app/src/ui/error_text/operation.rs
+msgid "The connection is closed."
+msgstr "Kết nối đã đóng."
+
+#: crates/app/src/ui/error_text/operation.rs
+msgid ""
+"No password is saved for this connection, and none was entered. Connect "
+"again to type it."
+msgstr ""
+"Chưa có mật khẩu nào được lưu cho kết nối này và cũng chưa nhập mật khẩu. "
+"Hãy kết nối lại để nhập."
+
+#: crates/app/src/ui/error_text/operation.rs
+#, rust-format
+msgid "This build of TablePro has no {driver} driver."
+msgstr "Bản dựng TablePro này không có trình điều khiển {driver}."
+
+#: crates/app/src/ui/error_text/operation.rs
+msgid "The connection was cancelled."
+msgstr "Kết nối đã bị hủy."
+
+#: crates/app/src/ui/error_text/operation.rs
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "TablePro hit an internal error."
+msgstr "TablePro gặp lỗi nội bộ."
+
+#: crates/app/src/ui/error_text/operation.rs
+#, rust-format
+msgid "This change cannot be saved: {reason}"
+msgstr "Không thể lưu thay đổi này: {reason}"
+
+#: crates/app/src/ui/error_text/operation.rs
+#: crates/app/src/ui/error_text/statement.rs
+#, rust-format
+msgid "This filter cannot be applied: {reason}"
+msgstr "Không thể áp dụng bộ lọc này: {reason}"
+
+#: crates/app/src/ui/error_text/operation.rs
+#, rust-format
+msgid "This page of the table cannot be read: {reason}"
+msgstr "Không đọc được trang này của bảng: {reason}"
+
+#: crates/app/src/ui/error_text/operation.rs
+msgid ""
+"Rows in this table cannot be edited, because nothing identifies a single "
+"row. Add a primary key to edit them."
+msgstr ""
+"Không thể sửa các dòng trong bảng này, vì không có gì xác định duy nhất một "
+"dòng. Hãy thêm khóa chính để sửa chúng."
+
+#: crates/app/src/ui/error_text/operation.rs
+msgid "No changes to save."
+msgstr "Không có thay đổi nào để lưu."
+
+#: crates/app/src/ui/error_text/operation.rs
+msgid ""
+"Part of this row's key could not be read from the server, so the row cannot "
+"be changed."
+msgstr ""
+"Không đọc được một phần khóa của dòng này từ máy chủ, nên không thể thay đổi "
+"dòng này."
+
+#: crates/app/src/ui/error_text/saved_connection.rs
+#: crates/app/src/ui/session_window/connections.rs
+#: crates/app/src/ui/session_window/locate_file.rs
+#: crates/app/src/ui/session_window/mod.rs
+#: crates/app/src/ui/session_window/session_restore.rs
+msgid "The connection was deleted."
+msgstr "Kết nối đã bị xóa."
+
+#: crates/app/src/ui/error_text/saved_connection.rs
+msgid "The saved connections could not be read, so nothing was changed."
+msgstr "Không đọc được các kết nối đã lưu, nên chưa có gì thay đổi."
+
+#: crates/app/src/ui/error_text/saved_connection.rs
+msgid "The saved connections could not be written."
+msgstr "Không ghi được các kết nối đã lưu."
+
+#: crates/app/src/ui/error_text/script.rs
+#, rust-format
+msgid ""
+"The string starting on line {line} is never closed. It is sent as written."
+msgstr ""
+"Chuỗi bắt đầu ở dòng {line} không bao giờ được đóng. Nó được gửi đúng như đã "
+"viết."
+
+#: crates/app/src/ui/error_text/script.rs
+#, rust-format
+msgid ""
+"The quoted name starting on line {line} is never closed. It is sent as "
+"written."
+msgstr ""
+"Tên trong dấu ngoặc bắt đầu ở dòng {line} không bao giờ được đóng. Nó được "
+"gửi đúng như đã viết."
+
+#: crates/app/src/ui/error_text/script.rs
+#, rust-format
+msgid ""
+"The comment starting on line {line} is never closed. It is sent as written."
+msgstr ""
+"Chú thích bắt đầu ở dòng {line} không bao giờ được đóng. Nó được gửi đúng "
+"như đã viết."
+
+#: crates/app/src/ui/error_text/script.rs
+#, rust-format
+msgid ""
+"The dollar-quoted string starting on line {line} is never closed. It is sent "
+"as written."
+msgstr ""
+"Chuỗi trong dấu dollar bắt đầu ở dòng {line} không bao giờ được đóng. Nó "
+"được gửi đúng như đã viết."
+
+#: crates/app/src/ui/error_text/secret.rs
+msgid ""
+"No keyring is running, so saved passwords cannot be read. Start a keyring, "
+"or enter the password by hand."
+msgstr ""
+"Không có chùm khóa nào đang chạy, nên không đọc được các mật khẩu đã lưu. "
+"Hãy khởi động một chùm khóa, hoặc nhập mật khẩu bằng tay."
+
+#: crates/app/src/ui/error_text/secret.rs
+msgid ""
+"The secret portal is unavailable, so saved passwords cannot be read inside "
+"the sandbox. Check that xdg-desktop-portal and a keyring are running, or "
+"enter the password by hand."
+msgstr ""
+"Cổng thông tin bí mật (secret portal) không khả dụng, nên không đọc được mật "
+"khẩu đã lưu bên trong sandbox. Hãy kiểm tra xdg-desktop-portal và một chùm "
+"khóa có đang chạy không, hoặc nhập mật khẩu bằng tay."
+
+#: crates/app/src/ui/error_text/secret.rs
+msgid "The keyring is locked. Unlock it and try again."
+msgstr "Chùm khóa đang bị khóa. Hãy mở khóa rồi thử lại."
+
+#: crates/app/src/ui/error_text/secret.rs
+msgid "The keyring stayed locked because the unlock prompt was dismissed."
+msgstr "Chùm khóa vẫn bị khóa vì lời nhắc mở khóa đã bị đóng."
+
+#: crates/app/src/ui/error_text/secret.rs
+msgid "The stored password is not readable text. Enter it again to replace it."
+msgstr ""
+"Mật khẩu đã lưu không phải là văn bản đọc được. Hãy nhập lại để thay thế nó."
+
+#: crates/app/src/ui/error_text/secret.rs
+#, rust-format
+msgid "The keyring reported: {detail}"
+msgstr "Chùm khóa báo: {detail}"
+
+#: crates/app/src/ui/error_text/secret.rs
+msgid "The keyring failed without giving a reason."
+msgstr "Chùm khóa thất bại mà không nêu lý do."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid ""
+"The OpenSSH client {program} is not installed. Install openssh-client to "
+"connect over SSH."
+msgstr ""
+"Chưa cài trình khách OpenSSH {program}. Hãy cài openssh-client để kết nối "
+"qua SSH."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid ""
+"TablePro's SSH helper is missing at {program}. Reinstall TablePro to connect "
+"over SSH."
+msgstr ""
+"Không tìm thấy trình trợ giúp SSH của TablePro tại {program}. Hãy cài lại "
+"TablePro để kết nối qua SSH."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The SSH host or jump host is not valid: {detail}"
+msgstr "Máy chủ SSH hoặc máy chủ trung gian không hợp lệ: {detail}"
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid ""
+"ssh refused the configuration. Check ~/.ssh/config for this host: {detail}"
+msgstr ""
+"ssh đã từ chối cấu hình. Hãy kiểm tra ~/.ssh/config cho máy chủ này: {detail}"
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The SSH configuration file {path} could not be read."
+msgstr "Không đọc được tệp cấu hình SSH {path}."
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid ""
+"The runtime directory path is too long for an SSH control socket. Use a "
+"shorter XDG_RUNTIME_DIR."
+msgstr ""
+"Đường dẫn thư mục runtime quá dài cho socket điều khiển SSH. Hãy dùng "
+"XDG_RUNTIME_DIR ngắn hơn."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The SSH runtime directory {path} cannot be used safely: {detail}"
+msgstr "Không thể dùng thư mục runtime SSH {path} một cách an toàn: {detail}"
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid ""
+"The host key of {host} changed since it was trusted ({file}, line {line}). "
+"This can mean someone is intercepting the connection; check with the "
+"server's administrator before removing the old key."
+msgstr ""
+"Khóa máy chủ của {host} đã thay đổi kể từ khi được tin cậy ({file}, dòng "
+"{line}). Điều này có thể có nghĩa là ai đó đang chặn kết nối; hãy hỏi quản "
+"trị viên máy chủ trước khi xóa khóa cũ."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The host key of {host} is revoked, so the connection was refused."
+msgstr "Khóa máy chủ của {host} đã bị thu hồi, nên kết nối bị từ chối."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid ""
+"The SSH server {host} refused the login for {user}. Check the key, the agent "
+"or the password."
+msgstr ""
+"Máy chủ SSH {host} đã từ chối đăng nhập của {user}. Hãy kiểm tra khóa, agent "
+"hoặc mật khẩu."
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "The SSH login was cancelled."
+msgstr "Đăng nhập SSH đã bị hủy."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The SSH server would not forward to {target}: {detail}"
+msgstr "Máy chủ SSH không chịu chuyển tiếp tới {target}: {detail}"
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The SSH server could not reach {target}."
+msgstr "Máy chủ SSH không kết nối tới được {target}."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The SSH server could not reach {target}: {detail}"
+msgstr "Máy chủ SSH không kết nối tới được {target}: {detail}"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "The SSH connection ended."
+msgstr "Kết nối SSH đã kết thúc."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The SSH connection ended: {detail}"
+msgstr "Kết nối SSH đã kết thúc: {detail}"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "The SSH connection failed."
+msgstr "Kết nối SSH thất bại."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "TablePro is not allowed to run {program}. Check that it is executable."
+msgstr ""
+"TablePro không được phép chạy {program}. Hãy kiểm tra nó có quyền thực thi "
+"không."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "{program} could not be started."
+msgstr "Không khởi động được {program}."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The host key of {host} was not trusted, so the connection was not made."
+msgstr "Khóa máy chủ của {host} chưa được tin cậy, nên chưa kết nối."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid ""
+"The SSH configuration for {host} accepts only keys already in known_hosts. "
+"Add the server's key to known_hosts outside TablePro, then retry."
+msgstr ""
+"Cấu hình SSH cho {host} chỉ chấp nhận các khóa đã có trong known_hosts. Hãy "
+"thêm khóa của máy chủ vào known_hosts bên ngoài TablePro, rồi thử lại."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "{host} is not in known_hosts. Connect once to review and trust its key."
+msgstr ""
+"{host} không có trong known_hosts. Hãy kết nối một lần để xem và tin cậy "
+"khóa của nó."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid ""
+"{host} is not in known_hosts (key {fingerprint}). Connect once to review and "
+"trust its key."
+msgstr ""
+"{host} không có trong known_hosts (khóa {fingerprint}). Hãy kết nối một lần "
+"để xem và tin cậy khóa của nó."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "ssh exited with status {status} and printed nothing."
+msgstr "ssh đã thoát với mã {status} và không in ra gì."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "ssh exited with status {status}: {detail}"
+msgstr "ssh đã thoát với mã {status}: {detail}"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "ssh did not answer as TablePro expected."
+msgstr "ssh không phản hồi như TablePro mong đợi."
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "ssh printed something unexpected: {detail}"
+msgstr "ssh đã in ra nội dung không mong đợi: {detail}"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "it belongs to another user"
+msgstr "nó thuộc về người dùng khác"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "it is not a directory"
+msgstr "nó không phải là thư mục"
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "other users can open it (mode {mode})"
+msgstr "người dùng khác có thể mở nó (quyền {mode})"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "its path does not end in a directory name"
+msgstr "đường dẫn của nó không kết thúc bằng tên thư mục"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid ""
+"its path has spaces or shell characters, which a jump host's ssh cannot be "
+"given"
+msgstr ""
+"đường dẫn của nó có dấu cách hoặc ký tự shell, mà ssh của máy chủ trung gian "
+"không nhận được"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "TablePro is not allowed to use it"
+msgstr "TablePro không được phép dùng nó"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "the disk is full"
+msgstr "ổ đĩa đã đầy"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "the disk is read-only"
+msgstr "ổ đĩa chỉ cho phép đọc"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "a directory in its path is missing or is a file"
+msgstr "một thư mục trong đường dẫn của nó bị thiếu hoặc là một tệp"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "the file system refused it"
+msgstr "hệ thống tệp đã từ chối nó"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "the host name is empty"
+msgstr "tên máy chủ trống"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "the username is empty"
+msgstr "tên người dùng trống"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "the host name starts with “-”"
+msgstr "tên máy chủ bắt đầu bằng “-”"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "the username starts with “-”"
+msgstr "tên người dùng bắt đầu bằng “-”"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "the host name contains a space or a control character"
+msgstr "tên máy chủ có chứa dấu cách hoặc ký tự điều khiển"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "the username contains a space or a control character"
+msgstr "tên người dùng có chứa dấu cách hoặc ký tự điều khiển"
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "the host name contains “{character}”"
+msgstr "tên máy chủ có chứa “{character}”"
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "the username contains “{character}”"
+msgstr "tên người dùng có chứa “{character}”"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "the port cannot be 0"
+msgstr "cổng không thể là 0"
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "“{text}” is not a port number"
+msgstr "“{text}” không phải là số cổng"
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "an IPv6 address is missing its closing “]”"
+msgstr "địa chỉ IPv6 thiếu dấu “]” đóng"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "a value does not match its column's type"
+msgstr "một giá trị không khớp với kiểu của cột"
+
+#: crates/app/src/ui/error_text/statement.rs
+#, rust-format
+msgid "the database did not report the type of column {column}"
+msgstr "cơ sở dữ liệu không trả về kiểu của cột {column}"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "a value could not be read from the server, so it cannot be written back"
+msgstr "không đọc được một giá trị từ máy chủ, nên không thể ghi nó trở lại"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "this database cannot take one of the values"
+msgstr "cơ sở dữ liệu này không nhận được một trong các giá trị"
+
+#: crates/app/src/ui/error_text/statement.rs
+#, rust-format
+msgid "it names column {column}, which the table does not have"
+msgstr "nó dùng tới cột {column}, cột mà bảng không có"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "a rule has no value"
+msgstr "một quy tắc không có giá trị"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "a between rule needs both of its values"
+msgstr "quy tắc “trong khoảng” cần cả hai giá trị"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "a one-of rule needs at least one value"
+msgstr "quy tắc “một trong” cần ít nhất một giá trị"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "a rule's value does not fit its operator"
+msgstr "giá trị của một quy tắc không phù hợp với toán tử của nó"
+
+#: crates/app/src/ui/error_text/statement.rs
+#, rust-format
+msgid "This filter cannot be applied. Value for {column}: {reason}"
+msgstr "Không thể áp dụng bộ lọc này. Giá trị cho {column}: {reason}"
+
+#: crates/app/src/ui/error_text/statement.rs
+#, rust-format
+msgid "column {column} does not allow one of its operators"
+msgstr "cột {column} không cho phép một trong các toán tử của nó"
+
+#: crates/app/src/ui/error_text/statement.rs
+#, rust-format
+msgid "This SQL filter cannot be applied. {reason}"
+msgstr "Không thể áp dụng bộ lọc SQL này. {reason}"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the table has no columns to select"
+msgstr "bảng không có cột nào để chọn"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the sort names a column the table does not have"
+msgstr "thứ tự sắp xếp dùng tới một cột mà bảng không có"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "this position cannot be reached by this way of paging"
+msgstr "không thể tới vị trí này bằng cách phân trang này"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the row to page from has an empty key"
+msgstr "dòng dùng làm mốc phân trang có khóa trống"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the row to page from has no address that can be read"
+msgstr "dòng dùng làm mốc phân trang không có địa chỉ đọc được"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the page came back with other columns than were asked for"
+msgstr "trang trả về có các cột khác với các cột đã yêu cầu"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the query could not be built"
+msgstr "không dựng được truy vấn"
+
+#: crates/app/src/ui/error_text/statement.rs
+#, rust-format
+msgid "the row key names column {column}, which the table does not have"
+msgstr "khóa dòng dùng tới cột {column}, cột mà bảng không có"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the row key does not have one value for each key column"
+msgstr "khóa dòng không có đúng một giá trị cho mỗi cột khóa"
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the change could not be written as SQL"
+msgstr "không thể viết thay đổi thành SQL"
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid "Enter a type."
+msgstr "Nhập một kiểu."
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid "Remove the comment. It would hide the rest of the statement."
+msgstr "Hãy bỏ chú thích. Nó sẽ che mất phần còn lại của câu lệnh."
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid "This database does not read this as one type."
+msgstr "Cơ sở dữ liệu này không hiểu đây là một kiểu duy nhất."
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid "Enter an expression."
+msgstr "Nhập một biểu thức."
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid "This database does not read this as one expression."
+msgstr "Cơ sở dữ liệu này không hiểu đây là một biểu thức duy nhất."
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid "This database has no way to write this value in SQL."
+msgstr "Cơ sở dữ liệu này không có cách nào viết giá trị này bằng SQL."
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid ""
+"The value could not be read from the server, so it cannot be written back."
+msgstr "Không đọc được giá trị từ máy chủ, nên không thể ghi nó trở lại."
+
+#: crates/app/src/ui/error_text/syntax.rs
+#, rust-format
+msgid "Use at most {max} character."
+msgid_plural "Use at most {max} characters."
+msgstr[0] "Dùng tối đa {max} ký tự."
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid ""
+"Remove the backslash. This database reads it differently from one session to "
+"another."
+msgstr ""
+"Hãy bỏ dấu gạch chéo ngược. Cơ sở dữ liệu này hiểu nó khác nhau tùy từng "
+"phiên."
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid ""
+"The server's certificate was signed by an authority this machine does not "
+"know. Choose a CA certificate for this connection."
+msgstr ""
+"Chứng chỉ của máy chủ được ký bởi một tổ chức mà máy này không biết. Hãy "
+"chọn một chứng chỉ CA cho kết nối này."
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid ""
+"The server's certificate is for a different name. Set the TLS server name to "
+"the one on the certificate."
+msgstr ""
+"Chứng chỉ của máy chủ dành cho một tên khác. Hãy đặt tên máy chủ TLS thành "
+"tên ghi trên chứng chỉ."
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The server's certificate has expired."
+msgstr "Chứng chỉ của máy chủ đã hết hạn."
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The server's certificate is not valid yet."
+msgstr "Chứng chỉ của máy chủ chưa có hiệu lực."
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The server's certificate was revoked."
+msgstr "Chứng chỉ của máy chủ đã bị thu hồi."
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The server does not accept TLS on this port."
+msgstr "Máy chủ không chấp nhận TLS trên cổng này."
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The server requires TLS. Turn TLS on for this connection."
+msgstr "Máy chủ yêu cầu TLS. Hãy bật TLS cho kết nối này."
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The server ended the secure handshake."
+msgstr "Máy chủ đã kết thúc quá trình bắt tay bảo mật."
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The chosen CA certificate file could not be read."
+msgstr "Không đọc được tệp chứng chỉ CA đã chọn."
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The client certificate or key could not be read."
+msgstr "Không đọc được chứng chỉ hoặc khóa máy khách."
+
+#: crates/app/src/ui/error_text/tls_remedy.rs
+msgid "Choose CA Certificate…"
+msgstr "Chọn chứng chỉ CA…"
+
+#: crates/app/src/ui/error_text/tls_remedy.rs
+msgid "Set TLS Server Name"
+msgstr "Đặt tên máy chủ TLS"
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid ""
+"This database is reached over the network. It cannot open a database file."
+msgstr ""
+"Cơ sở dữ liệu này được truy cập qua mạng. Nó không thể mở tệp cơ sở dữ liệu."
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid ""
+"This database opens a file. It cannot connect to a server over the network."
+msgstr ""
+"Cơ sở dữ liệu này mở một tệp. Nó không thể kết nối tới máy chủ qua mạng."
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid "This database cannot turn foreign key checks off for a save."
+msgstr "Cơ sở dữ liệu này không thể tắt kiểm tra khóa ngoại khi lưu."
+
+#: crates/app/src/ui/error_text/unsupported.rs
+#, rust-format
+msgid "This needs {version} or later."
+msgstr "Cần {version} trở lên."
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid "COPY FROM STDIN cannot run in the editor."
+msgstr "Không thể chạy COPY FROM STDIN trong trình soạn thảo."
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid "COPY TO STDOUT cannot run in the editor."
+msgstr "Không thể chạy COPY TO STDOUT trong trình soạn thảo."
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid ""
+"This time falls in the hour the session's time zone repeats, so the database "
+"cannot store it as one instant."
+msgstr ""
+"Thời điểm này rơi vào giờ bị lặp lại trong múi giờ của phiên, nên cơ sở dữ "
+"liệu không thể lưu nó thành một thời điểm duy nhất."
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid "This database has no times outside one day."
+msgstr "Cơ sở dữ liệu này không có giá trị giờ nằm ngoài một ngày."
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid "This database has no times with an offset."
+msgstr "Cơ sở dữ liệu này không có giá trị giờ kèm độ lệch múi giờ."
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid "This database has no intervals."
+msgstr "Cơ sở dữ liệu này không có kiểu khoảng thời gian."
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid "This database has no bit strings."
+msgstr "Cơ sở dữ liệu này không có chuỗi bit."
+
+#: crates/app/src/ui/error_text/unsupported.rs
+#, rust-format
+msgid "This database has no numbers wider than {digits} digits."
+msgstr "Cơ sở dữ liệu này không có số nào dài hơn {digits} chữ số."
+
+#: crates/app/src/ui/error_text/unsupported.rs
+#, rust-format
+msgid ""
+"This database has no NaN, no infinity and no decimals wider than {digits} "
+"digits."
+msgstr ""
+"Cơ sở dữ liệu này không có NaN, không có vô cực và không có số thập phân dài "
+"hơn {digits} chữ số."
+
+#: crates/app/src/ui/error_text/unsupported.rs
+#, rust-format
+msgid "This database has no dates outside the years {first} to {last}."
+msgstr ""
+"Cơ sở dữ liệu này không có ngày nằm ngoài các năm từ {first} đến {last}."
+
+#: crates/app/src/ui/export/dialog.rs
+#, rust-format
+msgid ""
+"An Excel sheet holds {limit} rows, and this export has {rows}. Export it as "
+"CSV instead."
+msgstr ""
+"Một trang tính Excel chứa được {limit} dòng, còn bản xuất này có {rows}. Hãy "
+"xuất dưới dạng CSV."
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Convert NULL to Empty"
+msgstr "Chuyển NULL thành rỗng"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Convert Line Breaks to Spaces"
+msgstr "Chuyển ngắt dòng thành dấu cách"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Put Field Names in the First Row"
+msgstr "Đặt tên trường ở dòng đầu tiên"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Sanitize Formula-Like Values"
+msgstr "Làm sạch các giá trị trông giống công thức"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid ""
+"Prefix values starting with =, +, - or @ so spreadsheets do not run them"
+msgstr ""
+"Thêm tiền tố cho các giá trị bắt đầu bằng =, +, - hoặc @ để bảng tính không "
+"chạy chúng"
+
+#: crates/app/src/ui/export/dialog.rs crates/app/src/ui/import_dialog.rs
+msgid "Delimiter"
+msgstr "Dấu phân cách"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Comma (,)"
+msgstr "Dấu phẩy (,)"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Semicolon (;)"
+msgstr "Dấu chấm phẩy (;)"
+
+#: crates/app/src/ui/export/dialog.rs crates/app/src/ui/import_dialog.rs
+msgid "Tab"
+msgstr "Tab"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Pipe (|)"
+msgstr "Dấu sổ đứng (|)"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Quote"
+msgstr "Dấu ngoặc kép"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Always"
+msgstr "Luôn luôn"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Quote if needed"
+msgstr "Đặt trong ngoặc kép nếu cần"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Never"
+msgstr "Không bao giờ"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Line break"
+msgstr "Xuống dòng"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Decimal separator"
+msgstr "Dấu thập phân"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Period (.)"
+msgstr "Dấu chấm (.)"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "CSV Options"
+msgstr "Tùy chọn CSV"
+
+#: crates/app/src/ui/export/dialog.rs crates/app/src/ui/grid/grid_menus.rs
+msgid "Rows"
+msgstr "Dòng"
+
+#: crates/app/src/ui/export/dialog.rs data/resources/ui/sql-editor.ui
+msgid "Format"
+msgstr "Định dạng"
+
+#: crates/app/src/ui/export/dialog.rs crates/app/src/ui/grid/grid_menus.rs
+msgid "Export…"
+msgstr "Xuất…"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Reset to Defaults"
+msgstr "Khôi phục mặc định"
+
+#: crates/app/src/ui/export/dialog.rs
+msgid "Export Rows"
+msgstr "Xuất các dòng"
+
+#: crates/app/src/ui/export/dialog.rs
+#, rust-format
+msgid "{format} files"
+msgstr "Tệp {format}"
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "Exported {rows} row to {name}"
+msgid_plural "Exported {rows} rows to {name}"
+msgstr[0] "Đã xuất {rows} dòng vào {name}"
+
+#: crates/app/src/ui/export/export_failure_text.rs
+msgid "Export stopped"
+msgstr "Đã dừng xuất"
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "Export stopped. {name} is incomplete."
+msgstr "Đã dừng xuất. {name} chưa hoàn chỉnh."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "{rows} of {total} row"
+msgid_plural "{rows} of {total} rows"
+msgstr[0] "{rows} trên {total} dòng"
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "{rows} of about {total} row"
+msgid_plural "{rows} of about {total} rows"
+msgstr[0] "{rows} trên khoảng {total} dòng"
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "{rows} row"
+msgid_plural "{rows} rows"
+msgstr[0] "{rows} dòng"
+
+#: crates/app/src/ui/export/export_failure_text.rs
+msgid ""
+"This statement returned more than one result, so it can't be exported as one "
+"file."
+msgstr ""
+"Câu lệnh này trả về nhiều hơn một kết quả, nên không thể xuất thành một tệp."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+msgid "This statement returned no rows to export."
+msgstr "Câu lệnh này không trả về dòng nào để xuất."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid ""
+"An Excel sheet holds {limit} rows, and this result has more. Export it as "
+"CSV instead."
+msgstr ""
+"Một trang tính Excel chứa được {limit} dòng, còn kết quả này có nhiều hơn. "
+"Hãy xuất dưới dạng CSV."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "Writing {name} failed: {error}"
+msgstr "Ghi {name} thất bại: {error}"
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid ""
+"An export to {name} is already running. Wait for it to finish, or export to "
+"another file."
+msgstr ""
+"Đang có một lần xuất vào {name}. Hãy chờ nó xong, hoặc xuất vào tệp khác."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+msgid "The export stopped unexpectedly."
+msgstr "Việc xuất đã dừng đột ngột."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "{name} is incomplete."
+msgstr "{name} chưa hoàn chỉnh."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+msgid ""
+"Export All only runs statements that read data. This statement changes data."
+msgstr ""
+"Xuất tất cả chỉ chạy các câu lệnh đọc dữ liệu. Câu lệnh này thay đổi dữ liệu."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+msgid ""
+"Export All runs the statement again on a separate connection, so temporary "
+"tables, session settings and uncommitted changes from this editor aren't "
+"available."
+msgstr ""
+"Xuất tất cả chạy lại câu lệnh trên một kết nối riêng, nên các bảng tạm, "
+"thiết lập phiên và thay đổi chưa commit từ trình soạn thảo này sẽ không có ở "
+"đó."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid ""
+"The column “{column}” holds a value TablePro couldn't read, so it can't be "
+"written to the file."
+msgstr ""
+"Cột “{column}” chứa một giá trị TablePro không đọc được, nên không thể ghi "
+"nó vào tệp."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid ""
+"The column “{column}” holds a control character XML can't carry. Export it "
+"as CSV or JSON instead."
+msgstr ""
+"Cột “{column}” chứa một ký tự điều khiển mà XML không chứa được. Hãy xuất "
+"dưới dạng CSV hoặc JSON."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid ""
+"The column “{column}” holds a value longer than the {limit} characters an "
+"Excel cell holds. Export it as CSV instead."
+msgstr ""
+"Cột “{column}” chứa một giá trị dài hơn {limit} ký tự mà một ô Excel chứa "
+"được. Hãy xuất dưới dạng CSV."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "An Excel sheet holds {limit} rows, and this result has {got}."
+msgstr "Một trang tính Excel chứa được {limit} dòng, còn kết quả này có {got}."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "An Excel sheet holds {limit} columns, and this result has {got}."
+msgstr "Một trang tính Excel chứa được {limit} cột, còn kết quả này có {got}."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+msgid "The file couldn't be built."
+msgstr "Không tạo được tệp."
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#: data/resources/ui/history-dialog.ui
+#: data/resources/ui/preferences-history-group.ui
+msgid "Show in Files"
+msgstr "Hiện trong Tệp"
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#: crates/app/src/ui/history_dialog/history_export.rs
+msgid "Couldn't Export"
+msgstr "Không xuất được"
+
+#: crates/app/src/ui/export/export_ledger/mod.rs
+msgid "Stop Exports?"
+msgstr "Dừng xuất?"
+
+#: crates/app/src/ui/export/export_ledger/mod.rs
+#, rust-format
+msgid "{n} export is still running. Stopping it leaves the file unfinished."
+msgid_plural ""
+"{n} exports are still running. Stopping them leaves the files unfinished."
+msgstr[0] ""
+"{n} lần xuất vẫn đang chạy. Dừng lại sẽ để các tệp ở trạng thái chưa hoàn "
+"chỉnh."
+
+#: crates/app/src/ui/export/export_ledger/mod.rs
+msgid "_Keep Exporting"
+msgstr "_Tiếp tục xuất"
+
+#: crates/app/src/ui/export/export_ledger/mod.rs
+msgid "_Stop Exports"
+msgstr "_Dừng xuất"
+
+#: crates/app/src/ui/export/export_operations_button.rs
+msgid "Stop Export"
+msgstr "Dừng xuất"
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid "filters apply"
+msgstr "đang áp dụng bộ lọc"
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid "unsaved changes aren't included"
+msgstr "không bao gồm các thay đổi chưa lưu"
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid "Current Page"
+msgstr "Trang hiện tại"
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid "Entire Table"
+msgstr "Toàn bộ bảng"
+
+#: crates/app/src/ui/export/export_scope.rs
+msgctxt "list separator"
+msgid ", "
+msgstr ", "
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid "Shown Rows"
+msgstr "Các dòng đang hiện"
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid "All Rows"
+msgstr "Tất cả dòng"
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid ""
+"Runs the statement again on a separate read-only connection, without this "
+"editor's USE or SET changes"
+msgstr ""
+"Chạy lại câu lệnh trên một kết nối chỉ đọc riêng, không có các thay đổi USE "
+"hoặc SET của trình soạn thảo này"
+
+#: crates/app/src/ui/export/export_scope.rs
+#, rust-format
+msgid "About {n} row"
+msgid_plural "About {n} rows"
+msgstr[0] "Khoảng {n} dòng"
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid "Every row"
+msgstr "Mọi dòng"
+
+#: crates/app/src/ui/file_reveal/reveal_failure_toast.rs
+msgid "Could not show the file in Files"
+msgstr "Không hiện được tệp trong Tệp"
+
+#: crates/app/src/ui/filter_strip/imp.rs crates/app/src/ui/host_key_review.rs
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "Close"
+msgstr "Đóng"
+
+#: crates/app/src/ui/filter_strip/rule_row.rs
+msgid "Remove Rule"
+msgstr "Gỡ quy tắc"
+
+#: crates/app/src/ui/filter_strip/rule_row.rs
+msgid "Filter Rule"
+msgstr "Quy tắc lọc"
+
+#: crates/app/src/ui/filter_strip/rule_value_editor.rs
+msgid "Value"
+msgstr "Giá trị"
+
+#: crates/app/src/ui/filter_strip/rule_value_editor.rs
+msgid "From"
+msgstr "Từ"
+
+#: crates/app/src/ui/filter_strip/rule_value_editor.rs
+msgid "To"
+msgstr "Đến"
+
+#: crates/app/src/ui/filter_strip/rule_value_editor.rs
+msgid "a, b, c"
+msgstr "a, b, c"
+
+#: crates/app/src/ui/filter_strip/rule_value_editor.rs
+msgid "Values"
+msgstr "Các giá trị"
+
+#: crates/app/src/ui/grid/calendar_editor.rs
+msgid "Type a Value"
+msgstr "Nhập một giá trị"
+
+#: crates/app/src/ui/grid/cell_accessibility.rs
+msgid "Modified, NULL value"
+msgstr "Đã sửa, giá trị NULL"
+
+#: crates/app/src/ui/grid/cell_accessibility.rs
+msgid "Modified"
+msgstr "Đã sửa"
+
+#: crates/app/src/ui/grid/cell_accessibility.rs
+msgid "NULL value"
+msgstr "Giá trị NULL"
+
+#: crates/app/src/ui/grid/cell_accessibility.rs
+msgid "New row"
+msgstr "Dòng mới"
+
+#: crates/app/src/ui/grid/cell_accessibility.rs
+msgid "Marked for deletion"
+msgstr "Đã đánh dấu để xóa"
+
+#: crates/app/src/ui/grid/cell_accessibility.rs
+msgid "Not saved"
+msgstr "Chưa lưu"
+
+#: crates/app/src/ui/grid/cell_edit.rs
+msgid "Values with a NUL character can't be edited here"
+msgstr "Không thể sửa ở đây các giá trị có ký tự NUL"
+
+#: crates/app/src/ui/grid/cell_edit.rs
+#, rust-format
+msgid "Values over {size} can't be edited here"
+msgstr "Không thể sửa ở đây các giá trị lớn hơn {size}"
+
+#: crates/app/src/ui/grid/cell_tooltip.rs
+msgid "Use Show Row as JSON to see the full value"
+msgstr "Dùng Hiện dòng dạng JSON để xem toàn bộ giá trị"
+
+#: crates/app/src/ui/grid/delete_availability.rs
+msgid "Rows without a primary key or unique key can't be deleted here"
+msgstr "Không thể xóa ở đây các dòng không có khóa chính hoặc khóa duy nhất"
+
+#: crates/app/src/ui/grid/delete_availability.rs
+msgid "This connection is read-only"
+msgstr "Kết nối này chỉ cho phép đọc"
+
+#: crates/app/src/ui/grid/display_text.rs
+msgid "<NULL>"
+msgstr "<NULL>"
+
+#: crates/app/src/ui/grid/display_text.rs
+msgid "(auto)"
+msgstr "(tự động)"
+
+#: crates/app/src/ui/grid/display_text.rs
+#, rust-format
+msgid "<{count} byte>"
+msgid_plural "<{count} bytes>"
+msgstr[0] "<{count} byte>"
+
+#: crates/app/src/ui/grid/display_text.rs
+#, rust-format
+msgid "<unreadable {type}>"
+msgstr "<{type} không đọc được>"
+
+#: crates/app/src/ui/grid/display_text.rs
+#: crates/app/src/ui/grid/row_json_dialog.rs
+#, rust-format
+msgid "… ({count} more byte)"
+msgid_plural "… ({count} more bytes)"
+msgstr[0] "… (thêm {count} byte)"
+
+#: crates/app/src/ui/grid/edit_commit.rs
+msgid "Required"
+msgstr "Bắt buộc"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Edit Cell"
+msgstr "Sửa ô"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Set to Empty"
+msgstr "Đặt thành rỗng"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Set to NULL"
+msgstr "Đặt thành NULL"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Set to DEFAULT"
+msgstr "Đặt thành DEFAULT"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "With Headers"
+msgstr "Kèm tiêu đề"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "JSON"
+msgstr "JSON"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "CSV"
+msgstr "CSV"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "CSV With Headers"
+msgstr "CSV kèm tiêu đề"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Markdown"
+msgstr "Markdown"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "IN Clause"
+msgstr "Mệnh đề IN"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "INSERT Statement"
+msgstr "Câu lệnh INSERT"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+#: crates/app/src/ui/grid/row_json_dialog.rs
+msgid "Copy"
+msgstr "Sao chép"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Copy As"
+msgstr "Sao chép dưới dạng"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Copy Column Name"
+msgstr "Sao chép tên cột"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Show Row as JSON"
+msgstr "Hiện dòng dạng JSON"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Sort Ascending"
+msgstr "Sắp xếp tăng dần"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Sort Descending"
+msgstr "Sắp xếp giảm dần"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Clear Sort"
+msgstr "Bỏ sắp xếp"
+
+#: crates/app/src/ui/grid/grid_menus.rs data/resources/shortcuts-dialog.ui
+msgid "Widen Column"
+msgstr "Nới rộng cột"
+
+#: crates/app/src/ui/grid/grid_menus.rs data/resources/shortcuts-dialog.ui
+msgid "Narrow Column"
+msgstr "Thu hẹp cột"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Reset Column Width"
+msgstr "Đặt lại độ rộng cột"
+
+#: crates/app/src/ui/grid/grid_menus.rs
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Duplicate"
+msgstr "Nhân bản"
+
+#: crates/app/src/ui/grid/row_json_dialog.rs
+#, rust-format
+msgid "… ({count} more item)"
+msgid_plural "… ({count} more items)"
+msgstr[0] "… (thêm {count} mục)"
+
+#: crates/app/src/ui/grid/row_json_dialog.rs
+msgid "Can't Show Row as JSON"
+msgstr "Không hiện được dòng dạng JSON"
+
+#: crates/app/src/ui/grid/row_json_dialog.rs
+#, rust-format
+msgid ""
+"The column “{column}” holds a value TablePro couldn't read, so the row has "
+"no JSON to show."
+msgstr ""
+"Cột “{column}” chứa một giá trị TablePro không đọc được, nên dòng này không "
+"có JSON để hiện."
+
+#: crates/app/src/ui/grid/row_json_dialog.rs
+msgid "Long values are shortened here. Copy includes them in full."
+msgstr "Các giá trị dài được rút gọn ở đây. Khi sao chép sẽ có đầy đủ."
+
+#: crates/app/src/ui/grid/row_json_dialog.rs
+msgid "Row as JSON"
+msgstr "Dòng dạng JSON"
+
+#: crates/app/src/ui/history_dialog/connection_filter.rs
+msgid "All Connections"
+msgstr "Tất cả kết nối"
+
+#: crates/app/src/ui/history_dialog/history_export.rs
+#: crates/app/src/ui/workspace/import.rs
+msgid "CSV files"
+msgstr "Tệp CSV"
+
+#: crates/app/src/ui/history_dialog/history_export.rs
+msgid "Export Query History"
+msgstr "Xuất lịch sử truy vấn"
+
+#: crates/app/src/ui/history_dialog/history_export.rs
+msgid "The selected entries couldn't be written as CSV."
+msgstr "Không ghi được các mục đã chọn thành CSV."
+
+#: crates/app/src/ui/history_dialog/history_export.rs
+msgid "The selected entries couldn't be read from the query history."
+msgstr "Không đọc được các mục đã chọn từ lịch sử truy vấn."
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+#: data/resources/ui/connect-dialog.ui
+msgid "Connection"
+msgstr "Kết nối"
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+msgid "All"
+msgstr "Tất cả"
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+msgid "Succeeded"
+msgstr "Thành công"
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+msgid "Failed"
+msgstr "Thất bại"
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+msgid "Cancelled"
+msgstr "Đã hủy"
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+msgid "Status"
+msgstr "Trạng thái"
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+msgid "Any Time"
+msgstr "Mọi lúc"
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+msgid "Today"
+msgstr "Hôm nay"
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+msgid "Last 7 Days"
+msgstr "7 ngày qua"
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+msgid "Last 30 Days"
+msgstr "30 ngày qua"
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+msgid "Time window"
+msgstr "Khoảng thời gian"
+
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+msgid "cancelled"
+msgstr "đã hủy"
+
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+msgid "just now"
+msgstr "vừa xong"
+
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+#, rust-format
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n} phút trước"
+
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+#, rust-format
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n} giờ trước"
+
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+#, rust-format
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n} ngày trước"
+
+#: crates/app/src/ui/history_dialog/history_row.rs
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "Unpin"
+msgstr "Bỏ ghim"
+
+#: crates/app/src/ui/history_dialog/history_row.rs
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "Pin"
+msgstr "Ghim"
+
+#: crates/app/src/ui/history_dialog/mod.rs
+#, rust-format
+msgid "{n} selected"
+msgid_plural "{n} selected"
+msgstr[0] "Đã chọn {n}"
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "The query could not be pinned."
+msgstr "Không ghim được truy vấn."
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "The query could not be unpinned."
+msgstr "Không bỏ ghim được truy vấn."
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "The queries could not be deleted."
+msgstr "Không xóa được các truy vấn."
+
+#: crates/app/src/ui/history_dialog/mod.rs
+#, rust-format
+msgid "{count} query deleted"
+msgid_plural "{count} queries deleted"
+msgstr[0] "Đã xóa {count} truy vấn"
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "_Undo"
+msgstr "_Hoàn tác"
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "The queries could not be restored."
+msgstr "Không khôi phục được các truy vấn."
+
+#: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/preferences_dialog/history_group.rs
+msgid "Clear All Query History?"
+msgstr "Xóa toàn bộ lịch sử truy vấn?"
+
+#: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/preferences_dialog/history_group.rs
+msgid ""
+"This permanently deletes every history entry, including pinned ones. Saved "
+"queries are kept."
+msgstr ""
+"Thao tác này xóa vĩnh viễn mọi mục trong lịch sử, kể cả các mục đã ghim. Các "
+"truy vấn đã lưu vẫn được giữ."
+
+#: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/preferences_dialog/history_group.rs
+#: data/resources/ui/tls-section.ui
+msgid "Clear"
+msgstr "Xóa"
+
+#: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/preferences_dialog/history_group.rs
+msgid "The query history could not be cleared."
+msgstr "Không xóa được lịch sử truy vấn."
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "The query history could not be read."
+msgstr "Không đọc được lịch sử truy vấn."
+
+#: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "No Matches"
+msgstr "Không có kết quả khớp"
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "Try a different search term or change the filters."
+msgstr "Hãy thử từ khóa tìm kiếm khác hoặc thay đổi bộ lọc."
+
+#: crates/app/src/ui/history_dialog/mod.rs data/resources/ui/history-dialog.ui
+msgid "No Queries Yet"
+msgstr "Chưa có truy vấn"
+
+#: crates/app/src/ui/history_dialog/mod.rs data/resources/ui/history-dialog.ui
+msgid "Run a query in the SQL editor and it will appear here."
+msgstr "Chạy một truy vấn trong trình soạn thảo SQL và nó sẽ xuất hiện ở đây."
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "History Unavailable"
+msgstr "Không có lịch sử"
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "Pinned"
+msgstr "Đã ghim"
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "All Queries"
+msgstr "Mọi truy vấn"
+
+#: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+#: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
+msgid "Open in New Tab"
+msgstr "Mở trong tab mới"
+
+#: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Replace Current Tab"
+msgstr "Thay thế tab hiện tại"
+
+#: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+#: crates/app/src/ui/structure_tab/imp.rs
+msgid "Copy SQL"
+msgstr "Sao chép SQL"
+
+#: crates/app/src/ui/host_key_review.rs
+#: crates/app/src/ui/session_window/connections.rs
+#: crates/app/src/ui/tab_load/stale_banner.rs
+#: crates/app/src/ui/workspace/health_banner.rs
+#: data/resources/ui/connect-failed-page.ui data/resources/ui/workspace.ui
+msgid "Retry"
+msgstr "Thử lại"
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"TablePro has not connected to “{host}” before and cannot confirm its "
+"identity. Compare the fingerprint with the one from your server "
+"administrator."
+msgstr ""
+"TablePro chưa từng kết nối tới “{host}” và không thể xác nhận danh tính của "
+"nó. Hãy so sánh dấu vân tay với dấu vân tay do quản trị viên máy chủ cung "
+"cấp."
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"TablePro has not connected to “{host}” before. Connect to see its key’s "
+"fingerprint and decide whether to trust it."
+msgstr ""
+"TablePro chưa từng kết nối tới “{host}”. Hãy kết nối để xem dấu vân tay khóa "
+"của nó và quyết định có tin cậy hay không."
+
+#: crates/app/src/ui/host_key_review.rs
+msgid "Unknown SSH Host"
+msgstr "Máy chủ SSH không xác định"
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"The SSH configuration for “{host}” accepts only keys already in known_hosts. "
+"Add the server’s key there, then retry."
+msgstr ""
+"Cấu hình SSH cho “{host}” chỉ chấp nhận các khóa đã có trong known_hosts. "
+"Hãy thêm khóa của máy chủ vào đó, rồi thử lại."
+
+#: crates/app/src/ui/host_key_review.rs
+msgid "SSH Host Key Changed"
+msgstr "Khóa máy chủ SSH đã thay đổi"
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"The key “{host}” sent is not the one trusted in known_hosts. Someone may be "
+"intercepting the connection, or the server was reinstalled. The SSH "
+"configuration for this host accepts only keys already in known_hosts, so if "
+"your server administrator confirms the new fingerprint, replace the key "
+"there yourself, then retry."
+msgstr ""
+"Khóa mà “{host}” gửi không phải khóa được tin cậy trong known_hosts. Có thể "
+"ai đó đang chặn kết nối, hoặc máy chủ đã được cài lại. Cấu hình SSH cho máy "
+"chủ này chỉ chấp nhận các khóa đã có trong known_hosts, nên nếu quản trị "
+"viên máy chủ xác nhận dấu vân tay mới, hãy tự thay khóa ở đó, rồi thử lại."
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"The key “{host}” sent is not the one trusted in {file}, line {line}. Someone "
+"may be intercepting the connection, or the server was reinstalled. The SSH "
+"configuration for this host accepts only keys already in known_hosts, so if "
+"your server administrator confirms the new fingerprint, replace the key in "
+"that file yourself, then retry."
+msgstr ""
+"Khóa mà “{host}” gửi không phải khóa được tin cậy trong {file}, dòng {line}. "
+"Có thể ai đó đang chặn kết nối, hoặc máy chủ đã được cài lại. Cấu hình SSH "
+"cho máy chủ này chỉ chấp nhận các khóa đã có trong known_hosts, nên nếu quản "
+"trị viên máy chủ xác nhận dấu vân tay mới, hãy tự thay khóa trong tệp đó, "
+"rồi thử lại."
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"The key “{host}” sent is not the one trusted in known_hosts. Someone may be "
+"intercepting the connection, or the server was reinstalled. If your server "
+"administrator confirms the new fingerprint, remove the old key from "
+"known_hosts, then retry."
+msgstr ""
+"Khóa mà “{host}” gửi không phải khóa được tin cậy trong known_hosts. Có thể "
+"ai đó đang chặn kết nối, hoặc máy chủ đã được cài lại. Nếu quản trị viên máy "
+"chủ xác nhận dấu vân tay mới, hãy xóa khóa cũ khỏi known_hosts, rồi thử lại."
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"The key “{host}” sent is not the one trusted in {file}, line {line}. Someone "
+"may be intercepting the connection, or the server was reinstalled. Replace "
+"the key only if your server administrator confirms the new fingerprint."
+msgstr ""
+"Khóa mà “{host}” gửi không phải khóa được tin cậy trong {file}, dòng {line}. "
+"Có thể ai đó đang chặn kết nối, hoặc máy chủ đã được cài lại. Chỉ thay khóa "
+"nếu quản trị viên máy chủ xác nhận dấu vân tay mới."
+
+#: crates/app/src/ui/host_key_review.rs
+msgid "Replace Key and Connect"
+msgstr "Thay khóa và kết nối"
+
+#: crates/app/src/ui/host_key_review.rs
+msgid "SSH Host Key Revoked"
+msgstr "Khóa máy chủ SSH đã bị thu hồi"
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"The key “{host}” sent is revoked, so TablePro will not connect to it. Ask "
+"your server administrator for its current key."
+msgstr ""
+"Khóa mà “{host}” gửi đã bị thu hồi, nên TablePro sẽ không kết nối tới nó. "
+"Hãy hỏi quản trị viên máy chủ khóa hiện tại của nó."
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"The key “{host}” sent is revoked, so TablePro will not connect to it. Ask "
+"your server administrator for its current key. ssh reported: {detail}"
+msgstr ""
+"Khóa mà “{host}” gửi đã bị thu hồi, nên TablePro sẽ không kết nối tới nó. "
+"Hãy hỏi quản trị viên máy chủ khóa hiện tại của nó. ssh báo: {detail}"
+
+#: crates/app/src/ui/host_key_review.rs
+msgid "Key fingerprint"
+msgstr "Dấu vân tay khóa"
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid "{algorithm} key fingerprint"
+msgstr "Dấu vân tay khóa {algorithm}"
+
+#: crates/app/src/ui/import_dialog.rs crates/app/src/ui/workspace/import.rs
+msgid "Import CSV"
+msgstr "Nhập CSV"
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Import"
+msgstr "Nhập"
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "File"
+msgstr "Tệp"
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Comma"
+msgstr "Dấu phẩy"
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Semicolon"
+msgstr "Dấu chấm phẩy"
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Pipe"
+msgstr "Dấu sổ đứng"
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "First Row Is a Header"
+msgstr "Dòng đầu tiên là tiêu đề"
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Its values name the fields instead of being imported."
+msgstr "Các giá trị của nó đặt tên cho các trường thay vì được nhập vào."
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Text that means NULL"
+msgstr "Văn bản mang nghĩa NULL"
+
+#: crates/app/src/ui/import_dialog.rs
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+#: data/resources/ui/structure-tab.ui
+msgid "Columns"
+msgstr "Cột"
+
+#: crates/app/src/ui/import_dialog.rs
+msgid ""
+"Each table column takes one field from the file. A column set to Skip keeps "
+"its own default."
+msgstr ""
+"Mỗi cột của bảng lấy một trường từ tệp. Cột đặt là Bỏ qua sẽ giữ giá trị mặc "
+"định của chính nó."
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Skip"
+msgstr "Bỏ qua"
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "The database fills this column"
+msgstr "Cơ sở dữ liệu tự điền cột này"
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Uses the column's own default"
+msgstr "Dùng giá trị mặc định của cột"
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "The file has no rows to import."
+msgstr "Tệp không có dòng nào để nhập."
+
+#: crates/app/src/ui/import_dialog.rs
+msgid ""
+"Every column is set to Skip. Pick a field for at least one column to import."
+msgstr ""
+"Mọi cột đều đặt là Bỏ qua. Hãy chọn một trường cho ít nhất một cột để nhập."
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid ""
+"{fields} fields. Showing the first {rows} rows; the whole file is imported."
+msgstr ""
+"{fields} trường. Đang hiện {rows} dòng đầu tiên; toàn bộ tệp sẽ được nhập."
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid "{fields} fields, {rows} row."
+msgid_plural "{fields} fields, {rows} rows."
+msgstr[0] "{fields} trường, {rows} dòng."
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid ""
+"The file isn't UTF-8 text from byte {offset} on. Save it as UTF-8 and import "
+"it again."
+msgstr ""
+"Tệp không phải văn bản UTF-8 kể từ byte {offset}. Hãy lưu nó dưới dạng UTF-8 "
+"rồi nhập lại."
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid "The file couldn't be read as CSV at line {line}."
+msgstr "Không đọc được tệp dưới dạng CSV tại dòng {line}."
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "The file couldn't be read as CSV."
+msgstr "Không đọc được tệp dưới dạng CSV."
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "The file has no columns."
+msgstr "Tệp không có cột nào."
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid ""
+"Line {line} has more than {limit} fields, more than any table holds. Check "
+"the delimiter."
+msgstr ""
+"Dòng {line} có hơn {limit} trường, nhiều hơn mọi bảng có thể chứa. Hãy kiểm "
+"tra dấu phân cách."
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid "Column {n}"
+msgstr "Cột {n}"
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "NULL"
+msgstr "NULL"
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "No values in the file"
+msgstr "Không có giá trị nào trong tệp"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Edit…"
+msgstr "Sửa…"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Colour"
+msgstr "Màu"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Move to Group"
+msgstr "Di chuyển vào nhóm"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Delete…"
+msgstr "Xóa…"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "No Colour"
+msgstr "Không màu"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "No Group"
+msgstr "Không nhóm"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "New Group…"
+msgstr "Nhóm mới…"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Blue"
+msgstr "Xanh dương"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Teal"
+msgstr "Xanh mòng két"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Green"
+msgstr "Xanh lá"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Yellow"
+msgstr "Vàng"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Orange"
+msgstr "Cam"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Red"
+msgstr "Đỏ"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Pink"
+msgstr "Hồng"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Purple"
+msgstr "Tím"
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Slate"
+msgstr "Xám đá"
+
+#: crates/app/src/ui/picker/connection_row.rs
+msgid "Connection Options"
+msgstr "Tùy chọn kết nối"
+
+#: crates/app/src/ui/picker/new_group_dialog.rs
+msgid "New Group"
+msgstr "Nhóm mới"
+
+#: crates/app/src/ui/picker/new_group_dialog.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+#: crates/app/src/ui/structure_tab/columns.rs
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+#: crates/app/src/ui/workspace/status_pages.rs
+#: data/resources/ui/connect-dialog.ui data/resources/ui/structure-tab.ui
+msgid "Name"
+msgstr "Tên"
+
+#: crates/app/src/ui/picker/new_group_dialog.rs
+msgid "Create"
+msgstr "Tạo"
+
+#: crates/app/src/ui/preferences_dialog/data_browser_group.rs
+#, rust-format
+msgid "Ask before deleting {n} or more rows at once"
+msgid_plural "Ask before deleting {n} or more rows at once"
+msgstr[0] "Hỏi trước khi xóa cùng lúc từ {n} dòng trở lên"
+
+#: crates/app/src/ui/preferences_dialog/history_group.rs
+#, rust-format
+msgid "Query history and saved queries cannot be used. {reason}"
+msgstr "Không dùng được lịch sử truy vấn và các truy vấn đã lưu. {reason}"
+
+#: crates/app/src/ui/preferences_dialog/history_group.rs
+#, rust-format
+msgid "{count} query cleared"
+msgid_plural "{count} queries cleared"
+msgstr[0] "Đã xóa {count} truy vấn"
+
+#: crates/app/src/ui/result_pane/result_limit_banner.rs
+msgid "Export All…"
+msgstr "Xuất tất cả…"
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "No rows kept; a run keeps at most {limit} rows across its results"
+msgstr ""
+"Không giữ dòng nào; mỗi lượt chạy giữ tối đa {limit} dòng trên tất cả kết quả"
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid ""
+"Showing the first {shown} row; a run keeps at most {limit} rows across its "
+"results"
+msgid_plural ""
+"Showing the first {shown} rows; a run keeps at most {limit} rows across its "
+"results"
+msgstr[0] ""
+"Đang hiện {shown} dòng đầu tiên; mỗi lượt chạy giữ tối đa {limit} dòng trên "
+"tất cả kết quả"
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "Showing {shown} of {total} row"
+msgid_plural "Showing {shown} of {total} rows"
+msgstr[0] "Đang hiện {shown} trên {total} dòng"
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "Showing the first {shown} row"
+msgid_plural "Showing the first {shown} rows"
+msgstr[0] "Đang hiện {shown} dòng đầu tiên"
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "Stopped after the first {shown} row: the statement did not run past it"
+msgid_plural ""
+"Stopped after the first {shown} rows: the statement did not run past them"
+msgstr[0] ""
+"Đã dừng sau {shown} dòng đầu tiên: câu lệnh không chạy tiếp quá các dòng đó"
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "{rows}+"
+msgstr "{rows}+"
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "Result {n} ({rows})"
+msgstr "Kết quả {n} ({rows})"
+
+#: crates/app/src/ui/safe_mode.rs
+msgid "Off"
+msgstr "Tắt"
+
+#: crates/app/src/ui/safe_mode.rs
+msgid "Confirm Writes"
+msgstr "Xác nhận ghi"
+
+#: crates/app/src/ui/safe_mode.rs
+msgid "Read-Only"
+msgstr "Chỉ đọc"
+
+#: crates/app/src/ui/safe_mode.rs
+msgid "Asks only before DROP, TRUNCATE, and DELETE or UPDATE without WHERE."
+msgstr "Chỉ hỏi trước DROP, TRUNCATE, và DELETE hoặc UPDATE không có WHERE."
+
+#: crates/app/src/ui/safe_mode.rs
+msgid "Asks before every statement that changes the database."
+msgstr "Hỏi trước mỗi câu lệnh thay đổi cơ sở dữ liệu."
+
+#: crates/app/src/ui/safe_mode.rs
+msgid "The database refuses changes on this connection."
+msgstr "Cơ sở dữ liệu từ chối mọi thay đổi trên kết nối này."
+
+#: crates/app/src/ui/safe_mode.rs
+msgid ""
+"TablePro refuses statements that write, and the server opens each "
+"transaction read-only. Use a read-only login for a guarantee."
+msgstr ""
+"TablePro từ chối các câu lệnh ghi, và máy chủ mở mọi giao dịch ở chế độ chỉ "
+"đọc. Hãy dùng tài khoản đăng nhập chỉ đọc để được bảo đảm."
+
+#: crates/app/src/ui/safe_mode.rs
+msgid ""
+"TablePro refuses statements that write, but SQL Server cannot enforce this. "
+"Use a login granted only SELECT."
+msgstr ""
+"TablePro từ chối các câu lệnh ghi, nhưng SQL Server không thể bắt buộc điều "
+"này. Hãy dùng tài khoản đăng nhập chỉ được cấp quyền SELECT."
+
+#: crates/app/src/ui/saved_queries_dialog.rs data/resources/gtk/menus.ui
+msgid "Saved Queries"
+msgstr "Truy vấn đã lưu"
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Search saved queries"
+msgstr "Tìm truy vấn đã lưu"
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "No Saved Queries"
+msgstr "Chưa có truy vấn đã lưu"
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Save a query from the editor and it will be listed here."
+msgstr "Lưu một truy vấn từ trình soạn thảo và nó sẽ được liệt kê ở đây."
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Could Not Read Saved Queries"
+msgstr "Không đọc được các truy vấn đã lưu"
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Could not delete that saved query."
+msgstr "Không xóa được truy vấn đã lưu đó."
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Try a different search term."
+msgstr "Hãy thử từ khóa tìm kiếm khác."
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Rename…"
+msgstr "Đổi tên…"
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Saved Query Options"
+msgstr "Tùy chọn truy vấn đã lưu"
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Rename Saved Query"
+msgstr "Đổi tên truy vấn đã lưu"
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Rename"
+msgstr "Đổi tên"
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "The saved query is removed. The SQL itself is not run or changed."
+msgstr ""
+"Truy vấn đã lưu sẽ bị xóa. Bản thân câu SQL không bị chạy hay thay đổi."
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "That name is already used by another saved query."
+msgstr "Tên đó đã được một truy vấn đã lưu khác dùng."
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "That name is too long."
+msgstr "Tên đó quá dài."
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "That saved query was deleted elsewhere."
+msgstr "Truy vấn đã lưu đó đã bị xóa ở nơi khác."
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "The saved query could not be renamed."
+msgstr "Không đổi tên được truy vấn đã lưu."
+
+#: crates/app/src/ui/session_window/connecting_page.rs
+#, rust-format
+msgid "Connecting to {name}"
+msgstr "Đang kết nối tới {name}"
+
+#: crates/app/src/ui/session_window/connecting_page.rs
+msgid "Connecting"
+msgstr "Đang kết nối"
+
+#: crates/app/src/ui/session_window/connections.rs
+#, rust-format
+msgid "The connection could not be saved. {reason}"
+msgstr "Không lưu được kết nối. {reason}"
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "this connection"
+msgstr "kết nối này"
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "Changes apply the next time you connect"
+msgstr "Thay đổi có hiệu lực ở lần kết nối tiếp theo"
+
+#: crates/app/src/ui/session_window/connections.rs
+#, rust-format
+msgid "The connection could not be duplicated. {reason}"
+msgstr "Không nhân bản được kết nối. {reason}"
+
+#: crates/app/src/ui/session_window/connections.rs
+#, rust-format
+msgid "The group could not be saved. {reason}"
+msgstr "Không lưu được nhóm. {reason}"
+
+#: crates/app/src/ui/session_window/connections.rs
+#, rust-format
+msgid "The colour could not be saved. {reason}"
+msgstr "Không lưu được màu. {reason}"
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid ""
+"Save this connection to change it to or from Read-Only while it is open."
+msgstr ""
+"Hãy lưu kết nối này để chuyển nó sang hoặc khỏi chế độ Chỉ đọc khi nó đang "
+"mở."
+
+#: crates/app/src/ui/session_window/connections.rs
+#, rust-format
+msgid "Safe Mode could not be saved. {reason}"
+msgstr "Không lưu được Chế độ an toàn. {reason}"
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "The connections could not be read."
+msgstr "Không đọc được các kết nối."
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "Import Connections"
+msgstr "Nhập kết nối"
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "That file has no connections in it."
+msgstr "Tệp đó không chứa kết nối nào."
+
+#: crates/app/src/ui/session_window/connections.rs
+#, rust-format
+msgid "Imported {n} connection."
+msgid_plural "Imported {n} connections."
+msgstr[0] "Đã nhập {n} kết nối."
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "The connections could not be imported."
+msgstr "Không nhập được các kết nối."
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "Reset Saved Connections?"
+msgstr "Đặt lại các kết nối đã lưu?"
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid ""
+"The unreadable file will be renamed so it can be recovered. Stored passwords "
+"stay in the keyring."
+msgstr ""
+"Tệp không đọc được sẽ được đổi tên để có thể khôi phục. Các mật khẩu đã lưu "
+"vẫn ở trong chùm khóa."
+
+#: crates/app/src/ui/session_window/connections.rs
+#: data/resources/ui/workspace.ui
+msgid "Reset"
+msgstr "Đặt lại"
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "Export Connections"
+msgstr "Xuất kết nối"
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "Connections exported."
+msgstr "Đã xuất các kết nối."
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "The connections could not be written to that file."
+msgstr "Không ghi được các kết nối vào tệp đó."
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "That export comes from a newer version of TablePro."
+msgstr "Bản xuất đó đến từ một phiên bản TablePro mới hơn."
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "That file is not a TablePro connection export."
+msgstr "Tệp đó không phải là bản xuất kết nối của TablePro."
+
+#: crates/app/src/ui/session_window/connections.rs
+#: crates/app/src/ui/workspace/import.rs
+msgid "Only regular files can be imported."
+msgstr "Chỉ có thể nhập tệp thông thường."
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "That file is too large to be a connection export."
+msgstr "Tệp đó quá lớn để là một bản xuất kết nối."
+
+#: crates/app/src/ui/session_window/connections.rs
+#, rust-format
+msgid "The saved connections could not be reset. {reason}"
+msgstr "Không đặt lại được các kết nối đã lưu. {reason}"
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "The saved connections could not be reset."
+msgstr "Không đặt lại được các kết nối đã lưu."
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "JSON files"
+msgstr "Tệp JSON"
+
+#: crates/app/src/ui/session_window/crash_notice.rs
+msgid "TablePro quit unexpectedly last time"
+msgstr "Lần trước TablePro đã thoát bất ngờ"
+
+#: crates/app/src/ui/session_window/crash_notice.rs
+msgid "Show Report"
+msgstr "Xem báo cáo"
+
+#: crates/app/src/ui/session_window/locate_file.rs
+msgid "Locate Database File"
+msgstr "Tìm tệp cơ sở dữ liệu"
+
+#: crates/app/src/ui/session_window/locate_file.rs
+msgid "Database File Not Found"
+msgstr "Không tìm thấy tệp cơ sở dữ liệu"
+
+#: crates/app/src/ui/session_window/locate_file.rs
+#, rust-format
+msgid ""
+"{file} could not be found. If it was moved or renamed, locate it to update "
+"the connection."
+msgstr ""
+"Không tìm thấy {file}. Nếu nó đã bị di chuyển hoặc đổi tên, hãy tìm nó để "
+"cập nhật kết nối."
+
+#: crates/app/src/ui/session_window/locate_file.rs
+#: crates/app/src/ui/session_window/sqlite_location_dialog.rs
+#: crates/app/src/ui/structure_tab/form_dialog.rs
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#: crates/app/src/ui/write_confirmation.rs
+#: crates/app/src/workspace/open_transaction_dialog.rs
+#: crates/app/src/workspace/save_changes_dialog.rs
+msgid "_Cancel"
+msgstr "_Hủy"
+
+#: crates/app/src/ui/session_window/locate_file.rs
+msgid "_Locate…"
+msgstr "_Tìm…"
+
+#: crates/app/src/ui/session_window/locate_file.rs
+msgid "The new location could not be saved."
+msgstr "Không lưu được vị trí mới."
+
+#. Translators: TablePro is the product name and is not translated.
+#: crates/app/src/ui/session_window/mod.rs
+#: crates/app/src/ui/session_window/session_teardown.rs
+#: data/app.tablepro.TablePro.desktop.in.in data/resources/ui/picker-page.ui
+#: data/resources/ui/session-window.ui
+msgid "TablePro"
+msgstr "TablePro"
+
+#: crates/app/src/ui/session_window/mod.rs
+msgid "This connection is already open in another window."
+msgstr "Kết nối này đã được mở trong một cửa sổ khác."
+
+#: crates/app/src/ui/session_window/mod.rs
+msgid "Could Not Save the Connection"
+msgstr "Không lưu được kết nối"
+
+#: crates/app/src/ui/session_window/mod.rs
+#: data/resources/ui/connect-failed-page.ui
+msgid "Edit Connection…"
+msgstr "Sửa kết nối…"
+
+#: crates/app/src/ui/session_window/mod.rs
+#, rust-format
+msgid "{file} is not on this computer. Copy it to a local folder to open it."
+msgstr ""
+"{file} không nằm trên máy tính này. Hãy sao chép nó vào một thư mục cục bộ "
+"để mở."
+
+#: crates/app/src/ui/session_window/mod.rs
+#, rust-format
+msgid "{file} could not be found."
+msgstr "Không tìm thấy {file}."
+
+#: crates/app/src/ui/session_window/mod.rs
+#, rust-format
+msgid "{file} could not be opened. {reason}"
+msgstr "Không mở được {file}. {reason}"
+
+#: crates/app/src/ui/session_window/notification_request.rs
+msgid "Query Finished"
+msgstr "Truy vấn đã xong"
+
+#: crates/app/src/ui/session_window/notification_request.rs
+msgid "Query Failed"
+msgstr "Truy vấn thất bại"
+
+#: crates/app/src/ui/session_window/notification_request.rs
+msgid "Changes Saved"
+msgstr "Đã lưu thay đổi"
+
+#: crates/app/src/ui/session_window/notification_request.rs
+msgid "Changes Not Saved"
+msgstr "Chưa lưu thay đổi"
+
+#: crates/app/src/ui/session_window/notification_request.rs
+msgid "Export Finished"
+msgstr "Đã xuất xong"
+
+#: crates/app/src/ui/session_window/notification_request.rs
+msgid "Export Failed"
+msgstr "Xuất thất bại"
+
+#: crates/app/src/ui/session_window/notification_request.rs
+#, rust-format
+msgid "{tab} · {connection}"
+msgstr "{tab} · {connection}"
+
+#: crates/app/src/ui/session_window/picker_page.rs
+msgid "New Connection"
+msgstr "Kết nối mới"
+
+#: crates/app/src/ui/session_window/secret_retry.rs
+#: data/resources/ui/connect-failed-page.ui
+msgid "Enter Password…"
+msgstr "Nhập mật khẩu…"
+
+#: crates/app/src/ui/session_window/secret_retry.rs
+msgid "Enter SSH Password…"
+msgstr "Nhập mật khẩu SSH…"
+
+#: crates/app/src/ui/session_window/secret_retry.rs
+msgid "Enter Passphrase…"
+msgstr "Nhập cụm mật khẩu…"
+
+#: crates/app/src/ui/session_window/sqlite_location_dialog.rs
+msgid "Database on a Network Filesystem"
+msgstr "Cơ sở dữ liệu trên hệ thống tệp mạng"
+
+#: crates/app/src/ui/session_window/sqlite_location_dialog.rs
+msgid ""
+"SQLite can corrupt a database on a network or FUSE filesystem when more than "
+"one program writes to it."
+msgstr ""
+"SQLite có thể làm hỏng cơ sở dữ liệu trên hệ thống tệp mạng hoặc FUSE khi có "
+"nhiều chương trình cùng ghi vào nó."
+
+#: crates/app/src/ui/session_window/sqlite_location_dialog.rs
+msgid "Open _Read-Only"
+msgstr "Mở _chỉ đọc"
+
+#: crates/app/src/ui/session_window/sqlite_location_dialog.rs
+msgid "Open Read-_Write"
+msgstr "Mở để đọc và _ghi"
+
+#: crates/app/src/ui/shell/primary_menu_button.rs
+msgid "Main Menu"
+msgstr "Menu chính"
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "SSH agent"
+msgstr "SSH agent"
+
+#: crates/app/src/ui/ssh_inputs.rs data/resources/ui/ssh-section.ui
+msgid "Private key"
+msgstr "Khóa riêng tư"
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "Keyboard-interactive"
+msgstr "Tương tác bàn phím"
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "Keys from the SSH agent and your SSH configuration"
+msgstr "Các khóa từ SSH agent và cấu hình SSH của bạn"
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "A key file, unlocked with its passphrase if it has one"
+msgstr "Một tệp khóa, được mở bằng cụm mật khẩu của nó nếu có"
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "The SSH server's own password"
+msgstr "Mật khẩu riêng của máy chủ SSH"
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "The SSH server asks its own questions, such as a code"
+msgstr "Máy chủ SSH tự đặt câu hỏi, ví dụ một mã"
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "Enter the SSH server's host name or its alias."
+msgstr "Nhập tên máy chủ SSH hoặc bí danh của nó."
+
+#: crates/app/src/ui/ssh_inputs.rs
+#, rust-format
+msgid "The SSH host cannot be used: {detail}"
+msgstr "Không dùng được máy chủ SSH: {detail}"
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "The SSH port must be a number from 1 to 65535."
+msgstr "Cổng SSH phải là một số từ 1 đến 65535."
+
+#: crates/app/src/ui/ssh_inputs.rs
+#, rust-format
+msgid "The SSH username cannot be used: {detail}"
+msgstr "Không dùng được tên người dùng SSH: {detail}"
+
+#: crates/app/src/ui/ssh_inputs.rs
+#, rust-format
+msgid "The jump hosts cannot be used: {detail}"
+msgstr "Không dùng được các máy chủ trung gian: {detail}"
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "Choose the private key file."
+msgstr "Chọn tệp khóa riêng tư."
+
+#: crates/app/src/ui/ssh_section.rs
+msgid "SSH keys"
+msgstr "Khóa SSH"
+
+#: crates/app/src/ui/ssh_section.rs data/resources/ui/ssh-section.ui
+msgid "Choose Private Key"
+msgstr "Chọn khóa riêng tư"
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "A primary key column can't take NULL."
+msgstr "Cột khóa chính không thể nhận NULL."
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Remove Column"
+msgstr "Gỡ cột"
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Type"
+msgstr "Kiểu"
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Nullable"
+msgstr "Cho phép NULL"
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Default value"
+msgstr "Giá trị mặc định"
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Primary Key"
+msgstr "Khóa chính"
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Auto Increment"
+msgstr "Tự động tăng"
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Comment"
+msgstr "Ghi chú"
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Suggested Types"
+msgstr "Kiểu gợi ý"
+
+#: crates/app/src/ui/structure_tab/context.rs
+msgid "Connect to a database to check the default."
+msgstr "Hãy kết nối tới một cơ sở dữ liệu để kiểm tra giá trị mặc định."
+
+#: crates/app/src/ui/structure_tab/draft_column_object.rs
+msgid "nullable"
+msgstr "cho phép NULL"
+
+#: crates/app/src/ui/structure_tab/draft_column_object.rs
+msgid "NOT NULL"
+msgstr "NOT NULL"
+
+#: crates/app/src/ui/structure_tab/draft_column_object.rs
+msgid "Primary key"
+msgstr "Khóa chính"
+
+#: crates/app/src/ui/structure_tab/draft_column_object.rs
+msgid "auto-increment"
+msgstr "tự động tăng"
+
+#: crates/app/src/ui/structure_tab/fks.rs
+msgid "Remove Foreign Key"
+msgstr "Gỡ khóa ngoại"
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+msgid "Add Foreign Key"
+msgstr "Thêm khóa ngoại"
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "_Add"
+msgstr "_Thêm"
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+msgid "Referenced Columns"
+msgstr "Các cột được tham chiếu"
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+msgid "Referenced table"
+msgstr "Bảng được tham chiếu"
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+msgid "The columns of this table that hold the reference."
+msgstr "Các cột của bảng này chứa tham chiếu."
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+msgid "On delete"
+msgstr "Khi xóa"
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+msgid "On update"
+msgstr "Khi cập nhật"
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+msgid "Actions"
+msgstr "Hành động"
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+#, rust-format
+msgid "Couldn't read the tables: {error}"
+msgstr "Không đọc được các bảng: {error}"
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+#, rust-format
+msgid "Couldn't read the columns of {table}: {error}"
+msgstr "Không đọc được các cột của {table}: {error}"
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+#, rust-format
+msgid "{column} references"
+msgstr "{column} tham chiếu tới"
+
+#: crates/app/src/ui/structure_tab/foreign_key_draft.rs
+msgid "The table already has a foreign key with this name."
+msgstr "Bảng đã có một khóa ngoại với tên này."
+
+#: crates/app/src/ui/structure_tab/foreign_key_draft.rs
+msgid "Choose the table the key references."
+msgstr "Chọn bảng mà khóa tham chiếu tới."
+
+#: crates/app/src/ui/structure_tab/foreign_key_draft.rs
+msgid "Choose at least one column."
+msgstr "Chọn ít nhất một cột."
+
+#: crates/app/src/ui/structure_tab/foreign_key_draft.rs
+#, rust-format
+msgid "Choose the column “{column}” references."
+msgstr "Chọn cột mà “{column}” tham chiếu tới."
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Add Index"
+msgstr "Thêm chỉ mục"
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Unique"
+msgstr "Duy nhất"
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Refuse rows that repeat the key columns' values"
+msgstr "Từ chối các dòng lặp lại giá trị của các cột khóa"
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Add Key Column"
+msgstr "Thêm cột khóa"
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Key Columns"
+msgstr "Các cột khóa"
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Add the columns the index sorts by."
+msgstr "Thêm các cột mà chỉ mục sắp xếp theo."
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Descending"
+msgstr "Giảm dần"
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Sort _Descending"
+msgstr "Sắp xếp _giảm dần"
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Move _Up"
+msgstr "Chuyển _lên"
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Move D_own"
+msgstr "Chuyển _xuống"
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "_Remove"
+msgstr "Gỡ _bỏ"
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Key Options"
+msgstr "Tùy chọn khóa"
+
+#: crates/app/src/ui/structure_tab/index_draft.rs
+msgid "The table already has an index with this name."
+msgstr "Bảng đã có một chỉ mục với tên này."
+
+#: crates/app/src/ui/structure_tab/index_draft.rs
+msgid "Add at least one key column."
+msgstr "Thêm ít nhất một cột khóa."
+
+#: crates/app/src/ui/structure_tab/indexes.rs
+msgid "UNIQUE"
+msgstr "UNIQUE"
+
+#: crates/app/src/ui/structure_tab/indexes.rs
+msgid "PRIMARY"
+msgstr "PRIMARY"
+
+#: crates/app/src/ui/structure_tab/indexes.rs
+msgid "Remove Index"
+msgstr "Gỡ chỉ mục"
+
+#: crates/app/src/ui/structure_tab/indexes.rs
+msgid "Primary-key index can't be dropped here; clear the PK on the column."
+msgstr ""
+"Không thể xóa chỉ mục của khóa chính ở đây; hãy bỏ khóa chính trên cột."
+
+#: crates/app/src/ui/structure_tab/indexes.rs
+msgid "no keys"
+msgstr "không có khóa"
+
+#: crates/app/src/ui/structure_tab/referential_action_label.rs
+msgid "Database Default"
+msgstr "Mặc định của cơ sở dữ liệu"
+
+#: crates/app/src/ui/structure_tab/referential_action_label.rs
+msgid "database default"
+msgstr "mặc định của cơ sở dữ liệu"
+
+#: crates/app/src/ui/structure_tab/referential_action_label.rs
+msgid "not reported"
+msgstr "không được báo cáo"
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "Apply {count} Change to “{table}”?"
+msgid_plural "Apply {count} Changes to “{table}”?"
+msgstr[0] "Áp dụng {count} thay đổi cho “{table}”?"
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+msgid "_Apply"
+msgstr "Á_p dụng"
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid ""
+"{engine} applies each statement separately. If one fails, the statements "
+"before it stay applied."
+msgstr ""
+"{engine} áp dụng từng câu lệnh riêng lẻ. Nếu một câu lệnh thất bại, các câu "
+"lệnh trước nó vẫn giữ nguyên kết quả."
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "Drops column “{column}” and the data in it."
+msgstr "Xóa cột “{column}” và dữ liệu trong đó."
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid ""
+"Changes column “{column}” from {from} to {to}. A value the new type can't "
+"hold is converted or refused."
+msgstr ""
+"Đổi cột “{column}” từ {from} sang {to}. Giá trị mà kiểu mới không chứa được "
+"sẽ bị chuyển đổi hoặc bị từ chối."
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid ""
+"Makes column “{column}” NOT NULL. A NULL already in it is converted or "
+"refused."
+msgstr ""
+"Đặt cột “{column}” thành NOT NULL. Giá trị NULL đã có trong đó sẽ bị chuyển "
+"đổi hoặc bị từ chối."
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "Drops index “{index}”."
+msgstr "Xóa chỉ mục “{index}”."
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "Drops foreign key “{key}”."
+msgstr "Xóa khóa ngoại “{key}”."
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+msgid ""
+"Rebuilds the table: copies its rows into a new table and drops the old one."
+msgstr ""
+"Dựng lại bảng: sao chép các dòng của nó sang một bảng mới và xóa bảng cũ."
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "Drops and creates again: {objects}."
+msgstr "Xóa và tạo lại: {objects}."
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+msgid "The rows get new rowids."
+msgstr "Các dòng sẽ nhận rowid mới."
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid ""
+"“{column}” becomes the rowid, so the save stops if any row has no value in "
+"it."
+msgstr ""
+"“{column}” trở thành rowid, nên việc lưu sẽ dừng nếu có dòng nào không có "
+"giá trị ở đó."
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "index “{name}”"
+msgstr "chỉ mục “{name}”"
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "trigger “{name}”"
+msgstr "trigger “{name}”"
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "view “{name}”"
+msgstr "view “{name}”"
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+msgid "SQL to run"
+msgstr "SQL sẽ chạy"
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+msgid ""
+"The table changed after this tab read it, so nothing was saved. Discard the "
+"changes to read the table again, then make them again."
+msgstr ""
+"Bảng đã thay đổi sau khi tab này đọc nó, nên chưa có gì được lưu. Hãy loại "
+"bỏ các thay đổi để đọc lại bảng, rồi thực hiện lại chúng."
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+msgid "Nothing to save."
+msgstr "Không có gì để lưu."
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+#: crates/app/src/ui/workspace/saves.rs
+msgid "Cannot Save"
+msgstr "Không thể lưu"
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+msgid ""
+"The table couldn't be read after the save. Retry, then make the change again."
+msgstr ""
+"Không đọc được bảng sau khi lưu. Hãy thử lại, rồi thực hiện lại thay đổi."
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+msgid "Wait for the save to finish, then make the change again."
+msgstr "Hãy chờ lưu xong, rồi thực hiện lại thay đổi."
+
+#: crates/app/src/ui/structure_tab/sql_preview.rs
+msgid "-- Connect to a database to see the SQL."
+msgstr "-- Hãy kết nối tới một cơ sở dữ liệu để xem SQL."
+
+#: crates/app/src/ui/structure_tab/sql_preview.rs
+msgid "-- This database's structure can't be edited here."
+msgstr "-- Không thể sửa cấu trúc của cơ sở dữ liệu này ở đây."
+
+#: crates/app/src/ui/structure_tab/sql_preview.rs
+msgid "-- Fix the highlighted fields to see the SQL."
+msgstr "-- Hãy sửa các trường được tô sáng để xem SQL."
+
+#: crates/app/src/ui/structure_tab/sql_preview.rs
+msgid "-- No pending changes."
+msgstr "-- Không có thay đổi nào đang chờ."
+
+#: crates/app/src/ui/tab_load/load_failure.rs
+msgid ""
+"This table has no columns you can read. It may have been dropped, or your "
+"account can't read it."
+msgstr ""
+"Bảng này không có cột nào bạn đọc được. Có thể nó đã bị xóa, hoặc tài khoản "
+"của bạn không có quyền đọc nó."
+
+#: crates/app/src/ui/tab_load/load_failure.rs
+msgid ""
+"The table's columns changed while its rows were read. Try again to read it "
+"as it is now."
+msgstr ""
+"Các cột của bảng đã thay đổi trong lúc đọc các dòng của nó. Hãy thử lại để "
+"đọc bảng như hiện tại."
+
+#: crates/app/src/ui/welcome_view.rs data/resources/ui/welcome-view.ui
+msgid "Saved Connections"
+msgstr "Kết nối đã lưu"
+
+#: crates/app/src/ui/welcome_view.rs
+msgid "Connections"
+msgstr "Kết nối"
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "Review Key…"
+msgstr "Xem khóa…"
+
+#: crates/app/src/ui/workspace/health_banner.rs
+#, rust-format
+msgid "The old key for {host} could not be removed from {file}: {detail}"
+msgstr "Không gỡ được khóa cũ của {host} khỏi {file}: {detail}"
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "it is not a key this connection uses"
+msgstr "nó không phải là khóa mà kết nối này dùng"
+
+#: crates/app/src/ui/workspace/health_banner.rs
+#, rust-format
+msgid "Connection lost. Reconnecting (attempt {n})."
+msgstr "Mất kết nối. Đang kết nối lại (lần thử {n})."
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "Offline. Waiting for the network."
+msgstr "Ngoại tuyến. Đang chờ mạng."
+
+#: crates/app/src/ui/workspace/health_banner.rs
+#, rust-format
+msgid "The SSH host {host} is not trusted yet."
+msgstr "Máy chủ SSH {host} chưa được tin cậy."
+
+#: crates/app/src/ui/workspace/health_banner.rs
+#, rust-format
+msgid "The SSH host key for {host} does not match."
+msgstr "Khóa máy chủ SSH của {host} không khớp."
+
+#: crates/app/src/ui/workspace/health_banner.rs
+#, rust-format
+msgid "The SSH host key for {host} is revoked."
+msgstr "Khóa máy chủ SSH của {host} đã bị thu hồi."
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "The server refused the login. Retry to enter the password again."
+msgstr "Máy chủ đã từ chối đăng nhập. Hãy thử lại để nhập lại mật khẩu."
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "The secure connection failed. Check the connection's TLS settings."
+msgstr "Kết nối bảo mật thất bại. Hãy kiểm tra thiết lập TLS của kết nối."
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "The connection settings no longer work. Check them and retry."
+msgstr "Thiết lập kết nối không còn dùng được. Hãy kiểm tra chúng rồi thử lại."
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "The SSH server's host key is not trusted yet."
+msgstr "Khóa máy chủ của máy chủ SSH chưa được tin cậy."
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid ""
+"The SSH server's host key changed. Check with its administrator before "
+"connecting again."
+msgstr ""
+"Khóa máy chủ của máy chủ SSH đã thay đổi. Hãy hỏi quản trị viên của nó trước "
+"khi kết nối lại."
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "The SSH server's host key was revoked."
+msgstr "Khóa máy chủ của máy chủ SSH đã bị thu hồi."
+
+#: crates/app/src/ui/workspace/import.rs
+#: crates/app/src/workspace/save_rejection.rs
+msgid "This connection is read-only."
+msgstr "Kết nối này chỉ cho phép đọc."
+
+#: crates/app/src/ui/workspace/import.rs
+msgid "The table's columns could not be read."
+msgstr "Không đọc được các cột của bảng."
+
+#: crates/app/src/ui/workspace/import.rs
+#, rust-format
+msgid "Imported {n} row."
+msgid_plural "Imported {n} rows."
+msgstr[0] "Đã nhập {n} dòng."
+
+#: crates/app/src/ui/workspace/import.rs
+msgid "That file has no rows to import."
+msgstr "Tệp đó không có dòng nào để nhập."
+
+#: crates/app/src/ui/workspace/import.rs
+msgid "Import stopped."
+msgstr "Đã dừng nhập."
+
+#: crates/app/src/ui/workspace/import.rs
+msgid "Couldn't Import"
+msgstr "Không nhập được"
+
+#: crates/app/src/ui/workspace/import.rs
+#, rust-format
+msgid ""
+"Line {line} could not be written: {error}. The import was rolled back, so no "
+"rows were added."
+msgstr ""
+"Không ghi được dòng {line}: {error}. Việc nhập đã được rollback, nên không "
+"dòng nào được thêm."
+
+#: crates/app/src/ui/workspace/import.rs
+#, rust-format
+msgid ""
+"Lines {first} to {last} could not be written: {error}. The import was rolled "
+"back, so no rows were added."
+msgstr ""
+"Không ghi được các dòng từ {first} đến {last}: {error}. Việc nhập đã được "
+"rollback, nên không dòng nào được thêm."
+
+#: crates/app/src/ui/workspace/import.rs
+#, rust-format
+msgid ""
+"Line {line} could not be written: {error}. The {written} row before it stays "
+"in the table, which has no transaction to undo it."
+msgid_plural ""
+"Line {line} could not be written: {error}. The {written} rows before it stay "
+"in the table, which has no transaction to undo them."
+msgstr[0] ""
+"Không ghi được dòng {line}: {error}. {written} dòng trước nó vẫn nằm trong "
+"bảng, vì bảng không có giao dịch để hoàn tác chúng."
+
+#: crates/app/src/ui/workspace/import.rs
+#, rust-format
+msgid ""
+"Lines {first} to {last} could not be written: {error}. The table has no "
+"transaction to undo the import, so the {written} row before them stays, and "
+"some of these lines may have been written too."
+msgid_plural ""
+"Lines {first} to {last} could not be written: {error}. The table has no "
+"transaction to undo the import, so the {written} rows before them stay, and "
+"some of these lines may have been written too."
+msgstr[0] ""
+"Không ghi được các dòng từ {first} đến {last}: {error}. Bảng không có giao "
+"dịch để hoàn tác việc nhập, nên {written} dòng trước chúng vẫn được giữ, và "
+"một số dòng trong khoảng này có thể cũng đã được ghi."
+
+#: crates/app/src/ui/workspace/import.rs
+msgid "That file is too large to import in one go."
+msgstr "Tệp đó quá lớn để nhập trong một lần."
+
+#: crates/app/src/ui/workspace/import.rs
+#, rust-format
+msgid "Line {line}, column {column}: {reason} (the value was “{text}”)"
+msgstr "Dòng {line}, cột {column}: {reason} (giá trị là “{text}”)"
+
+#: crates/app/src/ui/workspace/import_ledger.rs
+msgid "Stop Imports?"
+msgstr "Dừng nhập?"
+
+#: crates/app/src/ui/workspace/import_ledger.rs
+#, rust-format
+msgid ""
+"{n} CSV import is still running. Stopping it rolls back the rows it wrote, "
+"unless the table has no transactions."
+msgid_plural ""
+"{n} CSV imports are still running. Stopping them rolls back the rows they "
+"wrote, unless the table has no transactions."
+msgstr[0] ""
+"{n} lần nhập CSV vẫn đang chạy. Dừng lại sẽ rollback các dòng đã ghi, trừ "
+"khi bảng không có giao dịch."
+
+#: crates/app/src/ui/workspace/import_ledger.rs
+msgid "_Keep Importing"
+msgstr "_Tiếp tục nhập"
+
+#: crates/app/src/ui/workspace/import_ledger.rs
+msgid "_Stop Imports"
+msgstr "_Dừng nhập"
+
+#: crates/app/src/ui/workspace/mod.rs
+msgid "Unsaved changes"
+msgstr "Thay đổi chưa lưu"
+
+#: crates/app/src/ui/workspace/mod.rs
+msgid ""
+"Editor text could not be saved to disk, so it may not come back after "
+"TablePro restarts."
+msgstr ""
+"Không lưu được nội dung trình soạn thảo vào đĩa, nên nó có thể không còn sau "
+"khi TablePro khởi động lại."
+
+#: crates/app/src/ui/workspace/saves.rs
+msgid "Saved"
+msgstr "Đã lưu"
+
+#: crates/app/src/ui/workspace/shell.rs
+msgid "Search Tables"
+msgstr "Tìm bảng"
+
+#: crates/app/src/ui/workspace/shell.rs
+msgid "Refresh Tables"
+msgstr "Làm mới danh sách bảng"
+
+#: crates/app/src/ui/workspace/shell.rs
+msgid "Show Sidebar"
+msgstr "Hiện thanh bên"
+
+#: crates/app/src/ui/workspace/shell.rs
+msgid "New Query"
+msgstr "Truy vấn mới"
+
+#: crates/app/src/ui/workspace/shell.rs
+msgid "View Open Tabs"
+msgstr "Xem các tab đang mở"
+
+#: crates/app/src/ui/workspace/shell.rs data/resources/ui/connect-dialog.ui
+msgid "Safe Mode"
+msgstr "Chế độ an toàn"
+
+#: crates/app/src/ui/workspace/sidebar/mod.rs
+#, rust-format
+msgid "Could not refresh the table list: {error}"
+msgstr "Không làm mới được danh sách bảng: {error}"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_header_factory.rs
+#, rust-format
+msgid "New Table in {schema}…"
+msgstr "Bảng mới trong {schema}…"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_header_factory.rs
+msgid "New Table…"
+msgstr "Bảng mới…"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
+msgid "Edit Structure"
+msgstr "Sửa cấu trúc"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
+msgid "Show CREATE TABLE"
+msgstr "Hiện CREATE TABLE"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
+msgid "Import CSV…"
+msgstr "Nhập CSV…"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
+#: data/resources/ui/structure-tab.ui
+msgid "Drop Table…"
+msgstr "Xóa bảng…"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_object.rs
+msgctxt "object kind"
+msgid "View"
+msgstr "View"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_object.rs
+msgctxt "object kind"
+msgid "Materialized View"
+msgstr "Materialized View"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_object.rs
+msgctxt "object kind"
+msgid "Table"
+msgstr "Bảng"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_object.rs
+#: crates/app/src/ui/workspace/sidebar/sidebar_view.rs
+msgid "Tables"
+msgstr "Bảng"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_view.rs
+msgid "No Matching Tables"
+msgstr "Không có bảng nào khớp"
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_view.rs
+msgid "Try a different search."
+msgstr "Hãy thử tìm kiếm khác."
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_view.rs
+msgid "No Tables"
+msgstr "Không có bảng"
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "Query History Unavailable"
+msgstr "Lịch sử truy vấn không khả dụng"
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "Saved Queries Unavailable"
+msgstr "Truy vấn đã lưu không khả dụng"
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "Could Not Save Query"
+msgstr "Không lưu được truy vấn"
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "Open a SQL editor tab to save a query."
+msgstr "Hãy mở một tab trình soạn thảo SQL để lưu truy vấn."
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "There is nothing in the editor to save."
+msgstr "Trình soạn thảo không có gì để lưu."
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "Save Query"
+msgstr "Lưu truy vấn"
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid ""
+"Connect to a database first: a saved query is kept under its connection."
+msgstr ""
+"Hãy kết nối tới một cơ sở dữ liệu trước: truy vấn đã lưu được giữ theo kết "
+"nối của nó."
+
+#: crates/app/src/ui/workspace/status_pages.rs
+#, rust-format
+msgid "Replaced “{name}”."
+msgstr "Đã thay thế “{name}”."
+
+#: crates/app/src/ui/workspace/status_pages.rs
+#, rust-format
+msgid "Saved “{name}”."
+msgstr "Đã lưu “{name}”."
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "Could not save that query."
+msgstr "Không lưu được truy vấn đó."
+
+#: crates/app/src/ui/workspace/structure.rs
+msgid "Tables on this database are created in the SQL editor."
+msgstr "Bảng trên cơ sở dữ liệu này được tạo trong trình soạn thảo SQL."
+
+#: crates/app/src/ui/workspace/structure.rs
+msgid "Cannot Drop Table"
+msgstr "Không thể xóa bảng"
+
+#: crates/app/src/ui/workspace/structure.rs
+#, rust-format
+msgid ""
+"Foreign keys on other tables point at {table}: {keys}. Drop those foreign "
+"keys first."
+msgstr ""
+"Các khóa ngoại trên bảng khác trỏ tới {table}: {keys}. Hãy xóa các khóa "
+"ngoại đó trước."
+
+#: crates/app/src/ui/workspace/structure.rs
+#, rust-format
+msgid "Drop {table}?"
+msgstr "Xóa {table}?"
+
+#: crates/app/src/ui/workspace/structure.rs
+msgid ""
+"All rows and the table definition will be removed. This can't be undone from "
+"inside TablePro."
+msgstr ""
+"Mọi dòng và định nghĩa bảng sẽ bị xóa. Không thể hoàn tác thao tác này từ "
+"bên trong TablePro."
+
+#: crates/app/src/ui/workspace/structure.rs
+msgid "Drop"
+msgstr "Xóa"
+
+#: crates/app/src/ui/workspace/structure.rs
+#: crates/app/src/workspace/save_rejection.rs
+msgid "No active connection."
+msgstr "Không có kết nối nào đang hoạt động."
+
+#: crates/app/src/ui/workspace/structure.rs
+msgid "Drop Failed"
+msgstr "Xóa thất bại"
+
+#: crates/app/src/ui/workspace/structure.rs
+#, rust-format
+msgid ""
+"A foreign key on another table points at {table}, so it was not dropped. "
+"Drop that foreign key first."
+msgstr ""
+"Một khóa ngoại trên bảng khác trỏ tới {table}, nên bảng chưa bị xóa. Hãy xóa "
+"khóa ngoại đó trước."
+
+#: crates/app/src/ui/workspace/structure.rs
+msgid "Could Not Show CREATE TABLE"
+msgstr "Không hiện được CREATE TABLE"
+
+#: crates/app/src/ui/workspace/structure.rs
+#, rust-format
+msgid "Table {table} has no columns."
+msgstr "Bảng {table} không có cột nào."
+
+#: crates/app/src/ui/workspace/structure.rs
+#, rust-format
+msgid "Couldn't build SQL: {error}"
+msgstr "Không dựng được SQL: {error}"
+
+#: crates/app/src/ui/workspace/structure.rs
+#, rust-format
+msgid "Couldn't read the table: {error}"
+msgstr "Không đọc được bảng: {error}"
+
+#: crates/app/src/ui/workspace/tab_factory.rs
+msgid "Undo"
+msgstr "Hoàn tác"
+
+#: crates/app/src/ui/workspace/tab_title.rs
+#, rust-format
+msgid "{table} · Structure"
+msgstr "{table} · Cấu trúc"
+
+#: crates/app/src/ui/workspace/tab_title.rs
+msgid "New Table"
+msgstr "Bảng mới"
+
+#: crates/app/src/ui/workspace/tab_title.rs
+#, rust-format
+msgid "Query {n}"
+msgstr "Truy vấn {n}"
+
+#: crates/app/src/ui/workspace/window_title.rs
+#, rust-format
+msgid "{tab} ({connection}) - TablePro"
+msgstr "{tab} ({connection}) - TablePro"
+
+#: crates/app/src/ui/workspace/window_title.rs
+#, rust-format
+msgid "{connection} - TablePro"
+msgstr "{connection} - TablePro"
+
+#: crates/app/src/ui/workspace/window_title.rs
+#, rust-format
+msgid "{name} · {level}"
+msgstr "{name} · {level}"
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+#, rust-format
+msgid "Saved text of {n} query tab could not be read. The file was kept."
+msgid_plural ""
+"Saved text of {n} query tabs could not be read. The files were kept."
+msgstr[0] ""
+"Không đọc được nội dung đã lưu của {n} tab truy vấn. Các tệp vẫn được giữ."
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "Could Not Reset Saved Tabs"
+msgstr "Không đặt lại được các tab đã lưu"
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid ""
+"The unreadable file could not be moved aside, so the open tabs are still not "
+"saved."
+msgstr ""
+"Không chuyển được tệp không đọc được sang chỗ khác, nên các tab đang mở vẫn "
+"chưa được lưu."
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "Discard Pending Changes?"
+msgstr "Loại bỏ các thay đổi đang chờ?"
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid ""
+"Refreshing reloads the table from the database and drops every unsaved edit "
+"on this tab."
+msgstr ""
+"Làm mới sẽ tải lại bảng từ cơ sở dữ liệu và bỏ mọi chỉnh sửa chưa lưu trên "
+"tab này."
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "Discard and Refresh"
+msgstr "Loại bỏ và làm mới"
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "Close Other Tabs"
+msgstr "Đóng các tab khác"
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "Close Tabs to the Right"
+msgstr "Đóng các tab bên phải"
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "No recently closed tab"
+msgstr "Không có tab nào vừa đóng"
+
+#: crates/app/src/ui/write_confirmation.rs
+#, rust-format
+msgid ""
+"It drops or empties a table, or changes every row of one, on “{connection}”."
+msgid_plural ""
+"Some of them drop or empty a table, or change every row of one, on "
+"“{connection}”."
+msgstr[0] ""
+"Có câu lệnh xóa hoặc làm trống một bảng, hoặc thay đổi mọi dòng của một "
+"bảng, trên “{connection}”."
+
+#: crates/app/src/ui/write_confirmation.rs
+#, rust-format
+msgid ""
+"It changes the database on “{connection}”, which asks before every write."
+msgid_plural ""
+"They change the database on “{connection}”, which asks before every write."
+msgstr[0] ""
+"Câu lệnh thay đổi cơ sở dữ liệu trên “{connection}”, kết nối này hỏi trước "
+"mỗi thao tác ghi."
+
+#: crates/app/src/ui/write_confirmation.rs
+#, rust-format
+msgid "Run This Statement?"
+msgid_plural "Run These {n} Statements?"
+msgstr[0] "Chạy {n} câu lệnh này?"
+
+#: crates/app/src/ui/write_confirmation.rs
+msgid "_Run"
+msgstr "_Chạy"
+
+#: crates/app/src/ui/write_confirmation.rs
+#, rust-format
+msgid "Values: {values}"
+msgstr "Giá trị: {values}"
+
+#: crates/app/src/ui/write_confirmation.rs
+#, rust-format
+msgid "Save Changes to “{table}”?"
+msgstr "Lưu thay đổi vào “{table}”?"
+
+#: crates/app/src/ui/write_confirmation.rs
+#: crates/app/src/workspace/save_changes_dialog.rs
+msgid "_Save"
+msgstr "_Lưu"
+
+#: crates/app/src/ui/write_confirmation.rs
+#, rust-format
+msgid "The import runs {n} statement; the first is shown."
+msgid_plural "The import runs {n} statements; the first is shown."
+msgstr[0] "Việc nhập chạy {n} câu lệnh; đang hiện câu lệnh đầu tiên."
+
+#: crates/app/src/ui/write_confirmation.rs
+#, rust-format
+msgid "Import {n} Row into “{table}”?"
+msgid_plural "Import {n} Rows into “{table}”?"
+msgstr[0] "Nhập {n} dòng vào “{table}”?"
+
+#: crates/app/src/ui/write_confirmation.rs
+msgid "_Import"
+msgstr "_Nhập"
+
+#: crates/app/src/ui/write_confirmation.rs
+#, rust-format
+msgid "Safe Mode on “{connection}” asks before every change to the database."
+msgstr ""
+"Chế độ an toàn trên “{connection}” hỏi trước mỗi thay đổi đối với cơ sở dữ "
+"liệu."
+
+#: crates/app/src/workspace/close_guard.rs
+#, rust-format
+msgid "“{tab}”: {reason}"
+msgstr "“{tab}”: {reason}"
+
+#: crates/app/src/workspace/close_guard.rs
+msgid "Could Not Save"
+msgstr "Không lưu được"
+
+#: crates/app/src/workspace/dirty_tab.rs
+#, rust-format
+msgid "“{name}”"
+msgstr "“{name}”"
+
+#: crates/app/src/workspace/inhibit_reason.rs
+msgid "There are unsaved changes"
+msgstr "Có thay đổi chưa lưu"
+
+#: crates/app/src/workspace/inhibit_reason.rs
+msgid "Saving changes"
+msgstr "Đang lưu thay đổi"
+
+#: crates/app/src/workspace/inhibit_reason.rs
+msgid "Exporting data"
+msgstr "Đang xuất dữ liệu"
+
+#: crates/app/src/workspace/open_transaction_dialog.rs
+msgid "Close With Open Transactions?"
+msgstr "Đóng khi còn giao dịch đang mở?"
+
+#: crates/app/src/workspace/open_transaction_dialog.rs
+#, rust-format
+msgid ""
+"Closing ends the database sessions of {tabs}. The server rolls back "
+"uncommitted work."
+msgstr ""
+"Đóng sẽ kết thúc các phiên cơ sở dữ liệu của {tabs}. Máy chủ sẽ rollback "
+"phần việc chưa commit."
+
+#: crates/app/src/workspace/open_transaction_dialog.rs
+msgid "_Close Anyway"
+msgstr "_Vẫn đóng"
+
+#: crates/app/src/workspace/rollback_cause.rs
+msgid ""
+"The connection was lost while saving, and the database says the changes were "
+"not saved."
+msgstr ""
+"Kết nối bị mất trong lúc lưu, và cơ sở dữ liệu cho biết các thay đổi chưa "
+"được lưu."
+
+#: crates/app/src/workspace/save_changes_dialog.rs
+msgid "Save Changes?"
+msgstr "Lưu thay đổi?"
+
+#: crates/app/src/workspace/save_changes_dialog.rs
+msgid "Changes that are not saved are permanently lost."
+msgstr "Các thay đổi chưa lưu sẽ bị mất vĩnh viễn."
+
+#: crates/app/src/workspace/save_changes_dialog.rs
+msgid "_Discard"
+msgstr "_Loại bỏ"
+
+#: crates/app/src/workspace/save_changes_dialog.rs
+msgid "_Discard All"
+msgstr "_Loại bỏ tất cả"
+
+#: crates/app/src/workspace/save_rejection.rs
+msgid ""
+"The last save may already be in the database. Discard these changes to see "
+"what the table holds now."
+msgstr ""
+"Lần lưu cuối có thể đã nằm trong cơ sở dữ liệu. Hãy loại bỏ các thay đổi này "
+"để xem bảng hiện đang chứa gì."
+
+#: crates/app/src/workspace/save_rejection.rs
+msgid "These changes are already being saved."
+msgstr "Các thay đổi này đang được lưu."
+
+#: crates/app/src/workspace/save_rejection.rs
+msgid "The table's columns have not been read yet. Try again in a moment."
+msgstr "Các cột của bảng chưa được đọc. Hãy thử lại sau giây lát."
+
+#: crates/app/src/workspace/save_rejection.rs
+#, rust-format
+msgid ""
+"The table changed after these edits were made, and the edits to {columns} no "
+"longer fit it. Nothing was saved. Discard the changes and make them again."
+msgstr ""
+"Bảng đã thay đổi sau khi các chỉnh sửa này được thực hiện, và các chỉnh sửa "
+"cho {columns} không còn phù hợp. Chưa có gì được lưu. Hãy loại bỏ các thay "
+"đổi và thực hiện lại."
+
+#: crates/app/src/workspace/save_rejection.rs
+msgid ""
+"The table's primary key changed after these edits were made, so the rows "
+"they change can no longer be found. Nothing was saved. Discard the changes "
+"and make them again."
+msgstr ""
+"Khóa chính của bảng đã thay đổi sau khi các chỉnh sửa này được thực hiện, "
+"nên không còn tìm thấy các dòng mà chúng thay đổi. Chưa có gì được lưu. Hãy "
+"loại bỏ các thay đổi và thực hiện lại."
+
+#: crates/app/src/workspace/save_rejection.rs
+msgid "The changes were not applied."
+msgstr "Các thay đổi chưa được áp dụng."
+
+#: crates/app/src/workspace/save_rejection.rs
+msgid ""
+"The changes moved while you were asked about them, so nothing was saved. "
+"Save again to see them as they are now."
+msgstr ""
+"Các thay đổi đã dịch chuyển trong lúc bạn được hỏi về chúng, nên chưa có gì "
+"được lưu. Hãy lưu lại để xem chúng như hiện tại."
+
+#: crates/app/src/workspace/save_rejection.rs
+msgid "The review of these changes is still open."
+msgstr "Bước xem lại các thay đổi này vẫn đang mở."
+
+#: crates/app/src/workspace/unknown_cause.rs
+#, rust-format
+msgid ""
+"Saving {tabs} was stopped before the database confirmed it. The changes may "
+"already be in the database."
+msgstr ""
+"Việc lưu {tabs} đã bị dừng trước khi cơ sở dữ liệu xác nhận. Các thay đổi có "
+"thể đã nằm trong cơ sở dữ liệu."
+
+#: crates/app/src/workspace/unknown_cause.rs
+#, rust-format
+msgid ""
+"TablePro hit an internal error while saving {tabs}. The changes may already "
+"be in the database."
+msgstr ""
+"TablePro gặp lỗi nội bộ khi lưu {tabs}. Các thay đổi có thể đã nằm trong cơ "
+"sở dữ liệu."
+
+#: crates/app/src/workspace/unknown_cause.rs
+#, rust-format
+msgid ""
+"The connection was lost while saving {tabs}. The changes may already be in "
+"the database."
+msgstr ""
+"Kết nối bị mất trong lúc lưu {tabs}. Các thay đổi có thể đã nằm trong cơ sở "
+"dữ liệu."
+
+#: crates/app/src/workspace/unknown_outcome_dialog.rs
+#: crates/app/src/workspace/waiting_dialog.rs
+msgid "_Keep Open"
+msgstr "_Giữ mở"
+
+#: crates/app/src/workspace/unknown_outcome_dialog.rs
+msgid "_Reload Table"
+msgstr "_Tải lại bảng"
+
+#: crates/app/src/workspace/unknown_outcome_dialog.rs
+msgid "_Discard Changes"
+msgstr "_Loại bỏ thay đổi"
+
+#: crates/app/src/workspace/waiting_dialog.rs
+msgid "Stopping the save."
+msgstr "Đang dừng lưu."
+
+#: crates/app/src/workspace/waiting_dialog.rs
+msgid "Wait for the save to finish, or stop it."
+msgstr "Hãy chờ lưu xong, hoặc dừng nó."
+
+#: crates/app/src/workspace/waiting_dialog.rs
+msgid "Saving Changes"
+msgstr "Đang lưu thay đổi"
+
+#: crates/app/src/workspace/waiting_dialog.rs
+#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
+msgid "_Stop Saving"
+msgstr "_Dừng lưu"
+
+#: data/app.tablepro.TablePro.desktop.in.in
+msgid "Database Client"
+msgstr "Trình khách cơ sở dữ liệu"
+
+#: data/app.tablepro.TablePro.desktop.in.in
+msgid ""
+"Browse and edit PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse "
+"databases"
+msgstr ""
+"Duyệt và sửa cơ sở dữ liệu PostgreSQL, MySQL, SQLite, SQL Server và "
+"ClickHouse"
+
+#: data/app.tablepro.TablePro.desktop.in.in
+msgid "SQL;Database;PostgreSQL;MySQL;SQLite;SQL Server;ClickHouse;"
+msgstr ""
+"SQL;Cơ sở dữ liệu;CSDL;Database;PostgreSQL;MySQL;SQLite;SQL "
+"Server;ClickHouse;"
+
+#: data/app.tablepro.TablePro.desktop.in.in data/resources/gtk/menus.ui
+#: data/resources/shortcuts-dialog.ui
+msgid "New Window"
+msgstr "Cửa sổ mới"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Window width"
+msgstr "Độ rộng cửa sổ"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Width of the main window in logical pixels."
+msgstr "Độ rộng của cửa sổ chính, tính bằng pixel logic."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Window height"
+msgstr "Chiều cao cửa sổ"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Height of the main window in logical pixels."
+msgstr "Chiều cao của cửa sổ chính, tính bằng pixel logic."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Window is maximized"
+msgstr "Cửa sổ được phóng to tối đa"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Whether the main window was maximized when it last closed."
+msgstr "Cửa sổ chính có được phóng to tối đa khi đóng lần cuối hay không."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Rows per page"
+msgstr "Số dòng mỗi trang"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "How many rows a table page fetches at a time."
+msgstr "Số dòng mà một trang của bảng lấy mỗi lần."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Confirm before deleting rows"
+msgstr "Xác nhận trước khi xóa dòng"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid ""
+"Ask before deleting 10 or more rows at once in a table tab. Deleted rows "
+"stay marked until Save, and Undo brings them back."
+msgstr ""
+"Hỏi trước khi xóa cùng lúc từ 10 dòng trở lên trong một tab bảng. Các dòng "
+"đã xóa vẫn được đánh dấu cho tới khi Lưu, và Hoàn tác có thể khôi phục chúng."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Save query history"
+msgstr "Lưu lịch sử truy vấn"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid ""
+"Whether the SQL you run is kept in the query history. Statements that "
+"contain passwords or connection secrets are never saved. Turning this off "
+"keeps the entries already saved."
+msgstr ""
+"Câu SQL bạn chạy có được giữ trong lịch sử truy vấn hay không. Các câu lệnh "
+"chứa mật khẩu hoặc bí mật kết nối không bao giờ được lưu. Tắt tùy chọn này "
+"vẫn giữ các mục đã lưu."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Query history retention in days"
+msgstr "Số ngày giữ lịch sử truy vấn"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid ""
+"Unpinned history entries older than this are pruned at startup. Zero keeps "
+"everything."
+msgstr ""
+"Các mục lịch sử không được ghim cũ hơn số ngày này sẽ bị dọn khi khởi động. "
+"Giá trị 0 giữ lại tất cả."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Query timeout in seconds"
+msgstr "Thời gian chờ truy vấn tính bằng giây"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid ""
+"How long the editor waits before cancelling a running query. Zero disables "
+"the timeout."
+msgstr ""
+"Thời gian trình soạn thảo chờ trước khi hủy một truy vấn đang chạy. Giá trị "
+"0 tắt thời gian chờ."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Use the system monospace font"
+msgstr "Dùng phông chữ đơn cách của hệ thống"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid ""
+"Whether the SQL editor follows the desktop monospace font instead of a "
+"custom one."
+msgstr ""
+"Trình soạn thảo SQL có dùng phông chữ đơn cách của màn hình nền thay vì một "
+"phông chữ tùy chọn hay không."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Custom editor font"
+msgstr "Phông chữ trình soạn thảo tùy chọn"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid ""
+"Pango font description the SQL editor uses when the system font is turned "
+"off."
+msgstr ""
+"Mô tả phông chữ Pango mà trình soạn thảo SQL dùng khi tắt phông chữ hệ thống."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Editor style scheme"
+msgstr "Bộ màu của trình soạn thảo"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "GtkSourceView style scheme id for the SQL editor."
+msgstr "Mã bộ màu GtkSourceView cho trình soạn thảo SQL."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Restore session"
+msgstr "Khôi phục phiên làm việc"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid ""
+"Whether the connections open when TablePro quit are opened again at the next "
+"launch."
+msgstr ""
+"Các kết nối đang mở khi thoát TablePro có được mở lại ở lần khởi chạy sau "
+"hay không."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Driver the connect dialog opens with"
+msgstr "Trình điều khiển mà hộp thoại kết nối mở sẵn"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid ""
+"Id of the driver last connected to, so the dialog opens on it with its own "
+"default port."
+msgstr ""
+"Mã của trình điều khiển được kết nối gần nhất, để hộp thoại mở sẵn nó cùng "
+"cổng mặc định của nó."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Write NULL as an empty field"
+msgstr "Ghi NULL thành trường trống"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid ""
+"Whether a CSV export writes NULL as an empty field rather than the text NULL."
+msgstr ""
+"Bản xuất CSV có ghi NULL thành trường trống thay vì chữ NULL hay không."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Replace line breaks with spaces"
+msgstr "Thay ngắt dòng bằng dấu cách"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid ""
+"Whether a CSV export flattens line breaks inside a value into single spaces."
+msgstr ""
+"Bản xuất CSV có chuyển các ngắt dòng bên trong một giá trị thành một dấu "
+"cách hay không."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Write a header row"
+msgstr "Ghi dòng tiêu đề"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Whether a CSV export starts with the column names."
+msgstr "Bản xuất CSV có bắt đầu bằng tên các cột hay không."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Neutralise spreadsheet formulas"
+msgstr "Vô hiệu hóa công thức bảng tính"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid ""
+"Whether a CSV export prefixes values starting with =, +, - or @ so a "
+"spreadsheet does not run them."
+msgstr ""
+"Bản xuất CSV có thêm tiền tố cho các giá trị bắt đầu bằng =, +, - hoặc @ để "
+"bảng tính không chạy chúng hay không."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "CSV field delimiter"
+msgstr "Dấu phân cách trường CSV"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Character that separates fields in a CSV export."
+msgstr "Ký tự ngăn cách các trường trong bản xuất CSV."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "CSV quoting"
+msgstr "Cách đặt ngoặc kép CSV"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "When a CSV export wraps a field in quotes."
+msgstr "Khi nào bản xuất CSV đặt một trường trong dấu ngoặc kép."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "CSV line ending"
+msgstr "Ký tự kết thúc dòng CSV"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "Line ending a CSV export writes between records."
+msgstr "Ký tự kết thúc dòng mà bản xuất CSV ghi giữa các bản ghi."
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid "CSV decimal separator"
+msgstr "Dấu thập phân CSV"
+
+#: data/app.tablepro.TablePro.gschema.xml.in
+msgid ""
+"Character a CSV export uses between the whole and fractional parts of a "
+"number."
+msgstr ""
+"Ký tự mà bản xuất CSV dùng giữa phần nguyên và phần thập phân của một số."
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Work with your databases"
+msgstr "Làm việc với cơ sở dữ liệu của bạn"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid ""
+"TablePro connects to PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse. "
+"Browse tables, edit rows in place, run SQL with syntax highlighting, and "
+"reach servers behind an SSH bastion."
+msgstr ""
+"TablePro kết nối tới PostgreSQL, MySQL, SQLite, SQL Server và ClickHouse. "
+"Duyệt bảng, sửa dòng tại chỗ, chạy SQL với tô sáng cú pháp, và truy cập các "
+"máy chủ phía sau một bastion SSH."
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "It can:"
+msgstr "Ứng dụng có thể:"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Edit cells in place, with primary-key safety and an undo history"
+msgstr "Sửa ô tại chỗ, với cơ chế an toàn theo khóa chính và lịch sử hoàn tác"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Run SQL scripts statement by statement and cancel a slow query"
+msgstr "Chạy script SQL theo từng câu lệnh và hủy một truy vấn chậm"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Tunnel through an SSH jump host using your own OpenSSH client"
+msgstr ""
+"Tạo đường hầm qua một máy chủ trung gian SSH bằng chính trình khách OpenSSH "
+"của bạn"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Verify TLS, keep connections read-only, and reconnect on drop"
+msgstr ""
+"Xác minh TLS, giữ kết nối ở chế độ chỉ đọc, và tự kết nối lại khi bị ngắt"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Export results to CSV, JSON, SQL, Excel, Markdown, HTML and XML"
+msgstr "Xuất kết quả sang CSV, JSON, SQL, Excel, Markdown, HTML và XML"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Browse and edit table rows"
+msgstr "Duyệt và sửa các dòng của bảng"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Run SQL in the editor"
+msgstr "Chạy SQL trong trình soạn thảo"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Change a table's columns and indexes"
+msgstr "Thay đổi các cột và chỉ mục của bảng"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Connect through an SSH tunnel"
+msgstr "Kết nối qua đường hầm SSH"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "The first release of TablePro for Linux."
+msgstr "Bản phát hành đầu tiên của TablePro cho Linux."
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid ""
+"Connect to PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse, directly or "
+"through an SSH tunnel"
+msgstr ""
+"Kết nối tới PostgreSQL, MySQL, SQLite, SQL Server và ClickHouse, trực tiếp "
+"hoặc qua đường hầm SSH"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Browse tables and edit rows in place, with undo until you save"
+msgstr "Duyệt bảng và sửa dòng tại chỗ, có thể hoàn tác cho tới khi bạn lưu"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid ""
+"Run SQL with completion, find and replace, and a searchable query history"
+msgstr ""
+"Chạy SQL với gợi ý hoàn thành, tìm và thay thế, và lịch sử truy vấn có thể "
+"tìm kiếm"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Change a table's columns, indexes and foreign keys"
+msgstr "Thay đổi các cột, chỉ mục và khóa ngoại của bảng"
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Export results and tables to CSV, JSON, SQL and other formats"
+msgstr "Xuất kết quả và bảng sang CSV, JSON, SQL và các định dạng khác"
+
+#: data/resources/gtk/menus.ui data/resources/shortcuts-dialog.ui
+#: data/resources/ui/history-dialog.ui
+#: data/resources/ui/preferences-history-group.ui
+msgid "Query History"
+msgstr "Lịch sử truy vấn"
+
+#: data/resources/gtk/menus.ui
+msgid "Disconnect"
+msgstr "Ngắt kết nối"
+
+#: data/resources/gtk/menus.ui
+msgid "Import Connections…"
+msgstr "Nhập kết nối…"
+
+#: data/resources/gtk/menus.ui
+msgid "Export Connections…"
+msgstr "Xuất kết nối…"
+
+#: data/resources/gtk/menus.ui data/resources/shortcuts-dialog.ui
+#: data/resources/ui/preferences-dialog.ui
+msgid "Preferences"
+msgstr "Tùy chỉnh"
+
+#: data/resources/gtk/menus.ui data/resources/shortcuts-dialog.ui
+msgid "Keyboard Shortcuts"
+msgstr "Phím tắt"
+
+#: data/resources/gtk/menus.ui
+msgid "About TablePro"
+msgstr "Giới thiệu TablePro"
+
+#: data/resources/gtk/menus.ui
+msgid "Reopen Closed Tab"
+msgstr "Mở lại tab đã đóng"
+
+#: data/resources/shortcuts-dialog.ui
+#: data/resources/ui/preferences-general-page.ui
+msgid "General"
+msgstr "Tổng quát"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Show or Hide the Sidebar"
+msgstr "Hiện hoặc ẩn thanh bên"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Close a Dialog"
+msgstr "Đóng hộp thoại"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Quit"
+msgstr "Thoát"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Tabs"
+msgstr "Tab"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "New SQL Editor Tab"
+msgstr "Tab trình soạn thảo SQL mới"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Close the Tab or the Empty Window"
+msgstr "Đóng tab hoặc cửa sổ trống"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Reopen the Last Closed Tab"
+msgstr "Mở lại tab vừa đóng"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Next Tab"
+msgstr "Tab tiếp"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Previous Tab"
+msgstr "Tab trước"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Move the Tab Right"
+msgstr "Chuyển tab sang phải"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Move the Tab Left"
+msgstr "Chuyển tab sang trái"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Browse Table"
+msgstr "Duyệt bảng"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Read the Table Again"
+msgstr "Đọc lại bảng"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Save Pending Changes"
+msgstr "Lưu các thay đổi đang chờ"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Undo the Last Change"
+msgstr "Hoàn tác thay đổi gần nhất"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Redo the Last Change"
+msgstr "Làm lại thay đổi gần nhất"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Select All Rows"
+msgstr "Chọn tất cả các dòng"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Clear the Selection"
+msgstr "Bỏ chọn"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "First Row of the Page"
+msgstr "Dòng đầu tiên của trang"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Last Row of the Page"
+msgstr "Dòng cuối cùng của trang"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Extend the Selection to the Clicked Row"
+msgstr "Mở rộng vùng chọn tới dòng được bấm"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Add or Remove the Clicked Row"
+msgstr "Thêm hoặc bỏ dòng được bấm"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Data Grid"
+msgstr "Lưới dữ liệu"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Move Between Cells"
+msgstr "Di chuyển giữa các ô"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Edit a Cell or Toggle a Check Box"
+msgstr "Sửa ô hoặc bật/tắt ô đánh dấu"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Toggle a Check Box"
+msgstr "Bật/tắt ô đánh dấu"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Show the Cell Menu"
+msgstr "Hiện menu của ô"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Set Cell to NULL"
+msgstr "Đặt ô thành NULL"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Finish Editing"
+msgstr "Kết thúc sửa"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Cancel Editing"
+msgstr "Hủy sửa"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Finish Editing and Edit the Next Cell"
+msgstr "Kết thúc sửa và sửa ô tiếp theo"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Finish Editing and Edit the Previous Cell"
+msgstr "Kết thúc sửa và sửa ô trước đó"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Save a Multi-Line Value"
+msgstr "Lưu giá trị nhiều dòng"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Mark Rows for Deletion"
+msgstr "Đánh dấu các dòng để xóa"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Copy Selected Rows as TSV"
+msgstr "Sao chép các dòng đã chọn dưới dạng TSV"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Clear the Multi-Row Selection"
+msgstr "Bỏ vùng chọn nhiều dòng"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "SQL Editor"
+msgstr "Trình soạn thảo SQL"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Run the Query or the Selected Text"
+msgstr "Chạy truy vấn hoặc đoạn văn bản đã chọn"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Run the Statement at the Cursor"
+msgstr "Chạy câu lệnh tại con trỏ"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Cancel the Running Query"
+msgstr "Hủy truy vấn đang chạy"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Move Between the Editor and the Results"
+msgstr "Di chuyển giữa trình soạn thảo và kết quả"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Format SQL"
+msgstr "Định dạng SQL"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Toggle Line Comment"
+msgstr "Bật/tắt chú thích dòng"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Open a SQL File"
+msgstr "Mở một tệp SQL"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Save to the SQL File"
+msgstr "Lưu vào tệp SQL"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Save to Another SQL File"
+msgstr "Lưu vào một tệp SQL khác"
+
+#: data/resources/shortcuts-dialog.ui data/resources/ui/find-bar.ui
+msgid "Find"
+msgstr "Tìm"
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Table Structure"
+msgstr "Cấu trúc bảng"
+
+#: data/resources/ui/browse-tab.ui
+msgid "Couldn't refresh rows. Showing the last loaded page."
+msgstr "Không làm mới được các dòng. Đang hiện trang đã tải gần nhất."
+
+#: data/resources/ui/browse-tab.ui
+msgid "Read-only connection. Editing disabled."
+msgstr "Kết nối chỉ đọc. Đã tắt tính năng sửa."
+
+#: data/resources/ui/browse-tab.ui
+msgid "This table has no primary key. Use the SQL editor to modify rows."
+msgstr ""
+"Bảng này không có khóa chính. Hãy dùng trình soạn thảo SQL để sửa các dòng."
+
+#: data/resources/ui/browse-tab.ui
+msgid "Loading…"
+msgstr "Đang tải…"
+
+#: data/resources/ui/browse-tab.ui
+msgid "Couldn't Load Rows"
+msgstr "Không tải được các dòng"
+
+#: data/resources/ui/browse-tab.ui data/resources/ui/history-dialog.ui
+msgid "More Actions"
+msgstr "Thao tác khác"
+
+#: data/resources/ui/browse-tab.ui
+msgid "Filter"
+msgstr "Bộ lọc"
+
+#: data/resources/ui/browse-tab.ui
+msgid "Rows:"
+msgstr "Số dòng:"
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Driver"
+msgstr "Trình điều khiển"
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Host"
+msgstr "Máy chủ"
+
+#: data/resources/ui/connect-dialog.ui data/resources/ui/ssh-section.ui
+msgid "Port"
+msgstr "Cổng"
+
+#: data/resources/ui/connect-dialog.ui data/resources/ui/ssh-section.ui
+msgid "Authentication"
+msgstr "Xác thực"
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Method"
+msgstr "Phương thức"
+
+#: data/resources/ui/connect-dialog.ui data/resources/ui/ssh-section.ui
+msgid "Username"
+msgstr "Tên người dùng"
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Keep it in the keyring; otherwise it is asked for at each connect"
+msgstr "Giữ nó trong chùm khóa; nếu không, mỗi lần kết nối sẽ được hỏi lại"
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Options"
+msgstr "Tùy chọn"
+
+#: data/resources/ui/connect-failed-page.ui
+msgid "Could Not Connect"
+msgstr "Không kết nối được"
+
+#: data/resources/ui/connect-failed-page.ui
+msgid "Choose Connection"
+msgstr "Chọn kết nối"
+
+#: data/resources/ui/export-operations-button.ui
+msgid "Exports"
+msgstr "Bản xuất"
+
+#: data/resources/ui/export-operations-button.ui
+msgid "Running exports"
+msgstr "Các bản xuất đang chạy"
+
+#: data/resources/ui/filter-rule-row.ui
+msgid "Column"
+msgstr "Cột"
+
+#: data/resources/ui/filter-rule-row.ui
+msgid "Operator"
+msgstr "Toán tử"
+
+#: data/resources/ui/filter-strip.ui
+msgid "Match"
+msgstr "Khớp"
+
+#: data/resources/ui/filter-strip.ui
+msgctxt "filter operator"
+msgid "all"
+msgstr "tất cả"
+
+#: data/resources/ui/filter-strip.ui
+msgctxt "filter operator"
+msgid "any"
+msgstr "một trong"
+
+#: data/resources/ui/filter-strip.ui
+msgid "of these rules"
+msgstr "các quy tắc này"
+
+#: data/resources/ui/filter-strip.ui
+msgid "Clear All"
+msgstr "Xóa tất cả"
+
+#: data/resources/ui/filter-strip.ui
+msgid "Apply"
+msgstr "Áp dụng"
+
+#: data/resources/ui/filter-strip.ui
+msgid "e.g. created_at > now() - interval '1 day'"
+msgstr "ví dụ: created_at > now() - interval '1 day'"
+
+#: data/resources/ui/filter-strip.ui
+msgid "Or use the rule editor"
+msgstr "Hoặc dùng trình soạn quy tắc"
+
+#: data/resources/ui/filter-strip.ui
+msgid "Add Rule"
+msgstr "Thêm quy tắc"
+
+#: data/resources/ui/find-bar.ui
+msgid "Match Case"
+msgstr "Phân biệt hoa thường"
+
+#: data/resources/ui/find-bar.ui
+msgid "Match Whole Word"
+msgstr "Khớp nguyên từ"
+
+#: data/resources/ui/find-bar.ui
+msgid "Regular Expressions"
+msgstr "Biểu thức chính quy"
+
+#: data/resources/ui/find-bar.ui
+msgid "Replace with"
+msgstr "Thay bằng"
+
+#: data/resources/ui/find-bar.ui
+msgid "Replace All"
+msgstr "Thay thế tất cả"
+
+#: data/resources/ui/history-dialog.ui
+msgid "Select"
+msgstr "Chọn"
+
+#: data/resources/ui/history-dialog.ui
+msgid "Select Queries"
+msgstr "Chọn truy vấn"
+
+#: data/resources/ui/history-dialog.ui
+msgid "Search"
+msgstr "Tìm kiếm"
+
+#: data/resources/ui/history-dialog.ui
+msgid "Search queries…"
+msgstr "Tìm truy vấn…"
+
+#: data/resources/ui/history-dialog.ui
+msgid "Search queries"
+msgstr "Tìm truy vấn"
+
+#: data/resources/ui/history-dialog.ui
+msgid "Queries"
+msgstr "Truy vấn"
+
+#: data/resources/ui/history-dialog.ui
+msgid "Export"
+msgstr "Xuất"
+
+#: data/resources/ui/history-dialog.ui
+msgid "Clear All History…"
+msgstr "Xóa toàn bộ lịch sử…"
+
+#: data/resources/ui/history-dialog.ui
+msgid "Export as SQL…"
+msgstr "Xuất dưới dạng SQL…"
+
+#: data/resources/ui/history-dialog.ui
+msgid "Export as CSV…"
+msgstr "Xuất dưới dạng CSV…"
+
+#: data/resources/ui/history-row.ui
+msgid "Select Query"
+msgstr "Chọn truy vấn"
+
+#: data/resources/ui/pending-changes-bar.ui
+msgid "Save Changes"
+msgstr "Lưu thay đổi"
+
+#: data/resources/ui/pending-changes-bar.ui
+msgid "Discard All Changes"
+msgstr "Loại bỏ mọi thay đổi"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Data Browser"
+msgstr "Trình duyệt dữ liệu"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Default page size"
+msgstr "Kích thước trang mặc định"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Rows fetched per request when browsing a table"
+msgstr "Số dòng lấy mỗi lần khi duyệt một bảng"
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Confirm Before Deleting Rows"
+msgstr "Xác nhận trước khi xóa dòng"
+
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Editor"
+msgstr "Trình soạn thảo"
+
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Font"
+msgstr "Phông chữ"
+
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Use the System Monospace Font"
+msgstr "Dùng phông chữ đơn cách của hệ thống"
+
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Follows the font you picked in the desktop settings"
+msgstr "Theo phông chữ bạn đã chọn trong thiết lập màn hình nền"
+
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Editor font"
+msgstr "Phông chữ trình soạn thảo"
+
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Style Scheme"
+msgstr "Bộ màu"
+
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Running Queries"
+msgstr "Chạy truy vấn"
+
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Query timeout (seconds)"
+msgstr "Thời gian chờ truy vấn (giây)"
+
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Cancel long-running queries automatically. Set to 0 to disable."
+msgstr "Tự động hủy các truy vấn chạy lâu. Đặt 0 để tắt."
+
+#: data/resources/ui/preferences-general-page.ui
+msgid "Startup"
+msgstr "Khởi động"
+
+#: data/resources/ui/preferences-general-page.ui
+msgid "Restore Session"
+msgstr "Khôi phục phiên làm việc"
+
+#: data/resources/ui/preferences-general-page.ui
+msgid "Reopen the connections that were open when TablePro quit"
+msgstr "Mở lại các kết nối đang mở khi thoát TablePro"
+
+#: data/resources/ui/preferences-history-group.ui
+msgid "Save Query History"
+msgstr "Lưu lịch sử truy vấn"
+
+#: data/resources/ui/preferences-history-group.ui
+msgid ""
+"Keep a searchable record of the SQL you run. Statements that contain "
+"passwords or connection secrets are never saved."
+msgstr ""
+"Giữ lại bản ghi có thể tìm kiếm về các câu SQL bạn chạy. Các câu lệnh chứa "
+"mật khẩu hoặc bí mật kết nối không bao giờ được lưu."
+
+#: data/resources/ui/preferences-history-group.ui
+msgid "Retention (days)"
+msgstr "Thời gian lưu giữ (ngày)"
+
+#: data/resources/ui/preferences-history-group.ui
+msgid "0 keeps history forever; pinned entries are never pruned."
+msgstr "0 giữ lịch sử mãi mãi; các mục đã ghim không bao giờ bị dọn."
+
+#: data/resources/ui/preferences-history-group.ui
+msgid "Clear query history"
+msgstr "Xóa lịch sử truy vấn"
+
+#: data/resources/ui/preferences-history-group.ui
+msgid ""
+"Removes every history entry, including pinned ones. Saved queries are kept."
+msgstr ""
+"Xóa mọi mục trong lịch sử, kể cả các mục đã ghim. Các truy vấn đã lưu vẫn "
+"được giữ."
+
+#: data/resources/ui/preferences-history-group.ui
+msgid "Clear…"
+msgstr "Xóa…"
+
+#: data/resources/ui/preferences-history-group.ui
+msgid "Storage location"
+msgstr "Vị trí lưu trữ"
+
+#: data/resources/ui/results-pane.ui
+msgid "Show Results List"
+msgstr "Hiện danh sách kết quả"
+
+#: data/resources/ui/results-pane.ui
+msgid "Results"
+msgstr "Kết quả"
+
+#: data/resources/ui/results-pane.ui
+msgid "No Results Yet"
+msgstr "Chưa có kết quả"
+
+#: data/resources/ui/results-pane.ui
+msgid "Run a query to see what it returns."
+msgstr "Chạy một truy vấn để xem nó trả về gì."
+
+#: data/resources/ui/sql-editor.ui
+msgid "Open SQL File…"
+msgstr "Mở tệp SQL…"
+
+#: data/resources/ui/sql-editor.ui
+msgid "Save As…"
+msgstr "Lưu thành…"
+
+#: data/resources/ui/sql-editor.ui
+msgid "Save Query…"
+msgstr "Lưu truy vấn…"
+
+#: data/resources/ui/sql-editor.ui
+msgid "Find…"
+msgstr "Tìm…"
+
+#: data/resources/ui/sql-editor.ui
+msgid "Find and Replace…"
+msgstr "Tìm và thay thế…"
+
+#: data/resources/ui/sql-editor.ui
+msgid "Editor Options"
+msgstr "Tùy chọn trình soạn thảo"
+
+#: data/resources/ui/sql-editor.ui
+msgid "Stop the Running Query"
+msgstr "Dừng truy vấn đang chạy"
+
+#: data/resources/ui/sql-editor.ui
+msgid "SQL editor"
+msgstr "Trình soạn thảo SQL"
+
+#: data/resources/ui/sqlite-file-row.ui
+msgid "Database file"
+msgstr "Tệp cơ sở dữ liệu"
+
+#: data/resources/ui/sqlite-file-row.ui data/resources/ui/tls-section.ui
+msgid "Choose…"
+msgstr "Chọn…"
+
+#: data/resources/ui/sqlite-file-row.ui
+msgid "Open an Existing Database File"
+msgstr "Mở một tệp cơ sở dữ liệu có sẵn"
+
+#: data/resources/ui/sqlite-file-row.ui
+msgid "New Database…"
+msgstr "Cơ sở dữ liệu mới…"
+
+#: data/resources/ui/sqlite-file-row.ui
+msgid "Create a Database File When You Connect"
+msgstr "Tạo tệp cơ sở dữ liệu khi bạn kết nối"
+
+#: data/resources/ui/ssh-section.ui
+msgid "SSH Tunnel"
+msgstr "Đường hầm SSH"
+
+#: data/resources/ui/ssh-section.ui
+msgid "Use SSH Tunnel"
+msgstr "Dùng đường hầm SSH"
+
+#: data/resources/ui/ssh-section.ui
+msgid "Empty rows are filled from your SSH configuration"
+msgstr "Các ô trống được điền từ cấu hình SSH của bạn"
+
+#: data/resources/ui/ssh-section.ui
+msgid "Host or alias"
+msgstr "Máy chủ hoặc bí danh"
+
+#: data/resources/ui/ssh-section.ui
+msgid "Jump hosts"
+msgstr "Máy chủ trung gian"
+
+#: data/resources/ui/ssh-section.ui
+msgid "Choose a Private Key File"
+msgstr "Chọn một tệp khóa riêng tư"
+
+#: data/resources/ui/structure-tab.ui
+msgid "Couldn't reload structure. Showing the last loaded version."
+msgstr "Không tải lại được cấu trúc. Đang hiện phiên bản đã tải gần nhất."
+
+#: data/resources/ui/structure-tab.ui
+msgid "Loading structure…"
+msgstr "Đang tải cấu trúc…"
+
+#: data/resources/ui/structure-tab.ui
+msgid "Reading columns, indexes, and foreign keys…"
+msgstr "Đang đọc các cột, chỉ mục và khóa ngoại…"
+
+#: data/resources/ui/structure-tab.ui
+msgid "Add a name and at least one column to save."
+msgstr "Thêm tên và ít nhất một cột để lưu."
+
+#: data/resources/ui/structure-tab.ui
+msgid "Add Column"
+msgstr "Thêm cột"
+
+#: data/resources/ui/structure-tab.ui
+msgid "Indexes"
+msgstr "Chỉ mục"
+
+#: data/resources/ui/structure-tab.ui
+msgid "Add Index…"
+msgstr "Thêm chỉ mục…"
+
+#: data/resources/ui/structure-tab.ui
+msgid "Foreign Keys"
+msgstr "Khóa ngoại"
+
+#: data/resources/ui/structure-tab.ui
+msgid "Add Foreign Key…"
+msgstr "Thêm khóa ngoại…"
+
+#: data/resources/ui/structure-tab.ui
+msgid "SQL Preview"
+msgstr "Xem trước SQL"
+
+#: data/resources/ui/structure-tab.ui
+msgid "Couldn't Load Structure"
+msgstr "Không tải được cấu trúc"
+
+#: data/resources/ui/tls-section.ui
+msgid "Security"
+msgstr "Bảo mật"
+
+#: data/resources/ui/tls-section.ui
+msgid "Encryption"
+msgstr "Mã hóa"
+
+#: data/resources/ui/tls-section.ui
+msgid "Certificates"
+msgstr "Chứng chỉ"
+
+#: data/resources/ui/tls-section.ui
+msgid "For a server whose certificate this computer does not trust"
+msgstr "Dành cho máy chủ có chứng chỉ mà máy tính này không tin cậy"
+
+#: data/resources/ui/tls-section.ui
+msgid "CA certificate"
+msgstr "Chứng chỉ CA"
+
+#: data/resources/ui/tls-section.ui
+msgid "Clear CA Certificate"
+msgstr "Xóa chứng chỉ CA"
+
+#: data/resources/ui/tls-section.ui
+msgid "Client certificate"
+msgstr "Chứng chỉ máy khách"
+
+#: data/resources/ui/tls-section.ui
+msgid "Clear Client Certificate"
+msgstr "Xóa chứng chỉ máy khách"
+
+#: data/resources/ui/tls-section.ui
+msgid "Client key"
+msgstr "Khóa máy khách"
+
+#: data/resources/ui/tls-section.ui
+msgid "Clear Client Key"
+msgstr "Xóa khóa máy khách"
+
+#: data/resources/ui/tls-section.ui
+msgid "TLS server name"
+msgstr "Tên máy chủ TLS"
+
+#: data/resources/ui/welcome-view.ui
+msgid "No Connections"
+msgstr "Chưa có kết nối"
+
+#: data/resources/ui/welcome-view.ui
+msgid "Add a database connection to get started."
+msgstr "Thêm một kết nối cơ sở dữ liệu để bắt đầu."
+
+#: data/resources/ui/welcome-view.ui
+msgid "Add Connection"
+msgstr "Thêm kết nối"
+
+#: data/resources/ui/workspace.ui
+msgid "Filter tables…"
+msgstr "Lọc bảng…"
+
+#: data/resources/ui/workspace.ui
+msgid "Filter tables"
+msgstr "Lọc bảng"
+
+#: data/resources/ui/workspace.ui
+msgid "Saved tabs could not be read, so the open tabs are not saved"
+msgstr "Không đọc được các tab đã lưu, nên các tab đang mở chưa được lưu"
+
+#: data/resources/ui/workspace.ui
+msgid "Moves the unreadable file aside, so the open tabs can be saved"
+msgstr "Chuyển tệp không đọc được sang chỗ khác để có thể lưu các tab đang mở"
+
+#: data/resources/ui/workspace.ui
+msgid "Select a Table"
+msgstr "Chọn một bảng"
+
+#: data/resources/ui/workspace.ui
+msgid "Choose a table in the sidebar or open the SQL editor."
+msgstr "Chọn một bảng ở thanh bên hoặc mở trình soạn thảo SQL."
+
+#: data/resources/ui/workspace.ui
+msgid "Open SQL Editor"
+msgstr "Mở trình soạn thảo SQL"

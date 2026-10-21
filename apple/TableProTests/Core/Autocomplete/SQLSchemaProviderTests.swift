@@ -247,6 +247,16 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         return snapshot
     }
 
+    // Nil answers nil, so the host lists each schema itself.
+    var tablesInSchemasError: Error?
+    var fetchTablesInSchemasCallCount = 0
+
+    func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? {
+        fetchTablesInSchemasCallCount += 1
+        if let tablesInSchemasError { throw tablesInSchemasError }
+        return nil
+    }
+
     /// Nil leaves the driver without a single call, so the host lists each schema itself.
     var allSchemaTablesToReturn: [TableInfo]?
     var allSchemaTablesError: Error?
