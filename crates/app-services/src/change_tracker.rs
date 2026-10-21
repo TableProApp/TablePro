@@ -415,9 +415,9 @@ impl TabChangeTracker {
             columns,
         };
         let mut changes = (Vec::new(), Vec::new());
-        self.materialize_inserts(target, &mut changes)?;
-        self.materialize_updates(target, &mut changes)?;
         self.materialize_deletes(target, &mut changes)?;
+        self.materialize_updates(target, &mut changes)?;
+        self.materialize_inserts(target, &mut changes)?;
         Ok(changes)
     }
     fn materialize_inserts(

@@ -86,7 +86,7 @@
       "package": "tablepro-app-services",
       "target": "--lib",
       "tests": [
-        "change_tracker::tests::materialize_orders_inserts_then_updates_then_deletes"
+        "change_tracker::tests::materialize_orders_deletes_then_updates_then_inserts"
       ]
     },
     "apps/linux/app/tests/stale_grid_update.rs": {

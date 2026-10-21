@@ -91,7 +91,7 @@ fn deletes_are_emitted_in_primary_key_order_too() {
 }
 
 #[test]
-fn the_batch_runs_inserts_then_updates_then_deletes() {
+fn the_batch_runs_deletes_then_updates_then_inserts() {
     let mut tracker = TabChangeTracker::new();
     tracker.track_cell_edit(key(1), 1, Value::Null, Value::Text("edited".into()));
     tracker.track_delete(key(2), vec![Value::Int(2), Value::Null, Value::Null]);
@@ -109,8 +109,8 @@ fn the_batch_runs_inserts_then_updates_then_deletes() {
         .collect();
     assert_eq!(
         kinds,
-        vec!["insert", "update", "delete"],
-        "deletes must run last so a foreign key referencing a deleted row is freed first"
+        vec!["delete", "update", "insert"],
+        "deletes run first so a key or unique value a deleted row held is free for the rows saved after it"
     );
 }
 
@@ -128,10 +128,10 @@ fn every_statement_has_a_source_describing_the_row_it_came_from() {
         sources.len(),
         "a failing statement index has to resolve to a row, so the two lists must stay aligned"
     );
-    assert!(matches!(sources[0], StatementSource::Insert { draft_id } if RowKey::Draft(draft_id) == draft));
+    assert!(matches!(&sources[0], StatementSource::Delete { row_key } if *row_key == key(3)));
     assert!(matches!(&sources[1], StatementSource::Update { row_key } if *row_key == key(1)));
     assert!(matches!(&sources[2], StatementSource::Update { row_key } if *row_key == key(2)));
-    assert!(matches!(&sources[3], StatementSource::Delete { row_key } if *row_key == key(3)));
+    assert!(matches!(sources[3], StatementSource::Insert { draft_id } if RowKey::Draft(draft_id) == draft));
 }
 
 #[test]
@@ -295,8 +295,8 @@ fn typed_primary_keys_reach_the_where_clause_unchanged() {
         let mut update_params = vec![Value::Text("edited".into())];
         update_params.extend(key_values.iter().cloned());
         update_params.push(Value::Null);
-        assert_eq!(statements[0].1, update_params);
-        assert_eq!(statements[1].1, key_values);
+        assert_eq!(statements[0].1, key_values);
+        assert_eq!(statements[1].1, update_params);
     }
 }
 

@@ -125,7 +125,7 @@ fn clear_removes_all_state() {
 }
 
 #[test]
-fn materialize_orders_inserts_then_updates_then_deletes() {
+fn materialize_orders_deletes_then_updates_then_inserts() {
     let mut t = TabChangeTracker::new();
     let columns = vec![pk_col("id"), data_col("name")];
     let updated = rk(&[Value::Int(5)]);
@@ -135,8 +135,8 @@ fn materialize_orders_inserts_then_updates_then_deletes() {
     let (stmts, sources) = t.materialize("postgres", None, "users", &columns).unwrap();
     assert_eq!(stmts.len(), 3);
     assert_eq!(sources.len(), 3);
-    assert!(stmts[0].0.starts_with("INSERT"));
-    assert!(matches!(sources[0], StatementSource::Insert { .. }));
+    assert!(stmts[0].0.starts_with("DELETE"));
+    assert!(matches!(sources[0], StatementSource::Delete { .. }));
     assert!(stmts[1].0.starts_with("UPDATE"));
     assert!(matches!(sources[1], StatementSource::Update { .. }));
     assert!(stmts[1].0.contains("\"name\" IS NOT DISTINCT FROM $3"));
@@ -144,8 +144,25 @@ fn materialize_orders_inserts_then_updates_then_deletes() {
         stmts[1].1,
         vec![Value::Text("new".into()), Value::Int(5), Value::Text("old".into())]
     );
-    assert!(stmts[2].0.starts_with("DELETE"));
-    assert!(matches!(sources[2], StatementSource::Delete { .. }));
+    assert!(stmts[2].0.starts_with("INSERT"));
+    assert!(matches!(sources[2], StatementSource::Insert { .. }));
+}
+
+#[test]
+fn deleting_a_row_and_adding_one_with_its_unique_value_deletes_first() {
+    let mut t = TabChangeTracker::new();
+    let columns = vec![pk_col("id"), data_col("email")];
+    t.track_insert(vec![Value::Int(1), Value::Text("a@example.com".into())]);
+    t.track_delete(
+        rk(&[Value::Int(1)]),
+        vec![Value::Int(1), Value::Text("a@example.com".into())],
+    );
+    let (stmts, _) = t.materialize("sqlite", None, "users", &columns).unwrap();
+    let kinds: Vec<&str> = stmts
+        .iter()
+        .map(|(sql, _)| sql.split_whitespace().next().unwrap())
+        .collect();
+    assert_eq!(kinds, ["DELETE", "INSERT"]);
 }
 
 #[test]
