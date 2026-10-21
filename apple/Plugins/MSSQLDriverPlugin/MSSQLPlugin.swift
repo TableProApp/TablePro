@@ -244,6 +244,20 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsCheckConstraints = true
     static let supportsCheckConstraintEditing = true
     static let supportsGeneratedColumns = false
+    static let explainVariants: [ExplainVariant] = [
+        .driverPlan(
+            id: MSSQLShowplan.estimated.variantId,
+            label: String(localized: "Estimated Plan"),
+            format: .sqlServerShowplanXML,
+            runsStatement: false
+        ),
+        .driverPlan(
+            id: MSSQLShowplan.actual.variantId,
+            label: String(localized: "Actual Plan"),
+            format: .sqlServerShowplanXML,
+            runsStatement: true
+        )
+    ]
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MSSQLPluginDriver(config: config)
@@ -271,6 +285,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var freeTDSConn: FreeTDSConnection?
     var currentSchemaName: String
     private var _serverVersion: String?
+    let principalState = OSAllocatedUnfairLock(initialState: MSSQLPrincipalState())
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MSSQLPluginDriver")
 
@@ -300,12 +315,13 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .resultSetBatches,
             .cellExpressions,
             .uuidCellText,
+            .userManagement,
+            .temporaryTables,
         ]
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        let escaped = name.replacingOccurrences(of: "]", with: "]]")
-        return "[\(escaped)]"
+        "[\(MSSQLSchemaQueries.escapeBracket(name))]"
     }
 
     // MARK: - View Templates
@@ -627,6 +643,29 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 countsToSkip: binding?.prependedStatementCount ?? 0
             )
             return readout.toPluginBatchResult(executionTime: Date().timeIntervalSince(startTime), binding: binding)
+        } catch let error as MSSQLCoreError {
+            throw MSSQLPluginError(coreError: error)
+        }
+    }
+
+    func explainPlan(statement: String, variantId: String) async throws -> PluginQueryResult {
+        guard let showplan = MSSQLShowplan(rawValue: variantId) else {
+            throw PluginDriverUnsupportedOperation.explainPlan
+        }
+        guard let conn = freeTDSConn else {
+            throw MSSQLPluginError.notConnected
+        }
+        let startTime = Date()
+        do {
+            let readout = try await conn.executeShowplan(statement, showplan: showplan)
+            let documents = try showplan.planDocuments(in: readout)
+            return PluginQueryResult(
+                columns: [MSSQLShowplan.planColumnName],
+                columnTypeNames: ["XML"],
+                rows: documents.map { [.text($0)] },
+                rowsAffected: 0,
+                executionTime: Date().timeIntervalSince(startTime)
+            )
         } catch let error as MSSQLCoreError {
             throw MSSQLPluginError(coreError: error)
         }

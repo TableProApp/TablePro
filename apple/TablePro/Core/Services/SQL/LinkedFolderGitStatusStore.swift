@@ -128,6 +128,8 @@ internal final class LinkedFolderGitStatusStore: ObservableObject {
                     statuses: folderRelativeStatuses(records, prefix: repository.prefix),
                     trackedPaths: folderRelativePaths(tracked, prefix: repository.prefix)
                 )
+            } catch is CancellationError {
+                break
             } catch {
                 logger.warning("Git status failed for a linked folder: \(error.publicLogShape, privacy: .public)")
                 if let kept = previous[folder.id] {

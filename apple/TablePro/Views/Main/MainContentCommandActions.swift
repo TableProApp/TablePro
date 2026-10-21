@@ -952,54 +952,6 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.sidebarViewModel?.batchToggleTruncate()
     }
 
-    func createView() {
-        coordinator?.createView()
-    }
-
-    func createNewTable() {
-        coordinator?.createNewTable()
-    }
-
-    func showERDiagram() {
-        coordinator?.showERDiagram()
-    }
-
-    func showServerDashboard() {
-        coordinator?.showServerDashboard()
-    }
-
-    func showQueryInsights() {
-        coordinator?.showQueryInsights()
-    }
-
-    var supportsServerDashboard: Bool {
-        guard let type = coordinator?.connection.type else { return false }
-        return ServerDashboardQueryProviderFactory.supportsDashboard(for: type)
-    }
-
-    func showUsersAndRoles() {
-        coordinator?.showUsersAndRoles()
-    }
-
-    var supportsUserManagement: Bool {
-        guard let connectionId = coordinator?.connectionId,
-              let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter
-        else { return false }
-        return adapter.schemaPluginDriver.capabilities.contains(.userManagement)
-    }
-
-    // MARK: - Tab Navigation (Group A — Called Directly)
-
-    /// Selects the Nth editor tab of the connection on screen. It used to index the window's
-    /// native tab group, which named windows rather than tabs.
-    func selectTab(number: Int) {
-        coordinator?.tabManager.selectTab(at: number - 1)
-    }
-
-    func selectTab(offsetBy offset: Int) {
-        coordinator?.tabManager.selectTab(offsetBy: offset)
-    }
-
     // MARK: - Filter Operations (Group A — Called Directly)
 
     func toggleFilterPanel() {
@@ -1420,6 +1372,14 @@ final class MainContentCommandActions: ObservableObject {
         guard let coordinator,
               let activeId = coordinator.tabManager.selectedTab?.display.activeResultSet?.id else { return }
         coordinator.togglePinResultSet(id: activeId)
+    }
+
+    var canCompareResult: Bool {
+        coordinator?.canCompareActiveResult ?? false
+    }
+
+    func compareResult() {
+        coordinator?.compareActiveResult()
     }
 
     func closeResultTab() {

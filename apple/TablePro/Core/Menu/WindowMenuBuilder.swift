@@ -58,6 +58,12 @@ enum WindowMenuBuilder {
                 shortcut: .switchToLeastRecentTab,
                 keyboard: keyboard
             ),
+            MenuItemFactory.item(
+                String(localized: "Pin Tab"),
+                action: #selector(MainSplitViewController.togglePinnedEditorTab(_:)),
+                shortcut: .pinTab,
+                keyboard: keyboard
+            ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Show Previous Window Tab"),

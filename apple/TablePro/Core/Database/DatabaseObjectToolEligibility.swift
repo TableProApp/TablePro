@@ -21,22 +21,26 @@ enum DatabaseObjectToolEligibility {
         var cascadingDropTypeKinds: Set<UserDefinedTypeInfo.Kind> = []
         var renameableTypeKinds: Set<UserDefinedTypeInfo.Kind> = []
         var creatableTypeKinds: Set<UserDefinedTypeInfo.Kind> = []
+        var canSetSequenceValues = false
+        var canAlterSequences = false
 
         static let none = Support()
 
         @MainActor
         static func of(_ driver: DatabaseDriver?) -> Support {
             guard let driver else { return .none }
-            let commentable = TableInfo.TableType.allCases.filter { type in
-                driver.objectCommentStatement(name: "t", objectType: type.rawValue, schema: "s", comment: nil) != nil
-            }
             let kinds = UserDefinedTypeInfo.Kind.allCases
             let probe = { (kind: UserDefinedTypeInfo.Kind) in UserDefinedTypeInfo(name: "t", kind: kind, schema: "s") }
+            let sequenceProbe = PluginSequenceDetails(
+                name: "s", schema: "s", dataType: nil, startValue: 1, increment: 1, minValue: 1, maxValue: 10,
+                cacheSize: 1, cycles: false, lastValue: nil, nextValue: nil, ownedByTable: nil, ownedByColumn: nil
+            )
+            let changed = PluginSequenceSettings(increment: 2, minValue: 1, maxValue: 10, cacheSize: 1, cycles: false)
             return Support(
                 canRefreshMaterializedViews: driver.refreshMaterializedViewStatement(
                     name: "t", schema: "s", concurrently: false
                 ) != nil,
-                commentableTypes: Set(commentable),
+                commentableTypes: commentableTypes(of: driver),
                 droppableTypeKinds: Set(kinds.filter { driver.generateDropTypeSQL(type: probe($0), cascade: false) != nil }),
                 cascadingDropTypeKinds: Set(kinds.filter { driver.generateDropTypeSQL(type: probe($0), cascade: true) != nil }),
                 renameableTypeKinds: Set(kinds.filter {
@@ -46,8 +50,16 @@ enum DatabaseObjectToolEligibility {
                     UserTypeCreationDraft.probeDefinition(kind: kind).flatMap {
                         driver.createUserDefinedTypeStatements($0)
                     } != nil
-                })
+                }),
+                canSetSequenceValues: driver.sequenceNextValueStatement(for: sequenceProbe, nextValue: .value(1)) != nil,
+                canAlterSequences: driver.alterSequenceStatement(for: sequenceProbe, settings: changed) != nil
             )
+        }
+
+        static func commentableTypes(of driver: DatabaseDriver) -> Set<TableInfo.TableType> {
+            Set(TableInfo.TableType.allCases.filter { type in
+                driver.objectCommentStatement(name: "t", objectType: type.rawValue, schema: "s", comment: nil) != nil
+            })
         }
     }
 
@@ -78,5 +90,13 @@ enum DatabaseObjectToolEligibility {
 
     static func canCreateType(support: Support, isReadOnly: Bool) -> Bool {
         !isReadOnly && !support.creatableTypeKinds.isEmpty
+    }
+
+    static func canSetSequenceValue(_ type: TableInfo.TableType?, support: Support, isReadOnly: Bool) -> Bool {
+        !isReadOnly && type == .sequence && support.canSetSequenceValues
+    }
+
+    static func canEditSequence(_ type: TableInfo.TableType?, support: Support, isReadOnly: Bool) -> Bool {
+        !isReadOnly && type == .sequence && support.canAlterSequences
     }
 }

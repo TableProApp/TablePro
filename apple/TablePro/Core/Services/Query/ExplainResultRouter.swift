@@ -61,6 +61,26 @@ enum ExplainResultRouter {
         )
     }
 
+    static func routeDriverPlan(
+        rows: [[PluginCellValue]],
+        subjectSQL: String,
+        variantId: String,
+        databaseType: DatabaseType,
+        declaredVariants: [ExplainVariant]
+    ) -> RoutedPlan? {
+        let text = ExplainPlanTextFlattener.flatten(rows: rows)
+        guard !text.isEmpty else { return nil }
+        let declared = declaredVariants.first { $0.id == variantId }?.format ?? .plainText
+        let format = ExplainFormatResolver.resolve(declared: declared, databaseType: databaseType)
+        return RoutedPlan(
+            rawText: text,
+            plan: ExplainPlanParserRegistry.plan(from: text, format: format),
+            format: format,
+            variantKey: .declared(variantId),
+            subjectSQL: subjectSQL
+        )
+    }
+
     /// Which chain of saved plans this run belongs to.
     ///
     /// A typed `EXPLAIN (ANALYZE, BUFFERS)` and a plain `EXPLAIN` describe the same statement but

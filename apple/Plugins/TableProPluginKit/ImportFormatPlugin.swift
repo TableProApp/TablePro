@@ -18,6 +18,10 @@ public protocol ImportFormatPlugin: TableProPlugin, Sendable {
 
     var fieldDetectionSignature: String { get }
 
+    /// The error handling and transaction options the next import runs with. A host that runs several files in one
+    /// transaction reads them first, because the files have to agree. Nil for a format that runs statements.
+    var rowImportConfiguration: RowImportRunner.Configuration? { get }
+
     func performImport(
         source: any PluginImportSource,
         sink: any PluginImportDataSink,
@@ -35,6 +39,8 @@ public extension ImportFormatPlugin {
     static var sourceFieldsFollowFileOrder: Bool { false }
 
     var fieldDetectionSignature: String { "" }
+
+    var rowImportConfiguration: RowImportRunner.Configuration? { nil }
 
     func detectSourceFields(at url: URL, targetTable: String?) throws -> [PluginImportField] { [] }
 }

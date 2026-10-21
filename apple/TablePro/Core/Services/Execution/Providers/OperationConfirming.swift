@@ -90,6 +90,8 @@ internal enum OperationConfirmationPrompt {
             return String(localized: "The AI assistant")
         case .appleScript(let client):
             return client ?? String(localized: "Another app")
+        case .shortcuts:
+            return String(localized: "Shortcuts")
         }
     }
 }

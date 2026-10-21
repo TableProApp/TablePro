@@ -11,6 +11,8 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
         case ready
         case startupFailure
         case neverReady
+        // Another program takes the port after the manager's check and before the proxy binds it.
+        case squatted
     }
 
     let behavior: Behavior
@@ -47,7 +49,7 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
         lock.withLock { startCalls += 1 }
 
         switch behavior {
-        case .ready:
+        case .ready, .squatted:
             if let port = Self.parsePort(arguments) {
                 listenerFd = Self.openListener(port: port)
             }
@@ -106,7 +108,7 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
         return Int(arguments[index + 1])
     }
 
-    private static func openListener(port: Int) -> Int32? {
+    static func openListener(port: Int) -> Int32? {
         let descriptor = socket(AF_INET, SOCK_STREAM, 0)
         guard descriptor >= 0 else { return nil }
         var reuse: Int32 = 1
@@ -125,6 +127,13 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
             return nil
         }
         return descriptor
+    }
+}
+
+// The fake runner's listener stands in for the proxy's, so these managers take it as the proxy's own.
+private extension CloudSQLProxyManager {
+    init(testRunner: @escaping () -> any SupervisedProcessRunner) {
+        self.init(runnerFactory: testRunner, ownsListener: { _, _ in true })
     }
 }
 
@@ -161,7 +170,8 @@ struct CloudSQLProxyManagerTests {
                 expectedSHA256: ["arm64": "deadbeef", "amd64": "deadbeef"],
                 fetch: { _ in Data("still wrong".utf8) }
             ),
-            systemBinaryLookup: { _ in nil }
+            systemBinaryLookup: { _ in nil },
+            ownsListener: { _, _ in true }
         )
 
         await #expect(throws: CloudSQLProxyError.binaryNotFound) {
@@ -194,7 +204,8 @@ struct CloudSQLProxyManagerTests {
                 expectedSHA256: ["arm64": digest, "amd64": digest],
                 fetch: { _ in bytes }
             ),
-            systemBinaryLookup: { _ in nil }
+            systemBinaryLookup: { _ in nil },
+            ownsListener: { _, _ in true }
         )
 
         let port = try await manager.createTunnel(
@@ -212,7 +223,7 @@ struct CloudSQLProxyManagerTests {
     @Test("createTunnel returns the allocated port once the proxy is listening")
     func readinessSucceeds() async throws {
         let fake = FakeCloudSQLProxyRunner(behavior: .ready)
-        let manager = CloudSQLProxyManager(runnerFactory: { fake })
+        let manager = CloudSQLProxyManager(testRunner: { fake })
         let id = UUID()
 
         let port = try await manager.createTunnel(connectionId: id, config: config())
@@ -226,10 +237,39 @@ struct CloudSQLProxyManagerTests {
         #expect(!(await manager.hasTunnel(connectionId: id)))
     }
 
+    @Test("A configured port another program already listens on is refused before the proxy starts")
+    func occupiedPortIsRefused() async throws {
+        let port = try #require(LoopbackPort.allocateFree())
+        let squatter = try #require(FakeCloudSQLProxyRunner.openListener(port: port))
+        defer { close(squatter) }
+        let fake = FakeCloudSQLProxyRunner(behavior: .ready)
+        let manager = CloudSQLProxyManager(testRunner: { fake })
+
+        await #expect(throws: CloudSQLProxyError.portInUse(port)) {
+            _ = try await manager.createTunnel(connectionId: UUID(), config: self.config(localPort: port))
+        }
+        #expect(fake.startCallCount == 0)
+    }
+
+    @Test("A listener the proxy process does not own is never taken for the proxy")
+    func listenerTheProxyDoesNotOwnIsRefused() async throws {
+        let fake = FakeCloudSQLProxyRunner(behavior: .squatted)
+        let manager = CloudSQLProxyManager(runnerFactory: { fake })
+        let deadline = ConnectionDeadline(
+            configuredSeconds: 30,
+            instant: ContinuousClock.now.advanced(by: .milliseconds(800))
+        )
+
+        await #expect(throws: (any Error).self) {
+            _ = try await manager.createTunnel(connectionId: UUID(), config: self.config(), deadline: deadline)
+        }
+        #expect(fake.stopCallCount >= 1)
+    }
+
     @Test("createTunnel fails when the proxy exits during startup")
     func startupFailure() async {
         let fake = FakeCloudSQLProxyRunner(behavior: .startupFailure)
-        let manager = CloudSQLProxyManager(runnerFactory: { fake })
+        let manager = CloudSQLProxyManager(testRunner: { fake })
 
         await #expect(throws: CloudSQLProxyError.self) {
             _ = try await manager.createTunnel(connectionId: UUID(), config: self.config(localPort: 59_997))
@@ -239,7 +279,7 @@ struct CloudSQLProxyManagerTests {
     @Test("connect deadline stops the proxy before registration")
     func deadlineStopsUnreadyProcess() async throws {
         let fake = FakeCloudSQLProxyRunner(behavior: .neverReady)
-        let manager = CloudSQLProxyManager(runnerFactory: { fake })
+        let manager = CloudSQLProxyManager(testRunner: { fake })
         let id = UUID()
         let creation = Task {
             let deadline = ConnectionDeadline(
@@ -275,7 +315,7 @@ struct CloudSQLProxyManagerTests {
 
     @Test("an invalid instance connection name is rejected before launching")
     func invalidInstance() async {
-        let manager = CloudSQLProxyManager(runnerFactory: { FakeCloudSQLProxyRunner(behavior: .ready) })
+        let manager = CloudSQLProxyManager(testRunner: { FakeCloudSQLProxyRunner(behavior: .ready) })
 
         await #expect(throws: CloudSQLProxyError.invalidInstanceConnectionName) {
             _ = try await manager.createTunnel(connectionId: UUID(), config: self.config(instance: "not-valid"))
@@ -284,7 +324,7 @@ struct CloudSQLProxyManagerTests {
 
     @Test("missing binary throws binaryNotFound")
     func missingBinary() async {
-        let manager = CloudSQLProxyManager(runnerFactory: { FakeCloudSQLProxyRunner(behavior: .ready) })
+        let manager = CloudSQLProxyManager(testRunner: { FakeCloudSQLProxyRunner(behavior: .ready) })
         let badConfig = CloudSQLProxyConfiguration(instanceConnectionName: "p:r:i", binaryPath: "/nonexistent/cloud-sql-proxy")
 
         await #expect(throws: CloudSQLProxyError.binaryNotFound) {
@@ -295,7 +335,7 @@ struct CloudSQLProxyManagerTests {
     @Test("service account key is written 0600 and removed on close")
     func credentialsFileLifecycle() async throws {
         let fake = FakeCloudSQLProxyRunner(behavior: .ready)
-        let manager = CloudSQLProxyManager(runnerFactory: { fake })
+        let manager = CloudSQLProxyManager(testRunner: { fake })
         let id = UUID()
         let keyConfig = CloudSQLProxyConfiguration(
             instanceConnectionName: "proj:region:inst",
@@ -322,7 +362,7 @@ struct CloudSQLProxyManagerTests {
     @Test("terminateAllProcessesSync stops the running proxy")
     func terminateAllStops() async throws {
         let fake = FakeCloudSQLProxyRunner(behavior: .ready)
-        let manager = CloudSQLProxyManager(runnerFactory: { fake })
+        let manager = CloudSQLProxyManager(testRunner: { fake })
         _ = try await manager.createTunnel(connectionId: UUID(), config: config())
 
         manager.terminateAllProcessesSync()
@@ -340,7 +380,7 @@ struct CloudSQLProxyManagerTests {
             forKey: "cloudSQLProxyStalePids"
         )
 
-        let manager = CloudSQLProxyManager(runnerFactory: { FakeCloudSQLProxyRunner(behavior: .ready) })
+        let manager = CloudSQLProxyManager(testRunner: { FakeCloudSQLProxyRunner(behavior: .ready) })
         await manager.sweepStalePidsIfNeeded()
 
         #expect(AppStorageEnvironment.shared.defaults.data(forKey: "cloudSQLProxyStalePids") == nil)

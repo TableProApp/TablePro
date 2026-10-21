@@ -101,6 +101,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// rest of the fetch, which for some drivers cancels the statement on the server.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult?
 
+    /// Runs a statement the app wrote to read, telling the driver it may only read. A driver that
+    /// evaluates statements in a scripting engine with state refuses any write the script reaches,
+    /// whatever an earlier statement redefined.
+    func executeRead(query: String) async throws -> QueryResult
+
     /// Whether ``executeBatch(query:rowCap:parameters:)`` sends a text to the server whole and answers with every
     /// result set it produced.
     var supportsResultSetBatches: Bool { get }
@@ -108,6 +113,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Send `query` as one batch and read it to the end. Returns nil when the driver cannot, and the caller runs the
     /// text statement by statement instead. A server error inside the batch is part of the answer, not a throw.
     func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult?
+
+    func explainPlan(statement: String, variantId: String) async throws -> QueryResult
 
     // MARK: - Schema Operations
 
@@ -123,6 +130,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// What `fetchTables(schema:)` lists for each named schema, in one call, each row with its own
     /// schema and ordered by schema then name. Nil means the caller asks each schema itself.
     func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]?
+
+    var listsTemporaryTables: Bool { get }
+
+    // Only the session driver can answer: a pooled connection is another session.
+    func fetchTemporaryTables() async throws -> [TableInfo]
 
     /// Fetch the direct partitions of one partitioned table, with each one's bound, position and
     /// row estimate. A partition is not a table on every engine, so this cannot answer `TableInfo`:
@@ -258,6 +270,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch table metadata (size, comment, engine, etc.)
     func fetchTableMetadata(tableName: String) async throws -> TableMetadata
 
+    // The comment alone, which some engines answer without the row probe their metadata runs.
+    func fetchObjectComment(tableName: String) async throws -> String?
+
     /// Fetch list of all databases on the server
     func fetchDatabases() async throws -> [String]
 
@@ -385,6 +400,12 @@ protocol DatabaseDriver: AnyObject, Sendable {
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability?
 
+    // MARK: - Sequences
+
+    func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails?
+    func sequenceNextValueStatement(for sequence: PluginSequenceDetails, nextValue: PluginSequenceNextValue) -> String?
+    func alterSequenceStatement(for sequence: PluginSequenceDetails, settings: PluginSequenceSettings) -> String?
+
     // MARK: - Query Cancellation
 
     /// Cancel the currently running query, if any.
@@ -425,6 +446,7 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func createViewTemplate() -> String?
     func editViewFallbackTemplate(viewName: String) -> String?
+    func createSequenceTemplate() -> String?
     func castColumnToText(_ column: String) -> String
 
     func foreignKeyDisableStatements() -> [String]?
@@ -480,13 +502,25 @@ extension DatabaseDriver {
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? { nil }
 
+    func executeRead(query: String) async throws -> QueryResult {
+        try await execute(query: query)
+    }
+
     var supportsResultSetBatches: Bool { false }
 
     func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult? { nil }
 
+    func explainPlan(statement: String, variantId: String) async throws -> QueryResult {
+        throw PluginDriverUnsupportedOperation.explainPlan
+    }
+
     func fetchIndexDDL(table: String) async throws -> [String] { [] }
 
     func fetchCommentDDL(table: String) async throws -> [String] { [] }
+
+    func fetchObjectComment(tableName: String) async throws -> String? {
+        try await fetchTableMetadata(tableName: tableName).comment
+    }
 
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
@@ -515,6 +549,7 @@ extension DatabaseDriver {
 
     func createViewTemplate() -> String? { nil }
     func editViewFallbackTemplate(viewName: String) -> String? { nil }
+    func createSequenceTemplate() -> String? { nil }
     func castColumnToText(_ column: String) -> String { column }
 
     func foreignKeyDisableStatements() -> [String]? { nil }
@@ -823,6 +858,16 @@ extension DatabaseDriver {
         nil
     }
 
+    func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails? { nil }
+
+    func sequenceNextValueStatement(for sequence: PluginSequenceDetails, nextValue: PluginSequenceNextValue) -> String? {
+        nil
+    }
+
+    func alterSequenceStatement(for sequence: PluginSequenceDetails, settings: PluginSequenceSettings) -> String? {
+        nil
+    }
+
     /// Default: no schema support (MySQL/SQLite don't use schemas in the same way)
     func fetchSchemas() async throws -> [String] { [] }
 
@@ -835,6 +880,10 @@ extension DatabaseDriver {
     func fetchTablesInAllSchemas() async throws -> [TableInfo]? { nil }
 
     func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? { nil }
+
+    var listsTemporaryTables: Bool { false }
+
+    func fetchTemporaryTables() async throws -> [TableInfo] { [] }
 
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] { [] }
 
@@ -1058,7 +1107,8 @@ enum DatabaseDriverFactory {
             deadline: deadline,
             timeoutEndpoint: timeoutEndpoint,
             effectiveQueryTimeoutSeconds: queryTimeoutSeconds,
-            requiresHostDeadline: requiresHostDeadline
+            requiresHostDeadline: requiresHostDeadline,
+            credentialLease: signIn.lease
         )
     }
 

@@ -7,6 +7,7 @@ mod destination;
 mod forward;
 mod hop_config;
 mod host_key_checking;
+mod identity_pin;
 mod known_hosts;
 mod password_owner;
 mod prompt;

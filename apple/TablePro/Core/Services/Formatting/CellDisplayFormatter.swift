@@ -44,6 +44,8 @@ enum CellDisplayFormatter {
                     ) {
                         displayValue = formatted
                     }
+                } else if columnType.isVectorType {
+                    displayValue = VectorLiteral.summary(of: displayValue) ?? displayValue
                 } else if BlobFormattingService.shared.requiresFormatting(columnType: columnType) {
                     displayValue = BlobFormattingService.shared.formatIfNeeded(
                         displayValue, columnType: columnType, for: .grid
@@ -56,13 +58,13 @@ enum CellDisplayFormatter {
 
     /// A row is one line, so anything a format produces is capped and stripped of line breaks
     /// before it reaches a cell. Binary read as text is the case that needs it: a blob carries
-    /// newlines and runs to megabytes where hex never did.
+    /// newlines and runs to megabytes where hex never did. A lone CR stays for the cell to mark.
     private static func fitToCell(_ value: String) -> String {
         var displayValue = value
         let nsDisplay = displayValue as NSString
         if nsDisplay.length > maxDisplayLength {
             displayValue = nsDisplay.substring(to: maxDisplayLength) + "…"
         }
-        return displayValue.sanitizedForCellDisplay
+        return displayValue.flattenedForCell
     }
 }

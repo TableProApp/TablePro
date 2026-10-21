@@ -48,8 +48,10 @@ internal enum CellInteractionMode: Equatable {
     case viewJson
     case viewBlob
     case viewPhpSerialized
+    case viewBinaryValue(BinaryValueFormat)
 
     case viewSvg
+    case viewVector
 
     case editInline(value: String)
     case editOverlay(value: String)
@@ -57,6 +59,7 @@ internal enum CellInteractionMode: Equatable {
     case editJson
     case editBlob
     case editSvg
+    case editVector
 
     case blocked
 }
@@ -66,9 +69,21 @@ internal struct CellInteractionResolver {
         guard !context.isRowDeleted else { return .blocked }
 
         let isReadOnly = !context.isTableEditable || context.isImmutableColumn
+        let holdsBytes = context.columnType?.isBlobType == true || context.isBinaryValue
 
-        if context.columnType?.isBlobType == true || context.isBinaryValue {
+        // Read-only: nothing writes a decoded tree back. A NULL keeps the hex editor, the way bytes get into it.
+        if holdsBytes, context.isBinaryValue || context.value != nil,
+           let format = context.displayFormatOverride?.binaryValueFormat {
+            return .viewBinaryValue(format)
+        }
+
+        if holdsBytes {
             return isReadOnly ? .viewBlob : .editBlob
+        }
+
+        // Ahead of the display format: a vector column offers none, so an override is one left from its text days.
+        if opensVectorViewer(context) {
+            return isReadOnly ? .viewVector : .editVector
         }
 
         if case .image(.svg) = context.detectedContent, context.displayFormatOverride != .raw {
@@ -80,7 +95,8 @@ internal struct CellInteractionResolver {
             return isReadOnly ? .viewJson : .editJson
         case .phpSerialized:
             return .viewPhpSerialized
-        case .raw, .text, .uuid, .unixTimestamp, .unixTimestampMillis, .none:
+        case .raw, .text, .uuid, .uuidSwappedTime, .unixTimestamp, .unixTimestampMillis, .messagePack, .protobuf,
+             .none:
             return plainText(for: context, isReadOnly: isReadOnly)
         }
     }
@@ -97,5 +113,11 @@ internal struct CellInteractionResolver {
         let value = context.value ?? ""
         if value.containsLineBreak { return .editOverlay(value: value) }
         return .editInline(value: value)
+    }
+
+    // The value decides, as it does for an array: NULL and text the viewer cannot list keep the text editor.
+    private func opensVectorViewer(_ context: CellContext) -> Bool {
+        guard context.columnType?.isVectorType == true, let value = context.value else { return false }
+        return VectorLiteral.isVectorText(value)
     }
 }

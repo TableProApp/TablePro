@@ -20,4 +20,9 @@ public extension ExplainPlanFormat {
     static let cockroachText = ExplainPlanFormat(rawValue: "cockroachText")
     static let indentedText = ExplainPlanFormat(rawValue: "indentedText")
     static let damengText = ExplainPlanFormat(rawValue: "damengText")
+
+    // JSON array of PLAN_TABLE or V$SQL_PLAN_STATISTICS_ALL rows keyed by column name, NULL columns left out.
+    static let oraclePlanRows = ExplainPlanFormat(rawValue: "oraclePlanRows")
+
+    static let sqlServerShowplanXML = ExplainPlanFormat(rawValue: "sqlServerShowplanXML")
 }

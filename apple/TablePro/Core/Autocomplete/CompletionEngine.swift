@@ -12,6 +12,7 @@ struct CompletionContext {
 
 final class CompletionEngine {
     private let provider: SQLCompletionProvider
+    private let identifierRules: SQLIdentifierRules?
 
     init(
         schemaProvider: SQLSchemaProvider?,
@@ -25,23 +26,43 @@ final class CompletionEngine {
             dialect: dialect,
             statementCompletions: statementCompletions
         )
+        self.identifierRules = databaseType?.identifierRules
     }
 
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
         provider.updateFavoriteKeywords(keywords)
     }
 
-    // Every SQL completion reaches a UI surface through here, so the case policy is applied once.
+    // Every SQL completion item passes through the engine on its way to a surface, so both case policies apply here.
     func rank(
         _ items: [SQLCompletionItem],
         prefix: String,
         context: SQLContext,
-        keywordCase: SQLKeywordCase
+        keywordCase: SQLKeywordCase,
+        identifierCase: SQLIdentifierCase = .default
     ) -> [SQLCompletionItem] {
-        SQLCompletionCasing.applied(
-            to: provider.filterRankAndLimit(items, prefix: prefix, context: context),
+        spelled(
+            provider.filterRankAndLimit(items, prefix: prefix, context: context),
             typedPrefix: prefix,
-            policy: keywordCase
+            context: context,
+            keywordCase: keywordCase,
+            identifierCase: identifierCase
+        )
+    }
+
+    private func spelled(
+        _ items: [SQLCompletionItem],
+        typedPrefix: String,
+        context: SQLContext,
+        keywordCase: SQLKeywordCase,
+        identifierCase: SQLIdentifierCase
+    ) -> [SQLCompletionItem] {
+        let cased = SQLCompletionCasing.applied(to: items, typedPrefix: typedPrefix, policy: keywordCase)
+        guard let identifierRules else { return cased }
+        return SQLIdentifierSpelling(rules: identifierRules, policy: identifierCase).applied(
+            to: cased,
+            typedPrefix: typedPrefix,
+            quoting: SQLIdentifierTokenQuoting(context.quotedName)
         )
     }
 
@@ -50,7 +71,8 @@ final class CompletionEngine {
         fragment: String,
         cursorPosition: Int,
         tableName: String,
-        keywordCase: SQLKeywordCase = .default
+        keywordCase: SQLKeywordCase = .default,
+        identifierCase: SQLIdentifierCase = .default
     ) async -> CompletionContext? {
         let clausePrefix = "WHERE "
         let prefixLength = (clausePrefix as NSString).length
@@ -60,6 +82,7 @@ final class CompletionEngine {
             text: clausePrefix + fragment,
             cursorPosition: cursorPosition + prefixLength,
             keywordCase: keywordCase,
+            identifierCase: identifierCase,
             forcedTableReferences: references
         ), context.replacementRange.location >= prefixLength else {
             return nil
@@ -79,6 +102,7 @@ final class CompletionEngine {
         text: String,
         cursorPosition: Int,
         keywordCase: SQLKeywordCase = .default,
+        identifierCase: SQLIdentifierCase = .default,
         forcedTableReferences: [TableReference]? = nil
     ) async -> CompletionContext? {
         let (items, candidates, context) = await provider.completionSession(
@@ -89,7 +113,13 @@ final class CompletionEngine {
         guard !items.isEmpty else { return nil }
 
         return CompletionContext(
-            items: SQLCompletionCasing.applied(to: items, typedPrefix: context.prefix, policy: keywordCase),
+            items: spelled(
+                items,
+                typedPrefix: context.prefix,
+                context: context,
+                keywordCase: keywordCase,
+                identifierCase: identifierCase
+            ),
             candidates: candidates,
             replacementRange: NSRange(context.prefixRange),
             sqlContext: context

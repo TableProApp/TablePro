@@ -94,10 +94,8 @@ internal enum ExternalStatementGate {
             )
         }
 
-        if classification.tier != .safe, statement.externalAccess != .readWrite {
-            throw ExternalStatementGateError.denied(
-                String(localized: "This connection is read only for external clients.")
-            )
+        if classification.tier != .safe {
+            try refuseWrite(externalAccess: statement.externalAccess)
         }
 
         if classification.tier == .destructive, !statement.allowsDestructive {
@@ -108,6 +106,15 @@ internal enum ExternalStatementGate {
         }
 
         return classification
+    }
+
+    // For a caller that writes by construction, such as adding rows, whose statements a classifier may not read as
+    // writes on every engine.
+    internal static func refuseWrite(externalAccess: ExternalAccessLevel) throws {
+        guard externalAccess != .readWrite else { return }
+        throw ExternalStatementGateError.denied(
+            String(localized: "This connection is read only for external clients.")
+        )
     }
 
     /// Whether a caller that takes scripts may send several statements in one call to this engine.
@@ -156,6 +163,7 @@ internal enum ExternalStatementGate {
         caller: OperationCaller,
         capabilities: CallerCapabilities,
         operationDescription: String,
+        kind: OperationKind? = nil,
         gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
         let decision = await gate.authorize(
@@ -163,7 +171,7 @@ internal enum ExternalStatementGate {
                 connectionId: connectionId,
                 databaseType: databaseType,
                 sql: sql,
-                kind: OperationKind.from(QueryClassifier.classifyTier(sql, databaseType: databaseType)),
+                kind: kind ?? OperationKind.from(QueryClassifier.classifyTier(sql, databaseType: databaseType)),
                 caller: caller,
                 capabilities: capabilities,
                 operationDescription: operationDescription

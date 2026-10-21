@@ -50,6 +50,18 @@ final class AppSettingsManager: ObservableObject {
         }
     }
 
+    @Published var formatter: SQLFormatterSettings {
+        didSet {
+            guard formatter != oldValue else { return }
+            storage.saveFormatter(formatter)
+            syncTracker.markDirty(.settings, id: AppSettingsCategory.formatter)
+        }
+    }
+
+    var formatterOptions: SQLFormatterOptions {
+        formatter.options(for: editor)
+    }
+
     /// Device-local: it is deliberately absent from `AppSettingsCategory.synced`, so a zoom press
     /// never pushes an iCloud record and a Mac on an older build cannot reset it.
     @Published var typography: TypographySettings {
@@ -207,6 +219,7 @@ final class AppSettingsManager: ObservableObject {
         self.appearance = storage.loadAppearance()
         self.appearanceMode = storage.loadAppearanceMode()
         self.editor = storage.loadEditor()
+        self.formatter = storage.loadFormatter()
         self.dataGrid = storage.loadDataGrid()
         self.history = storage.loadHistory()
         self.tabs = storage.loadTabs()
@@ -254,6 +267,7 @@ final class AppSettingsManager: ObservableObject {
         appearance = .default
         appearanceMode = .auto
         editor = .default
+        formatter = .default
         dataGrid = .default
         history = .default
         tabs = .default

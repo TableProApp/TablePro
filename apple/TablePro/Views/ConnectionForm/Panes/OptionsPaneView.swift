@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProAutocomplete
 import TableProPluginKit
 
 /// What TablePro is allowed to do with this connection, and what it runs when it opens it.
@@ -24,6 +25,7 @@ struct OptionsPaneView: View {
             driverSection
             extensionsSection
             timeoutSection
+            completionSection
             startupSection
             preConnectSection
             postDisconnectSection
@@ -130,6 +132,44 @@ struct OptionsPaneView: View {
                 """),
             globalQueryTimeoutSeconds
         )
+    }
+
+    // MARK: - Autocomplete
+
+    @ViewBuilder
+    private var completionSection: some View {
+        if databaseType.identifierRules != nil {
+            Section {
+                Picker(
+                    String(localized: "Identifier case"),
+                    selection: $coordinator.customization.completionIdentifierCase
+                ) {
+                    ForEach(SQLIdentifierCase.allCases, id: \.self) { identifierCase in
+                        Text(Self.title(for: identifierCase)).tag(identifierCase)
+                    }
+                }
+                .accessibilityIdentifier("connection-form-identifier-case")
+            } header: {
+                Text(String(localized: "Autocomplete"))
+            } footer: {
+                Text(String(localized: """
+                    Table, column and schema names take this case in autocomplete and in Copy as INSERT \
+                    and UPDATE when the server reads the new spelling as the same name. Other names are \
+                    quoted as stored.
+                    """))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private static func title(for identifierCase: SQLIdentifierCase) -> String {
+        switch identifierCase {
+        case .asStored: return String(localized: "As stored")
+        case .lower: return String(localized: "lowercase")
+        case .upper: return String(localized: "UPPERCASE")
+        case .matchTyped: return String(localized: "Match what I type")
+        }
     }
 
     // MARK: - Driver options
@@ -297,10 +337,10 @@ struct OptionsPaneView: View {
             }
             if aiIsEnabled {
                 // swiftlint:disable:next line_length
-                Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, and AppleScript. Effective scope is the minimum of the requesting token's scope and the External Clients level."))
+                Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level."))
             } else {
                 // swiftlint:disable:next line_length
-                Text(String(localized: "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript) access this connection. Tokens cannot exceed this level even with full-access scope."))
+                Text(String(localized: "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope."))
             }
         }
         .font(.caption)

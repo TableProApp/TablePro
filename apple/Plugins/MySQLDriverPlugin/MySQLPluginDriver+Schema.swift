@@ -138,7 +138,8 @@ internal extension MySQLPluginDriver {
         schema: String?
     ) async throws -> [String: MySQLCatalogColumnDetail] {
         guard serverHasInformationSchema,
-              catalogVisibility.visibility(of: effectiveSchema(schema)) != .blind
+              catalogVisibility.visibility(of: effectiveSchema(schema)) != .blind,
+              await !resolvesToTemporaryTable(table, schema: schema)
         else { return [:] }
         let identity = serverIdentity
         let readsGeneration = MySQLServerVersion.hasGenerationExpression(
@@ -283,7 +284,9 @@ internal extension MySQLPluginDriver {
         case .createTableStatement:
             return try await createTableCheckConstraints(table: table, schema: schema)
         case .informationSchema:
-            break
+            guard await !resolvesToTemporaryTable(table, schema: schema) else {
+                return try await createTableCheckConstraints(table: table, schema: schema)
+            }
         }
         let database = effectiveSchemaLiteral(schema)
         let safeTable = mysqlEscapeStringLiteral(table)

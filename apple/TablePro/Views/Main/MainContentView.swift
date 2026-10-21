@@ -182,6 +182,7 @@ struct MainContentView: View {
                 if !$0 {
                     coordinator.activeSheet = nil
                     coordinator.exportPreselection = nil
+                    coordinator.exportFormatId = nil
                     /// Cleared on every dismissal, Cancel included. The request holds the closure
                     /// that runs the rebuild, and that closure holds the structure view, which
                     /// holds this coordinator; leaving it set after a cancel keeps the cycle alive
@@ -236,6 +237,10 @@ struct MainContentView: View {
             CopyObjectsSheet(launch: launch, connection: connection)
         case .editObjectComment(let target):
             ObjectCommentSheet(target: target, connection: connection)
+        case .setSequenceNextValue(let target):
+            SetSequenceValueSheet(target: target, connection: connection)
+        case .editSequence(let target):
+            EditSequenceSheet(target: target, connection: connection)
         case .documentEditor(let request):
             DocumentEditorSheet(request: request, databaseType: connection.type)
         case .createUserType(let database, let schema):
@@ -247,7 +252,11 @@ struct MainContentView: View {
                     coordinator.openCreatedUserType(definition, database: database ?? coordinator.browseDatabaseName)
                 }
             )
-        case .exportDialog, .exportQueryResults, .importDialog, .rowImport,
+        case .searchDatabase(let session):
+            DatabaseSearchSheet(session: session) { result in
+                coordinator.openDatabaseSearchResult(result, in: session)
+            }
+        case .exportDialog, .exportQueryResults, .importDialog, .rowImport, .rowImportBatch,
              .transferTables, .backupDatabase, .restoreDatabase:
             transferSheetContent(for: sheet, dismiss: dismissBinding)
         case .maintenance(let operation, let tableName, let database, let schema):

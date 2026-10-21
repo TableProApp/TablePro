@@ -58,6 +58,7 @@ extension QueryPlanNode {
     /// Total rows this node produced. Workers do not divide a row count: every worker's rows reach
     /// the Gather, so the loops multiplier stands on its own.
     var totalActualRows: Int? {
+        if let reportedTotalActualRows { return reportedTotalActualRows }
         guard let perLoop = actualRows else { return nil }
         return perLoop * max(actualLoops ?? 1, 1)
     }

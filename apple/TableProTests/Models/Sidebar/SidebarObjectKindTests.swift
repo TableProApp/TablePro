@@ -74,7 +74,7 @@ struct SidebarObjectKindTests {
         #expect(SidebarObjectKind.allCases.filter { $0.category == .type } == [.type])
         #expect(
             SidebarObjectKind.allCases.filter { $0.category == .table }
-                == [.table, .view, .materializedView, .foreignTable]
+                == [.table, .view, .materializedView, .foreignTable, .sequence]
         )
     }
 }

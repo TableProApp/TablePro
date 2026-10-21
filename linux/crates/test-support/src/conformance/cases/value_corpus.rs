@@ -13,8 +13,7 @@ use tablepro_core::{Connection, DriverError, EditorSession, EditorSessionOptions
 use tokio_util::sync::CancellationToken;
 
 use crate::conformance::support::{
-    CALL_DEADLINE, Collected, apply, connect, create_scratch_table, expect, run_completed, run_options, within,
-    writable,
+    CALL_DEADLINE, Collected, apply, connect, expect, run_completed, run_options, unique, within, writable,
 };
 use crate::conformance::{ConformanceEngine, ConformanceFailure, CorpusColumn, ValueCorpusEngine};
 
@@ -47,7 +46,7 @@ pub async fn value_corpus_reads_as_the_grid_shows<E: ValueCorpusEngine>(engine: 
     for (index, column) in corpus.iter().enumerate() {
         // A column the server refuses is listed with the wrong values,
         // so one run reports the whole corpus.
-        let table = match load(&engine, connection.as_ref(), index, column).await {
+        let table = match load(&engine, connection.as_ref(), &format!("corpus_{index}"), column).await {
             Ok(table) => table,
             Err(failure) => {
                 wrong.push(failure.to_string());
@@ -72,20 +71,17 @@ pub async fn value_corpus_reads_as_the_grid_shows<E: ValueCorpusEngine>(engine: 
     })
 }
 
-async fn load<E: ConformanceEngine>(
+/// A scratch table holding `column` as `v`, with a row for each of its
+/// values.
+pub(crate) async fn load<E: ConformanceEngine>(
     engine: &E,
     connection: &dyn Connection,
-    index: usize,
+    prefix: &str,
     column: &CorpusColumn,
 ) -> Result<TableRef, ConformanceFailure> {
-    let table = create_scratch_table(engine, connection, &format!("corpus_{index}")).await?;
+    let table = corpus_table(engine, connection, prefix, column, &column.setup_sql).await?;
     let dialect = connection.dialect();
     let table_sql = dialect.qualify(&table);
-    let mut schema = column.setup_sql.clone();
-    schema.push(format!("ALTER TABLE {table_sql} ADD {}", column.declaration));
-    apply(connection, &table, WriteKind::SchemaChanges, schema)
-        .await
-        .map_err(|error| ConformanceFailure::setup(format!("`{}`: {error}", column.declaration)))?;
     let names = [
         dialect.quote_identifier("id"),
         dialect.quote_identifier("label"),
@@ -106,6 +102,30 @@ async fn load<E: ConformanceEngine>(
     apply(connection, &table, WriteKind::RowChanges, inserts)
         .await
         .map_err(|error| ConformanceFailure::setup(format!("`{}` values: {error}", column.declaration)))?;
+    Ok(table)
+}
+
+/// An empty scratch table with `column` added as `v`, after `setup`. A
+/// second table of the same column passes no setup: a type it creates
+/// already exists.
+pub(crate) async fn corpus_table<E: ConformanceEngine>(
+    engine: &E,
+    connection: &dyn Connection,
+    prefix: &str,
+    column: &CorpusColumn,
+    setup: &[String],
+) -> Result<TableRef, ConformanceFailure> {
+    let table = engine.scratch_table(&unique(prefix));
+    let mut schema = vec![engine.create_scratch_table_sql(&table)];
+    schema.extend_from_slice(setup);
+    schema.push(format!(
+        "ALTER TABLE {} ADD {}",
+        connection.dialect().qualify(&table),
+        column.declaration
+    ));
+    apply(connection, &table, WriteKind::SchemaChanges, schema)
+        .await
+        .map_err(|error| ConformanceFailure::setup(format!("`{}`: {error}", column.declaration)))?;
     Ok(table)
 }
 
@@ -256,12 +276,7 @@ fn compare(path: Path, column: &CorpusColumn, read: &Read, wrong: &mut Vec<Strin
             wrong.push(format!("{path_name}: `{declaration}` lost the row holding {sql}"));
             continue;
         };
-        let shown = match read_value {
-            Value::Null => None,
-            // What the grid shows for a value the driver could not read.
-            Value::Undecodable(undecoded) => Some(format!("<unreadable {}>", undecoded.type_name)),
-            other => Some(value_text(other, &read.column_type).unwrap_or_else(|| format!("<{other:?}>"))),
-        };
+        let shown = shown(read_value, &read.column_type);
         if shown.as_deref() != expected {
             wrong.push(format!(
                 "{path_name}: `{declaration}` holding {sql} shows {} as {}, expected {}",
@@ -273,7 +288,18 @@ fn compare(path: Path, column: &CorpusColumn, read: &Read, wrong: &mut Vec<Strin
     }
 }
 
-fn quoted(text: Option<&str>) -> String {
+/// The text the grid shows for `value` in a column of `column_type`,
+/// `None` for NULL.
+pub(crate) fn shown(value: &Value, column_type: &ColumnType) -> Option<String> {
+    match value {
+        Value::Null => None,
+        // What the grid shows for a value the driver could not read.
+        Value::Undecodable(undecoded) => Some(format!("<unreadable {}>", undecoded.type_name)),
+        other => Some(value_text(other, column_type).unwrap_or_else(|| format!("<{other:?}>"))),
+    }
+}
+
+pub(crate) fn quoted(text: Option<&str>) -> String {
     match text {
         Some(text) => format!("{text:?}"),
         None => "NULL".to_owned(),

@@ -176,6 +176,10 @@ public class TextViewController: NSViewController {
 
     var cancellables = Set<AnyCancellable>()
 
+    var snippetSession: SnippetSession?
+    var snippetChoicePresenter: SnippetChoicePresenter = SnippetChoiceMenu.present
+    var snippetChoiceGeneration = 0
+
     /// The width of the view floating along the editor's leading edge: the gutter.
     /// ``SourceEditorScrollView`` reserves it so the text scrolls clear of it.
     var floatingSubviewInsets: HorizontalEdgeInsets {
@@ -262,6 +266,7 @@ public class TextViewController: NSViewController {
     /// Set the contents of the editor.
     /// - Parameter text: The new contents of the editor.
     public func setText(_ text: String) {
+        endSnippetSession()
         self.textView.setText(text)
         self.foldModel?.documentDidReplace()
         self.setUpHighlighter()

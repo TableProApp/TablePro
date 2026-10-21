@@ -151,15 +151,26 @@ internal extension MainSplitViewController {
             .compactMap { rows[$0] }
     }
 
-    /// The tab is selected in its own connection first and the connection brought on screen second.
-    /// Bringing a connection on screen records its selected tab as used, so the other order would
-    /// record the tab it happened to be showing as the one the user came from.
+    // Tab before connection: bringing a connection on screen records its selected tab as used.
     private func showRecentTab(_ reference: RecentTabReference) {
         guard hostsOpenTab(reference),
-              let manager = workspaces.workspace(for: reference.connectionId)?.sessionState?.tabManager
+              let sessionState = workspaces.workspace(for: reference.connectionId)?.sessionState
         else { return }
+        let manager = sessionState.tabManager
+        TabSwitchTracer.shared.requestSwitch(.recentTab, to: reference.tabId)
+        let changesTab = manager.selectedTabId != reference.tabId
+        let arriving = sessionState.coordinator.arrivingRows(for: reference.tabId)
         manager.selectedTabId = reference.tabId
         workspaces.select(reference.connectionId)
+        // Only the connection changes, so no tab selection reaches handleTabChange.
+        if !changesTab {
+            TabSwitchTracer.shared.selectionApplied(
+                tabId: reference.tabId,
+                rows: arriving,
+                window: view.window,
+                isShowing: { [weak manager] in manager?.isShowing(reference.tabId) ?? false }
+            )
+        }
     }
 
     private func hostsOpenTab(_ reference: RecentTabReference) -> Bool {

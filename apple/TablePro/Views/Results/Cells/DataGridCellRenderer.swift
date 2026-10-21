@@ -5,6 +5,7 @@
 
 import AppKit
 import CoreText
+import TableProTextEngine
 
 /// Draws one data cell into a rect.
 ///
@@ -21,6 +22,12 @@ final class DataGridCellRenderer {
         let font: NSFont
         let color: NSColor
         let mark: DataGridCellTextMark?
+        let specialCharacterColor: NSColor?
+    }
+
+    private struct LaidOutLine {
+        let line: CTLine
+        let specialCharacters: SpecialCharacterLine?
     }
 
     /// A viewport holds a few hundred cells and a scroll reuses them, so this only has to outlive a
@@ -31,7 +38,7 @@ final class DataGridCellRenderer {
     /// wasted on a value the reader opens the inspector to read anyway.
     private static let maximumLaidOutCharacters = 300
 
-    private var lineCache: [LineKey: CTLine] = [:]
+    private var lineCache: [LineKey: LaidOutLine] = [:]
 
     private let checkboxCell: NSButtonCell = {
         let cell = NSButtonCell()
@@ -75,26 +82,35 @@ final class DataGridCellRenderer {
         let availableWidth = appearance.accessory.availableTextWidth(in: rect)
         guard availableWidth > 0, let context = NSGraphicsContext.current?.cgContext else { return }
 
-        let fullLine = line(for: appearance.text, appearance: appearance)
+        let laidOut = line(for: appearance.text, appearance: appearance)
+        let fullLine = laidOut.line
         let typographicWidth = CTLineGetTypographicBounds(fullLine, nil, nil, nil)
-        let ellipsis = line(for: "\u{2026}", appearance: appearance)
+        let ellipsis = line(for: "\u{2026}", appearance: appearance).line
         let ellipsisWidth = CTLineGetTypographicBounds(ellipsis, nil, nil, nil)
         guard Double(availableWidth) >= ellipsisWidth else { return }
 
-        let lineToDraw = typographicWidth > Double(availableWidth)
-            ? (CTLineCreateTruncatedLine(fullLine, Double(availableWidth), .end, ellipsis) ?? ellipsis)
-            : fullLine
+        let fits = typographicWidth <= Double(availableWidth)
+        let truncated = fits ? nil : CTLineCreateTruncatedLine(fullLine, Double(availableWidth), .end, ellipsis)
+        let lineToDraw = fits ? fullLine : (truncated ?? ellipsis)
 
         let font = appearance.font
         let baselineOffset = (rect.height - font.ascender + font.descender - font.leading) / 2 + font.ascender
 
+        let textX = rect.minX + DataGridMetrics.cellHorizontalInset
+        let baseline = rect.minY + baselineOffset
         context.saveGState()
         context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
-        context.textPosition = CGPoint(
-            x: rect.minX + DataGridMetrics.cellHorizontalInset,
-            y: rect.minY + baselineOffset
-        )
+        context.textPosition = CGPoint(x: textX, y: baseline)
         CTLineDraw(lineToDraw, context)
+        if let specialCharacters = laidOut.specialCharacters, fits || truncated != nil {
+            SpecialCharacterLine.draw(
+                specialCharacters.marks(drawnIn: lineToDraw),
+                fromX: textX,
+                top: baseline - font.ascender,
+                height: font.ascender - font.descender,
+                in: context
+            )
+        }
         context.restoreGState()
     }
 
@@ -102,19 +118,36 @@ final class DataGridCellRenderer {
     /// and so `CTLineCreateTruncatedLine` carries it onto a truncated line and its ellipsis. The
     /// mark is part of the key because two cells holding the same value in the same font and colour
     /// are two different drawings once one of them is struck through.
-    private func line(for text: String, appearance: DataGridCellAppearance) -> CTLine {
+    private func line(for text: String, appearance: DataGridCellAppearance) -> LaidOutLine {
         let font = appearance.font
-        let key = LineKey(text: text, font: font, color: appearance.textColor, mark: appearance.textMark)
+        let key = LineKey(
+            text: text,
+            font: font,
+            color: appearance.textColor,
+            mark: appearance.textMark,
+            specialCharacterColor: appearance.specialCharacterColor
+        )
         if let cached = lineCache[key] { return cached }
 
         let source = text as NSString
-        let laidOut = source.length > Self.maximumLaidOutCharacters
+        var laidOut = source.length > Self.maximumLaidOutCharacters
             ? source.substring(to: Self.maximumLaidOutCharacters) + "\u{2026}"
             : text
         var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: appearance.textColor]
         appearance.textMark?.attributes.forEach { attributes[$0.key] = $0.value }
-        let attributed = NSAttributedString(string: laidOut, attributes: attributes)
-        let created = CTLineCreateWithAttributedString(attributed as CFAttributedString)
+
+        let created: LaidOutLine
+        if let markColor = appearance.specialCharacterColor {
+            let marked = SpecialCharacterLine(
+                NSAttributedString(string: laidOut, attributes: attributes),
+                style: SpecialCharacterStyle(color: markColor, marksLineBreaks: true)
+            )
+            created = LaidOutLine(line: marked.line, specialCharacters: marked.marks.isEmpty ? nil : marked)
+        } else {
+            laidOut = laidOut.shownWithoutMarks
+            let attributed = NSAttributedString(string: laidOut, attributes: attributes)
+            created = LaidOutLine(line: CTLineCreateWithAttributedString(attributed as CFAttributedString), specialCharacters: nil)
+        }
 
         if lineCache.count >= Self.lineCacheLimit {
             lineCache.removeAll(keepingCapacity: true)

@@ -211,7 +211,7 @@ struct HighlightCondition {
             return .numeric
         case .boolean:
             return .boolean
-        case .text, .date, .timestamp, .datetime, .blob, .json, .enumType, .set, .spatial, .array, .none:
+        case .text, .date, .timestamp, .datetime, .blob, .json, .enumType, .set, .spatial, .vector, .array, .none:
             return .text
         }
     }

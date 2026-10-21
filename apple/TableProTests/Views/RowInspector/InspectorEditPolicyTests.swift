@@ -45,6 +45,14 @@ struct InspectorEditPolicyTests {
         )
     }
 
+    @Test("A field decoded under a binary format is never editable")
+    func binaryValueIsReadOnly() {
+        let field = makeField()
+        #expect(
+            InspectorFieldListView.isFieldEditable(field, kind: .binaryValue(.messagePack), rowIsEditable: true) == false
+        )
+    }
+
     @Test("An ordinary field on an editable row is editable")
     func ordinaryFieldIsEditable() {
         let field = makeField()

@@ -15,6 +15,7 @@ import TableProPluginKit
 internal enum SidebarMenuCommand: Equatable {
     case createTable
     case createView
+    case createSequence
     case createDatabase
     case filterDatabases
     case showAllDatabases
@@ -25,6 +26,8 @@ internal enum SidebarMenuCommand: Equatable {
     case copyDDL(DatabaseTreeTableRef)
     case refreshMaterializedView(DatabaseTreeTableRef)
     case editComment(DatabaseTreeTableRef)
+    case setSequenceNextValue(DatabaseTreeTableRef)
+    case editSequence(DatabaseTreeTableRef)
     case showStructure(DatabaseTreeTableRef)
     case showERDiagram
     case copyTableNames([String])
@@ -66,6 +69,7 @@ internal enum SidebarMenuCommand: Equatable {
     case copyObjectsTo(objects: [ObjectCopySelection], ref: DatabaseTreeTableRef?)
     case copyContainerTo(DatabaseContainerRef)
     case duplicateDatabase(DatabaseContainerRef)
+    case searchContainer(DatabaseContainerRef)
     case showAllTablesMetadata
     case refreshObjectKind(SidebarObjectKind)
     case refreshContainerObjectKind(DatabaseTreeObjectGroup)

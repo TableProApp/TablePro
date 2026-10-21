@@ -283,6 +283,7 @@ struct AISettings: Codable, Equatable, Sendable {
     var activeProviderID: UUID?
     var inlineSuggestionsEnabled: Bool
     var inlineSuggestionDebounceMs: Int
+    var useAppleIntelligence: Bool
     var includeSchema: Bool
     var includeCurrentQuery: Bool
     var includeQueryResults: Bool
@@ -306,6 +307,7 @@ struct AISettings: Codable, Equatable, Sendable {
         activeProviderID: nil,
         inlineSuggestionsEnabled: false,
         inlineSuggestionDebounceMs: AISettings.defaultInlineSuggestionDebounceMs,
+        useAppleIntelligence: false,
         includeSchema: true,
         includeCurrentQuery: true,
         includeQueryResults: false,
@@ -323,6 +325,7 @@ struct AISettings: Codable, Equatable, Sendable {
         activeProviderID: UUID? = nil,
         inlineSuggestionsEnabled: Bool = false,
         inlineSuggestionDebounceMs: Int = AISettings.defaultInlineSuggestionDebounceMs,
+        useAppleIntelligence: Bool = false,
         includeSchema: Bool = true,
         includeCurrentQuery: Bool = true,
         includeQueryResults: Bool = false,
@@ -338,6 +341,7 @@ struct AISettings: Codable, Equatable, Sendable {
         self.activeProviderID = activeProviderID
         self.inlineSuggestionsEnabled = inlineSuggestionsEnabled
         self.inlineSuggestionDebounceMs = inlineSuggestionDebounceMs
+        self.useAppleIntelligence = useAppleIntelligence
         self.includeSchema = includeSchema
         self.includeCurrentQuery = includeCurrentQuery
         self.includeQueryResults = includeQueryResults
@@ -359,6 +363,7 @@ struct AISettings: Codable, Equatable, Sendable {
         inlineSuggestionDebounceMs = container.decodeSetting(
             .inlineSuggestionDebounceMs, default: fallback.inlineSuggestionDebounceMs
         )
+        useAppleIntelligence = container.decodeSetting(.useAppleIntelligence, default: fallback.useAppleIntelligence)
         includeSchema = container.decodeSetting(.includeSchema, default: fallback.includeSchema)
         includeCurrentQuery = container.decodeSetting(.includeCurrentQuery, default: fallback.includeCurrentQuery)
         includeQueryResults = container.decodeSetting(.includeQueryResults, default: fallback.includeQueryResults)

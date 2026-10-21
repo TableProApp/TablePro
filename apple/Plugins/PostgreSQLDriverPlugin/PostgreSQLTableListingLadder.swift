@@ -14,9 +14,10 @@ struct PostgreSQLTableListingAttempt: Sendable, Equatable {
     let source: PostgreSQLTableListingSource
     let includeComments: Bool
     let includePartitionAwareness: Bool
+    var includeSequences = false
 
     var label: String {
-        "source=\(source) comments=\(includeComments) partitions=\(includePartitionAwareness)"
+        "source=\(source) comments=\(includeComments) partitions=\(includePartitionAwareness) sequences=\(includeSequences)"
     }
 }
 
@@ -30,7 +31,9 @@ enum PostgreSQLTableListingLadder {
     static let undefinedObjectSQLState = "42704"
 
     static let degradableAttempts: [PostgreSQLTableListingAttempt] = [
-        PostgreSQLTableListingAttempt(source: .systemCatalogs, includeComments: true, includePartitionAwareness: true),
+        PostgreSQLTableListingAttempt(
+            source: .systemCatalogs, includeComments: true, includePartitionAwareness: true, includeSequences: true
+        ),
         PostgreSQLTableListingAttempt(source: .systemCatalogs, includeComments: false, includePartitionAwareness: true)
     ]
 
@@ -51,7 +54,8 @@ enum PostgreSQLTableListingLadder {
                 includeMaterializedViews: includeMaterializedViews,
                 includeForeignTables: includeForeignTables,
                 includeComments: attempt.includeComments,
-                includePartitionAwareness: attempt.includePartitionAwareness
+                includePartitionAwareness: attempt.includePartitionAwareness,
+                includeSequences: attempt.includeSequences
             )
         case .informationSchema:
             return PostgreSQLTableListing.informationSchemaQuery(in: scope)

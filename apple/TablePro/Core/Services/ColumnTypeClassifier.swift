@@ -240,6 +240,10 @@ struct ColumnTypeClassifier {
             map[key] = { .spatial(rawType: $0) }
         }
 
+        for key in ["VECTOR", "HALFVEC", "SPARSEVEC"] {
+            map[key] = { .vector(rawType: $0) }
+        }
+
         /// An Oracle `BFILE` cell is the `BFILENAME('DIR', 'file')` call that points at the file, never its bytes,
         /// so it edits as text; the hex editor would write bytes the driver refuses for a BFILE.
         for key in [

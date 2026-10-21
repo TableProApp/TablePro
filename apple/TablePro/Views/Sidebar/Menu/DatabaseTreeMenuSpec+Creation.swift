@@ -9,6 +9,7 @@ import TableProPluginKit
 internal struct SidebarCreationFacts: Equatable {
     internal var canCreateTable = false
     internal var canCreateView = false
+    internal var canCreateSequence = false
     internal var supportsCreateSchema = false
     internal var supportsCreateDatabase = false
     internal var offersBrowsedFolders = false
@@ -29,6 +30,7 @@ internal extension SidebarCreationFacts {
         return SidebarCreationFacts(
             canCreateTable: CreateTableEligibility.canCreateTable(with: driver),
             canCreateView: CreateViewEligibility.canCreateView(with: driver),
+            canCreateSequence: driver?.createSequenceTemplate() != nil,
             supportsCreateSchema: plugins.supportsCreateSchema(for: databaseType),
             supportsCreateDatabase: plugins.supportsContainerSwitching(for: databaseType),
             offersBrowsedFolders: offersBrowsedFolders,
@@ -68,6 +70,9 @@ internal extension DatabaseTreeMenuSpec {
         }
         if writes, facts.canCreateView {
             objects.append(.command(String(localized: "New View…"), .createView))
+        }
+        if writes, facts.canCreateSequence {
+            objects.append(.command(String(localized: "New Sequence…"), .createSequence))
         }
         var containers: [DatabaseTreeMenuItem] = []
         if writes, facts.supportsCreateSchema {

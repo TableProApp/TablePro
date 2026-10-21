@@ -13,6 +13,13 @@ private struct LegacyColumnLayoutPayload: Decodable {
     let columnWidths: [String: CGFloat]
 }
 
+private struct PreviousStableColumnLayout: Decodable {
+    let columnWidths: [String: CGFloat]
+    let columnContentWidths: [String: CGFloat]?
+    let columnOrder: [String]?
+    let hiddenColumns: [String]?
+}
+
 @MainActor
 struct FileColumnLayoutPersisterTests {
     private func makeIsolatedPersister() -> (FileColumnLayoutPersister, URL) {
@@ -54,6 +61,63 @@ struct FileColumnLayoutPersisterTests {
         let loaded = persister.load(for: key("users", connectionId))
         #expect(loaded?.columnWidths == layout.columnWidths)
         #expect(loaded?.columnOrder == layout.columnOrder)
+    }
+
+    @Test("A frozen column count round-trips, and unfreezing removes it")
+    func frozenColumnCountRoundTrip() throws {
+        let (persister, directory) = makeIsolatedPersister()
+        defer { cleanup(directory) }
+
+        let tableKey = key("orders", UUID())
+        var layout = ColumnLayoutState()
+        layout.columnOrder = ["id", "customer", "total"]
+        layout.frozenColumnCount = 2
+        persister.save(layout, for: tableKey)
+        #expect(try #require(persister.load(for: tableKey)).frozenColumnCount == 2)
+
+        layout.frozenColumnCount = 0
+        persister.save(layout, for: tableKey)
+        #expect(try #require(persister.load(for: tableKey)).frozenColumnCount == 0)
+    }
+
+    @Test("Clearing the geometry unfreezes the columns and keeps the hidden ones")
+    func clearGeometryUnfreezes() throws {
+        let (persister, directory) = makeIsolatedPersister()
+        defer { cleanup(directory) }
+
+        let tableKey = key("orders", UUID())
+        var layout = ColumnLayoutState()
+        layout.columnOrder = ["id", "total"]
+        layout.frozenColumnCount = 1
+        persister.save(layout, for: tableKey)
+        persister.saveHiddenColumns(["notes"], for: tableKey)
+
+        persister.clearGeometry(for: tableKey)
+
+        #expect(persister.load(for: tableKey) == nil)
+        #expect(persister.loadHiddenColumns(for: tableKey) == ["notes"])
+    }
+
+    @Test("A layout file with a frozen count still decodes in a build that does not know the key")
+    func frozenColumnCountIsReadableByOlderBuilds() throws {
+        let (persister, directory) = makeIsolatedPersister()
+        defer { cleanup(directory) }
+
+        let connectionId = UUID()
+        let tableKey = key("orders", connectionId)
+        var layout = ColumnLayoutState()
+        layout.columnWidths = ["id": 80]
+        layout.columnOrder = ["id", "total"]
+        layout.frozenColumnCount = 1
+        persister.save(layout, for: tableKey)
+
+        let fileURL = directory.appendingPathComponent("\(connectionId.uuidString).json")
+        let entries = try JSONDecoder().decode(
+            [String: PreviousStableColumnLayout].self,
+            from: Data(contentsOf: fileURL)
+        )
+        #expect(entries[tableKey.storageKey]?.columnOrder == ["id", "total"])
+        #expect(entries[tableKey.storageKey]?.columnWidths == ["id": 80])
     }
 
     @Test("Content widths round-trip while legacy readers retain the actual total width")

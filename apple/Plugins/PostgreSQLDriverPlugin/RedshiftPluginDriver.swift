@@ -91,6 +91,17 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         return merged.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
+    func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? {
+        guard !schemas.isEmpty else { return [] }
+        let result = try await execute(query: RedshiftTableCatalog.listingQuery(inSchemas: schemas))
+        var tables = result.rows.compactMap { RedshiftTableCatalog.table(fromListingRow: $0.map(\.asText)) }
+        for schema in schemas where isExternalSchema(schema) {
+            let localNames = Set(tables.lazy.filter { $0.schema == schema }.map(\.name))
+            tables += await fetchExternalTables(schema: schema).filter { !localNames.contains($0.name) }
+        }
+        return tables
+    }
+
     private func fetchExternalTables(schema: String) async -> [PluginTableInfo] {
         do {
             let result = try await execute(

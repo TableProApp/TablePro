@@ -208,6 +208,6 @@ struct MSSQLStatementGenerator {
     }
 
     static func quote(_ name: String) -> String {
-        "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
+        "[\(name.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
     }
 }

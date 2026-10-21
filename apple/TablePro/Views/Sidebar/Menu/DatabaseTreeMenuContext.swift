@@ -56,6 +56,7 @@ internal struct DatabaseTreeMenuContext {
     internal var canCopyObjects: Bool = false
     /// Duplicating means creating a database, which is the same test the New Database command uses.
     internal var canDuplicateDatabase: Bool = false
+    internal var canSearchData: Bool = false
 
     /// Whether this connection has a dump tool at all. Backing up writes nothing to the database,
     /// so safe mode does not gate it, which is the same rule File > Backup Dump follows.
@@ -63,6 +64,7 @@ internal struct DatabaseTreeMenuContext {
     /// Whether the driver can create a table, from `CreateTableEligibility`.
     internal var canCreateTable: Bool = false
     internal var canCreateView: Bool = false
+    internal var canCreateSequence: Bool = false
     internal var canCreateDatabase: Bool = false
     /// Which materialized-view and comment commands the driver has statements for.
     internal var objectToolSupport: DatabaseObjectToolEligibility.Support = .none
@@ -83,6 +85,7 @@ internal extension DatabaseTreeMenuContext {
         SidebarCreationFacts(
             canCreateTable: canCreateTable,
             canCreateView: canCreateView,
+            canCreateSequence: canCreateSequence,
             supportsCreateSchema: schemaEditEligibility.supportsCreateSchema,
             supportsCreateDatabase: canCreateDatabase,
             offersBrowsedFolders: offersBrowsedFolders,

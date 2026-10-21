@@ -102,6 +102,63 @@ struct SQLStatementGeneratorImportTests {
         #expect(try makeGenerator(databaseType: .mysql).maxBindParameters == 65_535)
     }
 
+    @Test("keyMatchCountStatement asks one count per key, tagged with its position")
+    func testKeyMatchCountStatement() throws {
+        let stmt = try #require(try makeGenerator(databaseType: .postgresql).keyMatchCountStatement(
+            keyColumns: ["tenant", "id"],
+            keys: [[.text("t1"), .text("1")], [.text("t1"), .null]]
+        ))
+        #expect(stmt.sql == """
+            SELECT 0, COUNT(*) FROM "users" WHERE "tenant" = $1 AND "id" = $2 \
+            UNION ALL SELECT 1, COUNT(*) FROM "users" WHERE "tenant" = $3 AND "id" = $4
+            """)
+        #expect(stmt.parameters.count == 4)
+        #expect(stmt.parameters[1] as? String == "1")
+        #expect(stmt.parameters[3] == nil)
+    }
+
+    @Test("keyMatchCountStatement returns nil for no keys or a key of the wrong width")
+    func testKeyMatchCountStatementGuards() throws {
+        let generator = try makeGenerator()
+        #expect(generator.keyMatchCountStatement(keyColumns: ["id"], keys: []) == nil)
+        #expect(generator.keyMatchCountStatement(keyColumns: [], keys: [[]]) == nil)
+        #expect(generator.keyMatchCountStatement(keyColumns: ["id"], keys: [["1", "2"]]) == nil)
+    }
+
+    @Test("keyedUpdateStatement sets the given columns and matches on the key")
+    func testKeyedUpdateStatement() throws {
+        let stmt = try #require(try makeGenerator().keyedUpdateStatement(
+            columns: ["name", "note"],
+            values: [.text("Ada"), .null],
+            keyColumns: ["id"],
+            keyValues: ["7"]
+        ))
+        #expect(stmt.sql == "UPDATE `users` SET `name` = ?, `note` = ? WHERE `id` = ?")
+        #expect(stmt.parameters.count == 3)
+        #expect(stmt.parameters[0] as? String == "Ada")
+        #expect(stmt.parameters[1] == nil)
+        #expect(stmt.parameters[2] as? String == "7")
+    }
+
+    @Test("keyedUpdateStatement numbers PostgreSQL placeholders across SET and WHERE")
+    func testKeyedUpdateStatementPostgres() throws {
+        let stmt = try #require(try makeGenerator(databaseType: .postgresql).keyedUpdateStatement(
+            columns: ["name"],
+            values: [.text("Ada")],
+            keyColumns: ["tenant", "id"],
+            keyValues: [.text("t1"), "7"]
+        ))
+        #expect(stmt.sql == "UPDATE \"users\" SET \"name\" = $1 WHERE \"tenant\" = $2 AND \"id\" = $3")
+    }
+
+    @Test("keyedUpdateStatement returns nil with nothing to set or no key")
+    func testKeyedUpdateStatementGuards() throws {
+        let generator = try makeGenerator()
+        #expect(generator.keyedUpdateStatement(columns: [], values: [], keyColumns: ["id"], keyValues: ["1"]) == nil)
+        #expect(generator.keyedUpdateStatement(columns: ["a"], values: ["1"], keyColumns: [], keyValues: []) == nil)
+        #expect(generator.keyedUpdateStatement(columns: ["a"], values: [], keyColumns: ["id"], keyValues: ["1"]) == nil)
+    }
+
     @Test("deleteAllRowsStatement quotes the table identifier per dialect")
     func testDeleteAllRows() throws {
         #expect(try makeGenerator(databaseType: .mysql).deleteAllRowsStatement() == "DELETE FROM `users`")

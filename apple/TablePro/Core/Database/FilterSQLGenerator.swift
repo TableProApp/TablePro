@@ -413,6 +413,10 @@ struct FilterSQLGenerator {
             return "regexp_matches(\(column), '\(escapedPattern)', 'i')"
         case .regexpLike:
             guard ignoresCase else { return "REGEXP_LIKE(\(column), '\(escapedPattern)')" }
+            // Trino's REGEXP_LIKE takes two arguments and reads case from a flag inside the pattern.
+            guard dialect.caseSensitivityStyle != .regexFlag else {
+                return "REGEXP_LIKE(\(column), '(?i)\(escapedPattern)')"
+            }
             return "REGEXP_LIKE(\(column), '\(escapedPattern)', 'i')"
         case .match:
             guard ignoresCase else { return "match(\(column), '\(escapedPattern)')" }
@@ -440,7 +444,31 @@ struct FilterSQLGenerator {
             return .value(trimmed)
         }
 
+        if let temporal = oracleTemporalLiteral(trimmed, columnType: columnType) {
+            return .value(temporal)
+        }
+
         return .value(quotedLiteral(escapeStringValue(trimmed)))
+    }
+
+    // Oracle reads a quoted date through NLS_DATE_FORMAT, `DD-MON-RR` by default, and rejects
+    // `'2024-01-05'` with ORA-01861; its ANSI literals take exactly these shapes, the time with seconds.
+    private func oracleTemporalLiteral(_ value: String, columnType: ColumnType?) -> String? {
+        guard family == .oracle, let columnType, columnType.isDateType, !columnType.isTimeOnly else { return nil }
+        let characters = Array(value)
+        let isDigit: (Int) -> Bool = { characters[$0].isASCII && characters[$0].isNumber }
+        guard characters.count >= 10, [0, 1, 2, 3, 5, 6, 8, 9].allSatisfy(isDigit),
+              characters[4] == "-", characters[7] == "-" else { return nil }
+        if characters.count == 10 { return "DATE '\(value)'" }
+        guard characters.count >= 19, characters[10] == " " || characters[10] == "T",
+              [11, 12, 14, 15, 17, 18].allSatisfy(isDigit), characters[13] == ":", characters[16] == ":"
+        else { return nil }
+        let fraction = characters.dropFirst(19)
+        if !fraction.isEmpty {
+            guard fraction.first == ".", (2...10).contains(fraction.count),
+                  (20 ..< characters.count).allSatisfy(isDigit) else { return nil }
+        }
+        return "TIMESTAMP '\(String(characters[0..<10])) \(String(characters[11...]))'"
     }
 
     /// PostgreSQL gives a quoted literal the column's own type, and a `real` never equals the numeric `0.1`.
@@ -519,11 +547,15 @@ struct FilterSQLGenerator {
                 .replacingOccurrences(of: "%", with: "\\\\%")
                 .replacingOccurrences(of: "_", with: "\\\\_")
         }
-        guard value.contains("!") || value.contains("%") || value.contains("_") else { return value }
-        return value
+        // `[` opens a character class in a SQL Server LIKE pattern.
+        let escapesBracket = family == .mssql
+        guard value.contains("!") || value.contains("%") || value.contains("_")
+            || escapesBracket && value.contains("[") else { return value }
+        let escaped = value
             .replacingOccurrences(of: "!", with: "!!")
             .replacingOccurrences(of: "%", with: "!%")
             .replacingOccurrences(of: "_", with: "!_")
+        return escapesBracket ? escaped.replacingOccurrences(of: "[", with: "![") : escaped
     }
 }
 

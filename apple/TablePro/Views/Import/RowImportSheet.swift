@@ -27,10 +27,10 @@ struct RowImportSheet: View {
     let sourceName: String
     let formatId: String
 
-    private enum Destination: Hashable {
-        case existingTable
-        case newTable
-    }
+    /// Set when the sheet edits one file of several: it hands its choices back on Done and imports nothing.
+    let edit: RowImportSheetEdit?
+
+    private typealias Destination = RowImportDestination
 
     /// The identity of a read. `.task(id:)` cancels the read in flight when it changes.
     private struct SourceRead: Hashable {
@@ -47,9 +47,12 @@ struct RowImportSheet: View {
         let columns: [String]
         let columnMapping: [String: String]
         let newTable: PluginCreateTableDefinition?
+        let rowWriting: ImportRowWriting
     }
 
     @State private var destination: Destination = .existingTable
+    @State private var writeMode: ImportWriteMode = .insert
+    @State private var chosenMatchKey: ImportMatchKey?
 
     /// The database and schema every read and write of this sheet goes to: where the connection was
     /// browsing when the sheet opened. The sheet is modal to its window, but another window on the
@@ -105,6 +108,7 @@ struct RowImportSheet: View {
 
     @State private var importService: ImportService?
     @State private var importResult: PluginImportResult?
+    @State private var importTally: ImportRowTally?
     @State private var importedRows: DatabaseObjectChange?
     @State private var importError: (any Error)?
     @State private var showProgressDialog = false
@@ -127,14 +131,30 @@ struct RowImportSheet: View {
         connection: DatabaseConnection,
         fileURL: URL,
         sourceName: String,
-        formatId: String
+        formatId: String,
+        edit: RowImportSheetEdit? = nil
     ) {
         _isPresented = isPresented
         self.connection = connection
         self.fileURL = fileURL
         self.sourceName = sourceName
         self.formatId = formatId
-        _scope = State(initialValue: DatabaseManager.shared.browseScope(for: connection.id))
+        self.edit = edit
+        guard let edit else {
+            _scope = State(initialValue: DatabaseManager.shared.browseScope(for: connection.id))
+            return
+        }
+        let target = edit.target
+        _scope = State(initialValue: edit.scope)
+        _destination = State(initialValue: target.destination)
+        _selectedTargetTable = State(initialValue: target.existingTable)
+        _newTableName = State(initialValue: target.newTableName)
+        _proposedTableName = State(initialValue: target.proposedTableName)
+        _newTable = State(initialValue: target.newTable)
+        _newTablePlanner = State(initialValue: edit.planner)
+        _mapping = StateObject(wrappedValue: RowImportMapping(seed: target.mapping.map { mapping in
+            (TableScope(table: mapping.table, in: edit.scope), mapping.choicesByField)
+        }))
     }
 
     // MARK: - Derived catalog state
@@ -151,6 +171,9 @@ struct RowImportSheet: View {
     /// planner rather than folded into `catalogNameKeys`, which is rebuilt only when the catalog is.
     private var newTableNameProblem: NewTableNameProblem? {
         let trimmed = newTableName.trimmingCharacters(in: .whitespaces)
+        if let edit, !trimmed.isEmpty, edit.takenTableNames.contains(trimmed.lowercased()) {
+            return .nameTaken
+        }
         let problem = NewTableNaming.problem(
             with: newTableName,
             style: NewTableNameStyle.forDatabaseType(connection.type),
@@ -177,10 +200,12 @@ struct RowImportSheet: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             Divider()
 
-            optionsForm
-                .padding(.horizontal)
-                .padding(.vertical, 10)
-            Divider()
+            if edit == nil {
+                optionsForm
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
+                Divider()
+            }
 
             footerView
                 .padding()
@@ -193,8 +218,10 @@ struct RowImportSheet: View {
         }
         .background { detectionSignatureObserver }
         .task {
-            settingsSnapshot = PluginSettingsSnapshot(
-                plugins: [currentPlugin as? any SettablePluginDiscoverable].compactMap { $0 })
+            if edit == nil {
+                settingsSnapshot = PluginSettingsSnapshot(
+                    plugins: [currentPlugin as? any SettablePluginDiscoverable].compactMap { $0 })
+            }
             suggestNewTableName()
             await loadTables()
         }
@@ -227,6 +254,7 @@ struct RowImportSheet: View {
             guard isShowing else { return }
             TransferResultAlert.presentImportSuccess(
                 result: importResult,
+                rowTally: importTally,
                 window: hostWindow,
                 sourceFileName: sourceName,
                 targetTable: selectedTargetTable
@@ -293,6 +321,39 @@ struct RowImportSheet: View {
                     .labelsHidden()
                     .frame(maxWidth: 280, alignment: .leading)
                 }
+
+                // A run of several files inserts only, so one file of it has no mode to choose.
+                if edit == nil {
+                    GridRow {
+                        Text("Import as:")
+                        Picker(String(localized: "Import as"), selection: $writeMode) {
+                            ForEach(ImportWriteMode.allCases) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        .help(String(localized: """
+                            Update changes the rows whose key is in the file. Insert or Update also adds the rest, \
+                            and Insert, Skip Existing adds only rows whose key is not in the table. Columns not \
+                            mapped keep their values.
+                            """))
+                    }
+                }
+
+                if writeMode.matchesExistingRows {
+                    GridRow {
+                        Text("Match on:")
+                        Picker(String(localized: "Match on"), selection: matchKeyBinding) {
+                            ForEach(mapping.matchKeys) { key in
+                                Text(key.label).tag(ImportMatchKey?.some(key))
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 280, alignment: .leading)
+                        .disabled(mapping.matchKeys.isEmpty)
+                    }
+                }
             } else {
                 GridRow {
                     Text("New table:")
@@ -358,7 +419,7 @@ struct RowImportSheet: View {
         } actions: {
             Button("Cancel") { isPresented = false }
                 .keyboardShortcut(.cancelAction)
-            Button("Import") { performImport() }
+            Button(edit == nil ? String(localized: "Import") : String(localized: "Done")) { performImport() }
                 .buttonStyle(.borderedProminent)
                 .disabled(!canImport)
                 .keyboardShortcut(.defaultAction)
@@ -621,6 +682,22 @@ struct RowImportSheet: View {
         )
     }
 
+    private var matchKey: ImportMatchKey? {
+        chosenMatchKey.flatMap { chosen in mapping.matchKeys.first { $0 == chosen } } ?? mapping.matchKeys.first
+    }
+
+    private var matchKeyBinding: Binding<ImportMatchKey?> {
+        Binding(
+            get: { matchKey },
+            set: { chosenMatchKey = $0 }
+        )
+    }
+
+    private var rowWriting: ImportRowWriting {
+        guard writeMode.matchesExistingRows, let matchKey else { return .insert }
+        return ImportRowWriting(mode: writeMode, keyColumns: matchKey.columns)
+    }
+
     private var allColumnsIncluded: Binding<Bool> {
         Binding(
             get: { newTable.includesEveryColumn },
@@ -634,37 +711,17 @@ struct RowImportSheet: View {
             if mapping.mapsOneColumnTwice {
                 return String(localized: "Each column can be mapped from only one field.")
             }
-            return nil
+            guard selectedTargetTable != nil, currentReadHasLanded else { return nil }
+            return ImportRowWritingProblem.of(
+                mode: writeMode,
+                key: matchKey,
+                mappedColumns: Array(mapping.columnMapping.values)
+            )?.message
         case .newTable:
             if let problem = newTableNameProblem {
-                switch problem {
-                case .blank:
-                    return String(localized: "Enter a name for the new table.")
-                case .nameTaken:
-                    return String(
-                        format: String(localized: "A table named %@ already exists."),
-                        newTableName.trimmingCharacters(in: .whitespaces)
-                    )
-                case .reservedPrefix(let prefix):
-                    return String(
-                        format: String(localized: "This database keeps names beginning with %@ for itself."),
-                        prefix
-                    )
-                case .tooLong(let maximumBytes):
-                    return String(
-                        format: String(localized: "This database allows at most %lld bytes in a table name."),
-                        Int64(maximumBytes)
-                    )
-                }
+                return problem.message(for: newTableName)
             }
-            switch newTable.problem {
-            case .unnamedColumn:
-                return String(localized: "Every included column needs a name.")
-            case .duplicateName:
-                return String(localized: "Column names must be unique.")
-            case nil:
-                return nil
-            }
+            return newTable.problem?.message
         }
     }
 
@@ -782,7 +839,7 @@ struct RowImportSheet: View {
         let suggestion = NewTableNaming.suggestion(
             forFileNamed: sourceName,
             style: NewTableNameStyle.forDatabaseType(connection.type),
-            avoiding: (catalogNameKeys ?? []).subtracting(ours)
+            avoiding: (catalogNameKeys ?? []).subtracting(ours).union(edit?.takenTableNames ?? [])
         )
         proposedTableName = suggestion
         newTableName = suggestion
@@ -861,13 +918,22 @@ struct RowImportSheet: View {
         isLoadingContext = true
         loadError = nil
         do {
-            let columns = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                try await driver.fetchColumns(table: table)
-            }.map(\.name)
+            let (columns, indexes) = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                (try await driver.fetchColumns(table: table), try? await driver.fetchIndexes(table: table))
+            }
             guard !Task.isCancelled else { return }
+            if indexes == nil {
+                Self.logger.warning("Could not read the target's indexes, so only its primary key can be matched on")
+            }
             let fields = try await ImportFieldDetection.detectFields(plugin: plugin, at: fileURL, targetTable: table)
             guard !Task.isCancelled else { return }
-            mapping.load(fields: fields, columns: columns, for: TableScope(table: table, in: scope), read: request)
+            mapping.load(
+                fields: fields,
+                columns: columns.map(\.name),
+                matchKeys: ImportMatchKey.options(columns: columns, indexes: indexes ?? []),
+                for: TableScope(table: table, in: scope),
+                read: request
+            )
         } catch {
             guard !Task.isCancelled else { return }
             loadError = error.localizedDescription
@@ -879,6 +945,10 @@ struct RowImportSheet: View {
     // MARK: - Import
 
     private func performImport() {
+        if let edit {
+            finishEdit(edit)
+            return
+        }
         guard let scope else {
             importError = DatabaseError.notConnected
             showErrorDialog = true
@@ -899,14 +969,15 @@ struct RowImportSheet: View {
                     fields: mapping.fields,
                     columns: mapping.columns,
                     columnMapping: mapping.columnMapping,
-                    newTable: nil
+                    newTable: nil,
+                    rowWriting: rowWriting
                 ),
                 scope: scope
             )
         case .newTable:
             let name = newTableName.trimmingCharacters(in: .whitespaces)
             guard !name.isEmpty, let definition = newTable.definition(tableName: name) else {
-                importError = Self.createTableStatementError
+                importError = RowImportTableMaker.statementError
                 showErrorDialog = true
                 return
             }
@@ -918,18 +989,36 @@ struct RowImportSheet: View {
                     fields: fields,
                     columns: fields.compactMap { columnMapping[$0] },
                     columnMapping: columnMapping,
-                    newTable: definition
+                    newTable: definition,
+                    rowWriting: .insert
                 ),
                 scope: scope
             )
         }
     }
 
-    private static var createTableStatementError: NSError {
-        NSError(
-            domain: "RowImport", code: -1,
-            userInfo: [NSLocalizedDescriptionKey: String(localized: "Could not build the CREATE TABLE statement")]
+    /// Hands the choices back only when they answer a read of the current table and options, the same readiness
+    /// Import asks for.
+    private func finishEdit(_ edit: RowImportSheetEdit) {
+        guard currentReadIsReady else { return }
+        var target = RowImportTarget(
+            destination: destination,
+            existingTable: selectedTargetTable,
+            newTableName: newTableName,
+            proposedTableName: proposedTableName,
+            mapping: nil,
+            newTable: newTable
         )
+        if destination == .existingTable, let table = selectedTargetTable {
+            target.mapping = RowImportTarget.Mapping(
+                table: table,
+                fields: mapping.rows.map(\.field),
+                columns: mapping.columns,
+                choices: mapping.choices
+            )
+        }
+        edit.onDone(target)
+        isPresented = false
     }
 
     private func runImport(_ plan: ImportPlan, scope: DatabaseScope) {
@@ -942,7 +1031,13 @@ struct RowImportSheet: View {
             do {
                 var authorization: OperationReceipt?
                 if let newTable = plan.newTable {
-                    authorization = try await prepareTable(newTable, scope: scope)
+                    authorization = try await RowImportTableMaker(connection: connection).prepare(
+                        [newTable],
+                        scope: scope,
+                        planner: newTablePlanner
+                    ) { table, sql in
+                        newTablePlanner.recordCreated(table, createTableSQL: sql)
+                    }
                 }
                 mapping.remember(
                     fields: plan.fields,
@@ -959,12 +1054,14 @@ struct RowImportSheet: View {
                     targetTable: targetTable,
                     columnMapping: plan.columnMapping,
                     sourceFields: Set(plan.fields),
+                    rowWriting: plan.rowWriting,
                     authorization: authorization
                 )
                 await MainActor.run {
                     showProgressDialog = false
                     importSucceeded = true
                     importResult = result
+                    importTally = service.state.rowTally
                     importedRows = DatabaseObjectChange(
                         connectionId: connection.id,
                         scope: scope,
@@ -992,112 +1089,5 @@ struct RowImportSheet: View {
                 }
             }
         }
-    }
-
-    /// Returns the gate's grant for the table's own statements, which the rows that follow reuse.
-    @MainActor
-    private func prepareTable(
-        _ definition: PluginCreateTableDefinition,
-        scope: DatabaseScope
-    ) async throws -> OperationReceipt {
-        guard ImportDataSinkAdapter.canWriteRows(into: connection.type) else {
-            throw PluginImportError.importFailed(String(
-                format: String(localized: "%@ cannot take rows from this file, so no table was created."),
-                connection.type.rawValue
-            ))
-        }
-        let tableName = definition.tableName
-        let table = TableScope(table: tableName, in: scope)
-        let statements = try await DatabaseManager.shared.createTableStatements(
-            definition: definition,
-            scope: scope,
-            route: DatabaseManager.shared.executionRoute(for: scope)
-        )
-        guard !statements.isEmpty else { throw Self.createTableStatementError }
-        let sql = statements.joined(separator: "\n")
-        switch newTablePlanner.plan(forTable: table, createTableSQL: sql) {
-        case .create:
-            let receipt = try await createTable(statements: statements, scope: scope)
-            newTablePlanner.recordCreated(table, createTableSQL: sql)
-            return receipt
-        case .reuseAfterClearing:
-            return try await clearRows(of: tableName, scope: scope)
-        case .nameTakenWithDifferentColumns:
-            throw PluginImportError.importFailed(
-                String(
-                    format: String(localized: "The table %@ was already created with different columns. Choose another name."),
-                    tableName
-                )
-            )
-        }
-    }
-
-    @MainActor
-    private func clearRows(of tableName: String, scope: DatabaseScope) async throws -> OperationReceipt {
-        let generator = try SQLStatementGenerator(
-            tableName: tableName,
-            columns: [],
-            primaryKeyColumns: [],
-            databaseType: connection.type
-        )
-        let sql = generator.deleteAllRowsStatement()
-        let receipt = try await authorize(
-            sql: sql, kind: .destructiveQuery, description: String(localized: "Clear Table")
-        )
-        try await runOnLeasedDriver(sql, scope: scope)
-        return receipt
-    }
-
-    /// One call per statement the driver wrote, because an engine that runs one statement per call refuses a table
-    /// and its indexes sent together.
-    private func createTable(statements: [String], scope: DatabaseScope) async throws -> OperationReceipt {
-        let script = SQLScriptText(databaseType: connection.type).script(statements)
-        let receipt = try await authorize(
-            sql: script, kind: .schemaMutation, description: String(localized: "Create Table")
-        )
-        for statement in statements {
-            try await runOnLeasedDriver(statement, scope: scope)
-        }
-        CatalogChangeService.post(
-            .changed(CatalogChange(connectionId: connection.id, database: scope.database, kinds: .tables))
-        )
-        return receipt
-    }
-
-    /// The sheet's own statements take the same lease the import does, one at a time and always
-    /// after `authorize` has returned. Taking it earlier would hold the connection's gate open
-    /// across a safe-mode confirmation the user has not answered yet, and the gate is not
-    /// reentrant, so the import that follows would then wait on a sheet waiting on the user.
-    @MainActor
-    private func runOnLeasedDriver(_ sql: String, scope: DatabaseScope) async throws {
-        let route = DatabaseManager.shared.executionRoute(for: scope)
-        _ = try await DatabaseManager.shared.withScopedDriver(
-            scope: scope,
-            route: route,
-            cancellation: .protectedWrite
-        ) { driver in
-            try await driver.execute(query: sql)
-        }
-    }
-
-    /// Every statement this sheet issues on its own account goes through the gate. The retry path's
-    /// `DELETE FROM` used to skip it while the `CREATE TABLE` beside it did not, so a connection
-    /// set to confirm destructive statements emptied a table without asking.
-    private func authorize(sql: String, kind: OperationKind, description: String) async throws -> OperationReceipt {
-        let decision = await ExecutionGateProvider.shared.authorize(
-            OperationRequest(
-                connectionId: connection.id,
-                databaseType: connection.type,
-                sql: sql,
-                kind: kind,
-                caller: .userInterface,
-                capabilities: .interactiveUser,
-                operationDescription: description
-            )
-        )
-        guard case .authorized(let receipt) = decision else {
-            throw decision.denialError ?? ExecutionGateError.denied(String(localized: "Operation not permitted"))
-        }
-        return receipt
     }
 }

@@ -79,6 +79,45 @@ struct PasswordSourceCodableTests {
         #expect(decoded.passwordSource == .command(shell: "op read op://vault/feature-x/password"))
     }
 
+    @Test("A Vault database role round-trips with each sign-in method", arguments: [
+        VaultAuthMethod.token,
+        .appRole(mount: "approle", roleId: "role-1", secretIdPath: "~/.vault/secret-id"),
+        .oidc(mount: "oidc-corp", role: "dba"),
+    ])
+    func vaultDatabaseRoleRoundTrips(auth: VaultAuthMethod) throws {
+        let source = PasswordSource.vaultDatabaseRole(
+            VaultDatabaseRole(address: "https://vault.corp:8200", mount: "database", role: "readonly", auth: auth)
+        )
+        #expect(try decoder.decode(PasswordSource.self, from: encoder.encode(source)) == source)
+    }
+
+    @Test("Decodes the documented Vault database role shape, filling in the defaults")
+    func decodesDocumentedVaultRole() throws {
+        let tokenJSON = #"{"kind":"vaultDatabaseRole","mount":"database","role":"readonly"}"#
+        #expect(try decoder.decode(PasswordSource.self, from: Data(tokenJSON.utf8))
+            == .vaultDatabaseRole(VaultDatabaseRole(mount: "database", role: "readonly", auth: .token)))
+
+        let appRoleJSON = #"{"kind":"vaultDatabaseRole","address":"https://vault.corp:8200","mount":"database","#
+            + #""role":"readonly","auth":{"method":"approle","roleId":"r1","secretIdPath":"~/.vault/secret-id"}}"#
+        #expect(try decoder.decode(PasswordSource.self, from: Data(appRoleJSON.utf8))
+            == .vaultDatabaseRole(VaultDatabaseRole(
+                address: "https://vault.corp:8200",
+                mount: "database",
+                role: "readonly",
+                auth: .appRole(mount: "approle", roleId: "r1", secretIdPath: "~/.vault/secret-id")
+            )))
+
+        let oidcJSON = #"{"kind":"vaultDatabaseRole","mount":"database","role":"ro","auth":{"method":"oidc"}}"#
+        #expect(try decoder.decode(PasswordSource.self, from: Data(oidcJSON.utf8))
+            == .vaultDatabaseRole(VaultDatabaseRole(mount: "database", role: "ro", auth: .oidc(mount: "oidc", role: ""))))
+    }
+
+    @Test("A role reads its credentials under <mount>/creds/<role>")
+    func credentialsPath() {
+        #expect(VaultDatabaseRole(mount: "/database/", role: "readonly").credentialsPath == "database/creds/readonly")
+        #expect(VaultDatabaseRole(mount: "teams/db", role: "rw").credentialsPath == "teams/db/creds/rw")
+    }
+
     @Test("A connection without a password source decodes to nil")
     func absentPasswordSourceIsNil() throws {
         let connection = DatabaseConnection(name: "plain", type: .mysql)

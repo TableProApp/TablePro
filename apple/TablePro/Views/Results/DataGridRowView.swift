@@ -121,7 +121,7 @@ class DataGridRowView: NSTableRowView {
               let dataColumn = coordinator.dataColumnIndex(from: tableView.tableColumns[tableColumnIndex].identifier)
         else { return false }
 
-        let columnRect = view.convert(tableView.rect(ofColumn: tableColumnIndex), from: tableView)
+        let columnRect = view.convert(coordinator.displayedRect(ofColumn: tableColumnIndex), from: tableView)
         let cellRect = NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height)
         if coordinator.presentsCheckboxCell(columnIndex: dataColumn) {
             guard DataGridCheckboxMark.frame(in: cellRect).contains(point) else { return false }
@@ -160,14 +160,17 @@ class DataGridRowView: NSTableRowView {
     ///
     /// The columns are still real `NSTableColumn`s, so AppKit answers which of them the area covers
     /// and where each one sits; only the cell content is drawn rather than mounted.
-    func drawCells(in dirtyRect: NSRect, of view: NSView) {
+    func drawCells(in dirtyRect: NSRect, of view: NSView, includesFrozenColumns: Bool = false) {
         guard let coordinator, let tableView = coordinator.tableView else { return }
         coordinator.cellRegistry.preparePalette(in: NSAppearance.currentDrawing())
         let inTableView = view.convert(dirtyRect, to: tableView)
         let dragged = Self.draggedColumnIndex(of: tableView)
         let themedRange = themedRangeColumns()
+        // The pinned band draws these, as the row-number cell leaves its number to the gutter.
+        let frozen = includesFrozenColumns ? IndexSet() : coordinator.freezingBand()?.frozenColumns ?? IndexSet()
 
-        for tableColumnIndex in tableView.columnIndexes(in: inTableView) where tableColumnIndex != dragged {
+        for tableColumnIndex in tableView.columnIndexes(in: inTableView)
+        where tableColumnIndex != dragged && !frozen.contains(tableColumnIndex) {
             drawCell(
                 atTableColumnIndex: tableColumnIndex,
                 in: tableView.rect(ofColumn: tableColumnIndex),
@@ -175,6 +178,23 @@ class DataGridRowView: NSTableRowView {
                 onThemedRange: themedRange.contains(tableColumnIndex)
             )
         }
+    }
+
+    // Called by the pinned band inside a context translated to this row's origin.
+    func drawFrozenColumns(in rect: NSRect) {
+        drawCellSelectionFill(in: rect, scope: themeScope)
+        drawCells(in: rect, of: contentView, includesFrozenColumns: true)
+        drawDraggedColumn(in: rect, of: contentView)
+    }
+
+    fileprivate func forwardInvalidationToPinnedBand(_ rect: NSRect) {
+        guard let coordinator, coordinator.frozenColumnCount > 0, let tableView = coordinator.tableView else { return }
+        coordinator.pinnedBandNeedsDisplay(rowRect: rect, row: tableView.row(for: self))
+    }
+
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        super.setNeedsDisplay(invalidRect)
+        forwardInvalidationToPinnedBand(invalidRect)
     }
 
     /// The columns of an unselected row that a cell range covers with a theme's opaque selection,
@@ -703,10 +723,24 @@ class DataGridRowView: NSTableRowView {
         guard coordinator.isEditable, dataColumnIndex >= 0 else { return }
 
         let clicked = SetValueTarget(displayRow: rowIndex, columnIndex: dataColumnIndex)
+        let targets = coordinator.setValueTargets(clicked: clicked)
         let setValueMenu = buildSetValueMenu(
-            commands: coordinator.setValueCommands(for: coordinator.setValueTargets(clicked: clicked)),
+            commands: coordinator.setValueCommands(for: targets),
             clickedColumn: dataColumnIndex
         )
+        if coordinator.isSetCellsToValueOffered(for: targets) {
+            if !setValueMenu.items.isEmpty {
+                setValueMenu.addItem(.separator())
+            }
+            let item = NSMenuItem(
+                title: String(localized: "Set Cells to Value…"),
+                action: #selector(setCellsToValueFromContextMenu(_:)),
+                keyEquivalent: ""
+            )
+            item.representedObject = dataColumnIndex
+            item.target = self
+            setValueMenu.addItem(item)
+        }
         if !setValueMenu.items.isEmpty {
             let setValueItem = NSMenuItem(title: String(localized: "Set Value"), action: nil, keyEquivalent: "")
             setValueItem.submenu = setValueMenu
@@ -757,6 +791,13 @@ class DataGridRowView: NSTableRowView {
         guard let coordinator, let choice = sender.representedObject as? SetValueMenuChoice else { return }
         let clicked = SetValueTarget(displayRow: rowIndex, columnIndex: choice.clickedColumn)
         coordinator.applySetValue(choice.command, to: coordinator.setValueTargets(clicked: clicked))
+    }
+
+    @objc private func setCellsToValueFromContextMenu(_ sender: NSMenuItem) {
+        guard let coordinator, let column = sender.representedObject as? Int else { return }
+        coordinator.setCellsToValue(
+            coordinator.setValueTargets(clicked: SetValueTarget(displayRow: rowIndex, columnIndex: column))
+        )
     }
 
     @objc private func deleteRow() {
@@ -977,6 +1018,11 @@ final class DataGridRowContentView: NSView {
         rowView?.drawCells(in: dirtyRect, of: self)
         rowView?.drawColumnSeparators(in: dirtyRect, of: self)
         rowView?.drawDraggedColumn(in: dirtyRect, of: self)
+    }
+
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        super.setNeedsDisplay(invalidRect)
+        rowView?.forwardInvalidationToPinnedBand(convert(invalidRect, to: rowView))
     }
 
     override func mouseDown(with event: NSEvent) {

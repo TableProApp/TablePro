@@ -84,6 +84,25 @@ struct TableTabDuplicationTests {
         )
     }
 
+    @Test("A temporary table and the table of the same name it hides keep separate tabs")
+    func temporaryTableTabIsItsOwn() throws {
+        let manager = QueryTabManager()
+        try manager.addTableTab(tableName: "orders", databaseName: "shop")
+        let baseId = try #require(manager.selectedTabId)
+        try manager.addTableTab(tableName: "orders", databaseName: "shop", isTemporary: true)
+        let temporaryId = try #require(manager.selectedTabId)
+
+        #expect(temporaryId != baseId)
+        #expect(manager.tabShowingTable(named: "orders", databaseName: "shop", schemaName: nil)?.id == baseId)
+        #expect(
+            manager.tabShowingTable(named: "orders", databaseName: "shop", schemaName: nil, isTemporary: true)?.id
+                == temporaryId
+        )
+        let temporary = try #require(manager.tabs.first { $0.id == temporaryId })
+        #expect(temporary.tableContext.isTemporary)
+        #expect(!temporary.tableContext.allowsRowEditing, "A temporary table is browsed, never edited")
+    }
+
     @Test("A table with no tab has none showing it")
     func tabShowingTableIsNilWithoutAMatch() throws {
         let manager = QueryTabManager()

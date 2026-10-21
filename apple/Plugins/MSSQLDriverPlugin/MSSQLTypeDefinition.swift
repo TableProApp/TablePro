@@ -80,7 +80,7 @@ public enum MSSQLTypeDefinition {
     }
 
     public static func bracketed(_ identifier: String) -> String {
-        "[\(identifier.replacingOccurrences(of: "]", with: "]]"))]"
+        "[\(identifier.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
     }
 
     /// `CREATE TYPE x FROM base NULL|NOT NULL`. Nullability is always spelled out, because the

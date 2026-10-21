@@ -11,7 +11,7 @@ use std::time::Duration;
 use futures::channel::oneshot;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::CellInput;
-use tablepro_core::import::{ImportColumn, ImportPlan, plan_import};
+use tablepro_core::import::{ImportColumn, ImportPlan, MAX_CSV_FILE_BYTES, plan_import};
 use tablepro_core::meta::TableRef;
 use tablepro_core::{CallOptions, DriverError, SafeModeLevel, WriteKind};
 use tablepro_session::runtime::Tasks;
@@ -21,7 +21,7 @@ use tokio_util::sync::CancellationToken;
 use crate::services::history_service::HistoryService;
 use crate::ui::error_text::{driver_message, operation_error_message};
 use crate::ui::file_read::{FileReadError, read_capped_file};
-use crate::ui::import_dialog::{CsvImport, MAX_CSV_FILE_BYTES, import_error_text};
+use crate::ui::import_dialog::{CsvImport, import_error_text};
 use crate::ui::write_confirmation::{self, WriteConfirmation};
 
 use super::{WorkspaceInput, WorkspaceModel};

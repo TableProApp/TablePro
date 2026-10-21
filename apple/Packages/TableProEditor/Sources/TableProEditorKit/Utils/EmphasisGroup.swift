@@ -8,4 +8,5 @@
 enum EmphasisGroup {
     static let brackets = "codeedit.bracketPairs"
     static let find = "codeedit.find"
+    static let snippetFields = "tablepro.snippetFields"
 }

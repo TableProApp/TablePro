@@ -37,6 +37,22 @@ extension TableViewCoordinator {
             showBlobViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .viewPhpSerialized:
             showPhpViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
+        case .viewBinaryValue(let format):
+            showBinaryValueViewerPopover(
+                tableView: tableView,
+                row: row,
+                column: tableColumn,
+                columnIndex: columnIndex,
+                format: format
+            )
+        case .viewVector, .editVector:
+            showVectorPopover(
+                tableView: tableView,
+                row: row,
+                column: tableColumn,
+                columnIndex: columnIndex,
+                isEditable: mode == .editVector && canStartInlineEdit(row: row, columnIndex: columnIndex)
+            )
         case .viewSvg, .editSvg:
             showSvgViewerPopover(
                 tableView: tableView,
@@ -113,6 +129,14 @@ extension TableViewCoordinator {
             showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
         } else if columnType.supportsElementEditing {
             showArrayEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if columnType.isVectorType {
+            showVectorPopover(
+                tableView: tableView,
+                row: row,
+                column: column,
+                columnIndex: columnIndex,
+                isEditable: canStartInlineEdit(row: row, columnIndex: columnIndex)
+            )
         } else if let values = tableRows.columnEnumValues[columnName], !values.isEmpty {
             if columnType.isSetType {
                 showSetPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
@@ -164,7 +188,7 @@ extension TableViewCoordinator {
         let dbType = databaseType ?? .mysql
         let scope = userDefinedTypeScope
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
@@ -199,7 +223,7 @@ extension TableViewCoordinator {
         let escape = resolveDriver()?.escapeStringLiteral ?? SQLEscaping.escapeStringLiteral
         let literalPrefix = SQLStringLiteralPrefix.forDatabaseType(databaseType)
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,

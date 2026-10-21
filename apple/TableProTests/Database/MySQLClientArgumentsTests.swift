@@ -71,6 +71,28 @@ struct MySQLClientArgumentsTests {
         }
     }
 
+    // Measured with mariadb-dump 13.0.2: --ssl falls back to plaintext and answers caching_sha2_password's full
+    // authentication with the typed password, where --skip-ssl asks for the server's RSA key.
+    @Test("MariaDB's Preferred follows the server's greeting, MySQL's does not need to")
+    func preferredFollowsTheGreeting() throws {
+        #expect(
+            try MySQLClientArguments.tls(ssl(.preferred), flavor: .mariadb, toolPath: "/t", serverOffersTLS: false)
+                == ["--skip-ssl"]
+        )
+        #expect(
+            try MySQLClientArguments.tls(ssl(.preferred), flavor: .mariadb, toolPath: "/t", serverOffersTLS: true)
+                == ["--ssl", "--skip-ssl-verify-server-cert"]
+        )
+        #expect(
+            try MySQLClientArguments.tls(ssl(.preferred), flavor: .mysql, toolPath: "/t", serverOffersTLS: false)
+                == ["--ssl-mode=PREFERRED"]
+        )
+        #expect(
+            try MySQLClientArguments.tls(ssl(.required), flavor: .mariadb, toolPath: "/t", serverOffersTLS: false)
+                == ["--ssl", "--ssl-verify-server-cert"]
+        )
+    }
+
     @Test("The CA goes with the modes that verify one, and the client pair always follows")
     func certificatePaths() throws {
         let verifying = ssl(.verifyCa, ca: "/certs/ca.pem", certificate: "/certs/c.pem", key: "/certs/c.key")

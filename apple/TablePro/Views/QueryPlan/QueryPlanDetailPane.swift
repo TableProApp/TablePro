@@ -44,6 +44,8 @@ struct QueryPlanDetailPane: View {
 
                 estimates(for: node)
                 actuals(for: node)
+                warnings(for: node)
+                missingIndexes(for: node)
                 properties(for: node)
             }
             .padding(12)
@@ -73,6 +75,65 @@ struct QueryPlanDetailPane: View {
                 detailRow(QueryPlanLabels.actualTime, QueryPlanLabels.milliseconds(time))
                 if let rows = node.actualRows { detailRow(QueryPlanLabels.actualRows, "\(rows)") }
                 if let loops = node.actualLoops, loops > 1 { detailRow(QueryPlanLabels.loops, "\(loops)") }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func warnings(for node: QueryPlanNode) -> some View {
+        if !node.warnings.isEmpty {
+            Divider()
+            VStack(alignment: .leading, spacing: 4) {
+                Label {
+                    Text(QueryPlanLabels.warnings)
+                } icon: {
+                    Image(systemName: QueryPlanWarningBadge.symbolName)
+                        .foregroundStyle(.orange)
+                }
+                .font(.caption.weight(.semibold))
+                ForEach(Array(node.warnings.enumerated()), id: \.offset) { _, warning in
+                    Text(warning)
+                        .font(.system(.caption, design: .monospaced))
+                        .themeForeground(.gridText, native: .primary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func missingIndexes(for node: QueryPlanNode) -> some View {
+        if !node.missingIndexes.isEmpty {
+            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                Text(QueryPlanLabels.missingIndexes)
+                    .font(.caption.weight(.semibold))
+                ForEach(node.missingIndexes, id: \.self) { index in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            if let impact = index.impact {
+                                Text(QueryPlanLabels.impact(impact))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 8)
+                            Button {
+                                ClipboardService.shared.writeText(index.createStatement)
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel(QueryPlanLabels.copyCreateIndex)
+                            .help(QueryPlanLabels.copyCreateIndex)
+                        }
+                        Text(index.createStatement)
+                            .font(.system(.caption, design: .monospaced))
+                            .themeForeground(.gridText, native: .primary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
             }
         }
     }

@@ -411,7 +411,8 @@ extension PluginMetadataRegistry {
                     structureColumnFields: [
                         .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
                         .autoIncrement, .comment
-                    ]
+                    ],
+                    identifierRules: .postgreSQL
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: postgresqlDialect,
@@ -618,7 +619,8 @@ extension PluginMetadataRegistry {
                     structureColumnFields: [
                         .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
                         .autoIncrement, .comment
-                    ]
+                    ],
+                    identifierRules: .postgreSQL
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: postgresqlDialect,

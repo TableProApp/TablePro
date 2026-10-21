@@ -28,12 +28,19 @@ nonisolated enum RowPayload {
 
     private static func rawContent(data: String?, file: IntentFile?) async throws -> String {
         if let file {
-            return try text(of: try await file.data(contentType: .data))
+            return try text(of: try await contents(of: file))
         }
         if let data, !data.isEmpty {
             return data
         }
         throw IntentDataError.emptyPayload
+    }
+
+    private static func contents(of file: IntentFile) async throws -> Data {
+        #if os(macOS)
+        guard #available(macOS 15.0, *) else { return file.data }
+        #endif
+        return try await file.data(contentType: .data)
     }
 
     static func text(of fileData: Data) throws -> String {

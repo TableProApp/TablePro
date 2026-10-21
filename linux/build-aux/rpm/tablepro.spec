@@ -125,6 +125,7 @@ export CARGO_PROFILE_RELEASE_LTO=thin
 
 %install
 %meson_install
+%find_lang %{name}
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/app.tablepro.TablePro.desktop
@@ -138,7 +139,7 @@ export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 %{shrink:xvfb-run -a dbus-run-session -- %meson_test}
 %endif
 
-%files
+%files -f %{name}.lang
 %license LICENSE data/licenses/THIRD-PARTY-NOTICE.md
 %license LICENSE.dependencies cargo-vendor.txt
 %doc CHANGELOG.md

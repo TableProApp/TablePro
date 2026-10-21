@@ -155,6 +155,10 @@ extension MainSplitViewController {
         commandActions?.createView()
     }
 
+    @objc func createNewSequence(_ sender: Any?) {
+        commandActions?.createSequence()
+    }
+
     @objc func createNewDatabase(_ sender: Any?) {
         commandActions?.createDatabase()
     }
@@ -165,6 +169,10 @@ extension MainSplitViewController {
 
     @objc func duplicateCurrentDatabase(_ sender: Any?) {
         commandActions?.duplicateCurrentDatabase()
+    }
+
+    @objc func searchDatabase(_ sender: Any?) {
+        commandActions?.searchDatabase()
     }
 
     @objc func showTableStructure(_ sender: Any?) {
@@ -189,6 +197,14 @@ extension MainSplitViewController {
 
     @objc func editObjectComment(_ sender: Any?) {
         commandActions?.editObjectComment()
+    }
+
+    @objc func setSequenceNextValue(_ sender: Any?) {
+        commandActions?.setSequenceNextValue()
+    }
+
+    @objc func editSequence(_ sender: Any?) {
+        commandActions?.editSequence()
     }
 
     @objc func runMaintenanceOperation(_ sender: Any?) {

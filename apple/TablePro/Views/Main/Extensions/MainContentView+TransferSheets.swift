@@ -24,7 +24,8 @@ extension MainContentView {
                             grouping: PluginManager.shared.databaseGroupingStrategy(for: connection.type)
                         )
                 ),
-                sidebarTables: tables
+                sidebarTables: tables,
+                initialFormatId: coordinator.exportFormatId
             )
         case .exportQueryResults:
             if let tab = coordinator.tabManager.selectedTab {
@@ -64,6 +65,15 @@ extension MainContentView {
                     fileURL: handoff.url,
                     sourceName: handoff.sourceName,
                     formatId: formatId
+                )
+            }
+        case .rowImportBatch:
+            if let batch = coordinator.importBatch {
+                RowImportBatchSheet(
+                    isPresented: dismissBinding,
+                    connection: connection,
+                    files: batch.files,
+                    leftOut: batch.leftOut
                 )
             }
         case .transferTables(let tables, let schema):

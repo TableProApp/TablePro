@@ -63,7 +63,7 @@ struct TableStructureLoader {
 
     func tableComment() async throws -> String? {
         let table = tableName
-        return try await perform { try await $0.fetchTableMetadata(tableName: table).comment }
+        return try await perform { try await $0.fetchObjectComment(tableName: table) }
     }
 
     func concurrentRefreshAvailability() async throws -> PluginConcurrentRefreshAvailability? {
@@ -83,7 +83,7 @@ struct TableStructureLoader {
             var comment: MetadataFetchOutcome<String?>?
             if includingTableComment {
                 do {
-                    comment = .fetched(try await driver.fetchTableMetadata(tableName: table).comment)
+                    comment = .fetched(try await driver.fetchObjectComment(tableName: table))
                 } catch is CancellationError {
                     comment = .cancelled
                 } catch {

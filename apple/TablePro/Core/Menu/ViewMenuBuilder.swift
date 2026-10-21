@@ -131,6 +131,10 @@ enum ViewMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
+                String(localized: "Compare Result With…"),
+                action: #selector(MainSplitViewController.compareResult(_:))
+            ),
+            MenuItemFactory.item(
                 String(localized: "Close Result Tab"),
                 action: #selector(MainSplitViewController.closeResultTab(_:)),
                 shortcut: .closeResultTab,

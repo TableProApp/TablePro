@@ -17,6 +17,8 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.createNewTable()
         case .createView:
             mainCoordinator?.createView()
+        case .createSequence:
+            mainCoordinator?.createSequence()
         case .createDatabase:
             mainCoordinator?.createDatabase()
         case .createSchema(let database):
@@ -39,12 +41,8 @@ extension DatabaseTreeOutlineCoordinator {
             activateThen(ref) { [weak self] in
                 self?.mainCoordinator?.editViewDefinition(ref)
             }
-        case .copyDDL(let ref):
-            mainCoordinator?.copyDDL(of: ref)
-        case .refreshMaterializedView(let ref):
-            mainCoordinator?.refreshMaterializedView(ref)
-        case .editComment(let ref):
-            mainCoordinator?.editComment(of: ref)
+        case .copyDDL, .refreshMaterializedView, .editComment, .setSequenceNextValue, .editSequence:
+            performObjectTool(command)
         case .showStructure(let ref):
             activateThen(ref) { [weak self] in
                 self?.mainCoordinator?.openTableTab(
@@ -125,27 +123,8 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.activeSheet = .backupDatabase(databases: Set(databases))
         case .dropContainers(let targets):
             mainCoordinator?.requestContainerDrop(targets)
-        case .copyObjectsTo(let objects, let ref):
-            mainCoordinator?.openCopyObjects(
-                mode: .copyTo,
-                database: ref?.database,
-                schema: ref?.qualifyingSchema,
-                preselection: .objects(objects)
-            )
-        case .copyContainerTo(let container):
-            mainCoordinator?.openCopyObjects(
-                mode: .copyTo,
-                database: container.database,
-                schema: container.kind == .schema ? container.schema : nil,
-                preselection: .wholeScope
-            )
-        case .duplicateDatabase(let container):
-            mainCoordinator?.openCopyObjects(
-                mode: .duplicateDatabase,
-                database: container.database,
-                schema: nil,
-                preselection: .wholeScope
-            )
+        case .copyObjectsTo, .copyContainerTo, .duplicateDatabase, .searchContainer:
+            performSheetCommand(command)
         case .showAllTablesMetadata:
             mainCoordinator?.showAllTablesMetadata()
         case .refreshObjectKind(let kind):
@@ -171,6 +150,56 @@ extension DatabaseTreeOutlineCoordinator {
         case .toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers, .togglePartitions,
              .setRowSize:
             _ = SidebarViewOptionsMenu.apply(command)
+        }
+    }
+
+    private func performObjectTool(_ command: SidebarMenuCommand) {
+        switch command {
+        case .copyDDL(let ref):
+            mainCoordinator?.copyDDL(of: ref)
+        case .refreshMaterializedView(let ref):
+            mainCoordinator?.refreshMaterializedView(ref)
+        case .editComment(let ref):
+            mainCoordinator?.editComment(of: ref)
+        case .setSequenceNextValue(let ref):
+            mainCoordinator?.setSequenceNextValue(of: ref)
+        case .editSequence(let ref):
+            mainCoordinator?.editSequence(ref)
+        default:
+            break
+        }
+    }
+
+    private func performSheetCommand(_ command: SidebarMenuCommand) {
+        switch command {
+        case .copyObjectsTo(let objects, let ref):
+            mainCoordinator?.openCopyObjects(
+                mode: .copyTo,
+                database: ref?.database,
+                schema: ref?.qualifyingSchema,
+                preselection: .objects(objects)
+            )
+        case .copyContainerTo(let container):
+            mainCoordinator?.openCopyObjects(
+                mode: .copyTo,
+                database: container.database,
+                schema: container.kind == .schema ? container.schema : nil,
+                preselection: .wholeScope
+            )
+        case .duplicateDatabase(let container):
+            mainCoordinator?.openCopyObjects(
+                mode: .duplicateDatabase,
+                database: container.database,
+                schema: nil,
+                preselection: .wholeScope
+            )
+        case .searchContainer(let container):
+            mainCoordinator?.openDatabaseSearch(
+                database: container.database,
+                schema: container.kind == .schema ? container.schema : nil
+            )
+        default:
+            break
         }
     }
 

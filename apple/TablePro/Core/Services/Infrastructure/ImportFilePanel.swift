@@ -35,6 +35,24 @@ internal enum ImportFilePanel {
         )
     }
 
+    /// Import Data…, which also takes several files or a folder. One file goes where its format sends it; several, or
+    /// a folder, import as rows into a table each, so a folder passes only while it holds a file a row format reads.
+    internal static func presentFiles(
+        matching options: [ImportFormatOption],
+        readsRows: @escaping (String) -> Bool,
+        message: String,
+        in window: NSWindow?
+    ) async -> [URL] {
+        guard let panel = await run(
+            contentTypes: ImportFileFormatResolver.contentTypes(for: options),
+            gate: ImportFileGate(options: options, readsRows: readsRows),
+            allowsSeveral: true,
+            message: message,
+            in: window
+        ) else { return [] }
+        return panel.urls
+    }
+
     /// Import Data From > a named format, and the object browser's own import items. The user has
     /// already said what the file holds, so every file is enabled and nothing is read off the
     /// extension. That is the route for a CSV called `orders.txt` or carrying no extension at all.
@@ -51,6 +69,16 @@ internal enum ImportFilePanel {
         message: String,
         in window: NSWindow?
     ) async -> URL? {
+        await run(contentTypes: contentTypes, gate: gate, allowsSeveral: false, message: message, in: window)?.url
+    }
+
+    private static func run(
+        contentTypes: [UTType],
+        gate: ImportFileGate?,
+        allowsSeveral: Bool,
+        message: String,
+        in window: NSWindow?
+    ) async -> NSOpenPanel? {
         guard let window else {
             logger.warning("No host window, cannot present the import file panel")
             return nil
@@ -61,8 +89,8 @@ internal enum ImportFilePanel {
         panel.allowedContentTypes = contentTypes
         /// After `allowedContentTypes`: macOS 27 rewrites both from it.
         panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = allowsSeveral
+        panel.allowsMultipleSelection = allowsSeveral
         panel.message = message
 
         panel.delegate = gate
@@ -70,7 +98,7 @@ internal enum ImportFilePanel {
         withExtendedLifetime(gate) {}
 
         guard response == .OK else { return nil }
-        return panel.url
+        return panel
     }
 }
 
@@ -80,11 +108,25 @@ internal enum ImportFilePanel {
 private final class ImportFileGate: NSObject, NSOpenSavePanelDelegate {
     private let options: [ImportFormatOption]
 
-    init(options: [ImportFormatOption]) {
+    /// Set when the panel takes folders: one passes only while it holds a file a row format reads.
+    private let readsRows: ((String) -> Bool)?
+
+    init(options: [ImportFormatOption], readsRows: ((String) -> Bool)? = nil) {
         self.options = options
+        self.readsRows = readsRows
     }
 
+    /// AppKit sends this once for each selected file or folder.
     func panel(_ sender: Any, validate url: URL) throws {
+        if let readsRows, ImportBatchFiles.isDirectory(url) {
+            guard ImportBatchFiles.resolve([url], among: options, readsRows: readsRows).files.isEmpty else { return }
+            throw ImportFileGateError.emptyFolder(
+                folderName: url.lastPathComponent,
+                extensions: ImportFileFormatResolver.acceptedExtensions(
+                    for: options.filter { readsRows($0.id) }
+                )
+            )
+        }
         switch ImportFileFormatResolver.match(url, among: options) {
         case .format:
             return
@@ -115,9 +157,12 @@ private enum ImportFileGateError: LocalizedError {
     case unrecognized(fileName: String, extensions: [String])
     case compressedRowFormat(fileName: String, formatName: String)
     case ambiguous(fileName: String, formatNames: [String])
+    case emptyFolder(folderName: String, extensions: [String])
 
     var errorDescription: String? {
         switch self {
+        case .emptyFolder(let folderName, _):
+            return String(format: String(localized: "“%@” holds no file to import."), folderName)
         case .unrecognized(let fileName, _):
             return String(format: String(localized: "There is no import format for “%@”."), fileName)
         case .compressedRowFormat(let fileName, _):
@@ -129,6 +174,9 @@ private enum ImportFileGateError: LocalizedError {
 
     var recoverySuggestion: String? {
         switch self {
+        case .emptyFolder(_, let extensions):
+            let list = extensions.map { ".\($0)" }.joined(separator: ", ")
+            return String(format: String(localized: "A folder imports the %@ files directly inside it."), list)
         case .unrecognized(_, let extensions):
             let list = extensions.map { ".\($0)" }.joined(separator: ", ")
             return String(format: String(localized: "This connection imports %@."), list)

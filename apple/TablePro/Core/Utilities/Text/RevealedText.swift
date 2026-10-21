@@ -24,8 +24,8 @@ internal struct RevealedText: Equatable, Sendable {
 
     internal let segments: [Segment]
 
-    internal init(_ text: String) {
-        segments = Self.segments(of: text as NSString)
+    internal init(_ text: String, marksLineBreaks: Bool = false) {
+        segments = Self.segments(of: text as NSString, marksLineBreaks: marksLineBreaks)
     }
 
     internal var revealsAnyCharacter: Bool {
@@ -53,12 +53,12 @@ internal struct RevealedText: Equatable, Sendable {
 }
 
 private extension RevealedText {
-    static func segments(of text: NSString) -> [Segment] {
+    static func segments(of text: NSString, marksLineBreaks: Bool) -> [Segment] {
         var segments: [Segment] = []
         var runStart = 0
         var index = 0
         while index < text.length {
-            guard let classified = SpecialCharacter.classify(in: text, at: index) else {
+            guard let classified = SpecialCharacter.classify(in: text, at: index, marksLineBreaks: marksLineBreaks) else {
                 index += 1
                 continue
             }

@@ -1,12 +1,19 @@
 import Foundation
 
 public enum TrinoIntrospectionSQL {
+    // `.literal` matches code units; the default skips a quote that a combining mark follows.
     public static func quoteIdentifier(_ name: String) -> String {
-        "\"" + name.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        "\"" + name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal) + "\""
     }
 
     public static func quoteLiteral(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+        "'" + value.replacingOccurrences(of: "'", with: "''", options: .literal) + "'"
+    }
+
+    // `IN ()` does not parse.
+    private static func membership(_ column: String, in values: [String]) -> String {
+        guard !values.isEmpty else { return "false" }
+        return "\(column) IN (\(values.map(quoteLiteral).joined(separator: ", ")))"
     }
 
     public static func qualifiedName(catalog: String?, schema: String?, table: String) -> String {
@@ -33,6 +40,13 @@ public enum TrinoIntrospectionSQL {
         """
         SELECT table_name, table_type FROM \(quoteIdentifier(catalog)).information_schema.tables \
         WHERE table_schema = \(quoteLiteral(schema)) ORDER BY table_name
+        """
+    }
+
+    public static func listTables(catalog: String, inSchemas schemas: [String]) -> String {
+        """
+        SELECT table_name, table_type, table_schema FROM \(quoteIdentifier(catalog)).information_schema.tables \
+        WHERE \(membership("table_schema", in: schemas)) ORDER BY table_schema, table_name
         """
     }
 
@@ -79,6 +93,25 @@ public enum TrinoIntrospectionSQL {
             return """
                 SELECT table_name FROM \(quoteIdentifier(catalog)).information_schema.materialized_views \
                 WHERE table_schema = \(quoteLiteral(schema))
+                """
+        }
+    }
+
+    public static func listMaterializedViews(
+        catalog: String,
+        inSchemas schemas: [String],
+        flavor: TrinoServerFlavor
+    ) -> String {
+        switch flavor {
+        case .trino:
+            return """
+                SELECT name, schema_name FROM system.metadata.materialized_views \
+                WHERE catalog_name = \(quoteLiteral(catalog)) AND \(membership("schema_name", in: schemas))
+                """
+        case .presto:
+            return """
+                SELECT table_name, table_schema FROM \(quoteIdentifier(catalog)).information_schema.materialized_views \
+                WHERE \(membership("table_schema", in: schemas))
                 """
         }
     }

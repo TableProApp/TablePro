@@ -83,7 +83,10 @@ enum QueryContextRenderer {
         case .unavailable(let reason):
             return "\(heading)\nStructure unavailable: \(singleLine(reason))"
         case .described(let structure):
-            var parts = [heading, columnTable(structure.columns, limit: columnLimit)]
+            var parts = [
+                heading,
+                columnTable(structure.columns, limit: columnLimit, omitted: structure.omittedColumnCount)
+            ]
             if let indexes = indexSection(structure) {
                 parts.append(indexes)
             }
@@ -94,8 +97,11 @@ enum QueryContextRenderer {
         }
     }
 
-    static func columnTable(_ columns: [QueryContextColumn], limit: Int) -> String {
-        guard !columns.isEmpty else { return "No columns reported." }
+    static func columnTable(_ columns: [QueryContextColumn], limit: Int, omitted: Int = 0) -> String {
+        guard !columns.isEmpty else {
+            guard omitted > 0 else { return "No columns reported." }
+            return "None of its \(omitted) columns are named in the statement, so none are listed."
+        }
         var lines = [
             "| Column | Type | Nullable | Key | Default | Comment |",
             "| --- | --- | --- | --- | --- | --- |"
@@ -108,9 +114,10 @@ enum QueryContextRenderer {
                     + "| \(MarkdownFence.tableCell(defaultValue)) | \(MarkdownFence.tableCell(column.comment)) |"
             )
         }
-        if columns.count > limit {
+        let unlisted = max(0, columns.count - limit) + omitted
+        if unlisted > 0 {
             lines.append("")
-            lines.append("… and \(columns.count - limit) more columns not listed.")
+            lines.append("… and \(unlisted) more columns not listed.")
         }
         return lines.joined(separator: "\n")
     }

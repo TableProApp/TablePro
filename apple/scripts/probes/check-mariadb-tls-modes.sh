@@ -4,7 +4,8 @@
 # MYSQL_OPT_SSL_ENFORCE alone falls back to plaintext when a server offers no TLS, verification
 # checks the host name on every dial but 127.0.0.1, and a 127.0.0.1 dial forgives an untrusted
 # certificate when no CA is set. The bridge headers work around all three; this proves they still do
-# after a libs update. Needs openssl, python3 and Libs/libmariadb_arm64.a (scripts/download-libs.sh).
+# after a libs update. Every server here asks for the password in plain text, which Connector/C answers
+# even without TLS unless MARIADB_OPT_RESTRICTED_AUTH leaves mysql_clear_password out. Needs openssl, python3 and Libs/libmariadb_arm64.a (scripts/download-libs.sh).
 # Exits non-zero on any unexpected outcome.
 
 set -uo pipefail
@@ -54,7 +55,7 @@ SECRET="probe-secret-token"
 check() {
     local label=$1 app=$2 expect=$3 server_args=$4 host=$5
     shift 5
-    python3 -I "$PROBE/fake-mysql-server.py" $server_args --cleartext --secret "$SECRET" > "$WORK/server.log" 2>&1 &
+    python3 -I "$PROBE/fake-mysql-server.py" $server_args --auth cleartext --secret "$SECRET" > "$WORK/server.log" 2>&1 &
     local server=$!
     local port=""
     for _ in $(seq 1 50); do
@@ -84,8 +85,10 @@ check() {
 }
 
 for app in macos ios; do
+    # Preferred is Required, then Disabled after an SSL-only error such as this refusal.
     check "Required, server without TLS" $app refuse "" 127.0.0.1 required "$SECRET"
-    check "Preferred, server without TLS" $app plain "" 127.0.0.1 preferred "$SECRET"
+    # The server asks for the password in plain text, which goes only over TLS.
+    check "Disabled (Preferred's fallback), server without TLS" $app refuse "" 127.0.0.1 disabled "$SECRET"
     check "Required, self-signed certificate" $app connect "--cert self.pem --key self.key" 127.0.0.1 required "$SECRET"
     check "Verify CA, other name, dialed by name" $app connect "--cert other.pem --key other.key" localhost \
         verify-ca "$SECRET" ca.pem

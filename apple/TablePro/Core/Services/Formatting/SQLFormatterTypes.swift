@@ -2,27 +2,15 @@
 //  SQLFormatterTypes.swift
 //  TablePro
 //
-//  Created by OpenCode on 1/17/26.
-//
 
 import Foundation
 
-// Note: DatabaseType is defined in Models/DatabaseConnection.swift
-// Swift doesn't require explicit imports within the same module
-
-// MARK: - Formatter Options
-
-/// The case the formatter writes a keyword in.
-///
-/// `preserve` keeps the spelling that is already in the statement wherever one exists; a keyword
-/// the formatter synthesizes, such as the `BY` of a split `ORDER BY`, has no such spelling and is
-/// written lower case.
-enum SQLFormatterKeywordCase {
+// A word the formatter writes itself, the `BY` of `ORDER BY`, has no spelling to preserve: lower case.
+enum SQLFormatterCase: String, Codable, CaseIterable, Sendable {
     case upper
     case lower
     case preserve
 
-    /// `upper` is the token's uppercased form, `original` the spelling the statement already had.
     func applied(upper: String, original: String) -> String {
         switch self {
         case .upper: return upper
@@ -31,31 +19,110 @@ enum SQLFormatterKeywordCase {
         }
     }
 
-    /// A keyword the formatter writes from nothing, so there is no original spelling to preserve.
     func synthesized(_ upper: String) -> String {
         switch self {
         case .upper: return upper
         case .lower, .preserve: return upper.lowercased()
         }
     }
-
-    /// Whether a token that is really a function or type name keeps the spelling it was written
-    /// with. Only `preserve` has nothing to decide, because it keeps every spelling anyway.
-    var rewritesKeywords: Bool { self != .preserve }
 }
 
-/// Configuration for SQL formatting behavior
-struct SQLFormatterOptions {
-    var keywordCase: SQLFormatterKeywordCase = .upper
-    var indentSize: Int = 2
-    var preserveComments: Bool = true
+enum SQLFormatterIndentStyle: String, Codable, CaseIterable, Sendable {
+    case spaces
+    case tabs
+}
+
+enum SQLFormatterCommaPosition: String, Codable, CaseIterable, Sendable {
+    case trailing
+    case leading
+}
+
+enum SQLFormatterJoinCondition: String, Codable, CaseIterable, Sendable {
+    case newLine
+    case sameLine
+}
+
+// The rule set the formatter runs with, and the JSON a rules file holds.
+struct SQLFormatterOptions: Equatable, Sendable {
+    static let indentWidthRange = 1...16
+    static let lineWidthRange = 0...1_000
+
+    var indentStyle: SQLFormatterIndentStyle = .spaces
+    var indentWidth: Int = 2
+    var keywordCase: SQLFormatterCase = .upper
+    var functionCase: SQLFormatterCase = .preserve
+    var commaPosition: SQLFormatterCommaPosition = .trailing
+    // 0 puts each item of a SELECT list, SET list or WHERE chain on its own line.
+    var lineWidth: Int = 0
+    var joinCondition: SQLFormatterJoinCondition = .newLine
+    var alignAliases: Bool = false
 
     static let `default` = SQLFormatterOptions()
+
+    var indentUnit: String {
+        indentStyle == .tabs ? "\t" : String(repeating: " ", count: indentWidth)
+    }
 }
 
-// MARK: - Formatter Result
+extension SQLFormatterOptions: Codable {
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case indentStyle
+        case indentWidth
+        case keywordCase
+        case functionCase
+        case commaPosition
+        case lineWidth
+        case joinCondition
+        case alignAliases
+    }
 
-/// Result of a formatting operation with cursor mapping
+    // Strict, for files: a value this build can't read throws, a key it doesn't know is ignored.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let fallback = Self.default
+        indentStyle = try container.decodeIfPresent(SQLFormatterIndentStyle.self, forKey: .indentStyle)
+            ?? fallback.indentStyle
+        indentWidth = try Self.decodeInt(container, .indentWidth, in: Self.indentWidthRange) ?? fallback.indentWidth
+        keywordCase = try container.decodeIfPresent(SQLFormatterCase.self, forKey: .keywordCase) ?? fallback.keywordCase
+        functionCase = try container.decodeIfPresent(SQLFormatterCase.self, forKey: .functionCase)
+            ?? fallback.functionCase
+        commaPosition = try container.decodeIfPresent(SQLFormatterCommaPosition.self, forKey: .commaPosition)
+            ?? fallback.commaPosition
+        lineWidth = try Self.decodeInt(container, .lineWidth, in: Self.lineWidthRange) ?? fallback.lineWidth
+        joinCondition = try container.decodeIfPresent(SQLFormatterJoinCondition.self, forKey: .joinCondition)
+            ?? fallback.joinCondition
+        alignAliases = try container.decodeIfPresent(Bool.self, forKey: .alignAliases) ?? fallback.alignAliases
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(indentStyle, forKey: .indentStyle)
+        try container.encode(indentWidth, forKey: .indentWidth)
+        try container.encode(keywordCase, forKey: .keywordCase)
+        try container.encode(functionCase, forKey: .functionCase)
+        try container.encode(commaPosition, forKey: .commaPosition)
+        try container.encode(lineWidth, forKey: .lineWidth)
+        try container.encode(joinCondition, forKey: .joinCondition)
+        try container.encode(alignAliases, forKey: .alignAliases)
+    }
+
+    private static func decodeInt(
+        _ container: KeyedDecodingContainer<CodingKeys>,
+        _ key: CodingKeys,
+        in range: ClosedRange<Int>
+    ) throws -> Int? {
+        guard let value = try container.decodeIfPresent(Int.self, forKey: key) else { return nil }
+        guard range.contains(value) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: key,
+                in: container,
+                debugDescription: "\(key.stringValue) must be between \(range.lowerBound) and \(range.upperBound)"
+            )
+        }
+        return value
+    }
+}
+
 struct SQLFormatterResult {
     let formattedSQL: String
     let cursorOffset: Int?
@@ -66,9 +133,6 @@ struct SQLFormatterResult {
     }
 }
 
-// MARK: - Formatter Error
-
-/// Errors that can occur during SQL formatting
 enum SQLFormatterError: LocalizedError {
     case emptyInput
     case dialectUnsupported(DatabaseType)
@@ -89,26 +153,18 @@ enum SQLFormatterError: LocalizedError {
     }
 }
 
-// MARK: - Dialect Provider Protocol
-
-/// Provides dialect-specific SQL formatting rules
 protocol SQLDialectProvider {
     var keywords: Set<String> { get }
     var functions: Set<String> { get }
     var dataTypes: Set<String> { get }
     var identifierQuote: String { get }
+    // False where the engine rejects a built-in function spelled in another case (ClickHouse).
+    var functionNamesAreCaseInsensitive: Bool { get }
 
-    /// Check if a token is a keyword for this dialect
     func isKeyword(_ token: String) -> Bool
-
-    /// Check if a token is a function for this dialect
     func isFunction(_ token: String) -> Bool
-
-    /// Check if a token is a data type for this dialect
     func isDataType(_ token: String) -> Bool
 }
-
-// MARK: - Default Protocol Implementations
 
 extension SQLDialectProvider {
     func isKeyword(_ token: String) -> Bool {

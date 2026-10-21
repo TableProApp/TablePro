@@ -85,6 +85,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private var treeObservations: [AnyCancellable] = []
 
     internal let schemaService = SchemaService.shared
+    internal let temporaryTables = TemporaryTableStore.shared
     private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
     private var favoriteDatabases: Set<FavoriteDatabaseEntry> = []
     private let favoritesObservers = OSAllocatedUnfairLock<[any NSObjectProtocol]>(uncheckedState: [])
@@ -263,6 +264,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         treeObservations = [
             service.onMainActorChange(reconcile),
             schemaService.onMainActorChange(reconcile),
+            temporaryTables.onMainActorChange(reconcile),
             sidebarState?.onMainActorChange(reconcile),
             sidebarState?.redisKeyTreeViewModel?.onMainActorChange(reconcile),
         ].compactMap { $0 }
@@ -317,8 +319,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                     schema: source.schema,
                     table: source.table.name
                 )
-            case .recentSection, .recentTable, .foldersSection, .tableFolder, .table, .routine, .trigger,
-                 .userType, .status, .objectKindSection, .containerObjectKindSection,
+            case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+                 .table, .routine, .trigger, .userType, .status, .objectKindSection, .containerObjectKindSection,
                  .redisKeysSection, .redisNode:
                 break
             }
@@ -660,7 +662,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         case .procedure, .function: Task { await mainCoordinator.refreshRoutines() }
         case .trigger: Task { await mainCoordinator.refreshTriggers() }
         case .type: Task { await mainCoordinator.refreshUserDefinedTypes() }
-        case .table, .view, .materializedView, .foreignTable:
+        case .table, .view, .materializedView, .foreignTable, .sequence:
             CatalogChangeService.shared.record(.changed(CatalogChange(
                 connectionId: connectionId,
                 database: mainCoordinator.browseDatabaseName,
@@ -947,7 +949,7 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         guard !isSyncingSelection, !isReloading, !isCollapsingItem else { return }
         let nodes = selectedNodes()
         lastSelectedNodeIds = nodes.map(\.id)
-        let refs = Set(DatabaseTreeSelection.tableRefs(of: nodes))
+        let refs = Set(DatabaseTreeSelection.openableRefs(of: nodes))
         let target = DatabaseTreeSelection.navigationTarget(
             selectedNodes: nodes, previousRefs: lastSelection, newRefs: refs
         )
