@@ -103,6 +103,7 @@ struct MenuValidationContext: Equatable {
     /// window's tabs when there is no editor tab to switch to.
     var hasOtherWindowTabs = false
     var canPinResultTab = false
+    var canCompareResult = false
     /// The selected tab's browse history. Separate flags rather than one, because Back and Forward
     /// run out independently and an item that is disabled has to say which one it is.
     var canNavigateBack = false
@@ -322,6 +323,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.canPresentHighlightRules
         case #selector(pinResult(_:)):
             return context.canPinResultTab
+        case #selector(compareResult(_:)):
+            return context.canCompareResult
         case #selector(navigateBack(_:)):
             return context.isConnected && context.canNavigateBack
         case #selector(navigateForward(_:)):
@@ -656,6 +659,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             hasRecentTabToSwitchTo: hasRecentTabToSwitchTo,
             hasOtherWindowTabs: hasOtherWindowTabs,
             canPinResultTab: actions.canPinResultTab,
+            canCompareResult: actions.canCompareResult,
             canNavigateBack: actions.canNavigateBack,
             canNavigateForward: actions.canNavigateForward,
             canNavigatePages: actions.canNavigatePages,

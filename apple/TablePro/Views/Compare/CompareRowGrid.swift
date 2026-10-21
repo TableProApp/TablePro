@@ -69,20 +69,20 @@ internal final class CompareRowGridModel: DataGridViewDelegate {
                 String(localized: "Side")
             ] + columns,
             columnTypes: Array(repeating: ColumnType.text(rawType: nil), count: Self.leadingColumnCount)
-                + plan.columns.map(Self.displayType)
+                + plan.columns.map { Self.displayType(for: $0) }
         )
         return tableRows
     }
 
-    /// One column, two lines, and a type each side may spell differently. A column the two engines
-    /// type alike formats by that type; one they disagree on formats as text, so neither side's
-    /// values are drawn through the other's formatting.
     private static func displayType(for column: CompareColumn) -> ColumnType {
-        guard let source = column.sourceColumnType else { return column.targetColumnType ?? .text(rawType: nil) }
-        guard let target = column.targetColumnType else { return source }
-        return ValueComparisonKind(columnType: source) == ValueComparisonKind(columnType: target)
-            ? source
-            : .text(rawType: nil)
+        displayType(source: column.sourceColumnType, target: column.targetColumnType)
+    }
+
+    // Both lines format through one type, so a DATE beside a TIMESTAMP falls back to text rather than hide the time.
+    internal static func displayType(source: ColumnType?, target: ColumnType?) -> ColumnType {
+        guard let source else { return target ?? .text(rawType: nil) }
+        guard let target else { return source }
+        return source.displayShape == target.displayShape ? source : .text(rawType: nil)
     }
 
     internal static func lines(for entry: RowDiffEntry) -> [CompareRowGridLine] {
@@ -162,6 +162,11 @@ internal final class CompareRowGridModel: DataGridViewDelegate {
         return session.isRowIncluded(line.entry, in: plan)
     }
 
+    // The delegate's default copies nothing, which left Copy and Select All then Copy silent on this grid.
+    internal func dataGridCopyRows(_ indices: Set<Int>) {
+        coordinator?.copyRowsAsTSV(at: indices, includeHeaders: false)
+    }
+
     internal func dataGridSetCheckbox(_ isOn: Bool, rows: IndexSet, column: Int) {
         guard column == Self.includeColumn, let session else { return }
         let entries = rows.compactMap { row -> RowDiffEntry? in
@@ -204,7 +209,8 @@ internal struct CompareRowGrid: View {
                 showRowNumbers: false,
                 checkboxColumns: [CompareRowGridModel.includeColumn],
                 supportsColumnCommands: false,
-                supportsValueFilter: false
+                supportsValueFilter: false,
+                supportsColumnSort: false
             ),
             delegate: model,
             selectedRowIndices: $selectedRows,
@@ -216,6 +222,30 @@ internal struct CompareRowGrid: View {
         )
         .onChange(of: key) { _ in
             selectedRows = []
+        }
+    }
+}
+
+private extension ColumnType {
+    enum DisplayShape {
+        case text, integer, decimal, date, timestamp, datetime, boolean, blob, json, enumType, set, spatial, array
+    }
+
+    var displayShape: DisplayShape {
+        switch self {
+        case .text: return .text
+        case .integer: return .integer
+        case .decimal: return .decimal
+        case .date: return .date
+        case .timestamp: return .timestamp
+        case .datetime: return .datetime
+        case .boolean: return .boolean
+        case .blob: return .blob
+        case .json: return .json
+        case .enumType: return .enumType
+        case .set: return .set
+        case .spatial: return .spatial
+        case .array: return .array
         }
     }
 }
