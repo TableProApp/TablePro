@@ -24,7 +24,7 @@ internal enum FieldPickerSentinel {
         case .null, .pendingNull: return null
         case .pendingDefault: return defaultValue
         case .multipleValues: return multiple
-        case .absent, .pendingRemoval: return absent
+        case .absent, .pendingRemoval, .unloaded: return absent
         case .value: return nil
         }
     }

@@ -40,6 +40,7 @@ struct QueryResult {
 
     /// Row index to the columns that row has no field for. See `PluginQueryResult.absentCells`.
     var absentCells: [Int: Set<Int>] = [:]
+    var unloadedCells: [Int: [Int: Int]] = [:]
 
     var isEmpty: Bool {
         rows.isEmpty

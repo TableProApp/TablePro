@@ -89,7 +89,7 @@ struct ExportDialog: View {
 
     private var singleResultRowCount: Int? {
         switch mode {
-        case .queryResults(_, let tableRows, _):
+        case .queryResults(_, let tableRows, _, _):
             return tableRows.count
         case .dataSource:
             return selectedDataSourceScope?.rowCount
@@ -1036,13 +1036,15 @@ struct ExportDialog: View {
                 ) { driver in
                     try await runStreamingExport(on: driver, databaseType: connection.type, query: query, to: url)
                 }
-            case .queryResults(let connection, let tableRows, _):
+            case .queryResults(let connection, let tableRows, _, let fillUnloaded):
                 let service = ExportService(
                     queryResultsDriver: DatabaseManager.shared.driver(for: connection.id),
                     databaseType: connection.type
                 )
                 exportService = service
-                try await service.exportQueryResults(tableRows: tableRows, config: config, to: url)
+                try await service.exportQueryResults(
+                    tableRows: tableRows, fillUnloaded: fillUnloaded, config: config, to: url
+                )
             case .dataSource:
                 guard let scope = selectedDataSourceScope else { throw ExportError.noTablesSelected }
                 let service = ExportService()

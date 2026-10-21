@@ -115,6 +115,9 @@
     "A label cannot be removed or moved once it exists." : {
 
     },
+    "A larger binary value stays on the server until you open, copy or export it. Applies to tables with a primary key." : {
+
+    },
     "A name cannot be empty." : {
 
     },
@@ -200,6 +203,9 @@
     "Before" : {
 
     },
+    "Binary values limit must be between 1 and 1,048,576 KB." : {
+
+    },
     "Both results stopped at the row cap and are compared on the rows they hold. A row past the cap can show as only on one side." : {
 
     },
@@ -245,6 +251,9 @@
     "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope." : {
 
     },
+    "Could Not Load Value" : {
+
+    },
     "Could not connect to the database: %@" : {
 
     },
@@ -287,6 +296,9 @@
     "First Value" : {
 
     },
+    "KB" : {
+
+    },
     "Key %@ matches more than one row in the left result. Choose key columns that identify a single row, or match whole rows." : {
 
     },
@@ -305,6 +317,9 @@
           }
         }
       }
+    },
+    "Load binary values up to" : {
+
     },
     "Match Whole Rows" : {
 
@@ -331,6 +346,9 @@
 
     },
     "Not Null" : {
+
+    },
+    "Not loaded, %@" : {
 
     },
     "Not validated" : {
@@ -450,10 +468,16 @@
     "Shortcuts wants to add a row to \"%@\"" : {
 
     },
+    "Some rows are no longer in the table, so their values could not be read." : {
+
+    },
     "Statement" : {
 
     },
     "Subtype" : {
+
+    },
+    "Table Data" : {
 
     },
     "That connection no longer exists in TablePro." : {

@@ -67,7 +67,7 @@ internal extension GeometryFieldPreview {
         case .multipleValues:
             return .unavailable(.multipleValues)
         /// A pending DEFAULT has no value to read until it is saved.
-        case .absent, .pendingRemoval, .pendingDefault:
+        case .absent, .pendingRemoval, .pendingDefault, .unloaded:
             return .unavailable(.absent)
         }
 

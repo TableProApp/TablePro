@@ -289,6 +289,7 @@ final class ExportService: ObservableObject {
 
     func exportQueryResults(
         tableRows: TableRows,
+        fillUnloaded: UnloadedValueFill? = nil,
         config: ExportConfiguration,
         to url: URL
     ) async throws {
@@ -298,7 +299,8 @@ final class ExportService: ObservableObject {
         let dataSource = QueryResultExportDataSource(
             tableRows: tableRows,
             databaseType: databaseType,
-            driver: driver
+            driver: driver,
+            fillUnloaded: fillUnloaded
         )
         try await export(dataSource: dataSource, config: config, to: url)
     }

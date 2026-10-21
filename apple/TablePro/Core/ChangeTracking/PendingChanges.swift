@@ -47,6 +47,10 @@ struct PendingChanges: Equatable {
         modifiedCells[rowID] ?? []
     }
 
+    mutating func adoptLoadedValues(_ values: [RowID: [Int: PluginCellValue]]) {
+        RowChange.adoptLoadedValues(values, into: &changes)
+    }
+
     func change(forRow rowID: RowID, type: ChangeType) -> RowChange? {
         guard let idx = changeIndex[RowChangeKey(rowID: rowID, type: type)] else { return nil }
         return changes[idx]

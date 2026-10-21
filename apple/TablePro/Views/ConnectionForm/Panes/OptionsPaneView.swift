@@ -25,6 +25,7 @@ struct OptionsPaneView: View {
             driverSection
             extensionsSection
             timeoutSection
+            binaryValuesSection
             completionSection
             startupSection
             preConnectSection
@@ -132,6 +133,45 @@ struct OptionsPaneView: View {
                 """),
             globalQueryTimeoutSeconds
         )
+    }
+
+    // MARK: - Binary values
+
+    @ViewBuilder
+    private var binaryValuesSection: some View {
+        if PluginManager.shared.binaryLengthFunction(for: databaseType) != nil {
+            Section {
+                LabeledContent(String(localized: "Load binary values up to")) {
+                    HStack(spacing: 4) {
+                        TextField(
+                            String(localized: "Load binary values up to"),
+                            value: $coordinator.customization.binaryInlineLimitKilobytes,
+                            format: .number.grouping(.never),
+                            prompt: Text(verbatim: binaryInlineLimitPlaceholder)
+                        )
+                        .labelsHidden()
+                        .frame(width: 100)
+                        .multilineTextAlignment(.trailing)
+                        .accessibilityIdentifier("connection-form-binary-inline-limit")
+                        Text(String(localized: "KB"))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text(String(localized: "Table Data"))
+            } footer: {
+                Text(String(localized: """
+                    A larger binary value stays on the server until you open, copy or export it. \
+                    Applies to tables with a primary key.
+                    """))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var binaryInlineLimitPlaceholder: String {
+        String(format: String(localized: "Default (%d)"), UnloadedValuePlan.defaultInlineByteLimit / 1_024)
     }
 
     // MARK: - Autocomplete
