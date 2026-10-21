@@ -96,6 +96,7 @@ enum ActiveSheet: Identifiable {
     /// browser points by the time Save is pressed.
     case documentEditor(DocumentEditorRequest)
     case searchDatabase(DatabaseSearchSession)
+    case generateRows(RowGenerationSession)
 
     var id: String {
         switch self {
@@ -125,6 +126,7 @@ enum ActiveSheet: Identifiable {
         case .tableRebuildReview: "tableRebuildReview"
         case .documentEditor(let request): "documentEditor-\(request.id.uuidString)"
         case .searchDatabase(let session): "searchDatabase-\(session.id.uuidString)"
+        case .generateRows(let session): "generateRows-\(session.id.uuidString)"
         }
     }
 }
@@ -226,6 +228,8 @@ final class MainContentCoordinator: ObservableObject {
     /// not currently looking at.
     @Published var structureSessions: [UUID: StructureEditingSession] = [:]
     @Published var createTableDrafts: [UUID: CreateTableDraft] = [:]
+    // Held here for the same reason: the diagram stages schema edits that Save and the close gate reach.
+    @Published var erDiagramModels: [UUID: ERDiagramViewModel] = [:]
 
     /// Tabs holding staged principal changes. `usersRolesActions` is nilled the moment the tab is
     /// deselected, but the view model behind it is cached per tab id and keeps the staged work, so
@@ -1029,6 +1033,7 @@ final class MainContentCoordinator: ObservableObject {
         for session in structureSessions.values { session.releaseViewWiring() }
         structureSessions.removeAll()
         createTableDrafts.removeAll()
+        erDiagramModels.removeAll()
         displayFormatsCache.removeAll()
         displayOrderCache.removeAll()
         displayStateCache.removeAll()

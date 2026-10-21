@@ -247,6 +247,8 @@ struct MainContentView: View {
             DatabaseSearchSheet(session: session) { result in
                 coordinator.openDatabaseSearchResult(result, in: session)
             }
+        case .generateRows(let session):
+            GenerateRowsSheet(session: session)
         case .exportDialog, .exportQueryResults, .importDialog, .rowImport, .rowImportBatch,
              .transferTables, .backupDatabase, .restoreDatabase:
             transferSheetContent(for: sheet, dismiss: dismissBinding)
@@ -324,6 +326,8 @@ struct MainContentView: View {
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
             hasStructureChanges: toolbarState.hasStructureChanges,
+            diagramEditsRevision: toolbarState.diagramEditsRevision,
+            selectedTabId: tabManager.selectedTabId,
             isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false,
             hasCreateTablePending: toolbarState.hasCreateTablePending,
             hasPrincipalChanges: toolbarState.hasPrincipalChanges

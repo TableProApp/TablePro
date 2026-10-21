@@ -1,2 +1,13 @@
 #!/bin/sh
+case "$1" in
+    query | connections)
+        # Linked into a PATH directory, so the bundle is found through the link.
+        cli="$(/usr/bin/dirname "$(/usr/bin/readlink -f "$0")")/../../MacOS/tablepro-cli"
+        if [ ! -x "$cli" ]; then
+            echo "tablepro: $1 needs this script linked from TablePro.app, not copied out of it." >&2
+            exit 2
+        fi
+        exec "$cli" "$@"
+        ;;
+esac
 exec open -b com.TablePro "$@"

@@ -5,7 +5,7 @@
 
 import Foundation
 
-enum UUIDVersion: Sendable, CaseIterable {
+enum UUIDVersion: String, Sendable, CaseIterable, Codable {
     case v4
     case v7
 }

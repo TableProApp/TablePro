@@ -10,6 +10,7 @@ enum QueryHistorySource: String, Codable, CaseIterable, Sendable, Identifiable {
     case mcp
     case script
     case shortcuts
+    case commandLine = "command_line"
 
     var id: String { rawValue }
 
@@ -24,6 +25,7 @@ enum QueryHistorySource: String, Codable, CaseIterable, Sendable, Identifiable {
         case .mcp: return String(localized: "AI and MCP")
         case .script: return String(localized: "AppleScript")
         case .shortcuts: return String(localized: "Shortcuts")
+        case .commandLine: return String(localized: "Command Line")
         }
     }
 
@@ -38,6 +40,7 @@ enum QueryHistorySource: String, Codable, CaseIterable, Sendable, Identifiable {
         case .mcp: return "sparkles"
         case .script: return "applescript"
         case .shortcuts: return "square.2.layers.3d"
+        case .commandLine: return "terminal"
         }
     }
 
@@ -46,7 +49,8 @@ enum QueryHistorySource: String, Codable, CaseIterable, Sendable, Identifiable {
     // A stored filter equal to an earlier full set was "Everything" and widens to every source added since.
     private static let earlierFullSets: [Set<QueryHistorySource>] = [
         [.editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp],
-        [.editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp, .script]
+        [.editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp, .script],
+        [.editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp, .script, .shortcuts]
     ]
 
     static func migratingStoredSelection(_ stored: Set<QueryHistorySource>) -> Set<QueryHistorySource> {

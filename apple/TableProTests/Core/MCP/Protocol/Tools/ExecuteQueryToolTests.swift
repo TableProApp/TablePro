@@ -124,6 +124,18 @@ struct ExecuteQueryToolTests {
         }
     }
 
+    @Test("read_only is declared, and anything but a boolean is a protocol error")
+    func readOnlyArgument() async throws {
+        #expect(ExecuteQueryTool.inputSchema["properties"]?["read_only"]?["type"]?.stringValue == "boolean")
+        await #expect(throws: MCPProtocolError.self) {
+            _ = try await call(.object([
+                "connection_id": .string(UUID().uuidString),
+                "query": .string("SELECT 1"),
+                "read_only": .string("yes")
+            ]))
+        }
+    }
+
     @Test("A cancelled request is reported as cancelled, not as a query failure")
     func cancellationIsReported() async throws {
         let cancellation = MCPCancellationToken()

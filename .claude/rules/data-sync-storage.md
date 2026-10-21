@@ -34,6 +34,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Tab state | JSON | `TabPersistenceCoordinator`, `TabDiskActor` |
 | Filter defaults and presets | UserDefaults | `FilterSettingsStorage`, `FilterPresetStorage` |
 | Per-table filters | JSON, one file per table | `FilterSettingsStorage` |
+| Generate Rows settings per table | UserDefaults, device-local | `RowGenerationSettingsStore` |
 | Favorite tables (iCloud-synced) | UserDefaults | `FavoriteTablesStorage` |
 | Sidebar database and schema filters, recent tables | UserDefaults, device-local | `DatabaseTreeFilterStorage`, `RecentTablesStore` |
 | History drawer state | UserDefaults, device-local | `HistoryPanelPreferencesStorage` |

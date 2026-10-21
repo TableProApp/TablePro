@@ -39,7 +39,10 @@ public struct ExecuteQueryTool: MCPToolImplementation {
                 minimum: 1
             ),
             "database": MCPToolSchema.database,
-            "schema": MCPToolSchema.schema
+            "schema": MCPToolSchema.schema,
+            "read_only": MCPToolSchema.boolean(
+                String(localized: "Refuse the statement unless it only reads, even where the connection allows writes.")
+            )
         ],
         required: ["connection_id", "query"]
     )
@@ -57,10 +60,11 @@ public struct ExecuteQueryTool: MCPToolImplementation {
     ) async throws -> MCPToolCallResult {
         try MCPArgumentDecoder.rejectUnknownKeys(
             arguments,
-            allowed: MCPScopeArguments.keys.union(["query", "max_rows", "timeout_seconds"])
+            allowed: MCPScopeArguments.keys.union(["query", "max_rows", "timeout_seconds", "read_only"])
         )
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
         let query = try MCPArgumentDecoder.requireNonEmptyString(arguments, key: "query")
+        let readOnly = try MCPArgumentDecoder.optionalBool(arguments, key: "read_only", default: false)
 
         guard (query as NSString).length <= Self.maximumQueryBytes else {
             throw MCPToolExecutionError.invalidArgument(
@@ -81,6 +85,7 @@ public struct ExecuteQueryTool: MCPToolImplementation {
             meta: meta,
             allowsDestructive: false,
             allowsMultiStatement: ExternalStatementGate.acceptsScripts(on: meta.databaseType),
+            readOnly: readOnly,
             operationLabel: String(localized: "a query"),
             context: context,
             services: services

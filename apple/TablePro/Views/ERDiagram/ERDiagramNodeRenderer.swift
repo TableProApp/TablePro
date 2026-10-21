@@ -115,6 +115,11 @@ enum ERDiagramNodeRenderer {
         for (index, column) in node.displayColumns.enumerated() {
             let rowY = dividerY + CGFloat(index) * rowHeight + rowHeight / 2
 
+            if let fill = stagedFill(column.stagedEdit, palette: palette) {
+                let row = CGRect(x: rect.minX, y: dividerY + CGFloat(index) * rowHeight, width: rect.width, height: rowHeight)
+                canvas.fill(CGPath(rect: row, transform: nil), color: fill)
+            }
+
             if column.isPrimaryKey {
                 canvas.drawSymbol(
                     named: "key.fill",
@@ -134,14 +139,22 @@ enum ERDiagramNodeRenderer {
             }
 
             let widths = columnTextWidths(name: column.name, type: column.dataType, nodeWidth: rect.width)
+            let isDropped = column.stagedEdit == .dropped
             canvas.drawText(
                 column.name,
                 font: nameFont,
-                color: palette.text,
+                color: isDropped ? palette.deletedText : palette.text,
                 at: CGPoint(x: rect.minX + columnNameXOffset, y: rowY),
                 anchor: .leading,
                 maxWidth: widths.name
             )
+            // The strike says "dropped" where the row tint alone would rely on color.
+            if isDropped {
+                let strike = CGMutablePath()
+                strike.move(to: CGPoint(x: rect.minX + columnNameXOffset, y: rowY))
+                strike.addLine(to: CGPoint(x: rect.minX + columnNameXOffset + widths.name, y: rowY))
+                canvas.stroke(strike, color: palette.droppedEdge, lineWidth: 1, rounded: false)
+            }
 
             canvas.drawText(
                 column.dataType,
@@ -151,6 +164,15 @@ enum ERDiagramNodeRenderer {
                 anchor: .trailing,
                 maxWidth: widths.type
             )
+        }
+    }
+
+    private static func stagedFill(_ edit: ERStagedEdit?, palette: ERDiagramPalette) -> CGColor? {
+        switch edit {
+        case .added: palette.insertedRow
+        case .modified: palette.modifiedRow
+        case .dropped: palette.deletedRow
+        case nil: nil
         }
     }
 
