@@ -118,6 +118,10 @@ extension MainContentCoordinator {
             await readTask.value
         } onCancel: {
             readTask.cancel()
+            Task { @MainActor [weak self] in
+                guard let self, ownsStop, self.queryTasks.task(for: tabId) == readTask else { return }
+                self.cancelQueryTask(for: tabId, delivery: .background)
+            }
         }
         if ownsStop { retireQueryTask(owner) }
 
@@ -145,6 +149,8 @@ extension MainContentCoordinator {
         if tabManager.selectedTabId == tabId {
             changeManager.adoptLoadedValues(read.values)
             repaintFilledCells(read.values, tabId: tabId)
+        } else {
+            tabManager.mutate(tabId: tabId) { $0.pendingChanges.adoptLoadedValues(read.values) }
         }
         inspectorRowSourceRevision &+= 1
         return read.isComplete

@@ -47,15 +47,8 @@ struct PendingChanges: Equatable {
         modifiedCells[rowID] ?? []
     }
 
-    // A value loaded after the change was recorded replaces the placeholder its pre-image captured.
     mutating func adoptLoadedValues(_ values: [RowID: [Int: PluginCellValue]]) {
-        for index in changes.indices {
-            guard let cells = values[changes[index].rowID], var row = changes[index].originalRow else { continue }
-            for (column, value) in cells where row.indices.contains(column) {
-                row[column] = value
-            }
-            changes[index].originalRow = row
-        }
+        RowChange.adoptLoadedValues(values, into: &changes)
     }
 
     func change(forRow rowID: RowID, type: ChangeType) -> RowChange? {

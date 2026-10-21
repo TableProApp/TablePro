@@ -78,4 +78,30 @@ struct UnloadedValueWriteTests {
         #expect(build.operations.first?.preImage?[2] == .bytes(Data([5])))
         #expect(build.operations.first?.refusal == nil)
     }
+
+    @Test("A value loaded while a deletion was undone completes the image its redo records")
+    func redoAfterLoadKeepsLoadedValue() throws {
+        let row = Self.page().rows[0]
+        let manager = Self.manager()
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        manager.undoManagerProvider = { undoManager }
+
+        manager.recordRowDeletion(rowID: row.id, originalRow: Array(row.values))
+        undoManager.undo()
+        manager.adoptLoadedValues([row.id: [2: .bytes(Data([5]))]])
+        undoManager.redo()
+
+        let build = try manager.buildRowWrites(database: "d", schema: nil, containsTableOperation: false)
+        #expect(build.operations.first?.preImage?[2] == .bytes(Data([5])))
+    }
+
+    @Test("A value loaded for a tab in the background completes that tab's saved deletion")
+    func backgroundTabSnapshotTakesLoadedValue() {
+        let row = Self.page().rows[0]
+        var snapshot = TabChangeSnapshot()
+        snapshot.changes = [RowChange(rowID: row.id, type: .delete, originalRow: Array(row.values))]
+        snapshot.adoptLoadedValues([row.id: [2: .bytes(Data([5]))]])
+        #expect(snapshot.changes.first?.originalRow?[2] == .bytes(Data([5])))
+    }
 }

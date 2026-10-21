@@ -345,6 +345,7 @@ struct MainContentView: View {
                 inspector: trailingPaneState.inspector,
                 selection: coordinator.selectionState,
                 tabId: currentTab?.id,
+                selectsDataRows: gridSelectionOwner == .dataGrid,
                 contentVersion: currentTab?.schemaVersion ?? 0
             ) { [coordinator] tabId, displayRow in
                 await coordinator.loadInspectorRowValues(tabId: tabId, displayRow: displayRow)

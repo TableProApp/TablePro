@@ -199,6 +199,7 @@ internal struct InspectorValueLoadModifier: ViewModifier {
     @ObservedObject var inspector: RowInspectorState
     @ObservedObject var selection: GridSelectionState
     let tabId: UUID?
+    let selectsDataRows: Bool
     let contentVersion: Int
     let load: (UUID, Int) async -> Void
 
@@ -210,7 +211,7 @@ internal struct InspectorValueLoadModifier: ViewModifier {
     }
 
     private var key: Key? {
-        guard inspector.isOnScreen, let tabId, selection.indices.count == 1,
+        guard inspector.isOnScreen, selectsDataRows, let tabId, selection.indices.count == 1,
               let displayRow = selection.indices.first else { return nil }
         return Key(tabId: tabId, displayRow: displayRow, contentVersion: contentVersion)
     }

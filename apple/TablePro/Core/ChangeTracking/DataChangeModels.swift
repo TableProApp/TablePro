@@ -123,6 +123,22 @@ struct RowChange: Identifiable, Equatable {
         self.sequence = sequence
     }
 
+    // A value loaded after the change was recorded replaces the placeholder its pre-image captured.
+    static func adoptLoadedValues(_ values: [RowID: [Int: PluginCellValue]], into changes: inout [RowChange]) {
+        for index in changes.indices {
+            guard let cells = values[changes[index].rowID], let row = changes[index].originalRow else { continue }
+            changes[index].originalRow = completing(row, with: cells)
+        }
+    }
+
+    static func completing(_ row: [PluginCellValue], with cells: [Int: PluginCellValue]) -> [PluginCellValue] {
+        var row = row
+        for (column, value) in cells where row.indices.contains(column) && row[column].isNull {
+            row[column] = value
+        }
+        return row
+    }
+
     /// The columns the row has no field for once this update is written: those it lacked, less the
     /// ones an edit gave a value, plus the ones an edit removed.
     var absentColumnsAfterUpdate: Set<Int> {
