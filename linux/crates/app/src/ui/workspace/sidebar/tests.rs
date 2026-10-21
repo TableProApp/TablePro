@@ -14,7 +14,7 @@ use tablepro_test_support::FakeReply;
 use super::object_key::ObjectKey;
 use super::sidebar_event::SidebarEvent;
 use super::*;
-use crate::test_support::{descendants, drain_main_context, wait_until};
+use crate::test_support::{descendants, drain_main_context, test_runtime, wait_until};
 use crate::ui::session_window::tests::{TestWindow, WAIT};
 use crate::ui::workspace::WorkspaceTab;
 use crate::ui::workspace::tab_spec::{TabSpec, TablePage};
@@ -65,7 +65,7 @@ impl Shown {
         adw::init().expect("libadwaita initialises under the test backend");
         let events = Events::default();
         let sink = events.clone();
-        let view = SidebarView::new(move |event| sink.borrow_mut().push(event), affordances);
+        let view = SidebarView::new(move |event| sink.borrow_mut().push(event), affordances, None);
         let objects: Vec<ObjectInfo> = names.iter().map(|name| object("public", name)).collect();
         view.apply_objects(&objects, &public());
         let window = gtk::Window::new();
@@ -211,6 +211,27 @@ fn a_search_makes_only_the_rows_it_shows() {
         "{} rows made for 10,000 tables",
         shown.view.made()
     );
+}
+
+#[gtk4::test]
+fn a_list_and_its_searches_are_worked_out_off_the_gtk_thread() {
+    adw::init().expect("libadwaita initialises under the test backend");
+    let runtime = test_runtime();
+    let view = SidebarView::new(|_| {}, every_affordance(), Some(runtime.tasks()));
+    let objects: Vec<ObjectInfo> = names(20_000).iter().map(|name| object("public", name)).collect();
+
+    view.show(SidebarIndex::build(&objects, &public()));
+    assert_eq!(view.shown(), 0, "the GTK thread worked out the list's rows");
+    wait_until(WAIT, || view.shown() == 20_000).expect("the list's rows");
+    view.sync_selection(Some(&table("t19999")));
+    for query in ["t1", "t19", "t19999"] {
+        view.set_query(query);
+    }
+
+    assert_eq!(view.shown(), 20_000, "the GTK thread worked out a search's rows");
+    wait_until(WAIT, || view.shown() == 1).expect("the last search's rows");
+    assert_eq!(view.selected_table(), Some(table("t19999")), "the selection did not come back");
+    view.shutdown();
 }
 
 #[gtk4::test]

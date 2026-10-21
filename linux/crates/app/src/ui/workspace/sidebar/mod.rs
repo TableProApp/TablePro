@@ -40,10 +40,19 @@ use sidebar_event::SidebarEvent;
 
 /// Build the sidebar into the workspace's template, sending what the
 /// user asks of it to `input`.
-pub(super) fn build(workspace: &Workspace, input: &WorkspaceSender, affordances: SidebarAffordances) -> SidebarView {
+pub(super) fn build(
+    workspace: &Workspace,
+    input: &WorkspaceSender,
+    affordances: SidebarAffordances,
+    tasks: &Tasks,
+) -> SidebarView {
     let imp = workspace.imp();
     let events = input.clone();
-    let view = SidebarView::new(move |event| events.deliver(workspace_input(event)), affordances);
+    let view = SidebarView::new(
+        move |event| events.deliver(workspace_input(event)),
+        affordances,
+        Some(tasks.clone()),
+    );
     imp.sidebar_slot.set_child(Some(view.widget()));
     view.follow_search(&imp.table_search);
     imp.table_search_bar.connect_entry(&*imp.table_search);
