@@ -18,22 +18,22 @@ mod server_restart;
 #[path = "support/disconnection.rs"]
 mod disconnection;
 
+#[path = "support/pooled_database.rs"]
+mod pooled_database;
+#[path = "support/read_only_session.rs"]
+mod read_only_session;
 #[path = "support/shared_container.rs"]
 mod shared_container;
 
-#[path = "support/read_only_session.rs"]
-mod read_only_session;
-
 #[path = "support/result_charset.rs"]
 mod result_charset;
-
-#[path = "support/schema_introspection.rs"]
-mod schema_introspection;
 
 #[path = "shared/mysql_atomic.rs"]
 mod mysql_atomic;
 #[path = "shared/mysql_trigger_errors.rs"]
 mod mysql_trigger_errors;
+#[path = "support/schema_introspection.rs"]
+mod schema_introspection;
 
 #[path = "shared/mysql_atomic_assertions.rs"]
 mod mysql_atomic_assertions;

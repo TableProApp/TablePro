@@ -90,13 +90,16 @@ impl DatabaseDriver for MysqlDriver {
         let cancellation_options = mysql_opts.clone();
         let session_options = mysql_opts.clone();
         let read_only = opts.read_only;
+        let database: std::sync::Arc<str> = opts.database.as_str().into();
         let pool = MySqlPoolOptions::new()
             .max_connections(4)
             .acquire_timeout(Duration::from_secs(5))
             .after_connect(move |connection, _| Box::pin(prepare_session(connection, read_only)))
             .before_acquire(move |connection, _| {
+                let database = std::sync::Arc::clone(&database);
                 Box::pin(async move {
                     prepare_session(connection, read_only).await?;
+                    restore_database(connection, &database).await?;
                     Ok(true)
                 })
             })
@@ -534,6 +537,17 @@ impl tablepro_core::Transaction for MysqlTransaction {
 
 async fn set_utc_timezone(connection: &mut sqlx::MySqlConnection) -> Result<(), sqlx::Error> {
     sqlx::query("SET time_zone = '+00:00'").execute(connection).await?;
+    Ok(())
+}
+
+async fn restore_database(connection: &mut sqlx::MySqlConnection, database: &str) -> Result<(), sqlx::Error> {
+    if database.is_empty() {
+        return Ok(());
+    }
+    let statement = format!("USE `{}`", database.replace('`', "``"));
+    sqlx::raw_sql(sqlx::AssertSqlSafe(statement))
+        .execute(connection)
+        .await?;
     Ok(())
 }
 
