@@ -503,6 +503,7 @@ impl SimpleComponent for SqlEditor {
         narrow.add_setter(&widgets.fold_button, "visible", Some(&false.into()));
         narrow.add_setter(&widgets.unfold_button, "visible", Some(&false.into()));
         root.add_breakpoint(narrow);
+        finish_notice::fit_status(&widgets.status);
         let find = find_bar::FindBar::new(&widgets.source_view);
         if let Some(find) = &find {
             widgets.toolbar_view.add_top_bar(find.widget());

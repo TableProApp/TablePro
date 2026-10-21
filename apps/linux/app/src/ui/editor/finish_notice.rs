@@ -27,6 +27,13 @@ pub(super) fn notify_if_unattended(widget: &impl IsA<gtk::Widget>, elapsed: Dura
     application.send_notification(Some("query-finished"), &notification);
 }
 
+pub(super) fn fit_status(status: &gtk::Label) {
+    status.set_hexpand(true);
+    status.set_xalign(1.0);
+    status.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    status.connect_label_notify(|status| status.set_tooltip_text(Some(&status.label())));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

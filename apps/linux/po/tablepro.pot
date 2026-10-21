@@ -298,7 +298,7 @@ msgid "Connection closed."
 msgstr ""
 
 #: apps/linux/app/src/ui/activity_dialog.rs:111
-#: apps/linux/app/src/ui/editor/mod.rs:1000
+#: apps/linux/app/src/ui/editor/mod.rs:1001
 msgid "Running…"
 msgstr ""
 
@@ -2666,62 +2666,62 @@ msgstr ""
 msgid "Show or hide a second SQL editor pane"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:701
+#: apps/linux/app/src/ui/editor/mod.rs:702
 msgid "empty query"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:783
+#: apps/linux/app/src/ui/editor/mod.rs:784
 msgid "No statement at cursor"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:872
+#: apps/linux/app/src/ui/editor/mod.rs:873
 #: apps/linux/app/src/ui/editor/streaming.rs:154
 #: apps/linux/app/src/ui/history_dialog.rs:1054
 msgid "cancelled"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:874
+#: apps/linux/app/src/ui/editor/mod.rs:875
 #: apps/linux/app/src/ui/editor/outcomes.rs:630
 msgid "Query cancelled"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:875
+#: apps/linux/app/src/ui/editor/mod.rs:876
 msgid "The running query was stopped."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:891
+#: apps/linux/app/src/ui/editor/mod.rs:892
 #, rust-format
 msgid "Query exceeded the {n}s query timeout."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:898
+#: apps/linux/app/src/ui/editor/mod.rs:899
 #: apps/linux/app/src/ui/editor/streaming.rs:156
 msgid "timed out"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:901
+#: apps/linux/app/src/ui/editor/mod.rs:902
 #: apps/linux/app/src/ui/editor/outcomes.rs:70
 #: apps/linux/app/src/ui/editor/outcomes.rs:639
 #: apps/linux/app/src/ui/editor/streaming.rs:139
 msgid "Query timed out"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:950
+#: apps/linux/app/src/ui/editor/mod.rs:951
 msgid "Formatting is unavailable for this connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:974
+#: apps/linux/app/src/ui/editor/mod.rs:975
 msgid "Waiting for session to finish"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:981
-#: apps/linux/app/src/ui/editor/mod.rs:986
+#: apps/linux/app/src/ui/editor/mod.rs:982
+#: apps/linux/app/src/ui/editor/mod.rs:987
 #: apps/linux/app/src/ui/editor/session_mode.rs:339
 msgid "no active connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:1151
-#: apps/linux/app/src/ui/editor/mod.rs:1164
+#: apps/linux/app/src/ui/editor/mod.rs:1152
+#: apps/linux/app/src/ui/editor/mod.rs:1165
 msgid "query-results"
 msgstr ""
 
