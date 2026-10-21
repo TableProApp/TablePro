@@ -170,6 +170,7 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 - [ ] Closing a tab with unsaved file changes asks Save/Discard/Cancel, and Save closes it only after the file is written. **2026-10-12 Hyprland dark:** the prompt passed; Save wrote the file but the tab stayed open. Fixed by [#667](https://github.com/cozyGarage/BookiE/pull/667); no installed retest is recorded here.
 - [ ] Saving a file that is a symlink updates its target and keeps the link.
 - [ ] Restart with a file tab open: the tab is titled by the file again, unsaved edits still show `•`, and Ctrl+S saves to the same file.
+- [x] Restart with a saved connection, an active editor draft, a kept table tab and a preview table tab: restore the connection, draft and kept tab, omit the preview tab, and do not execute the draft until Run. **2026-10-22 installed 0.2.0 binary, isolated Xvfb/AT-SPI:** passed 1/1; the draft then ran against the restored connection. See [installed Wayland and package evidence](evidence/installed-wayland-0.2.0-2026-10-22/README.md). Native Wayland repeat remains untested.
 - [ ] Delete that file, then restart: the tab keeps its text and a toast says it is no longer linked.
 - [ ] Ctrl+S on a browse or structure tab still saves pending edits there.
 - [ ] A `.sql` file above the size limit is refused with an explanation, not truncated.
