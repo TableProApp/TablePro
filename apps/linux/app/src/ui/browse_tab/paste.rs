@@ -80,7 +80,28 @@ fn is_spreadsheet_quoted_cell(after_open: &[char]) -> bool {
     false
 }
 
+const COPIED_NULL_MARKER: &str = "\\N";
+
+fn undo_copy_markers(cell: String) -> String {
+    if cell == COPIED_NULL_MARKER {
+        return String::new();
+    }
+    let guarded = cell
+        .strip_prefix("\"'")
+        .and_then(|rest| rest.strip_suffix('"'))
+        .filter(|inner| inner.starts_with(['=', '+', '-', '@', '\t', '\r']) && !inner.contains('"'));
+    guarded.map_or(cell.clone(), str::to_string)
+}
+
 pub(super) fn parse_clipboard_grid(text: &str) -> Vec<Vec<String>> {
+    let mut rows = split_clipboard_grid(text);
+    rows.iter_mut()
+        .flatten()
+        .for_each(|cell| *cell = undo_copy_markers(std::mem::take(cell)));
+    rows
+}
+
+fn split_clipboard_grid(text: &str) -> Vec<Vec<String>> {
     let mut rows = Vec::new();
     let mut row = Vec::new();
     let mut cell = String::new();
@@ -314,6 +335,15 @@ mod tests {
         rows.iter()
             .map(|row| row.iter().map(|cell| cell.to_string()).collect())
             .collect()
+    }
+
+    #[test]
+    fn pasting_copied_rows_undoes_the_formula_guard_and_null_marker() {
+        let copied = "\"'-5\"\t\"'=1+1\"\t\\N\tplain\t'quoted\n";
+        assert_eq!(
+            parse_clipboard_grid(copied),
+            grid(&[&["-5", "=1+1", "", "plain", "'quoted"]])
+        );
     }
 
     #[test]

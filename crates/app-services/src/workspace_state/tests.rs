@@ -327,6 +327,37 @@ fn clamp_truncates_tabs_beyond_limit() {
 }
 
 #[test]
+fn clamp_never_drops_editor_tabs_beyond_limit() {
+    let mut tabs: Vec<_> = (0..40).map(|i| browse(&format!("t{i}"))).collect();
+    tabs.extend((0..3).map(|i| editor(&format!("SELECT {i}"))));
+    let mut conn = ConnectionWorkspaceState {
+        tabs,
+        active_idx: 41,
+        ..Default::default()
+    };
+    clamp_connection(&mut conn);
+    assert_eq!(conn.tabs.len(), MAX_TABS_PER_CONNECTION);
+    assert_eq!(
+        conn.tabs
+            .iter()
+            .filter(|tab| matches!(tab, WorkspaceTabRecord::Editor { .. }))
+            .count(),
+        3
+    );
+    assert_eq!(conn.active_idx, 30);
+}
+
+#[test]
+fn clamp_keeps_every_editor_even_when_they_exceed_the_limit() {
+    let mut conn = ConnectionWorkspaceState {
+        tabs: (0..40).map(|i| editor(&format!("SELECT {i}"))).collect(),
+        ..Default::default()
+    };
+    clamp_connection(&mut conn);
+    assert_eq!(conn.tabs.len(), 40);
+}
+
+#[test]
 fn clamp_handles_mixed_browse_and_editor_tabs() {
     let mut conn = ConnectionWorkspaceState {
         tabs: vec![browse("users"), editor("SELECT 1"), browse("orders")],

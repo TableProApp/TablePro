@@ -1827,42 +1827,42 @@ msgstr ""
 msgid "This table has no primary key. Row order is not stable; use the SQL editor to modify rows."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/paste.rs:140
+#: apps/linux/app/src/ui/browse_tab/paste.rs:161
 msgid "The clipboard has no text to paste"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/paste.rs:143
+#: apps/linux/app/src/ui/browse_tab/paste.rs:164
 msgid "That is too many cells to paste at once"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/paste.rs:146
+#: apps/linux/app/src/ui/browse_tab/paste.rs:167
 msgid "The pasted rows run past the last loaded row"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/paste.rs:149
+#: apps/linux/app/src/ui/browse_tab/paste.rs:170
 msgid "The column you clicked is hidden, so nothing was pasted"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/paste.rs:152
+#: apps/linux/app/src/ui/browse_tab/paste.rs:173
 msgid "The pasted columns run past the last column"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/paste.rs:196
-#: apps/linux/app/src/ui/browse_tab/paste.rs:256
+#: apps/linux/app/src/ui/browse_tab/paste.rs:217
+#: apps/linux/app/src/ui/browse_tab/paste.rs:277
 msgid "The rows changed since you clicked the cell, so nothing was pasted"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/paste.rs:228
+#: apps/linux/app/src/ui/browse_tab/paste.rs:249
 #, rust-format
 msgid "{column} on row {row} can't be edited, so nothing was pasted"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/paste.rs:237
+#: apps/linux/app/src/ui/browse_tab/paste.rs:258
 #, rust-format
 msgid "{column} on row {row}: {message}. Nothing was pasted."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/paste.rs:274
+#: apps/linux/app/src/ui/browse_tab/paste.rs:295
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:426
 msgid "That row moved while you were editing. The change was not applied."
 msgstr ""

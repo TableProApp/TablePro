@@ -500,9 +500,7 @@ fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
     conn.hidden_schemas.dedup();
     conn.hidden_schemas.truncate(MAX_HIDDEN_SCHEMAS);
     retain_known_tabs(conn);
-    if conn.tabs.len() > MAX_TABS_PER_CONNECTION {
-        conn.tabs.truncate(MAX_TABS_PER_CONNECTION);
-    }
+    drop_non_editor_tabs_over_limit(conn);
     migrate_legacy_tabs(conn);
     for tab in &mut conn.tabs {
         normalize_tab(tab);
@@ -510,6 +508,33 @@ fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
     if (conn.active_idx as usize) >= conn.tabs.len() {
         conn.active_idx = 0;
     }
+}
+
+fn drop_non_editor_tabs_over_limit(conn: &mut ConnectionWorkspaceState) {
+    let mut surplus = conn.tabs.len().saturating_sub(MAX_TABS_PER_CONNECTION);
+    let selected = conn.active_idx as usize;
+    let mut active_index = None;
+    let mut kept = 0;
+    let mut keep = vec![true; conn.tabs.len()];
+    for (index, tab) in conn.tabs.iter().enumerate().rev() {
+        if surplus > 0 && !matches!(tab, WorkspaceTabRecord::Editor { .. }) {
+            keep[index] = false;
+            surplus -= 1;
+        }
+    }
+    let mut index = 0;
+    conn.tabs.retain(|_| {
+        let retained = keep[index];
+        if retained {
+            if index == selected {
+                active_index = Some(kept);
+            }
+            kept += 1;
+        }
+        index += 1;
+        retained
+    });
+    conn.active_idx = active_index.unwrap_or(0);
 }
 
 fn retain_known_tabs(conn: &mut ConnectionWorkspaceState) {
