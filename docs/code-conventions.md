@@ -115,6 +115,15 @@ Every crate boundary returns a typed `thiserror` enum. A variant names what fail
 
 Never put a secret, SQL parameter, connection string, unmasked result or raw panic payload in returned errors, audit fields or logs. `tracing` at `error` does not make sensitive data safe. See [the privacy rule](error-handling.md#logging).
 
+## Lints, unsafe and the toolchain
+
+- Lints live in `[workspace.lints]` in the root `Cargo.toml`; every crate inherits them with `[lints] workspace = true`. Never silence a lint for a whole crate. A narrow `#[allow]` goes on the item and is removed when the cause goes.
+- Add a lint at `deny` only when `cargo clippy --workspace --all-targets` reports zero hits for it, so it ratchets and cannot regress. A lint with existing hits is fixed first, in its own change. Do not enable `clippy::pedantic` or `clippy::restriction` as a group.
+- The workspace denies `unwrap`, `expect`, `panic`, `todo`, `unimplemented`, `unreachable`, `dbg!` and printing, plus `rc_mutex`, `empty_drop`, `lossy_float_literal` and `large_stack_arrays`. `unsafe_op_in_unsafe_fn` is denied, so every unsafe operation sits in its own `unsafe` block even inside an `unsafe fn`.
+- `unsafe` is allowed only where a native API forces it today: GTK `qdata` access, `libc::flock` and locale initialisation in `apps/linux/app`. Keep the block to the one call, behind a safe function, and cover the wrapper with a test. A new `unsafe` site needs the reason in the pull request.
+- `rust-toolchain.toml` and `rust-version` in the root manifest name the same toolchain. Raise them together. The workspace uses resolver 3, so dependency selection respects `rust-version`.
+- Dependencies pass `cargo deny check` (advisories, licences, sources) and a new advisory exception needs a reason and a tracking issue in `deny.toml`.
+
 ## Settled decisions
 
 These are the choices that have been made more than once. They are settled. If you want to change one, change it here first, in its own commit, with the reason. Do not change it in passing inside a feature commit.

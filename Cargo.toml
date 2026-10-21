@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
     "apps/linux/app",
     "crates/app-services",
@@ -101,6 +101,9 @@ exclusions = [
     "**/pinned_tests.rs",
 ]
 
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
 [workspace.lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
@@ -111,6 +114,10 @@ unreachable = "deny"
 print_stdout = "deny"
 print_stderr = "deny"
 dbg_macro = "deny"
+rc_mutex = "deny"
+empty_drop = "deny"
+lossy_float_literal = "deny"
+large_stack_arrays = "deny"
 
 [profile.dev]
 debug = "line-tables-only"
