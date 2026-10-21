@@ -112,11 +112,12 @@ enum ERDiagramDOTWriter {
         return "\"\(escaped)\""
     }
 
-    // Graphviz parses a label as XML, so a character XML cannot hold becomes U+FFFD.
+    // Graphviz expands `\N` and `\G` even in an HTML label, so a backslash is doubled.
     static func html(_ text: String) -> String {
         var result = ""
         for scalar in text.unicodeScalars {
             switch scalar {
+            case "\\": result += "\\\\"
             case "&": result += "&amp;"
             case "<": result += "&lt;"
             case ">": result += "&gt;"

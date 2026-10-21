@@ -114,7 +114,12 @@ struct ERDiagramDOTWriterTests {
         #expect(document.contains("    \"a\\\"b<c>&d\" [label=<\n"))
         #expect(document.contains("<B>a&quot;b&lt;c&gt;&amp;d</B>"))
         #expect(document.contains("PORT=\"x_y\">x&quot;y <FONT COLOR=\"#6E6E73\">t&lt;1&gt;</FONT>"))
-        #expect(document.contains("<TD ALIGN=\"LEFT\" PORT=\"back_slash\">back\\slash"))
+        #expect(document.contains("<TD ALIGN=\"LEFT\" PORT=\"back_slash\">back\\\\slash"))
+    }
+
+    @Test("A backslash is doubled in a label, so \\N and \\G stay text instead of the node and graph names")
+    func backslashInLabel() {
+        #expect(ERDiagramDOTWriter.html("a\\Nb \\G") == "a\\\\Nb \\\\G")
     }
 
     @Test("A port is the column name cut to letters, digits and underscores, unique in its table")
