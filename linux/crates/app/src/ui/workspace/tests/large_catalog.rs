@@ -90,21 +90,27 @@ const STEP_LIMIT: Duration = Duration::from_secs(30);
 /// What a user sees as a frozen window.
 const STALL_LIMIT: Duration = Duration::from_millis(100);
 
+// The time bounds sit three to five times over the first CI run of a
+// debug build, the slower engine of the two: listing 624 ms, a search
+// key 62 ms, completion 2.6 s after MySQL's dot, a key typed into it
+// 57 ms.
+
 /// From asking for every schema's tables to the sidebar listing them.
-const LISTING_LIMIT: Duration = Duration::from_secs(5);
+const LISTING_LIMIT: Duration = Duration::from_secs(3);
 
 /// From a key in the sidebar's search to the list it leaves.
-const SEARCH_LIMIT: Duration = Duration::from_millis(500);
+const SEARCH_LIMIT: Duration = Duration::from_millis(250);
 
 /// From asking for completion to the list on screen, the catalog read
 /// included where the session has not read that list yet.
-const COMPLETION_LIMIT: Duration = Duration::from_secs(3);
+const COMPLETION_LIMIT: Duration = Duration::from_secs(8);
 
 /// From a key typed in the completion's word to the list it leaves.
-const NARROW_LIMIT: Duration = Duration::from_millis(500);
+const NARROW_LIMIT: Duration = Duration::from_millis(250);
 
 /// How far the catalog in the session, the sidebar and the completion
-/// lists may raise the process's resident peak.
+/// lists may raise the process's resident peak: twice what MySQL's
+/// 50,000 tables took in the first CI run, 128 MiB.
 const MEMORY_LIMIT: u64 = 256 * 1024 * 1024;
 
 #[gtk4::test]
