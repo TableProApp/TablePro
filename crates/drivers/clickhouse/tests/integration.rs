@@ -12,6 +12,8 @@ mod clickhouse;
 mod database_listing;
 #[path = "support/disconnection.rs"]
 mod disconnection;
+#[path = "support/edit_key.rs"]
+mod edit_key;
 #[path = "support/enum_values.rs"]
 mod enum_values;
 #[path = "support/nested_values.rs"]

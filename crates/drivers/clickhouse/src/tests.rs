@@ -445,3 +445,29 @@ fn a_verifying_connect_timeout_stays_disconnected_instead_of_a_fabricated_tls_mi
     let mapped = map_clickhouse_connect_error(err, true);
     assert!(matches!(mapped, DriverError::Disconnected));
 }
+
+#[test]
+fn an_edit_statement_yields_a_probe_on_its_own_condition() {
+    let update =
+        row_probe::single_row_probe("ALTER TABLE `db`.`t` UPDATE `a` = ?, `b` = ? WHERE `id` = ? AND `k` IS NULL")
+            .unwrap();
+    assert_eq!(
+        update.sql,
+        "SELECT 1 FROM `db`.`t` WHERE `id` = ? AND `k` IS NULL LIMIT 2"
+    );
+    assert_eq!(update.placeholders, 1);
+    let delete = row_probe::single_row_probe("DELETE FROM `we``ird UPDATE x` WHERE `id` = ?").unwrap();
+    assert_eq!(delete.sql, "SELECT 1 FROM `we``ird UPDATE x` WHERE `id` = ? LIMIT 2");
+}
+
+#[test]
+fn other_statements_are_not_probed() {
+    for sql in [
+        "INSERT INTO `t` (`a`) VALUES (?)",
+        "ALTER TABLE `t` ADD COLUMN c Int32",
+        "SELECT 1 WHERE 1",
+        "DELETE FROM `t`",
+    ] {
+        assert!(row_probe::single_row_probe(sql).is_none(), "{sql}");
+    }
+}

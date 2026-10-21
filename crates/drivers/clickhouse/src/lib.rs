@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 mod query;
+mod row_probe;
 mod temporal;
 mod tls;
 mod value_literal;
@@ -130,6 +131,21 @@ struct ClickhouseConnection {
 }
 
 impl ClickhouseConnection {
+    async fn require_one_row(&self, sql: &str, params: &[Value]) -> Result<(), DriverError> {
+        let Some(probe) = row_probe::single_row_probe(sql) else {
+            return Ok(());
+        };
+        let skip = params.len().saturating_sub(probe.placeholders);
+        let matched = self.query_params(&probe.sql, &params[skip..]).await?.rows.len();
+        match matched {
+            0 => Err(DriverError::ConcurrentModification),
+            1 => Ok(()),
+            _ => Err(DriverError::Unsupported(
+                "this edit would change more than one row: ClickHouse has no unique key, so the sorting key matches several rows. Nothing was changed".into(),
+            )),
+        }
+    }
+
     fn database_of<'a>(&'a self, schema: Option<&'a str>) -> &'a str {
         schema.unwrap_or(self.database.as_str())
     }
@@ -325,7 +341,11 @@ impl Connection for ClickhouseConnection {
         // uses to flag the offending row.
         let mut affected = Vec::with_capacity(statements.len());
         for (i, (sql, params)) in statements.iter().enumerate() {
-            match self.execute_params(sql, params).await {
+            let outcome = match self.require_one_row(sql, params).await {
+                Ok(()) => self.execute_params(sql, params).await,
+                Err(error) => Err(error),
+            };
+            match outcome {
                 Ok(r) => affected.push(r.rows_affected),
                 Err(e) => {
                     return Err(DriverError::non_atomic_batch_failure(i, e));
