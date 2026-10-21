@@ -54,8 +54,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: 1.98
-      - name: Install pinned cargo-about
-        run: cargo install cargo-about --locked --version 0.9.2 --features=cli
       - name: Fetch locked application dependencies
         run: cargo fetch --locked --manifest-path apps/linux/app/Cargo.toml
       - name: Install gettext tools for generated catalog checks

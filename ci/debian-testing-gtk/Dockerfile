@@ -19,6 +19,7 @@ RUN apt-get update \
         libsqlite3-dev \
         clang \
         dbus-daemon \
+        docker-cli \
         xvfb \
         xauth \
         at-spi2-core \

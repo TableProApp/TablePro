@@ -158,8 +158,6 @@ jobs:
         with:
           toolchain: 1.98
           components: rustfmt, clippy
-      - name: Install pinned cargo-about
-        run: cargo install cargo-about --locked --version 0.9.2 --features=cli
       - name: Fetch locked dependency manifests for notice generation
         run: |
           cargo fetch --locked --manifest-path apps/linux/app/Cargo.toml
@@ -231,8 +229,6 @@ jobs:
         with:
           toolchain: 1.98
           components: rustfmt, clippy
-      - name: Install pinned cargo-about
-        run: cargo install cargo-about --locked --version 0.9.2 --features cli
       - name: Fetch locked dependency manifests for notice generation
         run: |
           cargo fetch --locked --manifest-path apps/linux/app/Cargo.toml
@@ -254,6 +250,8 @@ jobs:
         run: python3 scripts/run-test-layer.py full
       - name: Isolated GTK widget regressions
         run: python3 scripts/run-test-layer.py widgets
+      - name: Pre-pull app-server fixture images
+        run: bash scripts/prepull-test-images.sh app-server
       - name: App numeric parser against PostgreSQL
         run: python3 scripts/run-test-layer.py app-server
 

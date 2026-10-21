@@ -21,14 +21,19 @@ port_spec.loader.exec_module(port_helper)
 
 
 class CiWorkflowTests(unittest.TestCase):
-    def test_workflows_install_cargo_about_with_cli(self):
+    def test_cargo_about_comes_from_the_pinned_installer_and_is_never_built_in_ci(self):
         for path in (
             ".github/workflows/build-linux.yml",
             ".github/workflows/linux-ci-contracts.yml",
             ".forgejo/workflows/ci.yml",
         ):
-            workflow = (ROOT / path).read_text()
-            self.assertIn("cargo install cargo-about --locked --version 0.9.2 --features=cli", workflow)
+            with self.subTest(workflow=path):
+                self.assertNotIn("cargo install cargo-about", (ROOT / path).read_text())
+        harness = (ROOT / "scripts/test-harness.sh").read_text()
+        self.assertLess(
+            harness.index("scripts/ensure-cargo-about.sh"),
+            harness.index("scripts/update-third-party-notices.py --check"),
+        )
 
     def test_forgejo_workflows_queue_without_cancelling_across_refs(self):
         groups = []

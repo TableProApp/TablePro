@@ -56,6 +56,7 @@ Other options and why they were rejected.
 | [0017](0017-mcp-sdk-behind-the-governed-seam.md) | Official Rust MCP SDK behind the governed seam | Accepted direction; migration incomplete | Target: replace the hand-written protocol and transport layer while keeping tokens, allowlists, approval and audit in BookiE's code. The production server remains hand-written; the SDK is an optional stdio prototype. |
 | [0018](0018-headless-app-services-crate.md) | Headless application-services crate | Accepted | GTK-free services, the tab model and workspace persistence have moved; GTK controllers and page handling remain in the app. |
 | [0019](0019-database-tooling-without-sidecars.md) | Database tooling without sidecars | Accepted; partial implementation | DuckDB for file conversion, `refinery` behind `PolicyGuard` for migrations, supervised vendor dump tools for backup; no sidecar binaries |
+| [0020](0020-aggregate-forgejo-trains.md) | Aggregate pull requests are the Forgejo gate unit | Accepted | Gate one immutable aggregate head, verify its merge tree and close constituent PRs as included |
 
 Three records use "snapshot" for different things: ADR 0011 a read-only snapshot session, ADR 0014 the read snapshot a full export holds, and ADR 0015 a saved copy of a database.
 

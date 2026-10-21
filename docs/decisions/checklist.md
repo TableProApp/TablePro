@@ -76,6 +76,7 @@ Reviewed against the ADR index, code and living docs on 2026-10-20. Each row poi
 
 | Topic | Record |
 | --- | --- |
+| Aggregate Forgejo acceptance and merge trains | [ADR 0020](0020-aggregate-forgejo-trains.md) |
 | Secret Service credentials | [ADR 0004](0004-libsecret-secret-storage.md), [secret-storage spec](../../specs/secret-storage/spec.md) (draft) |
 | Governed consumer seam (`PolicyGuard`) | [ADR 0016](0016-governed-consumer-seam.md), [governed SQL spec](../../specs/governed-sql/spec.md) (draft) |
 | Server-side cancellation | [ADR 0005](0005-server-side-cancellation.md) |

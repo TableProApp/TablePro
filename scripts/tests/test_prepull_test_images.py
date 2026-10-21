@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import re
 import stat
 import subprocess
 import tempfile
@@ -8,6 +9,77 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/prepull-test-images.sh"
 IMAGES = ROOT / "ci/test-images.txt"
+
+TESTCONTAINERS_MODULES_0_15_IMAGES = {
+    "Postgres": ("postgres", "11-alpine"),
+    "Mysql": ("mysql", "8.1"),
+    "Mongo": ("mongo", "5.0.6"),
+    "MssqlServer": ("mcr.microsoft.com/mssql/server", "2022-CU14-ubuntu-22.04"),
+    "Redis": ("redis", "5.0"),
+}
+
+GROUP_SOURCES = {
+    "postgres": "crates/drivers/postgres/tests",
+    "mysql": "crates/drivers/mysql/tests",
+    "mssql": "crates/drivers/mssql/tests",
+    "clickhouse": "crates/drivers/clickhouse/tests",
+    "redis": "crates/drivers/redis/tests",
+    "mongodb": "crates/drivers/mongodb/tests",
+    "app-server": "apps/linux/app",
+}
+DRIVER_TLS_FIXTURES = ROOT / "tests/fixtures/driver-tls"
+
+MODULE_START = re.compile(r"\b(" + "|".join(TESTCONTAINERS_MODULES_0_15_IMAGES) + r")::default\(\)")
+GENERIC_START = re.compile(r'GenericImage::new\(\s*"([^"]+)"\s*,\s*"([^"]+)"')
+TAG_ARGUMENT = re.compile(r"with_tag\(\s*([^)]+?)\s*\)")
+TAG_CONSTANT = re.compile(r"const ([A-Z_]+):\s*&(?:'static )?str\s*=\s*\"([^\"]+)\"")
+
+
+def listed_groups():
+    groups = {}
+    for line in IMAGES.read_text().splitlines():
+        if line.strip() and not line.startswith("#"):
+            group, image = line.split()
+            groups.setdefault(group, set()).add(image)
+    return groups
+
+
+def tag_constants(sources):
+    constants = {}
+    for text in sources.values():
+        constants.update(TAG_CONSTANT.findall(text))
+    return constants
+
+
+def module_image(text, match, constants):
+    name, default_tag = TESTCONTAINERS_MODULES_0_15_IMAGES[match.group(1)]
+    chain = text[match.end() : match.end() + 600]
+    start = chain.find(".start()")
+    tag = TAG_ARGUMENT.search(chain[: start if start >= 0 else len(chain)])
+    if not tag:
+        return f"{name}:{default_tag}"
+    argument = tag.group(1)
+    if argument.startswith('"'):
+        return f"{name}:{argument.strip(chr(34))}"
+    return f"{name}:{constants[argument.split('::')[-1]]}"
+
+
+def started_images(directory):
+    sources = {path: path.read_text(errors="replace") for path in (ROOT / directory).rglob("*.rs")}
+    constants = tag_constants(sources)
+    images = set()
+    for text in sources.values():
+        images.update(module_image(text, match, constants) for match in MODULE_START.finditer(text))
+        images.update(f"{name}:{tag}" for name, tag in GENERIC_START.findall(text))
+    return images
+
+
+def fixture_images():
+    compose = (DRIVER_TLS_FIXTURES / "docker-compose.yml").read_text()
+    images = set(re.findall(r"^\s+image:\s*([^\s#]+)", compose, re.MULTILINE))
+    for dockerfile in DRIVER_TLS_FIXTURES.rglob("Dockerfile"):
+        images.update(re.findall(r"^FROM\s+(?:--platform=\S+\s+)?([^\s]+)", dockerfile.read_text(), re.MULTILINE))
+    return images
 
 STUB = """#!/usr/bin/env bash
 echo "$*" >> "$STUB_LOG"
@@ -82,10 +154,38 @@ class PrepullTestImagesTests(unittest.TestCase):
         for group in ("postgres", "mysql", "mssql", "clickhouse", "redis", "mongodb", "driver-tls"):
             self.assertIn(group, groups)
 
+    def test_each_group_pulls_exactly_the_images_its_tests_start(self):
+        groups = listed_groups()
+        for group, directory in GROUP_SOURCES.items():
+            with self.subTest(group=group):
+                self.assertEqual(groups.get(group, set()), started_images(directory))
+
+    def test_the_tls_group_pulls_all_fixture_and_compose_images(self):
+        self.assertEqual(listed_groups().get("driver-tls", set()), fixture_images())
+
+    def test_a_tag_given_by_constant_resolves_to_that_tag(self):
+        text = 'const DB_TAG: &str = "7";\nlet c = Mongo::default().with_tag(DB_TAG).start();'
+        match = MODULE_START.search(text)
+        self.assertEqual(module_image(text, match, tag_constants({"x": text})), "mongo:7")
+
+    def test_a_module_started_without_a_tag_uses_the_crate_default(self):
+        text = "let c = Mysql::default().with_env_var(\"A\", \"b\").start();"
+        self.assertEqual(module_image(text, MODULE_START.search(text), {}), "mysql:8.1")
+
     def test_the_driver_jobs_pre_pull_before_their_tests(self):
         ci = (ROOT / ".forgejo/workflows/ci.yml").read_text()
         self.assertIn('bash src/scripts/prepull-test-images.sh "${{ matrix.driver }}"', ci)
         self.assertIn("bash src/scripts/prepull-test-images.sh driver-tls", ci)
+
+    def test_the_github_fast_job_pre_pulls_before_the_app_server_tests(self):
+        workflow = (ROOT / ".github/workflows/build-linux.yml").read_text()
+        fast = workflow.split("  fast:\n", 1)[1].split("  gtk-safety:\n", 1)[0]
+        prepull = fast.index("bash scripts/prepull-test-images.sh app-server")
+        self.assertLess(prepull, fast.index("run-test-layer.py app-server"))
+
+    def test_the_fast_job_image_can_run_the_pre_pull_script(self):
+        dockerfile = (ROOT / "ci/debian-testing-gtk/Dockerfile").read_text()
+        self.assertIn("docker-cli", dockerfile)
 
 
 if __name__ == "__main__":
