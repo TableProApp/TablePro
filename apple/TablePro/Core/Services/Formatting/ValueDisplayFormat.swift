@@ -13,10 +13,14 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
     case raw
     case text
     case uuid
+    case uuidSwappedTime
     case unixTimestamp
     case unixTimestampMillis
     case json
     case phpSerialized
+    case messagePack
+    case igbinary
+    case protobuf
 
     var id: String { rawValue }
 
@@ -25,10 +29,22 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
         case .raw: return String(localized: "Raw Value")
         case .text: return String(localized: "Text")
         case .uuid: return String(localized: "UUID")
+        case .uuidSwappedTime: return String(localized: "UUID (Swapped Time)")
         case .unixTimestamp: return String(localized: "Unix Timestamp (seconds)")
         case .unixTimestampMillis: return String(localized: "Unix Timestamp (milliseconds)")
         case .json: return String(localized: "JSON")
         case .phpSerialized: return String(localized: "PHP Serialized")
+        case .messagePack, .igbinary, .protobuf: return binaryValueFormat?.displayName ?? rawValue
+        }
+    }
+
+    var binaryValueFormat: BinaryValueFormat? {
+        switch self {
+        case .messagePack: return .messagePack
+        case .igbinary: return .igbinary
+        case .protobuf: return .protobuf
+        case .raw, .text, .uuid, .uuidSwappedTime, .unixTimestamp, .unixTimestampMillis, .json, .phpSerialized:
+            return nil
         }
     }
 
@@ -37,7 +53,7 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .raw:
             return []
-        case .text:
+        case .text, .uuidSwappedTime, .messagePack, .igbinary, .protobuf:
             return ["blob"]
         case .uuid:
             return ["blob", "text"]
@@ -60,7 +76,7 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
         default: return false
         }
 
-        if self == .uuid, databaseType == .mongodb, columnType.isBlobType {
+        if self == .uuid || self == .uuidSwappedTime, databaseType == .mongodb, columnType.isBlobType {
             return false
         }
         return applicableColumnTypes.contains(typeKey)
@@ -70,7 +86,7 @@ enum ValueDisplayFormat: String, Codable, CaseIterable, Identifiable {
     /// searching exactly when one of these is on it; hex is not what anyone types into Find.
     var rendersBinaryAsText: Bool {
         switch self {
-        case .text, .uuid:
+        case .text, .uuid, .uuidSwappedTime, .messagePack, .igbinary, .protobuf:
             return true
         case .raw, .unixTimestamp, .unixTimestampMillis, .json, .phpSerialized:
             return false

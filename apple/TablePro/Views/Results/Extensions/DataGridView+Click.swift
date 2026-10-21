@@ -37,6 +37,14 @@ extension TableViewCoordinator {
             showBlobViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .viewPhpSerialized:
             showPhpViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
+        case .viewBinaryValue(let format):
+            showBinaryValueViewerPopover(
+                tableView: tableView,
+                row: row,
+                column: tableColumn,
+                columnIndex: columnIndex,
+                format: format
+            )
         case .viewVector, .editVector:
             showVectorPopover(
                 tableView: tableView,

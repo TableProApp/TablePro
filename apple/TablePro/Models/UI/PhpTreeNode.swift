@@ -14,6 +14,7 @@ internal enum PhpNodeType {
     case array
     case object
     case serializable
+    case enumCase
     case reference
     case unsupported
     case truncated
@@ -28,6 +29,7 @@ internal enum PhpNodeType {
         case .array: return "arr"
         case .object: return "obj"
         case .serializable: return "ser"
+        case .enumCase: return "enum"
         case .reference: return "ref"
         case .unsupported: return "?"
         case .truncated: return "…"
@@ -39,7 +41,7 @@ internal enum PhpNodeType {
         case .array, .object: return .container
         case .string: return .string
         case .int, .float: return .number
-        case .bool, .null: return .literal
+        case .bool, .null, .enumCase: return .literal
         case .serializable: return .serialized
         case .reference: return .reference
         case .unsupported, .truncated: return .muted
@@ -103,7 +105,7 @@ extension PhpTreeNode: FilterableTreeNode {
         case .array, .truncated: return ""
         case .object: return className ?? ""
         case .serializable: return [className, rawValue].compactMap { $0 }.joined(separator: " ")
-        case .null, .bool, .int, .float, .string, .reference, .unsupported: return rawValue ?? displayValue
+        case .null, .bool, .int, .float, .string, .enumCase, .reference, .unsupported: return rawValue ?? displayValue
         }
     }
 
@@ -259,7 +261,13 @@ internal enum PhpTreeBuilder {
                 rawValue: rawPayload, className: className, visibilityBadge: badge
             )
 
-        case .reference(let identifier):
+        case .enumCase(let className, let caseName):
+            return PhpTreeNode(
+                key: key, keyPath: keyPath, path: path, nodeType: .enumCase,
+                displayValue: "\(className)::\(caseName)", className: className, visibilityBadge: badge
+            )
+
+        case .reference(let identifier), .variableReference(let identifier):
             return PhpTreeNode(
                 key: key, keyPath: keyPath, path: path, nodeType: .reference,
                 displayValue: "→ #\(identifier)", visibilityBadge: badge

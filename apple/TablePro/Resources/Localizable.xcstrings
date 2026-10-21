@@ -10374,6 +10374,9 @@
         }
       }
     },
+    "%lld bytes follow the end of the value." : {
+
+    },
     "%lld change could not be uploaded to iCloud. It stays on this Mac and goes again on the next sync. Everything else is up to date." : {
 
     },
@@ -10435,6 +10438,9 @@
 
     },
     "%lld failed" : {
+
+    },
+    "%lld fields" : {
 
     },
     "%lld files" : {
@@ -13182,6 +13188,9 @@
           }
         }
       }
+    },
+    "1 field" : {
+
     },
     "1 file" : {
 
@@ -32170,6 +32179,19 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "購買授權"
+          }
+        }
+      }
+    },
+    "Byte %lld does not start a valid field." : {
+
+    },
+    "Byte 0x%@ at offset %lld is not valid here." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Byte 0x%1$@ at offset %2$lld is not valid here."
           }
         }
       }
@@ -83833,6 +83855,9 @@
         }
       }
     },
+    "Format version %lld is not one this viewer reads." : {
+
+    },
     "Format:" : {
       "localizations" : {
         "fr" : {
@@ -121365,6 +121390,16 @@
         }
       }
     },
+    "Not valid %@. %@ Showing the stored bytes." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not valid %1$@. %2$@ Showing the stored bytes."
+          }
+        }
+      }
+    },
     "Not valid JSON" : {
       "localizations" : {
         "fr" : {
@@ -142596,6 +142631,16 @@
         }
       }
     },
+    "Reference %lld at byte %lld points to no earlier value." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reference %1$lld at byte %2$lld points to no earlier value."
+          }
+        }
+      }
+    },
     "referenced by %@" : {
       "localizations" : {
         "fr" : {
@@ -155662,6 +155707,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 的綱要"
+          }
+        }
+      }
+    },
+    "Schema Registry framing: schema ID %lld, message index %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Schema Registry framing: schema ID %1$lld, message index %2$@"
           }
         }
       }
@@ -184761,6 +184816,9 @@
         }
       }
     },
+    "The group end at byte %lld matches no group start." : {
+
+    },
     "The host cannot be passed to FreeTDS. Use a host name or an IP address, without spaces, brackets, “=”, “;” or “#”." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -184872,6 +184930,9 @@
           }
         }
       }
+    },
+    "The integer at byte %lld is out of range." : {
+
     },
     "The item %@ changed after it was loaded. Refresh the table and edit it again." : {
       "extractionState" : "manual",
@@ -190933,6 +190994,9 @@
         }
       }
     },
+    "The value ends early, at byte %lld." : {
+
+    },
     "The value in %@ is shortened for display, so saving it would store only the part shown. Change this field with a query." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -190944,6 +191008,12 @@
           }
         }
       }
+    },
+    "The value is nested too deeply to show." : {
+
+    },
+    "The value is too large to decode." : {
+
     },
     "The value of “%@” is not valid." : {
 
@@ -206711,6 +206781,9 @@
           }
         }
       }
+    },
+    "UUID (Swapped Time)" : {
+
     },
     "UUID of the connection" : {
       "extractionState" : "manual",

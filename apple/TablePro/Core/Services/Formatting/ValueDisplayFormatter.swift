@@ -27,13 +27,18 @@ enum ValueDisplayFormatter {
         case .text:
             return BinaryTextDecoder.decode(isoLatin1: rawValue, columnType: columnType)
         case .uuid:
-            return formatAsUuid(rawValue)
+            return formatAsUuid(rawValue, order: .stored)
+        case .uuidSwappedTime:
+            return formatAsUuid(rawValue, order: .swappedTime)
         case .unixTimestamp:
             return formatAsTimestamp(rawValue, divideBy: 1)
         case .unixTimestampMillis:
             return formatAsTimestamp(rawValue, divideBy: 1_000)
         case .json, .phpSerialized:
             return rawValue
+        case .messagePack, .igbinary, .protobuf:
+            guard let data = rawValue.data(using: .isoLatin1), let decoder = format.binaryValueFormat else { return nil }
+            return BinaryValueDecoding.text(data, format: decoder)
         }
     }
 
@@ -45,19 +50,21 @@ enum ValueDisplayFormatter {
         switch format {
         case .text:
             return BinaryTextDecoder.decode(rawValue, columnType: columnType)
-        case .uuid:
+        case .uuid, .uuidSwappedTime:
             guard rawValue.count == 16 else { return nil }
-            return formatAsUuid(rawValue.hexEncoded)
+            let order: UUIDByteOrder = format == .uuidSwappedTime ? .swappedTime : .stored
+            return insertUuidHyphens(order.uuidBytes(fromStored: [UInt8](rawValue)).hexEncoded)
+        case .messagePack, .igbinary, .protobuf:
+            guard let decoder = format.binaryValueFormat else { return nil }
+            return BinaryValueDecoding.text(rawValue, format: decoder)
         case .raw, .unixTimestamp, .unixTimestampMillis, .json, .phpSerialized:
             return nil
         }
     }
 
-    private static func formatAsUuid(_ rawValue: String) -> String {
+    private static func formatAsUuid(_ rawValue: String, order: UUIDByteOrder) -> String {
         if let data = rawValue.data(using: .isoLatin1), data.count == 16 {
-            let bytes = [UInt8](data)
-            let hex = bytes.hexEncoded
-            return insertUuidHyphens(hex)
+            return insertUuidHyphens(order.uuidBytes(fromStored: [UInt8](data)).hexEncoded)
         }
 
         var hex = rawValue
@@ -66,11 +73,25 @@ enum ValueDisplayFormatter {
         }
         hex = hex.replacingOccurrences(of: "-", with: "")
 
-        guard (hex as NSString).length == 32, hex.allSatisfy({ $0.isHexDigit }) else {
-            return rawValue
+        let digits = Array(hex.utf8)
+        let stored = stride(from: 0, to: digits.count, by: 2).compactMap { index -> UInt8? in
+            guard index + 1 < digits.count, let high = hexValue(digits[index]), let low = hexValue(digits[index + 1]) else {
+                return nil
+            }
+            return high << 4 | low
         }
+        guard digits.count == 32, stored.count == 16 else { return rawValue }
 
-        return insertUuidHyphens(hex.lowercased())
+        return insertUuidHyphens(order.uuidBytes(fromStored: stored).hexEncoded)
+    }
+
+    private static func hexValue(_ digit: UInt8) -> UInt8? {
+        switch digit {
+        case UInt8(ascii: "0")...UInt8(ascii: "9"): return digit - UInt8(ascii: "0")
+        case UInt8(ascii: "a")...UInt8(ascii: "f"): return digit - UInt8(ascii: "a") + 10
+        case UInt8(ascii: "A")...UInt8(ascii: "F"): return digit - UInt8(ascii: "A") + 10
+        default: return nil
+        }
     }
 
     private static func insertUuidHyphens(_ hex: String) -> String {
@@ -88,5 +109,21 @@ enum ValueDisplayFormatter {
         let seconds = numericValue / divisor
         let date = Date(timeIntervalSince1970: seconds)
         return DateFormattingService.shared.format(date)
+    }
+}
+
+// swappedTime is MySQL's UUID_TO_BIN(uuid, 1): stored `1026 BABA 6CCD780C 9564…` is `6ccd780c-baba-1026-9564-…`.
+internal enum UUIDByteOrder: Sendable {
+    case stored
+    case swappedTime
+
+    func uuidBytes(fromStored stored: [UInt8]) -> [UInt8] {
+        guard self == .swappedTime, stored.count == 16 else { return stored }
+        return Array(stored[4..<8] + stored[2..<4] + stored[0..<2] + stored[8..<16])
+    }
+
+    func storedBytes(fromUUID uuid: [UInt8]) -> [UInt8] {
+        guard self == .swappedTime, uuid.count == 16 else { return uuid }
+        return Array(uuid[6..<8] + uuid[4..<6] + uuid[0..<4] + uuid[8..<16])
     }
 }

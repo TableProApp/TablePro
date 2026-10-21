@@ -12,6 +12,9 @@ internal enum JSONValueType {
     case number
     case boolean
     case null
+    case binary
+    case `extension`
+    case timestamp
     case truncated
 
     var badgeLabel: String {
@@ -22,6 +25,9 @@ internal enum JSONValueType {
         case .number: return "num"
         case .boolean: return "bool"
         case .null: return "null"
+        case .binary: return "bin"
+        case .extension: return "ext"
+        case .timestamp: return "time"
         case .truncated: return "…"
         }
     }
@@ -31,7 +37,8 @@ internal enum JSONValueType {
         case .object, .array: return .container
         case .string: return .string
         case .number: return .number
-        case .boolean, .null: return .literal
+        case .boolean, .null, .timestamp: return .literal
+        case .binary, .extension: return .serialized
         case .truncated: return .muted
         }
     }
@@ -86,7 +93,7 @@ extension JSONTreeNode: FilterableTreeNode {
     internal var searchableText: String {
         switch valueType {
         case .object, .array, .truncated: return ""
-        case .string, .number, .boolean, .null: return rawValue ?? displayValue
+        case .string, .number, .boolean, .null, .binary, .extension, .timestamp: return rawValue ?? displayValue
         }
     }
 
@@ -108,7 +115,7 @@ extension JSONTreeNode: FilterableTreeNode {
     internal var copyableValueIncludesDescendants: Bool {
         switch valueType {
         case .object, .array: return true
-        case .string, .number, .boolean, .null, .truncated: return false
+        case .string, .number, .boolean, .null, .binary, .extension, .timestamp, .truncated: return false
         }
     }
 
@@ -144,7 +151,7 @@ extension JSONTreeNode: FilterableTreeNode {
                 .filter { !$0.isTruncationMarker }
                 .map(\.jsonRepresentation)
             return "[\(elements.joined(separator: ","))]"
-        case .string:
+        case .string, .binary, .extension, .timestamp:
             return TreeDisplayText.jsonQuoted(rawValue ?? "")
         case .null:
             return "null"

@@ -63,6 +63,25 @@ struct FieldEditorResolverTests {
         #expect(kind == .phpSerialized)
     }
 
+    @Test("A binary decoder format on a binary column opens the decoded viewer")
+    func binaryDecoderFormat() {
+        let kind = FieldEditorResolver.resolve(
+            for: .blob(rawType: "BLOB"),
+            isLongText: false,
+            originalValue: "\u{82}",
+            displayFormatOverride: .protobuf,
+            isBinaryValue: true
+        )
+        #expect(kind == .binaryValue(.protobuf))
+        let onText = FieldEditorResolver.resolve(
+            for: .text(rawType: "TEXT"),
+            isLongText: false,
+            originalValue: "plain",
+            displayFormatOverride: .messagePack
+        )
+        #expect(onText == .singleLine)
+    }
+
     @Test("override .phpSerialized forces .phpSerialized")
     func overridePhpSerializedWins() {
         let kind = FieldEditorResolver.resolve(

@@ -14,7 +14,11 @@ internal indirect enum PhpValue: Equatable {
     case array([PhpKeyValue])
     case object(className: String, properties: [PhpProperty])
     case serializable(className: String, rawPayload: String)
+    case enumCase(className: String, caseName: String)
+    // `r:`, the same object again.
     case reference(id: Int)
+    // `R:`, a PHP reference (`&`), which PHP refuses as `r:` for anything but an object.
+    case variableReference(id: Int)
     case unsupported(token: String)
     case depthExceeded
     case tooLarge
@@ -33,7 +37,10 @@ internal indirect enum PhpValue: Equatable {
             return aName == bName && aProps == bProps
         case (.serializable(let aName, let aPayload), .serializable(let bName, let bPayload)):
             return aName == bName && aPayload == bPayload
+        case (.enumCase(let aName, let aCase), .enumCase(let bName, let bCase)):
+            return aName == bName && aCase == bCase
         case (.reference(let a), .reference(let b)): return a == b
+        case (.variableReference(let a), .variableReference(let b)): return a == b
         case (.unsupported(let a), .unsupported(let b)): return a == b
         case (.depthExceeded, .depthExceeded): return true
         case (.tooLarge, .tooLarge): return true
@@ -105,9 +112,10 @@ private struct Cursor {
         case UInt8(ascii: "a"): return parseArray(depth: depth)
         case UInt8(ascii: "O"): return parseObject(depth: depth)
         case UInt8(ascii: "C"): return parseSerializable()
+        case UInt8(ascii: "E"): return parseEnumCase()
         case UInt8(ascii: "o"):
             return .unsupported(token: "o")
-        case UInt8(ascii: "r"), UInt8(ascii: "R"): return parseReference()
+        case UInt8(ascii: "r"), UInt8(ascii: "R"): return parseReference(token: token)
         default: return nil
         }
     }
@@ -164,7 +172,7 @@ private struct Cursor {
         guard let lengthRaw = readUntil(UInt8(ascii: ":")) else { return nil }
         guard let length = Int(lengthRaw), length >= 0 else { return nil }
         guard expect(UInt8(ascii: ":")), expect(UInt8(ascii: "\"")) else { return nil }
-        guard index + length <= bytes.count else { return nil }
+        guard length <= bytes.count - index else { return nil }
         guard let decoded = String(bytes: bytes[index..<(index + length)], encoding: .utf8) else { return nil }
         index += length
         guard expect(UInt8(ascii: "\"")), expect(UInt8(ascii: ";")) else { return nil }
@@ -178,6 +186,8 @@ private struct Cursor {
         guard let count = Int(countRaw), count >= 0 else { return nil }
         guard expect(UInt8(ascii: ":")), expect(UInt8(ascii: "{")) else { return nil }
 
+        // A forged count would otherwise reserve it.
+        guard count <= bytes.count - index else { return nil }
         var entries: [PhpKeyValue] = []
         entries.reserveCapacity(count)
         for _ in 0..<count {
@@ -195,7 +205,7 @@ private struct Cursor {
         guard let nameLengthRaw = readUntil(UInt8(ascii: ":")) else { return nil }
         guard let nameLength = Int(nameLengthRaw), nameLength >= 0 else { return nil }
         guard expect(UInt8(ascii: ":")), expect(UInt8(ascii: "\"")) else { return nil }
-        guard index + nameLength <= bytes.count else { return nil }
+        guard nameLength <= bytes.count - index else { return nil }
         guard let className = String(bytes: bytes[index..<(index + nameLength)], encoding: .utf8) else { return nil }
         index += nameLength
         guard expect(UInt8(ascii: "\"")), expect(UInt8(ascii: ":")) else { return nil }
@@ -203,11 +213,12 @@ private struct Cursor {
         guard let count = Int(countRaw), count >= 0 else { return nil }
         guard expect(UInt8(ascii: ":")), expect(UInt8(ascii: "{")) else { return nil }
 
+        guard count <= bytes.count - index else { return nil }
         var properties: [PhpProperty] = []
         properties.reserveCapacity(count)
         for _ in 0..<count {
             guard case let .string(rawKey)? = parseValue(depth: depth + 1) else { return nil }
-            let decoded = decodePropertyKey(rawKey)
+            let decoded = PhpSerializeParser.decodePropertyKey(rawKey)
             guard let value = parseValue(depth: depth + 1) else { return nil }
             properties.append(PhpProperty(name: decoded.name, visibility: decoded.visibility, value: value))
         }
@@ -221,27 +232,42 @@ private struct Cursor {
         guard let nameLengthRaw = readUntil(UInt8(ascii: ":")) else { return nil }
         guard let nameLength = Int(nameLengthRaw), nameLength >= 0 else { return nil }
         guard expect(UInt8(ascii: ":")), expect(UInt8(ascii: "\"")) else { return nil }
-        guard index + nameLength <= bytes.count else { return nil }
+        guard nameLength <= bytes.count - index else { return nil }
         guard let className = String(bytes: bytes[index..<(index + nameLength)], encoding: .utf8) else { return nil }
         index += nameLength
         guard expect(UInt8(ascii: "\"")), expect(UInt8(ascii: ":")) else { return nil }
         guard let payloadLengthRaw = readUntil(UInt8(ascii: ":")) else { return nil }
         guard let payloadLength = Int(payloadLengthRaw), payloadLength >= 0 else { return nil }
         guard expect(UInt8(ascii: ":")), expect(UInt8(ascii: "{")) else { return nil }
-        guard index + payloadLength <= bytes.count else { return nil }
+        guard payloadLength <= bytes.count - index else { return nil }
         let payload = String(bytes: bytes[index..<(index + payloadLength)], encoding: .utf8) ?? ""
         index += payloadLength
         guard expect(UInt8(ascii: "}")) else { return nil }
         return .serializable(className: className, rawPayload: payload)
     }
 
-    private mutating func parseReference() -> PhpValue? {
+    // `E:11:"Suit:Hearts";`. PHP splits at the first colon too.
+    private mutating func parseEnumCase() -> PhpValue? {
+        index += 1
+        guard expect(UInt8(ascii: ":")) else { return nil }
+        guard let lengthRaw = readUntil(UInt8(ascii: ":")) else { return nil }
+        guard let length = Int(lengthRaw), length >= 0 else { return nil }
+        guard expect(UInt8(ascii: ":")), expect(UInt8(ascii: "\"")) else { return nil }
+        guard length <= bytes.count - index else { return nil }
+        guard let name = String(bytes: bytes[index..<(index + length)], encoding: .utf8) else { return nil }
+        index += length
+        guard expect(UInt8(ascii: "\"")), expect(UInt8(ascii: ";")) else { return nil }
+        guard let colon = name.firstIndex(of: ":") else { return nil }
+        return .enumCase(className: String(name[..<colon]), caseName: String(name[name.index(after: colon)...]))
+    }
+
+    private mutating func parseReference(token: UInt8) -> PhpValue? {
         index += 1
         guard expect(UInt8(ascii: ":")) else { return nil }
         guard let raw = readUntil(UInt8(ascii: ";")) else { return nil }
         guard let value = Int(raw) else { return nil }
         guard expect(UInt8(ascii: ";")) else { return nil }
-        return .reference(id: value)
+        return token == UInt8(ascii: "R") ? .variableReference(id: value) : .reference(id: value)
     }
 
     private mutating func readUntil(_ terminator: UInt8) -> String? {
@@ -254,20 +280,22 @@ private struct Cursor {
     }
 }
 
-private func decodePropertyKey(_ raw: String) -> (name: String, visibility: PhpVisibility) {
-    let scalars = Array(raw.unicodeScalars)
-    guard scalars.first?.value == 0 else {
-        return (raw, .publicVisibility)
+extension PhpSerializeParser {
+    static func decodePropertyKey(_ raw: String) -> (name: String, visibility: PhpVisibility) {
+        let scalars = Array(raw.unicodeScalars)
+        guard scalars.first?.value == 0 else {
+            return (raw, .publicVisibility)
+        }
+        let secondNullIndex = scalars.dropFirst().firstIndex { $0.value == 0 }
+        guard let nullIndex = secondNullIndex, nullIndex < scalars.count - 1 else {
+            return (raw, .publicVisibility)
+        }
+        let middle = String(String.UnicodeScalarView(scalars[1..<nullIndex]))
+        let nameScalars = scalars[(nullIndex + 1)...]
+        let name = String(String.UnicodeScalarView(nameScalars))
+        if middle == "*" {
+            return (name, .protectedVisibility)
+        }
+        return (name, .privateVisibility(className: middle))
     }
-    let secondNullIndex = scalars.dropFirst().firstIndex { $0.value == 0 }
-    guard let nullIndex = secondNullIndex, nullIndex < scalars.count - 1 else {
-        return (raw, .publicVisibility)
-    }
-    let middle = String(String.UnicodeScalarView(scalars[1..<nullIndex]))
-    let nameScalars = scalars[(nullIndex + 1)...]
-    let name = String(String.UnicodeScalarView(nameScalars))
-    if middle == "*" {
-        return (name, .protectedVisibility)
-    }
-    return (name, .privateVisibility(className: middle))
 }

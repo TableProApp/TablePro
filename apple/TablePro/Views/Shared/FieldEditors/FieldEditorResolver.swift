@@ -52,7 +52,12 @@ internal enum FieldEditorResolver {
                 return .phpSerialized
             case .json:
                 return .json
-            case .text, .uuid, .unixTimestamp, .unixTimestampMillis:
+            case .messagePack, .igbinary, .protobuf:
+                if type.isBlobType || isBinaryValue, let format = override.binaryValueFormat {
+                    return .binaryValue(format)
+                }
+                structuredAllowed = true
+            case .text, .uuid, .uuidSwappedTime, .unixTimestamp, .unixTimestampMillis:
                 structuredAllowed = true
             }
         } else {

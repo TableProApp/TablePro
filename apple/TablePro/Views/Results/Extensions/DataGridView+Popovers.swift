@@ -644,6 +644,42 @@ extension TableViewCoordinator {
         }
     }
 
+    func showBinaryValueViewerPopover(
+        tableView: NSTableView,
+        row: Int,
+        column: Int,
+        columnIndex: Int,
+        format: BinaryValueFormat
+    ) {
+        let data: Data
+        switch cellTypedValue(at: row, column: columnIndex) {
+        case .null: return
+        case .bytes(let bytes): data = bytes
+        case .text(let text): data = text.storedBytes
+        }
+        let columnName = columnName(at: columnIndex)
+
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: NSSize(width: 560, height: 360)
+        ) { dismiss in
+            BinaryValueViewerView(
+                data: data,
+                format: format,
+                onPopOut: {
+                    dismiss()
+                    BinaryValueViewerWindowController.open(data: data, format: format, columnName: columnName)
+                }
+            )
+            .frame(width: 560)
+            .frame(minHeight: 200, maxHeight: 480)
+        }
+    }
+
     func showBlobViewerPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let currentValue = blobStringValue(at: row, columnIndex: columnIndex)
         let columnName = columnName(at: columnIndex)

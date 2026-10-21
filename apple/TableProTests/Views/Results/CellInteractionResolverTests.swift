@@ -222,6 +222,51 @@ struct CellInteractionResolverBinaryTests {
         )
         #expect(resolver.resolve(context) == .blocked)
     }
+
+    @Test(
+        "A binary decoder format opens the decoded viewer, read-only, on an editable table too",
+        arguments: [
+            (ValueDisplayFormat.messagePack, BinaryValueFormat.messagePack),
+            (.igbinary, .igbinary),
+            (.protobuf, .protobuf),
+        ]
+    )
+    func decoderFormatOpensDecodedViewer(format: ValueDisplayFormat, expected: BinaryValueFormat) {
+        for isTableEditable in [false, true] {
+            let context = ContextFactory.make(
+                value: nil, columnType: .blob(rawType: "BLOB"), isTableEditable: isTableEditable,
+                isBinaryValue: true, displayFormatOverride: format
+            )
+            #expect(resolver.resolve(context) == .viewBinaryValue(expected))
+        }
+    }
+
+    @Test("A NULL under a decoder format keeps the hex editor, which is how bytes get into it")
+    func nullUnderDecoderFormatKeepsHexEditor() {
+        let context = ContextFactory.make(
+            value: nil, columnType: .blob(rawType: "BLOB"), isTableEditable: true, displayFormatOverride: .messagePack
+        )
+        #expect(resolver.resolve(context) == .editBlob)
+    }
+
+    @Test("Text and both UUID formats keep the hex editor on a binary cell")
+    func characterFormatsKeepHexEditor() {
+        for format in [ValueDisplayFormat.text, .uuid, .uuidSwappedTime] {
+            let context = ContextFactory.make(
+                value: nil, columnType: .blob(rawType: "BINARY(16)"), isTableEditable: true,
+                isBinaryValue: true, displayFormatOverride: format
+            )
+            #expect(resolver.resolve(context) == .editBlob)
+        }
+    }
+
+    @Test("A decoder format left on a text column edits as text")
+    func decoderFormatOnTextColumn() {
+        let context = ContextFactory.make(
+            value: "hello", columnType: .text(rawType: "TEXT"), isTableEditable: true, displayFormatOverride: .messagePack
+        )
+        #expect(resolver.resolve(context) == .editInline(value: "hello"))
+    }
 }
 
 struct CellInteractionResolverForeignKeyTests {

@@ -212,7 +212,7 @@ struct HexEditorBody: View {
     }
 }
 
-private struct HexDumpDisplayView: NSViewRepresentable {
+struct HexDumpDisplayView: NSViewRepresentable {
     let text: String
     let font: NSFont
 

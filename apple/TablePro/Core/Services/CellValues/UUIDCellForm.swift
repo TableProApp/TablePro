@@ -16,6 +16,8 @@ enum UUIDCellForm: Equatable, Sendable {
     case hyphenated
     case compact
     case bytes
+    // Written in the order the column shows, so the UUID read back is the one written.
+    case swappedTimeBytes
 
     /// Nil for a column that does not hold UUIDs, and for `timeuuid`, which takes only version 1.
     ///
@@ -30,6 +32,11 @@ enum UUIDCellForm: Equatable, Sendable {
         guard let columnType, !columnType.isTimeUUIDType else { return nil }
         if columnType.isUUIDType {
             self = .hyphenated
+            return
+        }
+        if displayFormat == .uuidSwappedTime {
+            guard columnType.isBlobType else { return nil }
+            self = .swappedTimeBytes
             return
         }
         guard displayFormat == .uuid else { return nil }
@@ -58,6 +65,9 @@ enum UUIDCellForm: Equatable, Sendable {
             return .text(uuid.uuidString.lowercased().replacingOccurrences(of: "-", with: ""))
         case .bytes:
             return .bytes(withUnsafeBytes(of: uuid.uuid) { Data($0) })
+        case .swappedTimeBytes:
+            let bytes = withUnsafeBytes(of: uuid.uuid) { [UInt8]($0) }
+            return .bytes(Data(UUIDByteOrder.swappedTime.storedBytes(fromUUID: bytes)))
         }
     }
 
