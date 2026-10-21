@@ -20,10 +20,15 @@ const PENDING_CSS_CLASSES: &[&str] = &[
 ];
 
 const TOOLTIP_MIN_CHARS: usize = 40;
+const HEADER_COMMENT_MAX_CHARS: usize = 60;
 
 pub(super) fn header_column(column: &ColumnInfo, schema: Option<&ColumnInfo>) -> ColumnInfo {
     let mut header = column.clone();
-    header.primary_key |= schema.is_some_and(|known| known.name == column.name && known.primary_key);
+    let known = schema.filter(|known| known.name == column.name);
+    header.primary_key |= known.is_some_and(|known| known.primary_key);
+    if header.comment.is_none() {
+        header.comment = known.and_then(|known| known.comment.clone());
+    }
     header
 }
 
@@ -38,6 +43,16 @@ fn column_header_title(info: &ColumnInfo, is_foreign_key: bool) -> String {
     if !info.data_type.is_empty() {
         title.push('\n');
         title.push_str(&info.data_type.to_lowercase());
+    }
+    if let Some(comment) = info
+        .comment
+        .as_deref()
+        .and_then(|text| text.lines().next())
+        .map(str::trim)
+        && !comment.is_empty()
+    {
+        title.push('\n');
+        title.extend(comment.chars().take(HEADER_COMMENT_MAX_CHARS));
     }
     title
 }
@@ -485,6 +500,32 @@ mod tests {
         assert!(!header_column(&result, None).primary_key);
         schema.name = "other".into();
         assert!(!header_column(&result, Some(&schema)).primary_key);
+    }
+
+    #[test]
+    fn header_title_adds_the_first_line_of_the_column_comment() {
+        let mut info = col("INTEGER", false);
+        info.name = "id".into();
+        info.comment = Some("Customer id\nsecond line".into());
+        assert_eq!(column_header_title(&info, false), "id\ninteger\nCustomer id");
+        info.comment = Some("x".repeat(100));
+        assert_eq!(column_header_title(&info, false).lines().last().map(str::len), Some(60));
+        info.comment = Some("  ".into());
+        assert_eq!(column_header_title(&info, false), "id\ninteger");
+    }
+
+    #[test]
+    fn a_result_column_takes_the_comment_from_the_table_metadata() {
+        let mut result = col("int4", false);
+        result.name = "id".into();
+        let mut schema = col("int4", false);
+        schema.name = "id".into();
+        schema.comment = Some("Customer id".into());
+        assert_eq!(
+            header_column(&result, Some(&schema)).comment.as_deref(),
+            Some("Customer id")
+        );
+        assert_eq!(header_column(&result, None).comment, None);
     }
 
     #[test]

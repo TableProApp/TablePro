@@ -6,6 +6,7 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 
 ### Added
 
+- Grid column headers show the first line of the column comment under the type.
 - The sidebar table menu has Rename Table. It asks for the new name and is refused while the table has open tabs, so no pending changes are lost.
 - MongoDB connections have an optional Authentication database field, for a user defined in `admin` while the Database field names the database to browse; saved connections and bundles carry it.
 - PostgreSQL query cancellation through PgBouncer without interrupting another client's work.
