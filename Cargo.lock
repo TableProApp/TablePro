@@ -6304,6 +6304,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "csv",
+ "encoding_rs",
  "rust_decimal",
  "rust_xlsxwriter",
  "secrecy",

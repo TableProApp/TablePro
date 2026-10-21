@@ -36,6 +36,9 @@ pub enum ImportError {
     #[error("the file is not valid UTF-8 at byte {offset}")]
     NotUtf8 { offset: usize },
 
+    #[error("the file is not valid {encoding} text")]
+    NotDecodable { encoding: &'static str },
+
     #[error("line {line} could not be read as delimited text")]
     Malformed { line: u64 },
 
@@ -58,9 +61,46 @@ pub struct CsvFormat {
     pub has_header: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CsvImportQuote {
+    #[default]
+    Double,
+    Single,
+    None,
+}
+
+impl CsvImportQuote {
+    pub const ALL: [Self; 3] = [Self::Double, Self::Single, Self::None];
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CsvImportEncoding {
+    #[default]
+    Utf8,
+    Windows1252,
+    Utf16Le,
+    Utf16Be,
+}
+
+impl CsvImportEncoding {
+    pub const ALL: [Self; 4] = [Self::Utf8, Self::Windows1252, Self::Utf16Le, Self::Utf16Be];
+
+    fn codec(self) -> &'static encoding_rs::Encoding {
+        match self {
+            Self::Utf8 => encoding_rs::UTF_8,
+            Self::Windows1252 => encoding_rs::WINDOWS_1252,
+            Self::Utf16Le => encoding_rs::UTF_16LE,
+            Self::Utf16Be => encoding_rs::UTF_16BE,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CsvImportOptions {
     pub delimiter: CsvDelimiter,
+    pub quote: CsvImportQuote,
+    pub backslash_escape: bool,
+    pub encoding: CsvImportEncoding,
     /// Whether the first record names the columns rather than holding data.
     pub has_header: bool,
     /// The text standing for NULL. Empty by default, which is what every
@@ -72,6 +112,9 @@ impl Default for CsvImportOptions {
     fn default() -> Self {
         Self {
             delimiter: CsvDelimiter::Comma,
+            quote: CsvImportQuote::default(),
+            backslash_escape: false,
+            encoding: CsvImportEncoding::default(),
             has_header: true,
             null_marker: String::new(),
         }
@@ -83,7 +126,7 @@ impl From<CsvFormat> for CsvImportOptions {
         Self {
             delimiter: format.delimiter,
             has_header: format.has_header,
-            null_marker: String::new(),
+            ..Self::default()
         }
     }
 }
@@ -125,12 +168,8 @@ fn check_file_size(size: u64) -> Result<(), ImportError> {
 /// decides which fields matter.
 pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) -> Result<CsvSheet, ImportError> {
     check_file_size(bytes.len() as u64)?;
-    if let Err(error) = std::str::from_utf8(bytes) {
-        return Err(ImportError::NotUtf8 {
-            offset: error.valid_up_to(),
-        });
-    }
-    let mut reader = reader_for(bytes, options);
+    let decoded = decode_text(bytes, options.encoding)?;
+    let mut reader = reader_for(decoded.as_bytes(), options);
     let headers = match options.has_header {
         true => record_strings(reader.headers().map_err(malformed)?, 1)?,
         false => Vec::new(),
@@ -140,12 +179,35 @@ pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) 
     finish_sheet(headers, rows, truncated)
 }
 
+fn decode_text(bytes: &[u8], encoding: CsvImportEncoding) -> Result<std::borrow::Cow<'_, str>, ImportError> {
+    if encoding == CsvImportEncoding::Utf8 {
+        return std::str::from_utf8(bytes)
+            .map(std::borrow::Cow::Borrowed)
+            .map_err(|error| ImportError::NotUtf8 {
+                offset: error.valid_up_to(),
+            });
+    }
+    let codec = encoding.codec();
+    codec
+        .decode_without_bom_handling_and_without_replacement(bytes)
+        .ok_or(ImportError::NotDecodable { encoding: codec.name() })
+}
+
 fn reader_for<'a>(bytes: &'a [u8], options: &CsvImportOptions) -> csv::Reader<&'a [u8]> {
-    csv::ReaderBuilder::new()
+    let mut builder = csv::ReaderBuilder::new();
+    builder
         .delimiter(delimiter_byte(options.delimiter))
         .has_headers(options.has_header)
-        .flexible(true)
-        .from_reader(bytes)
+        .flexible(true);
+    match options.quote {
+        CsvImportQuote::Double => builder.quote(b'"'),
+        CsvImportQuote::Single => builder.quote(b'\''),
+        CsvImportQuote::None => builder.quoting(false),
+    };
+    if options.backslash_escape {
+        builder.escape(Some(b'\\'));
+    }
+    builder.from_reader(bytes)
 }
 
 fn collect_rows(
@@ -265,7 +327,7 @@ fn sample_records(bytes: &[u8], delimiter: CsvDelimiter) -> Vec<Vec<String>> {
     let options = CsvImportOptions {
         delimiter,
         has_header: false,
-        null_marker: String::new(),
+        ..CsvImportOptions::default()
     };
     read_csv(bytes, &options, Some(DETECT_LINES)).map_or_else(|_| Vec::new(), |sheet| sheet.rows)
 }
@@ -363,6 +425,7 @@ mod tests {
             delimiter: CsvDelimiter::Tab,
             has_header: true,
             null_marker: "\\N".into(),
+            ..CsvImportOptions::default()
         };
 
         let sheet = read_csv_file(file.path(), &options, Some(1)).expect("read from path");
@@ -605,5 +668,61 @@ mod tests {
         ];
 
         assert_eq!(suggest_mapping(&headers, &columns), vec![Some(1), Some(0), None]);
+    }
+
+    #[test]
+    fn quote_character_can_be_single_or_absent() {
+        let single = CsvImportOptions {
+            quote: CsvImportQuote::Single,
+            ..options()
+        };
+        let sheet = read_csv(b"a,b\n'x,y',\"z\"\n", &single, None).expect("read");
+        assert_eq!(sheet.rows, vec![vec!["x,y".to_string(), "\"z\"".to_string()]]);
+        let none = CsvImportOptions {
+            quote: CsvImportQuote::None,
+            ..options()
+        };
+        let sheet = read_csv(b"a,b\n\"x\",y\n", &none, None).expect("read");
+        assert_eq!(sheet.rows, vec![vec!["\"x\"".to_string(), "y".to_string()]]);
+    }
+
+    #[test]
+    fn backslash_escape_keeps_an_escaped_quote_inside_the_field() {
+        let text = b"a\n\"say \\\"hi\\\"\"\n";
+        let escaped = CsvImportOptions {
+            backslash_escape: true,
+            ..options()
+        };
+        assert_eq!(
+            read_csv(text, &escaped, None).expect("read").rows,
+            vec![vec!["say \"hi\"".to_string()]]
+        );
+    }
+
+    #[test]
+    fn other_encodings_decode_before_parsing() {
+        let windows = CsvImportOptions {
+            encoding: CsvImportEncoding::Windows1252,
+            ..options()
+        };
+        let sheet = read_csv(b"name\ncaf\xe9\n", &windows, None).expect("read");
+        assert_eq!(sheet.rows, vec![vec!["caf\u{e9}".to_string()]]);
+        let utf16: Vec<u8> = "a\n\u{e9}\n".encode_utf16().flat_map(u16::to_le_bytes).collect();
+        let utf16_options = CsvImportOptions {
+            encoding: CsvImportEncoding::Utf16Le,
+            ..options()
+        };
+        assert_eq!(
+            read_csv(&utf16, &utf16_options, None).expect("read").rows,
+            vec![vec!["\u{e9}".to_string()]]
+        );
+        let broken = CsvImportOptions {
+            encoding: CsvImportEncoding::Utf16Le,
+            ..options()
+        };
+        assert!(matches!(
+            read_csv(&[0x00, 0xd8, 0x41], &broken, None),
+            Err(ImportError::NotDecodable { .. })
+        ));
     }
 }

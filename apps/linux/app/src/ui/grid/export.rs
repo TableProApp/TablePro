@@ -107,6 +107,7 @@ mod tests {
             delimiter: tablepro_core::export::CsvDelimiter::Comma,
             has_header: false,
             null_marker: tablepro_core::export::unique_csv_null_marker(&rows),
+            ..Default::default()
         };
         let sheet = tablepro_core::import::read_csv(received.as_bytes(), &options, None).unwrap();
         let pasted = sheet
@@ -175,6 +176,7 @@ mod tests {
             delimiter: tablepro_core::export::CsvDelimiter::Tab,
             has_header: false,
             null_marker: tablepro_core::export::unique_csv_null_marker(&rows),
+            ..Default::default()
         };
         let sheet = tablepro_core::import::read_csv(received.as_bytes(), &options, None).unwrap();
         let pasted = sheet

@@ -9,6 +9,7 @@ use tablepro_core::import::{
     CsvFormat, CsvImportOptions, CsvSheet, INFER_SAMPLE_ROWS, MAX_PREVIEW_ROWS, infer_columns, read_csv,
     suggest_mapping,
 };
+use tablepro_core::import::{CsvImportEncoding, CsvImportQuote};
 use tablepro_core::sql_ddl::DraftColumn;
 use tablepro_core::{ColumnInfo, import::supports_explicit_auto_increment_values, sql_dialect};
 use tokio_util::sync::CancellationToken;
@@ -126,6 +127,18 @@ fn connect_refresh(state: &std::rc::Rc<State>) {
         .file
         .delimiter
         .connect_selected_notify(move |_| for_delimiter.refresh());
+    let for_quote = state.clone();
+    state.file.quote.connect_selected_notify(move |_| for_quote.refresh());
+    let for_encoding = state.clone();
+    state
+        .file
+        .encoding
+        .connect_selected_notify(move |_| for_encoding.refresh());
+    let for_backslash = state.clone();
+    state
+        .file
+        .backslash
+        .connect_active_notify(move |_| for_backslash.refresh());
     let for_header = state.clone();
     state.file.header.connect_active_notify(move |_| for_header.refresh());
 }
@@ -133,6 +146,9 @@ fn connect_refresh(state: &std::rc::Rc<State>) {
 struct FileOptions {
     group: adw::PreferencesGroup,
     delimiter: adw::ComboRow,
+    quote: adw::ComboRow,
+    backslash: adw::SwitchRow,
+    encoding: adw::ComboRow,
     header: adw::SwitchRow,
     null_marker: adw::EntryRow,
 }
@@ -151,12 +167,30 @@ impl FileOptions {
         let null_marker = adw::EntryRow::builder()
             .title(crate::tr!("Text that means NULL"))
             .build();
+        let quote = choice_row(
+            &crate::tr!("Quote character"),
+            &["Double quote (\")", "Single quote (')", "None"],
+        );
+        let backslash = adw::SwitchRow::builder()
+            .title(crate::tr!("Backslash escapes a quote"))
+            .build();
+        let encoding = choice_row(
+            &crate::tr!("Encoding"),
+            &["UTF-8", "Windows-1252", "UTF-16 LE", "UTF-16 BE"],
+        );
+        encoding.set_selected(starting_encoding(&request.bytes));
         group.add(&delimiter);
+        group.add(&quote);
+        group.add(&backslash);
+        group.add(&encoding);
         group.add(&header);
         group.add(&null_marker);
         Self {
             group,
             delimiter,
+            quote,
+            backslash,
+            encoding,
             header,
             null_marker,
         }
@@ -165,6 +199,15 @@ impl FileOptions {
     fn options(&self) -> CsvImportOptions {
         CsvImportOptions {
             delimiter: selected_delimiter(self.delimiter.selected()),
+            quote: CsvImportQuote::ALL
+                .get(self.quote.selected() as usize)
+                .copied()
+                .unwrap_or_default(),
+            backslash_escape: self.backslash.is_active(),
+            encoding: CsvImportEncoding::ALL
+                .get(self.encoding.selected() as usize)
+                .copied()
+                .unwrap_or_default(),
             has_header: self.header.is_active(),
             null_marker: self.null_marker.text().to_string(),
         }
@@ -649,6 +692,29 @@ fn type_names_for(driver_id: &str) -> Vec<&'static str> {
     names
 }
 
+fn starting_encoding(bytes: &[u8]) -> u32 {
+    let encoding = if bytes.starts_with(&[0xff, 0xfe]) {
+        CsvImportEncoding::Utf16Le
+    } else if bytes.starts_with(&[0xfe, 0xff]) {
+        CsvImportEncoding::Utf16Be
+    } else if std::str::from_utf8(bytes).is_err() {
+        CsvImportEncoding::Windows1252
+    } else {
+        CsvImportEncoding::Utf8
+    };
+    CsvImportEncoding::ALL
+        .iter()
+        .position(|candidate| *candidate == encoding)
+        .unwrap_or(0) as u32
+}
+
+fn choice_row(title: &str, labels: &[&str]) -> adw::ComboRow {
+    adw::ComboRow::builder()
+        .title(title)
+        .model(&gtk::StringList::new(labels))
+        .build()
+}
+
 fn delimiter_row(selected: CsvDelimiter) -> adw::ComboRow {
     let labels: Vec<&str> = CsvDelimiter::ALL
         .iter()
@@ -756,6 +822,15 @@ pub(crate) fn present_progress(parent: &adw::ApplicationWindow, table: &str, tot
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_that_is_not_utf8_opens_with_a_matching_encoding() {
+        let selected = |bytes: &[u8]| CsvImportEncoding::ALL[starting_encoding(bytes) as usize];
+        assert_eq!(selected(b"a,b\n1,2\n"), CsvImportEncoding::Utf8);
+        assert_eq!(selected(b"caf\xe9\n"), CsvImportEncoding::Windows1252);
+        assert_eq!(selected(&[0xff, 0xfe, b'a', 0]), CsvImportEncoding::Utf16Le);
+        assert_eq!(selected(&[0xfe, 0xff, 0, b'a']), CsvImportEncoding::Utf16Be);
+    }
 
     #[test]
     #[ignore = "requires an isolated GTK display"]

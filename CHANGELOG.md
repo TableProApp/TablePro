@@ -6,6 +6,7 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 
 ### Added
 
+- CSV import can set the quote character, backslash escaping of quotes and the file encoding (UTF-8, Windows-1252, UTF-16); a file that is not UTF-8 opens with a matching encoding selected.
 - The sidebar table menu has Truncate Table, which asks for confirmation and runs through the same guard as other statements. SQLite is refused because it has no TRUNCATE.
 - The sidebar table menu has Truncate Table, which asks for confirmation and runs through the same guard as other statements. SQLite is refused because it has no TRUNCATE.
 - The sidebar table menu has Rename Table. It asks for the new name and is refused while the table has open tabs, so no pending changes are lost.

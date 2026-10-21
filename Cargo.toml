@@ -49,6 +49,7 @@ sqlx-core = { version = "0.9", default-features = false }
 # Tiberius 0.13 supports SQL Server's full DECIMAL scale of 38.
 tiberius = { version = "0.13", default-features = false, features = ["tds73", "native-tls", "chrono", "rust_decimal"] }
 csv = "1"
+encoding_rs = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 jiff = "0.2"
 rust_decimal = { version = "1.43", default-features = false, features = ["serde", "std"] }
