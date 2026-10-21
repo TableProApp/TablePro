@@ -845,6 +845,9 @@
     "“%@” Changed on Disk" : {
 
     },
+    "“%@” holds no file to import." : {
+
+    },
     "\"%@\" is a reserved theme identifier." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -3523,6 +3526,9 @@
         }
       }
     },
+    "%@ files cannot be imported together with other files." : {
+
+    },
     "%@ had no rows to transfer." : {
       "localizations" : {
         "fr" : {
@@ -3558,6 +3564,9 @@
           }
         }
       }
+    },
+    "%@ has no column to create." : {
+
     },
     "%@ holds a document or an array, and this text is not valid JSON." : {
       "extractionState" : "manual",
@@ -4631,6 +4640,16 @@
         }
       }
     },
+    "%@ on branch %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ on branch %2$@"
+          }
+        }
+      }
+    },
     "%@ or more" : {
       "localizations" : {
         "fr" : {
@@ -5388,6 +5407,9 @@
     "%@ takes one level. End it with a semicolon before the next statement." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "%@ takes rows from two files, so Delete existing rows before import would remove the first file's rows." : {
+
     },
     "%@ to %@ characters" : {
       "localizations" : {
@@ -6698,6 +6720,9 @@
         }
       }
     },
+    "%1$@ cannot be read. %2$@" : {
+
+    },
     "%1$@ chart of %2$@ by %3$@ with %4$d points" : {
       "localizations" : {
         "en" : {
@@ -6929,6 +6954,12 @@
         }
       }
     },
+    "%1$@ failed, and the files imported before it were kept. %2$@" : {
+
+    },
+    "%1$@ failed, so every file was rolled back. %2$@" : {
+
+    },
     "%1$@ for %2$@" : {
       "localizations" : {
         "fr" : {
@@ -7063,6 +7094,12 @@
           }
         }
       }
+    },
+    "%1$@ maps no field to a column of %2$@." : {
+
+    },
+    "%1$@ maps two fields to one column of %2$@." : {
+
     },
     "%1$@ must be at least %2$lld." : {
       "localizations" : {
@@ -7267,6 +7304,9 @@
 
     },
     "%1$@ takes %2$lld dimensions, and the value has %3$lld." : {
+
+    },
+    "%1$@ to %2$@: %3$@" : {
 
     },
     "%1$@ wants to run a query on \"%2$@\"" : {
@@ -7972,6 +8012,9 @@
         }
       }
     },
+    "%1$lld of %2$lld fields mapped" : {
+
+    },
     "%1$lld of %2$lld members" : {
       "localizations" : {
         "fr" : {
@@ -8111,6 +8154,9 @@
           }
         }
       }
+    },
+    "%1$lld rows from %2$lld files in %3$@ seconds." : {
+
     },
     "%1$lld rows from %3$lld tables written to %2$@." : {
       "localizations" : {
@@ -10424,6 +10470,12 @@
     "%lld dims" : {
 
     },
+    "%lld failed" : {
+
+    },
+    "%lld files" : {
+
+    },
     "%lld in, %lld out" : {
       "localizations" : {
         "en" : {
@@ -10644,6 +10696,9 @@
           }
         }
       }
+    },
+    "%lld new columns" : {
+
     },
     "%lld objects" : {
       "localizations" : {
@@ -11315,6 +11370,12 @@
           }
         }
       }
+    },
+    "%lld rows before it were kept." : {
+
+    },
+    "%lld rows before it were rolled back." : {
+
     },
     "%lld rows do not match the foreign keys this change asks for, so nothing was changed. Correct or remove those rows, then try again." : {
       "extractionState" : "manual",
@@ -13158,6 +13219,9 @@
         }
       }
     },
+    "1 file" : {
+
+    },
     "1 item" : {
       "localizations" : {
         "fr" : {
@@ -13190,6 +13254,9 @@
           }
         }
       }
+    },
+    "1 new column" : {
+
     },
     "1 of %lld conflicts" : {
       "extractionState" : "stale",
@@ -13330,6 +13397,12 @@
           }
         }
       }
+    },
+    "1 row before it was kept." : {
+
+    },
+    "1 row before it was rolled back." : {
+
     },
     "1 row does not fit a %1$@ INSERT on its own, so its statement passes that size." : {
       "extractionState" : "manual",
@@ -15532,6 +15605,9 @@
     "A Firestore document is a JSON object of fields." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "A folder imports the %@ files directly inside it." : {
+
     },
     "A foreign key change recreates the table, and these cannot travel with it:\n\n%@\n\nSave them on their own first, then change the foreign key." : {
       "localizations" : {
@@ -24678,6 +24754,9 @@
         }
       }
     },
+    "Another Git command is still running in this repository." : {
+
+    },
     "Another index is already named %@." : {
       "localizations" : {
         "fr" : {
@@ -30997,6 +31076,9 @@
         }
       }
     },
+    "Binary File" : {
+
+    },
     "Block" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -33666,6 +33748,9 @@
         }
       }
     },
+    "Cannot read the file" : {
+
+    },
     "Cannot Read the Source" : {
       "localizations" : {
         "fr" : {
@@ -35301,6 +35386,9 @@
         }
       }
     },
+    "Changed Files" : {
+
+    },
     "Changed since the save" : {
       "localizations" : {
         "fr" : {
@@ -35468,6 +35556,9 @@
           }
         }
       }
+    },
+    "Changes Unavailable" : {
+
     },
     "Changing %@ from %@ to %@ can truncate existing values." : {
       "localizations" : {
@@ -37440,6 +37531,9 @@
         }
       }
     },
+    "Choose a table for %@." : {
+
+    },
     "Choose a target to compare against." : {
       "localizations" : {
         "fr" : {
@@ -37661,6 +37755,9 @@
           }
         }
       }
+    },
+    "Choose at least one file to import." : {
+
     },
     "Choose at least one object to copy." : {
       "localizations" : {
@@ -44295,7 +44392,22 @@
     "Commit" : {
 
     },
+    "Commit Changes" : {
+
+    },
+    "Commit Message" : {
+
+    },
     "Commit the transaction" : {
+
+    },
+    "Commit…" : {
+
+    },
+    "Committed" : {
+
+    },
+    "Committing…" : {
 
     },
     "Compact" : {
@@ -53769,6 +53881,12 @@
           }
         }
       }
+    },
+    "Couldn't Pull \"%@\"" : {
+
+    },
+    "Couldn't Push \"%@\"" : {
+
     },
     "Couldn't Put the Theme Back" : {
 
@@ -63474,6 +63592,9 @@
         }
       }
     },
+    "Diff Unavailable" : {
+
+    },
     "Difference" : {
       "localizations" : {
         "fr" : {
@@ -68879,6 +69000,9 @@
         }
       }
     },
+    "Edit the import of %@" : {
+
+    },
     "Edit Trigger" : {
       "localizations" : {
         "fr" : {
@@ -73058,6 +73182,9 @@
           }
         }
       }
+    },
+    "Every file in this folder matches the last commit." : {
+
     },
     "Every geometry in this column is empty or null." : {
       "localizations" : {
@@ -85364,6 +85491,15 @@
         }
       }
     },
+    "Git is not installed. Install the Command Line Tools or Xcode." : {
+
+    },
+    "Git printed more output than TablePro can read." : {
+
+    },
+    "Git stopped with the message below." : {
+
+    },
     "GitHub Repository" : {
       "localizations" : {
         "fr" : {
@@ -90905,6 +91041,9 @@
           }
         }
       }
+    },
+    "Import the rows of each file into its own table" : {
+
     },
     "Import Tunnel Commands?" : {
       "extractionState" : "stale",
@@ -98699,6 +98838,9 @@
         }
       }
     },
+    "Last Commit" : {
+
+    },
     "Last Connected" : {
       "localizations" : {
         "fr" : {
@@ -99518,6 +99660,9 @@
       }
     },
     "Left out of the INSERT, so the server fills it or leaves it NULL." : {
+
+    },
+    "Left out, because they do not import into a table: %@" : {
 
     },
     "left parenthesis" : {
@@ -107699,6 +107844,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Message" : {
+
+    },
     "Message too large. Shorten it and send it again." : {
       "localizations" : {
         "fr" : {
@@ -112886,6 +113034,9 @@
           }
         }
       }
+    },
+    "New table %@" : {
+
     },
     "New table:" : {
       "localizations" : {
@@ -118875,6 +119026,9 @@
         }
       }
     },
+    "No Text Changes" : {
+
+    },
     "No text column to search" : {
       "localizations" : {
         "fr" : {
@@ -119663,6 +119817,9 @@
           }
         }
       }
+    },
+    "None of these files import into a table: %@." : {
+
     },
     "None selected" : {
       "localizations" : {
@@ -120621,6 +120778,9 @@
           }
         }
       }
+    },
+    "not imported" : {
+
     },
     "not in list" : {
       "localizations" : {
@@ -121761,6 +121921,9 @@
           }
         }
       }
+    },
+    "Nothing to Import" : {
+
     },
     "Nothing to Restore" : {
       "localizations" : {
@@ -127560,6 +127723,9 @@
           }
         }
       }
+    },
+    "Options for" : {
+
     },
     "Options the engine offers" : {
       "localizations" : {
@@ -137346,9 +137512,18 @@
         }
       }
     },
+    "Pull" : {
+
+    },
     "Pull Request" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Pulled \"%@\"" : {
+
+    },
+    "Pulling…" : {
+
     },
     "Purchase License" : {
       "localizations" : {
@@ -137435,6 +137610,15 @@
           }
         }
       }
+    },
+    "Push" : {
+
+    },
+    "Pushed \"%@\"" : {
+
+    },
+    "Pushing…" : {
+
     },
     "Put field names in the first row" : {
       "extractionState" : "stale",
@@ -141242,6 +141426,9 @@
         }
       }
     },
+    "Reading the files…" : {
+
+    },
     "Reading the source…" : {
       "localizations" : {
         "fr" : {
@@ -141267,6 +141454,9 @@
           }
         }
       }
+    },
+    "Reading…" : {
+
     },
     "Reads every table inside one transaction, so a dump of several tables is consistent with itself. The transaction stays open for the whole export." : {
       "extractionState" : "manual",
@@ -147242,6 +147432,9 @@
         }
       }
     },
+    "Resolve the conflict in a Git client before committing this file." : {
+
+    },
     "Resident Memory" : {
 
     },
@@ -149928,6 +150121,9 @@
           }
         }
       }
+    },
+    "rolled back" : {
+
     },
     "root" : {
       "extractionState" : "stale",
@@ -158666,6 +158862,9 @@
         }
       }
     },
+    "Select files or a folder to import" : {
+
+    },
     "Select files to open" : {
       "localizations" : {
         "fr" : {
@@ -161193,6 +161392,9 @@
           }
         }
       }
+    },
+    "Set On error and Wrap in transaction the same for %@." : {
+
     },
     "Set Password" : {
       "localizations" : {
@@ -172356,6 +172558,12 @@
         }
       }
     },
+    "Stopped at %@. Every file was rolled back." : {
+
+    },
+    "Stopped at %@. The files imported before it were kept." : {
+
+    },
     "Stopped at %lld rows, the most R2 SQL returns from one query." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -181548,6 +181756,9 @@
         }
       }
     },
+    "The branch and its upstream branch each have commits the other lacks. Finish this pull in a Git client." : {
+
+    },
     "The broker answered a coordinator lookup with no coordinator." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -190371,6 +190582,9 @@
         }
       }
     },
+    "The text matches the last commit." : {
+
+    },
     "The theme has more than %@ token color rules." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -194056,6 +194270,9 @@
         }
       }
     },
+    "This file can't be shown as text." : {
+
+    },
     "This file cannot be saved in that format." : {
       "localizations" : {
         "fr" : {
@@ -194065,6 +194282,9 @@
           }
         }
       }
+    },
+    "This file has unsaved changes in an editor tab. The commit takes the saved file." : {
+
     },
     "This file is encrypted" : {
       "localizations" : {
@@ -194231,6 +194451,9 @@
         }
       }
     },
+    "This file is too large to compare line by line." : {
+
+    },
     "This file requires a newer version of TablePro (format version %d)" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -194367,6 +194590,9 @@
           }
         }
       }
+    },
+    "This folder is not in a Git repository." : {
+
     },
     "This foreign key needs a referenced table." : {
       "localizations" : {
@@ -199233,6 +199459,9 @@
         }
       }
     },
+    "Too Large to Compare" : {
+
+    },
     "Too Large to Preview" : {
       "localizations" : {
         "fr" : {
@@ -201453,6 +201682,9 @@
           }
         }
       }
+    },
+    "Two files create a table named %@." : {
+
     },
     "Two People" : {
       "extractionState" : "manual",
@@ -211982,6 +212214,9 @@
           }
         }
       }
+    },
+    "Working Copy" : {
+
     },
     "Wrap each table in a transaction" : {
       "localizations" : {

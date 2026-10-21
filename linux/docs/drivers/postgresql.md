@@ -38,7 +38,7 @@ COMMIT
 - A connection whose flight did not end with an acknowledged COMMIT or ROLLBACK is taken out of the pool, because deadpool's recycle check (`RecyclingMethod::Verified`) passes inside a half-finished transaction.
 - A read that returns no rows still has its columns: the statement runs once more as a subquery right-joined to one row on a false condition, in a read-only transaction of its own.
 - A column of a type tokio-postgres does not know (an enum, `citext`, a domain) would make it prepare a type lookup under a name. Pages project such columns as text, so a read never does.
-- chrono ends at 262143 AD, and the server keeps dates to 5874897 AD and timestamps to 294276 AD. A value past chrono's end reads as the text the server would print for it, so the cell shows it rather than saying it cannot.
+- chrono ends at 262143 AD, and the server keeps dates to 5874897 AD and timestamps to 294276 AD. A value past chrono's end reads as the text the server would print for it, so the cell shows it rather than saying it cannot. A cell edit or a CSV import takes such text back, and it binds as text cast to the column's type.
 
 `probe` takes a pool slot without waiting; when every slot is busy it opens a connection of its own and runs `SELECT 1`. `stream_read` opens a connection of its own, runs `START TRANSACTION READ ONLY` with no statement timeout, and refuses user SQL that would end that transaction (transaction control, `CALL`, `DO`) before sending anything.
 

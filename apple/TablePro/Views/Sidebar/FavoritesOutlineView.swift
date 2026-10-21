@@ -22,6 +22,7 @@ internal struct FavoritesOutlineInput {
     internal let allFolders: [SQLFavoriteFolder]
     internal let teamLibraryAvailable: Bool
     internal var linkedFileGitStates: [UUID: LinkedFileGitState] = [:]
+    internal var linkedFolderGitStates: [UUID: LinkedFolderGitMenuState] = [:]
 }
 
 internal struct FavoritesOutlineTeamQuery {

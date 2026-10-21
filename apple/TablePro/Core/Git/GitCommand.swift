@@ -6,19 +6,30 @@
 import Foundation
 
 internal struct GitCommand: Equatable, Sendable {
+    internal enum Access: Equatable, Sendable {
+        case read
+        // Runs the repository's hooks and the user's tools, as `git` in Terminal does.
+        case write
+    }
+
     let arguments: [String]
     let workingDirectory: URL
+    var access: Access = .read
+    var timeout: TimeInterval?
+
+    static let writeTimeout: TimeInterval = 300
 
     static let hardeningArguments: [String] = [
         "--no-optional-locks",
         "--no-pager",
         "--literal-pathspecs",
         "-c", "core.fsmonitor=false",
-        "-c", "core.hooksPath=/dev/null",
         "-c", "color.ui=never",
         "-c", "log.showSignature=false",
         "-c", "safe.bareRepository=explicit",
     ]
+
+    static let readOnlyArguments: [String] = ["-c", "core.hooksPath=/dev/null"]
 
     static let environmentOverrides: [String: String] = [
         "GIT_OPTIONAL_LOCKS": "0",
@@ -44,7 +55,11 @@ internal struct GitCommand: Equatable, Sendable {
     static let historyFormat = "%x1e%H%x1f%an%x1f%aI%x1f%s"
 
     var processArguments: [String] {
-        Self.hardeningArguments + arguments
+        Self.hardeningArguments + (access == .read ? Self.readOnlyArguments : []) + arguments
+    }
+
+    func environment(base: [String: String]) -> [String: String] {
+        Self.environment(base: access == .write ? CLIToolEnvironment.augmented(base) : base)
     }
 
     static func environment(base: [String: String]) -> [String: String] {
@@ -87,5 +102,57 @@ internal struct GitCommand: Equatable, Sendable {
 
     static func blob(revision: String, path: String, in directory: URL) -> GitCommand {
         GitCommand(arguments: ["cat-file", "blob", "--end-of-options", "\(revision):\(path)"], workingDirectory: directory)
+    }
+
+    static func currentBranch(in directory: URL) -> GitCommand {
+        GitCommand(arguments: ["symbolic-ref", "--quiet", "--short", "HEAD"], workingDirectory: directory)
+    }
+
+    static func upstreamDivergence(in directory: URL) -> GitCommand {
+        GitCommand(
+            arguments: ["rev-list", "--left-right", "--count", "--end-of-options", "HEAD...@{upstream}"],
+            workingDirectory: directory
+        )
+    }
+
+    static func changedPaths(from oldCommit: String, to newCommit: String, in directory: URL) -> GitCommand {
+        GitCommand(
+            arguments: [
+                "diff", "--name-only", "-z", "--no-renames", "--no-ext-diff", "--no-textconv",
+                "--end-of-options", oldCommit, newCommit, "--",
+            ],
+            workingDirectory: directory
+        )
+    }
+
+    static func stage(_ paths: [String], in directory: URL) -> GitCommand {
+        GitCommand(
+            arguments: ["add", "--"] + paths,
+            workingDirectory: directory,
+            access: .write,
+            timeout: writeTimeout
+        )
+    }
+
+    static func commit(_ paths: [String], message: String, in directory: URL) -> GitCommand {
+        GitCommand(
+            arguments: ["commit", "--only", "--message=\(message)", "--"] + paths,
+            workingDirectory: directory,
+            access: .write,
+            timeout: writeTimeout
+        )
+    }
+
+    static func pull(in directory: URL) -> GitCommand {
+        GitCommand(
+            arguments: ["pull", "--no-rebase", "--ff-only"],
+            workingDirectory: directory,
+            access: .write,
+            timeout: writeTimeout
+        )
+    }
+
+    static func push(in directory: URL) -> GitCommand {
+        GitCommand(arguments: ["push"], workingDirectory: directory, access: .write, timeout: writeTimeout)
     }
 }

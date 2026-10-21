@@ -211,6 +211,126 @@ internal enum TransferResultAlert {
         }
     }
 
+    /// A run of several files says what became of each, with its row count, and whether a failure took back the files
+    /// before it. Copy Details carries every skipped row's error as well.
+    internal static func presentBatchImportResult(
+        _ report: RowImportBatchReport,
+        window: NSWindow?,
+        completion: @escaping @MainActor () -> Void
+    ) {
+        let alert = NSAlert()
+        switch report.ending {
+        case .completed:
+            alert.messageText = report.hasFailures
+                ? String(localized: "Import completed with errors")
+                : String(localized: "Import completed")
+            alert.alertStyle = report.hasFailures ? .warning : .informational
+        case .failed:
+            alert.messageText = String(localized: "Import failed")
+            alert.alertStyle = .critical
+        case .stopped:
+            alert.messageText = String(localized: "Import stopped")
+            alert.alertStyle = .warning
+        }
+        alert.informativeText = batchImportSummary(report)
+        AlertHelper.addCancelButton(to: alert, title: String(localized: "Done"))
+        let lines = batchImportLines(report)
+        alert.accessoryView = TransferReportView(
+            shown: lines.joined(separator: "\n"),
+            copied: ([lines.joined(separator: "\n")] + batchImportErrors(report)).joined(separator: "\n\n")
+        )
+        alert.layout()
+        AlertHelper.present(alert, in: window) { _ in completion() }
+    }
+
+    internal static func batchImportSummary(_ report: RowImportBatchReport) -> String {
+        let seconds = String(format: "%.2f", report.executionTime)
+        switch report.ending {
+        case .completed:
+            return String(
+                format: String(localized: "%1$lld rows from %2$lld files in %3$@ seconds."),
+                Int64(report.importedRowCount),
+                Int64(report.files.count),
+                seconds
+            )
+        case .failed(let index):
+            let failure = importFailureText(for: report.failure)
+            let template = report.rowsKept
+                ? String(localized: "%1$@ failed, and the files imported before it were kept. %2$@")
+                : String(localized: "%1$@ failed, so every file was rolled back. %2$@")
+            return String(format: template, report.files[index].sourceName, failure)
+        case .stopped(let index):
+            let template = report.rowsKept
+                ? String(localized: "Stopped at %@. The files imported before it were kept.")
+                : String(localized: "Stopped at %@. Every file was rolled back.")
+            return String(format: template, report.files[index].sourceName)
+        }
+    }
+
+    /// One line per file: where its rows went and how many, or why none did.
+    internal static func batchImportLines(_ report: RowImportBatchReport) -> [String] {
+        zip(report.files, report.outcomes).map { file, outcome in
+            let status: String
+            switch outcome {
+            case .imported(let result):
+                status = importedRows(result, kept: report.rowsKept)
+            case .failed(let error, let rows):
+                status = [importFailureText(for: error), rowsBefore(rows, kept: report.rowsKept)]
+                    .compactMap { $0 }
+                    .joined(separator: " ")
+            case .stopped(let rows):
+                status = [String(localized: "Stopped."), rowsBefore(rows, kept: report.rowsKept)]
+                    .compactMap { $0 }
+                    .joined(separator: " ")
+            case .notRun:
+                status = String(localized: "not imported")
+            }
+            return String(format: String(localized: "%1$@ to %2$@: %3$@"), file.sourceName, file.targetTable, status)
+        }
+    }
+
+    /// A file that stopped part way can already have written batches, which stay or go with the run.
+    private static func rowsBefore(_ rows: Int, kept: Bool) -> String? {
+        guard rows > 0 else { return nil }
+        if rows == 1 {
+            return kept
+                ? String(localized: "1 row before it was kept.")
+                : String(localized: "1 row before it was rolled back.")
+        }
+        let template = kept
+            ? String(localized: "%lld rows before it were kept.")
+            : String(localized: "%lld rows before it were rolled back.")
+        return String(format: template, Int64(rows))
+    }
+
+    private static func importedRows(_ result: PluginImportResult, kept: Bool) -> String {
+        let rows = result.executedStatements
+        var text = rows == 1
+            ? String(localized: "1 row")
+            : String(format: String(localized: "%lld rows"), Int64(rows))
+        if result.skippedStatements > 0 {
+            text += ", " + String(format: String(localized: "%lld failed"), Int64(result.skippedStatements))
+        }
+        if !kept {
+            text += ", " + String(localized: "rolled back")
+        }
+        return text
+    }
+
+    /// Everything the lines cut short: each skipped row's error, and a failed file's whole error and statement.
+    private static func batchImportErrors(_ report: RowImportBatchReport) -> [String] {
+        zip(report.files, report.outcomes).compactMap { file, outcome in
+            switch outcome {
+            case .imported(let result) where !result.errors.isEmpty:
+                return "\(file.sourceName)\n\(failureReport(for: result.errors))"
+            case .failed(let error, _):
+                return "\(file.sourceName)\n\(failureReport(for: error) ?? error.localizedDescription)"
+            case .imported, .stopped, .notRun:
+                return nil
+            }
+        }
+    }
+
     internal static func presentImportFailure(
         error: (any Error)?,
         window: NSWindow?,

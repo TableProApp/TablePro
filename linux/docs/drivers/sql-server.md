@@ -94,6 +94,8 @@ SQL Server has no session statement timeout. A workspace call's deadline is the 
 `WriteAtomicity::Transactional` for row and schema changes. A save is `BEGIN TRANSACTION`, each step, then `COMMIT TRANSACTION`:
 
 - A statement with parameters runs through tiberius's `execute`; one without runs through `sp_executesql` with the statement alone, because SQL Server refuses `CREATE VIEW` or `CREATE TRIGGER` next to an empty parameter list.
+- A decimal parameter is cast to `decimal(38, s)`: `s` is the column's scale, or the value's when finer, as far as the value's integer digits leave room. SQL Server types the rows of a multi-row VALUES as UNION ALL does, so without one type for every row an import would narrow a full-precision value beside a shorter one.
+- tiberius gives a decimal parameter whose integer part is 0 one digit more than its scale, so a value at scale 38 would claim precision 39, which the server refuses. Such a value goes as its text, which the cast converts exactly.
 - The affected-row count includes rows a trigger touched, so a save proves it hit the right row with a probe before the statement rather than with that count.
 - A `COMMIT` the server answers with an error rolled back; one whose connection dropped is `CommitOutcomeUnknown` with no token. There is nothing to ask the server afterwards (`CommitResolutionSupport::Unavailable`).
 - SQL Server cannot suspend foreign keys for one batch, so a batch that asks for it is refused before anything is sent.

@@ -53,6 +53,8 @@ enum ActiveSheet: Identifiable {
     case exportDialog
     case importDialog(formatId: String)
     case rowImport(formatId: String)
+    /// Several files, or a folder, each imported as rows into its own table. The files are in `importBatch`.
+    case rowImportBatch
     case exportQueryResults
     /// The tables the user right-clicked travel with the request, because the object browser may be
     /// pointed somewhere else by the time the sheet appears.
@@ -100,6 +102,7 @@ enum ActiveSheet: Identifiable {
         case .exportDialog: "exportDialog"
         case .importDialog(let formatId): "importDialog-\(formatId)"
         case .rowImport(let formatId): "rowImport-\(formatId)"
+        case .rowImportBatch: "rowImportBatch"
         case .exportQueryResults: "exportQueryResults"
         case .transferTables(let tables, let schema):
             "transferTables-\(schema ?? "")-\(tables.sorted().joined(separator: ","))"
@@ -312,6 +315,7 @@ final class MainContentCoordinator: ObservableObject {
     @Published var sessionContexts: [PluginSessionContext] = []
     @Published var containerDropRequest: DatabaseDropRequest?
     @Published var importFile: ImportFileHandoff?
+    @Published var importBatch: ImportBatchFiles.Resolution?
     @Published var exportPreselection: ExportPreselection?
     @Published var exportFormatId: String?
     // Kept after the sheet closes, so reopening Search Database after opening a result shows the results again.

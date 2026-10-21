@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use chrono::{Datelike, NaiveDate};
+use tablepro_core::export::value_to_text;
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
 use tablepro_core::{DriverError, UnsupportedFeature};
@@ -8,7 +9,7 @@ use tiberius::numeric::Numeric;
 use tiberius::{ColumnData, IntoSql, ToSql};
 
 /// The widest decimal SQL Server stores: 38 digits.
-const MAX_NUMERIC_DIGITS: u32 = 38;
+pub(crate) const MAX_NUMERIC_DIGITS: u32 = 38;
 
 /// The parameters of a statement as TDS values, typed by what the
 /// server expects, so a NULL keeps its type: an untyped NULL arrives as
@@ -50,9 +51,15 @@ pub(crate) fn encode(param: &BoundParam) -> Result<ColumnData<'static>, DriverEr
         }
         // SQL Server has no unsigned 64-bit type; decimal(20,0) holds
         // every value of one.
-        ParamType::UInt64 | ParamType::Decimal => {
-            numeric(param_type, value).map(|numeric| ColumnData::Numeric(Some(numeric)))
-        }
+        ParamType::UInt64 | ParamType::Decimal => numeric(param_type, value).map(|numeric| {
+            // tiberius counts a digit before the point when the integer
+            // part is 0, so a value at scale 38 goes out as precision 39,
+            // which the server refuses. Its text converts exactly.
+            match u32::from(numeric.precision()) > MAX_NUMERIC_DIGITS {
+                true => text_data(value_to_text(value).unwrap_or_default()),
+                false => ColumnData::Numeric(Some(numeric)),
+            }
+        }),
         ParamType::Float32 => match value {
             Value::Float32(real) => Ok(ColumnData::F32(Some(*real))),
             other => Err(refused(param_type, other)),
@@ -256,6 +263,21 @@ mod tests {
             encode(&bound(Value::UInt(u64::MAX), ParamType::UInt64)).unwrap(),
             ColumnData::Numeric(Some(Numeric::new_with_scale(i128::from(u64::MAX), 0)))
         );
+    }
+
+    #[test]
+    fn a_decimal_at_scale_38_travels_as_its_text() {
+        let text = "0.99999999999999999999999999999999999999";
+        let decimal: SqlDecimal = text.parse().unwrap();
+
+        let encoded = encode(&bound(Value::Decimal(decimal), ParamType::Decimal)).unwrap();
+
+        assert_eq!(encoded, ColumnData::String(Some(Cow::Borrowed(text))));
+        let narrower: SqlDecimal = "0.9999999999999999999999999999999999999".parse().unwrap();
+        assert!(matches!(
+            encode(&bound(Value::Decimal(narrower), ParamType::Decimal)).unwrap(),
+            ColumnData::Numeric(Some(_))
+        ));
     }
 
     #[test]
