@@ -25073,6 +25073,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The server asked for the password in plain text, which TablePro sends only over TLS. Set SSL Mode to Required, or turn TLS on for the server." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server did not encrypt the connection, so TablePro closed it. An IAM sign-in needs TLS." : {
 
     },

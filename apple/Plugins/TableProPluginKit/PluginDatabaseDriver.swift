@@ -174,6 +174,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// inline. A driver that answers here must not also declare the same comments in
     /// `fetchTableDDL`, or the dump sets each one twice.
     func fetchCommentDDL(table: String, schema: String?) async throws -> [String]
+
+    // A driver whose fetchTableMetadata reads rows answers this from the catalog alone.
+    func fetchObjectComment(table: String, schema: String?) async throws -> String?
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo]
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo]
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo]
@@ -967,6 +970,10 @@ public extension PluginDatabaseDriver {
     /// comments and for one that stores none. A driver that overrides this must drop the same
     /// statements from `fetchTableDDL` in the same change.
     func fetchCommentDDL(table: String, schema: String?) async throws -> [String] { [] }
+
+    func fetchObjectComment(table: String, schema: String?) async throws -> String? {
+        try await fetchTableMetadata(table: table, schema: schema).comment
+    }
 
     /// Answers whether `fetchAllIndexes` is a single query rather than the N+1 default below.
     var providesBulkIndexFetch: Bool { false }

@@ -139,6 +139,10 @@ extension MainSplitViewController {
         commandActions?.exportTables()
     }
 
+    @objc func exportDataDictionary(_ sender: Any?) {
+        commandActions?.exportDataDictionary()
+    }
+
     @objc func exportQueryResults(_ sender: Any?) {
         commandActions?.exportQueryResults()
     }

@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import TableProAutocomplete
 import TableProConnectionLibrary
 
 @MainActor
@@ -16,6 +17,7 @@ final class CustomizationPaneViewModel: ObservableObject {
     @Published var safeModeLevel: SafeModeLevel = .silent
     @Published var connectTimeoutSeconds: Int?
     @Published var queryTimeoutSeconds: Int?
+    @Published var completionIdentifierCase: SQLIdentifierCase = .default
 
     @Published var coordinator: WeakCoordinatorRef?
 
@@ -42,5 +44,6 @@ final class CustomizationPaneViewModel: ObservableObject {
         safeModeLevel = connection.preferredSafeModeLevel
         connectTimeoutSeconds = connection.connectTimeoutSeconds
         queryTimeoutSeconds = connection.queryTimeoutSeconds
+        completionIdentifierCase = connection.completionIdentifierCase
     }
 }

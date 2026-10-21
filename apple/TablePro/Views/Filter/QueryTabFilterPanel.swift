@@ -115,7 +115,8 @@ internal struct QueryTabFilterPanel: View {
         rawSQLCompletionProvider = RawSQLFilterCompletionProvider(
             schemaProvider: schemaProvider,
             databaseType: databaseType,
-            tableName: tableName
+            tableName: tableName,
+            connectionId: scope.connectionId
         )
     }
 }

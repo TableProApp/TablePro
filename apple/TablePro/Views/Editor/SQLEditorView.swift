@@ -172,7 +172,8 @@ struct SQLEditorView: View {
         completionAdapter.configure(
             schemaProvider: schemaProvider,
             databaseType: databaseType,
-            profile: completionProfile
+            profile: completionProfile,
+            connectionId: connectionId
         )
     }
 

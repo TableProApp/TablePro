@@ -99,7 +99,7 @@ internal extension ColumnDistinctValue {
     /// What the popover lists and what its search matches, so "null" finds the NULL entry.
     var label: String {
         if isNull { return String(localized: "(NULL)") }
-        return display.isEmpty ? String(localized: "(Empty)") : display
+        return display.isEmpty ? String(localized: "(Empty)") : display.shownWithoutMarks
     }
 }
 

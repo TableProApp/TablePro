@@ -25,6 +25,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     private let implicitSchemaName: String?
     private let pagination: PaginationCapability
     private let appliesRowScope: Bool
+    private let commentableKinds: Set<PluginExportObjectKind>
     private let cappedTables = OSAllocatedUnfairLock<[String]>(initialState: [])
 
     init(driver: DatabaseDriver, databaseType: DatabaseType) {
@@ -34,6 +35,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         self.implicitSchemaName = snapshot?.schema.implicitSchemaName
         self.pagination = PaginationCapability.of(databaseType)
         self.appliesRowScope = Self.canApplyRowScope(on: databaseType)
+        self.commentableKinds = Self.commentableKinds(of: driver)
         self.driver = driver
         self.dbType = databaseType
         self.databaseTypeId = databaseType.rawValue
@@ -41,6 +43,16 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
 
     static func canApplyRowScope(on databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editor.sqlDialect != nil
+    }
+
+    // The same test the Structure tab's comment field uses, so the export never asks for a comment
+    // the app could not have shown or written.
+    static func commentableKinds(of driver: DatabaseDriver) -> Set<PluginExportObjectKind> {
+        let types = DatabaseObjectToolEligibility.Support.commentableTypes(of: driver)
+        let kinds: [(PluginExportObjectKind, TableInfo.TableType)] = [
+            (.table, .table), (.view, .view), (.materializedView, .materializedView), (.foreignTable, .foreignTable)
+        ]
+        return Set(kinds.filter { types.contains($0.1) }.map(\.0))
     }
 
     private var pluginDriver: (any PluginDatabaseDriver)? {
@@ -251,6 +263,22 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     func fetchCommentDDL(table: String, databaseName: String) async throws -> [String] {
         guard let pluginDriver else { return [] }
         return try await pluginDriver.fetchCommentDDL(table: table, schema: exportSchema(for: databaseName))
+    }
+
+    func fetchIndexes(table: String, databaseName: String) async throws -> [PluginIndexInfo] {
+        guard let pluginDriver else { return [] }
+        return try await pluginDriver.fetchIndexes(table: table, schema: exportSchema(for: databaseName))
+    }
+
+    // Gated before the read: an engine that stores no comments may still count rows to answer.
+    func fetchObjectComment(_ object: PluginExportTable) async throws -> String? {
+        guard let pluginDriver, commentableKinds.contains(object.kind) else { return nil }
+        let comment = try await pluginDriver.fetchObjectComment(
+            table: object.name,
+            schema: exportSchema(for: object.databaseName)
+        )
+        guard let comment, !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return comment
     }
 
     // MARK: - Object DDL

@@ -24,7 +24,8 @@ extension MainContentView {
                             grouping: PluginManager.shared.databaseGroupingStrategy(for: connection.type)
                         )
                 ),
-                sidebarTables: tables
+                sidebarTables: tables,
+                initialFormatId: coordinator.exportFormatId
             )
         case .exportQueryResults:
             if let tab = coordinator.tabManager.selectedTab {
