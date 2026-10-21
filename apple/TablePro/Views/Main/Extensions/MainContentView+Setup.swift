@@ -82,7 +82,7 @@ extension MainContentView {
         let kind = PendingChangeKind.resolve(
             tabType: tabManager.selectedTab?.tabType,
             hasDataChanges: changeManager.hasChanges || !pendingTruncates.isEmpty || !pendingDeletes.isEmpty,
-            hasStructureChanges: toolbarState.hasStructureChanges,
+            hasStructureChanges: toolbarState.hasStructureChanges || coordinator.selectedDiagramHasStagedEdits,
             hasCreateTablePending: toolbarState.hasCreateTablePending,
             hasPrincipalChanges: toolbarState.hasPrincipalChanges,
             isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false

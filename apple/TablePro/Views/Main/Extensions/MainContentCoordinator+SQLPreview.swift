@@ -17,6 +17,11 @@ extension MainContentCoordinator {
         pendingDeletes: Set<DatabaseTreeTableRef>,
         tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
     ) {
+        if let tab = tabManager.selectedTab, tab.tabType == .erDiagram {
+            guard let diagram = erDiagramModels[tab.id] else { return }
+            Task { await diagram.previewStagedEdits(coordinator: self) }
+            return
+        }
         if tabManager.selectedTab?.display.resultsViewMode == .structure {
             // Structure view handles its own preview via direct call
             structureActions?.previewSQL?()

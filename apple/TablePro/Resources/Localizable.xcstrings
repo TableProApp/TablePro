@@ -103,6 +103,12 @@
     "A dictionary for each row, keyed by column" : {
 
     },
+    "A foreign key named “%@” already exists." : {
+
+    },
+    "A foreign key staged in this diagram uses “%1$@.%2$@”. Save or undo that key before renaming the column." : {
+
+    },
     "A larger binary value stays on the server until you open, copy or export it. Applies to tables with a primary key." : {
 
     },
@@ -110,6 +116,9 @@
 
     },
     "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level." : {
+
+    },
+    "Add Foreign Key…" : {
 
     },
     "Add Row to Table" : {
@@ -146,6 +155,9 @@
     "Added one row to %@." : {
 
     },
+    "Allow NULL" : {
+
+    },
     "Binary values limit must be between 1 and 1,048,576 KB." : {
 
     },
@@ -167,6 +179,9 @@
     "Choose a Result" : {
 
     },
+    "Choose a Type" : {
+
+    },
     "Compare Result With…" : {
 
     },
@@ -182,10 +197,19 @@
     "Comparing…" : {
 
     },
+    "Constraint Name" : {
+
+    },
     "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope." : {
 
     },
     "Could Not Load Value" : {
+
+    },
+    "Could Not Refresh the Diagram" : {
+
+    },
+    "Could Not Stage the Change" : {
 
     },
     "Could not connect to the database: %@" : {
@@ -195,6 +219,9 @@
 
     },
     "Database or Schema" : {
+
+    },
+    "Delete Foreign Key %@" : {
 
     },
     "First Value" : {
@@ -285,6 +312,9 @@
     "Provide a JSON object or an array of objects." : {
 
     },
+    "References" : {
+
+    },
     "Result %1$d: %2$@" : {
 
     },
@@ -333,6 +363,9 @@
     "Shortcuts wants to add a row to \"%@\"" : {
 
     },
+    "Show Structure of %@" : {
+
+    },
     "Some rows are no longer in the table, so their values could not be read." : {
 
     },
@@ -351,13 +384,22 @@
     "The JSON array must contain only objects." : {
 
     },
+    "The column “%1$@” is no longer in “%2$@”." : {
+
+    },
     "The data could not be read: %@" : {
 
     },
     "The data has no values to insert into %@." : {
 
     },
+    "The diagram is saving its changes. Make this change once the save has finished." : {
+
+    },
     "The first column of the first row" : {
+
+    },
+    "The foreign key “%1$@” is no longer on “%2$@”." : {
 
     },
     "The left result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the right." : {
@@ -367,6 +409,9 @@
 
     },
     "The right result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the left." : {
+
+    },
+    "The schema changes staged in this diagram will be lost." : {
 
     },
     "The text encoding is invalid." : {
@@ -752,6 +797,9 @@
     },
     ":%@" : {
       "shouldTranslate" : false
+    },
+    "“%@” already has a column with that name." : {
+
     },
     "…and %d more lines" : {
       "localizations" : {
@@ -143768,6 +143816,9 @@
         }
       }
     },
+    "Refuse the statement unless it only reads, even where the connection allows writes." : {
+
+    },
     "Refused %@: this statement ran as a read." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -196996,6 +197047,9 @@
           }
         }
       }
+    },
+    "This request is read only, and the statement is not a read." : {
+
     },
     "This request is too large for Apple Intelligence, even with only the columns the statement uses. Select a smaller part of the statement." : {
 

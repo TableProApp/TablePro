@@ -133,6 +133,9 @@ final class ConnectionToolbarState: ObservableObject {
     /// Whether the structure view has pending schema changes
     @Published var hasStructureChanges: Bool = false
 
+    // Bumped when a diagram's staged edits come or go; the pending state reads the diagram itself.
+    @Published var diagramEditsRevision = 0
+
     /// Whether the Create Table tab has a committable definition (name + valid column)
     @Published var hasCreateTablePending: Bool = false
 

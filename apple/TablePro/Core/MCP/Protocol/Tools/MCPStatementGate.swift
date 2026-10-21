@@ -8,11 +8,17 @@ enum MCPStatementGate {
         meta: ToolConnectionMetadata,
         allowsDestructive: Bool,
         allowsMultiStatement: Bool = false,
+        readOnly: Bool = false,
         forcesUserConsent: Bool = false,
         operationLabel: String,
         context: MCPRequestContext,
         services: MCPToolServices
     ) async throws -> QueryClassification {
+        // The caller lowering its own reach, so its refusal names the request rather than the connection.
+        if readOnly, QueryClassifier.classify(sql, databaseType: meta.databaseType).tier != .safe {
+            throw MCPToolExecutionError.denied(Self.readOnlyRefusal)
+        }
+
         let classification = try translating {
             try ExternalStatementGate.classify(
                 ExternalStatementGate.Statement(
@@ -71,6 +77,8 @@ enum MCPStatementGate {
 
         return classification
     }
+
+    static let readOnlyRefusal = String(localized: "This request is read only, and the statement is not a read.")
 
     static func requiresUserConsent(
         classification: QueryClassification,

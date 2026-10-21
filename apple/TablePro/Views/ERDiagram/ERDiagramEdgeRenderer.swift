@@ -11,14 +11,73 @@ enum ERDiagramEdgeRenderer {
     }
 
     private static let strokeWidth: CGFloat = 1.5
+    private static let selectedStrokeWidth: CGFloat = 3
+    private static let dashPattern: [CGFloat] = [6, 4]
+
+    struct Route {
+        let edge: EREdge
+        let path: CGPath
+        let markers: [CGPath]
+    }
+
+    struct Colors {
+        let stroke: CGColor
+        let selection: CGColor
+        let dropped: CGColor
+    }
 
     static func drawEdges(
         edges: [EREdge],
         nodeRects: [UUID: CGRect],
         nodeIndex: [String: UUID],
-        strokeColor: CGColor,
+        colors: Colors,
+        selectedEdgeId: UUID?,
         on canvas: some ERDiagramCanvas
     ) {
+        for route in routes(edges: edges, nodeRects: nodeRects, nodeIndex: nodeIndex) {
+            let isSelected = route.edge.id == selectedEdgeId
+            let color: CGColor
+            if isSelected {
+                color = colors.selection
+            } else if route.edge.stagedEdit == .dropped {
+                color = colors.dropped
+            } else {
+                color = colors.stroke
+            }
+            let isPending = route.edge.stagedEdit != nil
+            // Each part is its own stroke, so a translucent edge darkens where a marker crosses it.
+            for part in [route.path] + route.markers {
+                let drawn = isPending ? part.copy(dashingWithPhase: 0, lengths: dashPattern) : part
+                canvas.stroke(
+                    drawn,
+                    color: color,
+                    lineWidth: isSelected ? selectedStrokeWidth : strokeWidth,
+                    rounded: true
+                )
+            }
+        }
+    }
+
+    // The topmost edge within `tolerance` of the point, in the order the edges are drawn.
+    static func edgeId(
+        at point: CGPoint,
+        tolerance: CGFloat,
+        edges: [EREdge],
+        nodeRects: [UUID: CGRect],
+        nodeIndex: [String: UUID]
+    ) -> UUID? {
+        routes(edges: edges, nodeRects: nodeRects, nodeIndex: nodeIndex)
+            .reversed()
+            .first { route in
+                route.path.boundingBoxOfPath.insetBy(dx: -tolerance, dy: -tolerance).contains(point)
+                    && route.path
+                    .copy(strokingWithWidth: tolerance * 2, lineCap: .round, lineJoin: .round, miterLimit: 1)
+                    .contains(point)
+            }?
+            .edge.id
+    }
+
+    static func routes(edges: [EREdge], nodeRects: [UUID: CGRect], nodeIndex: [String: UUID]) -> [Route] {
         let resolved: [ResolvedEdge] = edges.compactMap { edge -> ResolvedEdge? in
             guard let fromId = nodeIndex[edge.fromTable],
                   let toId = nodeIndex[edge.toTable],
@@ -71,7 +130,7 @@ enum ERDiagramEdgeRenderer {
             }
         }
 
-        for item in resolved {
+        return resolved.map { item in
             let key = edgeKey(item)
             let path: CGPath
             let srcPort: CGPoint
@@ -102,13 +161,12 @@ enum ERDiagramEdgeRenderer {
                 path = curve
             }
 
-            // Each part is its own stroke, so a translucent edge darkens where a marker crosses it.
-            let parts = [path]
-                + sourceMarker(cardinality: item.edge.cardinality, at: srcPort, toward: cp1)
-                + destinationMarker(cardinality: item.edge.cardinality, at: dstPort, toward: cp2)
-            for part in parts {
-                canvas.stroke(part, color: strokeColor, lineWidth: strokeWidth, rounded: true)
-            }
+            return Route(
+                edge: item.edge,
+                path: path,
+                markers: sourceMarker(cardinality: item.edge.cardinality, at: srcPort, toward: cp1)
+                    + destinationMarker(cardinality: item.edge.cardinality, at: dstPort, toward: cp2)
+            )
         }
     }
 

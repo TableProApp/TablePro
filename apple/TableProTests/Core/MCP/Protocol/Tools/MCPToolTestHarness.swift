@@ -111,11 +111,12 @@ enum MCPToolTestHarness {
     static func meta(
         protocolVersion: MCPProtocolVersion = .latest,
         clientCapabilities: MCPClientCapabilities = .none,
-        progressToken: MCPProgressToken? = nil
+        progressToken: MCPProgressToken? = nil,
+        clientInfo: MCPImplementation = MCPImplementation(name: "tool-tests", version: "1.0")
     ) -> MCPRequestMeta {
         MCPRequestMeta(
             protocolVersion: protocolVersion,
-            clientInfo: MCPImplementation(name: "tool-tests", version: "1.0"),
+            clientInfo: clientInfo,
             clientCapabilities: clientCapabilities,
             progressToken: progressToken
         )
@@ -128,13 +129,14 @@ enum MCPToolTestHarness {
         progressToken: MCPProgressToken? = nil,
         cancellation: MCPCancellationToken = MCPCancellationToken(),
         sink: ToolTestResponderSink = ToolTestResponderSink(),
-        requestId: JsonRpcId = .number(1)
+        requestId: JsonRpcId = .number(1),
+        clientInfo: MCPImplementation = MCPImplementation(name: "tool-tests", version: "1.0")
     ) -> MCPRequestContext {
         let responder = MCPResponder(sink: sink, requestId: requestId)
         return MCPRequestContext(
             requestId: requestId,
             params: params,
-            meta: meta(clientCapabilities: clientCapabilities, progressToken: progressToken),
+            meta: meta(clientCapabilities: clientCapabilities, progressToken: progressToken, clientInfo: clientInfo),
             principal: principal ?? self.principal(),
             responder: responder,
             progress: MCPProgressEmitter(progressToken: progressToken, responder: responder),
