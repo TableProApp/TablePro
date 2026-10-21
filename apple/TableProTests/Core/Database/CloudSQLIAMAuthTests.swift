@@ -177,6 +177,16 @@ struct CloudSQLIAMAuthTests {
         #expect(kerberos.iamSignIn == nil && !kerberos.usesIAMToken)
     }
 
+    @Test("Kerberos never runs the password source a connection kept from before")
+    func kerberosSkipsThePasswordSource() async throws {
+        var kerberos = connection(type: .postgresql, auth: KerberosAuthFields.method)
+        kerberos.passwordSource = .env(variable: "TABLEPRO_TEST_UNSET_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))")
+
+        let signIn = try await ConnectionCredentialResolver.resolveSignIn(for: kerberos, fields: kerberos.additionalFields)
+
+        #expect(signIn == ResolvedSignIn(username: nil, password: ""))
+    }
+
     @Test("Cloud SQL IAM and Kerberos hide the password field and the prompt")
     func hidesPassword() {
         #expect(PluginManager.shared.hidesPassword(for: connection(type: .postgresql, auth: "gcpApplicationDefault")))
