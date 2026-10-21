@@ -329,6 +329,17 @@ fn present_export(
         .active(true)
         .build();
     csv_group.add(&safe_csv);
+    let spare_numbers = adw::SwitchRow::builder()
+        .title(crate::tr!("Keep plain numbers as they are"))
+        .subtitle(crate::tr!(
+            "Do not prefix text like -5 or +1.5 with an apostrophe, so it re-imports into numeric columns. Other formula-like text is still prefixed."
+        ))
+        .build();
+    safe_csv
+        .bind_property("active", &spare_numbers, "sensitive")
+        .sync_create()
+        .build();
+    csv_group.add(&spare_numbers);
     let null_marker_row = adw::EntryRow::builder()
         .title(crate::tr!("Text that means NULL"))
         .build();
@@ -362,9 +373,11 @@ fn present_export(
     reset_button.add_css_class("flat");
     let include_header_for_reset = include_header.clone();
     let safe_csv_for_reset = safe_csv.clone();
+    let spare_numbers_for_reset = spare_numbers.clone();
     reset_button.connect_clicked(move |_| {
         include_header_for_reset.set_active(true);
         safe_csv_for_reset.set_active(true);
+        spare_numbers_for_reset.set_active(false);
     });
 
     let export_button = gtk::Button::builder().label(crate::tr!("Export\u{2026}")).build();
@@ -413,6 +426,7 @@ fn present_export(
                 paged: paged.clone(),
                 include_header,
                 sanitize_formulas: safe_csv.is_active(),
+                spare_plain_numbers: spare_numbers.is_active(),
                 null_marker: null_marker_for_export.clone(),
                 sql_target: sql_target.text().to_string(),
             },
@@ -430,6 +444,7 @@ struct SaveRequest {
     paged: Option<PagedExport>,
     include_header: bool,
     sanitize_formulas: bool,
+    spare_plain_numbers: bool,
     null_marker: String,
     sql_target: String,
 }
@@ -443,6 +458,7 @@ fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::T
         paged,
         include_header,
         sanitize_formulas,
+        spare_plain_numbers,
         null_marker,
         sql_target,
     } = request;
@@ -474,6 +490,7 @@ fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::T
             null_to_empty: false,
             header_row: include_header,
             sanitize_formulas,
+            spare_plain_numbers,
             preserve_sqlite_result_types: driver_id == "sqlite",
             null_marker: Some(null_marker),
             ..Default::default()

@@ -662,7 +662,7 @@ msgstr ""
 #: apps/linux/app/src/ui/explain_dialog.rs:27
 #: apps/linux/app/src/ui/explain_dialog.rs:55
 #: apps/linux/app/src/ui/export_dialog.rs:274
-#: apps/linux/app/src/ui/export_dialog.rs:523
+#: apps/linux/app/src/ui/export_dialog.rs:540
 #: apps/linux/app/src/ui/grid/context_menu.rs:209
 #: apps/linux/app/src/ui/grid/full_value_editor.rs:406
 msgid "Close"
@@ -3134,8 +3134,8 @@ msgid "Exporting loaded rows…"
 msgstr ""
 
 #: apps/linux/app/src/ui/export_dialog/file.rs:134
-#: apps/linux/app/src/ui/export_dialog.rs:390
-#: apps/linux/app/src/ui/export_dialog.rs:456
+#: apps/linux/app/src/ui/export_dialog.rs:403
+#: apps/linux/app/src/ui/export_dialog.rs:472
 msgid "Export Results"
 msgstr ""
 
@@ -3215,28 +3215,36 @@ msgid "Prefix formula-like text with an apostrophe for spreadsheet safety. Turn 
 msgstr ""
 
 #: apps/linux/app/src/ui/export_dialog.rs:333
+msgid "Keep plain numbers as they are"
+msgstr ""
+
+#: apps/linux/app/src/ui/export_dialog.rs:335
+msgid "Do not prefix text like -5 or +1.5 with an apostrophe, so it re-imports into numeric columns. Other formula-like text is still prefixed."
+msgstr ""
+
+#: apps/linux/app/src/ui/export_dialog.rs:344
 #: apps/linux/app/src/ui/import_dialog.rs:168
 msgid "Text that means NULL"
 msgstr ""
 
-#: apps/linux/app/src/ui/export_dialog.rs:361
+#: apps/linux/app/src/ui/export_dialog.rs:372
 msgid "Reset to Defaults"
 msgstr ""
 
-#: apps/linux/app/src/ui/export_dialog.rs:370
+#: apps/linux/app/src/ui/export_dialog.rs:383
 msgid "Export…"
 msgstr ""
 
-#: apps/linux/app/src/ui/export_dialog.rs:450
+#: apps/linux/app/src/ui/export_dialog.rs:466
 #, rust-format
 msgid "{format} files"
 msgstr ""
 
-#: apps/linux/app/src/ui/export_dialog.rs:516
+#: apps/linux/app/src/ui/export_dialog.rs:533
 msgid "Couldn't export"
 msgstr ""
 
-#: apps/linux/app/src/ui/export_dialog.rs:518
+#: apps/linux/app/src/ui/export_dialog.rs:535
 #, rust-format
 msgid "Writing {path} failed: {error}"
 msgstr ""

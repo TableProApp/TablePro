@@ -76,6 +76,7 @@ pub struct CsvOptions {
     pub line_break_to_space: bool,
     pub header_row: bool,
     pub sanitize_formulas: bool,
+    pub spare_plain_numbers: bool,
     /// Encode non-NULL cells with SQLite's storage-class tags when result
     /// metadata is unavailable. Enable only for SQLite result exports.
     pub preserve_sqlite_result_types: bool,
@@ -93,6 +94,7 @@ impl Default for CsvOptions {
             line_break_to_space: false,
             header_row: true,
             sanitize_formulas: true,
+            spare_plain_numbers: false,
             preserve_sqlite_result_types: false,
             delimiter: CsvDelimiter::Comma,
             quote: CsvQuote::IfNeeded,
@@ -224,6 +226,11 @@ pub fn write_csv_row_with_columns_and_options(
     writeln!(writer, "{}", csv_row_line_for_columns(row, columns, options))
 }
 
+fn is_plain_number(value: &str) -> bool {
+    let unsigned = value.strip_prefix(['+', '-']).unwrap_or(value);
+    (!unsigned.is_empty() && unsigned.chars().all(|character| character.is_ascii_digit())) || is_plain_decimal(value)
+}
+
 fn is_plain_decimal(value: &str) -> bool {
     let unsigned = match value.strip_prefix(['+', '-']) {
         Some(value) => value,
@@ -244,7 +251,9 @@ pub(crate) fn quote_field(value: &str) -> String {
 
 fn escape_csv_field(value: &str, options: &CsvOptions, had_line_breaks: bool) -> String {
     let mut value = value.to_string();
-    let neutralized = options.sanitize_formulas && value.starts_with(['=', '+', '-', '@', '\t', '\r']);
+    let neutralized = options.sanitize_formulas
+        && value.starts_with(['=', '+', '-', '@', '\t', '\r'])
+        && !(options.spare_plain_numbers && is_plain_number(&value));
     if neutralized {
         value.insert(0, '\'');
     }
@@ -841,5 +850,21 @@ mod tests {
             render_tsv(&columns, &rows, false),
             "NULL\n\"\"\n\\NNN\n\\N\n\\NN\n\"'=1+1\""
         );
+    }
+
+    #[test]
+    fn the_formula_guard_can_spare_plain_numbers_but_not_formulas() {
+        let guarded = CsvOptions::default();
+        let spared = CsvOptions {
+            spare_plain_numbers: true,
+            ..CsvOptions::default()
+        };
+        for text in ["-5", "+1.5", "-0.25"] {
+            assert_eq!(escape_csv_field(text, &guarded, false), format!("\"'{text}\""));
+            assert_eq!(escape_csv_field(text, &spared, false), text);
+        }
+        for text in ["=1+1", "-5+3", "@SUM(A1)", "+1e5", "-"] {
+            assert_eq!(escape_csv_field(text, &spared, false), format!("\"'{text}\""), "{text}");
+        }
     }
 }
