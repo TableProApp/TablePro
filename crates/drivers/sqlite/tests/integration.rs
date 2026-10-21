@@ -1090,6 +1090,45 @@ async fn sqlite_real_storage_preserves_float_edge_bits() {
         };
         assert_eq!(actual.to_bits(), expected.to_bits());
     }
+
+    let literals = ["4.9406564584124654e-324", "1.7976931348623157e308", "9e999", "-9e999"];
+    for (index, literal) in literals.iter().enumerate() {
+        let matched = connection
+            .query(&format!(
+                "SELECT value = {literal} FROM float_edges WHERE id = {}",
+                index + 1
+            ))
+            .await
+            .unwrap();
+        assert_eq!(
+            matched.rows,
+            [[Value::Int(1)]],
+            "SQLite reads {literal} as the stored value"
+        );
+    }
+    connection
+        .execute("CREATE TABLE native_float_edges (id INTEGER PRIMARY KEY, value REAL)")
+        .await
+        .unwrap();
+    for (index, literal) in literals.iter().enumerate() {
+        connection
+            .execute(&format!(
+                "INSERT INTO native_float_edges VALUES ({}, {literal})",
+                index + 1
+            ))
+            .await
+            .unwrap();
+    }
+    let native = connection
+        .query("SELECT value FROM native_float_edges ORDER BY id")
+        .await
+        .unwrap();
+    for (row, expected) in native.rows.iter().zip(values) {
+        let Value::Float(actual) = row[0] else {
+            panic!("a natively stored REAL must decode as a float: {:?}", row[0]);
+        };
+        assert_eq!(actual.to_bits(), expected.to_bits());
+    }
 }
 
 #[tokio::test]
