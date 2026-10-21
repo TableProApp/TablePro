@@ -5349,6 +5349,9 @@
         }
       }
     },
+    "%@ tables could not be searched." : {
+
+    },
     "%@ takes no ORDER BY, LIMIT or OFFSET" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -6078,6 +6081,9 @@
           }
         }
       }
+    },
+    "%@+ rows" : {
+
     },
     "%@×" : {
       "comment" : "Number of times a query ran, %@ is a count\nSlowdown multiple, %@ is a number",
@@ -7145,6 +7151,9 @@
         }
       }
     },
+    "%1$@ of %2$@ tables" : {
+
+    },
     "%1$@ of about %2$@ rows" : {
       "localizations" : {
         "fr" : {
@@ -7214,6 +7223,9 @@
           }
         }
       }
+    },
+    "%1$@ tables hold “%2$@”." : {
+
     },
     "%1$@ takes %2$lld dimensions, and the value has %3$lld." : {
 
@@ -13460,6 +13472,12 @@
           }
         }
       }
+    },
+    "1 table could not be searched." : {
+
+    },
+    "1 table holds “%@”." : {
+
     },
     "1 visible row" : {
       "localizations" : {
@@ -33613,6 +33631,9 @@
         }
       }
     },
+    "Cannot Read the Tables" : {
+
+    },
     "Cannot Read This Connection" : {
       "localizations" : {
         "fr" : {
@@ -37602,6 +37623,9 @@
           }
         }
       }
+    },
+    "Choose at least one table to search." : {
+
     },
     "Choose Backup Folder" : {
       "localizations" : {
@@ -48661,6 +48685,9 @@
           }
         }
       }
+    },
+    "Contains" : {
+
     },
     "Content" : {
       "localizations" : {
@@ -68767,6 +68794,9 @@
         }
       }
     },
+    "Edit Search" : {
+
+    },
     "Edit Sequence" : {
 
     },
@@ -71434,6 +71464,9 @@
           }
         }
       }
+    },
+    "Enter the value to search for." : {
+
     },
     "Enter this code on GitHub:" : {
       "localizations" : {
@@ -81261,6 +81294,9 @@
           }
         }
       }
+    },
+    "Filter Tables" : {
+
     },
     "Filter value" : {
       "localizations" : {
@@ -91356,6 +91392,9 @@
         }
       }
     },
+    "Include binary columns" : {
+
+    },
     "Include byte order mark" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -97769,6 +97808,9 @@
         }
       }
     },
+    "This sequence's settings could not be read, so they cannot be changed here." : {
+
+    },
     "keyword: %@" : {
       "localizations" : {
         "fr" : {
@@ -99301,6 +99343,15 @@
     "Ledger" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Set Next Value" : {
+
+    },
+    "Start" : {
+
+    },
+    "The increment cannot be zero." : {
+
     },
     "left curly bracket" : {
       "extractionState" : "manual",
@@ -105653,6 +105704,9 @@
     "Matches “%@”" : {
 
     },
+    "Matches Exactly" : {
+
+    },
     "matches regex" : {
       "localizations" : {
         "fr" : {
@@ -111796,9 +111850,6 @@
         }
       }
     },
-    "New Sequence…" : {
-
-    },
     "New and old images" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -112273,6 +112324,9 @@
           }
         }
       }
+    },
+    "New Sequence…" : {
+
     },
     "New image" : {
       "extractionState" : "manual",
@@ -118040,6 +118094,9 @@
           }
         }
       }
+    },
+    "No searched column holds this value." : {
+
     },
     "No selection" : {
       "localizations" : {
@@ -141060,6 +141117,9 @@
         }
       }
     },
+    "Reading the tables…" : {
+
+    },
     "Reading this connection's database options…" : {
       "localizations" : {
         "fr" : {
@@ -156468,6 +156528,9 @@
         }
       }
     },
+    "Search %@…" : {
+
+    },
     "Search activity" : {
       "localizations" : {
         "fr" : {
@@ -156717,6 +156780,12 @@
           }
         }
       }
+    },
+    "Search Database" : {
+
+    },
+    "Search Database…" : {
+
     },
     "Search databases" : {
       "localizations" : {
@@ -157145,6 +157214,15 @@
           }
         }
       }
+    },
+    "Searched %@ tables." : {
+
+    },
+    "Searched 1 table." : {
+
+    },
+    "Searching %1$@ (%2$@)" : {
+
     },
     "Searching…" : {
       "localizations" : {
@@ -159430,6 +159508,9 @@
         }
       }
     },
+    "Sequence Unavailable" : {
+
+    },
     "Sequences" : {
       "localizations" : {
         "fr" : {
@@ -160725,6 +160806,9 @@
         }
       }
     },
+    "Set Next Value…" : {
+
+    },
     "Set as Active" : {
       "localizations" : {
         "fr" : {
@@ -160917,9 +161001,6 @@
         }
       }
     },
-    "Set Next Value…" : {
-
-    },
     "Set in connections.json." : {
 
     },
@@ -160962,9 +161043,6 @@
           }
         }
       }
-    },
-    "Set Next Value" : {
-
     },
     "Set Password" : {
       "localizations" : {
@@ -169811,9 +169889,6 @@
         }
       }
     },
-    "Sequence Unavailable" : {
-
-    },
     "Stack" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -169942,9 +170017,6 @@
           }
         }
       }
-    },
-    "Start" : {
-
     },
     "Start one to ask about this connection." : {
       "localizations" : {
@@ -170167,6 +170239,9 @@
           }
         }
       }
+    },
+    "Starts With" : {
+
     },
     "Starts with %@" : {
       "extractionState" : "manual",
@@ -172109,6 +172184,9 @@
           }
         }
       }
+    },
+    "Stopped after %1$@ of %2$@ tables." : {
+
     },
     "Stopped after %d seconds, the query timeout" : {
       "extractionState" : "manual",
@@ -179925,6 +180003,9 @@
         }
       }
     },
+    "Text columns are always searched. Number, date and UUID columns are searched when the value reads as one, and are compared exactly." : {
+
+    },
     "Text contrast is %@:1. Aim for at least 4.5:1." : {
 
     },
@@ -181792,6 +181873,9 @@
           }
         }
       }
+    },
+    "The cache must be at least 1." : {
+
     },
     "The chosen theme is not on this Mac, so %@ is used." : {
 
@@ -187259,6 +187343,9 @@
         }
       }
     },
+    "The minimum must be less than the maximum." : {
+
+    },
     "The save also truncated or dropped a table." : {
       "localizations" : {
         "fr" : {
@@ -189058,15 +189145,6 @@
           }
         }
       }
-    },
-    "The cache must be at least 1." : {
-
-    },
-    "The increment cannot be zero." : {
-
-    },
-    "The minimum must be less than the maximum." : {
-
     },
     "The ssh-agent macOS runs, from SSH_AUTH_SOCK. 1Password and Secretive listen elsewhere." : {
       "extractionState" : "manual",
@@ -192902,6 +192980,9 @@
         }
       }
     },
+    "This database reports no tables to search." : {
+
+    },
     "This database type has no dump TablePro can drive." : {
       "localizations" : {
         "fr" : {
@@ -196098,9 +196179,6 @@
           }
         }
       }
-    },
-    "This sequence's settings could not be read, so they cannot be changed here." : {
-
     },
     "This server did not identify as Databend. Check the host and port of its MySQL handler." : {
       "extractionState" : "manual",

@@ -135,6 +135,7 @@ struct MenuValidationContext: Equatable {
     var canCreateTableFolder = false
     var canCopyObjects = false
     var canDuplicateDatabase = false
+    var canSearchDatabase = false
     var hasMaintenanceOperations = false
     var canUndo = false
     var canRedo = false
@@ -307,6 +308,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.canCopyObjects
         case #selector(duplicateCurrentDatabase(_:)):
             return context.canDuplicateDatabase
+        case #selector(searchDatabase(_:)):
+            return context.isConnected && context.canSearchDatabase
         case #selector(showTableStructure(_:)),
              #selector(editViewDefinition(_:)),
              #selector(showObjectDDL(_:)),
@@ -518,6 +521,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         #selector(navigateBack(_:)),
         #selector(navigateForward(_:)),
         #selector(moveTabToConnection(_:)),
+        #selector(searchDatabase(_:)),
     ]
 
     /// What AppKit is told. A command this window does not own is left enabled, which is what keeps
@@ -703,6 +707,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canCreateTableFolder: canCreateTableFolder,
             canCopyObjects: actions.canCopyObjects,
             canDuplicateDatabase: actions.canDuplicateDatabase,
+            canSearchDatabase: actions.canSearchDatabase,
             hasMaintenanceOperations: !actions.maintenanceOperations.isEmpty,
             canUndo: actions.canUndo,
             canRedo: actions.canRedo,

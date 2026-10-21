@@ -22,6 +22,7 @@ internal extension TableViewCoordinator {
             columnName: columns[dataColumn],
             columnType: filterMenuColumnType(forDataColumn: dataColumn, in: tableRows),
             value: row.values[dataColumn],
+            family: databaseType.map(SQLTypeFamily.of),
             apply: apply
         )
     }

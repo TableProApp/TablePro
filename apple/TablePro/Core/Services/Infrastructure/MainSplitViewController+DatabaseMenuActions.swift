@@ -171,6 +171,10 @@ extension MainSplitViewController {
         commandActions?.duplicateCurrentDatabase()
     }
 
+    @objc func searchDatabase(_ sender: Any?) {
+        commandActions?.searchDatabase()
+    }
+
     @objc func showTableStructure(_ sender: Any?) {
         commandActions?.showTableStructure()
     }

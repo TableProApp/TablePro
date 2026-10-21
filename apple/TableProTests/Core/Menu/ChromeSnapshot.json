@@ -201,6 +201,7 @@
     {"path": "Database > New View…", "action": "createNewView:"},
     {"path": "Database > New Folder", "action": "createTableFolder:"},
     {"path": "Database", "separator": true},
+    {"path": "Database > Search Database…", "action": "searchDatabase:"},
     {"path": "Database > Copy To…", "action": "copyObjectsToDatabase:"},
     {"path": "Database > Duplicate Database…", "action": "duplicateCurrentDatabase:"},
     {"path": "Database", "separator": true},

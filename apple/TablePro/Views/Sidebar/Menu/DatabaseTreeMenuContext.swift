@@ -56,6 +56,7 @@ internal struct DatabaseTreeMenuContext {
     internal var canCopyObjects: Bool = false
     /// Duplicating means creating a database, which is the same test the New Database command uses.
     internal var canDuplicateDatabase: Bool = false
+    internal var canSearchData: Bool = false
 
     /// Whether this connection has a dump tool at all. Backing up writes nothing to the database,
     /// so safe mode does not gate it, which is the same rule File > Backup Dump follows.

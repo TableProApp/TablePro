@@ -111,6 +111,7 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
                 supportsDatabaseSwitching: PluginManager.shared.supportsDatabaseSwitching(for: databaseType),
                 isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
             ),
+            canSearchData: DatabaseSearchEligibility.supportsSearch(databaseType),
             canBackUp: backupIsAvailable(),
             canCreateTable: creation.canCreateTable,
             canCreateView: creation.canCreateView,
