@@ -5004,6 +5004,9 @@
         }
       }
     },
+    "%@ sends the password in plain text when a server asks, even without TLS, and TablePro cannot turn that off. Set SSL Mode to Required, or install another build of the client tools." : {
+
+    },
     "%@ shapes" : {
       "comment" : "Number of distinct query shapes, %@ is a count",
       "localizations" : {
@@ -176807,6 +176810,9 @@
           }
         }
       }
+    },
+    "TablePro could not check whether %@ sends the password in plain text without TLS. Try again, or set SSL Mode to Required." : {
+
     },
     "TablePro could not do this for you. Run this in Terminal instead:" : {
       "extractionState" : "stale",
