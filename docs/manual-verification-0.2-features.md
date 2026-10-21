@@ -6,6 +6,8 @@ The 0.2.0 desktop target is **Arch Linux / Omarchy / Hyprland, native Wayland**.
 
 The source-matched installed GTK safety run passed 93 scenarios under Xvfb/AT-SPI on 2026-10-21; see its [package identity, result and limitations](evidence/installed-gtk-0.2.0-2026-10-21/README.md). It does not close the native Wayland visual checklist below.
 
+The partial native Wayland run on 2026-10-22 records package identity, synthetic PostgreSQL value checks, responsive widths and a single resource sample in [its evidence note](evidence/installed-wayland-0.2.0-2026-10-22/README.md). It does not complete this checklist; appearance restoration and test-profile cleanup were not verified.
+
 Record the full binary/package SHA, package checksum when installed, GTK backend, OS/Hyprland/GTK/libadwaita versions, display scale, light/dark mode, result and screenshot paths. Test both normal size and a narrow/resized window, keyboard focus, clipboard and popover/dialog placement. Mark blocked and not-run items explicitly.
 
 Take light and dark screenshots for each section, per `AGENTS.md`. Record a result beside each item rather than leaving it blank, because a blank line here reads as "passed" to the next person.
