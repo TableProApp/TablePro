@@ -61,6 +61,44 @@ pub(crate) fn toggle_line_comment(buffer: &gtk::TextBuffer) {
     buffer.end_user_action();
 }
 
+pub(super) const MAX_ANALYSIS_BYTES: usize = 200_000;
+
+pub(super) fn analysis_text(buffer: &gtk::TextBuffer) -> Option<gtk::glib::GString> {
+    if buffer.char_count() as usize > MAX_ANALYSIS_BYTES {
+        return None;
+    }
+    let (start, end) = buffer.bounds();
+    let text = buffer.text(&start, &end, true);
+    (text.len() <= MAX_ANALYSIS_BYTES).then_some(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn advisory_text_is_bounded_by_utf8_bytes_without_truncating_the_buffer() {
+        gtk::init().unwrap();
+        let buffer = gtk::TextBuffer::new(None);
+        let ascii = "a".repeat(MAX_ANALYSIS_BYTES);
+        buffer.set_text(&ascii);
+        assert_eq!(analysis_text(&buffer).as_deref(), Some(ascii.as_str()));
+        buffer.insert(&mut buffer.end_iter(), "b");
+        assert!(analysis_text(&buffer).is_none());
+        assert_eq!(buffer.char_count() as usize, MAX_ANALYSIS_BYTES + 1);
+        let unicode = "東京".repeat(MAX_ANALYSIS_BYTES / 6);
+        buffer.set_text(&unicode);
+        assert_eq!(analysis_text(&buffer).as_deref(), Some(unicode.as_str()));
+        buffer.insert(&mut buffer.end_iter(), "東京");
+        assert!(analysis_text(&buffer).is_none());
+        assert_eq!(
+            buffer.text(&buffer.start_iter(), &buffer.end_iter(), true),
+            unicode + "東京"
+        );
+    }
+}
+
 pub(super) fn read_sql_text(path: &std::path::Path, max_bytes: u64) -> Result<String, String> {
     tablepro_core::text_file::read_text_file(path, max_bytes)
         .map(|file| file.text)

@@ -665,17 +665,27 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::sql_text::tests::advisory_text_is_bounded_by_utf8_bytes_without_truncating_the_buffer"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::completion_provider::tests::completion_resumes_after_a_large_buffer_is_replaced_with_a_small_query"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::app::session_teardown::tests::a_window_close_whose_sessions_cannot_close_offers_to_close_anyway"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::editor::stream_view::tests::hidden_stream_pages_build_their_grid_only_when_selected"
     ],
     [
       "tablepro-app",
       "--lib",
       "ui::editor::stream_view::tests::a_terminal_status_keeps_retained_grids_unbuilt_until_selected"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
-      "ui::app::session_teardown::tests::a_window_close_whose_sessions_cannot_close_offers_to_close_anyway"
     ]
   ],
   "keyring": [

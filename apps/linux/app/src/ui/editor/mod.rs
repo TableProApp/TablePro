@@ -558,7 +558,7 @@ impl SimpleComponent for SqlEditor {
             .connect_cursor_position_notify(move |_| update_cursor());
 
         let refresh_completion =
-            build_completion_refresh(widgets.source_view.clone(), init.schema_index.clone(), sender.clone());
+            completion_provider::build_refresh(widgets.source_view.clone(), init.schema_index.clone(), sender.clone());
         refresh_completion();
         let refresh_on_cursor = refresh_completion.clone();
         widgets
@@ -1167,31 +1167,6 @@ impl SqlEditor {
                 .drop_on_shutdown()
         });
     }
-}
-
-fn build_completion_refresh(
-    view: sourceview5::View,
-    schema_index: std::rc::Rc<std::cell::RefCell<SchemaIndex>>,
-    sender: ComponentSender<SqlEditor>,
-) -> std::rc::Rc<dyn Fn()> {
-    std::rc::Rc::new(move || {
-        let buffer = view.buffer();
-        let (start, end) = buffer.bounds();
-        let sql = buffer.text(&start, &end, true).to_string();
-        let cursor_chars = buffer.iter_at_mark(&buffer.get_insert()).offset() as usize;
-        let cursor_byte = cursor_byte_offset(&sql, cursor_chars);
-        let Ok(index) = schema_index.try_borrow() else {
-            return;
-        };
-        let missing: Vec<String> = referenced_tables(&sql, cursor_byte, index.grammar)
-            .into_iter()
-            .filter(|table| !index.knows_columns(table))
-            .collect();
-        drop(index);
-        if !missing.is_empty() {
-            let _ = sender.output(SqlEditorOutput::NeedColumns(missing));
-        }
-    })
 }
 
 #[cfg(test)]

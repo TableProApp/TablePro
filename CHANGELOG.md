@@ -164,6 +164,7 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 
 ### Fixed
 
+- Large SQL files skip automatic editor analysis above 200,000 UTF-8 bytes while preserving their full text for editing, saving and execution.
 - Streamed queries build a retained page’s grid only when it is first displayed, avoiding work for hidden pages.
 
 - Large SQL results use Previous/Next controls with row ranges and state when earlier rows are no longer retained.

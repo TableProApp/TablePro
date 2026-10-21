@@ -28,7 +28,7 @@ impl Diagnostics {
             let generation = generation.clone();
             let view = view.downgrade();
             let button = button.downgrade();
-            move |buffer: &gtk::TextBuffer| {
+            move |_buffer: &gtk::TextBuffer| {
                 let version = generation.get().wrapping_add(1);
                 generation.set(version);
                 if let Some(button) = button.upgrade() {
@@ -38,8 +38,6 @@ impl Diagnostics {
                 if let Some(pending) = timer.borrow_mut().take() {
                     pending.remove();
                 }
-                let (start, end) = buffer.bounds();
-                let sql = buffer.text(&start, &end, true).to_string();
                 let Some(metadata) = connection_id.and_then(|id| database.metadata(id)) else {
                     return;
                 };
@@ -52,6 +50,13 @@ impl Diagnostics {
                     std::time::Duration::from_millis(250),
                     move || {
                         timer_done.borrow_mut().take();
+                        let Some(source) = view.upgrade() else {
+                            return;
+                        };
+                        let Some(sql) = super::sql_text::analysis_text(&source.buffer()) else {
+                            return;
+                        };
+                        let sql: std::sync::Arc<str> = sql.as_str().into();
                         let (send, receive) = async_channel::bounded(1);
                         let worker_sql = sql.clone();
                         let worker = std::thread::Builder::new()

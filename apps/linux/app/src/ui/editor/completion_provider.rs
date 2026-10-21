@@ -124,8 +124,10 @@ impl Provider {
         let Some(buffer) = context.buffer() else {
             return model;
         };
-        let (start, end) = buffer.bounds();
-        let source: Rc<str> = buffer.text(&start, &end, true).as_str().into();
+        let Some(text) = super::sql_text::analysis_text(buffer.upcast_ref()) else {
+            return model;
+        };
+        let source: Rc<str> = text.as_str().into();
         let cursor = super::statement_cursor::cursor_byte_offset(
             &source,
             buffer.iter_at_mark(&buffer.get_insert()).offset() as usize,
@@ -186,3 +188,29 @@ impl Provider {
 #[cfg(test)]
 #[path = "completion_provider/tests.rs"]
 mod tests;
+
+pub(super) fn build_refresh(
+    view: sourceview5::View,
+    schema_index: std::rc::Rc<std::cell::RefCell<SchemaIndex>>,
+    sender: relm4::ComponentSender<super::SqlEditor>,
+) -> std::rc::Rc<dyn Fn()> {
+    std::rc::Rc::new(move || {
+        let buffer = view.buffer();
+        let Some(sql) = super::sql_text::analysis_text(&buffer) else {
+            return;
+        };
+        let cursor_chars = buffer.iter_at_mark(&buffer.get_insert()).offset() as usize;
+        let cursor_byte = super::statement_cursor::cursor_byte_offset(&sql, cursor_chars);
+        let Ok(index) = schema_index.try_borrow() else {
+            return;
+        };
+        let missing: Vec<String> = super::referenced_tables(&sql, cursor_byte, index.grammar)
+            .into_iter()
+            .filter(|table| !index.knows_columns(table))
+            .collect();
+        drop(index);
+        if !missing.is_empty() {
+            let _ = sender.output(super::SqlEditorOutput::NeedColumns(missing));
+        }
+    })
+}

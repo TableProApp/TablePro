@@ -137,3 +137,22 @@ fn retired_proposals_do_not_edit_the_buffer() {
         assert_eq!(buffer.text(&start, &end, true), before);
     }
 }
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn completion_resumes_after_a_large_buffer_is_replaced_with_a_small_query() {
+    gtk::init().unwrap();
+    let index = Rc::new(RefCell::new(SchemaIndex::default()));
+    index.borrow_mut().grammar = Some(SqlGrammar::PostgreSql);
+    index.borrow_mut().tables.push("users".into());
+    let large = format!(
+        "SELECT * FROM {}us",
+        " ".repeat(super::super::sql_text::MAX_ANALYSIS_BYTES)
+    );
+    let (view, provider, context) = fixture(&large, large.chars().count(), index);
+    assert_eq!(provider.model(&context).n_items(), 0);
+    view.buffer().set_text("SELECT * FROM us");
+    view.buffer().place_cursor(&view.buffer().end_iter());
+    assert!(provider.model(&context).n_items() > 0);
+    assert_eq!(activate(&provider, &context, "users"), "SELECT * FROM users");
+}
