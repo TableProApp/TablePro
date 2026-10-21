@@ -70,6 +70,7 @@ mod tests {
         assert!(super::single_precision_as_f64(f32::NAN).is_nan());
         assert_eq!(super::single_precision_as_f64(f32::INFINITY), f64::INFINITY);
         assert_eq!(super::single_precision_as_f64(f32::NEG_INFINITY), f64::NEG_INFINITY);
+        assert_eq!(super::single_precision_as_f64(-0.0).to_bits(), (-0.0_f64).to_bits());
     }
 
     use super::*;
