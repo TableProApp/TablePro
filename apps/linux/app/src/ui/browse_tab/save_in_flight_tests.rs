@@ -1129,3 +1129,44 @@ fn a_foreign_key_that_arrives_after_the_rows_marks_its_header() {
     );
     controller.detach_runtime();
 }
+
+#[test]
+#[ignore = "requires isolated GTK display"]
+fn copy_as_insert_reads_the_live_row_under_a_prepended_draft_with_its_unsaved_edit() {
+    relm4::gtk::init().unwrap();
+    let (mut controller, observed) = launch(Uuid::new_v4());
+    load_two_rows(&controller, &observed);
+    add_draft_row(
+        &controller,
+        vec![Value::Int(3), Value::Text("draft".into()), Value::Text("body".into())],
+    );
+    pump(&observed);
+    assert_eq!(
+        controller.model().row_cells_at(1),
+        Some(vec![Value::Int(1), Value::Text("a".into()), Value::Text("b".into())]),
+        "position 1 is the first stored row, not fetch-order row 1"
+    );
+
+    controller
+        .sender()
+        .send(BrowseTabInput::GridCellEdited {
+            row_position: 1,
+            col_index: 1,
+            new_value: "edited".into(),
+            value: None,
+            row_key: vec![Value::Int(1)],
+        })
+        .unwrap();
+    pump(&observed);
+
+    assert_eq!(
+        controller.model().row_cells_at(1),
+        Some(vec![
+            Value::Int(1),
+            Value::Text("edited".into()),
+            Value::Text("b".into())
+        ]),
+        "Copy As INSERT copies the value the user sees, including an unsaved edit"
+    );
+    controller.detach_runtime();
+}

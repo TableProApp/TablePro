@@ -691,6 +691,11 @@
       "tablepro-app",
       "--lib",
       "ui::browse_tab::save_in_flight_tests::a_foreign_key_that_arrives_after_the_rows_marks_its_header"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::copy_as_insert_reads_the_live_row_under_a_prepended_draft_with_its_unsaved_edit"
     ]
   ],
   "keyring": [

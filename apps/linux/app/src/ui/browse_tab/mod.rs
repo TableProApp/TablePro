@@ -246,7 +246,16 @@ impl BrowseTab {
     /// 1 (the first persisted row on screen) would read fetch-order row 1
     /// instead of row 0.
     pub fn row_cells_at(&self, position: u32) -> Option<Vec<Value>> {
-        self.row_object_at(position)?.complete_cells()
+        let mut cells = self.row_object_at(position)?.complete_cells()?;
+        if let Some((key, _)) = self.row_key_at(position) {
+            crate::services::change_tracker::with_tab_ref(self.tab_id, |tracker| {
+                for (col, cell) in cells.iter_mut().enumerate() {
+                    let current = tracker.current_cell_value(&key, col, cell).clone();
+                    *cell = current;
+                }
+            });
+        }
+        Some(cells)
     }
 
     pub fn has_unfetched_columns(&self) -> bool {
