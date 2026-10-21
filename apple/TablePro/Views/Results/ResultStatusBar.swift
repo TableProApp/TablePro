@@ -46,10 +46,10 @@ struct ResultStatusBar: View {
     /// this window is. It had no surface at all between the centred toolbar item going and this.
     let isRefreshingSchema: Bool
     @Binding var viewMode: ResultsViewMode
-    /// The result-set chooser, absent when the tab holds at most one result.
     let resultSetMenu: ResultSetMenuModel
     let onActivateResultSet: (UUID) -> Void
     let onToggleResultSetPin: (UUID) -> Void
+    let onCompareResultSet: (UUID) -> Void
     let onCloseResultSet: (UUID) -> Void
     let onCloseOtherResultSets: (UUID) -> Void
     let onToggleFilters: () -> Void
@@ -116,6 +116,7 @@ struct ResultStatusBar: View {
                     isSpelledOut: presentation.resultSetMenuIsSpelledOut,
                     onActivate: onActivateResultSet,
                     onTogglePin: onToggleResultSetPin,
+                    onCompare: onCompareResultSet,
                     onClose: onCloseResultSet,
                     onCloseOthers: onCloseOtherResultSets
                 )

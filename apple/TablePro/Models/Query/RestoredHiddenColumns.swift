@@ -33,6 +33,7 @@ internal enum RestoredHiddenColumns {
         persister: any ColumnLayoutPersisting
     ) {
         guard tab.tabType == .table,
+              !tab.tableContext.isTemporary,
               tab.columnLayout.hiddenColumns.isEmpty,
               let tableName = tab.tableContext.tableName, !tableName.isEmpty else { return }
 

@@ -21,18 +21,33 @@ struct StructureEditGate {
     let databaseType: DatabaseType
     let objectKind: TableInfo.TableType
     var schema: String?
+    // A temporary table shows its structure read-only: the edit paths read the shared catalog, where its name can
+    // reach the database's own table of that name.
+    var isSessionBound = false
 
     private var matrix: StructureObjectEditMatrix {
         PluginManager.shared.structureEditMatrix(for: databaseType)
     }
 
-    private var canEditSchema: Bool { databaseType.supportsSchemaEditing && attachedRefusal == nil }
+    // An attached database answers through `attachedRefusal`, which words its own reason.
+    var canEditSchema: Bool { databaseType.supportsSchemaEditing && !isSessionScoped }
+
+    private var allowsSchemaEdits: Bool { canEditSchema && attachedRefusal == nil }
+
+    private var listsAttachedDatabases: Bool { PluginManager.shared.listsAttachedDatabases(for: databaseType) }
+
+    // SQLite's `temp` schema is the session's own, not an attached file.
+    private var isInTemporarySchema: Bool {
+        listsAttachedDatabases && schema?.caseInsensitiveCompare("temp") == .orderedSame
+    }
+
+    private var isSessionScoped: Bool { isSessionBound || isInTemporarySchema }
 
     /// A table in a database attached beside the opened file. The engine writes its structure
     /// statements without the database's name, so they would reach a same-named table in the opened
     /// file, or fail; nothing is offered instead.
     private var attachedRefusal: String? {
-        guard let schema, !schema.isEmpty, PluginManager.shared.listsAttachedDatabases(for: databaseType) else {
+        guard let schema = SQLiteMasterQueries.attachedSchema(schema), !isInTemporarySchema, listsAttachedDatabases else {
             return nil
         }
         return String(
@@ -72,7 +87,7 @@ struct StructureEditGate {
             support: PluginManager.shared.foreignKeyEditSupport(for: databaseType),
             engineName: databaseType.displayName,
             kindRefusal: kindRefusal(.addForeignKey),
-            canEditSchema: databaseType.supportsSchemaEditing
+            canEditSchema: canEditSchema
         )
     }
 
@@ -87,16 +102,17 @@ struct StructureEditGate {
     /// and Comment editable while Nullable, Type and the rest lock, because that is what PostgreSQL
     /// accepts on one.
     var editableColumnFields: Set<StructureColumnField> {
-        guard canEditSchema else { return [] }
+        guard allowsSchemaEdits else { return [] }
         return StructureEditEligibility.editableFields(on: objectKind, matrix: matrix)
     }
 
     var allowsAnyEdit: Bool {
-        canEditSchema && StructureEditEligibility.allowsAnyEdit(on: objectKind, matrix: matrix)
+        allowsSchemaEdits && StructureEditEligibility.allowsAnyEdit(on: objectKind, matrix: matrix)
     }
 
     var allowsTriggerEditing: Bool {
-        attachedRefusal == nil
+        !isSessionScoped
+            && attachedRefusal == nil
             && databaseType.supportsTriggerEditing
             && TriggerEditEligibility.kindAcceptsTriggers(objectKind)
     }

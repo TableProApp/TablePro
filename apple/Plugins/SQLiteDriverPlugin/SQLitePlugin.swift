@@ -147,6 +147,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .batchExecute,
             .schemaCompare,
             .dataCompare,
+            .temporaryTables,
         ]
     }
 
@@ -359,6 +360,15 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    func fetchTemporaryTables() async throws -> [PluginTableInfo] {
+        let result = try await execute(query: SQLiteTemporarySchema.tablesQuery)
+        return result.rows.compactMap { row in
+            guard let name = row[safe: 0]?.asText else { return nil }
+            let tableType = row[safe: 1]?.asText?.lowercased() == "view" ? "VIEW" : "TABLE"
+            return PluginTableInfo(name: name, type: tableType)
+        }
+    }
+
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let safeTable = escapeStringLiteral(table)
         // table_xinfo rather than table_info: table_info omits generated columns entirely, so they
@@ -402,12 +412,9 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func createStatement(forTable table: String, schema: String?) async throws -> String? {
-        let query = """
-            SELECT sql FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
-            WHERE type='table' AND name='\(escapeStringLiteral(table))'
-            """
+        let query = SQLiteTemporarySchema.definitionQuery(name: table, types: ["table"], schema: schema)
         let result = try await execute(query: query)
-        return result.rows.first?[safe: 0]?.asText
+        return result.rows.first?[safe: 1]?.asText
     }
 
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
@@ -494,7 +501,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let result = try await execute(query: SQLiteIndexCatalog.indexesQuery(table: table, schema: schema))
+        let result = try await execute(query: SQLiteTemporarySchema.indexesQuery(table: table, schema: schema))
         return SQLiteIndexCatalog.indexes(fromRows: result.rows)
     }
 
@@ -529,11 +536,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// The view goes back exactly as it was written: SQLite keeps a trailing comment in it, which a
     /// `;` appended here would land inside.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let safeTable = escapeStringLiteral(table)
-        let query = """
-            SELECT type, sql FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
-            WHERE type IN ('table', 'view') AND name = '\(safeTable)'
-            """
+        let query = SQLiteTemporarySchema.definitionQuery(name: table, types: ["table", "view"], schema: schema)
         let result = try await execute(query: query)
 
         guard let firstRow = result.rows.first,
@@ -552,13 +555,9 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// KEY constraint has a null `sql`, so testing for that is what keeps `sqlite_autoindex_*` out
     /// of the dump: those come back with the constraint inside `CREATE TABLE`.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
-        let result = try await execute(query: """
-            SELECT sql FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
-            WHERE type = 'index'
-              AND tbl_name = '\(escapeStringLiteral(table))'
-              AND sql IS NOT NULL
-            ORDER BY name
-            """)
+        let result = try await execute(
+            query: SQLiteTemporarySchema.indexDefinitionsQuery(table: table, schema: schema)
+        )
         return result.rows.compactMap { $0[safe: 0]?.asText }
     }
 

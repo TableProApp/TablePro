@@ -13,7 +13,9 @@ extension TableStructureView {
     /// pair, the grid's per-column lock, the reorder drag and the grid delegate's own keyboard and
     /// context-menu paths all read this, so none of them can offer an edit another withholds.
     var editGate: StructureEditGate {
-        StructureEditGate(databaseType: connection.type, objectKind: objectKind, schema: schemaName)
+        StructureEditGate(
+            databaseType: connection.type, objectKind: objectKind, schema: schemaName, isSessionBound: isSessionBound
+        )
     }
 
     /// Whether this engine can add and remove foreign keys, which is not the same question as
@@ -24,7 +26,7 @@ extension TableStructureView {
             support: PluginManager.shared.foreignKeyEditSupport(for: connection.type),
             engineName: connection.type.displayName,
             kindRefusal: editGate.kindRefusal(.addForeignKey),
-            canEditSchema: connection.type.supportsSchemaEditing
+            canEditSchema: editGate.canEditSchema
         )
     }
 
@@ -35,7 +37,7 @@ extension TableStructureView {
         let gate = editGate
         session.footer = StructureFooterPolicy.resolve(
             tab: selectedTab,
-            canEditSchema: connection.type.supportsSchemaEditing,
+            canEditSchema: gate.canEditSchema,
             hasSelection: !selectedRows.isEmpty,
             isSaving: structureChangeManager.isHeldForSave,
             resolve: { gate.resolve($0) }

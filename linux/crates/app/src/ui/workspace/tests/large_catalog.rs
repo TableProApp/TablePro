@@ -662,7 +662,7 @@ struct Screen {
 
 impl Screen {
     fn new(session: &Arc<Session>, tasks: &Tasks) -> Self {
-        let sidebar = SidebarView::new(|_| {}, SidebarAffordances::for_session(session));
+        let sidebar = SidebarView::new(|_| {}, SidebarAffordances::for_session(session), Some(tasks.clone()));
         let panes = gtk4::Paned::new(gtk4::Orientation::Horizontal);
         panes.set_start_child(Some(sidebar.widget()));
         panes.set_position(300);

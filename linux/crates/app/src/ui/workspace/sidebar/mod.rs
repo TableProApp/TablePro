@@ -40,10 +40,14 @@ use sidebar_event::SidebarEvent;
 
 /// Build the sidebar into the workspace's template, sending what the
 /// user asks of it to `input`.
-pub(super) fn build(workspace: &Workspace, input: &WorkspaceSender, affordances: SidebarAffordances) -> SidebarView {
+pub(super) fn build(workspace: &Workspace, input: &WorkspaceSender, session: &Session, tasks: &Tasks) -> SidebarView {
     let imp = workspace.imp();
     let events = input.clone();
-    let view = SidebarView::new(move |event| events.deliver(workspace_input(event)), affordances);
+    let view = SidebarView::new(
+        move |event| events.deliver(workspace_input(event)),
+        SidebarAffordances::for_session(session),
+        Some(tasks.clone()),
+    );
     imp.sidebar_slot.set_child(Some(view.widget()));
     view.follow_search(&imp.table_search);
     imp.table_search_bar.connect_entry(&*imp.table_search);
@@ -207,6 +211,8 @@ impl WorkspaceModel {
 
     pub(super) fn on_sidebar_read(&mut self, read: u64, listing: SidebarListing) {
         if read != self.sidebar_read {
+            // A catalog's index frees a few strings per table.
+            drop(self.context.tasks.spawn_blocking_task(move || drop(listing)));
             return;
         }
         if let Some(schemas) = listing.schemas {

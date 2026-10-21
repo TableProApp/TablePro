@@ -41,6 +41,7 @@ internal struct EditorTabPayload: Codable, Hashable {
     /// The object's own kind, which decides which structure edits the tab may offer. Carried beside
     /// `isView` because that Bool cannot say which of seven kinds the object is. (#2726)
     internal let objectType: TableInfo.TableType?
+    internal let isTemporary: Bool
     /// Whether to show the structure view instead of data (for "Show Structure" context menu)
     internal let showStructure: Bool
     /// Whether to skip automatic query execution (used for restored tabs that should lazy-load)
@@ -68,7 +69,7 @@ internal struct EditorTabPayload: Codable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case id, connectionId, tabType, tableName, databaseName, schemaName
-        case initialQuery, isView, objectType, showStructure, skipAutoExecute, isPreview
+        case initialQuery, isView, objectType, isTemporary, showStructure, skipAutoExecute, isPreview
         case forcesNewTab
         case tabTitle
         case initialFilterState, sourceFileURL, sourceFileStamp, sourceFileEncoding
@@ -87,6 +88,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         initialQuery: String? = nil,
         isView: Bool = false,
         objectType: TableInfo.TableType? = nil,
+        isTemporary: Bool = false,
         showStructure: Bool = false,
         skipAutoExecute: Bool = false,
         isPreview: Bool = false,
@@ -110,6 +112,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.initialQuery = initialQuery
         self.isView = isView
         self.objectType = objectType
+        self.isTemporary = isTemporary
         self.showStructure = showStructure
         self.skipAutoExecute = skipAutoExecute
         self.isPreview = isPreview
@@ -139,6 +142,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         /// losing the whole payload.
         objectType = try container.decodeIfPresent(String.self, forKey: .objectType)
             .flatMap(TableInfo.TableType.init(rawValue:))
+        isTemporary = try container.decodeIfPresent(Bool.self, forKey: .isTemporary) ?? false
         showStructure = try container.decodeIfPresent(Bool.self, forKey: .showStructure) ?? false
         skipAutoExecute = try container.decodeIfPresent(Bool.self, forKey: .skipAutoExecute) ?? false
         isPreview = try container.decodeIfPresent(Bool.self, forKey: .isPreview) ?? false
@@ -170,6 +174,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         try container.encodeIfPresent(initialQuery, forKey: .initialQuery)
         try container.encode(isView, forKey: .isView)
         try container.encodeIfPresent(objectType?.rawValue, forKey: .objectType)
+        try container.encode(isTemporary, forKey: .isTemporary)
         try container.encode(showStructure, forKey: .showStructure)
         try container.encode(skipAutoExecute, forKey: .skipAutoExecute)
         try container.encode(isPreview, forKey: .isPreview)
@@ -196,6 +201,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.initialQuery = tab.content.query
         self.isView = tab.tableContext.isView
         self.objectType = tab.tableContext.objectType
+        self.isTemporary = tab.tableContext.isTemporary
         self.showStructure = tab.display.resultsViewMode == .structure
         self.skipAutoExecute = skipAutoExecute
         self.isPreview = false

@@ -25,7 +25,7 @@ extension SQLitePluginDriver {
     }
 
     func sqliteTriggerList(table: String?, schema: String?) async throws -> [PluginTriggerInfo] {
-        let query = SQLiteMasterQueries.triggerList(table: table, schema: schema, excludeNameGlob: nil)
+        let query = SQLiteTemporarySchema.triggerListQuery(table: table, schema: schema)
         let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginTriggerInfo? in
             guard row.count >= 3, let name = row[0].asText, let sql = row[2].asText else { return nil }

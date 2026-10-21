@@ -270,6 +270,7 @@ extension TextViewController {
             guard !textView.hasMarkedText() else {
                 return handleKeyDownDuringComposition(event: event, modifierFlags: modifierFlags)
             }
+            if claimSnippetKey(event, modifierFlags: modifierFlags) { return nil }
             let tabKey: UInt16 = 0x30
 
             if event.keyCode == tabKey {

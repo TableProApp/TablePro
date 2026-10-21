@@ -224,6 +224,28 @@ struct StructureEditGateTests {
         #expect(main.allowsTriggerEditing)
     }
 
+    @Test("A SQLite temporary table, opened bare or by `temp`, is read-only and never called an attached database")
+    func temporaryTableBesideAttachedDatabasesIsReadOnly() {
+        let gates = [
+            StructureEditGate(databaseType: .sqlite, objectKind: .table, isSessionBound: true),
+            StructureEditGate(databaseType: .sqlite, objectKind: .table, schema: "temp")
+        ]
+        for gate in gates {
+            #expect(!gate.canEditSchema)
+            #expect(!gate.allowsAnyEdit)
+            #expect(!gate.allowsTriggerEditing)
+            #expect(gate.editableColumnFields.isEmpty)
+            #expect(!gate.allows(.addColumn))
+            #expect(gate.resolve(.addColumn).unavailableReason?.contains("attached") == false)
+            #expect(gate.kindRefusal(.addIndex) == nil)
+        }
+
+        let attached = StructureEditGate(databaseType: .sqlite, objectKind: .table, schema: "auth")
+        #expect(attached.canEditSchema)
+        #expect(!attached.allowsAnyEdit)
+        #expect(attached.resolve(.addColumn).unavailableReason?.contains("auth") == true)
+    }
+
     @Test("A schema on an engine that switches schemas does not lock the table")
     func schemaOnASchemaEngineStaysEditable() {
         let table = StructureEditGate(databaseType: .postgresql, objectKind: .table, schema: "billing")

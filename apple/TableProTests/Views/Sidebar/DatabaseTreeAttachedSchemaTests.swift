@@ -10,6 +10,34 @@ import SwiftUI
 import TableProPluginKit
 import Testing
 
+@MainActor
+private final class SessionTemporaryTables: TemporaryTableSessionReading {
+    private final class Session {}
+
+    let connectionId: UUID
+    let database: String
+    var tables: [TableInfo] = []
+    private let session = Session()
+
+    init(connectionId: UUID, database: String) {
+        self.connectionId = connectionId
+        self.database = database
+    }
+
+    func browseScope(for connectionId: UUID) -> DatabaseScope? {
+        guard connectionId == self.connectionId else { return nil }
+        return DatabaseScope(connectionId: connectionId, database: database, schema: nil)
+    }
+
+    func temporaryTableSession(for scope: DatabaseScope) -> ObjectIdentifier? {
+        ObjectIdentifier(session)
+    }
+
+    func readTemporaryTables(in scope: DatabaseScope) async throws -> TemporaryTableListing {
+        TemporaryTableListing(tables: tables, session: ObjectIdentifier(session))
+    }
+}
+
 /// The flat sidebar of a SQLite connection lists each database it attached as its own row, below the
 /// opened file's own sections.
 @MainActor
@@ -25,9 +53,11 @@ struct DatabaseTreeAttachedSchemaTests {
         type: DatabaseType,
         database: String,
         schemas: [String],
-        searchText: String = ""
+        connectionId: UUID? = nil,
+        searchText: String = "",
+        temporaryTables: TemporaryTableStore? = nil
     ) async throws -> Fixture {
-        let connection = TestFixtures.makeConnection(database: database, type: type)
+        let connection = TestFixtures.makeConnection(id: connectionId ?? UUID(), database: database, type: type)
         let driver = SideObjectsMockDriver(connection: connection)
         driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users")]
         driver.schemasToReturn = schemas
@@ -53,7 +83,7 @@ struct DatabaseTreeAttachedSchemaTests {
             databaseType: type,
             connectionId: connection.id
         )
-        let coordinator = DatabaseTreeOutlineCoordinator()
+        let coordinator = DatabaseTreeOutlineCoordinator(temporaryTables: temporaryTables)
         coordinator.connectionId = connection.id
         coordinator.databaseType = type
         coordinator.sidebarState = sidebarState
@@ -108,6 +138,41 @@ struct DatabaseTreeAttachedSchemaTests {
         let attachedIndex = try #require(firstAttached)
         #expect(sectionIndex < attachedIndex)
         #expect(SchemaService.shared.schemas(for: fixture.connectionId).isEmpty)
+        await tearDown(fixture)
+    }
+
+    @Test("A temporary table lists in the Temporary section and the attached databases as their own rows")
+    func temporaryTableAndAttachedDatabasesListApart() async throws {
+        let connectionId = UUID()
+        let reader = SessionTemporaryTables(connectionId: connectionId, database: "/data/app.db")
+        reader.tables = [TableInfo(name: "users", type: .table, rowCount: nil, isTemporary: true)]
+        let store = TemporaryTableStore(reader: { reader })
+        let fixture = try await makeFixture(
+            type: .sqlite, database: "/data/app.db", schemas: ["auth"], connectionId: connectionId,
+            temporaryTables: store
+        )
+        store.refresh(connectionId: connectionId)
+        await store.waitUntilIdle(connectionId: connectionId)
+        fixture.coordinator.refresh()
+
+        let kinds = rootKinds(fixture)
+        #expect(attachedRows(fixture) == ["auth"])
+        let firstTemporary = kinds.firstIndex { if case .temporarySection = $0 { return true } else { return false } }
+        let firstAttached = kinds.firstIndex { if case .schema = $0 { return true } else { return false } }
+        let temporaryIndex = try #require(firstTemporary)
+        let attachedIndex = try #require(firstAttached)
+        #expect(temporaryIndex < attachedIndex)
+
+        let sectionNode = fixture.coordinator.resolvedChildren(of: nil).first {
+            if case .temporarySection = $0.kind { return true } else { return false }
+        }
+        let section = try #require(sectionNode)
+        let temporaryRefs = fixture.coordinator.resolvedChildren(of: section).compactMap { node -> DatabaseTreeTableRef? in
+            guard case .temporaryTable(let ref) = node.kind else { return nil }
+            return ref
+        }
+        #expect(temporaryRefs.map { $0.table.name } == ["users"])
+        #expect(temporaryRefs.allSatisfy { $0.schema == nil && !$0.isInAttachedDatabase(of: .sqlite) })
         await tearDown(fixture)
     }
 

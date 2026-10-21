@@ -20,10 +20,13 @@ final class StructureGridDelegate: DataGridViewDelegate {
     /// button to have been dimmed. (#2726)
     let objectKind: TableInfo.TableType
     var schemaName: String?
+    var isSessionBound = false
 
     /// The single answer to "may this edit be offered", shared with the view that presents this grid.
     var editGate: StructureEditGate {
-        StructureEditGate(databaseType: connection.type, objectKind: objectKind, schema: schemaName)
+        StructureEditGate(
+            databaseType: connection.type, objectKind: objectKind, schema: schemaName, isSessionBound: isSessionBound
+        )
     }
 
     /// Whether this engine can add and remove foreign keys on this object, which is not the same
@@ -639,7 +642,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
 
     private func makeEmptySpaceMenu() -> NSMenu? {
         guard selectedTab != .ddl, selectedTab != .parts, selectedTab != .triggers else { return nil }
-        guard connection.type.supportsSchemaEditing else { return nil }
+        guard editGate.canEditSchema else { return nil }
 
         let menu = NSMenu()
         let label: String

@@ -56,6 +56,17 @@ struct ByteSizeFormattingTests {
         #expect(!hours.isEmpty)
     }
 
+    @Test("A slow log duration under a second keeps its unit instead of reading 0s")
+    func subSecondDurationsKeepTheirUnit() {
+        let zero = DurationFormatting.string(seconds: 0)
+        #expect(DurationFormatting.string(microseconds: 626) != zero)
+        #expect(DurationFormatting.string(microseconds: 12_345) != zero)
+        #expect(DurationFormatting.string(microseconds: 12_345) != DurationFormatting.string(microseconds: 626))
+        #expect(DurationFormatting.string(microseconds: 2_000_000) == DurationFormatting.string(seconds: 2))
+        #expect(DurationFormatting.string(microseconds: 999_600) == DurationFormatting.string(seconds: 1))
+        #expect(!DurationFormatting.string(microseconds: -5).contains("-"))
+    }
+
     @Test("A negative uptime does not render as a negative duration")
     func negativeDurationIsClamped() {
         #expect(!DurationFormatting.string(seconds: -10).contains("-"))

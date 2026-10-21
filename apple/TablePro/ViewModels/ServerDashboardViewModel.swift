@@ -163,7 +163,7 @@ final class ServerDashboardViewModel: ObservableObject {
                     String(localized: "No active connection")
                 )
             }
-            return try await driver.execute(query: query)
+            return try await driver.executeRead(query: query)
         }
 
         var newPanelErrors: [DashboardPanel: String] = [:]

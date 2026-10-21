@@ -124,6 +124,38 @@ struct SQLiteAttachedDatabaseTests {
         #expect(try await driver.fetchTableMetadata(table: "users", schema: "auth").rowCount == 1)
     }
 
+    @Test("A temporary table lists apart from the attached databases, and each name reads its own catalog")
+    func temporaryTableBesideAttachedDatabase() async throws {
+        try await prepareFiles()
+        let driver = try await connect(attaching: [AttachedDatabase(name: "auth", path: path("auth.db"))])
+        defer { driver.disconnect() }
+        _ = try await driver.execute(query: "CREATE TEMP TABLE users (id INTEGER, scratch TEXT, CONSTRAINT filled CHECK (scratch <> ''))")
+        _ = try await driver.execute(query: "CREATE INDEX temp.users_scratch ON users (scratch)")
+        _ = try await driver.execute(query: "CREATE TEMP TRIGGER users_note AFTER INSERT ON users BEGIN SELECT 1; END")
+
+        #expect(try await driver.fetchTemporaryTables().map { $0.name } == ["users"])
+        #expect(try await driver.fetchSchemas() == ["auth"])
+        #expect(try await driver.fetchTables(schema: nil).map { $0.name } == ["users"])
+        #expect(try await driver.fetchTables(schema: "auth").map { $0.name } == ["sessions", "users"])
+
+        let temporaryDDL = try await driver.fetchTableDDL(table: "users", schema: nil)
+        #expect(temporaryDDL.contains("scratch"))
+        let attachedDDL = try await driver.fetchTableDDL(table: "users", schema: "auth")
+        #expect(attachedDDL.contains("email"))
+        #expect(!attachedDDL.contains("scratch"))
+
+        #expect(try await driver.fetchCheckConstraints(table: "users", schema: nil).count == 1)
+        #expect(try await driver.fetchCheckConstraints(table: "users", schema: "auth").isEmpty)
+        #expect(try await driver.fetchIndexes(table: "users", schema: nil).map { $0.name } == ["users_scratch"])
+        #expect(try await driver.fetchIndexes(table: "users", schema: "auth").map { $0.name } == ["users_email"])
+        let attachedIndexDDL = try await driver.fetchIndexDDL(table: "users", schema: "auth")
+        #expect(attachedIndexDDL.count == 1)
+        #expect(attachedIndexDDL.first?.contains("users_email") == true)
+        #expect(try await driver.fetchTriggers(table: "users", schema: nil).map { $0.name } == ["users_note"])
+        #expect(try await driver.fetchTriggers(table: "sessions", schema: "auth").map { $0.name } == ["sessions_audit"])
+        #expect(try await driver.fetchTriggers(table: "users", schema: "auth").isEmpty)
+    }
+
     @Test("A schema name carrying a combining mark after a quote reads nothing it smuggled in")
     func schemaNameCannotInject() async throws {
         try await prepareFiles()

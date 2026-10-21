@@ -145,8 +145,9 @@ enum ERDiagramGraphBuilder {
         var edges: [EREdge] = []
         var seenFKNames: Set<String> = []
 
-        for (tableName, fks) in allForeignKeys {
-            for fk in fks {
+        // Sorted, because a dictionary's order changes per launch and decides port order on ties.
+        for tableName in allForeignKeys.keys.sorted() {
+            for fk in allForeignKeys[tableName] ?? [] {
                 let edgeKey = "\(tableName).\(fk.name).\(fk.column)"
                 guard !seenFKNames.contains(edgeKey) else { continue }
                 seenFKNames.insert(edgeKey)

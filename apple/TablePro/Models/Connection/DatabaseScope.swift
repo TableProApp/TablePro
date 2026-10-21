@@ -12,11 +12,18 @@ struct DatabaseScope: Hashable, Sendable {
     let connectionId: UUID
     let database: String
     let schema: String?
+    // Set for an object only the session can see, a temporary table: a pooled connection is another session.
+    let isSessionBound: Bool
 
-    init(connectionId: UUID, database: String, schema: String?) {
+    init(connectionId: UUID, database: String, schema: String?, isSessionBound: Bool = false) {
         self.connectionId = connectionId
         self.database = database
         self.schema = schema.flatMap { $0.isEmpty ? nil : $0 }
+        self.isSessionBound = isSessionBound
+    }
+
+    var sessionBound: DatabaseScope {
+        DatabaseScope(connectionId: connectionId, database: database, schema: schema, isSessionBound: true)
     }
 
     /// A connection can legitimately have no database selected, so an empty database means

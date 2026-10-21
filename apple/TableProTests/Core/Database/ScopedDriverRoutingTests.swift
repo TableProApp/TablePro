@@ -86,6 +86,31 @@ struct ScopedDriverRoutingTests {
         #expect(DatabaseManager.shared.metadataRoute(for: serverScoped) == .sessionDriver)
     }
 
+    @Test("A temporary table's metadata is read on the session even where the engine pools")
+    func sessionBoundMetadataStaysOnTheSessionDriver() {
+        let connection = Self.makeSession(type: .postgresql, browseDatabase: "orders")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let own = Self.scope(connection, database: "orders")
+
+        #expect(DatabaseManager.shared.metadataRoute(for: own) == .pooled)
+        #expect(DatabaseManager.shared.metadataRoute(for: own.sessionBound) == .sessionDriver)
+        #expect(DatabaseManager.shared.executionRoute(for: own.sessionBound) == .sessionDriver)
+    }
+
+    @Test("A temporary table of a database with no session of its own is refused, never read from a pool")
+    func sessionBoundForeignDatabaseIsUnavailable() {
+        let connection = Self.makeSession(type: .postgresql, browseDatabase: "inventory")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let foreign = Self.scope(connection, database: "orders").sessionBound
+
+        guard case .unavailable = DatabaseManager.shared.executionRoute(for: foreign) else {
+            Issue.record("A pooled connection is another session and cannot see the table")
+            return
+        }
+    }
+
     @Test("A reconnect-required engine runs a foreign database on a pooled connection")
     func reconnectRequiredEngineOnAForeignDatabasePools() throws {
         let connection = Self.makeSession(type: .postgresql, browseDatabase: "inventory")
