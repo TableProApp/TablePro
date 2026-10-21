@@ -434,7 +434,8 @@
             ".github/workflows/gtk-soak.yml",
             ".github/workflows/linux-quality.yml",
             ".github/workflows/linux-security.yml",
-            ".github/workflows/linux-ci-contracts.yml"
+            ".github/workflows/linux-ci-contracts.yml",
+            ".github/workflows/release.yml"
           ],
           "timeout_seconds": 120,
           "evidence": "exit",

@@ -25,6 +25,12 @@ Every file also has build provenance recorded by GitHub (`gh attestation verify 
 
 A change to the workflow or the AppImage script builds all packages on the pull request without publishing, so packaging breakage shows up before a tag.
 
+## Recovering publication after successful package builds
+
+When all four package jobs passed but draft creation failed, the repaired workflow can reuse that tag run. Dispatch `release.yml` from a reviewed workflow revision, with `artifact_run_id` set to the original run number and `release_tag` to its existing `linux-vX.Y.Z` tag. Leave both inputs empty for ordinary package validation.
+
+Recovery checks that the original run was a tag push, used this release workflow, names the exact tagged commit and completed every package job successfully. It downloads only that run, collects its packages and translation template, regenerates checksums and build provenance, then creates the draft. It does not move the tag or rebuild packages. Provenance identifies the workflow revision that finalized the assets; the original package run and tagged build inputs identify their build source. Verify both identities when qualifying recovered assets.
+
 ## Fixing a bad release
 
 Delete the draft (or unpublish), fix on `linux`, and cut the next patch version. Do not move a tag that anyone may have downloaded.

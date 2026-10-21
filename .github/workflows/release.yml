@@ -10,6 +10,15 @@ on:
       - "scripts/build-appimage.sh"
       - "scripts/release-notes.py"
   workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: Existing tag run whose four package builds passed; leave empty to build packages
+        type: string
+        default: ""
+      release_tag:
+        description: Existing linux-vX.Y.Z tag for publication recovery
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -25,10 +34,15 @@ env:
 jobs:
   prepare:
     name: Verify version and notes
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
       publish: ${{ steps.version.outputs.publish }}
+      artifact_run: ${{ steps.version.outputs.artifact_run }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -37,25 +51,40 @@ jobs:
         env:
           REF: ${{ github.ref }}
           EVENT: ${{ github.event_name }}
+          ARTIFACT_RUN: ${{ inputs.artifact_run_id }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           version="$(python3 scripts/check-release-version.py --print)"
           python3 scripts/check-release-version.py
           publish=false
+          tag="${REF#refs/tags/}"
+          if [[ -n "$ARTIFACT_RUN" || -n "$RELEASE_TAG" ]]; then
+            [[ "$EVENT" == workflow_dispatch && "$RELEASE_TAG" == "linux-v${version}" && -n "$ARTIFACT_RUN" ]] || exit 1
+            git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            python3 scripts/validate-release-recovery.py "$ARTIFACT_RUN" "$RELEASE_TAG" "$(git rev-parse "$RELEASE_TAG^{commit}")"
+            tag="$RELEASE_TAG"
+            publish=true
+          fi
           if [[ "$EVENT" == push && "$REF" == refs/tags/linux-v* ]]; then
             [[ "$REF" == "refs/tags/linux-v${version}" ]] || { echo "tag $REF does not match source version $version" >&2; exit 1; }
             python3 scripts/release-notes.py notes "$version" > release-notes.md
             publish=true
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$version"
+            echo "publish=$publish"
+            echo "artifact_run=$ARTIFACT_RUN"
+            echo "tag=$tag"
+          } >> "$GITHUB_OUTPUT"
       - name: Generate the translation template
-        if: steps.version.outputs.publish == 'true'
+        if: steps.version.outputs.publish == 'true' && inputs.artifact_run_id == ''
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends gettext
           python3 scripts/update-translations.py --output-dir translations
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
-        if: steps.version.outputs.publish == 'true'
+        if: steps.version.outputs.publish == 'true' && inputs.artifact_run_id == ''
         with:
           name: release-notes
           path: |
@@ -64,6 +93,7 @@ jobs:
 
   deb:
     name: Debian package
+    if: inputs.artifact_run_id == ''
     needs: prepare
     runs-on: ubuntu-24.04
     container: debian:testing
@@ -96,6 +126,7 @@ jobs:
 
   appimage:
     name: AppImage
+    if: inputs.artifact_run_id == ''
     needs: prepare
     runs-on: ubuntu-24.04
     container: debian:testing
@@ -133,6 +164,7 @@ jobs:
 
   arch:
     name: Arch package
+    if: inputs.artifact_run_id == ''
     needs: prepare
     runs-on: ubuntu-24.04
     container: archlinux:latest
@@ -168,6 +200,7 @@ jobs:
 
   flatpak:
     name: Flatpak bundle
+    if: inputs.artifact_run_id == ''
     needs: prepare
     runs-on: ubuntu-24.04
     container:
@@ -194,11 +227,16 @@ jobs:
 
   publish:
     name: Draft GitHub release
-    if: needs.prepare.outputs.publish == 'true'
+    if: >-
+      always() && needs.prepare.result == 'success' && needs.prepare.outputs.publish == 'true' &&
+      (needs.prepare.outputs.artifact_run != '' ||
+       (needs.deb.result == 'success' && needs.appimage.result == 'success' &&
+        needs.arch.result == 'success' && needs.flatpak.result == 'success'))
     needs: [prepare, deb, appimage, arch, flatpak]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      actions: read
       id-token: write
       attestations: write
     steps:
@@ -206,11 +244,13 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+          run-id: ${{ needs.prepare.outputs.artifact_run || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Collect release files
         run: |
           mkdir release
           cd artifacts
-          cp -- *.deb *.AppImage *.pkg.tar.zst bookie.flatpak bookie.pot ../release/
+          cp -- *.deb *.AppImage *.pkg.tar.zst bookie.flatpak translations/bookie.pot ../release/
           cp release-notes.md ../release-notes.md
           cd ../release
           sha256sum -- * > SHA256SUMS
@@ -221,7 +261,7 @@ jobs:
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.prepare.outputs.tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           flags=(--draft --verify-tag --title "BookiE $VERSION" --notes-file release-notes.md)

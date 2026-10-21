@@ -116,6 +116,7 @@ class LayerRunnerTests(unittest.TestCase):
         workflows = ROOT / ".github/workflows"
         expected = {f".github/workflows/{path.name}" for path in workflows.glob("*linux*.yml")}
         expected.add(".github/workflows/gtk-soak.yml")
+        expected.add(".github/workflows/release.yml")
         selected = set(runner.catalog()["workflow-lint"]["steps"][0]["argv"][1:])
         self.assertEqual(selected, expected)
 
