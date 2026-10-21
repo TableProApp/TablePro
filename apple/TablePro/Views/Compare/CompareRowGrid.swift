@@ -228,7 +228,7 @@ internal struct CompareRowGrid: View {
 
 private extension ColumnType {
     enum DisplayShape {
-        case text, integer, decimal, date, timestamp, datetime, boolean, blob, json, enumType, set, spatial, array
+        case text, integer, decimal, date, timestamp, datetime, boolean, blob, json, enumType, set, spatial, vector, array
     }
 
     var displayShape: DisplayShape {
@@ -245,6 +245,7 @@ private extension ColumnType {
         case .enumType: return .enumType
         case .set: return .set
         case .spatial: return .spatial
+        case .vector: return .vector
         case .array: return .array
         }
     }
