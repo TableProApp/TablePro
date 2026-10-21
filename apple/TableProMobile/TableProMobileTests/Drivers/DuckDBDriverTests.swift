@@ -1,6 +1,7 @@
 import TableProDatabase
 @testable import TableProMobile
 import TableProModels
+import Testing
 import XCTest
 
 final class DuckDBDriverTests: XCTestCase {
@@ -318,5 +319,132 @@ final class DuckDBDriverTests: XCTestCase {
         let driver = try XCTUnwrap(driver)
         let result = try await driver.execute(query: "SELECT 'abc'::BLOB AS payload")
         XCTAssertEqual(result.rows[0][0], Data("abc".utf8).base64EncodedString())
+    }
+}
+
+struct DuckDBDriverTransactionStateTests {
+    private func connectedDriver() async throws -> DuckDBDriver {
+        let driver = DuckDBDriver(source: .inMemory)
+        try await driver.connect()
+        return driver
+    }
+
+    @Test("A new session holds no transaction")
+    func idleAfterConnect() async throws {
+        let driver = try await connectedDriver()
+        #expect(await driver.sessionTransactionState() == .idle)
+        try await driver.disconnect()
+    }
+
+    @Test("BEGIN opens a transaction and COMMIT ends it")
+    func beginThenCommit() async throws {
+        let driver = try await connectedDriver()
+        _ = try await driver.execute(query: "BEGIN TRANSACTION")
+        #expect(await driver.sessionTransactionState() == .explicitTransaction)
+        _ = try await driver.execute(query: "COMMIT")
+        #expect(await driver.sessionTransactionState() == .idle)
+        try await driver.disconnect()
+    }
+
+    @Test("A statement that fails inside a transaction leaves it aborted until ROLLBACK")
+    func failureInsideTransactionAborts() async throws {
+        let driver = try await connectedDriver()
+        _ = try await driver.execute(query: "CREATE TABLE u (x INTEGER PRIMARY KEY)")
+        _ = try await driver.execute(query: "BEGIN TRANSACTION")
+        _ = try await driver.execute(query: "INSERT INTO u VALUES (1)")
+        await #expect(throws: (any Error).self) {
+            try await driver.execute(query: "INSERT INTO u VALUES (1)")
+        }
+        #expect(await driver.sessionTransactionState() == .abortedTransaction)
+        _ = try await driver.execute(query: "ROLLBACK")
+        #expect(await driver.sessionTransactionState() == .idle)
+        try await driver.disconnect()
+    }
+
+    @Test("Asking twice inside a transaction keeps it and its row for the COMMIT")
+    func probingKeepsTheTransactionForCommit() async throws {
+        let driver = try await connectedDriver()
+        _ = try await driver.execute(query: "CREATE TABLE kept (x INTEGER)")
+        _ = try await driver.execute(query: "BEGIN TRANSACTION")
+        _ = try await driver.execute(query: "INSERT INTO kept VALUES (1)")
+        #expect(await driver.sessionTransactionState() == .explicitTransaction)
+        #expect(await driver.sessionTransactionState() == .explicitTransaction)
+        _ = try await driver.execute(query: "COMMIT")
+        let rows = try await driver.execute(query: "SELECT x FROM kept").rows
+        #expect(rows == [["1"]])
+        try await driver.disconnect()
+    }
+
+    @Test("Asking inside a transaction commits nothing, so a ROLLBACK still undoes the row")
+    func probingCommitsNothing() async throws {
+        let driver = try await connectedDriver()
+        _ = try await driver.execute(query: "CREATE TABLE undone (x INTEGER)")
+        _ = try await driver.execute(query: "BEGIN TRANSACTION")
+        _ = try await driver.execute(query: "INSERT INTO undone VALUES (1)")
+        #expect(await driver.sessionTransactionState() == .explicitTransaction)
+        _ = try await driver.execute(query: "ROLLBACK")
+        let rows = try await driver.execute(query: "SELECT count(*) FROM undone").rows
+        #expect(rows == [["0"]])
+        try await driver.disconnect()
+    }
+
+    @Test("An open stream is left running and the state is not guessed")
+    func openStreamIsNotEnded() async throws {
+        let driver = try await connectedDriver()
+        guard case .rowSet(_, let stream) = try await driver.actor.beginStream(
+            query: "SELECT i FROM range(100000) t(i)", token: DuckDBStreamToken()
+        ) else {
+            Issue.record("a SELECT must stream")
+            return
+        }
+        _ = try await driver.actor.fetchStreamChunk(stream: stream, options: .default)
+        #expect(await driver.sessionTransactionState() == .unknown)
+        let next = try await driver.actor.fetchStreamChunk(stream: stream, options: .default)
+        #expect(next?.isEmpty == false)
+        await driver.actor.endStream(stream)
+        #expect(await driver.sessionTransactionState() == .idle)
+        try await driver.disconnect()
+    }
+
+    @Test("A session that is not open cannot say")
+    func unopenedSessionIsUnknown() async throws {
+        #expect(await DuckDBDriver(source: .inMemory).sessionTransactionState() == .unknown)
+        let closed = try await connectedDriver()
+        try await closed.disconnect()
+        #expect(await closed.sessionTransactionState() == .unknown)
+    }
+}
+
+struct DuckDBTransactionProbeTests {
+    @Test("Only DuckDB's own catalog goes on to the transaction id")
+    func nativeCatalogIsProbedFurther() {
+        #expect(DuckDBTransactionProbe.state(catalogType: .value("duckdb")) == nil)
+        #expect(DuckDBTransactionProbe.state(catalogType: .value("DuckDB")) == nil)
+    }
+
+    @Test("Another engine's catalog is never asked for a transaction id")
+    func foreignCatalogIsUnknown() {
+        #expect(DuckDBTransactionProbe.state(catalogType: .value("sqlite")) == .unknown)
+        #expect(DuckDBTransactionProbe.state(catalogType: .value("postgres")) == .unknown)
+    }
+
+    @Test("A refused catalog read is an aborted transaction, an unreadable one says nothing")
+    func catalogRefusals() {
+        #expect(DuckDBTransactionProbe.state(catalogType: .abortedTransaction) == .abortedTransaction)
+        #expect(DuckDBTransactionProbe.state(catalogType: .unreadable) == .unknown)
+    }
+
+    @Test("Two ids that differ are two statements' own transactions, the same id is one open transaction")
+    func transactionIds() {
+        #expect(DuckDBTransactionProbe.state(first: .value("6"), second: .value("10")) == .idle)
+        #expect(DuckDBTransactionProbe.state(first: .value("12"), second: .value("12")) == .explicitTransaction)
+    }
+
+    @Test("An aborted reading wins, and an unreadable one says nothing")
+    func transactionIdRefusals() {
+        #expect(DuckDBTransactionProbe.state(first: .abortedTransaction, second: .unreadable) == .abortedTransaction)
+        #expect(DuckDBTransactionProbe.state(first: .value("12"), second: .abortedTransaction) == .abortedTransaction)
+        #expect(DuckDBTransactionProbe.state(first: .value("12"), second: .unreadable) == .unknown)
+        #expect(DuckDBTransactionProbe.state(first: .unreadable, second: .value("12")) == .unknown)
     }
 }

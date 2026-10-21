@@ -36,11 +36,16 @@ internal final class WorkspaceRailCellView: NSTableCellView {
     private let icon = NSImageView()
     private let label = WorkspaceRailCellView.makeLabel()
     private let identityDot = NSView()
+    /// The connection holds a transaction behind this entry. A symbol, not a colour, on the corner
+    /// opposite the identity dot, so neither has to share a channel with the other.
+    private let transactionBadge = NSImageView()
     private let content = NSLayoutGuide()
     private var iconWidthConstraint: NSLayoutConstraint?
     private var iconHeightConstraint: NSLayoutConstraint?
     private var dotWidthConstraint: NSLayoutConstraint?
     private var dotHeightConstraint: NSLayoutConstraint?
+    private var badgeWidthConstraint: NSLayoutConstraint?
+    private var badgeHeightConstraint: NSLayoutConstraint?
     private var appliedTint: NSColor?
     /// Held as the palette entry rather than a resolved colour, because `systemRed` and the rest
     /// differ between light and dark: resolving at configure time would freeze the dot at the
@@ -80,9 +85,18 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         identityDot.wantsLayer = true
         identityDot.layer?.borderWidth = Self.identityDotRimWidth
 
+        transactionBadge.translatesAutoresizingMaskIntoConstraints = false
+        transactionBadge.imageScaling = .scaleProportionallyUpOrDown
+        transactionBadge.image = NSImage(
+            systemSymbolName: ConnectionTransactionBarContent.openSymbolName,
+            accessibilityDescription: nil
+        )
+        transactionBadge.isHidden = true
+
         addSubview(icon)
         addSubview(label)
         addSubview(identityDot)
+        addSubview(transactionBadge)
         addLayoutGuide(content)
         /// Not `textField`. In a source list AppKit rewrites that outlet's value on every layout pass
         /// to one 13pt run, which drops the per-size fonts and the secondary colour and needs 32pt for
@@ -100,6 +114,11 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         let dotHeight = identityDot.heightAnchor.constraint(equalToConstant: Self.identityDotSize(forIcon: 24))
         dotWidthConstraint = dotWidth
         dotHeightConstraint = dotHeight
+
+        let badgeWidth = transactionBadge.widthAnchor.constraint(equalToConstant: Self.identityDotSize(forIcon: 24))
+        let badgeHeight = transactionBadge.heightAnchor.constraint(equalToConstant: Self.identityDotSize(forIcon: 24))
+        badgeWidthConstraint = badgeWidth
+        badgeHeightConstraint = badgeHeight
 
         NSLayoutConstraint.activate([
             content.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -120,6 +139,11 @@ internal final class WorkspaceRailCellView: NSTableCellView {
             dotHeight,
             identityDot.centerXAnchor.constraint(equalTo: icon.trailingAnchor),
             identityDot.bottomAnchor.constraint(equalTo: icon.bottomAnchor),
+
+            badgeWidth,
+            badgeHeight,
+            transactionBadge.centerXAnchor.constraint(equalTo: icon.trailingAnchor),
+            transactionBadge.topAnchor.constraint(equalTo: icon.topAnchor),
         ])
     }
 
@@ -156,6 +180,9 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         dotWidthConstraint?.constant = dotSize
         dotHeightConstraint?.constant = dotSize
         identityDot.layer?.cornerRadius = dotSize / 2
+        badgeWidthConstraint?.constant = dotSize
+        badgeHeightConstraint?.constant = dotSize
+        transactionBadge.isHidden = !entry.holdsTransaction
 
         label.attributedStringValue = Self.labelValue(lines: Self.labelLines(for: entry), layout: layout)
 
@@ -253,6 +280,7 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         let isEmphasized = backgroundStyle == .emphasized
         effectiveAppearance.performAsCurrentDrawingAppearance {
             icon.contentTintColor = isEmphasized ? nil : appliedTint
+            transactionBadge.contentTintColor = isEmphasized ? nil : .systemOrange
 
             guard let hue = identityColor?.indicatorColor else { return }
             identityDot.layer?.backgroundColor = NSColor(hue).cgColor
@@ -320,6 +348,9 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         if let identity = connection.identityColor {
             parts.append(String(format: String(localized: "Color: %@"), identity.displayName))
         }
+        if entry.holdsTransaction {
+            parts.append(String(localized: "Transaction open"))
+        }
         return parts.joined(separator: ", ")
     }
 
@@ -329,6 +360,9 @@ internal final class WorkspaceRailCellView: NSTableCellView {
             parts.append(String(format: containerFormat(for: entry.containerTarget), entry.container))
         }
         parts.append(statusDescription(for: entry.status))
+        if entry.holdsTransaction {
+            parts.append(String(localized: "transaction open"))
+        }
         if let identity = entry.connection.identityColor {
             parts.append(String(format: String(localized: "color %@"), identity.displayName))
         }

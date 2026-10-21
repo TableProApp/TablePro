@@ -1,8 +1,9 @@
 import Foundation
 
 public struct ConnectionMatchKey: Hashable, Sendable {
-    // MySQLLocalSocket.fieldKey, which this package cannot import.
+    // MySQLLocalSocket.fieldKey and RedisDatabaseIndex.fieldName, which this package cannot import.
     private static let socketPathFieldKey = "localSocketPath"
+    private static let redisDatabaseFieldKey = "redisDatabase"
 
     private let host: String
     private let port: Int
@@ -38,9 +39,18 @@ public struct ConnectionMatchKey: Hashable, Sendable {
             port: settings.port,
             database: settings.database,
             username: settings.username,
-            redisDatabase: settings.redisDatabase,
+            redisDatabase: Self.redisDatabase(in: settings.additionalFields ?? [:]) ?? settings.redisDatabase,
             socketPath: settings.additionalFields?[Self.socketPathFieldKey]
         )
+    }
+
+    // The Redis driver reads the additional field first, so a connection that carries one opens that database.
+    // The spellings follow RedisDatabaseIndex.parse: "3" and "db3".
+    public static func redisDatabase(in additionalFields: [String: String]) -> Int? {
+        guard let raw = additionalFields[redisDatabaseFieldKey]?.trimmingCharacters(in: .whitespaces) else { return nil }
+        if let index = Int(raw) { return index }
+        guard raw.lowercased().hasPrefix("db") else { return nil }
+        return Int(raw.dropFirst(2))
     }
 
     private static func normalized(_ value: String) -> String {

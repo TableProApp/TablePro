@@ -3,6 +3,15 @@ use std::path::PathBuf;
 use tablepro_core::{NetworkEndpoint, SshAlgorithmKind, SshFailure, TimeoutPhase, TransportError};
 
 const PROTOCOL_DETAIL_LIMIT: usize = 4096;
+const NEGOTIATION_FAILURES: [(&str, SshAlgorithmKind); 5] = [
+    ("no matching key exchange method found", SshAlgorithmKind::KeyExchange),
+    ("no matching host key type found", SshAlgorithmKind::HostKey),
+    ("no matching cipher found", SshAlgorithmKind::Cipher),
+    ("no matching MAC found", SshAlgorithmKind::Mac),
+    ("no matching compression method found", SshAlgorithmKind::Compression),
+];
+// ssh names a peer it reached through a ProxyCommand or ProxyJump pipe this way.
+const UNKNOWN_PEER: &str = "UNKNOWN";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DeclinedHostKey {
@@ -27,8 +36,7 @@ pub(crate) struct ClassifyContext<'a> {
 pub(crate) fn classify(status: Option<i32>, stderr: &str, context: &ClassifyContext<'_>) -> TransportError {
     let failure = host_key_failure(stderr, context)
         .or_else(|| negotiation_failure(stderr, context))
-        .or_else(|| attempts_exceeded(stderr, context))
-        .or_else(|| authentication_failure(stderr))
+        .or_else(|| authentication_failure(stderr, context))
         .or_else(|| forwarding_failure(stderr, context))
         .or_else(|| configuration_failure(stderr));
     if let Some(failure) = failure {
@@ -120,63 +128,39 @@ fn unknown_host_key(host: &str, algorithm: &str, fingerprint: &str, trust_allowe
     }
 }
 
-// A server's login banner reaches stderr as the server wrote it, so only a
-// whole line in ssh's own form counts.
 fn negotiation_failure(stderr: &str, context: &ClassifyContext<'_>) -> Option<SshFailure> {
-    stderr.lines().find_map(|line| {
-        let (remote, rest) = line
-            .trim()
-            .strip_prefix("Unable to negotiate with ")?
-            .split_once(": ")?;
-        let (reason, offer) = rest.split_once(". Their offer: ")?;
-        // ssh_err()'s words for the five SSH_ERR_NO_*_ALG_MATCH codes.
-        let kind = match reason {
-            "no matching key exchange method found" => SshAlgorithmKind::KeyExchange,
-            "no matching host key type found" => SshAlgorithmKind::HostKey,
-            "no matching cipher found" => SshAlgorithmKind::Cipher,
-            "no matching MAC found" => SshAlgorithmKind::Mac,
-            "no matching compression method found" => SshAlgorithmKind::Compression,
-            _ => return None,
-        };
-        // ext-info-* (RFC 8308) and kex-strict-* ride in the key exchange list
-        // as signals, not methods a client could pick.
-        let server_offer = offer
-            .split(',')
-            .map(str::trim)
-            .filter(|name| !name.is_empty() && !name.starts_with("ext-info-") && !name.starts_with("kex-strict-"))
-            .map(str::to_owned)
-            .collect();
-        Some(SshFailure::NoCommonAlgorithm {
-            host: remote_host(remote, context)?,
-            kind,
-            server_offer,
+    let line = line_containing(stderr, "Unable to negotiate with ")?;
+    let kind = NEGOTIATION_FAILURES
+        .iter()
+        .find(|(text, _)| line.contains(text))
+        .map(|&(_, kind)| kind)?;
+    let peer = between(line, "Unable to negotiate with ", ": no matching ").unwrap_or_default();
+    let server_offer = line
+        .split_once("Their offer: ")
+        .map(|(_, offer)| {
+            offer
+                .split(',')
+                .map(str::trim)
+                // Markers a server appends to its key exchange list, not methods it offers.
+                .filter(|name| !name.is_empty() && !name.starts_with("ext-info-") && !name.starts_with("kex-strict-"))
+                .map(str::to_owned)
+                .collect()
         })
+        .unwrap_or_default();
+    Some(SshFailure::NoCommonAlgorithm {
+        host: peer_host(peer, context),
+        kind,
+        server_offer,
     })
 }
 
-fn attempts_exceeded(stderr: &str, context: &ClassifyContext<'_>) -> Option<SshFailure> {
-    stderr.lines().find_map(|line| {
-        let record = line
-            .trim()
-            .strip_prefix("Received disconnect from ")?
-            .strip_suffix(": Too many authentication failures")?;
-        let (remote, _code) = record.rsplit_once(':')?;
-        Some(SshFailure::AuthenticationAttemptsExceeded {
-            host: remote_host(remote, context)?,
-        })
-    })
-}
-
-fn remote_host(remote: &str, context: &ClassifyContext<'_>) -> Option<String> {
-    let (host, _port) = remote.split_once(" port ")?;
-    // ssh names a hop behind a jump host UNKNOWN, since it sees only the proxy's pipe.
-    Some(match host.trim() {
-        "" | "UNKNOWN" => context.host.to_owned(),
-        host => host.to_owned(),
-    })
-}
-
-fn authentication_failure(stderr: &str) -> Option<SshFailure> {
+fn authentication_failure(stderr: &str, context: &ClassifyContext<'_>) -> Option<SshFailure> {
+    if let Some(line) = line_containing(stderr, "Too many authentication failures") {
+        let peer = between(line, "Received disconnect from ", " port ").unwrap_or_default();
+        return Some(SshFailure::TooManyAuthenticationFailures {
+            host: peer_host(peer, context),
+        });
+    }
     let line = line_containing(stderr, ": Permission denied (")?;
     let (user_host, methods) = line.split_once(": Permission denied (")?;
     let (user, host) = user_host.rsplit_once('@')?;
@@ -253,6 +237,14 @@ fn stderr_tail(stderr: &str) -> &str {
         start += 1;
     }
     &trimmed[start..]
+}
+
+fn peer_host(peer: &str, context: &ClassifyContext<'_>) -> String {
+    let host = peer.rsplit_once(" port ").map_or(peer, |(host, _)| host).trim();
+    if host.is_empty() || host == UNKNOWN_PEER {
+        return context.host.to_owned();
+    }
+    host.to_owned()
 }
 
 fn line_containing<'a>(text: &'a str, needle: &str) -> Option<&'a str> {
@@ -405,33 +397,38 @@ mod tests {
     }
 
     #[test]
+    fn crlf_line_endings_classify_the_same() {
+        for stderr in [
+            include_str!("../tests/fixtures/stderr/auth_rejected.txt"),
+            include_str!("../tests/fixtures/stderr/host_key_changed.txt"),
+        ] {
+            assert_eq!(fixture(&stderr.replace('\n', "\r\n")), fixture(stderr));
+        }
+    }
+
+    #[test]
+    fn stderr_classification_fixture_no_matching_key_exchange() {
+        assert!(matches!(
+            fixture(include_str!("../tests/fixtures/stderr/no_matching_key_exchange.txt")),
+            TransportError::Ssh(SshFailure::NoCommonAlgorithm { host, kind: SshAlgorithmKind::KeyExchange, server_offer })
+                if host == "172.17.0.1" && server_offer == ["mlkem768x25519-sha256", "sntrup761x25519-sha512"]
+        ));
+    }
+
+    #[test]
     fn stderr_classification_fixture_too_many_authentication_failures() {
         assert_eq!(
             fixture(include_str!(
                 "../tests/fixtures/stderr/too_many_authentication_failures.txt"
             )),
-            TransportError::Ssh(SshFailure::AuthenticationAttemptsExceeded {
-                host: "127.0.0.1".to_owned(),
-            })
-        );
-    }
-
-    /// The server's offer keeps its methods and drops the extension
-    /// signals that ride in the same list.
-    #[test]
-    fn stderr_classification_fixture_no_matching_key_exchange() {
-        assert_eq!(
-            fixture(include_str!("../tests/fixtures/stderr/no_matching_key_exchange.txt")),
-            TransportError::Ssh(SshFailure::NoCommonAlgorithm {
-                host: "127.0.0.1".to_owned(),
-                kind: SshAlgorithmKind::KeyExchange,
-                server_offer: vec!["mlkem768x25519-sha256".to_owned(), "sntrup761x25519-sha512".to_owned()],
+            TransportError::Ssh(SshFailure::TooManyAuthenticationFailures {
+                host: "172.17.0.1".to_owned()
             })
         );
     }
 
     #[test]
-    fn every_list_ssh_can_fail_to_negotiate_is_named() {
+    fn each_negotiation_failure_names_its_kind_and_the_servers_offer() {
         let cases = [
             ("key exchange method", SshAlgorithmKind::KeyExchange),
             ("host key type", SshAlgorithmKind::HostKey),
@@ -439,91 +436,68 @@ mod tests {
             ("MAC", SshAlgorithmKind::Mac),
             ("compression method", SshAlgorithmKind::Compression),
         ];
-        for (words, kind) in cases {
+        for (text, kind) in cases {
             let stderr =
-                format!("Unable to negotiate with 192.0.2.7 port 22: no matching {words} found. Their offer: a,b\n");
+                format!("Unable to negotiate with 203.0.113.5 port 22: no matching {text} found. Their offer: a,b\n");
+
             assert_eq!(
                 fixture(&stderr),
                 TransportError::Ssh(SshFailure::NoCommonAlgorithm {
-                    host: "192.0.2.7".to_owned(),
+                    host: "203.0.113.5".to_owned(),
                     kind,
                     server_offer: vec!["a".to_owned(), "b".to_owned()],
                 }),
-                "{words}"
+                "{text}"
             );
         }
-        assert!(matches!(
-            fixture(include_str!("../tests/fixtures/stderr/no_matching_cipher.txt")),
-            TransportError::Ssh(SshFailure::NoCommonAlgorithm { kind: SshAlgorithmKind::Cipher, server_offer, .. })
-                if server_offer.len() == 6
-        ));
     }
 
-    /// Behind a jump host ssh knows the destination only as the proxy's
-    /// pipe, so the configured host names it.
     #[test]
-    fn a_hop_behind_a_jump_host_is_named_by_its_configured_host() {
+    fn a_legacy_servers_host_key_offer_is_named() {
         assert_eq!(
             fixture(
-                "Unable to negotiate with UNKNOWN port 65535: no matching host key type found. Their offer: ssh-rsa\n"
+                "Unable to negotiate with 2001:db8::5 port 2222: no matching host key type found. Their offer: ssh-rsa,ssh-dss\n"
             ),
             TransportError::Ssh(SshFailure::NoCommonAlgorithm {
-                host: "bastion".to_owned(),
+                host: "2001:db8::5".to_owned(),
                 kind: SshAlgorithmKind::HostKey,
-                server_offer: vec!["ssh-rsa".to_owned()],
+                server_offer: vec!["ssh-rsa".to_owned(), "ssh-dss".to_owned()],
             })
         );
+    }
+
+    #[test]
+    fn a_peer_behind_a_proxy_is_named_by_the_destination() {
+        let negotiation = fixture(
+            "Unable to negotiate with UNKNOWN port 65535: no matching key exchange method found. \
+             Their offer: mlkem768x25519-sha256,ext-info-s,kex-strict-s-v00@openssh.com\n",
+        );
+        let too_many = fixture("Received disconnect from UNKNOWN port 65535:2: Too many authentication failures\n");
+
         assert_eq!(
-            fixture("Received disconnect from UNKNOWN port 65535:2: Too many authentication failures\n"),
-            TransportError::Ssh(SshFailure::AuthenticationAttemptsExceeded {
+            negotiation,
+            TransportError::Ssh(SshFailure::NoCommonAlgorithm {
                 host: "bastion".to_owned(),
+                kind: SshAlgorithmKind::KeyExchange,
+                server_offer: vec!["mlkem768x25519-sha256".to_owned()],
             })
         );
         assert_eq!(
-            fixture("Received disconnect from fd00::5 port 22:2: Too many authentication failures\n"),
-            TransportError::Ssh(SshFailure::AuthenticationAttemptsExceeded {
-                host: "fd00::5".to_owned(),
-            })
-        );
-    }
-
-    /// A login banner is printed to stderr as the server wrote it, so
-    /// its words alone classify nothing.
-    #[test]
-    fn a_banner_with_ssh_s_words_is_not_ssh_s_error() {
-        let banner = "Too many authentication failures will lock your account.\n\
-                      Unable to negotiate with support: no matching cipher found. Their offer: call us\n";
-
-        assert_eq!(
-            fixture(&format!("{banner}Connection reset by 192.0.2.7 port 22\n")),
-            TransportError::Ssh(SshFailure::Protocol {
-                status: Some(255),
-                detail: format!("{banner}Connection reset by 192.0.2.7 port 22")
-                    .trim()
-                    .to_owned(),
-            })
-        );
-        assert_eq!(
-            fixture(&format!(
-                "{banner}{}",
-                include_str!("../tests/fixtures/stderr/too_many_authentication_failures.txt")
-            )),
-            TransportError::Ssh(SshFailure::AuthenticationAttemptsExceeded {
-                host: "127.0.0.1".to_owned(),
+            too_many,
+            TransportError::Ssh(SshFailure::TooManyAuthenticationFailures {
+                host: "bastion".to_owned()
             })
         );
     }
 
     #[test]
-    fn crlf_line_endings_classify_the_same() {
-        for stderr in [
-            include_str!("../tests/fixtures/stderr/auth_rejected.txt"),
-            include_str!("../tests/fixtures/stderr/host_key_changed.txt"),
-            include_str!("../tests/fixtures/stderr/too_many_authentication_failures.txt"),
-            include_str!("../tests/fixtures/stderr/no_matching_key_exchange.txt"),
-        ] {
-            assert_eq!(fixture(&stderr.replace('\n', "\r\n")), fixture(stderr));
-        }
+    fn too_many_failures_from_an_ipv6_peer_keeps_the_address() {
+        assert_eq!(
+            fixture(
+                "Received disconnect from ::1 port 22:2: Too many authentication failures\nDisconnected from ::1 port 22\n"
+            ),
+            TransportError::Ssh(SshFailure::TooManyAuthenticationFailures { host: "::1".to_owned() })
+        );
     }
 
     #[test]

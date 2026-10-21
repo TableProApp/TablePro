@@ -5,20 +5,7 @@
 
 import Foundation
 import TableProPluginKit
-
-struct CatalogObjectKinds: OptionSet, Sendable, Hashable {
-    let rawValue: Int
-
-    static let tables = CatalogObjectKinds(rawValue: 1 << 0)
-    static let routines = CatalogObjectKinds(rawValue: 1 << 1)
-    static let triggers = CatalogObjectKinds(rawValue: 1 << 2)
-    static let types = CatalogObjectKinds(rawValue: 1 << 3)
-    static let schemas = CatalogObjectKinds(rawValue: 1 << 4)
-    static let databases = CatalogObjectKinds(rawValue: 1 << 5)
-
-    static let objects: CatalogObjectKinds = [.tables, .routines, .triggers, .types]
-    static let everything: CatalogObjectKinds = [.objects, .schemas, .databases]
-}
+import TableProSQLGrammar
 
 /// What part of a connection's catalog may no longer match what the app has loaded.
 ///
@@ -29,9 +16,9 @@ struct CatalogChange: Sendable, Equatable {
     let connectionId: UUID
     let database: String?
     let schema: String?
-    let kinds: CatalogObjectKinds
+    let kinds: SQLCatalogObjectKinds
 
-    init(connectionId: UUID, database: String? = nil, schema: String? = nil, kinds: CatalogObjectKinds) {
+    init(connectionId: UUID, database: String? = nil, schema: String? = nil, kinds: SQLCatalogObjectKinds) {
         self.connectionId = connectionId
         self.database = database?.nilIfEmpty
         self.schema = self.database == nil ? nil : schema?.nilIfEmpty

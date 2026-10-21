@@ -9,8 +9,9 @@ use std::process::Stdio;
 
 use tablepro_test_fixtures::{
     ClickHouseFixture, ExecOutput, FixtureCredentials, HbaMode, HostKeyRevocation, MssqlFixture, MysqlFixture,
-    MysqlFlavour, MysqlOptions, OpenSshFixture, OpenSshVersion, PgBouncerFixture, PkiFile, PoolMode, PostgresFixture,
-    PostgresVersion, ScriptedAskpass, ServerVersion, SshAuthVariant, SshKeyPair, SshKeyType, TestNetwork, TestPki,
+    MysqlFlavour, MysqlOptions, OpenSshFixture, OpenSshOptions, OpenSshVersion, PgBouncerFixture, PkiFile, PoolMode,
+    PostgresFixture, PostgresVersion, ScriptedAskpass, ServerVersion, SshAgent, SshAuthVariant, SshKeyPair,
+    TestNetwork, TestPki,
 };
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
@@ -345,41 +346,109 @@ async fn openssh_fixture_enables_tcp_forwarding() -> TestResult {
     Ok(())
 }
 
+async fn first_line(host: &str, port: u16) -> Result<String, Box<dyn Error>> {
+    let mut reader = BufReader::new(TcpStream::connect((host, port)).await?);
+    let mut line = String::new();
+    reader.read_line(&mut line).await?;
+    Ok(line.trim_end().to_owned())
+}
+
 #[tokio::test]
 #[ignore = "requires docker"]
-async fn openssh_fixture_runs_the_selected_release_with_its_keys_and_lines() -> TestResult {
-    let keys = vec![
-        SshKeyPair::generate("tablepro-first").await?,
-        SshKeyPair::generate_with(SshKeyType::Rsa, None, "tablepro-second").await?,
-    ];
-    let fixture = OpenSshFixture::start_configured(SshAuthVariant::PublicKeys(keys), &["MaxAuthTries 3"]).await?;
-    let SshAuthVariant::PublicKeys(keys) = fixture.variant() else {
-        return Err("the fixture lost its keys".into());
-    };
+async fn openssh_fixture_runs_the_requested_release() -> TestResult {
+    for &version in OpenSshVersion::ALL {
+        let options = OpenSshOptions::default().with_version(version);
+        let fixture = OpenSshFixture::start_with(SshAuthVariant::Password, options, None).await?;
 
-    let config = fixture
+        let banner = first_line(fixture.host(), fixture.port()).await?;
+
+        assert!(
+            banner.starts_with(&version.banner_prefix()),
+            "{version:?} sent {banner}"
+        );
+        assert_eq!(fixture.version(), version);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn openssh_options_reach_sshd() -> TestResult {
+    let options = OpenSshOptions::selected()?
+        .with_kex_algorithms(OpenSshOptions::POST_QUANTUM_KEX)
+        .with_max_auth_tries(3)
+        .with_pubkey_accepted_algorithms("rsa-sha2-256");
+    let fixture = OpenSshFixture::start_with(SshAuthVariant::Password, options, None).await?;
+
+    let output = fixture
         .exec(&["sshd.pam", "-T", "-f", OpenSshFixture::SSHD_CONFIG])
         .await?;
-    let authorized = fixture.exec(&["cat", "/config/.ssh/authorized_keys"]).await?;
-    let mut banner = String::new();
-    BufReader::new(TcpStream::connect((fixture.host(), fixture.port())).await?)
-        .read_line(&mut banner)
-        .await?;
 
-    assert!(
-        config.stdout_text().contains("maxauthtries 3"),
-        "{}",
-        config.stderr_text()
-    );
-    for key in keys {
+    assert!(output.succeeded(), "{}", output.stderr_text());
+    let effective = output.stdout_text();
+    for expected in [
+        "kexalgorithms mlkem768x25519-sha256,sntrup761x25519-sha512",
+        "maxauthtries 3",
+        "pubkeyacceptedalgorithms rsa-sha2-256",
+        "persourcepenalties no",
+    ] {
         assert!(
-            authorized.stdout_text().lines().any(|line| line == key.public_key()),
-            "{}",
-            authorized.stdout_text()
+            effective.lines().any(|line| line == expected),
+            "no {expected} in\n{effective}"
         );
     }
-    assert_eq!(fixture.version(), OpenSshVersion::selected()?);
-    assert!(banner.starts_with(&fixture.version().banner_prefix()), "{banner:?}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn max_auth_tries_fixture_disconnects_an_agent_with_too_many_keys() -> TestResult {
+    let agent = SshAgent::start().await?;
+    let mut offered = Vec::new();
+    for index in 1..=4 {
+        let decoy = SshKeyPair::generate(&format!("tablepro-decoy-{index}")).await?;
+        agent.add(&decoy).await?;
+        offered.push(decoy.public_key().to_owned());
+    }
+    let key = SshKeyPair::generate("tablepro-authorized").await?;
+    agent.add(&key).await?;
+    offered.push(key.public_key().to_owned());
+    assert_eq!(
+        agent.identities().await?,
+        offered,
+        "the agent lists its keys out of order"
+    );
+    let options = OpenSshOptions::selected()?.with_max_auth_tries(3);
+    let fixture = OpenSshFixture::start_with(SshAuthVariant::PublicKey(key), options, None).await?;
+
+    let output = tokio::process::Command::new("ssh")
+        .args(["-F", "none", "-p", &fixture.port().to_string(), "-o"])
+        .arg(format!("IdentityAgent={}", agent.socket().display()))
+        .args([
+            "-o",
+            "IdentitiesOnly=no",
+            "-o",
+            "PreferredAuthentications=publickey",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+        ])
+        .arg(format!(
+            "{}@{}",
+            fixture.password_credentials().username,
+            fixture.host()
+        ))
+        .arg("true")
+        .stdin(Stdio::null())
+        .output()
+        .await?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(255), "{stderr}");
+    assert!(stderr.contains("Too many authentication failures"), "{stderr}");
     Ok(())
 }
 

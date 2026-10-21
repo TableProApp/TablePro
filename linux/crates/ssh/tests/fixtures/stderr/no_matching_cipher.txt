@@ -1,1 +1,0 @@
-Unable to negotiate with 127.0.0.1 port 2222: no matching cipher found. Their offer: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr

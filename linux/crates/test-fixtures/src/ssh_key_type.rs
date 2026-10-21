@@ -1,8 +1,7 @@
-/// A client key algorithm `ssh-keygen` generates for a test.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SshKeyType {
+    #[default]
     Ed25519,
-    /// 3072 bits, `ssh-keygen`'s default size.
     Rsa,
     EcdsaP256,
 }
@@ -26,8 +25,7 @@ impl SshKeyType {
         }
     }
 
-    /// The key type an OpenSSH public key line starts with.
-    pub fn public_key_type(self) -> &'static str {
+    pub fn public_key_algorithm(self) -> &'static str {
         match self {
             Self::Ed25519 => "ssh-ed25519",
             Self::Rsa => "ssh-rsa",

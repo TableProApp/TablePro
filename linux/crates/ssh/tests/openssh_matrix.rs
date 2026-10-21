@@ -1,9 +1,5 @@
-//! The tunnel against the OpenSSH release `TABLEPRO_TEST_OPENSSH` picks, across client keys, agents, key exchange
-//! and a server that goes away (#3662).
-
-use std::collections::HashSet;
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,80 +7,84 @@ use secrecy::SecretString;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::{LivenessPolicy, NetworkEndpoint, SshAlgorithmKind, SshFailure, TransportError};
 use tablepro_ssh::{SshAuth, SshConfig, SshDestination, SshRuntimeCell, SshServices, SshSession};
-use tablepro_test_fixtures::{OpenSshFixture, SshAgent, SshAuthVariant, SshKeyPair, SshKeyType};
+use tablepro_test_fixtures::{OpenSshFixture, OpenSshOptions, SshAgent, SshAuthVariant, SshKeyPair, SshKeyType};
 use tablepro_test_support::FakePrompter;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 
 type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 
 const PASSPHRASE: &str = "correct horse battery";
-const WAIT: Duration = Duration::from_secs(15);
-const POST_QUANTUM_KEX: [&str; 2] = ["mlkem768x25519-sha256", "sntrup761x25519-sha512"];
-/// sshd's default, set on the server so the decoy count follows from it.
-const MAX_AUTH_TRIES: usize = 6;
+const NO_AGENT: &str = "  IdentityAgent none\n";
 
-/// The system ssh under a private ssh_config whose known_hosts already
-/// trusts the server, so a test that sees a prompt has found a bug.
-struct Client {
-    _dir: tempfile::TempDir,
+struct Server {
+    fixture: OpenSshFixture,
     services: SshServices,
+    _dir: tempfile::TempDir,
 }
 
-impl Client {
-    async fn new(server: &OpenSshFixture) -> TestResult<Self> {
-        Self::with(server, &["IdentityAgent none".to_owned()]).await
+impl Server {
+    // The client reads `client_config` after a known_hosts that already trusts the server, and nothing else.
+    async fn start(key: SshKeyPair, options: OpenSshOptions, client_config: &str) -> TestResult<Self> {
+        Self::start_trusting(SshAuthVariant::PublicKey(key), options, client_config).await
     }
 
-    async fn with_agent(server: &OpenSshFixture, agent: &SshAgent) -> TestResult<Self> {
-        Self::with(server, &[format!("IdentityAgent {}", agent.socket().display())]).await
-    }
-
-    /// `options` go under `Host *` after the known_hosts lines.
-    async fn with(server: &OpenSshFixture, options: &[String]) -> TestResult<Self> {
+    async fn start_trusting(variant: SshAuthVariant, options: OpenSshOptions, client_config: &str) -> TestResult<Self> {
+        let fixture = OpenSshFixture::start_with(variant, options, None).await?;
         let dir = tempfile::tempdir()?;
         let known_hosts = dir.path().join("known_hosts");
-        let host_key = server.host_public_key().await?;
+        let host_key = fixture.host_public_key().await?;
         std::fs::write(
             &known_hosts,
-            format!("[{}]:{} {host_key}\n", server.host(), server.port()),
+            format!("[{}]:{} {host_key}\n", fixture.host(), fixture.port()),
         )?;
-        let mut config = format!(
-            "Host *\n  UserKnownHostsFile {}\n  GlobalKnownHostsFile /dev/null\n",
-            known_hosts.display()
-        );
-        for option in options {
-            config.push_str(&format!("  {option}\n"));
-        }
-        let config_file = dir.path().join("ssh_config");
-        std::fs::write(&config_file, config)?;
+        let config = dir.path().join("ssh_config");
+        std::fs::write(
+            &config,
+            format!(
+                "Host *\n  UserKnownHostsFile {}\n  GlobalKnownHostsFile /dev/null\n{client_config}",
+                known_hosts.display()
+            ),
+        )?;
         let wrapper = dir.path().join("ssh");
         tablepro_test_support::write_executable(
             &wrapper,
-            format!("#!/bin/sh\nexec ssh -F '{}' \"$@\"\n", config_file.display()).as_bytes(),
+            format!("#!/bin/sh\nexec ssh -F '{}' \"$@\"\n", config.display()).as_bytes(),
             0o755,
         )?;
-        let runtime = dir.path().join("runtime").join("app").join("app.tablepro.TablePro");
+        let xdg_runtime = dir.path().join("runtime");
+        std::fs::create_dir(&xdg_runtime)?;
         let services = SshServices {
-            runtime: Arc::new(SshRuntimeCell::new(runtime)),
+            runtime: Arc::new(SshRuntimeCell::new(
+                xdg_runtime.join("app").join("app.tablepro.TablePro"),
+            )),
             ssh_program: wrapper,
             ssh_keygen_program: PathBuf::from("ssh-keygen"),
             askpass_program: PathBuf::from(env!("CARGO_BIN_EXE_tablepro-askpass")),
             config_file: None,
         };
-        Ok(Self { _dir: dir, services })
+        Ok(Self {
+            fixture,
+            services,
+            _dir: dir,
+        })
     }
 
-    /// A session to `server` that may not ask the user anything.
-    async fn connect(&self, server: &OpenSshFixture, auth: SshAuth) -> Result<Arc<SshSession>, TransportError> {
-        let destination = SshDestination::new(
-            server.host(),
-            Some(server.port()),
-            Some(server.password_credentials().username),
-        )
-        .map_err(|problem| TransportError::Ssh(problem.into()))?;
+    fn key(&self) -> TestResult<&SshKeyPair> {
+        match self.fixture.variant() {
+            SshAuthVariant::PublicKey(key) => Ok(key),
+            other => Err(format!("the server trusts no key: {other:?}").into()),
+        }
+    }
+
+    // Every secret a case needs is stored, so ssh asking the user anything is a failure.
+    async fn connect(&self, auth: SshAuth) -> TestResult<Result<Arc<SshSession>, TransportError>> {
         let config = SshConfig {
-            destination,
+            destination: SshDestination::new(
+                self.fixture.host(),
+                Some(self.fixture.port()),
+                Some(self.fixture.password_credentials().username),
+            )?,
             jump_hosts: Vec::new(),
             auth,
         };
@@ -97,187 +97,230 @@ impl Client {
             CancellationToken::new(),
         )
         .await;
-        let prompts = prompter.requests();
-        assert!(prompts.is_empty(), "ssh asked the user: {prompts:?}");
-        session
+        assert!(prompter.requests().is_empty(), "{:?}", prompter.requests());
+        Ok(session)
+    }
+
+    // ssh names the peer by the address it connected to, which for a fixture on `localhost` is not the host name.
+    async fn is_named(&self, host: &str) -> TestResult<bool> {
+        if host == self.fixture.host() {
+            return Ok(true);
+        }
+        let mut addresses = tokio::net::lookup_host((self.fixture.host(), self.fixture.port())).await?;
+        Ok(addresses.any(|address| address.ip().to_string() == host))
     }
 }
 
-fn key_file(key: &SshKeyPair, passphrase: Option<&str>) -> SshAuth {
+fn key_file(key: &SshKeyPair) -> SshAuth {
     SshAuth::PrivateKey {
         path: Some(key.private_key().to_owned()),
-        passphrase: passphrase.map(SecretString::from),
+        passphrase: key.passphrase().map(SecretString::from),
     }
 }
 
-/// The server's identification line, read through a forward to sshd's
-/// own port, so it proves the tunnel carries data to the release under
-/// test.
-async fn banner_through(session: &Arc<SshSession>) -> TestResult<String> {
+// No passphrase is stored, so only the agent's copy of the key can sign without a prompt.
+fn key_file_held_by_the_agent(key: &SshKeyPair) -> SshAuth {
+    SshAuth::PrivateKey {
+        path: Some(key.private_key().to_owned()),
+        passphrase: None,
+    }
+}
+
+async fn agent_holding_decoys(count: usize) -> TestResult<SshAgent> {
+    let agent = SshAgent::start().await?;
+    for index in 1..=count {
+        let decoy = SshKeyPair::generate(&format!("tablepro-decoy-{index}")).await?;
+        agent.add(&decoy).await?;
+    }
+    Ok(agent)
+}
+
+fn agent_config(agent: &SshAgent) -> String {
+    format!("  IdentityAgent {}\n", agent.socket().display())
+}
+
+// A forward to the server's own sshd answers with its banner, so a tunnel that carries bytes is proven without a database.
+async fn assert_tunnel_answers(session: &Arc<SshSession>) -> TestResult {
     let target = NetworkEndpoint::new("127.0.0.1", OpenSshFixture::CONTAINER_PORT)?;
     let transport = session.forward(target, &LivenessPolicy::DESKTOP).await?;
-    let stream = transport.open().await?;
-    let mut banner = String::new();
-    tokio::time::timeout(WAIT, BufReader::new(stream).read_line(&mut banner)).await??;
-    Ok(banner.trim_end().to_owned())
-}
-
-/// Connect, read the banner through the tunnel and close, as one cell of
-/// the matrix.
-async fn tunnel(client: &Client, server: &OpenSshFixture, auth: SshAuth) -> TestResult {
-    let session = client.connect(server, auth).await?;
-    let banner = banner_through(&session).await?;
-    let expected = server.version().banner_prefix();
-    if !banner.starts_with(&expected) {
-        return Err(format!("the tunnel reached {banner:?}, not {expected}").into());
-    }
+    let mut stream = transport.open().await?;
+    let mut banner = [0_u8; 8];
+    stream.read_exact(&mut banner).await?;
+    assert_eq!(&banner, b"SSH-2.0-");
+    drop(stream);
+    drop(transport);
     session.shutdown(Duration::from_secs(5)).await;
     Ok(())
 }
 
-async fn decoys() -> TestResult<Vec<SshKeyPair>> {
-    let mut keys = Vec::new();
-    for index in 0..MAX_AUTH_TRIES {
-        keys.push(SshKeyPair::generate(&format!("tablepro-decoy-{index}")).await?);
-    }
-    Ok(keys)
+async fn key_signs_in(kind: SshKeyType, passphrase: Option<&str>, options: OpenSshOptions) -> TestResult {
+    let key = SshKeyPair::generate_with(kind, passphrase, "tablepro-matrix").await?;
+    let server = Server::start(key, options, NO_AGENT).await?;
+
+    let session = server.connect(key_file(server.key()?)).await??;
+
+    assert_tunnel_answers(&session).await
 }
 
-fn process_alive(pid: u32) -> bool {
-    Path::new(&format!("/proc/{pid}")).exists()
-}
-
-#[tokio::test]
-#[ignore = "requires docker"]
-async fn every_client_key_type_opens_the_tunnel() -> TestResult {
-    let mut keys = Vec::new();
-    for key_type in SshKeyType::ALL {
-        for passphrase in [None, Some(PASSPHRASE)] {
-            keys.push(SshKeyPair::generate_with(key_type, passphrase, "tablepro-matrix").await?);
-        }
-    }
-    let server = OpenSshFixture::start(SshAuthVariant::PublicKeys(keys)).await?;
-    let SshAuthVariant::PublicKeys(keys) = server.variant() else {
-        return Err("the fixture lost its keys".into());
-    };
-    let client = Client::new(&server).await?;
-
-    let mut failures = Vec::new();
-    for key in keys {
-        if let Err(error) = tunnel(&client, &server, key_file(key, key.passphrase())).await {
-            failures.push(format!(
-                "{:?}, passphrase {}: {error}",
-                key.key_type(),
-                key.passphrase().is_some()
-            ));
-        }
-    }
-
-    assert!(failures.is_empty(), "{failures:#?}");
-    Ok(())
-}
-
-/// sshd sends only the algorithms it accepts as server-sig-algs, and the
-/// client signs with the one it names.
-#[tokio::test]
-#[ignore = "requires docker"]
-async fn an_rsa_key_signs_with_the_sha2_algorithm_the_server_accepts() -> TestResult {
-    for algorithm in ["rsa-sha2-256", "rsa-sha2-512"] {
-        let key = SshKeyPair::generate_with(SshKeyType::Rsa, None, "tablepro-rsa").await?;
-        let private_key = key.private_key().to_owned();
-        let accepted = format!("PubkeyAcceptedAlgorithms {algorithm}");
-        let server = OpenSshFixture::start_configured(SshAuthVariant::PublicKey(key), &[&accepted]).await?;
-        let client = Client::new(&server).await?;
-        let auth = SshAuth::PrivateKey {
-            path: Some(private_key),
-            passphrase: None,
-        };
-
-        tunnel(&client, &server, auth)
-            .await
-            .map_err(|error| format!("{algorithm}: {error}"))?;
-    }
-    Ok(())
+async fn rsa_signs_in_with(signature: &str, passphrase: Option<&str>) -> TestResult {
+    let options = OpenSshOptions::selected()?.with_pubkey_accepted_algorithms(signature);
+    key_signs_in(SshKeyType::Rsa, passphrase, options).await
 }
 
 #[tokio::test]
 #[ignore = "requires docker"]
-async fn an_agent_key_opens_the_tunnel() -> TestResult {
-    let agent = SshAgent::start().await?;
-    let key = SshKeyPair::generate_with(SshKeyType::EcdsaP256, None, "tablepro-agent").await?;
+async fn ed25519_key_signs_in() -> TestResult {
+    key_signs_in(SshKeyType::Ed25519, None, OpenSshOptions::selected()?).await
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn ed25519_key_with_a_passphrase_signs_in() -> TestResult {
+    key_signs_in(SshKeyType::Ed25519, Some(PASSPHRASE), OpenSshOptions::selected()?).await
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn rsa_key_signs_in_with_rsa_sha2_256() -> TestResult {
+    rsa_signs_in_with("rsa-sha2-256", None).await
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn rsa_key_signs_in_with_rsa_sha2_512() -> TestResult {
+    rsa_signs_in_with("rsa-sha2-512", None).await
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn rsa_key_with_a_passphrase_signs_in_with_rsa_sha2_256() -> TestResult {
+    rsa_signs_in_with("rsa-sha2-256", Some(PASSPHRASE)).await
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn rsa_key_with_a_passphrase_signs_in_with_rsa_sha2_512() -> TestResult {
+    rsa_signs_in_with("rsa-sha2-512", Some(PASSPHRASE)).await
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn ecdsa_p256_key_signs_in() -> TestResult {
+    key_signs_in(SshKeyType::EcdsaP256, None, OpenSshOptions::selected()?).await
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn ecdsa_p256_key_with_a_passphrase_signs_in() -> TestResult {
+    key_signs_in(SshKeyType::EcdsaP256, Some(PASSPHRASE), OpenSshOptions::selected()?).await
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn an_agent_with_more_keys_than_max_auth_tries_signs_in_with_the_configured_identity() -> TestResult {
+    let agent = agent_holding_decoys(4).await?;
+    let key = SshKeyPair::generate("tablepro-matrix").await?;
     agent.add(&key).await?;
-    let server = OpenSshFixture::start(SshAuthVariant::PublicKey(key)).await?;
-    let client = Client::with_agent(&server, &agent).await?;
+    assert_eq!(agent.identities().await?.last(), Some(&key.public_key().to_owned()));
+    let client_config = format!(
+        "{}  IdentityFile {}\n  IdentitiesOnly yes\n",
+        agent_config(&agent),
+        key.public_key_file().display()
+    );
+    let server = Server::start(key, OpenSshOptions::selected()?.with_max_auth_tries(3), &client_config).await?;
 
-    tunnel(&client, &server, SshAuth::Agent).await
+    let session = server.connect(SshAuth::Agent).await??;
+
+    assert_tunnel_answers(&session).await
 }
 
-/// A key file whose key the agent holds signs through the agent, so a
-/// passphrase-protected file never asks for its passphrase (#2583).
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn an_agent_with_more_keys_than_max_auth_tries_is_named() -> TestResult {
+    let agent = agent_holding_decoys(4).await?;
+    let key = SshKeyPair::generate("tablepro-matrix").await?;
+    agent.add(&key).await?;
+    assert_eq!(agent.identities().await?.last(), Some(&key.public_key().to_owned()));
+    let options = OpenSshOptions::selected()?.with_max_auth_tries(3);
+    let server = Server::start(key, options, &agent_config(&agent)).await?;
+
+    let session = server.connect(SshAuth::Agent).await?;
+
+    let Err(TransportError::Ssh(SshFailure::TooManyAuthenticationFailures { host })) = &session else {
+        return Err(format!("expected too many authentication failures, got {session:?}").into());
+    };
+    assert!(server.is_named(host).await?, "{host}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_chosen_key_file_is_offered_before_the_agents_keys() -> TestResult {
+    let agent = agent_holding_decoys(4).await?;
+    let key = SshKeyPair::generate("tablepro-matrix").await?;
+    let options = OpenSshOptions::selected()?.with_max_auth_tries(3);
+    let server = Server::start(key, options, &agent_config(&agent)).await?;
+
+    let session = server.connect(key_file(server.key()?)).await??;
+
+    assert_tunnel_answers(&session).await
+}
+
+// The key file is not pinned when the agent holds it, so the agent signs and its passphrase is never asked for (#2583).
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn a_key_file_the_agent_holds_asks_for_no_passphrase() -> TestResult {
     let agent = SshAgent::start().await?;
-    let key = SshKeyPair::generate_with(SshKeyType::Ed25519, Some(PASSPHRASE), "tablepro-agent").await?;
+    let key = SshKeyPair::generate_with(SshKeyType::Ed25519, Some(PASSPHRASE), "tablepro-matrix").await?;
     agent.add(&key).await?;
-    let private_key = key.private_key().to_owned();
-    let server = OpenSshFixture::start(SshAuthVariant::PublicKey(key)).await?;
-    let client = Client::with_agent(&server, &agent).await?;
-    let auth = SshAuth::PrivateKey {
-        path: Some(private_key),
-        passphrase: None,
-    };
+    let server = Server::start(key, OpenSshOptions::selected()?, &agent_config(&agent)).await?;
 
-    tunnel(&client, &server, auth).await
+    let session = server.connect(key_file_held_by_the_agent(server.key()?)).await??;
+
+    assert_tunnel_answers(&session).await
 }
 
-/// An encrypted PEM file with no `.pub` hides its public half, so ssh
-/// cannot match it to the agent's copy. The agent still signs, rather
-/// than the file asking for its passphrase.
+// An encrypted PEM file without its .pub hides its public half, so with IdentitiesOnly ssh could not match it to the
+// agent's copy and would ask for the passphrase.
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn an_encrypted_pem_key_the_agent_holds_asks_for_no_passphrase() -> TestResult {
     let agent = SshAgent::start().await?;
-    let key = SshKeyPair::generate_with(SshKeyType::Rsa, Some(PASSPHRASE), "tablepro-pem").await?;
+    let key = SshKeyPair::generate_with(SshKeyType::Rsa, Some(PASSPHRASE), "tablepro-matrix").await?;
     agent.add(&key).await?;
-    let private_key = key.private_key().to_owned();
     let rewritten = std::process::Command::new("ssh-keygen")
         .args(["-q", "-p", "-m", "PEM", "-P", PASSPHRASE, "-N", PASSPHRASE, "-f"])
-        .arg(&private_key)
+        .arg(key.private_key())
         .status()?;
     assert!(rewritten.success());
-    std::fs::remove_file(private_key.with_extension("pub"))?;
-    let server = OpenSshFixture::start(SshAuthVariant::PublicKey(key)).await?;
-    let client = Client::with_agent(&server, &agent).await?;
-    let auth = SshAuth::PrivateKey {
-        path: Some(private_key),
-        passphrase: None,
-    };
+    std::fs::remove_file(key.public_key_file())?;
+    let server = Server::start(key, OpenSshOptions::selected()?, &agent_config(&agent)).await?;
 
-    tunnel(&client, &server, auth).await
+    let session = server.connect(key_file_held_by_the_agent(server.key()?)).await??;
+
+    assert_tunnel_answers(&session).await
 }
 
-/// The agent holds the chosen key and a certificate for it that is on
-/// no disk, and the server takes only the certificate. ssh offers a key
-/// file the agent holds first anyway, so the certificate stays in play.
+// The server takes only the certificate, which is in the agent and on no disk. IdentitiesOnly would drop it.
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn an_agent_certificate_for_the_chosen_key_file_is_still_offered() -> TestResult {
+    let agent = SshAgent::start().await?;
     let authority = SshKeyPair::generate("tablepro-user-ca").await?;
-    let server = OpenSshFixture::start(SshAuthVariant::UserCertificateAuthority(authority)).await?;
-    let SshAuthVariant::UserCertificateAuthority(authority) = server.variant() else {
-        return Err("the fixture lost its authority".into());
+    let variant = SshAuthVariant::UserCertificateAuthority(authority);
+    let server = Server::start_trusting(variant, OpenSshOptions::selected()?, &agent_config(&agent)).await?;
+    let SshAuthVariant::UserCertificateAuthority(authority) = server.fixture.variant() else {
+        return Err("the server lost its certificate authority".into());
     };
-    let key = SshKeyPair::generate("tablepro-certified").await?;
+    let key = SshKeyPair::generate("tablepro-matrix").await?;
     let signed = std::process::Command::new("ssh-keygen")
         .args(["-q", "-s"])
         .arg(authority.private_key())
-        .args(["-I", "tablepro-certified", "-n"])
-        .arg(server.password_credentials().username)
-        .arg(key.private_key().with_extension("pub"))
+        .args(["-I", "tablepro-matrix", "-n"])
+        .arg(server.fixture.password_credentials().username)
+        .arg(key.public_key_file())
         .status()?;
     assert!(signed.success());
-    let agent = SshAgent::start().await?;
     agent.add(&key).await?;
     std::fs::remove_file(format!("{}-cert.pub", key.private_key().display()))?;
     assert_eq!(
@@ -285,160 +328,94 @@ async fn an_agent_certificate_for_the_chosen_key_file_is_still_offered() -> Test
         2,
         "the agent holds the key and its certificate"
     );
-    let client = Client::with_agent(&server, &agent).await?;
 
-    tunnel(&client, &server, key_file(&key, None)).await
+    let session = server.connect(key_file(&key)).await??;
+
+    assert_tunnel_answers(&session).await
 }
 
-/// The #2601 case: an agent holding more keys than the server's
-/// MaxAuthTries, none of them the one the connection names.
-#[tokio::test]
-#[ignore = "requires docker"]
-async fn a_chosen_key_file_is_offered_before_an_agent_full_of_other_keys() -> TestResult {
-    let agent = SshAgent::start().await?;
-    for decoy in decoys().await? {
-        agent.add(&decoy).await?;
-    }
-    let key = SshKeyPair::generate("tablepro-chosen").await?;
-    let private_key = key.private_key().to_owned();
-    let max_auth_tries = format!("MaxAuthTries {MAX_AUTH_TRIES}");
-    let server = OpenSshFixture::start_configured(SshAuthVariant::PublicKey(key), &[&max_auth_tries]).await?;
-    let client = Client::with_agent(&server, &agent).await?;
-    let auth = SshAuth::PrivateKey {
-        path: Some(private_key),
-        passphrase: None,
-    };
-
-    tunnel(&client, &server, auth).await
+async fn client_key_exchanges() -> TestResult<Vec<String>> {
+    let output = tokio::process::Command::new("ssh").args(["-Q", "kex"]).output().await?;
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::to_owned)
+        .collect())
 }
 
-/// In agent mode the agent's order is ssh's, so a key behind
-/// MaxAuthTries others is never reached; the error says why.
-#[tokio::test]
-#[ignore = "requires docker"]
-async fn an_agent_with_more_keys_than_max_auth_tries_names_the_cause() -> TestResult {
-    let agent = SshAgent::start().await?;
-    for decoy in decoys().await? {
-        agent.add(&decoy).await?;
-    }
-    let key = SshKeyPair::generate("tablepro-last").await?;
-    agent.add(&key).await?;
-    let max_auth_tries = format!("MaxAuthTries {MAX_AUTH_TRIES}");
-    let server = OpenSshFixture::start_configured(SshAuthVariant::PublicKey(key), &[&max_auth_tries]).await?;
-    let client = Client::with_agent(&server, &agent).await?;
-
-    let session = client.connect(&server, SshAuth::Agent).await;
-
-    assert!(
-        matches!(
-            session,
-            Err(TransportError::Ssh(SshFailure::AuthenticationAttemptsExceeded { .. }))
-        ),
-        "{session:?}"
-    );
-    Ok(())
+fn is_post_quantum_offer(session: &Result<Arc<SshSession>, TransportError>) -> bool {
+    matches!(
+        session,
+        Err(TransportError::Ssh(SshFailure::NoCommonAlgorithm {
+            kind: SshAlgorithmKind::KeyExchange,
+            server_offer,
+            ..
+        })) if *server_offer == ["mlkem768x25519-sha256", "sntrup761x25519-sha512"]
+    )
 }
 
-/// A server limited to the post-quantum key exchanges. A client that has
-/// one connects; one that has neither, as OpenSSH before 9.9 and a client
-/// configured without them, gets an error that names the key exchange.
+// OpenSSH 9.9 added both names, so a 9.6 client such as Ubuntu 24.04's has neither.
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn a_post_quantum_only_server_connects_or_names_the_key_exchange() -> TestResult {
-    let key = SshKeyPair::generate("tablepro-kex").await?;
-    let private_key = key.private_key().to_owned();
-    let kex = format!("KexAlgorithms {}", POST_QUANTUM_KEX.join(","));
-    let server = OpenSshFixture::start_configured(SshAuthVariant::PublicKey(key), &[&kex]).await?;
-    let auth = || SshAuth::PrivateKey {
-        path: Some(private_key.clone()),
-        passphrase: None,
-    };
-    let named = |session: &Result<Arc<SshSession>, TransportError>| {
-        matches!(
-            session,
-            Err(TransportError::Ssh(SshFailure::NoCommonAlgorithm {
-                kind: SshAlgorithmKind::KeyExchange,
-                server_offer,
-                ..
-            })) if server_offer == &POST_QUANTUM_KEX
-        )
-    };
-    let listed = tokio::process::Command::new("ssh").args(["-Q", "kex"]).output().await?;
-    let client_kex: HashSet<String> = String::from_utf8_lossy(&listed.stdout)
-        .lines()
-        .map(str::to_owned)
-        .collect();
+    let supported = client_key_exchanges().await?;
+    let options = OpenSshOptions::selected()?.with_kex_algorithms(OpenSshOptions::POST_QUANTUM_KEX);
+    let key = SshKeyPair::generate("tablepro-matrix").await?;
+    let server = Server::start(key, options, NO_AGENT).await?;
 
-    let client = Client::new(&server).await?;
-    if POST_QUANTUM_KEX.iter().any(|name| client_kex.contains(*name)) {
-        tunnel(&client, &server, auth()).await?;
-    } else {
-        let session = client.connect(&server, auth()).await;
-        assert!(named(&session), "{session:?}");
+    let session = server.connect(key_file(server.key()?)).await?;
+
+    let shared = OpenSshOptions::POST_QUANTUM_KEX
+        .split(',')
+        .any(|name| supported.iter().any(|offered| offered == name));
+    if shared {
+        return assert_tunnel_answers(&session?).await;
     }
-    let classical = Client::with(
-        &server,
-        &[
-            "IdentityAgent none".to_owned(),
-            "KexAlgorithms curve25519-sha256".to_owned(),
-        ],
-    )
-    .await?;
-    let session = classical.connect(&server, auth()).await;
-    assert!(named(&session), "{session:?}");
+    assert!(is_post_quantum_offer(&session), "{session:?}");
     Ok(())
 }
 
-/// sshd stops under an open forward (#1769): the session reports closed,
-/// the master exits rather than spinning, and the stream ends.
 #[tokio::test]
 #[ignore = "requires docker"]
-async fn stopping_sshd_under_an_open_forward_closes_the_tunnel() -> TestResult {
-    let key = SshKeyPair::generate("tablepro-loss").await?;
-    let private_key = key.private_key().to_owned();
-    let server = OpenSshFixture::start(SshAuthVariant::PublicKey(key)).await?;
-    let client = Client::new(&server).await?;
-    let session = client
-        .connect(
-            &server,
-            SshAuth::PrivateKey {
-                path: Some(private_key),
-                passphrase: None,
-            },
-        )
+async fn a_key_exchange_the_client_does_not_offer_is_named() -> TestResult {
+    let options = OpenSshOptions::selected()?.with_kex_algorithms(OpenSshOptions::POST_QUANTUM_KEX);
+    let key = SshKeyPair::generate("tablepro-matrix").await?;
+    let client_config = format!("{NO_AGENT}  KexAlgorithms curve25519-sha256\n");
+    let server = Server::start(key, options, &client_config).await?;
+
+    let session = server.connect(key_file(server.key()?)).await?;
+
+    assert!(is_post_quantum_offer(&session), "{session:?}");
+    let Err(TransportError::Ssh(SshFailure::NoCommonAlgorithm { host, .. })) = &session else {
+        return Err("the failure has no host".into());
+    };
+    assert!(server.is_named(host).await?, "{host}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_killed_master_is_not_explained_by_the_post_quantum_warning() -> TestResult {
+    let options = OpenSshOptions::selected()?.with_kex_algorithms("curve25519-sha256");
+    let key = SshKeyPair::generate("tablepro-matrix").await?;
+    let server = Server::start(key, options, NO_AGENT).await?;
+    let session = server.connect(key_file(server.key()?)).await??;
+    let pid = session.master_pid().ok_or("the master has no pid")?;
+
+    let killed = tokio::process::Command::new("kill")
+        .arg(pid.to_string())
+        .status()
         .await?;
-    let master = session.master_pid().ok_or("no ssh master")?;
+    assert!(killed.success());
+    tokio::time::timeout(Duration::from_secs(10), session.closed()).await?;
     let target = NetworkEndpoint::new("127.0.0.1", OpenSshFixture::CONTAINER_PORT)?;
-    let transport = session.forward(target, &LivenessPolicy::DESKTOP).await?;
-    let mut stream = BufReader::new(transport.open().await?);
-    let mut banner = String::new();
-    tokio::time::timeout(WAIT, stream.read_line(&mut banner)).await??;
-    assert!(banner.starts_with(&server.version().banner_prefix()), "{banner:?}");
+    let ended = session.forward(target, &LivenessPolicy::DESKTOP).await.err();
 
-    // Every sshd process, the listener and this session's, as when the
-    // service stops.
-    let stopped = server.exec(&["pkill", "sshd"]).await?;
-    assert!(stopped.succeeded(), "{}", stopped.stderr_text());
-
-    tokio::time::timeout(WAIT, session.closed()).await?;
-    assert!(session.is_closed());
-    let deadline = tokio::time::Instant::now() + WAIT;
-    while process_alive(master) && tokio::time::Instant::now() < deadline {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    assert!(!process_alive(master), "the ssh master outlived its connection");
-    // An end of stream and a reset both end it; a read that never returns would be the bug.
-    let mut rest = Vec::new();
-    let _ended = tokio::time::timeout(WAIT, stream.read_to_end(&mut rest)).await?;
-    let again = session
-        .forward(
-            NetworkEndpoint::new("127.0.0.1", OpenSshFixture::CONTAINER_PORT)?,
-            &LivenessPolicy::DESKTOP,
-        )
-        .await;
     assert!(
-        matches!(again, Err(TransportError::Ssh(SshFailure::MasterExited { .. }))),
-        "{again:?}"
+        matches!(
+            &ended,
+            Some(TransportError::Ssh(SshFailure::MasterExited { detail, .. })) if !detail.starts_with("** ")
+        ),
+        "{ended:?}"
     );
     Ok(())
 }

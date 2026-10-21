@@ -157,6 +157,29 @@ struct SQLEditorHandleTests {
         #expect(editor.bandedRanges() == [NSRange(location: 0, length: 9)])
     }
 
+    @Test("A selection for text still on its way through the binding lands once the editor shows that text")
+    func selectionWaitsForItsText() async throws {
+        let editor = try HostedEditor(text: "")
+        defer { editor.tearDown() }
+        let text = "SELECT 1;\n\nSELECT 2;"
+
+        editor.handle.select(NSRange(location: 20, length: 0), onceTextIs: text)
+        #expect(editor.textView.selectedRange == NSRange(location: 0, length: 0))
+
+        editor.model.text = text
+        // The text view is UIKit, not observed, so this waits a few main-queue turns for SwiftUI's update.
+        for _ in 0..<100 where editor.textView.text != text {
+            await nextMainQueueTurn()
+        }
+        try #require(editor.textView.text == text)
+        #expect(editor.textView.selectedRange == NSRange(location: 20, length: 0))
+        guard case .statement(let statement, _) = editor.handle.runTarget() else {
+            Issue.record("expected the caret's statement")
+            return
+        }
+        #expect(statement == "SELECT 2;")
+    }
+
     @Test("A saved query opened into the editor runs on Run, though its SQL ends in a newline")
     func openedSavedQueryRuns() async throws {
         let editor = try HostedEditor(text: "")

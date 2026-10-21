@@ -397,7 +397,7 @@ public enum AWSSSOLogin {
         }
     }
 
-    private static func post(
+    static func post(
         path: String,
         region: String,
         body: [String: Any],
@@ -413,6 +413,7 @@ public enum AWSSSOLogin {
         let data: Data
         let response: URLResponse
         do {
+            try AWSHTTP.applyConnectDeadline(to: &request, session: session)
             (data, response) = try await session.data(for: request)
         } catch {
             throw AWSSSOLoginError.network(error.localizedDescription)

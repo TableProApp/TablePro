@@ -409,11 +409,11 @@ jobs:
         include:
           - package: tablepro-ssh
             apt: openssh-client
+          - package: tablepro-test-fixtures
+            apt: openssh-client
           - package: tablepro-ssh
             release: openssh-9.9
-            apt: openssh-client
             openssh: "9.9"
-          - package: tablepro-test-fixtures
             apt: openssh-client
           - package: tablepro-driver-postgres
             release: postgres-14

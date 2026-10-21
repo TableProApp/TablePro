@@ -502,6 +502,25 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     /// client closed the socket wrote nothing. Only the queue may close the handle and the queue may be inside a read,
     /// so the read is stopped the way a Stop stops it and the handle is closed behind it.
     func disconnect() {
+        guard let handle = detachHandle() else { return }
+        queue.async { [self] in
+            teardown(handle)
+        }
+    }
+
+    /// The same close, returning once the handle is closed: SQL Server refuses to drop or restore a database while
+    /// this session is still in it.
+    func disconnectAndWait() async {
+        guard let handle = detachHandle() else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async { [self] in
+                teardown(handle)
+                continuation.resume()
+            }
+        }
+    }
+
+    private func detachHandle() -> UnsafeMutablePointer<DBPROCESS>? {
         let handle = dbproc
         dbproc = nil
 
@@ -510,10 +529,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         lock.unlock()
 
         requestGate.stop()
-        guard let handle else { return }
-        queue.async { [self] in
-            teardown(handle)
-        }
+        return handle
     }
 
     /// A Stop. Safe from any thread, because it only marks the calls: see ``MSSQLRequestGate``.

@@ -7,6 +7,8 @@ import Combine
 import Foundation
 @testable import TablePro
 import TableProConnectionLibrary
+import TableProSSHConfig
+import TableProSSHTransport
 import TableProSyncTransport
 import Testing
 
@@ -165,6 +167,64 @@ struct ConnectionLibraryStorageTests {
         let relaunched = ConnectionStorage(fileURL: fileURL, userDefaults: defaults, integrity: integrity)
         _ = relaunched.loadConnections()
         #expect(relaunched.storeIsTrusted)
+    }
+
+    private func tunnelled(host: String = "db") -> DatabaseConnection {
+        DatabaseConnection(
+            name: "Tunnel",
+            type: .mysql,
+            sshConfig: SSHConfiguration(enabled: true, host: host, authMethod: .sshAgent)
+        )
+    }
+
+    private func dialedRoute(for connection: DatabaseConnection) -> DialedSSHRoute {
+        DialedSSHRoute(
+            input: connection.resolvedSSHConfig.publishedRouteInput,
+            hops: [.init(id: UUID(), alias: "bastion", host: "b.example", port: 22, username: "jump")],
+            target: .init(alias: "db", host: "10.0.0.5", port: 22, username: "deploy")
+        )
+    }
+
+    @Test("A connect stores the route it dialed, published by this Mac")
+    func connectStoresTheDialedRoute() {
+        let connection = tunnelled()
+        storage.addConnection(connection)
+
+        #expect(storage.recordDialedSSHRoute(dialedRoute(for: connection), for: connection.id) { $0 })
+
+        let stored = storage.loadConnection(id: connection.id)?.sshRoute
+        #expect(stored?.target.host == "10.0.0.5")
+        #expect(stored?.publisher == storage.sshRoutePublisherId)
+    }
+
+    @Test("A route dialed from settings other than the stored ones is not kept")
+    func routeFromOtherSettingsIsSkipped() {
+        let connection = tunnelled()
+        storage.addConnection(connection)
+
+        storage.recordDialedSSHRoute(dialedRoute(for: tunnelled(host: "draft")), for: connection.id) { $0 }
+
+        #expect(storage.loadConnection(id: connection.id)?.sshRoute == nil)
+    }
+
+    @Test("Recording a route leaves a store changed outside TablePro untrusted")
+    func routeWriteKeepsTamperedStoreUntrusted() throws {
+        let connection = tunnelled()
+        #expect(storage.saveConnections([connection]))
+        var data = try Data(contentsOf: fileURL)
+        data.append(contentsOf: Array(" ".utf8))
+        try data.write(to: fileURL)
+
+        let reopened = ConnectionStorage(fileURL: fileURL, userDefaults: defaults, integrity: integrity)
+        _ = reopened.loadConnections()
+        #expect(!reopened.storeIsTrusted)
+
+        reopened.recordDialedSSHRoute(dialedRoute(for: connection), for: connection.id) { $0 }
+
+        let relaunched = ConnectionStorage(fileURL: fileURL, userDefaults: defaults, integrity: integrity)
+        _ = relaunched.loadConnections()
+        #expect(relaunched.loadConnection(id: connection.id)?.sshRoute != nil)
+        #expect(!relaunched.storeIsTrusted)
     }
 
     @Test("Only a group whose connections are all unranked is numbered, in the order the list already showed")

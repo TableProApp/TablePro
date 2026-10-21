@@ -14,7 +14,7 @@ import TableProPluginKit
 /// - 25.11 on, a block framed by the `X-ClickHouse-Exception-Tag` header's tag (ClickHouse#88818).
 ///
 /// So the last bytes of the body are held back until it ends, and then read for one of these.
-struct ClickHouseStreamTail {
+nonisolated struct ClickHouseStreamTail {
     /// Exception text runs to a few kilobytes, and the tagged block caps it at 16 KiB.
     static let heldByteCount = 65_536
 
@@ -63,7 +63,7 @@ struct ClickHouseStreamTail {
     fileprivate static let lineFeed = UInt8(ascii: "\n")
 }
 
-enum ClickHouseServerException {
+nonisolated enum ClickHouseServerException {
     private static let marker = Array("__exception__\r\n".utf8)
 
     /// The tagged block is exact in any output format. The untagged marker is not: a quoted CSV

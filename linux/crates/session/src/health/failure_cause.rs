@@ -48,7 +48,7 @@ impl FailureCause {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::{BusyReason, ConfigError, LossPhase};
+    use tablepro_core::{BusyReason, ConfigError, LossPhase, SshAlgorithmKind};
 
     use super::*;
 
@@ -96,5 +96,20 @@ mod tests {
             None
         );
         assert_eq!(FailureCause::of(&DriverError::Busy(BusyReason::NoFreeConnection)), None);
+    }
+
+    #[test]
+    fn ssh_failures_a_retry_would_repeat_park() {
+        let too_many = ssh(SshFailure::TooManyAuthenticationFailures {
+            host: "bastion".to_owned(),
+        });
+        let no_common_kex = ssh(SshFailure::NoCommonAlgorithm {
+            host: "bastion".to_owned(),
+            kind: SshAlgorithmKind::KeyExchange,
+            server_offer: vec!["mlkem768x25519-sha256".to_owned()],
+        });
+
+        assert_eq!(FailureCause::of(&too_many), Some(FailureCause::Authentication));
+        assert_eq!(FailureCause::of(&no_common_kex), Some(FailureCause::Configuration));
     }
 }

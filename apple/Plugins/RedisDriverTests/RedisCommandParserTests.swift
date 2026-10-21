@@ -829,6 +829,72 @@ struct RedisCommandParserTokenizerTests {
     }
 }
 
+struct RedisCommandParserOneCommandTests {
+    @Test("A query with two commands is refused, so a second DEL never deletes a key named DEL", arguments: [
+        "DEL a\nDEL b", "GET a; GET b", "SET k v\r\nGET k"
+    ])
+    func twoCommandsAreRefused(input: String) {
+        #expect(throws: RedisParseError.self) {
+            try RedisCommandParser.parse(input)
+        }
+    }
+
+    @Test("A closing semicolon ends the command")
+    func closingSemicolon() throws {
+        let op = try RedisCommandParser.parse("GET mykey;")
+        guard case .get(let key) = op else {
+            Issue.record("Expected .get, got \(op)")
+            return
+        }
+        #expect(key == "mykey")
+    }
+
+    @Test("A no-break space at the end of a key stays in the key, as redis-cli sends it")
+    func trailingNoBreakSpaceStays() throws {
+        let op = try RedisCommandParser.parse("DEL user\u{A0}")
+        guard case .del(let keys) = op else {
+            Issue.record("Expected .del, got \(op)")
+            return
+        }
+        #expect(keys == ["user\u{A0}"])
+    }
+
+    @Test("A backslash outside quotes stays in the key")
+    func bareBackslashStays() throws {
+        let op = try RedisCommandParser.parse("DEL victim\\")
+        guard case .del(let keys) = op else {
+            Issue.record("Expected .del, got \(op)")
+            return
+        }
+        #expect(keys == ["victim\\"])
+    }
+}
+
+struct RedisCommandParserBinaryKeyTests {
+    @Test("A key that is not UTF-8 goes out byte for byte instead of as U+FFFD", arguments: [
+        "DEL \"\\xff\"", "GET \"\\xffa\"", "SET \"\\xff\" v", "HSET h \"\\xfe\" v", "RENAME a \"\\xff\""
+    ])
+    func nonUTF8KeyGoesOutVerbatim(input: String) throws {
+        let op = try RedisCommandParser.parse(input)
+        guard case .command(let args) = op else {
+            Issue.record("Expected .command, got \(op)")
+            return
+        }
+        #expect(args.map { $0.bytes } == RedisArgumentCodec.split(input))
+    }
+
+    @Test("A binary value under a text key still parses as the typed command")
+    func binaryValueStaysTyped() throws {
+        let op = try RedisCommandParser.parse("SET k \"\\xff\"")
+        guard case .set(let key, let value, _) = op else {
+            Issue.record("Expected .set, got \(op)")
+            return
+        }
+        #expect(key == "k")
+        #expect(value == Data([0xFF]))
+    }
+}
+
 struct RedisKeyBrowseRoundTripTests {
     private let builder = RedisQueryBuilder()
 
@@ -858,6 +924,20 @@ struct RedisKeyBrowseRoundTripTests {
         }
         #expect(pattern == raw)
         #expect(typeScope == nil)
+    }
+
+    @Test("A typed Type filter value reaches the scan whole, so the grid and the exact count read one scope", arguments: [
+        "hash ", "string db 3", "a\"b"
+    ])
+    func typeScopeRoundTrips(value: String) throws {
+        let command = builder.buildKeyBrowseQuery(pattern: nil, typeScope: value, database: 0, limit: 200, offset: 0)
+        let op = try RedisCommandParser.parse(command)
+        guard case .keyBrowse(_, let typeScope, _, _, let database) = op else {
+            Issue.record("Expected .keyBrowse, got \(op)")
+            return
+        }
+        #expect(typeScope == value)
+        #expect(database == 0)
     }
 
     @Test("A type-only key-browse command parses with no pattern")

@@ -1,7 +1,6 @@
 use std::fmt;
 
-/// Which list of an SSH handshake had no algorithm both sides allow.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SshAlgorithmKind {
     KeyExchange,
     HostKey,
@@ -11,8 +10,8 @@ pub enum SshAlgorithmKind {
 }
 
 impl fmt::Display for SshAlgorithmKind {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
             Self::KeyExchange => "key exchange method",
             Self::HostKey => "host key type",
             Self::Cipher => "cipher",

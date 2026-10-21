@@ -16,9 +16,9 @@ public enum MSSQLRequestEnding: Sendable, Equatable {
     case attention
     case readRest
 
-    /// Bit 16384 of `@@OPTIONS` is `XACT_ABORT`. It is a request of its own rather than a statement in front of the
-    /// read, so the read's results, and the plans `SET STATISTICS XML ON` adds to them, reach the reader untouched.
-    public static let sessionQuery = "SELECT @@TRANCOUNT, @@OPTIONS & 16384"
+    // Bit 16384 of `@@OPTIONS` is `XACT_ABORT`. A request of its own, so the read's results reach the reader untouched,
+    // and run through `sp_executesql`, which leaves the previous `@@ROWCOUNT` in place where a bare SELECT sets it to 1.
+    public static let sessionQuery = "EXEC sp_executesql N'SELECT @@TRANCOUNT, @@OPTIONS & 16384'"
 
     /// The ending the session's answer to `sessionQuery` allows. A missing or unreadable answer, such as the plan a
     /// session under `SET SHOWPLAN_XML ON` returns instead, reads the rest.

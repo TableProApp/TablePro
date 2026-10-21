@@ -39,7 +39,7 @@ struct ConnectionInfoView: View {
             switch ConnectionInfoContent.section(for: connection, fileURL: databaseFileURL) {
             case .server:
                 serverSection
-                if connection.sshEnabled, let ssh = connection.sshConfiguration {
+                if connection.sshEnabled, let ssh = connection.sshConfigurationForDialing {
                     sshSection(ssh)
                 }
             case .file(let file):

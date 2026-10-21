@@ -6,6 +6,7 @@
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProSQLGrammar
 
 struct ClickHousePartsView: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ClickHousePartsView")

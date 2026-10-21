@@ -189,4 +189,30 @@ struct SQLContextAnalyzerLexicalTests {
         let spaced = context("SELECT * FROM \"Order Det\" WHERE \"status\" = 1", on: "PostgreSQL", cursor: 18)
         #expect(spaced.quotedName == SQLQuotedName(open: 14, close: 24))
     }
+
+    // A walk back from the caret stops at the space, so the prefix was `Det` and the accepted name replaced only it.
+    @Test(
+        "A quoted name with a space is the whole prefix",
+        arguments: [
+            ("SELECT * FROM [Order Det]", "SQL Server", 15..<24),
+            ("SELECT * FROM [Order Det", "SQL Server", 14..<24),
+            ("SELECT * FROM \"Order Det\"", "PostgreSQL", 15..<24),
+            ("SELECT * FROM `Order Det", "MySQL", 14..<24)
+        ]
+    )
+    func quotedNameWithASpaceIsThePrefix(query: String, engine: String, range: Range<Int>) {
+        let result = context(query, on: engine, cursor: 24)
+        #expect(result.prefix == "Order Det")
+        #expect(result.prefixRange == range)
+        #expect(result.clauseType == .from)
+        #expect(result.expectsObjectName)
+    }
+
+    @Test("A qualified quoted column with a space keeps its qualifier")
+    func qualifiedQuotedColumnWithASpace() {
+        let result = context("SELECT o.\"Unit Pr\" FROM orders o", on: "PostgreSQL", cursor: 17)
+        #expect(result.dotPrefix == "o")
+        #expect(result.prefix == "Unit Pr")
+        #expect(result.prefixRange == 10..<17)
+    }
 }

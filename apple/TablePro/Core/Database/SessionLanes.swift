@@ -41,6 +41,9 @@ internal final class SessionLanes {
     /// where plugins never load and no server is there to dial.
     internal var opener: Opener
 
+    /// Told after a parked connection closes, which ends any transaction it held.
+    internal var onClose: (@MainActor (UUID) -> Void)?
+
     internal init(opener: Opener? = nil) {
         self.opener = opener ?? { scope in
             try await MetadataConnectionPool.openServerDriver(for: scope, purpose: .session)
@@ -62,10 +65,12 @@ internal final class SessionLanes {
     /// Keeps a driver for its database. A different driver already parked there is closed, because
     /// two connections for one database would split the user's session between them.
     internal func park(_ driver: DatabaseDriver, database: String, for connectionId: UUID) {
-        if let existing = parked[connectionId]?[database], existing !== driver {
-            existing.disconnect()
-        }
+        let replaced = parked[connectionId]?[database].flatMap { $0 !== driver ? $0 : nil }
         parked[connectionId, default: [:]][database] = driver
+        if let replaced {
+            replaced.disconnect()
+            onClose?(connectionId)
+        }
     }
 
     /// Takes a parked driver out to become the browsed one.
@@ -90,6 +95,7 @@ internal final class SessionLanes {
         Self.logger.info("closing parked connection connId=\(connectionId, privacy: .public)")
         verifiedAt.removeValue(forKey: ObjectIdentifier(driver))
         driver.disconnect()
+        onClose?(connectionId)
     }
 
     /// Closes every parked connection of a session. A disconnect ends them, and so does a rebuilt
@@ -108,6 +114,7 @@ internal final class SessionLanes {
         if !drivers.isEmpty {
             Self.logger.info("closed \(drivers.count) parked connection(s) connId=\(connectionId, privacy: .public)")
         }
+        onClose?(connectionId)
     }
 
     internal func generation(for connectionId: UUID) -> Int {

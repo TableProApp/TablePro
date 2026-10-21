@@ -1,7 +1,6 @@
 use crate::{FixtureImage, ServerVersion};
 
-/// The OpenSSH release an `OpenSshFixture` runs: the current one and the
-/// last 9.x, the first with the ML-KEM key exchange.
+// 9.9 is the last release before 10.0 dropped DSA and made ML-KEM the default key exchange.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum OpenSshVersion {
     V9_9,
@@ -10,7 +9,6 @@ pub enum OpenSshVersion {
 }
 
 impl OpenSshVersion {
-    /// What the server's identification string names after `SSH-2.0-`.
     pub fn banner_prefix(self) -> String {
         format!("SSH-2.0-OpenSSH_{}", self.name())
     }

@@ -118,6 +118,22 @@ struct QueryCompletionRankingTests {
         #expect((session?.candidates.count ?? 0) <= 400)
     }
 
+    // The service scanned a 5,000-unit cut as code, so a comment's tail completed and its apostrophe opened a string.
+    @MainActor
+    @Test("a MongoDB comment longer than the old window is read from the start of the text")
+    func mongoReadsALongCommentFromTheStart() async {
+        let service = MongoCompletionService(schemaProvider: nil, databaseType: .mongodb)
+        let notes = String(repeating: "notes about the nightly load and its retries\n", count: 140)
+        let inComment = "/*\n" + notes + "db.ord" as NSString
+        let afterComment = "/*\n" + notes + "it's done */\ndb.ord" as NSString
+
+        let silent = await service.completions(in: inComment, at: inComment.length, isManualTrigger: true)
+        let completed = await service.completions(in: afterComment, at: afterComment.length, isManualTrigger: true)
+
+        #expect(silent == nil)
+        #expect(completed != nil)
+    }
+
     /// The incremental path reads its prefix off the live token, quote included, so it needed the
     /// same trim the analyzer does. Without it, typing a quote closed the open popup on that
     /// keystroke because every candidate was filtered out.

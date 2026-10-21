@@ -1,5 +1,4 @@
 import Foundation
-import TableProModels
 import TableProSSHTransport
 
 nonisolated enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
@@ -17,12 +16,12 @@ nonisolated enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
     case jumpHostKeysUnreadable(String)
     case tunnelClosed
     case negotiationFailed(SSHNegotiationFailure)
-    case authMethodUnsupported(SSHConfiguration.SSHAuthMethod)
     case securityKeyUnsupported
     case passphraseRequired
     case passphraseIncorrect
     case additionalFactorRequired([String])
     case promptUnanswerable(String)
+    case verificationCodeRejected
 
     var errorDescription: String? {
         switch self {
@@ -49,11 +48,6 @@ nonisolated enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
         case .tunnelClosed: return "SSH tunnel is closed"
         case .negotiationFailed(let failure):
             return Self.describe(failure)
-        case .authMethodUnsupported(let method):
-            return String(
-                format: String(localized: "TablePro on iPhone and iPad cannot use the SSH authentication method “%@”."),
-                Self.name(of: method)
-            )
         case .securityKeyUnsupported:
             return String(
                 localized: "This SSH private key belongs to a security key (FIDO), which TablePro on iPhone and iPad cannot sign with."
@@ -71,19 +65,11 @@ nonisolated enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
             )
         case .promptUnanswerable(let prompt):
             return String(
-                format: String(localized: "The SSH server asked “%@”, which TablePro on iPhone and iPad cannot answer."),
+                format: String(localized: "The SSH server asked “%@”, which TablePro can answer only while it is open."),
                 prompt
             )
-        }
-    }
-
-    private static func name(of method: SSHConfiguration.SSHAuthMethod) -> String {
-        switch method {
-        case .password: return String(localized: "Password")
-        case .privateKey: return String(localized: "Private Key")
-        case .sshAgent: return String(localized: "SSH Agent")
-        case .keyboardInteractive: return String(localized: "Keyboard Interactive")
-        case .none: return String(localized: "None")
+        case .verificationCodeRejected:
+            return String(localized: "The SSH server did not accept the verification code.")
         }
     }
 

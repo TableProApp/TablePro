@@ -64,10 +64,7 @@ pub fn ssh_failure_message(failure: &SshFailure) -> String {
             "The SSH server {host} refused the login for {user}. Check the key, the agent or the password.",
             &[("host", host), ("user", user)],
         ),
-        SshFailure::AuthenticationAttemptsExceeded { host } => crate::i18n::gettext_f(
-            "The SSH server {host} closed the connection after too many failed sign-in attempts. An SSH agent with many keys can use them all up: use Private key authentication with the right key file, or set IdentityFile and IdentitiesOnly yes for the host in ~/.ssh/config.",
-            &[("host", host)],
-        ),
+        SshFailure::TooManyAuthenticationFailures { host } => too_many_failures_message(host),
         SshFailure::NoCommonAlgorithm {
             host,
             kind,
@@ -97,6 +94,39 @@ pub fn ssh_failure_message(failure: &SshFailure) -> String {
             tracing::warn!(%other, "shown as an SSH failure with no sentence of its own");
             crate::i18n::gettext("The SSH connection failed.")
         }
+    }
+}
+
+fn too_many_failures_message(host: &str) -> String {
+    crate::i18n::gettext_f(
+        "The SSH server {host} ended the login after too many failed attempts, which usually means the SSH agent offered too many keys. Choose Private key with this server's key file, or set IdentityFile and IdentitiesOnly yes for the host in ~/.ssh/config.",
+        &[("host", host)],
+    )
+}
+
+fn no_common_algorithm_message(host: &str, kind: SshAlgorithmKind, offer: &str) -> String {
+    let arguments: &[(&str, &str)] = &[("host", host), ("offer", offer)];
+    match kind {
+        SshAlgorithmKind::KeyExchange => crate::i18n::gettext_f(
+            "The SSH server {host} and this computer's OpenSSH have no key exchange method in common. The server offers {offer}. Update OpenSSH or check KexAlgorithms in ~/.ssh/config, or ask the server's administrator to allow another method.",
+            arguments,
+        ),
+        SshAlgorithmKind::HostKey => crate::i18n::gettext_f(
+            "The SSH server {host} and this computer's OpenSSH have no host key type in common. The server offers {offer}. Check HostKeyAlgorithms in ~/.ssh/config, or ask the server's administrator to add another host key.",
+            arguments,
+        ),
+        SshAlgorithmKind::Cipher => crate::i18n::gettext_f(
+            "The SSH server {host} and this computer's OpenSSH have no cipher in common. The server offers {offer}. Check Ciphers in ~/.ssh/config, or ask the server's administrator to allow another cipher.",
+            arguments,
+        ),
+        SshAlgorithmKind::Mac => crate::i18n::gettext_f(
+            "The SSH server {host} and this computer's OpenSSH have no MAC in common. The server offers {offer}. Check MACs in ~/.ssh/config, or ask the server's administrator to allow another MAC.",
+            arguments,
+        ),
+        SshAlgorithmKind::Compression => crate::i18n::gettext_f(
+            "The SSH server {host} and this computer's OpenSSH have no compression method in common. The server offers {offer}. Check Compression in ~/.ssh/config for this host.",
+            arguments,
+        ),
     }
 }
 
@@ -136,32 +166,6 @@ fn unknown_host_key_message(host: &str, fingerprint: &str, trust_allowed: bool, 
         "{host} is not in known_hosts (key {fingerprint}). Connect once to review and trust its key.",
         &[("host", host), ("fingerprint", fingerprint)],
     )
-}
-
-fn no_common_algorithm_message(host: &str, kind: SshAlgorithmKind, offer: &str) -> String {
-    let arguments = [("host", host), ("offer", offer)];
-    match kind {
-        SshAlgorithmKind::KeyExchange => crate::i18n::gettext_f(
-            "The SSH server {host} and this computer's OpenSSH have no key exchange method in common. The server allows {offer}.",
-            &arguments,
-        ),
-        SshAlgorithmKind::HostKey => crate::i18n::gettext_f(
-            "The SSH server {host} and this computer's OpenSSH have no host key type in common. The server offers {offer}.",
-            &arguments,
-        ),
-        SshAlgorithmKind::Cipher => crate::i18n::gettext_f(
-            "The SSH server {host} and this computer's OpenSSH have no cipher in common. The server allows {offer}.",
-            &arguments,
-        ),
-        SshAlgorithmKind::Mac => crate::i18n::gettext_f(
-            "The SSH server {host} and this computer's OpenSSH have no MAC in common. The server allows {offer}.",
-            &arguments,
-        ),
-        SshAlgorithmKind::Compression => crate::i18n::gettext_f(
-            "The SSH server {host} and this computer's OpenSSH have no compression method in common. The server allows {offer}.",
-            &arguments,
-        ),
-    }
 }
 
 fn protocol_message(status: Option<i32>, detail: &str) -> String {

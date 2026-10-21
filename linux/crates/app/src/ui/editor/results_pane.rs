@@ -31,7 +31,13 @@ mod imp {
         #[template_child]
         pub summary_label: TemplateChild<gtk4::Label>,
         #[template_child]
+        pub transaction_bar: TemplateChild<gtk4::Box>,
+        #[template_child]
         pub transaction_label: TemplateChild<gtk4::Label>,
+        #[template_child]
+        pub roll_back_button: TemplateChild<gtk4::Button>,
+        #[template_child]
+        pub commit_button: TemplateChild<gtk4::Button>,
         #[template_child]
         pub split_view: TemplateChild<adw::OverlaySplitView>,
         #[template_child]
@@ -137,7 +143,7 @@ impl ResultsPane {
         imp.sidebar.set(SidebarState::default());
         imp.sidebar_toggle.set_visible(false);
         imp.split_view.set_show_sidebar(false);
-        imp.transaction_label.set_visible(false);
+        imp.transaction_bar.set_visible(false);
     }
 
     /// A page is built when its line is first shown, so a script with
@@ -154,10 +160,11 @@ impl ResultsPane {
         self.imp().summary_label.set_label(text);
     }
 
-    pub fn set_transaction(&self, label: Option<&str>) {
+    pub fn set_transaction(&self, label: Option<&str>, offers_commit: bool) {
         let imp = self.imp();
         imp.transaction_label.set_label(label.unwrap_or_default());
-        imp.transaction_label.set_visible(label.is_some());
+        imp.commit_button.set_visible(offers_commit);
+        imp.transaction_bar.set_visible(label.is_some());
     }
 
     pub fn append(&self, entries: &[RunLogEntry]) {
@@ -439,6 +446,29 @@ mod tests {
         assert_eq!(built_pages(&pane), 0, "a page outlived its run");
         pane.append(&[command()]);
         assert_eq!(pane.imp().stack.visible_child_name().as_deref(), Some("entry-0"));
+    }
+
+    #[gtk4::test]
+    fn the_transaction_line_offers_commit_only_while_it_can_commit() {
+        let pane = pane();
+        let imp = pane.imp();
+
+        pane.set_transaction(Some("Transaction open"), true);
+        assert!(imp.transaction_bar.is_visible());
+        assert!(imp.roll_back_button.is_visible());
+        assert!(imp.commit_button.is_visible());
+
+        pane.set_transaction(Some("Transaction failed, roll back to continue"), false);
+        assert!(imp.transaction_bar.is_visible());
+        assert!(imp.roll_back_button.is_visible());
+        assert!(!imp.commit_button.is_visible(), "a failed transaction offers Commit");
+
+        pane.set_transaction(None, false);
+        assert!(!imp.transaction_bar.is_visible(), "the buttons outlived the line");
+
+        pane.set_transaction(Some("Transaction open"), true);
+        pane.clear();
+        assert!(!imp.transaction_bar.is_visible(), "a new run kept the last run's line");
     }
 
     #[gtk4::test]

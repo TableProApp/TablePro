@@ -91,6 +91,24 @@ struct IOSConnectionImportServiceTests {
         #expect(rules.maximumGroupDepth == LibraryGroupGraph.maxNestingDepth)
         #expect(rules.supportsSavedQueries)
         #expect(!rules.supportsCredentialProfiles)
+        #expect(!rules.readsJumpHostKeyFiles)
+    }
+
+    @Test("A jump host's Mac key path draws no warning, since this device never reads it")
+    func hopKeyPathDrawsNoWarning() async throws {
+        let ssh = ExportableSSHConfig(
+            enabled: true, host: "bastion.example.com", port: nil, username: "deploy",
+            authMethod: "SSH Agent", privateKeyPath: "", agentSocketPath: "",
+            jumpHosts: [
+                ExportableJumpHost(host: "jump.example.com", port: nil, username: "deploy", authMethod: "Private Key", privateKeyPath: "~/.ssh/jump")
+            ],
+            totpMode: nil, totpAlgorithm: nil, totpDigits: nil, totpPeriod: nil
+        )
+        let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: settings(ssh: ssh))])
+
+        let row = try #require(try await analyzed(bundle).connections.first)
+
+        #expect(row.warnings.isEmpty)
     }
 
     // MARK: - Files
@@ -480,6 +498,43 @@ struct IOSConnectionImportServiceTests {
         }
     }
 
+    // The link makes this device send the Mac profile's password to whatever server the tunnel names.
+    @Test("Replacing a profile-linked connection keeps the link only when the file names the same SSH server")
+    func replaceKeepsTheProfileLinkOnlyForTheSameServer() async throws {
+        // Each case gets its own database host: a second connection on the same one would be the duplicate the file matches.
+        for (host, keepsLink) in [("bastion.example.com", true), ("bastion.attacker.example", false)] {
+            var existing = DatabaseConnection(
+                name: "Linked \(host)",
+                type: .postgresql,
+                host: "db.\(host)",
+                port: 5_432,
+                sshEnabled: true,
+                sshConfiguration: SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy", authMethod: .password)
+            )
+            let profileId = UUID()
+            existing.sshProfileId = profileId
+            #expect(appState.addConnection(existing))
+            var ssh = tunnel(authMethod: "password")
+            ssh.host = host
+            var imported = settings(name: existing.name, host: existing.host, ssh: ssh)
+            imported.database = ""
+            imported.username = ""
+            let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: imported)])
+            let preview = try await analyzed(bundle)
+            let row = try ref(of: existing.name, in: preview)
+            var selection = ImportSelection.defaults(for: preview)
+            selection.setSelected(true, connection: row, in: preview)
+            let resolved = selection.resolve(row, as: .replace(existing.id), in: preview)
+            #expect(resolved, "\(host)")
+
+            _ = await apply(preview, selection)
+
+            let replaced = try #require(appState.connections.first { $0.id == existing.id })
+            #expect(replaced.sshProfileId == (keepsLink ? profileId : nil), "\(host)")
+            #expect(replaced.clearsSSHProfileLink == !keepsLink, "\(host)")
+        }
+    }
+
     private func tunnel(authMethod: String, keyPath: String = "") -> ExportableSSHConfig {
         ExportableSSHConfig(
             enabled: true, host: "bastion.example.com", port: 22, username: "deploy",
@@ -521,6 +576,33 @@ struct IOSConnectionImportServiceTests {
         #expect(try store.retrieve(forKey: ConnectionSecretKind.password.account(for: id)) == "pw0")
         #expect(try store.retrieve(forKey: ConnectionSecretKind.sshPassword.account(for: id)) == "ssh0")
         #expect(try store.retrieve(forKey: ConnectionSecretKind.keyPassphrase.account(for: id)) == "key0")
+    }
+
+    @Test("An imported tunnel keeps its TOTP settings and restores the secret")
+    func importRestoresTOTP() async throws {
+        var builder = ConnectionBundleBuilder(appVersion: "Tests")
+        let tunnelSettings = settings(ssh: ExportableSSHConfig(
+            enabled: true, host: "bastion.example.com", port: 22, username: "deploy",
+            authMethod: "Keyboard Interactive", privateKeyPath: "", agentSocketPath: "", jumpHosts: nil,
+            totpMode: "auto_generate", totpAlgorithm: "SHA512", totpDigits: 8, totpPeriod: 60
+        ))
+        builder.addConnection(tunnelSettings, ref: "c1", credentials: ExportableCredentials(
+            password: nil, sshPassword: nil, keyPassphrase: nil,
+            sslClientKeyPassphrase: nil, totpSecret: "JBSWY3DPEHPK3PXP", pluginSecureFields: nil
+        ))
+        let sealed = try await ConnectionBundleCodec.encode(try builder.build(), passphrase: "correct horse")
+        let bundle = try await ConnectionBundleCodec.decode(sealed, passphrase: "correct horse")
+        let preview = try await IOSConnectionImportService.preview(of: bundle, fileName: "Tests.tablepro", appState: appState)
+
+        await apply(preview)
+
+        let imported = try #require(appState.connections.first)
+        #expect(imported.sshConfiguration?.authMethod == .keyboardInteractive)
+        #expect(imported.sshConfiguration?.totpMode == "auto_generate")
+        #expect(imported.sshConfiguration?.totpAlgorithm == "SHA512")
+        #expect(imported.sshConfiguration?.totpDigits == 8)
+        #expect(imported.sshConfiguration?.totpPeriod == 60)
+        #expect(try store.retrieve(forKey: ConnectionSecretKind.totpSecret.account(for: imported.id)) == "JBSWY3DPEHPK3PXP")
     }
 
     @Test("A connection the library refuses to save gets no Keychain item and is not counted")
@@ -592,6 +674,50 @@ struct IOSConnectionImportServiceTests {
         let connection = try await importedConnection(settings(ssl: ExportableSSLConfig(mode: "Disabled")))
         #expect(!connection.sslEnabled)
         #expect(connection.sslConfiguration == nil)
+    }
+
+    @Test("An explicit Required is not mistaken for a copy an older build stored, so it replaces a server Preferred")
+    func explicitRequiredIsExplicit() async throws {
+        let connection = try await importedConnection(settings(ssl: ExportableSSLConfig(mode: "Required")))
+        let ssl = try #require(connection.sslConfiguration)
+
+        #expect(!ssl.isLegacyRequire)
+        #expect(!ssl.isMacPreferred)
+        #expect(!ssl.agrees(withServer: SSLConfiguration(mode: .require, isMacPreferred: true)))
+    }
+
+    @Test("A Redis index the Mac keeps outside the additional fields opens the same database")
+    func redisIndexImports() async throws {
+        let redis = ExportableConnection(
+            name: "Cache", host: "cache.example.com", port: 6_379, database: "", username: "",
+            type: DatabaseType.redis.rawValue, redisDatabase: 3
+        )
+        let connection = try await importedConnection(redis)
+
+        #expect(connection.additionalFields["redisDatabase"] == "3")
+    }
+
+    @Test("A Redis connection on another index is not taken for a duplicate")
+    func redisIndexSeparatesDuplicates() async throws {
+        let existing = DatabaseConnection(
+            name: "Cache", type: .redis, host: "cache.example.com", port: 6_379,
+            additionalFields: ["redisDatabase": "3"]
+        )
+        #expect(appState.addConnection(existing))
+        let incoming = { (index: Int) in
+            ExportableConnection(
+                name: "Cache", host: "cache.example.com", port: 6_379, database: "", username: "",
+                type: DatabaseType.redis.rawValue, redisDatabase: index
+            )
+        }
+        let bundle = try ConnectionBundle(appVersion: "Tests", connections: [
+            BundleConnection(ref: "c1", settings: incoming(3)),
+            BundleConnection(ref: "c2", settings: incoming(4))
+        ])
+
+        let rows = try await analyzed(bundle).connections
+
+        #expect(rows.map { $0.duplicate?.id } == [existing.id, nil])
     }
 
     @Test("A Mac Preferred mode opens as required here and exports back as Preferred")

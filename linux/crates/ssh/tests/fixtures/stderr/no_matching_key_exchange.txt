@@ -1,1 +1,1 @@
-Unable to negotiate with 127.0.0.1 port 2223: no matching key exchange method found. Their offer: mlkem768x25519-sha256,sntrup761x25519-sha512,ext-info-s,kex-strict-s-v00@openssh.com
+Unable to negotiate with 172.17.0.1 port 55000: no matching key exchange method found. Their offer: mlkem768x25519-sha256,sntrup761x25519-sha512,ext-info-s,kex-strict-s-v00@openssh.com

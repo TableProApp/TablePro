@@ -1,6 +1,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @MainActor
@@ -204,7 +205,7 @@ struct DatabaseTreeListFreshnessTests {
         }
     }
 
-    private func commit(_ connection: DatabaseConnection, kinds: CatalogObjectKinds = [.objects, .schemas]) async {
+    private func commit(_ connection: DatabaseConnection, kinds: SQLCatalogObjectKinds = [.objects, .schemas]) async {
         await service.refreshCatalog(for: CatalogChange(connectionId: connection.id, kinds: kinds))
     }
 

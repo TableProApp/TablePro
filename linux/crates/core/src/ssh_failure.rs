@@ -70,11 +70,10 @@ pub enum SshFailure {
         methods: Vec<String>,
     },
 
-    /// The server's MaxAuthTries ran out, as with an agent holding more keys than it allows.
-    #[error("{host} closed the connection after too many authentication attempts")]
-    AuthenticationAttemptsExceeded { host: String },
+    #[error("{host} ended the login after too many authentication failures")]
+    TooManyAuthenticationFailures { host: String },
 
-    #[error("{host} and the OpenSSH client share no {kind} (the server offers {})", .server_offer.join(", "))]
+    #[error("ssh and {host} have no {kind} in common; the server offers {}", .server_offer.join(", "))]
     NoCommonAlgorithm {
         host: String,
         kind: SshAlgorithmKind,
@@ -109,7 +108,7 @@ impl SshFailure {
     pub fn category(&self) -> ErrorCategory {
         match self {
             Self::AuthenticationRejected { .. }
-            | Self::AuthenticationAttemptsExceeded { .. }
+            | Self::TooManyAuthenticationFailures { .. }
             | Self::InteractionCancelled
             | Self::HostKeyUnknown { .. }
             | Self::HostKeyChanged { .. }
@@ -248,6 +247,34 @@ mod tests {
     }
 
     #[test]
+    fn a_login_that_ran_out_of_tries_and_a_failed_negotiation_need_the_user() {
+        let too_many = SshFailure::TooManyAuthenticationFailures {
+            host: "bastion".to_owned(),
+        };
+        let no_common = SshFailure::NoCommonAlgorithm {
+            host: "bastion".to_owned(),
+            kind: SshAlgorithmKind::KeyExchange,
+            server_offer: vec!["mlkem768x25519-sha256".to_owned()],
+        };
+
+        assert_eq!(too_many.category(), ErrorCategory::Authentication);
+        assert_eq!(no_common.category(), ErrorCategory::Configuration);
+    }
+
+    #[test]
+    fn no_common_algorithm_names_the_kind_and_the_offer() {
+        let failure = SshFailure::NoCommonAlgorithm {
+            host: "203.0.113.5".to_owned(),
+            kind: SshAlgorithmKind::HostKey,
+            server_offer: vec!["ssh-rsa".to_owned(), "ssh-dss".to_owned()],
+        };
+        assert_eq!(
+            failure.to_string(),
+            "ssh and 203.0.113.5 have no host key type in common; the server offers ssh-rsa, ssh-dss"
+        );
+    }
+
+    #[test]
     fn a_program_or_file_ssh_needs_is_configuration_and_the_rest_internal() {
         let launch = SshFailure::LaunchFailed {
             program: PathBuf::from("ssh"),
@@ -266,38 +293,6 @@ mod tests {
         assert_eq!(unreadable.category(), ErrorCategory::Configuration);
         assert_eq!(protocol.category(), ErrorCategory::Internal);
         assert_eq!(SshFailure::Internal.category(), ErrorCategory::Internal);
-    }
-
-    /// Neither clears on a retry, so both park the reconnect monitor
-    /// rather than counting as internal.
-    #[test]
-    fn exhausted_attempts_and_no_common_algorithm_need_the_user() {
-        let exhausted = SshFailure::AuthenticationAttemptsExceeded {
-            host: "bastion".to_owned(),
-        };
-        let no_common = SshFailure::NoCommonAlgorithm {
-            host: "bastion".to_owned(),
-            kind: SshAlgorithmKind::KeyExchange,
-            server_offer: vec!["mlkem768x25519-sha256".to_owned()],
-        };
-
-        assert_eq!(exhausted.category(), ErrorCategory::Authentication);
-        assert_eq!(no_common.category(), ErrorCategory::Configuration);
-    }
-
-    #[test]
-    fn no_common_algorithm_names_the_list_and_the_server_offer() {
-        let failure = SshFailure::NoCommonAlgorithm {
-            host: "bastion".to_owned(),
-            kind: SshAlgorithmKind::KeyExchange,
-            server_offer: vec!["mlkem768x25519-sha256".to_owned(), "sntrup761x25519-sha512".to_owned()],
-        };
-
-        assert_eq!(
-            failure.to_string(),
-            "bastion and the OpenSSH client share no key exchange method \
-             (the server offers mlkem768x25519-sha256, sntrup761x25519-sha512)"
-        );
     }
 
     #[test]

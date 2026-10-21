@@ -85,12 +85,12 @@ pub(crate) fn master_args(
         SshAuth::Agent => {}
         SshAuth::PrivateKey { path, .. } => {
             if let Some(path) = path {
-                // Otherwise ssh offers the agent's other keys first and can run out the server's MaxAuthTries.
+                args.push("-i".into());
+                args.push(path.as_os_str().to_owned());
+                // ssh offers the agent's other keys before a file-only key; MaxAuthTries can end the login first.
                 if identities_only {
                     push_option(&mut args, "IdentitiesOnly=yes".into());
                 }
-                args.push("-i".into());
-                args.push(path.as_os_str().to_owned());
             }
         }
         SshAuth::Password { .. } => {
@@ -339,9 +339,9 @@ mod tests {
 
     #[test]
     fn private_key_path_adds_minus_i() {
-        let args = |path: Option<&str>, identities_only: bool| {
+        let key_file = |identities_only| {
             let auth = SshAuth::PrivateKey {
-                path: path.map(PathBuf::from),
+                path: Some(PathBuf::from("/home/deploy/.ssh/id_ed25519")),
                 passphrase: None,
             };
             let args = master_args(
@@ -354,24 +354,31 @@ mod tests {
             );
             strings(&args).join(" ")
         };
-
-        let pinned = args(Some("/home/deploy/.ssh/id_ed25519"), true);
-        let unpinned = args(Some("/home/deploy/.ssh/id_ed25519"), false);
-        let without_path = args(None, true);
-
+        let pinned = key_file(true);
+        let unpinned = key_file(false);
         assert!(
-            pinned.contains(" -o IdentitiesOnly=yes -i /home/deploy/.ssh/id_ed25519 -- db-bastion"),
+            pinned.contains(" -i /home/deploy/.ssh/id_ed25519 -o IdentitiesOnly=yes -- db-bastion"),
             "{pinned}"
         );
         assert!(
             unpinned.contains(" -i /home/deploy/.ssh/id_ed25519 -- db-bastion"),
             "{unpinned}"
         );
-        assert!(!unpinned.contains("IdentitiesOnly"), "{unpinned}");
-        assert!(
-            !without_path.contains(" -i ") && !without_path.contains("IdentitiesOnly"),
-            "{without_path}"
+
+        let without_path = SshAuth::PrivateKey {
+            path: None,
+            passphrase: None,
+        };
+        let args = master_args(
+            &config(None, None, without_path),
+            Path::new("/tmp/control"),
+            &LivenessPolicy::DESKTOP,
+            None,
+            None,
+            true,
         );
+        assert!(!strings(&args).contains(&"-i"));
+        assert!(!strings(&args).contains(&"IdentitiesOnly=yes"));
     }
 
     #[test]

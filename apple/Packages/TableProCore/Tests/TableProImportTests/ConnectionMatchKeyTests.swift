@@ -45,6 +45,22 @@ struct ConnectionMatchKeyTests {
         ))
     }
 
+    @Test("The settings initializer reads the Redis index from the driver field first, as the driver does")
+    func settingsInitializerReadsTheRedisField() {
+        func key(_ index: Int?) -> ConnectionMatchKey {
+            ConnectionMatchKey(host: "cache", port: 6_379, database: "", username: "", redisDatabase: index, socketPath: nil)
+        }
+        var settings = ExportableConnection(name: "Cache", host: "cache", port: 6_379, database: "", username: "", type: "Redis")
+        settings.additionalFields = ["redisDatabase": "db4"]
+        #expect(ConnectionMatchKey(settings) == key(4))
+
+        settings.redisDatabase = 2
+        #expect(ConnectionMatchKey(settings) == key(4))
+
+        settings.additionalFields = nil
+        #expect(ConnectionMatchKey(settings) == key(2))
+    }
+
     @Test("A socket path is trimmed and compared exactly, and a blank one is no socket")
     func socketPathNormalization() {
         func key(_ socketPath: String?) -> ConnectionMatchKey {
