@@ -38,7 +38,7 @@ impl AccessibleChoice {
     }
 }
 
-fn dropdown_button(title: &str, first: Option<&str>) -> (gtk::Button, gtk::Label) {
+fn dropdown_button(first: Option<&str>) -> (gtk::Button, gtk::Label) {
     let text = gtk::Label::new(first);
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     content.append(&text);
@@ -46,7 +46,6 @@ fn dropdown_button(title: &str, first: Option<&str>) -> (gtk::Button, gtk::Label
     let button = gtk::Button::builder().child(&content).build();
     button.add_css_class("flat");
     center_in_row(&button);
-    button.update_property(&[gtk::accessible::Property::Label(title)]);
     (button, text)
 }
 
@@ -69,7 +68,7 @@ pub(super) fn choice_row(
     let selected = Rc::new(Cell::new(0));
     let changed: ChoiceChanged = Rc::new(RefCell::new(None));
     let popover = gtk::Popover::new();
-    let (button, text) = dropdown_button(&title, labels.first().map(String::as_str));
+    let (button, text) = dropdown_button(labels.first().map(String::as_str));
     let text_ref = text.downgrade();
     let choices = gtk::Box::new(gtk::Orientation::Vertical, 0);
     choices.add_css_class("menu");

@@ -2235,20 +2235,20 @@ msgstr ""
 msgid "Create database file"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/controls.rs:121
+#: apps/linux/app/src/ui/connect_dialog/controls.rs:120
 msgid "Connect timeout (seconds)"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/controls.rs:122
+#: apps/linux/app/src/ui/connect_dialog/controls.rs:121
 msgid "0 uses the default of 30 seconds"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/controls.rs:126
+#: apps/linux/app/src/ui/connect_dialog/controls.rs:125
 #: apps/linux/app/src/ui/preferences.rs:270
 msgid "Query timeout (seconds)"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/controls.rs:127
+#: apps/linux/app/src/ui/connect_dialog/controls.rs:126
 msgid "0 uses the timeout set in Preferences"
 msgstr ""
 
