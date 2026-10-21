@@ -68,7 +68,7 @@ impl<'a> Lexer<'a> {
             b'/' if next == Some(b'*') => self.block_comment(start),
             b'/' if next == Some(b'/') && self.syntax.slash_slash_comment => self.line_comment(start),
             b'\'' => self.quoted(start, self.syntax.single_quote),
-            b'"' => self.quoted(start, self.syntax.double_quote),
+            b'"' => self.quoted(start, self.double_quote_rule()),
             b'`' => match self.syntax.backtick {
                 Some(rule) => self.quoted(start, rule),
                 None => self.plain(ScriptTokenKind::Punct, start + 1),
@@ -154,6 +154,17 @@ impl<'a> Lexer<'a> {
             }
         }
         self.unterminated(start, OpenConstruct::BlockComment)
+    }
+
+    fn double_quote_rule(&self) -> QuoteRule {
+        let rule = self.syntax.double_quote;
+        if self.settings.ansi_quotes && rule.kind == QuoteKind::StringLiteral {
+            return QuoteRule {
+                kind: QuoteKind::QuotedIdentifier,
+                backslash: BackslashPolicy::Never,
+            };
+        }
+        rule
     }
 
     fn quoted(&self, start: usize, rule: QuoteRule) -> LexedToken {

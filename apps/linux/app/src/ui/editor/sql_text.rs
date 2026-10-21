@@ -60,3 +60,30 @@ pub(crate) fn toggle_line_comment(buffer: &gtk::TextBuffer) {
     }
     buffer.end_user_action();
 }
+
+pub(super) fn read_sql_text(path: &std::path::Path, max_bytes: u64) -> Result<String, String> {
+    tablepro_core::text_file::read_text_file(path, max_bytes)
+        .map(|file| file.text)
+        .map_err(|error| super::open_file::file_error_message(&error))
+}
+
+pub(super) fn export_name_for_query(query: &str) -> String {
+    if query.trim().is_empty() {
+        return crate::tr!("query-results");
+    }
+    let label = super::derive_tab_label(query);
+    let mut slug = String::new();
+    for character in label.chars() {
+        if character.is_alphanumeric() {
+            slug.push(character.to_ascii_lowercase());
+        } else if !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+    let slug = slug.trim_matches('-');
+    if slug.is_empty() {
+        crate::tr!("query-results")
+    } else {
+        slug.to_string()
+    }
+}

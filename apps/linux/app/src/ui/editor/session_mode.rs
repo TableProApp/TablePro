@@ -186,6 +186,21 @@ impl StatementTarget {
         }
     }
 
+    pub(crate) async fn lexical_settings(
+        &self,
+        control: &OperationControl,
+    ) -> Result<Option<tablepro_core::sql_syntax::script::LexicalSettings>, DriverError> {
+        match self {
+            Self::Pool(connection) => connection.lexical_settings_controlled(control).await,
+            Self::Session { shared, .. } => match shared.lock().await.as_mut() {
+                Some(session) if session.is_usable() => session.lexical_settings_controlled(control).await,
+                Some(_) => Err(retired_session_error()),
+                None => Err(DriverError::Unsupported("the session was closed".into())),
+            },
+            Self::Retired { .. } => Err(retired_session_error()),
+        }
+    }
+
     pub(crate) async fn session_state(&self) -> Option<(Uuid, bool, bool)> {
         match self {
             Self::Pool(_) => None,

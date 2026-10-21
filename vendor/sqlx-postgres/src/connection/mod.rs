@@ -122,6 +122,11 @@ impl PgConnection {
         self.inner.stream.server_version_num
     }
 
+    /// the latest value the server reported for a `GUC_REPORT` run-time parameter
+    pub fn parameter_status(&self, name: &str) -> Option<&str> {
+        self.inner.stream.parameter_statuses.get(name).map(String::as_str)
+    }
+
     // will return when the connection is ready for another query
     pub(crate) async fn wait_until_ready(&mut self) -> Result<(), Error> {
         if !self.inner.stream.write_buffer_mut().is_empty() {

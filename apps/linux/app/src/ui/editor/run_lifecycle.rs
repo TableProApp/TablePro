@@ -29,24 +29,34 @@ impl SqlEditor {
         if self.session_teardown_active || !self.run_generation.active.is_empty() {
             return;
         }
-        let driver_id = self.metadata().map(|metadata| metadata.driver_id).unwrap_or_default();
-        let (statements, error_policy) = if single_statement {
-            (
-                vec![sql.clone()],
-                tablepro_core::sql_syntax::script::BatchErrorPolicy::StopScript,
-            )
+        if single_statement {
+            let planned = PlannedStatements {
+                statements: vec![sql.clone()],
+                error_policy: tablepro_core::sql_syntax::script::BatchErrorPolicy::StopScript,
+                settings_check: None,
+            };
+            self.run_planned(sql, planned, sender);
         } else {
-            match script_statements(&sql, &driver_id) {
-                Ok(planned) => (planned.statements, planned.error_policy),
-                Err(message) => {
-                    self.status.set_label(&message);
-                    return;
-                }
-            }
-        };
+            self.read_lexing_then_run(sql, sender);
+        }
+    }
+
+    pub(super) fn plan_and_run(&mut self, sql: String, sender: ComponentSender<Self>) {
+        if self.session_teardown_active || !self.run_generation.active.is_empty() {
+            return;
+        }
+        let driver_id = self.metadata().map(|metadata| metadata.driver_id).unwrap_or_default();
+        match script_statements(&sql, self.lexing(&driver_id)) {
+            Ok(planned) => self.run_planned(sql, planned, sender),
+            Err(message) => self.status.set_label(&message),
+        }
+    }
+
+    fn run_planned(&mut self, sql: String, planned: PlannedStatements, sender: ComponentSender<Self>) {
+        let driver_id = self.metadata().map(|metadata| metadata.driver_id).unwrap_or_default();
         let names = crate::services::query_parameters::statement_names(&sql, &driver_id);
         if names.is_empty() {
-            self.execute_sql(sql, statements, error_policy, std::collections::HashMap::new(), sender);
+            self.execute_sql(sql, planned, std::collections::HashMap::new(), sender);
             return;
         }
         let Some(window) = self
@@ -61,8 +71,7 @@ impl SqlEditor {
         crate::ui::parameters_dialog::present(&window, &names, move |values| {
             sender.input(SqlEditorInput::RunWithParameters {
                 sql: sql.clone(),
-                statements: statements.clone(),
-                error_policy,
+                planned: planned.clone(),
                 values,
             });
         });

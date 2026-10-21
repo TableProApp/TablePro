@@ -1007,3 +1007,60 @@ async fn value_contract_mysql_and_mariadb_collated_enum_inputs_preserve_canonica
     let (_mariadb, mariadb_options) = start_mariadb().await;
     assert_collated_enum_round_trip(mariadb_options).await;
 }
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn session_string_settings_follow_sql_mode() {
+    use tablepro_core::sql_syntax::SqlGrammar;
+    use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan};
+    use tablepro_core::{OperationControl, Value};
+    let (_container, opts) = start_mysql().await;
+    let connection = connect(opts).await;
+    let control = OperationControl::with_timeout(std::time::Duration::from_secs(10));
+    let mut session = connection.open_session().await.expect("open session");
+    let initial = session.lexical_settings_controlled(&control).await.unwrap();
+    assert_eq!(initial, Some(LexicalSettings::default_for(SqlGrammar::MySql)));
+
+    session
+        .query_params_controlled(
+            "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES,ANSI_QUOTES'",
+            &[],
+            &control,
+        )
+        .await
+        .unwrap();
+    let settings = session.lexical_settings_controlled(&control).await.unwrap().unwrap();
+    assert_eq!(
+        settings,
+        LexicalSettings::from_mysql_sql_mode("NO_BACKSLASH_ESCAPES,ANSI_QUOTES")
+    );
+    let script = r#"SELECT 'path\' AS "a\"; SELECT 2"#;
+    let plan = ScriptPlan::build(script, SqlGrammar::MySql, settings);
+    assert!(plan.diagnostics().is_empty(), "{:?}", plan.diagnostics());
+    let mut results = Vec::new();
+    for statement in plan.statements() {
+        let sql = statement.text(script).trim();
+        let result = session.query_params_controlled(sql, &[], &control).await.unwrap();
+        results.push((
+            result
+                .columns
+                .iter()
+                .map(|column| column.name.clone())
+                .collect::<Vec<_>>(),
+            result.rows,
+        ));
+    }
+    assert_eq!(
+        results,
+        [
+            (vec![r"a\".to_string()], vec![vec![Value::Text(r"path\".into())]]),
+            (vec!["2".to_string()], vec![vec![Value::Int(2)]]),
+        ]
+    );
+    assert_eq!(
+        connection.lexical_settings_controlled(&control).await.unwrap(),
+        initial,
+        "the pool keeps the server default"
+    );
+    session.close().await.unwrap();
+}

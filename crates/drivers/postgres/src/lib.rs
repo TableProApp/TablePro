@@ -6,6 +6,7 @@ use sqlx::pool::PoolConnection;
 use sqlx::postgres::{PgCancelToken, PgConnectOptions, PgPoolOptions};
 use sqlx::{Connection as SqlxConnection, Pool, Postgres, Row};
 
+use tablepro_core::sql_syntax::script::LexicalSettings;
 use tablepro_core::{
     CANCELLATION_DISPATCH_TIMEOUT, CONTROL_SETUP_TIMEOUT, ColumnInfo, ConnectOptions, Connection, DatabaseDriver,
     DriverError, ExecResult, ForeignKeyInfo, IndexInfo, MAX_QUERY_ROWS, OperationControl, QualifiedTypeName,
@@ -610,6 +611,16 @@ impl Connection for PgConnection {
         session::open(&self.session_options).await
     }
 
+    async fn lexical_settings_controlled(
+        &self,
+        control: &OperationControl,
+    ) -> Result<Option<LexicalSettings>, DriverError> {
+        let connection = run_controlled_setup(self.pool.acquire(), control)
+            .await?
+            .map_err(map_sqlx_error)?;
+        reported_lexical_settings(&connection).map(Some)
+    }
+
     async fn begin(&self) -> Result<Box<dyn tablepro_core::Transaction>, DriverError> {
         let mut connection = tokio::time::timeout(CONTROL_SETUP_TIMEOUT, self.pool.acquire())
             .await
@@ -1061,3 +1072,13 @@ fn is_server_disconnect_sqlstate(sqlstate: Option<&str>) -> bool {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+/// Reads the string rules from the parameter status the server reports on every change,
+/// so it needs no query and still answers inside an aborted transaction.
+fn reported_lexical_settings(connection: &sqlx::PgConnection) -> Result<LexicalSettings, DriverError> {
+    let value = connection
+        .parameter_status("standard_conforming_strings")
+        .ok_or_else(|| DriverError::Unsupported("the server did not report standard_conforming_strings".into()))?;
+    LexicalSettings::from_postgres_standard_conforming_strings(value)
+        .ok_or_else(|| DriverError::Unsupported(format!("standard_conforming_strings has an unknown value {value:?}")))
+}

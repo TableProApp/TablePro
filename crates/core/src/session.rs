@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use crate::error::DriverError;
 use crate::operation::OperationControl;
 use crate::query::{QueryCursorId, QueryCursorPage, QueryResult, QueryResultBatch, Value};
+use crate::sql_syntax::script::LexicalSettings;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SessionCommitOutcome {
@@ -57,6 +58,13 @@ pub trait Session: Send {
         _control: &OperationControl,
     ) -> Result<(), DriverError> {
         Err(DriverError::Unsupported("forward-only query cursors".into()))
+    }
+
+    async fn lexical_settings_controlled(
+        &mut self,
+        _control: &OperationControl,
+    ) -> Result<Option<LexicalSettings>, DriverError> {
+        Ok(None)
     }
 
     fn is_usable(&self) -> bool;

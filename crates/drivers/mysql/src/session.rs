@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use sqlx::mysql::{MySql, MySqlConnectOptions, MySqlPoolOptions};
 use sqlx::pool::PoolConnection;
 use sqlx::{Connection as SqlxConnection, Pool};
+use tablepro_core::sql_syntax::script::LexicalSettings;
 use tablepro_core::{
     DriverError, MAX_QUERY_ROWS, OperationControl, QueryResult, Value, check_pre_dispatch, run_controlled_setup,
     run_server_cancellable,
@@ -9,7 +10,7 @@ use tablepro_core::{
 
 use crate::{
     confirms_cancellation, connection_id, map_sqlx_error, params_into_result, prepare_session,
-    refuse_non_utc_timestamps, request_cancellation, timezone_is_utc,
+    refuse_non_utc_timestamps, request_cancellation, session_lexical_settings, timezone_is_utc,
 };
 
 const SESSION_SETUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
@@ -123,6 +124,25 @@ impl tablepro_core::Session for MysqlSession {
             self.connection = Some(connection);
         }
         result
+    }
+
+    async fn lexical_settings_controlled(
+        &mut self,
+        control: &OperationControl,
+    ) -> Result<Option<LexicalSettings>, DriverError> {
+        let connection = self
+            .connection
+            .as_mut()
+            .ok_or_else(|| DriverError::Internal("the session's connection was lost".into()))?;
+        let result = run_controlled_setup(session_lexical_settings(&mut **connection), control)
+            .await
+            .and_then(|settings| settings);
+        if matches!(result, Err(DriverError::Disconnected))
+            && let Some(connection) = self.connection.take()
+        {
+            let _ = connection.close().await;
+        }
+        result.map(Some)
     }
 
     fn is_usable(&self) -> bool {

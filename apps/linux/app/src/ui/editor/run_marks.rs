@@ -68,15 +68,24 @@ impl SqlEditor {
             return;
         }
         if let Ok(buffer) = self.source_view.buffer().downcast::<sourceview5::Buffer>() {
-            mark_outcomes(&buffer, &context.sql, &context.metadata.driver_id, outcomes);
+            let lexing = super::statement_cursor::Lexing {
+                driver: &context.metadata.driver_id,
+                settings: context.lexical,
+            };
+            mark_outcomes(&buffer, &context.sql, lexing, outcomes);
         }
     }
 }
 
-fn mark_outcomes(buffer: &sourceview5::Buffer, sql: &str, driver: &str, outcomes: &[StatementOutcome]) {
+fn mark_outcomes<'a>(
+    buffer: &sourceview5::Buffer,
+    sql: &str,
+    lexing: impl Into<super::statement_cursor::Lexing<'a>>,
+    outcomes: &[StatementOutcome],
+) {
     let (start, end) = buffer.bounds();
     let text = buffer.text(&start, &end, true).to_string();
-    let Ok(planned) = script_statements(sql, driver) else {
+    let Ok(planned) = script_statements(sql, lexing) else {
         return;
     };
     if text.trim() != sql || planned.statements.len() != outcomes.len() {

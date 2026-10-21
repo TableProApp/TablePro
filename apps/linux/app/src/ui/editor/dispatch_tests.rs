@@ -243,8 +243,11 @@ fn success() -> Result<QueryResultBatch, DriverError> {
 fn parameter_response() -> SqlEditorInput {
     SqlEditorInput::RunWithParameters {
         sql: "SELECT :value;".into(),
-        statements: vec!["SELECT :value;".into()],
-        error_policy: tablepro_core::sql_syntax::script::BatchErrorPolicy::StopScript,
+        planned: super::PlannedStatements {
+            statements: vec!["SELECT :value;".into()],
+            error_policy: tablepro_core::sql_syntax::script::BatchErrorPolicy::StopScript,
+            settings_check: None,
+        },
         values: [("value".into(), Value::Int(2))].into(),
     }
 }

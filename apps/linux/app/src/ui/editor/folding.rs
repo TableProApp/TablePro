@@ -35,12 +35,17 @@ impl FoldController {
         view.set_mark_attributes("sql-fold", &attributes, 10);
     }
 
-    pub(super) fn toggle_at_cursor(&mut self, buffer: &sourceview5::Buffer, grammar: SqlGrammar) {
+    pub(super) fn toggle_at_cursor(
+        &mut self,
+        buffer: &sourceview5::Buffer,
+        grammar: SqlGrammar,
+        settings: LexicalSettings,
+    ) {
         let (start, end) = buffer.bounds();
         let sql = buffer.text(&start, &end, true).to_string();
         let cursor = buffer.iter_at_mark(&buffer.get_insert()).offset() as usize;
         let cursor = cursor_byte_offset(&sql, cursor);
-        let Some(region) = range_at_cursor(&sql, grammar, cursor) else {
+        let Some(region) = range_at_cursor(&sql, grammar, settings, cursor) else {
             return;
         };
         if let Some(index) = self.folded.iter().position(|folded| folded.extent == region.extent) {
@@ -132,26 +137,37 @@ enum BlockKind {
     While,
 }
 
-pub(super) fn range_at_cursor(sql: &str, grammar: SqlGrammar, cursor: usize) -> Option<FoldRange> {
-    fold_ranges(sql, grammar)
+pub(super) fn range_at_cursor(
+    sql: &str,
+    grammar: SqlGrammar,
+    settings: LexicalSettings,
+    cursor: usize,
+) -> Option<FoldRange> {
+    fold_ranges(sql, grammar, settings)
         .into_iter()
         .filter(|region| region.extent.start <= cursor && cursor <= region.extent.end)
         .min_by_key(|region| region.extent.end.saturating_sub(region.extent.start))
 }
 
-fn fold_ranges(sql: &str, grammar: SqlGrammar) -> Vec<FoldRange> {
+fn fold_ranges(sql: &str, grammar: SqlGrammar, settings: LexicalSettings) -> Vec<FoldRange> {
     let mut ranges = Vec::new();
-    collect_ranges(sql, grammar, 0, 0, &mut ranges);
+    collect_ranges(sql, (grammar, settings), 0, 0, &mut ranges);
     ranges.sort_by_key(|region| (region.extent.start, region.extent.end));
     ranges
 }
 
-fn collect_ranges(sql: &str, grammar: SqlGrammar, base: usize, depth: usize, ranges: &mut Vec<FoldRange>) {
-    let plan = ScriptPlan::build(sql, grammar, LexicalSettings::default_for(grammar));
+fn collect_ranges(
+    sql: &str,
+    (grammar, settings): (SqlGrammar, LexicalSettings),
+    base: usize,
+    depth: usize,
+    ranges: &mut Vec<FoldRange>,
+) {
+    let plan = ScriptPlan::build(sql, grammar, settings);
     let tokens: Vec<ScriptToken> = plan.tokens(0..sql.len()).collect();
     collect_parenthesis_ranges(sql, &tokens, base, ranges);
     collect_block_ranges(sql, &tokens, base, ranges);
-    collect_comment_ranges(sql, grammar, &tokens, base, depth, ranges);
+    collect_comment_ranges(sql, (grammar, settings), &tokens, base, depth, ranges);
 }
 
 fn collect_parenthesis_ranges(sql: &str, tokens: &[ScriptToken], base: usize, ranges: &mut Vec<FoldRange>) {
@@ -245,7 +261,7 @@ fn close_last(
 
 fn collect_comment_ranges(
     sql: &str,
-    grammar: SqlGrammar,
+    (grammar, settings): (SqlGrammar, LexicalSettings),
     tokens: &[ScriptToken],
     base: usize,
     depth: usize,
@@ -271,7 +287,7 @@ fn collect_comment_ranges(
         };
         collect_ranges(
             &text[body.clone()],
-            grammar,
+            (grammar, settings),
             base + token.range.start + body.start,
             depth + 1,
             ranges,
@@ -357,7 +373,13 @@ mod tests {
     fn folds_the_innermost_multiline_parenthesized_region() {
         let sql = "SELECT (\n  COALESCE(value, (\n    1\n  ))\nFROM items;";
         let cursor = sql.find("1\n").unwrap();
-        let region = range_at_cursor(sql, SqlGrammar::PostgreSql, cursor).unwrap();
+        let region = range_at_cursor(
+            sql,
+            SqlGrammar::PostgreSql,
+            LexicalSettings::default_for(SqlGrammar::PostgreSql),
+            cursor,
+        )
+        .unwrap();
         assert_eq!(&sql[region.hidden.clone()], "    1\n");
     }
 
@@ -365,7 +387,13 @@ mod tests {
     fn folds_nested_case_blocks_without_hiding_the_end_lines() {
         let sql = "SELECT CASE\n  WHEN a THEN CASE\n    WHEN b THEN 1\n    ELSE 2\n  END\n  ELSE 3\nEND;";
         let cursor = sql.find("WHEN b").unwrap();
-        let region = range_at_cursor(sql, SqlGrammar::PostgreSql, cursor).unwrap();
+        let region = range_at_cursor(
+            sql,
+            SqlGrammar::PostgreSql,
+            LexicalSettings::default_for(SqlGrammar::PostgreSql),
+            cursor,
+        )
+        .unwrap();
         assert_eq!(&sql[region.hidden.clone()], "    WHEN b THEN 1\n    ELSE 2\n");
     }
 
@@ -373,7 +401,13 @@ mod tests {
     fn ignores_delimiters_and_block_words_inside_comments_and_literals() {
         let sql = "SELECT (\n  'END )' AS value,\n  /* BEGIN\n  )\n  END */\n  1\n);";
         let cursor = sql.find("END )").unwrap();
-        let region = range_at_cursor(sql, SqlGrammar::PostgreSql, cursor).unwrap();
+        let region = range_at_cursor(
+            sql,
+            SqlGrammar::PostgreSql,
+            LexicalSettings::default_for(SqlGrammar::PostgreSql),
+            cursor,
+        )
+        .unwrap();
         assert_eq!(region.extent, 7..sql.rfind(')').unwrap() + 1);
     }
 
@@ -381,14 +415,28 @@ mod tests {
     fn folds_plpgsql_blocks_with_dollar_quoted_bodies() {
         let sql = "CREATE FUNCTION f() RETURNS int AS $$\nBEGIN\n  RETURN 1;\nEND;\n$$ LANGUAGE plpgsql;";
         let cursor = sql.find("  RETURN").unwrap();
-        let region = range_at_cursor(sql, SqlGrammar::PostgreSql, cursor).unwrap();
+        let region = range_at_cursor(
+            sql,
+            SqlGrammar::PostgreSql,
+            LexicalSettings::default_for(SqlGrammar::PostgreSql),
+            cursor,
+        )
+        .unwrap();
         assert_eq!(&sql[region.hidden.clone()], "  RETURN 1;\n");
     }
 
     #[test]
     fn an_unmatched_opener_does_not_create_a_fold() {
         let sql = "SELECT (\n  1;";
-        assert!(range_at_cursor(sql, SqlGrammar::PostgreSql, sql.find('1').unwrap()).is_none());
+        assert!(
+            range_at_cursor(
+                sql,
+                SqlGrammar::PostgreSql,
+                LexicalSettings::default_for(SqlGrammar::PostgreSql),
+                sql.find('1').unwrap()
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -400,7 +448,11 @@ mod tests {
         buffer.set_text(sql);
         let mut controller = FoldController::new(buffer.upcast_ref());
         buffer.place_cursor(&buffer.iter_at_offset(sql.find("ready").unwrap() as i32));
-        controller.toggle_at_cursor(&buffer, SqlGrammar::PostgreSql);
+        controller.toggle_at_cursor(
+            &buffer,
+            SqlGrammar::PostgreSql,
+            LexicalSettings::default_for(SqlGrammar::PostgreSql),
+        );
         let (start, end) = buffer.bounds();
         assert_eq!(buffer.text(&start, &end, true), sql);
         let hidden_line = buffer.iter_at_line(1).unwrap();

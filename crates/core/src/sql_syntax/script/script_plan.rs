@@ -228,6 +228,78 @@ mod tests {
         assert!(plan.statement_at(plan.statements()[0].range.start).is_some());
     }
 
+    fn statement_texts(sql: &str, grammar: SqlGrammar, settings: LexicalSettings) -> Vec<&str> {
+        let plan = ScriptPlan::build(sql, grammar, settings);
+        assert!(plan.diagnostics().is_empty(), "{sql}: {:?}", plan.diagnostics());
+        plan.statements()
+            .iter()
+            .map(|statement| statement.text(sql).trim())
+            .collect()
+    }
+
+    #[test]
+    fn session_string_modes_decide_where_a_backslash_quote_ends() {
+        let mysql = LexicalSettings::default_for(SqlGrammar::MySql);
+        let sql = r"SELECT 'path\'; SELECT 2;";
+        assert_eq!(
+            statement_texts(
+                sql,
+                SqlGrammar::MySql,
+                LexicalSettings::from_mysql_sql_mode("NO_BACKSLASH_ESCAPES")
+            ),
+            [r"SELECT 'path\'", "SELECT 2"]
+        );
+        assert!(
+            !ScriptPlan::build(sql, SqlGrammar::MySql, mysql)
+                .diagnostics()
+                .is_empty()
+        );
+
+        let sql = r#"SELECT "path\"; SELECT 2;"#;
+        assert_eq!(
+            statement_texts(
+                sql,
+                SqlGrammar::MySql,
+                LexicalSettings::from_mysql_sql_mode("ANSI_QUOTES")
+            ),
+            [r#"SELECT "path\""#, "SELECT 2"]
+        );
+        assert!(
+            !ScriptPlan::build(sql, SqlGrammar::MySql, mysql)
+                .diagnostics()
+                .is_empty()
+        );
+
+        let sql = r"SELECT 'it\'s'; SELECT 2;";
+        let postgres_off = LexicalSettings::from_postgres_standard_conforming_strings("off").unwrap();
+        assert_eq!(
+            statement_texts(sql, SqlGrammar::PostgreSql, postgres_off),
+            [r"SELECT 'it\'s'", "SELECT 2"]
+        );
+        let postgres_on = LexicalSettings::default_for(SqlGrammar::PostgreSql);
+        assert!(
+            !ScriptPlan::build(sql, SqlGrammar::PostgreSql, postgres_on)
+                .diagnostics()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn ansi_quotes_leaves_grammars_whose_double_quote_is_already_an_identifier_alone() {
+        let sql = r#"SELECT "a\"" FROM t; SELECT 2;"#;
+        for grammar in [SqlGrammar::PostgreSql, SqlGrammar::Sqlite, SqlGrammar::MsSql] {
+            let ansi = LexicalSettings {
+                ansi_quotes: true,
+                ..LexicalSettings::default_for(grammar)
+            };
+            assert_eq!(
+                ScriptPlan::build(sql, grammar, ansi),
+                ScriptPlan::build(sql, grammar, LexicalSettings::default_for(grammar)),
+                "{grammar:?}"
+            );
+        }
+    }
+
     #[test]
     fn an_unterminated_clickhouse_heredoc_is_reported_as_a_diagnostic() {
         let plan = ScriptPlan::build(

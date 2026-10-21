@@ -68,7 +68,7 @@ index e0f4c3d..fd892bc 100755
              // Query will trigger a ReadyForQuery
              self.queue_simple_query(sql)?;
 diff --git a/src/connection/mod.rs b/src/connection/mod.rs
-index d594585..b3a30ca 100755
+index d594585..95677af 100755
 --- a/src/connection/mod.rs
 +++ b/src/connection/mod.rs
 @@ -16,7 +16,7 @@ use crate::message::{
@@ -117,7 +117,7 @@ index d594585..b3a30ca 100755
  pub(crate) struct TableData {
      table_name: Arc<str>,
      /// Attribute number -> name.
-@@ -85,6 +105,18 @@ pub(crate) struct TableData {
+@@ -85,11 +105,28 @@ pub(crate) struct TableData {
  }
  
  impl PgConnection {
@@ -136,6 +136,16 @@ index d594585..b3a30ca 100755
      /// the version number of the server in `libpq` format
      pub fn server_version_num(&self) -> Option<u32> {
          self.inner.stream.server_version_num
+     }
+ 
++    /// the latest value the server reported for a `GUC_REPORT` run-time parameter
++    pub fn parameter_status(&self, name: &str) -> Option<&str> {
++        self.inner.stream.parameter_statuses.get(name).map(String::as_str)
++    }
++
+     // will return when the connection is ready for another query
+     pub(crate) async fn wait_until_ready(&mut self) -> Result<(), Error> {
+         if !self.inner.stream.write_buffer_mut().is_empty() {
 diff --git a/src/connection/resolve.rs b/src/connection/resolve.rs
 index e47c318..1fb818a 100755
 --- a/src/connection/resolve.rs

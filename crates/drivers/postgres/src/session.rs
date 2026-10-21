@@ -57,6 +57,17 @@ impl tablepro_core::Session for PgSession {
         self.run_query_controlled(sql, params, control).await
     }
 
+    async fn lexical_settings_controlled(
+        &mut self,
+        _control: &OperationControl,
+    ) -> Result<Option<tablepro_core::sql_syntax::script::LexicalSettings>, DriverError> {
+        let connection = self
+            .connection
+            .as_ref()
+            .ok_or_else(|| DriverError::Internal("the session's connection was lost".into()))?;
+        crate::reported_lexical_settings(connection).map(Some)
+    }
+
     async fn open_query_cursor_controlled(
         &mut self,
         sql: &str,

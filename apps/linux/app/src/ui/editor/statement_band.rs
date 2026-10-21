@@ -5,35 +5,41 @@ use std::sync::Arc;
 use relm4::gtk::{self, glib, prelude::*};
 use uuid::Uuid;
 
-use super::statement_cursor::{cursor_byte_offset, statement_range_at};
+use super::session_lexing::KnownLexing;
+use super::statement_cursor::{Lexing, cursor_byte_offset, statement_range_at};
 use crate::services::database_service::DatabaseService;
 
 const MAX_BANDED_BYTES: usize = 200_000;
 const TAG_NAME: &str = "tp-current-statement";
 
-fn band_char_range(text: &str, driver: &str, cursor_chars: usize) -> Option<(i32, i32)> {
+fn band_char_range<'a>(text: &str, lexing: impl Into<Lexing<'a>>, cursor_chars: usize) -> Option<(i32, i32)> {
     if text.len() > MAX_BANDED_BYTES {
         return None;
     }
-    let range = statement_range_at(text, driver, cursor_byte_offset(text, cursor_chars))?;
+    let range = statement_range_at(text, lexing, cursor_byte_offset(text, cursor_chars))?;
     Some((
         text[..range.start].chars().count() as i32,
         text[..range.end].chars().count() as i32,
     ))
 }
 
-fn refresh(buffer: &gtk::TextBuffer, driver: &str) {
+fn refresh<'a>(buffer: &gtk::TextBuffer, lexing: impl Into<Lexing<'a>>) {
     let (start, end) = buffer.bounds();
     buffer.remove_tag_by_name(TAG_NAME, &start, &end);
     let text = buffer.text(&start, &end, true).to_string();
     let cursor = buffer.iter_at_mark(&buffer.get_insert()).offset() as usize;
-    let Some((from, to)) = band_char_range(&text, driver, cursor) else {
+    let Some((from, to)) = band_char_range(&text, lexing, cursor) else {
         return;
     };
     buffer.apply_tag_by_name(TAG_NAME, &buffer.iter_at_offset(from), &buffer.iter_at_offset(to));
 }
 
-pub fn install(buffer: &gtk::TextBuffer, database: Arc<DatabaseService>, connection_id: Option<Uuid>) {
+pub fn install(
+    buffer: &gtk::TextBuffer,
+    database: Arc<DatabaseService>,
+    connection_id: Option<Uuid>,
+    known_lexing: KnownLexing,
+) {
     let tag = gtk::TextTag::builder()
         .name(TAG_NAME)
         .background_rgba(&gtk::gdk::RGBA::new(0.5, 0.5, 0.5, 0.12))
@@ -47,6 +53,7 @@ pub fn install(buffer: &gtk::TextBuffer, database: Arc<DatabaseService>, connect
             generation.set(ticket);
             let buffer = buffer.clone();
             let database = database.clone();
+            let known_lexing = known_lexing.clone();
             let generation = generation.clone();
             glib::idle_add_local_once(move || {
                 let Some(buffer) = buffer.upgrade() else {
@@ -59,7 +66,13 @@ pub fn install(buffer: &gtk::TextBuffer, database: Arc<DatabaseService>, connect
                     .and_then(|id| database.metadata(id))
                     .map(|metadata| metadata.driver_id)
                     .unwrap_or_default();
-                refresh(&buffer, &driver);
+                refresh(
+                    &buffer,
+                    Lexing {
+                        driver: &driver,
+                        settings: known_lexing.settings(),
+                    },
+                );
             });
         }
     };

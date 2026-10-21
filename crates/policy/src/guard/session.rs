@@ -323,6 +323,21 @@ impl Session for PolicySession {
             .await
     }
 
+    async fn lexical_settings_controlled(
+        &mut self,
+        control: &OperationControl,
+    ) -> Result<Option<tablepro_core::sql_syntax::script::LexicalSettings>, DriverError> {
+        if self.retired.get() {
+            return Err(DriverError::Unsupported("the session was retired".into()));
+        }
+        self.guard
+            .caught_read(
+                "SESSION LEXICAL SETTINGS",
+                self.inner.lexical_settings_controlled(control),
+            )
+            .await
+    }
+
     fn is_usable(&self) -> bool {
         if self.retired.get() {
             return false;

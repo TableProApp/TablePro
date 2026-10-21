@@ -7,7 +7,7 @@ use crate::ui::grid::local_filter::{LocalResultSettingsStore, ResultViewKey};
 use crate::ui::grid::{GridMsg, TabGridContext, build_column_view};
 use sha2::{Digest, Sha256};
 use std::future::Future;
-use tablepro_core::sql_syntax::script::BatchErrorPolicy;
+use tablepro_core::sql_syntax::script::{BatchErrorPolicy, LexicalSettings};
 use tablepro_core::{DriverError, OperationControl, QueryResult};
 
 pub(crate) fn clear_box(b: &gtk::Box) {
@@ -104,6 +104,7 @@ pub(crate) struct StatementRun<'a, S> {
     pub(crate) parameter_values: &'a std::collections::HashMap<String, tablepro_core::Value>,
     pub(crate) control: &'a OperationControl,
     pub(crate) error_policy: BatchErrorPolicy,
+    pub(crate) settings_check: Option<LexicalSettings>,
     pub(crate) succeeded: S,
 }
 
@@ -125,6 +126,7 @@ pub(crate) async fn run_statements(
             parameter_values,
             control,
             error_policy,
+            settings_check: None,
             succeeded,
         },
         |_| async { false },
@@ -154,28 +156,26 @@ where
         parameter_values,
         control,
         error_policy,
+        settings_check,
         succeeded,
     } = run;
-    if statements.is_empty() {
-        return ScriptRunResult::Completed(Vec::new());
-    }
     let (single_statement, stops_on_error) = (statements.len() == 1, error_policy == BatchErrorPolicy::StopScript);
+    let last_index = statements.len().saturating_sub(1);
     let mut out = Vec::with_capacity(statements.len());
-    let mut aborted = false;
+    let mut skip = None;
     for (statement_index, sql) in statements.into_iter().enumerate() {
         let identity = statement_identity(statement_index, &sql);
         let preview = sql_preview(&sql);
-        if aborted {
-            out.push(not_run_outcome(identity, preview));
+        if let Some(reason) = skip.replace(None) {
+            out.push(skipped_outcome(identity, preview, reason));
             continue;
         }
-        let started = std::time::Instant::now();
-        let waited_before = crate::services::approval_wait::waited();
+        let (started, waited_before) = (std::time::Instant::now(), crate::services::approval_wait::waited());
         let bound = match bind_statement_for_run(&sql, driver_id, parameter_values, identity, preview.clone()) {
             Ok(bound) => bound,
             Err(reason) => {
                 out.push(*reason);
-                aborted = stops_on_error;
+                skip = stops_on_error.then_some(None);
                 continue;
             }
         };
@@ -191,22 +191,88 @@ where
             started,
             control,
         };
-        match stream_statement_if_supported(attempt, &mut stream_update, &succeeded).await {
-            Ok(Some(result)) => return result,
-            Ok(None) => {}
-            Err(outcome) => {
+        let kind = match run_statement(attempt, &mut stream_update, &succeeded).await {
+            Ok(kind) => kind,
+            Err(Halt::Finished(result)) => return result,
+            Err(Halt::Failed(outcome)) => {
                 out.push(*outcome);
                 return ScriptRunResult::Completed(out);
             }
-        }
-        let kind = match query_statement(&target, &bound.sql, &bound.values, &sql, control, &succeeded).await {
-            Ok(kind) => kind,
-            Err(result) => return result,
         };
-        aborted |= stops_on_error && matches!(kind, StatementOutcomeKind::Error(_));
+        skip = (stops_on_error && matches!(kind, StatementOutcomeKind::Error(_))).then_some(None);
         out.push(statement_outcome(identity, preview, started, waited_before, kind));
+        if skip.is_none() && statement_index < last_index {
+            match lexical_settings_change(&target, settings_check, control).await {
+                Ok(change) => skip = change.map(Some),
+                Err(result) => return result,
+            }
+        }
     }
     ScriptRunResult::Completed(out)
+}
+
+fn skipped_outcome(identity: StatementIdentity, preview: String, reason: Option<String>) -> StatementOutcome {
+    match reason {
+        Some(reason) => StatementOutcome {
+            kind: StatementOutcomeKind::Error(reason),
+            ..not_run_outcome(identity, preview)
+        },
+        None => not_run_outcome(identity, preview),
+    }
+}
+
+enum Halt {
+    Finished(ScriptRunResult),
+    Failed(Box<StatementOutcome>),
+}
+
+async fn run_statement<F, Fut>(
+    attempt: StreamAttempt<'_>,
+    stream_update: &mut F,
+    succeeded: &impl Fn(&str),
+) -> Result<StatementOutcomeKind, Halt>
+where
+    F: FnMut(StreamUpdate) -> Fut,
+    Fut: Future<Output = bool>,
+{
+    let (target, bound_sql, bound_params, sql, control) = (
+        attempt.target,
+        attempt.bound_sql,
+        attempt.bound_params,
+        attempt.sql,
+        attempt.control,
+    );
+    match stream_statement_if_supported(attempt, stream_update, succeeded).await {
+        Ok(Some(result)) => return Err(Halt::Finished(result)),
+        Ok(None) => {}
+        Err(outcome) => return Err(Halt::Failed(outcome)),
+    }
+    query_statement(target, bound_sql, bound_params, sql, control, succeeded)
+        .await
+        .map_err(Halt::Finished)
+}
+
+async fn lexical_settings_change(
+    target: &super::session_mode::StatementTarget,
+    expected: Option<LexicalSettings>,
+    control: &OperationControl,
+) -> Result<Option<String>, ScriptRunResult> {
+    let Some(expected) = expected else {
+        return Ok(None);
+    };
+    match target.lexical_settings(control).await {
+        Ok(current) if current.is_none_or(|current| current == expected) => Ok(None),
+        Ok(_) => Ok(Some(crate::tr!(
+            "Not run: the previous statement changed how this session reads strings, so the rest of the script \
+             would split differently. Run the remaining statements again."
+        ))),
+        Err(DriverError::Cancelled) => Err(ScriptRunResult::Cancelled),
+        Err(DriverError::TimedOut) => Err(ScriptRunResult::TimedOut),
+        Err(error) => Ok(Some(
+            crate::tr!("Not run: could not confirm how this session reads strings: {error}")
+                .replace("{error}", &crate::services::error_text::driver_message(&error)),
+        )),
+    }
 }
 
 fn not_run_outcome(identity: StatementIdentity, preview: String) -> StatementOutcome {
@@ -1022,6 +1088,9 @@ fn result_view_keys(outcomes: &[StatementOutcome]) -> std::collections::HashSet<
         .collect()
 }
 
+#[cfg(test)]
+#[path = "outcomes/lexing_tests.rs"]
+mod lexing_tests;
 #[cfg(test)]
 #[path = "outcomes/tests.rs"]
 mod tests;

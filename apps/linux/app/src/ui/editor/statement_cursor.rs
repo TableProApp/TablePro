@@ -13,8 +13,27 @@ pub fn grammar_for(driver: &str) -> Option<SqlGrammar> {
     }
 }
 
-pub fn plan_for(text: &str, grammar: SqlGrammar) -> ScriptPlan {
-    ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar))
+#[derive(Debug, Clone, Copy)]
+pub struct Lexing<'a> {
+    pub driver: &'a str,
+    pub settings: Option<LexicalSettings>,
+}
+
+impl<'a> From<&'a str> for Lexing<'a> {
+    fn from(driver: &'a str) -> Self {
+        Self { driver, settings: None }
+    }
+}
+
+impl Lexing<'_> {
+    pub fn settings_for(&self, grammar: SqlGrammar) -> LexicalSettings {
+        self.settings.unwrap_or_else(|| LexicalSettings::default_for(grammar))
+    }
+
+    fn plan(&self, text: &str) -> Option<ScriptPlan> {
+        let grammar = grammar_for(self.driver)?;
+        Some(ScriptPlan::build(text, grammar, self.settings_for(grammar)))
+    }
 }
 
 pub fn cursor_byte_offset(text: &str, character_offset: usize) -> usize {
@@ -25,16 +44,20 @@ pub fn cursor_byte_offset(text: &str, character_offset: usize) -> usize {
 pub struct PlannedStatements {
     pub statements: Vec<String>,
     pub error_policy: BatchErrorPolicy,
+    pub settings_check: Option<LexicalSettings>,
 }
 
-pub fn script_statements(text: &str, driver: &str) -> Result<PlannedStatements, String> {
-    let Some(grammar) = grammar_for(driver) else {
+pub fn script_statements<'a>(text: &str, lexing: impl Into<Lexing<'a>>) -> Result<PlannedStatements, String> {
+    let lexing = lexing.into();
+    let Some(grammar) = grammar_for(lexing.driver) else {
         return Ok(PlannedStatements {
-            statements: tablepro_core::sql_lex::split_statements(text, driver),
+            statements: tablepro_core::sql_lex::split_statements(text, lexing.driver),
             error_policy: BatchErrorPolicy::StopScript,
+            settings_check: None,
         });
     };
-    let plan = plan_for(text, grammar);
+    let settings = lexing.settings_for(grammar);
+    let plan = ScriptPlan::build(text, grammar, settings);
     if !plan.diagnostics().is_empty() {
         return Err(crate::tr!("The script contains an unterminated quote or comment."));
     }
@@ -43,23 +66,28 @@ pub fn script_statements(text: &str, driver: &str) -> Result<PlannedStatements, 
             "GO repetition is not supported. Expand repeated batches explicitly before running."
         ));
     }
-    let statements = plan
+    let statements: Vec<String> = plan
         .statements()
         .iter()
         .map(|statement| statement.text(text).trim().to_owned())
         .filter(|statement| !statement.is_empty())
         .collect();
+    let settings_dependent = statements.len() > 1
+        && LexicalSettings::ALL
+            .iter()
+            .any(|other| ScriptPlan::build(text, grammar, *other).statements() != plan.statements());
     Ok(PlannedStatements {
         statements,
         error_policy: plan.batch_error_policy(),
+        settings_check: settings_dependent.then_some(settings),
     })
 }
 
-pub fn statement_at_cursor(text: &str, driver: &str, byte: usize) -> Option<String> {
-    let Some(grammar) = grammar_for(driver) else {
-        return tablepro_core::sql_lex::statement_at_cursor(text, driver, byte);
+pub fn statement_at_cursor<'a>(text: &str, lexing: impl Into<Lexing<'a>>, byte: usize) -> Option<String> {
+    let lexing = lexing.into();
+    let Some(plan) = lexing.plan(text) else {
+        return tablepro_core::sql_lex::statement_at_cursor(text, lexing.driver, byte);
     };
-    let plan = plan_for(text, grammar);
     let statement = plan.statement_at(byte)?;
     let affected = plan.diagnostics().iter().any(|diagnostic| {
         let tablepro_core::sql_syntax::script::ScriptDiagnostic::Unterminated { start, .. } = diagnostic;
@@ -71,8 +99,12 @@ pub fn statement_at_cursor(text: &str, driver: &str, byte: usize) -> Option<Stri
     Some(statement.text(text).trim().to_owned())
 }
 
-pub fn statement_range_at(text: &str, driver: &str, byte: usize) -> Option<std::ops::Range<usize>> {
-    let plan = plan_for(text, grammar_for(driver)?);
+pub fn statement_range_at<'a>(
+    text: &str,
+    lexing: impl Into<Lexing<'a>>,
+    byte: usize,
+) -> Option<std::ops::Range<usize>> {
+    let plan = lexing.into().plan(text)?;
     let statement = plan.statement_at(byte)?;
     let unterminated = plan.diagnostics().iter().any(|diagnostic| {
         let tablepro_core::sql_syntax::script::ScriptDiagnostic::Unterminated { start, .. } = diagnostic;
@@ -87,8 +119,13 @@ pub fn statement_range_at(text: &str, driver: &str, byte: usize) -> Option<std::
     (!trimmed.is_empty()).then(|| statement.range.start + leading..statement.range.start + leading + trimmed.len())
 }
 
-pub fn adjacent_statement_start(text: &str, driver: &str, byte: usize, forward: bool) -> Option<usize> {
-    let plan = plan_for(text, grammar_for(driver)?);
+pub fn adjacent_statement_start<'a>(
+    text: &str,
+    lexing: impl Into<Lexing<'a>>,
+    byte: usize,
+    forward: bool,
+) -> Option<usize> {
+    let plan = lexing.into().plan(text)?;
     let mut starts = plan.statements().iter().filter_map(|statement| {
         let body = statement.text(text);
         let trimmed = body.trim_start();
@@ -104,6 +141,78 @@ pub fn adjacent_statement_start(text: &str, driver: &str, byte: usize, forward: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn plan_for(text: &str, grammar: SqlGrammar) -> ScriptPlan {
+        ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar))
+    }
+
+    fn postgres_without_standard_strings() -> Lexing<'static> {
+        Lexing {
+            driver: "postgres",
+            settings: LexicalSettings::from_postgres_standard_conforming_strings("off"),
+        }
+    }
+
+    #[test]
+    fn run_all_splits_with_the_session_settings_instead_of_the_grammar_defaults() {
+        let sql = r"SELECT 'path\'; SELECT 2;";
+        assert!(script_statements(sql, "mysql").is_err());
+        let planned = script_statements(
+            sql,
+            Lexing {
+                driver: "mysql",
+                settings: Some(LexicalSettings::from_mysql_sql_mode("NO_BACKSLASH_ESCAPES")),
+            },
+        )
+        .unwrap();
+        assert_eq!(planned.statements, [r"SELECT 'path\'", "SELECT 2"]);
+        assert_eq!(
+            planned.settings_check,
+            Some(LexicalSettings::from_mysql_sql_mode("NO_BACKSLASH_ESCAPES"))
+        );
+
+        let planned = script_statements(r"SELECT '東京\'s'; SELECT 2", postgres_without_standard_strings()).unwrap();
+        assert_eq!(planned.statements, [r"SELECT '東京\'s'", "SELECT 2"]);
+    }
+
+    #[test]
+    fn a_script_that_splits_the_same_under_every_setting_needs_no_check() {
+        let planned = script_statements("SELECT 'plain'; SELECT \"name\"", "mysql").unwrap();
+        assert_eq!(planned.settings_check, None);
+        assert_eq!(script_statements("SELECT 1", "mysql").unwrap().settings_check, None);
+    }
+
+    #[test]
+    fn run_current_statement_uses_the_session_settings_at_a_unicode_cursor() {
+        let sql = r"SELECT '東京\'s'; SELECT 'ü' AS second";
+        let lexing = postgres_without_standard_strings();
+        let second = sql.find("'ü'").unwrap() + "'ü".len();
+        assert_eq!(
+            statement_at_cursor(sql, lexing, second).as_deref(),
+            Some("SELECT 'ü' AS second")
+        );
+        assert_eq!(
+            statement_at_cursor(sql, lexing, sql.find("京").unwrap()).as_deref(),
+            Some(r"SELECT '東京\'s'")
+        );
+        assert_eq!(statement_at_cursor(sql, "postgres", second), None);
+        let character_offset = sql[..second].chars().count();
+        assert_eq!(
+            statement_range_at(sql, lexing, cursor_byte_offset(sql, character_offset)).map(|range| &sql[range]),
+            Some("SELECT 'ü' AS second")
+        );
+    }
+
+    #[test]
+    fn formatting_with_the_session_settings_keeps_each_statement() {
+        let sql = r"select '東京\'s' from t; select 2";
+        let lexing = postgres_without_standard_strings();
+        let settings = lexing.settings_for(SqlGrammar::PostgreSql);
+        let formatted = tablepro_core::sql_format::format_script(sql, SqlGrammar::PostgreSql, settings);
+        let planned = script_statements(&formatted, lexing).unwrap();
+        assert_eq!(planned.statements.len(), 2, "{formatted}");
+        assert!(formatted.contains(r"'東京\'s'"), "{formatted}");
+    }
 
     #[test]
     fn a_mysql_double_dash_without_a_space_is_subtraction_not_a_comment() {

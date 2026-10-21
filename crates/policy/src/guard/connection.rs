@@ -674,6 +674,14 @@ impl Connection for PolicyGuard {
         self.caught_read("PING", self.inner.ping()).await
     }
 
+    async fn lexical_settings_controlled(
+        &self,
+        control: &OperationControl,
+    ) -> Result<Option<tablepro_core::sql_syntax::script::LexicalSettings>, DriverError> {
+        self.caught_read("LEXICAL SETTINGS", self.inner.lexical_settings_controlled(control))
+            .await
+    }
+
     async fn close(self: Box<Self>) -> Result<(), DriverError> {
         Ok(())
     }
