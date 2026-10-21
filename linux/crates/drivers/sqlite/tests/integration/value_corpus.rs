@@ -34,7 +34,16 @@ impl ValueCorpusEngine for SqliteEngine {
             CorpusColumn::new("v DECIMAL(10, 2)").shows("-12.5", "-12.5"),
             CorpusColumn::new("v DATETIME")
                 .shows("'2024-02-29 12:00:00.123'", "2024-02-29 12:00:00.123")
-                .shows("'2024-03-10T02:30:00-08:00'", "2024-03-10T02:30:00-08:00"),
+                .shows("'2024-03-10T02:30:00-08:00'", "2024-03-10T02:30:00-08:00")
+                .shows("'2024-03-10 10:30:00Z'", "2024-03-10 10:30:00Z"),
+            // SQLite gives DATE, TIME and DATETIME one affinity, so each
+            // holds any form its date and time functions read.
+            CorpusColumn::new("v DATE")
+                .shows("'2024-02-29'", "2024-02-29")
+                .shows("'2024-03-10 02:30:00'", "2024-03-10 02:30:00"),
+            CorpusColumn::new("v TIME")
+                .shows("'12:30:00'", "12:30:00")
+                .shows("'12:30:00+05:30'", "12:30:00+05:30"),
             CorpusColumn::new("v BOOLEAN").shows("1", "1").shows("0", "0"),
             CorpusColumn::new("v JSON").shows(r#"'{"b": 1, "a": [1, 2.50]}'"#, r#"{"b": 1, "a": [1, 2.50]}"#),
             CorpusColumn::new("v")

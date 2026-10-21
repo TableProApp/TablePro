@@ -484,4 +484,73 @@ struct FavoritesMenuSpecTests {
         #expect(!issued.contains(.discardLinkedFileChanges(file)))
         #expect(issued.contains(.trashLinkedFavorite(file)))
     }
+
+    private func folderCommands(
+        _ folder: LinkedSQLFolder,
+        gitState: LinkedFolderGitMenuState?
+    ) -> [[FavoritesMenuCommand]] {
+        items(FavoritesMenuSpec.sections(for: FavoritesMenuContext(
+            clicked: .query(.linkedFolder(folder, children: [])),
+            linkedFolderGitStates: gitState.map { [folder.id: $0] } ?? [:]
+        )))
+    }
+
+    @Test("A linked folder in a repository offers Commit, Pull and Push as one group after its paths")
+    func linkedFolderGitGroup() {
+        let folder = LinkedSQLFolder(path: "/tmp/queries")
+        let groups = folderCommands(folder, gitState: LinkedFolderGitMenuState(hasChanges: true, isBusy: false))
+
+        #expect(groups.count == 4)
+        #expect(groups[1] == [.commitLinkedFolder(folder), .pullLinkedFolder(folder), .pushLinkedFolder(folder)])
+    }
+
+    @Test("A clean linked folder offers Pull and Push but nothing to commit")
+    func cleanLinkedFolder() {
+        let folder = LinkedSQLFolder(path: "/tmp/queries")
+        let issued = folderCommands(folder, gitState: LinkedFolderGitMenuState(hasChanges: false, isBusy: false)).joined()
+
+        #expect(!issued.contains(.commitLinkedFolder(folder)))
+        #expect(issued.contains(.pullLinkedFolder(folder)))
+        #expect(issued.contains(.pushLinkedFolder(folder)))
+    }
+
+    @Test("A linked folder outside a repository, or one whose repository is busy, offers no Git commands")
+    func linkedFolderWithoutGit() {
+        let folder = LinkedSQLFolder(path: "/tmp/queries")
+        for state in [nil, LinkedFolderGitMenuState(hasChanges: true, isBusy: true)] {
+            let issued = folderCommands(folder, gitState: state).joined()
+            #expect(!issued.contains(.commitLinkedFolder(folder)))
+            #expect(!issued.contains(.pullLinkedFolder(folder)))
+            #expect(!issued.contains(.pushLinkedFolder(folder)))
+            #expect(issued.contains(.removeLinkedFolder(folder)))
+        }
+    }
+
+    private func linkedCommands(
+        _ file: LinkedSQLFavorite,
+        gitState: LinkedFileGitState,
+        folderState: LinkedFolderGitMenuState
+    ) -> [FavoritesMenuCommand] {
+        commands(FavoritesMenuSpec.sections(for: FavoritesMenuContext(
+            clicked: .query(.linkedFavorite(file)),
+            linkedFileGitStates: [file.id: gitState],
+            linkedFolderGitStates: [file.folderId: folderState]
+        )))
+    }
+
+    @Test("A changed linked file offers Commit first in its Git group, unless it is conflicted or its repository is busy")
+    func changedFileOffersCommit() {
+        let file = linkedFile()
+        let idle = LinkedFolderGitMenuState(hasChanges: true, isBusy: false)
+        let modified = GitFileStatus(staged: .unmodified, unstaged: .modified)
+
+        let issued = linkedCommands(file, gitState: .changed(modified), folderState: idle)
+        #expect(issued.firstIndex(of: .commitLinkedFile(file)) == issued.firstIndex(of: .showLinkedFileHistory(file)).map { $0 - 1 })
+        #expect(linkedCommands(file, gitState: .changed(.untracked), folderState: idle).contains(.commitLinkedFile(file)))
+        #expect(!linkedCommands(file, gitState: .clean, folderState: idle).contains(.commitLinkedFile(file)))
+        let conflicted = GitFileStatus(staged: .unmerged, unstaged: .unmerged, isUnmergedEntry: true)
+        #expect(!linkedCommands(file, gitState: .changed(conflicted), folderState: idle).contains(.commitLinkedFile(file)))
+        let busy = LinkedFolderGitMenuState(hasChanges: true, isBusy: true)
+        #expect(!linkedCommands(file, gitState: .changed(modified), folderState: busy).contains(.commitLinkedFile(file)))
+    }
 }

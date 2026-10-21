@@ -36,6 +36,24 @@ struct ServerDashboardSplitViewTests {
         #expect(slowQueries(in: splitController)?.count == 1)
     }
 
+    @Test("Saved query tiles get their own pane between Server Metrics and Slow Queries")
+    func savedQueriesPaneOrder() throws {
+        let viewModel = ServerDashboardViewModel(connectionId: UUID(), databaseType: .mysql, services: .live)
+        let window = host(ServerDashboardView(viewModel: viewModel))
+        defer {
+            viewModel.stopAutoRefresh()
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+
+        let splitController = try #require(splitViewController(in: window.contentView))
+        let controllers = splitController.splitViewItems.map { $0.viewController }
+        #expect(controllers.count == 4)
+        #expect(controllers[1] is NSHostingController<MetricsBarView>)
+        #expect((controllers[2] as? NSHostingController<DashboardTilesView>)?.rootView.board === viewModel.tileBoard)
+        #expect(controllers[3] is NSHostingController<SlowQueryListView>)
+    }
+
     /// A collapsed last pane loses its divider, so a pane dragged shut could never be dragged back.
     @Test("No dashboard pane can be dragged shut")
     func panesRefuseDrag() throws {

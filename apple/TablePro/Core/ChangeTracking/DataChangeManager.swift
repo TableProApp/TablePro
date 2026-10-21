@@ -767,34 +767,13 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         insertedRowIDs: Set<RowID> = [],
         factory: RowChangeStatementFactory? = nil
     ) throws -> [DataWriteStep] {
-        switch try (factory ?? statementFactory()).rowWriteStatements(
+        let statements = try (factory ?? statementFactory()).rowWriteStatements(
             for: changes,
             insertedRowData: insertedRowData,
             deletedRowIDs: deletedRowIDs,
             insertedRowIDs: insertedRowIDs
-        ) {
-        case .counted(let attributed):
-            return attributed.map {
-                DataWriteStep(
-                    kind: .rowWrite,
-                    statement: $0.statement,
-                    expectedRowCount: $0.rowCount,
-                    tableName: tableName,
-                    matchesRowsWithoutKey: primaryKeyColumns.isEmpty && $0.kind != .insert,
-                    refusesSharedKey: $0.refusesSharedKey
-                )
-            }
-        case .driverWritten(let statements):
-            return statements.map {
-                DataWriteStep(
-                    kind: .rowWrite,
-                    statement: $0.statement,
-                    expectedRowCount: $0.keylessRowCount,
-                    tableName: tableName,
-                    matchesRowsWithoutKey: $0.keylessRowCount != nil
-                )
-            }
-        }
+        )
+        return DataWriteStep.rowWrites(statements, tableName: tableName, primaryKeyColumns: primaryKeyColumns)
     }
 
     func statementFactory() throws -> RowChangeStatementFactory {

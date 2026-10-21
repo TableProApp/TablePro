@@ -23,6 +23,8 @@ mod metadata;
 #[cfg(test)]
 mod open_semantics;
 #[cfg(test)]
+mod round_trip;
+#[cfg(test)]
 mod sessions;
 #[cfg(test)]
 mod sqlite_engine;

@@ -15,14 +15,8 @@ struct PgpassLookup: Hashable {
     let username: String
 }
 
-/// The one answer to "what password does this connection sign in with".
-///
-/// A connection can get its password from five places: an AWS or Cloud SQL IAM token minted per
-/// sign-in, an explicit override from a prompt, a `PasswordSource` (a file, an environment variable,
-/// the stdout of a shell command, 1Password, Vault, AWS Secrets Manager), `~/.pgpass`, or the
-/// Keychain. Only the connect path knew all five. `NativeDumpService` read the Keychain directly,
-/// so a backup of a connection whose password comes from 1Password or `~/.pgpass` ran with an empty
-/// password and failed against a server the app itself was connected to.
+// A connection signs in with one of: an IAM token minted per sign-in, a prompted override, a `PasswordSource` (a
+// Vault database role answers for the username too), `~/.pgpass`, or the Keychain.
 @MainActor
 enum ConnectionCredentialResolver {
     static func resolvePassword(
@@ -34,7 +28,8 @@ enum ConnectionCredentialResolver {
         try await resolveSignIn(for: connection, fields: fields, override: override, deadline: deadline).password
     }
 
-    // A nil username keeps the connection's own; Redshift IAM is the sign-in that hands back another.
+    // A nil username keeps the connection's own; Redshift IAM and a Vault database role hand back another.
+    // A sign-in that carries a lease belongs to whoever uses it, which releases it when done.
     static func resolveSignIn(
         for connection: DatabaseConnection,
         fields: [String: String],
@@ -44,25 +39,47 @@ enum ConnectionCredentialResolver {
         if let minter = iamPasswordMinter(for: connection, fields: fields) {
             return try await minter.mint(deadline: deadline)
         }
-        return ResolvedSignIn(username: nil, password: try await resolveStoredPassword(for: connection, override: override))
+        return try await resolveStoredSignIn(for: connection, override: override)
     }
 
-    private static func resolveStoredPassword(for connection: DatabaseConnection, override: String?) async throws -> String {
-        if let override { return override }
+    // A lease is a database user Vault creates, so a caller that only wants to know whether a password exists asks this.
+    static func signsInWithLease(_ connection: DatabaseConnection) -> Bool {
+        effectivePasswordSource(for: connection)?.vaultDatabaseRole != nil
+    }
+
+    private static func effectivePasswordSource(for connection: DatabaseConnection) -> PasswordSource? {
         if case .profile(let profileId) = connection.credentialMode,
            let profile = CredentialProfileStorage.shared.profile(for: profileId) {
-            return try await resolveProfilePassword(profile, for: connection)
+            guard case .source(let source) = profile.passwordMode else { return nil }
+            return source
+        }
+        return connection.passwordSource
+    }
+
+    private static func resolveStoredSignIn(for connection: DatabaseConnection, override: String?) async throws -> ResolvedSignIn {
+        if let override { return ResolvedSignIn(username: nil, password: override) }
+        if case .profile(let profileId) = connection.credentialMode,
+           let profile = CredentialProfileStorage.shared.profile(for: profileId) {
+            return try await resolveProfileSignIn(profile, for: connection)
         }
         if let passwordSource = connection.passwordSource {
-            guard await ConnectionStorage.shared.storeIsTrusted else {
+            guard ConnectionStorage.shared.storeIsTrusted else {
                 throw PasswordSourceResolver.ResolutionError.storeNotTrusted
             }
-            return try await PasswordSourceResolver.resolve(passwordSource, for: ConnectionScriptContext(connection: connection))
+            return try await resolveSource(passwordSource, for: connection)
         }
         if connection.usePgpass {
-            return pgpassPassword(for: connection, username: resolveUsername(for: connection))
+            return ResolvedSignIn(username: nil, password: pgpassPassword(for: connection, username: resolveUsername(for: connection)))
         }
-        return ConnectionStorage.shared.loadPassword(for: connection.id) ?? ""
+        return ResolvedSignIn(username: nil, password: ConnectionStorage.shared.loadPassword(for: connection.id) ?? "")
+    }
+
+    private static func resolveSource(_ source: PasswordSource, for connection: DatabaseConnection) async throws -> ResolvedSignIn {
+        if case .vaultDatabaseRole(let role) = source {
+            return try await VaultDatabaseCredentials.shared.signIn(role, interactive: false)
+        }
+        let password = try await PasswordSourceResolver.resolve(source, for: ConnectionScriptContext(connection: connection))
+        return ResolvedSignIn(username: nil, password: password)
     }
 
     /// The username a connect signs in as.
@@ -94,26 +111,24 @@ enum ConnectionCredentialResolver {
         return false
     }
 
-    private static func resolveProfilePassword(
+    private static func resolveProfileSignIn(
         _ profile: CredentialProfile,
         for connection: DatabaseConnection
-    ) async throws -> String {
+    ) async throws -> ResolvedSignIn {
         switch profile.passwordMode {
         case .stored:
-            return CredentialProfileStorage.shared.loadPassword(for: profile.id) ?? ""
+            return ResolvedSignIn(username: nil, password: CredentialProfileStorage.shared.loadPassword(for: profile.id) ?? "")
         case .prompt:
-            /// The prompt runs before the driver is built and arrives back as `override`, so
-            /// reaching here means it was declined or the connect is a background one.
-            return ""
+            // The prompt's answer arrives as `override`; reaching here means it was declined or the connect is unattended.
+            return ResolvedSignIn(username: nil, password: "")
         case .pgpass:
-            return pgpassPassword(for: connection, username: profile.username)
+            return ResolvedSignIn(username: nil, password: pgpassPassword(for: connection, username: profile.username))
         case .source(let source):
-            /// The profiles file carries its own tag for exactly this: a source can name a shell
-            /// command, so the file has to be the one TablePro last wrote before one runs.
+            // A source can name a shell command, or a Vault address to send a token to.
             guard CredentialProfileStorage.shared.storeIsTrusted else {
                 throw PasswordSourceResolver.ResolutionError.profileStoreNotTrusted
             }
-            return try await PasswordSourceResolver.resolve(source, for: ConnectionScriptContext(connection: connection))
+            return try await resolveSource(source, for: connection)
         }
     }
 
@@ -180,4 +195,11 @@ enum ConnectionCredentialResolver {
 struct ResolvedSignIn: Equatable, Sendable {
     let username: String?
     let password: String
+    let lease: VaultLease?
+
+    init(username: String?, password: String, lease: VaultLease? = nil) {
+        self.username = username
+        self.password = password
+        self.lease = lease
+    }
 }

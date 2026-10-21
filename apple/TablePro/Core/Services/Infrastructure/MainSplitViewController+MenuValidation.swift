@@ -125,9 +125,12 @@ struct MenuValidationContext: Equatable {
     var canShowObjectDDL = false
     var canRefreshMaterializedView = false
     var canEditObjectComment = false
+    var canSetSequenceNextValue = false
+    var canEditSequence = false
     var canCreateDatabase = false
     var canCreateTable = false
     var canCreateView = false
+    var canCreateSequence = false
     var canCreateSchema = false
     var canCreateTableFolder = false
     var canCopyObjects = false
@@ -312,7 +315,9 @@ extension MainSplitViewController: NSMenuItemValidation {
              #selector(showObjectDDL(_:)),
              #selector(copyObjectDDL(_:)),
              #selector(refreshMaterializedView(_:)),
-             #selector(editObjectComment(_:)):
+             #selector(editObjectComment(_:)),
+             #selector(setSequenceNextValue(_:)),
+             #selector(editSequence(_:)):
             return objectCommandIsEnabled(selector, context: context)
         case #selector(runMaintenanceOperation(_:)):
             return context.isConnected && context.hasMaintenanceOperations
@@ -391,6 +396,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && !context.isReadOnly && context.canCreateTable
         case #selector(createNewView(_:)):
             return context.isConnected && !context.isReadOnly && context.canCreateView
+        case #selector(createNewSequence(_:)):
+            return context.isConnected && !context.isReadOnly && context.canCreateSequence
         case #selector(createNewDatabase(_:)):
             return context.canCreateDatabase
         case #selector(createSchema(_:)):
@@ -598,6 +605,10 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.canRefreshMaterializedView
         case #selector(editObjectComment(_:)):
             return context.canEditObjectComment
+        case #selector(setSequenceNextValue(_:)):
+            return context.canSetSequenceNextValue
+        case #selector(editSequence(_:)):
+            return context.canEditSequence
         default:
             return false
         }
@@ -686,9 +697,12 @@ extension MainSplitViewController: NSMenuItemValidation {
             canShowObjectDDL: actions.canShowObjectDDL,
             canRefreshMaterializedView: actions.canRefreshMaterializedView,
             canEditObjectComment: actions.canEditObjectComment,
+            canSetSequenceNextValue: actions.canSetSequenceNextValue,
+            canEditSequence: actions.canEditSequence,
             canCreateDatabase: actions.canCreateDatabase,
             canCreateTable: actions.canCreateTable,
             canCreateView: actions.canCreateView,
+            canCreateSequence: actions.canCreateSequence,
             canCreateSchema: actions.canCreateSchema,
             canCreateTableFolder: canCreateTableFolder,
             canCopyObjects: actions.canCopyObjects,

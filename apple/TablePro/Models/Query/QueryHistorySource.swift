@@ -9,6 +9,7 @@ enum QueryHistorySource: String, Codable, CaseIterable, Sendable, Identifiable {
     case dataImport = "import"
     case mcp
     case script
+    case shortcuts
 
     var id: String { rawValue }
 
@@ -22,6 +23,7 @@ enum QueryHistorySource: String, Codable, CaseIterable, Sendable, Identifiable {
         case .dataImport: return String(localized: "Imports")
         case .mcp: return String(localized: "AI and MCP")
         case .script: return String(localized: "AppleScript")
+        case .shortcuts: return String(localized: "Shortcuts")
         }
     }
 
@@ -35,22 +37,19 @@ enum QueryHistorySource: String, Codable, CaseIterable, Sendable, Identifiable {
         case .dataImport: return "square.and.arrow.down"
         case .mcp: return "sparkles"
         case .script: return "applescript"
+        case .shortcuts: return "square.2.layers.3d"
         }
     }
 
     static let userAuthored: Set<QueryHistorySource> = [.editor, .explain]
 
-    /// The full set as it stood before `script` was added.
-    ///
-    /// A stored filter holding exactly these was the user choosing **Everything**, and decoding it
-    /// verbatim would silently drop the new source: their filter would start hiding scripted queries
-    /// and the toolbar would change from "Everything" to a count. Widening only this exact set leaves
-    /// a genuinely custom selection alone.
-    private static let allBeforeScript: Set<QueryHistorySource> = [
-        .editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp
+    // A stored filter equal to an earlier full set was "Everything" and widens to every source added since.
+    private static let earlierFullSets: [Set<QueryHistorySource>] = [
+        [.editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp],
+        [.editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp, .script]
     ]
 
     static func migratingStoredSelection(_ stored: Set<QueryHistorySource>) -> Set<QueryHistorySource> {
-        stored == allBeforeScript ? Set(allCases) : stored
+        earlierFullSets.contains(stored) ? Set(allCases) : stored
     }
 }

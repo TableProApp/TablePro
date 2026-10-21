@@ -77,7 +77,7 @@ struct PostgreSQLFetchTablesAllSchemasTests {
         let sql = query(.allSchemas)
         #expect(sql.contains("FROM pg_catalog.pg_inherits i"))
         #expect(sql.contains("LEFT JOIN pg_catalog.pg_description d"))
-        #expect(sql.contains("rc.relkind IN ('r', 'p', 'v', 'm', 'f')"))
+        #expect(sql.contains("rc.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')"))
     }
 
     @Test("A schema name is quoted as a literal in the one-schema listing")

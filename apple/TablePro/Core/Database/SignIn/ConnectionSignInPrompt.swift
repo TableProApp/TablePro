@@ -8,6 +8,7 @@ enum ConnectionSignInPrompt {
     /// again, the connect path retries on its own.
     static func offer(
         _ provider: ConnectionSignInProvider,
+        for error: Error,
         fields: [String: String],
         window: NSWindow?
     ) async -> Bool {
@@ -20,7 +21,7 @@ enum ConnectionSignInPrompt {
         guard confirmed else { return false }
 
         do {
-            try await provider.signIn(fields, window)
+            try await provider.signIn(error, fields, window)
             return true
         } catch {
             AlertHelper.showErrorSheet(

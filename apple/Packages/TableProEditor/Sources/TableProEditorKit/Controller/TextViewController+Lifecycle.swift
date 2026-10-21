@@ -348,12 +348,22 @@ extension TextViewController {
     }
 
     private func handleShowCompletions(_ event: NSEvent) -> NSEvent? {
+        toggleCompletions() ? nil : event
+    }
+
+    // `Option+Escape` and F5 send `complete:` up the responder chain; the text view leaves it to this controller.
+    override public func complete(_ sender: Any?) {
+        toggleCompletions()
+    }
+
+    @discardableResult
+    private func toggleCompletions() -> Bool {
         guard let completionDelegate = self.completionDelegate,
               let cursorPosition = cursorPositions.first else {
-            return event
+            return false
         }
         if dismissCompletions() {
-            return nil
+            return true
         }
         SuggestionController.shared.showCompletions(
             textView: self,
@@ -361,6 +371,6 @@ extension TextViewController {
             cursorPosition: cursorPosition,
             isManualTrigger: true
         )
-        return nil
+        return true
     }
 }

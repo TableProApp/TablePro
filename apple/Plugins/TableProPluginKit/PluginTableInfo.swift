@@ -16,6 +16,31 @@ public struct PluginTableInfo: Codable, Sendable {
     /// partitioned MySQL or Oracle table from a plain one.
     public let partitionCount: Int?
 
+    // The column a sequence belongs to, in the sequence's own schema. Nil for anything else.
+    public let ownedByTable: String?
+    public let ownedByColumn: String?
+
+    public init(
+        name: String,
+        type: String = "TABLE",
+        rowCount: Int? = nil,
+        schema: String? = nil,
+        comment: String?,
+        partitionCount: Int?,
+        ownedByTable: String?,
+        ownedByColumn: String?
+    ) {
+        self.name = name
+        self.type = type
+        self.rowCount = rowCount
+        self.schema = schema
+        self.comment = comment
+        self.partitionCount = partitionCount
+        self.ownedByTable = ownedByTable
+        self.ownedByColumn = ownedByColumn
+    }
+
+    @_disfavoredOverload
     public init(
         name: String,
         type: String = "TABLE",
@@ -30,6 +55,8 @@ public struct PluginTableInfo: Codable, Sendable {
         self.schema = schema
         self.comment = comment
         self.partitionCount = partitionCount
+        self.ownedByTable = nil
+        self.ownedByColumn = nil
     }
 
     @_disfavoredOverload
@@ -46,6 +73,8 @@ public struct PluginTableInfo: Codable, Sendable {
         self.schema = schema
         self.comment = comment
         self.partitionCount = nil
+        self.ownedByTable = nil
+        self.ownedByColumn = nil
     }
 
     @_disfavoredOverload
@@ -61,5 +90,7 @@ public struct PluginTableInfo: Codable, Sendable {
         self.schema = schema
         self.comment = nil
         self.partitionCount = nil
+        self.ownedByTable = nil
+        self.ownedByColumn = nil
     }
 }

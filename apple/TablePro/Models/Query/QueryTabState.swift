@@ -509,6 +509,8 @@ struct ColumnLayoutState: Equatable {
     var columnContentWidths: [String: CGFloat]?
     var columnOrder: [String]?
     var hiddenColumns: Set<String> = []
+    // Leading columns in display order, a count so a result that repeats a name stays unambiguous.
+    var frozenColumnCount: Int = 0
 
     /// Splices a captured order into the stored one, keeping names the capture never saw.
     ///
@@ -547,6 +549,7 @@ struct ColumnLayoutState: Equatable {
         columnWidths = other.columnWidths
         columnContentWidths = other.columnContentWidths
         columnOrder = Self.mergedColumnOrder(current: columnOrder, incoming: other.columnOrder)
+        frozenColumnCount = other.frozenColumnCount
     }
 
     /// Drops the geometry outright. Reset is not a capture, so it must not go through the merge,
@@ -555,6 +558,7 @@ struct ColumnLayoutState: Equatable {
         columnWidths = [:]
         columnContentWidths = nil
         columnOrder = nil
+        frozenColumnCount = 0
     }
 
     func mergingWidths(_ liveWidths: [String: CGFloat]) -> ColumnLayoutState {

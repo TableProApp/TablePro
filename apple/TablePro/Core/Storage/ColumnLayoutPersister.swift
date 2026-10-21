@@ -25,6 +25,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         var columnContentWidths: [String: CGFloat]?
         var columnOrder: [String]?
         var hiddenColumns: [String]?
+        var frozenColumnCount: Int?
     }
 
     nonisolated static let syncCategoryPrefix = "columnLayout."
@@ -56,6 +57,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         guard !layout.columnWidths.isEmpty
             || layout.columnContentWidths?.isEmpty == false
             || layout.columnOrder != nil
+            || layout.frozenColumnCount > 0
         else { return }
 
         var entries = loadEntries(for: key.connectionId)
@@ -71,6 +73,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
             current: entry.columnOrder,
             incoming: layout.columnOrder
         )
+        entry.frozenColumnCount = layout.frozenColumnCount > 0 ? layout.frozenColumnCount : nil
         entries[key.storageKey] = entry
         cache[key.connectionId] = entries
         writeEntries(entries, for: key.connectionId)
@@ -83,12 +86,14 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
               !persisted.columnWidths.isEmpty
               || persisted.columnContentWidths?.isEmpty == false
               || persisted.columnOrder != nil
+              || (persisted.frozenColumnCount ?? 0) > 0
         else { return nil }
 
         var state = ColumnLayoutState()
         state.columnWidths = persisted.columnWidths
         state.columnContentWidths = persisted.columnContentWidths
         state.columnOrder = persisted.columnOrder
+        state.frozenColumnCount = max(0, persisted.frozenColumnCount ?? 0)
         return state
     }
 
@@ -115,6 +120,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         if entry.columnWidths.isEmpty,
            entry.columnContentWidths?.isEmpty != false,
            entry.columnOrder == nil,
+           entry.frozenColumnCount == nil,
            entry.hiddenColumns == nil {
             clear(for: key)
             return
@@ -236,6 +242,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         entry.columnWidths = [:]
         entry.columnContentWidths = nil
         entry.columnOrder = nil
+        entry.frozenColumnCount = nil
 
         if entry.hiddenColumns?.isEmpty == false {
             entries[key.storageKey] = entry

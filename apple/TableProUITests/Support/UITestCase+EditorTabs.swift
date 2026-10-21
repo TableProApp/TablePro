@@ -40,6 +40,33 @@ extension UITestCase {
         grid.staticTexts.matching(NSPredicate(format: "value == %@", text)).firstMatch
     }
 
+    // MARK: - Key bindings
+
+    // Picks a key bindings mode in Settings > Editor and closes Settings. A new sandbox starts on Standard.
+    internal func chooseKeyBindings(_ title: String, in app: XCUIApplication) {
+        app.typeShortcut(.settings)
+        let settings = window("settings", in: app)
+        XCTAssertTrue(settings.waitToExist(timeout: 10), "Cmd+, must open Settings")
+        let editorPane = settings.toolbars.buttons["Editor"]
+        XCTAssertTrue(editorPane.waitToExist(timeout: 10))
+        editorPane.click()
+
+        let keyBindings = settings.popUpButtons["key-bindings-picker"]
+        XCTAssertTrue(scrollUntilHittable(keyBindings, in: settings, timeout: 30), "The Editor pane must offer key bindings")
+        XCTAssertEqual(keyBindings.value as? String, "Standard", "A new sandbox starts with the standard key bindings")
+        keyBindings.click()
+        let item = keyBindings.menuItems[title]
+        XCTAssertTrue(item.waitToExist(timeout: 5), "The key bindings popup must offer \(title)")
+        item.click()
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { (keyBindings.value as? String) == title },
+            "\(title) key bindings must be chosen after the click"
+        )
+
+        settings.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(settings.waitForNonExistence(timeout: 10), "Settings must close")
+    }
+
     // MARK: - Editor text
 
     internal func editorText(_ editor: XCUIElement) -> String {

@@ -59,8 +59,8 @@ extension MainContentCoordinator {
         OperationRequest(
             connectionId: connectionId,
             databaseType: connection.type,
-            sql: request.sql,
-            kind: OperationKind.worst(of: [request.sql], databaseType: connection.type),
+            sql: request.gatedSQL,
+            kind: request.operationKind(databaseType: connection.type),
             caller: .userInterface,
             capabilities: .interactiveUser,
             operationDescription: String(localized: "Execute Query")
@@ -107,6 +107,8 @@ extension MainContentCoordinator {
 
         tabManager.mutate(tabId: tabId) { $0.execution.errorMessage = nil }
 
+        // EXPLAIN ANALYZE and an actual plan run the statement, and a CREATE TABLE AS among them changes the catalog.
+        let ranWrite = request.operationKind(databaseType: conn.type).declaresWrite
         let explainTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -115,10 +117,16 @@ extension MainContentCoordinator {
                     route: services.databaseManager.executionRoute(for: scope),
                     cancellation: .cancellableRead(lease)
                 ) { [queryExecutor] driver in
-                    try await queryExecutor.executeQuery(
+                    if let step = request.driverStep {
+                        return try await QueryExecutor.fetchExplainPlan(
+                            driver: driver, statement: request.subjectSQL, variantId: step.variantId
+                        )
+                    }
+                    return try await queryExecutor.executeQuery(
                         driver: driver, sql: request.sql, parameters: nil, rowCap: nil
                     )
                 }
+                if ranWrite { Self.postStatementRan(request.subjectSQL, on: conn) }
                 let rawText = ExplainPlanTextFlattener.flatten(rows: fetchResult.rows)
                 let plan = ExplainPlanParserRegistry.plan(from: rawText, format: request.format)
 
@@ -174,7 +182,7 @@ extension MainContentCoordinator {
                             with: [ExplainResultSetFactory.make(
                                 rawText: rawText,
                                 plan: plan,
-                                sql: request.sql,
+                                sql: request.replayableSQL,
                                 executionTime: fetchResult.executionTime,
                                 anchor: anchor,
                                 planContext: captured.context
@@ -204,6 +212,7 @@ extension MainContentCoordinator {
                     )
                 }
             } catch {
+                if ranWrite { Self.postStatementRan(request.subjectSQL, on: conn) }
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     guard tabExecution.settle(claim) else { return }

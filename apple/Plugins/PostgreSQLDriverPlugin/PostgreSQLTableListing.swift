@@ -29,14 +29,16 @@ nonisolated enum PostgreSQLTableListing {
         includeMaterializedViews: Bool,
         includeForeignTables: Bool,
         includeComments: Bool = true,
-        includePartitionAwareness: Bool = true
+        includePartitionAwareness: Bool = true,
+        includeSequences: Bool = false
     ) -> String {
         query(
             in: .schema(schema),
             includeMaterializedViews: includeMaterializedViews,
             includeForeignTables: includeForeignTables,
             includeComments: includeComments,
-            includePartitionAwareness: includePartitionAwareness
+            includePartitionAwareness: includePartitionAwareness,
+            includeSequences: includeSequences
         )
     }
 
@@ -47,12 +49,14 @@ nonisolated enum PostgreSQLTableListing {
         includeMaterializedViews: Bool,
         includeForeignTables: Bool,
         includeComments: Bool = true,
-        includePartitionAwareness: Bool = true
+        includePartitionAwareness: Bool = true,
+        includeSequences: Bool = false
     ) -> String {
         var labels: [(kind: String, label: String)] = includePartitionAwareness ? [("p", "PARTITIONED TABLE")] : []
         labels.append(("v", "VIEW"))
         if includeMaterializedViews { labels.append(("m", "MATERIALIZED VIEW")) }
         if includeForeignTables { labels.append(("f", "FOREIGN TABLE")) }
+        if includeSequences { labels.append(("S", "SEQUENCE")) }
         let kinds = ["r", "p"] + labels.map(\.kind).filter { $0 != "p" }
         let tableType = "CASE c.relkind\n"
             + labels.map {
@@ -64,6 +68,7 @@ nonisolated enum PostgreSQLTableListing {
         let partitionCountColumn = includePartitionAwareness
             ? "CASE WHEN c.relkind = 'p' THEN (SELECT pg_catalog.count(*) FROM pg_catalog.pg_inherits ci WHERE ci.inhparent = c.oid) END"
             : "NULL::bigint"
+        let ownerColumns = includeSequences ? ",\n       " + sequenceOwnerColumns : ""
         let schemaColumn = listing.projectsSchema ? ",\n       c.nspname AS schema_name" : ""
         // Unfenced, a reader's five-schema listing ran 42 ms instead of 12; one schema is fastest unfenced.
         let fence = listing.projectsSchema ? "\n      OFFSET 0" : ""
@@ -91,7 +96,7 @@ nonisolated enum PostgreSQLTableListing {
             SELECT c.relname AS table_name,
                    \(tableType) AS table_type,
                    \(commentColumn) AS table_comment,
-                   \(partitionCountColumn) AS partition_count\(schemaColumn)
+                   \(partitionCountColumn) AS partition_count\(ownerColumns)\(schemaColumn)
             FROM (SELECT rc.oid, rc.relname, rc.relkind, rc.relowner, n.oid AS nspoid, n.nspname
                   FROM pg_catalog.pg_class rc
                   JOIN pg_catalog.pg_namespace n ON n.oid = rc.relnamespace
@@ -99,7 +104,7 @@ nonisolated enum PostgreSQLTableListing {
                     AND \(PostgreSQLObjectQueries.membership("rc.relkind", in: kinds))\(fence)) c\(commentJoin)
             WHERE c.nspoid <> pg_catalog.pg_my_temp_schema()
               AND NOT pg_catalog.pg_is_other_temp_schema(c.nspoid)
-              AND \(visibleRelation("c"))\(partitionExclusion)
+              AND \(includeSequences ? visibleRelationOrSequence("c") : visibleRelation("c"))\(partitionExclusion)
             \(orderBy(listing))
             """
     }
@@ -143,6 +148,43 @@ nonisolated enum PostgreSQLTableListing {
         """
     }
 
+    // A sequence is listed exactly when information_schema.sequences would list it.
+    // has_sequence_privilege raises on any other relation, so it stays inside the CASE.
+    static func visibleRelationOrSequence(_ alias: String) -> String {
+        """
+        (CASE WHEN \(alias).relkind = 'S'
+                    THEN pg_catalog.pg_has_role(\(alias).relowner, 'USAGE')
+                        OR pg_catalog.has_sequence_privilege(\(alias).oid, 'SELECT, UPDATE, USAGE')
+                    ELSE \(visibleRelation(alias)) END)
+        """
+    }
+
+    // deptype 'a' is OWNED BY (serial), 'i' an identity column. Either names one column.
+    private static let sequenceOwnerColumns = """
+        CASE WHEN c.relkind = 'S' THEN (
+                   SELECT owner.relname
+                   FROM pg_catalog.pg_depend d
+                   JOIN pg_catalog.pg_class owner ON owner.oid = d.refobjid
+                   WHERE \(sequenceOwnerDependency("d", sequence: "c.oid"))
+                   LIMIT 1) END AS owned_by_table,
+               CASE WHEN c.relkind = 'S' THEN (
+                   SELECT a.attname
+                   FROM pg_catalog.pg_depend d
+                   JOIN pg_catalog.pg_attribute a ON a.attrelid = d.refobjid AND a.attnum = d.refobjsubid
+                   WHERE \(sequenceOwnerDependency("d", sequence: "c.oid"))
+                   LIMIT 1) END AS owned_by_column
+        """
+
+    static func sequenceOwnerDependency(_ alias: String, sequence: String) -> String {
+        """
+        \(alias).classid = 'pg_catalog.pg_class'::pg_catalog.regclass
+                     AND \(alias).objid = \(sequence)
+                     AND \(alias).refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass
+                     AND \(alias).refobjsubid > 0
+                     AND \(alias).deptype IN ('a', 'i')
+        """
+    }
+
     /// The all-schema form filters by the schema list query itself, so a table is listed exactly
     /// when `fetchSchemas()` lists its schema, whatever rule `schemata` applies on that release.
     private static func namespaceFilter(_ listing: PostgreSQLTableListingScope, column: String) -> String {
@@ -161,13 +203,21 @@ nonisolated enum PostgreSQLTableListing {
     }
 
     static func table(fromRow row: [String?]) -> PluginTableInfo? {
+        table(fromRow: row, includesSequences: false)
+    }
+
+    // A listing with sequences carries two owner columns before the schema.
+    static func table(fromRow row: [String?], includesSequences: Bool) -> PluginTableInfo? {
         guard let name = row[safe: 0] ?? nil else { return nil }
+        let schemaIndex = includesSequences ? 6 : 4
         return PluginTableInfo(
             name: name,
             type: relationType(listed: row[safe: 1] ?? nil),
-            schema: row[safe: 4] ?? nil,
+            schema: row[safe: schemaIndex] ?? nil,
             comment: (row[safe: 2] ?? nil)?.nilIfEmpty,
-            partitionCount: (row[safe: 3] ?? nil).flatMap(Int.init)
+            partitionCount: (row[safe: 3] ?? nil).flatMap(Int.init),
+            ownedByTable: includesSequences ? (row[safe: 4] ?? nil) : nil,
+            ownedByColumn: includesSequences ? (row[safe: 5] ?? nil) : nil
         )
     }
 
@@ -177,6 +227,7 @@ nonisolated enum PostgreSQLTableListing {
         case "MATERIALIZED VIEW": return "MATERIALIZED VIEW"
         case "FOREIGN TABLE": return "FOREIGN TABLE"
         case "VIEW": return "VIEW"
+        case "SEQUENCE": return "SEQUENCE"
         default: return "TABLE"
         }
     }

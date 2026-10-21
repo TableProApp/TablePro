@@ -42,8 +42,12 @@ struct EditorSettingsView: View {
                     }
                 }
                 Toggle("Query parameters (:name syntax)", isOn: $settings.queryParametersEnabled)
-                Toggle("Vim mode", isOn: $settings.vimModeEnabled)
-                    .accessibilityIdentifier("vim-mode-toggle")
+                Picker("Key bindings:", selection: $settings.keyBindings) {
+                    Text("Standard").tag(EditorKeyBindings.standard)
+                    Text(verbatim: "Vim").tag(EditorKeyBindings.vim)
+                    Text(verbatim: "Emacs").tag(EditorKeyBindings.emacs)
+                }
+                .accessibilityIdentifier("key-bindings-picker")
             }
 
             FormatterSection(settings: $formatter, editor: settings)
