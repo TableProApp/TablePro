@@ -52,6 +52,7 @@ struct DatabaseTreeMenuSpecTests {
         canCopyObjects: Bool = true,
         canDuplicateDatabase: Bool = true,
         canSearchData: Bool = true,
+        canGenerateRows: Bool = false,
         canCreateTable: Bool = true,
         canCreateView: Bool = true,
         canCreateSequence: Bool = false,
@@ -125,6 +126,7 @@ struct DatabaseTreeMenuSpecTests {
             canCopyObjects: canCopyObjects,
             canDuplicateDatabase: canDuplicateDatabase,
             canSearchData: canSearchData,
+            canGenerateRows: canGenerateRows,
             canCreateTable: canCreateTable,
             canCreateView: canCreateView,
             canCreateSequence: canCreateSequence,
@@ -1235,6 +1237,38 @@ struct DatabaseTreeMenuSpecTests {
         ))))
         #expect(!offersSearch(DatabaseTreeMenuSpec.sections(for: context(
             clicked: databaseKind("app"), selectedContainers: [.database("app"), .database("archive")]
+        ))))
+    }
+
+    // MARK: - Generate Rows
+
+    @Test("A table row offers Generate Rows beside the other commands that move data into it")
+    func tableOffersGenerateRows() {
+        let ref = tableRef("orders")
+        let sections = DatabaseTreeMenuSpec.sections(for: context(clicked: .table(ref), canGenerateRows: true))
+
+        #expect(commands(sections).contains(.generateRows(ref)))
+        #expect(titles(sections).contains("Generate Rows\u{2026}"))
+        let transfer = titles(sections).firstIndex(of: "Transfer To\u{2026}")
+        let generate = titles(sections).firstIndex(of: "Generate Rows\u{2026}")
+        #expect(generate.map { index in transfer.map { index < $0 } ?? false } == true)
+    }
+
+    @Test("Generate Rows is not offered on a view, on a read-only connection, or on an engine that cannot write rows")
+    func generateRowsNeedsAWritableTable() {
+        func offersGenerate(_ sections: [DatabaseTreeMenuSection]) -> Bool {
+            commands(sections).contains { if case .generateRows = $0 { return true } else { return false } }
+        }
+        let view = tableRef("active_orders", type: .view)
+        let ref = tableRef("orders")
+
+        #expect(!offersGenerate(DatabaseTreeMenuSpec.sections(for: context(clicked: .table(view), canGenerateRows: true))))
+        #expect(!offersGenerate(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: .table(ref), isReadOnly: true, canGenerateRows: true
+        ))))
+        #expect(!offersGenerate(DatabaseTreeMenuSpec.sections(for: context(clicked: .table(ref)))))
+        #expect(offersGenerate(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: .table(tableRef("events", type: .partitionedTable)), canGenerateRows: true
         ))))
     }
 

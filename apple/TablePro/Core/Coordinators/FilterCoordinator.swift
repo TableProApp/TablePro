@@ -74,6 +74,7 @@ final class FilterCoordinator: ObservableObject {
             columns: queryColumns.columns,
             columnTypes: queryColumns.columnTypes,
             selectColumns: parent.selectColumns(for: tab),
+            unloadedValues: parent.unloadedValuePlan(for: tab),
             limit: tab.pagination.pageSize,
             offset: 0
         ) else {
@@ -124,6 +125,7 @@ final class FilterCoordinator: ObservableObject {
                 sortState: querySortState(for: tab),
                 columns: buffer.columns,
                 selectColumns: parent.selectColumns(for: tab),
+                unloadedValues: parent.unloadedValuePlan(for: tab),
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
             )
@@ -282,6 +284,7 @@ final class FilterCoordinator: ObservableObject {
                 sortState: querySortState(for: tab),
                 columns: columns,
                 selectColumns: parent.selectColumns(for: tab),
+                unloadedValues: parent.unloadedValuePlan(for: tab),
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
             )
@@ -295,6 +298,7 @@ final class FilterCoordinator: ObservableObject {
             columns: columns,
             columnTypes: columnTypes,
             selectColumns: parent.selectColumns(for: tab),
+            unloadedValues: parent.unloadedValuePlan(for: tab),
             limit: tab.pagination.pageSize,
             offset: tab.pagination.currentOffset
         ) {
@@ -307,6 +311,7 @@ final class FilterCoordinator: ObservableObject {
                 sortState: querySortState(for: tab),
                 columns: columns,
                 selectColumns: parent.selectColumns(for: tab),
+                unloadedValues: parent.unloadedValuePlan(for: tab),
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
             )

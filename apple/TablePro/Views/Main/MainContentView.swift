@@ -251,6 +251,8 @@ struct MainContentView: View {
             JoinBuilderSheet(model: JoinBuilderViewModel(launch: launch, connection: connection)) { sql in
                 coordinator.openJoinQuery(sql, database: launch.database)
             }
+        case .generateRows(let session):
+            GenerateRowsSheet(session: session)
         case .exportDialog, .exportQueryResults, .importDialog, .rowImport, .rowImportBatch,
              .transferTables, .backupDatabase, .restoreDatabase:
             transferSheetContent(for: sheet, dismiss: dismissBinding)
@@ -348,6 +350,15 @@ struct MainContentView: View {
                 table: currentTab.flatMap { coordinator.tableInfoIdentity(of: $0) }
             ) { [coordinator] tab in
                 await coordinator.loadTableMetadata(for: tab)
+            })
+            .modifier(InspectorValueLoadModifier(
+                inspector: trailingPaneState.inspector,
+                selection: coordinator.selectionState,
+                tabId: currentTab?.id,
+                selectsDataRows: gridSelectionOwner == .dataGrid,
+                contentVersion: currentTab?.schemaVersion ?? 0
+            ) { [coordinator] tabId, displayRow in
+                await coordinator.loadInspectorRowValues(tabId: tabId, displayRow: displayRow)
             })
             /// Keyed on the connection alone. The only driver that answers `fetchSessionContexts`
             /// is Snowflake, which pays two round trips for it, so this must not reload per query.

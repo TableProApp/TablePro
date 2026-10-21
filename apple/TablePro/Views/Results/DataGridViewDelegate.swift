@@ -69,6 +69,8 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridSetCellsToValue(_ targets: [SetValueTarget]) -> Bool
     /// Runs the cell edits of one command, so an owner that writes each edit through can write them once.
     func dataGridBatchEdits(actionName: String, _ edits: () -> Void)
+    /// Loads the values a page left on the server. The completion is true once every one arrived.
+    func dataGridLoadUnloadedValues(rowIDs: [RowID], columns: IndexSet?, completion: @escaping @MainActor (Bool) -> Void)
 }
 
 extension DataGridViewDelegate {
@@ -83,6 +85,13 @@ extension DataGridViewDelegate {
     func dataGridSummaryColumnPolicy() -> SelectionSummaryColumnPolicy? { nil }
     func dataGridSetCellsToValue(_ targets: [SetValueTarget]) -> Bool { false }
     func dataGridBatchEdits(actionName: String, _ edits: () -> Void) { edits() }
+    func dataGridLoadUnloadedValues(
+        rowIDs: [RowID],
+        columns: IndexSet?,
+        completion: @escaping @MainActor (Bool) -> Void
+    ) {
+        completion(false)
+    }
     func dataGridDidEditCell(row: Int, column: Int, newValue: String?) {}
     func dataGridDeleteRows(_ indices: Set<Int>) {}
     func dataGridCopyRows(_ indices: Set<Int>) {}

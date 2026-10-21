@@ -82,6 +82,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         driver: DatabaseDriver,
         databaseType: DatabaseType,
         targetTable: String? = nil,
+        targetSchema: String? = nil,
         columnMapping: [String: String] = [:],
         sourceFields: Set<String> = [],
         rowWriting: ImportRowWriting = .insert,
@@ -106,6 +107,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         if let targetTable {
             self.rowGenerator = try? SQLStatementGenerator(
                 tableName: targetTable,
+                schemaName: targetSchema,
                 columns: [],
                 primaryKeyColumns: [],
                 databaseType: databaseType
@@ -267,6 +269,19 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         }
     }
 
+    // Rows already in column order, written in the same budgeted batches as a mapped import.
+    func insertRows(
+        columns: [String],
+        values rows: [[PluginCellValue]],
+        onWrite: (Int) -> Void = { _ in }
+    ) async throws {
+        guard let rowGenerator else {
+            throw PluginImportError.importFailed("No target table configured for row import")
+        }
+        guard !columns.isEmpty, !rows.isEmpty else { return }
+        try await insertGroup(rows, columns: columns, generator: rowGenerator, onWrite: onWrite)
+    }
+
     /// One budget per group, because a group is exactly the run of rows sharing one column set and
     /// the column set is what fixes a row's width. Bounded in bytes as well as parameters: 500 rows
     /// of three 1 MB values fit a three-column table's 21,845-row parameter ceiling and went out as
@@ -276,7 +291,8 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     private func insertGroup(
         _ groupValues: [[PluginCellValue]],
         columns: [String],
-        generator: SQLStatementGenerator
+        generator: SQLStatementGenerator,
+        onWrite: (Int) -> Void = { _ in }
     ) async throws {
         let budget = SQLWriteBatchBudget(columnCount: columns.count, generator: generator)
         var filler = SQLWriteBatchFiller<[PluginCellValue]>(budget: budget)
@@ -285,9 +301,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
                 continue
             }
             try await write(batch, columns: columns, generator: generator)
+            onWrite(batch.count)
         }
         guard let batch = filler.take() else { return }
         try await write(batch, columns: columns, generator: generator)
+        onWrite(batch.count)
     }
 
     private func write(

@@ -45,7 +45,8 @@ extension MainContentView {
                         mode: .queryResults(
                             connection: connectionWithCurrentDatabase,
                             tableRows: coordinator.tabSessionRegistry.tableRows(for: tab.id),
-                            suggestedFileName: fileName
+                            suggestedFileName: fileName,
+                            fillUnloaded: coordinator.unloadedValueFill(for: tab)
                         )
                     )
                 }

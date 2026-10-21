@@ -37,12 +37,14 @@ internal enum FieldValueState: Equatable {
     case absent
     /// The user asked for the field to be taken out of the row.
     case pendingRemoval
+    case unloaded
 
     internal static func resolve(_ field: FieldEditState) -> FieldValueState {
         if field.isPendingNull { return .pendingNull }
         if field.isPendingDefault { return .pendingDefault }
         if field.isPendingRemoval { return .pendingRemoval }
         if let pending = field.pendingValue { return .value(pending) }
+        if field.isUnloaded { return .unloaded }
         if field.hasMultipleValues { return .multipleValues }
         if field.isAbsent { return .absent }
         guard let original = field.originalValue else { return .null }
@@ -54,7 +56,7 @@ internal enum FieldValueState: Equatable {
     internal var editableText: String {
         switch self {
         case .value(let text): return text
-        case .null, .pendingNull, .pendingDefault, .multipleValues, .absent, .pendingRemoval: return ""
+        case .null, .pendingNull, .pendingDefault, .multipleValues, .absent, .pendingRemoval, .unloaded: return ""
         }
     }
 
@@ -67,6 +69,7 @@ internal enum FieldValueState: Equatable {
         case .pendingDefault: return "DEFAULT"
         case .multipleValues: return String(localized: "Multiple values")
         case .absent, .pendingRemoval: return String(localized: "No Field")
+        case .unloaded: return String(localized: "Not Loaded")
         }
     }
 
@@ -74,7 +77,7 @@ internal enum FieldValueState: Equatable {
     internal var isPending: Bool {
         switch self {
         case .pendingNull, .pendingDefault, .pendingRemoval: return true
-        case .value, .null, .multipleValues, .absent: return false
+        case .value, .null, .multipleValues, .absent, .unloaded: return false
         }
     }
 }
