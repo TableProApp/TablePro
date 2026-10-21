@@ -68,13 +68,16 @@ To collapse a multiline SQL block, place the cursor inside it and press **Ctrl+S
 - **Export**: from a table or a result, choose CSV, JSON, Markdown, HTML, XML, SQL
   or an Excel workbook. Export the current table page or loaded query results.
   Full-table export is refused until a consistent snapshot path is supported.
+  SQL row export and Copy as INSERT are not database backups; see the
+  [identity and generated-column limitations](known-limitations.md#data-and-values).
 - **Import**: right-click a table and choose **Import CSV…** to load a CSV file
   into it, or use the button on a schema header to create a new table from a CSV
   file. Separator, header row and column mapping are detected and can be changed.
   For an existing table, use **Remember mapping** and **Restore mapping** to reuse
-  the destination choices for that connection and table. Auto-increment and generated
-  columns stay on Skip; the database supplies their values. Explicit values for
-  auto-increment columns cannot currently be imported ([known limitations](known-limitations.md#data-and-values)).
+  the destination choices for that connection and table. Generated columns stay on
+  Skip. PostgreSQL, MySQL/MariaDB and SQLite accept mapped auto-increment values;
+  SQL Server identity columns stay on Skip. See
+  [known limitations](known-limitations.md#data-and-values).
   PostgreSQL `timestamptz` values should include an explicit zone; unzoned values are
   currently treated as UTC. See [known limitations](known-limitations.md#data-and-values).
 
