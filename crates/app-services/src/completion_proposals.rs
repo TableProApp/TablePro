@@ -14,19 +14,24 @@ pub struct Candidates {
 }
 
 pub fn candidates(sql: &str, cursor: usize, index: &SchemaIndex) -> Candidates {
+    candidates_with(sql, cursor, index, None)
+}
+
+pub fn candidates_with(sql: &str, cursor: usize, index: &SchemaIndex, settings: Option<LexicalSettings>) -> Candidates {
     let grammar = index.grammar.unwrap_or(SqlGrammar::PostgreSql);
-    let Some(mut range) = replacement_range(sql, cursor, grammar) else {
+    let settings_for_grammar = settings.unwrap_or_else(|| LexicalSettings::default_for(grammar));
+    let Some(mut range) = replacement_range(sql, cursor, grammar, settings_for_grammar) else {
         return Candidates {
             range: cursor..cursor,
             values: Vec::new(),
         };
     };
     let quoted = sql[range.start..].starts_with(['"', '`', '[']);
-    let scope = scope_at(sql, range.start, index);
+    let scope = scope_at(sql, range.start, index, settings);
     if scope == Scope::Tables {
-        range.start = qualified_start(sql, range.start, grammar);
+        range.start = qualified_start(sql, range.start, grammar, settings_for_grammar);
     }
-    let mut values = candidate_sql(sql, range.start, index);
+    let mut values = candidate_sql(sql, range.start, index, settings);
     if !quoted && !matches!(scope, Scope::ColumnsOf(_)) {
         values.extend(super::completion::SQL_KEYWORDS.split_whitespace().map(str::to_string));
     }
@@ -56,8 +61,8 @@ fn normalized(text: &str) -> String {
         .to_lowercase()
 }
 
-fn replacement_range(sql: &str, cursor: usize, grammar: SqlGrammar) -> Option<Range<usize>> {
-    let plan = ScriptPlan::build(sql, grammar, LexicalSettings::default_for(grammar));
+fn replacement_range(sql: &str, cursor: usize, grammar: SqlGrammar, settings: LexicalSettings) -> Option<Range<usize>> {
+    let plan = ScriptPlan::build(sql, grammar, settings);
     let token = plan
         .tokens(0..sql.len())
         .find(|token| {
@@ -97,8 +102,8 @@ fn replacement_range(sql: &str, cursor: usize, grammar: SqlGrammar) -> Option<Ra
     }
 }
 
-fn qualified_start(sql: &str, start: usize, grammar: SqlGrammar) -> usize {
-    let plan = ScriptPlan::build(sql, grammar, LexicalSettings::default_for(grammar));
+fn qualified_start(sql: &str, start: usize, grammar: SqlGrammar, settings: LexicalSettings) -> usize {
+    let plan = ScriptPlan::build(sql, grammar, settings);
     let tokens: Vec<_> = plan.tokens(0..start).filter(|token| !token.kind.is_trivia()).collect();
     let mut start = start;
     for pair in tokens.rchunks_exact(2) {
@@ -151,6 +156,23 @@ mod tests {
             assert_eq!(values.len(), 1);
             assert_eq!(values[0].1, tablepro_core::sql_dialect::quote_ident(driver, "a.b\"` ]"));
         }
+    }
+
+    #[test]
+    fn completion_after_a_backslash_ending_string_follows_the_session_string_rules() {
+        let mut index = SchemaIndex::default();
+        index.grammar = Some(SqlGrammar::MySql);
+        index.set_columns("orders", vec!["total".into()]);
+        let sql = r"SELECT 'a\', o. FROM orders o";
+        let cursor = r"SELECT 'a\', o.".len();
+        assert!(candidates(sql, cursor, &index).values.is_empty());
+        let no_backslash_escapes = Some(LexicalSettings::from_mysql_sql_mode("NO_BACKSLASH_ESCAPES"));
+        let values = candidates_with(sql, cursor, &index, no_backslash_escapes).values;
+        assert_eq!(values, vec![("total".into(), "`total`".into())]);
+        assert_eq!(
+            super::super::completion::referenced_tables_with(sql, cursor, index.grammar, no_backslash_escapes),
+            vec!["orders"]
+        );
     }
 
     #[test]

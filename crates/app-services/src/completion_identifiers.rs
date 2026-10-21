@@ -3,8 +3,16 @@ use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
 
 pub(super) fn plan(text: &str, grammar: Option<SqlGrammar>) -> ScriptPlan {
+    plan_with(text, grammar, None)
+}
+
+pub(super) fn plan_with(text: &str, grammar: Option<SqlGrammar>, settings: Option<LexicalSettings>) -> ScriptPlan {
     let grammar = grammar.unwrap_or(SqlGrammar::Sqlite);
-    ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar))
+    ScriptPlan::build(
+        text,
+        grammar,
+        settings.unwrap_or_else(|| LexicalSettings::default_for(grammar)),
+    )
 }
 
 pub fn split_table_reference(text: &str, grammar: Option<SqlGrammar>) -> Option<(Option<String>, String)> {
@@ -80,8 +88,8 @@ pub(super) fn bare_reference(text: &str, grammar: Option<SqlGrammar>) -> Option<
     Some(text[token.range].to_string())
 }
 
-pub(super) fn words(text: &str, grammar: Option<SqlGrammar>) -> Vec<&str> {
-    let plan = plan(text, grammar);
+pub(super) fn words(text: &str, grammar: Option<SqlGrammar>, settings: Option<LexicalSettings>) -> Vec<&str> {
+    let plan = plan_with(text, grammar, settings);
     let tokens: Vec<_> = plan
         .tokens(0..text.len())
         .filter(|token| !token.kind.is_trivia())

@@ -9,7 +9,7 @@ fn fixture(
     let view = sourceview5::View::new();
     view.buffer().set_text(sql);
     view.buffer().place_cursor(&view.buffer().iter_at_offset(cursor as i32));
-    let provider = install(index);
+    let provider = install(index, Default::default());
     view.completion().add_provider(&provider);
     let context = sourceview5::CompletionContext::builder()
         .completion(&view.completion())

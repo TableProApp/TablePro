@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use tablepro_core::sql_syntax::SqlGrammar;
+use tablepro_core::sql_syntax::script::LexicalSettings;
 
 use super::completion_identifiers::{bare_reference, table_key, words};
 
@@ -114,36 +115,42 @@ fn bare_name(key: &str) -> &str {
 
 #[cfg(test)]
 fn candidate_words(sql: &str, cursor_byte: usize, index: &SchemaIndex) -> Vec<String> {
-    candidates(sql, cursor_byte, index, true, str::to_string)
+    candidates(sql, cursor_byte, index, None, true, str::to_string)
 }
 
-pub(super) fn candidate_sql(sql: &str, cursor_byte: usize, index: &SchemaIndex) -> Vec<String> {
+pub(super) fn candidate_sql(
+    sql: &str,
+    cursor_byte: usize,
+    index: &SchemaIndex,
+    settings: Option<LexicalSettings>,
+) -> Vec<String> {
     let driver = match index.grammar {
         Some(SqlGrammar::MySql) => "mysql",
         Some(SqlGrammar::MsSql) => "mssql",
         Some(SqlGrammar::ClickHouse) => "clickhouse",
         _ => "postgres",
     };
-    candidates(sql, cursor_byte, index, false, |column| {
+    candidates(sql, cursor_byte, index, settings, false, |column| {
         tablepro_core::sql_dialect::quote_ident(driver, column)
     })
 }
 
-pub(super) fn scope_at(sql: &str, cursor: usize, index: &SchemaIndex) -> Scope {
-    let statement = statement_around(sql, cursor, index.grammar);
-    scope_for(&statement.text[..statement.cursor], statement.text, index)
+pub(super) fn scope_at(sql: &str, cursor: usize, index: &SchemaIndex, settings: Option<LexicalSettings>) -> Scope {
+    let statement = statement_around(sql, cursor, index.grammar, settings);
+    scope_for(&statement.text[..statement.cursor], statement.text, index, settings)
 }
 
 fn candidates(
     sql: &str,
     cursor_byte: usize,
     index: &SchemaIndex,
+    settings: Option<LexicalSettings>,
     bare_tables: bool,
     column_sql: impl Fn(&str) -> String,
 ) -> Vec<String> {
-    let statement = statement_around(sql, cursor_byte, index.grammar);
+    let statement = statement_around(sql, cursor_byte, index.grammar, settings);
     let prefix = &statement.text[..statement.cursor];
-    let scope = scope_for(prefix, statement.text, index);
+    let scope = scope_for(prefix, statement.text, index, settings);
     let mut out: Vec<String> = Vec::new();
 
     match scope {
@@ -182,8 +189,17 @@ fn candidates(
 }
 
 pub fn referenced_tables(sql: &str, cursor_byte: usize, grammar: Option<SqlGrammar>) -> Vec<String> {
-    let statement = statement_around(sql, cursor_byte, grammar);
-    table_references(statement.text, grammar)
+    referenced_tables_with(sql, cursor_byte, grammar, None)
+}
+
+pub fn referenced_tables_with(
+    sql: &str,
+    cursor_byte: usize,
+    grammar: Option<SqlGrammar>,
+    settings: Option<LexicalSettings>,
+) -> Vec<String> {
+    let statement = statement_around(sql, cursor_byte, grammar, settings);
+    table_references(statement.text, grammar, settings)
         .into_iter()
         .map(|(table, _)| table)
         .collect()
@@ -201,17 +217,27 @@ struct StatementSpan<'a> {
     cursor: usize,
 }
 
-fn statement_around(sql: &str, cursor_byte: usize, grammar: Option<SqlGrammar>) -> StatementSpan<'_> {
+fn statement_around(
+    sql: &str,
+    cursor_byte: usize,
+    grammar: Option<SqlGrammar>,
+    settings: Option<LexicalSettings>,
+) -> StatementSpan<'_> {
     let cursor = floor_char_boundary(sql, cursor_byte.min(sql.len()));
-    let range = grammar.map_or(0..sql.len(), |grammar| statement_range(sql, cursor, grammar));
+    let range = grammar.map_or(0..sql.len(), |grammar| statement_range(sql, cursor, grammar, settings));
     StatementSpan {
         text: &sql[range.start..range.end],
         cursor: cursor - range.start,
     }
 }
 
-fn statement_range(sql: &str, cursor: usize, grammar: SqlGrammar) -> std::ops::Range<usize> {
-    let plan = super::completion_identifiers::plan(sql, Some(grammar));
+fn statement_range(
+    sql: &str,
+    cursor: usize,
+    grammar: SqlGrammar,
+    settings: Option<LexicalSettings>,
+) -> std::ops::Range<usize> {
+    let plan = super::completion_identifiers::plan_with(sql, Some(grammar), settings);
     let statements = plan.statements();
     let following = statements.partition_point(|statement| statement.range.start <= cursor);
     let next_end = statements
@@ -238,13 +264,13 @@ fn floor_char_boundary(text: &str, mut index: usize) -> usize {
     index
 }
 
-fn scope_for(prefix: &str, statement: &str, index: &SchemaIndex) -> Scope {
-    let references = table_references(statement, index.grammar);
-    let keyword = last_keyword(prefix, index.grammar);
+fn scope_for(prefix: &str, statement: &str, index: &SchemaIndex, settings: Option<LexicalSettings>) -> Scope {
+    let references = table_references(statement, index.grammar, settings);
+    let keyword = last_keyword(prefix, index.grammar, settings);
     let in_table_position = keyword
         .as_deref()
         .is_some_and(|keyword| TABLE_KEYWORDS.contains(&keyword));
-    if let Some(qualifier) = trailing_qualifier(prefix, index.grammar) {
+    if let Some(qualifier) = trailing_qualifier(prefix, index.grammar, settings) {
         if in_table_position {
             return Scope::Tables;
         }
@@ -309,9 +335,9 @@ pub(super) const KEYWORDS: [&str; 44] = [
     "returning",
 ];
 
-fn last_keyword(prefix: &str, grammar: Option<SqlGrammar>) -> Option<String> {
+fn last_keyword(prefix: &str, grammar: Option<SqlGrammar>, settings: Option<LexicalSettings>) -> Option<String> {
     let mut last = None;
-    for word in words(prefix, grammar) {
+    for word in words(prefix, grammar, settings) {
         let lowered = word.to_ascii_lowercase();
         if KEYWORDS.contains(&lowered.as_str()) {
             last = Some(lowered);
@@ -320,11 +346,11 @@ fn last_keyword(prefix: &str, grammar: Option<SqlGrammar>) -> Option<String> {
     last
 }
 
-fn trailing_qualifier(prefix: &str, grammar: Option<SqlGrammar>) -> Option<String> {
+fn trailing_qualifier(prefix: &str, grammar: Option<SqlGrammar>, settings: Option<LexicalSettings>) -> Option<String> {
     if prefix.ends_with(char::is_whitespace) && !prefix.trim_end().ends_with('.') {
         return None;
     }
-    let word = words(prefix, grammar).last().copied()?;
+    let word = words(prefix, grammar, settings).last().copied()?;
     let plan = super::completion_identifiers::plan(word, Some(grammar.unwrap_or(SqlGrammar::Sqlite)));
     let dot = plan
         .tokens(0..word.len())
@@ -352,8 +378,12 @@ fn resolve_qualifier(qualifier: &str, references: &[(String, Option<String>)], g
     qualifier.to_string()
 }
 
-fn table_references(statement: &str, grammar: Option<SqlGrammar>) -> Vec<(String, Option<String>)> {
-    let tokens = words(statement, grammar);
+fn table_references(
+    statement: &str,
+    grammar: Option<SqlGrammar>,
+    settings: Option<LexicalSettings>,
+) -> Vec<(String, Option<String>)> {
+    let tokens = words(statement, grammar, settings);
     let mut out: Vec<(String, Option<String>)> = Vec::new();
     let mut index = 0usize;
     while index < tokens.len() {
@@ -694,7 +724,7 @@ mod tests {
         index.set_columns("public.safety_items", vec!["note".into()]);
         let request = index.request("public.safety_items".into());
         assert!(
-            super::candidates("SELECT * FROM ", 14, &index, false, str::to_string)
+            super::candidates("SELECT * FROM ", 14, &index, None, false, str::to_string)
                 .iter()
                 .any(|candidate| candidate == "public.safety_items")
         );
@@ -713,7 +743,7 @@ mod tests {
                 .any(|(label, value)| label == "SELECT" && value == "SELECT")
         );
         assert!(
-            !super::candidates("SELECT * FROM ", 14, &index, false, str::to_string)
+            !super::candidates("SELECT * FROM ", 14, &index, None, false, str::to_string)
                 .iter()
                 .any(|candidate| candidate == "public.safety_items")
         );
