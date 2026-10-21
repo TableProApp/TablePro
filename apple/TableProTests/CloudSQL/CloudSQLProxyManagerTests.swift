@@ -106,7 +106,7 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
         return Int(arguments[index + 1])
     }
 
-    private static func openListener(port: Int) -> Int32? {
+    static func openListener(port: Int) -> Int32? {
         let descriptor = socket(AF_INET, SOCK_STREAM, 0)
         guard descriptor >= 0 else { return nil }
         var reuse: Int32 = 1
@@ -224,6 +224,20 @@ struct CloudSQLProxyManagerTests {
         try await manager.closeTunnel(connectionId: id)
         #expect(fake.stopCallCount >= 1)
         #expect(!(await manager.hasTunnel(connectionId: id)))
+    }
+
+    @Test("A configured port another program already listens on is refused before the proxy starts")
+    func occupiedPortIsRefused() async throws {
+        let port = try #require(LoopbackPort.allocateFree())
+        let squatter = try #require(FakeCloudSQLProxyRunner.openListener(port: port))
+        defer { close(squatter) }
+        let fake = FakeCloudSQLProxyRunner(behavior: .ready)
+        let manager = CloudSQLProxyManager(runnerFactory: { fake })
+
+        await #expect(throws: CloudSQLProxyError.portInUse(port)) {
+            _ = try await manager.createTunnel(connectionId: UUID(), config: self.config(localPort: port))
+        }
+        #expect(fake.startCallCount == 0)
     }
 
     @Test("createTunnel fails when the proxy exits during startup")

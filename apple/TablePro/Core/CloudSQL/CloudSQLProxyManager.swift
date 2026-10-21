@@ -93,6 +93,16 @@ actor CloudSQLProxyManager: TunnelManaging {
                 deleteCredentialsFile(at: credentialsFilePath)
                 throw CloudSQLProxyError.noAvailablePort
             }
+            // Readiness only sees that something answers on the port, and a program already there would take the
+            // sign-in meant for the proxy, which can be a password or token the proxy's encryption lets go as typed.
+            if await LoopbackPort.isReachable(host: "127.0.0.1", port: port) {
+                guard config.localPort == nil else {
+                    deleteCredentialsFile(at: credentialsFilePath)
+                    throw CloudSQLProxyError.portInUse(port)
+                }
+                lastError = CloudSQLProxyError.noAvailablePort
+                continue
+            }
             let runner = runnerFactory()
             let arguments = Self.buildArguments(config: config, port: port, credentialsFilePath: credentialsFilePath)
 
