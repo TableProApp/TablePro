@@ -267,6 +267,17 @@ struct JsonRowConverterTests {
         #expect(result.contains("\"{broken\""))
     }
 
+    @Test(
+        "A JSON column value the grammar refuses is exported as a string",
+        arguments: ["[1,2,]", #"{"k":1,}"#, "\u{FEFF}{}", #"{"n":01}"#]
+    )
+    func nonGrammarJsonColumnIsQuoted(_ value: String) {
+        let converter = makeConverter(columns: ["data"], columnTypes: [.json(rawType: nil)])
+        let result = converter.generateJson(rows: [[.text(value)]])
+        let quoted = "\"" + value.replacingOccurrences(of: "\"", with: "\\\"") + "\""
+        #expect(result.contains("\"data\": " + quoted))
+    }
+
     @Test("JSON column with trailing whitespace is trimmed before embedding")
     func jsonColumnTrimmed() {
         let converter = makeConverter(columns: ["data"], columnTypes: [.json(rawType: nil)])

@@ -7,6 +7,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 import Testing
 
 struct RedisStatementGeneratorTests {
@@ -519,6 +520,25 @@ struct RedisStatementGeneratorTests {
         #expect(results[0].statement == "DEL mykey")
     }
 
+    @Test("A deleted key with a semicolon or an edge blank is quoted, so a history replay deletes that key", arguments: [
+        "a;b", "user\u{A0}", "hello\u{3000}", "k\u{200B}"
+    ])
+    func deleteQuotesSeparatorsAndBlanks(key: String) throws {
+        let gen = RedisStatementGenerator(namespaceName: "", columns: ["Key", "Value", "TTL"])
+        let change = PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: [.text(key), "v", "-1"])
+        let results = try gen.generateRowWrites(
+            from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
+        )
+        let statement = try #require(results.first?.statement)
+        #expect(RedisCommandSplitter.commands(in: statement + ";").count == 1)
+        let op = try RedisCommandParser.parse(statement + ";")
+        guard case .del(let keys) = op else {
+            Issue.record("Expected .del, got \(op)")
+            return
+        }
+        #expect(keys == [key])
+    }
+
     @Test("Bulk delete batches keys into single DEL command")
     func bulkDelete() throws {
         let gen = RedisStatementGenerator(
@@ -957,6 +977,21 @@ struct RedisStatementGeneratorBrowseColumnTests {
         #expect(results.count == 2)
         #expect(results[0].statement == "SET mykey hello")
         #expect(results[1].statement == "EXPIRE mykey 600")
+    }
+
+    @Test("A new hash stores each JSON field value as the text it was written as")
+    func hashInsertKeepsJSONValues() throws {
+        let gen = RedisStatementGenerator(namespaceName: "", columns: Self.browseColumns)
+        let change = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let value = #"{"s": "t", "n": 2, "on": true, "none": null, "nested": {"x": 1}, "list": [1, 2]}"#
+        let results = try gen.generateRowWrites(
+            from: [change],
+            insertedRowData: [0: ["h", "hash", nil, nil, .text(value)]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+        #expect(results.first?.statement
+            == #"HSET h list [1,2] n 2 nested "{\"x\":1}" none null on true s t"#)
     }
 }
 

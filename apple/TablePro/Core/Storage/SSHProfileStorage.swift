@@ -136,14 +136,14 @@ final class SSHProfileStorage {
     /// stage labels. Only the secrets were ever resolved live, so changing a profile's host left
     /// every already-linked connection tunnelling to the old one while sending the new password.
     @discardableResult
-    func refreshLinkedConnections(with profile: SSHProfile) -> Bool {
+    func refreshLinkedConnections(with profile: SSHProfile, byUser: Bool = true) -> Bool {
         let storage = connectionStorageProvider()
         let linked = Set(
             storage.loadConnections()
                 .filter { $0.isLinked(toSSHProfile: profile.id) }
                 .map { $0.id }
         )
-        return storage.mutateConnections(ids: linked) { connection in
+        return storage.mutateConnections(ids: linked, byUser: byUser) { connection in
             connection = profile.applied(to: connection)
         }
     }

@@ -7,6 +7,7 @@ public enum SQLStatementScanner {
         public let hasContent: Bool
         public let terminator: SQLStatementTerminator
         public let acceptsBindParameters: Bool
+        private let isAllContent: Bool
 
         public init(
             sql: String,
@@ -20,6 +21,17 @@ public enum SQLStatementScanner {
             self.hasContent = hasContent
             self.terminator = terminator
             self.acceptsBindParameters = acceptsBindParameters
+            isAllContent = false
+        }
+
+        // A Redis command starts and ends on an argument byte, which can be one StatementBlank trims.
+        public init(wholeText sql: String, offset: Int) {
+            self.sql = sql
+            self.offset = offset
+            hasContent = true
+            terminator = .separator
+            acceptsBindParameters = true
+            isAllContent = true
         }
 
         /// The statement's whole span in the document, in UTF-16 units.
@@ -33,6 +45,7 @@ public enum SQLStatementScanner {
         /// lands on the newline that ended the previous line. A decoration or a gutter anchor placed from ``range``
         /// therefore starts a line early, and uses this instead.
         public var contentRange: NSRange {
+            guard !isAllContent else { return range }
             let content = StatementBlank.contentRange(of: sql)
             return NSRange(location: offset + content.location, length: content.length)
         }

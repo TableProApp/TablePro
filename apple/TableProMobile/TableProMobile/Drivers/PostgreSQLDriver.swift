@@ -295,7 +295,11 @@ nonisolated enum PostgreSQLSessionTransaction {
         guard statusAtSend == PQTRANS_INERROR, commandTag == "ROLLBACK", statusAfter == PQTRANS_IDLE else {
             return nil
         }
-        return String(localized: "The failed transaction was rolled back. None of its changes were kept.")
+        return failedTransactionRolledBackMessage
+    }
+
+    static var failedTransactionRolledBackMessage: String {
+        String(localized: "The failed transaction was rolled back. None of its changes were kept.")
     }
 }
 

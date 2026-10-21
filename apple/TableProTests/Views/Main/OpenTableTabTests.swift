@@ -243,6 +243,51 @@ struct OpenTableTabTests {
         #expect(coordinator.isActiveTabReusable == true)
     }
 
+    @Test("A pinned blank query tab is not reusable")
+    @MainActor
+    func pinnedBlankQueryTabIsNotReusable() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        coordinator.tabManager.addTab(databaseName: "db")
+        let tabId = try #require(coordinator.tabManager.selectedTabId)
+        coordinator.tabManager.setPinned(true, id: tabId)
+        #expect(coordinator.isActiveTabReusable == false)
+    }
+
+    @Test("In-place navigation opens a tab of its own instead of retargeting a pinned tab")
+    @MainActor
+    func inPlaceNavigationKeepsAPinnedTab() throws {
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: TestFixtures.makeConnection(database: "0", type: .redis),
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+        coordinator.openTableTab("db0")
+        let pinned = try #require(tabManager.selectedTabId)
+        tabManager.setPinned(true, id: pinned)
+
+        coordinator.openTableTab("db3")
+
+        #expect(tabManager.tabs.count == 2)
+        #expect(tabManager.tabs.first { $0.id == pinned }?.tableContext.tableName == "db0")
+        #expect(tabManager.selectedTab?.tableContext.tableName == "db3")
+    }
+
+    @Test("Pinning a preview tab keeps it, so a sidebar click cannot take it over")
+    @MainActor
+    func pinnedPreviewTabIsNotReusable() throws {
+        let coordinator = Self.makeCoordinator()
+        defer { coordinator.teardown() }
+        try coordinator.tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db", isPreview: true)
+        let tabId = try #require(coordinator.tabManager.selectedTabId)
+        coordinator.tabManager.setPinned(true, id: tabId)
+        #expect(coordinator.tabManager.selectedTab?.isPreview == false)
+        #expect(coordinator.isActiveTabReusable == false)
+    }
+
     @Test("A query tab with content is protected and not reusable")
     @MainActor
     func queryTabWithContentIsNotReusable() {

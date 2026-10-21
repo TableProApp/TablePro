@@ -116,6 +116,7 @@ enum RedisParseError: Error {
     case emptySyntax
     case invalidArgument(String)
     case missingArgument(String)
+    case severalCommands
 }
 
 extension RedisParseError: PluginDriverError {
@@ -124,6 +125,7 @@ extension RedisParseError: PluginDriverError {
         case .emptySyntax: return String(localized: "Empty Redis command")
         case .invalidArgument(let msg): return String(format: String(localized: "Invalid argument: %@"), msg)
         case .missingArgument(let msg): return String(format: String(localized: "Missing argument: %@"), msg)
+        case .severalCommands: return RedisSingleCommand.severalCommandsMessage
         }
     }
 }
@@ -145,13 +147,16 @@ struct RedisCommandParser {
 
     /// Parse a Redis CLI command string into a RedisOperation
     static func parse(_ input: String) throws -> RedisOperation {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { throw RedisParseError.emptySyntax }
-
-        guard let split = RedisArgumentCodec.split(trimmed) else {
+        switch RedisSingleCommand(input) {
+        case .arguments(let arguments):
+            return try parse(tokens: arguments.map { RedisArgument($0) })
+        case .empty:
+            throw RedisParseError.emptySyntax
+        case .unbalancedQuotes:
             throw RedisParseError.invalidArgument(String(localized: "unbalanced quotes"))
+        case .severalCommands:
+            throw RedisParseError.severalCommands
         }
-        return try parse(tokens: split.map { RedisArgument($0) })
     }
 
     private static func parse(tokens: [RedisArgument]) throws -> RedisOperation {
@@ -165,6 +170,8 @@ struct RedisCommandParser {
         if let typedCount = typedArgumentCount[command], args.count > typedCount {
             return .command(args: tokens)
         }
+
+        guard textArgumentsAreUTF8(command, args) else { return .command(args: tokens) }
 
         switch command {
         case "GET", "SET", "DEL", "KEYS", "SCAN", "TYPE", "TTL", "PTTL",
@@ -216,6 +223,24 @@ struct RedisCommandParser {
 
         default:
             return .command(args: tokens)
+        }
+    }
+
+    // A typed case carries keys and fields as text, which would send a byte that is not UTF-8 as U+FFFD.
+    private static func textArgumentsAreUTF8(_ command: String, _ args: [RedisArgument]) -> Bool {
+        let textIndices: [Int]
+        switch command {
+        case "KEYBROWSE", "KEYTREE":
+            return true
+        case "SET", "LPUSH", "RPUSH", "SADD", "SREM", "ZADD", "ZREM":
+            textIndices = args.isEmpty ? [] : [0]
+        case "HSET":
+            textIndices = [0] + Array(stride(from: 1, to: args.count, by: 2))
+        default:
+            textIndices = Array(args.indices)
+        }
+        return textIndices.allSatisfy { index in
+            index >= args.count || String(data: args[index].bytes, encoding: .utf8) != nil
         }
     }
 

@@ -93,6 +93,16 @@ struct QueryScriptTests {
         #expect(script.requestCount == 4)
     }
 
+    @Test("A batch lists each statement it runs, and a statement unit only itself")
+    func batchStatements() {
+        let batches = plan("SELECT 1; ROLLBACK TRANSACTION;\nGO\nSELECT 2", .mssql, batches: true)
+        let statements = plan("SELECT 1; ROLLBACK", .postgresql, batches: false)
+
+        #expect(batches.statements(in: batches.units[0]) == ["SELECT 1", "ROLLBACK TRANSACTION"])
+        #expect(batches.statements(in: batches.units[1]) == ["SELECT 2"])
+        #expect(statements.statements(in: statements.units[1]) == ["ROLLBACK"])
+    }
+
     @Test("Without GO lines a batch driver sends the script as one batch")
     func oneBatchWithoutSeparators() {
         let script = plan("DECLARE @n int = 1; SELECT @n", .mssql, batches: true)
@@ -164,10 +174,10 @@ struct QueryScriptTests {
         #expect(plan(" \n ", .redis).isEmpty)
     }
 
-    @Test("Trimming a Redis text keeps a blank its backslash escapes")
-    func redisTrimKeepsAnEscapedBlank() {
-        #expect(QueryScript.trimmed("DEL victim\\ ", databaseType: .redis) == "DEL victim\\ ")
-        #expect(QueryScript.trimmed(" \nDEL victim\\ ; GET other \n", databaseType: .redis) == "DEL victim\\ ; GET other")
+    @Test("Trimming a Redis text keeps a last argument byte Foundation counts as whitespace")
+    func redisTrimKeepsTheLastArgumentByte() {
+        #expect(QueryScript.trimmed("DEL victim\u{0B} ", databaseType: .redis) == "DEL victim\u{0B}")
+        #expect(QueryScript.trimmed(" \nDEL victim\u{A0} ; GET other \n", databaseType: .redis) == "DEL victim\u{A0} ; GET other")
         #expect(QueryScript.trimmed(" \n ; ", databaseType: .redis).isEmpty)
         #expect(QueryScript.trimmed(" \nSELECT 1; \n", databaseType: .sqlite) == "SELECT 1;")
     }

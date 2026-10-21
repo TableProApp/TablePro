@@ -89,6 +89,14 @@ internal struct EditorTabStrip: View {
                 interaction.revealTab(id: newValue)
             }
         }
+        // A pin moves tabs without changing the selection, so the selected one can slide out of view.
+        .onChange(of: tabManager.visibleTabs.filter { $0.isPinned }.map(\.id)) { _ in
+            interaction.dropClosedTabs(keeping: tabManager.visibleTabs.map(\.id))
+            guard let selected = tabManager.selectedTab?.id else { return }
+            withMotion(.easeOut(duration: 0.15)) {
+                interaction.revealTab(id: selected)
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Editor Tabs"))
         .modifier(TabBarAccessibilityTrait())
@@ -250,10 +258,13 @@ private struct EditorTabStripItem: View {
             /// a user who does not already expect it, and cannot be performed at all by VoiceOver.
             Button(String(localized: "Keep Open")) { commands?.keepOpen(tab.id) }
                 .disabled(!canKeepOpen)
+            Button(pinTitle) { commands?.setPinned(tab.id, !tab.isPinned) }
             Divider()
             Button(String(localized: "Close Tab")) { commands?.close(tab.id) }
             Button(String(localized: "Close Other Tabs")) { commands?.closeOthers(tab.id) }
+                .disabled(!canCloseOthers)
             Button(String(localized: "Close All Tabs")) { commands?.closeAll() }
+                .disabled(!canCloseAll)
             Divider()
             /// Dragging is the usual way to reorder, and it is also the only way that needs a
             /// pointer. These give the same reordering to the keyboard and to VoiceOver, which
@@ -283,6 +294,7 @@ private struct EditorTabStripItem: View {
             if canKeepOpen {
                 Button(String(localized: "Keep Open")) { commands?.keepOpen(tab.id) }
             }
+            Button(pinTitle) { commands?.setPinned(tab.id, !tab.isPinned) }
             if offersMoveToConnection, canMoveToConnection {
                 Button(String(localized: "Move Tab to Connection")) { commands?.moveToConnection(tab.id) }
             }
@@ -325,13 +337,21 @@ private struct EditorTabStripItem: View {
         HStack(spacing: 0) {
             Color.clear
                 .frame(width: EditorTabStripLayout.accessoryWidth)
-            Text(label.text)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .italic(tab.isPreview)
-                .font(.system(size: EditorTabStripLayout.fontSize))
-                .foregroundStyle(titleColor)
-                .frame(maxWidth: .infinity)
+            HStack(spacing: EditorTabStripLayout.pinSpacing) {
+                if tab.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: EditorTabStripLayout.pinGlyphSize))
+                        .foregroundStyle(titleColor)
+                        .accessibilityHidden(true)
+                }
+                Text(label.text)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .italic(tab.isPreview)
+                    .font(.system(size: EditorTabStripLayout.fontSize))
+                    .foregroundStyle(titleColor)
+            }
+            .frame(maxWidth: .infinity)
             unseenIndicator
                 .frame(width: EditorTabStripLayout.accessoryWidth)
         }
@@ -375,6 +395,18 @@ private struct EditorTabStripItem: View {
         commands?.canTearOff(tab.id) ?? false
     }
 
+    private var pinTitle: String {
+        EditorTabContextMenuBuilder.pinTitle(isPinned: tab.isPinned)
+    }
+
+    private var canCloseOthers: Bool {
+        commands?.canCloseOthers(tab.id) ?? false
+    }
+
+    private var canCloseAll: Bool {
+        commands?.canCloseAll() ?? false
+    }
+
     private var offersMoveToConnection: Bool {
         commands?.offersMoveToConnection(tab.id) ?? false
     }
@@ -396,6 +428,9 @@ private struct EditorTabStripItem: View {
     /// method to convey a change in state.
     private var positionDescription: String {
         var description = String(format: String(localized: "%1$d of %2$d"), position, count)
+        if tab.isPinned {
+            description = String(format: String(localized: "%@, pinned"), description)
+        }
         if tab.isPreview {
             description = String(format: String(localized: "%@, preview tab"), description)
         }

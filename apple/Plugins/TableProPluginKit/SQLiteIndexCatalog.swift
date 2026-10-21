@@ -28,7 +28,7 @@ public enum SQLiteIndexCatalog {
         JOIN pragma_index_list(t.name) il
         LEFT JOIN pragma_index_xinfo(il.name) ix ON ix.key = 1
         LEFT JOIN sqlite_master m ON m.type = 'index' AND m.name = il.name
-        WHERE t.type = 'table' AND t.name NOT LIKE 'sqlite_%'
+        WHERE t.type = 'table' AND t.name NOT GLOB 'sqlite_*'
         ORDER BY t.name, il.seq, ix.seqno
         """
 

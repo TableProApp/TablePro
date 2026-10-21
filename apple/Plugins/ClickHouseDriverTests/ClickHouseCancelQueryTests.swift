@@ -55,6 +55,30 @@ struct ClickHouseCancelQueryTests {
         try await stopKillsTheHeldStatement(on: server, driver: driver)
     }
 
+    // Two iPad windows on one connection share this driver.
+    @Test("Cancelling one of two running statements kills that one, not the one sent after it")
+    func cancelKillsOnlyItsOwnStatement() async throws {
+        let first = "SELECT sleep(3)"
+        let second = "SELECT sleep(4)"
+        let server = ClickHouseStubServer { request in
+            request.body == first || request.body == second ? nil : .oneRow
+        }
+        let driver = server.connectedDriver()
+        let firstRun = Task { try await driver.execute(query: first) }
+        let firstSent = try #require(await server.firstRequest { $0.body == first })
+        let firstId = try #require(firstSent.item("query_id"))
+        let secondRun = Task { try await driver.execute(query: second) }
+        defer { secondRun.cancel() }
+        _ = try #require(await server.firstRequest { $0.body == second })
+
+        firstRun.cancel()
+
+        await #expect(throws: (any Error).self) { try await firstRun.value }
+        let kill = try #require(await server.firstRequest { $0.body.hasPrefix("KILL QUERY") })
+        #expect(kill.body == "KILL QUERY WHERE query_id = '\(firstId)'")
+        #expect(server.requests.filter { $0.body.hasPrefix("KILL QUERY") }.count == 1)
+    }
+
     @Test("Each streamed statement gets its own query id")
     func streamedStatementsGetDistinctIds() async throws {
         let server = ClickHouseStubServer()

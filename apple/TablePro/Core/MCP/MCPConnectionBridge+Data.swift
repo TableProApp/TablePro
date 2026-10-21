@@ -92,7 +92,7 @@ extension MCPConnectionBridge {
                 )
             }
             let names = columnInfos.map(\.name)
-            let classifier = ColumnTypeClassifier()
+            let classifier = ColumnTypeClassifier(family: SQLTypeFamily.of(databaseType))
             let types = columnInfos.map { classifier.classify(rawTypeName: $0.typeNameForClassification) }
             let builder = TableQueryBuilder(
                 databaseType: databaseType,

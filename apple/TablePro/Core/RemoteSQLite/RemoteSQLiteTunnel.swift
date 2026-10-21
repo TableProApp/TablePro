@@ -256,11 +256,15 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
             deadline: .distantFuture,
             pollForReadiness: { [weak self] directions in
                 guard let self else { return false }
-                return pollReady(
+                _ = pollReady(
                     fd: self.socketFD,
                     directions: directions,
-                    timeoutMs: Int32(clamping: max(1, connectionDeadline.remainingMilliseconds))
+                    timeoutMs: min(
+                        LibSSH2ForwardChannel.openPollTimeoutMs,
+                        Int32(clamping: max(1, connectionDeadline.remainingMilliseconds))
+                    )
                 )
+                return !connectionDeadline.isExpired
             }
         )
 
@@ -277,11 +281,8 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
                 recordConnectionTimeout(connectionDeadline)
             }
             if case .opened(let channel) = outcome {
-                sessionQueue.sync {
-                    libssh2_channel_close(channel)
-                    libssh2_channel_free(channel)
-                }
                 Darwin.close(clientFD)
+                freeChannel(channel)
                 return
             }
         }
@@ -361,18 +362,25 @@ final class RemoteSQLiteTunnel: @unchecked Sendable {
 
         guard isRunning else { return }
 
-        /// Send EOF so the agent sees its standard input close and exits, then free without the
-        /// blocking `libssh2_channel_close`, which waits for the remote child to exit and would
-        /// stall every other call on this session's serial queue. The agent's own idle watchdog
-        /// reaps it if EOF is somehow missed.
-        sessionQueue.sync {
-            _ = libssh2_channel_send_eof(channel)
-            libssh2_channel_free(channel)
-        }
+        freeChannel(channel)
 
         if termination == .transportHangup {
             Self.logger.info("Remote SQLite transport hung up for \(self.connectionId)")
             markDead()
         }
+    }
+
+    // EOF closes the agent's standard input so it exits. sshd answers the CLOSE only once the agent
+    // has, so the free has no deadline; it runs off the session queue and ends with the session.
+    private func freeChannel(_ channel: OpaquePointer) {
+        _ = LibSSH2ChannelFree.run(
+            channel: channel,
+            session: session,
+            sessionQueue: sessionQueue,
+            transportFD: socketFD,
+            sendEOF: true,
+            deadline: .distantFuture,
+            isActive: { [weak self] in self?.isRunning ?? false }
+        )
     }
 }

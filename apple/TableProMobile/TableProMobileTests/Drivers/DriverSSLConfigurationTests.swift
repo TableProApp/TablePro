@@ -62,6 +62,50 @@ struct DriverSSLConfigurationTests {
         #expect(DriverSSLConfiguration(mode: .verifyFull).mssqlEncryptionLevel == .require)
     }
 
+    @Test("A Mac Preferred asks libpq for prefer and SQL Server for request, and Required still requires")
+    func preferredMapping() {
+        let preferred = DriverSSLConfiguration(mode: .require, isPreferred: true)
+        #expect(preferred.postgresSSLMode == "prefer")
+        #expect(preferred.mssqlEncryptionLevel == .request)
+
+        let required = DriverSSLConfiguration(mode: .require)
+        #expect(required.postgresSSLMode == "require")
+        #expect(required.mssqlEncryptionLevel == .require)
+    }
+
+    @Test("A synced Mac Preferred reaches the mapping, and a verify mode is never Preferred")
+    func storedPreferredIsCarried() {
+        let stored = DriverSSLConfiguration(
+            sslEnabled: true,
+            configuration: SSLConfiguration(mode: .require, isMacPreferred: true)
+        )
+        #expect(stored.isPreferred)
+        #expect(stored.postgresSSLMode == "prefer")
+
+        let verifying = DriverSSLConfiguration(mode: .verifyFull, isPreferred: true)
+        #expect(!verifying.isPreferred)
+        #expect(verifying.postgresSSLMode == "verify-full")
+    }
+
+    @Test("The SQL Server driver opens a synced Mac Preferred with request and Required with require")
+    func mssqlDriverReadsPreferred() {
+        #expect(mssqlEncryptionLevel(SSLConfiguration(mode: .require, isMacPreferred: true)) == .request)
+        #expect(mssqlEncryptionLevel(SSLConfiguration(mode: .require)) == .require)
+    }
+
+    private func mssqlEncryptionLevel(_ configuration: SSLConfiguration) -> MSSQLEncryptionLevel {
+        MSSQLDriver(
+            connection: DatabaseConnection(
+                type: .mssql,
+                host: "sql.example.com",
+                port: 1_433,
+                sslEnabled: true,
+                sslConfiguration: configuration
+            ),
+            password: "secret"
+        ).options.encryptionLevel
+    }
+
     @Test("CA path is ignored for non-verify modes")
     func caIgnoredWithoutVerification() {
         let path = NSTemporaryDirectory() + "tablepro-ca-\(UUID().uuidString).pem"

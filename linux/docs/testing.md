@@ -112,7 +112,7 @@ Every TLS fixture has two principals:
 
 SQL Server has only the `sa` principal, because its TLS contract carries no client identity.
 
-`HbaMode` picks what the PostgreSQL fixture accepts: `Password` (the image defaults, no TLS), `HostSslOnly`, or `ClientCertificate`. Docker maps a published port anew each time a container starts, so a test that restarts the server starts it with `PostgresFixture::start_restartable`, which picks the host port itself; `stop` and `start_again` then bring it back where the session's connection points, with its data. `OpenSshFixture` takes an `SshAuthVariant`: `Password`, `PublicKey`, `KeyboardInteractive` or `HostCertificate`. `HostKeyRevocation` builds a KRL from the running server's host key, and `ScriptedAskpass` writes a 0700 script for `SSH_ASKPASS`.
+`HbaMode` picks what the PostgreSQL fixture accepts: `Password` (the image defaults, no TLS), `HostSslOnly`, or `ClientCertificate`. Docker maps a published port anew each time a container starts, so a test that restarts the server starts it with `PostgresFixture::start_restartable`, which picks the host port itself; `stop` and `start_again` then bring it back where the session's connection points, with its data. `OpenSshFixture` takes an `SshAuthVariant`: `Password`, `PublicKey`, `KeyboardInteractive` or `HostCertificate`. `OpenSshFixture::start_with` also takes `OpenSshOptions`, which picks the release and sets sshd's `KexAlgorithms`, `MaxAuthTries` and `PubkeyAcceptedAlgorithms`. `SshKeyPair::generate_with` makes an Ed25519, RSA or ECDSA P-256 key, with a passphrase when given one, and `SshAgent` runs a private `ssh-agent`. `HostKeyRevocation` builds a KRL from the running server's host key, and `ScriptedAskpass` writes a 0700 script for `SSH_ASKPASS`.
 
 ### Conformance
 
@@ -180,6 +180,23 @@ The peak is the whole process's, so the case needs a process to itself. The Post
 
 SQLite passes `docker: false`, so the case runs in the unit suite, where `cargo test` runs the tests of one binary in one process. It is a test target of its own, `crates/drivers/sqlite/tests/large_table.rs`, which holds nothing else and includes the adapter from `tests/integration/sqlite_engine.rs`. A passing run there prints nothing; `cargo test -p tablepro-driver-sqlite --test large_table -- --nocapture` shows the numbers.
 
+### Large-catalog case
+
+`crates/app/src/ui/workspace/tests/large_catalog.rs` fills PostgreSQL with 100 schemas of 500 tables, the default schema among them, and MySQL with one database of 50,000. It puts the sidebar and a SQL editor on screen over a session the app's own connector opens:
+
+- The sidebar lists every schema's tables, read and indexed the way the workspace does, then its search takes `i`, `in` and an empty search.
+- The editor's completion opens after `FROM `, narrows as `i` is typed, and opens again after a schema's dot.
+- Each step has a time bound, from the action to its result on screen, and none may stall the main loop past 100 ms, which `StallProbe` (`crates/app/src/test_support/stall_probe.rs`) measures as the longest gap between runs of a high-priority timeout. The catalog may not raise the resident peak (`ResidentPeak`) past a memory bound. The bounds are constants at the top of the file.
+
+The report gives each step's time, its stall and the CPU time the GTK thread spent on it: on a loaded machine the stall stretches and the CPU time does not, which tells a slow step from a busy machine. MySQL creates a table in milliseconds, so its fill takes minutes, and the `ci` profile gives these cases 15 minutes rather than five.
+
+The cases are `#[gtk4::test]`s in the app's library, so they need a display. CI runs them in the `integration-app` job under `xvfb-run` with the gtk suite's environment, and the `ci` nextest profile prints their numbers for a passing run. Locally:
+
+```bash
+GSK_RENDERER=cairo GTK_A11Y=test GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- \
+  meson devenv -C _build cargo nextest run -p tablepro --lib --run-ignored only large_catalog
+```
+
 ### Value corpus
 
 `value_corpus_suite!` checks that real values read back as the grid shows them. Each driver's `crates/drivers/<engine>/tests/integration/value_corpus.rs` implements `ValueCorpusEngine` and invokes it:
@@ -225,7 +242,7 @@ CI runs one job per package with docker tests:
 cargo nextest run --locked --profile ci -p tablepro-driver-mssql --run-ignored only
 ```
 
-`.config/nextest.toml` puts each package that has Docker tests in a test group with one thread, and for the app only its integration targets, so the tests of one suite never compete for a container. Its default filter leaves out three SQL Server tests that need tiberius#459 ([sql-server.md](drivers/sql-server.md#stops-and-timeouts)). The `ci` profile writes a JUnit report to `target/nextest/ci/junit.xml` and kills a test that runs past five minutes, so a hang fails with the test's name.
+`.config/nextest.toml` puts each package that has Docker tests in a test group with one thread, and for the app only its integration targets and the large-catalog case, so the tests of one suite never compete for a container. Its default filter leaves out three SQL Server tests that need tiberius#459 ([sql-server.md](drivers/sql-server.md#stops-and-timeouts)). The `ci` profile writes a JUnit report to `target/nextest/ci/junit.xml` and kills a test that runs past five minutes, so a hang fails with the test's name.
 
 A new package with Docker tests gets a test group and an override in `.config/nextest.toml`, and an entry in the `integration` matrix of `.github/workflows/build-linux.yml`.
 
@@ -252,10 +269,11 @@ A fixture starts its engine's default release unless the engine's variable names
 | `TABLEPRO_TEST_MARIADB` | 10.11, 11.4, 12.3 | 11.4 |
 | `TABLEPRO_TEST_MSSQL` | 2017, 2019, 2022, 2025 | 2022 |
 | `TABLEPRO_TEST_CLICKHOUSE` | 26.3, 26.8 | 26.8 |
+| `TABLEPRO_TEST_OPENSSH` | 9.9, 10.3 | 10.3 |
 
-`crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
+`crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
 
-The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, and ClickHouse 26.3. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`), never from a literal, so it holds on every release.
+The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
 
 Locally, set the variables for the run:
 

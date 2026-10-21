@@ -159,7 +159,8 @@ private extension ConnectionImportAnalyzer {
             if isMissing(ssh.privateKeyPath, fileExists: fileExists) {
                 warnings.append(String(format: String(localized: "SSH private key not found: %@"), ssh.privateKeyPath))
             }
-            for jump in ssh.jumpHosts ?? [] where isMissing(jump.privateKeyPath, fileExists: fileExists) {
+            let hopKeyPaths = environment.rules.readsJumpHostKeyFiles ? (ssh.jumpHosts ?? []) : []
+            for jump in hopKeyPaths where isMissing(jump.privateKeyPath, fileExists: fileExists) {
                 warnings.append(String(format: String(localized: "Jump host key not found: %@"), jump.privateKeyPath))
             }
         }

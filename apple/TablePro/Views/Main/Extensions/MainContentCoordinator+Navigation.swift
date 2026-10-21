@@ -100,7 +100,9 @@ extension MainContentCoordinator {
             requestGridFocus()
         }
 
-        if tabManager.tabs.isEmpty {
+        // In-place navigation would retarget the selected tab, and a pinned one is never retargeted.
+        let keepsPinnedTab = navigationModel == .inPlace && tabManager.selectedTab?.isPinned == true
+        if tabManager.tabs.isEmpty || keepsPinnedTab {
             let didOpen = addFirstTableTab(
                 tableName: tableName,
                 currentDatabase: currentDatabase,
@@ -405,7 +407,7 @@ extension MainContentCoordinator {
     /// Only browsing asks. Following a foreign key never takes a tab over, because a reference can
     /// only be followed from a grid and the row the reader clicked is in that grid.
     var isActiveTabReusable: Bool {
-        guard let tab = tabManager.selectedTab else { return false }
+        guard let tab = tabManager.selectedTab, !tab.isPinned else { return false }
         if selectedTabHoldsProtectedContent { return false }
         if selectedTabFilterState.hasAppliedFilters
             || tab.hasUserActiveSort

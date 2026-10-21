@@ -7,6 +7,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Generates SQL WHERE clauses from filter definitions
 struct FilterSQLGenerator {
@@ -28,18 +29,22 @@ struct FilterSQLGenerator {
     private let quoteIdentifierFn: (String) -> String
     private let columnTypesByName: [String: ColumnType]
     private let stringLiteralPrefix: String
+    /// The engine's type family, for the comparisons a dialect descriptor cannot describe.
+    private let family: SQLTypeFamily?
 
     init(
         dialect: SQLDialectDescriptor,
         columns: [String] = [],
         columnTypes: [ColumnType] = [],
         quoteIdentifier: ((String) -> String)? = nil,
-        stringLiteralPrefix: String = ""
+        stringLiteralPrefix: String = "",
+        databaseType: DatabaseType? = nil
     ) {
         self.dialect = dialect
         self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
         self.columnTypesByName = ColumnTypeSQLQuoting.lookupByName(columns: columns, columnTypes: columnTypes)
         self.stringLiteralPrefix = stringLiteralPrefix
+        self.family = databaseType.map(SQLTypeFamily.of)
     }
 
     /// The one place a string literal is spelled, so the engine's prefix cannot be forgotten on
@@ -78,25 +83,18 @@ struct FilterSQLGenerator {
         let folding = caseFolding(for: filter, columnType: columnType)
 
         switch filter.filterOperator {
-        case .equal:
-            switch renderLiteral(filter.value, columnType: columnType) {
-            case .null:
-                return "\(quotedColumn) IS NULL"
-            case .value(let literal):
-                return generateComparisonCondition(
-                    column: quotedColumn, columnType: columnType, literal: literal,
-                    rawValue: filter.value, negated: false, folding: folding
-                )
+        case .equal, .notEqual:
+            let negated = filter.filterOperator == .notEqual
+            if let match = eitherStorageComparison(quotedColumn, filter.value, columnType: columnType, negated: negated) {
+                return match
             }
-
-        case .notEqual:
             switch renderLiteral(filter.value, columnType: columnType) {
             case .null:
-                return "\(quotedColumn) IS NOT NULL"
+                return "\(quotedColumn) \(negated ? "IS NOT NULL" : "IS NULL")"
             case .value(let literal):
                 return generateComparisonCondition(
                     column: quotedColumn, columnType: columnType, literal: literal,
-                    rawValue: filter.value, negated: true, folding: folding
+                    rawValue: filter.value, negated: negated, folding: folding
                 )
             }
 
@@ -166,6 +164,35 @@ struct FilterSQLGenerator {
         }
     }
 
+    /// SQLite keeps integer 5 and text '5' apart in a column with no affinity, and the grid reads both as `5`,
+    /// so SQLite's own text for a number matches either one.
+    private func eitherStorageComparison(_ column: String, _ value: String, columnType: ColumnType?, negated: Bool) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        guard comparesEitherStorageClass(columnType), SQLiteNumberText.isStoredSpelling(trimmed) else { return nil }
+        return eitherStorageMatch(column, literals: [trimmed, quotedLiteral(trimmed)], texts: [quotedLiteral(trimmed)], negated: negated)
+    }
+
+    /// IN keeps the index; CAST holds the match to the text SQLite reads the value back as, which the grid showed,
+    /// so a REAL that another spelling of the same number parses to is not matched as well.
+    private func eitherStorageMatch(_ column: String, literals: [String], texts: [String], negated: Bool) -> String {
+        let read = texts.count == 1 ? "= \(texts[0])" : "IN (\(texts.joined(separator: ", ")))"
+        let match = "\(column) IN (\(literals.joined(separator: ", "))) AND CAST(\(column) AS TEXT) \(read)"
+        return negated ? "NOT (\(match))" : "(\(match))"
+    }
+
+    private func comparesEitherStorageClass(_ columnType: ColumnType?) -> Bool {
+        guard family == .sqlite else { return false }
+        switch columnType {
+        case nil, .blob?:
+            return true
+        case .text(let rawType)?:
+            let declared = (rawType ?? "").trimmingCharacters(in: .whitespaces).uppercased()
+            return declared.isEmpty || declared == "ANY"
+        default:
+            return false
+        }
+    }
+
     /// The operand `LIKE`, a regex and a case fold see. An engine that names a
     /// `textCastTypeName` refuses those on anything but character data, so every other column
     /// is cast first, including one whose type the grid has not resolved yet, because a cast
@@ -183,6 +210,7 @@ struct FilterSQLGenerator {
         let matchesCase = filter.isCaseSensitive
             || !filter.filterOperator.supportsCaseSensitivity
             || !allowsCaseFolding(columnType)
+            || Self.comparisonOperators.contains(filter.filterOperator) && hasNoCase(columnType)
         return PluginSQLCaseFolding.resolve(
             style: dialect.caseSensitivityStyle,
             foldFunction: dialect.caseFoldFunction,
@@ -198,6 +226,19 @@ struct FilterSQLGenerator {
             || ColumnTypeSQLQuoting.isKnownTextLike(columnType)
             || dialect.textCastTypeName != nil
     }
+
+    /// A number or a boolean has no case, and compared folded as text `5.50` would no longer equal `5.5`.
+    /// A pattern still folds: `contains TRUE` finds PostgreSQL's `true`.
+    private func hasNoCase(_ columnType: ColumnType?) -> Bool {
+        switch columnType {
+        case .integer?, .decimal?, .boolean?:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static let comparisonOperators: Set<FilterOperator> = [.equal, .notEqual, .inList, .notInList]
 
     private func foldedComparison(_ literal: String, folding: PluginSQLCaseFolding) -> String? {
         guard folding.foldsComparisonOperands else { return literal }
@@ -220,13 +261,21 @@ struct FilterSQLGenerator {
         guard !parsed.isEmpty else { return nil }
 
         var literals: [String] = []
+        var texts: [String] = []
         var hasNull = false
+        let eitherStorage = comparesEitherStorageClass(columnType)
         for item in parsed {
+            if eitherStorage, SQLiteNumberText.isStoredSpelling(item) {
+                literals.append(contentsOf: [item, quotedLiteral(item)])
+                texts.append(quotedLiteral(item))
+                continue
+            }
             switch renderLiteral(item, columnType: columnType) {
             case .null:
                 hasNull = true
             case .value(let literal):
                 literals.append(literal)
+                texts.append(literal)
             }
         }
 
@@ -234,6 +283,9 @@ struct FilterSQLGenerator {
         let nonNullValues = foldsList ? literals.map(folding.fold) : literals
         let foldedColumn = foldsList ? folding.fold(patternOperand(column, columnType: columnType)) : column
         let inClause: String? = nonNullValues.isEmpty ? nil : {
+            if eitherStorage, literals.count > texts.count {
+                return eitherStorageMatch(column, literals: literals, texts: texts, negated: negated)
+            }
             let list = nonNullValues.joined(separator: ", ")
             return negated
                 ? "\(foldedColumn) NOT IN (\(list))"
@@ -380,11 +432,29 @@ struct FilterSQLGenerator {
             return .value(booleanLiteral)
         }
 
-        if ColumnTypeSQLQuoting.isNumericLiteral(trimmed, for: columnType) {
+        if ColumnTypeSQLQuoting.isNumericLiteral(trimmed, for: columnType) && !quotesNumbers(of: columnType) {
+            return .value(trimmed)
+        }
+
+        if readsBitAsNumber(columnType) && RowValueCopyFormatter.isIntegerLiteral(trimmed) {
             return .value(trimmed)
         }
 
         return .value(quotedLiteral(escapeStringValue(trimmed)))
+    }
+
+    /// PostgreSQL gives a quoted literal the column's own type, and a `real` never equals the numeric `0.1`.
+    private func quotesNumbers(of columnType: ColumnType?) -> Bool {
+        guard family == .postgres, case .decimal? = columnType else { return false }
+        return true
+    }
+
+    /// MySQL reads a `BIT` back as the number it holds and finds no row for `bit = '5'`.
+    private func readsBitAsNumber(_ columnType: ColumnType?) -> Bool {
+        guard let family, family.readsBitsAsDecimal, case .boolean(let rawType)? = columnType, let rawType,
+              case .bitString = SQLTypeParser.parse(rawType, family: family).kind
+        else { return false }
+        return true
     }
 
     private func booleanLiteral(for value: String, columnType: ColumnType?) -> String? {

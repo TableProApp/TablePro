@@ -15,6 +15,7 @@ struct FKPreviewView: View {
     let databaseType: DatabaseType
     let currentSchema: String?
     let allowsOpen: Bool
+    let refreshTransaction: () async -> Void
     let onOpen: ((ForeignKeyReference) -> Void)?
 
     init(
@@ -23,6 +24,7 @@ struct FKPreviewView: View {
         databaseType: DatabaseType,
         currentSchema: String? = nil,
         allowsOpen: Bool = true,
+        refreshTransaction: @escaping () async -> Void,
         onOpen: ((ForeignKeyReference) -> Void)? = nil
     ) {
         self.reference = reference
@@ -30,6 +32,7 @@ struct FKPreviewView: View {
         self.databaseType = databaseType
         self.currentSchema = currentSchema
         self.allowsOpen = allowsOpen
+        self.refreshTransaction = refreshTransaction
         self.onOpen = onOpen
     }
 
@@ -50,6 +53,7 @@ struct FKPreviewView: View {
             databaseType: databaseType,
             currentSchema: currentSchema,
             allowsOpen: allowsOpen,
+            refreshTransaction: refreshTransaction,
             onOpen: openAndClose,
             close: { dismiss() }
         )

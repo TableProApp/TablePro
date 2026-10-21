@@ -36,7 +36,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     private let connectionDeadline: ConnectionDeadline
     private let timeoutEndpoint: ConnectionTimeoutEndpoint
     private let requiresHostDeadline: Bool
-    private let classifier = ColumnTypeClassifier()
+    private let classifier: ColumnTypeClassifier
     private let state = OSAllocatedUnfairLock(initialState: State())
 
     var status: ConnectionStatus {
@@ -132,6 +132,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     ) {
         self.connection = connection
         self.pluginDriver = pluginDriver
+        self.classifier = ColumnTypeClassifier(family: SQLTypeFamily.of(connection.type))
         self.connectionDeadline = deadline ?? ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
         self.timeoutEndpoint = timeoutEndpoint ?? .database(connection.timeoutEndpointName)
         self.requiresHostDeadline = requiresHostDeadline

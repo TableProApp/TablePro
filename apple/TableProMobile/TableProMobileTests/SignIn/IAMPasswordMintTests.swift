@@ -231,6 +231,54 @@ struct IAMPasswordMintTests {
         #expect(seenAccessTokens.all.isEmpty)
     }
 
+    @Test("A token the refresher renews signs in with the new one, read for the device's start URL")
+    func ssoTokenRefreshed() async throws {
+        let connection = makeConnection(method: .awsSSO)
+        try saveSSOSetup(for: connection)
+        try saveSSOToken(expiresAt: Self.now.addingTimeInterval(60))
+        let seen = seenAccessTokens
+        let refreshedFor = OSAllocatedUnfairLock<[String]>(initialState: [])
+        let refreshing = IAMPasswordMint(
+            ssoTokens: ssoTokens,
+            fetchRoleCredentials: { accessToken, _, _ in
+                seen.append(accessToken)
+                return Self.roleCredentials
+            },
+            refreshSSOToken: { stored, startUrl, _ in
+                refreshedFor.withLock { $0.append(startUrl) }
+                return AWSSSOTokenCacheEntry(
+                    accessToken: "refreshed-token",
+                    expiresAt: Self.now.addingTimeInterval(8 * 3_600),
+                    region: stored.region,
+                    startUrl: stored.startUrl
+                )
+            },
+            now: { Self.now }
+        )
+
+        _ = try await refreshing.password(for: connection, method: .awsSSO, secureStore: store)
+
+        #expect(seenAccessTokens.all == ["refreshed-token"])
+        #expect(refreshedFor.withLock { $0 } == [Self.startUrl])
+    }
+
+    @Test("An expired token the refresher cannot renew asks for a sign-in")
+    func ssoTokenNotRenewed() async throws {
+        let connection = makeConnection(method: .awsSSO)
+        try saveSSOSetup(for: connection)
+        try saveSSOToken(expiresAt: Self.now.addingTimeInterval(-60))
+        let keeping = IAMPasswordMint(
+            ssoTokens: ssoTokens,
+            fetchRoleCredentials: { _, _, _ in Self.roleCredentials },
+            refreshSSOToken: { stored, _, _ in stored },
+            now: { Self.now }
+        )
+
+        await #expect(throws: IAMSignInError.ssoSignInRequired) {
+            try await keeping.password(for: connection, method: .awsSSO, secureStore: store)
+        }
+    }
+
     @Test("A session the portal no longer accepts is cleared and asks for a sign-in")
     func revokedSSOSession() async throws {
         let connection = makeConnection(method: .awsSSO)
@@ -378,6 +426,26 @@ struct IAMPasswordMintTests {
 
         #expect(ssl.mode == .require)
         #expect(!connection.sslEnabled)
+    }
+
+    @Test("An IAM connection on the Mac's Preferred is raised to Required, keeping its certificates")
+    func preferredRaisedForIAM() throws {
+        var connection = makeConnection(type: .mysql, method: .awsAccessKey)
+        connection.sslConfiguration = SSLConfiguration(mode: .require, isMacPreferred: true)
+
+        let ssl = try IOSDriverFactory().ssl(for: connection, serverName: nil)
+
+        #expect(ssl.mode == .require)
+        #expect(!ssl.isPreferred)
+        #expect(MySQLTLSPolicy(ssl) == .required)
+    }
+
+    @Test("A password connection keeps the Mac's Preferred")
+    func preferredKeptWithoutIAM() throws {
+        var connection = DatabaseConnection(type: .mysql, host: Self.rdsHost, sslEnabled: true)
+        connection.sslConfiguration = SSLConfiguration(mode: .require, isMacPreferred: true)
+
+        #expect(try IOSDriverFactory().ssl(for: connection, serverName: nil).isPreferred)
     }
 
     @Test("A verifying SSL mode is kept for an IAM connection")

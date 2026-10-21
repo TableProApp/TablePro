@@ -111,7 +111,7 @@ enum ConnectionCredentialResolver {
             /// The profiles file carries its own tag for exactly this: a source can name a shell
             /// command, so the file has to be the one TablePro last wrote before one runs.
             guard CredentialProfileStorage.shared.storeIsTrusted else {
-                throw PasswordSourceResolver.ResolutionError.storeNotTrusted
+                throw PasswordSourceResolver.ResolutionError.profileStoreNotTrusted
             }
             return try await PasswordSourceResolver.resolve(source, for: ConnectionScriptContext(connection: connection))
         }

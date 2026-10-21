@@ -70,7 +70,7 @@
   {
     "id": "libssh2",
     "name": "libssh2",
-    "version": "1.11.1",
+    "version": "1.11.2-dev.3209951db4e4",
     "spdx": "BSD-3-Clause",
     "copyrights": [
       "Copyright (C) 2004-2007 Sara Golemon <sarag@libssh2.org>",
@@ -103,10 +103,10 @@
   {
     "id": "openssl",
     "name": "OpenSSL",
-    "version": "3.4.3",
+    "version": "3.5.9",
     "spdx": "Apache-2.0",
     "copyrights": [
-      "Copyright (c) 1998-2025 The OpenSSL Project Authors",
+      "Copyright (c) 1998-2026 The OpenSSL Project Authors",
       "Copyright (c) 1995-1998 Eric A. Young, Tim J. Hudson",
       "All rights reserved."
     ],

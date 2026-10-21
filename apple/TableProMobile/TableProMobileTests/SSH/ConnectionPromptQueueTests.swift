@@ -1,5 +1,6 @@
 import Foundation
 import TableProDatabase
+import TableProSSHTransport
 @testable import TableProMobile
 import Testing
 
@@ -112,6 +113,48 @@ struct ConnectionPromptQueueTests {
 
         #expect(await firstAnswer == true)
         #expect(await secondAnswer == true)
+    }
+
+    private func challenge() -> KeyboardInteractiveChallenge {
+        KeyboardInteractiveChallenge(
+            name: "",
+            instruction: "Enter the code from your authenticator.",
+            prompts: [
+                KeyboardInteractivePrompt(text: "Verification code: ", echo: true),
+                KeyboardInteractivePrompt(text: "PIN: ", echo: false),
+            ]
+        )
+    }
+
+    @Test("A server's question shows one field per prompt and returns what the user typed")
+    func challengeReturnsTypedAnswers() async throws {
+        let queue = ConnectionPromptQueue()
+
+        async let answers = queue.answer(challenge())
+        await waitUntil({ queue.current != nil }, "the question should be on screen")
+        let shown = try #require(queue.current)
+        #expect(shown.title == String(localized: "SSH Sign-In"))
+        #expect(shown.message == "Enter the code from your authenticator.")
+        #expect(shown.fields == [
+            ConnectionPrompt.Field(label: "Verification code:", isSecure: false, isCode: true),
+            ConnectionPrompt.Field(label: "PIN:", isSecure: true, isCode: false),
+        ])
+        queue.answer(shown.id, accepted: true, typed: ["424242", "1234"])
+
+        #expect(await answers == ["424242", "1234"])
+        #expect(queue.answersChallenges)
+    }
+
+    @Test("A server's question the user cancels answers nothing")
+    func cancelledChallengeAnswersNil() async throws {
+        let queue = ConnectionPromptQueue()
+
+        async let answers = queue.answer(challenge())
+        await waitUntil({ queue.current != nil }, "the question should be on screen")
+        let shown = try #require(queue.current)
+        queue.answer(shown.id, accepted: false, typed: ["typed then cancelled", ""])
+
+        #expect(await answers == nil)
     }
 
     @Test("A host key question reads as the server, its key type and its fingerprint")

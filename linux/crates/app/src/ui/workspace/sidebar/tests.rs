@@ -191,6 +191,29 @@ fn rows_are_recycled_for_large_catalogs() {
 }
 
 #[gtk4::test]
+fn a_search_makes_only_the_rows_it_shows() {
+    let owned = names(10_000);
+    let borrowed: Vec<&str> = owned.iter().map(String::as_str).collect();
+    let shown = Shown::new(&borrowed, every_affordance());
+    wait_until(WAIT, || shown.list_view().height() > 0).expect("the list laid out");
+    shown.view.sync_selection(Some(&table("t09999")));
+
+    for query in ["t0", "9", "t09", ""] {
+        shown.view.set_query(query);
+        drain_main_context();
+    }
+
+    assert_eq!(shown.view.selected_table(), Some(table("t09999")));
+    // GtkListView keeps about 200 rows around its viewport; a list that
+    // made one per table would reach 10,000.
+    assert!(
+        shown.view.made() <= 1_000,
+        "{} rows made for 10,000 tables",
+        shown.view.made()
+    );
+}
+
+#[gtk4::test]
 fn single_click_activation_opens_table() {
     let shown = Shown::new(&["a", "b", "c", "d", "e"], every_affordance());
 

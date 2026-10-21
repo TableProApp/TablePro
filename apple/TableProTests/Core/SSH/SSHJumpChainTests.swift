@@ -21,8 +21,13 @@ struct SSHJumpChainTests {
     )
 
     private func chain(_ content: String, from jumpHosts: [SSHJumpHost]) -> [ResolvedSSHTarget] {
+        resolvedJumps(content, from: jumpHosts).map(\.target)
+    }
+
+    private func resolvedJumps(_ content: String, from jumpHosts: [SSHJumpHost]) -> [LibSSH2TunnelFactory.ResolvedJump] {
         LibSSH2TunnelFactory.resolveJumpChain(
             jumpHosts,
+            fromForm: true,
             document: SSHConfigParser.parseDocumentContent(content),
             env: Self.env
         )
@@ -104,6 +109,45 @@ struct SSHJumpChainTests {
             "first.example.com",
             "second.example.com",
         ])
+    }
+
+    @Test("In a list only the first hop's own ProxyJump is followed, as ssh -J a,b does")
+    func followsOnlyTheFirstHopsProxyJump() {
+        let resolved = chain(
+            """
+            Host first
+                Hostname first.example.com
+            Host second
+                Hostname second.example.com
+                ProxyJump behind-second
+            Host behind-second
+                Hostname behind-second.example.com
+            """,
+            from: [jump("first"), jump("second")]
+        )
+        #expect(resolved.map(\.host) == ["first.example.com", "second.example.com"])
+    }
+
+    @Test("Each hop keeps the form jump host it came from, so a hop ProxyJump adds cannot take its key")
+    func hopsKeepTheirFormHost() {
+        var keyed = jump("first")
+        keyed.authMethod = .privateKey
+        keyed.privateKeyPath = "~/.ssh/first_key"
+        let resolved = resolvedJumps(
+            """
+            Host first
+                Hostname first.example.com
+                ProxyJump behind-first
+            Host behind-first
+                Hostname behind-first.example.com
+            """,
+            from: [keyed]
+        )
+
+        #expect(resolved.map(\.target.host) == ["behind-first.example.com", "first.example.com"])
+        #expect(resolved[0].formHop == nil)
+        #expect(resolved[1].formHop?.id == keyed.id)
+        #expect(resolved[1].formHop?.authMethod == .privateKey)
     }
 
     /// A pair of hosts naming each other would otherwise recurse until the stack ran out.

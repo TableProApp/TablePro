@@ -1222,32 +1222,6 @@ struct MainEditorContentView: View {
         )
     }
 
-    private func scopeBarModel(for tab: QueryTab) -> QueryScopeBarModel {
-        QueryScopeBarModel(
-            containers: containerDatabases(for: tab),
-            selectedName: containerName(for: tab),
-            entityName: containerEntityName,
-            isReadOnly: isContainerSwitchReadOnly,
-            schemaName: containerSchemaName(for: tab)
-        )
-    }
-
-    private func commandAvailability(for tab: QueryTab) -> QueryCommandAvailability {
-        QueryCommandAvailability(
-            isConnected: MainWindowToolbar.hasLiveSession(coordinator.toolbarState.connectionState),
-            hasQueryText: tab.hasQueryText,
-            isExecuting: coordinator.tabExecution.isExecuting(tab.id),
-            isStoppable: coordinator.tabExecution.isStoppable(tab.id),
-            hasResults: coordinator.canClearActiveQueryResults,
-            explainVariants: coordinator.connection.type.explainVariants,
-            supportsFormatting: QueryFormatterFactory.supportsFormatting(coordinator.connection.type),
-            aiActions: coordinator.aiQueryActionAvailability(for: tab),
-            shortcutHint: { label, action in
-                settingsManager.keyboard.shortcutHint(label, for: action)
-            }
-        )
-    }
-
     private func resultsViewModeBinding(for tab: QueryTab) -> Binding<ResultsViewMode> {
         Binding(
             get: { tab.display.resultsViewMode },
@@ -1324,5 +1298,34 @@ struct MainEditorContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// The toolbar models, kept out of the view body's type so it stays under the length limit.
+extension MainEditorContentView {
+    private func scopeBarModel(for tab: QueryTab) -> QueryScopeBarModel {
+        QueryScopeBarModel(
+            containers: containerDatabases(for: tab),
+            selectedName: containerName(for: tab),
+            entityName: containerEntityName,
+            isReadOnly: isContainerSwitchReadOnly,
+            schemaName: containerSchemaName(for: tab)
+        )
+    }
+
+    private func commandAvailability(for tab: QueryTab) -> QueryCommandAvailability {
+        QueryCommandAvailability(
+            isConnected: MainWindowToolbar.hasLiveSession(coordinator.toolbarState.connectionState),
+            hasQueryText: tab.hasQueryText,
+            isExecuting: coordinator.tabExecution.isExecuting(tab.id),
+            isStoppable: coordinator.tabExecution.isStoppable(tab.id),
+            hasResults: coordinator.canClearActiveQueryResults,
+            explainVariants: coordinator.connection.type.explainVariants,
+            supportsFormatting: QueryFormatterFactory.supportsFormatting(coordinator.connection.type),
+            aiActions: coordinator.aiQueryActionAvailability(for: tab),
+            shortcutHint: { label, action in
+                settingsManager.keyboard.shortcutHint(label, for: action)
+            }
+        )
     }
 }

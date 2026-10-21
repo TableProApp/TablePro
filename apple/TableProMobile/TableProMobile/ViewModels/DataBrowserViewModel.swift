@@ -49,12 +49,14 @@ final class DataBrowserViewModel {
     /// not come from.
     private(set) var schema: String?
     @ObservationIgnored private var host: String = ""
+    @ObservationIgnored private var trackRead: SessionReadTracker?
+    @ObservationIgnored private var pageEndedOnItsOwn = false
+    @ObservationIgnored private var pageWasTrimmed = false
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
     @ObservationIgnored private var keyReadTask: Task<KeyContentsPage, Error>?
     @ObservationIgnored private var loadGeneration = 0
     @ObservationIgnored private var hasSeededFilters = false
-    @ObservationIgnored private var seededKeyColumns: [String] = []
     @ObservationIgnored private var singleRowMatch = SingleRowMatch.inactive
 
     private enum SingleRowMatch {
@@ -74,6 +76,12 @@ final class DataBrowserViewModel {
     var hasActiveFilters: Bool { filters.contains { $0.isEnabled && $0.isValid } }
     var activeFilterCount: Int { filters.filter { $0.isEnabled && $0.isValid }.count }
     var hasPrimaryKeys: Bool { columnDetails.contains(where: \.isPrimaryKey) }
+
+    var canLocateRows: Bool {
+        RowLocator.canLocate(identity: rowIdentity, columns: columns, columnDetails: columnDetails)
+    }
+
+    private var rowIdentity: RowIdentity { RowLocator.identity(of: session?.driver) }
 
     var showsPaginationBar: Bool {
         !legacyRows.isEmpty || hasActiveSearch || hasActiveFilters || isPageLoading
@@ -96,18 +104,23 @@ final class DataBrowserViewModel {
 
     // MARK: - Attach
 
+    typealias SessionReadTracker = @MainActor (_ read: () async -> Void) async -> Void
+
+    // `trackRead` marks the session busy for the whole load, so Commit and Roll Back cannot end a page mid-stream.
     func attach(
         session: ConnectionSession?,
         table: TableInfo,
         databaseType: DatabaseType,
         host: String,
-        schema: String? = nil
+        schema: String? = nil,
+        trackRead: SessionReadTracker? = nil
     ) {
         self.session = session
         self.table = table
         self.databaseType = databaseType
         self.host = host
         self.schema = schema
+        self.trackRead = trackRead
     }
 
     // Only the first call counts, so filters the user changed afterwards survive the view's task running again.
@@ -115,7 +128,6 @@ final class DataBrowserViewModel {
         guard !hasSeededFilters else { return }
         hasSeededFilters = true
         filters = seeded
-        seededKeyColumns = seeded.map(\.columnName)
         filterLogicMode = .and
         singleRowMatch = hasActiveFilters ? .awaitingFirstLoad : .inactive
     }
@@ -151,13 +163,23 @@ final class DataBrowserViewModel {
         }
         loadError = nil
 
-        if let reader = TableBrowseMode.keyContentsReader(of: session.driver) {
-            await loadKeyContents(reader: reader, key: table.name, generation: generation)
-        } else {
-            await loadRows(session: session, table: table, isInitial: isInitial, generation: generation)
+        await tracked {
+            if let reader = TableBrowseMode.keyContentsReader(of: session.driver) {
+                await loadKeyContents(reader: reader, key: table.name, generation: generation)
+            } else {
+                await loadRows(session: session, table: table, isInitial: isInitial, generation: generation)
+            }
         }
         guard isCurrent(generation) else { return }
         finishLoad()
+    }
+
+    private func tracked(_ read: () async -> Void) async {
+        guard let trackRead else {
+            await read()
+            return
+        }
+        await trackRead(read)
     }
 
     private func isCurrent(_ generation: Int) -> Bool {
@@ -171,15 +193,6 @@ final class DataBrowserViewModel {
         singleRowMatch = loadError == nil && legacyRows.count == 1 ? .found : .inactive
     }
 
-    // The preview quotes every key value, and a column without a type (a typeless SQLite key) keeps 5 and '5'
-    // apart, so such a seeded key column compares as text here too and the browser lists the previewed row.
-    private var filterColumns: [ColumnInfo] {
-        let untyped = seededKeyColumns.filter {
-            FilterColumnKind.kind(of: FilterColumnKind.column(named: $0, in: columnDetails)) == nil
-        }
-        return untyped.map { ColumnInfo(name: $0, typeName: "TEXT") } + columnDetails
-    }
-
     private func loadRows(session: ConnectionSession, table: TableInfo, isInitial: Bool, generation: Int) async {
         do {
             if columnDetails.isEmpty || isInitial {
@@ -188,7 +201,8 @@ final class DataBrowserViewModel {
                 columnDetails = fetched
             }
 
-            let pkColumns = columnDetails.filter(\.isPrimaryKey).map(\.name)
+            // A full value read by key would return another row's value where the key is not unique.
+            let pkColumns = rowIdentity == .keyColumns ? columnDetails.filter(\.isPrimaryKey).map(\.name) : []
             let lazyContext = pkColumns.isEmpty ? nil : LazyContext(table: table.name, primaryKeyColumns: pkColumns)
             let query = buildSelectQuery(table: table)
             let driver = session.driver
@@ -262,8 +276,9 @@ final class DataBrowserViewModel {
         }
     }
 
+    // A page cut short by Stop, a closed screen or another statement says nothing about where the table ends.
     private func settleTotalRowsFromShortPage() {
-        guard legacyRows.count < pagination.pageSize, pagination.totalRows == nil else { return }
+        guard pageEndedOnItsOwn, legacyRows.count < pagination.pageSize, pagination.totalRows == nil else { return }
         pagination.totalRows = pagination.currentOffset + legacyRows.count
     }
 
@@ -282,7 +297,7 @@ final class DataBrowserViewModel {
             return SQLBuilder.buildSearchSelect(
                 table: table.name, schema: schema, type: databaseType,
                 searchText: activeSearchText, searchColumns: searchableColumns(),
-                filters: filters, logicMode: filterLogicMode, columns: filterColumns,
+                filters: filters, logicMode: filterLogicMode, columns: columnDetails,
                 sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
@@ -290,7 +305,7 @@ final class DataBrowserViewModel {
         if hasActiveFilters {
             return SQLBuilder.buildFilteredSelect(
                 table: table.name, schema: schema, type: databaseType,
-                filters: filters, logicMode: filterLogicMode, columns: filterColumns,
+                filters: filters, logicMode: filterLogicMode, columns: columnDetails,
                 sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
@@ -334,12 +349,12 @@ final class DataBrowserViewModel {
                 countQuery = SQLBuilder.buildSearchCount(
                     table: table.name, schema: schema, type: databaseType,
                     searchText: activeSearchText, searchColumns: searchableColumns(),
-                    filters: filters, logicMode: filterLogicMode, columns: filterColumns
+                    filters: filters, logicMode: filterLogicMode, columns: columnDetails
                 )
             } else if hasActiveFilters {
                 countQuery = SQLBuilder.buildFilteredCount(
                     table: table.name, schema: schema, type: databaseType,
-                    filters: filters, logicMode: filterLogicMode, columns: filterColumns
+                    filters: filters, logicMode: filterLogicMode, columns: columnDetails
                 )
             } else {
                 countQuery = SQLBuilder.buildCount(table: table.name, schema: schema, type: databaseType)
@@ -441,23 +456,44 @@ final class DataBrowserViewModel {
 
     // MARK: - Row Operations
 
-    func deleteRow(pkValues: [(column: String, value: String)]) async -> Bool {
-        guard let session, let table, !pkValues.isEmpty else { return false }
+    func deleteRow(_ locator: RowLocator) async -> Bool {
+        guard let session, let table else { return false }
         let schema = schema
+        if let keys = locator.keyValues, let shared = await SharedRowKey.error(
+            table: table.name, schema: schema, key: keys,
+            columns: columnDetails, type: databaseType, driver: session.driver
+        ) {
+            operationError = shared
+            return false
+        }
+        let writer = session.driver as? any DriverRowWriting
+        if let writer, let identical = await SharedRowKey.identicalRowsError(
+            writer: writer, table: table.name, schema: schema, locator: locator,
+            columns: locator.columnNames(of: columns), type: databaseType, isUpdate: false
+        ) {
+            operationError = identical
+            return false
+        }
         do {
-            let deleted = try await session.driver.executeWrite([
-                SQLBuilder.buildDelete(
-                    table: table.name,
-                    schema: schema,
-                    type: databaseType,
-                    driver: session.driver,
-                    primaryKeys: pkValues
-                )
-            ])
+            guard let batch = try RowWriteBatch.delete(
+                table: table.name,
+                schema: schema,
+                type: databaseType,
+                driver: session.driver,
+                columns: locator.columnNames(of: columns),
+                columnDetails: columnDetails,
+                locator: locator
+            ) else { return false }
+            let deleted = try await batch.run()
             // SQL Server under SET NOCOUNT ON reports 0 for every delete, so a zero is checked against the table.
+            // A ClickHouse mutation reports no count, so the row is looked for by every value it held.
             var isGone = deleted > 0
-            if !isGone {
-                isGone = try await !rowExists(table: table.name, schema: schema, primaryKey: pkValues, driver: session.driver)
+            if !isGone, let keys = locator.keyValues, !keys.isEmpty {
+                isGone = try await !rowExists(table: table.name, schema: schema, primaryKey: keys, driver: session.driver)
+            } else if !isGone, let writer {
+                isGone = try await writer.matchingRowCount(
+                    table: table.name, schema: schema, columns: locator.columnNames(of: columns), row: locator.row
+                ) == 0
             }
             await load()
             guard isGone else {
@@ -471,6 +507,12 @@ final class DataBrowserViewModel {
                 return false
             }
             return true
+        } catch RowChangeRefusal.rowNotFound {
+            await load()
+            return true
+        } catch let refusal as RowChangeRefusal {
+            operationError = SharedRowKey.error(for: refusal)
+            return false
         } catch {
             operationError = ErrorClassifier.classify(
                 error,
@@ -485,11 +527,11 @@ final class DataBrowserViewModel {
         return rows.indices.contains(index) ? rows[index].cells : []
     }
 
-    func primaryKeyValues(forRowAt index: Int) -> [(column: String, value: String)]? {
+    func rowLocator(forRowAt index: Int) -> RowLocator? {
         let rows = window.rows
         guard rows.indices.contains(index) else { return nil }
-        return RowDetailViewModel.primaryKeyValues(
-            cells: rows[index].cells, columns: columns, columnDetails: columnDetails
+        return RowLocator.locate(
+            cells: rows[index].cells, columns: columns, columnDetails: columnDetails, identity: rowIdentity
         )
     }
 
@@ -504,7 +546,7 @@ final class DataBrowserViewModel {
         let components = primaryKey.map { PrimaryKeyComponent(column: $0.column, value: $0.value) }
         let ref = CellRef(table: table, column: components[0].column, primaryKey: components)
         do {
-            _ = try await loadFullValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema)
+            _ = try await readValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema, ofOneRow: false)
             return true
         } catch CellLookupError.rowNotFound {
             return false
@@ -513,12 +555,22 @@ final class DataBrowserViewModel {
 
     // The caller passes the schema its rows came from: a schema switch while a read is in flight must not move it.
     func loadFullValue(driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType, schema: String?) async throws -> String? {
-        let predicates = ref.primaryKey.map { component in
-            "\(SQLBuilder.quoteIdentifier(component.column, for: databaseType)) = '\(driver.escapeStringLiteral(component.value))'"
-        }
-        let predicate = predicates.joined(separator: " AND ")
-        let column = SQLBuilder.quoteIdentifier(ref.column, for: databaseType)
+        try await readValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema, ofOneRow: true)
+    }
+
+    // A full value is read only from a key that names one row; whether a deleted row is still there is not.
+    private func readValue(
+        driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType, schema: String?, ofOneRow: Bool
+    ) async throws -> String? {
         let table = SQLBuilder.qualifiedIdentifier(table: ref.table, schema: schema, for: databaseType)
+        let predicate = SQLBuilder.keyPredicate(
+            ref.primaryKey.map { (column: $0.column, value: $0.value) },
+            columns: columnDetails,
+            type: databaseType,
+            driver: driver,
+            uniqueIn: ofOneRow ? table : nil
+        )
+        let column = SQLBuilder.quoteIdentifier(ref.column, for: databaseType)
         let query: String
         switch databaseType {
         case .mssql:
@@ -590,12 +642,14 @@ final class DataBrowserViewModel {
             case .warning:
                 Self.logger.warning("Memory pressure warning: shrinking window to 100 rows")
                 self.buffer.shrink(to: 100)
+                self.pageWasTrimmed = true
                 if !self.buffer.isEmpty {
                     self.memoryWarning = String(localized: "Results trimmed due to memory pressure.")
                 }
             case .critical:
                 Self.logger.error("Memory pressure critical: shrinking window to 50 rows and cancelling")
                 self.buffer.shrink(to: 50)
+                self.pageWasTrimmed = true
                 self.fetchTask?.cancel()
                 self.memoryWarning = String(localized: "Results trimmed due to memory pressure.")
             }
@@ -623,6 +677,8 @@ final class DataBrowserViewModel {
         fetchTask?.cancel()
         phase = .loading
         buffer.reset()
+        pageEndedOnItsOwn = false
+        pageWasTrimmed = false
 
         let task = Task { [weak self] in
             guard let self else { return }
@@ -634,6 +690,7 @@ final class DataBrowserViewModel {
                 guard self.isCurrent(generation) else { return }
                 self.buffer.flush()
                 self.executionTime = Date().timeIntervalSince(start)
+                self.pageEndedOnItsOwn = !Task.isCancelled && self.buffer.truncation == nil && !self.pageWasTrimmed
                 if let reason = self.buffer.truncation {
                     self.phase = .truncated(reason: reason)
                 } else if case .loading = self.phase {

@@ -1,4 +1,5 @@
 import Foundation
+import TableProDatabase
 @testable import TableProMobile
 import TableProModels
 import TableProOracleCore
@@ -12,6 +13,47 @@ struct OracleSSLMappingTests {
         #expect(DriverSSLConfiguration(mode: .require).oracleTLSDescription.mode == .required)
         #expect(DriverSSLConfiguration(mode: .verifyCa).oracleTLSDescription.mode == .verifyCA)
         #expect(DriverSSLConfiguration(mode: .verifyFull).oracleTLSDescription.mode == .verifyIdentity)
+    }
+
+    @Test("A Mac Preferred dials plain TCP as the Mac does, and Required still dials TCPS")
+    func preferredDialsPlainTCP() {
+        #expect(DriverSSLConfiguration(mode: .require, isPreferred: true).oracleTLSDescription.mode == .disabled)
+        #expect(DriverSSLConfiguration(mode: .require).oracleTLSDescription.mode == .required)
+    }
+
+    @Test("The driver opens a synced Mac Preferred in plain TCP")
+    func driverReadsPreferred() {
+        let driver = OracleDriver(
+            connection: DatabaseConnection(
+                type: .oracle,
+                host: "db.example.com",
+                port: 1_521,
+                sslEnabled: true,
+                sslConfiguration: SSLConfiguration(mode: .require, isMacPreferred: true)
+            ),
+            password: nil
+        )
+        #expect(driver.ssl.oracleTLSDescription.mode == .disabled)
+    }
+
+    @Test("Behind a tunnel the factory names the saved host for the certificate check, and otherwise names none")
+    func factoryPassesThePreTunnelHost() throws {
+        let connection = DatabaseConnection(
+            type: .oracle,
+            host: "127.0.0.1",
+            port: 49_152,
+            sslEnabled: true,
+            sslConfiguration: SSLConfiguration(mode: .verifyFull)
+        )
+        let factory = IOSDriverFactory()
+
+        let tunneled = try #require(
+            try factory.createDriver(for: connection, password: nil, preTunnelHost: "db.example.com") as? OracleDriver
+        )
+        let direct = try #require(try factory.createDriver(for: connection, password: nil) as? OracleDriver)
+
+        #expect(tunneled.ssl.oracleTLSDescription.serverName == "db.example.com")
+        #expect(direct.ssl.oracleTLSDescription.serverName == nil)
     }
 
     @Test("Only the verify modes are treated as verifying the certificate")

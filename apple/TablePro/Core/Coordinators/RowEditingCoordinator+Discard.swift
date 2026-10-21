@@ -13,12 +13,12 @@ extension RowEditingCoordinator {
     /// Edits made in the row inspector belong to the selected tab, so they run on that
     /// tab's database. The scope is read before the authorization prompt, which awaits a
     /// sheet and Touch ID and gives the selection time to move somewhere else.
-    func executeSidebarChanges(statements: [ParameterizedStatement]) async throws {
+    func executeSidebarChanges(steps: [DataWriteStep]) async throws {
         guard let scope = parent.selectedTabScope else {
             throw DatabaseError.notConnected
         }
 
-        let sqlPreview = statements.map(\.sql).joined(separator: "\n")
+        let sqlPreview = steps.map(\.statement.sql).joined(separator: "\n")
         let kind = OperationKind.from(QueryClassifier.classifyTier(sqlPreview, databaseType: parent.connection.type))
         let decision = await parent.executionGate.authorize(
             OperationRequest(
@@ -36,12 +36,13 @@ extension RowEditingCoordinator {
         }
 
         let mode: PluginTransactionAccessMode = kind.declaresWrite ? .readWrite : .serverDefault
+        let plan = DataWritePlan(scope: scope, databaseType: parent.connection.type, steps: steps)
         _ = try await DatabaseManager.shared.withScopedDriver(
             scope: scope,
             route: DatabaseManager.shared.executionRoute(for: scope),
             cancellation: .protectedWrite
         ) { driver in
-            _ = try await DataWriteExecutor.run(statements: statements, mode: mode, on: driver)
+            _ = try await DataWriteExecutor.run(plan, mode: mode, on: driver)
         }
     }
 

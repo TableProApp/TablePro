@@ -14,6 +14,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 @MainActor
 internal struct CompareRunner {

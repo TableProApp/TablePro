@@ -128,7 +128,8 @@ final class QueryTabManager: ObservableObject {
     func moveTab(id: UUID, to destination: Int) {
         let strip = visibleTabs
         guard let source = strip.firstIndex(where: { $0.id == id }) else { return }
-        let clamped = min(max(destination, 0), strip.count - 1)
+        let group = Self.group(containing: source, in: strip)
+        let clamped = min(max(destination, group.lowerBound), group.upperBound)
         guard clamped != source else { return }
 
         let neighbourId = strip[clamped].id
@@ -145,7 +146,13 @@ final class QueryTabManager: ObservableObject {
     func canMoveTab(id: UUID, by offset: Int) -> Bool {
         let strip = visibleTabs
         guard let index = strip.firstIndex(where: { $0.id == id }) else { return false }
-        return strip.indices.contains(index + offset)
+        return Self.group(containing: index, in: strip).contains(index + offset)
+    }
+
+    // A tab never crosses the boundary between the pinned run and the rest.
+    private static func group(containing index: Int, in strip: [QueryTab]) -> ClosedRange<Int> {
+        let pinnedCount = strip.prefix { $0.isPinned }.count
+        return strip[index].isPinned ? 0 ... pinnedCount - 1 : pinnedCount ... strip.count - 1
     }
 
     func moveTab(id: UUID, by offset: Int) {
@@ -171,6 +178,32 @@ final class QueryTabManager: ObservableObject {
     /// offered and do nothing.
     func canPromotePreviewTab(id: UUID) -> Bool {
         tabs.first { $0.id == id }?.isPreview ?? false
+    }
+
+    func isPinned(id: UUID) -> Bool {
+        tabs.first { $0.id == id }?.isPinned ?? false
+    }
+
+    // A preview is kept first, so a sidebar click never retargets a pinned tab.
+    func setPinned(_ pinned: Bool, id: UUID) {
+        guard tabs.contains(where: { $0.id == id && $0.isPinned != pinned }) else { return }
+        if pinned {
+            promotePreviewTab(id: id)
+        }
+        guard let source = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let before = tabs.map(\.id)
+        var tab = tabs[source]
+        tab.isPinned = pinned
+        var others = tabs
+        others.remove(at: source)
+        // Partitioned first, because an adopted or reopened pin can sit after unpinned tabs.
+        let pins = others.filter { $0.isPinned }
+        let rest = others.filter { !$0.isPinned }
+        tabs = pins + [tab] + rest
+        // The save follows `tabStructureVersion`, which only an id reorder bumps.
+        if tabs.map(\.id) == before {
+            tabStructureVersion += 1
+        }
     }
 
     func selectTab(at index: Int) {
@@ -766,7 +799,9 @@ extension QueryTabManager {
     /// The tabs the strip lists: the visible entry's, plus the ones that name no container.
     var visibleTabs: [QueryTab] {
         if let cached = _visibleTabs { return cached }
-        let visible = tabs.filter(isVisible)
+        let listed = tabs.filter(isVisible)
+        // Derived, so a pinned tab a restore, reopen or move appends still lands in the pinned run.
+        let visible = listed.filter(\.isPinned) + listed.filter { !$0.isPinned }
         _visibleTabs = visible
         return visible
     }

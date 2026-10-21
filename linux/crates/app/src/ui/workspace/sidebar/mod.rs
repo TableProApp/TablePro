@@ -6,6 +6,9 @@ mod object_key;
 mod sidebar_affordances;
 mod sidebar_event;
 mod sidebar_header_factory;
+mod sidebar_index;
+mod sidebar_list;
+mod sidebar_list_imp;
 mod sidebar_menu;
 mod sidebar_model;
 mod sidebar_object;
@@ -22,10 +25,12 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita::prelude::*;
 use tablepro_core::meta::{ObjectInfo, ObjectScope, SchemaInfo, TableRef};
-use tablepro_session::ObjectListSnapshot;
+use tablepro_session::runtime::{TaskFailure, Tasks};
+use tablepro_session::{ObjectListSnapshot, Session};
 
 pub(super) use catalog_watch::{catalog_watch, reconnect_watch, spawn_local};
 pub(super) use sidebar_affordances::SidebarAffordances;
+use sidebar_index::SidebarIndex;
 pub(super) use sidebar_view::SidebarView;
 
 use super::table_naming::TableNaming;
@@ -80,6 +85,42 @@ fn workspace_input(event: SidebarEvent) -> WorkspaceInput {
     }
 }
 
+/// What the sidebar shows for one object list: its index, and the
+/// schemas its sections were made from when they could be read.
+#[derive(Debug)]
+pub(crate) struct SidebarListing {
+    pub(crate) index: SidebarIndex,
+    pub(crate) schemas: Option<Arc<[SchemaInfo]>>,
+}
+
+/// Read the session's schemas and index `objects` under them, or under
+/// `known` when they cannot be read. The index is built on a blocking
+/// thread: sorting a large catalog by collation keys would freeze the
+/// window.
+pub(super) async fn list_catalog(
+    session: Arc<Session>,
+    tasks: Tasks,
+    objects: Arc<[ObjectInfo]>,
+    known: Arc<[SchemaInfo]>,
+) -> Result<SidebarListing, TaskFailure> {
+    let schemas = match session.schemas().await {
+        Ok(schemas) => Some(schemas),
+        Err(error) => {
+            tracing::debug!(%error, "the schemas could not be read for the sidebar");
+            None
+        }
+    };
+    tasks
+        .spawn_blocking_task(move || {
+            let schemas: Option<Arc<[SchemaInfo]>> = schemas.map(|schemas| shown_schemas(&schemas, &objects).into());
+            SidebarListing {
+                index: SidebarIndex::build(&objects, schemas.as_deref().unwrap_or(&known)),
+                schemas,
+            }
+        })
+        .await
+}
+
 /// The schemas the sidebar shows sections for: the session's own, and
 /// any an object names that the session does not list, as a server whose
 /// databases are its schemas lists only the one it is in.
@@ -105,7 +146,9 @@ fn shown_schemas(schemas: &[SchemaInfo], objects: &[ObjectInfo]) -> Vec<SchemaIn
 impl WorkspaceModel {
     /// What the sidebar shows before the list of every schema lands: that
     /// list when the session read it, or else the default schema's, which
-    /// the connect read. Then every schema's list is asked for.
+    /// the connect read. Then every schema's list is asked for. Nothing
+    /// is shown until the first list is indexed, which takes a large
+    /// catalog longer than a frame.
     pub(super) fn open_sidebar(&mut self) {
         let Some(session) = self.context.active.get() else {
             return;
@@ -121,7 +164,6 @@ impl WorkspaceModel {
                 .objects
                 .clone()
         };
-        self.sidebar.apply_objects(&objects, &self.catalog_schemas);
         self.read_sidebar(objects);
         self.list_all_schemas();
     }
@@ -149,39 +191,28 @@ impl WorkspaceModel {
         self.sidebar_read += 1;
         let read = self.sidebar_read;
         let input = self.input.clone();
-        crate::runtime::spawn_and_deliver(
-            &self.context.tasks,
-            async move { session.schemas().await },
-            move |schemas| {
-                let schemas = match schemas {
-                    Ok(Ok(schemas)) => Some(schemas),
-                    Ok(Err(error)) => {
-                        tracing::debug!(%error, "the schemas could not be read for the sidebar");
-                        None
-                    }
-                    Err(failure) => {
-                        tracing::debug!(%failure, "the schema read for the sidebar did not finish");
-                        None
-                    }
-                };
-                input.deliver(WorkspaceInput::SidebarRead { read, objects, schemas });
-            },
+        let listing = list_catalog(
+            session,
+            self.context.tasks.clone(),
+            objects,
+            self.catalog_schemas.clone(),
         );
+        crate::runtime::spawn_and_deliver(&self.context.tasks, listing, move |listing| {
+            match listing.and_then(|listing| listing) {
+                Ok(listing) => input.deliver(WorkspaceInput::SidebarRead { read, listing }),
+                Err(failure) => tracing::warn!(%failure, "the sidebar's list could not be indexed"),
+            }
+        });
     }
 
-    pub(super) fn on_sidebar_read(
-        &mut self,
-        read: u64,
-        objects: &Arc<[ObjectInfo]>,
-        schemas: Option<Arc<[SchemaInfo]>>,
-    ) {
+    pub(super) fn on_sidebar_read(&mut self, read: u64, listing: SidebarListing) {
         if read != self.sidebar_read {
             return;
         }
-        if let Some(schemas) = schemas {
-            self.catalog_schemas = shown_schemas(&schemas, objects).into();
+        if let Some(schemas) = listing.schemas {
+            self.catalog_schemas = schemas;
         }
-        self.sidebar.apply_objects(objects, &self.catalog_schemas);
+        self.sidebar.show(listing.index);
         self.on_table_naming(TableNaming::of(&self.catalog_schemas));
     }
 

@@ -67,6 +67,11 @@ targets:
       # through a socket.
       - ../Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
       - ../Plugins/Shared/PluginQueryTimeout.swift
+      # The ClickHouse plugin driver runs whole behind PluginBackedDriver, so every file of the plugin is compiled in.
+      - path: ../Plugins/ClickHouseDriverPlugin
+        excludes:
+          - Info.plist
+      - ../Plugins/Shared/PluginConnectTimeout.swift
       # The column default reading both apps show and the version floor that says which catalog
       # quotes its defaults. The DDL writers stay on macOS.
       - ../Plugins/MySQLDriverPlugin/MySQLCatalogDefault.swift
@@ -92,6 +97,7 @@ targets:
       # and cannot be, because a manifest cannot express the slice-dependent header path the
       # iOS xcframework needs. Both CLibSSH2 shims declare the same module and the same four
       # tablepro_* wrappers, so `import CLibSSH2` resolves on either platform.
+      - ../TablePro/Core/SSH/LibSSH2ChannelFree.swift
       - ../TablePro/Core/SSH/LibSSH2ChannelIO.swift
       - ../TablePro/Core/SSH/LibSSH2ForwardChannel.swift
       - ../TablePro/Core/SSH/LibSSH2JumpRelay.swift
@@ -124,15 +130,18 @@ targets:
           - TableProModels
           - TableProMSSQLCore
           - TableProMySQLCore
+          - TableProNumberFormatting
           - TableProPluginKit
           - TableProPostgreSQLCore
           - TableProQuery
           - TableProRedisCore
           - TableProSQLGrammar
+          - TableProSQLVocabulary
           - TableProSSHTransport
           - TableProSync
           - TableProSyncTransport
           - TableProTabularIO
+          - TableProTLSClientIdentity
       - package: TableProOracle
         product: TableProOracleCore
       - framework: ../Libs/ios/DuckDB.xcframework

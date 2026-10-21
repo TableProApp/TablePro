@@ -360,4 +360,21 @@ struct PostgreSQLColumnReadSupportTests {
         #expect(learned.identityColumns == true)
         #expect(learned.materializedViewColumns == nil)
     }
+
+    @Test("enum labels group by column in the server's sort order")
+    func enumLabelsGroupByColumn() {
+        let labels = PostgreSQLDriver.enumLabels(fromRows: [
+            ["mood", "sad"], ["mood", "ok"], ["mood", "happy"], ["state", "on"], [nil, "stray"]
+        ])
+
+        #expect(labels == ["mood": ["sad", "ok", "happy"], "state": ["on"]])
+    }
+
+    @Test("the enum label read names the table's schema and table as literals")
+    func enumLabelQueryQuotesItsNames() {
+        let query = PostgreSQLDriver.enumLabelsQuery(schema: "sales", table: "o'rders")
+
+        #expect(query.contains("n.nspname = 'sales'"))
+        #expect(query.contains("c.relname = 'o''rders'"))
+    }
 }

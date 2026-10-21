@@ -20,8 +20,10 @@ final class SQLEditorHandle {
     }
 
     @ObservationIgnored private(set) weak var textView: UITextView?
+    @ObservationIgnored private var publishText: ((String) -> Void)?
     @ObservationIgnored private var band: StatementBand?
     @ObservationIgnored private var nothingToRunState: EditorState?
+    @ObservationIgnored private var pendingSelection: EditorState?
     @ObservationIgnored private var isPublishScheduled = false
 
     private struct EditorState: Equatable {
@@ -29,10 +31,47 @@ final class SQLEditorHandle {
         let selection: NSRange
     }
 
-    func attach(_ textView: UITextView) {
+    func attach(_ textView: UITextView, publishText: @escaping (String) -> Void = { _ in }) {
         self.textView = textView
+        self.publishText = publishText
         band = StatementBand(textView: textView)
         editorDidChange()
+    }
+
+    // Through the text view, so Undo brings back what was there; assigning the binding would empty the undo stack.
+    // Off the window the undo step has nowhere to live, so the caller waits until the editor shows.
+    var isInWindow: Bool {
+        textView?.window != nil
+    }
+
+    @discardableResult
+    func add(_ query: String) -> Bool {
+        guard let databaseType, let textView, textView.window != nil else { return false }
+        let edit = QueryTextInsertion.edit(
+            adding: query, to: textView.text ?? "", databaseType: databaseType, session: sessionFacts
+        )
+        guard let start = textView.position(from: textView.beginningOfDocument, offset: edit.range.location),
+              let end = textView.position(from: start, offset: edit.range.length),
+              let range = textView.textRange(from: start, to: end) else { return false }
+        textView.replace(range, withText: edit.text)
+        textView.selectedRange = edit.selection
+        textView.scrollRangeToVisible(edit.selection)
+        publishText?(textView.text ?? "")
+        editorDidChange()
+        return true
+    }
+
+    // Text set through the binding reaches the text view on its next update, so its selection waits for that text.
+    func select(_ selection: NSRange, onceTextIs text: String) {
+        pendingSelection = EditorState(text: text, selection: selection)
+        applyPendingSelection()
+    }
+
+    private func applyPendingSelection() {
+        guard let pending = pendingSelection, let textView, (textView.text ?? "") == pending.text else { return }
+        pendingSelection = nil
+        textView.selectedRange = pending.selection
+        textView.scrollRangeToVisible(pending.selection)
     }
 
     func runTarget() -> QueryRunTarget {
@@ -62,6 +101,7 @@ final class SQLEditorHandle {
     }
 
     func editorDidChange() {
+        applyPendingSelection()
         refreshBand()
         // Tapping Run resigns the editor after the note is posted, which is no reason to drop it.
         if let nothingToRunState, nothingToRunState != currentState() {

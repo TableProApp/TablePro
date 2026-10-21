@@ -5,12 +5,13 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
-use tablepro_core::meta::{ObjectInfo, SchemaInfo, TableRef};
+use tablepro_core::meta::TableRef;
 
 use super::object_key::ObjectKey;
 use super::sidebar_affordances::SidebarAffordances;
 use super::sidebar_event::SidebarEvent;
 use super::sidebar_header_factory::header_factory;
+use super::sidebar_index::SidebarIndex;
 use super::sidebar_menu::{
     CONTEXT_MENU, DROP_TABLE, EDIT_STRUCTURE, GROUP, IMPORT_CSV, NEW_TABLE, OPEN_IN_NEW_TAB, SHOW_CREATE_TABLE,
     object_menu, offers,
@@ -38,6 +39,9 @@ pub(crate) struct SidebarInner {
     empty: adw::StatusPage,
     events: Box<dyn Fn(SidebarEvent)>,
     affordances: Cell<SidebarAffordances>,
+    /// Whether a list was shown yet. Until then the sidebar is blank
+    /// rather than saying there are no tables.
+    listed: Cell<bool>,
     header_factory: RefCell<Option<gtk::SignalListItemFactory>>,
     /// The table of the tab in front. Activation on a single click also
     /// selects rows on hover, so the selection returns here.
@@ -86,6 +90,7 @@ impl SidebarView {
             empty,
             events: Box::new(events),
             affordances: Cell::new(affordances),
+            listed: Cell::new(false),
             header_factory: RefCell::new(None),
             active: RefCell::new(None),
             rows: RefCell::new(Vec::new()),
@@ -112,12 +117,23 @@ impl SidebarView {
 
     /// Show a new object list. The selection goes back to the tab in
     /// front's table, which the new list holds as a new object.
-    pub(crate) fn apply_objects(&self, objects: &[ObjectInfo], schemas: &[SchemaInfo]) {
-        self.inner.model.replace(objects, schemas);
+    pub(crate) fn show(&self, index: SidebarIndex) {
+        self.inner.model.replace(index);
+        self.inner.listed.set(true);
         self.inner.reselect();
         // An empty list replacing an empty list changes no item, so the
         // list's signal never says the placeholder is out of date.
         self.inner.refresh_placeholder();
+    }
+
+    /// `show`, indexing on the GTK thread, for lists a test writes out.
+    #[cfg(test)]
+    pub(crate) fn apply_objects(
+        &self,
+        objects: &[tablepro_core::meta::ObjectInfo],
+        schemas: &[tablepro_core::meta::SchemaInfo],
+    ) {
+        self.show(SidebarIndex::build(objects, schemas));
     }
 
     pub(crate) fn set_query(&self, query: &str) {
@@ -183,6 +199,12 @@ impl SidebarView {
     #[cfg(test)]
     pub(crate) fn shown(&self) -> u32 {
         self.inner.model.shown()
+    }
+
+    /// How many rows the list made since its last new index.
+    #[cfg(test)]
+    pub(crate) fn made(&self) -> usize {
+        self.inner.model.list().made()
     }
 
     /// Each bound row's table name and what a screen reader says it is.
@@ -368,7 +390,7 @@ impl SidebarInner {
     }
 
     fn refresh_placeholder(&self) {
-        if self.model.shown() > 0 {
+        if self.model.shown() > 0 || !self.listed.get() {
             self.root.set_visible_child_name(LIST_PAGE);
             return;
         }

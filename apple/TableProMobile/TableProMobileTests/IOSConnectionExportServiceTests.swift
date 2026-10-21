@@ -1,7 +1,10 @@
+import CloudKit
 import Foundation
 import TableProImport
 @testable import TableProMobile
 import TableProModels
+import TableProSync
+import TableProSyncTransport
 import Testing
 
 @MainActor
@@ -188,6 +191,19 @@ struct IOSConnectionExportServiceTests {
         #expect(IOSConnectionExportService.portableSettings(for: connection).sslConfig == nil)
     }
 
+    @Test("A connection synced from a Mac exports its SSL, which the Mac keeps only in its SSL settings")
+    func macSyncedSSLExports() throws {
+        let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
+        let record = SyncRecordMapper.toRecord(DatabaseConnection(name: "Secure", type: .postgresql), zoneID: zoneID)
+        let fields = record.fields(ConnectionSyncField.self)
+        fields[.sslEnabled] = nil
+        let macBlob = #"{"mode":"Verify Identity","caCertificatePath":"","clientCertificatePath":"","clientKeyPath":""}"#
+        fields[.sslConfigJson] = Data(macBlob.utf8) as CKRecordValue
+        let connection = try #require(SyncRecordMapper.toConnection(record))
+
+        #expect(IOSConnectionExportService.portableSettings(for: connection).sslConfig?.mode == "Verify Identity")
+    }
+
     @Test("A connection in a nested group exports the whole group path")
     func exportKeepsNestedGroupPath() async throws {
         let state = makeState()
@@ -283,6 +299,94 @@ struct IOSConnectionExportServiceTests {
 
         #expect(ssh.port == nil)
         #expect(ssh.authMethod == "SSH Agent")
+    }
+
+    @Test("An exported tunnel keeps the Mac's agent socket, TOTP and remote file settings")
+    func exportKeepsMacTunnelFields() async throws {
+        let state = makeState()
+        var ssh = SSHConfiguration(host: "db-1", username: "deploy", authMethod: .sshAgent)
+        ssh.macAgentSocketPath = "~/.1password/agent.sock"
+        ssh.totpMode = "auto_generate"
+        ssh.totpAlgorithm = "SHA256"
+        ssh.totpDigits = 8
+        ssh.totpPeriod = 60
+        ssh.macRemoteFilePath = "/srv/app.db"
+        ssh.macRemoteFileAccess = "onServer"
+        let connection = DatabaseConnection(
+            name: "Agent",
+            type: .postgresql,
+            host: "10.0.0.5",
+            sshEnabled: true,
+            sshConfiguration: ssh
+        )
+        #expect(state.addConnection(connection))
+
+        let bundle = try await exportedBundle(state.connections, from: state)
+        let exported = try #require(bundle.connections.first?.settings.sshConfig)
+
+        #expect(exported.agentSocketPath == "~/.1password/agent.sock")
+        #expect(exported.totpMode == "auto_generate")
+        #expect(exported.totpAlgorithm == "SHA256")
+        #expect(exported.totpDigits == 8)
+        #expect(exported.totpPeriod == 60)
+        #expect(exported.remoteFilePath == "/srv/app.db")
+        #expect(exported.remoteFileAccess == "onServer")
+    }
+
+    @Test("An export with credentials carries the SSH profile's password a linked tunnel signs in with")
+    func exportCarriesProfilePassword() async throws {
+        let store = MockSecureStore()
+        let state = makeState(secureStore: store)
+        var connection = DatabaseConnection(
+            name: "Profile",
+            type: .postgresql,
+            host: "10.0.0.5",
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "bastion.example.com", username: "deploy")
+        )
+        let profileId = UUID()
+        connection.sshProfileId = profileId
+        #expect(state.addConnection(connection))
+        store.seed("com.TablePro.sshprofile.password.\(profileId.uuidString)", "profile-secret")
+
+        let data = try await IOSConnectionExportService.exportData(
+            connections: state.connections,
+            appState: state,
+            includeCredentials: true,
+            passphrase: "export-passphrase"
+        )
+        let decrypted = try await ConnectionExportCrypto.decrypt(data: data, passphrase: "export-passphrase")
+
+        #expect(try #require(String(data: decrypted, encoding: .utf8)).contains("profile-secret"))
+    }
+
+    @Test("An export with credentials carries the TOTP secret, and a plain export does not")
+    func exportCarriesTOTPSecret() async throws {
+        let store = MockSecureStore()
+        let state = makeState(secureStore: store)
+        var ssh = SSHConfiguration(host: "db-1", username: "deploy", authMethod: .keyboardInteractive)
+        ssh.totpMode = "auto_generate"
+        let connection = DatabaseConnection(name: "TOTP", type: .postgresql, host: "10.0.0.5", sshEnabled: true, sshConfiguration: ssh)
+        #expect(state.addConnection(connection))
+        store.seed("com.TablePro.totpsecret.\(connection.id.uuidString)", "JBSWY3DPEHPK3PXP")
+
+        let plain = try await IOSConnectionExportService.exportData(
+            connections: state.connections,
+            appState: state,
+            includeCredentials: false,
+            passphrase: nil
+        )
+        #expect(!(String(data: plain, encoding: .utf8) ?? "").contains("JBSWY3DPEHPK3PXP"))
+
+        let data = try await IOSConnectionExportService.exportData(
+            connections: state.connections,
+            appState: state,
+            includeCredentials: true,
+            passphrase: "export-passphrase"
+        )
+        let sealed = try await ConnectionBundleCodec.decode(data, passphrase: "export-passphrase")
+        let ref = try #require(sealed.connections.first?.ref)
+        #expect(sealed.credentials[ref]?.totpSecret == "JBSWY3DPEHPK3PXP")
     }
 
     @Test("Timeout overrides export explicitly and keep unrelated fields")

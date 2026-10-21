@@ -829,7 +829,9 @@ final class SyncCoordinator: ObservableObject {
                 case .skipped: break
                 }
             case .sshProfile:
-                applyRemoteSSHProfile(record, tombstoneIds: sshTombstoneIds)
+                if !applyRemoteSSHProfile(record, tombstoneIds: sshTombstoneIds) {
+                    persistenceFailed = true
+                }
             case .credentialProfile:
                 if !applyRemoteCredentialProfile(record, tombstoneIds: credentialTombstoneIds) {
                     persistenceFailed = true
@@ -955,7 +957,7 @@ final class SyncCoordinator: ObservableObject {
         } else {
             connections.append(remoteConnection)
         }
-        guard services.connectionStorage.saveConnections(connections) else {
+        guard services.connectionStorage.saveConnections(connections, byUser: false) else {
             Self.logger.error("Failed to apply remote connection update: persistence error for \(remoteConnection.id, privacy: .public)")
             return .failed
         }
@@ -1025,19 +1027,20 @@ final class SyncCoordinator: ObservableObject {
         }
         guard services.credentialProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
         /// The connections linked to it carry a copy of the username, which every raw reader uses.
-        services.credentialProfileStorage.writeUsernameThrough(remoteProfile)
+        services.credentialProfileStorage.writeUsernameThrough(remoteProfile, byUser: false)
         return true
     }
 
-    private func applyRemoteSSHProfile(_ record: CKRecord, tombstoneIds: Set<String>) {
+    // False keeps the change token, so a profile this Mac failed to save arrives again.
+    private func applyRemoteSSHProfile(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
         let remoteProfile: SSHProfile
         do {
             remoteProfile = try SyncRecordMapper.toSSHProfile(record)
         } catch {
             Self.logger.error("Skipping remote SSH profile \(record.recordID.recordName, privacy: .public): \(error.publicLogShape, privacy: .public)")
-            return
+            return true
         }
-        if tombstoneIds.contains(remoteProfile.id.uuidString) { return }
+        if tombstoneIds.contains(remoteProfile.id.uuidString) { return true }
 
         var profiles = services.sshProfileStorage.loadProfiles()
         if let index = profiles.firstIndex(where: { $0.id == remoteProfile.id }) {
@@ -1045,10 +1048,11 @@ final class SyncCoordinator: ObservableObject {
         } else {
             profiles.append(remoteProfile)
         }
-        guard services.sshProfileStorage.saveProfilesWithoutSync(profiles) else { return }
+        guard services.sshProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
         /// A linked connection stores the profile's configuration, so an edit that arrives from
         /// another Mac has to reach those connections too or they keep tunnelling to the old host.
-        services.sshProfileStorage.refreshLinkedConnections(with: remoteProfile)
+        services.sshProfileStorage.refreshLinkedConnections(with: remoteProfile, byUser: false)
+        return true
     }
 
     private func applyRemoteSettings(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {

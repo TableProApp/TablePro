@@ -416,6 +416,22 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.classifyTier("DEBUG SEGFAULT", databaseType: .redis) == .destructive)
     }
 
+    @Test("Every Redis command in a text is tiered, a line break ending one as a semicolon does")
+    func redisEveryCommandIsTiered() {
+        #expect(QueryClassifier.classifyTier("GET a\nFLUSHALL", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("GET a; DEL b", databaseType: .redis) == .write)
+        #expect(QueryClassifier.classifyTier("GET a\nGET b;", databaseType: .redis) == .safe)
+        #expect(QueryClassifier.classifyTier("GET \"a\nFLUSHALL\"", databaseType: .redis) == .safe)
+        #expect(QueryClassifier.isMultiStatement("GET a\nGET b", databaseType: .redis))
+        #expect(!QueryClassifier.isMultiStatement("SET k \"a\nb\"", databaseType: .redis))
+    }
+
+    @Test("A Redis line that looks like a SQL comment is a command, so it never hides the next one")
+    func redisCommentLookalikesHideNothing() {
+        #expect(QueryClassifier.classifyTier("/*\nFLUSHALL\n*/ GET a", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("-- note\nGET a", databaseType: .redis) == .write)
+    }
+
     @Test("Redis CONFIG splits on the subcommand")
     func redisConfigSplitsOnSubcommand() {
         #expect(QueryClassifier.classifyTier("CONFIG GET maxmemory", databaseType: .redis) == .safe)

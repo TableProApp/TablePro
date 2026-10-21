@@ -62,6 +62,7 @@ struct PersistedTab: Codable {
     var columnWidths: [String: CGFloat]?
     var columnContentWidths: [String: CGFloat]?
     var windowGroupIndex: Int?
+    var isPinned: Bool = false
 
     /// Set when the query was too large for the tab-state JSON and lives in a sidecar file.
     var overflowFileName: String?
@@ -91,7 +92,8 @@ struct PersistedTab: Codable {
         collapsedFoldRanges: [Int]? = nil,
         columnWidths: [String: CGFloat]? = nil,
         columnContentWidths: [String: CGFloat]? = nil,
-        windowGroupIndex: Int? = nil
+        windowGroupIndex: Int? = nil,
+        isPinned: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -118,6 +120,7 @@ struct PersistedTab: Codable {
         self.columnWidths = columnWidths
         self.columnContentWidths = columnContentWidths
         self.windowGroupIndex = windowGroupIndex
+        self.isPinned = isPinned
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -126,6 +129,7 @@ struct PersistedTab: Codable {
         case sortColumns, sortSource, restoredPage, restoredPageSize, cursorOffset, cursorLength
         case collapsedFoldRanges
         case columnWidths, columnContentWidths, windowGroupIndex
+        case isPinned
         case overflowFileName
     }
 
@@ -156,6 +160,7 @@ struct PersistedTab: Codable {
         columnWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnWidths)
         columnContentWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnContentWidths)
         windowGroupIndex = try container.decodeIfPresent(Int.self, forKey: .windowGroupIndex)
+        isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
         overflowFileName = try container.decodeIfPresent(String.self, forKey: .overflowFileName)
     }
 }
