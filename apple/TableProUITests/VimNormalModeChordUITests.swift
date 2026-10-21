@@ -4,7 +4,7 @@ final class VimNormalModeChordUITests: UITestCase {
     func testVimModesKeepTheirKeys() throws {
         let launch = try launchWithFixture()
         let app = launch.app
-        enableVimMode(in: app)
+        chooseKeyBindings("Vim", in: app)
 
         app.typeShortcut(.newTab)
         let editor = editorTextView(in: launch.window)
@@ -34,24 +34,6 @@ final class VimNormalModeChordUITests: UITestCase {
         app.typeKey(.leftArrow, modifierFlags: .shift)
         app.typeKey("h", modifierFlags: .control)
         expectText("SELECT 1 AS a + ", in: editor, "Ctrl+H in Insert mode must delete the selection, as Delete does")
-    }
-
-    private func enableVimMode(in app: XCUIApplication) {
-        app.typeShortcut(.settings)
-        let settings = window("settings", in: app)
-        XCTAssertTrue(settings.waitToExist(timeout: 10), "Cmd+, must open Settings")
-        let editorPane = settings.toolbars.buttons["Editor"]
-        XCTAssertTrue(editorPane.waitToExist(timeout: 10))
-        editorPane.click()
-
-        let toggle = settings.descendants(matching: .any).matching(identifier: "vim-mode-toggle").firstMatch
-        XCTAssertTrue(scrollUntilHittable(toggle, in: settings, timeout: 30), "The Editor pane must offer Vim mode")
-        XCTAssertFalse(isOn(toggle), "A new sandbox starts with Vim mode off")
-        toggle.click()
-        XCTAssertTrue(waitForPredicate(timeout: 5) { self.isOn(toggle) }, "Vim mode must be on after the click")
-
-        settings.buttons[XCUIIdentifierCloseWindow].click()
-        XCTAssertTrue(settings.waitForNonExistence(timeout: 10), "Settings must close")
     }
 
     // Control characters are spelled out, so a stray Option+Space shows as <U+00A0> rather than a space.

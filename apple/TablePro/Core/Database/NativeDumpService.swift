@@ -204,6 +204,8 @@ final class NativeDumpService: ObservableObject {
     private var toolName = "dump"
     private var cancelRequested = false
     private var preparation: Task<NativeDumpDescriptor.Request, any Error>?
+    // The Vault lease the tool signs in with, held until the tool exits.
+    private var credentialLease: VaultLease?
 
     func stateUpdates() -> AsyncStream<NativeDumpState> {
         let (stream, continuation) = AsyncStream<NativeDumpState>.makeStream()
@@ -220,6 +222,12 @@ final class NativeDumpService: ObservableObject {
 
     private func setState(_ newState: NativeDumpState) {
         state = newState
+        switch newState {
+        case .finished, .failed, .cancelled:
+            releaseCredentialLease()
+        case .idle, .running, .cancelling:
+            break
+        }
         for continuation in stateObservers.values {
             continuation.yield(newState)
         }
@@ -286,6 +294,13 @@ final class NativeDumpService: ObservableObject {
             effective.username = username
         }
         let password = signIn.password
+        releaseCredentialLease()
+        credentialLease = signIn.lease
+        signIn.lease?.start { _ in }
+        var jobStarted = false
+        defer {
+            if !jobStarted { releaseCredentialLease() }
+        }
         let localFilePath = Self.localFilePath(for: effective)
         let catalog = descriptor.engineStatements == nil
             ? nil
@@ -345,7 +360,13 @@ final class NativeDumpService: ObservableObject {
             )
         }
 
+        jobStarted = true
         Self.logger.info("\(self.toolName, privacy: .public) started db=\(database, privacy: .private(mask: .hash))")
+    }
+
+    private func releaseCredentialLease() {
+        credentialLease?.release()
+        credentialLease = nil
     }
 
     // Nil when a cancel arrived while it ran: the checks it was making stop, and the run reads as cancelled rather than

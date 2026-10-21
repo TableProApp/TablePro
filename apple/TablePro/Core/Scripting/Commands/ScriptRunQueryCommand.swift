@@ -25,7 +25,7 @@ internal final class ScriptRunQueryCommand: ScriptCommand {
             schema: optionalString(ScriptingKeys.Parameter.schema),
             rowLimit: optionalInt(ScriptingKeys.Parameter.rowLimit),
             timeoutSeconds: optionalInt(ScriptingKeys.Parameter.timeout),
-            client: sendingApplication
+            channel: .appleScript(client: sendingApplication)
         )
 
         return ScriptResultEncoder.encode(try await ScriptQueryRunner.run(request, bridge: bridge))

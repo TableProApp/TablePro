@@ -137,12 +137,12 @@ struct HistoryDateRangeTests {
         #expect(QueryHistorySource.migratingStoredSelection(before) == Set(QueryHistorySource.allCases))
     }
 
-    @Test("The all-sources selection from before Command Line widens to include it")
+    @Test("Every earlier all-sources selection widens to include Shortcuts and Command Line")
     func everythingMigratesToIncludeCommandLine() {
-        let before: Set<QueryHistorySource> = [
-            .editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp, .script
-        ]
-        #expect(QueryHistorySource.migratingStoredSelection(before) == Set(QueryHistorySource.allCases))
+        let base: Set<QueryHistorySource> = [.editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp]
+        for before in [base.union([.script]), base.union([.script, .shortcuts])] {
+            #expect(QueryHistorySource.migratingStoredSelection(before) == Set(QueryHistorySource.allCases))
+        }
     }
 
     @Test("A custom selection is left exactly as the user set it")
