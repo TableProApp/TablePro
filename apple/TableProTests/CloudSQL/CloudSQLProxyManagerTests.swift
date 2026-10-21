@@ -165,13 +165,13 @@ struct CloudSQLProxyManagerTests {
                 started.set()
                 return FakeCloudSQLProxyRunner(behavior: .ready)
             },
-            ownsListener: { _, _ in true },
             binaryManager: CloudSQLProxyBinaryManager(
                 baseDirectory: dir,
                 expectedSHA256: ["arm64": "deadbeef", "amd64": "deadbeef"],
                 fetch: { _ in Data("still wrong".utf8) }
             ),
-            systemBinaryLookup: { _ in nil }
+            systemBinaryLookup: { _ in nil },
+            ownsListener: { _, _ in true }
         )
 
         await #expect(throws: CloudSQLProxyError.binaryNotFound) {
@@ -199,13 +199,13 @@ struct CloudSQLProxyManagerTests {
 
         let manager = CloudSQLProxyManager(
             runnerFactory: { FakeCloudSQLProxyRunner(behavior: .ready) },
-            ownsListener: { _, _ in true },
             binaryManager: CloudSQLProxyBinaryManager(
                 baseDirectory: dir,
                 expectedSHA256: ["arm64": digest, "amd64": digest],
                 fetch: { _ in bytes }
             ),
-            systemBinaryLookup: { _ in nil }
+            systemBinaryLookup: { _ in nil },
+            ownsListener: { _, _ in true }
         )
 
         let port = try await manager.createTunnel(
