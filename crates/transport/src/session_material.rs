@@ -1,5 +1,6 @@
-use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::Read;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 use secrecy::{ExposeSecret, SecretString};
@@ -107,8 +108,11 @@ fn append_tls_client_identity(hasher: &mut MaterialHasher, saved: &SavedConnecti
 }
 
 fn read_material_file(path: &Path) -> Result<Vec<u8>, TransportError> {
-    let file =
-        File::open(path).map_err(|error| TransportError::Secret(format!("cannot read {}: {error}", path.display())))?;
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| TransportError::Secret(format!("cannot read {}: {error}", path.display())))?;
     let metadata = file
         .metadata()
         .map_err(|error| TransportError::Secret(format!("cannot inspect {}: {error}", path.display())))?;
@@ -405,5 +409,21 @@ mod tests {
         saved.ssh.as_mut().unwrap().credential_revision = 1;
         let second = session_material_digest(&saved).await.unwrap();
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn a_named_pipe_is_refused_instead_of_blocking_the_connect() {
+        let dir = tempfile::tempdir().unwrap();
+        let pipe = dir.path().join("ca.pem");
+        let path = std::ffi::CString::new(pipe.to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || sender.send(read_material_file(&pipe)).ok());
+
+        let outcome = receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("opening a named pipe must not block");
+
+        assert!(outcome.unwrap_err().to_string().contains("not a regular file"));
     }
 }

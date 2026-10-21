@@ -17,6 +17,7 @@ tablepro-ssh = { path = "../ssh" }
 tablepro-storage = { path = "../storage" }
 rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs", "std"] }
 secrecy.workspace = true
+libc.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
