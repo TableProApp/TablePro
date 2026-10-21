@@ -642,6 +642,10 @@ extension PluginManager {
             .capabilities.supportsPrincipalConnectionLimit ?? true
     }
 
+    func supportsRoleLogin(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.supportsRoleLogin ?? true
+    }
+
     func autoLimitStyle(for databaseType: DatabaseType) -> AutoLimitStyle {
         guard let snapshot = PluginMetadataRegistry.shared.snapshot(for: databaseType) else {
             return .limit

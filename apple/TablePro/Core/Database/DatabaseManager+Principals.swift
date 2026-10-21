@@ -28,6 +28,12 @@ extension DatabaseManager {
             let statements = try generator.generate(changes: changes)
             guard !statements.isEmpty else { return }
 
+            // An engine that cannot roll these back commits the session's open transaction before the first one runs.
+            if !principalDriver.rollsBackPrincipalStatements,
+               let notice = await driver.heldSessionTransactionState().openTransactionNotice {
+                throw DatabaseError.queryFailed(notice)
+            }
+
             let combinedSQL = statements.map(\.sql).joined(separator: "\n")
             let kind: OperationKind = statements.contains(where: \.isDestructive)
                 ? .destructiveQuery
