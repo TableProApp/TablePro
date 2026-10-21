@@ -13,7 +13,6 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 - Copy as in the grid menu also offers UPDATE Statement and DELETE Statement for a row, found by its primary key. Tables without a key refuse with a message.
 - CSV import can set the quote character, backslash escaping of quotes and the file encoding (UTF-8, Windows-1252, UTF-16); a file that is not UTF-8 opens with a matching encoding selected.
 - The sidebar table menu has Truncate Table, which asks for confirmation and runs through the same guard as other statements. SQLite is refused because it has no TRUNCATE.
-- The sidebar table menu has Truncate Table, which asks for confirmation and runs through the same guard as other statements. SQLite is refused because it has no TRUNCATE.
 - The sidebar table menu has Rename Table. It asks for the new name and is refused while the table has open tabs, so no pending changes are lost.
 - MongoDB connections have an optional Authentication database field, for a user defined in `admin` while the Database field names the database to browse; saved connections and bundles carry it.
 - PostgreSQL query cancellation through PgBouncer without interrupting another client's work.
