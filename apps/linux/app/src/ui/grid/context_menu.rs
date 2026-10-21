@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use gtk4::prelude::*;
@@ -14,16 +13,11 @@ use super::value_viewer;
 
 const CELL_MENU_TRIGGER: &str = "Menu|<Shift>F10";
 
-#[derive(Clone)]
-struct CellContext {
-    widget: gtk::Widget,
-    col_index: usize,
-    column_name: String,
-}
+use super::cell_context::{CellContext, CellContextStore};
 
 #[derive(Clone)]
 pub(super) struct GridMenus {
-    context: Rc<RefCell<Option<CellContext>>>,
+    context: CellContextStore,
     editable_popover: gtk::PopoverMenu,
     readonly_popover: gtk::PopoverMenu,
     edit_action: gio::SimpleAction,
@@ -47,7 +41,7 @@ pub(super) fn install_grid_context_menus(
     driver_id: String,
     options: GridMenuOptions,
 ) -> GridMenus {
-    let context: Rc<RefCell<Option<CellContext>>> = Rc::new(RefCell::new(None));
+    let context = CellContextStore::default();
     let columns = Rc::new(result_columns.to_vec());
     let local_result = options.local_result_view.is_some();
     let editable_menu = build_menu(
@@ -65,7 +59,7 @@ pub(super) fn install_grid_context_menus(
     {
         let context = context.clone();
         edit_action.connect_activate(move |_, _| {
-            if let Some(slot) = context.borrow().as_ref()
+            if let Some(slot) = context.snapshot().as_ref()
                 && let Ok(label) = slot.widget.clone().downcast::<crate::ui::cell_editor::CellEditor>()
             {
                 enter_edit_mode(&label);
@@ -79,7 +73,7 @@ pub(super) fn install_grid_context_menus(
         let columns = columns.clone();
         let sender = sender.clone();
         edit_full_value_action.connect_activate(move |_, _| {
-            let context = context.borrow();
+            let context = context.snapshot();
             let Some(slot) = context.as_ref() else { return };
             let Some(view) = view.upgrade() else { return };
             let Some(column) = columns.get(slot.col_index) else {
@@ -124,7 +118,7 @@ pub(super) fn install_grid_context_menus(
         let view = column_view.downgrade();
         gio::ActionEntry::builder("copy-value")
             .activate(move |_, _, _| {
-                if let Some(slot) = context.borrow().as_ref() {
+                if let Some(slot) = context.snapshot().as_ref() {
                     let row = view.upgrade().and_then(|view| row_object_at(&view, position(slot)));
                     let text = copy_value_text(&slot.widget, row.as_ref(), slot.col_index);
                     sender.send(GridMsg::CopyToClipboard(text)).ok();
@@ -137,7 +131,7 @@ pub(super) fn install_grid_context_menus(
         let sender = sender.clone();
         gio::ActionEntry::builder("copy-column-name")
             .activate(move |_, _, _| {
-                if let Some(slot) = context.borrow().as_ref() {
+                if let Some(slot) = context.snapshot().as_ref() {
                     sender.send(GridMsg::CopyToClipboard(slot.column_name.clone())).ok();
                 }
             })
@@ -198,7 +192,7 @@ pub(super) fn install_grid_context_menus(
         let view = column_view.downgrade();
         gio::ActionEntry::builder("copy-in-clause")
             .activate(move |_, _, _| {
-                let context = context.borrow();
+                let context = context.snapshot();
                 let Some(slot) = context.as_ref() else { return };
                 let Some(view) = view.upgrade() else { return };
                 let Some(rows) = values_for_column_menu(&view, position(slot), slot.col_index) else {
@@ -227,7 +221,7 @@ pub(super) fn install_grid_context_menus(
         let view = column_view.downgrade();
         gio::ActionEntry::builder("view-value")
             .activate(move |_, _, _| {
-                let context = context.borrow();
+                let context = context.snapshot();
                 let Some(slot) = context.as_ref() else { return };
                 let Some(view) = view.upgrade() else { return };
                 let row = row_object_at(&view, position(slot));
@@ -280,7 +274,7 @@ pub(super) fn install_grid_context_menus(
         let columns = columns.clone();
         gio::ActionEntry::builder("show-row-json")
             .activate(move |_, _, _| {
-                let context = context.borrow();
+                let context = context.snapshot();
                 let Some(slot) = context.as_ref() else { return };
                 let Some(view) = view.upgrade() else { return };
                 let Some(row) = complete_row_at(&view, position(slot)) else {
@@ -313,7 +307,7 @@ pub(super) fn install_grid_context_menus(
         let view = column_view.downgrade();
         gio::ActionEntry::builder("copy-row-insert")
             .activate(move |_, _, _| {
-                if let Some(slot) = context.borrow().as_ref() {
+                if let Some(slot) = context.snapshot().as_ref() {
                     let Some(view) = view.upgrade() else { return };
                     if complete_row_at(&view, position(slot)).is_none() {
                         sender.send(GridMsg::IncompleteRowData).ok();
@@ -341,7 +335,7 @@ pub(super) fn install_grid_context_menus(
         let sender = sender.clone();
         gio::ActionEntry::builder("set-null")
             .activate(move |_, _, _| {
-                if let Some(slot) = context.borrow().as_ref() {
+                if let Some(slot) = context.snapshot().as_ref() {
                     let (row_position, row_key) = cell_row_identity(&slot.widget);
                     sender
                         .send(GridMsg::SetCellNull {
@@ -359,7 +353,7 @@ pub(super) fn install_grid_context_menus(
         let sender = sender.clone();
         gio::ActionEntry::builder("delete-row")
             .activate(move |_, _, _| {
-                if let Some(slot) = context.borrow().as_ref() {
+                if let Some(slot) = context.snapshot().as_ref() {
                     let (row_position, row_key) = cell_row_identity(&slot.widget);
                     sender.send(GridMsg::DeleteRowAt { row_position, row_key }).ok();
                 }
@@ -380,7 +374,7 @@ pub(super) fn install_grid_context_menus(
         let view = column_view.downgrade();
         gio::ActionEntry::builder("duplicate-row")
             .activate(move |_, _, _| {
-                if let Some(slot) = context.borrow().as_ref() {
+                if let Some(slot) = context.snapshot().as_ref() {
                     let Some(view) = view.upgrade() else { return };
                     if complete_row_at(&view, position(slot)).is_none() {
                         sender.send(GridMsg::IncompleteRowData).ok();
@@ -443,9 +437,10 @@ pub(super) fn install_grid_context_menus(
         readonly_for_destroy.unparent();
         empty_for_destroy.unparent();
     });
-    let view = column_view.clone();
+    let view = column_view.downgrade();
     let gesture = gtk::GestureClick::builder().button(3).build();
     gesture.connect_pressed(move |gesture, _, x, y| {
+        let Some(view) = view.upgrade() else { return };
         let widget: gtk::Widget = view.clone().upcast();
         if let Some(picked) = view.pick(x, y, gtk::PickFlags::DEFAULT)
             && picked != widget
@@ -542,7 +537,7 @@ fn build_menu(
 }
 
 fn go_to_reference_action(
-    context: Rc<RefCell<Option<CellContext>>>,
+    context: CellContextStore,
     sender: relm4::Sender<GridMsg>,
     column_view: &gtk::ColumnView,
     columns: Rc<Vec<ColumnInfo>>,
@@ -551,7 +546,7 @@ fn go_to_reference_action(
     action.set_enabled(false);
     let view = column_view.downgrade();
     action.connect_activate(move |_, _| {
-        let context = context.borrow();
+        let context = context.snapshot();
         let Some(slot) = context.as_ref() else { return };
         let Some(view) = view.upgrade() else { return };
         let Some(cells) = row_at(&view, position(slot)) else {
@@ -573,7 +568,7 @@ fn go_to_reference_action(
 }
 
 fn filter_by_value_action(
-    context: Rc<RefCell<Option<CellContext>>>,
+    context: CellContextStore,
     sender: relm4::Sender<GridMsg>,
     column_view: &gtk::ColumnView,
     columns: Rc<Vec<ColumnInfo>>,
@@ -582,7 +577,7 @@ fn filter_by_value_action(
     let view = column_view.downgrade();
     gio::ActionEntry::builder("filter-by-value")
         .activate(move |_, _, _| {
-            let context = context.borrow();
+            let context = context.snapshot();
             let Some(slot) = context.as_ref() else { return };
             let Some(view) = view.upgrade() else { return };
             let value = match &local_result_view {
@@ -619,7 +614,7 @@ fn source_value_at(view: &gtk::ColumnView, position: u32, column: usize) -> Opti
 
 fn copy_rows_action<F>(
     name: &'static str,
-    context: Rc<RefCell<Option<CellContext>>>,
+    context: CellContextStore,
     sender: relm4::Sender<GridMsg>,
     column_view: &gtk::ColumnView,
     columns: Rc<Vec<ColumnInfo>>,
@@ -631,7 +626,7 @@ where
     let view = column_view.downgrade();
     gio::ActionEntry::builder(name)
         .activate(move |_, _, _| {
-            let context = context.borrow();
+            let context = context.snapshot();
             let Some(slot) = context.as_ref() else { return };
             let Some(view) = view.upgrade() else { return };
             let Some(rows) = rows_for_menu(&view, position(slot)) else {
@@ -669,8 +664,8 @@ pub(super) fn attach_cell_gesture(
     } else {
         menus.readonly_popover.clone()
     };
-    let gesture_widget = widget.clone();
-    let view = column_view.clone();
+    let gesture_widget = widget.downgrade();
+    let view = column_view.downgrade();
     let context = menus.context.clone();
     let edit_action = menus.edit_action.clone();
     let edit_full_value_action = menus.edit_full_value_action.clone();
@@ -683,13 +678,12 @@ pub(super) fn attach_cell_gesture(
         .propagation_phase(gtk::PropagationPhase::Capture)
         .build();
     gesture.connect_pressed(move |gesture, _, x, y| {
+        let (Some(view), Some(gesture_widget)) = (view.upgrade(), gesture_widget.upgrade()) else {
+            return;
+        };
         gesture.set_state(gtk::EventSequenceState::Claimed);
         select_row_for_menu(&view, POSITION_SLOT.get(&gesture_widget).unwrap_or(0));
-        *context.borrow_mut() = Some(CellContext {
-            widget: gesture_widget.clone(),
-            col_index: idx,
-            column_name: gesture_name.clone(),
-        });
+        context.set(&gesture_widget, idx, gesture_name.clone());
         edit_action.set_enabled(edit_enabled_for(&gesture_widget, is_text_editable));
         edit_full_value_action.set_enabled(
             supports_full_value
@@ -715,20 +709,19 @@ pub(super) fn attach_cell_gesture(
         gesture_popover.popup();
     });
     widget.add_controller(gesture);
-    let key_widget = widget.clone();
-    let key_view = column_view.clone();
+    let key_widget = widget.downgrade();
+    let key_view = column_view.downgrade();
     let key_context = menus.context.clone();
     let key_action = menus.edit_action.clone();
     let key_full_value_action = menus.edit_full_value_action.clone();
     let shortcut = gtk::Shortcut::builder()
         .trigger(&crate::ui::shortcut::parse(CELL_MENU_TRIGGER))
         .action(&gtk::CallbackAction::new(move |_, _| {
+            let (Some(key_view), Some(key_widget)) = (key_view.upgrade(), key_widget.upgrade()) else {
+                return glib::Propagation::Proceed;
+            };
             select_row_for_menu(&key_view, POSITION_SLOT.get(&key_widget).unwrap_or(0));
-            *key_context.borrow_mut() = Some(CellContext {
-                widget: key_widget.clone(),
-                col_index: idx,
-                column_name: column_name.clone(),
-            });
+            key_context.set(&key_widget, idx, column_name.clone());
             key_action.set_enabled(edit_enabled_for(&key_widget, is_text_editable));
             key_full_value_action.set_enabled(
                 supports_full_value

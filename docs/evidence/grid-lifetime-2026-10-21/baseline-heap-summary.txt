@@ -1,0 +1,458 @@
+reading file ".analysis/grid-lifetime/baseline-repeat.zst" - please wait, this might take some time...
+Debuggee command was: ./.analysis/grid-lifetime/baseline-test --ignored --exact ui::grid::lifetime_tests::repeated_result_grid_replacement_releases_every_retired_page --test-threads=1
+finished reading file, now analyzing data:
+
+MEMORY LEAKS
+25.14M leaked over 6814 calls from
+0x7f02ea9ec277
+  in ??
+525.06K leaked over 16 calls from:
+    0x7f02f4dd0ae2
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f02f4dd0bf4
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f02f4e36b45
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f02f4edbbd8
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f02f4e8e0f7
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f02f4e8e480
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f02f58c645b
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f02f58d05da
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f02f5152630
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f02f504a3ae
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f02f505d944
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f02f58b64bb
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f02f5171e5b
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f02f496130e
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f02f48bd8c8
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    driCreateContextAttribs
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7f030c70682f
+      in /usr/lib/libEGL_mesa.so.0
+    0x7f030c6f8bec
+      in /usr/lib/libEGL_mesa.so.0
+    0x7f03133666ac
+      in /usr/lib/libgtk-4.so.1
+    0x7f0313366a4d
+      in /usr/lib/libgtk-4.so.1
+    gdk_gl_context_realize
+      in /usr/lib/libgtk-4.so.1
+    gdk_display_prepare_gl
+      in /usr/lib/libgtk-4.so.1
+    gdk_x11_display_open
+      in /usr/lib/libgtk-4.so.1
+    gdk_display_manager_open_display
+      in /usr/lib/libgtk-4.so.1
+    gtk_init_check
+      in /usr/lib/libgtk-4.so.1
+    _RNvNtCsiaGu490IDRx_4gtk42rt4init
+      in ./.analysis/grid-lifetime/baseline-test
+    repeated_result_grid_replacement_releases_every_retired_page
+      at apps/linux/app/src/ui/grid/lifetime_tests.rs:170
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNCNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests60repeated_result_grid_replacement_releases_every_retired_page0B9_
+      at apps/linux/app/src/ui/grid/lifetime_tests.rs:169
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvYNCNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests60repeated_result_grid_replacement_releases_every_retired_page0INtNtNtCsgxBkk5gSRhY_4core3ops8function6FnOnceuE9call_onceBc_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ops/function.rs:250
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvYFEINtNtCsgxBkk5gSRhY_4core6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEINtNtNtB9_3ops8function6FnOnceuE9call_onceCs965H7XVcgUb_4test
+      at library/core/src/ops/function.rs:250
+      in ./.analysis/grid-lifetime/baseline-test
+    _RINvCs965H7XVcgUb_4test28___rust_begin_short_backtraceINtNtCsgxBkk5gSRhY_4core6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEFEBQ_EB2_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/test/src/lib.rs:724
+    _RNCNvCs965H7XVcgUb_4test19run_test_in_process0B3_
+      at library/test/src/lib.rs:747
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvXsl_NtNtCsgxBkk5gSRhY_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNvCs965H7XVcgUb_4test19run_test_in_process0EINtNtNtB9_3ops8function6FnOnceuE9call_onceB1d_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/panic/unwind_safe.rs:275
+    _RINvNvNtCs9k3SxhrAWiO_3std9panicking12catch_unwind7do_callINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs965H7XVcgUb_4test19run_test_in_process0EINtNtB11_6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEEB1Z_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panicking.rs:576
+    _RINvNtCs9k3SxhrAWiO_3std9panicking12catch_unwindINtNtCsgxBkk5gSRhY_4core6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEINtNtNtBP_5panic11unwind_safe16AssertUnwindSafeNCNvCs965H7XVcgUb_4test19run_test_in_process0EEB2O_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panicking.rs:544
+    _RINvNtCs9k3SxhrAWiO_3std5panic12catch_unwindINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs965H7XVcgUb_4test19run_test_in_process0EINtNtBN_6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEEB1L_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panic.rs:359
+    _RNvCs965H7XVcgUb_4test19run_test_in_process
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/test/src/lib.rs:747
+    _RNCNvCs965H7XVcgUb_4test8run_test0B3_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/test/src/lib.rs:668
+    _RNCNvCs965H7XVcgUb_4test8run_tests_0B3_
+      at library/test/src/lib.rs:698
+      in ./.analysis/grid-lifetime/baseline-test
+    _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceNCNvCs965H7XVcgUb_4test8run_tests_0uEB1b_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/sys/backtrace.rs:166
+    _RNCNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00B14_
+      at library/std/src/thread/lifecycle.rs:70
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvXsl_NtNtCsgxBkk5gSRhY_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2e_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/panic/unwind_safe.rs:275
+    _RINvNvNtCs9k3SxhrAWiO_3std9panicking12catch_unwind7do_callINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00EuEB2L_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panicking.rs:576
+    _RINvNtCs9k3SxhrAWiO_3std9panicking12catch_unwinduINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00EEB2C_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panicking.rs:544
+    _RINvNtCs9k3SxhrAWiO_3std5panic12catch_unwindINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00EuEB2x_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panic.rs:359
+    _RNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_0B12_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/thread/lifecycle.rs:68
+    _RNSNvYNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_0INtNtNtCsgxBkk5gSRhY_4core3ops8function6FnOnceuE9call_once6vtableB17_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ops/function.rs:250
+    _RNvXst_NtCs6i54tJFfzR_5alloc5boxedINtB5_3BoxDINtNtNtCsgxBkk5gSRhY_4core3ops8function6FnOnceuEp6OutputuNtNtBO_6marker4SendEL_EIBI_uE9call_onceCs9k3SxhrAWiO_3std
+      at library/alloc/src/boxed.rs:2319
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvNvMs0_NtNtNtCs9k3SxhrAWiO_3std3sys6thread4unixNtB7_6Thread3new12thread_start
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/sys/thread/unix.rs:123
+    0x7f0312498041
+      in /usr/lib/libc.so.6
+    0x7f031252072b
+      in /usr/lib/libc.so.6
+  and 24.61M from 1077 other places
+
+16.81M leaked over 197604 calls from
+g_malloc0
+  in /usr/lib/libglib-2.0.so.0
+826.56K leaked over 1640 calls from:
+    g_type_create_instance
+      in /usr/lib/libgobject-2.0.so.0
+    0x7f0313fc1d64
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new_with_properties
+      in /usr/lib/libgobject-2.0.so.0
+    _RNvMsr_NtCs2WTx3n0RIA5_4glib6objectNtB5_6Object12new_internal
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvMsr_NtCs2WTx3n0RIA5_4glib6objectNtB5_6Object15with_mut_values
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvMss_NtCs2WTx3n0RIA5_4glib6objectINtB5_13ObjectBuilderNtNtNtCsiaGu490IDRx_4gtk44auto5label5LabelE5buildBY_
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvMs0_NtNtCsiaGu490IDRx_4gtk44auto5labelNtB5_12LabelBuilder5build
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid7editing19setup_readonly_cell
+      at apps/linux/app/src/ui/grid/editing.rs:135
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNCNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid6column12build_column0B9_
+      at apps/linux/app/src/ui/grid/column.rs:99
+      in ./.analysis/grid-lifetime/baseline-test
+    _RINvNvMNtNtCsiaGu490IDRx_4gtk44auto24signal_list_item_factoryNtB5_21SignalListItemFactory13connect_setup16setup_trampolineNCNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid6column12build_column0EB26_
+      at $CARGO_HOME/registry/src/index.crates.io-1949cf8c6b5b557f/gtk4-0.11.4/src/auto/signal_list_item_factory.rs:77
+      in ./.analysis/grid-lifetime/baseline-test
+    g_cclosure_marshal_VOID__OBJECTv
+      in /usr/lib/libgobject-2.0.so.0
+    0x7f0313fd1019
+      in /usr/lib/libgobject-2.0.so.0
+    g_signal_emit_valist
+      in /usr/lib/libgobject-2.0.so.0
+    g_signal_emit
+      in /usr/lib/libgobject-2.0.so.0
+    0x7f03130156b5
+      in /usr/lib/libgtk-4.so.1
+    0x7f0312f925eb
+      in /usr/lib/libgtk-4.so.1
+    0x7f0312ee312a
+      in /usr/lib/libgtk-4.so.1
+    0x7f031309e412
+      in /usr/lib/libgtk-4.so.1
+    0x7f031309e574
+      in /usr/lib/libgtk-4.so.1
+    0x7f031309e412
+      in /usr/lib/libgtk-4.so.1
+    0x7f031309fa87
+      in /usr/lib/libgtk-4.so.1
+    gtk_window_set_child
+      in /usr/lib/libgtk-4.so.1
+    0x7f0313fc1488
+      in /usr/lib/libgobject-2.0.so.0
+    0x7f0313fc1df2
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new_with_properties
+      in /usr/lib/libgobject-2.0.so.0
+    _RNvMsr_NtCs2WTx3n0RIA5_4glib6objectNtB5_6Object12new_internal
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvMsr_NtCs2WTx3n0RIA5_4glib6objectNtB5_6Object15with_mut_values
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvMss_NtCs2WTx3n0RIA5_4glib6objectINtB5_13ObjectBuilderNtNtNtCsiaGu490IDRx_4gtk44auto6window6WindowE5buildBY_
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvMs0_NtNtCsiaGu490IDRx_4gtk44auto6windowNtB5_13WindowBuilder5build
+      in ./.analysis/grid-lifetime/baseline-test
+    retire_grid
+      at apps/linux/app/src/ui/grid/lifetime_tests.rs:125
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNCNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_testss_60repeated_result_grid_replacement_releases_every_retired_page0B9_
+      at apps/linux/app/src/ui/grid/lifetime_tests.rs:171
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNCINvNtNtNtCsgxBkk5gSRhY_4core4iter8adapters3map8map_foldlNtNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests11RetiredGriduNCNvBX_s_60repeated_result_grid_replacement_releases_every_retired_page0NCINvNvNtNtNtB8_6traits8iterator8Iterator8for_each4callBV_NCINvMsj_NtCs6i54tJFfzR_5alloc3vecINtB4m_3VecBV_E14extend_trustedINtB4_3MapINtNtNtBa_3ops5range5RangelEB27_EE0E0E0B13_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/adapters/map.rs:88
+      in ./.analysis/grid-lifetime/baseline-test
+    _RINvYINtNtNtCsgxBkk5gSRhY_4core3ops5range5RangelENtNtNtNtBa_4iter6traits8iterator8Iterator4folduNCINvNtNtBR_8adapters3map8map_foldlNtNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests11RetiredGriduNCNvB27_s_60repeated_result_grid_replacement_releases_every_retired_page0NCINvNvBL_8for_each4callB25_NCINvMsj_NtCs6i54tJFfzR_5alloc3vecINtB53_3VecB25_E14extend_trustedINtB1B_3MapB3_B3h_EE0E0E0EB2d_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/traits/iterator.rs:2671
+      in ./.analysis/grid-lifetime/baseline-test
+    fold<>
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/adapters/map.rs:128
+      in ./.analysis/grid-lifetime/baseline-test
+    for_each<>
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/traits/iterator.rs:887
+      in ./.analysis/grid-lifetime/baseline-test
+    extend_trusted<>
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:4077
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvXs_NtNtCs6i54tJFfzR_5alloc3vec11spec_extendINtB6_3VecNtNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests11RetiredGridEINtB4_10SpecExtendBS_INtNtNtNtCsgxBkk5gSRhY_4core4iter8adapters3map3MapINtNtNtB2y_3ops5range5RangelENCNvBU_s_60repeated_result_grid_replacement_releases_every_retired_page0EE11spec_extendB10_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/spec_extend.rs:27
+      in ./.analysis/grid-lifetime/baseline-test
+    from_iter<>
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/spec_from_iter_nested.rs:60
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvXNtNtCs6i54tJFfzR_5alloc3vec14spec_from_iterINtB4_3VecNtNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests11RetiredGridEINtB2_12SpecFromIterBT_INtNtNtNtCsgxBkk5gSRhY_4core4iter8adapters3map3MapINtNtNtB2B_3ops5range5RangelENCNvBV_s_60repeated_result_grid_replacement_releases_every_retired_page0EE9from_iterB11_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/spec_from_iter.rs:33
+      in ./.analysis/grid-lifetime/baseline-test
+    _RINvXse_NtCs6i54tJFfzR_5alloc3vecINtB6_3VecNtNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests11RetiredGridEINtNtNtNtCsgxBkk5gSRhY_4core4iter6traits7collect12FromIteratorBF_E9from_iterINtNtNtB1Y_8adapters3map3MapINtNtNtB20_3ops5range5RangelENCNvBH_s_60repeated_result_grid_replacement_releases_every_retired_page0EEBN_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:3941
+      in ./.analysis/grid-lifetime/baseline-test
+    _RINvYINtNtNtNtCsgxBkk5gSRhY_4core4iter8adapters3map3MapINtNtNtBc_3ops5range5RangelENCNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_testss_60repeated_result_grid_replacement_releases_every_retired_page0ENtNtNtBa_6traits8iterator8Iterator7collectINtNtCs6i54tJFfzR_5alloc3vec3VecNtB1n_11RetiredGridEEB1t_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/traits/iterator.rs:2090
+      in ./.analysis/grid-lifetime/baseline-test
+    repeated_result_grid_replacement_releases_every_retired_page
+      at apps/linux/app/src/ui/grid/lifetime_tests.rs:171
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNCNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests60repeated_result_grid_replacement_releases_every_retired_page0B9_
+      at apps/linux/app/src/ui/grid/lifetime_tests.rs:169
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvYNCNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests60repeated_result_grid_replacement_releases_every_retired_page0INtNtNtCsgxBkk5gSRhY_4core3ops8function6FnOnceuE9call_onceBc_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ops/function.rs:250
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvYFEINtNtCsgxBkk5gSRhY_4core6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEINtNtNtB9_3ops8function6FnOnceuE9call_onceCs965H7XVcgUb_4test
+      at library/core/src/ops/function.rs:250
+      in ./.analysis/grid-lifetime/baseline-test
+    _RINvCs965H7XVcgUb_4test28___rust_begin_short_backtraceINtNtCsgxBkk5gSRhY_4core6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEFEBQ_EB2_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/test/src/lib.rs:724
+    _RNCNvCs965H7XVcgUb_4test19run_test_in_process0B3_
+      at library/test/src/lib.rs:747
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvXsl_NtNtCsgxBkk5gSRhY_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNvCs965H7XVcgUb_4test19run_test_in_process0EINtNtNtB9_3ops8function6FnOnceuE9call_onceB1d_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/panic/unwind_safe.rs:275
+    _RINvNvNtCs9k3SxhrAWiO_3std9panicking12catch_unwind7do_callINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs965H7XVcgUb_4test19run_test_in_process0EINtNtB11_6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEEB1Z_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panicking.rs:576
+    _RINvNtCs9k3SxhrAWiO_3std9panicking12catch_unwindINtNtCsgxBkk5gSRhY_4core6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEINtNtNtBP_5panic11unwind_safe16AssertUnwindSafeNCNvCs965H7XVcgUb_4test19run_test_in_process0EEB2O_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panicking.rs:544
+    _RINvNtCs9k3SxhrAWiO_3std5panic12catch_unwindINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs965H7XVcgUb_4test19run_test_in_process0EINtNtBN_6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEEB1L_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panic.rs:359
+    _RNvCs965H7XVcgUb_4test19run_test_in_process
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/test/src/lib.rs:747
+    _RNCNvCs965H7XVcgUb_4test8run_test0B3_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/test/src/lib.rs:668
+    _RNCNvCs965H7XVcgUb_4test8run_tests_0B3_
+      at library/test/src/lib.rs:698
+      in ./.analysis/grid-lifetime/baseline-test
+    _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceNCNvCs965H7XVcgUb_4test8run_tests_0uEB1b_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/sys/backtrace.rs:166
+    _RNCNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00B14_
+      at library/std/src/thread/lifecycle.rs:70
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvXsl_NtNtCsgxBkk5gSRhY_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2e_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/panic/unwind_safe.rs:275
+    _RINvNvNtCs9k3SxhrAWiO_3std9panicking12catch_unwind7do_callINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00EuEB2L_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panicking.rs:576
+    _RINvNtCs9k3SxhrAWiO_3std9panicking12catch_unwinduINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00EEB2C_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panicking.rs:544
+    _RINvNtCs9k3SxhrAWiO_3std5panic12catch_unwindINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00EuEB2x_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panic.rs:359
+    _RNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_0B12_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/thread/lifecycle.rs:68
+    _RNSNvYNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_0INtNtNtCsgxBkk5gSRhY_4core3ops8function6FnOnceuE9call_once6vtableB17_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ops/function.rs:250
+    _RNvXst_NtCs6i54tJFfzR_5alloc5boxedINtB5_3BoxDINtNtNtCsgxBkk5gSRhY_4core3ops8function6FnOnceuEp6OutputuNtNtBO_6marker4SendEL_EIBI_uE9call_onceCs9k3SxhrAWiO_3std
+      at library/alloc/src/boxed.rs:2319
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvNvMs0_NtNtNtCs9k3SxhrAWiO_3std3sys6thread4unixNtB7_6Thread3new12thread_start
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/sys/thread/unix.rs:123
+    0x7f0312498041
+      in /usr/lib/libc.so.6
+    0x7f031252072b
+      in /usr/lib/libc.so.6
+  and 15.98M from 11221 other places
+
+6.32M leaked over 646615 calls from
+g_malloc
+  in /usr/lib/libglib-2.0.so.0
+157.44K leaked over 1640 calls from:
+    g_hash_table_new_full
+      in /usr/lib/libglib-2.0.so.0
+    0x7f0312f50087
+      in /usr/lib/libgtk-4.so.1
+    g_type_create_instance
+      in /usr/lib/libgobject-2.0.so.0
+    0x7f0313fc1d64
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new_with_properties
+      in /usr/lib/libgobject-2.0.so.0
+    _RNvMsr_NtCs2WTx3n0RIA5_4glib6objectNtB5_6Object12new_internal
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvMsr_NtCs2WTx3n0RIA5_4glib6objectNtB5_6Object15with_mut_values
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvMss_NtCs2WTx3n0RIA5_4glib6objectINtB5_13ObjectBuilderNtNtNtCsiaGu490IDRx_4gtk44auto13gesture_click12GestureClickE5buildBY_
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvMs0_NtNtCsiaGu490IDRx_4gtk44auto13gesture_clickNtB5_19GestureClickBuilder5build
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid12context_menu19attach_cell_gesture
+      at apps/linux/app/src/ui/grid/context_menu.rs:684
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid7editing19setup_readonly_cell
+      at apps/linux/app/src/ui/grid/editing.rs:138
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNCNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid6column12build_column0B9_
+      at apps/linux/app/src/ui/grid/column.rs:99
+      in ./.analysis/grid-lifetime/baseline-test
+    _RINvNvMNtNtCsiaGu490IDRx_4gtk44auto24signal_list_item_factoryNtB5_21SignalListItemFactory13connect_setup16setup_trampolineNCNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid6column12build_column0EB26_
+      at $CARGO_HOME/registry/src/index.crates.io-1949cf8c6b5b557f/gtk4-0.11.4/src/auto/signal_list_item_factory.rs:77
+      in ./.analysis/grid-lifetime/baseline-test
+    g_cclosure_marshal_VOID__OBJECTv
+      in /usr/lib/libgobject-2.0.so.0
+    0x7f0313fd1019
+      in /usr/lib/libgobject-2.0.so.0
+    g_signal_emit_valist
+      in /usr/lib/libgobject-2.0.so.0
+    g_signal_emit
+      in /usr/lib/libgobject-2.0.so.0
+    0x7f03130156b5
+      in /usr/lib/libgtk-4.so.1
+    0x7f0312f925eb
+      in /usr/lib/libgtk-4.so.1
+    0x7f0312ee312a
+      in /usr/lib/libgtk-4.so.1
+    0x7f031309e412
+      in /usr/lib/libgtk-4.so.1
+    0x7f031309e574
+      in /usr/lib/libgtk-4.so.1
+    0x7f031309e412
+      in /usr/lib/libgtk-4.so.1
+    0x7f031309fa87
+      in /usr/lib/libgtk-4.so.1
+    gtk_window_set_child
+      in /usr/lib/libgtk-4.so.1
+    0x7f0313fc1488
+      in /usr/lib/libgobject-2.0.so.0
+    0x7f0313fc1df2
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new_with_properties
+      in /usr/lib/libgobject-2.0.so.0
+    _RNvMsr_NtCs2WTx3n0RIA5_4glib6objectNtB5_6Object12new_internal
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvMsr_NtCs2WTx3n0RIA5_4glib6objectNtB5_6Object15with_mut_values
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvMss_NtCs2WTx3n0RIA5_4glib6objectINtB5_13ObjectBuilderNtNtNtCsiaGu490IDRx_4gtk44auto6window6WindowE5buildBY_
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvMs0_NtNtCsiaGu490IDRx_4gtk44auto6windowNtB5_13WindowBuilder5build
+      in ./.analysis/grid-lifetime/baseline-test
+    retire_grid
+      at apps/linux/app/src/ui/grid/lifetime_tests.rs:125
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNCNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_testss_60repeated_result_grid_replacement_releases_every_retired_page0B9_
+      at apps/linux/app/src/ui/grid/lifetime_tests.rs:171
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNCINvNtNtNtCsgxBkk5gSRhY_4core4iter8adapters3map8map_foldlNtNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests11RetiredGriduNCNvBX_s_60repeated_result_grid_replacement_releases_every_retired_page0NCINvNvNtNtNtB8_6traits8iterator8Iterator8for_each4callBV_NCINvMsj_NtCs6i54tJFfzR_5alloc3vecINtB4m_3VecBV_E14extend_trustedINtB4_3MapINtNtNtBa_3ops5range5RangelEB27_EE0E0E0B13_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/adapters/map.rs:88
+      in ./.analysis/grid-lifetime/baseline-test
+    _RINvYINtNtNtCsgxBkk5gSRhY_4core3ops5range5RangelENtNtNtNtBa_4iter6traits8iterator8Iterator4folduNCINvNtNtBR_8adapters3map8map_foldlNtNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests11RetiredGriduNCNvB27_s_60repeated_result_grid_replacement_releases_every_retired_page0NCINvNvBL_8for_each4callB25_NCINvMsj_NtCs6i54tJFfzR_5alloc3vecINtB53_3VecB25_E14extend_trustedINtB1B_3MapB3_B3h_EE0E0E0EB2d_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/traits/iterator.rs:2671
+      in ./.analysis/grid-lifetime/baseline-test
+    fold<>
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/adapters/map.rs:128
+      in ./.analysis/grid-lifetime/baseline-test
+    for_each<>
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/traits/iterator.rs:887
+      in ./.analysis/grid-lifetime/baseline-test
+    extend_trusted<>
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:4077
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvXs_NtNtCs6i54tJFfzR_5alloc3vec11spec_extendINtB6_3VecNtNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests11RetiredGridEINtB4_10SpecExtendBS_INtNtNtNtCsgxBkk5gSRhY_4core4iter8adapters3map3MapINtNtNtB2y_3ops5range5RangelENCNvBU_s_60repeated_result_grid_replacement_releases_every_retired_page0EE11spec_extendB10_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/spec_extend.rs:27
+      in ./.analysis/grid-lifetime/baseline-test
+    from_iter<>
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/spec_from_iter_nested.rs:60
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvXNtNtCs6i54tJFfzR_5alloc3vec14spec_from_iterINtB4_3VecNtNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests11RetiredGridEINtB2_12SpecFromIterBT_INtNtNtNtCsgxBkk5gSRhY_4core4iter8adapters3map3MapINtNtNtB2B_3ops5range5RangelENCNvBV_s_60repeated_result_grid_replacement_releases_every_retired_page0EE9from_iterB11_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/spec_from_iter.rs:33
+      in ./.analysis/grid-lifetime/baseline-test
+    _RINvXse_NtCs6i54tJFfzR_5alloc3vecINtB6_3VecNtNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests11RetiredGridEINtNtNtNtCsgxBkk5gSRhY_4core4iter6traits7collect12FromIteratorBF_E9from_iterINtNtNtB1Y_8adapters3map3MapINtNtNtB20_3ops5range5RangelENCNvBH_s_60repeated_result_grid_replacement_releases_every_retired_page0EEBN_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:3941
+      in ./.analysis/grid-lifetime/baseline-test
+    _RINvYINtNtNtNtCsgxBkk5gSRhY_4core4iter8adapters3map3MapINtNtNtBc_3ops5range5RangelENCNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_testss_60repeated_result_grid_replacement_releases_every_retired_page0ENtNtNtBa_6traits8iterator8Iterator7collectINtNtCs6i54tJFfzR_5alloc3vec3VecNtB1n_11RetiredGridEEB1t_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/traits/iterator.rs:2090
+      in ./.analysis/grid-lifetime/baseline-test
+    repeated_result_grid_replacement_releases_every_retired_page
+      at apps/linux/app/src/ui/grid/lifetime_tests.rs:171
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNCNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests60repeated_result_grid_replacement_releases_every_retired_page0B9_
+      at apps/linux/app/src/ui/grid/lifetime_tests.rs:169
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvYNCNvNtNtNtCs6vi7HC20wud_12tablepro_app2ui4grid14lifetime_tests60repeated_result_grid_replacement_releases_every_retired_page0INtNtNtCsgxBkk5gSRhY_4core3ops8function6FnOnceuE9call_onceBc_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ops/function.rs:250
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvYFEINtNtCsgxBkk5gSRhY_4core6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEINtNtNtB9_3ops8function6FnOnceuE9call_onceCs965H7XVcgUb_4test
+      at library/core/src/ops/function.rs:250
+      in ./.analysis/grid-lifetime/baseline-test
+    _RINvCs965H7XVcgUb_4test28___rust_begin_short_backtraceINtNtCsgxBkk5gSRhY_4core6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEFEBQ_EB2_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/test/src/lib.rs:724
+    _RNCNvCs965H7XVcgUb_4test19run_test_in_process0B3_
+      at library/test/src/lib.rs:747
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvXsl_NtNtCsgxBkk5gSRhY_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNvCs965H7XVcgUb_4test19run_test_in_process0EINtNtNtB9_3ops8function6FnOnceuE9call_onceB1d_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/panic/unwind_safe.rs:275
+    _RINvNvNtCs9k3SxhrAWiO_3std9panicking12catch_unwind7do_callINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs965H7XVcgUb_4test19run_test_in_process0EINtNtB11_6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEEB1Z_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panicking.rs:576
+    _RINvNtCs9k3SxhrAWiO_3std9panicking12catch_unwindINtNtCsgxBkk5gSRhY_4core6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEINtNtNtBP_5panic11unwind_safe16AssertUnwindSafeNCNvCs965H7XVcgUb_4test19run_test_in_process0EEB2O_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panicking.rs:544
+    _RINvNtCs9k3SxhrAWiO_3std5panic12catch_unwindINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNvCs965H7XVcgUb_4test19run_test_in_process0EINtNtBN_6result6ResultuNtNtCs6i54tJFfzR_5alloc6string6StringEEB1L_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panic.rs:359
+    _RNvCs965H7XVcgUb_4test19run_test_in_process
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/test/src/lib.rs:747
+    _RNCNvCs965H7XVcgUb_4test8run_test0B3_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/test/src/lib.rs:668
+    _RNCNvCs965H7XVcgUb_4test8run_tests_0B3_
+      at library/test/src/lib.rs:698
+      in ./.analysis/grid-lifetime/baseline-test
+    _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceNCNvCs965H7XVcgUb_4test8run_tests_0uEB1b_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/sys/backtrace.rs:166
+    _RNCNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00B14_
+      at library/std/src/thread/lifecycle.rs:70
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvXsl_NtNtCsgxBkk5gSRhY_4core5panic11unwind_safeINtB5_16AssertUnwindSafeNCNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00EINtNtNtB9_3ops8function6FnOnceuE9call_onceB2e_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/panic/unwind_safe.rs:275
+    _RINvNvNtCs9k3SxhrAWiO_3std9panicking12catch_unwind7do_callINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB6_6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00EuEB2L_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panicking.rs:576
+    _RINvNtCs9k3SxhrAWiO_3std9panicking12catch_unwinduINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00EEB2C_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panicking.rs:544
+    _RINvNtCs9k3SxhrAWiO_3std5panic12catch_unwindINtNtNtCsgxBkk5gSRhY_4core5panic11unwind_safe16AssertUnwindSafeNCNCINvNtNtB4_6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_00EuEB2x_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/panic.rs:359
+    _RNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_0B12_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/thread/lifecycle.rs:68
+    _RNSNvYNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvCs965H7XVcgUb_4test8run_tests_0uEs_0INtNtNtCsgxBkk5gSRhY_4core3ops8function6FnOnceuE9call_once6vtableB17_
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ops/function.rs:250
+    _RNvXst_NtCs6i54tJFfzR_5alloc5boxedINtB5_3BoxDINtNtNtCsgxBkk5gSRhY_4core3ops8function6FnOnceuEp6OutputuNtNtBO_6marker4SendEL_EIBI_uE9call_onceCs9k3SxhrAWiO_3std
+      at library/alloc/src/boxed.rs:2319
+      in ./.analysis/grid-lifetime/baseline-test
+    _RNvNvMs0_NtNtNtCs9k3SxhrAWiO_3std3sys6thread4unixNtB7_6Thread3new12thread_start
+      at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/sys/thread/unix.rs:123
+    0x7f0312498041
+      in /usr/lib/libc.so.6
+    0x7f031252072b
+      in /usr/lib/libc.so.6
+  and 6.16M from 21922 other places
+
+
+total runtime: 5.23s.
+calls to allocation functions: 1350506 (258222/s)
+temporary memory allocations: 147388 (28181/s)
+peak heap memory consumption: 63.60M
+peak RSS (including heaptrack overhead): 193.86M
+total memory leaked: 62.23M
+suppressed leaks: 1.17K

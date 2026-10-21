@@ -982,3 +982,7 @@ fn result_view_keys(outcomes: &[StatementOutcome]) -> std::collections::HashSet<
 #[cfg(test)]
 #[path = "outcomes/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "outcomes/lifetime_tests.rs"]
+mod lifetime_tests;

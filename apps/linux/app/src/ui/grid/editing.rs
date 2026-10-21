@@ -46,8 +46,11 @@ pub(super) fn setup_editable_cell(
     item.set_child(Some(&label));
     let remember_click = gtk::GestureClick::builder().button(gtk::gdk::BUTTON_PRIMARY).build();
     remember_click.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let clicked = label.clone();
-    remember_click.connect_pressed(move |_, _, _, _| super::display::remember_clicked_cell(clicked.upcast_ref()));
+    remember_click.connect_pressed(move |gesture, _, _, _| {
+        if let Some(widget) = gesture.widget() {
+            super::display::remember_clicked_cell(&widget);
+        }
+    });
     label.add_controller(remember_click);
 
     if let Some(menus) = menus {
@@ -208,21 +211,26 @@ fn install_edit_triggers(
 
     let gesture = gtk::GestureClick::builder().button(gtk::gdk::BUTTON_PRIMARY).build();
     gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let label_for_press = label.clone();
+    let label_for_press = label.downgrade();
     let trigger_for_press = trigger.clone();
     gesture.connect_pressed(move |gesture, n_press, _, _| {
         if n_press != 2 {
             return;
         }
         gesture.set_state(gtk::EventSequenceState::Claimed);
-        trigger_for_press(&label_for_press);
+        if let Some(label) = label_for_press.upgrade() {
+            trigger_for_press(&label);
+        }
     });
     label.add_controller(gesture);
 
     let controller = gtk::EventControllerKey::new();
-    let label_for_key = label.clone();
+    let label_for_key = label.downgrade();
     let trigger_for_key = trigger;
     controller.connect_key_pressed(move |_, keyval, _, modifiers| {
+        let Some(label_for_key) = label_for_key.upgrade() else {
+            return glib::Propagation::Proceed;
+        };
         let editing = label_for_key.is_editing();
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
 
@@ -512,9 +520,12 @@ fn install_popover_close_cleanup(label: &CellEditor, popover: &gtk::Popover) {
 fn install_edit_commit_handler(label: &CellEditor, col_index: usize, sender: relm4::Sender<GridMsg>) {
     {
         let text = label.entry();
-        let label_for_preedit = label.clone();
+        let label_for_preedit = label.downgrade();
         let sender_for_preedit = sender.clone();
         text.connect_preedit_changed(move |_t, preedit| {
+            let Some(label_for_preedit) = label_for_preedit.upgrade() else {
+                return;
+            };
             let active = !preedit.is_empty();
             PREEDIT_SLOT.set(&label_for_preedit, active);
             if !active && !label_for_preedit.is_editing() {

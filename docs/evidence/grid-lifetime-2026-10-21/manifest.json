@@ -1,0 +1,84 @@
+{
+  "base": "71cd25e33",
+  "workload": {
+    "grids": 8,
+    "rows_per_grid": 1000,
+    "columns": 1,
+    "preview_result_values": true,
+    "local_result_sort": true,
+    "local_result_controls": true,
+    "rendered": true
+  },
+  "artifacts": [
+    {
+      "file": "baseline-repeat.zst",
+      "sha256": "92889dd553b6fa33d24135118591b76f356db55ae89443886f9d5205f7167d96",
+      "bytes": 1423800
+    },
+    {
+      "file": "fixed-repeat.zst",
+      "sha256": "0caf30ead864902723fc42cdf9ec508b3e13fc01ad64815eee4cbf7f46ae3e1e",
+      "bytes": 1739026
+    }
+  ],
+  "full_app_probe": {
+    "build": "debug, base 71cd25e33 plus uncommitted grid-lifetime patch",
+    "binary_sha256": "69e47393f1851e01ebaee1f53f77d44e8a934e5452fc6525ae9a395383491848",
+    "database": "PostgreSQL 16, local test fixture",
+    "table": "public.big",
+    "query": "SELECT * FROM public.big;",
+    "sample_file": "postgresql-rss-samples.json",
+    "protocol": "X11/Xvfb, Cairo",
+    "close_measurement": "not completed"
+  },
+  "resumed_full_app_probe": {
+    "base": "20ee44f3e",
+    "build": "debug plus grid-lifetime patch; includes merged in-place stream update #1244",
+    "binary_sha256": "f7f77aa051c854773de4df9200dd77d94db795ca1858d670ef5842e78b6dc2a5",
+    "cycles": 3,
+    "rows_before_cancel": [
+      200000,
+      225000,
+      245000
+    ],
+    "peak_rss_mib": 378.83,
+    "after_close_rss_mib": [
+      373.22,
+      377.68,
+      378.82
+    ],
+    "sample_file": "postgresql-current-rss-samples.json",
+    "protocol": "X11/Xvfb, Cairo",
+    "stderr": "file output, no unread pipe",
+    "result": "PASS: three stream/cancel/replace/close cycles",
+    "limitations": [
+      "not native Wayland",
+      "not release throughput benchmark",
+      "RSS does not return to startup",
+      "unrelated local compilation occurred during later cycles"
+    ]
+  },
+  "release_probe": {
+    "base": "20ee44f3e",
+    "binary_sha256": "bcdc17d1691879f80b3f6076c35d010e6a86efb45f85e7c2075491810f69aae4",
+    "sample_file": "postgresql-release-rss-samples.json",
+    "peak_rss_mib": 369.58,
+    "received_rows": [
+      1165000,
+      1205000,
+      580000
+    ],
+    "completed_replacement_close_cycles": 2,
+    "result": "INCOMPLETE: third replacement lost the accessible application while the owned process remained active; cleanup stopped it",
+    "timing": "accessibility traversal delayed control discovery; no fixed-duration throughput claim",
+    "cpu_profile": {
+      "event": "cpu-clock:u",
+      "frequency_hz": 99,
+      "duration_seconds": 10,
+      "samples": 833,
+      "lost_samples": 0,
+      "raw_sha256": "0e89731550ccfc039d820e8ddbcd31d2c7005fb263fbd182905f5e7456fc64ce",
+      "summary": "release-cpu-summary.txt"
+    }
+  }
+}

@@ -1,3 +1,4 @@
+mod cell_context;
 mod choice_editor;
 mod close_edits;
 pub(crate) use close_edits::finish_active_edits;
@@ -12,6 +13,8 @@ mod display;
 mod editing;
 mod export;
 pub(crate) mod full_value_editor;
+#[cfg(test)]
+mod lifetime_tests;
 pub(crate) mod local_filter;
 mod local_sort;
 mod presentation;

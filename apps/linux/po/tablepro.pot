@@ -490,7 +490,7 @@ msgstr ""
 #: apps/linux/app/src/ui/editor/mod.rs:374
 #: apps/linux/app/src/ui/editor/session_mode.rs:261
 #: apps/linux/app/src/ui/export_dialog/file.rs:121
-#: apps/linux/app/src/ui/grid/editing.rs:448
+#: apps/linux/app/src/ui/grid/editing.rs:456
 #: apps/linux/app/src/ui/grid/full_value_editor.rs:227
 #: apps/linux/app/src/ui/grid/full_value_editor.rs:732
 #: apps/linux/app/src/ui/history_dialog.rs:515
@@ -656,7 +656,7 @@ msgstr ""
 #: apps/linux/app/src/ui/explain_dialog.rs:55
 #: apps/linux/app/src/ui/export_dialog.rs:274
 #: apps/linux/app/src/ui/export_dialog.rs:523
-#: apps/linux/app/src/ui/grid/context_menu.rs:214
+#: apps/linux/app/src/ui/grid/context_menu.rs:208
 #: apps/linux/app/src/ui/grid/full_value_editor.rs:406
 msgid "Close"
 msgstr ""
@@ -835,7 +835,7 @@ msgstr ""
 #: apps/linux/app/src/ui/app/organization.rs:99
 #: apps/linux/app/src/ui/app/workspace_tabs.rs:641
 #: apps/linux/app/src/ui/browse_tab/chrome.rs:250
-#: apps/linux/app/src/ui/grid/editing.rs:445
+#: apps/linux/app/src/ui/grid/editing.rs:453
 #: apps/linux/app/src/ui/structure_tab/mod.rs:718
 msgid "Save"
 msgstr ""
@@ -1228,8 +1228,8 @@ msgid "Open Quickly"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/shortcuts.rs:18
-#: apps/linux/app/src/ui/grid/context_menu.rs:476
-#: apps/linux/app/src/ui/grid/context_menu.rs:532
+#: apps/linux/app/src/ui/grid/context_menu.rs:471
+#: apps/linux/app/src/ui/grid/context_menu.rs:527
 msgid "Jump to Column…"
 msgstr ""
 
@@ -1348,8 +1348,8 @@ msgstr ""
 
 #: apps/linux/app/src/ui/app/shortcuts.rs:205
 #: apps/linux/app/src/ui/browse_tab/chrome.rs:24
-#: apps/linux/app/src/ui/grid/context_menu.rs:474
-#: apps/linux/app/src/ui/grid/context_menu.rs:535
+#: apps/linux/app/src/ui/grid/context_menu.rs:469
+#: apps/linux/app/src/ui/grid/context_menu.rs:530
 msgid "Insert row"
 msgstr ""
 
@@ -3318,18 +3318,18 @@ msgstr ""
 msgid "(empty)"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/column.rs:363
-#: apps/linux/app/src/ui/grid/column.rs:506
+#: apps/linux/app/src/ui/grid/column.rs:366
+#: apps/linux/app/src/ui/grid/column.rs:509
 msgid "Pending deletion"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/column.rs:366
-#: apps/linux/app/src/ui/grid/column.rs:502
+#: apps/linux/app/src/ui/grid/column.rs:369
+#: apps/linux/app/src/ui/grid/column.rs:505
 msgid "New row"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/column.rs:370
-#: apps/linux/app/src/ui/grid/column.rs:498
+#: apps/linux/app/src/ui/grid/column.rs:373
+#: apps/linux/app/src/ui/grid/column.rs:501
 msgid "Modified"
 msgstr ""
 
@@ -3358,111 +3358,111 @@ msgstr ""
 msgid "At least one column stays visible."
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:210
+#: apps/linux/app/src/ui/grid/context_menu.rs:204
 #, rust-format
 msgid "Skipped {n} NULL, binary or unsupported values."
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:212
+#: apps/linux/app/src/ui/grid/context_menu.rs:206
 msgid "Copy as IN clause"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:490
+#: apps/linux/app/src/ui/grid/context_menu.rs:485
 msgid "Edit cell"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:493
+#: apps/linux/app/src/ui/grid/context_menu.rs:488
 msgid "Edit Full Value…"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:499
+#: apps/linux/app/src/ui/grid/context_menu.rs:494
 msgid "Rows"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:500
+#: apps/linux/app/src/ui/grid/context_menu.rs:495
 msgid "With Headers"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:501
+#: apps/linux/app/src/ui/grid/context_menu.rs:496
 msgid "JSON"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:502
+#: apps/linux/app/src/ui/grid/context_menu.rs:497
 msgid "CSV"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:503
+#: apps/linux/app/src/ui/grid/context_menu.rs:498
 msgid "CSV with Headers"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:504
+#: apps/linux/app/src/ui/grid/context_menu.rs:499
 msgid "Markdown"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:505
+#: apps/linux/app/src/ui/grid/context_menu.rs:500
 msgid "IN Clause"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:507
+#: apps/linux/app/src/ui/grid/context_menu.rs:502
 msgid "INSERT Statement"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:510
+#: apps/linux/app/src/ui/grid/context_menu.rs:505
 #: apps/linux/app/src/ui/grid/value_viewer.rs:113
 msgid "Copy value"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:511
+#: apps/linux/app/src/ui/grid/context_menu.rs:506
 msgid "Copy as"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:512
+#: apps/linux/app/src/ui/grid/context_menu.rs:507
 msgid "Copy column name"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:516
+#: apps/linux/app/src/ui/grid/context_menu.rs:511
 msgid "Filter by This Value"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:519
+#: apps/linux/app/src/ui/grid/context_menu.rs:514
 msgid "Go to Referenced Row"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:521
+#: apps/linux/app/src/ui/grid/context_menu.rs:516
 msgid "View Value…"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:522
+#: apps/linux/app/src/ui/grid/context_menu.rs:517
 msgid "Show Row as JSON"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:526
+#: apps/linux/app/src/ui/grid/context_menu.rs:521
 msgid "Export Visible Rows…"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:528
+#: apps/linux/app/src/ui/grid/context_menu.rs:523
 msgid "Export Results…"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:531
+#: apps/linux/app/src/ui/grid/context_menu.rs:526
 msgid "Columns…"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:533
+#: apps/linux/app/src/ui/grid/context_menu.rs:528
 msgid "Find in Loaded Rows…"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:536
+#: apps/linux/app/src/ui/grid/context_menu.rs:531
 msgid "Duplicate row"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:537
+#: apps/linux/app/src/ui/grid/context_menu.rs:532
 #: apps/linux/app/src/ui/grid/full_value_editor.rs:234
 #: apps/linux/app/src/ui/grid/full_value_editor.rs:709
 msgid "Set to NULL"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/context_menu.rs:538
+#: apps/linux/app/src/ui/grid/context_menu.rs:533
 msgid "Delete row"
 msgstr ""
 

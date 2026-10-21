@@ -611,6 +611,36 @@
       "tablepro-app",
       "--lib",
       "ui::grid::column_width_tests::unsaved_result_grid_width_stays_fixed_when_the_window_grows"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::lifetime_tests::a_dropped_result_grid_releases_its_page"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::lifetime_tests::a_rendered_result_grid_with_menus_releases_its_page"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::lifetime_tests::a_rendered_editable_grid_releases_its_page"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::lifetime_tests::repeated_result_grid_replacement_releases_every_retired_page"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::lifetime_tests::a_menu_context_does_not_keep_a_removed_cell_alive"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::outcomes::lifetime_tests::streamed_widgets_release_evicted_pages_and_cancelled_results_on_close"
     ]
   ],
   "keyring": [

@@ -1,0 +1,58 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 833  of event 'cpu-clock:u'
+# Event count (approx.): 8414141330
+#
+# Overhead  Shared Object
+# ........  .............................
+#
+    28.81%  libgtk-4.so.1.2400.1
+    20.89%  libgobject-2.0.so.0.9000.1
+    17.41%  libc.so.6
+    16.45%  libglib-2.0.so.0.9000.1
+     6.00%  libharfbuzz.so.0.61460.0
+     5.40%  libpango-1.0.so.0.5800.2
+     3.00%  patched-release-app
+     0.60%  libgio-2.0.so.0.9000.1
+     0.48%  libcairo.so.2.11806.6
+     0.48%  libpangoft2-1.0.so.0.5800.2
+     0.24%  libpangocairo-1.0.so.0.5800.2
+     0.12%  libX11.so.6.4.0
+     0.12%  libfontconfig.so.1.17.0
+
+
+#
+#
+
+Overlapping cumulative caller samples:
+27.13% 0.12% [.] tablepro_app::ui::editor::stream_view::update_live_stream - -
+22.81% 0.00% [.] <gtk4::auto::label::Label>::set_text - -
+22.81% 0.00% [.] gtk_label_set_text - -
+15.01% 0.48% [.] g_object_unref - -
+13.33% 0.00% [.] gtk_widget_create_pango_layout - -
+13.09% 0.00% [.] gtk_widget_get_pango_context - -
+12.85% 0.00% [.] gtk_widget_create_pango_context - -
+12.48% 0.24% [.] g_object_new_with_properties - -
+12.12% 0.48% [.] g_type_create_instance - -
+12.12% 0.00% [.] g_object_new_internal (inlined) - -
+11.88% 0.12% [.] g_object_new - -
+10.56% 0.36% [.] gtk_widget_unparent - -
+9.96% 0.12% [.] <glib::object::Object>::new_internal - -
+9.84% 0.12% [.] g_signal_emit - -
+9.72% 0.00% [.] g_signal_emit_valist - -
+9.36% 0.00% [.] gtk_stack_remove - -
+8.88% 0.48% [.] g_object_new_valist - -
+8.52% 0.00% [.] pango_layout_check_lines (inlined) - -
+8.52% 0.00% [.] pango_layout_is_ellipsized - -
+8.16% 0.00% [.] g_object_new_internal (inlined) - -
+6.96% 0.00% [.] gtk_widget_allocate - -
+6.96% 0.00% [.] tablepro_app::ui::grid::build_column_view - -
+6.12% 0.00% [.] gtk_column_view_append_column - -
+6.12% 0.00% [.] tablepro_app::ui::editor::outcomes::build_result_set_widget - -
+5.52% 0.00% [.] g_closure_invoke - -
+5.28% 0.00% [.] gtk_widget_add_controller - -
+5.16% 0.00% [.] pango_shape_item - -
+5.04% 3.96% [.] g_hash_table_lookup - -

@@ -90,6 +90,8 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 ## Engineering review records (October 2026)
 
+- [Grid lifetime and memory investigation, October 21](evidence/grid-lifetime-2026-10-21/README.md): reproduced GTK ownership cycles, original/fixed heap profiles, PostgreSQL RSS probe and remaining manual acceptance.
+
 - [Public documentation language review, October 21](evidence/public-documentation-language-2026-10-21/README.md): repository-wide Markdown screening, neutral wording corrections and independent adoption criteria.
 
 - [TablePro adoption and collaboration, October 21](archive/tablepro-collaboration-2026-10-21.md): current Linux performance, SSH, export and translation changes, PostgreSQL behavior candidates and concrete upstream contribution routes.

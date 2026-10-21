@@ -122,6 +122,8 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 
 ### Changed
 
+- Closing or replacing table and query results releases associated data instead of accumulating memory.
+
 - Manually resized and restored grid columns keep their width when the window grows; unsized columns continue to fill the available space.
 - Imported connection URLs preserve supported TLS settings and reject options they cannot preserve.
 - Ending an aborted PostgreSQL editor transaction reports that it rolled back instead of saying its changes were committed.
