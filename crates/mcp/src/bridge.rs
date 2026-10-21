@@ -128,11 +128,10 @@ impl McpBridge {
     }
 
     pub fn authenticate(&self, bearer: &str) -> Result<McpToken, String> {
-        self.auth_rate_limiter.check(AUTH_ATTEMPT_KEY)?;
         let token = bearer.strip_prefix("Bearer ").unwrap_or(bearer).trim();
         let authenticated = self.tokens.authenticate(token);
-        if authenticated.is_ok() {
-            self.auth_rate_limiter.release(AUTH_ATTEMPT_KEY);
+        if authenticated.is_err() {
+            self.auth_rate_limiter.check(AUTH_ATTEMPT_KEY)?;
         }
         authenticated
     }
@@ -690,6 +689,30 @@ mod tests {
         assert!(bridge.authenticate("guess-2").is_err());
         let third = bridge.authenticate("guess-3").unwrap_err();
         assert!(third.contains("rate limit"), "{third}");
+    }
+
+    #[test]
+    fn a_valid_token_still_authenticates_after_the_failed_attempt_budget_is_spent() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(TokenStore::open(dir.path().join("tokens.json")).unwrap());
+        let (_meta, plaintext) = store
+            .issue("agent".into(), crate::auth::TokenPermissions::ReadOnly, vec![], None)
+            .unwrap();
+        let bridge = McpBridge::with_limits(
+            Arc::new(NoProvider),
+            store,
+            McpLimits {
+                requests_per_minute: 2,
+                ..McpLimits::default()
+            },
+        );
+
+        for guess in ["guess-1", "guess-2", "guess-3", "guess-4"] {
+            assert!(bridge.authenticate(guess).is_err());
+        }
+        bridge
+            .authenticate(&plaintext)
+            .expect("another caller's failures cannot lock out a valid token");
     }
 
     #[test]
