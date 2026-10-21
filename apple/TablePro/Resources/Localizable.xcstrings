@@ -176891,6 +176891,9 @@
         }
       }
     },
+    "TablePro could not reach %@ to see whether it offers TLS. Check that the server is running and reachable, then try again." : {
+
+    },
     "TablePro could not reach the SAP HANA server within %lld seconds." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,

@@ -218,8 +218,8 @@ enum NativeDumpRegistry {
                         guard let password = request.password, !password.isEmpty else { return [:] }
                         return ["MYSQL_PWD": password]
                     },
-                    prepare: { request, resolved, query in
-                        try await mysqlPrepare(request, resolved, query)
+                    prepare: { request, resolved in
+                        try await mysqlPrepare(request, resolved)
                     },
                     clientPluginFolder: { request, resolved in
                         try mysqlPluginFolder(request, resolved)
@@ -253,13 +253,10 @@ enum NativeDumpRegistry {
 
     private static func mysqlPrepare(
         _ request: NativeDumpDescriptor.Request,
-        _ resolved: NativeDumpResolvedTool,
-        _ query: NativeDumpDescriptor.SessionQuery
+        _ resolved: NativeDumpResolvedTool
     ) async throws -> NativeDumpDescriptor.Request {
         var request = request
-        if MySQLClientArguments.needsServerTLSAnswer(request.connection, flavor: resolved.flavor) {
-            request.serverOffersTLS = try await mysqlServerOffersTLS(query)
-        }
+        request.serverOffersTLS = try await mysqlServerOffersTLS(request, resolved)
         let hidesPlugins = MySQLClientArguments.hidesPlaintextPasswordPlugins(
             request.connection,
             flavor: resolved.flavor,
@@ -297,20 +294,28 @@ enum NativeDumpRegistry {
         return request
     }
 
-    // The app's own session on Preferred takes TLS whenever the server offers it, so its cipher answers the question
-    // without a connection of TablePro's own that a server could count against max_connect_errors. No answer fails
-    // the run: guessing no TLS would dump in plaintext from a server that has it, and guessing TLS brings back the
-    // fallback that sends the typed password.
-    private static func mysqlServerOffersTLS(_ query: NativeDumpDescriptor.SessionQuery) async throws -> Bool {
-        let rows = try? await query("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
-        guard let row = rows?.first, row.count >= 2 else {
+    // Unreadable fails the run: guessing no TLS would dump in plaintext from a server that has it, and guessing TLS
+    // brings back the fallback that sends the typed password.
+    private static func mysqlServerOffersTLS(
+        _ request: NativeDumpDescriptor.Request,
+        _ resolved: NativeDumpResolvedTool
+    ) async throws -> Bool? {
+        guard MySQLClientArguments.needsServerGreeting(request.connection, flavor: resolved.flavor) else { return nil }
+        switch await MySQLServerGreeting.read(host: request.host, port: request.connection.port) {
+        case .offersTLS(let offered):
+            return offered
+        case .serverError(let message):
+            throw NativeDumpError.unreachableServer(message: message)
+        case .unreadable:
             throw NativeDumpError.unreachableServer(
                 message: String(
-                    localized: "TablePro could not ask the server whether it offers TLS. Reconnect, then try again."
+                    format: String(
+                        localized: "TablePro could not reach %@ to see whether it offers TLS. Check that the server is running and reachable, then try again."
+                    ),
+                    "\(request.host):\(request.connection.port)"
                 )
             )
         }
-        return !(row[1] ?? "").isEmpty
     }
 
     private static func mysqlPluginFolder(

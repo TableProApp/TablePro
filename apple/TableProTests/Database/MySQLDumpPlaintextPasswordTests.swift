@@ -4,6 +4,8 @@
 //
 
 import Foundation
+import Network
+import os
 import TableProPluginKit
 import TableProSSHConfig
 import Testing
@@ -130,12 +132,12 @@ struct MySQLDumpPlaintextPasswordTests {
         var socket = connection(.disabled)
         socket.additionalFields[MySQLLocalSocket.fieldKey] = "/tmp/mysql.sock"
         #expect(try command(socket).clientPluginFolder == nil)
-        #expect(!MySQLClientArguments.needsServerTLSAnswer(socket, flavor: .mariadb))
+        #expect(!MySQLClientArguments.needsServerGreeting(socket, flavor: .mariadb))
 
         var proxied = connection(.preferred)
         proxied.additionalFields[DatabaseConnection.tunnelSecuresTransportKey] = "true"
         #expect(try command(proxied).clientPluginFolder == nil)
-        #expect(!MySQLClientArguments.needsServerTLSAnswer(proxied, flavor: .mariadb))
+        #expect(!MySQLClientArguments.needsServerGreeting(proxied, flavor: .mariadb))
     }
 
     @Test("MySQL's own tools are left as they are")
@@ -144,68 +146,86 @@ struct MySQLDumpPlaintextPasswordTests {
             let built = try command(connection(mode), flavor: .mysql, serverOffersTLS: false)
             #expect(built.clientPluginFolder == nil)
             #expect(pluginDirectoryArgument(built) == nil)
-            #expect(!MySQLClientArguments.needsServerTLSAnswer(connection(mode), flavor: .mysql))
+            #expect(!MySQLClientArguments.needsServerGreeting(connection(mode), flavor: .mysql))
         }
         #expect(try command(connection(.preferred), flavor: .mysql).arguments.contains("--ssl-mode=PREFERRED"))
     }
 
-    private func answering(_ cipher: String?) -> NativeDumpDescriptor.SessionQuery {
-        { sql in
-            guard sql == "SHOW SESSION STATUS LIKE 'Ssl_cipher'", let cipher else { throw DatabaseError.notConnected }
-            return [["Ssl_cipher", cipher]]
+    @Test("Only a MariaDB tool on Preferred reads the server's greeting")
+    func greetingIsReadOnlyForPreferred() async throws {
+        let tool = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
+        let client = try fakeClient(sendsPassword: false)
+        defer { try? FileManager.default.removeItem(at: client.deletingLastPathComponent()) }
+        for (mode, flavor) in [(SSLMode.disabled, NativeDumpToolFlavor.mariadb), (.required, .mariadb), (.preferred, .mysql)] {
+            let request = NativeDumpDescriptor.Request(
+                connection: connection(mode),
+                database: "sales",
+                fileURL: URL(fileURLWithPath: "/tmp/out.sql"),
+                password: nil
+            )
+            let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: client.path, flavor: flavor)
+            #expect(try await tool.prepare(request, resolved).serverOffersTLS == nil, "\(mode.rawValue) \(flavor)")
         }
     }
 
-    private func request(_ mode: SSLMode) -> NativeDumpDescriptor.Request {
-        NativeDumpDescriptor.Request(
-            connection: connection(mode),
+    private func preferredRequest(port: Int) -> NativeDumpDescriptor.Request {
+        var preferred = connection(.preferred)
+        preferred.host = "127.0.0.1"
+        preferred.port = port
+        return NativeDumpDescriptor.Request(
+            connection: preferred,
             database: "sales",
             fileURL: URL(fileURLWithPath: "/tmp/out.sql"),
             password: nil
         )
     }
 
-    @Test("Only a MariaDB tool on Preferred asks the session whether the server offers TLS")
-    func sessionIsAskedOnlyForPreferred() async throws {
-        let tool = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
-        let client = try fakeClient(sendsPassword: false)
-        defer { try? FileManager.default.removeItem(at: client.deletingLastPathComponent()) }
-        let unanswered: NativeDumpDescriptor.SessionQuery = { _ in
-            Issue.record("the session should not be asked")
-            return []
-        }
-        for (mode, flavor) in [(SSLMode.disabled, NativeDumpToolFlavor.mariadb), (.required, .mariadb), (.preferred, .mysql)] {
-            let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: client.path, flavor: flavor)
-            let prepared = try await tool.prepare(request(mode), resolved, unanswered)
-            #expect(prepared.serverOffersTLS == nil, "\(mode.rawValue) \(flavor)")
-        }
-    }
-
-    // The app's own session on Preferred takes TLS whenever the server offers it.
-    @Test("Preferred takes the session's cipher as the server's answer")
-    func preferredReadsTheSessionCipher() async throws {
+    @Test("Preferred takes the server's own answer from its greeting", arguments: [true, false])
+    func preferredReadsTheGreeting(offersTLS: Bool) async throws {
+        let server = try await FakeGreetingServer.start(payload: Self.greeting(offersTLS: offersTLS))
+        defer { server.stop() }
         let tool = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
         let client = try fakeClient(sendsPassword: false)
         defer { try? FileManager.default.removeItem(at: client.deletingLastPathComponent()) }
         let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: client.path, flavor: .mariadb)
-
-        let encrypted = try await tool.prepare(request(.preferred), resolved, answering("TLS_AES_256_GCM_SHA384"))
-        #expect(encrypted.serverOffersTLS == true)
-        let plain = try await tool.prepare(request(.preferred), resolved, answering(""))
-        #expect(plain.serverOffersTLS == false)
+        #expect(try await tool.prepare(preferredRequest(port: server.port), resolved).serverOffersTLS == offersTLS)
+        #expect(await MySQLServerGreeting.read(host: "127.0.0.1", port: server.port) == .offersTLS(offersTLS))
     }
 
     // Guessing no TLS would dump in plaintext from a server that has it; guessing TLS brings back the fallback.
-    @Test("A session that cannot answer fails the run instead of a guess")
-    func unansweredSessionFailsTheRun() async throws {
+    @Test("A server that cannot be read fails the run instead of a guess")
+    func unreadableServerFailsTheRun() async throws {
         let tool = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
         let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: "/t", flavor: .mariadb)
+        let closed = try #require(LoopbackPort.allocateFree())
         await #expect(throws: NativeDumpError.self) {
-            try await tool.prepare(request(.preferred), resolved, answering(nil))
+            try await tool.prepare(preferredRequest(port: closed), resolved)
         }
-        await #expect(throws: NativeDumpError.self) {
-            try await tool.prepare(request(.preferred), resolved) { _ in [] }
+
+        let busy = [0xFF, 0x10, 0x04] + Array("Too many connections".utf8)
+        let server = try await FakeGreetingServer.start(payload: busy)
+        defer { server.stop() }
+        await #expect(throws: NativeDumpError.unreachableServer(message: "Too many connections")) {
+            try await tool.prepare(preferredRequest(port: server.port), resolved)
         }
+    }
+
+    @Test("An error packet carries the server's words, and a short greeting tells nothing")
+    func greetingParsing() {
+        #expect(MySQLServerGreeting.answer(greeting: Self.greeting(offersTLS: true)) == .offersTLS(true))
+        #expect(MySQLServerGreeting.answer(greeting: Self.greeting(offersTLS: false)) == .offersTLS(false))
+        #expect(
+            MySQLServerGreeting.answer(greeting: [0xFF, 0x69, 0x04] + Array("Host 'x' is blocked".utf8))
+                == .serverError("Host 'x' is blocked")
+        )
+        #expect(
+            MySQLServerGreeting.answer(greeting: [0xFF, 0x10, 0x04] + Array("#08004Too many connections".utf8))
+                == .serverError("Too many connections")
+        )
+        #expect(MySQLServerGreeting.answer(greeting: [0xFF, 0x10, 0x04]) == .unreadable)
+        #expect(MySQLServerGreeting.answer(greeting: [10] + Array("8.0.36".utf8)) == .unreadable)
+        #expect(MySQLServerGreeting.answer(greeting: Array(Self.greeting(offersTLS: true).prefix(20))) == .unreadable)
+        #expect(MySQLServerGreeting.answer(greeting: []) == .unreadable)
     }
 
     @Test("The plugin folder is found beside a Homebrew tool, through its link")
@@ -353,11 +373,11 @@ struct MySQLDumpPlaintextPasswordTests {
             password: nil
         )
         await #expect(throws: NativeDumpError.self) {
-            try await tool.prepare(request, resolved, answering(""))
+            try await tool.prepare(request, resolved)
         }
         let missing = NativeDumpResolvedTool(name: "mariadb-dump", path: "/nonexistent/bin/mariadb-dump", flavor: .mariadb)
         await #expect(throws: NativeDumpError.self) {
-            try await tool.prepare(request, missing, answering(""))
+            try await tool.prepare(request, missing)
         }
 
         let required = NativeDumpDescriptor.Request(
@@ -366,7 +386,7 @@ struct MySQLDumpPlaintextPasswordTests {
             fileURL: URL(fileURLWithPath: "/tmp/out.sql"),
             password: nil
         )
-        _ = try await tool.prepare(required, resolved, answering(""))
+        _ = try await tool.prepare(required, resolved)
     }
 
     @Test("The plugin folder is removed when the tool exits and when it cannot launch")
@@ -398,6 +418,16 @@ struct MySQLDumpPlaintextPasswordTests {
             .appendingPathComponent("MySQLDumpPlaintextPasswordTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    static func greeting(offersTLS: Bool) -> [UInt8] {
+        let capabilities: UInt32 = 0x1 | 0x8 | 0x200 | 0x2000 | 0x8000 | 0x80000 | (offersTLS ? 0x800 : 0)
+        var payload: [UInt8] = [10] + Array("8.0.36".utf8) + [0]
+        payload += [1, 0, 0, 0] + Array("abcdefgh".utf8) + [0]
+        payload += [UInt8(capabilities & 0xFF), UInt8((capabilities >> 8) & 0xFF), 45, 2, 0]
+        payload += [UInt8((capabilities >> 16) & 0xFF), UInt8((capabilities >> 24) & 0xFF), 21] + [UInt8](repeating: 0, count: 10)
+        payload += Array("ijklmnopqrst".utf8) + [0] + Array("caching_sha2_password".utf8) + [0]
+        return payload
     }
 }
 
@@ -472,5 +502,55 @@ struct MySQLDumpPlaintextPasswordServiceTests {
         try service.run(job: job(folder: folder.url), database: "sales", fileURL: URL(fileURLWithPath: "/tmp/cancelled.sql"))
         #expect(!runner.started)
         #expect(!FileManager.default.fileExists(atPath: folder.url.path))
+    }
+}
+
+private final class FakeGreetingServer: @unchecked Sendable {
+    private let listener: NWListener
+    let port: Int
+
+    private init(listener: NWListener, port: Int) {
+        self.listener = listener
+        self.port = port
+    }
+
+    static func start(payload: [UInt8]) async throws -> FakeGreetingServer {
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: .any)
+        let listener = try NWListener(using: parameters)
+        let queue = DispatchQueue(label: "com.TablePro.tests.FakeGreetingServer")
+        let packet = Data([UInt8(payload.count & 0xFF), UInt8((payload.count >> 8) & 0xFF), 0, 0] + payload)
+        listener.newConnectionHandler = { connection in
+            connection.start(queue: queue)
+            connection.send(content: packet, completion: .contentProcessed { _ in })
+        }
+        let port: Int = try await withCheckedThrowingContinuation { continuation in
+            let resumed = OSAllocatedUnfairLock(initialState: false)
+            listener.stateUpdateHandler = { state in
+                let value: Result<Int, any Error>?
+                switch state {
+                case .ready:
+                    value = listener.port.map { .success(Int($0.rawValue)) } ?? .failure(CancellationError())
+                case .failed(let error):
+                    value = .failure(error)
+                case .cancelled:
+                    value = .failure(CancellationError())
+                default:
+                    value = nil
+                }
+                guard let value else { return }
+                let first = resumed.withLock { done -> Bool in
+                    defer { done = true }
+                    return !done
+                }
+                if first { continuation.resume(with: value) }
+            }
+            listener.start(queue: queue)
+        }
+        return FakeGreetingServer(listener: listener, port: port)
+    }
+
+    func stop() {
+        listener.cancel()
     }
 }
