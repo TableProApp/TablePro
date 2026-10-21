@@ -3,7 +3,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use secrecy::ExposeSecret;
 use sqlx::pool::PoolConnection;
-use sqlx::postgres::{PgCancelToken, PgConnectOptions, PgPoolOptions};
+use sqlx::postgres::{PgCancelToken, PgConnectOptions};
 use sqlx::{Connection as SqlxConnection, Pool, Postgres, Row};
 
 use tablepro_core::sql_syntax::script::LexicalSettings;
@@ -18,6 +18,7 @@ mod catalog;
 mod decode;
 mod numeric;
 mod params;
+mod pool;
 mod query;
 mod session;
 mod temporal;
@@ -125,12 +126,7 @@ impl DatabaseDriver for PgDriver {
         }
         pg_opts = pg_opts.statement_cache_capacity(0);
         let session_options = pg_opts.clone();
-        let pool = PgPoolOptions::new()
-            .max_connections(4)
-            .acquire_timeout(Duration::from_secs(5))
-            .after_release(|connection, _| {
-                Box::pin(async move { Ok(sqlx::query("DISCARD ALL").execute(connection).await.is_ok()) })
-            })
+        let pool = pool::options()
             .connect_with(pg_opts)
             .await
             .map_err(map_sqlx_connect_error)?;

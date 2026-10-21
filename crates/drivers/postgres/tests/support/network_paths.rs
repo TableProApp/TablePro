@@ -65,13 +65,14 @@ async fn connect_when_ready(options: &ConnectOptions) -> Box<dyn Connection> {
 
 async fn exercise(connection: &dyn Connection) -> Vec<String> {
     let mut outcomes = Vec::new();
-    outcomes.push(format!(
-        "create: {:?}",
-        connection
-            .execute("CREATE TABLE pooled (id int PRIMARY KEY, note text)")
-            .await
-            .map(|_| ())
-    ));
+    let created = connection
+        .execute("CREATE TABLE pooled (id int PRIMARY KEY, note text)")
+        .await
+        .map(|_| ());
+    outcomes.push(format!("create: {created:?}"));
+    if created.is_err() {
+        return outcomes;
+    }
     for id in 0..20 {
         let inserted = connection
             .execute_params(
@@ -82,7 +83,7 @@ async fn exercise(connection: &dyn Connection) -> Vec<String> {
             .map(|result| result.rows_affected);
         if !matches!(inserted, Ok(1)) {
             outcomes.push(format!("insert {id}: {inserted:?}"));
-            break;
+            return outcomes;
         }
     }
     outcomes.push(format!(
@@ -134,12 +135,23 @@ async fn pgbouncer_in_session_mode_works() {
 
 #[tokio::test]
 #[ignore = "requires docker"]
-async fn pgbouncer_in_transaction_mode_without_prepared_statements_explains_itself() {
+async fn pgbouncer_without_prepared_statement_tracking_succeeds_or_explains_a_conflict() {
     let outcomes = pooled_outcomes("transaction", 0).await;
-    assert!(!all_succeeded(&outcomes), "{outcomes:#?}");
     assert!(
-        outcomes.iter().any(|line| line.contains("max_prepared_statements")),
+        all_succeeded(&outcomes) || outcomes.iter().any(|line| line.contains("max_prepared_statements")),
         "the pooler symptom must come with a hint: {outcomes:#?}"
+    );
+    assert!(
+        outcomes.iter().all(|line| {
+            if line.contains("Err(") {
+                return line.contains("max_prepared_statements");
+            }
+            matches!(
+                line.as_str(),
+                "create: Ok(())" | "count: Ok(Int(20))" | "transaction: Ok([1, 1])"
+            )
+        }),
+        "unexpected pooler outcome: {outcomes:#?}"
     );
 }
 

@@ -1162,9 +1162,11 @@ GLib.MainLoop().run()
         # The old dedicated session must be retired even though the saved
         # connection has already reconnected. A write through that stale
         # session must not reach PostgreSQL.
+        refusal_prefix = "Could not read the session's string settings:"
+        assert ui.find_node_containing(refusal_prefix) is None
         ui.run_sql("INSERT INTO session_tunnel_loss_probe VALUES (2)")
-        ui.wait_for_node_containing("error in")
-        ui.wait_for_node_containing("session was retired")
+        refusal = ui.wait_for_node_containing(refusal_prefix, role=pyatspi.ROLE_LABEL)
+        assert "session was retired" in refusal.name, refusal.name
         assert psql("SELECT count(*) FROM public.session_tunnel_loss_probe") == "0"
 
         def toggle_is_on(toggle):

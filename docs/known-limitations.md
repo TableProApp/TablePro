@@ -52,7 +52,7 @@ Documented application limits, behavior differences and known defects. Entries l
 
 ## Editing and connections
 
-- **PostgreSQL behind a connection pooler:** PgBouncer in session mode works. In transaction mode it works when the pooler supports prepared statements (PgBouncer 1.21 or newer with `max_prepared_statements` above 0); without that the server answers "prepared statement already exists" and the error now says so. Session features of the editor (`SET`, temporary tables, an open transaction across statements) need session pooling by design.
+- **PostgreSQL behind a connection pooler:** PgBouncer in session mode works. In transaction mode it works when the pooler supports prepared statements (PgBouncer 1.21 or newer with `max_prepared_statements` above 0); without that, workloads can succeed but backend switching can cause prepared-statement conflicts. Such errors include a pooler configuration hint. Session features of the editor (`SET`, temporary tables, an open transaction across statements) need session pooling by design.
 - **SSH jump chains cannot be edited in the form** (UI-1b / [#548](https://github.com/cozyGarage/BookiE/issues/548)). They connect and run, but editing remains disabled until the complete GTK editor path is implemented and accepted.
 - **Reusable SSH profiles cannot be edited** (UI-26).
 - **Local socket endpoint differences:** PostgreSQL selects a socket directory plus port; MySQL and MariaDB select the full socket-file path. Both local routes reject TLS and SSH and never fall back to TCP. A connection URL names a local socket with `?socket=/path/to/mysqld.sock` (MySQL, MariaDB) or `?host=/socket/directory` (PostgreSQL), with an empty host or `localhost`, and no other option.

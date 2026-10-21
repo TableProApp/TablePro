@@ -91,6 +91,8 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 ## Engineering review records (October 2026)
 
+- [PostgreSQL gate repair, October 21](evidence/postgres-gate-repair-2026-10-21/README.md): deterministic pooled-reset regression and installed retired-session acceptance, with pending baseline qualification.
+
 - [Large SQL editor analysis, October 21](evidence/large-sql-editor-analysis-2026-10-21/README.md): bounded advisory snapshots, deferred diagnostics and remaining full-document costs.
 - [Large-query rendering, October 21](evidence/large-query-rendering-2026-10-21/README.md): deferred hidden grids, lifecycle regression and external rendering lessons.
 
