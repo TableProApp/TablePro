@@ -11,6 +11,7 @@ mod csv_import;
 mod ddl;
 mod keys_and_decimals;
 mod metadata;
+mod round_trip;
 mod sessions;
 mod support;
 mod tls;

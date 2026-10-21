@@ -951,42 +951,6 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.sidebarViewModel?.batchToggleTruncate()
     }
 
-    func createView() {
-        coordinator?.createView()
-    }
-
-    func createNewTable() {
-        coordinator?.createNewTable()
-    }
-
-    func showERDiagram() {
-        coordinator?.showERDiagram()
-    }
-
-    func showServerDashboard() {
-        coordinator?.showServerDashboard()
-    }
-
-    func showQueryInsights() {
-        coordinator?.showQueryInsights()
-    }
-
-    var supportsServerDashboard: Bool {
-        guard let type = coordinator?.connection.type else { return false }
-        return ServerDashboardQueryProviderFactory.supportsDashboard(for: type)
-    }
-
-    func showUsersAndRoles() {
-        coordinator?.showUsersAndRoles()
-    }
-
-    var supportsUserManagement: Bool {
-        guard let connectionId = coordinator?.connectionId,
-              let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter
-        else { return false }
-        return adapter.schemaPluginDriver.capabilities.contains(.userManagement)
-    }
-
     // MARK: - Filter Operations (Group A — Called Directly)
 
     func toggleFilterPanel() {

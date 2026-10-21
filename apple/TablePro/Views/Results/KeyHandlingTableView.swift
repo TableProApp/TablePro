@@ -175,6 +175,14 @@ final class KeyHandlingTableView: NSTableView {
         coordinator?.presentedColumnCount ?? 0
     }
 
+    // A point over the pinned band names the frozen column drawn there, not the one scrolled under it.
+    override func column(at point: NSPoint) -> Int {
+        guard let unscrolled = coordinator?.freezingBand()?.unscrolledPoint(point) else {
+            return super.column(at: point)
+        }
+        return super.column(at: unscrolled)
+    }
+
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
 
@@ -295,6 +303,10 @@ final class KeyHandlingTableView: NSTableView {
         guard gutterWidth > 0 else { return point }
         let edge = clipView.bounds.origin.x + gutterWidth
         guard point.x < edge else { return point }
+        // The first frozen column sits at the gutter's edge at every offset, so nothing needs revealing.
+        if coordinator?.freezingBand() != nil {
+            return NSPoint(x: edge, y: point.y)
+        }
         let target = max(0, clipView.bounds.origin.x - gutterWidth)
         if target != clipView.bounds.origin.x {
             scroll(NSPoint(x: target, y: clipView.bounds.origin.y))

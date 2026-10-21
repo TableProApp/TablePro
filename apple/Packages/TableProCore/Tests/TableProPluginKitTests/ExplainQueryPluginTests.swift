@@ -77,4 +77,27 @@ struct ExplainQueryPluginTests {
         let driver = StubExplainDriver { _ in nil }
         #expect(driver.buildExplainQuery("SELECT 1") == nil)
     }
+
+    @Test("A driver that runs no plan of its own says so rather than answering an empty one")
+    func defaultExplainPlanThrows() async {
+        let driver = StubExplainDriver()
+        await #expect(throws: PluginDriverUnsupportedOperation.explainPlan) {
+            _ = try await driver.explainPlan(statement: "SELECT 1", variantId: "estimated")
+        }
+    }
+
+    @Test("A prefix variant is sent before the statement, and a driver plan says whether it runs the statement")
+    func variantSteps() {
+        let prefix = ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN", format: .indentedText)
+        let untagged = ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN")
+        let actual = ExplainVariant.driverPlan(
+            id: "actual", label: "Actual Plan", format: .sqlServerShowplanXML, runsStatement: true
+        )
+
+        #expect(prefix.step == .sqlPrefix)
+        #expect(untagged.step == .sqlPrefix)
+        #expect(actual.step == .driver(runsStatement: true))
+        #expect(actual.sqlPrefix.isEmpty)
+        #expect(actual.format == .sqlServerShowplanXML)
+    }
 }

@@ -794,6 +794,53 @@ public final class OracleCoreConnection: @unchecked Sendable {
         }
     }
 
+    // One gate turn for both, so no ping or other caller's statement becomes the session's previous statement.
+    public func executeDiscardingRows(_ statement: String, thenQuery followUp: String) async throws -> OracleRawResult {
+        let role = OracleTransactionRole(of: statement)
+        await queryGate.acquire()
+
+        let connection: OracleNIO.OracleConnection
+        let admitted: (options: StatementOptions, session: Int)
+        do {
+            connection = try await reconnectedConnection()
+            admitted = try admit(role)
+            try await withQueryDeadline { [self] in
+                try await discardRows(OracleStatement(unsafeSQL: statement), options: admitted.options, on: connection)
+            }
+        } catch {
+            let mapped = mapExecutionError(error)
+            forgetSessionZonesIfChanged(by: statement)
+            await recordFailure(of: role)
+            await queryGate.release()
+            throw mapped
+        }
+
+        // Before recordSuccess: recording a DDL queries the server, and that query would become the previous statement.
+        let answer: Result<OracleRawResult, Error>
+        do {
+            answer = .success(try await withQueryDeadline { [self] in
+                try await collectRows(followUp, options: Self.sessionSetupOptions, on: connection)
+            })
+        } catch {
+            answer = .failure(mapExecutionError(error))
+        }
+        await recordSuccess(of: role, on: admitted.session)
+        forgetSessionZonesIfChanged(by: statement)
+        await queryGate.release()
+        return try answer.get()
+    }
+
+    private func discardRows(
+        _ statement: OracleStatement,
+        options: StatementOptions,
+        on connection: OracleNIO.OracleConnection
+    ) async throws {
+        let stream = try await connection.execute(statement, options: options, logger: nioLogger)
+        for try await _ in stream {
+            try Task.checkCancellation()
+        }
+    }
+
     /// Runs a statement that only configures the session, retrying it once across a channel this
     /// side closed.
     ///

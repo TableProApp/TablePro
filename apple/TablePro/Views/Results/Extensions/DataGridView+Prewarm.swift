@@ -77,13 +77,18 @@ extension TableViewCoordinator {
             forName: NSView.boundsDidChangeNotification,
             object: scrollView.contentView,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self, weak clipView = scrollView.contentView] _ in
             MainActor.assumeIsolated {
+                let visible = clipView?.bounds
                 self?.remountAccessibilityCells()
                 /// The pinned gutter is repositioned by AppKit rather than redrawn, so a scroll that
                 /// exposes rows it has never drawn has to ask for them. A viewport of row numbers is
                 /// a fraction of what the rows themselves repaint on the same notification.
-                self?.repaintRowGutter()
+                if let visible {
+                    self?.rowGutter?.viewportDidMove(to: visible)
+                } else {
+                    self?.repaintRowGutter()
+                }
                 self?.schedulePrewarmResume()
             }
         }

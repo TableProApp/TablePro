@@ -96,7 +96,7 @@ extension MainContentCoordinator {
     func clearColumnLayout(_ target: ColumnLayoutClearTarget) {
         if tabManager.selectedTabId == target.tabId,
            dataTabDelegate?.tableViewCoordinator?.columnLayoutKey == target.tableKey {
-            dataTabDelegate?.tableViewCoordinator?.resetColumnWidthOwnership()
+            dataTabDelegate?.tableViewCoordinator?.resetColumnGeometry()
         }
         FileColumnLayoutPersister.shared.clearGeometry(for: target.tableKey)
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == target.tabId }),
@@ -118,7 +118,7 @@ extension MainContentCoordinator {
 
     private func applyColumnReset() {
         guard let index = tabManager.selectedTabIndex else { return }
-        dataTabDelegate?.tableViewCoordinator?.resetColumnWidthOwnership()
+        dataTabDelegate?.tableViewCoordinator?.resetColumnGeometry()
         let tab = tabManager.tabs[index]
         if let key = columnLayoutTableKey(for: tab) {
             FileColumnLayoutPersister.shared.clear(for: key)

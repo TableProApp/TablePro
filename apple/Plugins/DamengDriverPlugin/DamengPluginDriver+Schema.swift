@@ -22,6 +22,34 @@ extension DamengPluginDriver {
         }
     }
 
+    func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? {
+        // DM8 follows Oracle here, so each statement stays under Oracle's 1,000-expression IN limit.
+        let chunkSize = 1_000
+        var tables: [PluginTableInfo] = []
+        for start in stride(from: 0, to: schemas.count, by: chunkSize) {
+            let owners = Array(schemas[start..<min(start + chunkSize, schemas.count)])
+            let placeholders = Array(repeating: "?", count: owners.count).joined(separator: ", ")
+            let result = try await executeParameterized(
+                query: """
+                    SELECT TABLE_NAME, 'TABLE' AS TABLE_TYPE, OWNER
+                    FROM SYS.ALL_TABLES
+                    WHERE OWNER IN (\(placeholders))
+                    UNION ALL
+                    SELECT VIEW_NAME, 'VIEW', OWNER
+                    FROM SYS.ALL_VIEWS
+                    WHERE OWNER IN (\(placeholders))
+                    ORDER BY 3, 1
+                    """,
+                parameters: (owners + owners).map { .text($0) }
+            )
+            tables += result.rows.compactMap { row in
+                guard let name = row[safe: 0]?.asText, let owner = row[safe: 2]?.asText else { return nil }
+                return PluginTableInfo(name: name, type: row[safe: 1]?.asText ?? "TABLE", schema: owner)
+            }
+        }
+        return tables
+    }
+
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let owner = effectiveSchema(schema)
         let result = try await executeParameterized(

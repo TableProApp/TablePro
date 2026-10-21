@@ -78,7 +78,7 @@ internal enum CatalogTableListing {
         case .all:
             return try await tablesInEverySchema(in: scope, excludingSchemas: excluded, metadata: metadata)
         case .only(let kept):
-            return try await tables(inKeptSchemas: kept.subtracting(excluded), scope: scope, metadata: metadata)
+            return try await tables(inListedSchemas: kept.subtracting(excluded).sorted(), scope: scope, metadata: metadata)
         }
     }
 
@@ -100,22 +100,36 @@ internal enum CatalogTableListing {
         let schemas = try await metadata.withMetadataDriver(scope: scope, workload: .bulk) { driver in
             try await driver.fetchSchemas()
         }
-        return try await tables(inSchemas: schemas.filter { !excluded.contains($0) }, scope: scope, metadata: metadata)
+        // The set read keeps the excluded schemas out of the engine's query.
+        var seen: Set<String> = []
+        let kept = schemas.filter { !excluded.contains($0) && seen.insert($0).inserted }
+        return try await tables(inListedSchemas: kept, scope: scope, metadata: metadata)
     }
 
-    /// The kept set is the schema list, so no schema list is read. An engine without a set read is
+    /// No schema list is read: the caller's names are the list. An engine without a set read is
     /// asked schema by schema, never through the all-schema listing, so a hidden schema is never read.
     private static func tables(
-        inKeptSchemas schemas: Set<String>,
+        inListedSchemas names: [String],
         scope: DatabaseScope,
         metadata: ScopedMetadataProviding
     ) async throws -> Result {
-        guard !schemas.isEmpty else { return Result(tables: [], unlistedSchemas: []) }
-        let names = schemas.sorted()
-        let listed = try await metadata.withMetadataDriver(scope: scope, workload: .bulk) { driver in
-            try await driver.fetchTables(inSchemas: names)
+        guard !names.isEmpty else { return Result(tables: [], unlistedSchemas: []) }
+        let listed: [TableInfo]?
+        do {
+            listed = try await metadata.withMetadataDriver(scope: scope, workload: .bulk) { driver in
+                try await driver.fetchTables(inSchemas: names)
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as DatabaseError {
+            throw error
+        } catch {
+            // One schema the set read cannot take fails it for all; per schema, only that one goes unlisted.
+            logger.warning("[catalog] set read failed, listing per schema error=\(error.publicLogShape, privacy: .public)")
+            listed = nil
         }
         if let listed {
+            let schemas = Set(names)
             let tables = listed.filter { table in table.schema.map { schemas.contains($0) } ?? true }
             return Result(tables: tables, unlistedSchemas: [])
         }

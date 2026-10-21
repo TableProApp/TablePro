@@ -146,6 +146,10 @@ struct TableInfo: Identifiable, Hashable, Sendable {
     /// with versioning turned on is the same table.
     let isSystemVersioned: Bool
 
+    // The column a sequence belongs to. Outside identity, like the comment.
+    let ownedByTable: String?
+    let ownedByColumn: String?
+
     // Part of the identity: a temporary table and the table of the same name it hides are two objects.
     let isTemporary: Bool
 
@@ -221,6 +225,8 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         comment: String? = nil,
         partitionCount: Int? = nil,
         isSystemVersioned: Bool = false,
+        ownedByTable: String? = nil,
+        ownedByColumn: String? = nil,
         isTemporary: Bool = false
     ) {
         self.name = name
@@ -230,6 +236,8 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         self.comment = comment
         self.partitionCount = partitionCount
         self.isSystemVersioned = isSystemVersioned
+        self.ownedByTable = ownedByTable
+        self.ownedByColumn = ownedByColumn
         self.isTemporary = isTemporary
     }
 

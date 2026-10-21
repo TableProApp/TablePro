@@ -18,6 +18,7 @@ internal final class RowImportMapping: ObservableObject {
     }
 
     @Published internal private(set) var columns: [String] = []
+    @Published internal private(set) var matchKeys: [ImportMatchKey] = []
     @Published internal var rows: [Row] = []
     @Published internal private(set) var table: TableScope?
 
@@ -31,8 +32,16 @@ internal final class RowImportMapping: ObservableObject {
 
     private let store: ImportColumnMappingStore
 
-    internal init(store: ImportColumnMappingStore = .shared) {
+    /// Choices made for this table before the sheet opened, by a run of several files, put ahead of the saved ones
+    /// on the first read of that table.
+    private var seed: (table: TableScope, choices: [String: ImportFieldChoice])?
+
+    internal init(
+        store: ImportColumnMappingStore = .shared,
+        seed: (table: TableScope, choices: [String: ImportFieldChoice])? = nil
+    ) {
         self.store = store
+        self.seed = seed
     }
 
     internal var fields: [String] {
@@ -72,6 +81,7 @@ internal final class RowImportMapping: ObservableObject {
     internal func clear() {
         table = nil
         columns = []
+        matchKeys = []
         rows = []
         saved = [:]
         showsSavedMapping = false
@@ -82,6 +92,7 @@ internal final class RowImportMapping: ObservableObject {
     internal func load(
         fields: [PluginImportField],
         columns: [String],
+        matchKeys: [ImportMatchKey] = [],
         for scope: TableScope,
         read: AnyHashable? = nil
     ) {
@@ -91,10 +102,14 @@ internal final class RowImportMapping: ObservableObject {
         if reloading {
             let session = Dictionary(rows.map { ($0.field.name, $0.choice) }, uniquingKeysWith: { first, _ in first })
             tiers.insert(session, at: 0)
+        } else if let seed, seed.table == scope {
+            tiers.insert(seed.choices, at: 0)
+            self.seed = nil
         }
         table = scope
         saved = remembered
         self.columns = columns
+        self.matchKeys = matchKeys
         let names = fields.map(\.name)
         apply(ImportColumnMatcher.resolve(fields: names, columns: columns, preferring: tiers), to: fields)
         showsSavedMapping = (reloading ? showsSavedMapping : true) && appliesSavedChoice
@@ -130,14 +145,24 @@ internal final class RowImportMapping: ObservableObject {
         columnMapping: [String: String],
         in scope: TableScope
     ) {
+        Self.remember(fields: fields, columns: columns, columnMapping: columnMapping, in: scope, store: store)
+        if table == scope {
+            saved = store.overrides(for: scope)
+        }
+    }
+
+    internal static func remember(
+        fields: [String],
+        columns: [String],
+        columnMapping: [String: String],
+        in scope: TableScope,
+        store: ImportColumnMappingStore = .shared
+    ) {
         let choices = fields.map { field in
             columnMapping[field].map { ImportFieldChoice(include: true, column: $0) } ?? .skipped
         }
         let overrides = ImportColumnMatcher.overrides(fields: fields, columns: columns, choices: choices)
         store.remember(overrides, forFields: fields, in: scope)
-        if table == scope {
-            saved = store.overrides(for: scope)
-        }
     }
 
     private var appliesSavedChoice: Bool {

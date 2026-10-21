@@ -53,6 +53,8 @@ enum ActiveSheet: Identifiable {
     case exportDialog
     case importDialog(formatId: String)
     case rowImport(formatId: String)
+    /// Several files, or a folder, each imported as rows into its own table. The files are in `importBatch`.
+    case rowImportBatch
     case exportQueryResults
     /// The tables the user right-clicked travel with the request, because the object browser may be
     /// pointed somewhere else by the time the sheet appears.
@@ -81,6 +83,8 @@ enum ActiveSheet: Identifiable {
     /// carries them: the comment is written to the object the user right-clicked, not to a
     /// same-named one wherever the browser points by the time Save is pressed.
     case editObjectComment(DatabaseObjectTarget)
+    case setSequenceNextValue(DatabaseObjectTarget)
+    case editSequence(DatabaseObjectTarget)
     /// Copying carries the whole launch request, because the source database, the source schema
     /// and the objects the user right-clicked are all part of what the sheet opens onto, and the
     /// object browser may be pointed somewhere else by the time the sheet appears.
@@ -99,6 +103,7 @@ enum ActiveSheet: Identifiable {
         case .exportDialog: "exportDialog"
         case .importDialog(let formatId): "importDialog-\(formatId)"
         case .rowImport(let formatId): "rowImport-\(formatId)"
+        case .rowImportBatch: "rowImportBatch"
         case .exportQueryResults: "exportQueryResults"
         case .transferTables(let tables, let schema):
             "transferTables-\(schema ?? "")-\(tables.sorted().joined(separator: ","))"
@@ -111,6 +116,10 @@ enum ActiveSheet: Identifiable {
         case .editSchema(let container): "editSchema-\(container.id)"
         case .editObjectComment(let target):
             "editObjectComment-\(target.scope.database)-\(target.scope.schema ?? "")-\(target.name)"
+        case .setSequenceNextValue(let target):
+            "setSequenceNextValue-\(target.scope.database)-\(target.scope.schema ?? "")-\(target.name)"
+        case .editSequence(let target):
+            "editSequence-\(target.scope.database)-\(target.scope.schema ?? "")-\(target.name)"
         case .copyObjects(let launch): "copyObjects-\(launch.id)"
         case .rewind: "rewind"
         case .tableRebuildReview: "tableRebuildReview"
@@ -312,6 +321,7 @@ final class MainContentCoordinator: ObservableObject {
     @Published var sessionContexts: [PluginSessionContext] = []
     @Published var containerDropRequest: DatabaseDropRequest?
     @Published var importFile: ImportFileHandoff?
+    @Published var importBatch: ImportBatchFiles.Resolution?
     @Published var exportPreselection: ExportPreselection?
     @Published var exportFormatId: String?
     // Kept after the sheet closes, so reopening Search Database after opening a result shows the results again.

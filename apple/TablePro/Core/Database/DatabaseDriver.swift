@@ -114,6 +114,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// text statement by statement instead. A server error inside the batch is part of the answer, not a throw.
     func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult?
 
+    func explainPlan(statement: String, variantId: String) async throws -> QueryResult
+
     // MARK: - Schema Operations
 
     /// Fetch all tables in the database
@@ -388,6 +390,12 @@ protocol DatabaseDriver: AnyObject, Sendable {
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability?
 
+    // MARK: - Sequences
+
+    func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails?
+    func sequenceNextValueStatement(for sequence: PluginSequenceDetails, nextValue: PluginSequenceNextValue) -> String?
+    func alterSequenceStatement(for sequence: PluginSequenceDetails, settings: PluginSequenceSettings) -> String?
+
     // MARK: - Query Cancellation
 
     /// Cancel the currently running query, if any.
@@ -428,6 +436,7 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func createViewTemplate() -> String?
     func editViewFallbackTemplate(viewName: String) -> String?
+    func createSequenceTemplate() -> String?
     func castColumnToText(_ column: String) -> String
 
     func foreignKeyDisableStatements() -> [String]?
@@ -491,6 +500,10 @@ extension DatabaseDriver {
 
     func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult? { nil }
 
+    func explainPlan(statement: String, variantId: String) async throws -> QueryResult {
+        throw PluginDriverUnsupportedOperation.explainPlan
+    }
+
     func fetchIndexDDL(table: String) async throws -> [String] { [] }
 
     func fetchCommentDDL(table: String) async throws -> [String] { [] }
@@ -526,6 +539,7 @@ extension DatabaseDriver {
 
     func createViewTemplate() -> String? { nil }
     func editViewFallbackTemplate(viewName: String) -> String? { nil }
+    func createSequenceTemplate() -> String? { nil }
     func castColumnToText(_ column: String) -> String { column }
 
     func foreignKeyDisableStatements() -> [String]? { nil }
@@ -834,6 +848,16 @@ extension DatabaseDriver {
         nil
     }
 
+    func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails? { nil }
+
+    func sequenceNextValueStatement(for sequence: PluginSequenceDetails, nextValue: PluginSequenceNextValue) -> String? {
+        nil
+    }
+
+    func alterSequenceStatement(for sequence: PluginSequenceDetails, settings: PluginSequenceSettings) -> String? {
+        nil
+    }
+
     /// Default: no schema support (MySQL/SQLite don't use schemas in the same way)
     func fetchSchemas() async throws -> [String] { [] }
 
@@ -1065,7 +1089,8 @@ enum DatabaseDriverFactory {
             deadline: deadline,
             timeoutEndpoint: timeoutEndpoint,
             effectiveQueryTimeoutSeconds: queryTimeoutSeconds,
-            requiresHostDeadline: requiresHostDeadline
+            requiresHostDeadline: requiresHostDeadline,
+            credentialLease: signIn.lease
         )
     }
 

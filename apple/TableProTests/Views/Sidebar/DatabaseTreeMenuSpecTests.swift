@@ -10,7 +10,7 @@ import Testing
 @testable import TablePro
 
 struct DatabaseTreeMenuSpecTests {
-    private func tableRef(_ name: String, type: TableInfo.TableType = .table) -> DatabaseTreeTableRef {
+    func tableRef(_ name: String, type: TableInfo.TableType = .table) -> DatabaseTreeTableRef {
         DatabaseTreeTableRef(
             database: "app",
             schema: "public",
@@ -34,7 +34,7 @@ struct DatabaseTreeMenuSpecTests {
         )
     }
 
-    private func context(
+    func context(
         clicked: DatabaseTreeNode.Kind?,
         selectedTables: Set<DatabaseTreeTableRef> = [],
         selectedContainers: [DatabaseContainerRef] = [],
@@ -54,6 +54,7 @@ struct DatabaseTreeMenuSpecTests {
         canSearchData: Bool = true,
         canCreateTable: Bool = true,
         canCreateView: Bool = true,
+        canCreateSequence: Bool = false,
         canCreateDatabase: Bool = false,
         supportsCreateSchema: Bool = false,
         supportsSchemaOwner: Bool = false,
@@ -126,6 +127,7 @@ struct DatabaseTreeMenuSpecTests {
             canSearchData: canSearchData,
             canCreateTable: canCreateTable,
             canCreateView: canCreateView,
+            canCreateSequence: canCreateSequence,
             canCreateDatabase: canCreateDatabase,
             objectToolSupport: objectToolSupport,
             canShowAllTables: canShowAllTables
@@ -141,7 +143,7 @@ struct DatabaseTreeMenuSpecTests {
         )
     }
 
-    private func commands(_ sections: [DatabaseTreeMenuSection]) -> [SidebarMenuCommand] {
+    func commands(_ sections: [DatabaseTreeMenuSection]) -> [SidebarMenuCommand] {
         commands(sections.flatMap(\.items))
     }
 

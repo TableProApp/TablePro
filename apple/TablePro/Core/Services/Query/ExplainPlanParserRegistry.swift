@@ -25,6 +25,10 @@ enum ExplainPlanParserRegistry {
             return IndentedTextPlanParser()
         case .damengText:
             return DamengPlanParser()
+        case .oraclePlanRows:
+            return OraclePlanParser()
+        case .sqlServerShowplanXML:
+            return SQLServerShowplanParser()
         default:
             return nil
         }

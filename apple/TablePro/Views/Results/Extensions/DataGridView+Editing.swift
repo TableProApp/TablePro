@@ -128,6 +128,8 @@ extension TableViewCoordinator {
             self?.handleOverlayMovement(row: row, column: column, movement: movement)
         }
         overlayViewer?.dismiss()
+        // A cell partly under the pinned band comes clear of it first, as Return already does.
+        scrollColumnToVisible(tableColumnIndex: column)
         editor.show(in: tableView, row: row, column: column, columnIndex: columnIndex, value: value)
     }
 
@@ -138,6 +140,7 @@ extension TableViewCoordinator {
         guard let viewer = overlayViewer else { return }
         observeRemoval(of: viewer)
         overlayEditor?.dismiss(commit: false)
+        scrollColumnToVisible(tableColumnIndex: column)
         viewer.show(in: tableView, row: row, column: column, columnIndex: columnIndex, value: value)
     }
 

@@ -94,6 +94,14 @@ struct ConnectionSignInRegistryTests {
         #expect(ConnectionSignInRegistry.provider(for: Boom(), fields: [:]) == nil)
     }
 
+    @Test("A Vault OIDC login with no live token is offered a sign-in, whatever the engine's fields")
+    func claimsVaultOIDCSignIn() throws {
+        let endpoint = try VaultEndpoint.resolve(address: "https://vault.test:8200", environment: [:])
+        let error = VaultError.oidcSignInRequired(VaultOIDCLogin(endpoint: endpoint, mount: "oidc", role: "dba"))
+        #expect(ConnectionSignInRegistry.provider(for: error, fields: [:])?.kind == .vaultOIDC)
+        #expect(ConnectionSignInRegistry.provider(for: VaultError.noToken, fields: [:]) == nil)
+    }
+
     @Test("Every provider carries the strings the prompt needs")
     func providersAreFullyDescribed() {
         #expect(ConnectionSignInRegistry.providers.count == ConnectionSignInKind.allCases.count)

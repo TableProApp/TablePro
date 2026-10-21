@@ -1,4 +1,6 @@
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use std::borrow::Cow;
+
+use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 
 use crate::column::{BoolStorage, ColumnKind, ColumnType, FloatWidth, IntegerKind, TemporalZone, TimeRange};
 use crate::value::{
@@ -38,6 +40,11 @@ fn parse(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Value, Ed
         }
         Ok(value) => Ok(value),
         Err(_) if column.dynamic_storage && keeps_text_on_failure(&column.kind) => Ok(Value::Text(input.to_owned())),
+        Err(EditParseError::InvalidDate | EditParseError::InvalidTime | EditParseError::InvalidTimestamp)
+            if column.dynamic_storage && keeps_text_when_valid(&column.kind) && is_time_value_text(input.trim()) =>
+        {
+            Ok(Value::Text(input.trim().to_owned()))
+        }
         Err(error) => Err(error),
     }
 }
@@ -53,6 +60,19 @@ fn keeps_text_when_valid(kind: &ColumnKind) -> bool {
         kind,
         ColumnKind::Date | ColumnKind::Time { .. } | ColumnKind::Timestamp { .. }
     )
+}
+
+/// Whether `input` is a date or time in a form SQLite's date and time
+/// functions read, whichever of DATE, TIME or DATETIME the column
+/// declares: SQLite gives the three names the same affinity, so any of
+/// them holds any form, and a time or timestamp may end in an offset or
+/// `Z`.
+fn is_time_value_text(input: &str) -> bool {
+    parse_date(input).is_ok()
+        || parse_time(input).is_ok()
+        || parse_timestamp(input).is_ok()
+        || parse_time_with_offset(input).is_ok()
+        || parse_timestamp_with_offset(input).is_ok()
 }
 
 /// Whether a failed parse should fall back to the text as typed.
@@ -100,7 +120,8 @@ fn strict_value(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Va
             .parse()
             .map(Value::Uuid)
             .map_err(|_| EditParseError::InvalidUuid),
-        ColumnKind::Date => parse_date(trimmed),
+        ColumnKind::Date => parse_date(trimmed)
+            .or_else(|error| far_temporal(trimmed, column, purpose, parse_date).unwrap_or(Err(error))),
         ColumnKind::Time { with_offset: true, .. } => parse_time_with_offset(trimmed),
         ColumnKind::Time {
             range: range @ (TimeRange::Duration | TimeRange::LongDuration),
@@ -110,8 +131,10 @@ fn strict_value(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Va
         ColumnKind::Timestamp {
             zone: TemporalZone::Offset,
             ..
-        } => parse_timestamp_with_offset(trimmed),
-        ColumnKind::Timestamp { .. } => parse_timestamp(trimmed),
+        } => parse_timestamp_with_offset(trimmed)
+            .or_else(|error| far_temporal(trimmed, column, purpose, parse_timestamp_with_offset).unwrap_or(Err(error))),
+        ColumnKind::Timestamp { .. } => parse_timestamp(trimmed)
+            .or_else(|error| far_temporal(trimmed, column, purpose, parse_timestamp).unwrap_or(Err(error))),
         ColumnKind::Interval => trimmed
             .parse::<SqlInterval>()
             .map(Value::Interval)
@@ -265,7 +288,8 @@ fn parse_date(input: &str) -> Result<Value, EditParseError> {
     if let Some(temporal) = infinite_temporal(input) {
         return Ok(Value::Date(temporal));
     }
-    NaiveDate::parse_from_str(input, "%Y-%m-%d")
+    let input = chrono_year(input).ok_or(EditParseError::InvalidDate)?;
+    NaiveDate::parse_from_str(&input, "%Y-%m-%d")
         .map(|date| Value::Date(Temporal::Finite(date)))
         .map_err(|_| EditParseError::InvalidDate)
 }
@@ -304,12 +328,70 @@ fn parse_timestamp(input: &str) -> Result<Value, EditParseError> {
     if let Some(temporal) = infinite_temporal(input) {
         return Ok(Value::Timestamp(temporal));
     }
+    let input = chrono_year(input).ok_or(EditParseError::InvalidTimestamp)?;
     for format in ["%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%d %H:%M"] {
-        if let Ok(stamp) = NaiveDateTime::parse_from_str(input, format) {
+        if let Ok(stamp) = NaiveDateTime::parse_from_str(&input, format) {
             return Ok(Value::Timestamp(Temporal::Finite(stamp)));
         }
     }
     Err(EditParseError::InvalidTimestamp)
+}
+
+/// The text with its year spelled the way chrono's `%Y` reads one. The
+/// grid and PostgreSQL write a year past 9999 without a sign and a year
+/// before AD 1 as ` BC` after the whole value, where chrono wants
+/// `+10000` and `-4712`: there is no year 0 between 1 BC and AD 1, so
+/// 1 BC is chrono's 0. `None` for a ` BC` value with no year to count
+/// back from.
+fn chrono_year(input: &str) -> Option<Cow<'_, str>> {
+    let (dated, before_christ) = match input.strip_suffix(" BC").or_else(|| input.strip_suffix(" bc")) {
+        Some(dated) => (dated, true),
+        None => (input, false),
+    };
+    let year_digits = dated.bytes().take_while(u8::is_ascii_digit).count();
+    let (year, rest) = dated.split_at(year_digits);
+    if !before_christ {
+        return Some(match year_digits > 4 && rest.starts_with('-') {
+            true => Cow::Owned(format!("+{dated}")),
+            false => Cow::Borrowed(input),
+        });
+    }
+    if !rest.starts_with('-') {
+        return None;
+    }
+    let year = year.parse::<i64>().ok().filter(|year| *year >= 1)?;
+    Some(Cow::Owned(match 1 - year {
+        0 => format!("0000{rest}"),
+        signed => format!("{signed}{rest}"),
+    }))
+}
+
+/// A date or timestamp past the last year chrono holds, kept as the text
+/// it was written in: PostgreSQL keeps dates to 5874897 AD and its driver
+/// reads one that far as that text. The Gregorian
+/// calendar repeats every 400 years, so the text is checked by `parse`
+/// with its year moved into chrono's range, fraction and all. `None`
+/// for text that is not such a value.
+fn far_temporal(
+    input: &str,
+    column: &ColumnType,
+    purpose: Purpose,
+    parse: fn(&str) -> Result<Value, EditParseError>,
+) -> Option<Result<Value, EditParseError>> {
+    let year_digits = input.bytes().take_while(u8::is_ascii_digit).count();
+    let (year, rest) = input.split_at(year_digits);
+    let last_year = u64::try_from(NaiveDate::MAX.year()).ok()?;
+    let year = year.parse::<u64>().ok().filter(|year| *year > last_year)?;
+    let stand_in = parse(&format!("{}{rest}", 2000 + year % 400)).ok()?;
+    if purpose == Purpose::Store
+        && let Err(error) = check_declared_fraction(&stand_in, column.kind.fractional_digits())
+    {
+        return Some(Err(error));
+    }
+    Some(Ok(Value::Other(Box::new(OtherValue {
+        type_name: column.name.clone(),
+        text: input.to_owned(),
+    }))))
 }
 
 fn infinite_temporal<T>(input: &str) -> Option<Temporal<T>> {
@@ -382,18 +464,19 @@ pub fn parse_timestamp_with_offset(input: &str) -> Result<Value, EditParseError>
     if let Some(temporal) = infinite_temporal(trimmed) {
         return Ok(Value::TimestampTz(temporal));
     }
+    let dated = chrono_year(trimmed).ok_or(EditParseError::InvalidTimestamp)?;
     for format in [
         "%Y-%m-%d %H:%M:%S%.f%#z",
         "%Y-%m-%dT%H:%M:%S%.f%#z",
         "%Y-%m-%d %H:%M%#z",
     ] {
-        if let Ok(stamp) = DateTime::parse_from_str(trimmed, format) {
+        if let Ok(stamp) = DateTime::parse_from_str(&dated, format) {
             return Ok(Value::TimestampTz(Temporal::Finite(OffsetTimestamp::from_datetime(
                 stamp,
             ))));
         }
     }
-    if NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S%.f").is_ok() {
+    if NaiveDateTime::parse_from_str(&dated, "%Y-%m-%d %H:%M:%S%.f").is_ok() {
         return Err(EditParseError::OffsetRequired);
     }
     Err(EditParseError::InvalidTimestamp)
@@ -878,6 +961,124 @@ mod tests {
                 Ok(Value::Timestamp(_))
             ),
             "a declared column lost its typed value"
+        );
+    }
+
+    #[test]
+    fn a_dynamic_column_keeps_any_date_or_time_form_sqlite_reads() {
+        let stamp = ColumnKind::Timestamp {
+            fractional_digits: None,
+            zone: TemporalZone::Naive,
+        };
+        let time_of_day = time(false, TimeRange::TimeOfDay);
+        for (input, kind) in [
+            ("2024-03-10T02:30:00-08:00", &stamp),
+            ("2024-03-10 10:30:00.5Z", &stamp),
+            ("2024-03-10 02:30+05:45", &stamp),
+            ("12:30:00+05:30", &time_of_day),
+            ("12:30Z", &time_of_day),
+            ("2024-03-10 02:30:00", &ColumnKind::Date),
+            ("2024-03-10", &stamp),
+            ("12:30:00", &ColumnKind::Date),
+        ] {
+            assert_eq!(
+                parse_literal_text(input, &column(kind.clone(), true)),
+                Ok(Value::Text(input.to_owned())),
+                "{input} in {kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_date_before_year_one_reads_with_its_era() {
+        let date = column(ColumnKind::Date, false);
+        let day = |year, month, day| Value::Date(Temporal::Finite(NaiveDate::from_ymd_opt(year, month, day).unwrap()));
+
+        assert_eq!(parse_literal_text("4713-01-01 BC", &date), Ok(day(-4712, 1, 1)));
+        assert_eq!(parse_literal_text("0001-12-31 BC", &date), Ok(day(0, 12, 31)));
+        assert_eq!(
+            parse_literal_text("0000-01-01 BC", &date),
+            Err(EditParseError::InvalidDate)
+        );
+        let instant = column(
+            ColumnKind::Timestamp {
+                fractional_digits: None,
+                zone: TemporalZone::Offset,
+            },
+            false,
+        );
+        assert!(
+            matches!(
+                parse_literal_text("4713-01-01 00:00:00+00:00 BC", &instant),
+                Ok(Value::TimestampTz(Temporal::Finite(stamp))) if stamp.to_datetime().year() == -4712
+            ),
+            "an instant before year one lost its era"
+        );
+    }
+
+    #[test]
+    fn a_year_past_chronos_last_keeps_its_text_once_checked() {
+        let date = column(ColumnKind::Date, false);
+        let kept = |text: &str| {
+            Value::Other(Box::new(OtherValue {
+                type_name: "t".to_owned(),
+                text: text.to_owned(),
+            }))
+        };
+
+        assert_eq!(
+            parse_literal_text("10000-01-01", &date),
+            Ok(Value::Date(Temporal::Finite(
+                NaiveDate::from_ymd_opt(10_000, 1, 1).unwrap()
+            )))
+        );
+        assert_eq!(parse_literal_text("5874897-12-31", &date), Ok(kept("5874897-12-31")));
+        let last = NaiveDate::MAX.year();
+        assert_eq!(
+            parse_literal_text(&format!("{last}-12-31"), &date),
+            Ok(Value::Date(Temporal::Finite(NaiveDate::MAX)))
+        );
+        let first_far = format!("{}-01-01", last + 1);
+        assert_eq!(parse_literal_text(&first_far, &date), Ok(kept(&first_far)));
+        assert_eq!(parse_literal_text("262144-02-29", &date), Ok(kept("262144-02-29")));
+        assert_eq!(
+            parse_literal_text("5874897-02-30", &date),
+            Err(EditParseError::InvalidDate)
+        );
+        let whole_seconds = column(
+            ColumnKind::Timestamp {
+                fractional_digits: Some(0),
+                zone: TemporalZone::Naive,
+            },
+            false,
+        );
+        assert_eq!(
+            parse_literal_text("294276-12-31 23:59:59", &whole_seconds),
+            Ok(kept("294276-12-31 23:59:59"))
+        );
+        assert_eq!(
+            parse_literal_text("294276-12-31 23:59:59.5", &whole_seconds),
+            Err(EditParseError::ScaleExceeded { scale: 0 })
+        );
+    }
+
+    #[test]
+    fn a_dynamic_column_still_refuses_text_that_is_no_date_or_time() {
+        let stamp = ColumnKind::Timestamp {
+            fractional_digits: None,
+            zone: TemporalZone::Naive,
+        };
+        for input in ["2024-03-10T02:30:00+25:00", "2024-02-30 12:00", "1710037800", "soon"] {
+            assert_eq!(
+                parse_literal_text(input, &column(stamp.clone(), true)),
+                Err(EditParseError::InvalidTimestamp),
+                "{input}"
+            );
+        }
+        assert_eq!(
+            parse_literal_text("2024-03-10T02:30:00-08:00", &column(stamp, false)),
+            Err(EditParseError::InvalidTimestamp),
+            "a declared naive timestamp took an offset"
         );
     }
 }

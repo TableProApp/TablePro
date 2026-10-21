@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 import TableProConnectionLibrary
@@ -33,6 +34,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     let connection: DatabaseConnection
     let effectiveQueryTimeoutSeconds: Int
     private let pluginDriver: any PluginDatabaseDriver
+    // The Vault lease this driver signed in with. Its database user goes away when it ends.
+    private let credentialLease: VaultLease?
     private let connectionDeadline: ConnectionDeadline
     private let timeoutEndpoint: ConnectionTimeoutEndpoint
     private let requiresHostDeadline: Bool
@@ -44,7 +47,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     var hasLostConnection: Bool {
-        pluginDriver.hasLostConnection
+        pluginDriver.hasLostConnection || credentialLease?.hasEnded == true
     }
 
     var serverVersion: String? { pluginDriver.serverVersion }
@@ -128,10 +131,12 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         deadline: ConnectionDeadline? = nil,
         timeoutEndpoint: ConnectionTimeoutEndpoint? = nil,
         effectiveQueryTimeoutSeconds: Int? = nil,
-        requiresHostDeadline: Bool? = nil
+        requiresHostDeadline: Bool? = nil,
+        credentialLease: VaultLease? = nil
     ) {
         self.connection = connection
         self.pluginDriver = pluginDriver
+        self.credentialLease = credentialLease
         self.classifier = ColumnTypeClassifier(family: SQLTypeFamily.of(connection.type))
         self.connectionDeadline = deadline ?? ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
         self.timeoutEndpoint = timeoutEndpoint ?? .database(connection.timeoutEndpointName)
@@ -141,6 +146,20 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             configuredSeconds: effectiveQueryTimeoutSeconds ?? connection.queryTimeoutSeconds,
             globalSeconds: 0
         )
+        if let credentialLease {
+            let connectionId = connection.id
+            credentialLease.start { [weak self] remaining in
+                guard let self else { return }
+                let ending = CredentialLeaseEnding(connectionId: connectionId, driver: ObjectIdentifier(self), remaining: remaining)
+                Task { @MainActor in
+                    AppEvents.shared.credentialLeaseEnding.send(ending)
+                }
+            }
+        }
+    }
+
+    deinit {
+        credentialLease?.release()
     }
 
     // MARK: - Connection Management
@@ -240,6 +259,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func disconnect() {
+        credentialLease?.release()
         let action = state.withLock { state -> (ConnectAttempt?, Bool) in
             state.status = .disconnected
             if var attempt = state.connectAttempt {
@@ -459,6 +479,11 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         )
     }
 
+    func explainPlan(statement: String, variantId: String) async throws -> QueryResult {
+        try StatementTextValidator.validate(statement)
+        return mapQueryResult(try await pluginDriver.explainPlan(statement: statement, variantId: variantId))
+    }
+
     // MARK: - Schema Operations
 
     func fetchTables() async throws -> [TableInfo] {
@@ -531,6 +556,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             comment: table.comment,
             partitionCount: table.partitionCount,
             isSystemVersioned: decoded.isSystemVersioned,
+            ownedByTable: table.ownedByTable,
+            ownedByColumn: table.ownedByColumn,
             isTemporary: isTemporary
         )
     }
@@ -1146,6 +1173,20 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.concurrentRefreshAvailability(materializedView: materializedView, schema: schema)
     }
 
+    // MARK: - Sequences
+
+    func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails? {
+        try await pluginDriver.fetchSequenceDetails(sequence: sequence, schema: schema ?? pluginDriver.currentSchema)
+    }
+
+    func sequenceNextValueStatement(for sequence: PluginSequenceDetails, nextValue: PluginSequenceNextValue) -> String? {
+        pluginDriver.sequenceNextValueStatement(for: sequence, nextValue: nextValue)
+    }
+
+    func alterSequenceStatement(for sequence: PluginSequenceDetails, settings: PluginSequenceSettings) -> String? {
+        pluginDriver.alterSequenceStatement(for: sequence, settings: settings)
+    }
+
     // MARK: - All Tables Metadata SQL
 
     func allTablesMetadataSQL(schema: String?) -> String? {
@@ -1156,6 +1197,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func createViewTemplate() -> String? {
         pluginDriver.createViewTemplate()
+    }
+
+    func createSequenceTemplate() -> String? {
+        pluginDriver.createSequenceTemplate()
     }
 
     func editViewFallbackTemplate(viewName: String) -> String? {

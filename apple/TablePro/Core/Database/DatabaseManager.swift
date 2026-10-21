@@ -108,6 +108,7 @@ final class DatabaseManager: ObservableObject {
 
     internal var connectionUpdatedCancellable: AnyCancellable?
     internal var healthCheckSettingCancellable: AnyCancellable?
+    internal var credentialLeaseCancellable: AnyCancellable?
     /// The tail of the serialized monitor restarts. See `observeHealthCheckSetting`.
     internal var healthMonitorRestart: Task<Void, Never>?
 
@@ -202,5 +203,6 @@ final class DatabaseManager: ObservableObject {
         }
         observeConnectionUpdates()
         observeHealthCheckSetting()
+        observeCredentialLeases()
     }
 }

@@ -21,6 +21,19 @@ enum QueryPlanLabels {
     static var operation: String { String(localized: "Operation") }
     static var metric: String { String(localized: "Metric") }
     static var magnitude: String { String(localized: "Chart") }
+    static var warning: String { String(localized: "Warning") }
+    static var warnings: String { String(localized: "Warnings") }
+    static var missingIndex: String { String(localized: "Missing Index") }
+    static var missingIndexes: String { String(localized: "Missing Indexes") }
+    static var copyCreateIndex: String { String(localized: "Copy CREATE INDEX") }
+
+    static func warningCount(_ count: Int) -> String {
+        String(format: String(localized: "Warnings: %d"), count)
+    }
+
+    static func impact(_ percent: Double) -> String {
+        String(format: String(localized: "Estimated impact %.1f%%"), percent)
+    }
 
     /// Boolean flags and zero-value noise a driver reports that add nothing to the display.
     static let hiddenPropertyKeys: Set<String> = [

@@ -66,6 +66,8 @@ public class TextSelectionManager: NSObject {
     }
 
     public internal(set) var textSelections: [TextSelection] = []
+    // Bumped on every announced change, so a kill can tell that nothing moved since the last one.
+    public private(set) var changeCount = 0
     weak var layoutManager: TextLayoutManager?
     weak var textStorage: NSTextStorage?
     weak var textView: TextView?
@@ -159,6 +161,7 @@ public class TextSelectionManager: NSObject {
 
     /// The single place a selection change is announced, to observers and to assistive clients alike.
     func notifySelectionChanged() {
+        changeCount &+= 1
         NotificationCenter.default.post(Notification(name: Self.selectionChangedNotification, object: self))
         // Only the manager the text view answers to speaks for it. The minimap builds a second manager over the
         // same text view and mirrors every selection into it, which would announce each move twice.

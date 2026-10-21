@@ -22,7 +22,7 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
     ) {
         dismiss(commit: true)
 
-        let cellFrame = tableView.frameOfCell(atColumn: column, row: row)
+        let cellFrame = Self.displayedCellFrame(in: tableView, column: column, row: row)
         guard !cellFrame.isEmpty else { return }
         guard let window = tableView.window else { return }
 

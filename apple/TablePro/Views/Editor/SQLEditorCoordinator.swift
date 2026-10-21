@@ -110,6 +110,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     @Published private(set) var vimMode: VimMode = .normal
     private var vimEngine: VimEngine?
     private var vimKeyInterceptor: VimKeyInterceptor?
+    private var emacsKeyInterceptor: EmacsKeyInterceptor?
     private var commandHandler = VimCommandLineHandler()
     private var vimCursorManager: VimCursorManager?
     var onCloseTab: (() -> Void)?
@@ -185,7 +186,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         diagnosticsController.configure(databaseType: databaseType)
         diagnosticsController.install(on: controller)
         diagnosticsController.scheduleRefresh(for: controller)
-        installVimModeIfEnabled(controller: controller)
+        applyKeyBindings(controller: controller)
         installEditorSettingsObserver(controller: controller)
 
         guard let textView = controller.textView else { return }
@@ -285,11 +286,11 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         }
     }
 
-    /// The app's answer for a key the editor is about to handle itself, called from the editor's
-    /// single key-down chain. Vim goes first because a mode change has to beat every editing
-    /// command; the inline suggestion follows it and yields to an open completion list.
+    // Called from the editor's single key-down chain. The key bindings mode goes first, at most one of Vim and Emacs
+    // installed, because a mode change has to beat every editing command; the inline suggestion follows it.
     func textViewShouldClaimKeyDown(controller: TextViewController, event: NSEvent) -> NSEvent? {
         if let interceptor = vimKeyInterceptor, interceptor.handleKeyDown(event) == nil { return nil }
+        if let interceptor = emacsKeyInterceptor, interceptor.handleKeyDown(event) == nil { return nil }
         if inlineSuggestionManager?.consumesKeyDown(event) == true { return nil }
         return event
     }
@@ -303,6 +304,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         focusClaimPending = false
 
         removeVimKeyInterceptor()
+        removeEmacsKeyInterceptor()
 
         if let tabID, let sync = copilotDocumentSync {
             let id = tabID
@@ -620,12 +622,32 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         }
     }
 
-    // MARK: - Vim Mode
+    // MARK: - Key Bindings
 
-    private func installVimModeIfEnabled(controller: TextViewController) {
-        guard AppSettingsManager.shared.editor.vimModeEnabled else { return }
-        installVimKeyInterceptor(controller: controller)
+    private func applyKeyBindings(controller: TextViewController) {
+        let keyBindings = AppSettingsManager.shared.editor.keyBindings
+        if keyBindings != .vim, vimKeyInterceptor != nil {
+            uninstallVimKeyInterceptor()
+        }
+        if keyBindings != .emacs {
+            removeEmacsKeyInterceptor()
+        }
+        if keyBindings == .vim, vimKeyInterceptor == nil {
+            installVimKeyInterceptor(controller: controller)
+        }
+        if keyBindings == .emacs, emacsKeyInterceptor == nil {
+            let interceptor = EmacsKeyInterceptor(inlineSuggestionManager: inlineSuggestionManager)
+            interceptor.install(controller: controller)
+            emacsKeyInterceptor = interceptor
+        }
     }
+
+    private func removeEmacsKeyInterceptor() {
+        emacsKeyInterceptor?.uninstall()
+        emacsKeyInterceptor = nil
+    }
+
+    // MARK: - Vim Mode
 
     private func installVimKeyInterceptor(controller: TextViewController) {
         guard let textView = controller.textView else { return }
@@ -683,15 +705,6 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         vimEngine = nil
     }
 
-    private func handleVimSettingsChange(controller: TextViewController) {
-        let enabled = AppSettingsManager.shared.editor.vimModeEnabled
-        if enabled && vimKeyInterceptor == nil {
-            installVimKeyInterceptor(controller: controller)
-        } else if !enabled && vimKeyInterceptor != nil {
-            uninstallVimKeyInterceptor()
-        }
-    }
-
     // MARK: - Menu Escape Routing
 
     /// Called by `EditorEventRouter.handleEscapeFromMenu()` when the "Clear Selection" menu item is
@@ -747,7 +760,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             .receive(on: RunLoop.main)
             .sink { [weak self, weak controller] _ in
                 guard let self, let controller else { return }
-                self.handleVimSettingsChange(controller: controller)
+                self.applyKeyBindings(controller: controller)
                 self.handleInlineProviderChange()
                 self.vimCursorManager?.updatePosition()
             }

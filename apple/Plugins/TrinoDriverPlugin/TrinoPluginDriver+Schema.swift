@@ -72,6 +72,26 @@ extension TrinoPluginDriver {
         return tables
     }
 
+    func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? {
+        guard let catalog = currentCatalog, !schemas.isEmpty else { return [] }
+        let result = try await execute(query: TrinoIntrospectionSQL.listTables(catalog: catalog, inSchemas: schemas))
+        let materialized = await materializedViews(catalog: catalog, schemas: schemas)
+
+        var tables: [PluginTableInfo] = []
+        var seen: Set<TrinoRelationKey> = []
+        for row in result.rows {
+            guard let name = firstText(row), let schema = text(row[safe: 2]) else { continue }
+            let key = TrinoRelationKey(schema: schema, name: name)
+            seen.insert(key)
+            let type = materialized.contains(key) ? "MATERIALIZED VIEW" : Self.tableType(text(row[safe: 1]))
+            tables.append(PluginTableInfo(name: name, type: type, schema: schema, comment: nil))
+        }
+        for key in materialized.sorted() where !seen.contains(key) {
+            tables.append(PluginTableInfo(name: key.name, type: "MATERIALIZED VIEW", schema: key.schema, comment: nil))
+        }
+        return tables
+    }
+
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         guard let catalog = currentCatalog, let targetSchema = resolveSchema(schema) else { return [] }
         let result = try await execute(
@@ -187,6 +207,24 @@ extension TrinoPluginDriver {
         return Set(result.rows.compactMap { firstText($0) })
     }
 
+    private func materializedViews(catalog: String, schemas: [String]) async -> Set<TrinoRelationKey> {
+        let sql = TrinoIntrospectionSQL.listMaterializedViews(catalog: catalog, inSchemas: schemas, flavor: flavor)
+        if let result = try? await execute(query: sql) {
+            return Set(result.rows.compactMap { row in
+                guard let name = firstText(row), let schema = text(row[safe: 1]) else { return nil }
+                return TrinoRelationKey(schema: schema, name: name)
+            })
+        }
+        // One schema the connector cannot read fails the whole query; per schema, only that one is lost.
+        var views: Set<TrinoRelationKey> = []
+        for schema in schemas {
+            for name in await materializedViewNames(catalog: catalog, schema: schema) {
+                views.insert(TrinoRelationKey(schema: schema, name: name))
+            }
+        }
+        return views
+    }
+
     private static func tableType(_ kind: String?) -> String {
         (kind ?? "").uppercased().contains("VIEW") ? "VIEW" : "TABLE"
     }
@@ -194,5 +232,14 @@ extension TrinoPluginDriver {
     private static func normalizedText(_ value: String?) -> String? {
         guard let value else { return nil }
         return value.trimmingCharacters(in: .whitespaces).isEmpty ? nil : value
+    }
+}
+
+private struct TrinoRelationKey: Hashable, Comparable {
+    let schema: String
+    let name: String
+
+    static func < (lhs: TrinoRelationKey, rhs: TrinoRelationKey) -> Bool {
+        (lhs.schema, lhs.name) < (rhs.schema, rhs.name)
     }
 }
