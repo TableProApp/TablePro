@@ -180,7 +180,7 @@ extension TableViewCoordinator {
         let dbType = databaseType ?? .mysql
         let scope = userDefinedTypeScope
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
@@ -215,7 +215,7 @@ extension TableViewCoordinator {
         let escape = resolveDriver()?.escapeStringLiteral ?? SQLEscaping.escapeStringLiteral
         let literalPrefix = SQLStringLiteralPrefix.forDatabaseType(databaseType)
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,

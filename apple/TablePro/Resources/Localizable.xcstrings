@@ -83937,6 +83937,9 @@
         }
       }
     },
+    "Freeze Up to This Column" : {
+
+    },
     "From %@…" : {
       "localizations" : {
         "fr" : {
@@ -191225,6 +191228,9 @@
         }
       }
     },
+    "These columns would leave too little room to scroll the rest." : {
+
+    },
     "These connections open their tunnel by running a command on this Mac, every time they connect:\n\n%@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -202091,6 +202097,9 @@
           }
         }
       }
+    },
+    "Unfreeze Columns" : {
+
     },
     "UNGROUPED" : {
       "localizations" : {
