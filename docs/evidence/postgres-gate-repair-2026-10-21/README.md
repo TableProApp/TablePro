@@ -43,6 +43,23 @@ TABLEPRO_GTK_SCENARIO=postgres_ssh_tunnel_loss_retires_session_and_reconnects ba
 
 Forgejo run **851** passed all **29** jobs for `4551b70fe6849ab03453c99548610aaf414662ff`, including the PostgreSQL driver, pg-release, all installed GTK shards, both distro floors and driver TLS. GitHub fast checks, preflight, Flatpak, security, workflow contracts and Sonar passed. Expected GitHub merge-tier skips are covered by the completed Forgejo run.
 
-[PR #1296](https://github.com/cozyGarage/BookiE/pull/1296) merged as `849fc28b4f2c23fdcc30280738c314b5e0c22b7d`. A full-tree comparison found no differences between the gated head and that merge. Issues #1288, #1294 and #1295 are complete. This evidence update changes documentation only; the subsequent Forgejo Linux synchronization is recorded on the pull request.
+[PR #1296](https://github.com/cozyGarage/BookiE/pull/1296) merged as `849fc28b4f2c23fdcc30280738c314b5e0c22b7d`. A full-tree comparison found no differences between the gated head and that merge. Issues #1288, #1294 and #1295 are complete. The following post-merge checks cover the accepted merge and its documentation update.
 
-This acceptance covers the existing merge tier. It does not establish that large-table memory use, every extension type or every desktop interaction is defect-free.
+## Post-merge completion
+
+Forgejo run **852** passed all **29** jobs on synchronized Linux `b4f68479a2456b339176bc9be58f589cb7823588`. GitHub and Forgejo Linux refs matched that commit when checked. The merge-tier skips in GitHub are covered by this completed Forgejo run.
+
+The remaining GitHub runs on merge `849fc28b4f2c23fdcc30280738c314b5e0c22b7d` completed successfully:
+
+| Check | Result |
+| --- | --- |
+| [CodeQL](https://github.com/cozyGarage/BookiE/actions/runs/39653580054) | Rust, Python and Actions analyses passed |
+| [Build Linux](https://github.com/cozyGarage/BookiE/actions/runs/39653580499) | Preflight, sandbox, fast GTK checks and regression gate passed |
+| [Flatpak](https://github.com/cozyGarage/BookiE/actions/runs/39653579969) | Default and development profiles passed |
+| [Security](https://github.com/cozyGarage/BookiE/actions/runs/39653580239) | Workflow passed |
+| [Sonar](https://github.com/cozyGarage/BookiE/actions/runs/39653580112) | Workflow passed |
+| [Documentation contracts](https://github.com/cozyGarage/BookiE/actions/runs/39653674561) | Passed on `b4f68479a` |
+
+The live CodeQL alert query for `refs/heads/linux` returned no open alerts during this post-merge check. Issues #1288, #1294 and #1295 were confirmed closed. The merged repair branches were absent locally and on both remotes. No open pull requests targeted Linux.
+
+This follow-up records evidence only. Documentation updates stay ahead of Forgejo until the next code synchronization, as required by the documentation-only workflow. Large-table memory behavior, extension coverage and manual desktop acceptance require separate qualification.
