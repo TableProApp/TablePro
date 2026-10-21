@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use relm4::adw;
 use relm4::adw::prelude::*;
 use relm4::{ComponentController, ComponentSender};
 use uuid::Uuid;
@@ -35,6 +36,25 @@ async fn await_editor_sessions(
         Err(_) => Err("Timed out waiting for editor sessions to finish cleanup.".to_string()),
         Ok(result) => result,
     }
+}
+
+fn close_anyway_dialog(message: &str, on_close_anyway: impl Fn() + 'static) -> adw::AlertDialog {
+    let body = crate::tr!(
+        "{message}\n\nIf you close anyway, the database rolls back any transaction that was not committed when its connection drops."
+    )
+    .replace("{message}", message);
+    let dialog = adw::AlertDialog::new(Some(&crate::tr!("Could not close database sessions")), Some(&body));
+    dialog.add_response("keep", &crate::tr!("Keep Open"));
+    dialog.add_response("close-anyway", &crate::tr!("Close Anyway"));
+    dialog.set_response_appearance("close-anyway", adw::ResponseAppearance::Destructive);
+    dialog.set_default_response(Some("keep"));
+    dialog.set_close_response("keep");
+    dialog.connect_response(None, move |_, response| {
+        if response == "close-anyway" {
+            on_close_anyway();
+        }
+    });
+    dialog
 }
 
 impl App {
@@ -100,6 +120,14 @@ impl App {
                 }
                 SessionTeardownAction::WindowClose => {
                     self.session_teardown_pending.set(false);
+                    let ready = self.session_teardown_ready.clone();
+                    let window = self.window.clone();
+                    close_anyway_dialog(&message, move || {
+                        ready.set(true);
+                        window.close();
+                    })
+                    .present(Some(&self.window));
+                    return;
                 }
             }
             self.show_error_alert(&crate::tr!("Could not close database sessions"), &message);
@@ -135,6 +163,28 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn a_window_close_whose_sessions_cannot_close_offers_to_close_anyway() {
+        relm4::gtk::init().unwrap();
+        relm4::adw::init().unwrap();
+        let closed = std::rc::Rc::new(std::cell::Cell::new(0));
+        let counter = closed.clone();
+        let dialog = close_anyway_dialog("Timed out waiting for editor sessions to finish cleanup.", move || {
+            counter.set(counter.get() + 1)
+        });
+
+        assert!(dialog.has_response("keep"));
+        assert!(dialog.has_response("close-anyway"));
+        assert_eq!(dialog.default_response().as_deref(), Some("keep"));
+        assert_eq!(dialog.close_response(), "keep");
+        assert!(dialog.body().contains("Timed out waiting"));
+        dialog.emit_by_name::<()>("response", &[&"keep"]);
+        assert_eq!(closed.get(), 0);
+        dialog.emit_by_name::<()>("response", &[&"close-anyway"]);
+        assert_eq!(closed.get(), 1);
+    }
 
     #[tokio::test]
     async fn teardown_waits_for_every_editor_session() {

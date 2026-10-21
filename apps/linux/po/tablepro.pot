@@ -1188,8 +1188,25 @@ msgstr ""
 msgid "{n} rows could not be located. They may have been changed by another session. Refresh and review."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/session_teardown.rs:105
+#: apps/linux/app/src/ui/app/session_teardown.rs:43
+#, rust-format
+msgid ""
+"{message}\n"
+"\n"
+"If you close anyway, the database rolls back any transaction that was not committed when its connection drops."
+msgstr ""
+
+#: apps/linux/app/src/ui/app/session_teardown.rs:46
+#: apps/linux/app/src/ui/app/session_teardown.rs:133
 msgid "Could not close database sessions"
+msgstr ""
+
+#: apps/linux/app/src/ui/app/session_teardown.rs:47
+msgid "Keep Open"
+msgstr ""
+
+#: apps/linux/app/src/ui/app/session_teardown.rs:48
+msgid "Close Anyway"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/shortcuts.rs:10
