@@ -289,7 +289,7 @@ struct DataDictionaryExportTests {
         let generated = PluginColumnInfo(
             name: "total", dataType: "numeric", generationExpression: "price * qty", generationKind: .stored)
         let identity = PluginColumnInfo(name: "id", dataType: "bigint", identityKind: .always)
-        let autoIncrement = PluginColumnInfo(name: "id", dataType: "int", extra: "auto_increment")
+        let autoIncrement = PluginColumnInfo(name: "id", dataType: "int", extra: "auto_increment", identityKind: .byDefault)
 
         #expect(DataDictionaryDocument.defaultText(of: generated) == "GENERATED ALWAYS AS (price * qty) STORED")
         #expect(DataDictionaryDocument.defaultText(of: identity) == "GENERATED ALWAYS AS IDENTITY")

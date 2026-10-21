@@ -198,7 +198,7 @@ final class ExportService: ObservableObject {
         let rowObjects = objects.filter { plugin.readsRows(optionValues: $0.optionValues, kind: $0.kind) }
         state.readsRows = !rowObjects.isEmpty
         state.totalRows = await fetchTotalRowCount(
-            for: rowObjects,
+            for: rowObjects.filter { $0.kind.carriesRows },
             driver: driver,
             databaseType: databaseType,
             dataSource: dataSource

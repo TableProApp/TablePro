@@ -212,8 +212,9 @@ struct DataDictionaryDocument {
             let storage = column.generationKind.map { " \($0.rawValue)" } ?? ""
             return "GENERATED ALWAYS AS (\(expression))\(storage)"
         }
-        if let identity = column.identityKind { return "GENERATED \(identity.rawValue) AS IDENTITY" }
+        // MySQL reports an auto-increment column with an identity kind too, and calls it by its own name.
         if column.extra?.lowercased().contains("auto_increment") == true { return "AUTO_INCREMENT" }
+        if let identity = column.identityKind { return "GENERATED \(identity.rawValue) AS IDENTITY" }
         return nil
     }
 
