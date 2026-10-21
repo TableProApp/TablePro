@@ -218,22 +218,9 @@ pub fn build_insert_literal(
             continue;
         }
         names.push(quote_ident(driver_id, &column.name));
-        let literal = if driver_id == "mysql" && matches!(value, Value::Text(text) if text.is_empty()) {
-            // MariaDB's EMPTY_STRING_IS_NULL mode turns an empty SQL string
-            // literal into NULL. SPACE(0) stays an empty value for text,
-            // ENUM, and SET destinations during SQL-file replay.
-            "SPACE(0)".to_owned()
-        } else {
-            render_sql_literal(driver_id, value).map_err(|_| BuildSqlError::UnrepresentableValue {
-                column: column.name.clone(),
-            })?
-        };
-        values.push(literal);
+        values.push(column_literal(driver_id, column, value)?);
     }
-    let qualified = match schema {
-        Some(schema) => format!("{}.{}", quote_ident(driver_id, schema), quote_ident(driver_id, table)),
-        None => quote_ident(driver_id, table),
-    };
+    let qualified = qualified_table_name(driver_id, schema, table);
     if names.is_empty() {
         return if matches!(driver_id, "postgres" | "mssql") {
             Ok(format!("INSERT INTO {qualified} DEFAULT VALUES;"))
@@ -246,6 +233,120 @@ pub fn build_insert_literal(
         qualified,
         names.join(", "),
         values.join(", ")
+    ))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowStatement {
+    Insert,
+    Update,
+    Delete,
+}
+
+impl RowStatement {
+    pub fn build(
+        self,
+        driver_id: &str,
+        schema: Option<&str>,
+        table: &str,
+        columns: &[ColumnInfo],
+        row: &[Value],
+    ) -> Result<String, BuildSqlError> {
+        match self {
+            Self::Insert => build_insert_literal(driver_id, schema, table, columns, row),
+            Self::Update => build_update_literal(driver_id, schema, table, columns, row),
+            Self::Delete => build_delete_literal(driver_id, schema, table, columns, row),
+        }
+    }
+}
+
+fn qualified_table_name(driver_id: &str, schema: Option<&str>, table: &str) -> String {
+    match schema {
+        Some(schema) => format!("{}.{}", quote_ident(driver_id, schema), quote_ident(driver_id, table)),
+        None => quote_ident(driver_id, table),
+    }
+}
+
+fn column_literal(driver_id: &str, column: &ColumnInfo, value: &Value) -> Result<String, BuildSqlError> {
+    if driver_id == "mysql" && matches!(value, Value::Text(text) if text.is_empty()) {
+        // MariaDB's EMPTY_STRING_IS_NULL mode turns an empty SQL string
+        // literal into NULL. SPACE(0) stays an empty value for text,
+        // ENUM, and SET destinations during SQL-file replay.
+        return Ok("SPACE(0)".to_owned());
+    }
+    render_sql_literal(driver_id, value).map_err(|_| BuildSqlError::UnrepresentableValue {
+        column: column.name.clone(),
+    })
+}
+
+fn primary_key_predicate(driver_id: &str, columns: &[ColumnInfo], row: &[Value]) -> Result<String, BuildSqlError> {
+    if columns.len() != row.len() {
+        return Err(BuildSqlError::LengthMismatch {
+            expected: columns.len(),
+            got: row.len(),
+        });
+    }
+    let mut terms = Vec::new();
+    for (column, value) in columns.iter().zip(row).filter(|(column, _)| column.primary_key) {
+        if matches!(value, Value::Null) {
+            return Err(BuildSqlError::UnrepresentableValue {
+                column: column.name.clone(),
+            });
+        }
+        terms.push(format!(
+            "{} = {}",
+            quote_ident(driver_id, &column.name),
+            column_literal(driver_id, column, value)?
+        ));
+    }
+    if terms.is_empty() {
+        return Err(BuildSqlError::NoPrimaryKey);
+    }
+    Ok(terms.join(" AND "))
+}
+
+pub fn build_update_literal(
+    driver_id: &str,
+    schema: Option<&str>,
+    table: &str,
+    columns: &[ColumnInfo],
+    row: &[Value],
+) -> Result<String, BuildSqlError> {
+    let predicate = primary_key_predicate(driver_id, columns, row)?;
+    let mut assignments = Vec::new();
+    for (column, value) in columns.iter().zip(row) {
+        if column.primary_key || column.is_generated {
+            continue;
+        }
+        assignments.push(format!(
+            "{} = {}",
+            quote_ident(driver_id, &column.name),
+            column_literal(driver_id, column, value)?
+        ));
+    }
+    if assignments.is_empty() {
+        return Err(BuildSqlError::NothingToUpdate);
+    }
+    Ok(format!(
+        "UPDATE {} SET {} WHERE {};",
+        qualified_table_name(driver_id, schema, table),
+        assignments.join(", "),
+        predicate
+    ))
+}
+
+pub fn build_delete_literal(
+    driver_id: &str,
+    schema: Option<&str>,
+    table: &str,
+    columns: &[ColumnInfo],
+    row: &[Value],
+) -> Result<String, BuildSqlError> {
+    let predicate = primary_key_predicate(driver_id, columns, row)?;
+    Ok(format!(
+        "DELETE FROM {} WHERE {};",
+        qualified_table_name(driver_id, schema, table),
+        predicate
     ))
 }
 
@@ -743,5 +844,43 @@ mod tests {
             );
             assert_eq!(render_sql_literal(driver, &Value::Bytes(vec![])).unwrap(), empty);
         }
+    }
+
+    #[test]
+    fn copied_update_and_delete_find_the_row_by_primary_key() {
+        let mut id = column("id");
+        id.primary_key = true;
+        let columns = vec![id, column("note"), generated("total")];
+        let row = vec![Value::Int(7), Value::Text("it's".into()), Value::Int(9)];
+        assert_eq!(
+            build_update_literal("postgres", Some("public"), "t", &columns, &row).unwrap(),
+            "UPDATE \"public\".\"t\" SET \"note\" = 'it''s' WHERE \"id\" = 7;"
+        );
+        assert_eq!(
+            build_delete_literal("mysql", None, "t", &columns, &row).unwrap(),
+            "DELETE FROM `t` WHERE `id` = 7;"
+        );
+    }
+
+    #[test]
+    fn copied_update_and_delete_refuse_rows_without_a_usable_key() {
+        let columns = vec![column("id"), column("note")];
+        let row = vec![Value::Int(7), Value::Text("x".into())];
+        assert!(matches!(
+            build_delete_literal("postgres", None, "t", &columns, &row),
+            Err(BuildSqlError::NoPrimaryKey)
+        ));
+        let mut keyed = columns.clone();
+        keyed[0].primary_key = true;
+        let null_key = vec![Value::Null, Value::Text("x".into())];
+        assert!(matches!(
+            build_update_literal("postgres", None, "t", &keyed, &null_key),
+            Err(BuildSqlError::UnrepresentableValue { .. })
+        ));
+        let only_key = vec![keyed[0].clone()];
+        assert!(matches!(
+            build_update_literal("postgres", None, "t", &only_key, &[Value::Int(1)]),
+            Err(BuildSqlError::NothingToUpdate)
+        ));
     }
 }

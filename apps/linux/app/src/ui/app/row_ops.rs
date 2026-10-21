@@ -1,6 +1,7 @@
 use relm4::adw::prelude::*;
 use relm4::{ComponentController, ComponentSender};
 
+use tablepro_core::sql_literal::RowStatement;
 use tablepro_core::{DriverError, Value};
 use tablepro_storage::query_history::{Outcome, Source};
 use uuid::Uuid;
@@ -118,7 +119,12 @@ impl App {
         }
     }
 
-    pub(super) fn on_copy_row_as_insert(&self, tab_id: Uuid, row_position: u32) {
+    pub(super) fn on_copy_row_as_statement(
+        &self,
+        tab_id: Uuid,
+        row_position: u32,
+        statement: tablepro_core::sql_literal::RowStatement,
+    ) {
         let (columns, driver_id, row, table, schema) = {
             let tabs = self.workspace_tabs.borrow();
             let Some(controller) = tabs.get(&tab_id).and_then(|t| t.browse_controller()) else {
@@ -143,13 +149,7 @@ impl App {
             ));
             return;
         };
-        let sql = match tablepro_core::sql_literal::build_insert_literal(
-            &driver_id,
-            schema.as_deref(),
-            &table,
-            &columns,
-            &row,
-        ) {
+        let sql = match statement.build(&driver_id, schema.as_deref(), &table, &columns, &row) {
             Ok(sql) => sql,
             Err(error) => {
                 self.show_toast(&error_text::build_sql_message(&error));
@@ -157,7 +157,11 @@ impl App {
             }
         };
         self.window.clipboard().set_text(&sql);
-        self.show_toast(&crate::tr!("INSERT statement copied"));
+        self.show_toast(&match statement {
+            RowStatement::Insert => crate::tr!("INSERT statement copied"),
+            RowStatement::Update => crate::tr!("UPDATE statement copied"),
+            RowStatement::Delete => crate::tr!("DELETE statement copied"),
+        });
     }
 
     pub(super) fn on_copy_to_clipboard(&self, text: String) {

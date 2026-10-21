@@ -73,9 +73,7 @@ pub enum GridMsg {
     },
     IncompleteRowData,
     ProjectionFailure,
-    CopyRowAsInsert {
-        row_position: u32,
-    },
+    CopyRowAsStatement(u32, tablepro_core::sql_literal::RowStatement),
     ShowRowAsJson(String),
     ExportResults(QueryResult),
     ExportStreamedResults(crate::ui::export_dialog::StreamExportRequest),

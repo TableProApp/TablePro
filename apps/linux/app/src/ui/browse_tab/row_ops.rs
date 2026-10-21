@@ -494,8 +494,16 @@ impl BrowseTab {
         });
     }
 
-    pub(super) fn handle_grid_copy_row_as_insert(&mut self, row_position: u32, sender: ComponentSender<Self>) {
-        let _ = sender.output(BrowseTabOutput::CopyRowAsInsert { row_position });
+    pub(super) fn handle_grid_copy_row_as_statement(
+        &mut self,
+        row_position: u32,
+        statement: tablepro_core::sql_literal::RowStatement,
+        sender: ComponentSender<Self>,
+    ) {
+        let _ = sender.output(BrowseTabOutput::CopyRowAsStatement {
+            row_position,
+            statement,
+        });
     }
 
     pub(super) fn handle_grid_copy_to_clipboard(&mut self, text: String, sender: ComponentSender<Self>) {

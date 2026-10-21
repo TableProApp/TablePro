@@ -61,9 +61,7 @@ pub enum BrowseTabInput {
         row_position: u32,
         row_key: Vec<Value>,
     },
-    GridCopyRowAsInsert {
-        row_position: u32,
-    },
+    GridCopyRowAsStatement(u32, tablepro_core::sql_literal::RowStatement),
     DuplicateRow {
         row_position: u32,
     },
@@ -122,8 +120,9 @@ pub enum BrowseTabOutput {
         row_key: Vec<Value>,
     },
     StateChanged,
-    CopyRowAsInsert {
+    CopyRowAsStatement {
         row_position: u32,
+        statement: tablepro_core::sql_literal::RowStatement,
     },
     CopyToClipboard(String),
     ShowRowAsJson(String),

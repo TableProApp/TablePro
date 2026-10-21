@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use tablepro_core::sql_literal::RowStatement;
 
 use gtk4::prelude::*;
 use gtk4::{self as gtk, gio, glib};
@@ -301,11 +302,11 @@ pub(super) fn install_grid_context_menus(
             })
             .build()
     };
-    let copy_row_action = {
+    let copy_row_entry = |name: &str, statement: RowStatement| {
         let context = context.clone();
         let sender = sender.clone();
         let view = column_view.downgrade();
-        gio::ActionEntry::builder("copy-row-insert")
+        gio::ActionEntry::builder(name)
             .activate(move |_, _, _| {
                 if let Some(slot) = context.snapshot().as_ref() {
                     let Some(view) = view.upgrade() else { return };
@@ -313,15 +314,14 @@ pub(super) fn install_grid_context_menus(
                         sender.send(GridMsg::IncompleteRowData).ok();
                         return;
                     }
-                    sender
-                        .send(GridMsg::CopyRowAsInsert {
-                            row_position: position(slot),
-                        })
-                        .ok();
+                    sender.send(GridMsg::CopyRowAsStatement(position(slot), statement)).ok();
                 }
             })
             .build()
     };
+    let copy_row_action = copy_row_entry("copy-row-insert", RowStatement::Insert);
+    let copy_row_update_action = copy_row_entry("copy-row-update", RowStatement::Update);
+    let copy_row_delete_action = copy_row_entry("copy-row-delete", RowStatement::Delete);
     let insert_row_action = {
         let sender = sender.clone();
         gio::ActionEntry::builder("insert-row")
@@ -405,6 +405,8 @@ pub(super) fn install_grid_context_menus(
         show_row_json_action,
         export_action,
         copy_row_action,
+        copy_row_update_action,
+        copy_row_delete_action,
         insert_row_action,
         set_null_action,
         delete_row_action,
@@ -500,6 +502,8 @@ fn build_menu(
     copy_as.append(Some(&crate::tr!("IN Clause")), Some("cell.copy-in-clause"));
     if insert_copy {
         copy_as.append(Some(&crate::tr!("INSERT Statement")), Some("cell.copy-row-insert"));
+        copy_as.append(Some(&crate::tr!("UPDATE Statement")), Some("cell.copy-row-update"));
+        copy_as.append(Some(&crate::tr!("DELETE Statement")), Some("cell.copy-row-delete"));
     }
     let copy = gio::Menu::new();
     copy.append(Some(&crate::tr!("Copy value")), Some("cell.copy-value"));

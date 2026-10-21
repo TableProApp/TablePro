@@ -973,8 +973,8 @@ impl SimpleComponent for BrowseTab {
             BrowseTabInput::GridDeleteRowAt { row_position, row_key } => {
                 self.handle_grid_delete_row(row_position, row_key, sender)
             }
-            BrowseTabInput::GridCopyRowAsInsert { row_position } => {
-                self.handle_grid_copy_row_as_insert(row_position, sender)
+            BrowseTabInput::GridCopyRowAsStatement(row_position, statement) => {
+                self.handle_grid_copy_row_as_statement(row_position, statement, sender)
             }
             BrowseTabInput::GridCopyToClipboard(text) => self.handle_grid_copy_to_clipboard(text, sender),
             BrowseTabInput::GridFetchCellValue {

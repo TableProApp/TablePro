@@ -44,7 +44,7 @@ pub(super) fn to_input(msg: GridMsg) -> BrowseTabInput {
         GridMsg::ShowRowAsJson(text) => BrowseTabInput::GridShowRowAsJson(text),
         GridMsg::ExportResults(result) => BrowseTabInput::GridExportResults(result),
         GridMsg::ExportStreamedResults(request) => BrowseTabInput::GridExportStreamedResults(request),
-        GridMsg::CopyRowAsInsert { row_position } => BrowseTabInput::GridCopyRowAsInsert { row_position },
+        GridMsg::CopyRowAsStatement(row, statement) => BrowseTabInput::GridCopyRowAsStatement(row, statement),
         GridMsg::SetCellNull {
             row_position,
             col_index,

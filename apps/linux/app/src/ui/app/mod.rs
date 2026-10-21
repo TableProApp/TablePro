@@ -1045,7 +1045,11 @@ impl SimpleComponent for App {
             AppMsg::ExportAllCsv => self.on_export_all(ExportFormat::Csv),
             AppMsg::ExportAllJson => self.on_export_all(ExportFormat::Json),
             AppMsg::CopyToClipboard(text) => self.on_copy_to_clipboard(text),
-            AppMsg::CopyRowAsInsert { tab_id, row_position } => self.on_copy_row_as_insert(tab_id, row_position),
+            AppMsg::CopyRowAsStatement {
+                tab_id,
+                row_position,
+                statement,
+            } => self.on_copy_row_as_statement(tab_id, row_position, statement),
             AppMsg::DeleteConnection(id) => self.on_delete_connection(id, sender),
             AppMsg::CancelConnect => self.on_cancel_connect(),
             AppMsg::ConnectionCancelled => self.on_connection_cancelled(),

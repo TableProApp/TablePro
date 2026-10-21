@@ -157,9 +157,10 @@ pub enum AppMsg {
     },
     ExportStreamedResults(crate::ui::export_dialog::StreamExportRequest),
     CopyToClipboard(String),
-    CopyRowAsInsert {
+    CopyRowAsStatement {
         tab_id: Uuid,
         row_position: u32,
+        statement: tablepro_core::sql_literal::RowStatement,
     },
     FetchBrowsePage(Uuid),
     FetchBrowseCellValue(
