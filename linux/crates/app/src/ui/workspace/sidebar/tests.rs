@@ -230,7 +230,11 @@ fn a_list_and_its_searches_are_worked_out_off_the_gtk_thread() {
 
     assert_eq!(view.shown(), 20_000, "the GTK thread worked out a search's rows");
     wait_until(WAIT, || view.shown() == 1).expect("the last search's rows");
-    assert_eq!(view.selected_table(), Some(table("t19999")), "the selection did not come back");
+    assert_eq!(
+        view.selected_table(),
+        Some(table("t19999")),
+        "the selection did not come back"
+    );
     view.shutdown();
 }
 

@@ -41,6 +41,7 @@ impl RowsAsked {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct RowsWorkedOut {
     rows: SidebarRows,
     asked: u64,
@@ -90,15 +91,15 @@ impl SidebarModel {
         }
     }
 
-    /// Show rows worked out for the index and search last given. False
-    /// for rows a later one overtook, which change nothing.
-    pub(crate) fn show(&self, worked_out: RowsWorkedOut) -> bool {
+    /// Show rows worked out for the index and search last given. Rows a
+    /// later one overtook change nothing and come back.
+    pub(crate) fn show(&self, worked_out: RowsWorkedOut) -> Result<(), RowsWorkedOut> {
         if worked_out.asked != self.asked.get() {
-            return false;
+            return Err(worked_out);
         }
         self.unselect();
         self.list.show(worked_out.rows);
-        true
+        Ok(())
     }
 
     /// GtkSingleSelection looks for the selected row among every row a
@@ -185,12 +186,13 @@ mod tests {
     }
 
     fn replace(model: &SidebarModel, objects: &[ObjectInfo], schemas: &[SchemaInfo]) {
-        model.show(model.replace(SidebarIndex::build(objects, schemas)).work_out());
+        let asked = model.replace(SidebarIndex::build(objects, schemas));
+        model.show(asked.work_out()).expect("the newest list's rows");
     }
 
     fn search(model: &SidebarModel, query: &str) {
         if let Some(asked) = model.set_query(query) {
-            model.show(asked.work_out());
+            model.show(asked.work_out()).expect("the newest search's rows");
         }
     }
 
@@ -329,11 +331,23 @@ mod tests {
         let older = model.set_query("ord").expect("a new search");
         let newer = model.set_query("us").expect("a new search");
 
-        assert!(model.show(newer.work_out()), "the last search's rows were dropped");
-        assert!(!model.show(older.work_out()), "an older search's rows replaced the last");
-        assert!(!model.show(listing.work_out()), "a list's rows replaced a later search's");
+        assert!(
+            model.show(newer.work_out()).is_ok(),
+            "the last search's rows were dropped"
+        );
+        assert!(
+            model.show(older.work_out()).is_err(),
+            "an older search's rows replaced the last"
+        );
+        assert!(
+            model.show(listing.work_out()).is_err(),
+            "a list's rows replaced a later search's"
+        );
         assert_eq!(names(&model), ["users"], "the search did not filter the new list");
-        assert!(model.set_query(" US ").is_none(), "the same search was worked out again");
+        assert!(
+            model.set_query(" US ").is_none(),
+            "the same search was worked out again"
+        );
     }
 
     #[gtk4::test]

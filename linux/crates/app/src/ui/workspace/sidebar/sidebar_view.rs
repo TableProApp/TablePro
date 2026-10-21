@@ -399,23 +399,25 @@ impl SidebarInner {
 
     fn show_rows(&self, worked_out: RowsWorkedOut) {
         let previous = self.model.shown_index();
-        if !self.model.show(worked_out) {
+        if let Err(overtaken) = self.model.show(worked_out) {
+            self.release(overtaken);
             return;
         }
         self.reselect();
         // An empty list replacing an empty list changes no item, so the
         // list's signal never says the placeholder is out of date.
         self.refresh_placeholder();
-        self.release(previous);
+        if !Arc::ptr_eq(&previous, &self.model.shown_index()) {
+            self.release(previous);
+        }
     }
 
-    /// An index frees a few strings per table, which takes a catalog of
-    /// 50,000 longer than a frame.
-    fn release(&self, index: Arc<SidebarIndex>) {
-        if let Some(tasks) = self.tasks.as_ref()
-            && !Arc::ptr_eq(&index, &self.model.shown_index())
-        {
-            drop(tasks.spawn_blocking_task(move || drop(index)));
+    /// Let go of what may hold the last reference to an index on the
+    /// blocking threads: an index frees a few strings per table, which
+    /// takes a catalog of 50,000 longer than a frame.
+    fn release(&self, unused: impl Send + 'static) {
+        if let Some(tasks) = self.tasks.as_ref() {
+            drop(tasks.spawn_blocking_task(move || drop(unused)));
         }
     }
 
