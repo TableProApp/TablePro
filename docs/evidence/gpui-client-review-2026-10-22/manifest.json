@@ -1,0 +1,66 @@
+{
+  "date": "2026-10-22",
+  "method": "Pinned shallow source inspection. No external application was built or executed. License labels are an inventory, not reuse approval.",
+  "sources": [
+    {
+      "repository": "zed-industries/awesome-gpui",
+      "commit": "ce5241772180adc575a84453fda37243fc878a2d",
+      "license_observed": "CC0-1.0"
+    },
+    {
+      "repository": "feigeCode/navop",
+      "commit": "28ab54c8d7cfd28b1f470e65101165bcbe4c329c",
+      "license_observed": "custom; NAVOP_LICENSE and LICENSE-APACHE require file-level review"
+    },
+    {
+      "repository": "tobi/disktree",
+      "commit": "6c8d4ce6211bf135ff4e42890faebff1040e1846",
+      "license_observed": "MIT"
+    },
+    {
+      "repository": "pavi2410/based",
+      "commit": "db046228e3036212ea6dc4fccdc03bd2bcc475c4",
+      "license_observed": "MIT"
+    },
+    {
+      "repository": "ShayanAbbas1/dbdelve",
+      "commit": "b24b39947ed0c48f3bdd6eb9f839e8b82d6d47fa",
+      "license_observed": "GPL-3.0"
+    },
+    {
+      "repository": "0xErwin1/dbflux",
+      "commit": "ce72a48a6144ee36474862f99f148c50bffa4c70",
+      "license_observed": "Apache-2.0"
+    },
+    {
+      "repository": "JosueRhea/dbui",
+      "commit": "6b98db2eeb01e4f2971b803383363993c4b99d7b",
+      "license_observed": "MIT"
+    },
+    {
+      "repository": "fluxdb-alt/fluxDB",
+      "commit": "017c2524b90f502890803942d85d65ca11de326a",
+      "license_observed": "GPL-3.0"
+    },
+    {
+      "repository": "longbridge/gpui-component",
+      "commit": "8b3631f020a85675dca2a7ba251fdeff1c867fc7",
+      "license_observed": "Apache-2.0 code; separate documentation and asset licenses"
+    },
+    {
+      "repository": "dctanner/seesvee",
+      "commit": "8df3c06f887c129febbfd278fab3079e02bf54ec",
+      "license_observed": "MIT"
+    },
+    {
+      "repository": "smolcars/hunk",
+      "commit": "0e2d1619e3e84548c1c58d6a54d86717eb75f409",
+      "license_observed": "GPL-3.0"
+    },
+    {
+      "repository": "duanebester/pgui",
+      "commit": "d01aed7838f1bdbe3aa07c656e9ac7b88f57675e",
+      "license_observed": "No repository license identified; no reuse proposed"
+    }
+  ]
+}

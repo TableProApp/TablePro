@@ -295,3 +295,7 @@ The entry should describe behavior, not file-by-file source movement. There shou
 - Historical verification: [stabilization ledger](archive/stabilization-2026-09.md); [performance evidence](archive/performance-2026-09.md). No Apple source tree was merged.
 
 The editor now uses the imported planner for execution and run-at-cursor as well as formatting, following upstream `statement_cursor.rs`. Fork differences: retain policy/audit dispatch, parameter prompts and run-generation ownership; stop the whole script on errors; reject `GO n` rather than silently ignoring repetition; keep the existing scanner for the additional non-upstream drivers. Run-at-cursor passes the already planned statement directly, so MySQL custom delimiters are not lost by planning the isolated procedure again.
+
+## GPUI client inspection, October 22
+
+The [focused GPUI client review](archive/gpui-client-review-2026-10-22.md) records visible-row rendering, PostgreSQL cancellation, result-warning and work-admission lessons, with a [pinned source manifest](evidence/gpui-client-review-2026-10-22/manifest.json). It proposes checks within the existing GTK architecture; no framework migration or code reuse was approved.
