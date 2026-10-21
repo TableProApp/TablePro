@@ -143237,6 +143237,9 @@
         }
       }
     },
+    "Refuse the statement unless it only reads, even where the connection allows writes." : {
+
+    },
     "Refused %@: this statement ran as a read." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -196374,6 +196377,9 @@
           }
         }
       }
+    },
+    "This request is read only, and the statement is not a read." : {
+
     },
     "This request is too large for Apple Intelligence, even with only the columns the statement uses. Select a smaller part of the statement." : {
 

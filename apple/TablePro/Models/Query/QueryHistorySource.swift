@@ -9,6 +9,7 @@ enum QueryHistorySource: String, Codable, CaseIterable, Sendable, Identifiable {
     case dataImport = "import"
     case mcp
     case script
+    case commandLine = "command_line"
 
     var id: String { rawValue }
 
@@ -22,6 +23,7 @@ enum QueryHistorySource: String, Codable, CaseIterable, Sendable, Identifiable {
         case .dataImport: return String(localized: "Imports")
         case .mcp: return String(localized: "AI and MCP")
         case .script: return String(localized: "AppleScript")
+        case .commandLine: return String(localized: "Command Line")
         }
     }
 
@@ -35,22 +37,19 @@ enum QueryHistorySource: String, Codable, CaseIterable, Sendable, Identifiable {
         case .dataImport: return "square.and.arrow.down"
         case .mcp: return "sparkles"
         case .script: return "applescript"
+        case .commandLine: return "terminal"
         }
     }
 
     static let userAuthored: Set<QueryHistorySource> = [.editor, .explain]
 
-    /// The full set as it stood before `script` was added.
-    ///
-    /// A stored filter holding exactly these was the user choosing **Everything**, and decoding it
-    /// verbatim would silently drop the new source: their filter would start hiding scripted queries
-    /// and the toolbar would change from "Everything" to a count. Widening only this exact set leaves
-    /// a genuinely custom selection alone.
-    private static let allBeforeScript: Set<QueryHistorySource> = [
-        .editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp
+    // The whole list before each later source was added: a stored filter equal to one of these meant Everything.
+    private static let earlierAllSources: [Set<QueryHistorySource>] = [
+        [.editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp],
+        [.editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp, .script]
     ]
 
     static func migratingStoredSelection(_ stored: Set<QueryHistorySource>) -> Set<QueryHistorySource> {
-        stored == allBeforeScript ? Set(allCases) : stored
+        earlierAllSources.contains(stored) ? Set(allCases) : stored
     }
 }

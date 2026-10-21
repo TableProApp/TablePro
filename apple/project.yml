@@ -288,6 +288,8 @@ targets:
         excludes:
           # main() for the tablepro-mcp helper.
           - CLI/BridgeMain.swift
+          # main() for the tablepro-cli helper behind `tablepro query`.
+          - CLI/CLIMain.swift
           # main() for the tablepro-imagerender helper, which is a whole executable on
           # its own: nothing in it is reachable from the app.
           - CLI/ImageRenderMain.swift
@@ -335,6 +337,12 @@ targets:
         copy:
           destination: executables
       - target: image-renderer
+        embed: true
+        codeSign: true
+        removeHeaders: false
+        copy:
+          destination: executables
+      - target: command-line
         embed: true
         codeSign: true
         removeHeaders: false
@@ -510,6 +518,27 @@ targets:
         # The app embeds it; installed on its own it turns the app archive into a generic one.
         SKIP_INSTALL: YES
         PRODUCT_NAME: tablepro-mcp
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
+
+  # ─── tablepro query and tablepro connections, embedded as Contents/MacOS/tablepro-cli ─
+
+  command-line:
+    type: tool
+    platform: macOS
+    sources:
+      - TablePro/CLI/CLIMain.swift
+    dependencies:
+      - package: TableProMacCore
+        products: [TableProMCP, TableProUtilities]
+    scheme: {}
+    settings:
+      base:
+        ENABLE_HARDENED_RUNTIME: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.tablepro-cli
+        # The app embeds it; installed on its own it turns the app archive into a generic one.
+        SKIP_INSTALL: YES
+        PRODUCT_NAME: tablepro-cli
         SWIFT_APPROACHABLE_CONCURRENCY: YES
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
 

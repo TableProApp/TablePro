@@ -71,7 +71,8 @@ public actor MCPAuthPolicy {
         principal: MCPPrincipal,
         tool: MCPToolName,
         connectionId: UUID?,
-        sql: String? = nil
+        sql: String? = nil,
+        readOnly: Bool = false
     ) async throws -> AuthDecision {
         if let denial = Self.adminScopeDenial(principal: principal, tool: tool) {
             return denial
@@ -95,6 +96,11 @@ public actor MCPAuthPolicy {
 
         if !principal.connectionAccess.allows(connectionId) {
             return .denied(reason: String(localized: "Token does not have access to this connection"))
+        }
+
+        // Before the approval prompt, so nobody is asked about a statement the request already ruled out.
+        if readOnly, Self.intendsToWrite(tool: tool, sql: sql, databaseType: snapshot.databaseType) {
+            return .denied(reason: MCPStatementGate.readOnlyRefusal)
         }
 
         if let denial = Self.writeScopeDenial(
@@ -162,13 +168,15 @@ public actor MCPAuthPolicy {
         principal: MCPPrincipal,
         tool: MCPToolName,
         connectionId: UUID?,
-        sql: String? = nil
+        sql: String? = nil,
+        readOnly: Bool = false
     ) async throws {
         let decision = try await authorize(
             principal: principal,
             tool: tool,
             connectionId: connectionId,
-            sql: sql
+            sql: sql,
+            readOnly: readOnly
         )
 
         switch decision {
@@ -360,6 +368,7 @@ public actor MCPAuthPolicy {
         return String(format: String(localized: "Allow %@?"), operationLabel)
     }
 
+    // The MCP setting governs only MCP queries; command line queries are always recorded, as AppleScript ones are.
     func logQuery(
         sql: String,
         connectionId: UUID,
@@ -367,12 +376,15 @@ public actor MCPAuthPolicy {
         executionTime: TimeInterval,
         rowCount: Int,
         wasSuccessful: Bool,
-        errorMessage: String?
+        errorMessage: String?,
+        source: QueryHistorySource = .mcp
     ) async {
-        let shouldLog = await MainActor.run {
-            AppSettingsManager.shared.mcp.logQueriesInHistory
+        if source == .mcp {
+            let shouldLog = await MainActor.run {
+                AppSettingsManager.shared.mcp.logQueriesInHistory
+            }
+            guard shouldLog else { return }
         }
-        guard shouldLog else { return }
 
         let databaseType = await connectionResolver(connectionId)?.databaseType ?? ""
 
@@ -382,7 +394,7 @@ public actor MCPAuthPolicy {
                 connectionId: connectionId,
                 databaseName: databaseName,
                 databaseType: DatabaseType(rawValue: databaseType),
-                source: .mcp,
+                source: source,
                 executionTime: executionTime,
                 rowCount: rowCount,
                 wasSuccessful: wasSuccessful,
