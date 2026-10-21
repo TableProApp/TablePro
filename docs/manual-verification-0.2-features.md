@@ -6,7 +6,7 @@ The 0.2.0 desktop target is **Arch Linux / Omarchy / Hyprland, native Wayland**.
 
 The source-matched installed GTK safety run passed 93 scenarios under Xvfb/AT-SPI on 2026-10-21; see its [package identity, result and limitations](evidence/installed-gtk-0.2.0-2026-10-21/README.md). It does not close the native Wayland visual checklist below.
 
-The ongoing native Wayland run on 2026-10-22 records package identity, synthetic PostgreSQL value checks, responsive widths, About and Preferences observations, a resource sample, and one GTK/GLib abort in [its evidence note](evidence/installed-wayland-0.2.0-2026-10-22/README.md). System appearance restoration and test-profile cleanup were verified; the remaining checklist items are still open unless a dated result is recorded beside them.
+The ongoing native Wayland run on 2026-10-22 records package identity, synthetic PostgreSQL value checks, responsive widths, About and Preferences observations, isolated installed-binary GTK scenarios for restart, MySQL, MongoDB, ClickHouse and PostgreSQL, resource samples, and one GTK/GLib abort in [its evidence note](evidence/installed-wayland-0.2.0-2026-10-22/README.md). System appearance restoration and test-profile cleanup were verified; the remaining checklist items are still open unless a dated result is recorded beside them.
 
 Record the full binary/package SHA, package checksum when installed, GTK backend, OS/Hyprland/GTK/libadwaita versions, display scale, light/dark mode, result and screenshot paths. Test both normal size and a narrow/resized window, keyboard focus, clipboard and popover/dialog placement. Mark blocked and not-run items explicitly.
 
@@ -216,7 +216,7 @@ Build and install with the helper (`cargo build -p tablepro-ssh --bin tablepro-a
 
 - [ ] Stop appears only where server cancellation is supported; stopping a session query records the terminal outcome and permits later supported queries.
 - [ ] A session timeout reports its actual cancelled/unknown state in the UI and audit; it does not present an ambiguous write as safely undone.
-- [ ] Failed COMMIT after an aborted PostgreSQL transaction shows rollback; a deferred-constraint failure clears the transaction-open state and retry does not fabricate a second commit.
+- [ ] Failed COMMIT after an aborted PostgreSQL transaction shows rollback; a deferred-constraint failure clears the transaction-open state and retry does not fabricate a second commit. **2026-10-22 installed binary in Xvfb/AT-SPI:** the aborted transaction rolled back with zero rows; rolling back to a savepoint and committing stored exactly one row. Deferred-constraint behavior was not covered.
 - [ ] Window close and Disconnect with an open transaction ask first, honor Cancel, and finish the chosen rollback/commit before teardown; verify persisted rows.
 - [ ] With an editor Session open, stop the database host (or block its port) and close the window. After the cleanup timeout, **Could not close database sessions** offers **Keep Open** (default) and **Close Anyway**; Close Anyway closes the window, Keep Open leaves it usable.
 - [ ] A retired session turns its toggle off; late state messages cannot relabel a replacement session. Automatic reconnect retires the previous tab sessions.
