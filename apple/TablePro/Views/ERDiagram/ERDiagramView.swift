@@ -44,7 +44,12 @@ struct ERDiagramView: View {
                 } else {
                     diagramCanvas
                 }
-                ERDiagramToolbar(viewModel: viewModel, viewport: viewport, onExport: exportDiagram)
+                ERDiagramToolbar(
+                    viewModel: viewModel,
+                    viewport: viewport,
+                    onExport: export,
+                    onCopyMermaid: copyMermaid
+                )
             }
         }
         .task { await viewModel.loadDiagram() }
@@ -52,8 +57,7 @@ struct ERDiagramView: View {
 
     // MARK: - Diagram Canvas
 
-    /// The scene is built here, during `body`, so observation sees every model property it reads;
-    /// the document view only receives the finished value.
+    // Built during `body`, so observation sees every model property the scene reads.
     private var diagramCanvas: some View {
         let scene = self.scene
         let actions = canvasActions
@@ -110,21 +114,47 @@ struct ERDiagramView: View {
         return colors
     }
 
-    // MARK: - Export Rendering
+    // MARK: - Export
 
     private func exportImage() -> NSImage? {
         ERDiagramSceneRenderer.image(
             scene,
             appearance: viewport.effectiveAppearance,
-            scale: DiagramImageExporter.renderScale
+            scale: DiagramExporter.renderScale
         )
     }
 
-    private func exportDiagram() {
-        DiagramImageExporter.export(
-            exportImage(),
-            defaultFileName: "er-diagram.png",
+    private var exportTitle: String {
+        viewModel.schemaName.map { "\(viewModel.databaseName).\($0)" } ?? viewModel.databaseName
+    }
+
+    private func exportData(_ format: ERDiagramExportFormat) -> Data? {
+        switch format {
+        case .png:
+            return DiagramExporter.pngData(exportImage())
+        case .svg:
+            let svg = ERDiagramSceneRenderer.svgDocument(scene, appearance: viewport.effectiveAppearance, title: exportTitle)
+            return Data(svg.utf8)
+        case .pdf:
+            return ERDiagramSceneRenderer.pdfData(scene, appearance: viewport.effectiveAppearance, title: exportTitle)
+        case .mermaid:
+            return Data(ERDiagramMermaidWriter.document(for: viewModel.graph).utf8)
+        case .graphviz:
+            return Data(ERDiagramDOTWriter.document(for: viewModel.graph).utf8)
+        }
+    }
+
+    private func export(_ format: ERDiagramExportFormat) {
+        DiagramExporter.save(
+            exportData(format),
+            contentType: format.contentType,
+            formatName: format.name,
+            defaultFileName: "er-diagram.\(format.fileExtension)",
             title: String(localized: "Export ER Diagram")
         )
+    }
+
+    private func copyMermaid() {
+        ClipboardService.shared.writeText(ERDiagramMermaidWriter.markdownBlock(for: viewModel.graph))
     }
 }

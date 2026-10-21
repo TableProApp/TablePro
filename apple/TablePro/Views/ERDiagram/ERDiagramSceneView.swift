@@ -109,7 +109,7 @@ final class ERDiagramSceneView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
-        ERDiagramSceneRenderer.draw(scene, palette: palette, dirtyRect: dirtyRect, in: context)
+        ERDiagramSceneRenderer.draw(scene, palette: palette, dirtyRect: dirtyRect, on: ERDiagramContextCanvas(context: context))
     }
 
     override func viewDidChangeEffectiveAppearance() {

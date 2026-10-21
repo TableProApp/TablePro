@@ -33,7 +33,7 @@ struct QueryPlanDiagramView: View {
             DiagramZoomToolbar(viewport: viewport) {
                 Divider().frame(height: 16)
                 Button {
-                    DiagramImageExporter.export(
+                    DiagramExporter.export(
                         exportCanvas,
                         defaultFileName: "query-plan.png",
                         title: String(localized: "Export Query Plan")
@@ -50,7 +50,7 @@ struct QueryPlanDiagramView: View {
 
     // MARK: - Canvas
 
-    /// The selection is read here, during `body`, so a change to it re-renders the canvas.
+    // The selection is read here, during `body`, so a change to it re-renders the canvas.
     private var canvas: some View {
         let layout = layout
         let selectedNodeId = selectedNodeId
@@ -64,7 +64,7 @@ struct QueryPlanDiagramView: View {
             updateDocument: { canvasView in
                 canvasView.update(layout: layout, selectedNodeId: selectedNodeId) { selection.wrappedValue = $0 }
                 canvasView.copyImage = {
-                    guard let image = DiagramImageExporter.image(of: exportCanvas) else { return }
+                    guard let image = DiagramExporter.image(of: exportCanvas) else { return }
                     ClipboardService.shared.writeImage(image)
                 }
             }
