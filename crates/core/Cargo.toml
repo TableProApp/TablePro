@@ -15,6 +15,7 @@ sqlformat = "0.5"
 async-trait.workspace = true
 chrono.workspace = true
 csv.workspace = true
+calamine.workspace = true
 encoding_rs.workspace = true
 rust_decimal.workspace = true
 rust_xlsxwriter.workspace = true

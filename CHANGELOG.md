@@ -6,6 +6,7 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 
 ### Added
 
+- Import accepts Excel .xlsx files: the first worksheet with data is read with size, row and column limits and then mapped like a CSV file.
 - CSV export has Keep plain numbers as they are: text such as -5 or +1.5 is written without the spreadsheet apostrophe so it re-imports into numeric columns, while other formula-like text is still prefixed.
 - Copy as in the grid menu also offers UPDATE Statement and DELETE Statement for a row, found by its primary key. Tables without a key refuse with a message.
 - CSV import can set the quote character, backslash escaping of quotes and the file encoding (UTF-8, Windows-1252, UTF-16); a file that is not UTF-8 opens with a matching encoding selected.

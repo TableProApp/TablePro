@@ -36,6 +36,8 @@ pub enum ImportError {
     #[error("the file is not valid UTF-8 at byte {offset}")]
     NotUtf8 { offset: usize },
 
+    #[error("the file is not a readable .xlsx workbook")]
+    NotSpreadsheet,
     #[error("the file is not valid {encoding} text")]
     NotDecodable { encoding: &'static str },
 

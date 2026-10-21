@@ -77,10 +77,11 @@ impl App {
             return;
         }
         let filter = gtk::FileFilter::new();
-        filter.set_name(Some(&crate::tr!("CSV files")));
+        filter.set_name(Some(&crate::tr!("CSV and Excel files")));
         filter.add_mime_type("text/csv");
         filter.add_suffix("csv");
         filter.add_suffix("tsv");
+        filter.add_suffix("xlsx");
         let filters = gio::ListStore::new::<gtk::FileFilter>();
         filters.append(&filter);
         let dialog = gtk::FileDialog::builder()
@@ -595,7 +596,11 @@ fn read_file(path: &std::path::Path) -> Result<Vec<u8>, String> {
         return Err(crate::tr!("The file is larger than the {limit} MB import limit.")
             .replace("{limit}", &(MAX_FILE_BYTES / (1024 * 1024)).to_string()));
     }
-    std::fs::read(path).map_err(|_| crate::tr!("The file could not be read."))
+    let bytes = std::fs::read(path).map_err(|_| crate::tr!("The file could not be read."))?;
+    if tablepro_core::import::is_xlsx(&bytes) {
+        return tablepro_core::import::xlsx_to_csv(&bytes).map_err(|error| error.to_string());
+    }
+    Ok(bytes)
 }
 
 fn plan_for(driver_id: &str, choice: &ImportChoice) -> Result<InsertPlan, String> {

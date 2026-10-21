@@ -10,6 +10,7 @@ mod extended_temporal;
 mod infer;
 mod plan;
 mod text_kind;
+mod xlsx_import;
 
 pub use cell::{CellError, ColumnKind, CsvRowError, column_kind, parse_cell, row_to_values};
 pub use csv_import::{
@@ -23,3 +24,4 @@ pub use plan::{
     DEFAULT_IMPORT_BATCH_ROWS, ImportTarget, InsertPlan, MAX_REPORTED_ROW_ERRORS, PlanError, build_insert_plan,
     supports_explicit_auto_increment_values,
 };
+pub use xlsx_import::{is_xlsx, xlsx_to_csv};
