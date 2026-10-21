@@ -78,6 +78,68 @@
     "%1$d only left, %2$d only right, %3$d changed, %4$d same" : {
 
     },
+    "%@" : {
+
+    },
+    "%@ connections do not support adding rows from Shortcuts." : {
+
+    },
+    "%@ has no column named %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ has no column named %2$@."
+          }
+        }
+      }
+    },
+    "%@ is read-only, so rows cannot be added." : {
+
+    },
+    "A dictionary for each row, keyed by column" : {
+
+    },
+    "A transaction is open on this connection. Commit or roll it back in TablePro, then run the shortcut again." : {
+
+    },
+    "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level." : {
+
+    },
+    "Add Row to Table" : {
+
+    },
+    "Add Row to Table expects one row. Use Add Rows to Table for multiple rows." : {
+
+    },
+    "Add Rows to Table" : {
+
+    },
+    "Add a row to ${table}" : {
+
+    },
+    "Add multiple rows to a table on a saved connection. Provide the rows as a JSON array, CSV text, or a file." : {
+
+    },
+    "Add one row to a table on a saved connection. Provide the row as a JSON object or a CSV row." : {
+
+    },
+    "Add rows to ${table}" : {
+
+    },
+    "Added %lld rows to %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Added %1$lld rows to %2$@."
+          }
+        }
+      }
+    },
+    "Added one row to %@." : {
+
+    },
     "Both results stopped at the row cap and are compared on the rows they hold. A row past the cap can show as only on one side." : {
 
     },
@@ -102,6 +164,21 @@
     "Comparing…" : {
 
     },
+    "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope." : {
+
+    },
+    "Could not connect to the database: %@" : {
+
+    },
+    "Could not read the columns of %@." : {
+
+    },
+    "Database or Schema" : {
+
+    },
+    "First Value" : {
+
+    },
     "Key %@ matches more than one row in the left result. Choose key columns that identify a single row, or match whole rows." : {
 
     },
@@ -111,6 +188,16 @@
     "Left" : {
 
     },
+    "Line %lld of the file is not valid %@ text." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Line %1$lld of the file is not valid %2$@ text."
+          }
+        }
+      }
+    },
     "Match Whole Rows" : {
 
     },
@@ -118,6 +205,9 @@
 
     },
     "No Result to Compare With" : {
+
+    },
+    "No data was provided to add." : {
 
     },
     "Only Left" : {
@@ -132,7 +222,13 @@
     "Only in the right result, not compared: %@" : {
 
     },
+    "Opens a database connection in TablePro" : {
+
+    },
     "Pick the result to compare this one with." : {
+
+    },
+    "Provide a JSON object or an array of objects." : {
 
     },
     "Result %1$d: %2$@" : {
@@ -141,16 +237,64 @@
     "Result Closed" : {
 
     },
+    "Result Format" : {
+
+    },
     "Right" : {
+
+    },
+    "Row (JSON or CSV)" : {
+
+    },
+    "Row Limit" : {
+
+    },
+    "Rows (JSON or CSV)" : {
 
     },
     "Rows with the same values in these columns are compared. With none chosen, whole rows are matched." : {
 
     },
+    "Run ${query} on ${connection}" : {
+
+    },
+    "Run Query" : {
+
+    },
+    "Run a SQL statement on a saved connection and pass the result to the next action." : {
+
+    },
     "Run another query in this tab, or pin a result in another tab." : {
 
     },
+    "Shortcuts" : {
+
+    },
+    "Shortcuts wants to add %1$lld rows to \"%2$@\"" : {
+
+    },
+    "Shortcuts wants to add a row to \"%@\"" : {
+
+    },
+    "That connection no longer exists in TablePro." : {
+
+    },
     "That result is no longer open. Choose another one." : {
+
+    },
+    "The CSV data has no header row." : {
+
+    },
+    "The JSON array must contain only objects." : {
+
+    },
+    "The data could not be read: %@" : {
+
+    },
+    "The data has no values to insert into %@." : {
+
+    },
+    "The first column of the first row" : {
 
     },
     "The left result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the right." : {
@@ -162,10 +306,19 @@
     "The right result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the left." : {
 
     },
+    "The text encoding is invalid." : {
+
+    },
     "The two results share no column name, so there is nothing to compare." : {
 
     },
     "This Tab" : {
+
+    },
+    "This connection's startup commands leave a transaction open, so rows added from Shortcuts could not be committed." : {
+
+    },
+    "Too many rows. Add up to %lld rows at a time." : {
 
     },
     "Whole row" : {
@@ -324,6 +477,18 @@
         }
       }
     },
+    "connection" : {
+
+    },
+    "database" : {
+
+    },
+    "import" : {
+
+    },
+    "insert" : {
+
+    },
     "left value, differs" : {
 
     },
@@ -333,7 +498,22 @@
     "only in the right result" : {
 
     },
+    "open" : {
+
+    },
+    "query" : {
+
+    },
     "right value, differs" : {
+
+    },
+    "row" : {
+
+    },
+    "rows" : {
+
+    },
+    "select" : {
 
     },
     "—" : {
@@ -84271,6 +84451,9 @@
     "From" : {
 
     },
+    "Freeze Up to This Column" : {
+
+    },
     "From %@…" : {
       "localizations" : {
         "fr" : {
@@ -97529,6 +97712,9 @@
           }
         }
       }
+    },
+    "Key bindings:" : {
+
     },
     "Key column %@ is not present on both sides. Choose a different key." : {
       "localizations" : {
@@ -191947,6 +192133,9 @@
         }
       }
     },
+    "These columns would leave too little room to scroll the rest." : {
+
+    },
     "These connections open their tunnel by running a command on this Mac, every time they connect:\n\n%@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -202868,6 +203057,9 @@
           }
         }
       }
+    },
+    "Unfreeze Columns" : {
+
     },
     "UNGROUPED" : {
       "localizations" : {

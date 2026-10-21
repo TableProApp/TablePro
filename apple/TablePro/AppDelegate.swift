@@ -119,6 +119,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         RecentConnectionsRecorder.shared.start()
+        if #available(macOS 14.0, *) {
+            ShortcutsParameterRefresher.shared.start()
+        }
 
         LaunchTracer.shared.mark(.didFinishLaunchingEnded)
         AppLaunchCoordinator.shared.didFinishLaunching()

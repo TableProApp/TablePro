@@ -40,7 +40,7 @@ struct SettingsFieldDecodingTests {
         #expect(settings.tabWidth == EditorSettings.default.tabWidth)
         #expect(settings.jsonViewerPreferredMode == EditorSettings.default.jsonViewerPreferredMode)
         #expect(settings.wordWrap == true)
-        #expect(settings.vimModeEnabled == true)
+        #expect(settings.keyBindings == .vim)
     }
 
     @Test("A bad Data Grid value falls back alone")
