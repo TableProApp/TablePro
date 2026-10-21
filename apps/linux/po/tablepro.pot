@@ -480,7 +480,7 @@ msgstr ""
 #: apps/linux/app/src/ui/app/workspace_close.rs:142
 #: apps/linux/app/src/ui/app/workspace_tabs.rs:639
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:235
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:910
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:904
 #: apps/linux/app/src/ui/connection_bundle/export.rs:70
 #: apps/linux/app/src/ui/connection_bundle/import.rs:26
 #: apps/linux/app/src/ui/connection_bundle/import.rs:105
@@ -639,7 +639,7 @@ msgid "Opening {name}"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:432
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:663
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:657
 msgid "Connection cancelled."
 msgstr ""
 
@@ -2189,20 +2189,20 @@ msgstr ""
 msgid "Create database file"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/controls.rs:103
+#: apps/linux/app/src/ui/connect_dialog/controls.rs:121
 msgid "Connect timeout (seconds)"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/controls.rs:104
+#: apps/linux/app/src/ui/connect_dialog/controls.rs:122
 msgid "0 uses the default of 30 seconds"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/controls.rs:108
+#: apps/linux/app/src/ui/connect_dialog/controls.rs:126
 #: apps/linux/app/src/ui/preferences.rs:270
 msgid "Query timeout (seconds)"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/controls.rs:109
+#: apps/linux/app/src/ui/connect_dialog/controls.rs:127
 msgid "0 uses the timeout set in Preferences"
 msgstr ""
 
@@ -2211,7 +2211,7 @@ msgid "File path"
 msgstr ""
 
 #: apps/linux/app/src/ui/connect_dialog/form.rs:38
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:226
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:227
 msgid "Database"
 msgstr ""
 
@@ -2225,23 +2225,23 @@ msgstr ""
 msgid "Test failed: {error}"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:74
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:231
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:826
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:73
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:232
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:820
 #: apps/linux/app/src/ui/ssh_section.rs:66
 #: apps/linux/app/src/ui/ssh_section.rs:76
 msgid "Password"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:75
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:74
 msgid "Windows (Kerberos)"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:160
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:328
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:338
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:906
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:914
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:159
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:329
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:339
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:900
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:908
 #: apps/linux/app/src/ui/ssh_prompt.rs:70
 msgid "Connect"
 msgstr ""
@@ -2269,111 +2269,111 @@ msgid "Host"
 msgstr ""
 
 #: apps/linux/app/src/ui/connect_dialog/mod.rs:214
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:216
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:217
 #: apps/linux/app/src/ui/ssh_section.rs:62
 msgid "Port"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:222
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:223
 #: apps/linux/app/src/ui/connect_dialog/socket_endpoint.rs:22
 msgid "Socket directory"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:225
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:226
 msgid "Resolved socket"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:230
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:231
 #: apps/linux/app/src/ui/ssh_section.rs:64
 msgid "Username"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:234
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:235
 msgid "TLS"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:235
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:236
 msgid "How the client encrypts and verifies the server"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:240
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:241
 msgid "Certificate authority"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:243
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:244
 msgid "Client certificate"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:245
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:246
 msgid "Client private key"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:252
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:253
 msgid "Read-only mode"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:253
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:254
 msgid "Block writes at the policy layer"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:257
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:258
 msgid "Environment"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:258
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:259
 msgid "Drives agent and approval defaults"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:286
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:287
 #: apps/linux/app/src/ui/history_dialog.rs:134
 msgid "Connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:298
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:299
 msgid "Method"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:305
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:306
 #: apps/linux/app/src/ui/ssh_section.rs:71
 msgid "Authentication"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:311
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:312
 msgid "Options"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:322
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:907
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:911
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:323
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:901
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:905
 msgid "Test"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:337
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:691
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:338
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:685
 #, rust-format
 msgid "Connect to {name}"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:468
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:548
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:462
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:542
 msgid "No driver selected"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:476
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:553
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:470
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:547
 #, rust-format
 msgid "Driver {id} not registered"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:824
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:818
 msgid "Password (optional)"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:882
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:876
 msgid "Experimental: connect and browse work; some writes and transactions are limited"
 msgstr ""
 
-#: apps/linux/app/src/ui/connect_dialog/mod.rs:915
+#: apps/linux/app/src/ui/connect_dialog/mod.rs:909
 msgid "Testing…"
 msgstr ""
 

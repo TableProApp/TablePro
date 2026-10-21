@@ -51,7 +51,6 @@ pub struct ConnectDialog {
     toast_overlay: adw::ToastOverlay,
     test_banner: adw::Banner,
     header_title: gtk::Label,
-    header_actions: gtk::Box,
     form: AuthFormState,
     preferences: crate::services::preferences::PreferencesStore,
     bound_connection_id: Option<Uuid>,
@@ -167,7 +166,8 @@ impl Component for ConnectDialog {
                 add_top_bar = &adw::HeaderBar {
                     set_centering_policy: adw::CenteringPolicy::Loose,
                     set_title_widget: Some(&model.header_title),
-                    pack_end: &model.header_actions,
+                    pack_start: &model.test_button,
+                    pack_end: &model.submit,
                 },
 
                 #[wrap(Some)]
@@ -213,6 +213,7 @@ impl Component for ConnectDialog {
             .build();
         let port_row = adw::ActionRow::builder().title(crate::tr!("Port")).build();
         let port = gtk::SpinButton::with_range(1.0, 65535.0, 1.0);
+        controls::center_in_row(&port);
         port.update_property(&[gtk::accessible::Property::Label(&crate::tr!("Port"))]);
         port_row.add_suffix(&port);
         port_row.set_activatable_widget(Some(&port));
@@ -337,15 +338,9 @@ impl Component for ConnectDialog {
             .map(|driver| crate::tr!("Connect to {name}").replace("{name}", &driver.display_name))
             .unwrap_or_else(|| crate::tr!("Connect"));
         let header_title = gtk::Label::new(Some(&initial_title));
-        header_title.set_halign(gtk::Align::Fill);
         header_title.set_valign(gtk::Align::Center);
-        header_title.set_hexpand(true);
-        header_title.set_xalign(0.0);
         header_title.set_ellipsize(gtk::pango::EllipsizeMode::End);
         header_title.add_css_class("title");
-        let header_actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        header_actions.append(&test_button);
-        header_actions.append(&submit);
 
         let page = adw::PreferencesPage::new();
         page.add(&connection_group);
@@ -400,7 +395,6 @@ impl Component for ConnectDialog {
             toast_overlay,
             test_banner,
             header_title,
-            header_actions,
             form: AuthFormState::default(),
             preferences: init.preferences,
             bound_connection_id: init.bound_connection_id,

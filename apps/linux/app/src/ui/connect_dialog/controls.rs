@@ -12,7 +12,7 @@ pub(crate) const AUTH_MODE_ROWS: [AuthMode; 2] = [AuthMode::Password, AuthMode::
 
 #[derive(Clone)]
 pub(super) struct AccessibleChoice {
-    button: gtk::Button,
+    text: gtk::Label,
     selected: Rc<Cell<u32>>,
     labels: Rc<Vec<String>>,
     changed: ChoiceChanged,
@@ -25,7 +25,7 @@ impl AccessibleChoice {
 
     pub(super) fn set_selected(&self, selected: u32) {
         self.selected.set(selected);
-        self.button.set_label(
+        self.text.set_text(
             self.labels
                 .get(selected as usize)
                 .map(String::as_str)
@@ -36,6 +36,24 @@ impl AccessibleChoice {
     pub(super) fn connect_selected_notify(&self, callback: impl Fn(u32) + 'static) {
         *self.changed.borrow_mut() = Some(Box::new(callback));
     }
+}
+
+fn dropdown_button(title: &str, first: Option<&str>) -> (gtk::Button, gtk::Label) {
+    let text = gtk::Label::new(first);
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    content.append(&text);
+    content.append(&gtk::Image::from_icon_name("pan-down-symbolic"));
+    let button = gtk::Button::builder().child(&content).build();
+    button.add_css_class("flat");
+    center_in_row(&button);
+    button.update_property(&[gtk::accessible::Property::Label(title)]);
+    (button, text)
+}
+
+pub(super) fn center_in_row(widget: &impl IsA<gtk::Widget>) {
+    widget.set_valign(gtk::Align::Center);
+    widget.set_margin_top(8);
+    widget.set_margin_bottom(8);
 }
 
 pub(super) fn choice_row(
@@ -51,8 +69,8 @@ pub(super) fn choice_row(
     let selected = Rc::new(Cell::new(0));
     let changed: ChoiceChanged = Rc::new(RefCell::new(None));
     let popover = gtk::Popover::new();
-    let button = gtk::Button::with_label(labels.first().map(String::as_str).unwrap_or_default());
-    let button_ref = button.downgrade();
+    let (button, text) = dropdown_button(&title, labels.first().map(String::as_str));
+    let text_ref = text.downgrade();
     let choices = gtk::Box::new(gtk::Orientation::Vertical, 0);
     choices.add_css_class("menu");
     for (index, label) in labels.iter().enumerate() {
@@ -63,11 +81,11 @@ pub(super) fn choice_row(
         let labels_ref = labels.clone();
         let changed_ref = changed.clone();
         let popover_ref = popover.downgrade();
-        let button_ref = button_ref.clone();
+        let text_ref = text_ref.clone();
         choice.connect_clicked(move |_| {
             selection.set(index as u32);
-            if let Some(button) = button_ref.upgrade() {
-                button.set_label(labels_ref.get(index).map(String::as_str).unwrap_or_default());
+            if let Some(text) = text_ref.upgrade() {
+                text.set_text(labels_ref.get(index).map(String::as_str).unwrap_or_default());
             }
             if let Some(popover) = popover_ref.upgrade() {
                 popover.popdown();
@@ -90,7 +108,7 @@ pub(super) fn choice_row(
     (
         row,
         AccessibleChoice {
-            button,
+            text,
             selected,
             labels,
             changed,
@@ -115,6 +133,7 @@ pub(super) fn timeout_rows() -> (adw::ActionRow, gtk::SpinButton, adw::ActionRow
 fn timeout_row(title: &str, subtitle: &str, maximum: f64) -> (adw::ActionRow, gtk::SpinButton) {
     let row = adw::ActionRow::builder().title(title).subtitle(subtitle).build();
     let input = gtk::SpinButton::with_range(0.0, maximum, 1.0);
+    center_in_row(&input);
     input.update_property(&[gtk::accessible::Property::Label(title)]);
     row.add_suffix(&input);
     row.set_activatable_widget(Some(&input));

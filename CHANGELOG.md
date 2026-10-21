@@ -153,6 +153,7 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 
 ### Fixed
 
+- The connection dialog puts Test on the left and Connect on the right with a centered title; its dropdown choices, port and timeout boxes have an arrow or room around them.
 - A long message in the SQL editor toolbar, such as the notice after cancelling a large query, is cut with an ellipsis instead of pushing Pin results, Session, Explain, Run and Split off screen; the full text is in the tooltip and on the Status page.
 - A `USE` run on a pooled MySQL connection no longer changes which database later catalog reads and queries see: each pooled connection returns to the configured database before it is reused.
 - Keyboard run shortcuts no longer start another execution while a query is active.
