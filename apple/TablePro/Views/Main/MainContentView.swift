@@ -243,7 +243,7 @@ struct MainContentView: View {
             DatabaseSearchSheet(session: session) { result in
                 coordinator.openDatabaseSearchResult(result, in: session)
             }
-        case .exportDialog, .exportQueryResults, .importDialog, .rowImport,
+        case .exportDialog, .exportQueryResults, .importDialog, .rowImport, .rowImportBatch,
              .transferTables, .backupDatabase, .restoreDatabase:
             transferSheetContent(for: sheet, dismiss: dismissBinding)
         case .maintenance(let operation, let tableName, let database, let schema):

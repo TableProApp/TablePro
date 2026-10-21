@@ -845,6 +845,9 @@
     "“%@” Changed on Disk" : {
 
     },
+    "“%@” holds no file to import." : {
+
+    },
     "\"%@\" is a reserved theme identifier." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -3514,6 +3517,9 @@
         }
       }
     },
+    "%@ files cannot be imported together with other files." : {
+
+    },
     "%@ had no rows to transfer." : {
       "localizations" : {
         "fr" : {
@@ -3549,6 +3555,9 @@
           }
         }
       }
+    },
+    "%@ has no column to create." : {
+
     },
     "%@ holds a document or an array, and this text is not valid JSON." : {
       "extractionState" : "manual",
@@ -5380,6 +5389,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "%@ takes rows from two files, so Delete existing rows before import would remove the first file's rows." : {
+
+    },
     "%@ to %@ characters" : {
       "localizations" : {
         "en" : {
@@ -6671,6 +6683,9 @@
         }
       }
     },
+    "%1$@ cannot be read. %2$@" : {
+
+    },
     "%1$@ chart of %2$@ by %3$@ with %4$d points" : {
       "localizations" : {
         "en" : {
@@ -6902,6 +6917,12 @@
         }
       }
     },
+    "%1$@ failed, and the files imported before it were kept. %2$@" : {
+
+    },
+    "%1$@ failed, so every file was rolled back. %2$@" : {
+
+    },
     "%1$@ for %2$@" : {
       "localizations" : {
         "fr" : {
@@ -7030,6 +7051,12 @@
           }
         }
       }
+    },
+    "%1$@ maps no field to a column of %2$@." : {
+
+    },
+    "%1$@ maps two fields to one column of %2$@." : {
+
     },
     "%1$@ must be at least %2$lld." : {
       "localizations" : {
@@ -7228,6 +7255,9 @@
 
     },
     "%1$@ takes %2$lld dimensions, and the value has %3$lld." : {
+
+    },
+    "%1$@ to %2$@: %3$@" : {
 
     },
     "%1$@ wants to run a query on \"%2$@\"" : {
@@ -7933,6 +7963,9 @@
         }
       }
     },
+    "%1$lld of %2$lld fields mapped" : {
+
+    },
     "%1$lld of %2$lld members" : {
       "localizations" : {
         "fr" : {
@@ -8072,6 +8105,9 @@
           }
         }
       }
+    },
+    "%1$lld rows from %2$lld files in %3$@ seconds." : {
+
     },
     "%1$lld rows from %3$lld tables written to %2$@." : {
       "localizations" : {
@@ -10385,6 +10421,12 @@
     "%lld dims" : {
 
     },
+    "%lld failed" : {
+
+    },
+    "%lld files" : {
+
+    },
     "%lld in, %lld out" : {
       "localizations" : {
         "en" : {
@@ -10605,6 +10647,9 @@
           }
         }
       }
+    },
+    "%lld new columns" : {
+
     },
     "%lld objects" : {
       "localizations" : {
@@ -11276,6 +11321,12 @@
           }
         }
       }
+    },
+    "%lld rows before it were kept." : {
+
+    },
+    "%lld rows before it were rolled back." : {
+
     },
     "%lld rows do not match the foreign keys this change asks for, so nothing was changed. Correct or remove those rows, then try again." : {
       "extractionState" : "manual",
@@ -13119,6 +13170,9 @@
         }
       }
     },
+    "1 file" : {
+
+    },
     "1 item" : {
       "localizations" : {
         "fr" : {
@@ -13151,6 +13205,9 @@
           }
         }
       }
+    },
+    "1 new column" : {
+
     },
     "1 of %lld conflicts" : {
       "extractionState" : "stale",
@@ -13291,6 +13348,12 @@
           }
         }
       }
+    },
+    "1 row before it was kept." : {
+
+    },
+    "1 row before it was rolled back." : {
+
     },
     "1 row does not fit a %1$@ INSERT on its own, so its statement passes that size." : {
       "extractionState" : "manual",
@@ -15493,6 +15556,9 @@
     "A Firestore document is a JSON object of fields." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "A folder imports the %@ files directly inside it." : {
+
     },
     "A foreign key change recreates the table, and these cannot travel with it:\n\n%@\n\nSave them on their own first, then change the foreign key." : {
       "localizations" : {
@@ -33624,6 +33690,9 @@
         }
       }
     },
+    "Cannot read the file" : {
+
+    },
     "Cannot Read the Source" : {
       "localizations" : {
         "fr" : {
@@ -37395,6 +37464,9 @@
         }
       }
     },
+    "Choose a table for %@." : {
+
+    },
     "Choose a target to compare against." : {
       "localizations" : {
         "fr" : {
@@ -37616,6 +37688,9 @@
           }
         }
       }
+    },
+    "Choose at least one file to import." : {
+
     },
     "Choose at least one object to copy." : {
       "localizations" : {
@@ -68816,6 +68891,9 @@
         }
       }
     },
+    "Edit the import of %@" : {
+
+    },
     "Edit Trigger" : {
       "localizations" : {
         "fr" : {
@@ -90813,6 +90891,9 @@
         }
       }
     },
+    "Import the rows of each file into its own table" : {
+
+    },
     "Import Tunnel Commands?" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -99406,6 +99487,9 @@
           }
         }
       }
+    },
+    "Left out, because they do not import into a table: %@" : {
+
     },
     "left parenthesis" : {
       "extractionState" : "manual",
@@ -112777,6 +112861,9 @@
         }
       }
     },
+    "New table %@" : {
+
+    },
     "New table:" : {
       "localizations" : {
         "fr" : {
@@ -119544,6 +119631,9 @@
         }
       }
     },
+    "None of these files import into a table: %@." : {
+
+    },
     "None selected" : {
       "localizations" : {
         "fr" : {
@@ -120501,6 +120591,9 @@
           }
         }
       }
+    },
+    "not imported" : {
+
     },
     "not in list" : {
       "localizations" : {
@@ -121641,6 +121734,9 @@
           }
         }
       }
+    },
+    "Nothing to Import" : {
+
     },
     "Nothing to Restore" : {
       "localizations" : {
@@ -127434,6 +127530,9 @@
           }
         }
       }
+    },
+    "Options for" : {
+
     },
     "Options the engine offers" : {
       "localizations" : {
@@ -141113,6 +141212,9 @@
         }
       }
     },
+    "Reading the files…" : {
+
+    },
     "Reading the source…" : {
       "localizations" : {
         "fr" : {
@@ -141135,6 +141237,9 @@
           }
         }
       }
+    },
+    "Reading…" : {
+
     },
     "Reads every table inside one transaction, so a dump of several tables is consistent with itself. The transaction stays open for the whole export." : {
       "extractionState" : "manual",
@@ -149790,6 +149895,9 @@
           }
         }
       }
+    },
+    "rolled back" : {
+
     },
     "root" : {
       "extractionState" : "stale",
@@ -158522,6 +158630,9 @@
         }
       }
     },
+    "Select files or a folder to import" : {
+
+    },
     "Select files to open" : {
       "localizations" : {
         "fr" : {
@@ -161046,6 +161157,9 @@
           }
         }
       }
+    },
+    "Set On error and Wrap in transaction the same for %@." : {
+
     },
     "Set Password" : {
       "localizations" : {
@@ -172206,6 +172320,12 @@
         }
       }
     },
+    "Stopped at %@. Every file was rolled back." : {
+
+    },
+    "Stopped at %@. The files imported before it were kept." : {
+
+    },
     "Stopped at %lld rows, the most R2 SQL returns from one query." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -172217,6 +172337,9 @@
           }
         }
       }
+    },
+    "Stopped." : {
+
     },
     "Stopping…" : {
       "extractionState" : "stale",
@@ -201279,6 +201402,9 @@
           }
         }
       }
+    },
+    "Two files create a table named %@." : {
+
     },
     "Two People" : {
       "extractionState" : "manual",
