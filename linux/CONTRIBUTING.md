@@ -125,6 +125,10 @@ docs(linux): clarify the TLS step for a new driver
 
 A user-visible change adds one towncrier fragment, `changelog.d/<PR>.<type>.md` in this directory, which the release turns into a [CHANGELOG.md](CHANGELOG.md) section ([docs/releasing.md](docs/releasing.md)). `apple/CHANGELOG.md` and `apple/changelog.d/` are the macOS release notes; a Linux change never goes there. [`.claude/rules/changelog.md`](../.claude/rules/changelog.md) has the rules for both.
 
+## Translations
+
+Translations come in as pull requests against `po/<locale>.po`, one language per pull request. [po/README.md](po/README.md#where-translators-work) has where to get the template, which languages are wanted and when a language joins `po/LINGUAS`.
+
 ## Pull requests
 
 1. Branch off `main` and open the PR against `main`, as the root [CONTRIBUTING.md](../CONTRIBUTING.md#branch-naming) says.

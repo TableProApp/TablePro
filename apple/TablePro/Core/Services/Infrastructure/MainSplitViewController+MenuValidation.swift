@@ -105,6 +105,7 @@ struct MenuValidationContext: Equatable {
     /// window's tabs when there is no editor tab to switch to.
     var hasOtherWindowTabs = false
     var canPinResultTab = false
+    var canCompareResult = false
     /// The selected tab's browse history. Separate flags rather than one, because Back and Forward
     /// run out independently and an item that is disabled has to say which one it is.
     var canNavigateBack = false
@@ -124,13 +125,18 @@ struct MenuValidationContext: Equatable {
     var canShowObjectDDL = false
     var canRefreshMaterializedView = false
     var canEditObjectComment = false
+    var canSetSequenceNextValue = false
+    var canEditSequence = false
     var canCreateDatabase = false
     var canCreateTable = false
     var canCreateView = false
+    var canCreateSequence = false
     var canCreateSchema = false
     var canCreateTableFolder = false
     var canCopyObjects = false
     var canDuplicateDatabase = false
+    var canSearchDatabase = false
+    var canBuildJoinQuery = false
     var hasMaintenanceOperations = false
     var canUndo = false
     var canRedo = false
@@ -303,12 +309,18 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.canCopyObjects
         case #selector(duplicateCurrentDatabase(_:)):
             return context.canDuplicateDatabase
+        case #selector(searchDatabase(_:)):
+            return context.isConnected && context.canSearchDatabase
+        case #selector(buildJoinQuery(_:)):
+            return context.isConnected && context.canBuildJoinQuery
         case #selector(showTableStructure(_:)),
              #selector(editViewDefinition(_:)),
              #selector(showObjectDDL(_:)),
              #selector(copyObjectDDL(_:)),
              #selector(refreshMaterializedView(_:)),
-             #selector(editObjectComment(_:)):
+             #selector(editObjectComment(_:)),
+             #selector(setSequenceNextValue(_:)),
+             #selector(editSequence(_:)):
             return objectCommandIsEnabled(selector, context: context)
         case #selector(runMaintenanceOperation(_:)):
             return context.isConnected && context.hasMaintenanceOperations
@@ -329,6 +341,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.canPresentHighlightRules
         case #selector(pinResult(_:)):
             return context.canPinResultTab
+        case #selector(compareResult(_:)):
+            return context.canCompareResult
         case #selector(navigateBack(_:)):
             return context.isConnected && context.canNavigateBack
         case #selector(navigateForward(_:)):
@@ -385,6 +399,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && !context.isReadOnly && context.canCreateTable
         case #selector(createNewView(_:)):
             return context.isConnected && !context.isReadOnly && context.canCreateView
+        case #selector(createNewSequence(_:)):
+            return context.isConnected && !context.isReadOnly && context.canCreateSequence
         case #selector(createNewDatabase(_:)):
             return context.canCreateDatabase
         case #selector(createSchema(_:)):
@@ -508,6 +524,8 @@ extension MainSplitViewController: NSMenuItemValidation {
         #selector(navigateBack(_:)),
         #selector(navigateForward(_:)),
         #selector(moveTabToConnection(_:)),
+        #selector(searchDatabase(_:)),
+        #selector(buildJoinQuery(_:)),
     ]
 
     /// What AppKit is told. A command this window does not own is left enabled, which is what keeps
@@ -591,6 +609,10 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.canRefreshMaterializedView
         case #selector(editObjectComment(_:)):
             return context.canEditObjectComment
+        case #selector(setSequenceNextValue(_:)):
+            return context.canSetSequenceNextValue
+        case #selector(editSequence(_:)):
+            return context.canEditSequence
         default:
             return false
         }
@@ -666,6 +688,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             hasRecentTabToSwitchTo: hasRecentTabToSwitchTo,
             hasOtherWindowTabs: hasOtherWindowTabs,
             canPinResultTab: actions.canPinResultTab,
+            canCompareResult: actions.canCompareResult,
             canNavigateBack: actions.canNavigateBack,
             canNavigateForward: actions.canNavigateForward,
             canNavigatePages: actions.canNavigatePages,
@@ -678,13 +701,18 @@ extension MainSplitViewController: NSMenuItemValidation {
             canShowObjectDDL: actions.canShowObjectDDL,
             canRefreshMaterializedView: actions.canRefreshMaterializedView,
             canEditObjectComment: actions.canEditObjectComment,
+            canSetSequenceNextValue: actions.canSetSequenceNextValue,
+            canEditSequence: actions.canEditSequence,
             canCreateDatabase: actions.canCreateDatabase,
             canCreateTable: actions.canCreateTable,
             canCreateView: actions.canCreateView,
+            canCreateSequence: actions.canCreateSequence,
             canCreateSchema: actions.canCreateSchema,
             canCreateTableFolder: canCreateTableFolder,
             canCopyObjects: actions.canCopyObjects,
             canDuplicateDatabase: actions.canDuplicateDatabase,
+            canSearchDatabase: actions.canSearchDatabase,
+            canBuildJoinQuery: actions.canBuildJoinQuery,
             hasMaintenanceOperations: !actions.maintenanceOperations.isEmpty,
             canUndo: actions.canUndo,
             canRedo: actions.canRedo,

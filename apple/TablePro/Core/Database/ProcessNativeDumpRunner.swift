@@ -18,6 +18,7 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
     private var continuation: CheckedContinuation<NativeDumpRunResult, Never>?
     private var redirectedHandle: FileHandle?
     private var credentialsFileURL: URL?
+    private var pluginFolderURL: URL?
 
     init(command: NativeDumpCommand, stderrPipe: Pipe = Pipe()) {
         self.command = command
@@ -33,8 +34,14 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
         process.environment = command.environment
         process.standardError = stderrPipe
         credentialsFileURL = command.temporaryCredentialsFileURL
+        pluginFolderURL = command.clientPluginFolder?.url
 
-        try attachRedirection(for: command)
+        do {
+            try attachRedirection(for: command)
+        } catch {
+            releaseRedirection()
+            throw error
+        }
 
         stderrReader.start { [weak self] chunk in
             self?.append(chunk, cap: stderrCap)
@@ -61,7 +68,13 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
             pending?.resume(returning: result)
         }
 
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            stderrReader.stop()
+            releaseRedirection()
+            throw error
+        }
     }
 
     func cancel() {
@@ -110,15 +123,16 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
         }
     }
 
-    /// Runs however the process ended, including a cancel, so a credentials file never outlives the
-    /// process that needed it.
+    /// Runs however the process ended, including a cancel or a launch that failed, so a credentials
+    /// file never outlives the process that needed it.
     private func releaseRedirection() {
         try? redirectedHandle?.close()
         redirectedHandle = nil
-        if let credentialsFileURL {
-            try? FileManager.default.removeItem(at: credentialsFileURL)
+        for url in [credentialsFileURL, pluginFolderURL].compactMap(\.self) {
+            try? FileManager.default.removeItem(at: url)
         }
         credentialsFileURL = nil
+        pluginFolderURL = nil
     }
 
     var result: NativeDumpRunResult {

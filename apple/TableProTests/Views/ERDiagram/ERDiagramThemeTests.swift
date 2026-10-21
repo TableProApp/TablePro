@@ -63,7 +63,7 @@ struct ERDiagramThemeTests {
             nodeRects: [node.id: rect],
             nodeIndex: [node.tableName: node.id],
             clusterColors: clusterColor.map { [node.id: $0] } ?? [:],
-            selectedNodeId: nil,
+            selectedNodeIds: [],
             size: CGSize(width: rect.maxX + 20, height: rect.maxY + 20)
         )
         return (scene, rect)

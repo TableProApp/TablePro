@@ -781,6 +781,7 @@ extension DatabaseManager {
 
         SchemaProviderRegistry.shared.clear(for: sessionId)
         QueryCompletionProfileRegistry.shared.clear(connectionId: sessionId)
+        TemporaryTableStore.shared.removeConnection(sessionId)
         ExternalSchemaTracker.shared.reset(connectionId: sessionId)
 
         SharedSidebarState.removeConnection(sessionId)

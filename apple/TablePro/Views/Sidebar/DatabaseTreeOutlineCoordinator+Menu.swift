@@ -111,14 +111,18 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
                 supportsDatabaseSwitching: PluginManager.shared.supportsDatabaseSwitching(for: databaseType),
                 isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
             ),
+            canSearchData: DatabaseSearchEligibility.supportsSearch(databaseType),
+            canGenerateRows: RowGenerationEligibility.supportsGeneration(databaseType),
             canBackUp: backupIsAvailable(),
             canCreateTable: creation.canCreateTable,
             canCreateView: creation.canCreateView,
+            canCreateSequence: creation.canCreateSequence,
             canCreateDatabase: creation.supportsCreateDatabase,
             objectToolSupport: .of(DatabaseManager.shared.driver(for: connectionId)),
             tableFolderOptions: tableFolderMenuOptions(clicked: clicked, selected: selectedRefs()),
             offersBrowsedFolders: creation.offersBrowsedFolders,
-            canShowAllTables: mainCoordinator?.allTablesListing() != nil
+            canShowAllTables: mainCoordinator?.allTablesListing() != nil,
+            listsAttachedSchemas: listsAttachedSchemas
         )
     }
 

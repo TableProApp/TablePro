@@ -80,8 +80,11 @@ extension TableStructureView {
                 checkConstraints = try await structureLoader.checkConstraints()
             case .ddl:
                 let table = tableName
+                let schema = structureLoader.scope.schema
                 ddlStatement = try await structureLoader.perform { driver in
-                    try await TableDDLComposer.fetchDDL(for: table, using: driver, includesDependencies: true)
+                    try await TableDDLComposer.fetchDDL(
+                        for: table, using: driver, includesDependencies: true, schema: schema
+                    )
                 }
             case .triggers:
                 do {
@@ -107,20 +110,7 @@ extension TableStructureView {
     }
 
     func loadSchemaForEditing() {
-        session.serverSupport = StructureServerSupport.forConnection(connection.id)
-        let pkFromIndexes = indexes.first(where: { $0.isPrimary })?.columns ?? []
-        let pkFromColumns = columns.filter { $0.isPrimaryKey }.map { $0.name }
-        let primaryKey = pkFromIndexes.isEmpty ? pkFromColumns : pkFromIndexes
-
-        structureChangeManager.loadSchema(
-            tableName: tableName,
-            columns: columns,
-            indexes: indexes,
-            foreignKeys: foreignKeys,
-            checkConstraints: checkConstraints,
-            primaryKey: primaryKey,
-            tableComment: session.loadedTableComment
-        )
+        session.adoptLoadedBaseline()
     }
 
     // MARK: - Lifecycle Callbacks

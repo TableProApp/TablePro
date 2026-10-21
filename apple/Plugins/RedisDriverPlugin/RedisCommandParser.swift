@@ -64,6 +64,7 @@ enum RedisOperation {
     case select(database: Int)
     case configGet(parameters: [String])
     case configSet(parameter: String, value: String)
+    case slowlogGet(count: Int?)
     case command(args: [RedisArgument])
 
     // Multi
@@ -74,6 +75,10 @@ enum RedisOperation {
     /// One command run on the database it names, after which the session goes back to the one it
     /// belongs on.
     indirect case inDatabase(database: Int, operation: RedisOperation)
+
+    /// A server command the app sends on its own, held back rather than queued while the user's
+    /// MULTI block is open, the way the health probe is.
+    indirect case outsideBlock(RedisOperation)
 }
 
 /// Options for SET command
@@ -160,6 +165,7 @@ struct RedisCommandParser {
         let command = first.text.uppercased()
         let args = Array(tokens.dropFirst())
         if command == "DB" { return try parseInDatabase(args) }
+        if command == "OUTSIDEBLOCK" { return try parseOutsideBlock(args) }
 
         if let typedCount = typedArgumentCount[command], args.count > typedCount {
             return .command(args: tokens)
@@ -206,6 +212,9 @@ struct RedisCommandParser {
              "MULTI", "EXEC", "DISCARD", "AUTH":
             return try parseServerCommand(command, args: args, tokens: tokens)
 
+        case "SLOWLOG":
+            return parseSlowLog(args, tokens: tokens)
+
         case "KEYBROWSE":
             return try parseKeyBrowse(args)
 
@@ -247,6 +256,26 @@ struct RedisCommandParser {
             database: try databaseIndex(indexArgument),
             operation: try parse(tokens: Array(args.dropFirst()))
         )
+    }
+
+    /// Only INFO and SLOWLOG GET keep their own grids; anything else goes to the server as typed.
+    private static func parseOutsideBlock(_ args: [RedisArgument]) throws -> RedisOperation {
+        guard !args.isEmpty else { throw RedisParseError.emptySyntax }
+        switch try parse(tokens: args) {
+        case .info(let sections):
+            return .outsideBlock(.info(sections: sections))
+        case .slowlogGet(let count):
+            return .outsideBlock(.slowlogGet(count: count))
+        default:
+            return .outsideBlock(.command(args: args))
+        }
+    }
+
+    private static func parseSlowLog(_ args: [RedisArgument], tokens: [RedisArgument]) -> RedisOperation {
+        guard args.first?.text.uppercased() == "GET", args.count <= 2 else { return .command(args: tokens) }
+        guard args.count == 2 else { return .slowlogGet(count: nil) }
+        guard let count = Int(args[1].text) else { return .command(args: tokens) }
+        return .slowlogGet(count: count)
     }
 
     /// `DB` names the database the read reaches whichever database the session is on: a refresh,

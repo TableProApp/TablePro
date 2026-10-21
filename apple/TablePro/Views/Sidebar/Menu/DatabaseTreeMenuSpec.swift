@@ -25,6 +25,8 @@ internal enum DatabaseTreeMenuSpec {
             ]
         case .table(let ref):
             return tableSections(ref, context: context)
+        case .temporaryTable(let ref):
+            return temporaryTableSections(ref)
         case .foldersSection:
             return [DatabaseTreeMenuSection([.command(String(localized: "New Folder"), .tableFolder(.create(.browsed)))])]
         case .tableFolder(let ref):
@@ -49,6 +51,7 @@ internal enum DatabaseTreeMenuSpec {
         case .containerObjectKindSection(let group):
             let database = group.database.nilIfEmpty
             return [
+                DatabaseTreeMenuSection(newTypeItems(kind: group.kind, database: database, schema: group.schema, context: context)),
                 DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshContainerObjectKind(group))]),
                 DatabaseTreeMenuSection(newFolderItems(
                     kind: group.kind,
@@ -61,12 +64,23 @@ internal enum DatabaseTreeMenuSpec {
             return redisSections(node)
         case .redisKeysSection:
             return [DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshRedisKeys)])]
-        case .status, .recentSection:
+        case .status, .recentSection, .temporarySection:
             return backgroundSections(context)
         }
     }
 
     // MARK: - Objects
+
+    // Only what runs on the session that holds it: every other command reads or writes through a pooled connection.
+    private static func temporaryTableSections(_ ref: DatabaseTreeTableRef) -> [DatabaseTreeMenuSection] {
+        [
+            DatabaseTreeMenuSection([
+                .command(String(localized: "Open in New Tab"), .openInNewTab(ref)),
+                .command(String(localized: "Show Structure"), .showStructure(ref))
+            ]),
+            DatabaseTreeMenuSection([.command(copyNamesTitle(count: 1), .copyTableNames([ref.table.name]))])
+        ]
+    }
 
     private static func tableSections(
         _ ref: DatabaseTreeTableRef,
@@ -102,10 +116,18 @@ internal enum DatabaseTreeMenuSpec {
         if let objectRef = sourceObjectRef(for: ref) {
             items.append(.command(String(localized: "Show DDL"), .showObjectSource(objectRef)))
         }
-        if SidebarContextMenuLogic.isView(clickedTable: ref.table), !context.isReadOnly {
+        if SidebarContextMenuLogic.isView(clickedTable: ref.table), !context.isReadOnly,
+           !isInAttachedDatabase(ref, context: context) {
             items.append(.command(String(localized: "Edit View Definition"), .editViewDefinition(ref)))
         }
         return items
+    }
+
+    /// A table of a database attached beside the opened file. Export, import, transfer, copy and a
+    /// view's edit all name the table without that database, so they would read or write a same-named
+    /// table in the opened file and are not offered.
+    private static func isInAttachedDatabase(_ ref: DatabaseTreeTableRef, context: DatabaseTreeMenuContext) -> Bool {
+        context.listsAttachedSchemas && ref.qualifyingSchema != nil
     }
 
     /// A view's source opens in the read-only DDL viewer, addressed by the row's own database and
@@ -145,12 +167,18 @@ internal enum DatabaseTreeMenuSpec {
         /// schemas handed the dialog names it resolved against one of them.
         let sameScope = targets.filter { $0.qualifyingSchema == ref.qualifyingSchema }
         let names = Set(sameScope.map(\.table.name))
+        guard !isInAttachedDatabase(ref, context: context) else {
+            return maintenanceItems(ref, context: context)
+        }
         var items: [DatabaseTreeMenuItem] = [
             .command(String(localized: "Export…"), .exportTables(names: names, ref: ref))
         ]
         if !context.isReadOnly,
            SidebarContextMenuLogic.importVisible(clickedTable: ref.table, supportsImport: context.supportsImport) {
             items += importItems(context.importFormats, ref: ref)
+        }
+        if context.canGenerateRows, !context.isReadOnly, RowGenerationEligibility.appliesTo(ref.table.type) {
+            items.append(.command(String(localized: "Generate Rows…"), .generateRows(ref)))
         }
         items.append(.command(String(localized: "Transfer To…"), .transferTables(names: names, ref: ref)))
         let copyable = copySelections(for: sameScope)
@@ -165,26 +193,31 @@ internal enum DatabaseTreeMenuSpec {
         ) {
             items.append(.command(String(localized: "Refresh Materialized View…"), .refreshMaterializedView(ref)))
         }
+        return items + maintenanceItems(ref, context: context)
+    }
+
+    private static func maintenanceItems(
+        _ ref: DatabaseTreeTableRef,
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuItem] {
         let applicable = TableOperationEligibility.maintenanceOperations(
             context.maintenanceOperations,
             for: ref.table.type
         )
-        if SidebarContextMenuLogic.maintenanceGroupEnabled(
+        guard SidebarContextMenuLogic.maintenanceGroupEnabled(
             isReadOnly: context.isReadOnly,
             hasSelection: true,
             applicableOperations: applicable
-        ) {
-            items.append(.submenu(
-                title: String(localized: "Maintenance"),
-                items: applicable.map { operation in
-                    .command(
-                        operation.name,
-                        .maintenance(operation: operation, tableName: ref.table.name, ref: ref)
-                    )
-                }
-            ))
-        }
-        return items
+        ) else { return [] }
+        return [.submenu(
+            title: String(localized: "Maintenance"),
+            items: applicable.map { operation in
+                .command(
+                    operation.name,
+                    .maintenance(operation: operation, tableName: ref.table.name, ref: ref)
+                )
+            }
+        )]
     }
 
     /// Destructive last, behind its own separator, which is the only way macOS sets one apart:
@@ -197,6 +230,20 @@ internal enum DatabaseTreeMenuSpec {
     ) -> [DatabaseTreeMenuItem] {
         guard !context.isReadOnly else { return [] }
         var items: [DatabaseTreeMenuItem] = []
+        if DatabaseObjectToolEligibility.canSetSequenceValue(
+            ref.table.type,
+            support: context.objectToolSupport,
+            isReadOnly: context.isReadOnly
+        ) {
+            items.append(.command(String(localized: "Set Next Value…"), .setSequenceNextValue(ref)))
+        }
+        if DatabaseObjectToolEligibility.canEditSequence(
+            ref.table.type,
+            support: context.objectToolSupport,
+            isReadOnly: context.isReadOnly
+        ) {
+            items.append(.command(String(localized: "Edit Sequence…"), .editSequence(ref)))
+        }
         if DatabaseObjectToolEligibility.canEditComment(
             ref.table.type,
             support: context.objectToolSupport,
@@ -290,18 +337,38 @@ internal enum DatabaseTreeMenuSpec {
         if ref.type.qualifiedName != ref.type.name {
             copies.append(.command(String(localized: "Copy Qualified Name"), .copyText(ref.type.qualifiedName)))
         }
-        var sections = [
-            DatabaseTreeMenuSection(copies),
-            DatabaseTreeMenuSection([.command(String(localized: "Show Definition"), .showObjectSource(ref.objectRef))])
-        ]
+        var writes: [DatabaseTreeMenuItem] = []
+        if DatabaseObjectToolEligibility.canRenameType(
+            ref.type.kind,
+            support: context.objectToolSupport,
+            isReadOnly: context.isReadOnly
+        ) {
+            writes.append(.command(String(localized: "Rename"), .renameUserType(ref)))
+        }
         if DatabaseObjectToolEligibility.canDropType(
             ref.type.kind,
             support: context.objectToolSupport,
             isReadOnly: context.isReadOnly
         ) {
-            sections.append(DatabaseTreeMenuSection([.command(String(localized: "Drop Type…"), .dropUserType(ref))]))
+            writes.append(.command(String(localized: "Drop Type…"), .dropUserType(ref)))
         }
-        return sections
+        return [
+            DatabaseTreeMenuSection(copies),
+            DatabaseTreeMenuSection([.command(String(localized: "Show Definition"), .showObjectSource(ref.objectRef))]),
+            DatabaseTreeMenuSection(writes)
+        ]
+    }
+
+    private static func newTypeItems(
+        kind: SidebarObjectKind,
+        database: String?,
+        schema: String?,
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuItem] {
+        guard kind == .type,
+              DatabaseObjectToolEligibility.canCreateType(support: context.objectToolSupport, isReadOnly: context.isReadOnly)
+        else { return [] }
+        return [.command(String(localized: "New Type…"), .newUserType(database: database, schema: schema))]
     }
 
     private static func redisSections(_ node: RedisKeyNode) -> [DatabaseTreeMenuSection] {
@@ -334,6 +401,7 @@ internal enum DatabaseTreeMenuSpec {
         }
         items.append(.command(String(localized: "Refresh"), .refreshObjectKind(kind)))
         return [
+            DatabaseTreeMenuSection(newTypeItems(kind: kind, database: nil, schema: nil, context: context)),
             DatabaseTreeMenuSection(items),
             DatabaseTreeMenuSection(context.offersBrowsedFolders ? newFolderItems(kind: kind, container: .browsed) : [])
         ]
@@ -362,7 +430,7 @@ internal enum DatabaseTreeMenuSpec {
             /// Oracle, Snowflake, Trino, Dameng and BigQuery draw their schemas here rather than as
             /// container rows, and several of them need a schema-scoped source, so leaving Copy To
             /// on the container path alone put it out of reach on exactly the engines that require it.
-            DatabaseTreeMenuSection(copyItems(ref, context: context)),
+            DatabaseTreeMenuSection(searchItems(ref, context: context) + copyItems(ref, context: context)),
             DatabaseTreeMenuSection(writes)
         ]
     }
@@ -374,6 +442,12 @@ internal enum DatabaseTreeMenuSpec {
         context: DatabaseTreeMenuContext
     ) -> [DatabaseTreeMenuSection] {
         let targets = SidebarMenuTarget.resolveContainers(clicked: clicked, selection: context.selectedContainers)
+        if context.listsAttachedSchemas, clicked.kind == .schema {
+            return [
+                DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshContainers(targets))]),
+                DatabaseTreeMenuSection([.command(copyNamesTitle(count: targets.count), .copyContainerNames(targets))])
+            ]
+        }
         var open: [DatabaseTreeMenuItem] = []
         /// Omitted rather than disabled: a menu item that can never fire in this state is noise, and
         /// the HIG prefers removing an item that does not apply over showing it greyed out.
@@ -407,6 +481,9 @@ internal enum DatabaseTreeMenuSpec {
         context: DatabaseTreeMenuContext
     ) -> [DatabaseTreeMenuItem] {
         var items: [DatabaseTreeMenuItem] = []
+        if targets.count == 1 {
+            items += searchItems(clicked, context: context)
+        }
         if ExportPreselection.canPreselect(
             containers: targets,
             activeDatabase: context.activeDatabase,
@@ -443,6 +520,18 @@ internal enum DatabaseTreeMenuSpec {
             items.append(.command(dropTitle(for: droppable, context: context), .dropContainers(droppable)))
         }
         return items
+    }
+
+    private static func searchItems(
+        _ clicked: DatabaseContainerRef,
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuItem] {
+        guard context.canSearchData, !clicked.isSystem else { return [] }
+        let title = String(
+            format: String(localized: "Search %@\u{2026}"),
+            clicked.kind == .schema ? context.schemaEntityName : context.containerEntityName
+        )
+        return [.command(title, .searchContainer(clicked))]
     }
 
     private static func backUpTitle(count: Int) -> String {

@@ -311,7 +311,7 @@ struct RowChangeStatementFactory {
         deletedRowIDs: Set<RowID>,
         insertedRowIDs: Set<RowID>
     ) throws -> [AttributedStatement] {
-        let statements = try hostGenerator().generateAttributedStatements(
+        let statements = try hostGenerator(schemaName: savedSchemaName).generateAttributedStatements(
             from: changes,
             insertedRowData: insertedRowData,
             deletedRowIDs: deletedRowIDs,
@@ -518,8 +518,15 @@ struct RowChangeStatementFactory {
         }
     }
 
-    /// A save leaves the table unqualified, as it always has. A restore names the schema the record was saved
-    /// against, because the connection may be pointed at another one by the time the rows are asked for back.
+    /// A save leaves the table unqualified, as it always has, except in a database attached beside the
+    /// opened file: no session can be pointed at one, so an unqualified name would reach the main file's
+    /// table of that name.
+    private var savedSchemaName: String? {
+        PluginManager.shared.listsAttachedDatabases(for: databaseType) ? schemaName : nil
+    }
+
+    /// A restore names the schema the record was saved against, because the connection may be pointed
+    /// at another one by the time the rows are asked for back.
     private func hostGenerator(
         schemaName: String? = nil,
         generatedColumns: Set<String>? = nil,

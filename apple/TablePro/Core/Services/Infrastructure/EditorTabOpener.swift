@@ -80,7 +80,10 @@ internal enum EditorTabOpener {
                 claimFocus: true
             )
         case .createTable:
-            tabManager.addCreateTableTab(databaseName: payload.databaseName ?? openingDatabaseName)
+            tabManager.addCreateTableTab(
+                databaseName: payload.databaseName ?? openingDatabaseName,
+                schemaName: payload.schemaName
+            )
         case .erDiagram:
             tabManager.addERDiagramTab(
                 schemaKey: payload.erDiagramSchemaKey ?? payload.databaseName ?? openingDatabaseName,
@@ -133,6 +136,7 @@ internal enum EditorTabOpener {
                 schemaName: resolvedSchemaName,
                 isView: payload.isView,
                 objectType: payload.objectType,
+                isTemporary: payload.isTemporary,
                 isPreview: payload.isPreview,
                 allowsDuplicate: payload.forcesNewTab
             )

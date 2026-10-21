@@ -8,6 +8,7 @@ import Foundation
 internal enum FieldEditorKind: Equatable {
     case json
     case phpSerialized
+    case binaryValue(BinaryValueFormat)
     case image(CellImageFormat)
     /// A value the map can draw. WKT, GeoJSON and WKB bytes share one column type, so the payload
     /// says which editor sits under the Text segment and which reader the Map segment uses.

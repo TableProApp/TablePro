@@ -82,8 +82,11 @@ enum DatabaseObjectCommandRunner {
         connection: DatabaseConnection,
         kind: OperationKind,
         operationDescription: String,
+        isConfirmationPreCleared: Bool = false,
         gate: any ExecutionGate
     ) async throws {
+        var capabilities = CallerCapabilities.interactiveUser
+        if isConfirmationPreCleared { capabilities.insert(.confirmationPreCleared) }
         let decision = await gate.authorize(
             OperationRequest(
                 connectionId: connection.id,
@@ -91,7 +94,7 @@ enum DatabaseObjectCommandRunner {
                 sql: sql,
                 kind: kind,
                 caller: .userInterface,
-                capabilities: .interactiveUser,
+                capabilities: capabilities,
                 operationDescription: operationDescription
             )
         )

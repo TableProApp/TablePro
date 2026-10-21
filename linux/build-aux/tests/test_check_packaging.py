@@ -186,9 +186,11 @@ class ProblemsTests(unittest.TestCase):
     def test_find_lang_follows_linguas(self):
         cases = [
             ("", "# none yet\n", 0),
-            ("%find_lang %{name}\n", "de\nfr # French\n", 0),
+            ("%find_lang %{name}\n%files -f %{name}.lang\n", "de\nfr # French\n", 0),
             ("", "de\n", 1),
-            ("%find_lang %{name}\n", "\n", 1),
+            ("%find_lang %{name}\n", "de\n", 1),
+            ("%files -f %{name}.lang\n", "de\n", 1),
+            ("%find_lang %{name}\n%files -f %{name}.lang\n", "\n", 1),
         ]
         for find_lang, linguas, expected in cases:
             with self.subTest(find_lang=find_lang, linguas=linguas):

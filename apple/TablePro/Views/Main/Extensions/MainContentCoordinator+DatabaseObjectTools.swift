@@ -2,7 +2,7 @@
 //  MainContentCoordinator+DatabaseObjectTools.swift
 //  TablePro
 //
-//  Copy DDL, Refresh Materialized View, Edit Comment and Drop Type on one object.
+//  Copy DDL, Refresh Materialized View and Edit Comment on one object.
 //
 
 import AppKit
@@ -35,10 +35,11 @@ extension MainContentCoordinator {
     func copyDDL(of ref: DatabaseTreeTableRef) {
         guard let target = objectTarget(for: ref) else { return }
         let name = target.name
+        let schema = target.schema
         Task {
             do {
                 let ddl = try await services.databaseManager.withMetadataDriver(scope: target.scope) { driver in
-                    try await TableDDLComposer.fetchDDL(for: name, using: driver, includesDependencies: true)
+                    try await TableDDLComposer.fetchDDL(for: name, using: driver, includesDependencies: true, schema: schema)
                 }
                 ClipboardService.shared.writeText(ddl)
             } catch {
@@ -103,36 +104,23 @@ extension MainContentCoordinator {
         }
     }
 
-    // MARK: - Drop Type
-
-    func dropUserType(_ ref: DatabaseTreeUserTypeRef) {
-        guard !safeModeLevel.blocksAllWrites,
-              let scope = services.databaseManager.resolvedScope(
-                  database: ref.database,
-                  schema: ref.schema,
-                  for: connectionId
-              )
-        else { return }
-        Task {
-            do {
-                try await UserTypeDropping.drop(ref.type, in: scope, connection: connection)
-            } catch ExecutionGateError.cancelledByUser {
-            } catch {
-                Self.objectToolsLogger.error("Drop Type failed: \(error.publicLogShape, privacy: .public)")
-                AlertHelper.showErrorSheet(
-                    title: String(localized: "Drop Failed"),
-                    message: error.localizedDescription,
-                    window: contentWindow
-                )
-            }
-        }
-    }
-
     // MARK: - Edit Comment
 
     func editComment(of ref: DatabaseTreeTableRef) {
         guard !safeModeLevel.blocksAllWrites, let target = objectTarget(for: ref) else { return }
         activeSheet = .editObjectComment(target)
+    }
+
+    // MARK: - Sequences
+
+    func setSequenceNextValue(of ref: DatabaseTreeTableRef) {
+        guard !safeModeLevel.blocksAllWrites, let target = objectTarget(for: ref) else { return }
+        activeSheet = .setSequenceNextValue(target)
+    }
+
+    func editSequence(_ ref: DatabaseTreeTableRef) {
+        guard !safeModeLevel.blocksAllWrites, let target = objectTarget(for: ref) else { return }
+        activeSheet = .editSequence(target)
     }
 
     // MARK: - Object Changes

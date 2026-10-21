@@ -145,6 +145,9 @@ struct PluginMetadataSnapshot: Sendable {
         // False where users and roles are different kinds: there a role never logs in, and Can log in is a user's lock.
         var supportsRoleLogin: Bool = true
 
+        // Set, a table page reads a large binary value's size through it and loads the value on demand.
+        var binaryLengthFunction: String?
+
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
             supportsImport: true,
@@ -780,7 +783,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     .supportsRemoteDatabaseSession ?? false,
                 supportsPrincipalConnectionLimit: existingSnapshot?.capabilities
                     .supportsPrincipalConnectionLimit ?? true,
-                supportsRoleLogin: existingSnapshot?.capabilities.supportsRoleLogin ?? true
+                supportsRoleLogin: existingSnapshot?.capabilities.supportsRoleLogin ?? true,
+                binaryLengthFunction: existingSnapshot?.capabilities.binaryLengthFunction
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,

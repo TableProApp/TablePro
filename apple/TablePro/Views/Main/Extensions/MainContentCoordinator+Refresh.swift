@@ -51,6 +51,12 @@ extension MainContentCoordinator {
             AppEvents.shared.tableListingRefreshRequested.send(tab.id)
             return
         }
+        if tab.tabType == .erDiagram {
+            if let diagram = erDiagramModels[tab.id] {
+                Task { await diagram.refresh() }
+            }
+            return
+        }
         if tab.display.resultsViewMode == .structure {
             structureActions?.refresh?()
             return

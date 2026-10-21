@@ -278,7 +278,7 @@ extension CascadeDeletePreviewer.Environment {
             dialect: dialect,
             readForeignKeys: {
                 try await manager.withMetadataDriver(scope: scope) { driver in
-                    try await driver.fetchAllForeignKeys()
+                    try await driver.fetchAllForeignKeys(schema: scope.schema)
                 }
             },
             readHasOtherSchemas: readHasOtherSchemas,

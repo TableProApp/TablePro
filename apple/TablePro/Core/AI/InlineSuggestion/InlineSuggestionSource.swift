@@ -48,3 +48,29 @@ extension InlineSuggestionSource {
     func didAcceptSuggestion(_ suggestion: InlineSuggestion) {}
     func didDismissSuggestion(_ suggestion: InlineSuggestion) {}
 }
+
+enum InlineSuggestionText {
+    private static let thinkingRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: "<think>.*?</think>|<think>.*$",
+        options: [.caseInsensitive, .dotMatchesLineSeparators]
+    )
+
+    // Leading spaces stay: a completion that starts a new token needs the one before it.
+    static func clean(_ raw: String) -> String {
+        var result = raw
+        if let regex = thinkingRegex {
+            result = regex.stringByReplacingMatches(
+                in: result,
+                range: NSRange(location: 0, length: (result as NSString).length),
+                withTemplate: ""
+            )
+        }
+        while result.first?.isNewline == true {
+            result.removeFirst()
+        }
+        while result.last?.isWhitespace == true {
+            result.removeLast()
+        }
+        return result
+    }
+}

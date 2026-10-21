@@ -48,6 +48,7 @@ internal enum CellInteractionMode: Equatable {
     case viewJson
     case viewBlob
     case viewPhpSerialized
+    case viewBinaryValue(BinaryValueFormat)
 
     case viewSvg
     case viewVector
@@ -68,8 +69,15 @@ internal struct CellInteractionResolver {
         guard !context.isRowDeleted else { return .blocked }
 
         let isReadOnly = !context.isTableEditable || context.isImmutableColumn
+        let holdsBytes = context.columnType?.isBlobType == true || context.isBinaryValue
 
-        if context.columnType?.isBlobType == true || context.isBinaryValue {
+        // Read-only: nothing writes a decoded tree back. A NULL keeps the hex editor, the way bytes get into it.
+        if holdsBytes, context.isBinaryValue || context.value != nil,
+           let format = context.displayFormatOverride?.binaryValueFormat {
+            return .viewBinaryValue(format)
+        }
+
+        if holdsBytes {
             return isReadOnly ? .viewBlob : .editBlob
         }
 
@@ -87,7 +95,8 @@ internal struct CellInteractionResolver {
             return isReadOnly ? .viewJson : .editJson
         case .phpSerialized:
             return .viewPhpSerialized
-        case .raw, .text, .uuid, .unixTimestamp, .unixTimestampMillis, .none:
+        case .raw, .text, .uuid, .uuidSwappedTime, .unixTimestamp, .unixTimestampMillis, .messagePack, .protobuf,
+             .none:
             return plainText(for: context, isReadOnly: isReadOnly)
         }
     }

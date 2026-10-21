@@ -317,7 +317,7 @@ struct TableTransferSheet: View {
             ) { driver in
                 try await driver.fetchTables()
             }
-            sourceTables = tables.map { table in
+            sourceTables = tables.filter { $0.type != .sequence }.map { table in
                 ExportObjectItem(
                     name: table.name,
                     kind: PluginExportObjectKind.from(tableType: table.type.rawValue),

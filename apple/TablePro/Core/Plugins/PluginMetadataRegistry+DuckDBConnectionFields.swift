@@ -80,7 +80,8 @@ extension PluginMetadataRegistry {
                 fieldType: .stepper(range: ConnectionField.IntRange(0...240)),
                 section: .advanced,
                 visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local"])
-            )
+            ),
+            .attachedDatabases(visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local"]))
         ]
     }
 }

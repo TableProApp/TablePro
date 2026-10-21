@@ -29,6 +29,16 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
 
     var fieldDetectionSignature: String { settings.detectionSignature }
 
+    var rowImportConfiguration: RowImportRunner.Configuration? { runConfiguration }
+
+    private var runConfiguration: RowImportRunner.Configuration {
+        RowImportRunner.Configuration(
+            errorHandling: settings.errorHandling,
+            wrapInTransaction: settings.wrapInTransaction,
+            deleteExistingRows: settings.deleteExistingRows
+        )
+    }
+
     required init() { loadSettings() }
 
     @MainActor
@@ -82,11 +92,7 @@ final class CSVImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
         let lineOffset = hasHeader ? 2 : 1
         var cursor = 0
         let outcome = try await RowImportRunner.run(
-            configuration: RowImportRunner.Configuration(
-                errorHandling: settings.errorHandling,
-                wrapInTransaction: settings.wrapInTransaction,
-                deleteExistingRows: settings.deleteExistingRows
-            ),
+            configuration: runConfiguration,
             sink: sink,
             progress: progress
         ) {

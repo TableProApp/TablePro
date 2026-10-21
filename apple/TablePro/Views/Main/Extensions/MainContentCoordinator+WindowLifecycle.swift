@@ -251,7 +251,7 @@ extension MainContentCoordinator {
         lazyLoadCurrentTabIfNeeded(trigger: .restore)
     }
 
-    private func canAutoLoadTableTab(_ tab: QueryTab) -> Bool {
+    func canAutoLoadTableTab(_ tab: QueryTab) -> Bool {
         guard tab.tabType == .table else { return false }
         guard tab.execution.errorMessage == nil else { return false }
         guard !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }

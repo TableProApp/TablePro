@@ -169,6 +169,9 @@ extension MainContentView {
         for row in displayRows {
             let values = columns.indices.map { i -> String in
                 guard i < row.values.count else { return "NULL" }
+                if let byteCount = row.unloadedByteCount(i) {
+                    return DataGridCellContent.unloadedSpokenText(byteCount: byteCount)
+                }
                 let raw: String
                 switch row.values[i] {
                 case .null:
@@ -188,6 +191,35 @@ extension MainContentView {
         }
 
         return lines.joined(separator: "\n")
+    }
+}
+
+// The inspector shows one row's values, so it loads that row's unloaded values while it is on screen.
+internal struct InspectorValueLoadModifier: ViewModifier {
+    @ObservedObject var inspector: RowInspectorState
+    @ObservedObject var selection: GridSelectionState
+    let tabId: UUID?
+    let selectsDataRows: Bool
+    let contentVersion: Int
+    let load: (UUID, Int) async -> Void
+
+    func body(content: Content) -> some View {
+        content.task(id: key) {
+            guard let key else { return }
+            await load(key.tabId, key.displayRow)
+        }
+    }
+
+    private var key: Key? {
+        guard inspector.isOnScreen, selectsDataRows, let tabId, selection.indices.count == 1,
+              let displayRow = selection.indices.first else { return nil }
+        return Key(tabId: tabId, displayRow: displayRow, contentVersion: contentVersion)
+    }
+
+    struct Key: Hashable {
+        let tabId: UUID
+        let displayRow: Int
+        let contentVersion: Int
     }
 }
 

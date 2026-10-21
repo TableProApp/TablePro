@@ -67,6 +67,18 @@ struct UserDefinedTypeInfo: Identifiable, Hashable, Sendable {
         }
     }
 
+    struct Constraint: Hashable, Sendable {
+        let name: String
+        let definition: String
+        let isValidated: Bool
+
+        init(name: String, definition: String, isValidated: Bool = true) {
+            self.name = name
+            self.definition = definition
+            self.isValidated = isValidated
+        }
+    }
+
     let name: String
     let schema: String?
     let kind: Kind
@@ -85,6 +97,12 @@ struct UserDefinedTypeInfo: Identifiable, Hashable, Sendable {
     /// The CREATE statement, when the listing already returned it. Never part of `id`.
     let definition: String?
     let attributes: [ObjectAttribute]
+    let comment: String?
+
+    /// A domain's default expression, NOT NULL and check constraints.
+    let defaultValue: String?
+    let isNotNull: Bool
+    let constraints: [Constraint]
 
     init(
         name: String,
@@ -96,7 +114,11 @@ struct UserDefinedTypeInfo: Identifiable, Hashable, Sendable {
         baseType: String? = nil,
         columnTypeSpelling: String? = nil,
         definition: String? = nil,
-        attributes: [ObjectAttribute] = []
+        attributes: [ObjectAttribute] = [],
+        comment: String? = nil,
+        defaultValue: String? = nil,
+        isNotNull: Bool = false,
+        constraints: [Constraint] = []
     ) {
         self.name = name
         self.kind = kind
@@ -108,6 +130,10 @@ struct UserDefinedTypeInfo: Identifiable, Hashable, Sendable {
         self.columnTypeSpelling = columnTypeSpelling
         self.definition = definition
         self.attributes = attributes
+        self.comment = comment
+        self.defaultValue = defaultValue
+        self.isNotNull = isNotNull
+        self.constraints = constraints
     }
 
     var qualifiedName: String {

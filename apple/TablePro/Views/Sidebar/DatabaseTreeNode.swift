@@ -76,6 +76,8 @@ final class DatabaseTreeNode: SidebarOutlineNode {
     enum Kind {
         case recentSection
         case recentTable(DatabaseTreeTableRef)
+        case temporarySection
+        case temporaryTable(DatabaseTreeTableRef)
         /// Flat shape: the section the browsed schema's folders sit in, above the object kinds.
         case foldersSection
         /// A folder the user files tables and views into. An ordinary container row, never a group
@@ -112,7 +114,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
 
     var isExpandable: Bool {
         switch kind {
-        case .recentSection, .foldersSection, .tableFolder, .database, .schema,
+        case .recentSection, .temporarySection, .foldersSection, .tableFolder, .database, .schema,
              .objectKindSection, .containerObjectKindSection,
              .hierarchicalSchemaSection, .redisKeysSection:
             return true
@@ -123,7 +125,7 @@ final class DatabaseTreeNode: SidebarOutlineNode {
         case .redisNode(let node):
             guard case .namespace = node else { return false }
             return true
-        case .recentTable, .routine, .trigger, .userType, .status:
+        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status:
             return false
         }
     }
@@ -146,6 +148,11 @@ final class DatabaseTreeNode: SidebarOutlineNode {
         return nil
     }
 
+    var temporaryTableRef: DatabaseTreeTableRef? {
+        if case .temporaryTable(let ref) = kind { return ref }
+        return nil
+    }
+
     /// A source-list group row: chrome the app invented to bucket objects, not an object the
     /// database has. AppKit draws these itself once `isGroupItem` says so, and it stops indenting
     /// their children, which is what puts a table at the same depth as a database in the tree.
@@ -154,10 +161,10 @@ final class DatabaseTreeNode: SidebarOutlineNode {
     /// children, so it stays an ordinary container row the way a folder does in Xcode's navigator.
     var isGroupRow: Bool {
         switch kind {
-        case .recentSection, .foldersSection, .objectKindSection, .redisKeysSection:
+        case .recentSection, .temporarySection, .foldersSection, .objectKindSection, .redisKeysSection:
             return true
         case .database, .schema, .containerObjectKindSection, .tableFolder,
-             .hierarchicalSchemaSection, .recentTable, .table, .partition,
+             .hierarchicalSchemaSection, .recentTable, .temporaryTable, .table, .partition,
              .routine, .trigger, .userType, .status, .redisNode:
             return false
         }
@@ -167,9 +174,9 @@ final class DatabaseTreeNode: SidebarOutlineNode {
         switch kind {
         case .database, .schema:
             return true
-        case .recentSection, .recentTable, .foldersSection, .tableFolder, .table, .partition, .routine,
-             .trigger, .userType, .status, .objectKindSection, .containerObjectKindSection,
-             .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
+        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+             .table, .partition, .routine, .trigger, .userType, .status, .objectKindSection,
+             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
             return false
         }
     }
@@ -180,9 +187,9 @@ final class DatabaseTreeNode: SidebarOutlineNode {
             return .database(metadata.name, isSystem: metadata.isSystemDatabase)
         case .schema(let database, let schema):
             return .schema(database: database, schema: schema, isSystem: systemSchemas.contains(schema))
-        case .recentSection, .recentTable, .foldersSection, .tableFolder, .table, .partition, .routine,
-             .trigger, .userType, .status, .objectKindSection, .containerObjectKindSection,
-             .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
+        case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
+             .table, .partition, .routine, .trigger, .userType, .status, .objectKindSection,
+             .containerObjectKindSection, .hierarchicalSchemaSection, .redisKeysSection, .redisNode:
             return nil
         }
     }
@@ -202,6 +209,8 @@ final class DatabaseTreeNode: SidebarOutlineNode {
     static func tableId(_ ref: DatabaseTreeTableRef) -> String { "table\u{1}\(ref.id)" }
     static func partitionId(_ ref: DatabaseTreePartitionRef) -> String { "partition\u{1}\(ref.id)" }
     static func recentTableId(_ ref: DatabaseTreeTableRef) -> String { "recent\u{1}table\u{1}\(ref.id)" }
+    static let temporarySectionId = "temporary-section"
+    static func temporaryTableId(_ ref: DatabaseTreeTableRef) -> String { "temporary\u{1}table\u{1}\(ref.id)" }
     static func routineId(_ ref: DatabaseTreeRoutineRef) -> String { "routine\u{1}\(ref.id)" }
     static func triggerId(_ ref: DatabaseTreeTriggerRef) -> String { "trigger\u{1}\(ref.id)" }
     static func userTypeId(_ ref: DatabaseTreeUserTypeRef) -> String { "usertype\u{1}\(ref.id)" }

@@ -91,7 +91,8 @@ struct PendingChangeTriggerTests {
         hasStructureChanges: Bool = false,
         isFileDirty: Bool = false,
         hasCreateTablePending: Bool = false,
-        hasPrincipalChanges: Bool = false
+        hasPrincipalChanges: Bool = false,
+        hasTypeChanges: Bool = false
     ) -> PendingChangeTrigger {
         PendingChangeTrigger(
             hasDataChanges: hasDataChanges,
@@ -100,8 +101,16 @@ struct PendingChangeTriggerTests {
             hasStructureChanges: hasStructureChanges,
             isFileDirty: isFileDirty,
             hasCreateTablePending: hasCreateTablePending,
-            hasPrincipalChanges: hasPrincipalChanges
+            hasPrincipalChanges: hasPrincipalChanges,
+            hasTypeChanges: hasTypeChanges
         )
+    }
+
+    /// Saving or discarding a type tab's queue writes only this flag, so without it the commit
+    /// control stayed lit over an empty queue.
+    @Test("Different hasTypeChanges produces unequal triggers")
+    func differentHasTypeChanges() {
+        #expect(makeTrigger(hasTypeChanges: true) != makeTrigger(hasTypeChanges: false))
     }
 
     /// The fifth source, and the reason the commit control was dim on a Users & Roles tab however
@@ -110,6 +119,17 @@ struct PendingChangeTriggerTests {
     @Test("Different hasPrincipalChanges produces unequal triggers")
     func differentHasPrincipalChanges() {
         #expect(makeTrigger(hasPrincipalChanges: true) != makeTrigger(hasPrincipalChanges: false))
+    }
+
+    @Test("A diagram staging an edit, or another tab being selected, produces unequal triggers")
+    func diagramEditsAndTabSwitchChangeTheTrigger() {
+        var staged = makeTrigger()
+        staged.diagramEditsRevision = 1
+        #expect(staged != makeTrigger())
+
+        var switched = makeTrigger()
+        switched.selectedTabId = UUID()
+        #expect(switched != makeTrigger())
     }
 
     @Test("Same values are equal")

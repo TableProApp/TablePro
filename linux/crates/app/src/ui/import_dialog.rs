@@ -12,14 +12,6 @@ use tablepro_core::import::{
 
 use crate::runtime::DeliverInput;
 
-/// The most a CSV may be before the import refuses it.
-///
-/// Every row becomes an INSERT in one transaction, so the file's size
-/// decides how much the app holds at once. Refusing is better than a
-/// window that stops painting halfway through a file nobody meant to
-/// open.
-pub const MAX_CSV_FILE_BYTES: usize = 64 * 1024 * 1024;
-
 /// How many values from the file each mapping row shows, so the user
 /// can see they picked the field they meant.
 const SAMPLE_VALUES: usize = 3;

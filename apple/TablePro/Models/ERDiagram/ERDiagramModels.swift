@@ -19,6 +19,13 @@ struct ERColumnDisplay: Identifiable, Sendable {
     let isPrimaryKey: Bool
     let isForeignKey: Bool
     let isNullable: Bool
+    var stagedEdit: ERStagedEdit?
+}
+
+enum ERStagedEdit: Sendable, Equatable {
+    case added
+    case dropped
+    case modified
 }
 
 // MARK: - Edge
@@ -39,6 +46,7 @@ struct EREdge: Identifiable, Sendable {
     let toTable: String
     let toColumn: String
     let cardinality: ERCardinality
+    var stagedEdit: ERStagedEdit?
 }
 
 // MARK: - Graph
@@ -80,8 +88,15 @@ enum ERDiagramGraphBuilder {
     static func build(
         allColumns: [String: [ColumnInfo]],
         allForeignKeys: [String: [ForeignKeyInfo]],
-        allIndexes: [String: [IndexInfo]] = [:]
+        allIndexes: [String: [IndexInfo]] = [:],
+        isLocal: (ForeignKeyInfo) -> Bool = { _ in true }
     ) -> ERDiagramGraph {
+        let allForeignKeys = ForeignKeyCatalogNames.canonicalized(
+            allForeignKeys,
+            columns: allColumns.mapValues { $0.map(\.name) }
+        )
+        // A key into another schema still badges its column, but draws no edge to a same-named local table.
+        let localForeignKeys = allForeignKeys.mapValues { $0.filter(isLocal) }
         var nodeIndex: [String: UUID] = [:]
         var nodes: [ERTableNode] = []
 
@@ -128,7 +143,7 @@ enum ERDiagramGraphBuilder {
             let isJunction = junctionParents(
                 tableName: tableName,
                 columns: columns,
-                foreignKeys: allForeignKeys[tableName] ?? []
+                foreignKeys: localForeignKeys[tableName] ?? []
             ) != nil
             if isJunction { junctionTableIds.insert(id) }
 
@@ -146,8 +161,8 @@ enum ERDiagramGraphBuilder {
         var seenFKNames: Set<String> = []
 
         // Sorted, because a dictionary's order changes per launch and decides port order on ties.
-        for tableName in allForeignKeys.keys.sorted() {
-            for fk in allForeignKeys[tableName] ?? [] {
+        for tableName in localForeignKeys.keys.sorted() {
+            for fk in localForeignKeys[tableName] ?? [] {
                 let edgeKey = "\(tableName).\(fk.name).\(fk.column)"
                 guard !seenFKNames.contains(edgeKey) else { continue }
                 seenFKNames.insert(edgeKey)
@@ -171,7 +186,7 @@ enum ERDiagramGraphBuilder {
 
         let manyToManyEdges = buildManyToManyEdges(
             allColumns: allColumns,
-            allForeignKeys: allForeignKeys,
+            allForeignKeys: localForeignKeys,
             nodeIndex: nodeIndex
         )
 
@@ -193,8 +208,10 @@ enum ERDiagramGraphBuilder {
 
     private static func inferCardinality(column: ColumnInfo?, uniqueColumns: Set<String>) -> ERCardinality {
         guard let column else { return .zeroOrManyToOne }
-        let isUnique = uniqueColumns.contains(column.name)
-        let isMandatory = !column.isNullable
+        return cardinality(isUnique: uniqueColumns.contains(column.name), isMandatory: !column.isNullable)
+    }
+
+    static func cardinality(isUnique: Bool, isMandatory: Bool) -> ERCardinality {
         switch (isUnique, isMandatory) {
         case (true, true): return .oneToOne
         case (true, false): return .zeroOrOneToOne
@@ -251,7 +268,7 @@ enum ERDiagramGraphBuilder {
         return edges
     }
 
-    private static func stableId(for name: String) -> UUID {
+    static func stableId(for name: String) -> UUID {
         let hash = SHA256.hash(data: Data(name.utf8))
         var bytes = [UInt8](hash.prefix(16))
         // Set UUID version 8 (custom, SHA-256) and variant bits for RFC 4122 compliance

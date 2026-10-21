@@ -134,6 +134,11 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// What `fetchTables(schema:)` lists for each named schema, in one call, each row carrying its own
     /// schema. Nil means the host asks each schema in turn; an empty list answers empty with no query.
     func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]?
+
+    /// This session's own temporary tables. A row's `schema` qualifies it in a query, nil where the bare name
+    /// reaches it. Asked only of a driver that declares ``PluginCapabilities/temporaryTables``.
+    func fetchTemporaryTables() async throws -> [PluginTableInfo]
+
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo]
 
     /// The same partitions as `fetchPartitions`, with the bound, the ordinal position and the row
@@ -617,6 +622,20 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability?
 
+    // Nil where the engine has no sequences, which keeps the sequence commands off the menu.
+    func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails?
+
+    func sequenceNextValueStatement(
+        for sequence: PluginSequenceDetails,
+        nextValue: PluginSequenceNextValue
+    ) -> String?
+
+    // Names only the settings that differ from `sequence`; nil when none do.
+    func alterSequenceStatement(
+        for sequence: PluginSequenceDetails,
+        settings: PluginSequenceSettings
+    ) -> String?
+
     // Maintenance operations (optional — return nil if not supported)
     func supportedMaintenanceOperations() -> [String]?
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]?
@@ -633,6 +652,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     // EXPLAIN query building (optional)
     func buildExplainQuery(_ sql: String) -> String?
 
+    // For a variant declared with ExplainStep.driver. The statement carries no prefix.
+    func explainPlan(statement: String, variantId: String) async throws -> PluginQueryResult
+
     func injectRowLimit(_ sql: String, limit: Int) -> String?
 
     func quoteIdentifier(_ name: String) -> String
@@ -641,6 +663,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     func createViewTemplate() -> String?
     func editViewFallbackTemplate(viewName: String) -> String?
+    func createSequenceTemplate() -> String?
     func castColumnToText(_ column: String) -> String
 
     // Trigger editing (optional — return nil when unsupported)
@@ -671,6 +694,21 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     ) -> String?
     func generateRenameEnumLabelSQL(type: PluginUserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String?
     func generateDropTypeSQL(type: PluginUserDefinedTypeInfo) -> String?
+
+    /// The statements that create a type. Nil for a kind the engine cannot create from a statement,
+    /// which keeps that kind off the New Type sheet.
+    func createUserDefinedTypeStatements(_ definition: PluginUserDefinedTypeDefinition) -> [String]?
+
+    /// The statements for one queued change. Nil for a change this engine or server version cannot
+    /// make, which keeps it out of the editor.
+    func alterUserDefinedTypeStatements(type: PluginUserDefinedTypeInfo, change: PluginUserDefinedTypeChange) -> [String]?
+
+    /// Whether this server refuses the change's statements inside a transaction block, so a save
+    /// holding it has to run each statement on its own.
+    func userDefinedTypeChangeRunsOutsideTransaction(_ change: PluginUserDefinedTypeChange) -> Bool
+
+    /// `cascade` also drops what depends on the type. Nil when the engine has no such drop.
+    func generateDropTypeSQL(type: PluginUserDefinedTypeInfo, cascade: Bool) -> String?
 
     // All-tables metadata SQL (optional — returns nil for non-SQL databases)
     func allTablesMetadataSQL(schema: String?) -> String?
@@ -790,6 +828,29 @@ public extension PluginDatabaseDriver {
 
     func generateDropTypeSQL(type: PluginUserDefinedTypeInfo) -> String? { nil }
 
+    func createUserDefinedTypeStatements(_ definition: PluginUserDefinedTypeDefinition) -> [String]? { nil }
+
+    /// A driver that only answers the two enum label hooks keeps them reachable through this one.
+    func alterUserDefinedTypeStatements(
+        type: PluginUserDefinedTypeInfo,
+        change: PluginUserDefinedTypeChange
+    ) -> [String]? {
+        switch change {
+        case .addEnumLabel(let label, let placement):
+            return generateAddEnumLabelSQL(type: type, label: label, placement: placement).map { [$0] }
+        case .renameEnumLabel(let oldLabel, let newLabel):
+            return generateRenameEnumLabelSQL(type: type, from: oldLabel, to: newLabel).map { [$0] }
+        default:
+            return nil
+        }
+    }
+
+    func generateDropTypeSQL(type: PluginUserDefinedTypeInfo, cascade: Bool) -> String? {
+        cascade ? nil : generateDropTypeSQL(type: type)
+    }
+
+    func userDefinedTypeChangeRunsOutsideTransaction(_ change: PluginUserDefinedTypeChange) -> Bool { false }
+
     /// Engines whose partitions are metadata on one table object, rather than
     /// separate relations, have nothing to nest and keep the empty default.
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] { [] }
@@ -839,6 +900,8 @@ public extension PluginDatabaseDriver {
     func fetchTablesInAllSchemas() async throws -> [PluginTableInfo]? { nil }
 
     func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? { nil }
+
+    func fetchTemporaryTables() async throws -> [PluginTableInfo] { [] }
 
     /// Schemas whose objects live in a catalog outside the database itself, such
     /// as Redshift external schemas backed by Glue, Hive, or a federated source.
@@ -1274,6 +1337,22 @@ public extension PluginDatabaseDriver {
         nil
     }
 
+    func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails? { nil }
+
+    func sequenceNextValueStatement(
+        for sequence: PluginSequenceDetails,
+        nextValue: PluginSequenceNextValue
+    ) -> String? {
+        nil
+    }
+
+    func alterSequenceStatement(
+        for sequence: PluginSequenceDetails,
+        settings: PluginSequenceSettings
+    ) -> String? {
+        nil
+    }
+
     func supportedMaintenanceOperations() -> [String]? { nil }
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]? { nil }
 
@@ -1286,10 +1365,15 @@ public extension PluginDatabaseDriver {
 
     func buildExplainQuery(_ sql: String) -> String? { nil }
 
+    func explainPlan(statement: String, variantId: String) async throws -> PluginQueryResult {
+        throw PluginDriverUnsupportedOperation.explainPlan
+    }
+
     func injectRowLimit(_ sql: String, limit: Int) -> String? { nil }
 
     func createViewTemplate() -> String? { nil }
     func editViewFallbackTemplate(viewName: String) -> String? { nil }
+    func createSequenceTemplate() -> String? { nil }
     func castColumnToText(_ column: String) -> String { column }
     func allTablesMetadataSQL(schema: String?) -> String? { nil }
     func defaultExportQuery(table: String) -> String? { nil }
@@ -1369,11 +1453,12 @@ public extension PluginDatabaseDriver {
         }
     }
 
+    // `.literal` compares code units: the default compares grapheme clusters and skips a quote a
+    // combining mark follows, which then ends the literal early.
     func escapeStringLiteral(_ value: String) -> String {
-        var result = value
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\0", with: "")
-        return result
+        value
+            .replacingOccurrences(of: "\0", with: "", options: .literal)
+            .replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     func fetchSessionContexts() async throws -> [PluginSessionContext]? { nil }

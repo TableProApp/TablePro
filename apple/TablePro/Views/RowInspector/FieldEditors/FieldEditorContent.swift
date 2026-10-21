@@ -30,7 +30,8 @@ internal struct FieldEditorContent: View {
     private var isPicker: Bool {
         switch kind {
         case .boolean, .enumPicker, .setPicker, .arrayElements, .vector, .typePicker, .valuePicker: return true
-        case .json, .phpSerialized, .image, .geometry, .blobHex, .schemaText, .multiLine, .singleLine: return false
+        case .json, .phpSerialized, .binaryValue, .image, .geometry, .blobHex, .schemaText, .multiLine, .singleLine:
+            return false
         }
     }
 
@@ -39,7 +40,7 @@ internal struct FieldEditorContent: View {
     internal static func canExpand(kind: FieldEditorKind, state: FieldValueState) -> Bool {
         guard !state.isPending else { return false }
         switch kind {
-        case .json, .phpSerialized, .multiLine: return true
+        case .json, .phpSerialized, .binaryValue, .multiLine: return true
         case .geometry(let descriptor): return canExpand(kind: descriptor.textEditorKind, state: state)
         case .image, .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .vector, .typePicker,
              .valuePicker, .schemaText, .singleLine:
@@ -51,7 +52,7 @@ internal struct FieldEditorContent: View {
     /// resizable ones from outside would stop the drag handle shrinking them past this floor.
     private static func pillHeight(for kind: FieldEditorKind) -> CGFloat? {
         switch kind {
-        case .json, .phpSerialized: return 80
+        case .json, .phpSerialized, .binaryValue: return 80
         case .image: return 200
         case .blobHex: return 60
         case .multiLine: return ResizableFieldMetrics.defaultTextHeight
@@ -69,6 +70,8 @@ internal struct FieldEditorContent: View {
             JsonEditorView(context: context, onPopOut: onPopOut, isExpanded: isExpanded)
         case .phpSerialized:
             PhpSerializedFieldView(context: context, onPopOut: onPopOut, isExpanded: isExpanded)
+        case .binaryValue(let format):
+            BinaryValueFieldView(context: context, format: format, onPopOut: onPopOut, isExpanded: isExpanded)
         case .image(let format):
             ImageFieldView(context: context, format: format)
         case .geometry(let descriptor):

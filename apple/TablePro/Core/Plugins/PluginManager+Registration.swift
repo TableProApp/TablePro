@@ -637,6 +637,10 @@ extension PluginManager {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?.schema.rowMatchTextTypePrefixes ?? []
     }
 
+    func binaryLengthFunction(for databaseType: DatabaseType) -> String? {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.binaryLengthFunction
+    }
+
     func supportsPrincipalConnectionLimit(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsPrincipalConnectionLimit ?? true
@@ -698,6 +702,14 @@ extension PluginManager {
     ) -> Bool {
         guard connectionMode != .fileBased, supportsDatabaseSwitching else { return false }
         return grouping == .byDatabase || grouping == .bySchema
+    }
+
+    /// A file engine that attaches more files lists each as a schema of the one connection, the word
+    /// SQLite's own grammar uses for `auth` in `auth.users`, since there is no container to switch to.
+    /// DuckDB declares the same list but browses its attachments as databases.
+    func listsAttachedDatabases(for databaseType: DatabaseType) -> Bool {
+        guard databaseGroupingStrategy(for: databaseType) == .flat else { return false }
+        return additionalConnectionFields(for: databaseType).contains { $0.content == .attachedDatabases }
     }
 
     func defaultGroupName(for databaseType: DatabaseType) -> String {

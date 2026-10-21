@@ -234,6 +234,16 @@ extension UserDefinedTypeInfo.Field {
     }
 }
 
+extension UserDefinedTypeInfo.Constraint {
+    init(_ constraint: PluginUserDefinedTypeConstraint) {
+        self.init(name: constraint.name, definition: constraint.definition, isValidated: constraint.isValidated)
+    }
+
+    var pluginConstraint: PluginUserDefinedTypeConstraint {
+        PluginUserDefinedTypeConstraint(name: name, definition: definition, isValidated: isValidated)
+    }
+}
+
 extension UserDefinedTypeInfo {
     init(_ type: PluginUserDefinedTypeInfo) {
         self.init(
@@ -246,7 +256,11 @@ extension UserDefinedTypeInfo {
             baseType: type.baseType,
             columnTypeSpelling: type.columnTypeSpelling,
             definition: type.definition,
-            attributes: type.attributes.map(ObjectAttribute.init)
+            attributes: type.attributes.map(ObjectAttribute.init),
+            comment: type.comment,
+            defaultValue: type.defaultValue,
+            isNotNull: type.isNotNull,
+            constraints: type.constraints.map(Constraint.init)
         )
     }
 
@@ -264,7 +278,11 @@ extension UserDefinedTypeInfo {
             baseType: baseType,
             columnTypeSpelling: columnTypeSpelling,
             definition: definition,
-            attributes: attributes.map(\.pluginAttribute)
+            attributes: attributes.map(\.pluginAttribute),
+            comment: comment,
+            defaultValue: defaultValue,
+            isNotNull: isNotNull,
+            constraints: constraints.map(\.pluginConstraint)
         )
     }
 }

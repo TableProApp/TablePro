@@ -22,6 +22,17 @@ struct UUIDCellFormTests {
         #expect(form?.value(for: Self.sample) == .text("0192f3a4-7b2c-7d1e-8f00-1a2b3c4d5e6f"))
     }
 
+    @Test("A binary column shown with swapped time fields is written in that order")
+    func swappedTimeBytes() {
+        let form = UUIDCellForm(columnType: .blob(rawType: "BINARY(16)"), displayFormat: .uuidSwappedTime)
+        #expect(form == .swappedTimeBytes)
+        // UUID_TO_BIN('0192f3a4-7b2c-7d1e-8f00-1a2b3c4d5e6f', 1)
+        #expect(form?.value(for: Self.sample) == .bytes(Data([
+            0x7D, 0x1E, 0x7B, 0x2C, 0x01, 0x92, 0xF3, 0xA4, 0x8F, 0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E, 0x6F,
+        ])))
+        #expect(UUIDCellForm(columnType: .text(rawType: "CHAR(36)"), displayFormat: .uuidSwappedTime) == nil)
+    }
+
     @Test("timeuuid takes no generated value")
     func timeUUIDIsExcluded() {
         #expect(UUIDCellForm(columnType: .text(rawType: "timeuuid"), displayFormat: nil) == nil)

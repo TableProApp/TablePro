@@ -32,6 +32,10 @@
     "“%@” has an open transaction. Deleting the connection rolls it back and discards its uncommitted changes." : {
 
     },
+    "\"%@\" is a name the database keeps for itself. Choose another name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "\"%@\" is in the list more than once." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -3172,6 +3176,14 @@
 
     },
     "Atom" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Attached Databases" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Attached databases open only for a database file on this Mac, not for a database on a server." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -6453,6 +6465,10 @@
           }
         }
       }
+    },
+    "Could not attach \"%@\": %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Could not build the %1$@ endpoint for the AWS region \"%2$@\"." : {
       "extractionState" : "manual",
@@ -13786,6 +13802,10 @@
         }
       }
     },
+    "More than one attached database is named \"%@\"." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "More than one row reads as this key, because a SQLite column with no type keeps a number and the same text apart. Change these rows with a query." : {
 
     },
@@ -16174,6 +16194,10 @@
           }
         }
       }
+    },
+    "Oracle returned no plan for this statement." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database." : {
 
@@ -20954,6 +20978,10 @@
         }
       }
     },
+    "SQL Server returned no plan for this statement." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "SQLite did not allow extension loading on this connection." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -23307,6 +23335,10 @@
     "The %d statements before it stay applied." : {
 
     },
+    "The actual plan reads V$SESSION, V$PARAMETER and V$SQL_PLAN_STATISTICS_ALL, and this account cannot. Ask for SELECT on V_$SESSION, V_$PARAMETER and V_$SQL_PLAN_STATISTICS_ALL, or for SELECT_CATALOG_ROLE. The estimated plan needs no grant." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The app and iOS versions, and your language" : {
       "localizations" : {
         "ko" : {
@@ -23334,6 +23366,14 @@
           }
         }
       }
+    },
+    "The attached database \"%@\" has no file." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The attached file \"%@\" has no name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The AWS SSO sign-in timed out before it was approved." : {
       "extractionState" : "manual",
@@ -24789,6 +24829,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The plan setting could not be turned off again, so the connection was closed. Reconnect to go on." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The path \"%@\" is too long." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -25061,6 +25105,10 @@
           }
         }
       }
+    },
+    "The saved list of attached databases is not in a format TablePro can read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The saved Microsoft Entra ID sign-in expired. Sign in again." : {
       "extractionState" : "manual",
@@ -26367,6 +26415,10 @@
           }
         }
       }
+    },
+    "This driver cannot explain a statement" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This file also holds saved queries, which import only on a Mac." : {
       "localizations" : {

@@ -58,7 +58,8 @@ enum ExportPreselection: Equatable {
     ) -> Bool {
         switch self {
         case .tables(let names, let scope):
-            guard kind == .table || kind == .view || kind == .materializedView || kind == .foreignTable else {
+            guard kind == .table || kind == .view || kind == .materializedView || kind == .foreignTable
+                || kind == .sequence else {
                 return false
             }
             guard names.contains(object) else { return false }
@@ -129,7 +130,12 @@ enum ExportPreselection: Equatable {
 /// Defines the export mode: either exporting database tables or in-memory query results.
 enum ExportMode {
     case tables(connection: DatabaseConnection, preselection: ExportPreselection)
-    case queryResults(connection: DatabaseConnection, tableRows: TableRows, suggestedFileName: String)
+    case queryResults(
+        connection: DatabaseConnection,
+        tableRows: TableRows,
+        suggestedFileName: String,
+        fillUnloaded: UnloadedValueFill? = nil
+    )
     case streamingQuery(connection: DatabaseConnection, query: String, suggestedFileName: String)
     case dataSource(DataSourceExportRequest)
 }
@@ -138,7 +144,7 @@ internal extension ExportMode {
     var connection: DatabaseConnection? {
         switch self {
         case .tables(let connection, _),
-             .queryResults(let connection, _, _),
+             .queryResults(let connection, _, _, _),
              .streamingQuery(let connection, _, _):
             return connection
         case .dataSource:
@@ -151,7 +157,7 @@ internal extension ExportMode {
         case .dataSource(let request):
             return request.databaseTypeId
         case .tables(let connection, _),
-             .queryResults(let connection, _, _),
+             .queryResults(let connection, _, _, _),
              .streamingQuery(let connection, _, _):
             return connection.type.rawValue
         }
@@ -166,7 +172,7 @@ internal extension ExportMode {
         switch self {
         case .tables:
             return nil
-        case .queryResults(_, _, let name), .streamingQuery(_, _, let name):
+        case .queryResults(_, _, let name, _), .streamingQuery(_, _, let name):
             return name
         case .dataSource(let request):
             return request.suggestedFileName
@@ -309,15 +315,19 @@ struct ExportDatabaseItem: Identifiable {
     /// only when the container was ticked whole and nothing in it has been unticked since.
     func mergingLoadedObjects(_ loaded: [ExportObjectItem]) -> ExportDatabaseItem {
         let selectsArrivals = selectsLoadedObjects && objects.allSatisfy(\.isSelected)
-        let arrivals = loaded
-            .filter { unloadedKinds.contains($0.kind) }
-            .map { object -> ExportObjectItem in
-                var arrival = object
-                arrival.isSelected = object.isSelected || selectsArrivals
-                return arrival
-            }
+        let incoming = loaded.filter { unloadedKinds.contains($0.kind) }
+        // The table listing reported these sequences as tables; one relation, so the sequence replaces it.
+        let sequenceNames = Set(incoming.filter { $0.kind == .sequence }.map(\.name))
+        let replaced = objects.filter { $0.kind == .table && sequenceNames.contains($0.name) }
+        let selectedReplacements = Set(replaced.filter(\.isSelected).map(\.name))
+        let arrivals = incoming.map { object -> ExportObjectItem in
+            var arrival = object
+            arrival.isSelected = object.isSelected || selectsArrivals
+                || (object.kind == .sequence && selectedReplacements.contains(object.name))
+            return arrival
+        }
         var merged = self
-        merged.objects = objects + arrivals
+        merged.objects = objects.filter { !($0.kind == .table && sequenceNames.contains($0.name)) } + arrivals
         merged.unloadedKinds = []
         merged.isLoadingObjects = false
         merged.selectsLoadedObjects = false

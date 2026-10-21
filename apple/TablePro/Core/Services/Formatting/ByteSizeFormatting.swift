@@ -55,4 +55,17 @@ internal enum DurationFormatting {
     internal static func string(seconds: Double) -> String {
         string(seconds: Int(seconds.rounded()))
     }
+
+    // Slow log entries mostly finish within a second, which the whole-second form shows as 0s.
+    internal static func string(microseconds: Int) -> String {
+        let microseconds = max(0, microseconds)
+        let milliseconds = (microseconds + 500) / 1_000
+        if milliseconds >= 1_000 {
+            return string(seconds: Double(microseconds) / 1_000_000)
+        }
+        if milliseconds >= 1 {
+            return Duration.milliseconds(milliseconds).formatted(.units(allowed: [.milliseconds], width: .narrow))
+        }
+        return Duration.microseconds(microseconds).formatted(.units(allowed: [.microseconds], width: .narrow))
+    }
 }

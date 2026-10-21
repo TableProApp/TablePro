@@ -30,6 +30,15 @@ struct SQLCatalogEffectClassifierTests {
         #expect(kinds("-- note\nSELECT comment FROM t").isEmpty)
     }
 
+    @Test("DISCARD TEMP and DISCARD ALL drop the session's temporary tables, other DISCARDs change nothing")
+    func discardDropsTemporaryTables() {
+        #expect(kinds("DISCARD TEMP") == .tables)
+        #expect(kinds("discard temporary") == .tables)
+        #expect(kinds("DISCARD ALL") == .tables)
+        #expect(kinds("DISCARD PLANS").isEmpty)
+        #expect(kinds("DISCARD SEQUENCES").isEmpty)
+    }
+
     @Test("Ending a transaction is reported, a rollback to a savepoint is not")
     func transactionEnds() {
         #expect(SQLCatalogEffectClassifier.effect(of: "COMMIT", grammar: grammar("PostgreSQL")).endsTransaction)

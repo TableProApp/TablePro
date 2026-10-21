@@ -22,6 +22,12 @@ extension TableViewCoordinator {
     }
 
     func handleCellInteraction(row: Int, tableColumn: Int, columnIndex: Int, tableView: NSTableView) {
+        let retry: @MainActor () -> Void = { [weak self, weak tableView] in
+            guard let self, let tableView else { return }
+            self.handleCellInteraction(row: row, tableColumn: tableColumn, columnIndex: columnIndex, tableView: tableView)
+        }
+        guard unloadedValuesAreLoaded(displayRows: [row], columns: IndexSet(integer: columnIndex), retry: retry)
+        else { return }
         guard let context = makeCellContext(row: row, columnIndex: columnIndex) else { return }
         guard presentsCell(row: row, tableColumnIndex: tableColumn) else { return }
 
@@ -37,6 +43,14 @@ extension TableViewCoordinator {
             showBlobViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
         case .viewPhpSerialized:
             showPhpViewerPopover(tableView: tableView, row: row, column: tableColumn, columnIndex: columnIndex)
+        case .viewBinaryValue(let format):
+            showBinaryValueViewerPopover(
+                tableView: tableView,
+                row: row,
+                column: tableColumn,
+                columnIndex: columnIndex,
+                format: format
+            )
         case .viewVector, .editVector:
             showVectorPopover(
                 tableView: tableView,
@@ -100,6 +114,9 @@ extension TableViewCoordinator {
         guard !isRowDeleted(displayRow: row) else { return }
         guard let tableView else { return }
         guard let column = tableColumnIndex(for: columnIndex) else { return }
+        guard unloadedValuesAreLoaded(displayRows: [row], columns: IndexSet(integer: columnIndex), retry: { [weak self] in
+            self?.handleChevronAction(row: row, columnIndex: columnIndex)
+        }) else { return }
 
         if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
             showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
@@ -180,7 +197,7 @@ extension TableViewCoordinator {
         let dbType = databaseType ?? .mysql
         let scope = userDefinedTypeScope
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,
@@ -215,7 +232,7 @@ extension TableViewCoordinator {
         let escape = resolveDriver()?.escapeStringLiteral ?? SQLEscaping.escapeStringLiteral
         let literalPrefix = SQLStringLiteralPrefix.forDatabaseType(databaseType)
 
-        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        let cellRect = self.cellRect(row: row, tableColumnIndex: column)
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
             relativeTo: cellRect,

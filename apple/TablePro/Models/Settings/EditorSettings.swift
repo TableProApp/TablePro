@@ -67,13 +67,19 @@ internal enum JSONViewMode: String, Codable, CaseIterable {
     case tree
 }
 
+internal enum EditorKeyBindings: String, Codable, CaseIterable {
+    case standard
+    case vim
+    case emacs
+}
+
 /// Editor settings
 struct EditorSettings: Codable, Equatable {
     var showLineNumbers: Bool
     var highlightCurrentLine: Bool
     var tabWidth: Int // 2, 4, or 8 spaces
     var wordWrap: Bool
-    var vimModeEnabled: Bool
+    var keyBindings: EditorKeyBindings
     var keywordCase: SQLKeywordCase
     var queryParametersEnabled: Bool
     var codeFoldingEnabled: Bool
@@ -87,7 +93,7 @@ struct EditorSettings: Codable, Equatable {
         highlightCurrentLine: true,
         tabWidth: 4,
         wordWrap: false,
-        vimModeEnabled: false,
+        keyBindings: .standard,
         keywordCase: .default,
         queryParametersEnabled: true,
         codeFoldingEnabled: true,
@@ -102,7 +108,7 @@ struct EditorSettings: Codable, Equatable {
         highlightCurrentLine: Bool = true,
         tabWidth: Int = 4,
         wordWrap: Bool = false,
-        vimModeEnabled: Bool = false,
+        keyBindings: EditorKeyBindings = .standard,
         keywordCase: SQLKeywordCase = .default,
         queryParametersEnabled: Bool = true,
         codeFoldingEnabled: Bool = true,
@@ -115,7 +121,7 @@ struct EditorSettings: Codable, Equatable {
         self.highlightCurrentLine = highlightCurrentLine
         self.tabWidth = tabWidth
         self.wordWrap = wordWrap
-        self.vimModeEnabled = vimModeEnabled
+        self.keyBindings = keyBindings
         self.keywordCase = keywordCase
         self.queryParametersEnabled = queryParametersEnabled
         self.codeFoldingEnabled = codeFoldingEnabled
@@ -132,7 +138,7 @@ struct EditorSettings: Codable, Equatable {
         highlightCurrentLine = container.decodeSetting(.highlightCurrentLine, default: fallback.highlightCurrentLine)
         tabWidth = container.decodeSetting(.tabWidth, default: fallback.tabWidth)
         wordWrap = container.decodeSetting(.wordWrap, default: fallback.wordWrap)
-        vimModeEnabled = container.decodeSetting(.vimModeEnabled, default: fallback.vimModeEnabled)
+        keyBindings = Self.decodeKeyBindings(from: container)
         keywordCase = Self.decodeKeywordCase(from: container)
         queryParametersEnabled = container.decodeSetting(.queryParametersEnabled, default: fallback.queryParametersEnabled)
         codeFoldingEnabled = container.decodeSetting(.codeFoldingEnabled, default: fallback.codeFoldingEnabled)
@@ -150,14 +156,15 @@ struct EditorSettings: Codable, Equatable {
         )
     }
 
-    /// Spelled out rather than synthesized so `uppercaseKeywords` survives as a wire key after the
-    /// property it named became `keywordCase`. Editor settings sync as one JSON blob, so both the
-    /// key an older build reads and the key this one writes have to be in it.
+    // Spelled out so `uppercaseKeywords` and `vimModeEnabled` stay on the wire after their properties became
+    // `keywordCase` and `keyBindings`. Editor settings sync as one JSON blob, so it carries both the key an older
+    // build reads and the key this one writes.
     private enum CodingKeys: String, CodingKey {
         case showLineNumbers
         case highlightCurrentLine
         case tabWidth
         case wordWrap
+        case keyBindings
         case vimModeEnabled
         case keywordCase
         case uppercaseKeywords
@@ -179,13 +186,22 @@ struct EditorSettings: Codable, Equatable {
         return legacy ? .upper : .matchTypedElseUpper
     }
 
+    private static func decodeKeyBindings(from container: KeyedDecodingContainer<CodingKeys>) -> EditorKeyBindings {
+        if let stored: EditorKeyBindings = container.decodeSetting(.keyBindings) {
+            return stored
+        }
+        let legacyVim: Bool = container.decodeSetting(.vimModeEnabled) ?? false
+        return legacyVim ? .vim : .standard
+    }
+
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(showLineNumbers, forKey: .showLineNumbers)
         try container.encode(highlightCurrentLine, forKey: .highlightCurrentLine)
         try container.encode(tabWidth, forKey: .tabWidth)
         try container.encode(wordWrap, forKey: .wordWrap)
-        try container.encode(vimModeEnabled, forKey: .vimModeEnabled)
+        try container.encode(keyBindings, forKey: .keyBindings)
+        try container.encode(keyBindings == .vim, forKey: .vimModeEnabled)
         try container.encode(keywordCase, forKey: .keywordCase)
         try container.encode(keywordCase == .upper, forKey: .uppercaseKeywords)
         try container.encode(queryParametersEnabled, forKey: .queryParametersEnabled)

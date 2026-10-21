@@ -27,6 +27,7 @@ enum PasswordSourceResolver {
         case jsonKeyNotFound(key: String)
         case storeNotTrusted
         case profileStoreNotTrusted
+        case signsInWithLease
 
         var errorDescription: String? {
             switch self {
@@ -70,13 +71,21 @@ enum PasswordSourceResolver {
                     Your credential profiles file was changed outside TablePro, so this profile's \
                     password source was not run.
                     """)
+            case .signsInWithLease:
+                return String(localized: "A Vault database role signs in with a username too, so it cannot stand in for a password alone.")
             }
         }
     }
 
     // A test reports what the source returns right now, so it neither reads nor fills the reuse cache.
+    // A Vault role test may open the browser to sign in, and revokes the lease it was given at once.
     static func test(_ source: PasswordSource, for context: ConnectionScriptContext) async throws -> String {
-        try await resolve(source.withoutReuse, for: context)
+        if case .vaultDatabaseRole(let role) = source {
+            let signIn = try await VaultDatabaseCredentials.shared.signIn(role, interactive: true)
+            signIn.lease?.release()
+            return signIn.username.map { "\($0) / \(signIn.password)" } ?? signIn.password
+        }
+        return try await resolve(source.withoutReuse, for: context)
     }
 
     static func resolve(
@@ -116,6 +125,8 @@ enum PasswordSourceResolver {
             let secret = try await resolveExternalTool(source)
             guard let jsonKey, !jsonKey.isEmpty else { return secret }
             return try extractJsonField(jsonKey, from: secret)
+        case .vaultDatabaseRole:
+            throw ResolutionError.signsInWithLease
         }
     }
 
@@ -123,7 +134,7 @@ enum PasswordSourceResolver {
     /// Arguments are single-quoted so a reference can never break out into shell injection.
     static func externalCommand(for source: PasswordSource) -> String? {
         switch source {
-        case .file, .env, .command:
+        case .file, .env, .command, .vaultDatabaseRole:
             return nil
         case let .onePassword(reference):
             return "op read --no-newline \(shellQuote(reference))"

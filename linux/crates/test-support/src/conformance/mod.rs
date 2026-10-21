@@ -2,8 +2,8 @@
 //!
 //! A driver's integration target implements an engine adapter and
 //! invokes `connection_conformance_suite!`, `ddl_conformance_suite!`,
-//! `value_corpus_suite!` and `tls_conformance_suite!` with flags for
-//! what the engine supports. A
+//! `value_corpus_suite!`, `round_trip_suite!` and `tls_conformance_suite!`
+//! with flags for what the engine supports. A
 //! flag that is off emits no test. The flags with a capability behind them (`endpoint`,
 //! `editor_transactions` and the TLS `client_identity`) are checked
 //! against the driver's capability table, so those cases cannot be
@@ -30,6 +30,7 @@ mod large_table_suite_macro;
 mod network_conformance_engine;
 mod pooled_conformance_engine;
 mod resident_peak;
+mod round_trip_suite_macro;
 mod run_case;
 mod suite_endpoint;
 mod support;

@@ -14,6 +14,40 @@ struct OracleSchemaQueriesTests {
         #expect(OracleSchemaQueries.foreignKeys(schema: owner, table: "T").contains("ac.OWNER = 'O''BRIEN'"))
     }
 
+    @Test func testQuoteFollowedByACombiningMarkIsEscaped() {
+        let owner = "O'\u{301} OR 1=1 --"
+        #expect(OracleSchemaQueries.escapeLiteral(owner) == "O''\u{301} OR 1=1 --")
+        #expect(OracleSchemaQueries.quoteIdentifier("A\"\u{301}") == "\"A\"\"\u{301}\"")
+    }
+
+    @Test func testSchemaSetListingNamesEveryOwnerAndProjectsIt() throws {
+        let statements = OracleSchemaQueries.tables(inSchemas: ["HR", "O'BRIEN"])
+        let sql = try #require(statements.first)
+        #expect(statements.count == 1)
+        #expect(sql.contains("WHERE t.owner IN ('HR', 'O''BRIEN')"))
+        #expect(sql.contains("FROM SYS.ALL_VIEWS WHERE owner IN ('HR', 'O''BRIEN')"))
+        #expect(sql.contains("SELECT view_name, 'VIEW', 'N', NULL, owner"))
+        #expect(sql.contains("ORDER BY 5, 1"))
+    }
+
+    @Test func testSchemaSetListingSplitsPastTheInListLimit() {
+        let owners = (0..<2_001).map { "U\($0)" }
+        let statements = OracleSchemaQueries.tables(inSchemas: owners)
+        #expect(statements.count == 3)
+        #expect(statements[0].contains("'U999')") && !statements[0].contains("'U1000'"))
+        #expect(statements[1].contains("IN ('U1000', ") && statements[1].contains("'U1999')"))
+        #expect(statements[2].contains("IN ('U2000')"))
+        #expect(OracleSchemaQueries.tables(inSchemas: []).isEmpty)
+    }
+
+    @Test func testParseTableRowReadsTheOwnerOfASchemaSetRow() {
+        let row = OracleSchemaQueries.parseTableRow([
+            .string("ORDERS"), .string("BASE TABLE"), .string("N"), .null, .string("SALES")
+        ])
+        #expect(row == OracleTableRow(name: "ORDERS", isView: false, schema: "SALES"))
+        #expect(OracleSchemaQueries.parseTableRow([.string("ORDERS"), .string("BASE TABLE")])?.schema == nil)
+    }
+
     @Test func testTableNameIsEscaped() {
         let sql = OracleSchemaQueries.columns(schema: "HR", table: "IT'S", release: release23ai)
         #expect(sql.contains("c.TABLE_NAME = 'IT''S'"))

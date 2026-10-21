@@ -25,6 +25,12 @@ enum QueryPlanNodeSummary {
         for property in QueryPlanLabels.visibleProperties(of: node) {
             lines.append("\(property.key): \(property.value)")
         }
+        for warning in node.warnings {
+            lines.append("\(QueryPlanLabels.warning): \(warning)")
+        }
+        for index in node.missingIndexes {
+            lines.append("\(QueryPlanLabels.missingIndex): \(index.createStatement)")
+        }
 
         return lines.joined(separator: "\n")
     }
@@ -38,6 +44,9 @@ enum QueryPlanNodeSummary {
         }
         if let severity = node.severity {
             parts.append(severity.accessibilityLabel)
+        }
+        if !node.warnings.isEmpty {
+            parts.append(QueryPlanLabels.warningCount(node.warnings.count))
         }
         if let cost = node.costRangeText(fractionDigits: 2) {
             parts.append("\(QueryPlanLabels.cost) \(cost)")

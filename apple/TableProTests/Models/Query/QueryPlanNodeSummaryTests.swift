@@ -49,6 +49,20 @@ struct QueryPlanNodeSummaryTests {
         #expect(text.contains("Filter: (id > 3)"))
     }
 
+    @Test("Copy text carries the server's warnings and missing indexes, and VoiceOver hears the warnings")
+    func carriesWarningsAndMissingIndexes() {
+        var node = makeNode()
+        node.warnings = ["No join predicate"]
+        node.missingIndexes = [
+            QueryPlanMissingIndex(impact: 90, createStatement: "CREATE NONCLUSTERED INDEX [IX_t_a] ON [dbo].[t] ([a]);")
+        ]
+        let text = QueryPlanNodeSummary.text(for: node)
+
+        #expect(text.contains("\(QueryPlanLabels.warning): No join predicate"))
+        #expect(text.contains("\(QueryPlanLabels.missingIndex): CREATE NONCLUSTERED INDEX [IX_t_a] ON [dbo].[t] ([a]);"))
+        #expect(QueryPlanNodeSummary.accessibilityLabel(for: node).contains(QueryPlanLabels.warningCount(1)))
+    }
+
     @Test("Copy text omits what the node does not report")
     func omitsMissingValues() {
         let text = QueryPlanNodeSummary.text(

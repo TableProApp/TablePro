@@ -22,7 +22,7 @@ extension TableStructureView {
             engineName: connection.type.displayName,
             isColumnsTab: selectedTab == .columns,
             kindRefusal: editGate.kindRefusal(.reorderColumns),
-            canEditSchema: connection.type.supportsSchemaEditing,
+            canEditSchema: editGate.canEditSchema,
             hasStagedChanges: structureChangeManager.hasChanges,
             isRearranged: !searchText.isEmpty || structureSortDescriptor != nil
         )

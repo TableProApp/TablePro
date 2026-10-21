@@ -45,7 +45,7 @@ struct PostgreSQLTypeQueryTests {
             "AS field_names", "AS field_types", "AS field_collations", "AS base_type", "AS collation",
             "AS not_null", "AS default_value", "AS constraint_names", "AS constraint_definitions",
             "AS range_subtype", "AS range_canonical", "AS range_subtype_diff", "AS range_opclass",
-            "AS range_collation", "AS range_multirange", "AS spelling"
+            "AS range_collation", "AS range_multirange", "AS spelling", "AS constraint_validated"
         ]
         #expect(aliases.count == PostgreSQLTypeDefinition.Column.allCases.count)
         var searchStart = sql.startIndex

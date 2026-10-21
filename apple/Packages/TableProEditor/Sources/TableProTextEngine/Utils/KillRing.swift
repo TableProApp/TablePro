@@ -7,46 +7,81 @@
 
 import Foundation
 
-/// A global kill ring similar to emacs. With support for killing and yanking multiple cursors.
-///
-/// Documentation sources:
-/// - [Emacs kill ring](https://www.gnu.org/software/emacs/manual/html_node/emacs/Yanking.html)
-/// - [Cocoa Docs](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/EventOverview/TextDefaultsBindings/TextDefaultsBindings.html)
-class KillRing {
+// Emacs semantics: https://www.gnu.org/software/emacs/manual/html_node/emacs/Appending-Kills.html
+// Each entry holds one string per cursor.
+final class KillRing {
     static let shared = KillRing()
 
     private static let bufferSizeKey = "NSTextKillRingSize"
+    // Emacs's `kill-ring-max`. Cocoa's default of one entry leaves yank-pop nothing to cycle.
+    static let defaultCapacity = 120
 
-    private var buffer: [[String]]
-    private var index = 0
+    // The view as an edit left it. A kill or yank continues the previous one only while nothing
+    // moved or changed in between.
+    struct Continuation: Equatable {
+        let owner: ObjectIdentifier
+        let selectionChangeCount: Int
+        let length: Int
+    }
+
+    enum Direction {
+        case forward
+        case backward
+    }
+
+    struct Yank {
+        let continuation: Continuation
+        let ranges: [NSRange]
+    }
+
+    let capacity: Int
+    private(set) var entries: [[String]] = []
+    private var yankIndex = 0
+    private var lastKill: Continuation?
+    private var lastYank: Yank?
 
     init(_ size: Int? = nil) {
-        buffer = Array(
-            repeating: [""],
-            // swiftlint:disable:next storage_environment_defaults
-            count: size ?? max(1, UserDefaults.standard.integer(forKey: Self.bufferSizeKey))
-        )
+        // swiftlint:disable:next storage_environment_defaults
+        let configured = UserDefaults.standard.integer(forKey: Self.bufferSizeKey)
+        capacity = max(1, size ?? (configured > 0 ? configured : Self.defaultCapacity))
     }
 
-    /// Performs the kill action in response to a delete action. Saving the deleted text to the kill ring.
-    func kill(strings: [String]) {
-        incrementIndex()
-        buffer[index] = strings
+    func kill(_ strings: [String], direction: Direction, before: Continuation?, after: Continuation) {
+        defer {
+            lastKill = after
+            lastYank = nil
+            yankIndex = 0
+        }
+        if let before, before == lastKill, let newest = entries.first, newest.count == strings.count {
+            entries[0] = zip(newest, strings).map { old, new in
+                direction == .forward ? old + new : new + old
+            }
+            return
+        }
+        entries.insert(strings, at: 0)
+        if entries.count > capacity {
+            entries.removeLast(entries.count - capacity)
+        }
     }
 
-    /// Yanks the current item in the ring.
     func yank() -> [String] {
-        buffer[index]
+        entries.isEmpty ? [] : entries[yankIndex]
     }
 
-    /// Yanks an item from the ring, and selects the next one in the ring.
-    func yankAndSelect() -> [String] {
-        let retVal = buffer[index]
-        incrementIndex()
-        return retVal
+    // Steps the yank pointer to the next older entry, wrapping to the newest.
+    func rotate() -> [String] {
+        guard !entries.isEmpty else { return [] }
+        yankIndex = (yankIndex + 1) % entries.count
+        return entries[yankIndex]
     }
 
-    private func incrementIndex() {
-        index = (index + 1) % buffer.count
+    func didYank(_ yank: Yank) {
+        lastYank = yank
+        lastKill = nil
+    }
+
+    func yank(continuing continuation: Continuation) -> Yank? {
+        guard let lastYank, lastYank.continuation == continuation else { return nil }
+        return lastYank
     }
 }

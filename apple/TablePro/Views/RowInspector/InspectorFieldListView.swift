@@ -82,14 +82,20 @@ internal struct InspectorFieldListView: View {
     /// One answer, read by the editor, by the value menu and by the keyboard shortcuts alike. A
     /// PHP-serialized value cannot be round-tripped without PHP, so the field is presented but never
     /// mutated: every Set Value command would overwrite the serialized payload with something the app
-    /// cannot rebuild.
+    /// cannot rebuild. Bytes decoded under a binary format have no writer back either.
     internal static func isFieldEditable(
         _ field: FieldEditState,
         kind: FieldEditorKind,
         rowIsEditable: Bool
     ) -> Bool {
         guard rowIsEditable, !field.isServerOwned else { return false }
-        return kind != .phpSerialized
+        switch kind {
+        case .phpSerialized, .binaryValue:
+            return false
+        case .json, .image, .geometry, .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .vector,
+             .typePicker, .valuePicker, .schemaText, .multiLine, .singleLine:
+            return true
+        }
     }
 
     /// A structure row's edits are recorded by its own grid, so `hasEdits` stays false while

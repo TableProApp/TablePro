@@ -43,6 +43,8 @@ internal enum ExportObjectLoader {
         var items = tables.compactMap { table -> ExportObjectItem? in
             let kind = PluginExportObjectKind.from(tableType: table.type.rawValue)
             guard request.kinds.contains(kind) else { return nil }
+            // A sequence holds no rows worth a file, and a role with USAGE alone cannot read it.
+            if table.type == .sequence, !request.kinds.contains(.sequence) { return nil }
             return ExportObjectItem(name: table.name, databaseName: request.containerName, kind: kind)
         }
 
@@ -58,7 +60,11 @@ internal enum ExportObjectLoader {
             items += await loadEvents(schema: request.schema, container: request.containerName, driver: pluginDriver)
         }
         if request.kinds.contains(.sequence) {
-            items += await loadSequences(schema: request.schema, container: request.containerName, driver: pluginDriver)
+            let sequences = await loadSequences(schema: request.schema, container: request.containerName, driver: pluginDriver)
+            // The table listing reported these as tables too; one relation, written once as a sequence.
+            let listedAsSequences = Set(sequences.map(\.name))
+            items.removeAll { $0.kind == .table && listedAsSequences.contains($0.name) }
+            items += sequences
         }
         if request.kinds.contains(.userType) {
             items += await loadUserTypes(schema: request.schema, container: request.containerName, driver: pluginDriver)

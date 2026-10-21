@@ -23,17 +23,44 @@ stays in the string rather than disappearing, which makes a typo visible.
 
 Do not translate symbols, SQL keywords, or the word TablePro.
 
+## Where translators work
+
+Translations come in as pull requests against `po/<locale>.po`, one
+language per pull request, reviewed like code. There is no hosted
+translation service.
+
+| Locale | Language | Status |
+|---|---|---|
+| `vi` | Vietnamese | Ships |
+| `fr`, `ko`, `tr`, `zh_CN`, `zh_TW` | French, Korean, Turkish, Simplified and Traditional Chinese | Wanted: the macOS app ships these |
+
+Start from the template CI builds, so you do not need gettext 1.0:
+
+- the `tablepro-pot` artifact of the latest
+  [Build Linux run on main](https://github.com/TableProApp/TablePro/actions/workflows/build-linux.yml?query=branch%3Amain),
+  which a nightly run keeps fresh (downloading it needs a GitHub sign-in);
+- `tablepro.pot` on each `linux-v*` release.
+
 ## Adding a new translation
 
-1. Pick a locale code (e.g. `vi`, `de`, `pt_BR`).
-2. Add it on its own line to [`LINGUAS`](LINGUAS).
-3. Generate the template ([Generating tablepro.pot](#generating-tablepropot)),
-   start `xx.po` from it and translate the entries:
+1. Pick a locale code (e.g. `de`, `pt_BR`).
+2. Get the template ([Where translators work](#where-translators-work), or
+   [Generating tablepro.pot](#generating-tablepropot)), start `xx.po` from
+   it and translate the entries:
 
    ```sh
-   meson compile -C _build tablepro-pot
    msginit --locale=xx --input=po/tablepro.pot --output=po/xx.po
    ```
+
+3. Add the code on its own line to [`LINGUAS`](LINGUAS) once the
+   translation is complete enough to ship. From then on:
+
+   - the `po` Meson suite runs `msgfmt --check` on it. With gettext 0.26
+     or newer, as in CI's Translations job, that fails an entry whose
+     translation drops or misspells a `{name}` placeholder;
+   - the .deb and .rpm install it, and their smoke test starts
+     `tablepro --help` under it and looks for its translation of
+     "Open a new window".
 
 4. Compile and install it. The package build does this on its own. To
    test locally, put the catalogue where the build looks: the directory

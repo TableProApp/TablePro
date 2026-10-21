@@ -10,18 +10,65 @@ private let columnScopeLog = Logger(subsystem: "com.TablePro", category: "Column
 
 extension MainContentCoordinator {
     func selectColumns(for tab: QueryTab) -> [String]? {
-        guard tab.tabType == .table,
-              let tableName = tab.tableContext.tableName,
-              !tab.columnLayout.hiddenColumns.isEmpty,
-              let schema = schemaColumns.cached(schemaColumnsKey(tableName, scope: scope(for: tab))) else { return nil }
+        guard let schema = tableSchemaColumns(for: tab) else { return nil }
+        if let scoped = scopedColumns(for: tab, schema: schema) { return scoped }
+        // A deferred column is spelled out in the select list, so the list cannot be `*`.
+        return unloadedValuePlan(for: tab, selecting: schema.columns, schema: schema) == nil ? nil : schema.columns
+    }
 
+    func unloadedValuePlan(for tab: QueryTab) -> UnloadedValuePlan? {
+        guard let schema = tableSchemaColumns(for: tab) else { return nil }
+        return unloadedValuePlan(
+            for: tab,
+            selecting: scopedColumns(for: tab, schema: schema) ?? schema.columns,
+            schema: schema
+        )
+    }
+
+    // The byte-length columns the tab's page query ends with, which the fetch folds back into its cells.
+    func unloadedValueLengthColumns(for tab: QueryTab) -> [String] {
+        guard let plan = unloadedValuePlan(for: tab), let selected = selectColumns(for: tab) else { return [] }
+        return plan.lengthColumns(for: selected)
+    }
+
+    var defersBinaryValues: Bool {
+        PluginManager.shared.binaryLengthFunction(for: connection.type) != nil
+    }
+
+    private func tableSchemaColumns(for tab: QueryTab) -> SchemaColumnStore.Entry? {
+        guard tab.tabType == .table, let tableName = tab.tableContext.tableName else { return nil }
+        return schemaColumns.cached(schemaColumnsKey(tableName, scope: scope(for: tab)))
+    }
+
+    private func scopedColumns(for tab: QueryTab, schema: SchemaColumnStore.Entry) -> [String]? {
+        guard !tab.columnLayout.hiddenColumns.isEmpty else { return nil }
         return ColumnFetchScope.selectColumns(
             schemaColumns: schema.columns,
             hiddenColumns: tab.columnLayout.hiddenColumns,
             primaryKeyColumns: schema.primaryKeys,
             sortColumns: tab.sortState.columns.compactMap(\.columnName),
-            valueFilteredColumns: tab.valueFilter.activeColumns.compactMap { tab.valueFilter.columnName(forColumn: $0) }
+            valueFilteredColumns: valueFilteredColumnNames(of: tab)
         )
+    }
+
+    private func unloadedValuePlan(
+        for tab: QueryTab,
+        selecting columns: [String],
+        schema: SchemaColumnStore.Entry
+    ) -> UnloadedValuePlan? {
+        UnloadedValuePlan.resolve(
+            selectedColumns: columns,
+            columnTypes: schema.columnTypes,
+            primaryKeys: schema.primaryKeys,
+            sortColumns: tab.sortState.columns.compactMap(\.columnName),
+            valueFilteredColumns: valueFilteredColumnNames(of: tab),
+            byteLengthFunction: PluginManager.shared.binaryLengthFunction(for: connection.type),
+            inlineByteLimit: connection.binaryInlineLimitBytes
+        )
+    }
+
+    private func valueFilteredColumnNames(of tab: QueryTab) -> [String] {
+        tab.valueFilter.activeColumns.compactMap { tab.valueFilter.columnName(forColumn: $0) }
     }
 
     func requeryWithColumnScope(debounced: Bool = false) {
@@ -140,6 +187,7 @@ extension MainContentCoordinator {
     /// makes two tabs on same-named tables in different databases share one entry.
     func schemaColumnsKey(_ tableName: String, scope: DatabaseScope?) -> String {
         guard let scope else { return "\(connectionId):::\(tableName)" }
-        return "\(scope.connectionId):\(scope.database):\(scope.schema ?? ""):\(tableName)"
+        let binding = scope.isSessionBound ? ":session" : ""
+        return "\(scope.connectionId):\(scope.database):\(scope.schema ?? ""):\(tableName)\(binding)"
     }
 }

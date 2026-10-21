@@ -17,6 +17,7 @@ final class CustomizationPaneViewModel: ObservableObject {
     @Published var safeModeLevel: SafeModeLevel = .silent
     @Published var connectTimeoutSeconds: Int?
     @Published var queryTimeoutSeconds: Int?
+    @Published var binaryInlineLimitKilobytes: Int?
     @Published var completionIdentifierCase: SQLIdentifierCase = .default
 
     @Published var coordinator: WeakCoordinatorRef?
@@ -33,6 +34,11 @@ final class CustomizationPaneViewModel: ObservableObject {
         {
             issues.append(String(localized: "Query timeout must be between 0 and 2,147,483 seconds."))
         }
+        if let binaryInlineLimitKilobytes,
+           !DatabaseConnection.binaryInlineLimitKilobytesRange.contains(binaryInlineLimitKilobytes)
+        {
+            issues.append(String(localized: "Binary values limit must be between 1 and 1,048,576 KB."))
+        }
         return issues
     }
 
@@ -44,6 +50,7 @@ final class CustomizationPaneViewModel: ObservableObject {
         safeModeLevel = connection.preferredSafeModeLevel
         connectTimeoutSeconds = connection.connectTimeoutSeconds
         queryTimeoutSeconds = connection.queryTimeoutSeconds
+        binaryInlineLimitKilobytes = connection.binaryInlineLimitKilobytes
         completionIdentifierCase = connection.completionIdentifierCase
     }
 }

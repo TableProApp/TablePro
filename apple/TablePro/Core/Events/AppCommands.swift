@@ -31,7 +31,8 @@ struct DataRefreshRequest: Sendable, Equatable {
     /// database instead would make a tab skip a refresh of its own data whenever the
     /// sidebar is pointing somewhere else.
     func reaches(tabScope: DatabaseScope?) -> Bool {
-        scope == nil || scope == tabScope
+        // A tab on a temporary table is bound to the session, and a change to its database still reaches it.
+        scope == nil || scope == tabScope || scope?.sessionBound == tabScope
     }
 }
 

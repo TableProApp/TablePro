@@ -196,7 +196,7 @@ struct WindowSidebarStateTests {
         let connectionId = UUID()
         let stored = """
         {"schemas":["public"],"databases":["shop"],"databaseSchemas":[],"tables":[],\
-        "objectGroups":[{"database":"shop","schema":"public","kind":"sequence","expanded":true},\
+        "objectGroups":[{"database":"shop","schema":"public","kind":"synonym","expanded":true},\
         {"database":"shop","schema":"public","kind":"view","expanded":true}],"seeded":true}
         """
         defaults.set(Data(stored.utf8), forKey: "com.TablePro.sidebar.treeExpansion.\(connectionId.uuidString)")

@@ -8,15 +8,18 @@ import TableProSQLGrammar
 
 @MainActor
 enum UserTypeDropping {
-    // The gate shows the statement and confirms it as destructive, so no prompt of its own is needed.
+    /// `isConfirmationPreCleared` is for a caller that already asked with its own destructive
+    /// alert, so the gate does not ask a second time; Touch ID and the read-only refusal still apply.
     static func drop(
         _ type: UserDefinedTypeInfo,
+        cascade: Bool = false,
         in scope: DatabaseScope,
         connection: DatabaseConnection,
+        isConfirmationPreCleared: Bool = false,
         gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
         let generated = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            driver.generateDropTypeSQL(type: type)
+            driver.generateDropTypeSQL(type: type, cascade: cascade)
         }
         guard let sql = generated else { throw DatabaseObjectCommandError.unsupported }
         try await DatabaseObjectCommandRunner.run(
@@ -25,10 +28,11 @@ enum UserTypeDropping {
             connection: connection,
             kind: .destructiveQuery,
             operationDescription: String(localized: "Drop Type"),
+            isConfirmationPreCleared: isConfirmationPreCleared,
             gate: gate
         )
         CatalogChangeService.shared.record(
-            .changed(CatalogChange(connectionId: connection.id, database: scope.database, kinds: .types))
+            .changed(CatalogChange(connectionId: connection.id, database: scope.database, kinds: cascade ? .objects : .types))
         )
     }
 }

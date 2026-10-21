@@ -193,4 +193,21 @@ internal struct InlineSuggestionSourceKindTests {
 
         #expect(InlineSuggestionSourceKind.resolve(settings: disabled, accessAllowed: true) == .off)
     }
+
+    @Test("Apple Intelligence takes inline suggestions over the active provider, and needs none")
+    func appleIntelligenceTakesInline() {
+        var copilot = settings(providerType: .copilot)
+        copilot.useAppleIntelligence = true
+        let alone = AISettings(enabled: true, inlineSuggestionsEnabled: true, useAppleIntelligence: true)
+
+        #expect(InlineSuggestionSourceKind.resolve(settings: copilot, accessAllowed: true) == .appleIntelligence)
+        #expect(InlineSuggestionSourceKind.resolve(settings: alone, accessAllowed: true) == .appleIntelligence)
+    }
+
+    @Test("Apple Intelligence follows the connection's AI policy too")
+    func appleIntelligenceFollowsTheGate() {
+        let alone = AISettings(enabled: true, inlineSuggestionsEnabled: true, useAppleIntelligence: true)
+
+        #expect(InlineSuggestionSourceKind.resolve(settings: alone, accessAllowed: false) == .off)
+    }
 }

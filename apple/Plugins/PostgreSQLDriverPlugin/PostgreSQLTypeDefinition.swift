@@ -12,11 +12,15 @@ import TableProPostgreSQLCore
 
 public struct PostgreSQLDomainConstraint: Sendable, Equatable {
     public let name: String
-    public let definition: String
 
-    public init(name: String, definition: String) {
+    /// `pg_get_constraintdef` without the ` NOT VALID` it appends to an unvalidated check.
+    public let definition: String
+    public let isValidated: Bool
+
+    public init(name: String, definition: String, isValidated: Bool = true) {
         self.name = name
         self.definition = definition
+        self.isValidated = isValidated
     }
 }
 
@@ -131,6 +135,7 @@ public enum PostgreSQLTypeDefinition {
         case rangeCollation
         case rangeMultirange
         case spelling
+        case constraintValidated
     }
 
     public static func record(from row: [PluginCellValue]) -> PostgreSQLUserDefinedTypeRecord? {
@@ -174,7 +179,13 @@ public enum PostgreSQLTypeDefinition {
             baseType: record.baseType ?? record.rangeSubtype,
             columnTypeSpelling: record.spelling,
             definition: ddl(for: record),
-            attributes: attributes(of: record)
+            attributes: attributes(of: record),
+            comment: record.comment,
+            defaultValue: record.defaultValue,
+            isNotNull: record.isNotNull,
+            constraints: record.constraints.map {
+                PluginUserDefinedTypeConstraint(name: $0.name, definition: $0.definition, isValidated: $0.isValidated)
+            }
         )
     }
 
@@ -211,6 +222,8 @@ public enum PostgreSQLTypeDefinition {
         }
     }
 
+    /// CREATE DOMAIN takes no NOT VALID, so an unvalidated check follows as the ALTER DOMAIN that
+    /// added it; inline it would be a syntax error.
     private static func domainDDL(for record: PostgreSQLUserDefinedTypeRecord, qualifiedName: String) -> String {
         var clauses: [String] = []
         if let defaultValue = record.defaultValue, !defaultValue.isEmpty {
@@ -219,15 +232,21 @@ public enum PostgreSQLTypeDefinition {
         if record.isNotNull {
             clauses.append("NOT NULL")
         }
-        clauses += record.constraints.map {
+        clauses += record.constraints.filter(\.isValidated).map {
             "CONSTRAINT \(PostgreSQLObjectQueries.quoteIdentifier($0.name)) \($0.definition)"
         }
         var head = "CREATE DOMAIN \(qualifiedName) AS \(record.baseType ?? "")"
         if let collation = record.collation, !collation.isEmpty {
             head += " COLLATE \(collation)"
         }
-        guard !clauses.isEmpty else { return "\(head);" }
-        return head + "\n" + clauses.map { "    \($0)" }.joined(separator: "\n") + ";"
+        let create = clauses.isEmpty
+            ? "\(head);"
+            : head + "\n" + clauses.map { "    \($0)" }.joined(separator: "\n") + ";"
+        let unvalidated = record.constraints.filter { !$0.isValidated }.map {
+            "ALTER DOMAIN \(qualifiedName) ADD CONSTRAINT \(PostgreSQLObjectQueries.quoteIdentifier($0.name)) "
+                + "\($0.definition) NOT VALID;"
+        }
+        return ([create] + unvalidated).joined(separator: "\n")
     }
 
     private static func rangeDDL(for record: PostgreSQLUserDefinedTypeRecord, qualifiedName: String) -> String {
@@ -307,12 +326,20 @@ public enum PostgreSQLTypeDefinition {
         }
     }
 
+    private static let notValidSuffix = " NOT VALID"
+
+    /// A row from before the validated column was read carries no flags, and reads as validated.
     private static func constraints(in row: [PluginCellValue]) -> [PostgreSQLDomainConstraint] {
         let names = PostgreSQLTextArray.elements(text(row, .constraintNames))
         let definitions = PostgreSQLTextArray.elements(text(row, .constraintDefinitions))
+        let validated = PostgreSQLTextArray.elements(text(row, .constraintValidated))
         return names.indices.compactMap { index in
             guard let name = names[index], let definition = definitions[safe: index] ?? nil else { return nil }
-            return PostgreSQLDomainConstraint(name: name, definition: definition)
+            let isValidated = (validated[safe: index] ?? nil).map { PostgreSQLCatalogBoolean.isTrue($0) } ?? true
+            let trimmed = !isValidated && definition.hasSuffix(notValidSuffix)
+                ? String(definition.dropLast(notValidSuffix.count))
+                : definition
+            return PostgreSQLDomainConstraint(name: name, definition: trimmed, isValidated: isValidated)
         }
     }
 }

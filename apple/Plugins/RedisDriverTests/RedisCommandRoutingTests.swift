@@ -122,6 +122,14 @@ struct RedisCommandRoutingPolicyTests {
         #expect(routing.spec(for: args("INFO"))?.responsePolicy == .special)
     }
 
+    /// Redis 6 reports no tips, and without this entry a cluster's slow log came from one node.
+    @Test("SLOWLOG GET reaches every node and concatenates, while SLOWLOG LEN stays on one")
+    func slowLogGet() {
+        #expect(routing.spec(for: args("SLOWLOG", "GET", "20"))?.clusterFanOut == .everyNode)
+        #expect(routing.spec(for: args("SLOWLOG", "GET"))?.responsePolicy == nil)
+        #expect(routing.spec(for: args("SLOWLOG", "LEN"))?.clusterFanOut == .single)
+    }
+
     @Test("DEL and MGET are multi-shard")
     func multiShard() {
         #expect(routing.spec(for: args("DEL", "a"))?.requestPolicy == .multiShard)

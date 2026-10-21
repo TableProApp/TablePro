@@ -135,13 +135,32 @@ struct UserTypeDroppingTests {
         #expect(installed.pooled.executedQueries.isEmpty)
     }
 
+    @Test("Cascade is refused before the gate where the driver has no cascading drop")
+    func cascadeWithoutSupportIsUnsupported() async throws {
+        let installed = try await install()
+        defer { uninstall(installed.connection) }
+
+        await #expect(throws: DatabaseObjectCommandError.unsupported) {
+            try await UserTypeDropping.drop(
+                type,
+                cascade: true,
+                in: installed.scope,
+                connection: installed.connection,
+                gate: AlwaysAllowGate()
+            )
+        }
+        #expect(installed.pooled.executedQueries.isEmpty)
+        let adapter = PluginDriverAdapter(connection: installed.connection, pluginDriver: TypeDropStubDriver())
+        #expect(DatabaseObjectToolEligibility.Support.of(adapter).cascadingDropTypeKinds.isEmpty)
+    }
+
     @Test("The adapter hands the driver the type it listed, schema and kind included")
     func adapterForwardsTheType() {
         let connection = TestFixtures.makeConnection(database: "shop", type: .cassandra)
         let adapter = PluginDriverAdapter(connection: connection, pluginDriver: TypeDropStubDriver())
 
-        #expect(adapter.generateDropTypeSQL(type: type) == "DROP TYPE shop.address")
-        #expect(adapter.generateDropTypeSQL(type: UserDefinedTypeInfo(name: "p", kind: .composite, schema: "s")) == nil)
+        #expect(adapter.generateDropTypeSQL(type: type, cascade: false) == "DROP TYPE shop.address")
+        #expect(adapter.generateDropTypeSQL(type: UserDefinedTypeInfo(name: "p", kind: .composite, schema: "s"), cascade: false) == nil)
     }
 
     @Test("Support lists exactly the kinds the driver can drop")

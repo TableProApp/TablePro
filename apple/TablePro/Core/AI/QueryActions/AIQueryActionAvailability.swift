@@ -13,6 +13,7 @@ struct AIQueryActionAvailability: Equatable {
     init(
         aiEnabled: Bool,
         hasActiveProvider: Bool,
+        appleIntelligence: AppleIntelligenceAvailability? = nil,
         connectionPolicy: AIConnectionPolicy?,
         isQueryTab: Bool,
         isConnected: Bool,
@@ -21,6 +22,7 @@ struct AIQueryActionAvailability: Equatable {
         isVisible = aiEnabled && connectionPolicy != .never && isQueryTab
         let reason = Self.reason(
             hasActiveProvider: hasActiveProvider,
+            appleIntelligence: appleIntelligence,
             isConnected: isConnected,
             hasStatement: hasStatement
         )
@@ -42,8 +44,17 @@ struct AIQueryActionAvailability: Equatable {
         return "\(base)\n\(blockedReason)"
     }
 
-    private static func reason(hasActiveProvider: Bool, isConnected: Bool, hasStatement: Bool) -> String? {
-        if !hasActiveProvider { return String(localized: "Add an AI provider in Settings > AI first.") }
+    private static func reason(
+        hasActiveProvider: Bool,
+        appleIntelligence: AppleIntelligenceAvailability?,
+        isConnected: Bool,
+        hasStatement: Bool
+    ) -> String? {
+        if let appleIntelligence {
+            if let unavailable = appleIntelligence.unavailableExplanation { return unavailable }
+        } else if !hasActiveProvider {
+            return String(localized: "Add an AI provider in Settings > AI first.")
+        }
         if !hasStatement { return String(localized: "There is no query to send yet.") }
         if !isConnected { return String(localized: "This connection is not available.") }
         return nil

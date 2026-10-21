@@ -135,6 +135,10 @@ extension MainSplitViewController {
         commandActions?.pinResultTab()
     }
 
+    @objc func compareResult(_ sender: Any?) {
+        commandActions?.compareResult()
+    }
+
     @objc func closeResultTab(_ sender: Any?) {
         commandActions?.closeResultTab()
     }

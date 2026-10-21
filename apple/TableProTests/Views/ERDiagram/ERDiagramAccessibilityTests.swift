@@ -49,7 +49,7 @@ struct ERDiagramAccessibilityTests {
             ],
             nodeIndex: ["employees": employees.id, "organization": organization.id],
             clusterColors: [:],
-            selectedNodeId: nil,
+            selectedNodeIds: [],
             size: CGSize(width: 800, height: 600)
         )
     }
@@ -191,7 +191,7 @@ struct ERDiagramAccessibilityTests {
             ],
             nodeIndex: ["users": left.id, "roles": right.id],
             clusterColors: [:],
-            selectedNodeId: nil,
+            selectedNodeIds: [],
             size: CGSize(width: 800, height: 600)
         )
         let joins = ERDiagramAccessibilityTree.Joins(scene: scene)
@@ -306,7 +306,7 @@ struct ERDiagramAccessibilityTests {
             nodeRects: [employees.id: CGRect(x: 40, y: 40, width: ERDiagramLayout.nodeWidth, height: 80)],
             nodeIndex: ["employees": employees.id],
             clusterColors: [:],
-            selectedNodeId: nil,
+            selectedNodeIds: [],
             size: CGSize(width: 800, height: 600)
         )
 

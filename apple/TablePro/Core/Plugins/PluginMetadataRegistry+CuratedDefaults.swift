@@ -254,7 +254,8 @@ extension PluginMetadataRegistry {
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
-                    browsingRequiresSelectedDatabase: true
+                    browsingRequiresSelectedDatabase: true,
+                    binaryLengthFunction: "OCTET_LENGTH"
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -324,7 +325,8 @@ extension PluginMetadataRegistry {
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
-                    browsingRequiresSelectedDatabase: true
+                    browsingRequiresSelectedDatabase: true,
+                    binaryLengthFunction: "OCTET_LENGTH"
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -703,7 +705,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: sqliteColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [.loadableExtensions()],
+                    additionalConnectionFields: [.attachedDatabases(), .loadableExtensions()],
                     category: .relational,
                     tagline: String(localized: "Embedded zero-config SQL database")
                 )

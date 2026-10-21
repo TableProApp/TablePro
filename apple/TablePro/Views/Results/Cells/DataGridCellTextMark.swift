@@ -44,10 +44,7 @@ enum DataGridCellTextMark: Equatable {
         }
     }
 
-    /// What a client reading the grid is told, since a line it cannot see is no cue at all.
-    ///
-    /// Resolved from the state rather than from the mark, because one line covers two changes a
-    /// reader needs told apart: a whole row that is new, and one edited value in a row that is not.
+    // Resolved from the state, not the mark: one line covers a new row and an edited value, which a reader must tell apart.
     static func accessibilityDescription(state: RowVisualState, columnIndex: Int) -> String? {
         switch state.vocabulary {
         case .pendingEdit:
@@ -59,6 +56,11 @@ enum DataGridCellTextMark: Equatable {
             if state.isInserted { return String(localized: "only in the source") }
             if state.isStruck(columnIndex: columnIndex) { return String(localized: "target value, differs") }
             return state.isModified(columnIndex: columnIndex) ? String(localized: "source value, differs") : nil
+        case .resultComparison:
+            if state.isDeleted { return String(localized: "only in the right result") }
+            if state.isInserted { return String(localized: "only in the left result") }
+            if state.isStruck(columnIndex: columnIndex) { return String(localized: "right value, differs") }
+            return state.isModified(columnIndex: columnIndex) ? String(localized: "left value, differs") : nil
         }
     }
 }

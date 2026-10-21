@@ -111,6 +111,14 @@ struct RedisServerInfoTests {
         #expect(RedisServerInfo.mode(from: info) == .cluster)
     }
 
+    @Test("A field is read by its whole name, not by a longer one it begins")
+    func readsAFieldByItsWholeName() {
+        let info = "# Memory\r\nused_memory_human:1.70M\r\nused_memory:1778512\r\n"
+        #expect(RedisServerInfo.value("used_memory", in: info) == "1778512")
+        #expect(RedisServerInfo.value("used_memory_human", in: info) == "1.70M")
+        #expect(RedisServerInfo.value("used_memory_peak", in: info) == nil)
+    }
+
     @Test("An absent key is absent, not a wrong answer")
     func missingKeyIsNil() {
         #expect(RedisServerInfo.mode(from: "# Server\r\n") == nil)

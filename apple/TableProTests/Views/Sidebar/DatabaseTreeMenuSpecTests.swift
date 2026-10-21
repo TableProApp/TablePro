@@ -10,7 +10,7 @@ import Testing
 @testable import TablePro
 
 struct DatabaseTreeMenuSpecTests {
-    private func tableRef(_ name: String, type: TableInfo.TableType = .table) -> DatabaseTreeTableRef {
+    func tableRef(_ name: String, type: TableInfo.TableType = .table) -> DatabaseTreeTableRef {
         DatabaseTreeTableRef(
             database: "app",
             schema: "public",
@@ -34,7 +34,7 @@ struct DatabaseTreeMenuSpecTests {
         )
     }
 
-    private func context(
+    func context(
         clicked: DatabaseTreeNode.Kind?,
         selectedTables: Set<DatabaseTreeTableRef> = [],
         selectedContainers: [DatabaseContainerRef] = [],
@@ -51,8 +51,11 @@ struct DatabaseTreeMenuSpecTests {
         supportsRename: Bool = true,
         canCopyObjects: Bool = true,
         canDuplicateDatabase: Bool = true,
+        canSearchData: Bool = true,
+        canGenerateRows: Bool = false,
         canCreateTable: Bool = true,
         canCreateView: Bool = true,
+        canCreateSequence: Bool = false,
         canCreateDatabase: Bool = false,
         supportsCreateSchema: Bool = false,
         supportsSchemaOwner: Bool = false,
@@ -122,8 +125,11 @@ struct DatabaseTreeMenuSpecTests {
             hasSchemaFilter: hasSchemaFilter,
             canCopyObjects: canCopyObjects,
             canDuplicateDatabase: canDuplicateDatabase,
+            canSearchData: canSearchData,
+            canGenerateRows: canGenerateRows,
             canCreateTable: canCreateTable,
             canCreateView: canCreateView,
+            canCreateSequence: canCreateSequence,
             canCreateDatabase: canCreateDatabase,
             objectToolSupport: objectToolSupport,
             canShowAllTables: canShowAllTables
@@ -139,7 +145,7 @@ struct DatabaseTreeMenuSpecTests {
         )
     }
 
-    private func commands(_ sections: [DatabaseTreeMenuSection]) -> [SidebarMenuCommand] {
+    func commands(_ sections: [DatabaseTreeMenuSection]) -> [SidebarMenuCommand] {
         commands(sections.flatMap(\.items))
     }
 
@@ -163,6 +169,21 @@ struct DatabaseTreeMenuSpecTests {
             case .submenu(let title, _): return title
             }
         }
+    }
+
+    // MARK: - Temporary tables
+
+    @Test("A temporary table offers only what runs on its own session")
+    func temporaryTableMenuStaysOnTheSession() {
+        let ref = DatabaseTreeTableRef(
+            database: "app",
+            schema: nil,
+            table: TableInfo(name: "scratch", type: .table, rowCount: nil, schema: "pg_temp_3")
+        )
+
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .temporaryTable(ref))))
+
+        #expect(issued == [.openInNewTab(ref), .showStructure(ref), .copyTableNames(["scratch"])])
     }
 
     // MARK: - The empty area
@@ -675,6 +696,49 @@ struct DatabaseTreeMenuSpecTests {
         })
     }
 
+    @Test("An attached database's row offers Refresh and Copy Name, nothing that treats it as a schema to switch to")
+    func attachedDatabaseRowMenu() {
+        let clicked = DatabaseContainerRef.schema(database: "app.db", schema: "auth", isSystem: false)
+        var attached = context(clicked: .schema(database: "app.db", schema: "auth"), activeDatabase: "app.db", activeSchema: nil)
+        attached.listsAttachedSchemas = true
+
+        #expect(commands(DatabaseTreeMenuSpec.sections(for: attached)) == [
+            .refreshContainers([clicked]),
+            .copyContainerNames([clicked])
+        ])
+    }
+
+    @Test("A table of an attached database is opened, noted and changed in place, never exported or copied by bare name")
+    func attachedDatabaseTableMenu() {
+        let ref = DatabaseTreeTableRef(
+            database: "app.db",
+            schema: "auth",
+            table: TableInfo(name: "users", type: .view, rowCount: nil, schema: "auth")
+        )
+        var attached = context(clicked: .table(ref), activeDatabase: "app.db", activeSchema: nil)
+        attached.listsAttachedSchemas = true
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: attached))
+
+        #expect(issued.contains(.openInNewTab(ref)))
+        #expect(issued.contains(.showStructure(ref)))
+        #expect(!issued.contains { command in
+            switch command {
+            case .exportTables, .transferTables, .copyObjectsTo, .editViewDefinition: return true
+            default: return false
+            }
+        })
+
+        let main = DatabaseTreeTableRef(
+            database: "app.db", schema: nil, table: TableInfo(name: "users", type: .table, rowCount: nil, schema: nil)
+        )
+        var mainContext = context(clicked: .table(main), activeDatabase: "app.db", activeSchema: nil)
+        mainContext.listsAttachedSchemas = true
+        #expect(commands(DatabaseTreeMenuSpec.sections(for: mainContext)).contains { command in
+            if case .exportTables = command { return true }
+            return false
+        })
+    }
+
     @Test("An unfavorited database offers every environment under Add to Favorites")
     func databaseCanBeFavoritedWithEnvironment() {
         let database = DatabaseMetadata.minimal(name: "analytics", isSystem: false)
@@ -1022,14 +1086,52 @@ struct DatabaseTreeMenuSpecTests {
         }
     }
 
-    @Test("The Types sections offer Refresh and nothing that creates a type")
-    func typesSectionsOfferOnlyRefresh() {
+    @Test("The Types sections offer only Refresh where the driver cannot create a type")
+    func typesSectionsWithoutCreation() {
         let flat = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .objectKindSection(.type))))
         #expect(flat == [.refreshObjectKind(.type)])
 
         let group = DatabaseTreeObjectGroup(database: "warehouse", schema: "billing", kind: .type)
         let tree = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .containerObjectKindSection(group))))
         #expect(tree == [.refreshContainerObjectKind(group)])
+    }
+
+    @Test("New Type leads the Types sections, scoped to the section, and is withheld read-only")
+    func typesSectionsOfferNewType() {
+        let support = DatabaseObjectToolEligibility.Support(creatableTypeKinds: [.enumeration, .domain])
+        let flat = DatabaseTreeMenuSpec.sections(for: context(clicked: .objectKindSection(.type), objectToolSupport: support))
+        #expect(flat.first.map { commands([$0]) } == [.newUserType(database: nil, schema: nil)])
+        #expect(flat.first.map { titles([$0]) } == [String(localized: "New Type…")])
+
+        let group = DatabaseTreeObjectGroup(database: "warehouse", schema: "billing", kind: .type)
+        let tree = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .containerObjectKindSection(group), objectToolSupport: support)
+        ))
+        #expect(tree.first == .newUserType(database: "warehouse", schema: "billing"))
+
+        let readOnly = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .objectKindSection(.type), isReadOnly: true, objectToolSupport: support)
+        ))
+        #expect(!readOnly.contains(.newUserType(database: nil, schema: nil)))
+
+        let tables = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .objectKindSection(.table), objectToolSupport: support)))
+        #expect(!tables.contains(.newUserType(database: nil, schema: nil)))
+    }
+
+    @Test("A type row offers Rename beside Drop Type when the driver can rename its kind")
+    func typeRowOffersRename() {
+        let ref = userTypeRef("mood")
+        let support = DatabaseObjectToolEligibility.Support(
+            droppableTypeKinds: [.enumeration],
+            renameableTypeKinds: [.enumeration]
+        )
+        let sections = DatabaseTreeMenuSpec.sections(for: context(clicked: .userType(ref), objectToolSupport: support))
+        #expect(sections.last.map { commands([$0]) } == [.renameUserType(ref), .dropUserType(ref)])
+
+        let readOnly = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .userType(ref), isReadOnly: true, objectToolSupport: support)
+        ))
+        #expect(!readOnly.contains(.renameUserType(ref)))
     }
 
     // MARK: - Copying
@@ -1174,6 +1276,81 @@ struct DatabaseTreeMenuSpecTests {
 
         #expect(!issued.contains { if case .copyContainerTo = $0 { return true } else { return false } })
         #expect(!issued.contains { if case .duplicateDatabase = $0 { return true } else { return false } })
+    }
+
+    // MARK: - Search
+
+    @Test("A database row offers Search Database, a schema row Search Schema")
+    func containersOfferSearch() {
+        let database = DatabaseTreeMenuSpec.sections(for: context(
+            clicked: databaseKind("app"), selectedContainers: [.database("app")]
+        ))
+        #expect(commands(database).contains(.searchContainer(.database("app"))))
+        #expect(titles(database).contains("Search Database\u{2026}"))
+
+        let schema = DatabaseContainerRef.schema(database: "app", schema: "sales")
+        let schemaSections = DatabaseTreeMenuSpec.sections(for: context(
+            clicked: .schema(database: "app", schema: "sales"), selectedContainers: [schema]
+        ))
+        #expect(commands(schemaSections).contains(.searchContainer(schema)))
+        #expect(titles(schemaSections).contains("Search Schema\u{2026}"))
+    }
+
+    @Test("A schema drawn in a hierarchical tree offers Search Schema too")
+    func hierarchicalSchemaOffersSearch() {
+        let issued = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .hierarchicalSchemaSection(schema: "SALES"))
+        ))
+        #expect(issued.contains(.searchContainer(.schema(database: "app", schema: "SALES"))))
+    }
+
+    @Test("Search is not offered on an engine it cannot run on, a system container or a multi-selection")
+    func searchNeedsOneUserContainer() {
+        func offersSearch(_ sections: [DatabaseTreeMenuSection]) -> Bool {
+            commands(sections).contains { if case .searchContainer = $0 { return true } else { return false } }
+        }
+        #expect(!offersSearch(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: databaseKind("app"), selectedContainers: [.database("app")], canSearchData: false
+        ))))
+        #expect(!offersSearch(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: databaseKind("information_schema", isSystem: true),
+            selectedContainers: [.database("information_schema", isSystem: true)]
+        ))))
+        #expect(!offersSearch(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: databaseKind("app"), selectedContainers: [.database("app"), .database("archive")]
+        ))))
+    }
+
+    // MARK: - Generate Rows
+
+    @Test("A table row offers Generate Rows beside the other commands that move data into it")
+    func tableOffersGenerateRows() {
+        let ref = tableRef("orders")
+        let sections = DatabaseTreeMenuSpec.sections(for: context(clicked: .table(ref), canGenerateRows: true))
+
+        #expect(commands(sections).contains(.generateRows(ref)))
+        #expect(titles(sections).contains("Generate Rows\u{2026}"))
+        let transfer = titles(sections).firstIndex(of: "Transfer To\u{2026}")
+        let generate = titles(sections).firstIndex(of: "Generate Rows\u{2026}")
+        #expect(generate.map { index in transfer.map { index < $0 } ?? false } == true)
+    }
+
+    @Test("Generate Rows is not offered on a view, on a read-only connection, or on an engine that cannot write rows")
+    func generateRowsNeedsAWritableTable() {
+        func offersGenerate(_ sections: [DatabaseTreeMenuSection]) -> Bool {
+            commands(sections).contains { if case .generateRows = $0 { return true } else { return false } }
+        }
+        let view = tableRef("active_orders", type: .view)
+        let ref = tableRef("orders")
+
+        #expect(!offersGenerate(DatabaseTreeMenuSpec.sections(for: context(clicked: .table(view), canGenerateRows: true))))
+        #expect(!offersGenerate(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: .table(ref), isReadOnly: true, canGenerateRows: true
+        ))))
+        #expect(!offersGenerate(DatabaseTreeMenuSpec.sections(for: context(clicked: .table(ref)))))
+        #expect(offersGenerate(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: .table(tableRef("events", type: .partitionedTable)), canGenerateRows: true
+        ))))
     }
 
     // MARK: - Schema management

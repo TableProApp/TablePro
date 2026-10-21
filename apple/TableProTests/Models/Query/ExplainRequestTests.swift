@@ -54,6 +54,87 @@ struct ExplainRequestTests {
         #expect(request.variantKey == .declared("analyze"))
     }
 
+    private let driverVariants = [
+        ExplainVariant.driverPlan(id: "estimated", label: "Estimated Plan", format: .oraclePlanRows, runsStatement: false),
+        ExplainVariant.driverPlan(id: "actual", label: "Actual Plan", format: .oraclePlanRows, runsStatement: true),
+    ]
+
+    @Test("A driver plan sends the statement alone and names the variant the driver runs")
+    func driverPlanSendsStatementAlone() throws {
+        let request = try #require(
+            ExplainRequest.make(
+                variant: driverVariants[1],
+                declaredVariants: driverVariants,
+                databaseType: .oracle,
+                statement: "SELECT * FROM t"
+            )
+        )
+
+        #expect(request.sql == "SELECT * FROM t")
+        #expect(request.subjectSQL == "SELECT * FROM t")
+        #expect(request.format == .oraclePlanRows)
+        #expect(request.variantKey == .declared("actual"))
+        #expect(request.driverStep == ExplainRequest.DriverStep(variantId: "actual", runsStatement: true))
+        #expect(request.replayableSQL == nil)
+    }
+
+    @Test("A prefix variant has no driver step")
+    func prefixVariantHasNoDriverStep() throws {
+        let request = try #require(
+            ExplainRequest.make(
+                variant: nil, declaredVariants: postgresVariants, databaseType: .postgresql, statement: "SELECT 1"
+            )
+        )
+        #expect(request.driverStep == nil)
+        #expect(request.replayableSQL == "EXPLAIN (FORMAT JSON) SELECT 1")
+    }
+
+    @Test("A driver plan that only plans a DELETE is a read, and one that runs it is the DELETE")
+    func driverPlanOperationKind() throws {
+        func kind(_ variant: ExplainVariant) throws -> OperationKind {
+            try #require(
+                ExplainRequest.make(
+                    variant: variant,
+                    declaredVariants: driverVariants,
+                    databaseType: .oracle,
+                    statement: "DELETE FROM t WHERE id = 1"
+                )
+            ).operationKind(databaseType: .oracle)
+        }
+        #expect(try kind(driverVariants[0]) == .readQuery)
+        #expect(try kind(driverVariants[1]) == .writeQuery)
+    }
+
+    @Test(
+        "An estimated driver plan of a statement no plan describes is gated as the statement",
+        arguments: ["SET IMPLICIT_TRANSACTIONS ON", "USE master", "EXEC dbo.purge"]
+    )
+    func unplannedStatementIsGatedAsItself(statement: String) throws {
+        let request = try #require(
+            ExplainRequest.make(
+                variant: driverVariants[0], declaredVariants: driverVariants, databaseType: .mssql, statement: statement
+            )
+        )
+        #expect(ExplainRequest.gatedSQL(subject: statement, runsStatement: false) == statement)
+        #expect(request.operationKind(databaseType: .mssql) == .writeQuery)
+    }
+
+    @Test("A prefix variant's kind comes from the prefixed statement")
+    func prefixVariantOperationKind() throws {
+        func kind(_ variant: ExplainVariant) throws -> OperationKind {
+            try #require(
+                ExplainRequest.make(
+                    variant: variant,
+                    declaredVariants: postgresVariants,
+                    databaseType: .postgresql,
+                    statement: "DELETE FROM t WHERE id = 1"
+                )
+            ).operationKind(databaseType: .postgresql)
+        }
+        #expect(try kind(postgresVariants[0]) == .readQuery)
+        #expect(try kind(postgresVariants[1]) == .writeQuery)
+    }
+
     @Test("A driver that declares no variants has no request to build")
     func returnsNilWithoutVariants() {
         #expect(

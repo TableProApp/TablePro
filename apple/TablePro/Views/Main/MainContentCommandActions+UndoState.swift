@@ -19,10 +19,23 @@ extension MainContentCommandActions {
         coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure
     }
 
+    // The diagram stages on one session per table, so it keeps its own order across them.
+    private var selectedDiagram: ERDiagramViewModel? {
+        guard let coordinator, let tab = coordinator.tabManager.selectedTab, tab.tabType == .erDiagram else {
+            return nil
+        }
+        return coordinator.erDiagramModels[tab.id]
+    }
+
+    private var isDiagramTab: Bool {
+        coordinator?.tabManager.selectedTab?.tabType == .erDiagram
+    }
+
     /// A field still being typed into has an undo step waiting rather than registered, and the menu
     /// has to offer it: the command ends the run before it reaches the undo manager.
     var canUndo: Bool {
         if isUsersRolesTab { return coordinator?.usersRolesActions?.canUndo() ?? false }
+        if isDiagramTab { return selectedDiagram?.canUndoStagedEdit ?? false }
         if isStructureMode { return coordinator?.structureActions?.undo != nil }
         if coordinator?.changeManager.hasCoalescedUndoRun == true { return true }
         return windowUndoManager?.canUndo ?? false
@@ -30,12 +43,14 @@ extension MainContentCommandActions {
 
     var canRedo: Bool {
         if isUsersRolesTab { return coordinator?.usersRolesActions?.canRedo() ?? false }
+        if isDiagramTab { return selectedDiagram?.canRedoStagedEdit ?? false }
         if isStructureMode { return coordinator?.structureActions?.redo != nil }
         return windowUndoManager?.canRedo ?? false
     }
 
     var resolvedUndoTitle: String {
         if isUsersRolesTab { return undoMenuTitle }
+        if isDiagramTab { return String(localized: "Undo") }
         if coordinator?.changeManager.hasCoalescedUndoRun == true {
             return String(localized: "Undo Edit Cell")
         }
@@ -45,6 +60,7 @@ extension MainContentCommandActions {
 
     var resolvedRedoTitle: String {
         if isUsersRolesTab { return redoMenuTitle }
+        if isDiagramTab { return String(localized: "Redo") }
         guard let manager = windowUndoManager, manager.canRedo else { return String(localized: "Redo") }
         return manager.redoMenuItemTitle
     }
@@ -65,6 +81,10 @@ extension MainContentCommandActions {
             coordinator?.createTableActions?.undo?()
             return
         }
+        if isDiagramTab {
+            selectedDiagram?.undoStagedEdit()
+            return
+        }
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.undo?()
             return
@@ -81,6 +101,10 @@ extension MainContentCommandActions {
         }
         if coordinator?.tabManager.selectedTab?.tabType == .createTable {
             coordinator?.createTableActions?.redo?()
+            return
+        }
+        if isDiagramTab {
+            selectedDiagram?.redoStagedEdit()
             return
         }
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {

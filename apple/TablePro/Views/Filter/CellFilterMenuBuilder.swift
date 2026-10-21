@@ -20,7 +20,8 @@ enum CellFilterMenuBuilder {
     static func conditions(
         columnName: String,
         columnType: ColumnType?,
-        value: PluginCellValue
+        value: PluginCellValue,
+        family: SQLTypeFamily? = nil
     ) -> [TableFilter] {
         switch value {
         case .null:
@@ -29,7 +30,7 @@ enum CellFilterMenuBuilder {
             guard let columnType, ColumnTypeSQLQuoting.supportsEmptyStringComparison(columnType) else { return [] }
             return [.isEmpty, .isNotEmpty].map { filter(columnName, $0) }
         case .text(let text):
-            guard let columnType, matchesExactly(text, columnType: columnType) else { return [] }
+            guard let columnType, matchesExactly(text, columnType: columnType, family: family) else { return [] }
             return comparisonOperators(for: columnType).map { filter(columnName, $0, value: text) }
         case .bytes:
             return []
@@ -50,9 +51,10 @@ enum CellFilterMenuBuilder {
         columnName: String,
         columnType: ColumnType?,
         value: PluginCellValue,
+        family: SQLTypeFamily? = nil,
         apply: @escaping (TableFilter) -> Void
     ) -> NSMenuItem? {
-        let filters = conditions(columnName: columnName, columnType: columnType, value: value)
+        let filters = conditions(columnName: columnName, columnType: columnType, value: value, family: family)
         guard !filters.isEmpty else { return nil }
 
         let submenu = NSMenu()
@@ -66,8 +68,8 @@ enum CellFilterMenuBuilder {
         return item
     }
 
-    private static func matchesExactly(_ text: String, columnType: ColumnType) -> Bool {
-        guard ColumnTypeSQLQuoting.hasEqualityOperator(columnType),
+    private static func matchesExactly(_ text: String, columnType: ColumnType, family: SQLTypeFamily?) -> Bool {
+        guard ColumnTypeSQLQuoting.hasEqualityOperator(columnType, family: family),
               (text as NSString).length <= maxValueLength,
               text == text.trimmingCharacters(in: .whitespaces) else { return false }
         return !FilterOperand.readsAsNullLiteral(text, columnType: columnType)

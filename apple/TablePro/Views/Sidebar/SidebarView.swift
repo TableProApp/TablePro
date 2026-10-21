@@ -7,6 +7,7 @@
 
 import SwiftUI
 import TableProPluginKit
+import TableProUtilities
 
 struct SidebarView: View {
     @ObservedObject private var licenseManager = LicenseManager.shared
@@ -17,6 +18,7 @@ struct SidebarView: View {
 
     @ObservedObject private var schemaService = SchemaService.shared
     @ObservedObject private var treeMetadata = DatabaseTreeMetadataService.shared
+    @ObservedObject private var temporaryTables = TemporaryTableStore.shared
 
     @ObservedObject var sidebarState: SharedSidebarState
     @ObservedObject var windowState: WindowSidebarState
@@ -45,7 +47,35 @@ struct SidebarView: View {
     private var hasAnyMatch: Bool {
         SidebarObjectKind.allCases.contains { kind in
             countFor(kind: kind) > 0
-        } || !otherSchemaMatches.isEmpty
+        } || !otherSchemaMatches.isEmpty || !attachedSchemaMatches.isEmpty || hasTemporaryMatch
+    }
+
+    private var attachedSchemaMatches: [String] {
+        guard rootShape == .flat, !viewModel.filterQuery.isEmpty, let database = activeDatabase,
+              PluginManager.shared.listsAttachedDatabases(for: viewModel.databaseType) else { return [] }
+        let searchText = viewModel.filterQuery
+        return SidebarAttachedSchemas.visible(
+            attached: schemaService.attachedSchemas(for: connectionId),
+            database: database,
+            searchText: searchText,
+            loadedContent: { schema in
+                DatabaseTreeFilter.loadedObjectBuckets(
+                    in: treeMetadata,
+                    connectionId: connectionId,
+                    database: database,
+                    schema: schema,
+                    searchText: searchText
+                )
+            }
+        )
+    }
+
+    private var hasTemporaryMatch: Bool {
+        let search = SidebarSearch(viewModel.filterQuery)
+        let database = activeDatabase
+        return temporaryTables.tables(connectionId: connectionId, database: database ?? "").contains {
+            search.matchesObject(named: $0.name, database: database, schema: $0.schema)
+        }
     }
 
     /// The schemas the flat outline lists below its own sections. Counted here too, or a search
@@ -165,6 +195,11 @@ struct SidebarView: View {
         }
         .onChange(of: settingsManager.general.showRecentTables) { _ in
             sidebarState.reloadRecentTablesFromStore()
+        }
+        // A new session, or a database whose session is another connection, holds its own temporary tables.
+        .task(id: TemporaryTableReadKey(connectionId: connectionId, database: activeDatabase, isConnected: isConnected)) {
+            guard isConnected else { return }
+            TemporaryTableStore.shared.refresh(connectionId: connectionId)
         }
         .onAppear {
             coordinator?.sidebarViewModel = viewModel
@@ -428,6 +463,12 @@ struct SidebarView: View {
         case .type:    return viewModel.filteredUserTypes(from: userDefinedTypes).count
         }
     }
+}
+
+private struct TemporaryTableReadKey: Hashable {
+    let connectionId: UUID
+    let database: String?
+    let isConnected: Bool
 }
 
 // MARK: - Preview

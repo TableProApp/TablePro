@@ -62,7 +62,7 @@ struct QueryEditorView: View {
                 scope: scope,
                 commands: commands,
                 isExecuting: isExecuting,
-                vimMode: settingsManager.editor.vimModeEnabled ? vimMode : nil,
+                vimMode: settingsManager.editor.keyBindings == .vim ? vimMode : nil,
                 showsHistoryTip: showsHistoryTip,
                 onAIAction: { action in onAIAction?(action, .selectionOrStatementAtCursor) },
                 onRun: onRun,

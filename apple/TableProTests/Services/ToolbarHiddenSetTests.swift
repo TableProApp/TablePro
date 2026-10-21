@@ -66,7 +66,7 @@ struct ToolbarHiddenSetTests {
     @Test("Applying a context hides exactly its set and validates once")
     func applyWritesTheResolversSet() throws {
         let (owner, toolbar) = makeOwner()
-        let context = ToolbarContext(tabKind: .erDiagram, isFileBased: true, supportsContainerSwitching: false)
+        let context = ToolbarContext(tabKind: .serverDashboard, isFileBased: true, supportsContainerSwitching: false)
         let visibility = ToolbarContextResolver.visibility(for: context.visibilityKey)
         #expect(visibility.hidden == [MainWindowToolbar.database, MainWindowToolbar.saveChanges])
 

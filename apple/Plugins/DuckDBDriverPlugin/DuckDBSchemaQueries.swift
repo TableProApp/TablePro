@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 enum DuckDBTableListingScope: Sendable, Equatable {
     case schema
@@ -305,16 +306,38 @@ enum DuckDBSchemaQueries {
     /// session holds anything at all.
     ///
     /// One catalog is the file itself, so a count above one means the user attached something,
-    /// and an `ATTACH` does not survive a reopen.
-    static let sessionHeldState = """
+    /// and an `ATTACH` does not survive a reopen. A catalog the connection attached itself is left
+    /// out of the count only while it still holds the same file, under the same name and access,
+    /// and one that is gone counts as held: a reopen attaches every one of them again, which would
+    /// undo a `DETACH` or replace whatever the user attached under that name.
+    static let sessionHeldState = sessionHeldState(excluding: [])
+
+    static func sessionHeldState(excluding attachments: [AttachedDatabase], readOnly: Bool = false) -> String {
+        let matches = attachments.map {
+            "(database_name = \(quoteLiteral($0.name)) AND coalesce(path, '') = \(quoteLiteral($0.expandedPath))"
+                + " AND readonly = \(readOnly))"
+        }
+        let excluded = matches.isEmpty ? "" : " AND NOT (\(matches.joined(separator: " OR ")))"
+        let present = matches.isEmpty
+            ? "0"
+            : "(SELECT count(*) FROM duckdb_databases() WHERE internal = false AND (\(matches.joined(separator: " OR "))))"
+        return """
         SELECT
-            (SELECT count(*) FROM duckdb_databases() WHERE internal = false) AS catalog_count,
+            (SELECT count(*) FROM duckdb_databases() WHERE internal = false\(excluded))
+                + \(attachments.count) - \(present) AS catalog_count,
             (SELECT count(*) FROM duckdb_tables() WHERE temporary AND internal = false)
                 + (SELECT count(*) FROM duckdb_views() WHERE temporary AND internal = false)
                 + (SELECT count(*) FROM duckdb_functions() WHERE internal = false)
                 + (SELECT count(*) FROM duckdb_prepared_statements())
                 + (SELECT count(*) FROM duckdb_variables()) AS session_object_count
         """
+    }
+
+    /// `ATTACH` takes no bound parameters, so the path goes in as a quoted literal.
+    static func attach(_ database: AttachedDatabase, readOnly: Bool) -> String {
+        let options = readOnly ? " (READ_ONLY)" : ""
+        return "ATTACH \(quoteLiteral(database.expandedPath)) AS \(quoteIdentifier(database.name))\(options)"
+    }
 
     /// `duckdb_settings()` reports no default, so a setting the user changed is only visible by
     /// comparing against what the connection opened with. The driver snapshots this at connect

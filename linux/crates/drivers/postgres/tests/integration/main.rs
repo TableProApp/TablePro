@@ -19,6 +19,7 @@ mod metadata;
 mod paging;
 mod pgbouncer;
 mod read_only;
+mod round_trip;
 mod slow_route;
 mod support;
 mod tls;

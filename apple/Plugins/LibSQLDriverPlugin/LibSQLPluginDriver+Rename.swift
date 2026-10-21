@@ -13,8 +13,7 @@ extension LibSQLPluginDriver {
         guard objectType.uppercased() == "TABLE" else {
             throw PluginDriverUnsupportedOperation.renameTable
         }
-        _ = try await execute(
-            query: "ALTER TABLE \(quoteIdentifier(name)) RENAME TO \(quoteIdentifier(newName))"
-        )
+        let table = SQLiteMasterQueries.qualifiedTable(name, schema: schema, quote: quoteIdentifier)
+        _ = try await execute(query: "ALTER TABLE \(table) RENAME TO \(quoteIdentifier(newName))")
     }
 }

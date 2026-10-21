@@ -528,6 +528,14 @@ final class MainContentCommandActions: ObservableObject {
         !selectedTables.wrappedValue.isEmpty
     }
 
+    var canBuildJoinQuery: Bool {
+        isConnected && coordinator?.canBuildJoinQuery == true
+    }
+
+    func buildJoinQuery() {
+        coordinator?.openJoinBuilder(seededWith: selectedTables.wrappedValue)
+    }
+
     /// A selection can be perfectly valid and still hold nothing truncatable, so the menu bar asks
     /// this rather than `hasTableSelection`, which is what let it stage a `TRUNCATE` on a view.
     var canTruncateSelectedTables: Bool {
@@ -876,6 +884,8 @@ final class MainContentCommandActions: ObservableObject {
                 return false
             }
         }
+        guard await applySelectedDiagramEdits(in: coordinator) else { return false }
+        guard await applySelectedTypeChanges() else { return false }
 
         // Data grid changes or pending table operations take priority
         let hasDataChanges = coordinator.changeManager.hasChanges
@@ -922,17 +932,12 @@ final class MainContentCommandActions: ObservableObject {
         guard let coordinator else { return true }
         let selectedId = coordinator.tabManager.selectedTabId
         let victims = tabs.filter { tab in
-            tab.id != selectedId && coordinator.structureSessions[tab.id]?.changeManager.hasChanges == true
+            tab.id != selectedId && coordinator.hasStagedStructureEdits(in: tab)
         }
-        guard !victims.isEmpty else { return true }
-
         for tab in victims {
-            guard let session = coordinator.structureSessions[tab.id] else { continue }
-            guard await session.applyStagedChanges(coordinator: coordinator).allowsClose else {
-                return false
-            }
+            guard await applyStagedSchemaWork(of: tab, in: coordinator) else { return false }
         }
-        return true
+        return await applyBackgroundTypeChanges(in: tabs)
     }
 
 
@@ -951,54 +956,6 @@ final class MainContentCommandActions: ObservableObject {
     func truncateTables() {
         guard canTruncateSelectedTables else { return }
         coordinator?.sidebarViewModel?.batchToggleTruncate()
-    }
-
-    func createView() {
-        coordinator?.createView()
-    }
-
-    func createNewTable() {
-        coordinator?.createNewTable()
-    }
-
-    func showERDiagram() {
-        coordinator?.showERDiagram()
-    }
-
-    func showServerDashboard() {
-        coordinator?.showServerDashboard()
-    }
-
-    func showQueryInsights() {
-        coordinator?.showQueryInsights()
-    }
-
-    var supportsServerDashboard: Bool {
-        guard let type = coordinator?.connection.type else { return false }
-        return ServerDashboardQueryProviderFactory.supportsDashboard(for: type)
-    }
-
-    func showUsersAndRoles() {
-        coordinator?.showUsersAndRoles()
-    }
-
-    var supportsUserManagement: Bool {
-        guard let connectionId = coordinator?.connectionId,
-              let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter
-        else { return false }
-        return adapter.schemaPluginDriver.capabilities.contains(.userManagement)
-    }
-
-    // MARK: - Tab Navigation (Group A — Called Directly)
-
-    /// Selects the Nth editor tab of the connection on screen. It used to index the window's
-    /// native tab group, which named windows rather than tabs.
-    func selectTab(number: Int) {
-        coordinator?.tabManager.selectTab(at: number - 1)
-    }
-
-    func selectTab(offsetBy offset: Int) {
-        coordinator?.tabManager.selectTab(offsetBy: offset)
     }
 
     // MARK: - Filter Operations (Group A — Called Directly)
@@ -1058,6 +1015,10 @@ final class MainContentCommandActions: ObservableObject {
             coordinator?.createTableActions?.createTable?()
             return
         }
+        if saveSelectedDiagram() {
+            return
+        }
+        if saveSelectedTypeChanges() { return }
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             applyStagedStructureChanges()
         } else if coordinator?.changeManager.hasChanges == true
@@ -1420,6 +1381,14 @@ final class MainContentCommandActions: ObservableObject {
         guard let coordinator,
               let activeId = coordinator.tabManager.selectedTab?.display.activeResultSet?.id else { return }
         coordinator.togglePinResultSet(id: activeId)
+    }
+
+    var canCompareResult: Bool {
+        coordinator?.canCompareActiveResult ?? false
+    }
+
+    func compareResult() {
+        coordinator?.compareActiveResult()
     }
 
     func closeResultTab() {

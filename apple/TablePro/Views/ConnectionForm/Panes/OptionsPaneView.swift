@@ -23,8 +23,10 @@ struct OptionsPaneView: View {
     var body: some View {
         Form {
             driverSection
+            attachedDatabasesSection
             extensionsSection
             timeoutSection
+            binaryValuesSection
             completionSection
             startupSection
             preConnectSection
@@ -134,6 +136,45 @@ struct OptionsPaneView: View {
         )
     }
 
+    // MARK: - Binary values
+
+    @ViewBuilder
+    private var binaryValuesSection: some View {
+        if PluginManager.shared.binaryLengthFunction(for: databaseType) != nil {
+            Section {
+                LabeledContent(String(localized: "Load binary values up to")) {
+                    HStack(spacing: 4) {
+                        TextField(
+                            String(localized: "Load binary values up to"),
+                            value: $coordinator.customization.binaryInlineLimitKilobytes,
+                            format: .number.grouping(.never),
+                            prompt: Text(verbatim: binaryInlineLimitPlaceholder)
+                        )
+                        .labelsHidden()
+                        .frame(width: 100)
+                        .multilineTextAlignment(.trailing)
+                        .accessibilityIdentifier("connection-form-binary-inline-limit")
+                        Text(String(localized: "KB"))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text(String(localized: "Table Data"))
+            } footer: {
+                Text(String(localized: """
+                    A larger binary value stays on the server until you open, copy or export it. \
+                    Applies to tables with a primary key.
+                    """))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var binaryInlineLimitPlaceholder: String {
+        String(format: String(localized: "Default (%d)"), UnloadedValuePlan.defaultInlineByteLimit / 1_024)
+    }
+
     // MARK: - Autocomplete
 
     @ViewBuilder
@@ -199,6 +240,23 @@ struct OptionsPaneView: View {
             },
             set: { coordinator.advanced.additionalFieldValues[field.id] = $0 }
         )
+    }
+
+    // MARK: - Attached Databases
+
+    @ViewBuilder
+    private var attachedDatabasesSection: some View {
+        if let field = coordinator.advanced.attachedDatabaseListField {
+            Section {
+                AttachedDatabaseListEditor(value: advancedFieldBinding(for: field), databaseType: databaseType)
+            } header: {
+                Text(field.label)
+            } footer: {
+                Text("Attached each time the connection opens. Reach a table as name.table, and browse each database in the sidebar.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     // MARK: - Extensions
@@ -337,10 +395,10 @@ struct OptionsPaneView: View {
             }
             if aiIsEnabled {
                 // swiftlint:disable:next line_length
-                Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, and AppleScript. Effective scope is the minimum of the requesting token's scope and the External Clients level."))
+                Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level."))
             } else {
                 // swiftlint:disable:next line_length
-                Text(String(localized: "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript) access this connection. Tokens cannot exceed this level even with full-access scope."))
+                Text(String(localized: "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope."))
             }
         }
         .font(.caption)

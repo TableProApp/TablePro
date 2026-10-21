@@ -63,6 +63,7 @@ struct PersistedTab: Codable {
     var columnContentWidths: [String: CGFloat]?
     var windowGroupIndex: Int?
     var isPinned: Bool = false
+    var isTemporary: Bool = false
 
     /// Set when the query was too large for the tab-state JSON and lives in a sidecar file.
     var overflowFileName: String?
@@ -93,7 +94,8 @@ struct PersistedTab: Codable {
         columnWidths: [String: CGFloat]? = nil,
         columnContentWidths: [String: CGFloat]? = nil,
         windowGroupIndex: Int? = nil,
-        isPinned: Bool = false
+        isPinned: Bool = false,
+        isTemporary: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -121,6 +123,7 @@ struct PersistedTab: Codable {
         self.columnContentWidths = columnContentWidths
         self.windowGroupIndex = windowGroupIndex
         self.isPinned = isPinned
+        self.isTemporary = isTemporary
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -130,6 +133,7 @@ struct PersistedTab: Codable {
         case collapsedFoldRanges
         case columnWidths, columnContentWidths, windowGroupIndex
         case isPinned
+        case isTemporary
         case overflowFileName
     }
 
@@ -161,6 +165,7 @@ struct PersistedTab: Codable {
         columnContentWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnContentWidths)
         windowGroupIndex = try container.decodeIfPresent(Int.self, forKey: .windowGroupIndex)
         isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        isTemporary = try container.decodeIfPresent(Bool.self, forKey: .isTemporary) ?? false
         overflowFileName = try container.decodeIfPresent(String.self, forKey: .overflowFileName)
     }
 }
@@ -186,6 +191,10 @@ struct TabChangeSnapshot: Equatable {
 
     var hasChanges: Bool {
         !changes.isEmpty || !insertedRowIDs.isEmpty || !deletedRowIDs.isEmpty
+    }
+
+    mutating func adoptLoadedValues(_ values: [RowID: [Int: PluginCellValue]]) {
+        RowChange.adoptLoadedValues(values, into: &changes)
     }
 }
 
@@ -500,6 +509,8 @@ struct ColumnLayoutState: Equatable {
     var columnContentWidths: [String: CGFloat]?
     var columnOrder: [String]?
     var hiddenColumns: Set<String> = []
+    // Leading columns in display order, a count so a result that repeats a name stays unambiguous.
+    var frozenColumnCount: Int = 0
 
     /// Splices a captured order into the stored one, keeping names the capture never saw.
     ///
@@ -538,6 +549,7 @@ struct ColumnLayoutState: Equatable {
         columnWidths = other.columnWidths
         columnContentWidths = other.columnContentWidths
         columnOrder = Self.mergedColumnOrder(current: columnOrder, incoming: other.columnOrder)
+        frozenColumnCount = other.frozenColumnCount
     }
 
     /// Drops the geometry outright. Reset is not a capture, so it must not go through the merge,
@@ -546,6 +558,7 @@ struct ColumnLayoutState: Equatable {
         columnWidths = [:]
         columnContentWidths = nil
         columnOrder = nil
+        frozenColumnCount = 0
     }
 
     func mergingWidths(_ liveWidths: [String: CGFloat]) -> ColumnLayoutState {
@@ -602,12 +615,16 @@ struct TabTableContext: Equatable {
     /// learned the kind; `resolvedObjectKind()` falls back to what `isView` can still tell us.
     var objectType: TableInfo.TableType?
 
+    // Read on the session that holds it, and browsed only: a staged row edit would land on whatever table the name
+    // reaches once the temporary one is dropped.
+    var isTemporary = false
+
     func resolvedObjectKind() -> TableInfo.TableType {
         objectType ?? (isView ? .view : .table)
     }
 
     var allowsRowEditing: Bool {
-        !isView && resolvedObjectKind().allowsRowEditing
+        !isView && !isTemporary && resolvedObjectKind().allowsRowEditing
     }
 
     var primaryKeyColumn: String? { primaryKeyColumns.first }

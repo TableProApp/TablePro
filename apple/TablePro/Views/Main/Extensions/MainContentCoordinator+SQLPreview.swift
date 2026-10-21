@@ -17,7 +17,14 @@ extension MainContentCoordinator {
         pendingDeletes: Set<DatabaseTreeTableRef>,
         tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
     ) {
-        if tabManager.selectedTab?.display.resultsViewMode == .structure {
+        if let tab = tabManager.selectedTab, tab.tabType == .erDiagram {
+            guard let diagram = erDiagramModels[tab.id] else { return }
+            Task { await diagram.previewStagedEdits(coordinator: self) }
+            return
+        }
+        if let tabId = tabManager.selectedTabId, userTypeEditors[tabId]?.hasChanges == true {
+            previewUserTypeChanges(tabId: tabId)
+        } else if tabManager.selectedTab?.display.resultsViewMode == .structure {
             // Structure view handles its own preview via direct call
             structureActions?.previewSQL?()
         } else {
@@ -111,7 +118,8 @@ extension MainContentCoordinator {
             let rowWrite = try changeManager.buildRowWrites(
                 database: scope.database,
                 schema: scope.schema,
-                containsTableOperation: hasPendingTableOps
+                containsTableOperation: hasPendingTableOps,
+                rowsWithUnloadedValues: rowsWithUnloadedValues()
             )
             steps.append(contentsOf: rowWrite.steps)
             rowOperations = rowWrite.operations

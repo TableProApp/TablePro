@@ -22,6 +22,7 @@ extension SQLitePluginDriver {
         schema: String?,
         respecification: PluginTableRespecification
     ) async throws -> PluginColumnReorderPlan? {
+        try Self.requireMainDatabase(schema)
         guard !respecification.isEmpty,
               let context = try await SQLiteTableRebuildPlanner.context(
                   tableName: table,
