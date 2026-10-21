@@ -141,7 +141,9 @@ struct DataDictionaryDocument {
 
     func indexRows(at index: Int) -> [DataDictionaryIndexRow] {
         objects[index].indexes.map { info in
-            var keys = info.columns.joined(separator: ", ")
+            var keys = info.columns.map { column in
+                info.columnPrefixes?[column].map { "\(column)(\($0))" } ?? column
+            }.joined(separator: ", ")
             if let included = info.includedColumns, !included.isEmpty {
                 keys += " INCLUDE (\(included.joined(separator: ", ")))"
             }

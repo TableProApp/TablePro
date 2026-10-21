@@ -284,6 +284,18 @@ struct DataDictionaryExportTests {
         #expect(document.objects[1].columns.count == 2)
     }
 
+    @Test("An index on a column prefix names the prefix length")
+    func indexPrefixLengths() async throws {
+        let source = CatalogOnlyDataSource(databaseTypeId: "MySQL")
+        source.columns = ["users": [PluginColumnInfo(name: "email", dataType: "varchar(255)")]]
+        source.indexes = ["users": [
+            PluginIndexInfo(name: "uq_email", columns: ["email"], isUnique: true, columnPrefixes: ["email": 10])
+        ]]
+        let (document, _) = try await readDocument([object("users", schema: "shop")], from: source)
+
+        #expect(document.indexRows(at: 0).first?.columns == "email(10)")
+    }
+
     @Test("Generated, identity and auto-increment columns say how their value is made")
     func derivedDefaults() {
         let generated = PluginColumnInfo(
