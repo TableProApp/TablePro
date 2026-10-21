@@ -35,6 +35,24 @@ fn column(name: &str, data_type: &str, primary_key: bool) -> ColumnInfo {
     }
 }
 
+#[test]
+fn empty_input_is_an_empty_string_only_for_required_text_columns() {
+    let mut required = column("name", "character varying(20)", false);
+    required.nullable = false;
+    assert_eq!(
+        parse_grid_cell_input("", Some(&required), "postgres", None),
+        Ok(Value::Text(String::new()))
+    );
+    let nullable = column("name", "character varying(20)", false);
+    assert_eq!(
+        parse_grid_cell_input("", Some(&nullable), "postgres", None),
+        Ok(Value::Null)
+    );
+    let mut required_int = column("n", "integer", false);
+    required_int.nullable = false;
+    assert!(parse_grid_cell_input("", Some(&required_int), "postgres", None).is_err());
+}
+
 fn assert_cell_read_only(column: &ColumnInfo, value: &Value) {
     assert!(!crate::ui::grid::cell_allows_inline_edit(column, value));
 }

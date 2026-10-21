@@ -1963,113 +1963,113 @@ msgstr ""
 msgid "{n} selected · press Delete to remove"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:12
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:15
 msgid "Field is required"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:47
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:54
 msgid "Could not safely read ENUM or SET members"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:59
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:66
 msgid "Value is not a declared ENUM or SET member"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:156
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:812
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:163
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:819
 msgid "Invalid number"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:232
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:239
 msgid "Invalid SQL Server datetimeoffset column scale"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:236
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:243
 msgid "Invalid SQL Server datetimeoffset"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:249
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:256
 msgid "SQL Server datetimeoffset value exceeds the column precision or offset range"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:347
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:562
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:860
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:354
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:569
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:867
 msgid "Invalid date. Use YYYY-MM-DD."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:356
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:854
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:363
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:861
 msgid "Invalid datetime. Use YYYY-MM-DD HH:MM:SS."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:367
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:506
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:374
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:513
 msgid "Invalid timestamp with time zone."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:390
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:397
 msgid "MySQL spatial values cannot be edited losslessly"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:424
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:654
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:806
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:431
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:661
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:813
 msgid "Invalid integer"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:426
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:433
 msgid "Integer is outside the supported MySQL column range"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:439
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:446
 msgid "Integer is outside the supported MongoDB Int32 range"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:458
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:818
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:465
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:825
 msgid "Invalid decimal"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:471
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:478
 msgid "MongoDB BSON dates support millisecond precision only"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:501
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:509
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:508
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:516
 msgid "DuckDB TIMESTAMPTZ supports microsecond precision only"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:535
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:542
 msgid "Invalid time."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:543
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:550
 msgid "Invalid date and time."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:661
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:668
 msgid "Integer is outside the supported BIT range"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:799
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:806
 msgid "Invalid boolean. Use true/false, yes/no, or 1/0."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:824
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:831
 msgid "Invalid UUID. Expected 8-4-4-4-12 hex digits."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:830
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:837
 #, rust-format
 msgid "Invalid JSON: {error}"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:838
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:845
 msgid "Invalid timestamp. Use ISO 8601, e.g. 2024-01-15T14:30:00Z."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/value_parse.rs:870
+#: apps/linux/app/src/ui/browse_tab/value_parse.rs:877
 msgid "Invalid time. Use HH:MM:SS."
 msgstr ""
 

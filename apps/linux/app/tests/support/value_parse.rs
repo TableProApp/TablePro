@@ -924,9 +924,17 @@ fn empty_on_not_null_with_default_yields_null() {
 
 #[test]
 fn empty_on_not_null_no_default_is_rejected() {
-    let r = parse_input_for_column("", Some(&col("text", false)));
+    let r = parse_input_for_column("", Some(&col("integer", false)));
     assert!(r.is_err());
     assert!(r.unwrap_err().contains("required"));
+}
+
+#[test]
+fn empty_on_required_text_column_is_an_empty_string() {
+    assert_eq!(
+        parse_input_for_column("", Some(&col("text", false))),
+        Ok(Value::Text(String::new()))
+    );
 }
 
 #[test]

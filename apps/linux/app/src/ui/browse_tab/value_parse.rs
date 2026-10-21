@@ -9,6 +9,9 @@ pub(super) fn parse_input_for_column(text: &str, col: Option<&ColumnInfo>) -> Re
         if col.nullable || col.default_value.is_some() {
             return Ok(Value::Null);
         }
+        if col.enum_type.is_none() && is_character_type(&col.data_type.to_ascii_lowercase()) {
+            return Ok(Value::Text(String::new()));
+        }
         return Err(crate::tr!("Field is required"));
     }
     if col.enum_type.is_some() {
@@ -32,6 +35,10 @@ pub(super) fn parse_input_for_column(text: &str, col: Option<&ColumnInfo>) -> Re
         TypeKind::Time => parse_time_value(trimmed),
         TypeKind::Text => Ok(Value::Text(text.to_string())),
     }
+}
+
+fn is_character_type(dt: &str) -> bool {
+    dt.contains("char") || dt.contains("text") || dt == "string"
 }
 
 fn parse_mysql_enum_set_input(text: &str, col: Option<&ColumnInfo>) -> Option<Result<Value, String>> {
