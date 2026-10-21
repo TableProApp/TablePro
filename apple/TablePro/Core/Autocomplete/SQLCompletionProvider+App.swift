@@ -2,6 +2,7 @@ import Foundation
 import TableProAutocomplete
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProSQLVocabulary
 
 extension SQLCompletionProvider {
     convenience init(
@@ -13,7 +14,9 @@ extension SQLCompletionProvider {
         self.init(
             catalog: schemaProvider,
             grammar: databaseType?.lexicalGrammar ?? .ansi,
-            vocabulary: SQLCompletionVocabulary(dialect: dialect, statementCompletions: statementCompletions)
+            vocabulary: SQLCompletionVocabulary(
+                dialect: dialect, statementCompletions: statementCompletions, databaseType: databaseType
+            )
         )
     }
 
@@ -24,15 +27,19 @@ extension SQLCompletionProvider {
     ) {
         update(
             grammar: type.lexicalGrammar,
-            vocabulary: SQLCompletionVocabulary(dialect: dialect, statementCompletions: statementCompletions)
+            vocabulary: SQLCompletionVocabulary(
+                dialect: dialect, statementCompletions: statementCompletions, databaseType: type
+            )
         )
     }
 }
 
 extension SQLCompletionVocabulary {
-    init(dialect: SQLDialectDescriptor?, statementCompletions: [CompletionEntry]) {
+    init(dialect: SQLDialectDescriptor?, statementCompletions: [CompletionEntry], databaseType: DatabaseType? = nil) {
         self.init(
             functions: dialect?.functions ?? [],
+            bareFunctions: databaseType.flatMap { SQLEngineVocabulary.curated(forDatabaseTypeId: $0.rawValue) }?
+                .bareFunctions ?? [],
             functionNamesAreCaseInsensitive: dialect?.functionNamesAreCaseInsensitive ?? false,
             operators: dialect?.operators.map {
                 Operator(symbol: $0.symbol, summary: $0.summary, appliesToTypes: $0.appliesToTypes)

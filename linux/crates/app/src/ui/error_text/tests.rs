@@ -4,8 +4,8 @@ use tablepro_core::credentials::{SecretError, SecretKind};
 use tablepro_core::sql_syntax::script::{OpenConstruct, ScriptDiagnostic};
 use tablepro_core::{
     BusyReason, ConfigError, DriverError, ErrorCategory, LossPhase, NetworkEndpoint, ReadOnlyRefusal, ServerCode,
-    ServerDiagnostics, SshDestinationPart, SshDestinationProblem, SshFailure, SshRuntimeDirProblem, StatementOutcome,
-    TimeoutPhase, TlsFailure, TransportError,
+    ServerDiagnostics, SshAlgorithmKind, SshDestinationPart, SshDestinationProblem, SshFailure, SshRuntimeDirProblem,
+    StatementOutcome, TimeoutPhase, TlsFailure, TransportError,
 };
 use tablepro_session::runtime::{TaskFailure, TaskPanic};
 use tablepro_session::{ConnectError, OperationError};
@@ -336,6 +336,44 @@ fn ssh_failures_say_what_to_change() {
         declined: true,
     });
     assert!(declined.contains("not trusted"), "{declined}");
+}
+
+#[test]
+fn a_failed_negotiation_names_the_server_its_offer_and_the_setting() {
+    let cases = [
+        (SshAlgorithmKind::KeyExchange, "KexAlgorithms"),
+        (SshAlgorithmKind::HostKey, "HostKeyAlgorithms"),
+        (SshAlgorithmKind::Cipher, "Ciphers"),
+        (SshAlgorithmKind::Mac, "MACs"),
+        (SshAlgorithmKind::Compression, "Compression"),
+    ];
+    let mut messages = std::collections::HashSet::new();
+    for (kind, setting) in cases {
+        let message = ssh_failure_message(&SshFailure::NoCommonAlgorithm {
+            host: "203.0.113.5".to_owned(),
+            kind,
+            server_offer: vec!["mlkem768x25519-sha256".to_owned(), "sntrup761x25519-sha512".to_owned()],
+        });
+
+        assert!(message.contains("203.0.113.5"), "{message}");
+        assert!(
+            message.contains("mlkem768x25519-sha256, sntrup761x25519-sha512"),
+            "{message}"
+        );
+        assert!(message.contains(setting), "{message}");
+        assert!(messages.insert(message), "{kind:?} shares its sentence");
+    }
+}
+
+#[test]
+fn too_many_failed_attempts_names_the_server_and_how_to_limit_the_keys() {
+    let message = ssh_failure_message(&SshFailure::TooManyAuthenticationFailures {
+        host: "bastion".to_owned(),
+    });
+
+    assert!(message.contains("bastion"), "{message}");
+    assert!(message.contains("IdentitiesOnly yes"), "{message}");
+    assert!(!message.contains("password"), "{message}");
 }
 
 /// Under StrictHostKeyChecking yes ssh refuses before it shows the key,

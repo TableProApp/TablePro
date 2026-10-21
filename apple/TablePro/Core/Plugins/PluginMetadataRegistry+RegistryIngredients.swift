@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLVocabulary
 
 extension PluginMetadataRegistry {
     // swiftlint:disable function_body_length large_tuple
@@ -84,7 +85,7 @@ extension PluginMetadataRegistry {
             requiresBackslashEscaping: true,
             caseSensitivityStyle: .caseFoldFunction,
             caseFoldFunction: "lowerUTF8",
-            textCastTypeName: nil,
+            textCastTypeName: "Nullable(String)",
             functionNamesAreCaseInsensitive: false
         )
 
@@ -126,37 +127,18 @@ extension PluginMetadataRegistry {
                 "OVER", "PARTITION", "ROW_NUMBER", "RANK", "DENSE_RANK",
                 "RETURNING", "OUTPUT", "INSERTED", "DELETED"
             ],
-            functions: [
-                "COUNT", "SUM", "AVG", "MAX", "MIN", "STRING_AGG",
-                "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LEN", "LOWER", "UPPER",
-                "TRIM", "LTRIM", "RTRIM", "REPLACE", "CHARINDEX", "PATINDEX",
-                "STUFF", "FORMAT",
-                "GETDATE", "GETUTCDATE", "SYSDATETIME", "CURRENT_TIMESTAMP",
-                "DATEADD", "DATEDIFF", "DATENAME", "DATEPART",
-                "CONVERT", "CAST",
-                "ROUND", "CEILING", "FLOOR", "ABS", "POWER", "SQRT", "RAND",
-                "ISNULL", "ISNUMERIC", "ISDATE", "COALESCE", "NEWID",
-                "OBJECT_ID", "OBJECT_NAME", "SCHEMA_NAME", "DB_NAME",
-                "SCOPE_IDENTITY", "@@IDENTITY", "@@ROWCOUNT"
-            ],
-            dataTypes: [
-                "INT", "INTEGER", "TINYINT", "SMALLINT", "BIGINT",
-                "DECIMAL", "NUMERIC", "FLOAT", "REAL", "MONEY", "SMALLMONEY",
-                "CHAR", "VARCHAR", "NCHAR", "NVARCHAR", "TEXT", "NTEXT",
-                "BINARY", "VARBINARY", "IMAGE",
-                "DATE", "TIME", "DATETIME", "DATETIME2", "SMALLDATETIME", "DATETIMEOFFSET",
-                "BIT", "UNIQUEIDENTIFIER", "XML", "SQL_VARIANT",
-                "ROWVERSION", "TIMESTAMP", "HIERARCHYID"
-            ],
-            tableOptions: [
-                "ON", "CLUSTERED", "NONCLUSTERED", "WITH", "TEXTIMAGE_ON"
-            ],
+            functions: SQLEngineVocabulary.sqlServer.functions,
+            dataTypes: SQLEngineVocabulary.sqlServer.dataTypes,
+            tableOptions: SQLEngineVocabulary.sqlServer.tableOptions,
             regexSyntax: .unsupported,
             booleanLiteralStyle: .numeric,
             likeEscapeStyle: .explicit,
             paginationStyle: .offsetFetch,
             autoLimitStyle: .top,
-            caseSensitivityStyle: .collationDefined
+            caseSensitivityStyle: .collationDefined,
+            operators: SQLEngineVocabulary.sqlServer.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
+            textCastTypeName: nil,
+            functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlServer.functionNamesAreCaseInsensitive
         )
 
         let mssqlColumnTypes: [String: [String]] = [
@@ -192,39 +174,19 @@ extension PluginMetadataRegistry {
                 "RETURNING", "CONNECT", "LEVEL", "START", "WITH", "PRIOR",
                 "ROWNUM", "ROWID", "DUAL", "SYSDATE", "SYSTIMESTAMP"
             ],
-            functions: [
-                "COUNT", "SUM", "AVG", "MAX", "MIN", "LISTAGG",
-                "CONCAT", "SUBSTR", "INSTR", "LENGTH", "LOWER", "UPPER",
-                "TRIM", "LTRIM", "RTRIM", "REPLACE", "LPAD", "RPAD",
-                "INITCAP", "TRANSLATE",
-                "SYSDATE", "SYSTIMESTAMP", "CURRENT_DATE", "CURRENT_TIMESTAMP",
-                "ADD_MONTHS", "MONTHS_BETWEEN", "LAST_DAY", "NEXT_DAY",
-                "EXTRACT", "TO_DATE", "TO_CHAR", "TO_NUMBER", "TO_TIMESTAMP",
-                "TRUNC", "ROUND",
-                "CEIL", "FLOOR", "ABS", "POWER", "SQRT", "MOD", "SIGN",
-                "NVL", "NVL2", "DECODE", "COALESCE", "NULLIF",
-                "GREATEST", "LEAST", "CAST",
-                "SYS_GUID", "DBMS_RANDOM.VALUE", "USER", "SYS_CONTEXT"
-            ],
-            dataTypes: [
-                "NUMBER", "INTEGER", "SMALLINT", "FLOAT", "BINARY_FLOAT", "BINARY_DOUBLE",
-                "CHAR", "VARCHAR2", "NCHAR", "NVARCHAR2", "CLOB", "NCLOB", "LONG",
-                "BLOB", "RAW", "LONG RAW", "BFILE",
-                "DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITH LOCAL TIME ZONE",
-                "INTERVAL YEAR TO MONTH", "INTERVAL DAY TO SECOND",
-                "BOOLEAN", "ROWID", "UROWID", "XMLTYPE", "SDO_GEOMETRY",
-                "INT", "DECIMAL", "NUMERIC", "REAL", "DOUBLE PRECISION", "JSON", "VECTOR"
-            ],
-            tableOptions: [
-                "TABLESPACE", "PCTFREE", "INITRANS"
-            ],
+            functions: SQLEngineVocabulary.oracle.functions,
+            dataTypes: SQLEngineVocabulary.oracle.dataTypes,
+            tableOptions: SQLEngineVocabulary.oracle.tableOptions,
             regexSyntax: .regexpLike,
             booleanLiteralStyle: .numeric,
             likeEscapeStyle: .explicit,
             paginationStyle: .offsetFetch,
             offsetFetchOrderBy: "",
             autoLimitStyle: .fetchFirst,
-            caseSensitivityStyle: .caseFoldFunction
+            caseSensitivityStyle: .caseFoldFunction,
+            operators: SQLEngineVocabulary.oracle.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
+            textCastTypeName: nil,
+            functionNamesAreCaseInsensitive: SQLEngineVocabulary.oracle.functionNamesAreCaseInsensitive
         )
 
         let oracleColumnTypes: [String: [String]] = [
@@ -332,34 +294,17 @@ extension PluginMetadataRegistry {
                 "EXPLAIN", "ANALYZE",
                 "WINDOW", "OVER", "PARTITION"
             ],
-            functions: [
-                "COUNT", "SUM", "AVG", "MAX", "MIN",
-                "LIST_AGG", "STRING_AGG", "ARRAY_AGG",
-                "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LENGTH", "LOWER", "UPPER",
-                "TRIM", "LTRIM", "RTRIM", "REPLACE", "SPLIT_PART",
-                "NOW", "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP",
-                "DATE_TRUNC", "EXTRACT", "AGE", "TO_CHAR", "TO_DATE",
-                "EPOCH_MS",
-                "ROUND", "CEIL", "CEILING", "FLOOR", "ABS", "MOD", "POW", "POWER", "SQRT",
-                "CAST",
-                "REGEXP_MATCHES", "READ_CSV", "READ_PARQUET", "READ_JSON",
-                "GLOB", "STRUCT_PACK", "LIST_VALUE", "MAP", "UNNEST",
-                "GENERATE_SERIES", "RANGE"
-            ],
-            dataTypes: [
-                "INTEGER", "BIGINT", "HUGEINT", "UHUGEINT",
-                "DOUBLE", "FLOAT", "DECIMAL",
-                "VARCHAR", "TEXT", "BLOB",
-                "BOOLEAN",
-                "DATE", "TIME", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "INTERVAL",
-                "UUID", "JSON",
-                "LIST", "MAP", "STRUCT", "UNION", "ENUM", "BIT"
-            ],
+            functions: SQLEngineVocabulary.duckDB.functions,
+            dataTypes: SQLEngineVocabulary.duckDB.dataTypes,
+            tableOptions: SQLEngineVocabulary.duckDB.tableOptions,
             regexSyntax: .regexpMatches,
             booleanLiteralStyle: .truefalse,
             likeEscapeStyle: .explicit,
             paginationStyle: .limit,
-            caseSensitivityStyle: .ilikeOperator
+            caseSensitivityStyle: .ilikeOperator,
+            operators: SQLEngineVocabulary.duckDB.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
+            textCastTypeName: "VARCHAR",
+            functionNamesAreCaseInsensitive: SQLEngineVocabulary.duckDB.functionNamesAreCaseInsensitive
         )
 
         let duckdbColumnTypes: [String: [String]] = [

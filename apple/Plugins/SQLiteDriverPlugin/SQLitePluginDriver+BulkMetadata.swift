@@ -32,7 +32,7 @@ extension SQLitePluginDriver {
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata] {
         let query = """
             SELECT name FROM sqlite_master
-            WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+            WHERE type = 'table' AND name NOT GLOB 'sqlite_*'
             ORDER BY name
             """
         let result = try await execute(query: query)

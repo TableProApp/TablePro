@@ -124,6 +124,36 @@ struct RowDetailViewModelTests {
         #expect(query.contains("WHERE"))
     }
 
+    // The check that a SQLite key with no type names one row waits on the server; Cancel must not be live meanwhile.
+    @Test("A save stays busy while its key check waits on the server")
+    func saveIsBusyDuringItsKeyCheck() async {
+        let columns = [
+            ColumnInfo(name: "id", typeName: "", isPrimaryKey: true, isNullable: false, ordinalPosition: 0),
+            ColumnInfo(name: "name", typeName: "TEXT", ordinalPosition: 1)
+        ]
+        let driver = MockDatabaseDriver()
+        let gate = TestGate()
+        driver.beforeExecute = { await gate.enter() }
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [["1"]], rowsAffected: 0, executionTime: 0))
+        ]
+        let vm = RowDetailViewModel(
+            columns: columns, rows: [Row(cells: [.text("5"), .text("Alice")])], initialIndex: 0,
+            table: TableInfo(name: "p"), session: makeSession(driver: driver), columnDetails: columns
+        )
+        vm.startEditing()
+        vm.setEditedValue("Charlie", at: 1)
+
+        let save = Task { await vm.saveChanges() }
+        await gate.waitUntilEntered()
+        let busyDuringCheck = vm.isSaving
+        await gate.open()
+        _ = await save.value
+
+        #expect(busyDuringCheck)
+        #expect(!vm.isSaving)
+    }
+
     @Test("A column the server owns is not offered for editing and is never written")
     func serverOwnedColumnsTakeNoEdits() async {
         let columns = [

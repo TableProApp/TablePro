@@ -210,7 +210,7 @@ struct QueryCompletionCatalogTests {
         #expect(items.map { $0.insertText } == ["id"])
     }
 
-    @Test("the only known schema is the active one")
+    @Test("without a schema list the only known schema is the active one")
     func activeSchemaOnly() async {
         let source = CatalogColumnSource([:])
         let catalog = catalog(source, tables: [table("orders")], type: .postgresql, schema: "public")
@@ -222,6 +222,156 @@ struct QueryCompletionCatalogTests {
         #expect(await !catalog.isKnownDatabase("postgres"))
         #expect(labels(active) == ["orders"])
         #expect(other.isEmpty)
+    }
+
+    @Test("the connection's schemas and databases are offered, and another schema's tables are read once")
+    func namespacesAndOtherSchemaTables() async {
+        let reads = SchemaTableReads(["sales": [table("invoices"), table("Quarterly Totals", .view)]])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders")], databaseType: .postgresql, schema: "public",
+            readColumns: CatalogColumnSource([:]).reader, readSchemaTables: reads.reader,
+            schemas: ["public", "sales"], databases: ["shop", "archive"]
+        )
+
+        #expect(await catalog.isKnownSchema("SALES"))
+        #expect(await catalog.isKnownDatabase("archive"))
+        #expect(labels(await catalog.schemaCompletionItems()) == ["public", "sales"])
+        #expect(labels(await catalog.namespaceCompletionItems()) == ["shop", "archive", "public", "sales"])
+        let first = await catalog.tableCompletionItems(inSchema: "sales")
+        let again = await catalog.tableCompletionItems(inSchema: "sales")
+        #expect(labels(first) == ["invoices", "Quarterly Totals"])
+        #expect(first.map(\.insertText) == ["invoices", "\"Quarterly Totals\""])
+        #expect(labels(again) == labels(first))
+        #expect(await reads.count == 1)
+    }
+
+    @Test("another schema's tables come from the catalog connection first, from the session only while reads are open")
+    func schemaTablesPreferTheCatalog() async {
+        let catalogReads = SchemaTableReads(["sales": [table("from_catalog")]])
+        let sessionReads = SchemaTableReads(["sales": [table("from_session")], "audit": [table("log")]])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders")], databaseType: .postgresql, schema: "public",
+            readColumns: CatalogColumnSource([:]).reader,
+            readSchemaTables: sessionReads.reader, readCatalogSchemaTables: catalogReads.reader,
+            schemas: ["public", "sales", "audit"]
+        )
+
+        let sales = await catalog.tableCompletionItems(inSchema: "sales")
+        await catalogReads.answerNothing()
+        await catalog.setColumnReadsAllowed(false)
+        let closed = await catalog.tableCompletionItems(inSchema: "audit")
+        await catalog.setColumnReadsAllowed(true)
+        let open = await catalog.tableCompletionItems(inSchema: "audit")
+
+        #expect(labels(sales) == ["from_catalog"])
+        #expect(closed.isEmpty)
+        #expect(labels(open) == ["log"])
+        #expect(await sessionReads.count == 1)
+    }
+
+    @Test("closing session reads waits for a schema read already sent on the session")
+    func closeWaitsForSessionSchemaRead() async {
+        let sessionReads = SchemaTableReads(["sales": [table("invoices")]], held: true)
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders")], databaseType: .postgresql, schema: "public",
+            readColumns: CatalogColumnSource([:]).reader, readSchemaTables: sessionReads.reader,
+            schemas: ["public", "sales"]
+        )
+
+        let pending = Task { await catalog.tableCompletionItems(inSchema: "sales") }
+        await sessionReads.waitForRead()
+        let close = Task { await catalog.closeSessionReads() }
+        await sessionReads.release()
+        await close.value
+
+        #expect(labels(await pending.value) == ["invoices"])
+        #expect(await sessionReads.finished == 1)
+    }
+
+    @Test("listed schemas insert quoted by the engine's case rules and keep their own table lists")
+    func schemasKeepTheirSpelling() async {
+        let reads = SchemaTableReads(["sales": [table("lower_orders")], "Sales": [table("upper_orders")]])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders")], databaseType: .postgresql, schema: "public",
+            readColumns: CatalogColumnSource([:]).reader, readSchemaTables: reads.reader,
+            schemas: ["public", "sales", "Sales"]
+        )
+
+        let items = await catalog.schemaCompletionItems()
+        let lower = await catalog.tableCompletionItems(inSchema: "sales")
+        let upper = await catalog.tableCompletionItems(inSchema: "Sales")
+
+        #expect(items.map(\.insertText) == ["public", "sales", "\"Sales\""])
+        #expect(labels(lower) == ["lower_orders"])
+        #expect(labels(upper) == ["upper_orders"])
+        #expect(await reads.count == 2)
+    }
+
+    @Test("a schema that differs from the active one only in case lists its own tables")
+    func caseDistinctSchemaIsNotTheActiveOne() async {
+        let reads = SchemaTableReads(["Sales": [table("upper_orders")]])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("lower_orders")], databaseType: .postgresql, schema: "sales",
+            readColumns: CatalogColumnSource([:]).reader, readSchemaTables: reads.reader,
+            schemas: ["public", "sales", "Sales"]
+        )
+
+        #expect(labels(await catalog.tableCompletionItems(inSchema: "Sales")) == ["upper_orders"])
+        #expect(labels(await catalog.tableCompletionItems(inSchema: "sales")) == ["lower_orders"])
+    }
+
+    @Test("on MySQL a database qualifies a table, and its tables are read once")
+    func mysqlDatabaseQualifiesTables() async {
+        let reads = SchemaTableReads(["archive": [table("orders_2019")]])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders")], databaseType: .mysql, schema: nil,
+            readColumns: CatalogColumnSource([:]).reader, readSchemaTables: reads.reader,
+            databases: ["shop", "archive"]
+        )
+
+        #expect(await catalog.isKnownSchema("ARCHIVE"))
+        #expect(labels(await catalog.tableCompletionItems(inSchema: "archive")) == ["orders_2019"])
+        #expect(await reads.count == 1)
+    }
+
+    @Test("an enum column offers its values: the driver's labels, or the ENUM type MySQL and DuckDB spell out")
+    func enumValues() async {
+        let source = CatalogColumnSource([
+            "orders": [
+                ColumnInfo(name: "status", typeName: "enum('new','paid','it''s late')"),
+                ColumnInfo(name: "tags", typeName: "ENUM('a', 'b')[]")
+            ],
+            "moods": [ColumnInfo(name: "mood", typeName: "USER-DEFINED", allowedValues: ["sad", "ok"])]
+        ])
+        let catalog = catalog(source, tables: [table("orders"), table("moods")], type: .mysql)
+        _ = await catalog.columnCompletionItems(for: "orders", schema: nil)
+        _ = await catalog.columnCompletionItems(for: "moods", schema: nil)
+        let orders = [TableReference(tableName: "orders", alias: nil)]
+
+        #expect(await catalog.allowedValues(forColumn: "STATUS", in: orders) == ["new", "paid", "it's late"])
+        #expect(await catalog.allowedValues(forColumn: "tags", in: orders).isEmpty)
+        let moods = [TableReference(tableName: "moods", alias: nil)]
+        #expect(await catalog.allowedValues(forColumn: "mood", in: moods) == ["sad", "ok"])
+    }
+
+    @Test("DuckDB enum labels keep their backslashes and blanks")
+    func duckDBLabelsAreKeptAsWritten() {
+        #expect(QueryCompletionCatalog.duckDBEnumLabels(in: #"ENUM('C:\temp', '  padded  ', 'it''s')"#)
+            == [#"C:\temp"#, "  padded  ", "it's"])
+        #expect(QueryCompletionCatalog.duckDBEnumLabels(in: "VARCHAR") == nil)
+    }
+
+    @Test("enum values of a table named in the statement are read when no columns are cached yet")
+    func enumValuesOnColdCache() async {
+        let source = CatalogColumnSource(["orders": [ColumnInfo(name: "status", typeName: "enum('new','paid')")]])
+        let catalog = catalog(source, tables: [table("orders")], type: .mysql)
+
+        #expect(await catalog.allowedValues(forColumn: "status", in: []).isEmpty)
+        let derived = [TableReference(tableName: "c", alias: nil, derivedColumns: ["status"])]
+        #expect(await catalog.allowedValues(forColumn: "status", in: derived).isEmpty)
+        #expect(await source.reads.isEmpty)
+        let orders = [TableReference(tableName: "orders", alias: nil)]
+        #expect(await catalog.allowedValues(forColumn: "status", in: orders) == ["new", "paid"])
     }
 
     @Test("a schema-qualified table in another schema is read with that schema")
@@ -250,6 +400,92 @@ struct QueryCompletionCatalogTests {
         #expect(await source.reads == ["orders", "customers"])
     }
 
+    @Test("the catalog connection reads first and is not closed by a run; the session reads only without one")
+    func catalogConnectionFirst() async {
+        let catalogSource = CatalogColumnSource(["orders": [column("id")]])
+        let sessionSource = CatalogColumnSource(["orders": [column("total")], "customers": [column("name")]])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders"), table("customers")], databaseType: .mysql, schema: nil,
+            readColumns: sessionSource.reader, readCatalogColumns: catalogSource.reader
+        )
+
+        await catalog.setColumnReadsAllowed(false)
+        let orders = await catalog.columnCompletionItems(for: "orders", schema: nil)
+        #expect(labels(orders) == ["id"])
+        #expect(await sessionSource.reads.isEmpty)
+
+        await catalogSource.answerNothing(1)
+        await catalog.setColumnReadsAllowed(true)
+        let customers = await catalog.columnCompletionItems(for: "customers", schema: nil)
+        #expect(labels(customers) == ["name"])
+        #expect(await catalogSource.reads == ["orders", "customers"])
+        #expect(await sessionSource.reads == ["customers"])
+    }
+
+    @Test("a name the list does not hold, such as a temporary table, is read on the session when the catalog has none")
+    func temporaryTableReadsTheSession() async {
+        let catalogSource = CatalogColumnSource(["orders": [column("id")]])
+        let sessionSource = CatalogColumnSource(["scratch": [column("note")]])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders")], databaseType: .mysql, schema: nil,
+            readColumns: sessionSource.reader, readCatalogColumns: catalogSource.reader
+        )
+
+        let scratch = await catalog.columnCompletionItems(for: "scratch", schema: nil)
+        let orders = await catalog.columnCompletionItems(for: "orders", schema: nil)
+
+        #expect(labels(scratch) == ["note"])
+        #expect(labels(orders) == ["id"])
+        #expect(await sessionSource.reads == ["scratch"])
+    }
+
+    @Test("a temporary table the session made is read there, even when it shadows a listed table")
+    func sessionLocalTableReadsTheSession() async {
+        let catalogSource = CatalogColumnSource(["orders": [column("id")]])
+        let sessionSource = CatalogColumnSource(["orders": [column("draft_note")]])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders")], databaseType: .mysql, schema: nil,
+            readColumns: sessionSource.reader, readCatalogColumns: catalogSource.reader
+        )
+
+        await catalog.replaceSessionLocalTables(["orders"])
+        let shadowed = await catalog.columnCompletionItems(for: "orders", schema: nil)
+
+        #expect(labels(shadowed) == ["draft_note"])
+        #expect(await catalogSource.reads.isEmpty)
+    }
+
+    @Test("a failed catalog read does not fall back to the session")
+    func catalogFailureStays() async {
+        let catalogSource = CatalogColumnSource(["orders": [column("id")]], failures: 1)
+        let sessionSource = CatalogColumnSource(["orders": [column("total")]])
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders")], databaseType: .mysql, schema: nil,
+            readColumns: sessionSource.reader, readCatalogColumns: catalogSource.reader
+        )
+
+        let failed = await catalog.columnCompletionItems(for: "orders", schema: nil)
+
+        #expect(failed.isEmpty)
+        #expect(await sessionSource.reads.isEmpty)
+    }
+
+    @Test("a run waits only for column reads sent on the session")
+    func runWaitsOnlyForSessionReads() async {
+        let catalogSource = CatalogColumnSource(["orders": [column("id")]], held: true)
+        let catalog = QueryCompletionCatalog(
+            tables: [table("orders")], databaseType: .mysql, schema: nil,
+            readColumns: CatalogColumnSource([:]).reader, readCatalogColumns: catalogSource.reader
+        )
+
+        let pending = Task { await catalog.columnCompletionItems(for: "orders", schema: nil) }
+        await catalogSource.waitForRead()
+        await catalog.finishReads()
+
+        await catalogSource.release()
+        #expect(labels(await pending.value) == ["id"])
+    }
+
     @Test("new tables replace the list and keep the columns already read")
     func replaceTables() async {
         let source = CatalogColumnSource(["orders": [column("id")]])
@@ -263,6 +499,52 @@ struct QueryCompletionCatalogTests {
         #expect(labels(tables) == ["orders", "invoices"])
         #expect(labels(columns) == ["id"])
         #expect(await source.reads == ["orders"])
+    }
+}
+
+private actor SchemaTableReads {
+    private let tables: [String: [TableInfo]]
+    private var isHeld: Bool
+    private var answersNothing = false
+    private var heldReads: [CheckedContinuation<Void, Never>] = []
+    private var readWaiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var count = 0
+    private(set) var finished = 0
+
+    init(_ tables: [String: [TableInfo]], held: Bool = false) {
+        self.tables = tables
+        self.isHeld = held
+    }
+
+    nonisolated var reader: QuerySchemaTableReader {
+        { schema in await self.read(schema) }
+    }
+
+    func answerNothing() {
+        answersNothing = true
+    }
+
+    func waitForRead() async {
+        guard count == 0 else { return }
+        await withCheckedContinuation { readWaiters.append($0) }
+    }
+
+    func release() {
+        isHeld = false
+        heldReads.forEach { $0.resume() }
+        heldReads = []
+    }
+
+    private func read(_ schema: String) async -> [TableInfo]? {
+        guard !answersNothing else { return nil }
+        count += 1
+        readWaiters.forEach { $0.resume() }
+        readWaiters = []
+        if isHeld {
+            await withCheckedContinuation { heldReads.append($0) }
+        }
+        finished += 1
+        return tables[schema] ?? []
     }
 }
 
@@ -302,6 +584,10 @@ private actor CatalogColumnSource {
 
     func setColumns(_ columns: [String: [ColumnInfo]]) {
         self.columns = columns
+    }
+
+    func answerNothing(_ count: Int) {
+        sessionlessReads = count
     }
 
     func failNextReads(_ count: Int) {

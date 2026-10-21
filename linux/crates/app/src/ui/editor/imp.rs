@@ -14,6 +14,7 @@ use super::editor_session_slot::EditorSessionSlot;
 use super::find_bar::FindBar;
 use super::results_pane::ResultsPane;
 use super::run_log::RunLog;
+use super::transaction_dirty::OpenTransaction;
 use crate::ui::grid::GridSink;
 use crate::ui::handler_guard::HandlerGuard;
 
@@ -51,6 +52,7 @@ pub struct SqlEditor {
     pub grid_sink: OnceCell<GridSink>,
     /// Whether the last run left a transaction open, as last reported.
     pub transaction_dirty: Cell<bool>,
+    pub open_transaction: Cell<Option<OpenTransaction>>,
     /// Whether the run in flight, or the last one, can change what the
     /// catalog lists.
     pub changes_catalog: Cell<bool>,

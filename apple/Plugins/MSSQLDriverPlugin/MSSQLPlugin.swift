@@ -8,6 +8,7 @@ import os
 import TableProCoreTypes
 import TableProMSSQLCore
 import TableProPluginKit
+import TableProSQLVocabulary
 
 // MARK: - Core ↔ Plugin Bridges
 
@@ -219,37 +220,18 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             "OVER", "PARTITION", "ROW_NUMBER", "RANK", "DENSE_RANK",
             "RETURNING", "OUTPUT", "INSERTED", "DELETED"
         ],
-        functions: [
-            "COUNT", "SUM", "AVG", "MAX", "MIN", "STRING_AGG",
-            "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LEN", "LOWER", "UPPER",
-            "TRIM", "LTRIM", "RTRIM", "REPLACE", "CHARINDEX", "PATINDEX",
-            "STUFF", "FORMAT",
-            "GETDATE", "GETUTCDATE", "SYSDATETIME", "CURRENT_TIMESTAMP",
-            "DATEADD", "DATEDIFF", "DATENAME", "DATEPART",
-            "CONVERT", "CAST",
-            "ROUND", "CEILING", "FLOOR", "ABS", "POWER", "SQRT", "RAND",
-            "ISNULL", "ISNUMERIC", "ISDATE", "COALESCE", "NEWID",
-            "OBJECT_ID", "OBJECT_NAME", "SCHEMA_NAME", "DB_NAME",
-            "SCOPE_IDENTITY", "@@IDENTITY", "@@ROWCOUNT"
-        ],
-        dataTypes: [
-            "INT", "INTEGER", "TINYINT", "SMALLINT", "BIGINT",
-            "DECIMAL", "NUMERIC", "FLOAT", "REAL", "MONEY", "SMALLMONEY",
-            "CHAR", "VARCHAR", "NCHAR", "NVARCHAR", "TEXT", "NTEXT",
-            "BINARY", "VARBINARY", "IMAGE",
-            "DATE", "TIME", "DATETIME", "DATETIME2", "SMALLDATETIME", "DATETIMEOFFSET",
-            "BIT", "UNIQUEIDENTIFIER", "XML", "SQL_VARIANT",
-            "ROWVERSION", "TIMESTAMP", "HIERARCHYID"
-        ],
-        tableOptions: [
-            "ON", "CLUSTERED", "NONCLUSTERED", "WITH", "TEXTIMAGE_ON"
-        ],
+        functions: SQLEngineVocabulary.sqlServer.functions,
+        dataTypes: SQLEngineVocabulary.sqlServer.dataTypes,
+        tableOptions: SQLEngineVocabulary.sqlServer.tableOptions,
         regexSyntax: .unsupported,
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
         paginationStyle: .offsetFetch,
         autoLimitStyle: .top,
-        caseSensitivityStyle: .collationDefined
+        caseSensitivityStyle: .collationDefined,
+        operators: SQLEngineVocabulary.sqlServer.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
+        textCastTypeName: nil,
+        functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlServer.functionNamesAreCaseInsensitive
     )
 
     static let supportsDropDatabase = true
@@ -265,6 +247,20 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MSSQLPluginDriver(config: config)
+    }
+}
+
+private extension SQLOperatorDescriptor {
+    init?(vocabulary entry: SQLEngineVocabulary.Operator) {
+        guard let category = Category(rawValue: entry.category),
+              let placement = Placement(rawValue: entry.placement) else { return nil }
+        self.init(
+            symbol: entry.symbol,
+            summary: entry.summary,
+            category: category,
+            placement: placement,
+            appliesToTypes: entry.appliesToTypes
+        )
     }
 }
 
@@ -511,16 +507,20 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         _ = try await execute(query: "BEGIN TRANSACTION")
     }
 
-    /// One round trip, and only when a caller is about to own a transaction on this session. It
-    /// goes through `executeInternal` rather than `execute` so the app's query cancellation and
-    /// history never see it.
+    // executeInternal rather than execute, so the app's query cancellation and history never see the probe.
     func sessionTransactionState() async -> PluginSessionTransactionState {
         guard let result = try? await executeInternal(MSSQLSessionTransaction.probe) else { return .unknown }
         let row = result.rows.first
-        return MSSQLSessionTransaction.state(
+        let state = MSSQLSessionTransaction.state(
             tranCount: row?.first?.asText,
             transactionState: row?.dropFirst().first?.asText
         )
+        switch state {
+        case .idle: return .idle
+        case .open: return .inTransaction
+        case .uncommittable: return .abortedTransaction
+        case nil: return .unknown
+        }
     }
 
     // MARK: - Query Execution

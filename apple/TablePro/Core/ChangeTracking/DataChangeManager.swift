@@ -719,25 +719,43 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             containsTableOperation: containsTableOperation
         )
 
-        let steps: [DataWriteStep]
-        switch try factory.rowWriteStatements(
+        let steps = try writeSteps(
             for: pending.changes,
             insertedRowData: pending.insertedRowData,
             deletedRowIDs: pending.deletedRowIDs,
-            insertedRowIDs: pending.insertedRowIDs
+            insertedRowIDs: pending.insertedRowIDs,
+            factory: factory
+        )
+        return RowWriteBuild(steps: steps, operations: operations)
+    }
+
+    /// The statements for these changes, each held to the rows it should touch.
+    func writeSteps(
+        for changes: [RowChange],
+        insertedRowData: [RowID: [PluginCellValue]] = [:],
+        deletedRowIDs: Set<RowID> = [],
+        insertedRowIDs: Set<RowID> = [],
+        factory: RowChangeStatementFactory? = nil
+    ) throws -> [DataWriteStep] {
+        switch try (factory ?? statementFactory()).rowWriteStatements(
+            for: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs
         ) {
         case .counted(let attributed):
-            steps = attributed.map {
+            return attributed.map {
                 DataWriteStep(
                     kind: .rowWrite,
                     statement: $0.statement,
                     expectedRowCount: $0.rowCount,
                     tableName: tableName,
-                    matchesRowsWithoutKey: primaryKeyColumns.isEmpty && $0.kind != .insert
+                    matchesRowsWithoutKey: primaryKeyColumns.isEmpty && $0.kind != .insert,
+                    refusesSharedKey: $0.refusesSharedKey
                 )
             }
         case .driverWritten(let statements):
-            steps = statements.map {
+            return statements.map {
                 DataWriteStep(
                     kind: .rowWrite,
                     statement: $0.statement,
@@ -747,7 +765,6 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
                 )
             }
         }
-        return RowWriteBuild(steps: steps, operations: operations)
     }
 
     func statementFactory() throws -> RowChangeStatementFactory {

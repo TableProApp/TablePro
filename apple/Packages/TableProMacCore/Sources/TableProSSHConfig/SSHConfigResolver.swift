@@ -13,17 +13,20 @@ public struct ResolverEnvironment: Sendable {
     /// `%l` and `%L`, and through them `%C`. Injected because the real value is whatever this Mac
     /// is called, which no test can predict.
     var localHostname: @Sendable () -> String
+    var localAddresses: @Sendable () -> [String]
 
     init(
         runShell: @escaping @Sendable (String) -> Bool,
         canonicalize: @escaping @Sendable (String, SSHCanonicalizationOptions) -> String?,
         currentLocalUser: @escaping @Sendable () -> String,
-        localHostname: @escaping @Sendable () -> String = { SSHTokenContext.systemHostname() }
+        localHostname: @escaping @Sendable () -> String = { SSHTokenContext.systemHostname() },
+        localAddresses: @escaping @Sendable () -> [String] = { [] }
     ) {
         self.runShell = runShell
         self.canonicalize = canonicalize
         self.currentLocalUser = currentLocalUser
         self.localHostname = localHostname
+        self.localAddresses = localAddresses
     }
 
     public static let live = ResolverEnvironment(
@@ -32,7 +35,8 @@ public struct ResolverEnvironment: Sendable {
             SSHHostnameCanonicalizer.canonicalize(host: host, options: options)
         },
         currentLocalUser: { NSUserName() },
-        localHostname: { SSHTokenContext.systemHostname() }
+        localHostname: { SSHTokenContext.systemHostname() },
+        localAddresses: { SSHLocalNetwork.interfaceAddresses() }
     )
 }
 
@@ -122,8 +126,11 @@ public enum SSHConfigResolver {
             maxDots: firstPass.canonicalizeMaxDots ?? 1,
             permittedCNAMEs: firstPass.canonicalizePermittedCNAMEs
         )
+        // ssh canonicalizes a host it reaches through a jump only under `always`.
+        let isProxied = !formJumpHosts.isEmpty || firstPass.proxyJump.map { !SSHConfigParser.isNone($0) } == true
+        let canonicalizes = canonicalOptions.mode == .always || (canonicalOptions.mode == .yes && !isProxied)
         let canonicalizedHost: String
-        if canonicalOptions.mode != .no, let canonical = env.canonicalize(substitutedHost, canonicalOptions) {
+        if canonicalizes, let canonical = env.canonicalize(substitutedHost, canonicalOptions) {
             canonicalizedHost = canonical
         } else {
             canonicalizedHost = substitutedHost
@@ -139,7 +146,10 @@ public enum SSHConfigResolver {
                 formPort: formPort,
                 localUser: localUser,
                 phase: .second,
-                canonicalizing: canonicalOptions.mode != .no
+                // ssh re-parses whenever canonicalization is on, and `Match canonical` holds there
+                // even for a host it left alone because a jump reaches it (readconf.c, post_canon).
+                canonicalizing: canonicalOptions.mode != .no,
+                earlierTag: firstPass.tag
             ),
             into: &secondPass,
             failure: &failure,
@@ -165,9 +175,11 @@ public enum SSHConfigResolver {
         // carrying a comma, `%r` with a username like `bob,evil.example.net`, turn one configured
         // hop into two and route the session through a host the config never named.
         let effectiveProxyJump: [SSHJumpHost]
-        if formJumpHosts.isEmpty, let proxyJump = merged.proxyJump {
+        if formJumpHosts.isEmpty, let proxyJump = merged.proxyJump, !SSHConfigParser.isNone(proxyJump) {
             effectiveProxyJump = SSHConfigParser.splitProxyJumpHops(proxyJump).compactMap { hop in
-                expand(hop, scope: .proxy, keyword: "ProxyJump", with: proxyContext, failure: &failure)
+                // A URI carries percent escapes of its own, which are not tokens.
+                if SSHConfigParser.isSSHURI(hop) { return SSHConfigParser.parseProxyJumpHop(hop) }
+                return expand(hop, scope: .proxy, keyword: "ProxyJump", with: proxyContext, failure: &failure)
                     .flatMap(SSHConfigParser.parseProxyJumpHop)
             }
         } else {
@@ -195,9 +207,17 @@ public enum SSHConfigResolver {
 
         let effectiveAgentSocket: String
         let agentSocketOrigin: AgentSocketOrigin
+        var agentDisabled = false
         if !formAgentSocket.isEmpty {
             effectiveAgentSocket = formAgentSocket
             agentSocketOrigin = .agentSocketSetting
+        } else if let identityAgent = merged.identityAgent, SSHConfigParser.isNone(identityAgent) {
+            effectiveAgentSocket = ""
+            agentSocketOrigin = .identityAgentDirective
+            agentDisabled = true
+        } else if merged.identityAgent == "SSH_AUTH_SOCK" {
+            effectiveAgentSocket = ""
+            agentSocketOrigin = .environment
         } else if let identityAgent = merged.identityAgent, !identityAgent.isEmpty {
             let expanded = expand(
                 identityAgent,
@@ -221,6 +241,7 @@ public enum SSHConfigResolver {
             identityFiles: effectiveIdentityFiles,
             agentSocketPath: effectiveAgentSocket,
             agentSocketOrigin: agentSocketOrigin,
+            agentDisabled: agentDisabled,
             identitiesOnly: merged.identitiesOnly ?? false,
             useKeychain: merged.useKeychain ?? true,
             addKeysToAgent: merged.addKeysToAgent ?? false,
@@ -283,6 +304,7 @@ public enum SSHConfigResolver {
         let resolvedPort: Int?
         let phase: Phase
         let canonicalizing: Bool
+        let tag: String?
 
         /// What the connection would use if resolution stopped here. `Match exec` reads the port
         /// and user the way every other keyword does, so an implicit 22 has to be a 22: leaving
@@ -303,6 +325,8 @@ public enum SSHConfigResolver {
         let localUser: String
         let phase: Phase
         let canonicalizing: Bool
+        // `Tag` from the first pass, which ssh still holds when it evaluates `Match final`.
+        var earlierTag: String?
     }
 
     private static func applyMatchingBlocks(
@@ -332,7 +356,8 @@ public enum SSHConfigResolver {
                 formPort: pass.formPort,
                 resolvedPort: state.port,
                 phase: pass.phase,
-                canonicalizing: pass.canonicalizing
+                canonicalizing: pass.canonicalizing,
+                tag: state.tag ?? pass.earlierTag
             )
 
             guard blockMatches(block, inputs: inputs, failure: &failure, env: env) else { continue }
@@ -449,6 +474,29 @@ public enum SSHConfigResolver {
         case .localUser(let patterns):
             return SSHHostPatternMatcher.matches(host: inputs.localUser, patterns: patterns)
 
+        case .localNetwork(let networks):
+            return SSHLocalNetwork.contains(anyOf: env.localAddresses(), in: networks)
+
+        // Measured with OpenSSH 10.3: with no `Tag`, `Match tagged *` does not hold and `!tagged *` does.
+        case .tagged(let patterns):
+            guard let tag = inputs.tag else { return false }
+            return SSHHostPatternMatcher.matches(host: tag, patterns: patterns)
+
+        // A tunnel runs no remote command and opens no session, as with `ssh -N`.
+        case .command(let patterns):
+            return SSHHostPatternMatcher.matches(host: "", patterns: patterns)
+
+        case .sessionType(let patterns):
+            return SSHHostPatternMatcher.matches(host: "none", patterns: patterns)
+
+        // Names an OpenSSH release, and TablePro is not one.
+        case .version(let patterns):
+            return SSHHostPatternMatcher.matches(host: "", patterns: patterns)
+
+        case .unsupported(let keyword):
+            logger.warning("Ignoring a Match block in ssh_config: TablePro does not evaluate the \(keyword, privacy: .public) criterion")
+            return nil
+
         case .exec(let command):
             // `Match exec` takes the full token set, and the port and remote user are part of it.
             // Passing neither left `%p` and `%r` in the command, so a probe like `nc -z %h %p` ran
@@ -483,6 +531,7 @@ private struct ResolutionState {
     var identityFiles: [String] = []
     var identityAgent: String?
     var proxyJump: String?
+    var tag: String?
     var identitiesOnly: Bool?
     var addKeysToAgent: Bool?
     var useKeychain: Bool?
@@ -509,6 +558,8 @@ private struct ResolutionState {
             if identityAgent == nil { identityAgent = value }
         case .proxyJump(let value):
             if proxyJump == nil { proxyJump = value }
+        case .tag(let value):
+            if tag == nil { tag = value }
         case .identitiesOnly(let value):
             if identitiesOnly == nil { identitiesOnly = value }
         case .addKeysToAgent(let value):
@@ -545,6 +596,7 @@ private struct ResolutionState {
         result.identityFiles.append(contentsOf: other.identityFiles)
         if result.identityAgent == nil { result.identityAgent = other.identityAgent }
         if result.proxyJump == nil { result.proxyJump = other.proxyJump }
+        if result.tag == nil { result.tag = other.tag }
         if result.identitiesOnly == nil { result.identitiesOnly = other.identitiesOnly }
         if result.addKeysToAgent == nil { result.addKeysToAgent = other.addKeysToAgent }
         if result.useKeychain == nil { result.useKeychain = other.useKeychain }

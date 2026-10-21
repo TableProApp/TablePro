@@ -8,6 +8,8 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProRedisCore
+import TableProSQLGrammar
 
 // MARK: - Startup Commands
 
@@ -22,14 +24,37 @@ extension DatabaseManager {
         return !commands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// The statements `executeStartupCommands` sends, one per line or `;`. Also read by the catalog,
-    /// because a temporary table a startup command creates shadows a real one for the whole session.
-    nonisolated internal static func startupStatements(from commands: String?) -> [String] {
+    /// The statements `executeStartupCommands` sends, one per line or `;`, read the way the engine reads a quote or a
+    /// comment. Also read by the catalog, because a temporary table a startup command creates shadows a real one for
+    /// the whole session.
+    nonisolated internal static func startupStatements(from commands: String?, databaseType: DatabaseType) -> [String] {
         guard hasStartupCommands(commands), let commands else { return [] }
-        return commands
-            .components(separatedBy: CharacterSet(charactersIn: ";\n"))
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        if QueryStatementModel.forDatabaseType(databaseType) == .redis {
+            return RedisCommandSplitter.commands(in: commands).map(\.text)
+        }
+        let grammar = databaseType.lexicalGrammar
+        let source = commands as NSString
+        var statements: [String] = []
+        var lineStart = 0
+        func scanLine(to end: Int) {
+            let line = source.substring(with: NSRange(location: lineStart, length: end - lineStart))
+            statements += SQLStatementScanner.executableStatements(in: line, grammar: grammar).map(\.sql)
+        }
+        var index = 0
+        while index < source.length {
+            if let span = SQLNonCodeSpan.span(at: index, in: source, grammar: grammar) {
+                index = max(span.end, index + 1)
+                continue
+            }
+            let unit = source.character(at: index)
+            if unit == SqlLexer.newline || unit == SqlLexer.carriageReturn {
+                scanLine(to: index)
+                lineStart = index + 1
+            }
+            index += 1
+        }
+        scanLine(to: source.length)
+        return statements
     }
 
     @discardableResult
@@ -37,7 +62,7 @@ extension DatabaseManager {
         _ commands: String?, on driver: DatabaseDriver, connectionName: String
     ) async -> [(statement: String, error: String)] {
         var failures: [(statement: String, error: String)] = []
-        for statement in Self.startupStatements(from: commands) {
+        for statement in Self.startupStatements(from: commands, databaseType: driver.connection.type) {
             do {
                 _ = try await driver.execute(query: statement)
                 Self.startupLogger.info(

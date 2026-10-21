@@ -7,6 +7,7 @@ nonisolated struct ConnectionFormSecrets: Equatable, Sendable {
     var sshKeyPassphrase = ""
     var privateKey: String?
     var jumpHostCredentials: [UUID: JumpHostCredential] = [:]
+    var totpSecret = ""
     var iam = ConnectionIAMSecrets()
 }
 
@@ -14,6 +15,7 @@ nonisolated struct ConnectionFormSecretWrites: Equatable, Sendable {
     var password: String?
     var sshPassword: String?
     var sshKeyPassphrase: String?
+    var totpSecret: String?
     var iam = ConnectionIAMSecretWrites()
 }
 
@@ -56,6 +58,12 @@ extension ConnectionFormViewModel {
         isEditing && changesSecrets
     }
 
+    // A changed secret reconnects the open screen, and a record that dials differently drops its session.
+    func redialsAfterSave(over current: DatabaseConnection) -> Bool {
+        guard isEditing else { return false }
+        return reconnectsAfterSave || !applyingEdits(to: current).dialsTheSameWay(as: current)
+    }
+
     var secretWrites: ConnectionFormSecretWrites {
         ConnectionFormSecretWrites(
             password: Self.changedSecret(password, loaded: storedSecrets.password),
@@ -63,6 +71,7 @@ extension ConnectionFormViewModel {
             sshKeyPassphrase: sshEnabled
                 ? Self.changedSecret(sshKeyPassphrase, loaded: storedSecrets.sshKeyPassphrase)
                 : nil,
+            totpSecret: sshEnabled ? Self.changedSecret(totpSecret, loaded: storedSecrets.totpSecret) : nil,
             iam: iamSecretWrites
         )
     }
@@ -74,6 +83,7 @@ extension ConnectionFormViewModel {
             sshKeyPassphrase: sshEnabled && !sshKeyPassphrase.isEmpty ? sshKeyPassphrase : storedSecrets.sshKeyPassphrase,
             privateKey: pastedPrivateKey,
             jumpHostCredentials: jumpHostCredentialsUnreadable ? storedSecrets.jumpHostCredentials : jumpHostCredentials,
+            totpSecret: sshEnabled && !totpSecret.isEmpty ? totpSecret : storedSecrets.totpSecret,
             iam: iamSecretsAfterSave
         )
     }

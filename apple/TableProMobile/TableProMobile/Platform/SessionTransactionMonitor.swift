@@ -24,7 +24,10 @@ final class SessionTransactionMonitor {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SessionTransactionMonitor")
 
     private var entries: [UUID: Entry] = [:]
+    // Sessions whose last answer was idle, apart from those that could not say.
+    @ObservationIgnored private var idleDrivers: [UUID: ObjectIdentifier] = [:]
     private var workCounts: [UUID: Int] = [:]
+    @ObservationIgnored private var statementCounts: [UUID: Int] = [:]
     private var rollBackCounts: [UUID: Int] = [:]
     @ObservationIgnored private var refreshGenerations: [UUID: Int] = [:]
     @ObservationIgnored private var workGenerations: [UUID: Int] = [:]
@@ -49,6 +52,11 @@ final class SessionTransactionMonitor {
         return HoldToken(driver: driver, workGeneration: workGenerations[connectionId, default: 0])
     }
 
+    func isKnownIdle(_ connectionId: UUID, on driver: (any DatabaseDriver)?) -> Bool {
+        guard let driver else { return false }
+        return idleDrivers[connectionId] == ObjectIdentifier(driver)
+    }
+
     func rollBackCount(for connectionId: UUID) -> Int {
         rollBackCounts[connectionId, default: 0]
     }
@@ -57,17 +65,24 @@ final class SessionTransactionMonitor {
         workCounts[connectionId, default: 0] > 0
     }
 
-    func track<T>(_ connectionId: UUID, _ work: () async throws -> T) async rethrows -> T {
+    // A grid page is a read the app built, so a session lost under it cannot have committed anything.
+    func isRunningStatements(_ connectionId: UUID) -> Bool {
+        statementCounts[connectionId, default: 0] > 0
+    }
+
+    // `reading` work keeps Commit and Roll Back off the session while it streams, and stales a dialog opened before it.
+    func track<T>(_ connectionId: UUID, reading: Bool = false, _ work: () async throws -> T) async rethrows -> T {
         workCounts[connectionId, default: 0] += 1
+        if !reading { statementCounts[connectionId, default: 0] += 1 }
         workGenerations[connectionId, default: 0] += 1
         do {
             let value = try await work()
             await refresh(connectionId)
-            endWork(connectionId)
+            endWork(connectionId, reading: reading)
             return value
         } catch {
             await refresh(connectionId)
-            endWork(connectionId)
+            endWork(connectionId, reading: reading)
             throw error
         }
     }
@@ -111,8 +126,8 @@ final class SessionTransactionMonitor {
         }
     }
 
-    // Rows a view read inside a transaction its session lost are as stale as after a Roll Back.
-    func transactionLost(_ connectionId: UUID) {
+    // A typed ROLLBACK or a lost session ends the transaction as the bar's Roll Back does, so views reload the same way.
+    func noteRolledBack(_ connectionId: UUID) {
         rollBackCounts[connectionId, default: 0] += 1
     }
 
@@ -138,6 +153,7 @@ final class SessionTransactionMonitor {
     }
 
     private func apply(_ state: DriverTransactionState, from driver: any DatabaseDriver, to connectionId: UUID) {
+        idleDrivers[connectionId] = state == .idle ? ObjectIdentifier(driver) : nil
         switch state {
         case .explicitTransaction, .implicitTransaction:
             entries[connectionId] = Entry(driver: driver, hold: .open)
@@ -152,10 +168,14 @@ final class SessionTransactionMonitor {
         }
     }
 
-    private func endWork(_ connectionId: UUID) {
-        workGenerations[connectionId, default: 0] += 1
+    // A read cannot end a transaction, so only its start, which a confirmation may race, stales a dialog.
+    private func endWork(_ connectionId: UUID, reading: Bool) {
+        if !reading { workGenerations[connectionId, default: 0] += 1 }
         let remaining = workCounts[connectionId, default: 1] - 1
         workCounts[connectionId] = remaining > 0 ? remaining : nil
+        guard !reading else { return }
+        let statements = statementCounts[connectionId, default: 1] - 1
+        statementCounts[connectionId] = statements > 0 ? statements : nil
     }
 }
 

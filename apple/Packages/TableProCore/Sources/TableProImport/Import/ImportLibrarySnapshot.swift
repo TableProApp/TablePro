@@ -26,11 +26,19 @@ public struct ImportRules: Sendable, Equatable {
     public var maximumGroupDepth: Int
     public var supportsSavedQueries: Bool
     public var supportsCredentialProfiles: Bool
+    // iOS signs in to a jump host with a key kept on the device, so a hop's key path is carried there, never read.
+    public var readsJumpHostKeyFiles: Bool
 
-    public init(maximumGroupDepth: Int, supportsSavedQueries: Bool, supportsCredentialProfiles: Bool) {
+    public init(
+        maximumGroupDepth: Int,
+        supportsSavedQueries: Bool,
+        supportsCredentialProfiles: Bool,
+        readsJumpHostKeyFiles: Bool = true
+    ) {
         self.maximumGroupDepth = maximumGroupDepth
         self.supportsSavedQueries = supportsSavedQueries
         self.supportsCredentialProfiles = supportsCredentialProfiles
+        self.readsJumpHostKeyFiles = readsJumpHostKeyFiles
     }
 }
 

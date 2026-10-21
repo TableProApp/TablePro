@@ -179,15 +179,7 @@ internal struct JsonRowConverter {
 
     private func formatJson(_ value: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let data = trimmed.data(using: .utf8) else {
-            return quotedEscaped(value)
-        }
-        do {
-            _ = try JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)
-            return trimmed
-        } catch {
-            return quotedEscaped(value)
-        }
+        return trimmed.isValidJson ? trimmed : quotedEscaped(value)
     }
 
     private func quotedEscaped(_ value: String) -> String {

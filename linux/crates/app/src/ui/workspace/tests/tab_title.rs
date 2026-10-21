@@ -129,6 +129,38 @@ fn open_transaction_marks_editor_tab() {
 }
 
 #[gtk4::test]
+fn another_tabs_open_transaction_is_bannered_until_its_tab_is_shown() {
+    let mut runs = Replies::default();
+    runs.always(FakeRun::completed(Vec::new()).leaving(TransactionState::InTransaction));
+    let editor_session: Arc<dyn EditorSession> = Arc::new(FakeEditorSession::new(runs));
+    let test = TestWindow::connected_with("TransactionBanner", |script| {
+        script.open_editor_session.always(FakeReply::ok(editor_session));
+    });
+    let workspace = test.workspace();
+    let (view, banner) = (workspace.imp().tab_view.get(), workspace.imp().transaction_banner.get());
+
+    test.run_in_new_editor_tab();
+    let owner = view.selected_page().expect("the editor's page");
+    wait_until(WAIT, || modified(&owner)).expect("the open transaction to reach the workspace");
+    assert!(
+        !banner.is_revealed(),
+        "the owning tab shows the banner over its own line"
+    );
+
+    WidgetExt::activate_action(&test.window, "win.new-editor-tab", None).expect("win.new-editor-tab");
+    wait_until(WAIT, || banner.is_revealed()).expect("the banner on the other tab");
+    assert_ne!(view.selected_page().as_ref(), Some(&owner));
+    assert_eq!(
+        banner.title().as_str(),
+        format!("“{}” has an open transaction", owner.title())
+    );
+
+    banner.emit_by_name::<()>("button-clicked", &[]);
+    wait_until(WAIT, || view.selected_page().as_ref() == Some(&owner)).expect("Show to bring the tab forward");
+    wait_until(WAIT, || !banner.is_revealed()).expect("the banner to hide on the owning tab");
+}
+
+#[gtk4::test]
 fn restored_workspace_selects_saved_active_tab() {
     let test = TestWindow::picker("RestoreActive");
     let store = test.services.storage.workspaces().clone();

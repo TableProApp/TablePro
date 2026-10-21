@@ -5,21 +5,10 @@
 
 import Foundation
 
-/// Turns SQLite's `PRAGMA foreign_key_list` rows into the foreign keys a schema editor can show.
-///
-/// The pragma reports the columns and the actions and nothing else. It does not report the
-/// constraint's name, so a key declared `CONSTRAINT fk_orders_customer …` reads back anonymous and
-/// the name the user typed is lost the next time the table is read. And measured on 3.54, it
-/// reports the parent column as null for `REFERENCES parent` written without a column list, even
-/// when the parent has a primary key.
-///
-/// So three sources are used: the pragma for the columns and actions, the stored `CREATE TABLE`
-/// text for the name, and the parent's own primary key for what the shorthand left out. The pragma
-/// and the DDL are matched on the relationship each describes rather than on position, because the
-/// pragma numbers keys in reverse declaration order and renumbers them whenever one is added or
-/// dropped.
+// PRAGMA foreign_key_list reports no constraint name, so the name comes from the stored CREATE TABLE.
+// The pragma numbers keys in reverse declaration order and renumbers them on every change, so the two
+// are matched on what each key describes, not on position.
 public enum SQLiteForeignKeyGrouping {
-    /// One key as the pragma describes it, before names are attached.
     private struct Group {
         let id: String
         var columns: [String] = []
@@ -29,14 +18,62 @@ public enum SQLiteForeignKeyGrouping {
         var onDelete = "NO ACTION"
     }
 
-    /// The foreign keys of `table`.
-    ///
-    /// `pragmaRows` are `PRAGMA foreign_key_list` rows, `id | seq | table | from | to | on_update |
-    /// on_delete | match`. `createTableSQL` is the statement `sqlite_master` stores, or nil where it
-    /// could not be read, in which case every key falls back to a positional name as before.
-    ///
-    /// A key spanning several columns comes back as one `PluginForeignKeyInfo` per column pair, all
-    /// sharing one name, which is how the schema editor regroups them into a single composite key.
+    // Rows: PRAGMA foreign_key_list's columns, then the table's DDL on the first row only. The pragma itself
+    // finds the table, so a temporary table keeps its keys.
+    public static func foreignKeysQuery(table: String) -> String {
+        let literal = "'\(SQLiteMasterQueries.escapeLiteral(table))'"
+        return """
+            SELECT \(pragmaColumns),
+                   CASE WHEN p.id = 0 AND p.seq = 0 THEN (
+                       SELECT sql FROM sqlite_master WHERE type = 'table' AND name = \(literal) COLLATE NOCASE
+                   ) END
+            FROM pragma_foreign_key_list(\(literal)) p
+            ORDER BY p.id, p.seq
+            """
+    }
+
+    // The same rows behind the table's name. GLOB, not LIKE: `_` is a LIKE wildcard, so LIKE 'sqlite_%' also
+    // hides a user table like sqlitebrowser_x.
+    public static func schemaForeignKeysQuery(excludingTableGlob glob: String? = nil) -> String {
+        let excluded = glob.map { " AND m.name NOT GLOB '\(SQLiteMasterQueries.escapeLiteral($0))'" } ?? ""
+        return """
+            SELECT m.name, \(pragmaColumns), CASE WHEN p.id = 0 AND p.seq = 0 THEN m.sql END
+            FROM sqlite_master m, pragma_foreign_key_list(m.name) p
+            WHERE m.type = 'table' AND m.name NOT GLOB 'sqlite_*'\(excluded)
+            ORDER BY m.name, p.id, p.seq
+            """
+    }
+
+    // `to` is null for a shorthand `REFERENCES parent`. pragma_table_info finds the parent by SQLite's own
+    // name rule, which folds ASCII case only, unlike Swift's lowercased().
+    private static let pragmaColumns = """
+        p.id, p.seq, p."table", p."from",
+               ifnull(p."to", (SELECT k.name FROM pragma_table_info(p."table") k WHERE k.pk = p.seq + 1)),
+               p.on_update, p.on_delete, p."match"
+        """
+
+    public static func foreignKeys(table: String, fromRows rows: [[PluginCellValue]]) -> [PluginForeignKeyInfo] {
+        let listed = rows.filter { $0.count >= 9 }
+        return infos(
+            table: table,
+            pragmaRows: listed.map { Array($0.prefix(8)) },
+            createTableSQL: listed.lazy.compactMap { $0[8].asText }.first
+        )
+    }
+
+    public static func foreignKeysByTable(fromRows rows: [[PluginCellValue]]) -> [String: [PluginForeignKeyInfo]] {
+        var rowsByTable: [String: [[PluginCellValue]]] = [:]
+        for row in rows {
+            guard row.count >= 10, let table = row[0].asText else { continue }
+            rowsByTable[table, default: []].append(Array(row.dropFirst()))
+        }
+        return rowsByTable.reduce(into: [:]) { result, entry in
+            result[entry.key] = foreignKeys(table: entry.key, fromRows: entry.value)
+        }
+    }
+
+    // pragmaRows: id | seq | table | from | to | on_update | on_delete | match. A composite key comes back
+    // as one info per column pair under one name, which is how the schema editor regroups it.
     public static func infos(
         table: String,
         pragmaRows: [[PluginCellValue]],
@@ -46,9 +83,8 @@ public enum SQLiteForeignKeyGrouping {
         let groups = groups(from: pragmaRows, primaryKeysByTable: primaryKeysByTable)
         let names = resolvedNames(for: groups, table: table, createTableSQL: createTableSQL)
 
-        return groups.enumerated().flatMap { offset, group -> [PluginForeignKeyInfo] in
-            let name = names[offset]
-            return zip(group.columns, group.referencedColumns).map { column, referencedColumn in
+        return zip(groups, names).flatMap { group, name -> [PluginForeignKeyInfo] in
+            zip(group.columns, group.referencedColumns).map { column, referencedColumn in
                 PluginForeignKeyInfo(
                     name: name,
                     column: column,
@@ -85,10 +121,7 @@ public enum SQLiteForeignKeyGrouping {
 
             groups[index].referencedTable = referencedTable
             groups[index].columns.append(column)
-            /// Measured: `REFERENCES parent` with no column list reports null here even when the
-            /// parent has a primary key, so the parent's own key is what fills it. Falling back to
-            /// the child's column name instead would show the wrong target and stop the key being
-            /// matched for removal.
+            // `to` is null for a shorthand `REFERENCES parent`, which means the parent's primary key.
             let parentKey = primaryKeysByTable[referencedTable.lowercased()] ?? []
             let position = groups[index].columns.count - 1
             groups[index].referencedColumns.append(
@@ -100,13 +133,9 @@ public enum SQLiteForeignKeyGrouping {
         return groups
     }
 
-    /// The name each group is shown and addressed by.
-    ///
-    /// The `CONSTRAINT` name from the DDL where there is one and it is unambiguous, and the
-    /// positional `fk_<table>_<id>` otherwise. SQLite lets two constraints share a name, and the
-    /// schema editor groups its rows by name, so a recovered name that collides would merge two
-    /// unrelated keys into one composite relationship. A collision falls back to the positional
-    /// name, which is unique by construction.
+    // Consumers group rows by name, so two keys sharing one would show as one composite key. A declared
+    // name is kept when no other key declares it; every other key takes fk_<table>_<id>, suffixed until
+    // no other key uses it, since a declared name may spell another key's positional one.
     private static func resolvedNames(
         for groups: [Group],
         table: String,
@@ -117,39 +146,54 @@ public enum SQLiteForeignKeyGrouping {
         for name in declared.compactMap({ $0 }) {
             occurrences[name, default: 0] += 1
         }
-        return groups.enumerated().map { offset, group in
-            guard let name = declared[offset], occurrences[name] == 1 else {
-                return "fk_\(table)_\(group.id)"
+        let kept = declared.map { name in name.flatMap { occurrences[$0] == 1 ? $0 : nil } }
+        var used = Set(kept.compactMap { $0 })
+
+        return zip(groups, kept).map { group, name in
+            if let name { return name }
+            let positional = "fk_\(table)_\(group.id)"
+            var candidate = positional
+            var suffix = 2
+            while !used.insert(candidate).inserted {
+                candidate = "\(positional)_\(suffix)"
+                suffix += 1
             }
-            return name
+            return candidate
         }
     }
 
-    /// The `CONSTRAINT` name the DDL gave each group, where it gave one.
-    ///
-    /// Matched on the child columns, the parent table, and the parent columns when the DDL supplies
-    /// them. The parent columns are compared only then: the DDL may omit them and the pragma always
-    /// reports something, so requiring them to agree everywhere would fail the shorter form. Two
-    /// keys from the same column to different columns of the same parent are legal, and ignoring
-    /// the parent columns entirely swapped their names.
+    // A clause names the one group it can describe. The pragma lists keys in reverse declaration order, so
+    // a clause that fits several groups is settled only once the others are taken, and keys that stay
+    // indistinguishable keep positional names rather than risk a swap.
     private static func declaredNames(for groups: [Group], createTableSQL: String?) -> [String?] {
         guard let createTableSQL,
               let parsed = SQLiteTableDDL.parse(createTableSQL: createTableSQL) else {
             return Array(repeating: nil, count: groups.count)
         }
-        var clauses = SQLiteTableDDL.foreignKeys(in: parsed)
-
-        return groups.map { group -> String? in
-            guard let match = clauses.firstIndex(where: { clause in
-                sameIdentifiers(clause.columns, group.columns)
-                    && sameIdentifier(clause.referencedTable, group.referencedTable)
-                    && (clause.referencedColumns.isEmpty
-                        || sameIdentifiers(clause.referencedColumns, group.referencedColumns))
-            }) else { return nil }
-            let name = clauses[match].name
-            clauses.remove(at: match)
-            return name?.isEmpty == false ? name : nil
+        let clauses = SQLiteTableDDL.foreignKeys(in: parsed)
+        var candidates = clauses.map { clause in
+            Set(groups.indices.filter { describes(clause, groups[$0]) })
         }
+        var names = [String?](repeating: nil, count: groups.count)
+        while let index = candidates.firstIndex(where: { $0.count == 1 }), let group = candidates[index].first {
+            if let name = clauses[index].name, !name.isEmpty {
+                names[group] = name
+            }
+            for other in candidates.indices {
+                candidates[other].remove(group)
+            }
+        }
+        return names
+    }
+
+    // A shorthand `REFERENCES parent` names no parent columns while the group holds them resolved, so they
+    // are compared only when the DDL gives them. An omitted action reads back from the pragma as NO ACTION.
+    private static func describes(_ clause: SQLiteForeignKeyClause, _ group: Group) -> Bool {
+        sameIdentifiers(clause.columns, group.columns)
+            && sameIdentifier(clause.referencedTable, group.referencedTable)
+            && (clause.referencedColumns.isEmpty || sameIdentifiers(clause.referencedColumns, group.referencedColumns))
+            && sameIdentifier(clause.onDelete ?? "NO ACTION", group.onDelete)
+            && sameIdentifier(clause.onUpdate ?? "NO ACTION", group.onUpdate)
     }
 
     private static func sameIdentifier(_ lhs: String, _ rhs: String) -> Bool {

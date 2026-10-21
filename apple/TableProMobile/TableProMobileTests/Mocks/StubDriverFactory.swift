@@ -17,6 +17,17 @@ final class StubDriverFactory: DriverFactory, @unchecked Sendable {
         lock.withLock { dialedConnections }
     }
 
+    private var catalogConnections = false
+
+    var opensCatalogs: Bool {
+        get { lock.withLock { catalogConnections } }
+        set { lock.withLock { catalogConnections = newValue } }
+    }
+
+    func opensCatalogConnections(for connection: DatabaseConnection) -> Bool {
+        opensCatalogs
+    }
+
     // Handed out one per dial, ahead of `drivers`, so each redial gets a driver of its own.
     func queue(_ driver: any DatabaseDriver) {
         lock.withLock { queuedDrivers.append(driver) }

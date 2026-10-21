@@ -13,17 +13,21 @@ internal struct WorkspaceRailEntry: Identifiable, Equatable {
     /// What the container names on this engine, so the row can say "schema public" rather
     /// than calling every container a database.
     internal let containerTarget: ContainerSwitchTarget?
+    /// A session connection behind this entry holds a transaction, so it shows from other entries.
+    internal let holdsTransaction: Bool
 
     internal init(
         workspace: WorkspaceID,
         connection: DatabaseConnection,
         status: ConnectionStatus,
-        containerTarget: ContainerSwitchTarget? = .database
+        containerTarget: ContainerSwitchTarget? = .database,
+        holdsTransaction: Bool = false
     ) {
         self.workspace = workspace
         self.connection = connection
         self.status = status
         self.containerTarget = containerTarget
+        self.holdsTransaction = holdsTransaction
     }
 
     internal var id: WorkspaceID { workspace }
@@ -68,7 +72,13 @@ internal enum WorkspaceRailStore {
             closingContainers: { workspacesById[$0]?.lazy.compactMap(\.closingContainer).first },
             visibleContainers: { Set(coordinatorsById[$0]?.compactMap(\.tabManager.visibleContainer) ?? []) },
             openedAt: workspacesById.compactMapValues { $0.map(\.openedAt).min() },
-            storedOrder: WorkspaceRailOrderStore.shared.order
+            storedOrder: WorkspaceRailOrderStore.shared.order,
+            holdsTransaction: { workspace in
+                DatabaseManager.shared.sessionTransactions.holdsTransaction(
+                    connectionId: workspace.connectionId,
+                    container: workspace.container
+                )
+            }
         )
     }
 
@@ -89,7 +99,8 @@ internal enum WorkspaceRailStore {
         closingContainers: (UUID) -> String? = { _ in nil },
         visibleContainers: (UUID) -> Set<String> = { _ in [] },
         openedAt: [UUID: Date] = [:],
-        storedOrder: [WorkspaceID]
+        storedOrder: [WorkspaceID],
+        holdsTransaction: (WorkspaceID) -> Bool = { _ in false }
     ) -> [WorkspaceRailEntry] {
         var connections: [UUID: DatabaseConnection] = [:]
         var statuses: [UUID: ConnectionStatus] = [:]
@@ -137,7 +148,8 @@ internal enum WorkspaceRailStore {
                 workspace: workspace,
                 connection: connection,
                 status: status,
-                containerTarget: targets[workspace.connectionId]
+                containerTarget: targets[workspace.connectionId],
+                holdsTransaction: holdsTransaction(workspace)
             )
         }
     }
@@ -175,7 +187,8 @@ internal enum WorkspaceRailStore {
             events.visibleContainerChanged.eraseToAnyPublisher(),
             events.browseContainerChanged.map { _ in () }.eraseToAnyPublisher(),
             events.connectionStatusChanged.map { _ in () }.eraseToAnyPublisher(),
-            events.connectionUpdated.map { _ in () }.eraseToAnyPublisher()
+            events.connectionUpdated.map { _ in () }.eraseToAnyPublisher(),
+            events.sessionTransactionsChanged.map { _ in () }.eraseToAnyPublisher()
         )
         .eraseToAnyPublisher()
     }
