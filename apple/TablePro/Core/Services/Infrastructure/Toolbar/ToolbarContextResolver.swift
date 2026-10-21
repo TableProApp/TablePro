@@ -95,10 +95,10 @@ internal enum ToolbarContextResolver {
             return [MainWindowToolbar.refresh]
         case .objectSource where key.stagesObjectChanges:
             return []
-        case .erDiagram, .serverDashboard, .insights, .objectSource, .versionHistory, .tableListing:
+        case .serverDashboard, .insights, .objectSource, .versionHistory, .tableListing:
             /// None of these can stage a change, so the commit control could only ever be dim.
             return [MainWindowToolbar.saveChanges]
-        case .query, .table, .usersRoles:
+        case .query, .table, .usersRoles, .erDiagram:
             return []
         }
     }

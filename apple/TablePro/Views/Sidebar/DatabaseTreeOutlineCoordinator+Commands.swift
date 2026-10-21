@@ -76,6 +76,8 @@ extension DatabaseTreeOutlineCoordinator {
             activateThen(ref) { [weak self] in
                 self?.mainCoordinator?.openImportDialog(formatId: formatId)
             }
+        case .generateRows(let ref):
+            mainCoordinator?.openGenerateRows(ref)
         case .maintenance(let operation, let tableName, let ref):
             activateThen(ref) { [weak self] in
                 self?.mainCoordinator?.showMaintenanceSheet(

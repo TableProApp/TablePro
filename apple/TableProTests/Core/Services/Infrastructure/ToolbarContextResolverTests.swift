@@ -287,8 +287,8 @@ struct ToolbarContextResolverTests {
     }
 
     @Test(
-        "The four kinds that can never stage a change lose the commit control",
-        arguments: [TabType.erDiagram, .serverDashboard, .insights, .objectSource]
+        "The three kinds that can never stage a change lose the commit control",
+        arguments: [TabType.serverDashboard, .insights, .objectSource]
     )
     func readOnlyKindsHideSaveChanges(tabKind: TabType) {
         let hidden = Self.hidden(Self.context(tabKind: tabKind))
@@ -310,8 +310,8 @@ struct ToolbarContextResolverTests {
         #expect(typeTab.visibilityKey.stagesObjectChanges)
     }
 
-    @Test("The three kinds that can stage a change keep both content commands", arguments: [
-        TabType.query, .table, .usersRoles,
+    @Test("The four kinds that can stage a change keep both content commands", arguments: [
+        TabType.query, .table, .usersRoles, .erDiagram,
     ])
     func editableKindsKeepBoth(tabKind: TabType) {
         let hidden = Self.hidden(Self.context(tabKind: tabKind))

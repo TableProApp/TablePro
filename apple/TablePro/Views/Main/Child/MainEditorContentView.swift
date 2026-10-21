@@ -75,7 +75,6 @@ struct MainEditorContentView: View {
     let onGoToPage: (Int) -> Void
 
     @State private var cachedChangeManager: AnyChangeManager?
-    @State private var erDiagramViewModels: [UUID: ERDiagramViewModel] = [:]
     @State private var queryPlanViewStates = QueryPlanViewStateStore()
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
     @State private var usersRolesViewModels: [UUID: UsersRolesViewModel] = [:]
@@ -187,7 +186,6 @@ struct MainEditorContentView: View {
         .onChange(of: tabManager.tabStructureVersion) { _ in
             let openTabIds = Set(tabManager.tabIds)
             coordinator.cleanupTabCaches(openTabIds: openTabIds)
-            erDiagramViewModels = erDiagramViewModels.filter { openTabIds.contains($0.key) }
             queryPlanViewStates.retainTabs(openTabIds)
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
             usersRolesViewModels = usersRolesViewModels.filter { openTabIds.contains($0.key) }
@@ -404,19 +402,22 @@ struct MainEditorContentView: View {
     @ViewBuilder
     private func erDiagramContent(tab: QueryTab) -> some View {
         Group {
-            if let vm = erDiagramViewModels[tab.id] {
+            if let vm = coordinator.erDiagramModels[tab.id] {
                 ERDiagramView(viewModel: vm)
             } else {
                 ProgressView(String(localized: "Loading schema…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onAppear {
-                        guard erDiagramViewModels[tab.id] == nil else { return }
+                        guard coordinator.erDiagramModels[tab.id] == nil else { return }
                         let vm = ERDiagramViewModel(
                             connectionId: connection.id,
                             databaseName: tab.tableContext.databaseName,
-                            schemaKey: tab.display.erDiagramSchemaKey ?? tab.tableContext.databaseName
+                            schemaKey: tab.display.erDiagramSchemaKey ?? tab.tableContext.databaseName,
+                            connection: connection
                         )
-                        erDiagramViewModels[tab.id] = vm
+                        vm.coordinator = coordinator
+                        vm.tabId = tab.id
+                        coordinator.erDiagramModels[tab.id] = vm
                     }
             }
         }

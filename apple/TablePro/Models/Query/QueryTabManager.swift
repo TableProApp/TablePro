@@ -548,10 +548,11 @@ final class QueryTabManager: ObservableObject {
         return schema == defaultSchema ? name : "\(schema).\(name)"
     }
 
-    func addCreateTableTab(databaseName: String = "") {
+    func addCreateTableTab(databaseName: String = "", schemaName: String? = nil) {
         let tabTitle = String(localized: "Create Table")
         var newTab = QueryTab(title: tabTitle, tabType: .createTable)
         newTab.tableContext.databaseName = databaseName
+        newTab.tableContext.schemaName = schemaName
         bindToVisibleContainer(&newTab)
         newTab.tableContext.isEditable = false
         newTab.hasUserInteraction = true

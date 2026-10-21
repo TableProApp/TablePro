@@ -98,6 +98,7 @@ enum ActiveSheet: Identifiable {
     /// The database and schema the Types section was right-clicked in travel with the request.
     case createUserType(database: String?, schema: String?)
     case searchDatabase(DatabaseSearchSession)
+    case generateRows(RowGenerationSession)
 
     var id: String {
         switch self {
@@ -128,6 +129,7 @@ enum ActiveSheet: Identifiable {
         case .documentEditor(let request): "documentEditor-\(request.id.uuidString)"
         case .createUserType(let database, let schema): "createUserType-\(database ?? "")-\(schema ?? "")"
         case .searchDatabase(let session): "searchDatabase-\(session.id.uuidString)"
+        case .generateRows(let session): "generateRows-\(session.id.uuidString)"
         }
     }
 }
@@ -231,6 +233,8 @@ final class MainContentCoordinator: ObservableObject {
     @Published var createTableDrafts: [UUID: CreateTableDraft] = [:]
     /// A type tab's queued changes, kept here for the same two reasons.
     @Published var userTypeEditors: [UUID: UserTypeEditorModel] = [:]
+    // Held here for the same reason: the diagram stages schema edits that Save and the close gate reach.
+    @Published var erDiagramModels: [UUID: ERDiagramViewModel] = [:]
 
     /// Tabs holding staged principal changes. `usersRolesActions` is nilled the moment the tab is
     /// deselected, but the view model behind it is cached per tab id and keeps the staged work, so
@@ -1035,6 +1039,7 @@ final class MainContentCoordinator: ObservableObject {
         structureSessions.removeAll()
         createTableDrafts.removeAll()
         userTypeEditors.removeAll()
+        erDiagramModels.removeAll()
         displayFormatsCache.removeAll()
         displayOrderCache.removeAll()
         displayStateCache.removeAll()
