@@ -127,6 +127,9 @@ impl DatabaseDriver for PgDriver {
         let pool = PgPoolOptions::new()
             .max_connections(4)
             .acquire_timeout(Duration::from_secs(5))
+            .after_release(|connection, _| {
+                Box::pin(async move { Ok(sqlx::query("DISCARD ALL").execute(connection).await.is_ok()) })
+            })
             .connect_with(pg_opts)
             .await
             .map_err(map_sqlx_connect_error)?;

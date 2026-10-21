@@ -15,19 +15,19 @@ use testcontainers_modules::postgres::Postgres;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use tokio_util::sync::CancellationToken;
 
+#[path = "support/shared_container.rs"]
+mod shared_container;
 #[path = "support/wire_round_trip.rs"]
 mod wire_round_trip;
 
-#[path = "support/shared_container.rs"]
-mod shared_container;
-
-#[path = "support/connection_paths.rs"]
-mod connection_paths;
-#[path = "support/read_only_session.rs"]
-mod read_only_session;
-
 #[path = "support/connection_contracts.rs"]
 mod connection_contracts;
+#[path = "support/connection_paths.rs"]
+mod connection_paths;
+#[path = "support/pool_session_reset.rs"]
+mod pool_session_reset;
+#[path = "support/read_only_session.rs"]
+mod read_only_session;
 
 #[path = "support/vector_contract.rs"]
 mod vector_contract;
