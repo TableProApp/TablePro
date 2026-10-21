@@ -56,23 +56,6 @@ let value = 3;
         self.assertTrue(normalized.startswith('"POT-Creation-Date: 1970-01-01 00:00+0000'))
         self.assertIn('msgid "A"', normalized)
 
-    def test_reports_pot_and_potfiles_drift_independently(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            catalog = root / "apps/linux/po/tablepro.pot"
-            potfiles = root / "apps/linux/po/POTFILES.in"
-            catalog.parent.mkdir(parents=True)
-            catalog.write_text("current pot\n", encoding="utf-8")
-            potfiles.write_text("stale source.rs\n", encoding="utf-8")
-            self.assertEqual(
-                TRANSLATIONS.stale_outputs(root, "current pot\n", "expected source.rs\n"),
-                (potfiles,),
-            )
-            self.assertEqual(
-                TRANSLATIONS.stale_outputs(root, "stale pot\n", "stale source.rs\n"),
-                (catalog,),
-            )
-
     def test_generates_catalog_and_normalizes_gettext_metadata(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -108,42 +91,35 @@ let value = 3;
             with self.assertRaisesRegex(RuntimeError, "no Rust translation source files"):
                 TRANSLATIONS.generate_catalog(Path(directory))
 
-    def test_read_exact_returns_none_for_missing_catalog_files(self):
-        with tempfile.TemporaryDirectory() as directory:
-            self.assertIsNone(TRANSLATIONS.read_exact(Path(directory) / "missing.pot"))
-
-    def test_check_mode_accepts_current_catalogs(self):
+    def test_check_mode_only_verifies_generation_and_writes_nothing(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             catalog, potfiles = self.catalog_paths(root)
-            catalog.parent.mkdir(parents=True)
-            catalog.write_text("catalog\n", encoding="utf-8")
-            potfiles.write_text("source.rs\n", encoding="utf-8")
             with self.patched_main(root, catalog, potfiles, ("catalog\n", "source.rs\n"), ["--check"]):
                 self.assertEqual(TRANSLATIONS.main(), 0)
+            self.assertFalse(catalog.exists())
+            self.assertFalse(potfiles.exists())
 
-    def test_check_mode_reports_stale_catalogs(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            catalog, potfiles = self.catalog_paths(root)
-            catalog.parent.mkdir(parents=True)
-            catalog.write_text("old catalog\n", encoding="utf-8")
-            potfiles.write_text("source.rs\n", encoding="utf-8")
-            error = io.StringIO()
-            with self.patched_main(root, catalog, potfiles, ("new catalog\n", "source.rs\n"), ["--check"]), contextlib.redirect_stderr(error):
-                self.assertEqual(TRANSLATIONS.main(), 1)
-            self.assertIn("tablepro.pot", error.getvalue())
-            self.assertIn("@@", error.getvalue())
-
-    def test_update_mode_writes_both_catalog_files(self):
+    def test_update_mode_writes_both_files_and_names_the_template_bookie_pot(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             catalog, potfiles = self.catalog_paths(root)
             expected = ("catalog\n", "source.rs\n")
             with self.patched_main(root, catalog, potfiles, expected, []):
                 self.assertEqual(TRANSLATIONS.main(), 0)
+            self.assertEqual(catalog.name, "bookie.pot")
             self.assertEqual(catalog.read_text(encoding="utf-8"), expected[0])
             self.assertEqual(potfiles.read_text(encoding="utf-8"), expected[1])
+
+    def test_output_dir_redirects_the_generated_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog, potfiles = self.catalog_paths(root)
+            target = root / "artifact"
+            with self.patched_main(root, catalog, potfiles, ("catalog\n", "source.rs\n"), ["--output-dir", str(target)]):
+                self.assertEqual(TRANSLATIONS.main(), 0)
+            self.assertEqual((target / "bookie.pot").read_text(encoding="utf-8"), "catalog\n")
+            self.assertFalse(catalog.exists())
 
     def test_generation_errors_return_failure(self):
         error = io.StringIO()
@@ -155,23 +131,23 @@ let value = 3;
             self.assertEqual(TRANSLATIONS.main(), 1)
         self.assertIn("generation failed", error.getvalue())
 
-    def test_script_entry_point_exits_with_catalog_failure(self):
-        def write_catalog(command, cwd, env, check):
-            output = Path(next(argument.removeprefix("--output=") for argument in command if argument.startswith("--output=")))
-            output.write_text('msgid "stub"\nmsgstr ""\n', encoding="utf-8")
-            return TRANSLATIONS.subprocess.CompletedProcess(command, 0)
+    def test_script_entry_point_exits_with_extractor_failure(self):
+        def failing_extractor(command, cwd, env, check):
+            raise TRANSLATIONS.subprocess.CalledProcessError(1, command)
 
+        error = io.StringIO()
         with (
-            patch.object(TRANSLATIONS.subprocess, "run", side_effect=write_catalog),
+            patch.object(TRANSLATIONS.subprocess, "run", side_effect=failing_extractor),
             patch.object(sys, "argv", [str(SCRIPT), "--check"]),
-            contextlib.redirect_stderr(io.StringIO()),
+            contextlib.redirect_stderr(error),
             self.assertRaises(SystemExit) as raised,
         ):
             runpy.run_path(str(SCRIPT), run_name="__main__")
         self.assertEqual(raised.exception.code, 1)
+        self.assertIn("template generation failed", error.getvalue())
 
     def catalog_paths(self, root):
-        return root / "apps/linux/po/tablepro.pot", root / "apps/linux/po/POTFILES.in"
+        return root / "apps/linux/po/bookie.pot", root / "apps/linux/po/POTFILES.in"
 
     def patched_main(self, root, catalog, potfiles, generated, arguments):
         stack = contextlib.ExitStack()

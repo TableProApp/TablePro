@@ -57,7 +57,7 @@
                 "install -Dm644 apps/linux/flatpak/com.tablepro.linux.desktop /app/share/applications/com.tablepro.linux.desktop",
                 "install -Dm644 apps/linux/flatpak/com.tablepro.linux.metainfo.xml /app/share/metainfo/com.tablepro.linux.metainfo.xml",
                 "install -Dm644 apps/linux/flatpak/icons/scalable/com.tablepro.linux.svg /app/share/icons/hicolor/scalable/apps/com.tablepro.linux.svg",
-                "if [ -f apps/linux/po/LINGUAS ]; then for lang in $(grep -v '^#' apps/linux/po/LINGUAS | grep -v '^$' || true); do mkdir -p /app/share/locale/$lang/LC_MESSAGES && msgfmt apps/linux/po/$lang.po -o /app/share/locale/$lang/LC_MESSAGES/tablepro.mo; done; fi"
+                "if [ -f apps/linux/po/LINGUAS ]; then for lang in $(grep -v '^#' apps/linux/po/LINGUAS | grep -v '^$' || true); do mkdir -p /app/share/locale/$lang/LC_MESSAGES && msgfmt apps/linux/po/$lang.po -o /app/share/locale/$lang/LC_MESSAGES/bookie.mo; done; fi"
             ],
             "sources": [
                 {

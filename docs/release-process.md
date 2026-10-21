@@ -10,6 +10,7 @@ A release is a git tag named `linux-vX.Y.Z` on the `linux` branch. Pushing the t
 | `bookie-X.Y.Z-1-x86_64.pkg.tar.zst` | `scripts/build-arch-rc.sh` in an Arch container | `sudo pacman -U bookie-X.Y.Z-1-x86_64.pkg.tar.zst` |
 | `bookie.flatpak` | `flatpak-builder` from `apps/linux/flatpak` | `flatpak install --user bookie.flatpak` |
 | `BookiE-X.Y.Z-x86_64.AppImage` | `scripts/build-appimage.sh` (linuxdeploy with the GTK plugin) | `chmod +x` and run |
+| `bookie.pot` | `scripts/update-translations.py` | gettext template for translators; not committed to the repository |
 | `SHA256SUMS` | the publish job | `sha256sum --check SHA256SUMS` |
 
 Every file also has build provenance recorded by GitHub (`gh attestation verify <file> --repo cozyGarage/BookiE`). Releases below 1.0 are marked pre-release. The AppImage is built on Debian testing, so it needs a distribution with a comparable glibc.

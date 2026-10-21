@@ -6,7 +6,7 @@ The [active sprint](bookie-0.2-sprint.md) owns current acceptance. Start with th
 
 `scripts/ci-local.sh` remains the shared local/CI entry for full, widgets and integration modes. Registrations for isolated GTK and keyring tests live in `scripts/isolated-tests.json`; zero selected tests is a failure. Every `ci-local.sh` run saves exact-tree evidence under `target/quality/`. Release mode does not certify package installation, Wayland, upgrade/rollback or retry-free candidate soak. See the [packaging guide](../apps/linux/packaging/README.md) and [manual checklist](manual-verification-0.2-features.md).
 
-The script harness checks selected documented Rust declarations against source and regenerates the gettext template in memory. It compares both `apps/linux/po/tablepro.pot` and `POTFILES.in` without writing; run `python3 scripts/update-translations.py` to refresh them. The catalog check needs GNU `xgettext` and does not load GTK GIR bindings or a desktop session.
+The script harness checks selected documented Rust declarations against source and generates the gettext template in memory and fails if extraction breaks. The template (`bookie.pot`) and `POTFILES.in` are build outputs, ignored by git; run `python3 scripts/update-translations.py` to write them. The catalog check needs GNU `xgettext` and does not load GTK GIR bindings or a desktop session.
 
 ## What a container run proves
 

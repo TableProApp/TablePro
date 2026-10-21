@@ -48,11 +48,16 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
+      - name: Generate the translation template
+        if: steps.version.outputs.publish == 'true'
+        run: python3 scripts/update-translations.py --output-dir translations
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         if: steps.version.outputs.publish == 'true'
         with:
           name: release-notes
-          path: release-notes.md
+          path: |
+            release-notes.md
+            translations/bookie.pot
 
   deb:
     name: Debian package
@@ -202,7 +207,7 @@ jobs:
         run: |
           mkdir release
           cd artifacts
-          cp -- *.deb *.AppImage *.pkg.tar.zst bookie.flatpak ../release/
+          cp -- *.deb *.AppImage *.pkg.tar.zst bookie.flatpak bookie.pot ../release/
           cp release-notes.md ../release-notes.md
           cd ../release
           sha256sum -- * > SHA256SUMS

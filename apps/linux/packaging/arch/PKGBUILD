@@ -80,6 +80,6 @@ package() {
     [[ -e "$catalog" ]] || continue
     locale="$(basename "$catalog" .po)"
     install -d "$pkgdir/usr/share/locale/$locale/LC_MESSAGES"
-    msgfmt "$catalog" -o "$pkgdir/usr/share/locale/$locale/LC_MESSAGES/tablepro.mo"
+    msgfmt "$catalog" -o "$pkgdir/usr/share/locale/$locale/LC_MESSAGES/bookie.mo"
   done
 }

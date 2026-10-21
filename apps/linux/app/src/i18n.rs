@@ -1,6 +1,6 @@
 use gettextrs::{LocaleCategory, bind_textdomain_codeset, bindtextdomain, setlocale, textdomain};
 
-pub const DOMAIN: &str = "tablepro";
+pub const DOMAIN: &str = "bookie";
 
 pub fn init() {
     unsafe {

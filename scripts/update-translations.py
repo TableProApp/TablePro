@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import ast
-import difflib
 import json
-from itertools import islice
 import os
 from pathlib import Path
 import re
@@ -14,7 +12,7 @@ import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CATALOG = ROOT / "apps/linux/po/tablepro.pot"
+CATALOG = ROOT / "apps/linux/po/bookie.pot"
 POTFILES = ROOT / "apps/linux/po/POTFILES.in"
 TRANSLATION_MACRO = re.compile(
     r"(?<![A-Za-z0-9_])(?:[A-Za-z_][A-Za-z0-9_]*::)*tr!(?=\s*(?:\(|\{|\[))"
@@ -72,7 +70,7 @@ def generate_catalog(root=ROOT):
             target = stage / source.relative_to(root)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(extraction_source(source.read_text(encoding="utf-8")), encoding="utf-8")
-        generated = stage / "tablepro.pot"
+        generated = stage / "bookie.pot"
         environment = dict(os.environ, LC_ALL="C", LANG="C", TZ="UTC", SOURCE_DATE_EPOCH="0")
         subprocess.run(
             [
@@ -99,53 +97,32 @@ def generate_catalog(root=ROOT):
     return catalog, potfiles
 
 
-def read_exact(path):
-    if not path.exists():
-        return None
-    with path.open("r", encoding="utf-8", newline="") as source:
-        return source.read()
-
-
-def stale_outputs(root, catalog, potfiles):
-    expected = ((root / "apps/linux/po/tablepro.pot", catalog), (root / "apps/linux/po/POTFILES.in", potfiles))
-    return tuple(path for path, content in expected if read_exact(path) != content)
+def write_outputs(catalog_path, potfiles_path, catalog, potfiles):
+    catalog_path.parent.mkdir(parents=True, exist_ok=True)
+    for path, content in ((catalog_path, catalog), (potfiles_path, potfiles)):
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        temporary.write_text(content, encoding="utf-8", newline="")
+        temporary.replace(path)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate or check the gettext template and source catalogue.")
-    parser.add_argument("--check", action="store_true", help="fail without writing when either catalogue is stale")
+    parser = argparse.ArgumentParser(description="Generate the gettext template (bookie.pot) and source list.")
+    parser.add_argument("--check", action="store_true", help="only verify that the template can be generated; write nothing")
+    parser.add_argument("--output-dir", type=Path, help="write bookie.pot and POTFILES.in here instead of apps/linux/po")
     args = parser.parse_args()
     try:
         catalog, potfiles = generate_catalog()
     except (OSError, RuntimeError, subprocess.CalledProcessError, KeyError) as error:
-        print(f"translation catalogue generation failed: {error}", file=sys.stderr)
+        print(f"translation template generation failed: {error}", file=sys.stderr)
         return 1
-    stale = stale_outputs(ROOT, catalog, potfiles)
     if args.check:
-        if stale:
-            names = ", ".join(str(path.relative_to(ROOT)) for path in stale)
-            print(f"stale translation catalogue files: {names}; run python3 scripts/update-translations.py", file=sys.stderr)
-            expected = {CATALOG: catalog, POTFILES: potfiles}
-            for path in stale:
-                current = read_exact(path)
-                if current is None:
-                    continue
-                diff = difflib.unified_diff(
-                    current.splitlines(keepends=True),
-                    expected[path].splitlines(keepends=True),
-                    fromfile=str(path.relative_to(ROOT)),
-                    tofile="generated",
-                )
-                print("".join(islice(diff, 80)), file=sys.stderr, end="")
-            return 1
-        print("translation catalogues: ok")
+        print("translation template: ok")
         return 0
-    CATALOG.parent.mkdir(parents=True, exist_ok=True)
-    for path, content in ((CATALOG, catalog), (POTFILES, potfiles)):
-        temporary = path.with_suffix(path.suffix + ".tmp")
-        temporary.write_text(content, encoding="utf-8", newline="")
-        temporary.replace(path)
-    print("translation catalogues updated")
+    directory = args.output_dir
+    catalog_path = directory / CATALOG.name if directory else CATALOG
+    potfiles_path = directory / POTFILES.name if directory else POTFILES
+    write_outputs(catalog_path, potfiles_path, catalog, potfiles)
+    print(f"translation template written to {catalog_path}")
     return 0
 
 

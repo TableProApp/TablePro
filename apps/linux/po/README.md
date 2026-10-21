@@ -3,7 +3,7 @@
 BookiE uses [GNU gettext](https://www.gnu.org/software/gettext/) for
 localisation. Source strings are wrapped at the call site with the `tr!`
 macro defined in `apps/linux/app/src/i18n.rs`; at runtime
-`bindtextdomain("tablepro", …)` points gettext at the locale directory
+`bindtextdomain("bookie", …)` points gettext at the locale directory
 shipped by the package (`/app/share/locale` under Flatpak,
 `/usr/share/locale` for system installs, or `$TABLEPRO_LOCALEDIR` for
 ad-hoc testing).
@@ -12,10 +12,10 @@ ad-hoc testing).
 
 1. Pick a locale code (e.g. `vi`, `de`, `pt_BR`).
 2. Add it on its own line to [`LINGUAS`](LINGUAS).
-3. Copy `tablepro.pot` to `xx.po` and translate the entries:
+3. Copy `bookie.pot` to `xx.po` and translate the entries:
 
    ```sh
-   msginit --locale=xx --input=apps/linux/po/tablepro.pot --output=apps/linux/po/xx.po
+   msginit --locale=xx --input=apps/linux/po/bookie.pot --output=apps/linux/po/xx.po
    ```
 
 4. Compile and install (the package build does this automatically; for
@@ -23,13 +23,13 @@ ad-hoc testing).
 
    ```sh
    mkdir -p ~/.local/share/locale/xx/LC_MESSAGES
-   msgfmt apps/linux/po/xx.po -o ~/.local/share/locale/xx/LC_MESSAGES/tablepro.mo
+   msgfmt apps/linux/po/xx.po -o ~/.local/share/locale/xx/LC_MESSAGES/bookie.mo
    TABLEPRO_LOCALEDIR=~/.local/share/locale cargo run -p tablepro-app
    ```
 
-## Regenerating tablepro.pot
+## The template, bookie.pot
 
-`tablepro.pot` is the master template. Regenerate it using GNU gettext
+`bookie.pot` is not committed. It is generated from the `tr!` calls, so it can never be stale or conflict between pull requests. CI and the release workflow build it; every release attaches it as `bookie.pot`. Generate it locally using GNU gettext
 with Rust support (the helper normalizes namespaced macro calls in temporary
 copies so `xgettext` can extract them):
 
@@ -40,7 +40,7 @@ python3 scripts/update-translations.py
 Use `msgmerge` to fold new strings into existing translations:
 
 ```sh
-for f in apps/linux/po/*.po; do msgmerge --update "$f" apps/linux/po/tablepro.pot; done
+for f in apps/linux/po/*.po; do msgmerge --update "$f" apps/linux/po/bookie.pot; done
 ```
 
 ## Notes
