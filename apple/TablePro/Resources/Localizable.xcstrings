@@ -832,6 +832,9 @@
         }
       }
     },
+    "“%@” already has a column with that name." : {
+
+    },
     "“%@” and its token are removed from this Mac. Sessions lose its tools." : {
       "localizations" : {
         "fr" : {
@@ -15504,6 +15507,9 @@
         }
       }
     },
+    "A foreign key named “%@” already exists." : {
+
+    },
     "A foreign key needs as many referenced columns as it has columns." : {
       "localizations" : {
         "fr" : {
@@ -15513,6 +15519,9 @@
           }
         }
       }
+    },
+    "A foreign key staged in this diagram references “%1$@.%2$@”. Save or undo that key before renaming the column." : {
+
     },
     "A foreign table" : {
       "localizations" : {
@@ -19559,6 +19568,9 @@
         }
       }
     },
+    "Add Foreign Key…" : {
+
+    },
     "Add Global Index" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -22871,6 +22883,9 @@
           }
         }
       }
+    },
+    "Allow NULL" : {
+
     },
     "Allowed Connections" : {
       "localizations" : {
@@ -37475,6 +37490,9 @@
         }
       }
     },
+    "Choose a Type" : {
+
+    },
     "Choose AI provider and model" : {
       "localizations" : {
         "fr" : {
@@ -48560,6 +48578,9 @@
         }
       }
     },
+    "Constraint Name" : {
+
+    },
     "Constraints" : {
       "localizations" : {
         "fr" : {
@@ -53088,6 +53109,9 @@
         }
       }
     },
+    "Could Not Refresh the Diagram" : {
+
+    },
     "Could not release the file" : {
       "localizations" : {
         "fr" : {
@@ -53290,6 +53314,9 @@
           }
         }
       }
+    },
+    "Could Not Stage the Change" : {
+
     },
     "Could not start a new TablePro instance. Quit and reopen manually." : {
       "localizations" : {
@@ -61209,6 +61236,9 @@
           }
         }
       }
+    },
+    "Delete Foreign Key %@" : {
+
     },
     "Delete Group" : {
       "localizations" : {
@@ -142549,6 +142579,9 @@
         }
       }
     },
+    "References" : {
+
+    },
     "references %@" : {
       "localizations" : {
         "fr" : {
@@ -163429,6 +163462,9 @@
         }
       }
     },
+    "Show Structure of %@" : {
+
+    },
     "Show system databases and schemas" : {
       "localizations" : {
         "fr" : {
@@ -182380,6 +182416,9 @@
         }
       }
     },
+    "The column “%1$@” is no longer in “%2$@”." : {
+
+    },
     "The column keeps %1$lld of its %2$lld digits after the point, so a longer fraction is rounded." : {
       "localizations" : {
         "fr" : {
@@ -183614,6 +183653,9 @@
     "The diagram could not be rendered as %@." : {
 
     },
+    "The diagram is saving its changes. Make this change once the save has finished." : {
+
+    },
     "The disconnect was cancelled." : {
       "localizations" : {
         "fr" : {
@@ -184448,6 +184490,9 @@
           }
         }
       }
+    },
+    "The foreign key “%1$@” is no longer on “%2$@”." : {
+
     },
     "The form produced no statements to run." : {
       "localizations" : {
@@ -187602,6 +187647,9 @@
           }
         }
       }
+    },
+    "The schema changes staged in this diagram will be lost." : {
+
     },
     "The script already ran. Compare again to see where the target stands." : {
       "localizations" : {

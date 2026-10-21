@@ -320,6 +320,8 @@ struct MainContentView: View {
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
             hasStructureChanges: toolbarState.hasStructureChanges,
+            diagramEditsRevision: toolbarState.diagramEditsRevision,
+            selectedTabId: tabManager.selectedTabId,
             isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false,
             hasCreateTablePending: toolbarState.hasCreateTablePending,
             hasPrincipalChanges: toolbarState.hasPrincipalChanges

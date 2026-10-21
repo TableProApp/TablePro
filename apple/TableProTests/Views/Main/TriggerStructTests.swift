@@ -112,6 +112,17 @@ struct PendingChangeTriggerTests {
         #expect(makeTrigger(hasPrincipalChanges: true) != makeTrigger(hasPrincipalChanges: false))
     }
 
+    @Test("A diagram staging an edit, or another tab being selected, produces unequal triggers")
+    func diagramEditsAndTabSwitchChangeTheTrigger() {
+        var staged = makeTrigger()
+        staged.diagramEditsRevision = 1
+        #expect(staged != makeTrigger())
+
+        var switched = makeTrigger()
+        switched.selectedTabId = UUID()
+        #expect(switched != makeTrigger())
+    }
+
     @Test("Same values are equal")
     func sameValuesAreEqual() {
         let truncate = TestFixtures.makeTableRef(name: "t1")

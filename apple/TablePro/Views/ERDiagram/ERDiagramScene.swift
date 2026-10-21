@@ -7,6 +7,7 @@ struct ERDiagramScene {
     var nodeIndex: [String: UUID] = [:]
     var clusterColors: [UUID: NSColor] = [:]
     var selectedNodeId: UUID?
+    var selectedEdgeId: UUID?
     var size = CGSize(width: 800, height: 600)
 }
 
@@ -33,7 +34,12 @@ enum ERDiagramSceneRenderer {
             edges: scene.edges,
             nodeRects: scene.nodeRects,
             nodeIndex: scene.nodeIndex,
-            strokeColor: palette.edge,
+            colors: ERDiagramEdgeRenderer.Colors(
+                stroke: palette.edge,
+                selection: palette.selectionRule,
+                dropped: palette.droppedEdge
+            ),
+            selectedEdgeId: scene.selectedEdgeId,
             on: canvas
         )
 
@@ -73,6 +79,7 @@ enum ERDiagramSceneRenderer {
     private static func unselected(_ scene: ERDiagramScene) -> ERDiagramScene {
         var flat = scene
         flat.selectedNodeId = nil
+        flat.selectedEdgeId = nil
         return flat
     }
 

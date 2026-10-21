@@ -113,7 +113,13 @@ extension MainContentCoordinator {
     /// ever describes the tab on screen. A background tab keeps its session, so this is the only
     /// answer that holds once the user has switched away from it.
     func hasStagedStructureEdits(in tab: QueryTab) -> Bool {
-        structureSessions[tab.id]?.changeManager.hasChanges ?? false
+        (structureSessions[tab.id]?.changeManager.hasChanges ?? false)
+            || (erDiagramModels[tab.id]?.holdsUnsavedWork ?? false)
+    }
+
+    var selectedDiagramHasStagedEdits: Bool {
+        guard let tab = tabManager.selectedTab, tab.tabType == .erDiagram else { return false }
+        return erDiagramModels[tab.id]?.hasStagedEdits ?? false
     }
 
     func hasTableDraftWork(in tab: QueryTab) -> Bool {

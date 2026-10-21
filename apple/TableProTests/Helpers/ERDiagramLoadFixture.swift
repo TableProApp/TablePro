@@ -42,7 +42,7 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
     internal var status: ConnectionStatus = .connected
     internal var serverVersion: String? { nil }
 
-    private let columns: [String: [ColumnInfo]]
+    private var columns: [String: [ColumnInfo]]
     private let holds: [CatalogReadHold]
     private let failingReads: Int
     private let lock = NSLock()
@@ -74,7 +74,18 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
             await holds[index].release.wait()
         }
         guard index >= failingReads else { throw CatalogReadFailure() }
-        return columns
+        return lock.withLock { columns }
+    }
+
+    // A table created elsewhere between two reads.
+    internal func addTable(_ name: String, columns tableColumns: [ColumnInfo]) {
+        lock.withLock { columns[name] = tableColumns }
+    }
+
+    private var listedTables: [TableInfo] = []
+
+    internal func list(_ tables: [TableInfo]) {
+        lock.withLock { listedTables = tables }
     }
 
     internal func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] { [:] }
@@ -95,9 +106,9 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
         Self.emptyResult
     }
 
-    internal func fetchTables() async throws -> [TableInfo] { [] }
+    internal func fetchTables() async throws -> [TableInfo] { lock.withLock { listedTables } }
     internal func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
-    internal func fetchColumns(table: String) async throws -> [ColumnInfo] { columns[table] ?? [] }
+    internal func fetchColumns(table: String) async throws -> [ColumnInfo] { lock.withLock { columns[table] ?? [] } }
     internal func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
     internal func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
     internal func fetchApproximateRowCount(table: String) async throws -> Int? { nil }

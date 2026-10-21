@@ -97,19 +97,22 @@ extension MainContentCoordinator {
 
     // MARK: - Table Operations
 
-    func createNewTable() {
+    // The ER diagram names its own database and schema, which the sidebar may have moved away from.
+    func createNewTable(databaseName: String? = nil, schemaName: String? = nil) {
         guard !safeModeLevel.blocksAllWrites,
               CreateTableEligibility.canCreateTable(with: DatabaseManager.shared.driver(for: connection.id)) else {
             return
         }
 
+        let database = databaseName ?? browseDatabaseName
         if tabManager.tabs.isEmpty {
-            tabManager.addCreateTableTab(databaseName: browseDatabaseName)
+            tabManager.addCreateTableTab(databaseName: database, schemaName: schemaName)
         } else {
             let payload = EditorTabPayload(
                 connectionId: connection.id,
                 tabType: .createTable,
-                databaseName: browseDatabaseName
+                databaseName: database,
+                schemaName: schemaName
             )
             WindowManager.shared.openTab(payload: payload)
         }
