@@ -22,11 +22,22 @@ internal enum EditorTabContextMenuBuilder {
             isEnabled: commands.canKeepOpen(tabId)
         ) { commands.keepOpen(tabId) }
 
+        let isPinned = commands.isPinned(tabId)
+        append(menu, title: pinTitle(isPinned: isPinned)) { commands.setPinned(tabId, !isPinned) }
+
         menu.addItem(.separator())
 
         append(menu, title: String(localized: "Close Tab")) { commands.close(tabId) }
-        append(menu, title: String(localized: "Close Other Tabs")) { commands.closeOthers(tabId) }
-        append(menu, title: String(localized: "Close All Tabs")) { commands.closeAll() }
+        append(
+            menu,
+            title: String(localized: "Close Other Tabs"),
+            isEnabled: commands.canCloseOthers(tabId)
+        ) { commands.closeOthers(tabId) }
+        append(
+            menu,
+            title: String(localized: "Close All Tabs"),
+            isEnabled: commands.canCloseAll()
+        ) { commands.closeAll() }
 
         menu.addItem(.separator())
 
@@ -59,6 +70,10 @@ internal enum EditorTabContextMenuBuilder {
         }
 
         return menu
+    }
+
+    internal static func pinTitle(isPinned: Bool) -> String {
+        isPinned ? String(localized: "Unpin Tab") : String(localized: "Pin Tab")
     }
 
     private static func append(

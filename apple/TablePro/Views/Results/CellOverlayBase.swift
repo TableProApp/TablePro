@@ -28,6 +28,7 @@ class CellOverlayBase: NSObject {
     /// Held for the life of the open overlay: its subscription is what repaints the text on a theme
     /// change.
     private var textStyle: ThemeTextViewStyle?
+    private var invisibleCharacters: InvisibleCharacterTextDisplay?
     var onRemove: (() -> Void)?
 
     private(set) var row: Int = -1
@@ -90,6 +91,7 @@ class CellOverlayBase: NSObject {
         activeContainer.removeFromSuperview()
         container = nil
         textStyle = nil
+        invisibleCharacters = nil
         if let hostTableView {
             hostTableView.window?.makeFirstResponder(hostTableView)
         }
@@ -98,9 +100,14 @@ class CellOverlayBase: NSObject {
 
     static func overlayFrame(for cellFrame: NSRect, value: String) -> NSRect {
         let lineHeight = ThemeEngine.shared.dataGridFonts.regular.boundingRectForFont.height + 4
+        // A CR on its own breaks the line in the text view as LF does; CRLF is one break.
         var newlineCount = 0
-        for scalar in value.unicodeScalars where scalar == "\n" {
-            newlineCount += 1
+        var previous: Unicode.Scalar?
+        for scalar in value.unicodeScalars {
+            if scalar == "\r" || (scalar == "\n" && previous != "\r") {
+                newlineCount += 1
+            }
+            previous = scalar
         }
         let lineCount = CGFloat(newlineCount + 1)
         let contentHeight = max(lineCount * lineHeight + 8, cellFrame.height)
@@ -128,6 +135,14 @@ class CellOverlayBase: NSObject {
     /// way the inspector and the pop-out editor show the same value.
     func applyTheme(to textView: NSTextView, scope: ThemeScope) {
         textStyle = ThemeTextViewStyle(textView: textView, scope: scope)
+    }
+
+    // Before the text is set, so the value is laid out once.
+    func markInvisibleCharacters(in textView: NSTextView) {
+        invisibleCharacters = InvisibleCharacterTextDisplay.install(
+            on: textView,
+            isEnabled: AppSettingsManager.shared.dataGrid.showInvisibleCharacters
+        )
     }
 
     /// Lays a text view out the way an inline cell overlay needs.

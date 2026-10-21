@@ -270,6 +270,10 @@ enum FileMenuBuilder {
                 String(localized: "Export Results…"),
                 action: #selector(MainSplitViewController.exportQueryResults(_:))
             ),
+            MenuItemFactory.item(
+                String(localized: "Export Data Dictionary…"),
+                action: #selector(MainSplitViewController.exportDataDictionary(_:))
+            ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Export Connections…"),

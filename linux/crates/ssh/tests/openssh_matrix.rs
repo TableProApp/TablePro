@@ -26,7 +26,11 @@ struct Server {
 impl Server {
     // The client reads `client_config` after a known_hosts that already trusts the server, and nothing else.
     async fn start(key: SshKeyPair, options: OpenSshOptions, client_config: &str) -> TestResult<Self> {
-        let fixture = OpenSshFixture::start_with(SshAuthVariant::PublicKey(key), options, None).await?;
+        Self::start_trusting(SshAuthVariant::PublicKey(key), options, client_config).await
+    }
+
+    async fn start_trusting(variant: SshAuthVariant, options: OpenSshOptions, client_config: &str) -> TestResult<Self> {
+        let fixture = OpenSshFixture::start_with(variant, options, None).await?;
         let dir = tempfile::tempdir()?;
         let known_hosts = dir.path().join("known_hosts");
         let host_key = fixture.host_public_key().await?;
@@ -111,6 +115,14 @@ fn key_file(key: &SshKeyPair) -> SshAuth {
     SshAuth::PrivateKey {
         path: Some(key.private_key().to_owned()),
         passphrase: key.passphrase().map(SecretString::from),
+    }
+}
+
+// No passphrase is stored, so only the agent's copy of the key can sign without a prompt.
+fn key_file_held_by_the_agent(key: &SshKeyPair) -> SshAuth {
+    SshAuth::PrivateKey {
+        path: Some(key.private_key().to_owned()),
+        passphrase: None,
     }
 }
 
@@ -250,6 +262,74 @@ async fn a_chosen_key_file_is_offered_before_the_agents_keys() -> TestResult {
     let server = Server::start(key, options, &agent_config(&agent)).await?;
 
     let session = server.connect(key_file(server.key()?)).await??;
+
+    assert_tunnel_answers(&session).await
+}
+
+// The key file is not pinned when the agent holds it, so the agent signs and its passphrase is never asked for (#2583).
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_key_file_the_agent_holds_asks_for_no_passphrase() -> TestResult {
+    let agent = SshAgent::start().await?;
+    let key = SshKeyPair::generate_with(SshKeyType::Ed25519, Some(PASSPHRASE), "tablepro-matrix").await?;
+    agent.add(&key).await?;
+    let server = Server::start(key, OpenSshOptions::selected()?, &agent_config(&agent)).await?;
+
+    let session = server.connect(key_file_held_by_the_agent(server.key()?)).await??;
+
+    assert_tunnel_answers(&session).await
+}
+
+// An encrypted PEM file without its .pub hides its public half, so with IdentitiesOnly ssh could not match it to the
+// agent's copy and would ask for the passphrase.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn an_encrypted_pem_key_the_agent_holds_asks_for_no_passphrase() -> TestResult {
+    let agent = SshAgent::start().await?;
+    let key = SshKeyPair::generate_with(SshKeyType::Rsa, Some(PASSPHRASE), "tablepro-matrix").await?;
+    agent.add(&key).await?;
+    let rewritten = std::process::Command::new("ssh-keygen")
+        .args(["-q", "-p", "-m", "PEM", "-P", PASSPHRASE, "-N", PASSPHRASE, "-f"])
+        .arg(key.private_key())
+        .status()?;
+    assert!(rewritten.success());
+    std::fs::remove_file(key.public_key_file())?;
+    let server = Server::start(key, OpenSshOptions::selected()?, &agent_config(&agent)).await?;
+
+    let session = server.connect(key_file_held_by_the_agent(server.key()?)).await??;
+
+    assert_tunnel_answers(&session).await
+}
+
+// The server takes only the certificate, which is in the agent and on no disk. IdentitiesOnly would drop it.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn an_agent_certificate_for_the_chosen_key_file_is_still_offered() -> TestResult {
+    let agent = SshAgent::start().await?;
+    let authority = SshKeyPair::generate("tablepro-user-ca").await?;
+    let variant = SshAuthVariant::UserCertificateAuthority(authority);
+    let server = Server::start_trusting(variant, OpenSshOptions::selected()?, &agent_config(&agent)).await?;
+    let SshAuthVariant::UserCertificateAuthority(authority) = server.fixture.variant() else {
+        return Err("the server lost its certificate authority".into());
+    };
+    let key = SshKeyPair::generate("tablepro-matrix").await?;
+    let signed = std::process::Command::new("ssh-keygen")
+        .args(["-q", "-s"])
+        .arg(authority.private_key())
+        .args(["-I", "tablepro-matrix", "-n"])
+        .arg(server.fixture.password_credentials().username)
+        .arg(key.public_key_file())
+        .status()?;
+    assert!(signed.success());
+    agent.add(&key).await?;
+    std::fs::remove_file(format!("{}-cert.pub", key.private_key().display()))?;
+    assert_eq!(
+        agent.identities().await?.len(),
+        2,
+        "the agent holds the key and its certificate"
+    );
+
+    let session = server.connect(key_file(&key)).await??;
 
     assert_tunnel_answers(&session).await
 }

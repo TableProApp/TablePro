@@ -49,10 +49,11 @@ test-group = 'fixtures'
 filter = 'package(tablepro-session)'
 test-group = 'session'
 
-# The app's docker tests are integration targets. Its unit tests start
-# no container, so they keep running in parallel.
+# The app's docker tests are integration targets, and the large-catalog
+# case in its library. Its other unit tests start no container, so they
+# keep running in parallel.
 [[profile.default.overrides]]
-filter = 'package(tablepro) & kind(test)'
+filter = 'package(tablepro) & (kind(test) | test(/::large_catalog::/))'
 test-group = 'app'
 
 # These press real keys on the X display every test shares. A window
@@ -68,11 +69,18 @@ fail-fast = false
 # holds the runner until the job dies with no report.
 slow-timeout = { period = "60s", terminate-after = 5 }
 
-# The large-table case prints the times and memory its bounds are set
-# from, so the job log keeps them for a passing run too.
+# The large-table and large-catalog cases print the times and memory
+# their bounds are set from, so the job log keeps them for a passing run
+# too.
 [[profile.ci.overrides]]
-filter = 'test(/a_million_row_table_pages_to_its_end_and_exports$/)'
+filter = 'test(/a_million_row_table_pages_to_its_end_and_exports$/) | test(/::large_catalog::/)'
 success-output = "final"
+
+# MySQL creates a table in milliseconds, so the large-catalog case's
+# 50,000 take minutes before it measures anything.
+[[profile.ci.overrides]]
+filter = 'test(/::large_catalog::/)'
+slow-timeout = { period = "60s", terminate-after = 15 }
 
 [profile.ci.junit]
 path = "junit.xml"

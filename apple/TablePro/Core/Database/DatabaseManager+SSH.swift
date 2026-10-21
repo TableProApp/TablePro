@@ -26,7 +26,9 @@ extension DatabaseManager {
         sshPasswordOverride: String? = nil,
         deadline: ConnectionDeadline
     ) async throws -> DatabaseConnection {
-        let connection = SSHProfileStorage.shared.refreshingLinkedProfile(original)
+        var connection = SSHProfileStorage.shared.refreshingLinkedProfile(original)
+        // Only the tunnel this connect opens says it secures the transport; a saved or imported field never does.
+        connection.additionalFields[DatabaseConnection.tunnelSecuresTransportKey] = nil
         let enabledKinds = connection.enabledTunnelKinds
         guard enabledKinds.count <= 1 else {
             throw ConnectionTunnelError.mutualExclusivityViolation(enabledKinds)

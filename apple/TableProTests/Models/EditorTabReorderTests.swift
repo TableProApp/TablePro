@@ -17,7 +17,7 @@ struct EditorTabReorderTests {
     private static let ids = (0 ..< 5).map { _ in UUID() }
 
     private func makeReorder(dragging index: Int) -> EditorTabReorder {
-        EditorTabReorder(draggedId: Self.ids[index], order: Self.ids)
+        EditorTabReorder(draggedId: Self.ids[index], order: Self.ids, pinnedIds: [])
     }
 
     @Test("A new reorder starts where the strip already was")
@@ -83,6 +83,26 @@ struct EditorTabReorderTests {
         let kept = reorder.removingClosedTabs(keeping: live)
 
         #expect(kept == false)
+    }
+
+    @Test("A pinned tab dragged past the pinned run stops at its end")
+    func pinnedDragStaysAmongPins() {
+        let pinned: Set<UUID> = [Self.ids[0], Self.ids[1]]
+        var reorder = EditorTabReorder(draggedId: Self.ids[0], order: Self.ids, pinnedIds: pinned)
+
+        reorder.move(to: 4)
+
+        #expect(reorder.order == [Self.ids[1], Self.ids[0], Self.ids[2], Self.ids[3], Self.ids[4]])
+    }
+
+    @Test("An unpinned tab dragged into the pinned run stops after it")
+    func unpinnedDragStaysOutOfPins() {
+        let pinned: Set<UUID> = [Self.ids[0], Self.ids[1]]
+        var reorder = EditorTabReorder(draggedId: Self.ids[4], order: Self.ids, pinnedIds: pinned)
+
+        reorder.move(to: 0)
+
+        #expect(reorder.order == [Self.ids[0], Self.ids[1], Self.ids[4], Self.ids[2], Self.ids[3]])
     }
 }
 

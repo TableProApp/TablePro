@@ -335,4 +335,82 @@ struct CommandActionsBulkCloseTests {
 
         #expect(current.actions.canCloseAllTabs)
     }
+
+    // MARK: - Pinned tabs
+
+    @Test("close all leaves pinned tabs open")
+    func closeAllKeepsPinnedTabs() async {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+        let manager = current.coordinator.tabManager
+
+        manager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
+        let pinned = manager.tabs[0].id
+        manager.addTab(initialQuery: "SELECT 2", databaseName: "db_a")
+        manager.setPinned(true, id: pinned)
+
+        current.actions.closeAllTabs()
+        _ = try? await waitUntil { manager.tabs.count == 1 }
+
+        #expect(manager.tabs.map(\.id) == [pinned])
+    }
+
+    @Test("close others leaves pinned tabs open")
+    func closeOthersKeepsPinnedTabs() async {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+        let manager = current.coordinator.tabManager
+
+        manager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
+        let pinned = manager.tabs[0].id
+        manager.addTab(initialQuery: "SELECT 2", databaseName: "db_a")
+        manager.addTab(initialQuery: "SELECT 3", databaseName: "db_a")
+        let anchor = manager.tabs[2].id
+        manager.setPinned(true, id: pinned)
+
+        current.actions.closeOtherTabs(anchoredOn: anchor)
+        _ = try? await waitUntil { manager.tabs.count == 2 }
+
+        #expect(Set(manager.tabs.map(\.id)) == [pinned, anchor])
+    }
+
+    @Test("close tabs for other databases leaves a pinned tab there open")
+    func closeOtherDatabasesKeepsPinnedTabs() async {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+        let manager = current.coordinator.tabManager
+
+        manager.addTab(initialQuery: "SELECT 'b1'", databaseName: "db_b")
+        let pinned = manager.tabs[0].id
+        manager.addTab(initialQuery: "SELECT 'b2'", databaseName: "db_b")
+        manager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
+        manager.setPinned(true, id: pinned)
+
+        current.actions.closeTabsForOtherDatabases()
+        _ = try? await waitUntil { manager.tabs.count == 2 }
+
+        #expect(manager.tabs.contains { $0.id == pinned })
+        #expect(manager.tabs.map(\.tableContext.databaseName).sorted() == ["db_a", "db_b"])
+    }
+
+    @Test("bulk closes are not offered when only pinned tabs would be left to close")
+    func onlyPinnedTabsLeaveNothingToClose() {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+        let manager = current.coordinator.tabManager
+
+        manager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
+        manager.addTab(initialQuery: "SELECT 2", databaseName: "db_a")
+        let first = manager.tabs[0].id
+        let second = manager.tabs[1].id
+        manager.setPinned(true, id: first)
+        manager.setPinned(true, id: second)
+
+        #expect(!current.actions.canCloseAllTabs)
+        #expect(!current.actions.canCloseOtherTabs(anchoredOn: first))
+    }
 }

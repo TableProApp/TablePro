@@ -173,7 +173,7 @@ extension MSSQLPluginDriver {
 
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? {
         let esc = MSSQLSchemaQueries.escapeBracket(effectiveSchema(schema))
-        let bracketedName = name.replacingOccurrences(of: "]", with: "]]")
+        let bracketedName = name.replacingOccurrences(of: "]", with: "]]", options: .literal)
         let objectLiteral = MSSQLStringLiteral.quoted("[\(esc)].[\(bracketedName)]")
         let sql = "SELECT OBJECT_DEFINITION(OBJECT_ID(\(objectLiteral)))"
         let result = try await execute(query: sql)
@@ -392,17 +392,17 @@ extension MSSQLPluginDriver {
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
-        let quotedName = "[\(request.name.replacingOccurrences(of: "]", with: "]]"))]"
+        let quotedName = "[\(request.name.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
         _ = try await execute(query: "CREATE DATABASE \(quotedName)")
     }
 
     func dropDatabase(name: String) async throws {
-        let quotedName = "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
+        let quotedName = "[\(name.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
         _ = try await execute(query: "DROP DATABASE \(quotedName)")
     }
 
     func dropSchema(name: String) async throws {
-        let quotedName = "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
+        let quotedName = "[\(name.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
         _ = try await execute(query: "DROP SCHEMA \(quotedName)")
     }
 

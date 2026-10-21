@@ -9,14 +9,14 @@ use crate::conformance::ConformanceFailure;
 /// other test runs in the process: under nextest, which gives each test a
 /// process of its own, or in a test binary that holds only the case.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ResidentPeak {
+pub struct ResidentPeak {
     baseline: u64,
 }
 
 impl ResidentPeak {
     /// Bring the kernel's peak down to what is resident now, and measure
     /// from there.
-    pub(crate) fn start() -> Result<Self, ConformanceFailure> {
+    pub fn start() -> Result<Self, ConformanceFailure> {
         // 5 resets the peak to the current resident size (proc_pid_clear_refs(5)).
         fs::write("/proc/self/clear_refs", "5")
             .map_err(|error| ConformanceFailure::setup(format!("could not reset the memory peak: {error}")))?;
@@ -24,7 +24,7 @@ impl ResidentPeak {
     }
 
     /// Bytes the peak rose above where it stood at the start.
-    pub(crate) fn growth(&self) -> Result<u64, ConformanceFailure> {
+    pub fn growth(&self) -> Result<u64, ConformanceFailure> {
         Ok(peak()?.saturating_sub(self.baseline))
     }
 }

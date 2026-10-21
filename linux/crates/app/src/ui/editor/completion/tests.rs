@@ -444,10 +444,11 @@ fn refilter_narrows_the_list_without_reading_again() {
     let model =
         finish_on_main(WAIT, async move { provider.proposals(&buffer, start, &word).await }).expect("the proposals");
     assert_eq!(model.n_items(), 2);
+    let listed = harness.listed_objects();
 
     harness.provider.refilter("ord", &model);
 
-    assert_eq!(model.n_items(), 1);
+    wait_until(WAIT, || model.n_items() == 1).expect("the list narrowed");
     assert_eq!(
         model
             .item(0)
@@ -456,7 +457,8 @@ fn refilter_narrows_the_list_without_reading_again() {
         Some("orders".to_owned())
     );
     harness.provider.refilter("", &model);
-    assert_eq!(model.n_items(), 2);
+    wait_until(WAIT, || model.n_items() == 2).expect("the list widened");
+    assert_eq!(harness.listed_objects(), listed, "a refilter read the catalog again");
 }
 
 /// The texts of the completion list GtkSourceView shows for `view`.

@@ -61,6 +61,7 @@ final class UsersRolesViewModel: ObservableObject {
         var scopeSearch = false
         var restrictsBrowsing = false
         var connectionLimit = true
+        var roleLogin = true
     }
 
     nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "UsersRolesViewModel")
@@ -157,6 +158,13 @@ final class UsersRolesViewModel: ObservableObject {
         return principalRows.first { $0.ref == selection }?.info
     }
 
+    // Where roles never log in, a staged create's Can log in decides user or role, so it is set in the create sheet only.
+    func allowsLoginToggle(for principal: PluginPrincipalInfo) -> Bool {
+        guard capabilities.roleMembership else { return false }
+        guard !capabilities.roleLogin else { return true }
+        return !principal.isRole && changeManager.stage(of: principal.ref) != .created
+    }
+
     var hasChanges: Bool { changeManager.hasChanges }
     var changeCount: Int { changeManager.changeCount }
 
@@ -219,7 +227,8 @@ final class UsersRolesViewModel: ObservableObject {
             ownedObjectReassignment: driver.supportsOwnedObjectReassignment,
             scopeSearch: driver.supportsGrantableScopeSearch,
             restrictsBrowsing: driver.restrictsGrantBrowsingToCurrentDatabase,
-            connectionLimit: PluginManager.shared.supportsPrincipalConnectionLimit(for: databaseType)
+            connectionLimit: PluginManager.shared.supportsPrincipalConnectionLimit(for: databaseType),
+            roleLogin: PluginManager.shared.supportsRoleLogin(for: databaseType)
         )
         changeManager.cascades = { driver.privilegeCascades(from: $0, to: $1) }
 

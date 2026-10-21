@@ -1,6 +1,6 @@
 # 0019: A chosen SSH key file limits the keys ssh offers
 
-- **Status**: Accepted
+- **Status**: Superseded by 0020
 - **Date**: 2026-10-20
 
 ## Context

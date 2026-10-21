@@ -52,6 +52,7 @@ pub use editor_transaction_engine::EditorTransactionEngine;
 pub use large_table_engine::LargeTableEngine;
 pub use network_conformance_engine::NetworkConformanceEngine;
 pub use pooled_conformance_engine::PooledConformanceEngine;
+pub use resident_peak::ResidentPeak;
 pub use run_case::{CASE_LIMIT, run_case, run_case_within};
 pub use suite_endpoint::SuiteEndpoint;
 pub use test_liveness::test_liveness;

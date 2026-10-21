@@ -178,6 +178,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var core: OracleCoreConnection?
     private var _currentSchema: String?
     private var _serverVersion: String?
+    let principalState = OSAllocatedUnfairLock(initialState: OraclePrincipalState())
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "OraclePluginDriver")
 
@@ -196,6 +197,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .dataCompare,
             .cellExpressions,
             .uuidCellText,
+            .userManagement,
         ]
     }
 
@@ -1177,7 +1179,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Private Helpers
 
     /// Set at login before `core` is, so a driver with a core always has it.
-    private func serverRelease() throws -> OracleServerRelease {
+    func serverRelease() throws -> OracleServerRelease {
         guard let release = core?.serverRelease else { throw OraclePluginError(core: .notConnected) }
         return release
     }

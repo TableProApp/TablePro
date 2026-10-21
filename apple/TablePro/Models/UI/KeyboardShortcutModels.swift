@@ -121,6 +121,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case setValueDefault
     case generateUUIDv4
     case generateUUIDv7
+    case setCellsToValue
     case restorePreviousValues
     case truncateTable
     case toggleHeaderRow
@@ -144,6 +145,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case closeTabsForOtherDatabases
     case closeAllTabs
     case reopenClosedTab
+    case pinTab
     case quickSwitcher
     case toggleTableBrowser
     case showTablesList
@@ -195,14 +197,14 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .undo, .redo, .cut, .copy, .copyCellValue, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
              .copyAsCsv, .copyAsCsvWithHeaders, .copyAsMarkdown, .copyAsInClause, .copyAsInsert, .copyAsUpdate,
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
-             .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7,
+             .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7, .setCellsToValue,
              .restorePreviousValues,
              .truncateTable, .toggleHeaderRow, .previewFKReference, .saveAsFavorite, .previousPage,
              .nextPage, .firstPage, .lastPage, .refresh, .export, .importData, .jumpToColumn:
             return .dataGrid
         case .navigateBack, .navigateForward,
              .newTab, .closeTab, .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs,
-             .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
+             .reopenClosedTab, .pinTab, .quickSwitcher, .toggleTableBrowser,
              .showTablesList, .showFavoritesList,
              .toggleInspector, .toggleAssistant, .toggleAgentMode, .toggleFilters, .toggleHistory, .toggleResults,
              .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
@@ -229,7 +231,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .previewSQL, .aiReviewQuery, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .previousPage, .nextPage, .firstPage, .lastPage, .addRow, .duplicateRow,
-             .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7,
+             .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7, .setCellsToValue,
              .delete, .truncateTable, .previewFKReference, .saveAsFavorite,
              .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .toggleFilters, .jumpToColumn,
              .copyCellValue, .copyAsCsv, .copyAsCsvWithHeaders, .copyAsMarkdown, .copyAsInClause,
@@ -282,6 +284,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .closeTabsForOtherDatabases: return String(localized: "Close Tabs for Other Databases")
         case .closeAllTabs: return String(localized: "Close All Tabs")
         case .reopenClosedTab: return String(localized: "Reopen Closed Tab")
+        case .pinTab: return String(localized: "Pin Tab")
         case .refresh: return String(localized: "Refresh")
         case .explainQuery: return String(localized: "Explain Query")
         case .formatQuery: return String(localized: "Format Query")
@@ -330,6 +333,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .setValueDefault: return String(localized: "Set Value to Default")
         case .generateUUIDv4: return SetValueOptions.title(for: .uuid(.v4))
         case .generateUUIDv7: return SetValueOptions.title(for: .uuid(.v7))
+        case .setCellsToValue: return String(localized: "Set Cells to Value")
         case .restorePreviousValues: return String(localized: "Restore Previous Values")
         case .truncateTable: return String(localized: "Truncate Table")
         case .toggleHeaderRow: return String(localized: "Switch First Row Between Header/Data")

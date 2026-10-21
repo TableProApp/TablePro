@@ -1,7 +1,6 @@
-use std::cell::{OnceCell, RefCell};
+use std::cell::OnceCell;
 use std::future::Future;
 use std::pin::Pin;
-use std::rc::Rc;
 
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -19,8 +18,6 @@ const PRIORITY: i32 = 100;
 #[derive(Default)]
 pub struct SqlCompletionProvider {
     pub deps: OnceCell<ProviderDeps>,
-    /// The casefolded word typed so far, which the list filters on.
-    pub needle: Rc<RefCell<String>>,
 }
 
 #[glib::object_subclass]
@@ -93,6 +90,12 @@ impl CompletionProviderImpl for SqlCompletionProvider {
         ) else {
             return;
         };
-        replace_word(buffer.upcast_ref(), begin, end, &proposal.insert_text(&context.word()));
+        let word = context.word();
+        // The rows for the last word stay until the ranking for this one
+        // lands, and one this word does not match is never inserted.
+        if !fuzzy::matches_word(proposal.label(), &word) {
+            return;
+        }
+        replace_word(buffer.upcast_ref(), begin, end, &proposal.insert_text(&word));
     }
 }

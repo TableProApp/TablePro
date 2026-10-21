@@ -5,7 +5,9 @@ import TableProTLSTestFixtures
 
 // Loopback sessions that accept any login. With a certificate it upgrades after the client's SSL
 // request; with `asksForCleartext` it answers the login with a switch to mysql_clear_password, as RDS
-// does; with `breaksHandshake` it answers the SSL request with bytes that are not TLS.
+// does; with `asksForFullSHA2Auth` it switches to caching_sha2_password and asks for full authentication,
+// which a client sends as the typed password once it thinks the session is secure; with `breaksHandshake`
+// it answers the SSL request with bytes that are not TLS.
 final class FakeMySQLServer: @unchecked Sendable {
     struct SetupFailure: Error {}
 
@@ -23,6 +25,7 @@ final class FakeMySQLServer: @unchecked Sendable {
         var encrypted = false
         var sawLogin = false
         var cleartextPassword: String?
+        var fullAuthAnswer: [UInt8]?
         var loggedIn = false
         var queries: [String] = []
         var quit = false
@@ -57,17 +60,27 @@ final class FakeMySQLServer: @unchecked Sendable {
     private static let okPacket: [UInt8] = [0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00]
     private static let sslRequestLength = 32
     private static let switchToCleartext: [UInt8] = [0xFE] + Array("mysql_clear_password".utf8) + [0]
+    private static let switchToSHA2: [UInt8] = [0xFE] + Array("caching_sha2_password".utf8) + [0]
+        + Array("abcdefghijklmnopqrst".utf8) + [0]
+    private static let performFullAuthentication: [UInt8] = [0x01, 0x04]
 
     let port: Int
     private let listener: Int32
     private let asksForCleartext: Bool
+    private let asksForFullSHA2Auth: Bool
     private let breaksHandshake: Bool
     private let fixtures: URL?
 
     var offersTLS: Bool { fixtures != nil || breaksHandshake }
 
-    init(identity: Identity?, asksForCleartext: Bool = false, breaksHandshake: Bool = false) throws {
+    init(
+        identity: Identity?,
+        asksForCleartext: Bool = false,
+        asksForFullSHA2Auth: Bool = false,
+        breaksHandshake: Bool = false
+    ) throws {
         self.asksForCleartext = asksForCleartext
+        self.asksForFullSHA2Auth = asksForFullSHA2Auth
         self.breaksHandshake = breaksHandshake
         if let identity {
             let directory = FileManager.default.temporaryDirectory
@@ -167,6 +180,15 @@ final class FakeMySQLServer: @unchecked Sendable {
         session.sawLogin = true
 
         var sequence = login.sequence
+        if asksForFullSHA2Auth {
+            guard channel.send(Self.switchToSHA2, sequence: sequence &+ 1),
+                  let scramble = channel.readPacket(),
+                  channel.send(Self.performFullAuthentication, sequence: scramble.sequence &+ 1),
+                  let answer = channel.readPacket()
+            else { return }
+            session.fullAuthAnswer = answer.payload
+            return
+        }
         if asksForCleartext {
             guard channel.send(Self.switchToCleartext, sequence: sequence &+ 1),
                   let answer = channel.readPacket()

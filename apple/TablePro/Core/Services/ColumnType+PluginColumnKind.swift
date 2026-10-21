@@ -17,7 +17,7 @@ extension ColumnType {
             return .decimal
         case .boolean:
             return .boolean
-        case .date, .timestamp, .datetime, .blob, .json, .spatial:
+        case .date, .timestamp, .datetime, .blob, .json, .spatial, .vector:
             return .other
         }
     }

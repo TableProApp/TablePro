@@ -3,6 +3,7 @@
 //  TablePro
 
 import Foundation
+import TableProAutocomplete
 import TableProPluginKit
 
 /// Writes grid rows as INSERT and UPDATE text for the user to run, with the values written in.
@@ -62,7 +63,8 @@ internal struct SQLRowToStatementConverter {
         settableColumns: [String]? = nil,
         dialect: SQLDialectDescriptor? = nil,
         quoteIdentifier: ((String) -> String)? = nil,
-        escapeStringLiteral: ((String) -> String)? = nil
+        escapeStringLiteral: ((String) -> String)? = nil,
+        identifierSpelling: SQLIdentifierSpelling? = nil
     ) throws {
         self.tableName = tableName
         self.schemaName = schemaName
@@ -73,15 +75,20 @@ internal struct SQLRowToStatementConverter {
         self.rowMatchPolicy = rowMatchPolicy
         self.settableColumns = settableColumns
 
+        let quote: (String) -> String
         if let quoteIdentifier, let escapeStringLiteral {
-            self.quoteIdentifierFn = quoteIdentifier
+            quote = quoteIdentifier
             self.escapeStringFn = escapeStringLiteral
-            return
+        } else {
+            let resolvedDialect = try resolveSQLDialect(for: databaseType, explicit: dialect)
+            quote = quoteIdentifier ?? quoteIdentifierFromDialect(resolvedDialect)
+            self.escapeStringFn = escapeStringLiteral ?? escapeStringLiteralFromDialect(resolvedDialect)
         }
-
-        let resolvedDialect = try resolveSQLDialect(for: databaseType, explicit: dialect)
-        self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(resolvedDialect)
-        self.escapeStringFn = escapeStringLiteral ?? escapeStringLiteralFromDialect(resolvedDialect)
+        if let identifierSpelling {
+            self.quoteIdentifierFn = { identifierSpelling.statementName($0, quotedBy: quote) }
+        } else {
+            self.quoteIdentifierFn = quote
+        }
     }
 
     private var qualifiedTable: String {

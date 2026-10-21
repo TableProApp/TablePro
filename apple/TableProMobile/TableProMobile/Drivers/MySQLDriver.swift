@@ -562,15 +562,20 @@ private actor MySQLActor {
             host: host, port: portU32, user: user, password: password, database: database,
             signsInWithToken: signsInWithToken
         )
+        // Connector/C 3.4.4 takes a requested TLS for an established one and answers caching_sha2_password's full
+        // authentication with the typed password, so Preferred asks for TLS outright and falls back without it.
+        let firstPolicy: MySQLTLSPolicy = policy == .preferred ? .required : policy
         let handle: UnsafeMutablePointer<MYSQL>
         do {
             do {
-                handle = try await open(endpoint, ssl: ssl, policy: policy, serverName: serverName, deadline: deadline)
+                handle = try await open(endpoint, ssl: ssl, policy: firstPolicy, serverName: serverName, deadline: deadline)
             } catch let failure as AttemptFailure
                 where policy == .preferred && MariaDBSSLClassifier.sslOnlyErrorCodes.contains(failure.code) {
                 // Preferred retries in plaintext after a failed handshake, as the Mac does.
                 handle = try await open(endpoint, ssl: ssl, policy: .disabled, serverName: nil, deadline: deadline)
             }
+        } catch let failure as AttemptFailure where MySQLPlaintextPassword.isRefusal(code: failure.code) {
+            throw MySQLError.connectionFailed(MySQLPlaintextPassword.refusalMessage)
         } catch let failure as AttemptFailure {
             if let tokenFailure = MySQLTokenSignIn.connectFailure(
                 signsInWithToken: signsInWithToken,
@@ -636,6 +641,11 @@ private actor MySQLActor {
         mysql_options(handle, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
 
         policy.apply(to: handle, ssl: ssl, serverName: serverName)
+        if policy == .disabled || policy == .preferred {
+            _ = MySQLPlaintextPassword.methodsWithoutTLS.withCString {
+                mysql_options(handle, MARIADB_OPT_RESTRICTED_AUTH, $0)
+            }
+        }
         if endpoint.signsInWithToken {
             // A no-op in Connector/C 3.4, which answers a cleartext request anyway; set to match the Mac.
             var enableCleartext: my_bool = 1

@@ -203,7 +203,7 @@ internal enum InspectorPopOutWindow: Equatable {
         case .geometry(let descriptor):
             return resolve(for: descriptor.textEditorKind)
         case .multiLine, .singleLine, .schemaText, .blobHex, .image, .boolean,
-             .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker:
+             .enumPicker, .setPicker, .arrayElements, .vector, .typePicker, .valuePicker:
             return .text
         }
     }

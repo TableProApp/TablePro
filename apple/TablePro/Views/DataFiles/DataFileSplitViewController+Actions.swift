@@ -159,37 +159,35 @@ extension DataFileSplitViewController {
     }
 
     @objc func dataFileFillDown(_ sender: Any?) {
-        guard let target = controller.cellTarget(explicitColumn: clickedColumn(from: sender)), target.keys.count > 1 else { return }
-        controller.applyCleanup(.fillDown, columns: target.columns, keys: target.keys, actionName: String(localized: "Fill Down"))
+        guard let target = controller.cellTarget(explicitColumn: clickedColumn(from: sender)),
+              target.cells.contains(where: { $0.keys.count > 1 }) else { return }
+        controller.applyCleanup(.fillDown, target: target, actionName: String(localized: "Fill Down"))
     }
 
     @objc func dataFileSetCellsToValue(_ sender: Any?) {
         guard let target = controller.cellTarget(explicitColumn: clickedColumn(from: sender)) else { return }
-        DataFilePrompts.value(window: view.window) { [weak self] value in
+        presentSetCellsToValue(target)
+    }
+
+    func presentSetCellsToValue(_ target: DataFileCellTarget) {
+        SetCellsToValuePrompt.present(
+            informative: String(localized: "Every targeted cell gets this value."),
+            window: view.window
+        ) { [weak self] value in
             guard let value else { return }
-            self?.controller.applyCleanup(
-                .setValue(value),
-                columns: target.columns,
-                keys: target.keys,
-                actionName: String(localized: "Set Cells to Value")
-            )
+            self?.controller.applyCleanup(.setValue(value), target: target, actionName: String(localized: "Set Cells to Value"))
         }
     }
 
     @objc func dataFileTrimWhitespace(_ sender: Any?) {
         guard let target = controller.cellTarget(explicitColumn: clickedColumn(from: sender)) else { return }
-        controller.applyCleanup(.trimWhitespace, columns: target.columns, keys: target.keys, actionName: String(localized: "Trim Whitespace"))
+        controller.applyCleanup(.trimWhitespace, target: target, actionName: String(localized: "Trim Whitespace"))
     }
 
     @objc func dataFileChangeCase(_ sender: Any?) {
         guard let style = (sender as? NSMenuItem)?.representedObject as? DataFileCaseAssignment,
               let target = controller.cellTarget(explicitColumn: style.column) else { return }
-        controller.applyCleanup(
-            .changeCase(style.style),
-            columns: target.columns,
-            keys: target.keys,
-            actionName: String(localized: "Change Case")
-        )
+        controller.applyCleanup(.changeCase(style.style), target: target, actionName: String(localized: "Change Case"))
     }
 
     @objc func dataFileReplaceInColumn(_ sender: Any?) {

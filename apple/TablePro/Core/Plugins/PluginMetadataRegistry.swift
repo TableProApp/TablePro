@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProAutocomplete
 import TableProPluginKit
 import TableProUtilities
 
@@ -141,6 +142,9 @@ struct PluginMetadataSnapshot: Sendable {
 
         var supportsPrincipalConnectionLimit: Bool = true
 
+        // False where users and roles are different kinds: there a role never logs in, and Can log in is a user's lock.
+        var supportsRoleLogin: Bool = true
+
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
             supportsImport: true,
@@ -195,6 +199,8 @@ struct PluginMetadataSnapshot: Sendable {
         /// Teradata and Snowflake compare database names without regard to case, so `dbc` is the
         /// system database `DBC`. Every other engine keeps case: MySQL can hold a user database `MySQL`.
         let systemDatabaseNamesIgnoreCase: Bool
+        // Nil for an engine that keeps the case of an unquoted name, or whose rule is not curated yet.
+        let identifierRules: SQLIdentifierRules?
 
         init(
             defaultSchemaName: String,
@@ -213,7 +219,8 @@ struct PluginMetadataSnapshot: Sendable {
             implicitSchemaName: String? = nil,
             rowMatchExcludedTypePrefixes: [String] = [],
             rowMatchTextTypePrefixes: [String] = [],
-            systemDatabaseNamesIgnoreCase: Bool = false
+            systemDatabaseNamesIgnoreCase: Bool = false,
+            identifierRules: SQLIdentifierRules? = nil
         ) {
             self.defaultSchemaName = defaultSchemaName
             self.defaultGroupName = defaultGroupName
@@ -232,6 +239,7 @@ struct PluginMetadataSnapshot: Sendable {
             self.rowMatchExcludedTypePrefixes = rowMatchExcludedTypePrefixes
             self.rowMatchTextTypePrefixes = rowMatchTextTypePrefixes
             self.systemDatabaseNamesIgnoreCase = systemDatabaseNamesIgnoreCase
+            self.identifierRules = identifierRules
         }
 
         static let defaults = SchemaInfo(
@@ -372,7 +380,8 @@ struct PluginMetadataSnapshot: Sendable {
                 implicitSchemaName: schema.implicitSchemaName,
                 rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes,
                 rowMatchTextTypePrefixes: schema.rowMatchTextTypePrefixes,
-                systemDatabaseNamesIgnoreCase: schema.systemDatabaseNamesIgnoreCase
+                systemDatabaseNamesIgnoreCase: schema.systemDatabaseNamesIgnoreCase,
+                identifierRules: schema.identifierRules
             ),
             editor: editor,
             connection: connection
@@ -444,7 +453,8 @@ struct PluginMetadataSnapshot: Sendable {
                 implicitSchemaName: source.schema.implicitSchemaName,
                 rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes,
                 rowMatchTextTypePrefixes: schema.rowMatchTextTypePrefixes,
-                systemDatabaseNamesIgnoreCase: schema.systemDatabaseNamesIgnoreCase
+                systemDatabaseNamesIgnoreCase: schema.systemDatabaseNamesIgnoreCase,
+                identifierRules: schema.identifierRules
             ),
             editor: editor, connection: connection
         )
@@ -769,7 +779,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsRemoteDatabaseSession: existingSnapshot?.capabilities
                     .supportsRemoteDatabaseSession ?? false,
                 supportsPrincipalConnectionLimit: existingSnapshot?.capabilities
-                    .supportsPrincipalConnectionLimit ?? true
+                    .supportsPrincipalConnectionLimit ?? true,
+                supportsRoleLogin: existingSnapshot?.capabilities.supportsRoleLogin ?? true
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,
@@ -788,7 +799,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 implicitSchemaName: existingSnapshot?.schema.implicitSchemaName,
                 rowMatchExcludedTypePrefixes: existingSnapshot?.schema.rowMatchExcludedTypePrefixes ?? [],
                 rowMatchTextTypePrefixes: existingSnapshot?.schema.rowMatchTextTypePrefixes ?? [],
-                systemDatabaseNamesIgnoreCase: existingSnapshot?.schema.systemDatabaseNamesIgnoreCase ?? false
+                systemDatabaseNamesIgnoreCase: existingSnapshot?.schema.systemDatabaseNamesIgnoreCase ?? false,
+                identifierRules: existingSnapshot?.schema.identifierRules
             ),
             editor: PluginMetadataSnapshot.EditorConfig(
                 sqlDialect: driverType.sqlDialect,

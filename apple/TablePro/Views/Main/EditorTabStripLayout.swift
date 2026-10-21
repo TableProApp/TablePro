@@ -29,6 +29,8 @@ internal enum EditorTabStripLayout {
     internal static let accessoryWidth: CGFloat = 16
     internal static let accessoryInset: CGFloat = 5
     internal static let fontSize: CGFloat = 11
+    internal static let pinGlyphSize: CGFloat = 9
+    internal static let pinSpacing: CGFloat = 3
 
     /// One device pixel on the 2x displays this chrome is drawn for, which is what the system uses
     /// for both the track's edge and the rule between two tabs.

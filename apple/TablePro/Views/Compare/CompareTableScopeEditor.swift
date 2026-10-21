@@ -295,7 +295,8 @@ internal struct CompareTableScopeEditor: View {
         return RawSQLFilterCompletionProvider(
             schemaProvider: SchemaProviderRegistry.shared.getOrCreate(for: endpoint.scope),
             databaseType: endpoint.databaseType,
-            tableName: plan.table
+            tableName: plan.table,
+            connectionId: endpoint.scope.connectionId
         )
     }
 }

@@ -953,7 +953,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             guard let row = countResult.rows.first, let firstCell = row.first else { return nil }
             return Int64(firstCell.asText ?? "0")
         }()
-        let comment = try await fetchObjectComment(table: table, schema: schemaName)
+        let comment = try await catalogComment(table: table, schema: schemaName)
 
         return PluginTableMetadata(
             tableName: table,
@@ -963,7 +963,12 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    private func fetchObjectComment(table: String, schema: String) async throws -> String? {
+    // fetchTableMetadata probes up to 100,001 rows; the comment alone is a catalog read.
+    func fetchObjectComment(table: String, schema: String?) async throws -> String? {
+        try await catalogComment(table: table, schema: resolveSchema(schema))
+    }
+
+    private func catalogComment(table: String, schema: String) async throws -> String? {
         let result = try await executeParameterized(
             query: DuckDBSchemaQueries.objectComment,
             parameters: [.text(try requireCatalog()), .text(schema), .text(table)]
