@@ -3,10 +3,11 @@
 # send the password as typed without TLS.
 #
 # The tools answer mysql_clear_password, dialog (PAM) and the test plugins Homebrew ships without TLS, and have no
-# option that refuses them, so the app points them at a plugin folder that links only the plugins that never do. Their --ssl without verification also falls back to plaintext and
-# then answers caching_sha2_password's full authentication with the typed password, so Preferred dials with
-# --skip-ssl unless the server's greeting offered TLS. Every row runs a real tool against
-# mariadb-tls-modes/fake-mysql-server.py. MySQL's own tools are not checked here: the app leaves them as they are.
+# option that refuses them, so the app points them at a plugin folder that links only the plugins that never do.
+# Their --ssl without verification also falls back to plaintext and then answers caching_sha2_password's full
+# authentication with the typed password, so Preferred dials with --skip-ssl unless the app's session to the server
+# runs over TLS. Every row runs a real tool against mariadb-tls-modes/fake-mysql-server.py. MySQL's own tools are not
+# checked here: the app leaves them as they are.
 #
 # Needs python3, openssl and MariaDB's mariadb-dump and mariadb (brew install mariadb). Skips (exit 3) without them.
 # Exits non-zero on any unexpected outcome.
@@ -123,7 +124,7 @@ check() {
 for tool in "$DUMP" "$CLIENT"; do
     folder="$(plugin_folder "$tool")"
     hidden=(--skip-ssl "--plugin-dir=$folder")
-    # Disabled, and Preferred after a greeting without TLS, run with the same options.
+    # Disabled, and Preferred against a server without TLS, run with the same options.
     check "Disabled, server asks for mysql_clear_password" "$tool" refused-mysql_clear_password "--auth cleartext" \
         "${hidden[@]}"
     check "Disabled, server asks through PAM dialog" "$tool" refused-dialog "--auth dialog" "${hidden[@]}"
@@ -136,7 +137,7 @@ for tool in "$DUMP" "$CLIENT"; do
     check "Preferred, server offers TLS, full authentication" "$tool" tls \
         "--auth sha2-full --cert $WORK/self.pem --key $WORK/self.key" --ssl --skip-ssl-verify-server-cert
     check "Required, server without TLS" "$tool" ssl-required "--auth cleartext" --ssl --ssl-verify-server-cert
-    # Why Preferred reads the greeting: the options it had before send the password to a server without TLS.
+    # Why Preferred asks first: the options it had before send the password to a server without TLS.
     check "Old Preferred options, server without TLS, full authentication" "$tool" leak "--auth sha2-full" \
         --ssl --skip-ssl-verify-server-cert
 done

@@ -73,8 +73,8 @@ struct MySQLClientArgumentsTests {
 
     // Measured with mariadb-dump 13.0.2: --ssl falls back to plaintext and answers caching_sha2_password's full
     // authentication with the typed password, where --skip-ssl asks for the server's RSA key.
-    @Test("MariaDB's Preferred follows the server's greeting, MySQL's does not need to")
-    func preferredFollowsTheGreeting() throws {
+    @Test("MariaDB's Preferred follows whether the server offers TLS, MySQL's does not need to")
+    func preferredFollowsTheServer() throws {
         #expect(
             try MySQLClientArguments.tls(ssl(.preferred), flavor: .mariadb, toolPath: "/t", serverOffersTLS: false)
                 == ["--skip-ssl"]

@@ -77,7 +77,7 @@ struct NativeDumpDescriptor: Sendable {
         /// flags that server needs. `mysqldump` 8.0 reads a table no MariaDB server has.
         let serverVersion: String?
 
-        // Whether the server's greeting offered TLS, for a tool whose SSL options depend on it. Nil when not read.
+        // Whether the server offers TLS, for a tool whose SSL options depend on it. Nil when not asked.
         var serverOffersTLS: Bool?
 
         // Set by `NativeDumpService.buildCommand` before the arguments are built.
@@ -114,6 +114,9 @@ struct NativeDumpDescriptor: Sendable {
         let key: String
         let value: String
     }
+
+    // A query on the app's own session to the server being dumped, answered as text.
+    typealias SessionQuery = @Sendable (String) async throws -> [[String?]]
 
     /// A tool on the user's Mac that the app spawns.
     struct CommandLineTool: Sendable {
@@ -156,8 +159,8 @@ struct NativeDumpDescriptor: Sendable {
         let restoreArguments: @Sendable (Request, NativeDumpResolvedTool) throws -> [String]
         let environment: @Sendable (Request) -> [String: String]
 
-        // Runs once the tool is resolved, before the arguments are built, for checks that need the network or the tool.
-        let prepare: @Sendable (Request, NativeDumpResolvedTool) async throws -> Request
+        // Runs once the tool is resolved, before the arguments are built, for checks that need the session or the tool.
+        let prepare: @Sendable (Request, NativeDumpResolvedTool, SessionQuery) async throws -> Request
 
         let clientPluginFolder: @Sendable (Request, NativeDumpResolvedTool) throws -> MariaDBClientPluginFolder?
 
@@ -176,7 +179,7 @@ struct NativeDumpDescriptor: Sendable {
             restoreArguments: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> [String],
             environment: @escaping @Sendable (Request) -> [String: String] = { _ in [:] },
             configurationFileEntries: @escaping @Sendable (Request) -> [ConfigurationEntry] = { _ in [] },
-            prepare: @escaping @Sendable (Request, NativeDumpResolvedTool) async throws -> Request = { request, _ in request },
+            prepare: @escaping @Sendable (Request, NativeDumpResolvedTool, SessionQuery) async throws -> Request = { request, _, _ in request },
             clientPluginFolder: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> MariaDBClientPluginFolder? = { _, _ in nil }
         ) {
             self.backupBinaries = backupBinaries

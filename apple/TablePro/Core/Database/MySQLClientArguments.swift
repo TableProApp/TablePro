@@ -33,8 +33,8 @@ enum MySQLClientArguments {
     ///
     /// MariaDB's `--ssl` without verification also sends the typed password when the server offers no
     /// TLS and caching_sha2_password asks for full authentication, so Preferred dials in plaintext
-    /// when the server's greeting offered no TLS. Measured with mariadb-dump 13.0.2: `--skip-ssl`
-    /// asks for the server's RSA key instead. Nil means the greeting was not read.
+    /// when the server offers no TLS. Measured with mariadb-dump 13.0.2: `--skip-ssl` asks for the
+    /// server's RSA key instead. Nil means the server was not asked.
     static func tls(
         _ ssl: SSLConfiguration,
         flavor: NativeDumpToolFlavor,
@@ -57,15 +57,15 @@ enum MySQLClientArguments {
         guard flavor == .mariadb, reachesServerOverNetwork(connection) else { return false }
         switch connection.transportSSLConfiguration.mode {
         case .disabled: return true
-        // The greeting comes from a connection of its own. Someone on the path who answers the two differently can as
-        // well end the unverified TLS Preferred accepts, in the app's driver too; keeping the password from them is
-        // what Required is for.
+        // The answer comes from the app's own session, not the tool's connection. Someone on the path who answers the
+        // two differently can as well end the unverified TLS Preferred accepts, in the app's driver too; keeping the
+        // password from them is what Required is for.
         case .preferred: return serverOffersTLS != true
         case .required, .verifyCa, .verifyIdentity: return false
         }
     }
 
-    static func needsServerGreeting(_ connection: DatabaseConnection, flavor: NativeDumpToolFlavor) -> Bool {
+    static func needsServerTLSAnswer(_ connection: DatabaseConnection, flavor: NativeDumpToolFlavor) -> Bool {
         flavor == .mariadb
             && connection.transportSSLConfiguration.mode == .preferred
             && reachesServerOverNetwork(connection)

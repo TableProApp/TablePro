@@ -310,7 +310,10 @@ final class NativeDumpService: ObservableObject {
                 serverVersion: serverVersion
             )
             toolName = resolved.name
-            request = try await tool.prepare(request, resolved)
+            let connectionId = connection.id
+            request = try await tool.prepare(request, resolved) { sql in
+                try await Self.querySession(sql, connectionId: connectionId, database: database)
+            }
             let command = try Self.buildCommand(
                 kind: kind,
                 tool: tool,
@@ -489,6 +492,15 @@ final class NativeDumpService: ObservableObject {
                 reported: reported,
                 current: current?.rows.first?.first?.asText
             )
+        }
+    }
+
+    static func querySession(_ sql: String, connectionId: UUID, database: String) async throws -> [[String?]] {
+        guard let scope = DatabaseManager.shared.resolvedScope(database: database, schema: nil, for: connectionId) else {
+            throw DatabaseError.notConnected
+        }
+        return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+            try await driver.execute(query: sql).rows.map { row in row.map(\.asText) }
         }
     }
 
