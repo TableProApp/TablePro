@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 struct DashboardTileView: View {
     struct Actions {
@@ -200,7 +201,7 @@ private struct DashboardTileContentView: View {
                             ForEach(Array(table.columns.enumerated()), id: \.offset) { _, column in
                                 Text(verbatim: column)
                                     .fontWeight(.semibold)
-                                    .foregroundStyle(.secondary)
+                                    .themeForeground(.gridHeaderText, native: HierarchicalShapeStyle.secondary)
                             }
                         }
                         ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
@@ -208,6 +209,7 @@ private struct DashboardTileContentView: View {
                                 ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
                                     Text(verbatim: cell)
                                         .monospacedDigit()
+                                        .themeForeground(.gridText, native: HierarchicalShapeStyle.primary)
                                 }
                             }
                         }
@@ -215,7 +217,9 @@ private struct DashboardTileContentView: View {
                     .font(.caption)
                     .lineLimit(1)
                     .textSelection(.enabled)
+                    .padding(4)
                 }
+                .themeBackground(.gridBackground, native: Color.clear, in: RoundedRectangle(cornerRadius: 4))
                 if table.isTruncated {
                     Text(String(
                         format: String(localized: "%1$@ of more than %2$@ rows"),
