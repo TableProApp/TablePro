@@ -136,6 +136,18 @@ extension MainContentCoordinator {
         activeSheet = .editObjectComment(target)
     }
 
+    // MARK: - Sequences
+
+    func setSequenceNextValue(of ref: DatabaseTreeTableRef) {
+        guard !safeModeLevel.blocksAllWrites, let target = objectTarget(for: ref) else { return }
+        activeSheet = .setSequenceNextValue(target)
+    }
+
+    func editSequence(_ ref: DatabaseTreeTableRef) {
+        guard !safeModeLevel.blocksAllWrites, let target = objectTarget(for: ref) else { return }
+        activeSheet = .editSequence(target)
+    }
+
     // MARK: - Object Changes
 
     /// Brings every tab showing the changed object up to date, and no other tab.

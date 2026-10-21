@@ -46,6 +46,15 @@ struct QueryPlanOperationCellView: View {
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                 }
+            } else if let index = node.properties["Index Name"] {
+                Text(index)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            if !node.warnings.isEmpty {
+                QueryPlanWarningBadge(count: node.warnings.count)
             }
 
             Spacer(minLength: 0)
@@ -73,5 +82,20 @@ struct QueryPlanMetricCellView: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(text.map { "\(label) \($0)" } ?? label)
+    }
+}
+
+struct QueryPlanWarningBadge: View {
+    // Not a triangle: the cost badge already uses triangles for high and critical cost.
+    static let symbolName = "exclamationmark.circle.fill"
+
+    let count: Int
+
+    var body: some View {
+        Image(systemName: Self.symbolName)
+            .foregroundStyle(.orange)
+            .font(.caption)
+            .help(QueryPlanLabels.warningCount(count))
+            .accessibilityLabel(QueryPlanLabels.warningCount(count))
     }
 }

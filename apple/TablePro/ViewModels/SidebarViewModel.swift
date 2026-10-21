@@ -467,14 +467,9 @@ final class SidebarViewModel: ObservableObject {
         if cachedFilteredByKindFingerprint?.count != fingerprint.count
             || cachedFilteredByKindFingerprint?.generation != fingerprint.generation
             || cachedFilteredByKindFingerprint?.query != fingerprint.query {
-            let bucket = self.tables(of: .table, from: tables)
-            let bucketView = self.tables(of: .view, from: tables)
-            let bucketMat = self.tables(of: .materializedView, from: tables)
-            let bucketForeign = self.tables(of: .foreignTable, from: tables)
-            cachedFilteredByKind[.table] = applyQuery(query, to: bucket)
-            cachedFilteredByKind[.view] = applyQuery(query, to: bucketView)
-            cachedFilteredByKind[.materializedView] = applyQuery(query, to: bucketMat)
-            cachedFilteredByKind[.foreignTable] = applyQuery(query, to: bucketForeign)
+            for tableKind in SidebarObjectKind.allCases where tableKind.category == .table {
+                cachedFilteredByKind[tableKind] = applyQuery(query, to: self.tables(of: tableKind, from: tables))
+            }
             cachedFilteredByKindFingerprint = fingerprint
         }
         return cachedFilteredByKind[kind] ?? []

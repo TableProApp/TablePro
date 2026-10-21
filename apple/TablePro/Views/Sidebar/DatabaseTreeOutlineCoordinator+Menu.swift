@@ -115,6 +115,7 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             canBackUp: backupIsAvailable(),
             canCreateTable: creation.canCreateTable,
             canCreateView: creation.canCreateView,
+            canCreateSequence: creation.canCreateSequence,
             canCreateDatabase: creation.supportsCreateDatabase,
             objectToolSupport: .of(DatabaseManager.shared.driver(for: connectionId)),
             tableFolderOptions: tableFolderMenuOptions(clicked: clicked, selected: selectedRefs()),

@@ -77,6 +77,32 @@ extension MainContentCommandActions {
         coordinator?.editComment(of: ref)
     }
 
+    var canSetSequenceNextValue: Bool {
+        DatabaseObjectToolEligibility.canSetSequenceValue(
+            selectedObject?.type,
+            support: objectToolSupport,
+            isReadOnly: isReadOnly
+        )
+    }
+
+    func setSequenceNextValue() {
+        guard let ref = selectedObjectRef, canSetSequenceNextValue else { return }
+        coordinator?.setSequenceNextValue(of: ref)
+    }
+
+    var canEditSequence: Bool {
+        DatabaseObjectToolEligibility.canEditSequence(
+            selectedObject?.type,
+            support: objectToolSupport,
+            isReadOnly: isReadOnly
+        )
+    }
+
+    func editSequence() {
+        guard let ref = selectedObjectRef, canEditSequence else { return }
+        coordinator?.editSequence(ref)
+    }
+
     private var objectToolSupport: DatabaseObjectToolEligibility.Support {
         guard let connectionId = coordinator?.connectionId else { return .none }
         return .of(DatabaseManager.shared.driver(for: connectionId))
@@ -118,6 +144,11 @@ extension MainContentCommandActions {
         return CreateViewEligibility.canCreateView(
             with: DatabaseManager.shared.driver(for: coordinator.connection.id)
         )
+    }
+
+    var canCreateSequence: Bool {
+        guard isConnected, !isReadOnly, let coordinator else { return false }
+        return DatabaseManager.shared.driver(for: coordinator.connection.id)?.createSequenceTemplate() != nil
     }
 
     var canCreateSchema: Bool {

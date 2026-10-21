@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Which of the per-object commands (Show DDL, Copy DDL, Refresh Materialized View, Edit Comment,
 /// Drop Type) apply to a row. The sidebar and the menu bar ask the same functions, so the two can
@@ -17,6 +18,8 @@ enum DatabaseObjectToolEligibility {
         var canRefreshMaterializedViews = false
         var commentableTypes: Set<TableInfo.TableType> = []
         var droppableTypeKinds: Set<UserDefinedTypeInfo.Kind> = []
+        var canSetSequenceValues = false
+        var canAlterSequences = false
 
         static let none = Support()
 
@@ -26,12 +29,19 @@ enum DatabaseObjectToolEligibility {
             let droppable = UserDefinedTypeInfo.Kind.allCases.filter { kind in
                 driver.generateDropTypeSQL(type: UserDefinedTypeInfo(name: "t", kind: kind, schema: "s")) != nil
             }
+            let probe = PluginSequenceDetails(
+                name: "s", schema: "s", dataType: nil, startValue: 1, increment: 1, minValue: 1, maxValue: 10,
+                cacheSize: 1, cycles: false, lastValue: nil, nextValue: nil, ownedByTable: nil, ownedByColumn: nil
+            )
+            let changed = PluginSequenceSettings(increment: 2, minValue: 1, maxValue: 10, cacheSize: 1, cycles: false)
             return Support(
                 canRefreshMaterializedViews: driver.refreshMaterializedViewStatement(
                     name: "t", schema: "s", concurrently: false
                 ) != nil,
                 commentableTypes: commentableTypes(of: driver),
-                droppableTypeKinds: Set(droppable)
+                droppableTypeKinds: Set(droppable),
+                canSetSequenceValues: driver.sequenceNextValueStatement(for: probe, nextValue: .value(1)) != nil,
+                canAlterSequences: driver.alterSequenceStatement(for: probe, settings: changed) != nil
             )
         }
 
@@ -61,5 +71,13 @@ enum DatabaseObjectToolEligibility {
 
     static func canDropType(_ kind: UserDefinedTypeInfo.Kind, support: Support, isReadOnly: Bool) -> Bool {
         !isReadOnly && support.droppableTypeKinds.contains(kind)
+    }
+
+    static func canSetSequenceValue(_ type: TableInfo.TableType?, support: Support, isReadOnly: Bool) -> Bool {
+        !isReadOnly && type == .sequence && support.canSetSequenceValues
+    }
+
+    static func canEditSequence(_ type: TableInfo.TableType?, support: Support, isReadOnly: Bool) -> Bool {
+        !isReadOnly && type == .sequence && support.canAlterSequences
     }
 }

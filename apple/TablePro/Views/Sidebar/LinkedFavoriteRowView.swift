@@ -75,6 +75,7 @@ internal struct LinkedFavoriteRowView: View {
 
 internal struct LinkedFolderRowLabel: View {
     let folder: LinkedSQLFolder
+    var gitOperation: LinkedFolderGitOperation?
 
     var body: some View {
         HStack(spacing: 6) {
@@ -87,6 +88,13 @@ internal struct LinkedFolderRowLabel: View {
                 Text(String(localized: "disabled"))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+            }
+            if let gitOperation {
+                Spacer(minLength: 0)
+                ProgressView()
+                    .controlSize(.small)
+                    .help(gitOperation.progressLabel)
+                    .accessibilityLabel(gitOperation.progressLabel)
             }
         }
     }

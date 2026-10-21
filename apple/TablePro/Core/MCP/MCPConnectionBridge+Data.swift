@@ -338,31 +338,58 @@ extension MCPConnectionBridge {
     }
 }
 
+struct MCPExplainRequest: Equatable {
+    let statement: String
+    let gatedSQL: String
+
+    let subjectSQL: String
+    let driverStep: ExplainRequest.DriverStep?
+}
+
 extension MCPConnectionBridge {
     func explainQuery(
         scope: DatabaseScope,
-        sql: String,
+        request: MCPExplainRequest,
         timeoutSeconds: Int,
         cancellation: MCPCancellationToken?
     ) async throws -> JsonValue {
         let databaseType = try await ensureConnected(scope.connectionId)
-        let outcome = try await runStatement(
-            scope: scope,
-            query: sql,
-            maxRows: 5_000,
-            timeoutSeconds: timeoutSeconds,
-            cancellation: cancellation
-        )
-        let routed = ExplainResultRouter.route(
-            sql: sql,
-            columns: outcome.result.columns,
-            rows: outcome.result.rows,
-            databaseType: databaseType,
-            declaredVariants: databaseType.explainVariants
-        )
+        let outcome: (result: QueryResult, executionTimeMs: Double)
+        let routed: ExplainResultRouter.RoutedPlan?
+        if let step = request.driverStep {
+            outcome = try await runExplainPlan(
+                scope: scope,
+                statement: request.subjectSQL,
+                step: step,
+                timeoutSeconds: timeoutSeconds,
+                cancellation: cancellation
+            )
+            routed = ExplainResultRouter.routeDriverPlan(
+                rows: outcome.result.rows,
+                subjectSQL: request.subjectSQL,
+                variantId: step.variantId,
+                databaseType: databaseType,
+                declaredVariants: databaseType.explainVariants
+            )
+        } else {
+            outcome = try await runStatement(
+                scope: scope,
+                query: request.statement,
+                maxRows: 5_000,
+                timeoutSeconds: timeoutSeconds,
+                cancellation: cancellation
+            )
+            routed = ExplainResultRouter.route(
+                sql: request.statement,
+                columns: outcome.result.columns,
+                rows: outcome.result.rows,
+                databaseType: databaseType,
+                declaredVariants: databaseType.explainVariants
+            )
+        }
 
         var payload: [String: JsonValue] = [
-            "statement": .string(sql),
+            "statement": .string(request.statement),
             "execution_time_ms": .double(outcome.executionTimeMs),
             "columns": .array(outcome.result.columns.map { .string($0) }),
             "rows": .array(outcome.result.rows.map { row in .array(row.map(Self.cellValue)) })
@@ -382,17 +409,70 @@ extension MCPConnectionBridge {
         variantId: String?,
         analyze: Bool
     ) throws -> String {
+        try explainRequest(for: query, databaseType: databaseType, variantId: variantId, analyze: analyze).statement
+    }
+
+    static func explainRequest(
+        for query: String,
+        databaseType: DatabaseType,
+        variantId: String?,
+        analyze: Bool
+    ) throws -> MCPExplainRequest {
+        try explainRequest(
+            for: query,
+            databaseType: databaseType,
+            variants: databaseType.explainVariants,
+            variantId: variantId,
+            analyze: analyze
+        )
+    }
+
+    static func explainRequest(
+        for query: String,
+        databaseType: DatabaseType,
+        variants: [ExplainVariant],
+        variantId: String?,
+        analyze: Bool
+    ) throws -> MCPExplainRequest {
         let trimmed = statementText(query, databaseType: databaseType)
         guard !trimmed.isEmpty else {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
-        guard !QueryClassifier.isExplainStatement(trimmed) else { return trimmed }
-        let variants = databaseType.explainVariants
+        guard !QueryClassifier.isExplainStatement(trimmed) else {
+            return MCPExplainRequest(statement: trimmed, gatedSQL: trimmed, subjectSQL: trimmed, driverStep: nil)
+        }
         guard let first = variants.first else {
             throw DatabaseAccessError.invalidArgument(String(localized: "This database does not explain statements."))
         }
         let variant = try explainVariant(id: variantId, analyze: analyze, in: variants, first: first)
-        return "\(variant.sqlPrefix) \(trimmed)"
+        switch variant.step {
+        case .sqlPrefix:
+            let prefixed = "\(variant.sqlPrefix) \(trimmed)"
+            return MCPExplainRequest(statement: prefixed, gatedSQL: prefixed, subjectSQL: trimmed, driverStep: nil)
+        case .driver(let runsStatement):
+            return MCPExplainRequest(
+                statement: trimmed,
+                gatedSQL: ExplainRequest.gatedSQL(subject: trimmed, runsStatement: runsStatement),
+                subjectSQL: trimmed,
+                driverStep: ExplainRequest.DriverStep(variantId: variant.id, runsStatement: runsStatement)
+            )
+        @unknown default:
+            throw DatabaseAccessError.invalidArgument(
+                String(format: String(localized: "Unknown explain variant '%@'. This database offers: %@."),
+                       variant.id, variants.map(\.id).joined(separator: ", "))
+            )
+        }
+    }
+
+    private static func runsStatement(_ variant: ExplainVariant) -> Bool {
+        switch variant.step {
+        case .sqlPrefix:
+            return variant.sqlPrefix.uppercased().contains("ANALYZE")
+        case .driver(let runsStatement):
+            return runsStatement
+        @unknown default:
+            return false
+        }
     }
 
     private static func explainVariant(
@@ -402,7 +482,7 @@ extension MCPConnectionBridge {
         first: ExplainVariant
     ) throws -> ExplainVariant {
         let offered = variants.map(\.id).joined(separator: ", ")
-        let running = variants.filter { $0.sqlPrefix.uppercased().contains("ANALYZE") }
+        let running = variants.filter(runsStatement)
         let chosen: ExplainVariant
         if let id {
             guard let variant = variants.first(where: { $0.id == id }) else {
@@ -441,7 +521,8 @@ extension MCPConnectionBridge {
             .object([
                 "id": .string(variant.id),
                 "label": .string(variant.label),
-                "sql_prefix": .string(variant.sqlPrefix)
+                "sql_prefix": .string(variant.sqlPrefix),
+                "runs_statement": .bool(runsStatement(variant))
             ])
         })
     }
@@ -476,6 +557,16 @@ extension MCPConnectionBridge {
                 properties[key] = .string(node.properties[key] ?? "")
             }
             fields["properties"] = .object(properties)
+        }
+        if !node.warnings.isEmpty {
+            fields["warnings"] = .array(node.warnings.map { .string($0) })
+        }
+        if !node.missingIndexes.isEmpty {
+            fields["missing_indexes"] = .array(node.missingIndexes.map { index in
+                var entry: [String: JsonValue] = ["create_statement": .string(index.createStatement)]
+                if let impact = index.impact { entry["impact_percent"] = .double(impact) }
+                return .object(entry)
+            })
         }
         if !node.children.isEmpty {
             fields["children"] = .array(node.children.map(encode(node:)))

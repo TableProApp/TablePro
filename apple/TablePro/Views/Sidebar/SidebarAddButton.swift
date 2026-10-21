@@ -14,6 +14,8 @@ internal enum SidebarCreationMenuBuilder {
             return #selector(MainSplitViewController.createNewTable(_:))
         case .createView:
             return #selector(MainSplitViewController.createNewView(_:))
+        case .createSequence:
+            return #selector(MainSplitViewController.createNewSequence(_:))
         case .createSchema:
             return #selector(MainSplitViewController.createSchema(_:))
         case .createDatabase:

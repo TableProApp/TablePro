@@ -742,7 +742,8 @@ struct ExportDialog: View {
         /// snapshot it leaves is keyed by bare container name, so a database and a schema that
         /// share one, `app` and `app`, then restore that stale answer over the real preselection.
         guard preselection.scope(covers: .database(dbName)) else { return }
-        let objectItems = sidebarTables.map { table in
+        // Sequences arrive with the tree, as sequences where the format writes them.
+        let objectItems = sidebarTables.filter { $0.type != .sequence }.map { table in
             let kind = PluginExportObjectKind.from(tableType: table.type.rawValue)
             return ExportObjectItem(
                 name: table.name,

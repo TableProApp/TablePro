@@ -167,6 +167,25 @@ final class QueryExecutor {
         )
     }
 
+    nonisolated static func fetchExplainPlan(
+        driver: DatabaseDriver,
+        statement: String,
+        variantId: String
+    ) async throws -> QueryFetchResult {
+        let result = try await driver.explainPlan(statement: statement, variantId: variantId)
+        return QueryFetchResult(
+            columns: result.columns,
+            columnTypes: result.columnTypes,
+            rows: result.rows,
+            executionTime: result.executionTime,
+            rowsAffected: result.rowsAffected,
+            statusMessage: result.statusMessage,
+            isTruncated: result.isTruncated,
+            resultColumnMeta: result.columnMeta,
+            timing: result.timing
+        )
+    }
+
     nonisolated static func fetchQueryData(
         driver: DatabaseDriver,
         sql: String,

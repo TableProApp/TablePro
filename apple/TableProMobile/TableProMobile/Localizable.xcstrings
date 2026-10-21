@@ -16175,6 +16175,10 @@
         }
       }
     },
+    "Oracle returned no plan for this statement." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database." : {
 
     },
@@ -20951,6 +20955,10 @@
         }
       }
     },
+    "SQL Server returned no plan for this statement." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "SQLite did not allow extension loading on this connection." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -23304,6 +23312,10 @@
     "The %d statements before it stay applied." : {
 
     },
+    "The actual plan reads V$SESSION, V$PARAMETER and V$SQL_PLAN_STATISTICS_ALL, and this account cannot. Ask for SELECT on V_$SESSION, V_$PARAMETER and V_$SQL_PLAN_STATISTICS_ALL, or for SELECT_CATALOG_ROLE. The estimated plan needs no grant." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The app and iOS versions, and your language" : {
       "localizations" : {
         "ko" : {
@@ -24791,6 +24803,10 @@
 
     },
     "the passwords for “%@” belong to no connection in the file" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The plan setting could not be turned off again, so the connection was closed. Reconnect to go on." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -26368,6 +26384,10 @@
           }
         }
       }
+    },
+    "This driver cannot explain a statement" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This file also holds saved queries, which import only on a Mac." : {
       "localizations" : {

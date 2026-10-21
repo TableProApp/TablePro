@@ -95,7 +95,7 @@ internal struct GitFileStatus: Hashable, Sendable {
         switch staged {
         case .added: return .added
         case .renamed, .copied: return .renamed
-        default: return .modified
+        default: return unstaged == .added ? .added : .modified
         }
     }
 
@@ -104,8 +104,9 @@ internal struct GitFileStatus: Hashable, Sendable {
         return unstaged == .modified || unstaged == .typeChanged
     }
 
+    // `.A` is `git add --intent-to-add`: listed in the index, in no commit yet.
     var hasCommittedHistory: Bool {
-        guard !isUntracked else { return false }
+        guard !isUntracked, unstaged != .added else { return false }
         switch staged {
         case .added, .renamed, .copied: return false
         default: return true

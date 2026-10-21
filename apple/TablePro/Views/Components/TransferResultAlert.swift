@@ -135,6 +135,7 @@ internal enum TransferResultAlert {
 
     internal static func presentImportSuccess(
         result: PluginImportResult?,
+        rowTally: ImportRowTally? = nil,
         window: NSWindow?,
         sourceFileName: String = "",
         targetTable: String? = nil,
@@ -146,7 +147,7 @@ internal enum TransferResultAlert {
             ? String(localized: "Import completed with errors")
             : String(localized: "Import completed")
         alert.alertStyle = skipped > 0 ? .warning : .informational
-        alert.informativeText = importSummary(result)
+        alert.informativeText = importSummary(result, rowTally: rowTally)
         AlertHelper.addCancelButton(to: alert, title: String(localized: "Done"))
 
         let errors = result?.errors ?? []
@@ -425,8 +426,15 @@ internal enum TransferResultAlert {
         .joined(separator: "\n\n")
     }
 
-    private static func importSummary(_ result: PluginImportResult?) -> String {
+    internal static func importSummary(_ result: PluginImportResult?, rowTally: ImportRowTally? = nil) -> String {
         guard let result else { return "" }
+        let seconds = String(
+            format: String(localized: "%@ seconds"),
+            String(format: "%.2f", result.executionTime)
+        )
+        if let rowTally {
+            return (rowTally.summaryLines(failed: result.skippedStatements) + [seconds]).joined(separator: "\n")
+        }
         let counts = result.skippedStatements > 0
             ? String(
                 format: String(localized: "%1$lld statements executed, %2$lld failed"),
@@ -437,10 +445,6 @@ internal enum TransferResultAlert {
                 format: String(localized: "%lld statements executed"),
                 Int64(result.executedStatements)
             )
-        let seconds = String(
-            format: String(localized: "%@ seconds"),
-            String(format: "%.2f", result.executionTime)
-        )
         return "\(counts)\n\(seconds)"
     }
 }

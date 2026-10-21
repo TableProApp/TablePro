@@ -13,7 +13,7 @@ enum ExplainResultSetFactory {
     static func make(
         rawText: String,
         plan: QueryPlan?,
-        sql: String,
+        sql: String?,
         executionTime: TimeInterval?,
         anchor: StatementAnchor? = nil,
         planContext: QueryPlanContext? = nil
