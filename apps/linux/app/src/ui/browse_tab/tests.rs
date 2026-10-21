@@ -880,3 +880,35 @@ fn same_count_type_change_invalidates_cached_grid_factories() {
     assert!(!column_layout_matches(&rendered, &current));
     assert!(column_layout_matches(&current, &current));
 }
+
+#[test]
+fn a_page_sql_export_leaves_out_columns_the_server_fills() {
+    let plain = |name: &str| ColumnInfo {
+        name: name.into(),
+        data_type: "int".into(),
+        nullable: true,
+        primary_key: false,
+        is_auto_increment: false,
+        default_value: None,
+        is_generated: false,
+        comment: None,
+        collation: None,
+        enum_type: None,
+        domain_type: None,
+    };
+    let mut table = vec![plain("id"), plain("qty"), plain("total"), plain("version")];
+    table[0].primary_key = true;
+    table[0].is_auto_increment = true;
+    table[2].is_generated = true;
+    table[3].is_generated = true;
+    let mut page = vec![plain("id"), plain("qty"), plain("total"), plain("version")];
+
+    super::with_table_ownership(&mut page, &table);
+
+    let row = [Value::Int(1), Value::Int(2), Value::Int(4), Value::Int(9)];
+    assert_eq!(
+        tablepro_core::sql_literal::build_insert_literal("mssql", Some("dbo"), "orders", &page, &row).unwrap(),
+        "INSERT INTO [dbo].[orders] ([qty]) VALUES (2);"
+    );
+    assert!(page[0].primary_key);
+}

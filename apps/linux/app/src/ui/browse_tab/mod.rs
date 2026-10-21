@@ -36,6 +36,16 @@ pub(super) fn columns_for_browse_page(
     loaded_columns.to_vec()
 }
 
+pub(super) fn with_table_ownership(columns: &mut [ColumnInfo], table: &[ColumnInfo]) {
+    for column in columns {
+        if let Some(known) = table.iter().find(|known| known.name == column.name) {
+            column.is_generated |= known.is_generated;
+            column.is_auto_increment |= known.is_auto_increment;
+            column.primary_key |= known.primary_key;
+        }
+    }
+}
+
 fn projection_for_loaded_page(result: &QueryResult, projection: Option<Vec<usize>>) -> Option<Vec<usize>> {
     if result.rows.is_empty() && result.columns.is_empty() {
         None
@@ -225,6 +235,7 @@ impl BrowseTab {
             }
             result.columns = self.current_columns.clone();
         }
+        with_table_ownership(&mut result.columns, &self.current_columns);
         Some(result)
     }
 
