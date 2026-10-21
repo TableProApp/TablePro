@@ -17,7 +17,7 @@ struct SyncStatusPresentationTests {
     @Test("Every error is worded in plain text, never with CloudKit's", arguments: everyError)
     func everyErrorIsWorded(_ error: SyncError) {
         let presentation = SyncStatusPresentation(status: .error(error))
-        let texts = [presentation.indicatorLabel, presentation.statusTitle, presentation.helpText, presentation.message ?? ""]
+        let texts = [presentation.statusTitle, presentation.message ?? ""]
 
         for text in texts {
             #expect(!text.isEmpty)
@@ -72,10 +72,8 @@ struct SyncStatusPresentationTests {
         #expect(one.replacingOccurrences(of: "1", with: "#") != several.replacingOccurrences(of: "3", with: "#"))
     }
 
-    @Test("Sync the person turned off shows no indicator; a synced state is not a warning")
+    @Test("A synced state is not a warning and needs no explanation")
     func quietStates() {
-        #expect(!SyncStatusPresentation(status: .disabled(.userDisabled)).showsIndicator)
-        #expect(SyncStatusPresentation(status: .idle).showsIndicator)
         #expect(!SyncStatusPresentation(status: .idle).isWarning)
         #expect(SyncStatusPresentation(status: .idle).message == nil)
     }

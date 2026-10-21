@@ -20,98 +20,97 @@ struct WelcomeActionsPanel: View {
         .map(\.showWelcomeVersionInfo)
         .removeDuplicates()
 
-    /// Captured once: the same appearance that reads the stored value overwrites it.
+    // Captured once: the same appearance that reads the stored value overwrites it.
     @State private var showsWhatsNew: Bool?
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 12) {
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .frame(width: 96, height: 96)
-                    .shadow(color: Color(nsColor: .shadowColor).opacity(0.18), radius: 8, x: 0, y: 4)
-                    .accessibilityHidden(true)
-
-                VStack(spacing: 4) {
-                    Text(verbatim: "TablePro")
-                        .font(.title2.weight(.semibold))
-
-                    if showsVersionInfo {
-                        Text(String(format: String(localized: "Version %@"), Bundle.main.displayVersion))
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("welcome-version-line")
-                    }
-
-                    // A deferred update has its gentle reminder here, so hiding the line never hides that.
-                    if showsVersionInfo || updater.hasPendingUpdate {
-                        Button(updater.checkForUpdatesTitle) {
-                            updater.checkForUpdates()
-                        }
-                        .buttonStyle(.link)
-                        .font(.callout)
-                        .disabled(!updater.canCheckForUpdates)
-                        .accessibilityIdentifier("welcome-check-for-updates-link")
-                    }
-
-                    if showsWhatsNew == true {
-                        Button(String(format: String(localized: "What's New in %@"), Bundle.main.appVersion)) {
-                            NSApp.sendAction(#selector(AppDelegate.openChangelog(_:)), to: nil, from: nil)
-                        }
-                        .buttonStyle(.link)
-                        .font(.callout)
-                        .accessibilityIdentifier("welcome-updated-line")
-                    }
-                }
-
-                VStack(spacing: 4) {
-                    licenseBadge
-                    if licenseManager.supportAudience == .prospect {
-                        SupportPromptLink()
-                    }
-                }
-                .font(.subheadline)
-            }
-            .padding(.top, 28)
-
-            Spacer()
-                .frame(height: 24)
-
-            VStack(spacing: 8) {
-                Button(action: onNewConnection) {
-                    Text("New Connection…")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button(action: onOpenFile) {
-                    Text("Open File…")
-                        .frame(maxWidth: .infinity)
-                }
-
-                WelcomeImportMenuButton(actions: WelcomeImportActions(
-                    importConnectionsFile: onImportConnectionsFile,
-                    importFromURL: onImportFromURL,
-                    importFromApp: onImportFromApp,
-                    importFromAWS: onImportFromAWS,
-                    openProjectFolder: onOpenProjectFolder
-                ))
-                .frame(maxWidth: .infinity)
-            }
-            .controlSize(.large)
-            .padding(.horizontal, 24)
+            identity
+                .padding(.top, 28)
 
             Spacer(minLength: 24)
 
-            SyncStatusIndicator(onActivateLicense: onActivateLicense)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 20)
+            actions
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear(perform: recordAppVersion)
         .onReceive(Self.versionInfoSetting) { showsVersionInfo = $0 }
+    }
+
+    private var identity: some View {
+        VStack(spacing: 12) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 96, height: 96)
+                .shadow(color: Color(nsColor: .shadowColor).opacity(0.18), radius: 8, x: 0, y: 4)
+                .accessibilityHidden(true)
+
+            VStack(spacing: 4) {
+                Text(verbatim: "TablePro")
+                    .font(.title2.weight(.semibold))
+
+                if showsVersionInfo {
+                    Text(String(format: String(localized: "Version %@"), Bundle.main.displayVersion))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("welcome-version-line")
+                }
+
+                // A deferred update has its gentle reminder here, so hiding the line never hides that.
+                if showsVersionInfo || updater.hasPendingUpdate {
+                    Button(updater.checkForUpdatesTitle) {
+                        updater.checkForUpdates()
+                    }
+                    .buttonStyle(.link)
+                    .font(.callout)
+                    .disabled(!updater.canCheckForUpdates)
+                    .accessibilityIdentifier("welcome-check-for-updates-link")
+                }
+
+                if showsWhatsNew == true {
+                    Button(String(format: String(localized: "What's New in %@"), Bundle.main.appVersion)) {
+                        NSApp.sendAction(#selector(AppDelegate.openChangelog(_:)), to: nil, from: nil)
+                    }
+                    .buttonStyle(.link)
+                    .font(.callout)
+                    .accessibilityIdentifier("welcome-updated-line")
+                }
+            }
+
+            VStack(spacing: 4) {
+                licenseNotice
+                if licenseManager.supportAudience == .prospect {
+                    SupportPromptLink()
+                }
+            }
+            .font(.subheadline)
+        }
+    }
+
+    private var actions: some View {
+        VStack(spacing: 8) {
+            Button(action: onNewConnection) {
+                Text("New Connection…")
+                    .frame(maxWidth: .infinity)
+            }
+
+            Button(action: onOpenFile) {
+                Text("Open File…")
+                    .frame(maxWidth: .infinity)
+            }
+
+            WelcomeImportMenuButton(actions: WelcomeImportActions(
+                importConnectionsFile: onImportConnectionsFile,
+                importFromURL: onImportFromURL,
+                importFromApp: onImportFromApp,
+                importFromAWS: onImportFromAWS,
+                openProjectFolder: onOpenProjectFolder
+            ))
+            .frame(maxWidth: .infinity)
+        }
+        .controlSize(.large)
     }
 
     private func recordAppVersion() {
@@ -119,16 +118,13 @@ struct WelcomeActionsPanel: View {
         showsWhatsNew = WhatsNewNotice(bundle: .main, defaults: AppStorageEnvironment.shared.defaults).recordLaunch()
     }
 
-    /// The badge follows entitlement and the support link follows whether anything has been paid,
-    /// which are different questions: a license the server has not confirmed in 30 days still
-    /// pauses paid features, and its owner is still not someone to ask for a purchase.
+    // Only states that need the person: an active license says nothing. A license the server has not
+    // confirmed in 30 days still pauses paid features, so it keeps its warning.
     @ViewBuilder
-    private var licenseBadge: some View {
+    private var licenseNotice: some View {
         switch licenseManager.status {
         case .active:
-            Label(licenseManager.currentTier.displayName, systemImage: "checkmark.seal.fill")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.green)
+            EmptyView()
         case .validationFailed:
             Label(licenseManager.currentTier.displayName, systemImage: "exclamationmark.seal.fill")
                 .font(.subheadline.weight(.medium))
