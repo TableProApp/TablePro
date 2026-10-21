@@ -113,8 +113,30 @@ struct ERDiagramDOTWriterTests {
 
         #expect(document.contains("    \"a\\\"b<c>&d\" [label=<\n"))
         #expect(document.contains("<B>a&quot;b&lt;c&gt;&amp;d</B>"))
-        #expect(document.contains("PORT=\"x&quot;y\">x&quot;y <FONT COLOR=\"#6E6E73\">t&lt;1&gt;</FONT>"))
-        #expect(document.contains("<TD ALIGN=\"LEFT\">back\\slash"))
+        #expect(document.contains("PORT=\"x_y\">x&quot;y <FONT COLOR=\"#6E6E73\">t&lt;1&gt;</FONT>"))
+        #expect(document.contains("<TD ALIGN=\"LEFT\" PORT=\"back_slash\">back\\slash"))
+    }
+
+    @Test("A port is the column name cut to letters, digits and underscores, unique in its table")
+    func portIds() {
+        #expect(ERDiagramDOTWriter.portIds(for: ["id", "id:s", "id_s", "名前", "user id", ""]) == [
+            "id": "id", "id:s": "id_s", "id_s": "id_s_2", "名前": "_", "user id": "user_id", "": "_2",
+        ])
+    }
+
+    @Test("A colon in a column name never reaches Graphviz as a compass point")
+    func colonInColumnName() {
+        let graph = ERDiagramGraphBuilder.build(
+            allColumns: [
+                "parent": [column("id", primaryKey: true), column("id:s", type: "text")],
+                "child": [column("id", primaryKey: true), column("parent_ref", type: "text")],
+            ],
+            allForeignKeys: ["child": [foreignKey("fk", column: "parent_ref", references: "parent", "id:s")]]
+        )
+        let document = ERDiagramDOTWriter.document(for: graph)
+
+        #expect(document.contains("<TD ALIGN=\"LEFT\" PORT=\"id_s\">id:s"))
+        #expect(document.contains("    \"child\":\"parent_ref\" -> \"parent\":\"id_s\" [arrowtail=crowtee, arrowhead=tee];\n"))
     }
 
     @Test("The same schema writes the same file whatever order its edges arrive in")

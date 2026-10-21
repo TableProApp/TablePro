@@ -6,9 +6,10 @@ enum ERDiagramDOTWriter {
 
     static func document(for graph: ERDiagramGraph) -> String {
         let nodes = ERDiagramExportOrder.nodes(of: graph)
-        var ports: [String: Set<String>] = [:]
+        var ports: [String: [String: String]] = [:]
         for node in nodes {
-            ports[node.tableName] = Set(node.displayColumns.map(\.name).filter(isPortable))
+            let all = portIds(for: node.columns.map(\.name))
+            ports[node.tableName] = all.filter { name, _ in node.displayColumns.contains { $0.name == name } }
         }
 
         var lines = [
@@ -26,7 +27,7 @@ enum ERDiagramDOTWriter {
                 "            <TR><TD ALIGN=\"LEFT\" BGCOLOR=\"\(headerColor)\"><B>\(html(node.tableName))</B></TD></TR>"
             )
             for column in node.displayColumns {
-                lines.append("            <TR>\(cell(for: column))</TR>")
+                lines.append("            <TR>\(cell(for: column, port: ports[node.tableName]?[column.name]))</TR>")
             }
             lines.append("        </TABLE>")
             lines.append("    >];")
@@ -59,8 +60,8 @@ enum ERDiagramDOTWriter {
     }
 
     // One cell per row keeps the port as wide as the table, so an edge stops at the border.
-    private static func cell(for column: ERColumnDisplay) -> String {
-        let port = isPortable(column.name) ? " PORT=\"\(html(column.name))\"" : ""
+    private static func cell(for column: ERColumnDisplay, port: String?) -> String {
+        let port = port.map { " PORT=\"\($0)\"" } ?? ""
         var text = html(column.name)
         if !column.dataType.isEmpty {
             text += " <FONT COLOR=\"\(secondaryColor)\">\(html(column.dataType))</FONT>"
@@ -73,14 +74,35 @@ enum ERDiagramDOTWriter {
     }
 
     // A column the view hides, or a many-to-many edge, has no port: the edge meets the table.
-    private static func endpoint(_ table: String, column: String, ports: [String: Set<String>]) -> String {
-        guard ports[table]?.contains(column) == true else { return quoted(table) }
-        return "\(quoted(table)):\(quoted(column))"
+    private static func endpoint(_ table: String, column: String, ports: [String: [String: String]]) -> String {
+        guard let port = ports[table]?[column] else { return quoted(table) }
+        return "\(quoted(table)):\(quoted(port))"
     }
 
-    // DOT keeps an escaped backslash doubled, so such a port reference never matches its PORT.
-    private static func isPortable(_ name: String) -> Bool {
-        !name.isEmpty && !name.contains("\\")
+    // Graphviz splits a port reference at `:` into port and compass point, even quoted, and keeps an
+    // escaped backslash doubled, so a port is the name cut to `[A-Za-z0-9_]`, unique per table.
+    static func portIds(for columns: [String]) -> [String: String] {
+        var ids: [String: String] = [:]
+        var taken: Set<String> = []
+        for name in columns where ids[name] == nil {
+            let base = name.unicodeScalars.reduce(into: "") { result, scalar in
+                let isWord = scalar.isASCII && (scalar.properties.isAlphabetic || ("0"..."9").contains(scalar) || scalar == "_")
+                if isWord {
+                    result.unicodeScalars.append(scalar)
+                } else if !result.hasSuffix("_") {
+                    result.append("_")
+                }
+            }
+            var candidate = base.isEmpty ? "_" : base
+            var suffix = 2
+            while taken.contains(candidate) {
+                candidate = "\(base)_\(suffix)"
+                suffix += 1
+            }
+            taken.insert(candidate)
+            ids[name] = candidate
+        }
+        return ids
     }
 
     static func quoted(_ id: String) -> String {
