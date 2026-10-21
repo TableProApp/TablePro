@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProCoreTypes
+import TableProKerberos
 import TableProMSSQLCore
 import TableProPluginKit
 import TableProSQLVocabulary
@@ -421,8 +422,12 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deadline: MSSQLConnectDeadline
     ) async throws -> String? {
         guard authMethod == .windows else { return nil }
-        let host = config.host
-        let port = config.port
+        let tunneledHost = config.additionalFields["preTunnelHost"].flatMap { $0.isEmpty ? nil : $0 }
+        let host = tunneledHost ?? config.host
+        let port = tunneledHost == nil
+            ? config.port
+            : config.additionalFields["preTunnelPort"].flatMap { Int($0) } ?? config.port
+        let fallback = tunneledHost == nil ? nil : MSSQLKerberosSPN.unrealmed(host: host, port: port)
         let timeoutMilliseconds = try remainingConnectTimeout(deadline, authMethod: authMethod)
         do {
             return try await runCancellableBlocking(
@@ -432,6 +437,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 work: {
                     MSSQLKerberosRealmResolver.canonicalService(forHost: host)
                         .flatMap { MSSQLKerberosSPN.build(host: $0.host, port: port, realm: $0.realm) }
+                        ?? fallback
                 }
             )
         } catch is KerberosRealmResolutionTimeout {
@@ -439,7 +445,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 throw MSSQLCoreError.connectionTimedOut(isKerberos: true)
             }
             Self.logger.warning("Kerberos realm resolution timed out; using the default service principal")
-            return nil
+            return fallback
         }
     }
 
@@ -462,11 +468,16 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .trimmingCharacters(in: .whitespaces)
         let password = config.additionalFields[MSSQLKerberosField.password] ?? ""
         guard !principal.isEmpty, !password.isEmpty else { return nil }
-        return try await MSSQLKerberosCredentials.acquireTicket(
-            principal: principal,
-            password: password,
-            timeoutMilliseconds: try remainingConnectTimeout(deadline, authMethod: authMethod)
-        )
+        do {
+            return try await KerberosTicket.acquire(
+                principal: principal,
+                password: password,
+                timeoutMilliseconds: try remainingConnectTimeout(deadline, authMethod: authMethod),
+                timeoutError: { MSSQLCoreError.connectionTimedOut(isKerberos: true) }
+            )
+        } catch KerberosTicketError.rejected(let kind, let message) {
+            throw MSSQLCoreError.kerberosAuthFailed(kind: kind, serverMessage: message)
+        }
     }
 
     private func remainingConnectTimeout(
@@ -890,33 +901,15 @@ enum MSSQLKerberosField {
 }
 
 enum MSSQLKerberosMessage {
-    static func describe(kind: MSSQLKerberosFailureKind, serverMessage: String) -> String {
-        let summary: String
-        let suggestion: String
-        switch kind {
-        case .noCredential:
-            summary = String(localized: "No Kerberos ticket was found.")
-            suggestion = String(localized: "Run kinit user@REALM.COM in Terminal, or enter a Kerberos principal and password, then reconnect.")
-        case .principalUnknown:
-            summary = String(localized: "The Kerberos principal is unknown to the domain.")
-            suggestion = String(localized: "Check the principal spelling and realm, for example user@REALM.COM with the realm in uppercase.")
-        case .wrongPassword:
-            summary = String(localized: "The Kerberos password was rejected.")
-            suggestion = String(localized: "Re-enter the domain password for this principal.")
-        case .spnNotFound:
-            summary = String(localized: "The SQL Server Kerberos service principal name is not registered.")
-            suggestion = String(localized: "Ask your administrator to register the SPN, for example MSSQLSvc/host.domain.com:1433, and connect by hostname rather than IP address.")
-        case .clockSkew:
-            summary = String(localized: "This Mac's clock is too far out of sync with the domain controller.")
-            suggestion = String(localized: "Turn on Set time automatically in System Settings > General > Date & Time, then reconnect.")
-        case .realmNotResolved:
-            summary = String(localized: "The Kerberos realm could not be resolved.")
-            suggestion = String(localized: "Confirm this network resolves the domain, or add the realm to /etc/krb5.conf.")
-        case .ticketExpired:
-            summary = String(localized: "The Kerberos ticket has expired.")
-            suggestion = String(localized: "Run kinit user@REALM.COM to renew it, then reconnect.")
-        }
-        return "\(summary) \(suggestion) (\(serverMessage))"
+    static func describe(kind: KerberosFailureKind, serverMessage: String) -> String {
+        KerberosFailureMessage.describe(
+            kind: kind,
+            serverMessage: serverMessage,
+            spnNotFound: (
+                summary: String(localized: "The SQL Server Kerberos service principal name is not registered."),
+                suggestion: String(localized: "Ask your administrator to register the SPN, for example MSSQLSvc/host.domain.com:1433, and connect by hostname rather than IP address.")
+            )
+        )
     }
 }
 

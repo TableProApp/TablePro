@@ -18,4 +18,12 @@ public enum MSSQLKerberosSPN {
         guard !trimmedHost.isEmpty else { return nil }
         return "MSSQLSvc/\(trimmedHost):\(port)@\(realm.uppercased())"
     }
+
+    // Behind a tunnel FreeTDS would name the loopback address it dials, so the server's own host
+    // is named here even when no realm was resolved; Heimdal then uses `default_realm`.
+    public static func unrealmed(host: String, port: Int) -> String? {
+        let trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedHost.isEmpty else { return nil }
+        return "MSSQLSvc/\(trimmedHost):\(port)"
+    }
 }

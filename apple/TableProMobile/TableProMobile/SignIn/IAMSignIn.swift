@@ -53,7 +53,8 @@ nonisolated enum IAMSignIn: CaseIterable, Hashable, Identifiable, Sendable {
     }
 
     init?(pickerValue: String?) {
-        guard let pickerValue, !pickerValue.isEmpty, pickerValue != Self.passwordPickerValue else { return nil }
+        guard let pickerValue, !pickerValue.isEmpty, pickerValue != Self.passwordPickerValue,
+              pickerValue != KerberosAuthFields.method else { return nil }
         switch pickerValue {
         case GoogleCloudSQLAuthFields.applicationDefault:
             self = .googleApplicationDefault

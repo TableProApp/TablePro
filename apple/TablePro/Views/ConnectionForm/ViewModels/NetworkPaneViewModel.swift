@@ -96,8 +96,8 @@ final class NetworkPaneViewModel: ObservableObject {
         Int(port) ?? type.defaultPort
     }
 
-    /// Kerberos service principals are not registered against IP addresses, so SQL Server's
-    /// Windows Authentication warns when the host is one.
+    // Kerberos service principals are not registered against IP addresses, so a Kerberos sign-in
+    // warns when the host is one.
     var resolvedHostIsIPAddress: Bool {
         let host = resolvedHost.trimmingCharacters(in: .whitespaces)
         return IPv4Address(host) != nil || IPv6Address(host) != nil

@@ -155,7 +155,7 @@ targetTemplates:
   MySQLLinkage:
     dependencies:
       - package: TableProCore
-        products: [TableProGeometry, TableProLogRedaction, TableProMySQLCore, TableProSQLVocabulary]
+        products: [TableProCoreTypes, TableProGeometry, TableProKerberos, TableProLogRedaction, TableProMySQLCore, TableProSQLVocabulary]
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -177,12 +177,14 @@ targetTemplates:
           - -lcrypto.3
           - -liconv
           - -lz
+          - -framework
+          - GSS
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/MySQLDriverPlugin/CMariaDB
 
   PostgreSQLLinkage:
     dependencies:
       - package: TableProCore
-        products: [TableProLogRedaction, TableProPostgreSQLCore, TableProSQLVocabulary]
+        products: [TableProCoreTypes, TableProKerberos, TableProLogRedaction, TableProPostgreSQLCore, TableProSQLVocabulary]
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -205,6 +207,8 @@ targetTemplates:
           - -lssl.3
           - -lcrypto.3
           - -lz
+          - -framework
+          - GSS
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/PostgreSQLDriverPlugin/CLibPQ
 
   RedisLinkage:
@@ -1056,7 +1060,7 @@ targets:
       principalClass: MSSQLPlugin
     dependencies:
       - package: TableProCore
-        products: [TableProCoreTypes, TableProLogRedaction, TableProMSSQLCore, TableProSQLVocabulary]
+        products: [TableProCoreTypes, TableProKerberos, TableProLogRedaction, TableProMSSQLCore, TableProSQLVocabulary]
     settings:
       base:
         HEADER_SEARCH_PATHS:

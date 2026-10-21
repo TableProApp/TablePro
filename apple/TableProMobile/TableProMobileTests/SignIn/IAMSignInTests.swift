@@ -47,6 +47,7 @@ struct IAMSignInTests {
         ("sso", .awsSSO),
         ("gcpApplicationDefault", .googleApplicationDefault),
         ("gcpServiceAccount", .googleServiceAccount),
+        ("kerberos", nil),
         ("somethingNewer", .awsAccessKey)
     ] as [(String?, IAMSignIn?)])
     func parsesPickerValue(value: String?, expected: IAMSignIn?) {

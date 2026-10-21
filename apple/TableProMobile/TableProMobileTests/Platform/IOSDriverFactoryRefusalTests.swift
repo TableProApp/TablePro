@@ -2,6 +2,7 @@ import Foundation
 import TableProDatabase
 @testable import TableProMobile
 import TableProModels
+import TableProPluginKit
 import Testing
 
 struct IOSDriverFactoryRefusalTests {
@@ -52,6 +53,18 @@ struct IOSDriverFactoryRefusalTests {
         #expect(throws: ConnectionError.localSocketNotSupported) {
             try IOSDriverFactory().createDriver(for: connection, password: nil)
         }
+    }
+
+    @Test("A Kerberos sign-in from the Mac is refused before it dials", arguments: [DatabaseType.postgresql, .mariadb])
+    func kerberosIsRefused(type: DatabaseType) {
+        let connection = DatabaseConnection(
+            type: type,
+            host: "db.corp.example.com",
+            additionalFields: ["awsAuth": KerberosAuthFields.method]
+        )
+
+        #expect(IOSDriverFactory.refusal(for: connection) == .kerberosNotSupported)
+        #expect(MacOnlyConnection.isMacOnly(connection))
     }
 
     @Test("The connect path gets the device's answer, socket included, not the protocol default")

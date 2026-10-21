@@ -10,6 +10,8 @@ import CMariaDB
 import Foundation
 import os
 import OSLog
+import TableProCoreTypes
+import TableProKerberos
 import TableProMySQLCore
 import TableProPluginKit
 
@@ -108,6 +110,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private let connectionEncoding: MySQLConnectionEncoding
     private let connectTimeoutMilliseconds: Int
     private let refreshPassword: (@Sendable () async throws -> String)?
+    private let kerberos: MariaDBKerberosSignIn?
 
     /// How long a read may go silent before libmariadb reports the connection lost, which is the
     /// only thing separating its own timeout from a server-side drop.
@@ -312,7 +315,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         queryTimeoutSeconds: Int = 0,
         connectionEncoding: MySQLConnectionEncoding = .utf8,
         connectTimeoutMilliseconds: Int = MySQLConnectTimeout.defaultMilliseconds,
-        refreshPassword: (@Sendable () async throws -> String)? = nil
+        refreshPassword: (@Sendable () async throws -> String)? = nil,
+        kerberos: MariaDBKerberosSignIn? = nil
     ) {
         self.transport = transport
         self.user = user
@@ -325,10 +329,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         self.connectionEncoding = connectionEncoding
         self.connectTimeoutMilliseconds = MySQLConnectTimeout(milliseconds: connectTimeoutMilliseconds).milliseconds
         self.refreshPassword = refreshPassword
+        self.kerberos = kerberos
         self.socketTimeoutSeconds = mysqlSocketTimeoutSeconds(forQueryTimeout: queryTimeoutSeconds)
     }
 
     deinit {
+        if let cachePath = kerberos?.cachePath {
+            KerberosTicket.discard(cachePath)
+        }
         let handle = mysql
         let cleanupQueue = queue
         mysql = nil
@@ -361,10 +369,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 do {
                     session = try self.attemptConnect(mode: .disabled, deadline: deadline)
                 } catch let fallbackError as MariaDBPluginError {
-                    throw Self.connectError(fallbackError)
+                    throw self.connectError(fallbackError)
                 }
             } catch let error as MariaDBPluginError {
-                throw Self.connectError(error)
+                throw self.connectError(error)
             }
 
             let handle = session.handle
@@ -393,9 +401,15 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let errorLanguage: String.Encoding?
     }
 
-    private static func connectError(_ error: MariaDBPluginError) -> any Error {
+    private func connectError(_ error: MariaDBPluginError) -> any Error {
+        if MySQLPlaintextPassword.isKerberosRefusal(code: error.code, message: error.message) {
+            return MariaDBPluginError(code: 0, message: MySQLPlaintextPassword.kerberosRefusalMessage, sqlState: nil)
+        }
         if MySQLPlaintextPassword.isRefusal(code: error.code) {
             return MariaDBPluginError(code: 0, message: MySQLPlaintextPassword.refusalMessage, sqlState: nil)
+        }
+        if kerberos != nil, let kind = MariaDBKerberosSignIn.failureKind(for: error.message) {
+            return MariaDBKerberosSignIn.failure(kind: kind, serverMessage: error.message, code: error.code)
         }
         return MariaDBSSLClassifier.classifySSLError(code: error.code, message: error.message) ?? error
     }
@@ -434,12 +448,20 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             mysql_options(mysql, MYSQL_ENABLE_CLEARTEXT_PLUGIN, &enableCleartext)
         }
 
-        let result = transport.realConnect(
-            mysql,
-            user: user,
-            password: password,
-            database: database.isEmpty ? nil : database
-        )
+        let result: UnsafeMutablePointer<MYSQL>?
+        do {
+            result = try signingIn(on: mysql, until: deadline) {
+                transport.realConnect(
+                    mysql,
+                    user: user,
+                    password: password,
+                    database: database.isEmpty ? nil : database
+                )
+            }
+        } catch {
+            mysql_close(mysql)
+            throw error
+        }
 
         guard result != nil else {
             let error = readError(from: mysql)
@@ -540,8 +562,38 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         )
     }
 
+    // A Kerberos sign-in can wait behind another one, so its socket timeouts are measured once it
+    // holds the lock.
+    private func signingIn<T>(
+        on handle: UnsafeMutablePointer<MYSQL>,
+        until deadline: MySQLConnectDeadline,
+        _ body: () -> T
+    ) throws -> T {
+        guard let kerberos else { return body() }
+        guard let remaining = deadline.remainingMilliseconds() else {
+            throw MariaDBPluginError.connectionTimedOut
+        }
+        do {
+            return try KerberosCredentialCache.using(
+                kerberos.cachePath,
+                until: Date(timeIntervalSinceNow: Double(remaining) / 1_000)
+            ) {
+                var timeout = try connectSocketTimeoutSeconds(deadline: deadline)
+                mysql_options(handle, MYSQL_OPT_CONNECT_TIMEOUT, &timeout)
+                mysql_options(handle, MYSQL_OPT_READ_TIMEOUT, &timeout)
+                mysql_options(handle, MYSQL_OPT_WRITE_TIMEOUT, &timeout)
+                return body()
+            }
+        } catch is KerberosCredentialCache.WaitTimedOut {
+            throw MariaDBPluginError.connectionTimedOut
+        }
+    }
+
     func disconnect() {
         isShuttingDown = true
+        if let cachePath = kerberos?.cachePath {
+            KerberosTicket.discard(cachePath)
+        }
 
         let handle = mysql
         mysql = nil
@@ -651,12 +703,13 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             mysql_options(killConn, MYSQL_ENABLE_CLEARTEXT_PLUGIN, &killEnableCleartext)
         }
 
-        let killResult = transport.realConnect(
-            killConn,
-            user: user,
-            password: sideConnectionPassword(),
-            database: nil
+        let killPassword = sideConnectionPassword()
+        let killDeadline = MySQLConnectDeadline(
+            timeout: MySQLConnectTimeout(milliseconds: Int(Self.killTimeoutSeconds) * 1_000)
         )
+        let killResult = try? signingIn(on: killConn, until: killDeadline) {
+            transport.realConnect(killConn, user: user, password: killPassword, database: nil)
+        }
 
         guard killResult != nil else {
             logger.warning("KILL QUERY could not connect: \(self.errorMessage(from: killConn))")
@@ -673,10 +726,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         MariaDBTLSMode.apply(mode, to: handle)
         // A local socket never leaves this Mac, and the mysql client trusts it the same way. The Cloud SQL Auth Proxy and
         // an SSH forward to the server's socket encrypt the way there, which their loopback listener cannot show as TLS.
-        if mode == .disabled || mode == .preferred, !transport.isUnixSocket, !tunnelSecuresTransport {
-            _ = MySQLPlaintextPassword.methodsWithoutTLS.withCString {
-                mysql_options(handle, MARIADB_OPT_RESTRICTED_AUTH, $0)
-            }
+        let withoutTLS = (mode == .disabled || mode == .preferred) && !transport.isUnixSocket && !tunnelSecuresTransport
+        if let methods = MySQLPlaintextPassword.allowedMethods(withoutTLS: withoutTLS, signsInWithKerberos: kerberos != nil) {
+            _ = methods.withCString { mysql_options(handle, MARIADB_OPT_RESTRICTED_AUTH, $0) }
         }
         guard mode != .disabled else { return }
         if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {

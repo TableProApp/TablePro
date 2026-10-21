@@ -31,6 +31,19 @@ struct ConnectionErrorClassifierTests {
         #expect(error.recovery == String(localized: "Turn off the SSH tunnel for this connection."))
     }
 
+    @Test("A Kerberos connection is a configuration problem that points back to the Mac, and retrying cannot help")
+    func kerberosIsConfiguration() {
+        let error = ErrorClassifier.classify(
+            ConnectionError.kerberosNotSupported,
+            context: ErrorContext(operation: "connect", host: "db.corp.example.com")
+        )
+
+        #expect(error.category == .config)
+        #expect(error.title == String(localized: "Kerberos Unavailable"))
+        #expect(error.message == ConnectionError.kerberosNotSupported.localizedDescription)
+        #expect(!error.canRetry)
+    }
+
     @Test("A Mac socket connection is a configuration problem that points back to the Mac")
     func localSocketIsConfiguration() {
         let error = ErrorClassifier.classify(
