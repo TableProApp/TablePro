@@ -524,6 +524,7 @@ struct MainEditorContentView: View {
                         databaseScope: queryScope,
                         connectionId: coordinator.connection.id,
                         tabID: tab.id,
+                        sourceFileURL: tab.content.sourceFileURL,
                         claimFocusOnAppear: claimFocus,
                         onFocusClaimed: {
                             if coordinator.tabManager.pendingFocusTabId == tab.id {
