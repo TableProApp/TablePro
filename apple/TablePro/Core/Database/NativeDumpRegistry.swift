@@ -262,13 +262,29 @@ enum NativeDumpRegistry {
             flavor: resolved.flavor,
             serverOffersTLS: request.serverOffersTLS
         )
-        if hidesPlugins, await MariaDBBuiltInPlaintextCheck.sendsPlaintext(toolPath: resolved.path) {
+        guard hidesPlugins else { return request }
+        switch await MariaDBBuiltInPlaintextCheck.verdict(toolPath: resolved.path) {
+        case .refusesPlaintext:
+            break
+        case .sendsPlaintext:
             throw NativeDumpError.incompatibleTool(
                 message: String(
                     format: String(
                         localized: """
                             %@ sends the password in plain text when a server asks, even without TLS, and TablePro \
                             cannot turn that off. Set SSL Mode to Required, or install another build of the client tools.
+                            """
+                    ),
+                    resolved.path
+                )
+            )
+        case .unknown:
+            throw NativeDumpError.incompatibleTool(
+                message: String(
+                    format: String(
+                        localized: """
+                            TablePro could not check whether %@ sends the password in plain text without TLS. Try \
+                            again, or set SSL Mode to Required.
                             """
                     ),
                     resolved.path

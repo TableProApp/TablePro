@@ -154,6 +154,8 @@ struct MySQLDumpPlaintextPasswordTests {
     @Test("Only a MariaDB tool on Preferred reads the server's greeting")
     func greetingIsReadOnlyForPreferred() async throws {
         let tool = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
+        let client = try fakeClient(sendsPassword: false)
+        defer { try? FileManager.default.removeItem(at: client.deletingLastPathComponent()) }
         for (mode, flavor) in [(SSLMode.disabled, NativeDumpToolFlavor.mariadb), (.required, .mariadb), (.preferred, .mysql)] {
             let request = NativeDumpDescriptor.Request(
                 connection: connection(mode),
@@ -161,7 +163,7 @@ struct MySQLDumpPlaintextPasswordTests {
                 fileURL: URL(fileURLWithPath: "/tmp/out.sql"),
                 password: nil
             )
-            let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: "/t", flavor: flavor)
+            let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: client.path, flavor: flavor)
             #expect(try await tool.prepare(request, resolved).serverOffersTLS == nil, "\(mode.rawValue) \(flavor)")
         }
     }
@@ -183,7 +185,9 @@ struct MySQLDumpPlaintextPasswordTests {
         let server = try await FakeGreetingServer.start(payload: Self.greeting(offersTLS: offersTLS))
         defer { server.stop() }
         let tool = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
-        let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: "/t", flavor: .mariadb)
+        let client = try fakeClient(sendsPassword: false)
+        defer { try? FileManager.default.removeItem(at: client.deletingLastPathComponent()) }
+        let resolved = NativeDumpResolvedTool(name: "mariadb-dump", path: client.path, flavor: .mariadb)
         #expect(try await tool.prepare(preferredRequest(port: server.port), resolved).serverOffersTLS == offersTLS)
         #expect(await MySQLServerGreeting.read(host: "127.0.0.1", port: server.port) == .offersTLS(offersTLS))
     }
@@ -296,30 +300,27 @@ struct MySQLDumpPlaintextPasswordTests {
     }
 
     // Stand-ins for a client build: one that answers a plain-text request from a plugin built into it, and one that
-    // hangs up because the plugin is not in the folder.
+    // hangs up because the plugin is not in the folder. Bash, dd and od, because the check passes the tool no PATH.
     private func fakeClient(sendsPassword: Bool) throws -> URL {
         let script = """
-            #!/usr/bin/python3
-            import os, socket, struct, sys
-            args = sys.argv[1:]
-            connection = socket.create_connection(("127.0.0.1", int(args[args.index("-P") + 1])))
-            def read():
-                header = b""
-                while len(header) < 4:
-                    header += connection.recv(4 - len(header))
-                length = header[0] | header[1] << 8 | header[2] << 16
-                payload = b""
-                while len(payload) < length:
-                    payload += connection.recv(length - len(payload))
-                return header[3], payload
-            def write(sequence, payload):
-                connection.sendall(struct.pack("<I", len(payload))[:3] + bytes([sequence]) + payload)
-            sequence, _ = read()
-            write(sequence + 1, bytes(32) + b"tablepro\\0")
-            sequence, _ = read()
-            if \(sendsPassword ? "True" : "False"):
-                write(sequence + 1, os.environ["MYSQL_PWD"].encode() + b"\\0")
-            connection.close()
+            #!/bin/bash
+            while [ $# -gt 0 ]; do
+                [ "$1" = "-P" ] && port=$2
+                shift
+            done
+            exec 3<>"/dev/tcp/127.0.0.1/$port"
+            skip_packet() {
+                set -- $(/bin/dd bs=1 count=4 2> /dev/null <&3 | /usr/bin/od -An -tu1)
+                /bin/dd bs=1 count=$(($1 + ($2 << 8) + ($3 << 16))) 2> /dev/null <&3 > /dev/null
+            }
+            skip_packet
+            { printf '\\051\\000\\000\\001'; /bin/dd bs=32 count=1 if=/dev/zero 2> /dev/null; printf 'tablepro\\000'; } >&3
+            skip_packet
+            if [ \(sendsPassword ? 1 : 0) = 1 ]; then
+                printf "\\\\$(printf '%03o' $((${#MYSQL_PWD} + 1)))\\\\000\\\\000\\\\003" >&3
+                printf '%s\\000' "$MYSQL_PWD" >&3
+            fi
+            exec 3>&-
             """
         let url = try temporaryDirectory().appendingPathComponent("mariadb-dump")
         try script.write(to: url, atomically: true, encoding: .utf8)
@@ -331,7 +332,32 @@ struct MySQLDumpPlaintextPasswordTests {
     func builtInPlaintextPluginIsCaught(sendsPassword: Bool) async throws {
         let client = try fakeClient(sendsPassword: sendsPassword)
         defer { try? FileManager.default.removeItem(at: client.deletingLastPathComponent()) }
-        #expect(await MariaDBBuiltInPlaintextCheck.sendsPlaintext(toolPath: client.path) == sendsPassword)
+        #expect(
+            await MariaDBBuiltInPlaintextCheck.verdict(toolPath: client.path)
+                == (sendsPassword ? .sendsPlaintext : .refusesPlaintext)
+        )
+    }
+
+    @Test("A client that never answers is unknown, and asked again next time")
+    func silentClientIsAskedAgain() async throws {
+        let refusing = try fakeClient(sendsPassword: false)
+        defer { try? FileManager.default.removeItem(at: refusing.deletingLastPathComponent()) }
+        let folder = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let ready = folder.appendingPathComponent("ready")
+        let client = folder.appendingPathComponent("mariadb")
+        let script = """
+            #!/bin/sh
+            [ -e '\(ready.path)' ] || exit 0
+            exec '\(refusing.path)' "$@"
+            """
+        try script.write(to: client, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: client.path)
+
+        #expect(await MariaDBBuiltInPlaintextCheck.verdict(toolPath: client.path, timeout: 1) == .unknown)
+        #expect(FileManager.default.createFile(atPath: ready.path, contents: nil))
+        #expect(await MariaDBBuiltInPlaintextCheck.verdict(toolPath: client.path, timeout: 5) == .refusesPlaintext)
+        #expect(await MariaDBBuiltInPlaintextCheck.verdict(toolPath: "/nonexistent/bin/mariadb-dump") == .unknown)
     }
 
     @Test("A dump that would hide the plugins refuses a client that has them built in")
@@ -348,6 +374,10 @@ struct MySQLDumpPlaintextPasswordTests {
         )
         await #expect(throws: NativeDumpError.self) {
             try await tool.prepare(request, resolved)
+        }
+        let missing = NativeDumpResolvedTool(name: "mariadb-dump", path: "/nonexistent/bin/mariadb-dump", flavor: .mariadb)
+        await #expect(throws: NativeDumpError.self) {
+            try await tool.prepare(request, missing)
         }
 
         let required = NativeDumpDescriptor.Request(
