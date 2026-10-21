@@ -9,6 +9,7 @@
 import Combine
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 enum DatabaseObjectCommandError: LocalizedError, Equatable {
     case notConnected

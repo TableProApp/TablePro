@@ -38,8 +38,13 @@ public final class SyncRecordCache {
     // MARK: - Reading
 
     public func record(for recordID: CKRecord.ID) -> CKRecord? {
+        record(named: recordID.recordName)
+    }
+
+    // A record's name is the same in every zone, so a caller with no zone at hand can still read it.
+    public func record(named recordName: String) -> CKRecord? {
         migrateIfNeeded()
-        guard let data = try? Data(contentsOf: fileURL(for: recordID.recordName)) else { return nil }
+        guard let data = try? Data(contentsOf: fileURL(for: recordName)) else { return nil }
         return unarchive(data)
     }
 

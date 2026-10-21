@@ -1,5 +1,6 @@
 import Foundation
 import TableProModels
+import TableProRedisCore
 import TableProSQLGrammar
 
 /// The requests one run of a query text makes, in the order it makes them.
@@ -95,11 +96,23 @@ public struct QueryScript: Sendable, Equatable {
         )
         return QueryScript(
             units: batches.map { Unit(sql: $0.sql, repeatCount: $0.repeatCount) },
-            unitKind: .batch
+            unitKind: .batch,
+            session: session,
+            source: nil,
+            unitEnds: [],
+            databaseType: databaseType
         )
     }
 
-    // A Redis backslash escapes a trailing blank, which a whitespace trim would cut from the last argument.
+    /// The statements a unit runs: the unit itself, or each statement of a batch, so a `ROLLBACK` after a `SELECT` in
+    /// one `GO` batch still counts.
+    public func statements(in unit: Unit) -> [String] {
+        guard unitKind == .batch, let databaseType else { return [unit.sql] }
+        let grammar = Self.executionGrammar(for: databaseType, session: session)
+        return SQLStatementScanner.executableStatements(in: unit.sql, grammar: grammar).map(\.sql)
+    }
+
+    // A bare Redis argument may end in a byte Foundation trims, such as a vertical tab or a no-break space.
     public static func trimmed(_ text: String, databaseType: DatabaseType) -> String {
         guard databaseType == .redis else { return text.trimmingCharacters(in: .whitespacesAndNewlines) }
         let commands = RedisCommandSplitter.commands(in: text)

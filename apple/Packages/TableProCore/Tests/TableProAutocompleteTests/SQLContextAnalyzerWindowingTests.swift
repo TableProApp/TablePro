@@ -101,6 +101,26 @@ struct SQLContextAnalyzerWindowingTests {
         #expect(context.clauseType == .orderBy)
     }
 
+    // The code view blanks comments and literals, and one reference pattern split a blank run every way: 0.8 s at 400.
+    @Test(
+        "A long literal, comment or blank run before the cursor stays cheap",
+        .timeLimit(.minutes(1)),
+        arguments: [
+            ("UPDATE t SET doc = '", "x", "' WHERE i"),
+            ("SELECT * FROM t /* ", "x", " */ WHERE i"),
+            ("SELECT * FROM t", " ", "WHERE i")
+        ]
+    )
+    func longBlankRunStaysCheap(head: String, fill: String, tail: String) {
+        let query = head + String(repeating: fill, count: 5_000) + tail
+        var context: SQLContext?
+        let elapsed = ContinuousClock().measure {
+            context = analyzer.analyze(query: query, cursorPosition: query.utf16.count)
+        }
+        #expect(elapsed < .seconds(1))
+        #expect(context?.prefix == "i")
+    }
+
     @Test("HAVING clause after large GROUP BY expression")
     func havingAfterLargeGroupBy() {
         let columns = (1...500).map { "col\($0)" }.joined(separator: ", ")

@@ -4,6 +4,7 @@ import os
 
 import TableProConnectionLibrary
 import TableProModels
+import TableProSSHTransport
 import TableProSyncTransport
 
 public enum SyncRecordMapper {
@@ -12,6 +13,9 @@ public enum SyncRecordMapper {
     private static let decoder = JSONDecoder()
 
     private static let schemaVersion: Int64 = 1
+
+    // RedisDatabaseIndex.fieldName, which this module does not link.
+    private static let redisDatabaseFieldKey = "redisDatabase"
 
     // MARK: - Record Name Helpers
 
@@ -64,7 +68,7 @@ public enum SyncRecordMapper {
         fields[.tagId] = tagIdStrings.first as CKRecordValue?
         fields[.queryTimeoutSeconds] = validQueryTimeout(connection.queryTimeoutSeconds).map { Int64($0) } as CKRecordValue?
 
-        if let sshConfig = connection.sshConfiguration {
+        if let sshConfig = macSSHConfiguration(of: connection) {
             do {
                 let data = try encoder.encode(sshConfig)
                 fields[.sshConfigJson] = data as CKRecordValue
@@ -73,6 +77,12 @@ public enum SyncRecordMapper {
             }
         } else {
             fields[.sshConfigJson] = nil
+        }
+        // A record built from scratch (an Upload Again) carries the link this copy knows of.
+        if let profileId = connection.sshProfileId {
+            fields[.sshProfileId] = profileId.uuidString as CKRecordValue
+        } else {
+            clearSSHProfileLinkIfUnlinked(fields, connection)
         }
 
         if let sslConfig = connection.sslConfiguration {
@@ -142,16 +152,12 @@ public enum SyncRecordMapper {
             sshConfig = try? decoder.decode(SSHConfiguration.self, from: sshData)
         }
 
-        // macOS stores SSH enabled inside sshConfigJson ("enabled" field),
-        // not as a top-level CKRecord field. Fall back to checking the JSON.
+        // Only iOS writes the top-level switches, so one stays behind after a Mac edit; the configurations decide below.
         let sshEnabled: Bool
         if let explicit = fields[.sshEnabled] as? Int64 {
             sshEnabled = explicit != 0
-        } else if let sshData = fields[.sshConfigJson] as? Data,
-                  let json = try? JSONSerialization.jsonObject(with: sshData) as? [String: Any] {
-            sshEnabled = json["enabled"] as? Bool ?? (sshConfig != nil && !(sshConfig?.host.isEmpty ?? true))
         } else {
-            sshEnabled = false
+            sshEnabled = sshConfig.map { !$0.host.isEmpty } ?? false
         }
 
         let sslEnabled = (fields[.sslEnabled] as? Int64 ?? 0) != 0
@@ -164,6 +170,11 @@ public enum SyncRecordMapper {
         var additionalFields: [String: String] = [:]
         if let fieldsData = fields[.additionalFieldsJson] as? Data {
             additionalFields = (try? decoder.decode([String: String].self, from: fieldsData)) ?? [:]
+        }
+        // The Mac falls back to this field when the additional field is unset, so copying it in opens the same database.
+        if DatabaseType(rawValue: typeRaw) == .redis, additionalFields[redisDatabaseFieldKey] == nil,
+           let redisDatabase = fields[.redisDatabase] as? Int64 {
+            additionalFields[redisDatabaseFieldKey] = String(redisDatabase)
         }
         let legacyConnectTimeout = additionalFields
             .removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
@@ -196,7 +207,21 @@ public enum SyncRecordMapper {
             isFavorite: isFavorite
         )
         connection.connectTimeoutSeconds = validConnectTimeout(legacyConnectTimeout)
+        connection.adoptConfigurationSwitches()
+        connection.sshProfileId = (fields[.sshProfileId] as? String).flatMap { UUID(uuidString: $0) }
         return connection
+    }
+
+    // The Mac rebuilds a profile tunnel from `sshProfileId` alone, so a tunnel switched off here has
+    // to drop the link too, and so does one switched off and on again before it synced. Otherwise
+    // the field is the Mac's, and an older local copy that never read it would clear a link it never saw.
+    private static func clearSSHProfileLinkIfUnlinked(
+        _ fields: SyncRecordFields<ConnectionSyncField>,
+        _ connection: DatabaseConnection
+    ) {
+        let tunnelOff = !connection.sshEnabled && connection.sshConfiguration?.macEnabled != true
+        guard tunnelOff || connection.clearsSSHProfileLink else { return }
+        fields[.sshProfileId] = nil
     }
 
     private static func storedSafeModeLevel(in fields: SyncRecordFields<ConnectionSyncField>) -> SafeModeLevel {
@@ -241,13 +266,14 @@ public enum SyncRecordMapper {
 
         fields[.queryTimeoutSeconds] = validQueryTimeout(connection.queryTimeoutSeconds).map { Int64($0) } as CKRecordValue?
 
-        if let sshConfig = connection.sshConfiguration {
+        if let sshConfig = macSSHConfiguration(of: connection) {
             if let data = try? encoder.encode(sshConfig) {
                 fields[.sshConfigJson] = data as CKRecordValue
             }
         } else {
             fields[.sshConfigJson] = nil
         }
+        clearSSHProfileLinkIfUnlinked(fields, connection)
 
         if let sslConfig = connection.sslConfiguration {
             if !serverSSLMatches(fields[.sslConfigJson] as? Data, sslConfig),
@@ -270,16 +296,26 @@ public enum SyncRecordMapper {
         fields[.modifiedAtLocal] = Date() as CKRecordValue
     }
 
-    // A local copy without isMacPreferred may be one an older iOS build stored, so it keeps the server's Preferred.
-    // A blob an older iOS build wrote ("require", nil paths omitted) is rewritten: the Mac cannot read it.
     private static func serverSSLMatches(_ data: Data?, _ local: SSLConfiguration) -> Bool {
-        guard let data, SSLConfiguration.isMacWireForm(data),
-              let server = try? decoder.decode(SSLConfiguration.self, from: data) else { return false }
-        return (server.isMacPreferred || !local.isMacPreferred)
-            && server.mode == local.mode
-            && server.caCertificatePath == local.caCertificatePath
-            && server.clientCertificatePath == local.clientCertificatePath
-            && server.clientKeyPath == local.clientKeyPath
+        guard let server = serverSSL(in: data) else { return false }
+        return local.agrees(withServer: server)
+    }
+
+    // Nil for a blob an older iOS build wrote ("require", nil paths omitted): the Mac cannot read it, so it is rewritten.
+    private static func serverSSL(in data: Data?) -> SSLConfiguration? {
+        guard let data, SSLConfiguration.isMacWireForm(data) else { return nil }
+        return try? decoder.decode(SSLConfiguration.self, from: data)
+    }
+
+    public static func serverSSL(in record: CKRecord) -> SSLConfiguration? {
+        serverSSL(in: record.fields(ConnectionSyncField.self)[.sslConfigJson] as? Data)
+    }
+
+    // The Mac reads a missing `enabled` as off, and an import or an older iOS build leaves it out.
+    private static func macSSHConfiguration(of connection: DatabaseConnection) -> SSHConfiguration? {
+        guard var sshConfig = connection.sshConfiguration else { return nil }
+        sshConfig.macEnabled = connection.sshEnabled
+        return sshConfig
     }
 
     private static func syncedAdditionalFields(for connection: DatabaseConnection) -> [String: String] {

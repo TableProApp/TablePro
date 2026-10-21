@@ -11,7 +11,7 @@ import TableProPluginKit
 /// only in 23.8.9, Altinity builds carry their own numbering, and a settings profile or a
 /// constraint makes a setting read-only for one user: none of that shows in the version. A setting
 /// the server does not know, or will not let this user change, fails the whole request.
-struct ClickHouseServerProfile: Sendable, Equatable {
+nonisolated struct ClickHouseServerProfile: Sendable, Equatable {
     let version: ClickHouseServerVersion?
     /// The settings this user may change, each with the bounds a settings constraint puts on it.
     let settingLimits: [ClickHouseURLSetting: ClickHouseSettingLimits]
@@ -140,7 +140,7 @@ struct ClickHouseServerProfile: Sendable, Equatable {
 
 /// The bounds a settings constraint puts on one setting (`system.settings` `min`, `max` and,
 /// from 25.x, `disallowed_values`). A writable setting can still refuse a value outside them.
-struct ClickHouseSettingLimits: Sendable, Equatable {
+nonisolated struct ClickHouseSettingLimits: Sendable, Equatable {
     var min: Double?
     var max: Double?
     var disallowed: [String] = []
@@ -192,7 +192,7 @@ struct ClickHouseSettingLimits: Sendable, Equatable {
 /// The URL settings the driver sends only when the server lets this user change them.
 /// `max_execution_time` is not here: `applyQueryTimeout` sends it once and keeps it only when the
 /// server accepts it.
-enum ClickHouseURLSetting: String, CaseIterable, Sendable {
+nonisolated enum ClickHouseURLSetting: String, CaseIterable, Sendable {
     case sendProgressInHTTPHeaders = "send_progress_in_http_headers"
     case httpWriteExceptionInOutputFormat = "http_write_exception_in_output_format"
     case maxResultRows = "max_result_rows"
@@ -205,7 +205,7 @@ enum ClickHouseURLSetting: String, CaseIterable, Sendable {
 /// `as_select`, 21.10 no `system.functions.origin`, and `system.data_skipping_indices` first
 /// ships in 21.8. On 25.8's shipped config a user without system grants cannot read the
 /// skipping-index table, and `system.tables` does not list it to them either.
-enum ClickHouseCatalogFeature: String, CaseIterable, Sendable {
+nonisolated enum ClickHouseCatalogFeature: String, CaseIterable, Sendable {
     case tablesComment = "tables_comment"
     case tablesAsSelect = "tables_as_select"
     case tablesTotalRows = "tables_total_rows"
@@ -232,7 +232,7 @@ enum ClickHouseCatalogFeature: String, CaseIterable, Sendable {
 
 /// `version()` is four numbers on official and Cloud builds, and Altinity appends a fifth,
 /// non-numeric part (`24.8.14.10548.altinitystable`).
-struct ClickHouseServerVersion: Sendable, Equatable {
+nonisolated struct ClickHouseServerVersion: Sendable, Equatable {
     let components: [Int]
 
     init?(_ text: String) {

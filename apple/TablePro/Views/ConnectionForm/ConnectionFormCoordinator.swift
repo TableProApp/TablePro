@@ -10,6 +10,7 @@ import SwiftUI
 import TableProPluginKit
 import TableProRedisCore
 import TableProSSHConfig
+import TableProSSHTransport
 import TableProSyncTransport
 
 @MainActor
@@ -607,19 +608,26 @@ final class ConnectionFormCoordinator: ObservableObject {
         }
     }
 
+    // What a password source sees for the values in the form, saved or not.
+    func passwordSourceContext() -> ConnectionScriptContext {
+        ConnectionScriptContext(connection: buildEdits().applied(to: DatabaseConnection(id: connectionId ?? UUID(), name: "")))
+    }
+
+    // The edits leave out the prompt flag and the source, which a save carries over. A test without them signs in differently from Connect.
+    func connectionForTest() -> DatabaseConnection {
+        var connection = buildEdits().applied(to: DatabaseConnection(id: UUID(), name: ""))
+        connection.promptForPassword = auth.effectivePromptForPassword
+        connection.passwordSource = auth.passwordSourceInUse
+        return connection
+    }
+
     func test() {
         guard testTask == nil else { return }
         isTesting = true
         testResult = nil
         let window = NSApp.keyWindow
 
-        var testConn = buildEdits().applied(to: DatabaseConnection(id: UUID(), name: ""))
-        /// `credentialMode` rides along from the edits, so the resolver finds the linked profile
-        /// under its own id rather than the throwaway connection's. The connection's own password
-        /// source is only resurrected when nothing else supplies a password.
-        testConn.passwordSource = auth.password.isEmpty && !auth.usesCredentialProfile
-            ? originalConnection?.passwordSource
-            : nil
+        let testConn = connectionForTest()
         temporaryTestIds.insert(testConn.id)
 
         let password = auth.password

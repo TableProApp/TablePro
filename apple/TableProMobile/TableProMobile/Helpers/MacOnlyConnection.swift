@@ -1,4 +1,5 @@
 import Foundation
+import TableProImport
 import TableProModels
 
 nonisolated enum MacOnlyConnection {
@@ -14,7 +15,7 @@ nonisolated enum MacOnlyConnection {
         !IOSDriverFactory.supportedTypeList.contains(type)
     }
 
-    static func importStatus(typeId: String) -> String? {
-        isMacOnly(type: DatabaseType(rawValue: typeId)) ? status : nil
+    static func importStatus(for settings: ExportableConnection) -> String? {
+        isMacOnly(DatabaseConnection(importedSettings: settings)) ? status : nil
     }
 }

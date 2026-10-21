@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import TableProSSHConfig
+import TableProSSHTransport
 
 /// Prompts the user for keyboard-interactive responses via a modal NSAlert.
 ///

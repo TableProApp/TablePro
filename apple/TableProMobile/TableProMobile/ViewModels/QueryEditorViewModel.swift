@@ -53,6 +53,9 @@ final class QueryEditorViewModel {
     private(set) var currentRequest = 0
     private(set) var rowsAffectedTotal = 0
     private(set) var interruption: ScriptInterruption?
+    // Each request as it went to the server, split again after a statement changed how the session reads literals.
+    @ObservationIgnored private(set) var sentStatements: [String] = []
+    @ObservationIgnored private(set) var ranTransactionRollBack = false
 
     @ObservationIgnored private var unitKind: QueryScript.UnitKind = .statement
     @ObservationIgnored private var runID: UInt64 = 0
@@ -224,10 +227,12 @@ final class QueryEditorViewModel {
         runID &+= 1
         let run = runID
         phase = .running
+        sentStatements = []
         buffer.reset()
         executionTime = 0
         rowsAffectedTotal = 0
         interruption = nil
+        ranTransactionRollBack = false
         unitKind = script.unitKind
         requestCount = script.requestCount
         currentRequest = 0
@@ -254,6 +259,7 @@ final class QueryEditorViewModel {
         executionTime = 0
         rowsAffectedTotal = 0
         interruption = nil
+        ranTransactionRollBack = false
         requestCount = 0
         currentRequest = 0
         phase = .idle
@@ -294,6 +300,7 @@ final class QueryEditorViewModel {
                 }
                 position += 1
                 currentRequest = position
+                sentStatements.append(unit.sql)
                 if position > 1 {
                     buffer.reset()
                 }
@@ -303,6 +310,11 @@ final class QueryEditorViewModel {
                         return
                     }
                     rowsAffectedTotal += buffer.rowsAffected ?? 0
+                    if run == runID, script.statements(in: unit).contains(where: {
+                        TransactionRollBackClassifier.rollsBackTransaction($0, statusMessage: buffer.statusMessage)
+                    }) {
+                        ranTransactionRollBack = true
+                    }
                 } catch is CancellationError {
                     settleStopped(atRequest: position, run: run, observedStates: observedStates)
                     return

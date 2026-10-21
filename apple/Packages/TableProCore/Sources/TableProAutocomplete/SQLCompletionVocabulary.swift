@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLVocabulary
 
 public struct SQLCompletionVocabulary: Sendable {
     public struct Operator: Sendable, Hashable {
@@ -24,6 +25,7 @@ public struct SQLCompletionVocabulary: Sendable {
     }
 
     public let functions: Set<String>
+    public let bareFunctions: Set<String>
     public let functionNamesAreCaseInsensitive: Bool
     public let operators: [Operator]
     public let dataTypes: Set<String>
@@ -33,6 +35,7 @@ public struct SQLCompletionVocabulary: Sendable {
 
     public init(
         functions: Set<String> = [],
+        bareFunctions: Set<String> = [],
         functionNamesAreCaseInsensitive: Bool = false,
         operators: [Operator] = [],
         dataTypes: Set<String> = [],
@@ -40,6 +43,7 @@ public struct SQLCompletionVocabulary: Sendable {
         statementCompletions: [StatementCompletion] = []
     ) {
         self.functions = functions
+        self.bareFunctions = bareFunctions
         self.functionNamesAreCaseInsensitive = functionNamesAreCaseInsensitive
         self.operators = operators
         self.dataTypes = dataTypes
@@ -48,4 +52,18 @@ public struct SQLCompletionVocabulary: Sendable {
     }
 
     public static let generic = SQLCompletionVocabulary()
+
+    public static func curated(forDatabaseTypeId typeId: String) -> SQLCompletionVocabulary {
+        guard let engine = SQLEngineVocabulary.curated(forDatabaseTypeId: typeId) else { return .generic }
+        return SQLCompletionVocabulary(
+            functions: engine.functions,
+            bareFunctions: engine.bareFunctions,
+            functionNamesAreCaseInsensitive: engine.functionNamesAreCaseInsensitive,
+            operators: engine.operators.map {
+                Operator(symbol: $0.symbol, summary: $0.summary, appliesToTypes: $0.appliesToTypes)
+            },
+            dataTypes: engine.dataTypes,
+            tableOptions: engine.tableOptions
+        )
+    }
 }

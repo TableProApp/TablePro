@@ -1,5 +1,6 @@
 import Foundation
 @testable import TablePro
+import TableProSQLGrammar
 import Testing
 
 struct QueryClassifierSQLScriptTests {

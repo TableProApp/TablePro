@@ -11,7 +11,7 @@ struct QuickConnectEntry: TimelineEntry {
                 placeholderItem("Production", type: "PostgreSQL", asset: "postgresql-icon", sortOrder: 0),
                 placeholderItem("Local MySQL", type: "MySQL", asset: "mysql-icon", sortOrder: 1),
                 placeholderItem("Redis Cache", type: "Redis", asset: "redis-icon", sortOrder: 2),
-                placeholderItem("Analytics", type: "ClickHouse", asset: "clickhouse-icon", sortOrder: 3)
+                placeholderItem("Orders", type: "SQL Server", asset: "mssql-icon", sortOrder: 3)
             ]
         )
     }

@@ -1,6 +1,6 @@
 import Foundation
 
-enum PluginConnectTimeout {
+nonisolated enum PluginConnectTimeout {
     static let maximumMilliseconds = 3_600_000
 
     static func milliseconds(
@@ -36,7 +36,7 @@ enum PluginConnectTimeout {
     }
 }
 
-struct PluginConnectDeadline: Sendable {
+nonisolated struct PluginConnectDeadline: Sendable {
     private let expiration: ContinuousClock.Instant
 
     init(milliseconds: Int, now: ContinuousClock.Instant = .now) {
@@ -56,7 +56,7 @@ struct PluginConnectDeadline: Sendable {
     }
 }
 
-struct PluginAWSConnectSessionBudget: Equatable, Sendable {
+nonisolated struct PluginAWSConnectSessionBudget: Equatable, Sendable {
     /// Kept in sync with the internal parser in TableProPluginKit/AWS/AWSHTTP.swift. This is
     /// URLSession metadata only; it is never sent to AWS as a header and adds no PluginKit ABI.
     private static let sessionDescriptionPrefix = "com.tablepro.aws-connect-deadline-v1:"
@@ -91,7 +91,7 @@ struct PluginAWSConnectSessionBudget: Equatable, Sendable {
     }
 }
 
-final class PluginConnectTimeoutPhase: @unchecked Sendable {
+nonisolated final class PluginConnectTimeoutPhase: @unchecked Sendable {
     private let deadline: PluginConnectDeadline
     private let lock = NSLock()
     private var isConnecting = true

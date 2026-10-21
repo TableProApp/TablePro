@@ -1,5 +1,6 @@
 import Foundation
 import TableProModels
+import TableProSSHTransport
 
 nonisolated struct JumpHostDraft: Identifiable, Equatable, Sendable {
     let id: UUID
@@ -19,6 +20,10 @@ nonisolated struct JumpHostDraft: Identifiable, Equatable, Sendable {
 
     init(hop: SSHJumpHost) {
         self.init(id: hop.id, host: hop.host, port: hop.port.map(String.init) ?? "", username: hop.username)
+    }
+
+    init(routeHop: PublishedSSHRoute.Hop) {
+        self.init(id: routeHop.id, host: routeHop.host, port: String(routeHop.port), username: routeHop.username)
     }
 
     var edit: ConnectionFormEdits.JumpHostEdit {

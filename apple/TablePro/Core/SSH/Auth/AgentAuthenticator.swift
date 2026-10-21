@@ -12,17 +12,6 @@ import TableProSSHConfig
 internal struct AgentAuthenticator: SSHAuthenticator {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AgentAuthenticator")
 
-    /// `MaxAuthTries` ends in an `SSH_MSG_DISCONNECT`, which `_libssh2_packet_add` answers by
-    /// setting `socket_state` and returning `LIBSSH2_ERROR_SOCKET_DISCONNECT`. That code is the
-    /// only one here on purpose: libssh2's agent backend reports its own socket failures as
-    /// `LIBSSH2_ERROR_SOCKET_SEND` and `LIBSSH2_ERROR_SOCKET_RECV`, so an agent that quit
-    /// mid-signing is indistinguishable from a server that hung up if either is included, and it
-    /// only ever returns `SOCKET_DISCONNECT` from `agent_disconnect_unix`, which
-    /// `libssh2_agent_userauth` never reaches. A refused key is
-    /// `LIBSSH2_ERROR_AUTHENTICATION_FAILED` or `LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED`, so an
-    /// ordinary rejection still moves on to the next key.
-    private static let serverHungUp = LIBSSH2_ERROR_SOCKET_DISCONNECT
-
     let socketPath: String?
     let socketOrigin: AgentSocketOrigin
 
@@ -114,12 +103,6 @@ internal struct AgentAuthenticator: SSHAuthenticator {
             if authRc == 0 {
                 Self.logger.info("SSH agent authentication succeeded on key \(position + 1) of \(order.count)")
                 return
-            }
-            if authRc == Self.serverHungUp {
-                Self.logger.error(
-                    "SSH server closed the connection after \(position + 1) of \(order.count) agent keys (rc=\(authRc))"
-                )
-                throw SSHTunnelError.authenticationFailed(reason: .agentServerClosedConnection)
             }
         }
 

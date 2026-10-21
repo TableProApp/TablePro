@@ -23,6 +23,13 @@ struct MySQLDriverLegacyServerTests {
         #expect(MySQLDriver.tableListStatement(for: .oceanbase, banner: nil) == "SHOW FULL TABLES")
     }
 
+    @Test("Another database's tables are listed from it, its name quoted")
+    func tableListStatementForAnotherDatabase() {
+        #expect(MySQLDriver.tableListStatement(for: .mysql, banner: "8.4.11", database: "arch`ive")
+            == "SHOW FULL TABLES FROM `arch``ive`")
+        #expect(MySQLDriver.tableListStatement(for: .mysql, banner: "8.4.11", database: "") == "SHOW FULL TABLES")
+    }
+
     /// Measured: 5.0.96 answers `REFERENTIAL_CONSTRAINTS` with 1109, 4.1.22 with 1146, 5.1.73 answers.
     @Test("Foreign keys skip the catalog below 5.1.10")
     func foreignKeyCatalogFloor() {

@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// What a window does with a change to its connection's catalog. The connection-level half has
 /// already run once in `CatalogChangeService`; this is the part each window owns: its tabs, its

@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// A list a change overtakes is marked stale and keeps its rows; the next reader on screen reads it
 /// again, once per change. Refetching every list ever loaded on each change was work nobody asked for.
@@ -275,8 +276,8 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         listsRevisions[connectionId, default: 0] &+= 1
     }
 
-    private func objectKindsNeedingFetch(_ key: ObjectsKey) -> CatalogObjectKinds {
-        var kinds: CatalogObjectKinds = []
+    private func objectKindsNeedingFetch(_ key: ObjectsKey) -> SQLCatalogObjectKinds {
+        var kinds: SQLCatalogObjectKinds = []
         if tablesCommit.freshness.needsFetch(key) { kinds.insert(.tables) }
         if routinesCommit.freshness.needsFetch(key) { kinds.insert(.routines) }
         if browsesTriggers(key.connectionId), triggersCommit.freshness.needsFetch(key) { kinds.insert(.triggers) }

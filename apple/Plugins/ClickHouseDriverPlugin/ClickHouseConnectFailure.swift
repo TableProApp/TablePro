@@ -1,7 +1,7 @@
 import Foundation
 import TableProPluginKit
 
-internal enum ClickHouseConnectFailure {
+nonisolated internal enum ClickHouseConnectFailure {
     static func error(for failure: Error, tlsRefusal: SSLHandshakeError?) -> Error {
         if let tlsRefusal {
             return tlsRefusal

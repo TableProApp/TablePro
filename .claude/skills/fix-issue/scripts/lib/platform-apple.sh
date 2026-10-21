@@ -12,7 +12,7 @@
 #   verify.sh [options] abi   [base]            # PluginKit ABI checker; default base: the newest v* tag
 #   verify.sh [options] lint  <path> [path...]
 #   verify.sh [options] docs [docs-checkout]    # TableProApp/docs checks against this tree (default ../tablepro-docs)
-#   verify.sh [options] l10n                    # plugin and package strings in the mac and ios catalogs
+#   verify.sh [options] l10n                    # plugin, package and built app strings in the mac and ios catalogs
 #
 # A Test is Suite, Suite/case(), or either behind its target name (TableProGrammarsTests/Suite).
 # A bare Suite is a Swift type name, looked up in every test target of the tree.
@@ -618,21 +618,34 @@ platform_step() {
             : > "$log"
             code=0
             failed=""
+            unbuilt=""
             for target in mac ios; do
                 echo "== localization.py plugins --target $target" >> "$log"
                 (cd "$APPLE_ROOT" && python3 scripts/localization.py plugins --target "$target") >> "$log" 2>&1 \
-                    || { code=1; failed="$failed $target"; }
+                    || { code=1; failed="$failed plugins:$target"; }
+                echo "== localization.py extracted --target $target" >> "$log"
+                (cd "$APPLE_ROOT" && python3 scripts/localization.py extracted --target "$target") >> "$log" 2>&1
+                case $? in
+                    0) ;;
+                    2) unbuilt="$unbuilt $target" ;;
+                    *) code=1; failed="$failed extracted:$target" ;;
+                esac
             done
             if [ $code -eq 0 ]; then
                 STATUS=PASS
                 note "mac and ios: every plugin and package string is in the catalog, managed manually"
+                note "the app's own strings are in the catalog for every app built in this tree"
             else
                 STATUS=FAIL
-                note "$(grep -vE '^(==|ok:|  )' "$log" | grep -v '^Run with --add' | sed 's/^/  /' | head -12)"
-                for target in $failed; do
-                    note "  $target, from apple/: python3 scripts/localization.py plugins --add --target $target"
+                note "$(grep -vE '^(==|ok:|no build|  )' "$log" | grep -v '^Run with --add' | sed 's/^/  /' | head -12)"
+                for check in $failed; do
+                    note "  ${check#*:}, from apple/: python3 scripts/localization.py ${check%%:*} --add --target ${check#*:}"
                 done
             fi
+            # CI checks an app this tree never built, so a missing build only leaves its strings unchecked here.
+            for target in $unbuilt; do
+                note "  $target: no build in this tree, so its own strings were not checked"
+            done
             emit "$log" $code
             ;;
 

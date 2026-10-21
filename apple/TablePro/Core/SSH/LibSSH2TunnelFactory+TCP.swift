@@ -2,6 +2,8 @@ import Darwin
 import Foundation
 import os
 
+import TableProSSHTransport
+
 extension LibSSH2TunnelFactory {
     private struct ResolvedSocketAddress: @unchecked Sendable {
         let storage: sockaddr_storage
@@ -186,26 +188,8 @@ extension LibSSH2TunnelFactory {
     }
 
     private static func configureKeepAlive(_ descriptor: Int32) {
-        var enabled: Int32 = 1
-        if setsockopt(
-            descriptor,
-            SOL_SOCKET,
-            SO_KEEPALIVE,
-            &enabled,
-            socklen_t(MemoryLayout<Int32>.size)
-        ) != 0 {
-            logger.warning("Failed to set SO_KEEPALIVE: \(String(cString: strerror(errno)))")
-        }
-
-        var idleSeconds: Int32 = 60
-        if setsockopt(
-            descriptor,
-            IPPROTO_TCP,
-            TCP_KEEPALIVE,
-            &idleSeconds,
-            socklen_t(MemoryLayout<Int32>.size)
-        ) != 0 {
-            logger.warning("Failed to set TCP_KEEPALIVE: \(String(cString: strerror(errno)))")
+        for refusal in SSHTransportKeepAlive.enable(on: descriptor) {
+            logger.warning("Failed to set \(refusal, privacy: .public)")
         }
     }
 }

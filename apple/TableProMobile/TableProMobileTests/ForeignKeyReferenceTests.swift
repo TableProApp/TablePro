@@ -191,4 +191,26 @@ struct ForeignKeyReferenceTests {
             #expect(reference.filters() == nil)
         }
     }
+
+    @Test("The Structure screen shows a composite key as one row with every column pair")
+    func structureRowsGroupCompositeKeys() {
+        let rows = ForeignKeyReference.keys(in: [Self.userKey] + Self.tenantUserKey).map(StructureView.ForeignKeyRow.init)
+
+        #expect(rows.map(\.reference) == [
+            "user_id \u{2192} users.id",
+            "tenant_id, user_id \u{2192} tenant_users (tenant_id, id)"
+        ])
+        #expect(Set(rows.map(\.id)).count == 2)
+    }
+
+    @Test("Keys sharing a name but pointing at different tables stay separate rows")
+    func structureRowsKeepSameNamedKeysApart() {
+        let rows = ForeignKeyReference.keys(in: [
+            ForeignKeyInfo(name: "fk", column: "a", referencedTable: "p", referencedColumn: "id"),
+            ForeignKeyInfo(name: "fk", column: "b", referencedTable: "q", referencedColumn: "id")
+        ]).map(StructureView.ForeignKeyRow.init)
+
+        #expect(rows.count == 2)
+        #expect(Set(rows.map(\.id)).count == 2)
+    }
 }

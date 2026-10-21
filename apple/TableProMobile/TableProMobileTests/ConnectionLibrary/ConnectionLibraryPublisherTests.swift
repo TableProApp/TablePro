@@ -172,11 +172,10 @@ struct ConnectionLibraryPublisherTests {
         ])
     }
 
-    /// The widget kept its own copy of the engine glyph map, which had drifted from the list: a
-    /// Dameng connection drew a drive in the widget and a cylinder in the list.
+    /// The widget kept its own copy of the engine glyph map, which had drifted from the list.
     @Test("A widget item draws the same engine glyph as the connection list")
     func widgetItemGlyphMatchesTheList() {
-        let types: [DatabaseType] = [.dameng, .snowflake, .mysql, DatabaseType(rawValue: "FuturePlugin")]
+        let types = IOSDriverFactory.supportedTypeList
         let connections = types.enumerated().map { index, type in
             DatabaseConnection(name: "C\(index)", type: type, sortOrder: index)
         }
@@ -184,9 +183,24 @@ struct ConnectionLibraryPublisherTests {
         let glyphs = ConnectionLibraryPublisher.widgetItems(for: connections).map(\.glyph)
 
         #expect(glyphs == types.map { type -> ConnectionGlyph? in LibraryGlyph.engineGlyph(for: type) })
-        #expect(glyphs.first == ConnectionGlyph(source: .symbol, name: "cylinder"))
-        #expect(glyphs[1] == .fallback)
-        #expect(glyphs[2] == ConnectionGlyph(source: .asset, name: "mysql-icon"))
+        #expect(glyphs.contains(ConnectionGlyph(source: .asset, name: "mysql-icon")))
+    }
+
+    @Test("The widget leaves out a connection this device cannot open")
+    func widgetSkipsMacOnlyConnections() {
+        let mongo = DatabaseConnection(name: "Documents", type: .mongodb, sortOrder: 0)
+        let socket = DatabaseConnection(
+            name: "Local",
+            type: .mysql,
+            additionalFields: ["localSocketPath": "/tmp/mysql.sock"],
+            sortOrder: 1
+        )
+        let plugin = DatabaseConnection(name: "Future", type: DatabaseType(rawValue: "FuturePlugin"), sortOrder: 2)
+        let postgres = connection("Orders", sortOrder: 3)
+
+        let items = ConnectionLibraryPublisher.widgetItems(for: [mongo, socket, plugin, postgres])
+
+        #expect(items.map(\.name) == ["Orders"])
     }
 
     @Test("A Spotlight item keeps the identifier and domain earlier builds indexed under")

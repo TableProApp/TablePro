@@ -418,24 +418,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var allowLocalInfile: UInt32 = 0
         mysql_options(mysql, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
 
-        var sslEnforce: my_bool = enforceSSL ? 1 : 0
-        mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
-
-        var sslVerify: my_bool = sslConfig.verifiesCertificate ? 1 : 0
-        mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
-
-        // Connector/C turns TLS on for any CA, certificate or key it is given, so a plaintext attempt gets none.
-        if enforceSSL {
-            if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
-                _ = sslConfig.caCertificatePath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_CA, $0) }
-            }
-            if !sslConfig.clientCertificatePath.isEmpty {
-                _ = sslConfig.clientCertificatePath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_CERT, $0) }
-            }
-            if !sslConfig.clientKeyPath.isEmpty {
-                _ = sslConfig.clientKeyPath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_KEY, $0) }
-            }
-        }
+        applyTLS(enforceSSL ? sslConfig.mode : .disabled, to: mysql)
 
         mysql_options(mysql, MYSQL_SET_CHARSET_NAME, "utf8mb4")
 
@@ -653,21 +636,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var killAllowLocalInfile: UInt32 = 0
         mysql_options(killConn, MYSQL_OPT_LOCAL_INFILE, &killAllowLocalInfile)
 
-        var killSSLEnforce: my_bool = effectiveSSLEnforced ? 1 : 0
-        mysql_options(killConn, MYSQL_OPT_SSL_ENFORCE, &killSSLEnforce)
-        var killSSLVerify: my_bool = effectiveSSLEnforced && sslConfig.verifiesCertificate ? 1 : 0
-        mysql_options(killConn, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &killSSLVerify)
-        if effectiveSSLEnforced {
-            if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
-                _ = sslConfig.caCertificatePath.withCString { mysql_options(killConn, MYSQL_OPT_SSL_CA, $0) }
-            }
-            if !sslConfig.clientCertificatePath.isEmpty {
-                _ = sslConfig.clientCertificatePath.withCString { mysql_options(killConn, MYSQL_OPT_SSL_CERT, $0) }
-            }
-            if !sslConfig.clientKeyPath.isEmpty {
-                _ = sslConfig.clientKeyPath.withCString { mysql_options(killConn, MYSQL_OPT_SSL_KEY, $0) }
-            }
-        }
+        // A session that came up over TLS keeps the kill on TLS, so the kill never reveals the password.
+        applyTLS(MariaDBTLSMode.killConnectionMode(sslConfig.mode, sessionUsedTLS: effectiveSSLEnforced), to: killConn)
 
         if enableCleartextPlugin {
             var killEnableCleartext: my_bool = 1
@@ -690,6 +660,21 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     }
 
     private static let killTimeoutSeconds: UInt32 = 5
+
+    // Connector/C turns TLS on for any CA, certificate or key it is given, so a plaintext attempt gets none.
+    private func applyTLS(_ mode: SSLMode, to handle: UnsafeMutablePointer<MYSQL>) {
+        MariaDBTLSMode.apply(mode, to: handle)
+        guard mode != .disabled else { return }
+        if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
+            _ = sslConfig.caCertificatePath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CA, $0) }
+        }
+        if !sslConfig.clientCertificatePath.isEmpty {
+            _ = sslConfig.clientCertificatePath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CERT, $0) }
+        }
+        if !sslConfig.clientKeyPath.isEmpty {
+            _ = sslConfig.clientKeyPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_KEY, $0) }
+        }
+    }
 
     /// The kill is a new sign-in, which an expired IAM token cannot make, so it asks the host for a
     /// current one. Every caller is on a dispatch queue that is about to block for the kill's own

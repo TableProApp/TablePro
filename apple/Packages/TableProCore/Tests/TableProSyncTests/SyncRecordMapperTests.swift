@@ -171,12 +171,29 @@ struct SyncRecordMapperSSLTests {
     func keepsMacPreferredForAnOlderLocalCopy() throws {
         let record = makeRecord(sslJSON: macPreferred)
         var connection = try #require(SyncRecordMapper.toConnection(record))
-        connection.sslConfiguration = SSLConfiguration(mode: .require)
+        connection.sslConfiguration = try JSONDecoder().decode(SSLConfiguration.self, from: Data(#"{"mode":"require"}"#.utf8))
         connection.name = "Renamed"
 
         SyncRecordMapper.updateRecord(record, with: connection)
 
         #expect(try sslData(in: record) == Data(macPreferred.utf8))
+    }
+
+    @Test("updateRecord writes an explicit Required over a server Preferred with the same paths")
+    func explicitRequiredReplacesPreferred() throws {
+        let record = makeRecord(sslJSON: macPreferred)
+        var connection = try #require(SyncRecordMapper.toConnection(record))
+        connection.sslConfiguration = SSLConfiguration(mode: .require)
+
+        SyncRecordMapper.updateRecord(record, with: connection)
+
+        #expect(try sslJSONObject(in: record)["mode"] as? String == "Required")
+    }
+
+    @Test("The server's SSL is read only from a blob the Mac can decode")
+    func serverSSLNeedsMacForm() {
+        #expect(SyncRecordMapper.serverSSL(in: makeRecord(sslJSON: macPreferred))?.isMacPreferred == true)
+        #expect(SyncRecordMapper.serverSSL(in: makeRecord(sslJSON: #"{"mode":"require"}"#)) == nil)
     }
 
     @Test("updateRecord writes Preferred over a server Required")
@@ -219,7 +236,8 @@ struct SyncRecordMapperSSLTests {
     func rewritesOlderIOSBlob() throws {
         let record = makeRecord(sslJSON: #"{"mode":"require"}"#)
         let connection = try #require(SyncRecordMapper.toConnection(record))
-        #expect(connection.sslConfiguration == SSLConfiguration(mode: .require))
+        #expect(connection.sslConfiguration?.mode == .require)
+        #expect(connection.sslConfiguration?.isLegacyRequire == true)
 
         SyncRecordMapper.updateRecord(record, with: connection)
 
