@@ -15,7 +15,9 @@ extension MainContentCoordinator {
         let scope = target.scope
         let session = RowGenerationSession(
             tableName: target.name,
-            scopeDescription: scope.qualifiedDescription,
+            scopeDescription: DatabaseEndpoint.from(
+                connection: connection, database: scope.database, schema: scope.schema
+            ).qualifiedDescription,
             scope: TableScope(table: target.name, in: scope),
             dataSource: RowGenerationLiveSource(connection: connection, scope: scope, tableName: target.name),
             onOpenScript: { [weak self] script in
