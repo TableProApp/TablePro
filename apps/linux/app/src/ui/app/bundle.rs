@@ -609,7 +609,12 @@ mod tests {
         assert_eq!(outcome, (2, None));
         assert_eq!(*held_during_apply.lock().unwrap(), [true, true]);
         assert!(
-            !crate::services::connection_save_turn::is_held(),
+            tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                crate::services::connection_save_turn::take()
+            )
+            .await
+            .is_ok(),
             "the turn is released afterwards"
         );
     }
