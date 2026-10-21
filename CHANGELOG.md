@@ -161,6 +161,7 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 
 ### Fixed
 
+- ClickHouse connections that name no certificate authority now trust the system certificate store, so corporate authorities installed on the machine verify; the bundled roots remain the fallback.
 - A MySQL CLONE INSTANCE statement with IDENTIFIED BY is no longer saved in query history.
 - A named pipe or device chosen as a TLS CA, certificate or key file is refused instead of hanging the connection.
 - A TLS certificate failure no longer tells you to set TLS to Disabled; only a server that does not support TLS gets that suggestion.

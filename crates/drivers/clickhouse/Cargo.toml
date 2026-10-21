@@ -19,6 +19,7 @@ hyper-rustls = { version = "0.27", default-features = false, features = ["http1"
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
 jiff.workspace = true
 rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs", "std", "tls12"] }
+rustls-native-certs = "0.8"
 rustls-pki-types = "1"
 webpki-roots = "1"
 rust_decimal.workspace = true

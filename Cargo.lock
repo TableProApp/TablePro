@@ -6332,6 +6332,7 @@ dependencies = [
  "jiff",
  "rust_decimal",
  "rustls",
+ "rustls-native-certs",
  "rustls-pki-types",
  "secrecy",
  "serde",

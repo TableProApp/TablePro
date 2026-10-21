@@ -50,9 +50,7 @@ fn client_config(config: &TlsConfig) -> Result<ClientConfig, DriverError> {
 
 fn roots(config: &TlsConfig) -> Result<RootCertStore, DriverError> {
     let Some(path) = &config.root_cert else {
-        return Ok(RootCertStore {
-            roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
-        });
+        return Ok(system_or_bundled_roots(rustls_native_certs::load_native_certs().certs));
     };
     let mut store = RootCertStore::empty();
     let certificates = CertificateDer::pem_file_iter(path).map_err(|error| {
@@ -76,6 +74,15 @@ fn roots(config: &TlsConfig) -> Result<RootCertStore, DriverError> {
         return Err(DriverError::Tls(format!("no certificate found in {}", path.display())));
     }
     Ok(store)
+}
+
+fn system_or_bundled_roots(system: Vec<CertificateDer<'static>>) -> RootCertStore {
+    let mut store = RootCertStore::empty();
+    let (added, _ignored) = store.add_parsable_certificates(system);
+    if added == 0 {
+        store.roots = webpki_roots::TLS_SERVER_ROOTS.to_vec();
+    }
+    store
 }
 
 /// Used only when the selected mode encrypts without verifying, which is what
@@ -142,5 +149,35 @@ mod tests {
     #[test]
     fn server_name_rejects_an_empty_hostname() {
         assert!(server_name("").is_err());
+    }
+
+    const TEST_CA: &str = "-----BEGIN CERTIFICATE-----\n\
+MIIBiTCCAS+gAwIBAgIUKe+/bunQMNOqUMPEXr8ueW4t/7EwCgYIKoZIzj0EAwIw\n\
+GTEXMBUGA1UEAwwOYm9va2llLXRlc3QtY2EwIBcNMjYxMDIwMjMyNjQ2WhgPMjEy\n\
+NjA5MjYyMzI2NDZaMBkxFzAVBgNVBAMMDmJvb2tpZS10ZXN0LWNhMFkwEwYHKoZI\n\
+zj0CAQYIKoZIzj0DAQcDQgAEPBCdwYlAFqIB019uiMUz/1SlT2JhTvPy1cTd9jTk\n\
+4yJkMa80o9PYJwuR5eXMI6QfCNxNCb/6TwTtGWIy/SFbaKNTMFEwHQYDVR0OBBYE\n\
+FHXsWCxCFp8MB/D3vSMIm0yCtMmoMB8GA1UdIwQYMBaAFHXsWCxCFp8MB/D3vSMI\n\
+m0yCtMmoMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIgCTUS8SzP\n\
+lQ/PlAPhU8FNTeam5qHsq6n80rHvvvbi9BQCIQD/QUETsrc8D6E/duRtQizvyRHD\n\
+Iwyyvl081qMRweKHRA==\n\
+-----END CERTIFICATE-----\n";
+
+    #[test]
+    fn the_system_trust_store_replaces_the_bundled_roots_when_it_has_certificates() {
+        let system = CertificateDer::pem_slice_iter(TEST_CA.as_bytes())
+            .collect::<Result<Vec<_>, _>>()
+            .expect("test authority parses");
+
+        let store = system_or_bundled_roots(system);
+
+        assert_eq!(store.roots.len(), 1);
+    }
+
+    #[test]
+    fn an_empty_system_store_falls_back_to_the_bundled_roots() {
+        let store = system_or_bundled_roots(Vec::new());
+
+        assert_eq!(store.roots.len(), webpki_roots::TLS_SERVER_ROOTS.len());
     }
 }
