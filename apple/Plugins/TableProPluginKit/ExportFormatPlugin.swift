@@ -28,6 +28,9 @@ public protocol ExportFormatPlugin: TableProPlugin, Sendable {
 
     var currentFileExtension: String { get }
 
+    // The host counts rows before an export only for the objects whose rows the format writes.
+    func readsRows(optionValues: [Bool], kind: PluginExportObjectKind) -> Bool
+
     func export(
         tables: [PluginExportTable],
         dataSource: any PluginExportDataSource,
@@ -49,4 +52,5 @@ public extension ExportFormatPlugin {
         isTableExportable(optionValues: optionValues)
     }
     var currentFileExtension: String { Self.defaultFileExtension }
+    func readsRows(optionValues: [Bool], kind: PluginExportObjectKind) -> Bool { kind.carriesRows }
 }

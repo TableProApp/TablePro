@@ -47,6 +47,7 @@ struct MenuValidationContext: Equatable {
     var isQueryTab = false
     /// Export Results exports the selected tab's rows, so an empty grid has nothing to offer.
     var hasResultRows = false
+    var canExportDataDictionary = false
     var isCurrentTabEditable = false
     /// Add Row and Duplicate Row stage `DEFAULT` for every column the server fills in, which only
     /// the table's own schema names. Until it lands, the result set's own metadata reports far less,
@@ -214,6 +215,9 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.isQueryTab
         case #selector(exportQueryResults(_:)):
             return context.isConnected && context.hasResultRows
+
+        case #selector(exportDataDictionary(_:)):
+            return context.isConnected && context.canExportDataDictionary
 
         /// AppKit validated New Tab for free while it was its own selector.
         /// `NSWindow.validateUserInterfaceItem` only speaks to the native ones, so this is
@@ -491,6 +495,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         #selector(newEditorTab(_:)),
         #selector(openQuickSwitcher(_:)),
         #selector(exportTables(_:)),
+        #selector(exportDataDictionary(_:)),
         /// Both spellings of one command: the leaf that takes the driver's first format, and the
         /// row of the list that names another. One without the other would leave the list live over
         /// a leaf that is dim.
@@ -629,6 +634,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canPresentHighlightRules: actions.canPresentHighlightRules,
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
+            canExportDataDictionary: actions.canExportDataDictionary,
             isCurrentTabEditable: actions.isCurrentTabEditable,
             isCurrentTabSchemaResolved: actions.isCurrentTabSchemaResolved,
             canRestorePreviousValues: actions.canRestorePreviousValues,

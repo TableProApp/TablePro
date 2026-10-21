@@ -58,6 +58,7 @@
     {"path": "File > Export"},
     {"path": "File > Export > Export Tables…", "identifier": "shortcut.export", "action": "exportTables:", "key": "e", "modifiers": ["shift", "command"]},
     {"path": "File > Export > Export Results…", "action": "exportQueryResults:"},
+    {"path": "File > Export > Export Data Dictionary…", "action": "exportDataDictionary:"},
     {"path": "File > Export", "separator": true},
     {"path": "File > Export > Export Connections…", "action": "exportConnections:"},
     {"path": "File", "separator": true},

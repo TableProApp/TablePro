@@ -67,6 +67,17 @@ private final class StubAardvark: StubExportFormat, @unchecked Sendable {
     init() {}
 }
 
+private final class StubDictionary: StubExportFormat, @unchecked Sendable {
+    static let pluginName = "Dictionary"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Describes tables"
+    static let formatId = "datadict"
+    static let formatDisplayName = "Data Dictionary"
+    init() {}
+
+    func readsRows(optionValues: [Bool], kind: PluginExportObjectKind) -> Bool { false }
+}
+
 struct ExportFormatCatalogTests {
     private func ids(_ plugins: [any ExportFormatPlugin]) -> [String] {
         plugins.map { type(of: $0).formatId }
@@ -111,6 +122,24 @@ struct ExportFormatCatalogTests {
             ExportFormatCatalog.sorted([StubZebra(), StubParquet(), StubSQL(), StubCSV()]))
         #expect(forwards == backwards)
         #expect(forwards == ["csv", "sql", "parquet", "zebra"])
+    }
+
+    @Test("A format that writes structure alone is offered for database objects with declared columns")
+    func structureOnlyFormatNeedsDeclaredObjects() {
+        let plugins: [any ExportFormatPlugin] = [StubCSV(), StubDictionary()]
+        let objects = ExportFormatCatalog.available(
+            plugins, forDatabaseTypeId: "PostgreSQL", listsDatabaseObjects: true, columnsAreSampled: false)
+        let oneResult = ExportFormatCatalog.available(
+            plugins, forDatabaseTypeId: "PostgreSQL", listsDatabaseObjects: false, columnsAreSampled: false)
+        let sampled = ExportFormatCatalog.available(
+            plugins, forDatabaseTypeId: "MongoDB", listsDatabaseObjects: true, columnsAreSampled: true)
+
+        #expect(ids(objects) == ["csv", "datadict"])
+        #expect(ids(oneResult) == ["csv"])
+        #expect(ids(sampled) == ["csv"])
+        #expect(ExportFormatCatalog.writesStructureOnly(StubDictionary()))
+        #expect(!ExportFormatCatalog.writesStructureOnly(StubCSV()))
+        #expect(ExportFormatCatalog.description(for: StubDictionary()) != StubDictionary.pluginDescription)
     }
 
     private func manifest(_ plugins: [RegistryPlugin]) -> RegistryManifest {

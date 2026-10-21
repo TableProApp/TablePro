@@ -309,6 +309,7 @@ final class MainContentCoordinator: ObservableObject {
     @Published var containerDropRequest: DatabaseDropRequest?
     @Published var importFile: ImportFileHandoff?
     @Published var exportPreselection: ExportPreselection?
+    @Published var exportFormatId: String?
     @Published var pendingLoadTrigger: TableLoadTrigger?
     var deferredRestoreLoadTabId: UUID?
 

@@ -51945,6 +51945,10 @@
         }
       }
     },
+    "Could not fetch foreign keys for: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Could not fetch foreign keys, so foreign key constraints may be missing from the export." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -56549,6 +56553,10 @@
           }
         }
       }
+    },
+    "Data Dictionary" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Data File" : {
       "localizations" : {
@@ -72670,6 +72678,9 @@
         }
       }
     },
+    "Every column's type, key, default and comment, with indexes and foreign keys. Reads no rows." : {
+
+    },
     "Every connection using this profile asks for the password once each time TablePro runs." : {
       "localizations" : {
         "fr" : {
@@ -75819,6 +75830,9 @@
           }
         }
       }
+    },
+    "Export Data Dictionary…" : {
+
     },
     "EXPORT DATABASE writes the whole database. There is no table filter." : {
       "localizations" : {
@@ -104859,6 +104873,10 @@
           }
         }
       }
+    },
+    "Markdown has a table of contents for a README or a wiki. HTML is one file that opens in any browser and prints." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Markdown tables. Paste into a README, an issue or a wiki." : {
       "localizations" : {
@@ -211422,6 +211440,10 @@
           }
         }
       }
+    },
+    "Write as" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Write capacity must be a whole number of at least 1" : {
       "extractionState" : "manual",
