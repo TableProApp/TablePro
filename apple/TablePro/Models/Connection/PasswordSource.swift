@@ -13,6 +13,8 @@ enum PasswordSource: Codable, Hashable, Sendable {
     case onePassword(reference: String)
     case vault(path: String, field: String)
     case awsSecretsManager(secretId: String, jsonKey: String?)
+    // Signs in with the username and password of a fresh lease, so it answers for both.
+    case vaultDatabaseRole(VaultDatabaseRole)
 
     static let reuseSecondsRange = 1 ... 86_400
 
@@ -23,7 +25,7 @@ enum PasswordSource: Codable, Hashable, Sendable {
     }
 
     private enum Kind: String {
-        case file, env, command, onePassword, vault, awsSecretsManager
+        case file, env, command, onePassword, vault, awsSecretsManager, vaultDatabaseRole
     }
 
     init(from decoder: Decoder) throws {
@@ -51,6 +53,8 @@ enum PasswordSource: Codable, Hashable, Sendable {
                 secretId: try container.decode(String.self, forKey: .secretId),
                 jsonKey: try container.decodeIfPresent(String.self, forKey: .jsonKey)
             )
+        case Kind.vaultDatabaseRole.rawValue:
+            self = .vaultDatabaseRole(try VaultDatabaseRole(from: decoder))
         default:
             throw DecodingError.dataCorruptedError(
                 forKey: .kind,
@@ -84,7 +88,15 @@ enum PasswordSource: Codable, Hashable, Sendable {
             try container.encode(Kind.awsSecretsManager.rawValue, forKey: .kind)
             try container.encode(secretId, forKey: .secretId)
             try container.encodeIfPresent(jsonKey, forKey: .jsonKey)
+        case let .vaultDatabaseRole(role):
+            try container.encode(Kind.vaultDatabaseRole.rawValue, forKey: .kind)
+            try role.encode(to: encoder)
         }
+    }
+
+    var vaultDatabaseRole: VaultDatabaseRole? {
+        guard case .vaultDatabaseRole(let role) = self else { return nil }
+        return role
     }
 
     static func validReuseSeconds(_ value: Int?) -> Int? {

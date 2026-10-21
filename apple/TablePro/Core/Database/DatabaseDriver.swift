@@ -1047,7 +1047,8 @@ enum DatabaseDriverFactory {
             deadline: deadline,
             timeoutEndpoint: timeoutEndpoint,
             effectiveQueryTimeoutSeconds: queryTimeoutSeconds,
-            requiresHostDeadline: requiresHostDeadline
+            requiresHostDeadline: requiresHostDeadline,
+            credentialLease: signIn.lease
         )
     }
 

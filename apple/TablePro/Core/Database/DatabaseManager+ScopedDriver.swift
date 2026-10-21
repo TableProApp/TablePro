@@ -385,6 +385,11 @@ extension DatabaseManager {
                     throw DatabaseError.notConnected
                 }
                 guard let lane else {
+                    // A driver replaced while it held a transaction, which a Vault lease rotation can do.
+                    if let browsed = activeSessions[connectionId]?.resolvedBrowseDatabase,
+                       sessionLanes.takeTransactionLoss(database: browsed, for: connectionId) {
+                        throw DatabaseError.connectionFailed(Self.parkedTransactionLostMessage(database: browsed))
+                    }
                     return try await recordingTransaction(on: driver, for: .init(connectionId: connectionId, lane: nil)) {
                         try await turn(driver)
                     }
