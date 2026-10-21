@@ -97,6 +97,7 @@ fn secret_statement(tokens: &[Token<'_>], driver_id: &str) -> bool {
                     && (names_password || tokens.iter().any(|token| matches!(token, Token::Text(_))))
             }
             "SET" | "CHANGE" | "START" | "GRANT" | "OPEN" => names_password,
+            "CLONE" => words.iter().any(|word| word == "IDENTIFIED"),
             "EXEC" | "EXECUTE" => names_password || words.iter().any(|word| SECRET_PROCEDURES.contains(&word.as_str())),
             _ => false,
         },
@@ -346,6 +347,11 @@ mod tests {
             ("mysql", "SET PASSWORD FOR 'u'@'%' = 'p'"),
             ("mysql", "CHANGE REPLICATION SOURCE TO SOURCE_PASSWORD = 'p'"),
             ("mysql", "START GROUP_REPLICATION USER = 'u', PASSWORD = 'p'"),
+            ("mysql", "CLONE INSTANCE FROM 'u'@'donor':3306 IDENTIFIED BY 'p'"),
+            (
+                "mysql",
+                "CLONE INSTANCE FROM root@donor:3306 IDENTIFIED BY 'p' REQUIRE NO SSL",
+            ),
             ("mysql", "SELECT AES_ENCRYPT('text', 'key')"),
             (
                 "mysql",
@@ -389,6 +395,7 @@ mod tests {
             ("postgres", "SELECT 'it''s fine', $$ dollar text $$"),
             ("postgres", "SELECT 'https://example.com/a:b'"),
             ("mysql", "SELECT start, password FROM sessions"),
+            ("mysql", "CLONE LOCAL DATA DIRECTORY = '/var/lib/mysql_clone'"),
             ("mysql", "CREATE TABLE url (id int)"),
             ("mysql", "CREATE TABLE users (id int, password varchar(64) DEFAULT 'x')"),
             ("postgres", "CREATE TABLE user_keys (key text DEFAULT 'k')"),
