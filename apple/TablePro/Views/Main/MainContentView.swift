@@ -243,6 +243,8 @@ struct MainContentView: View {
             DatabaseSearchSheet(session: session) { result in
                 coordinator.openDatabaseSearchResult(result, in: session)
             }
+        case .generateRows(let session):
+            GenerateRowsSheet(session: session)
         case .exportDialog, .exportQueryResults, .importDialog, .rowImport,
              .transferTables, .backupDatabase, .restoreDatabase:
             transferSheetContent(for: sheet, dismiss: dismissBinding)

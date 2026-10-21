@@ -120,6 +120,24 @@ internal struct SQLRowToStatementConverter {
         return "INSERT INTO \(qualifiedTable) (\(columnList)) VALUES (\(values));"
     }
 
+    // Every column is written, one row to a line, so a long script still reads and edits a row at a time.
+    internal func insertScript(rows: [[PluginCellValue]], rowsPerStatement: Int) -> String {
+        guard !columns.isEmpty, !rows.isEmpty else { return "" }
+        let header = "INSERT INTO \(qualifiedTable) (\(columns.map(quoteIdentifierFn).joined(separator: ", "))) VALUES"
+        let size = max(1, rowsPerStatement)
+        var statements: [String] = []
+        var start = 0
+        while start < rows.count {
+            let batch = rows[start..<min(start + size, rows.count)]
+            let tuples = batch.map { row in "(\(row.map { formatValue($0) }.joined(separator: ", ")))" }
+            statements.append(size == 1
+                ? "\(header) \(tuples[0]);"
+                : "\(header)\n  \(tuples.joined(separator: ",\n  "));")
+            start += size
+        }
+        return statements.joined(separator: "\n")
+    }
+
     // MARK: - UPDATE
 
     internal func generateUpdates(rows: [SourceRow]) -> String {

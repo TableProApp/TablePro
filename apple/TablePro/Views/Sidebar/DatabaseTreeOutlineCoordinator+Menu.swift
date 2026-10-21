@@ -112,6 +112,7 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
                 isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
             ),
             canSearchData: DatabaseSearchEligibility.supportsSearch(databaseType),
+            canGenerateRows: RowGenerationEligibility.supportsGeneration(databaseType),
             canBackUp: backupIsAvailable(),
             canCreateTable: creation.canCreateTable,
             canCreateView: creation.canCreateView,

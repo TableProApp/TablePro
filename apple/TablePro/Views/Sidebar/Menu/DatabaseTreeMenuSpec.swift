@@ -165,6 +165,9 @@ internal enum DatabaseTreeMenuSpec {
            SidebarContextMenuLogic.importVisible(clickedTable: ref.table, supportsImport: context.supportsImport) {
             items += importItems(context.importFormats, ref: ref)
         }
+        if context.canGenerateRows, !context.isReadOnly, RowGenerationEligibility.appliesTo(ref.table.type) {
+            items.append(.command(String(localized: "Generate Rows…"), .generateRows(ref)))
+        }
         items.append(.command(String(localized: "Transfer To…"), .transferTables(names: names, ref: ref)))
         let copyable = copySelections(for: sameScope)
         if context.canCopyObjects, !copyable.isEmpty {

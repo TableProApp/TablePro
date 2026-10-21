@@ -92,6 +92,7 @@ enum ActiveSheet: Identifiable {
     /// browser points by the time Save is pressed.
     case documentEditor(DocumentEditorRequest)
     case searchDatabase(DatabaseSearchSession)
+    case generateRows(RowGenerationSession)
 
     var id: String {
         switch self {
@@ -116,6 +117,7 @@ enum ActiveSheet: Identifiable {
         case .tableRebuildReview: "tableRebuildReview"
         case .documentEditor(let request): "documentEditor-\(request.id.uuidString)"
         case .searchDatabase(let session): "searchDatabase-\(session.id.uuidString)"
+        case .generateRows(let session): "generateRows-\(session.id.uuidString)"
         }
     }
 }
