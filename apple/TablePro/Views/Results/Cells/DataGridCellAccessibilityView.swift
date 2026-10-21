@@ -72,6 +72,17 @@ internal final class DataGridCellAccessibilityView: NSView {
 
     override internal func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+    // A frozen column's cell is read where the pinned band shows it, not at its home off screen.
+    override internal func accessibilityFrame() -> NSRect {
+        guard let tableView = coordinator?.tableView,
+              let window = tableView.window,
+              let band = coordinator?.freezingBand() else { return super.accessibilityFrame() }
+        let column = tableView.column(for: self)
+        guard band.pins(column) else { return super.accessibilityFrame() }
+        let displayed = band.displayed(tableView.convert(bounds, from: self), ofColumn: column)
+        return window.convertToScreen(tableView.convert(displayed, to: nil))
+    }
+
     override internal func isAccessibilityElement() -> Bool { true }
 
     /// Static text inside the `AXCell` that `NSTableView` wraps every cell view in, which is the

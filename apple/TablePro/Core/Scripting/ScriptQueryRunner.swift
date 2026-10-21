@@ -5,16 +5,8 @@
 
 import Foundation
 
-/// Runs one statement for a script, or on SQL Server a whole script, with every gate a script has to clear.
-///
-/// A script is an external caller with no token, so the gates it clears are the connection's own:
-/// **External Clients** decides whether it may write at all, and Safe Mode decides whether a person
-/// has to see the statement first. Both are applied by `ExternalStatementGate`, which is the same
-/// code the MCP tools run, so the two surfaces cannot drift apart on what a connection allows.
-///
-/// The confirmation names the app that sent the Apple event, taken from the sender pid the kernel
-/// stamps on it. A person approving a `DELETE` deserves to know whether it came from a Shortcut they
-/// just ran or from something they forgot was open.
+// One statement, or on SQL Server a whole script, from AppleScript or a Shortcuts action. Both clear the
+// connection's own gates through `ExternalStatementGate`, the code MCP runs: External Clients, then Safe Mode.
 internal enum ScriptQueryRunner {
     /// Deliberately not the MCP settings. That row cap and that timeout belong to the MCP server's
     /// own configuration, and reading them here would make a script's behaviour change when the user
@@ -24,6 +16,45 @@ internal enum ScriptQueryRunner {
     internal static let defaultTimeoutSeconds = 30
     internal static let maximumTimeoutSeconds = 600
 
+    internal enum Channel: Sendable, Equatable {
+        case appleScript(client: String?)
+        case shortcuts
+
+        internal var caller: OperationCaller {
+            switch self {
+            case .appleScript(let client): .appleScript(client: client)
+            case .shortcuts: .shortcuts
+            }
+        }
+
+        internal var historySource: QueryHistorySource {
+            switch self {
+            case .appleScript: .script
+            case .shortcuts: .shortcuts
+            }
+        }
+
+        // AppleScript cannot address a Blocked connection, so it hears that none exists. A shortcut picked the
+        // connection from a list before it was blocked, so it hears why it stopped.
+        internal func refusal(for access: ExternalAccessLevel?) -> ScriptingError {
+            switch (self, access) {
+            case (.shortcuts, .some):
+                return .refused(String(localized: "External access is disabled for this connection"))
+            case (.shortcuts, nil):
+                return .noSuchObject(String(localized: "That connection no longer exists in TablePro."))
+            case (.appleScript, _):
+                return .noSuchObject(String(localized: "No saved connection has that id."))
+            }
+        }
+
+        fileprivate var clientName: String? {
+            switch self {
+            case .appleScript(let client): client
+            case .shortcuts: String(localized: "Shortcuts")
+            }
+        }
+    }
+
     internal struct Request: Sendable {
         internal let sql: String
         internal let connectionId: UUID
@@ -31,7 +62,7 @@ internal enum ScriptQueryRunner {
         internal let schema: String?
         internal let rowLimit: Int?
         internal let timeoutSeconds: Int?
-        internal let client: String?
+        internal let channel: Channel
     }
 
     /// What a script may ask of the execution gate: to write, and to drop once a person confirms it. It is never
@@ -44,17 +75,11 @@ internal enum ScriptQueryRunner {
     internal static func run(
         _ request: Request,
         bridge: DatabaseAccessBridge,
-        history: QueryHistoryRecording = QueryHistoryManager.shared
+        history: QueryHistoryRecording = QueryHistoryManager.shared,
+        gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws -> DatabaseAccessBridge.ScriptOutcome {
         let snapshot = try await MainActor.run { () throws -> ExternalConnectionPolicySnapshot in
-            /// Asked here as well as at the object model, so the rule holds even if some later
-            /// command hands this a connection id it did not resolve through `connections()`.
-            guard ScriptingSnapshot.isVisibleToScripts(connectionId: request.connectionId) else {
-                throw ScriptingError.noSuchObject(
-                    String(localized: "No saved connection has that id.")
-                )
-            }
-            return try ExternalConnectionPolicySnapshot.resolve(connectionId: request.connectionId)
+            try visibleSnapshot(connectionId: request.connectionId, channel: request.channel)
         }
 
         let capabilities = Self.capabilities(on: snapshot.databaseType)
@@ -86,9 +111,13 @@ internal enum ScriptQueryRunner {
             sql: request.sql,
             connectionId: request.connectionId,
             databaseType: snapshot.databaseType,
-            caller: .appleScript(client: request.client),
+            caller: request.channel.caller,
             capabilities: capabilities,
-            operationDescription: confirmationTitle(client: request.client, connection: snapshot.connectionName)
+            operationDescription: confirmationTitle(
+                client: request.channel.clientName,
+                connection: snapshot.connectionName
+            ),
+            gate: gate
         )
 
         let rowLimit = (request.rowLimit ?? defaultRowLimit).clamped(to: 1...maximumRowLimit)
@@ -146,6 +175,20 @@ internal enum ScriptQueryRunner {
         }
     }
 
+    // Asked here as well as at each caller's own listing, so the rule holds for a connection id that did not come
+    // from one.
+    @MainActor
+    internal static func visibleSnapshot(
+        connectionId: UUID,
+        channel: Channel
+    ) throws -> ExternalConnectionPolicySnapshot {
+        guard ScriptingSnapshot.isVisibleToScripts(connectionId: connectionId) else {
+            let stored = ConnectionStorage.shared.loadConnections().first { $0.id == connectionId }
+            throw channel.refusal(for: stored?.externalAccess)
+        }
+        return try ExternalConnectionPolicySnapshot.resolve(connectionId: connectionId)
+    }
+
     private static func confirmationTitle(client: String?, connection: String) -> String {
         guard let client, !client.isEmpty else {
             return String(format: String(localized: "A script wants to run a query on \"%@\""), connection)
@@ -175,7 +218,7 @@ internal enum ScriptQueryRunner {
                 databaseName: scope.database,
                 databaseType: databaseType,
                 schemaName: scope.schema,
-                source: .script,
+                source: request.channel.historySource,
                 executionTime: elapsed,
                 rowCount: rowCount,
                 wasSuccessful: error == nil,

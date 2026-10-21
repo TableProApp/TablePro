@@ -123,6 +123,38 @@ struct DataWriteStep: Sendable {
     }
 }
 
+extension DataWriteStep {
+    static func rowWrites(
+        _ statements: RowWriteStatements,
+        tableName: String,
+        primaryKeyColumns: [String]
+    ) -> [DataWriteStep] {
+        switch statements {
+        case .counted(let attributed):
+            return attributed.map {
+                DataWriteStep(
+                    kind: .rowWrite,
+                    statement: $0.statement,
+                    expectedRowCount: $0.rowCount,
+                    tableName: tableName,
+                    matchesRowsWithoutKey: primaryKeyColumns.isEmpty && $0.kind != .insert,
+                    refusesSharedKey: $0.refusesSharedKey
+                )
+            }
+        case .driverWritten(let statements):
+            return statements.map {
+                DataWriteStep(
+                    kind: .rowWrite,
+                    statement: $0.statement,
+                    expectedRowCount: $0.keylessRowCount,
+                    tableName: tableName,
+                    matchesRowsWithoutKey: $0.keylessRowCount != nil
+                )
+            }
+        }
+    }
+}
+
 /// The statements a change set produces, beside the record of the rows behind them.
 struct RowWriteBuild: Sendable {
     let steps: [DataWriteStep]

@@ -28,6 +28,37 @@ extension NSString {
         return NSRange(location: found.location, length: isCarriageReturnLineFeed ? 2 : 1)
     }
 
+    func isLineBreak(at index: Int) -> Bool {
+        let unit = character(at: index)
+        return unit == Self.lineFeed || unit == Self.carriageReturn
+    }
+
+    // The character a caret steps over at `index`. `rangeOfComposedCharacterSequence(at:)` splits CR LF, and a caret
+    // between the two would split the line ending.
+    func caretStepRange(at index: Int, decomposing: Bool = false) -> NSRange {
+        let range = decomposing ? rangeOfUnicodeScalar(at: index) : rangeOfComposedCharacterSequence(at: index)
+        guard range.length == 1 else { return range }
+        let unit = character(at: range.location)
+        if unit == Self.carriageReturn, range.location + 1 < length, character(at: range.location + 1) == Self.lineFeed {
+            return NSRange(location: range.location, length: 2)
+        }
+        if unit == Self.lineFeed, range.location > 0, character(at: range.location - 1) == Self.carriageReturn {
+            return NSRange(location: range.location - 1, length: 2)
+        }
+        return range
+    }
+
+    private func rangeOfUnicodeScalar(at index: Int) -> NSRange {
+        let unit = character(at: index)
+        if UTF16.isLeadSurrogate(unit), index + 1 < length, UTF16.isTrailSurrogate(character(at: index + 1)) {
+            return NSRange(location: index, length: 2)
+        }
+        if UTF16.isTrailSurrogate(unit), index > 0, UTF16.isLeadSurrogate(character(at: index - 1)) {
+            return NSRange(location: index - 1, length: 2)
+        }
+        return NSRange(location: index, length: 1)
+    }
+
     fileprivate func lineStartBreakingAtLineEndings(before location: Int) -> Int {
         var cursor = min(max(location, 0), length)
         if cursor > 0, cursor < length,

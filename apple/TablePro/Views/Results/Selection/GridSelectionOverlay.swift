@@ -39,6 +39,16 @@ final class GridSelectionOverlay: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        drawSelection(in: dirtyRect)
+    }
+
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        super.setNeedsDisplay(invalidRect)
+        coordinator?.pinnedBandNeedsDisplay(tableRect: invalidRect)
+    }
+
+    // Also drawn by the pinned band, in a context translated to the table's origin.
+    func drawSelection(in dirtyRect: NSRect) {
         guard let tableView, let coordinator else { return }
         let editingCell = activeOverlayCell(in: coordinator)
 
