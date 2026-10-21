@@ -26,6 +26,12 @@ extension HanaPluginDriver {
         return HanaCatalogMapping.tables(from: result.rows, schema: owner)
     }
 
+    func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? {
+        guard !schemas.isEmpty else { return [] }
+        let result = try await execute(query: HanaCatalogQueries.tables(inSchemas: schemas))
+        return HanaCatalogMapping.tablesInSchemas(from: result.rows)
+    }
+
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         try await catalogColumns(table: table, schema: effectiveSchema(schema)).map(\.pluginColumn)
     }

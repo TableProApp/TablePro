@@ -190,6 +190,13 @@ enum HanaCatalogMapping {
         }
     }
 
+    static func tablesInSchemas(from rows: [[PluginCellValue]]) -> [PluginTableInfo] {
+        rows.compactMap { row in
+            guard let schema = row[safe: 3]?.asText else { return nil }
+            return tables(from: [row], schema: schema).first
+        }
+    }
+
     static func columns(from rows: [[PluginCellValue]]) -> [HanaCatalogColumn] {
         rows.compactMap(HanaCatalogColumn.init(row:))
     }

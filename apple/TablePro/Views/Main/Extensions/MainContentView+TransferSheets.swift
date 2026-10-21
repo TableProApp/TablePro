@@ -67,6 +67,15 @@ extension MainContentView {
                     formatId: formatId
                 )
             }
+        case .rowImportBatch:
+            if let batch = coordinator.importBatch {
+                RowImportBatchSheet(
+                    isPresented: dismissBinding,
+                    connection: connection,
+                    files: batch.files,
+                    leftOut: batch.leftOut
+                )
+            }
         case .transferTables(let tables, let schema):
             transferSheet(tables: tables, schema: schema, dismiss: dismissBinding)
         case .backupDatabase(let databases):

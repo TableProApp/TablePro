@@ -74,11 +74,32 @@ public enum FileTextLoader {
     }
 
     public static func decode(_ data: Data, declaredEncoding: String.Encoding? = nil) -> String? {
+        if let wide = unmarkedWideEncoding(of: data) ?? unmarkedWide(declaredEncoding, for: data),
+           let text = String(data: data, encoding: wide) {
+            return text
+        }
         if declaredEncoding != nil, ByteOrderMark.leading(data) == nil, let utf8 = String(data: data, encoding: .utf8) {
             return utf8
         }
         guard !data.isEmpty else { return "" }
         return TextPrefixDecoder.decode(data, prefixLength: data.count, declaredEncoding: declaredEncoding)?.content
+    }
+
+    // UTF-16 or UTF-32 with no byte order mark also reads as valid UTF-8, full of NUL bytes.
+    public static func unmarkedWideEncoding(of data: Data) -> String.Encoding? {
+        guard ByteOrderMark.leading(data) == nil, data.contains(0),
+              let detected = multiByteEncoding(of: data, isWholeFile: true), detected.codeUnitLength > 1 else {
+            return nil
+        }
+        return detected
+    }
+
+    // The sniffer reads unmarked UTF-16 but not UTF-32, so a wide declared encoding covers the rest.
+    private static func unmarkedWide(_ declared: String.Encoding?, for data: Data) -> String.Encoding? {
+        guard let declared, declared.codeUnitLength > 1, ByteOrderMark.leading(data) == nil, data.contains(0) else {
+            return nil
+        }
+        return declared.unmarkedByteOrder
     }
 
     public static func loadHeader(_ url: URL, maxBytes: Int = 4_096) -> LoadedText? {

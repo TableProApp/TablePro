@@ -989,18 +989,6 @@ final class MainContentCommandActions: ObservableObject {
         return adapter.schemaPluginDriver.capabilities.contains(.userManagement)
     }
 
-    // MARK: - Tab Navigation (Group A — Called Directly)
-
-    /// Selects the Nth editor tab of the connection on screen. It used to index the window's
-    /// native tab group, which named windows rather than tabs.
-    func selectTab(number: Int) {
-        coordinator?.tabManager.selectTab(at: number - 1)
-    }
-
-    func selectTab(offsetBy offset: Int) {
-        coordinator?.tabManager.selectTab(offsetBy: offset)
-    }
-
     // MARK: - Filter Operations (Group A — Called Directly)
 
     func toggleFilterPanel() {

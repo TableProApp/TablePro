@@ -94,6 +94,24 @@ struct ImportDataSinkAdapterRollbackTests {
         }
     }
 
+    /// One file of several runs inside the run's transaction. On an engine that cannot report its session, a `BEGIN`
+    /// of the file's own would open a second one, and MySQL commits the run's on it.
+    @Test("A sink that joins a run's transaction sends no BEGIN, COMMIT or ROLLBACK")
+    func joinedSinkSendsNoTransactionStatements() async throws {
+        let driver = StatusFlagDriver(reportsState: false)
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: driver)
+        let sink = ImportDataSinkAdapter(driver: adapter, databaseType: .mysql, joinsTransaction: true)
+
+        try await sink.beginTransaction()
+        try await sink.execute(statement: "INSERT INTO courses VALUES (1)", line: 1)
+        try await sink.commitTransaction()
+        try await sink.rollbackTransaction()
+
+        #expect(driver.executed == ["INSERT INTO courses VALUES (1)"])
+        #expect(sink.transactionOutcome == .untracked)
+    }
+
     @Test("A transaction a DROP already committed is not rolled back, and the sink says so")
     func committedTransactionIsNotRolledBack() async throws {
         let driver = StatusFlagDriver()

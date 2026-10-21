@@ -75,6 +75,252 @@
         }
       }
     },
+    "%1$d only left, %2$d only right, %3$d changed, %4$d same" : {
+
+    },
+    "%@" : {
+
+    },
+    "%@ connections do not support adding rows from Shortcuts." : {
+
+    },
+    "%@ has no column named %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ has no column named %2$@."
+          }
+        }
+      }
+    },
+    "%@ is read-only, so rows cannot be added." : {
+
+    },
+    "A dictionary for each row, keyed by column" : {
+
+    },
+    "A transaction is open on this connection. Commit or roll it back in TablePro, then run the shortcut again." : {
+
+    },
+    "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level." : {
+
+    },
+    "Add Row to Table" : {
+
+    },
+    "Add Row to Table expects one row. Use Add Rows to Table for multiple rows." : {
+
+    },
+    "Add Rows to Table" : {
+
+    },
+    "Add a row to ${table}" : {
+
+    },
+    "Add multiple rows to a table on a saved connection. Provide the rows as a JSON array, CSV text, or a file." : {
+
+    },
+    "Add one row to a table on a saved connection. Provide the row as a JSON object or a CSV row." : {
+
+    },
+    "Add rows to ${table}" : {
+
+    },
+    "Added %lld rows to %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Added %1$lld rows to %2$@."
+          }
+        }
+      }
+    },
+    "Added one row to %@." : {
+
+    },
+    "Both results stopped at the row cap and are compared on the rows they hold. A row past the cap can show as only on one side." : {
+
+    },
+    "Cannot Compare" : {
+
+    },
+    "Choose a Result" : {
+
+    },
+    "Compare Result With…" : {
+
+    },
+    "Compare Results" : {
+
+    },
+    "Compare With" : {
+
+    },
+    "Comparing" : {
+
+    },
+    "Comparing…" : {
+
+    },
+    "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope." : {
+
+    },
+    "Could not connect to the database: %@" : {
+
+    },
+    "Could not read the columns of %@." : {
+
+    },
+    "Database or Schema" : {
+
+    },
+    "First Value" : {
+
+    },
+    "Key %@ matches more than one row in the left result. Choose key columns that identify a single row, or match whole rows." : {
+
+    },
+    "Key %@ matches more than one row in the right result. Choose key columns that identify a single row, or match whole rows." : {
+
+    },
+    "Left" : {
+
+    },
+    "Line %lld of the file is not valid %@ text." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Line %1$lld of the file is not valid %2$@ text."
+          }
+        }
+      }
+    },
+    "Match Whole Rows" : {
+
+    },
+    "No Columns in Common" : {
+
+    },
+    "No Result to Compare With" : {
+
+    },
+    "No data was provided to add." : {
+
+    },
+    "Only Left" : {
+
+    },
+    "Only Right" : {
+
+    },
+    "Only in the left result, not compared: %@" : {
+
+    },
+    "Only in the right result, not compared: %@" : {
+
+    },
+    "Opens a database connection in TablePro" : {
+
+    },
+    "Pick the result to compare this one with." : {
+
+    },
+    "Provide a JSON object or an array of objects." : {
+
+    },
+    "Result %1$d: %2$@" : {
+
+    },
+    "Result Closed" : {
+
+    },
+    "Result Format" : {
+
+    },
+    "Right" : {
+
+    },
+    "Row (JSON or CSV)" : {
+
+    },
+    "Row Limit" : {
+
+    },
+    "Rows (JSON or CSV)" : {
+
+    },
+    "Rows with the same values in these columns are compared. With none chosen, whole rows are matched." : {
+
+    },
+    "Run ${query} on ${connection}" : {
+
+    },
+    "Run Query" : {
+
+    },
+    "Run a SQL statement on a saved connection and pass the result to the next action." : {
+
+    },
+    "Run another query in this tab, or pin a result in another tab." : {
+
+    },
+    "Shortcuts" : {
+
+    },
+    "Shortcuts wants to add %1$lld rows to \"%2$@\"" : {
+
+    },
+    "Shortcuts wants to add a row to \"%@\"" : {
+
+    },
+    "That connection no longer exists in TablePro." : {
+
+    },
+    "That result is no longer open. Choose another one." : {
+
+    },
+    "The CSV data has no header row." : {
+
+    },
+    "The JSON array must contain only objects." : {
+
+    },
+    "The data could not be read: %@" : {
+
+    },
+    "The data has no values to insert into %@." : {
+
+    },
+    "The first column of the first row" : {
+
+    },
+    "The left result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the right." : {
+
+    },
+    "The right result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the left." : {
+
+    },
+    "The text encoding is invalid." : {
+
+    },
+    "The two results share no column name, so there is nothing to compare." : {
+
+    },
+    "This Tab" : {
+
+    },
+    "This connection's startup commands leave a transaction open, so rows added from Shortcuts could not be committed." : {
+
+    },
+    "Too many rows. Add up to %lld rows at a time." : {
+
+    },
+    "Whole row" : {
+
+    },
     "__name__ is the document's ID in this collection, such as alice." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -227,6 +473,45 @@
           }
         }
       }
+    },
+    "connection" : {
+
+    },
+    "database" : {
+
+    },
+    "import" : {
+
+    },
+    "insert" : {
+
+    },
+    "left value, differs" : {
+
+    },
+    "only in the left result" : {
+
+    },
+    "only in the right result" : {
+
+    },
+    "open" : {
+
+    },
+    "query" : {
+
+    },
+    "right value, differs" : {
+
+    },
+    "row" : {
+
+    },
+    "rows" : {
+
+    },
+    "select" : {
+
     },
     "—" : {
       "extractionState" : "stale",
@@ -738,6 +1023,9 @@
       }
     },
     "“%@” Changed on Disk" : {
+
+    },
+    "“%@” holds no file to import." : {
 
     },
     "\"%@\" is a reserved theme identifier." : {
@@ -2167,9 +2455,6 @@
         }
       }
     },
-    "%@" : {
-
-    },
     "%@\nPreview tab. Double-click to keep it open." : {
       "localizations" : {
         "fr" : {
@@ -3064,9 +3349,6 @@
         }
       }
     },
-    "%@ connections do not support adding rows from Shortcuts." : {
-
-    },
     "%@ connections open a server, not a database file, so there is nothing to fetch over SSH." : {
       "localizations" : {
         "fr" : {
@@ -3415,6 +3697,9 @@
         }
       }
     },
+    "%@ files cannot be imported together with other files." : {
+
+    },
     "%@ had no rows to transfer." : {
       "localizations" : {
         "fr" : {
@@ -3441,16 +3726,6 @@
         }
       }
     },
-    "%@ has no column named %@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ has no column named %2$@."
-          }
-        }
-      }
-    },
     "%@ has no column order of its own to change." : {
       "localizations" : {
         "fr" : {
@@ -3460,6 +3735,9 @@
           }
         }
       }
+    },
+    "%@ has no column to create." : {
+
     },
     "%@ holds a document or an array, and this text is not valid JSON." : {
       "extractionState" : "manual",
@@ -3943,9 +4221,6 @@
           }
         }
       }
-    },
-    "%@ is read-only, so rows cannot be added." : {
-
     },
     "%@ is required" : {
       "localizations" : {
@@ -4532,6 +4807,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ 上的 %2$@ 已成功完成。"
+          }
+        }
+      }
+    },
+    "%@ on branch %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ on branch %2$@"
           }
         }
       }
@@ -5293,6 +5578,9 @@
     "%@ takes one level. End it with a semicolon before the next statement." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "%@ takes rows from two files, so Delete existing rows before import would remove the first file's rows." : {
+
     },
     "%@ to %@ characters" : {
       "localizations" : {
@@ -6585,6 +6873,9 @@
         }
       }
     },
+    "%1$@ cannot be read. %2$@" : {
+
+    },
     "%1$@ chart of %2$@ by %3$@ with %4$d points" : {
       "localizations" : {
         "en" : {
@@ -6816,6 +7107,12 @@
         }
       }
     },
+    "%1$@ failed, and the files imported before it were kept. %2$@" : {
+
+    },
+    "%1$@ failed, so every file was rolled back. %2$@" : {
+
+    },
     "%1$@ for %2$@" : {
       "localizations" : {
         "fr" : {
@@ -6944,6 +7241,12 @@
           }
         }
       }
+    },
+    "%1$@ maps no field to a column of %2$@." : {
+
+    },
+    "%1$@ maps two fields to one column of %2$@." : {
+
     },
     "%1$@ must be at least %2$lld." : {
       "localizations" : {
@@ -7078,6 +7381,9 @@
         }
       }
     },
+    "%1$@ of more than %2$@ rows" : {
+
+    },
     "%1$@ on %2$@" : {
       "localizations" : {
         "fr" : {
@@ -7142,6 +7448,9 @@
 
     },
     "%1$@ takes %2$lld dimensions, and the value has %3$lld." : {
+
+    },
+    "%1$@ to %2$@: %3$@" : {
 
     },
     "%1$@ wants to run a query on \"%2$@\"" : {
@@ -7645,9 +7954,6 @@
         }
       }
     },
-    "%1$d only left, %2$d only right, %3$d changed, %4$d same" : {
-
-    },
     "%1$d rows match. The first %2$d are listed." : {
       "localizations" : {
         "fr" : {
@@ -7850,6 +8156,9 @@
         }
       }
     },
+    "%1$lld of %2$lld fields mapped" : {
+
+    },
     "%1$lld of %2$lld members" : {
       "localizations" : {
         "fr" : {
@@ -7989,6 +8298,9 @@
           }
         }
       }
+    },
+    "%1$lld rows from %2$lld files in %3$@ seconds." : {
+
     },
     "%1$lld rows from %3$lld tables written to %2$@." : {
       "localizations" : {
@@ -10302,6 +10614,12 @@
     "%lld dims" : {
 
     },
+    "%lld failed" : {
+
+    },
+    "%lld files" : {
+
+    },
     "%lld in, %lld out" : {
       "localizations" : {
         "en" : {
@@ -10522,6 +10840,9 @@
           }
         }
       }
+    },
+    "%lld new columns" : {
+
     },
     "%lld objects" : {
       "localizations" : {
@@ -11193,6 +11514,12 @@
           }
         }
       }
+    },
+    "%lld rows before it were kept." : {
+
+    },
+    "%lld rows before it were rolled back." : {
+
     },
     "%lld rows do not match the foreign keys this change asks for, so nothing was changed. Correct or remove those rows, then try again." : {
       "extractionState" : "manual",
@@ -13036,6 +13363,9 @@
         }
       }
     },
+    "1 file" : {
+
+    },
     "1 item" : {
       "localizations" : {
         "fr" : {
@@ -13068,6 +13398,9 @@
           }
         }
       }
+    },
+    "1 new column" : {
+
     },
     "1 of %lld conflicts" : {
       "extractionState" : "stale",
@@ -13208,6 +13541,12 @@
           }
         }
       }
+    },
+    "1 row before it was kept." : {
+
+    },
+    "1 row before it was rolled back." : {
+
     },
     "1 row does not fit a %1$@ INSERT on its own, so its statement passes that size." : {
       "extractionState" : "manual",
@@ -15224,9 +15563,6 @@
         }
       }
     },
-    "A dictionary for each row, keyed by column" : {
-
-    },
     "A different file already exists at %@." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -15413,6 +15749,9 @@
     "A Firestore document is a JSON object of fields." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "A folder imports the %@ files directly inside it." : {
+
     },
     "A foreign key change recreates the table, and these cannot travel with it:\n\n%@\n\nSave them on their own first, then change the foreign key." : {
       "localizations" : {
@@ -16913,9 +17252,6 @@
       }
     },
     "A transaction is open on this connection, and its uncommitted rows aren't in these counts." : {
-
-    },
-    "A transaction is open on this connection. Commit or roll it back in TablePro, then run the shortcut again." : {
 
     },
     "A tunnel forwards one address, and the node Sentinel names is on the server's own network, so Sentinel mode cannot run through one. Connect to a data node directly, or turn the tunnel off." : {
@@ -18827,7 +19163,7 @@
         }
       }
     },
-    "Add a row to ${table}" : {
+    "Add a saved query to watch its result here." : {
 
     },
     "Add an AI provider in Settings > AI first." : {
@@ -19746,12 +20082,6 @@
         }
       }
     },
-    "Add multiple rows to a table on a saved connection. Provide the rows as a JSON array, CSV text, or a file." : {
-
-    },
-    "Add one row to a table on a saved connection. Provide the row as a JSON object or a CSV row." : {
-
-    },
     "Add Provider" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -19883,15 +20213,6 @@
         }
       }
     },
-    "Add Row to Table" : {
-
-    },
-    "Add Row to Table expects one row. Use Add Rows to Table for multiple rows." : {
-
-    },
-    "Add rows to ${table}" : {
-
-    },
     "Add rows to it" : {
       "localizations" : {
         "fr" : {
@@ -19902,9 +20223,6 @@
         }
       }
     },
-    "Add Rows to Table" : {
-
-    },
     "Add Rule" : {
       "localizations" : {
         "fr" : {
@@ -19914,6 +20232,9 @@
           }
         }
       }
+    },
+    "Add Saved Query" : {
+
     },
     "Add Server…" : {
       "localizations" : {
@@ -20178,19 +20499,6 @@
           }
         }
       }
-    },
-    "Added %lld rows to %@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Added %1$lld rows to %2$@."
-          }
-        }
-      }
-    },
-    "Added one row to %@." : {
-
     },
     "Adding check constraint %@ scans the table and fails if any existing row violates it." : {
       "localizations" : {
@@ -21311,9 +21619,6 @@
           }
         }
       }
-    },
-    "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level." : {
-
     },
     "AI Provider" : {
       "extractionState" : "stale",
@@ -24598,6 +24903,9 @@
           }
         }
       }
+    },
+    "Another Git command is still running in this repository." : {
+
     },
     "Another index is already named %@." : {
       "localizations" : {
@@ -30918,6 +31226,9 @@
         }
       }
     },
+    "Binary File" : {
+
+    },
     "Block" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -31301,9 +31612,6 @@
           }
         }
       }
-    },
-    "Both results stopped at the row cap and are compared on the rows they hold. A row past the cap can show as only on one side." : {
-
     },
     "Both sides are one connection, so the server copies the rows itself. There is no row-by-row progress, and Stop cannot interrupt it." : {
       "localizations" : {
@@ -33284,9 +33592,6 @@
         }
       }
     },
-    "Cannot Compare" : {
-
-    },
     "Cannot connect to Ollama at %@. Is Ollama running?" : {
       "localizations" : {
         "fr" : {
@@ -33589,6 +33894,9 @@
           }
         }
       }
+    },
+    "Cannot read the file" : {
+
     },
     "Cannot Read the Source" : {
       "localizations" : {
@@ -35225,6 +35533,9 @@
         }
       }
     },
+    "Changed Files" : {
+
+    },
     "Changed since the save" : {
       "localizations" : {
         "fr" : {
@@ -35392,6 +35703,9 @@
           }
         }
       }
+    },
+    "Changes Unavailable" : {
+
     },
     "Changing %@ from %@ to %@ can truncate existing values." : {
       "localizations" : {
@@ -37105,9 +37419,6 @@
         }
       }
     },
-    "Choose a Result" : {
-
-    },
     "Choose a SAP HANA schema first." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -37364,6 +37675,9 @@
         }
       }
     },
+    "Choose a table for %@." : {
+
+    },
     "Choose a target to compare against." : {
       "localizations" : {
         "fr" : {
@@ -37585,6 +37899,9 @@
           }
         }
       }
+    },
+    "Choose at least one file to import." : {
+
     },
     "Choose at least one object to copy." : {
       "localizations" : {
@@ -44216,7 +44533,22 @@
     "Commit" : {
 
     },
+    "Commit Changes" : {
+
+    },
+    "Commit Message" : {
+
+    },
     "Commit the transaction" : {
+
+    },
+    "Commit…" : {
+
+    },
+    "Committed" : {
+
+    },
+    "Committing…" : {
 
     },
     "Compact" : {
@@ -44596,12 +44928,6 @@
         }
       }
     },
-    "Compare Result With…" : {
-
-    },
-    "Compare Results" : {
-
-    },
     "Compare structure or data" : {
       "localizations" : {
         "fr" : {
@@ -44771,9 +45097,6 @@
           }
         }
       }
-    },
-    "Compare With" : {
-
     },
     "Compared %@ keys in key order. Rows past the limit were not read on either side, and rows with NULL in a key column are not read under a limit." : {
       "localizations" : {
@@ -44947,9 +45270,6 @@
         }
       }
     },
-    "Comparing" : {
-
-    },
     "Comparing only. Changes applied earlier stay in the target." : {
       "localizations" : {
         "fr" : {
@@ -44999,9 +45319,6 @@
           }
         }
       }
-    },
-    "Comparing…" : {
-
     },
     "Comparison cancelled." : {
       "localizations" : {
@@ -46841,9 +47158,6 @@
           }
         }
       }
-    },
-    "connection" : {
-
     },
     "Connection" : {
       "localizations" : {
@@ -48892,9 +49206,6 @@
           }
         }
       }
-    },
-    "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope." : {
-
     },
     "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript) access this connection. Tokens cannot exceed this level even with full-access scope." : {
       "localizations" : {
@@ -51778,9 +52089,6 @@
         }
       }
     },
-    "Could not connect to the database: %@" : {
-
-    },
     "Could not create %@." : {
       "localizations" : {
         "fr" : {
@@ -52925,9 +53233,6 @@
         }
       }
     },
-    "Could not read the columns of %@." : {
-
-    },
     "Could not read the file. It may have been deleted or moved." : {
       "localizations" : {
         "fr" : {
@@ -53708,6 +54013,12 @@
           }
         }
       }
+    },
+    "Couldn't Pull \"%@\"" : {
+
+    },
+    "Couldn't Push \"%@\"" : {
+
     },
     "Couldn't Put the Theme Back" : {
 
@@ -57190,9 +57501,6 @@
         }
       }
     },
-    "database" : {
-
-    },
     "Database" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -58192,9 +58500,6 @@
           }
         }
       }
-    },
-    "Database or Schema" : {
-
     },
     "Database Schema" : {
       "extractionState" : "manual",
@@ -63406,6 +63711,9 @@
           }
         }
       }
+    },
+    "Diff Unavailable" : {
+
     },
     "Difference" : {
       "localizations" : {
@@ -68806,6 +69114,9 @@
         }
       }
     },
+    "Edit the import of %@" : {
+
+    },
     "Edit Trigger" : {
       "localizations" : {
         "fr" : {
@@ -72897,6 +73208,9 @@
         }
       }
     },
+    "Every 5 Minutes" : {
+
+    },
     "Every 15 minutes" : {
       "localizations" : {
         "fr" : {
@@ -72906,6 +73220,9 @@
           }
         }
       }
+    },
+    "Every 15 Minutes" : {
+
     },
     "Every 30 seconds" : {
       "localizations" : {
@@ -72974,6 +73291,9 @@
         }
       }
     },
+    "Every file in this folder matches the last commit." : {
+
+    },
     "Every geometry in this column is empty or null." : {
       "localizations" : {
         "fr" : {
@@ -72983,6 +73303,9 @@
           }
         }
       }
+    },
+    "Every Hour" : {
+
     },
     "Every included column needs a name." : {
       "localizations" : {
@@ -73023,6 +73346,9 @@
           }
         }
       }
+    },
+    "Every Minute" : {
+
     },
     "Every object that was compared matches." : {
       "localizations" : {
@@ -82232,6 +82558,9 @@
         }
       }
     },
+    "First %@ rows only" : {
+
+    },
     "First %d" : {
       "localizations" : {
         "fr" : {
@@ -82393,9 +82722,6 @@
           }
         }
       }
-    },
-    "First Value" : {
-
     },
     "Fish" : {
       "extractionState" : "manual",
@@ -85257,6 +85583,15 @@
           }
         }
       }
+    },
+    "Git is not installed. Install the Command Line Tools or Xcode." : {
+
+    },
+    "Git printed more output than TablePro can read." : {
+
+    },
+    "Git stopped with the message below." : {
+
     },
     "GitHub Repository" : {
       "localizations" : {
@@ -89686,9 +90021,6 @@
         }
       }
     },
-    "import" : {
-
-    },
     "Import" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -90802,6 +91134,9 @@
           }
         }
       }
+    },
+    "Import the rows of each file into its own table" : {
+
     },
     "Import Tunnel Commands?" : {
       "extractionState" : "stale",
@@ -92890,9 +93225,6 @@
       }
     },
     "Inline suggestions and Review, Explain, Optimize and Fix run on this Mac and send nothing over the network." : {
-
-    },
-    "insert" : {
 
     },
     "Insert" : {
@@ -97080,12 +97412,6 @@
         }
       }
     },
-    "Key %@ matches more than one row in the left result. Choose key columns that identify a single row, or match whole rows." : {
-
-    },
-    "Key %@ matches more than one row in the right result. Choose key columns that identify a single row, or match whole rows." : {
-
-    },
     "Key %@ was not found in the secret JSON." : {
       "localizations" : {
         "fr" : {
@@ -98582,6 +98908,9 @@
         }
       }
     },
+    "Last Commit" : {
+
+    },
     "Last Connected" : {
       "localizations" : {
         "fr" : {
@@ -99346,9 +99675,6 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "Left" : {
-
-    },
     "left curly bracket" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -99399,6 +99725,9 @@
           }
         }
       }
+    },
+    "Left out, because they do not import into a table: %@" : {
+
     },
     "left parenthesis" : {
       "extractionState" : "manual",
@@ -99481,9 +99810,6 @@
           }
         }
       }
-    },
-    "left value, differs" : {
-
     },
     "Legacy UUID Encoding" : {
       "extractionState" : "manual",
@@ -100864,16 +101190,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "第 %1$lld 行：%2$@"
-          }
-        }
-      }
-    },
-    "Line %lld of the file is not valid %@ text." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Line %1$lld of the file is not valid %2$@ text."
           }
         }
       }
@@ -105670,9 +105986,6 @@
         }
       }
     },
-    "Match Whole Rows" : {
-
-    },
     "Matched name" : {
       "localizations" : {
         "fr" : {
@@ -107588,6 +107901,9 @@
     "Mesh" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Message" : {
+
     },
     "Message too large. Shorten it and send it again." : {
       "localizations" : {
@@ -109547,6 +109863,9 @@
         }
       }
     },
+    "Move Left" : {
+
+    },
     "Move Line Down" : {
       "localizations" : {
         "fr" : {
@@ -109626,6 +109945,9 @@
           }
         }
       }
+    },
+    "Move Right" : {
+
     },
     "Move Rule Down" : {
       "localizations" : {
@@ -112771,6 +113093,9 @@
         }
       }
     },
+    "New table %@" : {
+
+    },
     "New table:" : {
       "localizations" : {
         "fr" : {
@@ -113982,9 +114307,6 @@
         }
       }
     },
-    "No Columns in Common" : {
-
-    },
     "No columns in common." : {
       "localizations" : {
         "fr" : {
@@ -114567,9 +114889,6 @@
           }
         }
       }
-    },
-    "No data was provided to add." : {
-
     },
     "No database connection" : {
       "localizations" : {
@@ -117515,9 +117834,6 @@
         }
       }
     },
-    "No Result to Compare With" : {
-
-    },
     "No Results" : {
       "localizations" : {
         "fr" : {
@@ -117977,6 +118293,9 @@
           }
         }
       }
+    },
+    "No Saved Queries" : {
+
     },
     "No saved selections" : {
       "localizations" : {
@@ -118757,6 +119076,9 @@
           }
         }
       }
+    },
+    "No Text Changes" : {
+
     },
     "No text column to search" : {
       "localizations" : {
@@ -119546,6 +119868,9 @@
           }
         }
       }
+    },
+    "None of these files import into a table: %@." : {
+
     },
     "None selected" : {
       "localizations" : {
@@ -120504,6 +120829,9 @@
           }
         }
       }
+    },
+    "not imported" : {
+
     },
     "not in list" : {
       "localizations" : {
@@ -121644,6 +121972,9 @@
           }
         }
       }
+    },
+    "Nothing to Import" : {
+
     },
     "Nothing to Restore" : {
       "localizations" : {
@@ -124355,18 +124686,6 @@
         }
       }
     },
-    "only in the left result" : {
-
-    },
-    "Only in the left result, not compared: %@" : {
-
-    },
-    "only in the right result" : {
-
-    },
-    "Only in the right result, not compared: %@" : {
-
-    },
     "only in the source" : {
       "localizations" : {
         "fr" : {
@@ -124386,12 +124705,6 @@
           }
         }
       }
-    },
-    "Only Left" : {
-
-    },
-    "Only Right" : {
-
     },
     "Only the first %1$lld nodes were loaded, so this value was not searched in full. Switch to %2$@ to search all of it." : {
       "localizations" : {
@@ -124554,9 +124867,6 @@
           }
         }
       }
-    },
-    "open" : {
-
     },
     "Open" : {
       "localizations" : {
@@ -126690,9 +127000,6 @@
         }
       }
     },
-    "Opens a database connection in TablePro" : {
-
-    },
     "Opens an AWS Systems Manager port forwarding session through a target instance." : {
       "localizations" : {
         "fr" : {
@@ -127461,6 +127768,9 @@
           }
         }
       }
+    },
+    "Options for" : {
+
     },
     "Options the engine offers" : {
       "localizations" : {
@@ -131462,9 +131772,6 @@
           }
         }
       }
-    },
-    "Pick the result to compare this one with." : {
-
     },
     "Pick the type of database you want to connect to." : {
       "localizations" : {
@@ -136677,9 +136984,6 @@
         }
       }
     },
-    "Provide a JSON object or an array of objects." : {
-
-    },
     "Providers" : {
       "localizations" : {
         "fr" : {
@@ -137247,9 +137551,18 @@
         }
       }
     },
+    "Pull" : {
+
+    },
     "Pull Request" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Pulled \"%@\"" : {
+
+    },
+    "Pulling…" : {
+
     },
     "Purchase License" : {
       "localizations" : {
@@ -137336,6 +137649,15 @@
           }
         }
       }
+    },
+    "Push" : {
+
+    },
+    "Pushed \"%@\"" : {
+
+    },
+    "Pushing…" : {
+
     },
     "Put field names in the first row" : {
       "extractionState" : "stale",
@@ -137635,9 +137957,6 @@
           }
         }
       }
-    },
-    "query" : {
-
     },
     "Query" : {
       "localizations" : {
@@ -141146,6 +141465,9 @@
         }
       }
     },
+    "Reading the files…" : {
+
+    },
     "Reading the source…" : {
       "localizations" : {
         "fr" : {
@@ -141168,6 +141490,9 @@
           }
         }
       }
+    },
+    "Reading…" : {
+
     },
     "Reads every table inside one transaction, so a dump of several tables is consistent with itself. The transaction stays open for the whole export." : {
       "extractionState" : "manual",
@@ -144485,6 +144810,9 @@
         }
       }
     },
+    "Remove from Dashboard" : {
+
+    },
     "Remove from Favorites" : {
       "comment" : "A button label that deletes a table from the user's favorites.",
       "isCommentAutoGenerated" : true,
@@ -147137,6 +147465,9 @@
         }
       }
     },
+    "Resolve the conflict in a Git client before committing this file." : {
+
+    },
     "Resident Memory" : {
 
     },
@@ -148435,9 +148766,6 @@
         }
       }
     },
-    "Result %1$d: %2$@" : {
-
-    },
     "Result %d" : {
       "localizations" : {
         "fr" : {
@@ -148517,12 +148845,6 @@
           }
         }
       }
-    },
-    "Result Closed" : {
-
-    },
-    "Result Format" : {
-
     },
     "Result Options" : {
       "localizations" : {
@@ -149531,9 +149853,6 @@
         }
       }
     },
-    "Right" : {
-
-    },
     "right curly bracket" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -149656,9 +149975,6 @@
           }
         }
       }
-    },
-    "right value, differs" : {
-
     },
     "Right-click a cell and choose Highlight to color rows by value." : {
       "localizations" : {
@@ -149838,6 +150154,9 @@
           }
         }
       }
+    },
+    "rolled back" : {
+
     },
     "root" : {
       "extractionState" : "stale",
@@ -150110,9 +150429,6 @@
         }
       }
     },
-    "row" : {
-
-    },
     "Row" : {
       "localizations" : {
         "fr" : {
@@ -150152,9 +150468,6 @@
           }
         }
       }
-    },
-    "Row (JSON or CSV)" : {
-
     },
     "Row %@ already exists. Edit that row, or give the new one another key." : {
       "extractionState" : "manual",
@@ -150760,9 +151073,6 @@
         }
       }
     },
-    "Row Limit" : {
-
-    },
     "Row no longer exists" : {
       "localizations" : {
         "fr" : {
@@ -150977,9 +151287,6 @@
         }
       }
     },
-    "rows" : {
-
-    },
     "Rows" : {
       "localizations" : {
         "fr" : {
@@ -151019,9 +151326,6 @@
           }
         }
       }
-    },
-    "Rows (JSON or CSV)" : {
-
     },
     "Rows %lld-%lld" : {
       "localizations" : {
@@ -151655,9 +151959,6 @@
         }
       }
     },
-    "Rows with the same values in these columns are compared. With none chosen, whole rows are matched." : {
-
-    },
     "Rows, each an array aligned with columns" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -151844,9 +152145,6 @@
         }
       }
     },
-    "Run ${query} on ${connection}" : {
-
-    },
     "Run a maintenance operation the engine supports, on one table or on the whole database. TablePro generates the statements; the user approves them. Needs tools:write." : {
       "localizations" : {
         "fr" : {
@@ -151887,7 +152185,7 @@
         }
       }
     },
-    "Run a SQL statement on a saved connection and pass the result to the next action." : {
+    "Run a saved query on the Server Dashboard" : {
 
     },
     "Run All Statements" : {
@@ -151899,9 +152197,6 @@
           }
         }
       }
-    },
-    "Run another query in this tab, or pin a result in another tab." : {
-
     },
     "Run button beside each statement" : {
       "localizations" : {
@@ -152224,9 +152519,6 @@
           }
         }
       }
-    },
-    "Run Query" : {
-
     },
     "Run Script" : {
       "localizations" : {
@@ -157837,9 +158129,6 @@
         }
       }
     },
-    "select" : {
-
-    },
     "Select" : {
       "localizations" : {
         "fr" : {
@@ -158602,6 +158891,9 @@
           }
         }
       }
+    },
+    "Select files or a folder to import" : {
+
     },
     "Select files to open" : {
       "localizations" : {
@@ -161128,6 +161420,9 @@
         }
       }
     },
+    "Set On error and Wrap in transaction the same for %@." : {
+
+    },
     "Set Password" : {
       "localizations" : {
         "fr" : {
@@ -161880,15 +162175,6 @@
           }
         }
       }
-    },
-    "Shortcuts" : {
-
-    },
-    "Shortcuts wants to add %1$lld rows to \"%2$@\"" : {
-
-    },
-    "Shortcuts wants to add a row to \"%@\"" : {
-
     },
     "Show" : {
       "localizations" : {
@@ -172293,6 +172579,12 @@
         }
       }
     },
+    "Stopped at %@. Every file was rolled back." : {
+
+    },
+    "Stopped at %@. The files imported before it were kept." : {
+
+    },
     "Stopped at %lld rows, the most R2 SQL returns from one query." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -172304,6 +172596,9 @@
           }
         }
       }
+    },
+    "Stopped." : {
+
     },
     "Stopping…" : {
       "extractionState" : "stale",
@@ -180306,9 +180601,6 @@
         }
       }
     },
-    "That connection no longer exists in TablePro." : {
-
-    },
     "That destination is not valid for this engine." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -180682,9 +180974,6 @@
           }
         }
       }
-    },
-    "That result is no longer open. Choose another one." : {
-
     },
     "That tab is not open." : {
       "localizations" : {
@@ -181484,6 +181773,9 @@
           }
         }
       }
+    },
+    "The branch and its upstream branch each have commits the other lacks. Finish this pull in a Git client." : {
+
     },
     "The broker answered a coordinator lookup with no coordinator." : {
       "extractionState" : "manual",
@@ -183291,9 +183583,6 @@
         }
       }
     },
-    "The CSV data has no header row." : {
-
-    },
     "The Dameng connection is closed." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -183357,12 +183646,6 @@
     "The data changed after it was read." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
-    },
-    "The data could not be read: %@" : {
-
-    },
-    "The data has no values to insert into %@." : {
-
     },
     "The database “%@” has an open transaction. Closing rolls it back and discards its uncommitted changes." : {
       "localizations" : {
@@ -184450,9 +184733,6 @@
         }
       }
     },
-    "The first column of the first row" : {
-
-    },
     "The first sheet has no header row to map columns from." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -184797,9 +185077,6 @@
         }
       }
     },
-    "The JSON array must contain only objects." : {
-
-    },
     "The JSON is nested more deeply than DynamoDB allows" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -184945,9 +185222,6 @@
           }
         }
       }
-    },
-    "The left result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the right." : {
-
     },
     "The license has been suspended." : {
       "localizations" : {
@@ -187281,9 +187555,6 @@
           }
         }
       }
-    },
-    "The right result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the left." : {
-
     },
     "The rollback did not undo everything. A statement in the file, such as COMMIT, CREATE, ALTER or DROP, committed the import's transaction as it ran, so some of the statements before the failure were kept." : {
 
@@ -190267,9 +190538,6 @@
         }
       }
     },
-    "The text encoding is invalid." : {
-
-    },
     "The text is not valid JSON." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -190313,6 +190581,9 @@
           }
         }
       }
+    },
+    "The text matches the last commit." : {
+
     },
     "The theme has more than %@ token color rules." : {
       "extractionState" : "manual",
@@ -190627,9 +190898,6 @@
           }
         }
       }
-    },
-    "The two results share no column name, so there is nothing to compare." : {
-
     },
     "The type's shape, such as enum, composite, domain, range, aliasType, tableType or clrType" : {
       "localizations" : {
@@ -192596,9 +192864,6 @@
         }
       }
     },
-    "This connection's startup commands leave a transaction open, so rows added from Shortcuts could not be committed." : {
-
-    },
     "This conversation is too long to continue. Start a new conversation and send your message there." : {
       "localizations" : {
         "fr" : {
@@ -192843,6 +193108,9 @@
           }
         }
       }
+    },
+    "This database cannot run a statement read-only, so tiles do not run on it." : {
+
     },
     "This database cannot run this command on this object" : {
       "localizations" : {
@@ -194002,6 +194270,9 @@
         }
       }
     },
+    "This file can't be shown as text." : {
+
+    },
     "This file cannot be saved in that format." : {
       "localizations" : {
         "fr" : {
@@ -194011,6 +194282,9 @@
           }
         }
       }
+    },
+    "This file has unsaved changes in an editor tab. The commit takes the saved file." : {
+
     },
     "This file is encrypted" : {
       "localizations" : {
@@ -194177,6 +194451,9 @@
         }
       }
     },
+    "This file is too large to compare line by line." : {
+
+    },
     "This file requires a newer version of TablePro (format version %d)" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -194313,6 +194590,9 @@
           }
         }
       }
+    },
+    "This folder is not in a Git repository." : {
+
     },
     "This foreign key needs a referenced table." : {
       "localizations" : {
@@ -196306,6 +196586,21 @@
         }
       }
     },
+    "This saved query holds more than one statement. A tile runs one." : {
+
+    },
+    "This saved query is empty." : {
+
+    },
+    "This saved query is not a read. Tiles run reads only." : {
+
+    },
+    "This saved query reads or writes files or runs server-side code. Tiles run reads only." : {
+
+    },
+    "This saved query was deleted or belongs to another connection." : {
+
+    },
     "This SELECT reads the whole table" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -196755,9 +197050,6 @@
           }
         }
       }
-    },
-    "This Tab" : {
-
     },
     "This tab is on %@. Switch the connection to that database to run it." : {
       "localizations" : {
@@ -197687,6 +197979,9 @@
           }
         }
       }
+    },
+    "Tile Options" : {
+
     },
     "Time" : {
       "localizations" : {
@@ -199179,6 +199474,9 @@
         }
       }
     },
+    "Too Large to Compare" : {
+
+    },
     "Too Large to Preview" : {
       "localizations" : {
         "fr" : {
@@ -199271,9 +199569,6 @@
           }
         }
       }
-    },
-    "Too many rows. Add up to %lld rows at a time." : {
-
     },
     "Tool" : {
       "localizations" : {
@@ -201399,6 +201694,9 @@
           }
         }
       }
+    },
+    "Two files create a table named %@." : {
+
     },
     "Two People" : {
       "extractionState" : "manual",
@@ -211130,9 +211428,6 @@
         }
       }
     },
-    "Whole row" : {
-
-    },
     "Whole Words" : {
       "localizations" : {
         "fr" : {
@@ -211866,6 +212161,9 @@
         }
       }
     },
+    "With the Dashboard" : {
+
+    },
     "Word wrap" : {
       "localizations" : {
         "fr" : {
@@ -211919,6 +212217,9 @@
           }
         }
       }
+    },
+    "Working Copy" : {
+
     },
     "Wrap each table in a transaction" : {
       "localizations" : {

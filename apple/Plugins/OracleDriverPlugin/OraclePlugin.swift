@@ -487,14 +487,26 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let result = try await rawQuery(OracleSchemaQueries.tables(schema: effectiveSchema(schema)))
-        return result.rows.compactMap(OracleSchemaQueries.parseTableRow).map { row in
-            PluginTableInfo(
-                name: row.name,
-                type: row.isView ? "VIEW" : (row.isPartitioned ? "PARTITIONED TABLE" : "TABLE"),
-                comment: nil,
-                partitionCount: row.partitionCount
-            )
+        return result.rows.compactMap(OracleSchemaQueries.parseTableRow).map(Self.tableInfo)
+    }
+
+    func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? {
+        var tables: [PluginTableInfo] = []
+        for query in OracleSchemaQueries.tables(inSchemas: schemas) {
+            let result = try await rawQuery(query)
+            tables += result.rows.compactMap(OracleSchemaQueries.parseTableRow).map(Self.tableInfo)
         }
+        return tables
+    }
+
+    private static func tableInfo(_ row: OracleTableRow) -> PluginTableInfo {
+        PluginTableInfo(
+            name: row.name,
+            type: row.isView ? "VIEW" : (row.isPartitioned ? "PARTITIONED TABLE" : "TABLE"),
+            schema: row.schema,
+            comment: nil,
+            partitionCount: row.partitionCount
+        )
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {

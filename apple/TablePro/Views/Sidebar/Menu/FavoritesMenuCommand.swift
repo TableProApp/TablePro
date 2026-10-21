@@ -34,6 +34,7 @@ internal enum FavoritesMenuCommand: Equatable {
     case trashLinkedFavorite(LinkedSQLFavorite)
     case showLinkedFileHistory(LinkedSQLFavorite)
     case discardLinkedFileChanges(LinkedSQLFavorite)
+    case commitLinkedFile(LinkedSQLFavorite)
 
     case copyPath(String)
     case copyRelativePath(String)
@@ -44,6 +45,9 @@ internal enum FavoritesMenuCommand: Equatable {
     case reloadLinkedFolders
     case addLinkedFolder
     case removeLinkedFolder(LinkedSQLFolder)
+    case commitLinkedFolder(LinkedSQLFolder)
+    case pullLinkedFolder(LinkedSQLFolder)
+    case pushLinkedFolder(LinkedSQLFolder)
 
     case renameFolder(SQLFavoriteFolder)
     case setFolderGlobal(SQLFavoriteFolder, Bool)
