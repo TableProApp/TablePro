@@ -156,6 +156,8 @@ struct DatabaseConnection: Identifiable, Hashable {
     static let postDisconnectScriptKey = "postDisconnectScript"
     static let scriptTimeoutSecondsKey = "scriptTimeoutSeconds"
     static let completionIdentifierCaseKey = "completionIdentifierCase"
+    static let binaryInlineLimitKilobytesKey = "binaryInlineLimitKB"
+    static let binaryInlineLimitKilobytesRange = 1 ... 1_048_576
 
     let id: UUID
     var name: String
@@ -316,6 +318,26 @@ struct DatabaseConnection: Identifiable, Hashable {
                 additionalFields.removeValue(forKey: Self.queryTimeoutSecondsKey)
             }
         }
+    }
+
+    var binaryInlineLimitKilobytes: Int? {
+        get {
+            guard let value = additionalFields[Self.binaryInlineLimitKilobytesKey].flatMap(Int.init),
+                  Self.binaryInlineLimitKilobytesRange.contains(value)
+            else { return nil }
+            return value
+        }
+        set {
+            if let newValue, Self.binaryInlineLimitKilobytesRange.contains(newValue) {
+                additionalFields[Self.binaryInlineLimitKilobytesKey] = String(newValue)
+            } else {
+                additionalFields.removeValue(forKey: Self.binaryInlineLimitKilobytesKey)
+            }
+        }
+    }
+
+    var binaryInlineLimitBytes: Int {
+        binaryInlineLimitKilobytes.map { $0 * 1_024 } ?? UnloadedValuePlan.defaultInlineByteLimit
     }
 
     var completionIdentifierCase: SQLIdentifierCase {

@@ -106,6 +106,9 @@
     "A foreign key staged in this diagram uses “%1$@.%2$@”. Save or undo that key before renaming the column." : {
 
     },
+    "A larger binary value stays on the server until you open, copy or export it. Applies to tables with a primary key." : {
+
+    },
     "A transaction is open on this connection. Commit or roll it back in TablePro, then run the shortcut again." : {
 
     },
@@ -152,6 +155,9 @@
     "Allow NULL" : {
 
     },
+    "Binary values limit must be between 1 and 1,048,576 KB." : {
+
+    },
     "Both results stopped at the row cap and are compared on the rows they hold. A row past the cap can show as only on one side." : {
 
     },
@@ -185,6 +191,9 @@
     "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope." : {
 
     },
+    "Could Not Load Value" : {
+
+    },
     "Could Not Refresh the Diagram" : {
 
     },
@@ -206,6 +215,9 @@
     "First Value" : {
 
     },
+    "KB" : {
+
+    },
     "Key %@ matches more than one row in the left result. Choose key columns that identify a single row, or match whole rows." : {
 
     },
@@ -225,6 +237,9 @@
         }
       }
     },
+    "Load binary values up to" : {
+
+    },
     "Match Whole Rows" : {
 
     },
@@ -235,6 +250,9 @@
 
     },
     "No data was provided to add." : {
+
+    },
+    "Not loaded, %@" : {
 
     },
     "Only Left" : {
@@ -307,6 +325,12 @@
 
     },
     "Show Structure of %@" : {
+
+    },
+    "Some rows are no longer in the table, so their values could not be read." : {
+
+    },
+    "Table Data" : {
 
     },
     "That connection no longer exists in TablePro." : {

@@ -78,6 +78,9 @@ struct FieldEditState: Identifiable {
     /// The user asked for the field to be taken out of the row.
     var isPendingRemoval = false
 
+    // A selected row's value is still on the server, so the field shows no value and takes no edit.
+    var isUnloaded = false
+
     var hasEdit: Bool {
         pendingValue != nil || isPendingNull || isPendingDefault || isPendingRemoval
     }
@@ -151,6 +154,7 @@ final class MultiRowEditState: ObservableObject {
     @Published private(set) var allRows: [[String?]] = []
     /// The columns each row in `allRows` has no field for.
     @Published private(set) var absentCells: [Set<Int>] = []
+    @Published private(set) var unloadedCells: [Set<Int>] = []
     /// The columns each row in `allRows` holds staged SQL in.
     @Published private(set) var expressionCells: [Set<Int>] = []
     @Published private(set) var columns: [String] = []
@@ -182,6 +186,7 @@ final class MultiRowEditState: ObservableObject {
         rowIDs: [RowID] = [],
         allRows: [[String?]],
         absentCells: [Set<Int>] = [],
+        unloadedCells: [Set<Int>] = [],
         expressionCells: [Set<Int>] = [],
         columns: [String],
         columnTypes: [ColumnType],
@@ -204,6 +209,7 @@ final class MultiRowEditState: ObservableObject {
         self.rowIDs = rowIDs
         self.allRows = allRows
         self.absentCells = absentCells
+        self.unloadedCells = unloadedCells
         self.expressionCells = expressionCells
         self.columns = columns
         self.columnTypes = columnTypes
@@ -231,6 +237,7 @@ final class MultiRowEditState: ObservableObject {
                 && expression.dropFirst().allSatisfy { $0 == expression.first }
             let hasMultipleValues = !allSame
             let isAbsent = !hasMultipleValues && absence.first == true
+            let isUnloaded = allRows.indices.contains { unloadedCells[safe: $0]?.contains(colIndex) == true }
 
             let originalValue: String?
             if hasMultipleValues {
@@ -250,7 +257,7 @@ final class MultiRowEditState: ObservableObject {
             if !columnsChanged, !selectionChanged, colIndex < fields.count {
                 let oldField = fields[colIndex]
                 if oldField.originalValue == originalValue && oldField.hasMultipleValues == hasMultipleValues
-                    && oldField.isAbsent == isAbsent {
+                    && oldField.isAbsent == isAbsent && oldField.isUnloaded == isUnloaded {
                     preservedId = oldField.id
                     pendingValue = oldField.pendingValue
                     isPendingNull = oldField.isPendingNull
@@ -291,7 +298,7 @@ final class MultiRowEditState: ObservableObject {
                 isBinaryValue: binaryColumns.contains(colIndex),
                 isPrimaryKey: primaryKeyColumns.contains(columnName),
                 isForeignKey: foreignKeyColumns.contains(columnName),
-                isServerOwned: serverOwnedColumns.contains(columnName),
+                isServerOwned: serverOwnedColumns.contains(columnName) || isUnloaded,
                 isNullable: !nonNullableColumns.contains(columnName),
                 serverAssignsValue: serverAssignedColumns.contains(columnName),
                 displayFormat: displayFormat,
@@ -307,6 +314,7 @@ final class MultiRowEditState: ObservableObject {
                 isAbsent: isAbsent,
                 isPendingRemoval: isPendingRemoval
             )
+            newField.isUnloaded = isUnloaded
             if let preservedId {
                 newField.id = preservedId
             }
@@ -385,6 +393,7 @@ final class MultiRowEditState: ObservableObject {
         selectedRowIndices = [displayRow]
         rowIDs = []
         absentCells = []
+        unloadedCells = []
         expressionCells = []
         databaseType = nil
         cellWriter = .none
@@ -698,6 +707,7 @@ final class MultiRowEditState: ObservableObject {
         rowIDs = []
         allRows = []
         absentCells = []
+        unloadedCells = []
         expressionCells = []
         columns = []
         columnTypes = []

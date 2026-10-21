@@ -136,6 +136,31 @@ struct TableRows: Sendable {
         return rows[row].isAbsent(column)
     }
 
+    func unloadedByteCount(row: Int, column: Int) -> Int? {
+        guard row >= 0, row < rows.count else { return nil }
+        return rows[row].unloadedByteCount(column)
+    }
+
+    var hasUnloadedValues: Bool {
+        rows.contains { $0.hasUnloadedValues }
+    }
+
+    // A cell an edit or an earlier load already filled keeps what it holds.
+    @discardableResult
+    mutating func fillUnloaded(_ values: [RowID: [Int: PluginCellValue]]) -> Delta {
+        var changed: Set<CellPosition> = []
+        for (id, columns) in values {
+            guard let row = indexByID[id] else { continue }
+            for (column, value) in columns where rows[row].unloadedColumns[column] != nil {
+                guard column < rows[row].values.count else { continue }
+                rows[row].values[column] = value
+                rows[row].unloadedColumns.removeValue(forKey: column)
+                changed.insert(CellPosition(row: row, column: column))
+            }
+        }
+        return changed.isEmpty ? .none : .cellsChanged(changed)
+    }
+
     func index(of id: RowID) -> Int? {
         indexByID[id]
     }
@@ -191,7 +216,8 @@ struct TableRows: Sendable {
 
     private mutating func write(_ value: PluginCellValue, isAbsent: Bool, row: Int, column: Int) -> Bool {
         let wasAbsent = rows[row].isAbsent(column)
-        guard rows[row].values[column] != value || wasAbsent != isAbsent else { return false }
+        let wasUnloaded = rows[row].unloadedColumns.removeValue(forKey: column) != nil
+        guard rows[row].values[column] != value || wasAbsent != isAbsent || wasUnloaded else { return false }
         rows[row].values[column] = value
         if isAbsent {
             rows[row].absentColumns.insert(column)
@@ -237,7 +263,8 @@ struct TableRows: Sendable {
     mutating func appendPage(
         _ pageRows: [[PluginCellValue]],
         startingAt offset: Int,
-        rowLocators pageLocators: [String?]? = nil
+        rowLocators pageLocators: [String?]? = nil,
+        unloadedCells: [Int: [Int: Int]] = [:]
     ) -> Delta {
         guard !pageRows.isEmpty else { return .none }
         let firstIndex = rows.count
@@ -245,7 +272,11 @@ struct TableRows: Sendable {
         indexByID.reserveCapacity(indexByID.count + pageRows.count)
         for (idx, values) in pageRows.enumerated() {
             let normalized = Self.normalize(values: values, toCount: columns.count)
-            let row = Row(id: .existing(offset + idx), values: normalized)
+            let row = Row(
+                id: .existing(offset + idx),
+                values: normalized,
+                unloadedColumns: Self.clamp(unloadedCells[idx] ?? [:], toCount: columns.count)
+            )
             let newIndex = firstIndex + idx
             rows.append(row)
             indexByID[row.id] = newIndex
@@ -287,7 +318,8 @@ struct TableRows: Sendable {
         rows replacementRows: [[PluginCellValue]],
         offset: Int = 0,
         rowLocators replacementLocators: [String?]? = nil,
-        absentCells: [Int: Set<Int>] = [:]
+        absentCells: [Int: Set<Int>] = [:],
+        unloadedCells: [Int: [Int: Int]] = [:]
     ) -> Delta {
         var rebuilt = ContiguousArray<Row>()
         rebuilt.reserveCapacity(replacementRows.count)
@@ -298,7 +330,8 @@ struct TableRows: Sendable {
             let row = Row(
                 id: .existing(offset + idx),
                 values: normalized,
-                absentColumns: Self.clamp(absentCells[idx] ?? [], toCount: columns.count)
+                absentColumns: Self.clamp(absentCells[idx] ?? [], toCount: columns.count),
+                unloadedColumns: Self.clamp(unloadedCells[idx] ?? [:], toCount: columns.count)
             )
             rebuilt.append(row)
             rebuiltIndex[row.id] = idx
@@ -390,7 +423,8 @@ struct TableRows: Sendable {
         hasAuthoritativeSchema: Bool = false,
         foreignKeysFetched: Bool = false,
         rowLocators: [String?]? = nil,
-        absentCells: [Int: Set<Int>] = [:]
+        absentCells: [Int: Set<Int>] = [:],
+        unloadedCells: [Int: [Int: Int]] = [:]
     ) -> TableRows {
         var rows = ContiguousArray<Row>()
         rows.reserveCapacity(queryRows.count)
@@ -399,7 +433,8 @@ struct TableRows: Sendable {
             rows.append(Row(
                 id: .existing(index),
                 values: normalized,
-                absentColumns: clamp(absentCells[index] ?? [], toCount: columns.count)
+                absentColumns: clamp(absentCells[index] ?? [], toCount: columns.count),
+                unloadedColumns: clamp(unloadedCells[index] ?? [:], toCount: columns.count)
             ))
         }
         var tableRows = TableRows(
@@ -467,6 +502,11 @@ struct TableRows: Sendable {
     private static func clamp(_ absentColumns: Set<Int>, toCount targetCount: Int) -> Set<Int> {
         guard absentColumns.contains(where: { $0 < 0 || $0 >= targetCount }) else { return absentColumns }
         return absentColumns.filter { $0 >= 0 && $0 < targetCount }
+    }
+
+    private static func clamp(_ unloadedColumns: [Int: Int], toCount targetCount: Int) -> [Int: Int] {
+        guard unloadedColumns.keys.contains(where: { $0 < 0 || $0 >= targetCount }) else { return unloadedColumns }
+        return unloadedColumns.filter { $0.key >= 0 && $0.key < targetCount }
     }
 
     private static func buildIndex(for rows: ContiguousArray<Row>) -> [RowID: Int] {

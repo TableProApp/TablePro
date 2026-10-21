@@ -49,7 +49,7 @@ internal enum DisplayedResultReader {
                 skippedDeleted += 1
                 return nil
             }
-            return projection.values(Array(row.values))
+            return projection.values(Self.values(of: row))
         }
 
         return Output(
@@ -58,5 +58,15 @@ internal enum DisplayedResultReader {
             rows: rows,
             skippedDeletedCount: skippedDeleted
         )
+    }
+
+    // A value the page left on the server says so, rather than reading as NULL.
+    private static func values(of row: Row) -> [PluginCellValue] {
+        guard row.hasUnloadedValues else { return Array(row.values) }
+        var values = Array(row.values)
+        for (column, byteCount) in row.unloadedColumns where values.indices.contains(column) {
+            values[column] = .text(UnloadedValueText.notLoaded(byteCount: byteCount))
+        }
+        return values
     }
 }

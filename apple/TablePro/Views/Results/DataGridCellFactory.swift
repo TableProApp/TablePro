@@ -145,7 +145,9 @@ final class DataGridCellFactory {
                 databaseType: databaseType
             ) ?? ""
             let placeholder = DataGridCellContent.placeholder(
-                for: rawValue, isAbsent: tableRows.isAbsent(row: i, column: columnIndex)
+                for: rawValue,
+                isAbsent: tableRows.isAbsent(row: i, column: columnIndex),
+                unloadedByteCount: tableRows.unloadedByteCount(row: i, column: columnIndex)
             )
             let value = DataGridCellContent.resolvedDisplayText(
                 formattedValue,

@@ -298,7 +298,7 @@ extension GlobalStateSuites {
 
         @Test("None behavior skips the schema wait unless columns are hidden")
         func firstLoadSchemaWaitDecision() async {
-            let (coordinator, tabManager, index) = makeCoordinator(tableName: "users")
+            let (coordinator, tabManager, index) = makeCoordinator(tableName: "users", type: .postgresql)
 
             await withDefaultSortBehavior(DefaultSortBehavior.none) {
                 #expect(!coordinator.firstLoadNeedsSchemaColumns(for: tabManager.tabs[index], hint: .useAppDefault))
@@ -309,6 +309,15 @@ extension GlobalStateSuites {
             }
 
             tabManager.mutate(at: index) { $0.columnLayout.hiddenColumns = ["name"] }
+            await withDefaultSortBehavior(DefaultSortBehavior.none) {
+                #expect(coordinator.firstLoadNeedsSchemaColumns(for: tabManager.tabs[index], hint: .useAppDefault))
+            }
+        }
+
+        @Test("An engine that leaves large binary values out of the page waits for the column types")
+        func firstLoadWaitsWhereBinaryValuesDefer() async {
+            let (coordinator, tabManager, index) = makeCoordinator(tableName: "users", type: .mysql)
+
             await withDefaultSortBehavior(DefaultSortBehavior.none) {
                 #expect(coordinator.firstLoadNeedsSchemaColumns(for: tabManager.tabs[index], hint: .useAppDefault))
             }

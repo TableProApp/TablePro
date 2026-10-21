@@ -35,6 +35,10 @@ extension TableViewCoordinator {
         let maxRow = min(anchorRow + block.lines.count, cachedRowCount)
         let maxCol = min(anchorPosition + block.width, presentedColumnCount)
         guard anchorRow < maxRow, anchorPosition < maxCol else { return false }
+        let pastedColumns = IndexSet((anchorPosition..<maxCol).compactMap { dataColumnIndex(atDisplayPosition: $0) })
+        guard unloadedValuesAreLoaded(displayRows: anchorRow..<maxRow, columns: pastedColumns, retry: { [weak self] in
+            _ = self?.pasteCellsFromClipboard(anchorRow: anchorRow, anchorColumn: anchorColumn)
+        }) else { return true }
 
         let undoManager = tableView?.window?.undoManager
         undoManager?.beginUndoGrouping()
@@ -102,6 +106,9 @@ extension TableViewCoordinator {
     /// False for anything else, which keeps the anchor paste: a block, one selected cell, or no cell selection.
     func pasteValueIntoSelectedCells() -> Bool {
         guard let fill = selectionFill() else { return false }
+        guard unloadedValuesAreLoaded(targets: fill.targets, retry: { [weak self] in
+            _ = self?.pasteValueIntoSelectedCells()
+        }) else { return true }
         let isExpression = fill.block.isExpression(line: 0, field: 0)
         stageEntry(into: fill.targets, actionName: String(localized: "Paste Cells")) { columnIndex in
             pastedEntry(fill.field, of: fill.block, isExpression: isExpression, columnIndex: columnIndex)

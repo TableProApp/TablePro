@@ -1395,7 +1395,7 @@ final class MainContentCoordinator: ObservableObject {
             return
         }
         let isTableTab = tab.tabType == .table
-        let grammar = lexicalGrammar
+        let (grammar, lengthColumns) = (lexicalGrammar, unloadedValueLengthColumns(for: tab))
 
         let failureOutput = ServerOutputBox()
         let queryTask = Task { [weak self] in
@@ -1425,7 +1425,7 @@ final class MainContentCoordinator: ObservableObject {
                     let edits = isAutoLoad ? nil : await SucceededStatements.single(
                         statement.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
                     )
-                    return (fetched, edits)
+                    return (fetched.foldingUnloadedValues(lengthColumns: lengthColumns), edits)
                 }
                 let fetchEndedAt = ContinuousClock.now
                 if !isAutoLoad { Self.postStatementRan(statement.sql, on: conn, succeeded: tableEdits) }
@@ -1490,7 +1490,8 @@ final class MainContentCoordinator: ObservableObject {
                         source: source,
                         serverOutput: fetchResult.serverOutput,
                         rowLocators: isTableTab ? fetchResult.rowLocators : nil,
-                        absentCells: fetchResult.absentCells
+                        absentCells: fetchResult.absentCells,
+                        unloadedCells: fetchResult.unloadedCells
                     )
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)
