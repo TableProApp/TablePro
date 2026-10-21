@@ -248,7 +248,8 @@ extension PluginMetadataRegistry {
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
-                    browsingRequiresSelectedDatabase: true
+                    browsingRequiresSelectedDatabase: true,
+                    binaryLengthFunction: "OCTET_LENGTH"
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -318,7 +319,8 @@ extension PluginMetadataRegistry {
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
-                    browsingRequiresSelectedDatabase: true
+                    browsingRequiresSelectedDatabase: true,
+                    binaryLengthFunction: "OCTET_LENGTH"
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",

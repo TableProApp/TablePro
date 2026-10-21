@@ -341,6 +341,14 @@ struct MainContentView: View {
             ) { [coordinator] tab in
                 await coordinator.loadTableMetadata(for: tab)
             })
+            .modifier(InspectorValueLoadModifier(
+                inspector: trailingPaneState.inspector,
+                selection: coordinator.selectionState,
+                tabId: currentTab?.id,
+                contentVersion: currentTab?.schemaVersion ?? 0
+            ) { [coordinator] tabId, displayRow in
+                await coordinator.loadInspectorRowValues(tabId: tabId, displayRow: displayRow)
+            })
             /// Keyed on the connection alone. The only driver that answers `fetchSessionContexts`
             /// is Snowflake, which pays two round trips for it, so this must not reload per query.
             /// It lives with the connection's content rather than with the toolbar control it used

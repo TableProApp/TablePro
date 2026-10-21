@@ -86,7 +86,7 @@ struct RowChange: Identifiable, Equatable {
     let rowID: RowID
     let type: ChangeType
     var cellChanges: [CellChange]
-    let originalRow: [PluginCellValue]?
+    var originalRow: [PluginCellValue]?
 
     /// The columns the row has no field for: as it was read for an update or a delete, and as it
     /// stands for an insert. Empty on every engine that cannot tell a missing field from NULL.

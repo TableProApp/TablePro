@@ -129,7 +129,12 @@ enum ExportPreselection: Equatable {
 /// Defines the export mode: either exporting database tables or in-memory query results.
 enum ExportMode {
     case tables(connection: DatabaseConnection, preselection: ExportPreselection)
-    case queryResults(connection: DatabaseConnection, tableRows: TableRows, suggestedFileName: String)
+    case queryResults(
+        connection: DatabaseConnection,
+        tableRows: TableRows,
+        suggestedFileName: String,
+        fillUnloaded: UnloadedValueFill? = nil
+    )
     case streamingQuery(connection: DatabaseConnection, query: String, suggestedFileName: String)
     case dataSource(DataSourceExportRequest)
 }
@@ -138,7 +143,7 @@ internal extension ExportMode {
     var connection: DatabaseConnection? {
         switch self {
         case .tables(let connection, _),
-             .queryResults(let connection, _, _),
+             .queryResults(let connection, _, _, _),
              .streamingQuery(let connection, _, _):
             return connection
         case .dataSource:
@@ -151,7 +156,7 @@ internal extension ExportMode {
         case .dataSource(let request):
             return request.databaseTypeId
         case .tables(let connection, _),
-             .queryResults(let connection, _, _),
+             .queryResults(let connection, _, _, _),
              .streamingQuery(let connection, _, _):
             return connection.type.rawValue
         }
@@ -166,7 +171,7 @@ internal extension ExportMode {
         switch self {
         case .tables:
             return nil
-        case .queryResults(_, _, let name), .streamingQuery(_, _, let name):
+        case .queryResults(_, _, let name, _), .streamingQuery(_, _, let name):
             return name
         case .dataSource(let request):
             return request.suggestedFileName

@@ -411,6 +411,10 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         undoManagerProvider?()?.removeAllActions(withTarget: self)
     }
 
+    func adoptLoadedValues(_ values: [RowID: [Int: PluginCellValue]]) {
+        pending.adoptLoadedValues(values)
+    }
+
     func recordRowDeletion(rowID: RowID, originalRow: [PluginCellValue], absentColumns: Set<Int> = []) {
         pending.recordRowDeletion(rowID: rowID, originalRow: originalRow, absentColumns: absentColumns)
         registerUndo(actionName: String(localized: "Delete Row")) { target in
@@ -593,8 +597,10 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     private func applyRowDeletionUndo(
         rowID: RowID, originalRow: [PluginCellValue], absentColumns: Set<Int>, action: UndoAction
     ) {
+        // The pending deletion's image, which a value loaded since the delete has completed.
+        let image = pending.change(forRow: rowID, type: .delete)?.originalRow ?? originalRow
         registerUndo(actionName: String(localized: "Delete Row")) { target in
-            target.applyDataUndo(.rowDeletion(rowID: rowID, originalRow: originalRow, absentColumns: absentColumns))
+            target.applyDataUndo(.rowDeletion(rowID: rowID, originalRow: image, absentColumns: absentColumns))
         }
 
         if pending.isRowDeleted(rowID) {
@@ -617,8 +623,11 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         absentColumns: [RowID: Set<Int>],
         action: UndoAction
     ) {
+        let images = rows.map { row in
+            (rowID: row.rowID, originalRow: pending.change(forRow: row.rowID, type: .delete)?.originalRow ?? row.originalRow)
+        }
         registerUndo(actionName: String(localized: "Delete Rows")) { target in
-            target.applyDataUndo(.batchRowDeletion(rows: rows, absentColumns: absentColumns))
+            target.applyDataUndo(.batchRowDeletion(rows: images, absentColumns: absentColumns))
         }
 
         let isUndo = rows.contains { pending.isRowDeleted($0.rowID) }
@@ -705,7 +714,12 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     /// The steps are what runs. The operations are what a rewind would need, and they are built
     /// from the change set rather than read back off the statements, so a driver that writes its
     /// own statements still produces a complete record.
-    func buildRowWrites(database: String, schema: String?, containsTableOperation: Bool) throws -> RowWriteBuild {
+    func buildRowWrites(
+        database: String,
+        schema: String?,
+        containsTableOperation: Bool,
+        rowsWithUnloadedValues: Set<RowID> = []
+    ) throws -> RowWriteBuild {
         let factory = try statementFactory()
         let operations = RowWriteOperationBuilder.operations(
             from: pending.changes,
@@ -716,7 +730,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
             generatedColumns: generatedColumns,
-            containsTableOperation: containsTableOperation
+            containsTableOperation: containsTableOperation,
+            rowsWithUnloadedValues: rowsWithUnloadedValues
         )
 
         let steps = try writeSteps(

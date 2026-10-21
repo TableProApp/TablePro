@@ -22,6 +22,12 @@ extension TableViewCoordinator {
     }
 
     func handleCellInteraction(row: Int, tableColumn: Int, columnIndex: Int, tableView: NSTableView) {
+        let retry: @MainActor () -> Void = { [weak self, weak tableView] in
+            guard let self, let tableView else { return }
+            self.handleCellInteraction(row: row, tableColumn: tableColumn, columnIndex: columnIndex, tableView: tableView)
+        }
+        guard unloadedValuesAreLoaded(displayRows: [row], columns: IndexSet(integer: columnIndex), retry: retry)
+        else { return }
         guard let context = makeCellContext(row: row, columnIndex: columnIndex) else { return }
         guard presentsCell(row: row, tableColumnIndex: tableColumn) else { return }
 
@@ -100,6 +106,9 @@ extension TableViewCoordinator {
         guard !isRowDeleted(displayRow: row) else { return }
         guard let tableView else { return }
         guard let column = tableColumnIndex(for: columnIndex) else { return }
+        guard unloadedValuesAreLoaded(displayRows: [row], columns: IndexSet(integer: columnIndex), retry: { [weak self] in
+            self?.handleChevronAction(row: row, columnIndex: columnIndex)
+        }) else { return }
 
         if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
             showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)

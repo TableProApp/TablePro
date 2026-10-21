@@ -20,6 +20,7 @@ extension TableViewCoordinator {
         guard !isRowDeleted(displayRow: row) else { return .blocked }
 
         guard isColumnWritable(tableRows.columns[columnIndex]) else { return .blocked }
+        guard !isUnloaded(row: row, columnIndex: columnIndex) else { return .blocked }
 
         if columnIndex < tableRows.columnTypes.count {
             let ct = tableRows.columnTypes[columnIndex]

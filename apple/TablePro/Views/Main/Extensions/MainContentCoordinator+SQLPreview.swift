@@ -111,7 +111,8 @@ extension MainContentCoordinator {
             let rowWrite = try changeManager.buildRowWrites(
                 database: scope.database,
                 schema: scope.schema,
-                containsTableOperation: hasPendingTableOps
+                containsTableOperation: hasPendingTableOps,
+                rowsWithUnloadedValues: rowsWithUnloadedValues()
             )
             steps.append(contentsOf: rowWrite.steps)
             rowOperations = rowWrite.operations
