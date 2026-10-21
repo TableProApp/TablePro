@@ -1,5 +1,6 @@
 // One connect with the TLS options an app's CMariaDB.h sets for an SSL mode; -DTABLEPRO_IOS picks the iOS header.
-// usage: tls-client <host> <port> <disabled|preferred|required|verify-ca|verify-identity> <secret> [ca|-] [server-name]
+// Preferred is two of these in the apps: Required, then Disabled after an SSL-only error.
+// usage: tls-client <host> <port> <disabled|required|verify-ca|verify-identity> <secret> [ca|-] [server-name]
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,10 +32,10 @@ int main(int argc, char **argv) {
 
     my_bool on = 1;
     my_bool off = 0;
-    if (strcmp(mode, "disabled") == 0 || strcmp(mode, "preferred") == 0) {
-        mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, strcmp(mode, "preferred") == 0 ? &on : &off);
+    if (strcmp(mode, "disabled") == 0) {
+        mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &off);
         mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &off);
-        // MySQLPlaintextPassword.methodsWithoutTLS, which both apps set on a session that may run without TLS.
+        // MySQLPlaintextPassword.methodsWithoutTLS, which both apps set on a session without TLS.
         mysql_optionsv(mysql, MARIADB_OPT_RESTRICTED_AUTH,
                        "mysql_native_password,caching_sha2_password,sha256_password,mysql_old_password,"
                        "client_ed25519,parsec,auth_gssapi_client");

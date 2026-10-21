@@ -177,6 +177,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             database: activeDatabaseName,
             sslConfig: sslConfig,
             enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true",
+            tunnelSecuresTransport: config.additionalFields["tunnelSecuresTransport"] == "true",
             queryTimeoutSeconds: config.additionalFields["queryTimeoutSeconds"].flatMap { Int($0) } ?? 0,
             connectionEncoding: MySQLConnectionEncoding(additionalFields: config.additionalFields),
             connectTimeoutMilliseconds: connectTimeout.milliseconds,

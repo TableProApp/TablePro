@@ -324,6 +324,21 @@ struct CloudSQLIAMAuthTests {
         #expect(connection(type: .mysql, auth: "off").transportSSLConfiguration.mode == .disabled)
     }
 
+    // The MySQL driver sends a password asked for in plain text without TLS only when this claim is set.
+    @Test("A saved field claiming the tunnel secures the transport is dropped before connecting")
+    func savedSecuredTransportClaimIsDropped() async throws {
+        var direct = connection(type: .mysql, auth: "gcpApplicationDefault")
+        direct.additionalFields[DatabaseConnection.tunnelSecuresTransportKey] = "true"
+
+        let effective = try await DatabaseManager.shared.buildEffectiveConnection(
+            for: direct,
+            deadline: ConnectionDeadline(configuredSeconds: 60)
+        )
+
+        #expect(!effective.tunnelSecuresTransport)
+        #expect(effective.transportSSLConfiguration.mode == .required)
+    }
+
     @Test("Behind the Cloud SQL Auth Proxy a token sign-in keeps SSL as set")
     func proxyKeepsSSL() {
         let direct = connection(type: .mysql, auth: "gcpApplicationDefault")

@@ -31,12 +31,50 @@ struct MariaDBTLSModeTests {
         #expect(!served.sawInPlaintext(Self.secret))
     }
 
+    // Preferred asks for TLS outright first, so a server without it sees one attempt end before the sign-in.
     @Test("Preferred still signs in to a server without TLS that takes the hashed password")
     func preferredFallsBack() async throws {
         let server = try PlaintextMySQLServer(asksForCleartext: false)
         defer { server.close() }
-        async let session = server.serveOneSession()
+        async let sessions = server.serve(sessions: 2)
         let connection = connection(port: server.port, mode: .preferred, cleartext: false)
+
+        try await connection.connect()
+        connection.disconnect()
+
+        let served = await sessions
+        #expect(!served[0].sawLogin)
+        #expect(served[1].loggedIn)
+    }
+
+    // Connector/C 3.4.4 reads a requested TLS as an established one for caching_sha2_password's full authentication.
+    @Test("Preferred never sends the typed password to a server without TLS that asks for full SHA-2 authentication")
+    func preferredKeepsPasswordFromFullSHA2Auth() async throws {
+        let server = try PlaintextMySQLServer(asksForFullSHA2Auth: true)
+        defer { server.close() }
+        async let sessions = server.serve(sessions: 2)
+        let connection = connection(port: server.port, mode: .preferred, cleartext: false)
+
+        _ = try? await connection.connect()
+
+        let served = await sessions
+        #expect(!served.contains { $0.loggedIn || $0.sawInPlaintext(Self.secret) })
+    }
+
+    @Test("Behind the Cloud SQL Auth Proxy, which encrypts the hop itself, a token asked for in plain text is sent")
+    func securedTunnelSendsPlaintextPassword() async throws {
+        let server = try PlaintextMySQLServer()
+        defer { server.close() }
+        async let session = server.serveOneSession()
+        let connection = MariaDBPluginConnection(
+            transport: .tcp(host: "127.0.0.1", port: UInt32(server.port)),
+            user: "app",
+            password: Self.secret,
+            database: "",
+            sslConfig: SSLConfiguration(mode: .disabled),
+            enableCleartextPlugin: true,
+            tunnelSecuresTransport: true
+        )
 
         try await connection.connect()
         connection.disconnect()
@@ -84,7 +122,8 @@ struct MariaDBTLSModeTests {
     }
 }
 
-// One session: a handshake without CLIENT_SSL, then a switch to mysql_clear_password, then OK.
+// One session: a handshake without CLIENT_SSL, then a switch to mysql_clear_password (or to caching_sha2_password and
+// its full authentication), then OK.
 private final class PlaintextMySQLServer: @unchecked Sendable {
     struct SetupFailure: Error {}
 
@@ -104,14 +143,18 @@ private final class PlaintextMySQLServer: @unchecked Sendable {
 
     private static let okPacket: [UInt8] = [0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00]
     private static let switchToCleartext: [UInt8] = [0xFE] + Array("mysql_clear_password".utf8) + [0]
+    private static let switchToSHA2: [UInt8] = [0xFE] + Array("caching_sha2_password".utf8) + [0]
+        + Array("abcdefghijklmnopqrst".utf8) + [0]
     private static let sslRequestLength = 32
 
     let port: Int
     private let listener: Int32
     private let asksForCleartext: Bool
+    private let asksForFullSHA2Auth: Bool
 
-    init(asksForCleartext: Bool = true) throws {
+    init(asksForCleartext: Bool = true, asksForFullSHA2Auth: Bool = false) throws {
         self.asksForCleartext = asksForCleartext
+        self.asksForFullSHA2Auth = asksForFullSHA2Auth
         let socketFD = socket(AF_INET, SOCK_STREAM, 0)
         guard socketFD >= 0 else { throw SetupFailure() }
         var option: Int32 = 1
@@ -168,6 +211,15 @@ private final class PlaintextMySQLServer: @unchecked Sendable {
         }
         guard login.payload.count != Self.sslRequestLength else { return session }
         session.sawLogin = true
+        if asksForFullSHA2Auth {
+            // A client that thinks the session is secure answers the full-authentication request with the password.
+            guard send(Self.switchToSHA2, sequence: login.sequence &+ 1, to: client),
+                  let scramble = readPacket(client, into: &session),
+                  send([0x01, 0x04], sequence: scramble.sequence &+ 1, to: client)
+            else { return session }
+            _ = readPacket(client, into: &session)
+            return session
+        }
         if asksForCleartext {
             guard send(Self.switchToCleartext, sequence: login.sequence &+ 1, to: client),
                   let answer = readPacket(client, into: &session),

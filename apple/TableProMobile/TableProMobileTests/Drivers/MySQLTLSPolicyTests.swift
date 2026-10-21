@@ -31,19 +31,21 @@ struct MySQLTLSPolicyTests {
         #expect(!served.sawInPlaintext(Self.password))
     }
 
+    // Preferred asks for TLS outright first, so a server without it sees one attempt end before the sign-in.
     @Test("Preferred still signs in to a server without TLS, in plaintext")
     func preferredFallsBackToPlaintext() async throws {
         let server = try FakeMySQLServer(identity: nil)
         defer { server.close() }
-        async let session = server.serveOneSession()
+        async let sessions = server.serve(sessions: 2)
         let driver = driver(port: server.port, ssl: DriverSSLConfiguration(mode: .require, isPreferred: true))
 
         try await driver.connect()
         try await driver.disconnect()
 
-        let served = await session
-        #expect(!served.encrypted)
-        #expect(served.loggedIn)
+        let served = await sessions
+        #expect(!served[0].sawLogin)
+        #expect(!served[1].encrypted)
+        #expect(served[1].loggedIn)
     }
 
     // A server, or anyone who strips TLS on the way, can ask for the password as typed; the mysql client refuses.
@@ -64,21 +66,34 @@ struct MySQLTLSPolicyTests {
         #expect(!served.contains { $0.sawInPlaintext(Self.password) })
     }
 
-    @Test("Preferred sends a password asked for in plain text once TLS is required, to a server that has TLS")
+    // Connector/C 3.4.4 reads a requested TLS as an established one for caching_sha2_password's full authentication.
+    @Test("Preferred never sends the typed password to a server without TLS that asks for full SHA-2 authentication")
+    func preferredKeepsPasswordFromFullSHA2Auth() async throws {
+        let server = try FakeMySQLServer(identity: nil, asksForFullSHA2Auth: true)
+        defer { server.close() }
+        async let sessions = server.serve(sessions: 2)
+
+        _ = await connectOutcome(port: server.port, ssl: DriverSSLConfiguration(mode: .require, isPreferred: true))
+
+        let served = await sessions
+        #expect(!served.contains { $0.sawInPlaintext(Self.password) })
+        #expect(!served.contains { $0.loggedIn })
+    }
+
+    @Test("Preferred sends a password asked for in plain text over TLS, to a server that has it")
     func preferredSendsPlaintextPasswordOverTLS() async throws {
         let server = try FakeMySQLServer(identity: .rogue, asksForCleartext: true)
         defer { server.close() }
-        async let sessions = server.serve(sessions: 2)
+        async let session = server.serveOneSession()
         let driver = driver(port: server.port, ssl: DriverSSLConfiguration(mode: .require, isPreferred: true))
 
         try await driver.connect()
         try await driver.disconnect()
 
-        let served = await sessions
-        #expect(served[0].cleartextPassword == nil)
-        #expect(served[1].encrypted)
-        #expect(served[1].cleartextPassword == Self.password)
-        #expect(served[1].loggedIn)
+        let served = await session
+        #expect(served.encrypted)
+        #expect(served.cleartextPassword == Self.password)
+        #expect(served.loggedIn)
     }
 
     @Test("Preferred retries in plaintext after a failed TLS handshake, as the Mac does")

@@ -562,23 +562,17 @@ private actor MySQLActor {
             host: host, port: portU32, user: user, password: password, database: database,
             signsInWithToken: signsInWithToken
         )
+        // Connector/C 3.4.4 takes a requested TLS for an established one and answers caching_sha2_password's full
+        // authentication with the typed password, so Preferred asks for TLS outright and falls back without it.
+        let firstPolicy: MySQLTLSPolicy = policy == .preferred ? .required : policy
         let handle: UnsafeMutablePointer<MYSQL>
         do {
             do {
-                handle = try await open(endpoint, ssl: ssl, policy: policy, serverName: serverName, deadline: deadline)
+                handle = try await open(endpoint, ssl: ssl, policy: firstPolicy, serverName: serverName, deadline: deadline)
             } catch let failure as AttemptFailure
                 where policy == .preferred && MariaDBSSLClassifier.sslOnlyErrorCodes.contains(failure.code) {
                 // Preferred retries in plaintext after a failed handshake, as the Mac does.
                 handle = try await open(endpoint, ssl: ssl, policy: .disabled, serverName: nil, deadline: deadline)
-            } catch let failure as AttemptFailure
-                where policy == .preferred && MySQLPlaintextPassword.isRefusal(code: failure.code) {
-                // Preferred may have had TLS, or may have lost it on the way, so the password goes only once TLS is
-                // required, as the Mac does.
-                do {
-                    handle = try await open(endpoint, ssl: ssl, policy: .required, serverName: nil, deadline: deadline)
-                } catch let retry as AttemptFailure where MariaDBSSLClassifier.sslOnlyErrorCodes.contains(retry.code) {
-                    throw failure
-                }
             }
         } catch let failure as AttemptFailure where MySQLPlaintextPassword.isRefusal(code: failure.code) {
             throw MySQLError.connectionFailed(MySQLPlaintextPassword.refusalMessage)

@@ -85,11 +85,10 @@ check() {
 }
 
 for app in macos ios; do
+    # Preferred is Required, then Disabled after an SSL-only error such as this refusal.
     check "Required, server without TLS" $app refuse "" 127.0.0.1 required "$SECRET"
-    # The server asks for the password in plain text, which goes only over TLS; the apps retry Preferred as Required.
-    check "Preferred, server without TLS" $app refuse "" 127.0.0.1 preferred "$SECRET"
-    check "Disabled, server without TLS" $app refuse "" 127.0.0.1 disabled "$SECRET"
-    check "Preferred, self-signed certificate" $app refuse "--cert self.pem --key self.key" 127.0.0.1 preferred "$SECRET"
+    # The server asks for the password in plain text, which goes only over TLS.
+    check "Disabled (Preferred's fallback), server without TLS" $app refuse "" 127.0.0.1 disabled "$SECRET"
     check "Required, self-signed certificate" $app connect "--cert self.pem --key self.key" 127.0.0.1 required "$SECRET"
     check "Verify CA, other name, dialed by name" $app connect "--cert other.pem --key other.key" localhost \
         verify-ca "$SECRET" ca.pem
