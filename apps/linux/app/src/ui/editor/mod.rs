@@ -20,6 +20,7 @@ mod sql_text;
 mod statement_band;
 mod statement_cursor;
 mod stream_pages;
+mod stream_view;
 mod streaming;
 mod timeout_retry;
 

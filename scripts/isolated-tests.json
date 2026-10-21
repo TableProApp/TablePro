@@ -485,6 +485,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::stream_view::tests::a_new_stream_page_is_appended_without_rebuilding_the_pages_already_shown"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::grid::context_menu::tests::the_cell_menu_opens_with_the_menu_key_and_shift_f10"
     ],
     [

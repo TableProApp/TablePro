@@ -576,6 +576,7 @@ fn build_streamed_result_widget(
             settings_store.clone(),
             result_view_key(outcome.identity, page_index as usize),
         );
+        widget.set_widget_name(&super::stream_view::page_widget_name(page_index));
         let label = gtk::Label::new(Some(&stream_page_label(page_index, page)));
         page_switcher.append_page(&widget, Some(&label));
     }
@@ -586,10 +587,12 @@ fn build_streamed_result_widget(
     } else if page_switcher.n_pages() > 0 {
         page_switcher.set_current_page(Some(page_switcher.n_pages() - 1));
     }
-    let progress = crate::tr!("Received {rows} rows · {pages} pages")
-        .replace("{rows}", &result.total_rows.to_string())
-        .replace("{pages}", &result.total_pages.to_string());
-    holder.append(&gtk::Label::new(Some(&progress)));
+    let progress = gtk::Label::new(Some(&stream_progress_text(result)));
+    if matches!(result.terminal, StreamTerminal::Loading) {
+        page_switcher.set_widget_name(super::stream_view::LIVE_PAGES);
+        progress.set_widget_name(super::stream_view::LIVE_PROGRESS);
+    }
+    holder.append(&progress);
     if let Some(request) = result.export.clone() {
         let export = gtk::Button::with_label(&crate::tr!("Export all rows…"));
         export.add_css_class("flat");
@@ -608,7 +611,13 @@ fn build_streamed_result_widget(
     holder.upcast()
 }
 
-fn stream_page_label(page_index: u64, result: &QueryResult) -> String {
+pub(super) fn stream_progress_text(result: &StreamedResult) -> String {
+    crate::tr!("Received {rows} rows · {pages} pages")
+        .replace("{rows}", &result.total_rows.to_string())
+        .replace("{pages}", &result.total_pages.to_string())
+}
+
+pub(super) fn stream_page_label(page_index: u64, result: &QueryResult) -> String {
     if result.rows.is_empty() {
         return crate::tr!("Rows 0");
     }
@@ -708,7 +717,7 @@ fn error_page(idx: usize, message: &str) -> adw::StatusPage {
         .build()
 }
 
-fn build_result_set_widget(
+pub(super) fn build_result_set_widget(
     result: &std::sync::Arc<tablepro_core::QueryResult>,
     grid_sender: &relm4::Sender<GridMsg>,
     connection_id: Option<uuid::Uuid>,
@@ -944,7 +953,7 @@ pub(crate) fn render_outcomes(
     }
 }
 
-fn result_view_key(identity: StatementIdentity, result_set_index: usize) -> ResultViewKey {
+pub(super) fn result_view_key(identity: StatementIdentity, result_set_index: usize) -> ResultViewKey {
     ResultViewKey {
         statement_identity: identity,
         result_set_index,

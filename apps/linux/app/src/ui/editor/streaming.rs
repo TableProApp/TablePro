@@ -92,8 +92,26 @@ impl SqlEditor {
             }
             (stream.outcome(StreamTerminal::Loading), stream.cache.total_rows())
         };
-        let shown = self.pinned.show(vec![outcome]);
+        let shown = self.pinned.show(vec![outcome.clone()]);
         self.refresh_pin_button();
+        let target = super::stream_view::LiveStreamTarget {
+            grid_sender: &self.grid_sender,
+            connection_id: self.connection_id,
+            database: self.database.clone(),
+            settings_store: self.result_view_settings.clone(),
+        };
+        let updated = match &outcome.kind {
+            StatementOutcomeKind::Streamed(result) => {
+                super::stream_view::update_live_stream(&self.results_holder, &outcome, result, &target)
+            }
+            _ => false,
+        };
+        if updated {
+            self.status
+                .set_label(&crate::tr!("Received {n} rows").replace("{n}", &total_rows.to_string()));
+            let _ = accepted.send(true);
+            return;
+        }
         clear_results_box(&self.results_holder);
         render_outcomes(
             &self.results_holder,
