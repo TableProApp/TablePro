@@ -413,6 +413,36 @@ mod dialog_tests {
             })
             .collect::<std::collections::HashSet<_>>();
         assert!(entries.len() > 40, "only {} distinct entries", entries.len());
+        let mut sections = Vec::new();
+        let mut pending = vec![dialog.clone().upcast::<gtk::Widget>()];
+        while let Some(widget) = pending.pop() {
+            if let Ok(section) = widget.clone().downcast::<gtk::ShortcutsSection>() {
+                sections.push(section);
+                continue;
+            }
+            let mut child = widget.first_child();
+            while let Some(next) = child {
+                child = next.next_sibling();
+                pending.push(next);
+            }
+        }
+        assert_eq!(sections.len(), 1);
+        assert_eq!(
+            sections[0].max_height(),
+            10,
+            "the rows split into columns that fit the screen"
+        );
+        let mut rows = Vec::new();
+        shortcuts_under(
+            sections[0].upcast_ref(),
+            &mut rows,
+            &mut std::collections::HashSet::new(),
+        );
+        let distinct = rows
+            .iter()
+            .map(|row| (row.title().unwrap_or_default(), row.accelerator().unwrap_or_default()))
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(distinct.len(), rows.len(), "a shortcut row is listed twice");
         let accelerator = |title: &str| {
             found
                 .iter()

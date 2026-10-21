@@ -106,12 +106,7 @@ pub fn present(
         glib::Propagation::Proceed
     });
     window.add_controller(escape);
-    let cancel = tokio_util::sync::CancellationToken::new();
-    let cancel_on_close = cancel.clone();
-    window.connect_close_request(move |_| {
-        cancel_on_close.cancel();
-        glib::Propagation::Proceed
-    });
+    let cancel = cancelled_on_close(&window);
     window.present();
 
     let buffer = view.buffer();
@@ -133,6 +128,16 @@ pub fn present(
         }
         buffer.set_text(&text);
     });
+}
+
+fn cancelled_on_close(window: &adw::Window) -> tokio_util::sync::CancellationToken {
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let cancel_on_close = cancel.clone();
+    window.connect_close_request(move |_| {
+        cancel_on_close.cancel();
+        glib::Propagation::Proceed
+    });
+    cancel
 }
 
 fn add_explain_pages(
@@ -166,6 +171,19 @@ fn format_explain_result(result: &tablepro_core::QueryResult) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn closing_the_explain_window_cancels_its_query() {
+        gtk::init().unwrap();
+        adw::init().unwrap();
+        let window = adw::Window::new();
+        let cancel = cancelled_on_close(&window);
+        assert!(!cancel.is_cancelled());
+        window.present();
+        window.close();
+        assert!(cancel.is_cancelled());
+    }
 
     #[test]
     #[ignore = "requires an isolated GTK display"]

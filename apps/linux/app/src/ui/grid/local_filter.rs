@@ -437,6 +437,34 @@ mod tests {
 
     #[test]
     #[ignore = "requires isolated GTK display"]
+    fn filtering_a_fully_selected_result_restores_the_selection_in_one_signal() {
+        gtk4::init().unwrap();
+        let result = Arc::new(result((0..2000_i64).map(|value| Value::Int(value % 2)).collect()));
+        let store = crate::ui::row_store::RowStore::from_shared(result.clone());
+        let selection = gtk4::MultiSelection::new(Some(store.clone()));
+        let key = ResultViewKey {
+            statement_identity: crate::ui::editor::StatementIdentity {
+                statement_index: 0,
+                digest: [2; 32],
+            },
+            result_set_index: 0,
+        };
+        let view = LocalResultView::new(result.clone(), LocalResultSettingsStore::default(), key);
+        view.attach(store.clone(), selection.clone());
+        selection.select_all();
+        let emissions = std::rc::Rc::new(std::cell::Cell::new(0_u32));
+        let counter = emissions.clone();
+        selection.connect_selection_changed(move |_, _, _| counter.set(counter.get() + 1));
+
+        view.filter_by_value(0, Value::Int(1));
+
+        assert_eq!(store.n_items(), 1000);
+        assert_eq!(selection.selection().size(), 1000);
+        assert!(emissions.get() <= 2, "{} selection-changed emissions", emissions.get());
+    }
+
+    #[test]
+    #[ignore = "requires isolated GTK display"]
     fn sorting_a_truncated_result_without_a_filter_warns_that_only_loaded_rows_were_sorted() {
         gtk4::init().unwrap();
         let mut loaded = result(vec![Value::Int(3), Value::Int(1), Value::Int(2)]);

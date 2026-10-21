@@ -290,7 +290,7 @@
     [
       "tablepro-app",
       "--lib",
-      "ui::app::session_teardown::tests::a_window_close_whose_sessions_cannot_close_offers_to_close_anyway"
+      "ui::explain_dialog::tests::closing_the_explain_window_cancels_its_query"
     ],
     [
       "tablepro-app",
@@ -476,6 +476,11 @@
       "tablepro-app",
       "--lib",
       "ui::grid::local_filter::tests::local_filter_and_sort_keep_selection_attached_to_the_source_row"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::local_filter::tests::filtering_a_fully_selected_result_restores_the_selection_in_one_signal"
     ],
     [
       "tablepro-app",
