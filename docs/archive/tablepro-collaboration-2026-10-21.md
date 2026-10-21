@@ -10,6 +10,14 @@ Pinned upstream: [`9541927e2d8336ef425c7005ba2254982e423b8f`](https://github.com
 
 No upstream build scripts were executed. No builds, database experiments or GTK acceptance runs back this review. Performance numbers and upstream test results below are attributed reports. Candidate defects need a failing BookiE regression before implementation. Open PRs are not shipped main-branch behavior.
 
+## Implementation follow-up, October 21
+
+The source review above remains pinned to its recorded commits. Subsequent BookiE work:
+
+- Fixed column sizing is complete in [PR #1267](https://github.com/cozyGarage/BookiE/pull/1267), merged as `fc66c589e59aa0f944b604455683b03cd7f1e3b6`. [Issue #1266](https://github.com/cozyGarage/BookiE/issues/1266) is closed. Three rendered-width regressions failed against the original implementation and passed with the fix. Local checks, all 81 isolated GTK widget cases, GitHub checks and Forgejo run #835 passed. The [implementation evidence](../evidence/grid-fixed-width-2026-10-21/README.md) records scope and limitations.
+- Large-catalog work remains open under [#580](https://github.com/cozyGarage/BookiE/issues/580). Source verification found an existing schema filter and persisted hidden-schema settings; the remaining proposal concerns measured responsiveness and driver scoping. The [issue follow-up](https://github.com/cozyGarage/BookiE/issues/580#issuecomment-6315099855) records that distinction. No latency or allocation baseline has been established. Coordinate completion changes with open PR #1236.
+- PostgreSQL round-trip fixtures, SSH authentication scenarios and Vietnamese translation adoption remain proposals. Existing export/import PRs retain ownership of their overlapping changes. No upstream contribution has been submitted.
+
 ## Architecture comparison and adaptation costs
 
 | Concern | Upstream at the pin | BookiE | Consequence |
