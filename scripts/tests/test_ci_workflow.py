@@ -86,6 +86,7 @@ class CiWorkflowTests(unittest.TestCase):
         local = (ROOT / "scripts/ci-local.sh").read_text()
         for package, target in [
             ("tablepro-mcp", "mongodb_extended_json"),
+            ("tablepro-mcp", "postgres_custom_enum"),
             ("tablepro-policy", "session_postgres"),
             ("tablepro-policy", "session_mssql"),
         ]:
@@ -151,6 +152,7 @@ class CiWorkflowTests(unittest.TestCase):
         ledger = subprocess.check_output(["python3", str(ROOT / "scripts/inventory-ignored-tests.py")], text=True)
         for package, target in [
             ("tablepro-mcp", "mongodb_extended_json"),
+            ("tablepro-mcp", "postgres_custom_enum"),
             ("tablepro-policy", "session_postgres"),
             ("tablepro-policy", "session_mssql"),
         ]:

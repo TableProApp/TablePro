@@ -263,6 +263,7 @@ jobs:
         run: |
           cd src
           cargo test --locked -p tablepro-mcp --test mongodb_extended_json -- --include-ignored --test-threads=1
+          cargo test --locked -p tablepro-mcp --test postgres_custom_enum -- --include-ignored --test-threads=1
           cargo test --locked -p tablepro-policy --test session_postgres -- --include-ignored --test-threads=1
           cargo test --locked -p tablepro-policy --test session_mssql -- --include-ignored --test-threads=1
       - name: App server tests

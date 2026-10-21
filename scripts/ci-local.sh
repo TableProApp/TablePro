@@ -76,6 +76,7 @@ run_integration() {
     -p tablepro-driver-clickhouse -p tablepro-driver-redis -p tablepro-driver-mongodb \
     -- --include-ignored --test-threads=1
   cargo test --locked -p tablepro-mcp --test mongodb_extended_json -- --include-ignored --test-threads=1
+  cargo test --locked -p tablepro-mcp --test postgres_custom_enum -- --include-ignored --test-threads=1
   cargo test --locked -p tablepro-policy --test session_postgres -- --include-ignored --test-threads=1
   cargo test --locked -p tablepro-policy --test session_mssql -- --include-ignored --test-threads=1
   echo "==> PostgreSQL Unix-socket integration"

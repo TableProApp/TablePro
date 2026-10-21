@@ -356,10 +356,10 @@ async fn postgres_domain_over_enum_values_survive_mcp_query_export_and_csv_impor
     assert_eq!(
         response["rows"],
         serde_json::json!([
-            [1, "NULL", "mcp_domain_enum.state_domain"],
-            [2, "", "mcp_domain_enum.state_domain"],
-            [3, "東京", "mcp_domain_enum.state_domain"],
-            [4, null, "mcp_domain_enum.state_domain"],
+            [{"$type":"int64","value":"1"}, {"$type":"text","value":"NULL"}, {"$type":"text","value":"mcp_domain_enum.state_domain"}],
+            [{"$type":"int64","value":"2"}, {"$type":"text","value":""}, {"$type":"text","value":"mcp_domain_enum.state_domain"}],
+            [{"$type":"int64","value":"3"}, {"$type":"text","value":"東京"}, {"$type":"text","value":"mcp_domain_enum.state_domain"}],
+            [{"$type":"int64","value":"4"}, {"$type":"null"}, {"$type":"text","value":"mcp_domain_enum.state_domain"}],
         ])
     );
     assert_eq!(response["truncated"], false);
