@@ -319,7 +319,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let query = """
             SELECT name, type FROM sqlite_master
             WHERE type IN ('table', 'view')
-            AND name NOT LIKE 'sqlite_%'
+            AND name NOT GLOB 'sqlite_*'
             AND name NOT GLOB 'libsql_*'
             ORDER BY name
             """
@@ -362,7 +362,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let query = """
             SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk
             FROM sqlite_master m, pragma_table_info(m.name) p
-            WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' AND m.name NOT GLOB 'libsql_*'
+            WHERE m.type = 'table' AND m.name NOT GLOB 'sqlite_*' AND m.name NOT GLOB 'libsql_*'
             ORDER BY m.name, p.cid
             """
         let result = try await execute(query: query)
@@ -400,44 +400,8 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        let query = """
-            SELECT m.name AS table_name, p.id, p."table" AS referenced_table,
-                   p."from" AS column_name, p."to" AS referenced_column,
-                   p.on_update, p.on_delete
-            FROM sqlite_master m, pragma_foreign_key_list(m.name) p
-            WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' AND m.name NOT GLOB 'libsql_*'
-            ORDER BY m.name, p.id, p.seq
-            """
-        let result = try await execute(query: query)
-
-        var allForeignKeys: [String: [PluginForeignKeyInfo]] = [:]
-
-        for row in result.rows {
-            guard row.count >= 7,
-                  let tableName = row[0].asText,
-                  let id = row[1].asText,
-                  let refTable = row[2].asText,
-                  let fromCol = row[3].asText,
-                  let toCol = row[4].asText else {
-                continue
-            }
-
-            let onUpdate = row[5].asText ?? "NO ACTION"
-            let onDelete = row[6].asText ?? "NO ACTION"
-
-            let fk = PluginForeignKeyInfo(
-                name: "fk_\(tableName)_\(id)",
-                column: fromCol,
-                referencedTable: refTable,
-                referencedColumn: toCol,
-                onDelete: onDelete,
-                onUpdate: onUpdate
-            )
-
-            allForeignKeys[tableName, default: []].append(fk)
-        }
-
-        return allForeignKeys
+        let query = SQLiteForeignKeyGrouping.schemaForeignKeysQuery(excludingTableGlob: "libsql_*")
+        return SQLiteForeignKeyGrouping.foreignKeysByTable(fromRows: try await execute(query: query).rows)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
@@ -446,31 +410,8 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        let safeTable = escapeStringLiteral(table)
-        let query = "PRAGMA foreign_key_list('\(safeTable)')"
-        let result = try await execute(query: query)
-
-        return result.rows.compactMap { row in
-            guard row.count >= 5,
-                  let refTable = row[2].asText,
-                  let fromCol = row[3].asText,
-                  let toCol = row[4].asText else {
-                return nil
-            }
-
-            let id = row[0].asText ?? "0"
-            let onUpdate = row.count >= 6 ? (row[5].asText ?? "NO ACTION") : "NO ACTION"
-            let onDelete = row.count >= 7 ? (row[6].asText ?? "NO ACTION") : "NO ACTION"
-
-            return PluginForeignKeyInfo(
-                name: "fk_\(table)_\(id)",
-                column: fromCol,
-                referencedTable: refTable,
-                referencedColumn: toCol,
-                onDelete: onDelete,
-                onUpdate: onUpdate
-            )
-        }
+        let result = try await execute(query: SQLiteForeignKeyGrouping.foreignKeysQuery(table: table))
+        return SQLiteForeignKeyGrouping.foreignKeys(table: table, fromRows: result.rows)
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
@@ -652,7 +593,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             '' as comment
         FROM sqlite_master
         WHERE type IN ('table', 'view')
-        AND name NOT LIKE 'sqlite_%'
+        AND name NOT GLOB 'sqlite_*'
         AND name NOT GLOB 'libsql_*'
         ORDER BY name
         """

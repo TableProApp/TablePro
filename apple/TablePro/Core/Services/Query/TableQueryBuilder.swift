@@ -129,7 +129,7 @@ struct TableQueryBuilder {
 
         let filterGen = FilterSQLGenerator(
             dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
-            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType), databaseType: databaseType
         )
         let whereClause = filterGen.generateWhereClause(from: filters.filter { $0.isEnabled }, logicMode: logicMode)
         if !whereClause.isEmpty {
@@ -191,7 +191,7 @@ struct TableQueryBuilder {
         let activeFilters = filters.filter { $0.isEnabled }
         let filterGen = FilterSQLGenerator(
             dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
-            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType), databaseType: databaseType
         )
         let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode)
 

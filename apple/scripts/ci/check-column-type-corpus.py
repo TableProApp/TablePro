@@ -2,7 +2,8 @@
 """Fail when a driver lists a column type its corpus has no column for.
 
 Each Plugins/ColumnTypeCorpus/Corpus/<engine>.json names, under "typeList", the Swift file that holds its driver's
-`columnTypesByCategory`, a dictionary literal or one built from a `categories` literal. A list this cannot read
+`columnTypesByCategory`, a dictionary literal or one built from a `categories` literal (or a `<name>Categories` one,
+as the shared vocabulary names Oracle's). A list this cannot read
 fails, so a reshaped list never reads as empty. The probe, scripts/probes/check-column-type-corpus.sh, checks the
 compiled list too.
 
@@ -19,7 +20,7 @@ from pathlib import Path
 APPLE_DIR = Path(__file__).resolve().parents[2]
 CORPUS_DIR = APPLE_DIR / "Plugins" / "ColumnTypeCorpus" / "Corpus"
 STEPS = {"create", "insert", "columns", "browse", "stream", "edit", "csv", "json", "sql"}
-DECLARATION = re.compile(r"\bstatic\s+let\s+(columnTypesByCategory|categories)\b[^=]*=\s*\[")
+DECLARATION = re.compile(r"\bstatic\s+let\s+(columnTypesByCategory|\w*[cC]ategories)\b[^=]*=\s*\[")
 
 
 class Unreadable(Exception):
@@ -48,7 +49,11 @@ def literal_after(text, start):
 # The strings inside an inner list are the types; the ones outside are category names.
 def listed_types(source):
     declarations = {match.group(1): match for match in DECLARATION.finditer(source)}
-    match = declarations.get("columnTypesByCategory") or declarations.get("categories")
+    match = (
+        declarations.get("columnTypesByCategory")
+        or declarations.get("categories")
+        or next(iter(declarations.values()), None)
+    )
     if match is None:
         raise Unreadable("no columnTypesByCategory or categories list literal")
     literal = literal_after(source, match.end() - 1)

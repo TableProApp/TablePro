@@ -32,6 +32,15 @@ internal enum SQLTypeFamily: String, Hashable, Sendable, CaseIterable {
         familiesByTypeId[type.rawValue] ?? .generic
     }
 
+    /// MySQL reads a `BIT` back as the number it holds; PostgreSQL and DuckDB read theirs as a string of digits.
+    internal var readsBitsAsDecimal: Bool { self == .mysql }
+
+    /// Whether `BIT` names a string of digits here rather than a boolean or a number.
+    internal func readsAsBitString(_ rawType: String) -> Bool {
+        guard case .bitString = SQLTypeParser.parse(rawType, family: self).kind else { return false }
+        return !readsBitsAsDecimal
+    }
+
     /// Whether a copy between these two needs its types translated at all.
     internal static func needsTranslation(from source: DatabaseType, to target: DatabaseType) -> Bool {
         guard source != target else { return false }

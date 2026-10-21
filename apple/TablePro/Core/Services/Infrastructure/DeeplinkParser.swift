@@ -319,13 +319,16 @@ internal enum DeeplinkParser {
             MySQLLocalSocket.fieldKey: value("socket") ?? fields[MySQLLocalSocket.fieldKey] ?? ""
         ])
         fields.removeValue(forKey: MySQLLocalSocket.fieldKey)
+        var port = value("port").flatMap(Int.init) ?? dbType.defaultPort
         var socketPath: String?
         if let requestedSocket, dbType.supportsLocalSocket, value("ssh") != "1" {
-            guard MySQLLocalSocket.issue(for: requestedSocket) == nil else {
+            let socket = LocalSocketEndpoint(path: requestedSocket, port: port, type: dbType)
+            guard socket.issue == nil else {
                 return .failure(.invalidParameter("socket"))
             }
-            socketPath = requestedSocket
-            fields[MySQLLocalSocket.fieldKey] = requestedSocket
+            socketPath = socket.path
+            port = socket.port
+            fields[MySQLLocalSocket.fieldKey] = socket.path
         }
         let additionalFields: [String: String]? = fields.isEmpty ? nil : fields
 
@@ -333,8 +336,6 @@ internal enum DeeplinkParser {
             return .failure(.missingRequiredParam("host"))
         }
         let host = givenHost.isEmpty ? "localhost" : givenHost
-
-        let port = value("port").flatMap(Int.init) ?? dbType.defaultPort
         let username = value("username") ?? ""
         let database = value("database") ?? ""
 

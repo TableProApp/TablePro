@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import os
 import TableProDatabase
+import TableProSSHTransport
 
 /// What the user is being asked, as the screen shows it.
 struct ConnectionPrompt: Identifiable, Equatable {
@@ -11,11 +12,19 @@ struct ConnectionPrompt: Identifiable, Equatable {
         case notice
     }
 
+    struct Field: Equatable {
+        let label: String
+        let isSecure: Bool
+        let isCode: Bool
+    }
+
     let id = UUID()
     let title: String
     let message: String
     let confirmTitle: String
     var style: Style = .standard
+    // Text the user types in, one per field, for a question the SSH server asks during sign-in.
+    var fields: [Field] = []
 }
 
 /// The questions one connect attempt has to ask, shown by the screen that owns the attempt.
@@ -35,6 +44,7 @@ final class ConnectionPromptQueue: ConnectionPrompter {
     private(set) var generation = 0
 
     private var waiters: [UUID: CheckedContinuation<Bool, Never>] = [:]
+    private var typedValues: [UUID: [String]] = [:]
 
     var current: ConnectionPrompt? { pending.first }
 
@@ -42,6 +52,14 @@ final class ConnectionPromptQueue: ConnectionPrompter {
 
     func confirm(_ question: ConnectionQuestion) async -> Bool {
         await ask(Self.prompt(for: question))
+    }
+
+    nonisolated var answersChallenges: Bool { true }
+
+    func answer(_ challenge: KeyboardInteractiveChallenge) async -> [String]? {
+        let prompt = Self.prompt(for: challenge)
+        guard await ask(prompt) else { return nil }
+        return typedValues.removeValue(forKey: prompt.id) ?? Array(repeating: "", count: prompt.fields.count)
     }
 
     func ask(_ prompt: ConnectionPrompt) async -> Bool {
@@ -77,7 +95,8 @@ final class ConnectionPromptQueue: ConnectionPrompter {
         pending.append(prompt)
     }
 
-    func answer(_ id: UUID, accepted: Bool) {
+    func answer(_ id: UUID, accepted: Bool, typed values: [String] = []) {
+        if accepted, !values.isEmpty { typedValues[id] = values }
         pending.removeAll { $0.id == id }
         guard let waiter = waiters.removeValue(forKey: id) else { return }
         Self.logger.info("Connection prompt answered: \(accepted, privacy: .public)")
@@ -87,6 +106,7 @@ final class ConnectionPromptQueue: ConnectionPrompter {
     func cancelAll() {
         generation += 1
         pending.removeAll()
+        typedValues.removeAll()
         let abandoned = waiters
         waiters.removeAll()
         for (_, waiter) in abandoned { waiter.resume(returning: false) }
@@ -136,6 +156,23 @@ final class ConnectionPromptQueue: ConnectionPrompter {
                 style: .destructive
             )
         }
+    }
+
+    private static func prompt(for challenge: KeyboardInteractiveChallenge) -> ConnectionPrompt {
+        let name = challenge.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let instruction = challenge.instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ConnectionPrompt(
+            title: name.isEmpty ? String(localized: "SSH Sign-In") : name,
+            message: instruction.isEmpty ? String(localized: "The SSH server asks for more to finish signing in.") : instruction,
+            confirmTitle: String(localized: "Sign In"),
+            fields: challenge.prompts.map { prompt in
+                ConnectionPrompt.Field(
+                    label: prompt.text.trimmingCharacters(in: .whitespacesAndNewlines),
+                    isSecure: prompt.isSecure,
+                    isCode: KeyboardInteractivePromptKind(promptText: prompt.text) == .totp
+                )
+            }
+        )
     }
 
     private static func hostDisplay(_ host: String, _ port: Int) -> String {

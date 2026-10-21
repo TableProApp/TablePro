@@ -15,6 +15,7 @@
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProSSHTransport
 import Testing
 
 @testable import TableProMobile
@@ -83,8 +84,7 @@ struct SSHTunnelStagesSocketTests {
                     username: "deploy",
                     authMethod: .password
                 ),
-                remoteHost: "db.internal",
-                remotePort: 5_432,
+                destination: .tcp(host: "db.internal", port: 5_432),
                 credentials: SSHTunnelCredentials(password: "secret"),
                 prompter: StubPrompter(answer: true),
                 hostKeyStore: HostKeyStore(

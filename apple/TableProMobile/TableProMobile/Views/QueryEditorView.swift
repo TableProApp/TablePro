@@ -3,11 +3,14 @@ import SwiftUI
 import TableProDatabase
 import TableProModels
 import TableProQuery
+import TableProSQLGrammar
 
 struct QueryEditorView: View {
     @Environment(ConnectionCoordinator.self) private var coordinator
     @Environment(AppState.self) private var appState
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(SceneMenuState.self) private var menuState: SceneMenuState?
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryEditorView")
 
@@ -24,7 +27,16 @@ struct QueryEditorView: View {
     private var resultRowCount: Int {
         viewModel.legacyRows.count
     }
-    @State private var saveQueryTask: Task<Void, Never>?
+    @State private var draft = QueryDraftSaver()
+    @State private var deferredAdds: [String] = []
+    @State private var isOnScreen = false
+    @State private var menuOwner = UUID()
+    // Each window keeps its own text, a cleared one included; the saved draft only seeds a window that never had any.
+    @SceneStorage private var sceneQuery: String?
+
+    init(connectionId: UUID) {
+        _sceneQuery = SceneStorage("queryEditor.text.\(connectionId.uuidString)")
+    }
     @State private var executionStartTime: Date?
     @State private var showWriteConfirmation = false
     @State private var showWriteBlockedAlert = false
@@ -54,8 +66,62 @@ struct QueryEditorView: View {
             schema: activeSchema ?? "",
             databaseType: databaseType,
             tables: tables,
+            schemas: coordinator.supportsSchemas ? coordinator.schemas : [],
+            databases: coordinator.supportsDatabaseSwitching ? coordinator.databases : [],
+            temporaryTables: appState.catalogChanges.temporaryTables(
+                for: connectionId, driver: session.map { ObjectIdentifier($0.driver) }
+            ),
+            catalogRevision: appState.catalogChanges.generation(for: connectionId),
             isRunning: isExecuting
         )
+    }
+
+    private var sessionColumnReader: QueryColumnReader {
+        let transactions = appState.sessionTransactions
+        let connectionId = connectionId
+        return QueryCompletionController.columnReader(
+            session: { coordinator.session },
+            isBusy: { transactions.isBusy(connectionId) },
+            tracked: { read in try await transactions.track(connectionId, reading: true) { try await read() } }
+        )
+    }
+
+    private var sessionTableReader: QuerySchemaTableReader {
+        let transactions = appState.sessionTransactions
+        let connectionId = connectionId
+        return QueryCompletionController.tableReader(
+            session: { coordinator.session },
+            isBusy: { transactions.isBusy(connectionId) },
+            tracked: { read in try await transactions.track(connectionId, reading: true) { try await read() } }
+        )
+    }
+
+    // The active schema is named on every read: the catalog connection never switches schema, the session may.
+    private var catalogColumnReader: QueryColumnReader {
+        let manager = appState.connectionManager
+        let connectionId = connectionId
+        let database = coordinator.supportsDatabaseSwitching ? coordinator.activeDatabase : ""
+        let activeSchema = activeSchema
+        let coordinator = coordinator
+        return { table, schema in
+            guard await coordinator.catalogMatchesSession else { return nil }
+            return try await manager.readCatalog(for: connectionId, database: database) { driver in
+                try await driver.fetchColumns(table: table, schema: schema ?? activeSchema)
+            }
+        }
+    }
+
+    private var catalogTableReader: QuerySchemaTableReader {
+        let manager = appState.connectionManager
+        let connectionId = connectionId
+        let database = coordinator.supportsDatabaseSwitching ? coordinator.activeDatabase : ""
+        let coordinator = coordinator
+        return { schema in
+            guard await coordinator.catalogMatchesSession else { return nil }
+            return try await manager.readCatalog(for: connectionId, database: database) { driver in
+                try await driver.fetchTables(schema: schema)
+            }
+        }
     }
 
     var body: some View {
@@ -65,34 +131,60 @@ struct QueryEditorView: View {
             resultSection
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { containerSize = $0 }
+        .onChange(of: menuSignature, initial: true) {
+            menuState?.publishQueryEditor(menuActions, from: menuOwner)
+        }
         .onAppear {
             editorHandle.databaseType = databaseType
+            isOnScreen = true
             if let pending = coordinator.pendingQuery {
-                query = pending
                 coordinator.pendingQuery = nil
-            } else if query.isEmpty {
-                query = UserDefaults.standard.string(forKey: ConnectionDefaultsKey.lastQuery.name(for: connectionId)) ?? ""
+                deferredAdds.append(pending)
             }
+            let adds = deferredAdds
+            deferredAdds = []
+            guard query.isEmpty else {
+                // A turn later the text view sits in the window, so Undo can take the add back.
+                Task { @MainActor in
+                    for text in adds {
+                        applyAdd(text)
+                    }
+                }
+                return
+            }
+            // The text view takes the restored text on the next update, so these go through the binding.
+            var restored = sceneQuery ?? draft.restore(for: connectionId) ?? ""
+            var selection: NSRange?
+            for text in adds {
+                let edit = QueryTextInsertion.edit(
+                    adding: text, to: restored, databaseType: databaseType, session: editorHandle.sessionFacts
+                )
+                restored = QueryTextInsertion.applying(edit, to: restored)
+                selection = edit.selection
+            }
+            query = restored
+            if let selection { editorHandle.select(selection, onceTextIs: restored) }
         }
         .task(id: session.map { ObjectIdentifier($0.driver) }) {
             editorHandle.sessionFacts = await session?.driver.sessionLexicalFacts()
         }
         .onChange(of: query) { _, newValue in
-            saveQueryTask?.cancel()
-            saveQueryTask = Task {
-                try? await Task.sleep(for: .milliseconds(300))
-                guard !Task.isCancelled else { return }
-                UserDefaults.standard.set(newValue, forKey: ConnectionDefaultsKey.lastQuery.name(for: connectionId))
-            }
+            sceneQuery = newValue
+            draft.textChanged(newValue, for: connectionId)
         }
         .onDisappear {
-            saveQueryTask?.cancel()
+            isOnScreen = false
+            menuState?.withdrawQueryEditor(menuOwner)
+            draft.flush()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase != .active else { return }
+            draft.flush()
         }
         .onChange(of: coordinator.pendingQuery) { _, newQuery in
-            if let newQuery {
-                query = newQuery
-                coordinator.pendingQuery = nil
-            }
+            guard let newQuery else { return }
+            coordinator.pendingQuery = nil
+            add(newQuery)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             Task { await viewModel.handlePressure(.warning) }
@@ -101,7 +193,13 @@ struct QueryEditorView: View {
             Task { await viewModel.handlePressure(level) }
         }
         .onChange(of: completionScope, initial: true) { _, scope in
-            completion.update(scope: scope, readColumns: QueryCompletionController.columnReader { coordinator.session })
+            completion.update(
+                scope: scope,
+                readColumns: sessionColumnReader,
+                readCatalogColumns: catalogColumnReader,
+                readSchemaTables: sessionTableReader,
+                readCatalogSchemaTables: catalogTableReader
+            )
         }
         .alert(String(localized: "Write Query Blocked"), isPresented: $showWriteBlockedAlert) {
             Button("OK", role: .cancel) {}
@@ -172,9 +270,7 @@ struct QueryEditorView: View {
         HStack(spacing: 12) {
             if isExecuting {
                 Button {
-                    executeTask?.cancel()
-                    viewModel.stop()
-                    Task { try? await session?.driver.cancelCurrentQuery() }
+                    stop()
                 } label: {
                     Label(String(localized: "Stop"), systemImage: "stop.fill")
                         .font(.subheadline.weight(.medium))
@@ -182,7 +278,6 @@ struct QueryEditorView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .tint(.red)
-                .keyboardShortcut(".", modifiers: .command)
             } else {
                 Menu {
                     Button {
@@ -237,16 +332,50 @@ struct QueryEditorView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background {
-            Button(runAtCursorTitle) { runAtCursor(dismissingKeyboard: false) }
-                .keyboardShortcut(.return, modifiers: .command)
-                .disabled(!canRun)
-                .hidden()
-            Button("Run All Statements") { runAllStatements(dismissingKeyboard: false) }
-                .keyboardShortcut(.return, modifiers: [.command, .shift])
-                .disabled(!canRun)
-                .hidden()
+    }
+
+    // A template or history entry: Undo takes it back, so an editor not in the window yet takes it when it shows.
+    private func add(_ text: String) {
+        guard editorHandle.isInWindow else {
+            deferredAdds.append(text)
+            return
         }
+        applyAdd(text)
+    }
+
+    private func applyAdd(_ text: String) {
+        guard !editorHandle.add(text) else { return }
+        let edit = QueryTextInsertion.edit(
+            adding: text, to: query, databaseType: databaseType, session: editorHandle.sessionFacts
+        )
+        query = QueryTextInsertion.applying(edit, to: query)
+    }
+
+    private func stop() {
+        executeTask?.cancel()
+        viewModel.stop()
+        Task { try? await session?.driver.cancelCurrentQuery() }
+    }
+
+    // The actions hold closures, so this is what decides when the menu needs them again.
+    private var menuSignature: [String] {
+        guard let menuActions else { return [] }
+        return [menuActions.runTitle, String(menuActions.canRun), String(menuActions.isExecuting)]
+    }
+
+    private var menuActions: QueryEditorActions? {
+        guard QueryEditorActions.publishes(isOnScreen: isOnScreen, selectedTab: coordinator.selectedTab) else {
+            return nil
+        }
+        return QueryEditorActions(
+            runTitle: runAtCursorTitle,
+            canRun: canRun,
+            isExecuting: isExecuting,
+            run: { runAtCursor(dismissingKeyboard: false) },
+            runAll: { runAllStatements(dismissingKeyboard: false) },
+            stop: { stop() },
+            clear: { showClearConfirmation = true }
+        )
     }
 
     private var canRun: Bool {
@@ -522,7 +651,7 @@ struct QueryEditorView: View {
                             table: table.name, schema: activeSchema, type: databaseType
                         ) {
                             Button(table.name) {
-                                query = template
+                                add(template)
                             }
                         }
                     }
@@ -660,6 +789,7 @@ struct QueryEditorView: View {
         let script = await plan(trimmed, on: session)
         guard !script.isEmpty else {
             isExecuting = false
+            completion.reopenColumnReads()
             executionStartTime = nil
             reportNothingToRun()
             return
@@ -672,9 +802,16 @@ struct QueryEditorView: View {
             startedAt: startedAt
         )
 
+        let holdsCatalog = SessionLocalStatements.changesDatabases(trimmed, databaseType: databaseType)
+        if holdsCatalog { await appState.connectionManager.holdCatalogConnections(for: connectionId) }
+        // Waited on before the Stop check, and nothing suspends from here until `track` marks the session busy, which
+        // keeps a new list reload off it.
+        await appState.catalogChanges.sessionReadsFinished(for: connectionId)
         guard !Task.isCancelled else {
+            if holdsCatalog { appState.connectionManager.releaseCatalogConnections(for: connectionId) }
             recordHistory(query: trimmed, outcome: .stopped, errorMessage: QueryExecutionOutcome.stopped.historyMessage)
             isExecuting = false
+            completion.reopenColumnReads()
             executionStartTime = nil
             await appState.queryActivities.end(token: token, outcome: .stopped)
             return
@@ -682,11 +819,17 @@ struct QueryEditorView: View {
 
         let progressUpdater = startActivityProgressUpdater(token: token)
 
-        await coordinator.track(failed: { _ in QueryExecutionOutcome(phase: viewModel.phase) == .failed }) {
+        await coordinator.track(
+            failed: { _ in QueryExecutionOutcome(phase: viewModel.phase) == .failed },
+            rolledBack: { _ in viewModel.ranTransactionRollBack }
+        ) {
             await viewModel.run(driver: session.driver, script: script)
         }
 
         progressUpdater.cancel()
+        // Released before the change posts, so the reload it starts can open a catalog connection again.
+        if holdsCatalog { appState.connectionManager.releaseCatalogConnections(for: connectionId) }
+        postCatalogChanges(on: session)
         let phase = viewModel.phase
         let outcome = QueryExecutionOutcome(phase: phase)
 
@@ -717,9 +860,31 @@ struct QueryEditorView: View {
         }
 
         isExecuting = false
+        completion.reopenColumnReads()
         executionStartTime = nil
 
         await appState.queryActivities.end(token: token, outcome: outcome.activityOutcome)
+    }
+
+    // Every statement sent counts as run, a failed one's too: a missed reload leaves the lists naming what is gone.
+    // They are read as sent, since a run splits the rest of its text again after a statement that changes how the
+    // session reads literals.
+    private func postCatalogChanges(on session: ConnectionSession) {
+        guard databaseType.speaksSQL else { return }
+        let statements = viewModel.sentStatements
+        appState.catalogChanges.noteSessionEffect(
+            SessionLocalStatements.effect(of: statements, databaseType: databaseType),
+            for: connectionId,
+            driver: ObjectIdentifier(session.driver)
+        )
+        let grammar = SQLLexicalReadings.resolve(
+            databaseTypeId: databaseType.rawValue, declared: nil, session: nil
+        ).execution
+        let effect = SQLCatalogEffectClassifier.effect(ofStatements: statements, grammar: grammar)
+        var kinds = effect.kinds
+        // A commit shows the transaction's DDL to the catalog connection, a rollback takes it back from the session.
+        if effect.endsTransaction { kinds.formUnion([.tables, .schemas, .databases]) }
+        coordinator.noteCatalogChanged(kinds)
     }
 
     private func plan(_ text: String, on session: ConnectionSession) async -> QueryScript {

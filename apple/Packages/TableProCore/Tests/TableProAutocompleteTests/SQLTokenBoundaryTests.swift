@@ -222,4 +222,27 @@ struct SQLTokenBoundaryTests {
         let text = "SELECT a[ord" as NSString
         #expect(SQLTokenBoundary.segmentStart(in: text, endingAt: text.length, grammar: .engine(engine)) == 8)
     }
+
+    @Test("A caret still inside a quoted name keeps the name's start, spaces and all")
+    func segmentStartInsideAQuotedName() {
+        let closed = SQLQuotedName(open: 14, close: 24)
+        #expect(SQLTokenBoundary.segmentStart(inside: closed, in: "SELECT * FROM [Order Det]" as NSString, endingAt: 24) == 15)
+        #expect(SQLTokenBoundary.segmentStart(inside: closed, in: "SELECT * FROM [Order Details]" as NSString, endingAt: 21) == 15)
+        #expect(SQLTokenBoundary.segmentStart(inside: closed, in: "SELECT * FROM \"Order \"" as NSString, endingAt: 21) == 15)
+
+        let open = SQLQuotedName(open: 14, close: nil)
+        #expect(SQLTokenBoundary.segmentStart(inside: open, in: "SELECT * FROM `Order Det" as NSString, endingAt: 24) == 14)
+    }
+
+    @Test("A caret that left the quoted name has no start inside it")
+    func segmentStartOutsideAQuotedName() {
+        let closed = SQLQuotedName(open: 14, close: 24)
+        let text = "SELECT * FROM [Order Det] o" as NSString
+        #expect(SQLTokenBoundary.segmentStart(inside: closed, in: text, endingAt: 25) == nil)
+        #expect(SQLTokenBoundary.segmentStart(inside: closed, in: text, endingAt: 14) == nil)
+        #expect(SQLTokenBoundary.segmentStart(inside: closed, in: "SELECT * FROM xOrder Det]" as NSString, endingAt: 20) == nil)
+
+        let typedClose = "SELECT * FROM `Order Det` " as NSString
+        #expect(SQLTokenBoundary.segmentStart(inside: SQLQuotedName(open: 14, close: nil), in: typedClose, endingAt: 26) == nil)
+    }
 }

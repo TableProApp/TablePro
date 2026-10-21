@@ -47,7 +47,8 @@ struct SQLDialectParityTests {
             (.postgresql, .ilikeOperator),
             (.duckdb, .ilikeOperator),
             (.redshift, .caseFoldFunction),
-            (.oracle, .caseFoldFunction)
+            (.oracle, .caseFoldFunction),
+            (.clickhouse, .caseFoldFunction)
         ]
         for (type, style) in expected {
             #expect(

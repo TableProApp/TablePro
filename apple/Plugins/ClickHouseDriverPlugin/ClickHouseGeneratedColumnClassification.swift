@@ -9,7 +9,7 @@ import Foundation
 /// MATERIALIZED and ALIAS columns are computed by the server and reject a written
 /// value, so they must stay out of any INSERT. DEFAULT columns take a default when
 /// omitted but remain insertable, and an ordinary column reports an empty kind.
-internal func clickhouseColumnIsGenerated(defaultKind: String?) -> Bool {
+nonisolated internal func clickhouseColumnIsGenerated(defaultKind: String?) -> Bool {
     guard let defaultKind else { return false }
     let kind = defaultKind.trimmingCharacters(in: .whitespaces).uppercased()
     return kind == "MATERIALIZED" || kind == "ALIAS"

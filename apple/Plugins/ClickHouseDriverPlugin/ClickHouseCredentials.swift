@@ -5,7 +5,7 @@
 
 import Foundation
 
-internal enum ClickHouseCredentials {
+nonisolated internal enum ClickHouseCredentials {
     internal static let defaultUsername = "default"
 
     internal static func effectiveUsername(_ username: String) -> String {

@@ -52,7 +52,56 @@ nonisolated extension PostgreSQLDriver {
             from: shape,
             materializedViewsPresent: catalogPresence.hasMaterializedViews
         )
-        return Self.columns(fromRows: result.rows)
+        let columns = Self.columns(fromRows: result.rows)
+        return await withEnumLabels(columns, table: table, schema: schema)
+    }
+
+    // information_schema names an enum only USER-DEFINED, so its labels come from pg_enum: outside a transaction only,
+    // where a failed extra read cannot abort the user's work. A failed read keeps the columns.
+    private func withEnumLabels(_ columns: [ColumnInfo], table: String, schema: String) async -> [ColumnInfo] {
+        guard databaseType != .redshift, columns.contains(where: { $0.typeName == "USER-DEFINED" }),
+              await sessionTransactionState() == .idle else {
+            return columns
+        }
+        do {
+            let result = try await execute(query: Self.enumLabelsQuery(schema: schema, table: table))
+            let labels = Self.enumLabels(fromRows: result.rows)
+            return columns.map { column in
+                labels[column.name].map { column.withAllowedValues($0) } ?? column
+            }
+        } catch is CancellationError {
+            return columns
+        } catch {
+            Self.logger.debug("Enum label read failed: \(error.localizedDescription, privacy: .private)")
+            return columns
+        }
+    }
+
+    // A domain over an enum takes the enum's labels.
+    static func enumLabelsQuery(schema: String, table: String) -> String {
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
+        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
+        return """
+            SELECT a.attname, e.enumlabel
+            FROM pg_catalog.pg_attribute a
+            JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+            JOIN pg_catalog.pg_enum e
+                ON e.enumtypid = CASE WHEN t.typtype = 'd' THEN t.typbasetype ELSE t.oid END
+            WHERE n.nspname = \(schemaLiteral) AND c.relname = \(tableLiteral)
+                AND a.attnum > 0 AND NOT a.attisdropped
+            ORDER BY a.attnum, e.enumsortorder
+            """
+    }
+
+    static func enumLabels(fromRows rows: [[String?]]) -> [String: [String]] {
+        var labels: [String: [String]] = [:]
+        for row in rows {
+            guard row.count >= 2, let column = row[0], let label = row[1] else { continue }
+            labels[column, default: []].append(label)
+        }
+        return labels
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {

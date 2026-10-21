@@ -35,6 +35,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     private let acceptQueue: DispatchQueue
 
     private let aliveLatch = TeardownLatch()
+    private let deathNotice = SSHTunnelDeathNotice()
 
     /// The relays still running, so teardown frees the session only once none of them can touch
     /// it. A group rather than a collection of tasks: a relay leaves it by finishing, which is the
@@ -54,11 +55,6 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     /// Held strictly below every iOS driver's connect timeout so the reason reaches the log
     /// before the driver reports its own timeout, which names no cause.
     static let channelOpenDeadlineSeconds: TimeInterval = 6
-    private static let channelOpenPollTimeoutMs: Int32 = 100
-
-    private static let channelFreePollTimeoutMs: Int32 = 100
-    // The keep-alive's own limit: a CLOSE still unsent by then holds every other send on the session.
-    private static let channelFreeDeadlineSeconds: TimeInterval = 30
 
     /// How long the accept loop waits per poll before rechecking the latch. Small enough that
     /// noticing a client the kernel already accepted costs a slim part of the margin above.
@@ -155,9 +151,15 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
         performTeardown()
     }
 
+    // A tunnel that stops on its own, unlike close(), which its owner asked for.
+    func onDeath(_ handler: @escaping @Sendable () -> Void) {
+        deathNotice.onDeath(handler)
+    }
+
     private func markDead() {
         guard aliveLatch.claim() else { return }
         performTeardown()
+        deathNotice.died()
     }
 
     // shutdown wakes every poll on the transport but keeps the number, so no other socket can take it mid-poll.
@@ -253,13 +255,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
             deadline: acceptedAt.addingTimeInterval(Self.channelOpenDeadlineSeconds),
             pollForReadiness: { [weak self] directions in
                 guard let self else { return false }
-                // Another open or relay can read this channel's reply into libssh2's queue and leave the socket quiet,
-                // so a quiet wait is a retry, and only the deadline ends the open.
-                _ = pollReady(
-                    fd: self.socketFD,
-                    directions: directions,
-                    timeoutMs: Self.channelOpenPollTimeoutMs
-                )
+                _ = pollReady(fd: self.socketFD, directions: directions, timeoutMs: LibSSH2ForwardChannel.openPollTimeoutMs)
                 return true
             }
         )
@@ -318,28 +314,17 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
         }
     }
 
-    // Another relay can read the CLOSE reply off the shared socket and leave it quiet, so free runs again after every wait.
     private func freeChannel(_ channel: OpaquePointer) {
-        let session = self.session
-        let sessionQueue = self.sessionQueue
-        let socketFD = self.socketFD
-        let outcome = SSHChannelFreePump(
-            attemptFree: {
-                sessionQueue.sync {
-                    guard libssh2_channel_free(channel) == LIBSSH2_ERROR_EAGAIN else { return .finished }
-                    return .wouldBlock(RelayDirections(libssh2BlockDirections: libssh2_session_block_directions(session)))
-                }
-            },
-            isActive: { [weak self] in self?.isRunning ?? false },
-            deadline: Date().addingTimeInterval(Self.channelFreeDeadlineSeconds),
-            waitForTransport: { directions in
-                _ = pollReady(fd: socketFD, directions: directions, timeoutMs: Self.channelFreePollTimeoutMs)
-            }
-        ).run()
-
+        let outcome = LibSSH2ChannelFree.run(
+            channel: channel,
+            session: session,
+            sessionQueue: sessionQueue,
+            transportFD: socketFD,
+            isActive: { [weak self] in self?.isRunning ?? false }
+        )
         if outcome == .timedOut {
             Self.logger.warning(
-                "Channel on port \(self.localPort) did not close within \(Int(Self.channelFreeDeadlineSeconds))s, marking tunnel dead"
+                "Channel on port \(self.localPort) did not close within \(Int(LibSSH2ChannelFree.deadlineSeconds))s, marking tunnel dead"
             )
             markDead()
         }

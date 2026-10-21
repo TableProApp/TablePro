@@ -50,7 +50,8 @@ struct ConnectionFormEditsCoverageTests {
         "sortOrder",
         "isSample",
         "isFavorite",
-        "passwordSource"
+        "passwordSource",
+        "sshRoute"
     ]
 
     private static func storedPropertyNames() -> Set<String> {

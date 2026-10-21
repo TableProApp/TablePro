@@ -38,7 +38,10 @@ struct SQLHighlightTextView: UIViewRepresentable {
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
         textView.textStorage.delegate = context.coordinator
         textView.inputAccessoryView = context.coordinator.makeAccessoryToolbar()
-        handle?.attach(textView)
+        handle?.attach(textView) { [weak coordinator = context.coordinator] text in
+            guard let coordinator, coordinator.parent.text != text else { return }
+            coordinator.parent.text = text
+        }
         context.coordinator.connectCompletion(to: textView)
         return textView
     }

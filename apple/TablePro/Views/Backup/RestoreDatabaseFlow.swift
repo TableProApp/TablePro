@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProSQLGrammar
 
 struct RestoreDatabaseFlow: View {
     @Binding var isPresented: Bool

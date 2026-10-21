@@ -109,10 +109,10 @@ struct NetworkPaneLocalSocketTests {
         #expect(socketViewModel(path: "~/mysql.sock").validationIssues.isEmpty)
     }
 
-    @Test("Changing the type to PostgreSQL drops the socket")
+    @Test("Changing the type to Redshift drops the socket")
     func typeChangeDropsSocket() {
         let viewModel = socketViewModel(path: "")
-        viewModel.type = .postgresql
+        viewModel.type = .redshift
 
         var fields: [String: String] = [:]
         viewModel.write(into: &fields)
@@ -123,11 +123,12 @@ struct NetworkPaneLocalSocketTests {
         #expect(viewModel.localSocketIssues.isEmpty)
     }
 
-    @Test("Socket is offered for MySQL and MariaDB only")
+    @Test("Socket is offered for MySQL, MariaDB and PostgreSQL only")
     func socketIsOfferedPerType() {
         let cases: [(type: DatabaseType, offered: Bool)] = [
             (.mysql, true), (.mariadb, true), (.tidb, false), (.oceanbase, false),
-            (.databend, false), (.postgresql, false), (.sqlite, false)
+            (.databend, false), (.postgresql, true), (.redshift, false), (.cockroachdb, false),
+            (DatabaseType(rawValue: "PGlite"), false), (.sqlite, false)
         ]
         for entry in cases {
             let viewModel = NetworkPaneViewModel()

@@ -2,9 +2,11 @@ import Foundation
 import os
 import TableProAutocomplete
 import TableProModels
+import TableProPluginKit
 
 // Nil when there is no session to read from: nothing is read and nothing is kept.
 typealias QueryColumnReader = @Sendable (_ table: String, _ schema: String?) async throws -> [ColumnInfo]?
+typealias QuerySchemaTableReader = @Sendable (_ schema: String) async throws -> [TableInfo]?
 
 actor QueryCompletionCatalog: SQLCompletionCatalog {
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryCompletionCatalog")
@@ -23,16 +25,55 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
     private let databaseType: DatabaseType
     private let schema: String?
     private let readColumns: QueryColumnReader
+    private let readCatalogColumns: QueryColumnReader?
     private var columnReadsAllowed = true
     private var columnGeneration = 0
     private var columns: [ColumnKey: CachedColumns] = [:]
     private var reads: [ColumnKey: Task<[ColumnInfo]?, any Error>] = [:]
+    private var sessionReads: [ColumnKey: Task<[ColumnInfo]?, any Error>] = [:]
+    private let readSchemaTables: QuerySchemaTableReader?
+    private let readCatalogSchemaTables: QuerySchemaTableReader?
+    private var sessionSchemaReads: [String: Task<[TableInfo]?, any Error>] = [:]
+    private var sessionLocalTables: Set<String> = []
+    private var schemas: [String]
+    private var databases: [String]
+    private var schemaTables: [String: (generation: Int, tables: [TableInfo])] = [:]
+    private var schemaTableReads: [String: Task<[TableInfo]?, any Error>] = [:]
 
-    init(tables: [TableInfo], databaseType: DatabaseType, schema: String?, readColumns: @escaping QueryColumnReader) {
+    // `readCatalogColumns` reads on a connection beside the session and answers nil when there is none,
+    // so only `readColumns`, the session's own, waits for runs.
+    init(
+        tables: [TableInfo],
+        databaseType: DatabaseType,
+        schema: String?,
+        readColumns: @escaping QueryColumnReader,
+        readCatalogColumns: QueryColumnReader? = nil,
+        readSchemaTables: QuerySchemaTableReader? = nil,
+        readCatalogSchemaTables: QuerySchemaTableReader? = nil,
+        schemas: [String] = [],
+        databases: [String] = []
+    ) {
         self.tables = tables
         self.databaseType = databaseType
         self.schema = schema
         self.readColumns = readColumns
+        self.readCatalogColumns = readCatalogColumns
+        self.readSchemaTables = readSchemaTables
+        self.readCatalogSchemaTables = readCatalogSchemaTables
+        self.schemas = schemas
+        self.databases = databases
+    }
+
+    // Lowercased names of temporary tables the user's statements made on this session.
+    func replaceSessionLocalTables(_ names: Set<String>) {
+        guard names != sessionLocalTables else { return }
+        sessionLocalTables = names
+        columnGeneration += 1
+    }
+
+    func replaceNamespaces(schemas: [String], databases: [String]) {
+        self.schemas = schemas
+        self.databases = databases
     }
 
     func replaceTables(_ tables: [TableInfo]) {
@@ -49,9 +90,18 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
     }
 
     func finishReads() async {
-        for read in Array(reads.values) {
+        for read in Array(sessionReads.values) {
             _ = try? await read.value
         }
+        for read in Array(sessionSchemaReads.values) {
+            _ = try? await read.value
+        }
+    }
+
+    // In one actor turn, so no session read can start between the check and the run it would collide with.
+    func closeSessionReads() async {
+        columnReadsAllowed = false
+        await finishReads()
     }
 
     func resolveAlias(_ aliasOrName: String, in references: [TableReference]) -> String? {
@@ -79,28 +129,158 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         }
     }
 
-    func tableCompletionItems(inSchema schema: String) -> [SQLCompletionItem] {
-        isKnownSchema(schema) ? tableCompletionItems() : []
+    func tableCompletionItems(inSchema schema: String) async -> [SQLCompletionItem] {
+        guard isKnownSchema(schema) else { return [] }
+        guard !isActiveSchema(schema) else { return tableCompletionItems() }
+        return await tables(inSchema: schema).map { table in
+            let isView = table.type == .view || table.type == .materializedView
+            return SQLCompletionItem(label: table.name, kind: isView ? .view : .table, insertText: quoted(table.name))
+        }
     }
 
     func schemaCompletionItems() -> [SQLCompletionItem] {
-        []
+        schemas.map(namespaceItem)
     }
 
     func namespaceCompletionItems() -> [SQLCompletionItem] {
-        []
+        databases.map(namespaceItem) + schemas.map(namespaceItem)
     }
 
     func isKnownSchema(_ name: String) -> Bool {
-        schema.map { Self.matches($0, name) } ?? false
+        if let schema, Self.matches(schema, name) { return true }
+        return qualifyingNamespaces.contains { Self.matches($0, name) }
     }
+
+    // MySQL has no schemas: a database qualifies a table there, as in `otherdb.orders`.
+    private var qualifyingNamespaces: [String] {
+        Self.databasesQualifyTables.contains(databaseType) ? databases : schemas
+    }
+
+    private static let databasesQualifyTables: Set<DatabaseType> = [.mysql, .mariadb, .tidb, .oceanbase]
 
     func isKnownDatabase(_ name: String) -> Bool {
-        false
+        databases.contains { Self.matches($0, name) }
     }
 
-    func allowedValues(forColumn column: String, in references: [TableReference]) -> [String] {
-        []
+    // Labels the driver read (PostgreSQL), else the ENUM(...) or SET(...) type MySQL and DuckDB spell out.
+    func allowedValues(forColumn column: String, in references: [TableReference]) async -> [String] {
+        // With no table named, reading every table's columns would cost too much, so only columns already read count.
+        guard !references.isEmpty else {
+            for table in tables {
+                if let values = allowedValues(of: column, in: columns[columnKey(table.name, schema: nil)]?.columns) {
+                    return values
+                }
+            }
+            return []
+        }
+        // A CTE or subquery is not a stored table, and a read for its name would only fail on the session.
+        for reference in references where !reference.isDerived {
+            let read = await columns(of: reference.tableName, schema: reference.schema)
+            if let values = allowedValues(of: column, in: read) { return values }
+        }
+        return []
+    }
+
+    private func allowedValues(of column: String, in columns: [ColumnInfo]?) -> [String]? {
+        guard let match = columns?.first(where: { Self.matches($0.name, column) }) else { return nil }
+        if let values = match.allowedValues, !values.isEmpty { return values }
+        if let values = spelledOutValues(of: match.typeName), !values.isEmpty { return values }
+        return nil
+    }
+
+    private func spelledOutValues(of typeName: String) -> [String]? {
+        // DuckDB spells a list of enum values ENUM(...)[], whose values are not the column's.
+        guard !typeName.hasSuffix("]") else { return nil }
+        guard databaseType == .duckdb else { return EnumValueParser.parseMySQLEnumOrSet(from: typeName) }
+        return Self.duckDBEnumLabels(in: typeName)
+    }
+
+    // DuckDB keeps a label's backslashes and blanks as written and doubles only its quotes.
+    nonisolated static func duckDBEnumLabels(in typeName: String) -> [String]? {
+        guard typeName.uppercased().hasPrefix("ENUM("), typeName.hasSuffix(")") else { return nil }
+        var labels: [String] = []
+        var current = ""
+        var inQuote = false
+        var characters = typeName.dropFirst(5).dropLast()[...]
+        while let character = characters.popFirst() {
+            guard character == "'" else {
+                if inQuote { current.append(character) }
+                continue
+            }
+            if inQuote, characters.first == "'" {
+                current.append("'")
+                characters.removeFirst()
+            } else if inQuote {
+                labels.append(current)
+                current = ""
+                inQuote = false
+            } else {
+                inQuote = true
+            }
+        }
+        return labels.isEmpty ? nil : labels
+    }
+
+    // A name the server listed, quoted by its own case rules, unlike text the user wrote.
+    private func namespaceItem(_ name: String) -> SQLCompletionItem {
+        SQLCompletionItem(label: name, kind: .schema, insertText: quoted(name))
+    }
+
+    // One read per schema at a time; a failure is not kept.
+    private func tables(inSchema typed: String) async -> [TableInfo] {
+        let schema = resolvedNamespace(typed)
+        let key = schema
+        let known = schemaTables[key]
+        if let known, known.generation == columnGeneration { return known.tables }
+        // A stale list stays offered until a read replaces it.
+        let stale = known?.tables ?? []
+        if let pending = schemaTableReads[key] { return (try? await pending.value).flatMap { $0 } ?? stale }
+        let generation = columnGeneration
+        if let readCatalogSchemaTables {
+            switch await readTables(key, schema, with: readCatalogSchemaTables, generation: generation) {
+            case .answered(let answer): return answer
+            case .failed: return stale
+            case .unavailable: break
+            }
+        }
+        guard columnReadsAllowed, let readSchemaTables else { return stale }
+        if case .answered(let answer) = await readTables(
+            key, schema, with: readSchemaTables, generation: generation, onSession: true
+        ) {
+            return answer
+        }
+        return stale
+    }
+
+    private enum TableRead {
+        case answered([TableInfo])
+        case unavailable
+        case failed
+    }
+
+    private func readTables(
+        _ key: String,
+        _ schema: String,
+        with reader: @escaping QuerySchemaTableReader,
+        generation: Int,
+        onSession: Bool = false
+    ) async -> TableRead {
+        let read = Task<[TableInfo]?, any Error> { try await reader(schema) }
+        schemaTableReads[key] = read
+        if onSession { sessionSchemaReads[key] = read }
+        defer {
+            if schemaTableReads[key] == read { schemaTableReads[key] = nil }
+            if sessionSchemaReads[key] == read { sessionSchemaReads[key] = nil }
+        }
+        do {
+            guard let answer = try await read.value else { return .unavailable }
+            // A run that ended during the read may have changed the schema, so the answer is not kept.
+            if generation == columnGeneration { schemaTables[key] = (generation, answer) }
+            return .answered(answer)
+        } catch {
+            Self.logger.warning("Reading a schema's tables for completion failed: \(error.localizedDescription, privacy: .private)")
+            return .failed
+        }
     }
 
     func allColumnsInScope(for references: [TableReference]) async -> [SQLCompletionItem] {
@@ -128,7 +308,8 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
                 items.append(columnItem(
                     label: isQualified ? "\(label).\(entry.name)" : entry.name,
                     insertText: isQualified ? "\(prefix).\(entry.insertText)" : entry.insertText,
-                    dataType: entry.dataType
+                    dataType: entry.dataType,
+                    isQualified: isQualified
                 ))
             }
         }
@@ -153,7 +334,8 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
                 var item = columnItem(
                     label: isAmbiguous ? "\(entry.key.table).\(column.name)" : column.name,
                     insertText: isAmbiguous ? "\(prefix).\(quoted(column.name))" : quoted(column.name),
-                    dataType: column.typeName
+                    dataType: column.typeName,
+                    isQualified: isAmbiguous
                 )
                 item.sortPriority = 150
                 return item
@@ -168,24 +350,60 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         if let pending = reads[key] {
             return (try? await pending.value) ?? known?.columns ?? []
         }
-        guard columnReadsAllowed else { return known?.columns ?? [] }
 
         let generation = columnGeneration
-        let readColumns = self.readColumns
+        // A temporary table lives only on the session, so a name the session made never asks the catalog connection.
+        if let readCatalogColumns, !sessionLocalTables.contains(key.table.lowercased()) {
+            // A name the list does not hold may be one, so an empty answer for it is not kept and the session is asked.
+            let listed = listedTable(named: key.table, schema: key.schema) != nil
+            switch await read(key, with: readCatalogColumns, generation: generation, keepsEmpty: listed) {
+            case .answered(let answer):
+                return answer
+            case .failed where listed:
+                return columns[key]?.columns ?? []
+            case .failed, .unavailable:
+                break
+            }
+        }
+        guard columnReadsAllowed else { return known?.columns ?? [] }
+        switch await read(key, with: readColumns, generation: generation, onSession: true) {
+        case .answered(let answer):
+            return answer
+        case .failed, .unavailable:
+            return columns[key]?.columns ?? []
+        }
+    }
+
+    private enum ColumnRead {
+        case answered([ColumnInfo])
+        case unavailable
+        case failed
+    }
+
+    private func read(
+        _ key: ColumnKey,
+        with reader: @escaping QueryColumnReader,
+        generation: Int,
+        onSession: Bool = false,
+        keepsEmpty: Bool = true
+    ) async -> ColumnRead {
         let read = Task<[ColumnInfo]?, any Error> {
-            try await readColumns(key.table, key.schema)
+            try await reader(key.table, key.schema)
         }
         reads[key] = read
-        let answer: [ColumnInfo]?
+        if onSession { sessionReads[key] = read }
+        defer {
+            if reads[key] == read { reads[key] = nil }
+            if sessionReads[key] == read { sessionReads[key] = nil }
+        }
         do {
-            answer = try await read.value
+            guard let answer = try await read.value, keepsEmpty || !answer.isEmpty else { return .unavailable }
+            columns[key] = CachedColumns(generation: generation, columns: answer)
+            return .answered(answer)
         } catch {
             Self.logger.warning("Reading columns for completion failed: \(error.localizedDescription, privacy: .private)")
-            answer = nil
+            return .failed
         }
-        if reads[key] == read { reads[key] = nil }
-        if let answer { columns[key] = CachedColumns(generation: generation, columns: answer) }
-        return answer ?? columns[key]?.columns ?? []
     }
 
     private func columnKey(_ tableName: String, schema: String?) -> ColumnKey {
@@ -209,13 +427,24 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         return tables.first { $0.name == name } ?? tables.first { Self.matches($0.name, name) }
     }
 
+    // PostgreSQL can hold both `sales` and `Sales`, so the listed spelling a name resolves to decides, not its case.
     private func isActiveSchema(_ schema: String?) -> Bool {
         guard let schema else { return true }
-        return isKnownSchema(schema)
+        guard let active = self.schema else { return false }
+        guard qualifyingNamespaces.contains(active) else { return Self.matches(active, schema) }
+        return resolvedNamespace(schema) == active
     }
 
-    private func columnItem(label: String, insertText: String, dataType: String?) -> SQLCompletionItem {
-        SQLCompletionItem(label: label, kind: .column, insertText: insertText, detail: dataType)
+    private func resolvedNamespace(_ typed: String) -> String {
+        qualifyingNamespaces.first { $0 == typed } ?? qualifyingNamespaces.first { Self.matches($0, typed) } ?? typed
+    }
+
+    private func columnItem(
+        label: String, insertText: String, dataType: String?, isQualified: Bool = false
+    ) -> SQLCompletionItem {
+        var item = SQLCompletionItem(label: label, kind: .column, insertText: insertText, detail: dataType)
+        item.isQualifiedReference = isQualified
+        return item
     }
 
     private func quoted(_ name: String) -> String {

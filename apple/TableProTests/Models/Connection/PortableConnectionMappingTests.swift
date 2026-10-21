@@ -8,6 +8,7 @@ import Foundation
 import TableProImport
 import TableProPluginKit
 @testable import TableProSSHConfig
+import TableProSSHTransport
 import Testing
 
 @MainActor

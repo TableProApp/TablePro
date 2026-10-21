@@ -267,6 +267,17 @@ struct QueryCompletionControllerTests {
         #expect(edit.caret == 14)
     }
 
+    @Test("a column whose name holds a dot stays inside the quotes typed around it")
+    func dottedColumnInQuotes() async throws {
+        let source = ControllerColumnSource(["orders": [ColumnInfo(name: "order.total", typeName: "REAL")]])
+        let controller = controller(scope(.postgresql), source: source)
+        let text = "SELECT \"ord\" FROM orders"
+
+        _ = await suggest(controller, text, caret: 11)
+        let edit = try accept("order.total", in: text, caret: 11, with: controller)
+        #expect(applying(edit, to: text) == "SELECT \"order.total\" FROM orders")
+    }
+
     @Test("hiding keeps the bar empty until the caret moves")
     func hideUntilMoved() async {
         let controller = controller(scope(), source: ControllerColumnSource([:]))
@@ -422,6 +433,21 @@ struct QueryCompletionControllerTests {
         await controller.settle()
     }
 
+    @Test("a run that ends before the view sees it start reads columns again")
+    func unseenRunReopensReads() async {
+        let source = ControllerColumnSource(["orders": ordersColumns])
+        let controller = controller(scope(), source: source)
+
+        await controller.finishColumnReads()
+        let during = await suggest(controller, "SELECT o. FROM orders o", caret: 9)
+        #expect(!during.contains { $0.kind == .column })
+        controller.reopenColumnReads()
+
+        let after = await suggest(controller, "SELECT o. FROM orders o", caret: 9)
+        #expect(after.map { $0.label } == ["id", "total"])
+        #expect(await source.reads == ["orders"])
+    }
+
     @Test("the column reader asks whichever session is current")
     func readerFollowsSession() async throws {
         let first = MockDatabaseDriver()
@@ -446,9 +472,69 @@ struct QueryCompletionControllerTests {
     }
 }
 
+extension QueryCompletionControllerTests {
+    @Test("the session reader reads nothing while the session is busy")
+    func sessionReaderWaitsForIdle() async throws {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = [ColumnInfo(name: "id", typeName: "INTEGER")]
+        let holder = SessionHolder()
+        holder.session = ConnectionSession(connectionId: Self.connectionId, driver: driver, activeDatabase: "main")
+        holder.isBusy = true
+        let reader = QueryCompletionController.columnReader(session: { holder.session }, isBusy: { holder.isBusy })
+
+        let during = try await reader("orders", nil)
+        holder.isBusy = false
+        let after = try await reader("orders", nil)
+
+        #expect(during == nil)
+        #expect(after?.map { $0.name } == ["id"])
+        #expect(driver.fetchColumnsCalls == 1)
+    }
+
+    @Test("a new table list reads cached columns again, as DDL or a commit may have changed them")
+    func newTableListReadsColumnsAgain() async {
+        let source = ControllerColumnSource(["orders": ordersColumns])
+        let controller = controller(scope(), source: source)
+
+        _ = await suggest(controller, "SELECT o. FROM orders o", caret: 9)
+        controller.update(scope: scope(tables: ["orders", "invoices"]), readColumns: source.reader)
+        await controller.settle()
+        _ = await suggest(controller, "SELECT o. FROM orders o", caret: 9)
+
+        #expect(await source.reads == ["orders", "orders"])
+    }
+
+    @Test("the session table reader reads only while idle, inside the session work it is handed")
+    func sessionTableReaderIsTracked() async throws {
+        let driver = MockDatabaseDriver()
+        driver.scriptedTables = [TableInfo(name: "invoices")]
+        let holder = SessionHolder()
+        holder.session = ConnectionSession(connectionId: Self.connectionId, driver: driver, activeDatabase: "main")
+        holder.isBusy = true
+        let reader = QueryCompletionController.tableReader(
+            session: { holder.session },
+            isBusy: { holder.isBusy },
+            tracked: { read in
+                holder.trackedReads += 1
+                return try await read()
+            }
+        )
+
+        let whileBusy = try await reader("sales")
+        holder.isBusy = false
+        let idle = try await reader("sales")
+
+        #expect(whileBusy == nil)
+        #expect(idle?.map(\.name) == ["invoices"])
+        #expect(holder.trackedReads == 1)
+    }
+}
+
 @MainActor
 private final class SessionHolder {
     var session: ConnectionSession?
+    var isBusy = false
+    var trackedReads = 0
 }
 
 private actor ControllerColumnSource {
@@ -492,5 +578,46 @@ private actor ControllerColumnSource {
         }
         finishedReads += 1
         return columns[table] ?? []
+    }
+}
+
+extension QueryCompletionControllerTests {
+    // Ranked on `Det`, `Details` led, and Tab turned `[Order Det]` into `[Details]`.
+    @Test("a bracketed name with a space ranks on the whole name")
+    func bracketedNameRanksOnTheWholeName() async {
+        let controller = controller(
+            scope(.mssql, tables: ["Details", "Order Details"], database: "shop", schema: "dbo"),
+            source: ControllerColumnSource([:])
+        )
+
+        let suggestions = await suggest(controller, "SELECT * FROM [Order Det]", caret: 24)
+
+        #expect(suggestions.first?.label == "Order Details")
+    }
+
+    @Test("inside quotes only names are offered")
+    func quotesOfferNoKeyword() async {
+        let controller = controller(
+            scope(.mssql, tables: ["orders"], database: "shop", schema: "dbo"),
+            source: ControllerColumnSource([:])
+        )
+
+        let suggestions = await suggest(controller, "SELECT * FROM [ord]", caret: 18)
+
+        #expect(suggestions.contains { $0.label == "orders" })
+        #expect(!suggestions.contains { $0.kind == .keyword })
+    }
+
+    // The cut 5,000 units back landed inside the comment and read its tail as code.
+    @Test("a caret inside a comment longer than the cut offers nothing")
+    func longCommentBeforeTheCaret() async {
+        let controller = controller(
+            scope(.postgresql, tables: ["orders"], database: "shop", schema: "public"),
+            source: ControllerColumnSource([:])
+        )
+        let notes = String(repeating: "notes about the nightly load and its retries\n", count: 140)
+
+        #expect(await suggest(controller, "/*\n" + notes + "SELECT * FROM or").isEmpty)
+        #expect(await !suggest(controller, "/*\n" + notes + "it's done */\nSELECT * FROM or").isEmpty)
     }
 }

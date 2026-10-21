@@ -56,6 +56,16 @@ nonisolated struct AWSSSOTokenStore: Sendable {
     }
 }
 
+nonisolated extension AWSSSOTokenStore: AWSSSOTokenStoring {
+    func load(key: String) -> AWSSSOTokenCacheEntry? {
+        token(startUrl: key)
+    }
+
+    func save(_ entry: AWSSSOTokenCacheEntry, key: String) throws {
+        try save(entry, startUrl: key)
+    }
+}
+
 nonisolated private struct StoredToken: Codable {
     let accessToken: String
     let expiresAt: Date
@@ -103,11 +113,18 @@ nonisolated private struct DeviceOnlyKeychain: SecureStore {
         ]
     }
 
+    // Updated in place: a delete then a failed add would lose the only copy of a rotated refresh token.
     func store(_ value: String, forKey key: String) throws {
-        SecItemDelete(baseQuery(key) as CFDictionary)
-        var query = baseQuery(key)
-        query[kSecValueData as String] = Data(value.utf8)
-        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let attributes: [String: Any] = [
+            kSecValueData as String: Data(value.utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ]
+        let updated = SecItemUpdate(baseQuery(key) as CFDictionary, attributes as CFDictionary)
+        guard updated == errSecItemNotFound else {
+            guard updated == errSecSuccess else { throw KeychainError.storeFailed(updated) }
+            return
+        }
+        var query = baseQuery(key).merging(attributes) { _, new in new }
         query[kSecAttrSynchronizable as String] = false
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else { throw KeychainError.storeFailed(status) }

@@ -19,8 +19,12 @@ enum OracleTransactionRole: Equatable, Sendable {
     // session and system control, which commit nothing, and the schema switch sends ALTER SESSION.
     case dataDefinition
 
-    /// Everything else: DML, PL/SQL, `CALL`, `ROLLBACK TO`, session and system control, and the `FORCE` forms of
-    /// `COMMIT` and `ROLLBACK`, which settle an in-doubt distributed transaction rather than the session's own.
+    /// An anonymous block (`BEGIN` or `DECLARE`, after any `<<label>>`) or a `CALL`. It can run DDL through
+    /// `EXECUTE IMMEDIATE`, or commit or roll back, so whether a transaction survived it is the server's answer.
+    case procedural
+
+    /// Everything else: DML, `ROLLBACK TO`, session and system control, and the `FORCE` forms of `COMMIT` and
+    /// `ROLLBACK`, which settle an in-doubt distributed transaction rather than the session's own.
     case other
 
     /// How much of a statement is read for its first words. A dump can hold a statement millions of characters long,
@@ -29,9 +33,12 @@ enum OracleTransactionRole: Equatable, Sendable {
 
     init(of sql: String) {
         var reader = HeaderReader(String(String.UnicodeScalarView(sql.unicodeScalars.prefix(Self.headerScanLimit))))
+        reader.skipLabels()
         switch reader.nextWord() {
         case "SELECT", "WITH":
             self = .query
+        case "BEGIN", "DECLARE", "CALL":
+            self = .procedural
         case "SAVEPOINT":
             self = .opensTransaction
         case "SET":
@@ -56,9 +63,9 @@ enum OracleTransactionRole: Equatable, Sendable {
         }
     }
 
-    // A refused COMMIT, ROLLBACK or DDL statement may still have ended the transaction, so only the server can say.
+    // A refused COMMIT, ROLLBACK, DDL statement or block may still have ended the transaction: only the server knows.
     var mayEndTransactionWhenRefused: Bool {
-        self == .endsTransaction || self == .dataDefinition
+        self == .endsTransaction || self == .dataDefinition || self == .procedural
     }
 
     private static func skippingWork(_ reader: inout HeaderReader) -> String? {

@@ -9,8 +9,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/common.sh"
 # Requires: OpenSSL xcframework already built (run build-openssl-ios.sh first)
 # Produces: Libs/ios/LibSSH2.xcframework/
 
-LIBSSH2_VERSION="1.11.1"
-LIBSSH2_SHA256="d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7"
+# The same master snapshot as scripts/build-libssh2.sh, which says why.
+LIBSSH2_VERSION="1.11.2-dev.3209951db4e4"
+LIBSSH2_COMMIT="3209951db4e47ef902db047d12f9f464f835c27e"
+LIBSSH2_SHA256="fe5bc1939d7dae5b35441084b88793e84d33ad23899bfa6113f1e51468fe76cc"
 IOS_DEPLOY_TARGET="17.0"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -57,18 +59,12 @@ resolve_openssl() {
 # --- Download libssh2 ---
 
 echo "=> Downloading libssh2 $LIBSSH2_VERSION..."
-curl -fSL "https://github.com/libssh2/libssh2/releases/download/libssh2-$LIBSSH2_VERSION/libssh2-$LIBSSH2_VERSION.tar.gz" \
+curl -fSL "https://github.com/libssh2/libssh2/archive/$LIBSSH2_COMMIT.tar.gz" \
     -o "$BUILD_DIR/libssh2.tar.gz"
 echo "$LIBSSH2_SHA256  $BUILD_DIR/libssh2.tar.gz" | shasum -a 256 -c - > /dev/null
-tar xzf "$BUILD_DIR/libssh2.tar.gz" -C "$BUILD_DIR"
 LIBSSH2_SRC="$BUILD_DIR/libssh2-$LIBSSH2_VERSION"
-
-# Only this library's patches. A flat patch directory would apply every library's here.
-for patch in "$SCRIPT_DIR/../patches/libssh2"/*.patch; do
-    [ -e "$patch" ] || continue
-    echo "=> Applying $(basename "$patch")"
-    patch -p1 -d "$LIBSSH2_SRC" -i "$patch"
-done
+mkdir -p "$LIBSSH2_SRC"
+tar xzf "$BUILD_DIR/libssh2.tar.gz" -C "$LIBSSH2_SRC" --strip-components=1
 
 echo "   Done."
 

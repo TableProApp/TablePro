@@ -103,19 +103,23 @@ struct DataWriteStep: Sendable {
     /// primary key. Such a match can silently find nothing, so unlike a keyed write it is held to
     /// the count it expected rather than only to an upper bound.
     let matchesRowsWithoutKey: Bool
+    // The statement refuses a SQLite key that matches more than one row, so a short count is a failed save.
+    let refusesSharedKey: Bool
 
     init(
         kind: Kind,
         statement: ParameterizedStatement,
         expectedRowCount: Int? = nil,
         tableName: String? = nil,
-        matchesRowsWithoutKey: Bool = false
+        matchesRowsWithoutKey: Bool = false,
+        refusesSharedKey: Bool = false
     ) {
         self.kind = kind
         self.statement = statement
         self.expectedRowCount = expectedRowCount
         self.tableName = tableName
         self.matchesRowsWithoutKey = matchesRowsWithoutKey
+        self.refusesSharedKey = refusesSharedKey
     }
 }
 
