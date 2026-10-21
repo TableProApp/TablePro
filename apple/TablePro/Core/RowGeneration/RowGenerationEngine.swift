@@ -8,12 +8,18 @@ import TableProPluginKit
 
 internal enum RowGenerationError: LocalizedError, Equatable {
     case uniqueValuesExhausted([String])
+    case noMatchingReference([String])
 
     internal var errorDescription: String? {
         switch self {
         case .uniqueValuesExhausted(let columns):
             return String(
                 format: String(localized: "Could not make another value for (%@) that does not repeat. Widen its range or generate fewer rows."),
+                columns.joined(separator: ", ")
+            )
+        case .noMatchingReference(let columns):
+            return String(
+                format: String(localized: "No referenced row for (%@) agrees with the values its other foreign keys picked."),
                 columns.joined(separator: ", ")
             )
         }
@@ -37,8 +43,8 @@ internal enum RowGenerationBooleanStyle: Sendable {
 internal final class RowGenerationEngine: @unchecked Sendable {
     private static let randomAttempts = 32
     private static let groupAttempts = 64
-    // Past this many combinations a key over several columns is not walked value by value.
-    private static let enumerableCombinations: Int64 = 50_000_000
+    // Past this many values a key is not walked one by one: the preview runs on the main actor.
+    private static let walkLimit: Int64 = 5_000_000
     // Version 7 timestamps count up from 2025-01-01 by the row, so the values sort in insert order.
     private static let uuidEpochMilliseconds: UInt64 = 1_735_689_600_000
 
@@ -73,6 +79,7 @@ internal final class RowGenerationEngine: @unchecked Sendable {
         self.booleanStyle = booleanStyle
         self.nullsAreDistinct = nullsAreDistinct
 
+        let positions = Dictionary(written.enumerated().map { ($1.column.name, $0) }, uniquingKeysWith: { first, _ in first })
         var sources: [String: SourceState] = [:]
         var order: [String] = []
         for (index, state) in written.enumerated() where state.settings.kind == .reference {
@@ -86,17 +93,42 @@ internal final class RowGenerationEngine: @unchecked Sendable {
             }
             sources[slot.sourceId]?.members.append(index)
         }
+        // A column two foreign keys share takes its value from the first; the second only picks among its own rows
+        // that agree with it, so drawing waits until the first has drawn.
+        for id in order {
+            guard var state = sources[id] else { continue }
+            for (position, name) in state.source.columns.enumerated() {
+                guard let owner = positions[name], written[owner].settings.kind == .reference,
+                      let ownerSource = written[owner].column.reference?.sourceId, ownerSource != id,
+                      sources[ownerSource] != nil else { continue }
+                state.bindings.append(SourceBinding(position: position, owner: owner))
+            }
+            if !state.bindings.isEmpty {
+                let bindings = state.bindings
+                state.candidates = Dictionary(grouping: state.source.tuples.indices) { tuple in
+                    Fingerprint(bindings.map { state.source.tuples[tuple].indices.contains($0.position) ? state.source.tuples[tuple][$0.position] : .null })
+                }
+            }
+            sources[id] = state
+        }
         self.sources = sources
-        sourceOrder = order
+        sourceOrder = order.filter { sources[$0]?.bindings.isEmpty != false } + order.filter { sources[$0]?.bindings.isEmpty == false }
 
-        let positions = Dictionary(written.enumerated().map { ($1.column.name, $0) }, uniquingKeysWith: { first, _ in first })
         let groups = table.uniqueGroups.compactMap { group -> [Int]? in
-            let indices = group.compactMap { positions[$0] }
-            // A member the server fills, or one that never repeats, already keeps the key unique.
-            guard indices.count == group.count,
-                  !indices.contains(where: { written[$0].column.isUnique || written[$0].settings.kind == .sequence })
-            else { return nil }
-            return indices
+            var indices: [Int] = []
+            for name in group {
+                if let index = positions[name] {
+                    // A member that never repeats already keeps the key unique.
+                    if written[index].column.isUnique || written[index].settings.kind == .sequence { return nil }
+                    indices.append(index)
+                } else if table.column(named: name)?.ownership == .assigned {
+                    // So does one the server numbers itself.
+                    return nil
+                }
+                // Any other member left to the server takes its default, the same in every row, so the rest of
+                // the key has to be unique on its own.
+            }
+            return indices.isEmpty ? nil : indices
         }
         self.groups = groups
         groupSeen = Array(repeating: [], count: groups.count)
@@ -113,19 +145,39 @@ internal final class RowGenerationEngine: @unchecked Sendable {
     }
 
     internal func nextRow() throws -> [PluginCellValue] {
-        var drawn: [String: Int] = [:]
-        for id in sourceOrder {
-            try drawSource(id, drawn: &drawn)
-        }
+        let drawn = try drawSources()
         var row = [PluginCellValue](repeating: .null, count: columns.count)
         for index in columns.indices {
             row[index] = try value(at: index, drawn: drawn)
         }
         if !groups.isEmpty {
-            try enforceGroups(row: &row, drawn: &drawn)
+            var settled = drawn
+            try enforceGroups(row: &row, drawn: &settled)
         }
         ordinal += 1
         return row
+    }
+
+    // A foreign key that shares a column with another may find none of its rows agree with what the other drew,
+    // so the whole draw is repeated.
+    private func drawSources() throws -> [String: Int] {
+        var unmatched: String?
+        for _ in 0..<Self.randomAttempts {
+            var drawn: [String: Int] = [:]
+            unmatched = nil
+            for id in sourceOrder {
+                guard try drawSource(id, drawn: &drawn) else {
+                    unmatched = id
+                    break
+                }
+            }
+            guard unmatched != nil else { return drawn }
+            for id in sourceOrder {
+                release(id, drawn: drawn)
+            }
+        }
+        let names = unmatched.flatMap { sources[$0]?.source.columns } ?? []
+        throw RowGenerationError.noMatchingReference(names)
     }
 
     // MARK: - Columns
@@ -186,7 +238,7 @@ internal final class RowGenerationEngine: @unchecked Sendable {
         var position = state.settings.kind == .pattern
             ? columns[index].generator.integer(in: 0...(size - 1))
             : state.lastPosition
-        for _ in 0..<size {
+        for _ in 0..<min(size, Self.walkLimit) {
             position = position + 1 >= size ? 0 : position + 1
             let candidate = domainValue(of: state, at: position)
             guard !candidate.isNull else { continue }
@@ -220,31 +272,45 @@ internal final class RowGenerationEngine: @unchecked Sendable {
     // MARK: - Foreign keys
 
     // One draw per foreign key and row, so every column of a key over several columns comes from one referenced
-    // row. A key column that must not repeat claims its value here, before the row is built around it.
-    private func drawSource(_ id: String, drawn: inout [String: Int]) throws {
-        guard let source = sources[id]?.source, !source.tuples.isEmpty else { return }
-        let count = source.tuples.count
-        let uniqueMembers = sources[id]?.members.filter { columns[$0].column.isUnique } ?? []
+    // row. A key column that must not repeat claims its value here, before the row is built around it. False when
+    // none of the key's rows agree with a column it shares with another key.
+    private func drawSource(_ id: String, drawn: inout [String: Int]) throws -> Bool {
+        guard let state = sources[id], !state.source.tuples.isEmpty else { return true }
+        var pool: [Int]?
+        if !state.bindings.isEmpty {
+            let key = Fingerprint(state.bindings.map { boundValue(of: $0.owner, drawn: drawn) })
+            pool = state.candidates[key] ?? []
+            guard pool?.isEmpty == false else { return false }
+        }
+        let count = pool?.count ?? state.source.tuples.count
+        func tuple(_ index: Int) -> Int { pool?[index] ?? index }
+        let uniqueMembers = state.members.filter { columns[$0].column.isUnique }
         guard !uniqueMembers.isEmpty else {
-            drawn[id] = sources[id]?.generator.index(below: count)
-            return
+            drawn[id] = tuple(sources[id]?.generator.index(below: count) ?? 0)
+            return true
         }
         for _ in 0..<Self.randomAttempts {
-            let pick = sources[id]?.generator.index(below: count) ?? 0
-            if claim(pick, of: source, for: uniqueMembers) {
+            let pick = tuple(sources[id]?.generator.index(below: count) ?? 0)
+            if claim(pick, of: state.source, for: uniqueMembers) {
                 drawn[id] = pick
-                return
+                return true
             }
         }
         let start = sources[id]?.generator.index(below: count) ?? 0
         for step in 1...count {
-            let pick = (start + step) % count
-            if claim(pick, of: source, for: uniqueMembers) {
+            let pick = tuple((start + step) % count)
+            if claim(pick, of: state.source, for: uniqueMembers) {
                 drawn[id] = pick
-                return
+                return true
             }
         }
         throw RowGenerationError.uniqueValuesExhausted(uniqueMembers.map { columns[$0].column.name })
+    }
+
+    private func boundValue(of owner: Int, drawn: [String: Int]) -> PluginCellValue {
+        guard let id = columns[owner].column.reference?.sourceId, let picked = drawn[id],
+              let tuples = sources[id]?.source.tuples, tuples.indices.contains(picked) else { return .null }
+        return tupleValue(tuples[picked], at: owner)
     }
 
     private func claim(_ pick: Int, of source: RowGenerationReferenceSource, for members: [Int]) -> Bool {
@@ -314,7 +380,9 @@ internal final class RowGenerationEngine: @unchecked Sendable {
             touched.append(id)
             release(id, drawn: drawn)
             drawn[id] = nil
-            try drawSource(id, drawn: &drawn)
+            guard try drawSource(id, drawn: &drawn) else {
+                throw RowGenerationError.noMatchingReference(sources[id]?.source.columns ?? [])
+            }
         }
         for index in columns.indices {
             let isMember = members.contains(index)
@@ -328,39 +396,63 @@ internal final class RowGenerationEngine: @unchecked Sendable {
         }
     }
 
+    private enum WalkDimension {
+        case column(Int)
+        case source(String)
+    }
+
     // Near the end of a small key space random draws stop finding the last free combinations, so the remaining
-    // ones are walked in order from a random start.
+    // ones are walked in order from a random start. A foreign key is one dimension, its referenced rows.
     private func walk(group: Int, row: inout [PluginCellValue], drawn: inout [String: Int]) throws {
         let members = linkedMembers(of: group)
         let names = members.map { columns[$0].column.name }
+        var dimensions: [WalkDimension] = []
         var sizes: [Int64] = []
         for index in members {
-            guard let size = walkSize(of: index), size > 0 else { throw RowGenerationError.uniqueValuesExhausted(names) }
-            sizes.append(size)
+            if columns[index].settings.kind == .reference {
+                guard let id = columns[index].column.reference?.sourceId else { throw RowGenerationError.uniqueValuesExhausted(names) }
+                if dimensions.contains(where: { if case .source(id) = $0 { return true } else { return false } }) { continue }
+                guard let size = walkSize(ofSource: id) else { throw RowGenerationError.uniqueValuesExhausted(names) }
+                dimensions.append(.source(id))
+                sizes.append(size)
+            } else {
+                guard columns[index].walksDomain, let size = columns[index].domainSize, size > 0 else {
+                    throw RowGenerationError.uniqueValuesExhausted(names)
+                }
+                dimensions.append(.column(index))
+                sizes.append(size)
+            }
         }
         var total: Int64 = 1
         for size in sizes {
             let product = total.multipliedReportingOverflow(by: size)
-            guard !product.overflow, product.partialValue <= Self.enumerableCombinations else {
+            guard !product.overflow, product.partialValue <= Self.walkLimit else {
                 throw RowGenerationError.uniqueValuesExhausted(names)
             }
             total = product.partialValue
         }
         let start = groupGenerators[group].integer(in: 0...(total - 1))
         var candidate = row
-        var positions = [Int64](repeating: 0, count: members.count)
+        var picks: [String: Int] = [:]
         for step in 0..<total {
             var position = (start + step) % total
-            for offset in members.indices.reversed() {
-                positions[offset] = position % sizes[offset]
+            for offset in dimensions.indices.reversed() {
+                let local = position % sizes[offset]
                 position /= sizes[offset]
-                candidate[members[offset]] = walkValue(of: members[offset], at: positions[offset])
+                switch dimensions[offset] {
+                case .column(let index):
+                    candidate[index] = domainValue(of: columns[index], at: local)
+                case .source(let id):
+                    guard let state = sources[id] else { continue }
+                    picks[id] = Int(local)
+                    for member in state.members {
+                        candidate[member] = tupleValue(state.source.tuples[Int(local)], at: member)
+                    }
+                }
             }
             guard firstCollidingGroup(in: candidate) == nil else { continue }
-            for (offset, index) in members.enumerated() where columns[index].settings.kind == .reference {
-                if let id = columns[index].column.reference?.sourceId { drawn[id] = Int(positions[offset]) }
-            }
             row = candidate
+            drawn.merge(picks) { _, new in new }
             return
         }
         throw RowGenerationError.uniqueValuesExhausted(names)
@@ -380,30 +472,18 @@ internal final class RowGenerationEngine: @unchecked Sendable {
         return members.sorted()
     }
 
-    // A key column is walked over its own values; a foreign key only when it is a single column.
-    private func walkSize(of index: Int) -> Int64? {
-        let state = columns[index]
-        if state.settings.kind == .reference {
-            guard let id = state.column.reference?.sourceId, let source = sources[id],
-                  source.source.columns.count == 1, source.members == [index] else { return nil }
-            return Int64(source.source.tuples.count)
-        }
-        return state.walksDomain ? state.domainSize : nil
-    }
-
-    private func walkValue(of index: Int, at position: Int64) -> PluginCellValue {
-        let state = columns[index]
-        if state.settings.kind == .reference {
-            guard let id = state.column.reference?.sourceId, let tuples = sources[id]?.source.tuples,
-                  tuples.indices.contains(Int(position)) else { return .null }
-            return tupleValue(tuples[Int(position)], at: index)
-        }
-        return domainValue(of: state, at: position)
+    // A foreign key is walked over its referenced rows when nothing else depends on which one it picks: no column of
+    // it must be unique on its own, and no other foreign key shares one of its columns.
+    private func walkSize(ofSource id: String) -> Int64? {
+        guard let state = sources[id], state.bindings.isEmpty,
+              !state.members.contains(where: { columns[$0].column.isUnique }),
+              !sources.values.contains(where: { other in other.bindings.contains { state.members.contains($0.owner) } })
+        else { return nil }
+        return Int64(state.source.tuples.count)
     }
 
     // MARK: - Values
 
-    // swiftlint:disable:next cyclomatic_complexity function_body_length
     private func draw(at index: Int) -> PluginCellValue {
         let settings = columns[index].settings
         let text: String
@@ -485,7 +565,7 @@ internal final class RowGenerationEngine: @unchecked Sendable {
         case .time:
             text = RowGenerationValueText.time(secondOfDay: position)
         case .pattern:
-            text = RowGenerationPattern.value(at: position, in: state.settings.pattern)
+            text = RowGenerationPattern.value(at: position, in: state.settings.pattern, length: state.column.maxLength)
         default:
             return .null
         }
@@ -593,10 +673,17 @@ private struct ColumnState {
     }
 }
 
+private struct SourceBinding {
+    let position: Int
+    let owner: Int
+}
+
 private struct SourceState {
     let source: RowGenerationReferenceSource
     var generator: SeededGenerator
     var members: [Int] = []
+    var bindings: [SourceBinding] = []
+    var candidates: [Fingerprint: [Int]] = [:]
 }
 
 // Two independent 64-bit hashes of a value's bytes. Remembering a million values as text would hold every string.

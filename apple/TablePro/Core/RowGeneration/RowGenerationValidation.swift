@@ -73,7 +73,7 @@ internal enum RowGenerationValidation {
             guard !span.overflow, span.partialValue < .max else { return nil }
             return span.partialValue + 1
         case .list:
-            return Int64(Set(settings.values).count)
+            return Int64(Set(settings.values.filter { !$0.isEmpty }).count)
         case .reference:
             guard let slot = column.reference, let source = table.reference(id: slot.sourceId) else { return 0 }
             return Int64(Set(source.tuples.map { $0.indices.contains(slot.position) ? $0[slot.position] : .null }).count)
@@ -86,7 +86,7 @@ internal enum RowGenerationValidation {
         case .time:
             return RowGenerationValueText.secondsPerDay
         case .pattern:
-            return RowGenerationPattern.combinations(settings.pattern)
+            return RowGenerationPattern.combinations(settings.pattern, length: column.maxLength)
         case .serverDefault, .sequence, .text, .firstName, .lastName, .fullName, .email, .phone, .streetAddress,
              .city, .country, .uuid, .json:
             return nil
@@ -132,7 +132,6 @@ internal enum RowGenerationValidation {
         return []
     }
 
-    // swiftlint:disable:next cyclomatic_complexity
     private static func rangeIssue(
         _ column: RowGenerationColumn,
         _ settings: RowGeneratorSettings,
@@ -174,6 +173,12 @@ internal enum RowGenerationValidation {
                 return String(format: String(localized: "%@: the range is too wide for that many decimal places."), name)
             }
             if case .decimal(let precision, let scale) = column.valueClass {
+                // A value with more places than the column keeps is rounded on the way in, and can then repeat.
+                if let scale, settings.decimalScale > scale {
+                    return String(
+                        format: String(localized: "%1$@ keeps %2$@ decimal places."), name, String(scale)
+                    )
+                }
                 let limit = decimalLimit(precision: precision, scale: scale)
                 if abs(settings.decimalMinimum) > limit || abs(settings.decimalMaximum) > limit {
                     return String(
@@ -227,20 +232,34 @@ internal enum RowGenerationValidation {
     ) -> [RowGenerationIssue] {
         table.uniqueGroups.compactMap { group -> RowGenerationIssue? in
             var combinations: Int64 = 1
+            var writesMember = false
             for name in group {
                 guard let column = table.column(named: name), let columnSettings = settings.columns[name] else {
                     return nil
                 }
-                // A column the server fills, or one that never repeats, already keeps the whole key unique.
-                if columnSettings.kind == .serverDefault || column.isUnique || columnSettings.kind == .sequence {
-                    return nil
+                // A column that never repeats, or one the server numbers, already keeps the whole key unique.
+                if column.isUnique || columnSettings.kind == .sequence { return nil }
+                if columnSettings.kind == .serverDefault {
+                    if column.ownership == .assigned { return nil }
+                    // Any other default is the same in every row, so the rest of the key carries it.
+                    continue
                 }
+                writesMember = true
                 guard let size = domainSize(of: columnSettings, for: column, in: table, calendar: calendar) else {
                     return nil
                 }
                 let product = combinations.multipliedReportingOverflow(by: size)
                 guard !product.overflow else { return nil }
                 combinations = product.partialValue
+            }
+            if !writesMember, settings.rowCount > 1 {
+                return RowGenerationIssue(
+                    column: nil,
+                    message: String(
+                        format: String(localized: "(%@) must not repeat, but every column of it is left to its default."),
+                        group.joined(separator: ", ")
+                    )
+                )
             }
             guard combinations < Int64(settings.rowCount) else { return nil }
             return RowGenerationIssue(

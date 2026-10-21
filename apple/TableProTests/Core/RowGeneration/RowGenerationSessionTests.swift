@@ -118,7 +118,7 @@ struct RowGenerationSessionTests {
         #expect(source.inserted.count == 25)
     }
 
-    @Test("A run saves the settings, and the next session for the table starts from them")
+    @Test("A run saves the settings, and the next session for the table starts from them with a new seed")
     func settingsAreRememberedPerTable() async {
         let first = await makeSession(RecordingRowSource(table: Self.table))
         first.settings.rowCount = 7
@@ -129,9 +129,21 @@ struct RowGenerationSessionTests {
 
         let second = await makeSession(RecordingRowSource(table: Self.table))
 
+        #expect(first.lastRunSeed == 1_234)
         #expect(second.settings.rowCount == 7)
-        #expect(second.settings.seed == 1_234)
+        #expect(second.settings.seed != 1_234)
+        #expect(second.settings.seed == first.settings.seed)
         #expect(second.columnSettings("email")?.kind == .text)
+    }
+
+    @Test("Settings saved without a run keep their seed")
+    func seedStaysWithoutARun() async {
+        let store = RowGenerationSettingsStore(defaults: suite.defaults)
+        store.save(RowGenerationSettings(rowCount: 3, seed: 77, columns: [:]), for: Self.scope)
+
+        let session = await makeSession(RecordingRowSource(table: Self.table))
+
+        #expect(session.settings.seed == 77)
     }
 
     @Test("A remembered key sequence moves past rows added since, so a second run does not collide")

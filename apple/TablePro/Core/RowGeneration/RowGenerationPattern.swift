@@ -16,6 +16,13 @@ internal enum RowGenerationPattern {
     private static let letters = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
     private static let alphanumerics = letters + digits
 
+    // A column shorter than the pattern keeps only the first characters, so only their slots tell values apart.
+    private static func tokens(_ pattern: String, length: Int?) -> [Token] {
+        let all = tokens(pattern)
+        guard let length else { return all }
+        return Array(all.prefix(max(0, length)))
+    }
+
     private static func tokens(_ pattern: String) -> [Token] {
         var tokens: [Token] = []
         var isEscaped = false
@@ -48,10 +55,10 @@ internal enum RowGenerationPattern {
     }
 
     // The value at one position of every value the pattern can make, counting the last slot fastest.
-    internal static func value(at position: Int64, in pattern: String) -> String {
+    internal static func value(at position: Int64, in pattern: String, length: Int? = nil) -> String {
         var remaining = max(0, position)
         var characters: [Character] = []
-        for token in tokens(pattern).reversed() {
+        for token in tokens(pattern, length: length).reversed() {
             switch token {
             case .literal(let character):
                 characters.append(character)
@@ -63,9 +70,9 @@ internal enum RowGenerationPattern {
         return String(characters.reversed())
     }
 
-    internal static func combinations(_ pattern: String) -> Int64? {
+    internal static func combinations(_ pattern: String, length: Int? = nil) -> Int64? {
         var total: Int64 = 1
-        for case .slot(let choices) in tokens(pattern) {
+        for case .slot(let choices) in tokens(pattern, length: length) {
             let product = total.multipliedReportingOverflow(by: Int64(choices.count))
             guard !product.overflow else { return nil }
             total = product.partialValue

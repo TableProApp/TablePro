@@ -124,10 +124,10 @@ internal enum RowGenerationColumnReader {
         if let labels = EnumValueParser.parseMySQLEnumOrSet(from: info.typeNameForClassification), !labels.isEmpty {
             return .enumeration(labels)
         }
-        if family == .mysql, info.dataType.uppercased().hasPrefix("YEAR") {
+        if family == .mysql, info.typeNameForClassification.uppercased().hasPrefix("YEAR") {
             return .integer(minimum: 1_901, maximum: 2_155)
         }
-        let parsed = SQLTypeParser.parse(info.dataType, catalogSpelling: info.ddlSpelling, family: family)
+        let parsed = SQLTypeParser.parse(info.typeNameForClassification, catalogSpelling: info.ddlSpelling, family: family)
         switch parsed.kind {
         case .boolean: return .boolean
         case .integer(let bytes): return integerClass(bytes: bytes, isUnsigned: parsed.isUnsigned)

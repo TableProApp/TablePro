@@ -72,6 +72,7 @@ internal final class RowGenerationSession: ObservableObject, Identifiable {
     @Published internal var selectedColumnName: String?
     @Published internal private(set) var writtenRows = 0
     @Published internal private(set) var targetRows = 0
+    @Published internal private(set) var lastRunSeed: UInt64?
 
     internal private(set) var runTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
@@ -224,6 +225,7 @@ internal final class RowGenerationSession: ObservableObject, Identifiable {
         store.save(settings, for: scope)
         let engine = makeEngine(for: table)
         let count = settings.rowCount
+        let seed = settings.seed
         cancelFlag.withLock { $0 = false }
         writtenRows = 0
         targetRows = count
@@ -250,19 +252,26 @@ internal final class RowGenerationSession: ObservableObject, Identifiable {
             } catch {
                 outcome = .failed(message: error.localizedDescription, keptRows: 0)
             }
-            advanceKeySequences(past: outcome)
+            prepareNextRun(after: outcome, seed: seed)
             phase = .finished(outcome)
         }
     }
 
-    // Rows that stayed hold the sequence's first values, so a second run from Edit Settings starts after them.
-    private func advanceKeySequences(past outcome: RowGenerationOutcome) {
+    // Rows that stayed hold the seed's values and the sequences' first numbers, so the next run, from Edit Settings
+    // or the next time the sheet opens, takes a new seed and starts the sequences after them. The old seed is kept
+    // for the result, so the same rows can be made again on purpose.
+    private func prepareNextRun(after outcome: RowGenerationOutcome, seed: UInt64) {
         let kept: Int
         switch outcome {
         case .inserted(let count): kept = count
         case .cancelled(let count), .failed(_, let count): kept = count
         }
         guard kept > 0, let table else { return }
+        lastRunSeed = seed
+        defer {
+            settings.seed = Self.randomSeed()
+            store.save(settings, for: scope)
+        }
         for column in table.columns where column.isUnique {
             updateColumn(column.name) { settings in
                 guard settings.kind == .sequence, settings.sequenceStep > 0 else { return }

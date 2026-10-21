@@ -79,7 +79,6 @@ internal struct GenerateRowsColumnOptions: View {
         return facts
     }
 
-    // swiftlint:disable:next cyclomatic_complexity
     @ViewBuilder
     private func kindOptions(_ settings: RowGeneratorSettings) -> some View {
         switch settings.kind {

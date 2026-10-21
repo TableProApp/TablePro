@@ -86,6 +86,40 @@ struct RowGenerationValidationTests {
         #expect(Self.issues([column], ["code": Self.generator(.email)], rowCount: 1_000_000).isEmpty)
     }
 
+    @Test("A pattern cut short by the column counts only the characters that fit")
+    func patternCapacityFollowsTheColumnLength() {
+        let column = RowGenerationColumn(name: "url", typeName: "varchar(20)", valueClass: .text(maxLength: 20), isNullable: false, isUnique: true)
+        let settings = Self.generator(.pattern) { $0.pattern = "https://example.com/????????" }
+
+        #expect(Self.issues([column], ["url": settings], rowCount: 2).map { $0.column } == ["url"])
+    }
+
+    @Test("Blank lines in a list are not values")
+    func listCapacitySkipsBlankLines() {
+        let column = RowGenerationColumn(name: "code", typeName: "text", valueClass: .text(maxLength: nil), isNullable: false, isUnique: true)
+
+        #expect(!Self.issues([column], ["code": Self.generator(.list) { $0.values = ["a", "b", ""] }], rowCount: 3).isEmpty)
+    }
+
+    @Test("More decimal places than the column keeps is refused")
+    func decimalPlacesFollowTheColumn() {
+        let column = RowGenerationColumn(name: "price", typeName: "numeric(5,2)", valueClass: .decimal(precision: 5, scale: 2), isNullable: false)
+        let settings = Self.generator(.decimalRange) { $0.decimalMinimum = 0; $0.decimalMaximum = 1; $0.decimalScale = 3 }
+
+        #expect(Self.issues([column], ["price": settings]).map { $0.column } == ["price"])
+    }
+
+    @Test("A key whose every column is left to its default would repeat on the second row")
+    func keyLeftWhollyToDefaults() {
+        let first = RowGenerationColumn(name: "a", typeName: "int", valueClass: .integer(minimum: .min, maximum: .max), isNullable: false, hasDefault: true)
+        let second = RowGenerationColumn(name: "b", typeName: "int", valueClass: .integer(minimum: .min, maximum: .max), isNullable: false, hasDefault: true)
+        let other = RowGenerationColumn(name: "label", typeName: "text", valueClass: .text(maxLength: nil))
+        let settings = ["a": Self.generator(.serverDefault), "b": Self.generator(.serverDefault), "label": Self.generator(.text)]
+
+        #expect(Self.issues([first, second, other], settings, rowCount: 2, uniqueGroups: [["a", "b"]]).count == 1)
+        #expect(Self.issues([first, second, other], settings, rowCount: 1, uniqueGroups: [["a", "b"]]).isEmpty)
+    }
+
     @Test("A key over several columns needs enough combinations")
     func compositeNeedsEnoughCombinations() {
         let first = RowGenerationColumn(name: "a", typeName: "int", valueClass: .integer(minimum: .min, maximum: .max), isNullable: false)

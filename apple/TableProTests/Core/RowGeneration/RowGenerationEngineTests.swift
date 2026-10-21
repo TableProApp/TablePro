@@ -241,6 +241,63 @@ struct RowGenerationEngineTests {
         #expect(Set(rows.map { $0[0] }).count == 3)
     }
 
+    private static func referencing(_ name: String, _ source: String, at position: Int, unique: Bool = false) -> RowGenerationColumn {
+        RowGenerationColumn(
+            name: name, typeName: "int", valueClass: .integer(minimum: .min, maximum: .max), isNullable: false,
+            isUnique: unique, reference: RowGenerationReferenceSlot(sourceId: source, position: position)
+        )
+    }
+
+    @Test("Two foreign keys that share a column pick rows that agree on it")
+    func sharedForeignKeyColumnAgrees() throws {
+        let users: [[PluginCellValue]] = [["1", "10"], ["1", "11"], ["2", "20"]]
+        let projects: [[PluginCellValue]] = [["1", "100"], ["2", "200"], ["3", "300"]]
+        let table = RowGenerationTable(
+            columns: [
+                Self.referencing("tenant_id", "fk_user", at: 0),
+                Self.referencing("user_id", "fk_user", at: 1),
+                Self.referencing("project_id", "fk_project", at: 1)
+            ],
+            references: [
+                RowGenerationReferenceSource(id: "fk_user", referencedTable: "users", columns: ["tenant_id", "user_id"], tuples: users),
+                RowGenerationReferenceSource(id: "fk_project", referencedTable: "projects", columns: ["tenant_id", "project_id"], tuples: projects)
+            ]
+        )
+        let settings = ["tenant_id": Self.generator(.reference), "user_id": Self.generator(.reference), "project_id": Self.generator(.reference)]
+        let rows = try Self.engine(table, settings).nextRows(60)
+
+        #expect(rows.allSatisfy { row in users.contains([row[0], row[1]]) })
+        #expect(rows.allSatisfy { row in projects.contains([row[0], row[2]]) })
+    }
+
+    @Test("A key over a foreign key's columns walks the referenced rows when random draws run out")
+    func compositeKeyOverAForeignKey() throws {
+        let parents: [[PluginCellValue]] = (1...100).map { [.text(String($0)), .text(String($0 * 7))] }
+        let table = RowGenerationTable(
+            columns: [Self.referencing("a", "fk", at: 0), Self.referencing("b", "fk", at: 1)],
+            uniqueGroups: [["a", "b"]],
+            references: [RowGenerationReferenceSource(id: "fk", referencedTable: "parent", columns: ["a", "b"], tuples: parents)]
+        )
+        let rows = try Self.engine(table, ["a": Self.generator(.reference), "b": Self.generator(.reference)], seed: 1).nextRows(100)
+
+        #expect(Set(rows).count == 100)
+        #expect(rows.allSatisfy { row in parents.contains(row) })
+    }
+
+    @Test("A key member left to its default makes the rest of the key unique on its own")
+    func constantDefaultMemberLeavesTheRest() throws {
+        let table = RowGenerationTable(
+            columns: [
+                RowGenerationColumn(name: "category", typeName: "int", valueClass: .integer(minimum: .min, maximum: .max), isNullable: false, hasDefault: true),
+                Self.integerColumn("code")
+            ],
+            uniqueGroups: [["category", "code"]]
+        )
+        let rows = try Self.engine(table, ["category": Self.generator(.serverDefault), "code": Self.range(1, 50)], seed: 3).nextRows(50)
+
+        #expect(Set(rows.map { $0[0] }).count == 50)
+    }
+
     @Test("Columns of one foreign key take their values from the same referenced row")
     func compositeReferenceKeepsRowsTogether() throws {
         let tuples: [[PluginCellValue]] = [["1", "eu"], ["2", "us"], ["3", "ap"]]

@@ -1705,6 +1705,9 @@
         }
       }
     },
+    "(%@) must not repeat, but every column of it is left to its default." : {
+
+    },
     "(%1$@) must not repeat, but the generators make only %2$@ combinations." : {
 
     },
@@ -7094,6 +7097,9 @@
           }
         }
       }
+    },
+    "%1$@ keeps %2$@ decimal places." : {
+
     },
     "%1$@ maps no field to a column of %2$@." : {
 
@@ -117746,6 +117752,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "No referenced row for (%@) agrees with the values its other foreign keys picked." : {
+
+    },
     "No remote database file was named for this connection." : {
       "localizations" : {
         "fr" : {
@@ -158094,6 +158103,9 @@
       }
     },
     "Seed" : {
+
+    },
+    "Seed %@ made these rows. The next run starts from a new seed." : {
 
     },
     "Select" : {

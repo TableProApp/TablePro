@@ -71,7 +71,7 @@ internal struct GenerateRowsSheet: View {
         case .running:
             progress
         case .finished(let outcome):
-            GenerateRowsResultView(outcome: outcome, tableName: session.tableName)
+            GenerateRowsResultView(outcome: outcome, tableName: session.tableName, seed: session.lastRunSeed)
         }
     }
 
@@ -159,6 +159,7 @@ internal struct GenerateRowsSheet: View {
 internal struct GenerateRowsResultView: View {
     internal let outcome: RowGenerationOutcome
     internal let tableName: String
+    internal let seed: UInt64?
 
     internal var body: some View {
         VStack(spacing: 10) {
@@ -171,7 +172,12 @@ internal struct GenerateRowsResultView: View {
                 .accessibilityIdentifier("generate-rows-result")
             switch outcome {
             case .inserted:
-                EmptyView()
+                if let seed {
+                    Text("Seed \(String(seed)) made these rows. The next run starts from a new seed.")
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .textSelection(.enabled)
+                }
             case .cancelled(let kept):
                 keptText(kept)
                     .foregroundStyle(.secondary)
