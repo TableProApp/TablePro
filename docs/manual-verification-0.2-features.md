@@ -4,6 +4,8 @@ This checklist defines manual checks for the 0.2.0 target. It is not the live mi
 
 The 0.2.0 desktop target is **Arch Linux / Omarchy / Hyprland, native Wayland**. Debian and Ubuntu GNOME desktop acceptance follows 0.2.0 and is tracked under PKG-2. Use the [recorded UI packets](archive/bookie-0.2-completion-handoff-2026-10-18.md#arch--omarchy--wayland-ui-packets); Xvfb success does not establish native Wayland behavior.
 
+The source-matched installed GTK safety run passed 93 scenarios under Xvfb/AT-SPI on 2026-10-21; see its [package identity, result and limitations](evidence/installed-gtk-0.2.0-2026-10-21/README.md). It does not close the native Wayland visual checklist below.
+
 Record the full binary/package SHA, package checksum when installed, GTK backend, OS/Hyprland/GTK/libadwaita versions, display scale, light/dark mode, result and screenshot paths. Test both normal size and a narrow/resized window, keyboard focus, clipboard and popover/dialog placement. Mark blocked and not-run items explicitly.
 
 Take light and dark screenshots for each section, per `AGENTS.md`. Record a result beside each item rather than leaving it blank, because a blank line here reads as "passed" to the next person.
