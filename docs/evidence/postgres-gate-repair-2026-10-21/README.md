@@ -28,7 +28,7 @@ The first full local PostgreSQL run passed 286 cases and failed the no-prepared-
 
 The regression now accepts the existing verified successful workload or an actionable prepared-statement conflict. Each error must carry the pooler configuration hint; successful stage results must retain their expected values. The fixture stops immediately after a failed create or insert, so a partial insert sequence is not compared with the complete twenty-row count. Other errors and incorrect successful outcomes remain failures. The known limitation describes possible conflicts rather than promising a failure on every workload. This does not qualify transaction pooling for session-dependent editor features.
 
-## Final local verification and remaining acceptance
+## Final verification
 
 The final full local PostgreSQL integration run passed all 287 cases in 124.13 seconds. All three PgBouncer scenarios passed in five consecutive repetitions. Final local preflight and driver all-target Clippy passed. Documentation links, issue-ledger checks and ignored-test registration checks passed. Independent review covered both the reset regression and the installed acceptance change; the PgBouncer fallback was tightened in response to review.
 
@@ -41,4 +41,8 @@ cargo test --locked -p tablepro-driver-postgres --test integration -- --include-
 TABLEPRO_GTK_SCENARIO=postgres_ssh_tunnel_loss_retires_session_and_reconnects bash scripts/test-postgres-release.sh
 ```
 
-The complete Forgejo gate remains pending. This document does not qualify the merged Linux baseline as green. Gate and merge outcomes belong to the repair pull request.
+Forgejo run **851** passed all **29** jobs for `4551b70fe6849ab03453c99548610aaf414662ff`, including the PostgreSQL driver, pg-release, all installed GTK shards, both distro floors and driver TLS. GitHub fast checks, preflight, Flatpak, security, workflow contracts and Sonar passed. Expected GitHub merge-tier skips are covered by the completed Forgejo run.
+
+[PR #1296](https://github.com/cozyGarage/BookiE/pull/1296) merged as `849fc28b4f2c23fdcc30280738c314b5e0c22b7d`. A full-tree comparison found no differences between the gated head and that merge. Issues #1288, #1294 and #1295 are complete. This evidence update changes documentation only; the subsequent Forgejo Linux synchronization is recorded on the pull request.
+
+This acceptance covers the existing merge tier. It does not establish that large-table memory use, every extension type or every desktop interaction is defect-free.
