@@ -66,6 +66,7 @@ pub(super) fn build_sidebar(widgets: &AppWidgets, sender: &ComponentSender<App>)
                 AppMsg::ShowCreateTableForExisting { schema, table: name }
             }
             SidebarRowOutput::ImportCsv { schema, name } => AppMsg::ImportCsvIntoTable { schema, table: name },
+            SidebarRowOutput::RenameTable { schema, name } => AppMsg::RenameTablePrompt { schema, table: name },
             SidebarRowOutput::DropTable { schema, name } => AppMsg::DropTablePrompt { schema, table: name },
             SidebarRowOutput::NewTable { schema } => AppMsg::NewTableTab { schema },
             SidebarRowOutput::TableFromCsv { schema } => AppMsg::CreateTableFromCsv { schema },

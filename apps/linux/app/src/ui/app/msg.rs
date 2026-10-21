@@ -223,6 +223,16 @@ pub enum AppMsg {
     ShowCreateTableLoaded {
         sql: String,
     },
+    RenameTablePrompt {
+        schema: Option<String>,
+        table: String,
+    },
+    RenameTableConfirmed {
+        origin: crate::services::catalog::CatalogOrigin,
+        schema: Option<String>,
+        table: String,
+        new_name: String,
+    },
     DropTablePrompt {
         schema: Option<String>,
         table: String,

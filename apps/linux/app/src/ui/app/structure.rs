@@ -67,6 +67,107 @@ impl App {
         self.append_existing_structure_tab(schema, table, sender);
     }
 
+    fn has_open_tabs_for_table(&self, schema: Option<&str>, table: &str) -> bool {
+        self.workspace_tabs.borrow().values().any(|tab| match tab {
+            WorkspaceTab::Structure(s) => s.schema.as_deref() == schema && s.table == table,
+            WorkspaceTab::Table(s) => s.schema.as_deref() == schema && s.table == table,
+            _ => false,
+        })
+    }
+
+    pub(super) fn on_rename_table_prompt(
+        &mut self,
+        schema: Option<String>,
+        table: String,
+        sender: ComponentSender<Self>,
+    ) {
+        let Some(origin) = CatalogOrigin::capture(self.connection_id, &self.database) else {
+            return;
+        };
+        if self.has_open_tabs_for_table(schema.as_deref(), &table) {
+            self.show_error_alert(
+                &crate::tr!("Cannot rename table"),
+                &crate::tr!("Close the open tabs for {table} first, so no pending changes are lost.")
+                    .replace("{table}", &table),
+            );
+            return;
+        }
+        let title = crate::tr!("Rename {table}").replace("{table}", &table);
+        let dialog = adw::AlertDialog::new(Some(&title), None);
+        let entry = gtk4::Entry::builder().text(&table).activates_default(true).build();
+        dialog.set_extra_child(Some(&entry));
+        dialog.add_response("cancel", &crate::tr!("Cancel"));
+        dialog.add_response("rename", &crate::tr!("Rename"));
+        dialog.set_response_appearance("rename", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("rename"));
+        dialog.set_close_response("cancel");
+        dialog.connect_response(None, move |dlg, response| {
+            dlg.close();
+            let new_name = entry.text().trim().to_string();
+            if response == "rename" && new_name != table {
+                sender.input(AppMsg::RenameTableConfirmed {
+                    origin: origin.clone(),
+                    schema: schema.clone(),
+                    table: table.clone(),
+                    new_name,
+                });
+            }
+        });
+        dialog.present(Some(&self.window));
+    }
+
+    pub(super) fn on_rename_table_confirmed(
+        &mut self,
+        origin: CatalogOrigin,
+        schema: Option<String>,
+        table: String,
+        new_name: String,
+        sender: ComponentSender<Self>,
+    ) {
+        if !origin.owns_window(self.connection_id, &self.database) {
+            return;
+        }
+        let Some(driver_id) = self.current_driver_id.clone() else {
+            return;
+        };
+        let sql = match tablepro_core::sql_ddl::build_rename_table(&driver_id, schema.as_deref(), &table, &new_name) {
+            Ok(sql) => sql,
+            Err(e) => {
+                self.show_error_alert(&crate::tr!("Cannot rename table"), &format!("{e}"));
+                return;
+            }
+        };
+        let connection = origin.connection(&self.database);
+        let timeout_secs =
+            crate::services::operation_control::timeout_for(&self.preferences, &self.database, self.connection_id);
+        let sender_for_cmd = sender.clone();
+        sender.command(move |_, shutdown| {
+            shutdown
+                .register(async move {
+                    let Some(conn) = connection else {
+                        sender_for_cmd.input(AppMsg::ShowAlert {
+                            title: crate::tr!("Cannot rename table"),
+                            body: crate::tr!("No active connection."),
+                        });
+                        return;
+                    };
+                    let control = crate::services::operation_control::bounded(timeout_secs);
+                    match conn.execute_controlled(&sql, &control).await {
+                        Ok(_) => sender_for_cmd.input(AppMsg::SchemaChanged {
+                            origin,
+                            schema,
+                            table: None,
+                        }),
+                        Err(e) => sender_for_cmd.input(AppMsg::ShowAlert {
+                            title: crate::tr!("Rename failed"),
+                            body: format!("{e}"),
+                        }),
+                    }
+                })
+                .drop_on_shutdown()
+        });
+    }
+
     /// Right-click → "Drop Table…", or in-tab destructive button.
     pub(super) fn on_drop_table_prompt(
         &mut self,

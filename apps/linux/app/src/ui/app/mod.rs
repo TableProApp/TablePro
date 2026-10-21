@@ -862,6 +862,13 @@ impl SimpleComponent for App {
             AppMsg::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table, sender),
             AppMsg::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table, sender),
             AppMsg::ShowCreateTableLoaded { sql } => self.append_editor_tab(Some(sql), sender),
+            AppMsg::RenameTablePrompt { schema, table } => self.on_rename_table_prompt(schema, table, sender),
+            AppMsg::RenameTableConfirmed {
+                origin,
+                schema,
+                table,
+                new_name,
+            } => self.on_rename_table_confirmed(origin, schema, table, new_name, sender),
             AppMsg::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table, sender),
             AppMsg::DropTableConfirmed { origin, schema, table } => {
                 self.on_drop_table_confirmed(origin, schema, table, sender)
