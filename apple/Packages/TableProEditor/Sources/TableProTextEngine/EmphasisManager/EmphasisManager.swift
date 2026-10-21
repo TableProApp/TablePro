@@ -470,7 +470,9 @@ public final class EmphasisManager {
         return color.resolved(in: textView.effectiveAppearance)
     }
 
+    // An unfilled outline leaves its text showing, and a copy in the highlight's text color would hide the syntax colors.
     private func createTextLayer(for emphasis: Emphasis) -> CATextLayer? {
+        if case .outline(_, false) = emphasis.style { return nil }
         guard let textView = textView,
               let layoutManager = textView.layoutManager,
               let textStorage = textView.textStorage,

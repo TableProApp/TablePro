@@ -94,6 +94,17 @@ struct AISettingsTests {
         #expect(settings.maxToolRoundtripsEnabled == false)
     }
 
+    @Test("Apple Intelligence is off by default and in settings saved before it existed, and a stored choice survives")
+    func appleIntelligenceDecoding() throws {
+        #expect(AISettings.default.useAppleIntelligence == false)
+        let legacy = try JSONDecoder().decode(AISettings.self, from: Data("{}".utf8))
+        #expect(legacy.useAppleIntelligence == false)
+
+        let on = AISettings(useAppleIntelligence: true)
+        let roundTripped = try JSONDecoder().decode(AISettings.self, from: JSONEncoder().encode(on))
+        #expect(roundTripped.useAppleIntelligence == true)
+    }
+
     @Test("Turning the limit off makes it unlimited")
     func disabledLimitIsUnlimited() {
         let settings = AISettings(maxToolRoundtrips: 30, maxToolRoundtripsEnabled: false)

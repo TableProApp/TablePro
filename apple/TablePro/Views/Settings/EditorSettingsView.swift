@@ -8,6 +8,7 @@ import TableProAutocomplete
 
 struct EditorSettingsView: View {
     @Binding var settings: EditorSettings
+    @Binding var formatter: SQLFormatterSettings
     @Binding var typography: TypographySettings
 
     var body: some View {
@@ -44,12 +45,14 @@ struct EditorSettingsView: View {
                 Toggle("Vim mode", isOn: $settings.vimModeEnabled)
                     .accessibilityIdentifier("vim-mode-toggle")
             }
+
+            FormatterSection(settings: $formatter, editor: settings)
         }
         .formStyle(.grouped)
     }
 }
 
 #Preview {
-    EditorSettingsView(settings: .constant(.default), typography: .constant(.default))
+    EditorSettingsView(settings: .constant(.default), formatter: .constant(.default), typography: .constant(.default))
         .frame(width: 450, height: 500)
 }

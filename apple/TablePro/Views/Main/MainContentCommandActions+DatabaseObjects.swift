@@ -155,6 +155,14 @@ extension MainContentCommandActions {
     func duplicateCurrentDatabase() {
         coordinator?.openCopyObjects(mode: .duplicateDatabase, database: nil, schema: nil, preselection: .wholeScope)
     }
+
+    var canSearchDatabase: Bool {
+        isConnected && coordinator?.canSearchDatabase == true
+    }
+
+    func searchDatabase() {
+        coordinator?.openDatabaseSearch(database: nil, schema: nil)
+    }
 }
 
 @MainActor

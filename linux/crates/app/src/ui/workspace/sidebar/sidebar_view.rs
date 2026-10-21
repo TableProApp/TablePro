@@ -1,11 +1,13 @@
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
+use std::sync::Arc;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use tablepro_core::meta::TableRef;
+use tablepro_session::runtime::Tasks;
 
 use super::object_key::ObjectKey;
 use super::sidebar_affordances::SidebarAffordances;
@@ -16,7 +18,7 @@ use super::sidebar_menu::{
     CONTEXT_MENU, DROP_TABLE, EDIT_STRUCTURE, GROUP, IMPORT_CSV, NEW_TABLE, OPEN_IN_NEW_TAB, SHOW_CREATE_TABLE,
     object_menu, offers,
 };
-use super::sidebar_model::SidebarModel;
+use super::sidebar_model::{RowsAsked, RowsWorkedOut, SidebarModel};
 use super::sidebar_row_factory::row_factory;
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 
@@ -39,6 +41,9 @@ pub(crate) struct SidebarInner {
     empty: adw::StatusPage,
     events: Box<dyn Fn(SidebarEvent)>,
     affordances: Cell<SidebarAffordances>,
+    /// Where a new index or search is worked out into rows. Without it,
+    /// on the GTK thread.
+    tasks: Option<Tasks>,
     /// Whether a list was shown yet. Until then the sidebar is blank
     /// rather than saying there are no tables.
     listed: Cell<bool>,
@@ -56,7 +61,11 @@ pub(crate) struct SidebarInner {
 }
 
 impl SidebarView {
-    pub(crate) fn new(events: impl Fn(SidebarEvent) + 'static, affordances: SidebarAffordances) -> Self {
+    pub(crate) fn new(
+        events: impl Fn(SidebarEvent) + 'static,
+        affordances: SidebarAffordances,
+        tasks: Option<Tasks>,
+    ) -> Self {
         let model = SidebarModel::new();
         let list_view = gtk::ListView::new(Some(model.selection().clone()), None::<gtk::ListItemFactory>);
         list_view.add_css_class("navigation-sidebar");
@@ -90,6 +99,7 @@ impl SidebarView {
             empty,
             events: Box::new(events),
             affordances: Cell::new(affordances),
+            tasks,
             listed: Cell::new(false),
             header_factory: RefCell::new(None),
             active: RefCell::new(None),
@@ -115,15 +125,13 @@ impl SidebarView {
         &self.inner.root
     }
 
-    /// Show a new object list. The selection goes back to the tab in
-    /// front's table, which the new list holds as a new object.
+    /// Show a new object list under the search, once its rows are worked
+    /// out. The selection goes back to the tab in front's table, which the
+    /// new list holds as a new object.
     pub(crate) fn show(&self, index: SidebarIndex) {
-        self.inner.model.replace(index);
         self.inner.listed.set(true);
-        self.inner.reselect();
-        // An empty list replacing an empty list changes no item, so the
-        // list's signal never says the placeholder is out of date.
-        self.inner.refresh_placeholder();
+        let asked = self.inner.model.replace(index);
+        work_out_rows(&self.inner, asked);
     }
 
     /// `show`, indexing on the GTK thread, for lists a test writes out.
@@ -137,9 +145,9 @@ impl SidebarView {
     }
 
     pub(crate) fn set_query(&self, query: &str) {
-        self.inner.model.set_query(query);
-        self.inner.reselect();
-        self.inner.refresh_placeholder();
+        if let Some(asked) = self.inner.model.set_query(query) {
+            work_out_rows(&self.inner, asked);
+        }
     }
 
     /// Select the row of the table the tab in front shows, or none for
@@ -238,7 +246,11 @@ impl SidebarInner {
 
     pub(super) fn track_row(&self, item: &gtk::ListItem) {
         let mut rows = self.rows.borrow_mut();
-        rows.retain(|row| row.upgrade().is_some());
+        // A search makes two hundred rows at once, so the rows gone are
+        // dropped only when the list would grow, not on every row.
+        if rows.len() == rows.capacity() {
+            rows.retain(|row| row.upgrade().is_some());
+        }
         rows.push(item.downgrade());
     }
 
@@ -385,6 +397,30 @@ impl SidebarInner {
         (self.events)(SidebarEvent::NewTable(schema.filter(|schema| !schema.is_empty())));
     }
 
+    fn show_rows(&self, worked_out: RowsWorkedOut) {
+        let previous = self.model.shown_index();
+        if let Err(overtaken) = self.model.show(worked_out) {
+            self.release(overtaken);
+            return;
+        }
+        self.reselect();
+        // An empty list replacing an empty list changes no item, so the
+        // list's signal never says the placeholder is out of date.
+        self.refresh_placeholder();
+        if !Arc::ptr_eq(&previous, &self.model.shown_index()) {
+            self.release(previous);
+        }
+    }
+
+    /// Let go of what may hold the last reference to an index on the
+    /// blocking threads: an index frees a few strings per table, which
+    /// takes a catalog of 50,000 longer than a frame.
+    fn release(&self, unused: impl Send + 'static) {
+        if let Some(tasks) = self.tasks.as_ref() {
+            drop(tasks.spawn_blocking_task(move || drop(unused)));
+        }
+    }
+
     fn reselect(&self) {
         self.model.select(self.active.borrow().as_ref());
     }
@@ -412,6 +448,27 @@ impl SidebarInner {
             .borrow_mut()
             .push((object.upcast_ref::<glib::Object>().downgrade(), handler));
     }
+}
+
+/// Work out the rows on the blocking threads, then show them unless a
+/// newer index or search overtook them.
+fn work_out_rows(inner: &Rc<SidebarInner>, asked: RowsAsked) {
+    let Some(tasks) = inner.tasks.as_ref() else {
+        inner.show_rows(asked.work_out());
+        return;
+    };
+    let working = tasks.spawn_blocking_task(move || asked.work_out());
+    let view = Rc::downgrade(inner);
+    glib::spawn_future_local(async move {
+        match working.await {
+            Ok(worked_out) => {
+                if let Some(view) = view.upgrade() {
+                    view.show_rows(worked_out);
+                }
+            }
+            Err(failure) => tracing::debug!(%failure, "the sidebar's rows were not worked out"),
+        }
+    });
 }
 
 fn install_actions(inner: &Rc<SidebarInner>) {

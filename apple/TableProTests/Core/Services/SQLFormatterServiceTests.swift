@@ -15,7 +15,13 @@ struct SQLFormatterServiceTests {
     let formatter = SQLFormatterService()
 
     private func format(_ sql: String, options: SQLFormatterOptions = .default) throws -> String {
-        try formatter.format(sql, dialect: .mysql).formattedSQL
+        try formatter.format(sql, dialect: .mysql, options: options).formattedSQL
+    }
+
+    private func options(_ change: (inout SQLFormatterOptions) -> Void) -> SQLFormatterOptions {
+        var options = SQLFormatterOptions.default
+        change(&options)
+        return options
     }
 
     // MARK: - Simple SELECT
@@ -330,7 +336,7 @@ struct SQLFormatterServiceTests {
     func keywordsNotUppercased() throws {
         var options = SQLFormatterOptions.default
         options.keywordCase = .preserve
-        let result = try formatter.format("select * from users", dialect: .mysql, options: options).formattedSQL
+        let result = try format("select * from users", options: options)
         #expect(result.contains("select"))
         #expect(result.contains("from"))
     }
@@ -651,5 +657,365 @@ struct SQLFormatterServiceTests {
     func unterminatedBlockComment() throws {
         let formatted = try format("select 1; /* note")
         #expect(formatted.hasSuffix("/* note"))
+    }
+
+    // MARK: - Expressions Inside Parentheses
+
+    @Test("Commas inside a function call in the SELECT list stay inline")
+    func functionArgumentsStayInline() throws {
+        let result = try format("select concat(first_name, ' ', last_name) as name, id from users")
+        #expect(result == """
+        SELECT concat(first_name, ' ', last_name) AS name,
+               id
+        FROM users
+        """)
+    }
+
+    @Test("FROM, WHERE and ORDER BY inside parentheses stay inline")
+    func clauseKeywordsInsideParentheses() throws {
+        let result = try format(
+            "select substring(name from 2) as s, count(*) filter (where x > 0), "
+                + "string_agg(name, ', ' order by name) from t"
+        )
+        #expect(result == """
+        SELECT substring(name FROM 2) AS s,
+               count(*) FILTER (WHERE x > 0),
+               string_agg(name, ', ' ORDER BY name)
+        FROM t
+        """)
+    }
+
+    @Test("A column list keeps CHARACTER SET, WITH TIME ZONE and ON DELETE inline")
+    func createTableColumnClauses() throws {
+        let result = try format(
+            "create table t (id int, ts timestamp with time zone, name text CHARACTER set utf8mb4, "
+                + "parent int references p(id) on delete cascade)"
+        )
+        #expect(result == """
+        CREATE TABLE t (
+          id int,
+          ts timestamp WITH time zone,
+          name text CHARACTER SET utf8mb4,
+          parent int REFERENCES p(id) ON DELETE CASCADE
+        )
+        """)
+    }
+
+    @Test("A keyword beside a dot is a name and keeps its spelling")
+    func qualifiedNamesKeepSpelling() throws {
+        let result = try format(
+            "select e.end, t.key, dbo.count(x), count(*) from events e",
+            options: options { $0.functionCase = .upper }
+        )
+        #expect(result == """
+        SELECT e.end,
+               t.key,
+               dbo.count(x),
+               COUNT(*)
+        FROM events e
+        """)
+    }
+
+    @Test("A statement keyword after the word it modifies stays in its clause")
+    func statementKeywordsAsModifiers() throws {
+        #expect(try format("select * from t where id = 1 for update") == """
+        SELECT *
+        FROM t
+        WHERE id = 1 for UPDATE
+        """)
+        #expect(try format("insert into t (a) values (1) on DUPLICATE key update a = values(a)") == """
+        INSERT INTO t (a)
+        VALUES (1) ON DUPLICATE KEY UPDATE a = VALUES (a)
+        """)
+        #expect(try format("grant select, insert on t to u") == "GRANT SELECT, INSERT ON t to u")
+    }
+
+    @Test("A statement keyword after EXPLAIN starts its own line instead of joining it")
+    func explainKeepsKeywordsApart() throws {
+        #expect(try format("explain select * from t") == """
+        EXPLAIN
+        SELECT *
+        FROM t
+        """)
+        #expect(try format("explain update t set a = 1") == """
+        EXPLAIN
+        UPDATE t
+        SET a = 1
+        """)
+    }
+
+    // MARK: - Indentation Options
+
+    @Test("Indent width sets the step of every nested level")
+    func indentWidth() throws {
+        let result = try format(
+            "select * from (select id from users where a = 1 and b = 2) as t",
+            options: options { $0.indentWidth = 4 }
+        )
+        #expect(result == """
+        SELECT *
+        FROM (
+            SELECT id
+            FROM users
+            WHERE a = 1
+                AND b = 2
+        ) AS t
+        """)
+    }
+
+    @Test("Tab indentation puts tabs before the alignment spaces")
+    func tabIndentation() throws {
+        let result = try format(
+            "select * from (select id, name from users) as t",
+            options: options { $0.indentStyle = .tabs }
+        )
+        #expect(result == "SELECT *\nFROM (\n\tSELECT id,\n\t       name\n\tFROM users\n) AS t")
+    }
+
+    @Test("ON follows the indent width")
+    func joinConditionIndent() throws {
+        let result = try format(
+            "select * from users u left join roles r on u.role_id = r.id",
+            options: options { $0.indentWidth = 4 }
+        )
+        #expect(result == """
+        SELECT *
+        FROM users u
+        LEFT JOIN roles r
+            ON u.role_id = r.id
+        """)
+    }
+
+    // MARK: - Case Options
+
+    @Test("Keyword case lower writes keywords and synthesized words lower case")
+    func keywordCaseLower() throws {
+        let result = try format(
+            "SELECT id FROM users LEFT JOIN roles ON 1 = 1 ORDER BY id",
+            options: options { $0.keywordCase = .lower }
+        )
+        #expect(result == """
+        select id
+        from users
+        left join roles
+          on 1 = 1
+        order by id
+        """)
+    }
+
+    @Test("Function case rewrites a call and leaves a column with a function's name alone")
+    func functionCase() throws {
+        let upper = try format("select count(*), max(id), count from t", options: options { $0.functionCase = .upper })
+        #expect(upper == """
+        SELECT COUNT(*),
+               MAX(id),
+               count
+        FROM t
+        """)
+        let lower = try format("select COUNT(*) from t", options: options { $0.functionCase = .lower })
+        #expect(lower == """
+        SELECT count(*)
+        FROM t
+        """)
+    }
+
+    @Test("Function case leaves calls alone where the engine matches function names by exact case")
+    func functionCaseOnCaseSensitiveEngine() throws {
+        var tokenFormatter = SQLTokenFormatter(
+            options: options { $0.functionCase = .upper },
+            dialectFunctions: ["toString"],
+            rewritesFunctionCase: false
+        )
+        let tokens = SQLTokenizer(dialectKeywords: ["toString"]).tokenize("select toString(x), count(*) from t")
+        #expect(tokenFormatter.format(tokens) == """
+        SELECT toString(x),
+               count(*)
+        FROM t
+        """)
+    }
+
+    // MARK: - Comma Position
+
+    @Test("Leading commas line up the items of a SELECT list")
+    func leadingCommasSelect() throws {
+        let result = try format(
+            "select id, name, email from users",
+            options: options { $0.commaPosition = .leading }
+        )
+        #expect(result == """
+        SELECT id
+             , name
+             , email
+        FROM users
+        """)
+    }
+
+    @Test("Leading commas in a SET list and a column list")
+    func leadingCommasSetAndColumns() throws {
+        let leading = options { $0.commaPosition = .leading }
+        #expect(try format("update users set name = 'a', email = 'b' where id = 1", options: leading) == """
+        UPDATE users
+        SET name = 'a'
+          , email = 'b'
+        WHERE id = 1
+        """)
+        #expect(try format("create table t (id int, name text)", options: leading) == """
+        CREATE TABLE t (
+          id int
+          , name text
+        )
+        """)
+    }
+
+    @Test("Leading commas leave a function call's arguments inline")
+    func leadingCommasKeepArgumentsInline() throws {
+        let result = try format("select concat(a, b), c from t", options: options { $0.commaPosition = .leading })
+        #expect(result == """
+        SELECT concat(a, b)
+             , c
+        FROM t
+        """)
+    }
+
+    // MARK: - Line Width
+
+    @Test("A list that fits the line width stays on one line")
+    func lineWidthKeepsShortListsInline() throws {
+        let result = try format(
+            "select id, name from users where a = 1 and b = 2",
+            options: options { $0.lineWidth = 40 }
+        )
+        #expect(result == """
+        SELECT id, name
+        FROM users
+        WHERE a = 1 AND b = 2
+        """)
+    }
+
+    @Test("A list longer than the line width breaks one item per line")
+    func lineWidthBreaksLongLists() throws {
+        let result = try format(
+            "select first_column, second_column, third_column from t",
+            options: options { $0.lineWidth = 40 }
+        )
+        #expect(result == """
+        SELECT first_column,
+               second_column,
+               third_column
+        FROM t
+        """)
+    }
+
+    @Test("A line exactly at the width fits, one character more does not")
+    func lineWidthBoundary() throws {
+        let sql = "select aaaa, bbbb from t"
+        #expect(try format(sql, options: options { $0.lineWidth = 17 }).hasPrefix("SELECT aaaa, bbbb\n"))
+        #expect(try format(sql, options: options { $0.lineWidth = 16 }).hasPrefix("SELECT aaaa,\n"))
+    }
+
+    @Test("A list holding a subquery never stays on one line")
+    func lineWidthBreaksAroundSubquery() throws {
+        let result = try format(
+            "select a, (select max(b) from u) as m from t",
+            options: options { $0.lineWidth = 200 }
+        )
+        #expect(result.hasPrefix("SELECT a,\n"))
+    }
+
+    @Test("Line width applies to a nested SELECT on its own")
+    func lineWidthNested() throws {
+        let result = try format(
+            "select * from (select id, name from users) as t",
+            options: options { $0.lineWidth = 80 }
+        )
+        #expect(result == """
+        SELECT *
+        FROM (
+          SELECT id, name
+          FROM users
+        ) AS t
+        """)
+    }
+
+    // MARK: - Join Condition
+
+    @Test("Join condition on the JOIN line")
+    func joinConditionSameLine() throws {
+        let result = try format(
+            "select * from users u inner join roles r on u.role_id = r.id left join teams t on u.team_id = t.id",
+            options: options { $0.joinCondition = .sameLine }
+        )
+        #expect(result == """
+        SELECT *
+        FROM users u
+        INNER JOIN roles r ON u.role_id = r.id
+        LEFT JOIN teams t ON u.team_id = t.id
+        """)
+    }
+
+    // MARK: - Alias Alignment
+
+    @Test("Aliases line up in one column")
+    func alignAliases() throws {
+        let result = try format(
+            "select u.id as user_id, u.name as name, count(o.id) as order_count, u.email from users u",
+            options: options { $0.alignAliases = true }
+        )
+        #expect(result == """
+        SELECT u.id        AS user_id,
+               u.name      AS name,
+               count(o.id) AS order_count,
+               u.email
+        FROM users u
+        """)
+    }
+
+    @Test("Alias alignment with leading commas")
+    func alignAliasesLeadingCommas() throws {
+        let result = try format(
+            "select id as a, created_at as b from t",
+            options: options {
+                $0.alignAliases = true
+                $0.commaPosition = .leading
+            }
+        )
+        #expect(result == """
+        SELECT id         AS a
+             , created_at AS b
+        FROM t
+        """)
+    }
+
+    @Test("A column spanning lines and an AS inside a call are not aligned")
+    func alignAliasesSkipsMultilineAndNested() throws {
+        let result = try format(
+            "select cast(x as int) as xi, case when a then 1 end as flag, id as identifier from t",
+            options: options { $0.alignAliases = true }
+        )
+        #expect(result == """
+        SELECT cast(x AS int) AS xi,
+               CASE
+                 WHEN a THEN 1
+               END AS flag,
+               id             AS identifier
+        FROM t
+        """)
+    }
+
+    // MARK: - Idempotency Under Options
+
+    @Test(
+        "Formatting twice gives the same result under every option",
+        arguments: [
+            SQLFormatterOptions(indentStyle: .tabs, commaPosition: .leading, alignAliases: true),
+            SQLFormatterOptions(indentWidth: 4, keywordCase: .lower, functionCase: .upper, lineWidth: 60),
+            SQLFormatterOptions(lineWidth: 120, joinCondition: .sameLine, alignAliases: true),
+        ]
+    )
+    func idempotentUnderOptions(_ options: SQLFormatterOptions) throws {
+        let sql = "select u.id as user_id, count(o.id) as n from users u left join orders o on u.id = o.user_id "
+            + "where u.status = 'active' and o.total > 10 group by u.id order by n desc"
+        let first = try format(sql, options: options)
+        #expect(try format(first, options: options) == first)
     }
 }

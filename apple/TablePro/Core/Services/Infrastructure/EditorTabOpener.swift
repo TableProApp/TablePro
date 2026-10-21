@@ -133,6 +133,7 @@ internal enum EditorTabOpener {
                 schemaName: resolvedSchemaName,
                 isView: payload.isView,
                 objectType: payload.objectType,
+                isTemporary: payload.isTemporary,
                 isPreview: payload.isPreview,
                 allowsDuplicate: payload.forcesNewTab
             )

@@ -51,6 +51,7 @@ struct DatabaseTreeMenuSpecTests {
         supportsRename: Bool = true,
         canCopyObjects: Bool = true,
         canDuplicateDatabase: Bool = true,
+        canSearchData: Bool = true,
         canCreateTable: Bool = true,
         canCreateView: Bool = true,
         canCreateDatabase: Bool = false,
@@ -122,6 +123,7 @@ struct DatabaseTreeMenuSpecTests {
             hasSchemaFilter: hasSchemaFilter,
             canCopyObjects: canCopyObjects,
             canDuplicateDatabase: canDuplicateDatabase,
+            canSearchData: canSearchData,
             canCreateTable: canCreateTable,
             canCreateView: canCreateView,
             canCreateDatabase: canCreateDatabase,
@@ -163,6 +165,21 @@ struct DatabaseTreeMenuSpecTests {
             case .submenu(let title, _): return title
             }
         }
+    }
+
+    // MARK: - Temporary tables
+
+    @Test("A temporary table offers only what runs on its own session")
+    func temporaryTableMenuStaysOnTheSession() {
+        let ref = DatabaseTreeTableRef(
+            database: "app",
+            schema: nil,
+            table: TableInfo(name: "scratch", type: .table, rowCount: nil, schema: "pg_temp_3")
+        )
+
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .temporaryTable(ref))))
+
+        #expect(issued == [.openInNewTab(ref), .showStructure(ref), .copyTableNames(["scratch"])])
     }
 
     // MARK: - The empty area
@@ -1174,6 +1191,49 @@ struct DatabaseTreeMenuSpecTests {
 
         #expect(!issued.contains { if case .copyContainerTo = $0 { return true } else { return false } })
         #expect(!issued.contains { if case .duplicateDatabase = $0 { return true } else { return false } })
+    }
+
+    // MARK: - Search
+
+    @Test("A database row offers Search Database, a schema row Search Schema")
+    func containersOfferSearch() {
+        let database = DatabaseTreeMenuSpec.sections(for: context(
+            clicked: databaseKind("app"), selectedContainers: [.database("app")]
+        ))
+        #expect(commands(database).contains(.searchContainer(.database("app"))))
+        #expect(titles(database).contains("Search Database\u{2026}"))
+
+        let schema = DatabaseContainerRef.schema(database: "app", schema: "sales")
+        let schemaSections = DatabaseTreeMenuSpec.sections(for: context(
+            clicked: .schema(database: "app", schema: "sales"), selectedContainers: [schema]
+        ))
+        #expect(commands(schemaSections).contains(.searchContainer(schema)))
+        #expect(titles(schemaSections).contains("Search Schema\u{2026}"))
+    }
+
+    @Test("A schema drawn in a hierarchical tree offers Search Schema too")
+    func hierarchicalSchemaOffersSearch() {
+        let issued = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .hierarchicalSchemaSection(schema: "SALES"))
+        ))
+        #expect(issued.contains(.searchContainer(.schema(database: "app", schema: "SALES"))))
+    }
+
+    @Test("Search is not offered on an engine it cannot run on, a system container or a multi-selection")
+    func searchNeedsOneUserContainer() {
+        func offersSearch(_ sections: [DatabaseTreeMenuSection]) -> Bool {
+            commands(sections).contains { if case .searchContainer = $0 { return true } else { return false } }
+        }
+        #expect(!offersSearch(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: databaseKind("app"), selectedContainers: [.database("app")], canSearchData: false
+        ))))
+        #expect(!offersSearch(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: databaseKind("information_schema", isSystem: true),
+            selectedContainers: [.database("information_schema", isSystem: true)]
+        ))))
+        #expect(!offersSearch(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: databaseKind("app"), selectedContainers: [.database("app"), .database("archive")]
+        ))))
     }
 
     // MARK: - Schema management

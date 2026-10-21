@@ -239,6 +239,10 @@ struct MainContentView: View {
             ObjectCommentSheet(target: target, connection: connection)
         case .documentEditor(let request):
             DocumentEditorSheet(request: request, databaseType: connection.type)
+        case .searchDatabase(let session):
+            DatabaseSearchSheet(session: session) { result in
+                coordinator.openDatabaseSearchResult(result, in: session)
+            }
         case .exportDialog, .exportQueryResults, .importDialog, .rowImport, .rowImportBatch,
              .transferTables, .backupDatabase, .restoreDatabase:
             transferSheetContent(for: sheet, dismiss: dismissBinding)

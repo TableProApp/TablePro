@@ -64,6 +64,15 @@ struct ResultSetMenuModelTests {
         #expect(model.canCloseOthers(active) == false)
     }
 
+    @Test("Compare is offered only for a result that holds columns")
+    func compareNeedsColumns() throws {
+        let rows = Self.make(count: 2, activeIndex: 1, comparableIndices: [0, 1])
+        let plan = Self.make(count: 2, activeIndex: 1, comparableIndices: [0])
+
+        #expect(rows.canCompare(try #require(rows.activeEntry)))
+        #expect(plan.canCompare(try #require(plan.activeEntry)) == false)
+    }
+
     @Test("An empty model draws no control")
     func emptyModelIsEmpty() {
         let model = ResultSetMenuModel(entries: [], activeOrdinal: 0, total: 0)
@@ -75,7 +84,8 @@ struct ResultSetMenuModelTests {
     private static func make(
         count: Int,
         activeIndex: Int,
-        pinnedIndices: Set<Int> = []
+        pinnedIndices: Set<Int> = [],
+        comparableIndices: Set<Int>? = nil
     ) -> ResultSetMenuModel {
         let entries = (0 ..< count).map { index in
             ResultSetMenuEntry(
@@ -83,7 +93,8 @@ struct ResultSetMenuModelTests {
                 label: "Result \(index + 1)",
                 isPinned: pinnedIndices.contains(index),
                 isActive: index == activeIndex,
-                ordinal: index + 1
+                ordinal: index + 1,
+                isComparable: comparableIndices.map { $0.contains(index) } ?? true
             )
         }
         return ResultSetMenuModel(

@@ -28,6 +28,7 @@ struct SQLEditorView: View {
     var databaseScope: DatabaseScope?
     var connectionId: UUID?
     var tabID: UUID?
+    var sourceFileURL: URL?
     var claimFocusOnAppear: Bool = false
     /// Called once the editor has latched a focus claim. The owner's one-shot intent is cleared
     /// here rather than on its own `onAppear`, which fires before this subtree renders.
@@ -67,6 +68,7 @@ struct SQLEditorView: View {
         coordinator.databaseType = databaseType
         coordinator.tabID = tabID
         coordinator.connectionId = connectionId
+        coordinator.sourceFileURL = sourceFileURL
         if claimFocusOnAppear {
             coordinator.scheduleEditorFocusClaim()
             onFocusClaimed?()

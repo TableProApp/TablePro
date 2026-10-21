@@ -56,6 +56,10 @@ enum DatabaseMenuBuilder {
                 action: #selector(MainSplitViewController.createTableFolder(_:))
             ),
             MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Search Database…"),
+                action: #selector(MainSplitViewController.searchDatabase(_:))
+            ),
             /// The sidebar's own Copy To and Duplicate Database, mirrored so both are reachable
             /// from the keyboard. The menu acts on the database being browsed, which is what a
             /// command with no clicked row can mean. Spelled exactly as the sidebar and the sheet

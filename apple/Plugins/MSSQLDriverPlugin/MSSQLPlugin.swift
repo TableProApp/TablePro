@@ -302,6 +302,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .cellExpressions,
             .uuidCellText,
             .userManagement,
+            .temporaryTables,
         ]
     }
 

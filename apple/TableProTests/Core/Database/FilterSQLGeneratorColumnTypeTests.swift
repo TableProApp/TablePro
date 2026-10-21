@@ -413,6 +413,35 @@ struct FilterSQLGeneratorColumnTypeTests {
         #expect(tinyint == "`v` = '5'")
     }
 
+    // Oracle's default NLS_DATE_FORMAT is DD-MON-RR, so a quoted ISO date fails with ORA-01861.
+    @Test("An Oracle date or timestamp column compares an ANSI literal")
+    func oracleTemporalLiterals() {
+        let oracle = DatabaseType.oracle
+        let date = Self.engineCondition(oracle, type: .date(rawType: "DATE"), value: "2024-02-29", dialect: Self.postgresqlDialect)
+        let stamp = Self.engineCondition(
+            oracle, type: .timestamp(rawType: "TIMESTAMP(6)"), value: "2024-02-29T13:45:10.5", dialect: Self.postgresqlDialect
+        )
+        let text = Self.engineCondition(oracle, type: .text(rawType: "VARCHAR2"), value: "2024-02-29", dialect: Self.postgresqlDialect)
+        let other = Self.engineCondition(.postgresql, type: .date(rawType: "date"), value: "2024-02-29", dialect: Self.postgresqlDialect)
+        #expect(date == "\"v\" = DATE '2024-02-29'")
+        #expect(stamp == "\"v\" = TIMESTAMP '2024-02-29 13:45:10.5'")
+        #expect(text == "\"v\" = '2024-02-29'")
+        #expect(other == "\"v\" = '2024-02-29'")
+    }
+
+    // T-SQL reads `[` as the start of a character class, so `a[bc]` matched `ab` and `ac`.
+    @Test("A SQL Server pattern escapes the bracket, other engines leave it")
+    func sqlServerEscapesBracket() {
+        let mssql = Self.engineCondition(
+            .mssql, type: .text(rawType: "nvarchar"), op: .contains, value: "a[bc]", dialect: Self.postgresqlDialect
+        )
+        let postgres = Self.engineCondition(
+            .postgresql, type: .text(rawType: "text"), op: .contains, value: "a[bc]", dialect: Self.postgresqlDialect
+        )
+        #expect(mssql?.contains("'%a![bc]%'") == true)
+        #expect(postgres?.contains("'%a[bc]%'") == true)
+    }
+
     @Test("A PostgreSQL bit read as a string of digits compares quoted")
     func postgresBitIsQuoted() {
         let type = ColumnTypeClassifier(family: .postgres).classify(rawTypeName: "bit")

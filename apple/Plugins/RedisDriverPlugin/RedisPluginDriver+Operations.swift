@@ -69,13 +69,19 @@ extension RedisPluginDriver {
         case .xrange, .xlen:
             return try await executeStreamOperation(operation, connection: conn, startTime: startTime)
 
-        case .ping, .info, .dbsize, .flushdb, .select, .configGet, .configSet, .command, .multi, .exec, .discard:
+        case .ping, .info, .dbsize, .flushdb, .select, .configGet, .configSet, .slowlogGet, .command,
+             .multi, .exec, .discard:
             return try await executeServerOperation(operation, connection: conn, startTime: startTime)
 
         case .inDatabase(let database, let operation):
             return try await conn.withDatabase(database) {
                 try await runOperation(operation, connection: conn, startTime: startTime)
             }
+
+        case .outsideBlock(let operation):
+            return try await executeServerOperation(
+                operation, connection: conn, startTime: startTime, scope: .outsideBlock
+            )
         }
     }
 
@@ -473,7 +479,8 @@ extension RedisPluginDriver {
     func executeServerOperation(
         _ operation: RedisOperation,
         connection conn: any RedisCommandChannel,
-        startTime: Date
+        startTime: Date,
+        scope: RedisCommandScope = .session
     ) async throws -> PluginQueryResult {
         switch operation {
         case .ping:
@@ -487,7 +494,7 @@ extension RedisPluginDriver {
             )
 
         case .info(let sections):
-            let result = try await conn.run(["INFO"] + sections)
+            let result = try await conn.run(["INFO"] + sections, scope: scope)
             let infoText = result.stringValue ?? String(describing: result)
             return PluginQueryResult(
                 columns: ["info"],
@@ -524,8 +531,12 @@ extension RedisPluginDriver {
             try await conn.run(["CONFIG", "SET", parameter, value])
             return buildStatusResult("OK", startTime: startTime)
 
+        case .slowlogGet(let count):
+            let result = try await conn.run(["SLOWLOG", "GET"] + (count.map { [String($0)] } ?? []), scope: scope)
+            return RedisReplyGrid.slowLog(result).queryResult(startTime: startTime)
+
         case .command(let args):
-            let result = try await conn.run(args.asRedisArguments)
+            let result = try await conn.run(args.asRedisArguments, scope: scope)
             return RedisReplyGrid.generic(result).queryResult(startTime: startTime)
 
         case .multi:

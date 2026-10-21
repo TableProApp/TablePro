@@ -272,6 +272,83 @@ public enum MSSQLSchemaQueries {
 
     private static let columnObjectID = "OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME))"
 
+    // A `#name` table lives in `tempdb` whatever database the session is on.
+    public static func namesTemporaryTable(_ table: String) -> Bool {
+        table.hasPrefix("#")
+    }
+
+    // `OBJECT_ID` reaches only the calling session's own `#name`, never another session's table of that name.
+    public static func temporaryObjectID(_ table: String) -> String {
+        "OBJECT_ID(N'tempdb..' + QUOTENAME(\(MSSQLStringLiteral.quoted(table))))"
+    }
+
+    // `tempdb.sys.tables` lists every session's tables, each padded with underscores to 116 characters before a
+    // 12-digit suffix (measured on SQL Server 2022), so the name is the prefix `OBJECT_ID` resolves back to the row.
+    // Trailing underscores of the name itself are lost to the padding, so up to three are tried: every candidate is
+    // tried against every session's tables, and trying all 116 took 1.4 s with 300 temporary tables on the server.
+    public static let temporaryTables = """
+        SELECT LEFT(t.name, n.length) AS name
+        FROM tempdb.sys.tables AS t
+        CROSS APPLY (
+            SELECT TOP (1) c.length
+            FROM (VALUES (0), (1), (2), (3)) AS extra(underscores)
+            CROSS APPLY (
+                SELECT LEN(REPLACE(LEFT(t.name, LEN(t.name) - 12), N'_', N' ')) + extra.underscores AS length
+            ) AS c
+            WHERE OBJECT_ID(N'tempdb..' + QUOTENAME(LEFT(t.name, c.length))) = t.object_id
+            ORDER BY c.length
+        ) AS n
+        WHERE t.name LIKE N'#[^#]%' AND LEN(t.name) = 128
+        ORDER BY name
+        """
+
+    // `COLUMNPROPERTY` resolves an object id in the current database and answers NULL for a `tempdb` table, so the
+    // flags come from `tempdb.sys.columns`.
+    public static func temporaryColumns(table: String) -> String {
+        let object = temporaryObjectID(table)
+        return """
+            SELECT
+                c.COLUMN_NAME,
+                c.DATA_TYPE,
+                c.CHARACTER_MAXIMUM_LENGTH,
+                c.NUMERIC_PRECISION,
+                c.NUMERIC_SCALE,
+                c.IS_NULLABLE,
+                c.COLUMN_DEFAULT,
+                CAST(sc.is_identity AS int) AS IS_IDENTITY,
+                CASE WHEN EXISTS (
+                    SELECT 1
+                    FROM tempdb.sys.indexes i
+                    JOIN tempdb.sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+                    WHERE i.object_id = sc.object_id AND i.is_primary_key = 1 AND ic.column_id = sc.column_id
+                ) THEN 1 ELSE 0 END AS IS_PK,
+                CAST(sc.is_computed AS int) AS IS_COMPUTED,
+                CASE
+                    WHEN c.DATA_TYPE = 'timestamp' THEN 1
+                    WHEN sc.generated_always_type > 0 THEN 1
+                    ELSE 0
+                END AS IS_SERVER_GENERATED
+            FROM tempdb.INFORMATION_SCHEMA.COLUMNS c
+            JOIN tempdb.sys.columns sc ON sc.object_id = \(object) AND sc.name = c.COLUMN_NAME
+            WHERE c.TABLE_NAME = OBJECT_NAME(\(object), DB_ID(N'tempdb'))
+            ORDER BY c.ORDINAL_POSITION
+            """
+    }
+
+    public static func temporaryIndexes(table: String) -> String {
+        """
+        SELECT i.name, i.is_unique, i.is_primary_key, c.name AS column_name, i.type_desc
+        FROM tempdb.sys.indexes i
+        JOIN tempdb.sys.index_columns ic
+            ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+        JOIN tempdb.sys.columns c
+            ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+        WHERE i.object_id = \(temporaryObjectID(table))
+          AND i.name IS NOT NULL
+        ORDER BY i.index_id, ic.key_ordinal
+        """
+    }
+
     public static func indexes(schema: String, table: String) -> String {
         let object = MSSQLStringLiteral.quoted(bracketed(schema: schema, table: table))
         return """

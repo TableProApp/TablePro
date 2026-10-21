@@ -3,7 +3,8 @@ import SwiftUI
 struct ERDiagramToolbar: View {
     @ObservedObject var viewModel: ERDiagramViewModel
     @ObservedObject var viewport: DiagramViewportController
-    let onExport: () -> Void
+    let onExport: (ERDiagramExportFormat) -> Void
+    let onCopyMermaid: () -> Void
 
     var body: some View {
         DiagramZoomToolbar(viewport: viewport) {
@@ -35,12 +36,32 @@ struct ERDiagramToolbar: View {
             .help(String(localized: "Reset Layout"))
             .accessibilityLabel(String(localized: "Reset Layout"))
 
-            Button(action: onExport) {
-                Image(systemName: "square.and.arrow.up")
-            }
-            .help(String(localized: "Export as PNG"))
-            .accessibilityLabel(String(localized: "Export as PNG"))
+            exportMenu
         }
         .padding(12)
+    }
+
+    // Only `.contain` names an icon-only menu without hiding its items.
+    private var exportMenu: some View {
+        Menu {
+            ForEach(ERDiagramExportFormat.allCases) { format in
+                Button {
+                    onExport(format)
+                } label: {
+                    Text(verbatim: "\(format.name)\u{2026}")
+                }
+            }
+            Divider()
+            Button(String(localized: "Copy as Mermaid"), action: onCopyMermaid)
+        } label: {
+            Label(String(localized: "Export"), systemImage: "square.and.arrow.up")
+                .labelStyle(.iconOnly)
+        }
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(String(localized: "Export"))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(String(localized: "Export"))
+        .accessibilityIdentifier("er-diagram-export")
     }
 }

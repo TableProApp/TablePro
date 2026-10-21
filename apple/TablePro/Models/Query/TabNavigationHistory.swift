@@ -34,6 +34,7 @@ struct TabNavigationEntry: Equatable {
     var page: Int
     var pageSize: Int
     var anchorRowKey: [String: String]?
+    var isTemporary = false
 }
 
 /// A tab's browse history, in the shape a browser tab uses: a back stack, a forward stack, and a

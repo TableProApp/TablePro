@@ -564,7 +564,7 @@ impl Workspace {
         let persistence = workspace_persistence::WorkspacePersistence::new(storage.workspaces().clone());
         let exports = workspace.export_ledger(&window, &services, &context, &input);
         let imports = import_ledger::ImportLedger::new(context.hold.clone(), window_inhibitor(&window));
-        let sidebar = sidebar::build(&workspace, &input, sidebar::SidebarAffordances::for_session(&session));
+        let sidebar = sidebar::build(&workspace, &input, &session, &tasks);
         let WorkspaceTabParts {
             tab_view,
             index,

@@ -135,6 +135,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if holdsForServer(MySQLServerVersion.hasCreateUser(banner:flavor:)) {
             capabilities.insert(.userManagement)
         }
+        if listsTemporaryTables {
+            capabilities.insert(.temporaryTables)
+        }
         return capabilities
     }
 
@@ -498,6 +501,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await executeWithReconnect(query: literalSpelling.respelled(statement), isRetry: false, countsAsActivity: false)
     }
 
+    var temporaryTableCandidates: [String] {
+        sessionLock.withLock { footprint.temporaryTableNames }
+    }
+
     /// For what `executeSetup` changed, which the footprint cannot read from the statements.
     func adjustFootprint(_ change: (inout MySQLSessionFootprint) -> Void) {
         sessionLock.withLock { change(&footprint) }
@@ -818,7 +825,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     /// The same builder the schema-wide list uses, with one more predicate.
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        guard !flavor.isDatabend else { return [] }
+        // A temporary table cannot carry a trigger.
+        guard !flavor.isDatabend, await !resolvesToTemporaryTable(table, schema: schema) else { return [] }
         let dbName = effectiveSchema(schema)
         let triggers = try await triggerList(schema: dbName, table: table)
         Self.logger.info("[trigger] mysql fetchTriggers db=\(dbName, privacy: .public) table=\(table, privacy: .public) parsed=\(triggers.count)")
@@ -841,6 +849,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        guard await !resolvesToTemporaryTable(table, schema: schema) else { return nil }
         guard serverHasInformationSchema else {
             return try await tableStatusRow(table: table, schema: schema)?[safe: 4]?.asText.flatMap { Int($0) }
         }
@@ -921,7 +930,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         guard !flavor.isDatabend else { return try await databendTableMetadata(table: table, schema: schema) }
-        guard let row = try await tableStatusRow(table: table, schema: schema) else {
+        guard await !resolvesToTemporaryTable(table, schema: schema),
+              let row = try await tableStatusRow(table: table, schema: schema) else {
             return PluginTableMetadata(tableName: table)
         }
         return MySQLTableStatusRow.metadata(from: row, tableName: table, appendsInnoDBStatus: serverAppendsInnoDBStatus)

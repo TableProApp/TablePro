@@ -253,23 +253,23 @@ struct FilterSQLGeneratorCaseSensitivityTests {
 
     @Test("Trino contains ignoring case uses an unanchored regex")
     func testTrinoContains() {
-        #expect(condition(Self.trino, .contains) == "REGEXP_LIKE(\"name\", 'smith', 'i')")
+        #expect(condition(Self.trino, .contains) == "REGEXP_LIKE(\"name\", '(?i)smith')")
     }
 
     @Test("Trino starts with ignoring case anchors at the start")
     func testTrinoStartsWith() {
-        #expect(condition(Self.trino, .startsWith) == "REGEXP_LIKE(\"name\", '^smith', 'i')")
+        #expect(condition(Self.trino, .startsWith) == "REGEXP_LIKE(\"name\", '(?i)^smith')")
     }
 
     @Test("Trino ends with ignoring case anchors at the end")
     func testTrinoEndsWith() {
-        #expect(condition(Self.trino, .endsWith) == "REGEXP_LIKE(\"name\", 'smith$', 'i')")
+        #expect(condition(Self.trino, .endsWith) == "REGEXP_LIKE(\"name\", '(?i)smith$')")
     }
 
     @Test("Trino equals ignoring case anchors both ends")
     func testTrinoEquals() {
         let sql = condition(Self.trino, .equal, isCaseSensitive: false)
-        #expect(sql == "REGEXP_LIKE(\"name\", '^smith$', 'i')")
+        #expect(sql == "REGEXP_LIKE(\"name\", '(?i)^smith$')")
     }
 
     @Test("Trino matching case keeps plain LIKE")
@@ -281,7 +281,7 @@ struct FilterSQLGeneratorCaseSensitivityTests {
     @Test("Trino escapes regex metacharacters in the value")
     func testTrinoEscapesMetacharacters() {
         let sql = condition(Self.trino, .contains, value: "a.b*c")
-        #expect(sql == "REGEXP_LIKE(\"name\", 'a\\.b\\*c', 'i')")
+        #expect(sql == "REGEXP_LIKE(\"name\", '(?i)a\\.b\\*c')")
     }
 
     // MARK: - Wildcard Escaping
