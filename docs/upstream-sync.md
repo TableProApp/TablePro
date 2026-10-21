@@ -4,6 +4,8 @@ The approved [BookiE convergence sprint](bookie-0.2-sprint.md) now includes shar
 
 ## Current upstream reference and adoption
 
+The [October 21 adoption and collaboration review](archive/tablepro-collaboration-2026-10-21.md) records the latest inspected pin, Linux changes, open upstream work and contribution candidates. Its [source inventory](evidence/tablepro-collaboration-2026-10-21/README.md) preserves the commit range. These are dated findings; the backlog and owning issue still select implementation.
+
 Since 2026-10-18, TablePro Linux lives under `linux/` on `TableProApp/TablePro` **main**; the old Linux branch was deleted after [#3541](https://github.com/TableProApp/TablePro/pull/3541). Use a pinned main SHA for new reviews. Earlier sections below remain dated evidence of their old refs.
 
 BookiE 0.2.0 delivery is complete per the maintainer; publication is pending. Selected adoption work is post-0.2.0 under [#1149](https://github.com/cozyGarage/BookiE/issues/1149) and the [backlog](backlog.md). The [development-process review](archive/upstream-linux-adoption-2026-10-18.md) and [movement audit](archive/upstream-linux-movement-2026-10-18.md) distinguish existing coverage, code reuse, investigations and rejected tradeoffs.

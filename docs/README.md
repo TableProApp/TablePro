@@ -90,6 +90,8 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 ## Engineering review records (October 2026)
 
+- [TablePro adoption and collaboration, October 21](archive/tablepro-collaboration-2026-10-21.md): current Linux performance, SSH, export and translation changes, PostgreSQL behavior candidates and concrete upstream contribution routes.
+
 - [dbx architecture and regression follow-up, October 21](archive/dbx-follow-up-2026-10-21.md): changes since the prior pin, PostgreSQL session/restore lessons, current architecture guards and qualified regression candidates.
 
 - [Newest-code and upstream follow-up, October 20](archive/upstream-next-slices-2026-10-20.md): PostgreSQL transaction outcome gaps, native/savepoint and CI diagnostic probes, current upstream changes and proposed next slices.
