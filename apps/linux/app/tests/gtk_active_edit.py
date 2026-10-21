@@ -157,6 +157,42 @@ def scenarios(ui):
         ui.wait_for_node_containing("safety_items", role=ui.pyatspi.ROLE_PAGE_TAB, present=False)
         assert notes(database) == [(1, "gamma"), (2, "beta")]
 
+    def close_other_tabs_from_the_editor(database):
+        begin_edit(database)
+        ui.invoke_accessible_action("win.open-editor")
+        ui.wait_for_node(name="Run", role=ui.pyatspi.ROLE_PUSH_BUTTON)
+        tabs = [
+            node
+            for application in ui.desktop_applications()
+            for node in ui.descendants(application)
+            if node.getRole() == ui.pyatspi.ROLE_PAGE_TAB and "safety_items" not in (node.name or "")
+        ]
+        assert tabs, "the editor tab is missing"
+        bounds = tabs[0].queryComponent().getExtents(ui.pyatspi.WINDOW_COORDS)
+        gtk_ux.x11_click(bounds.x + bounds.width // 2, bounds.y + bounds.height // 2, button=3)
+        ui.invoke_accessible_action("tab.close-others")
+        return wait_for_prompt(name="Save changes to “safety_items”?")
+
+    def active_cell_edit_survives_cancelled_close_other_tabs(database, base):
+        prompt = close_other_tabs_from_the_editor(database)
+        ui.invoke(ui.wait_within(prompt, name="Cancel", role=ui.pyatspi.ROLE_PUSH_BUTTON))
+        ui.wait_for_node(name="Save changes to “safety_items”?", present=False)
+        ui.wait_for_node_containing("safety_items", role=ui.pyatspi.ROLE_PAGE_TAB)
+        assert notes(database) == [(1, "alpha"), (2, "beta")], "cancel committed the edit"
+        save_and_assert_notes(database)
+
+    def active_cell_edit_discards_when_close_other_tabs_closes_its_tab(database, base):
+        prompt = close_other_tabs_from_the_editor(database)
+        ui.invoke(ui.wait_within(prompt, name="Discard", role=ui.pyatspi.ROLE_PUSH_BUTTON))
+        ui.wait_for_node_containing("safety_items", role=ui.pyatspi.ROLE_PAGE_TAB, present=False)
+        assert notes(database) == [(1, "alpha"), (2, "beta")], "discard committed the edit"
+
+    def active_cell_edit_saves_when_close_other_tabs_closes_its_tab(database, base):
+        prompt = close_other_tabs_from_the_editor(database)
+        ui.invoke(ui.wait_within(prompt, name="Save", role=ui.pyatspi.ROLE_PUSH_BUTTON))
+        ui.wait_for_node_containing("safety_items", role=ui.pyatspi.ROLE_PAGE_TAB, present=False)
+        assert notes(database) == [(1, "gamma"), (2, "beta")], "close other tabs lost the typed value"
+
     result = [
         active_cell_edit_enter_control,
         active_cell_edit_stages_once_when_focus_moves_to_another_cell,
@@ -172,6 +208,9 @@ def scenarios(ui):
         active_cell_edit_survives_cancelled_disconnect,
         active_cell_edit_discards_when_disconnect_is_confirmed,
         active_cell_edit_saves_when_close_button_targets_an_inactive_tab,
+        active_cell_edit_survives_cancelled_close_other_tabs,
+        active_cell_edit_discards_when_close_other_tabs_closes_its_tab,
+        active_cell_edit_saves_when_close_other_tabs_closes_its_tab,
     ]
     for scenario in result:
         scenario.environment = "local"
