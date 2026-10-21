@@ -2,9 +2,7 @@
 //  ShortcutUniquenessTests.swift
 //  TableProTests
 //
-//  Two menu items cannot share a key equivalent: AppKit blanks the loser's, silently, with no
-//  warning at build time and nothing on screen to say which command lost. Nothing checked this
-//  before, so a new binding could take a shipped one away.
+//  AppKit silently blanks the key equivalent of one of two menu items that share it.
 //
 
 import Foundation
@@ -35,8 +33,7 @@ struct ShortcutUniquenessTests {
         #expect(inspector != assistant)
     }
 
-    /// The shipped inspector binding. Apple's standard-shortcuts table gives Option-Command-I for an
-    /// inspector, and changing it would take a documented shortcut away from everyone.
+    // Apple's standard-shortcuts table gives an inspector Option-Command-I.
     @Test("The inspector keeps its shipped binding")
     func inspectorBindingIsStable() {
         #expect(KeyboardSettings.defaultShortcuts[.toggleInspector] == .character("i", command: true, option: true))
@@ -49,11 +46,25 @@ struct ShortcutUniquenessTests {
         }
     }
 
-    // Counted, not listed: a default for any of these takes a combo already in use, so it has to be on purpose.
-    @Test("Thirty actions ship unbound")
-    func unboundActionsAreCounted() {
-        let unbound = ShortcutAction.allCases.filter { KeyboardSettings.defaultShortcuts[$0] == nil }
-        #expect(unbound.count == 30, "Unbound: \(unbound.map(\.rawValue).sorted())")
+    // Listed, not counted: two PRs that each add one merge cleanly into a wrong count, but into the right list.
+    @Test("Only the listed actions ship unbound")
+    func unboundActionsAreListed() {
+        let listed: Set<ShortcutAction> = [
+            .manageConnections,
+            .copyRelativePath, .removeInvisibleCharacters,
+            .copyCellValue, .copyAsCsv, .copyAsCsvWithHeaders, .copyAsMarkdown, .copyAsInClause, .copyAsInsert, .copyAsUpdate,
+            .clearSelection, .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7,
+            .setCellsToValue, .restorePreviousValues,
+            .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs, .pinTab,
+            .showTablesList, .showFavoritesList,
+            .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
+            .showPreviousWindowTab, .showNextWindowTab,
+        ]
+        let unbound = Set(ShortcutAction.allCases.filter { KeyboardSettings.defaultShortcuts[$0] == nil })
+        let unlisted = unbound.subtracting(listed).map(\.rawValue).sorted()
+        let nowBound = listed.subtracting(unbound).map(\.rawValue).sorted()
+        #expect(unlisted.isEmpty, "Unbound but not listed: \(unlisted)")
+        #expect(nowBound.isEmpty, "Listed but given a default: \(nowBound)")
         for action in unbound {
             #expect(KeyboardSettings.default.shortcut(for: action) == nil, "\(action.rawValue)")
         }
@@ -63,16 +74,14 @@ struct ShortcutUniquenessTests {
     @Test("Each newly rebindable command is listed under a category with a name", arguments: [
         ShortcutAction.showTablesList, .showFavoritesList, .restorePreviousValues,
         .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
-        .copyPath, .copyRelativePath, .setCellsToValue,
+        .copyPath, .copyRelativePath, .setCellsToValue, .pinTab,
     ])
     func newlyRebindableCommandsAreListable(action: ShortcutAction) {
         #expect(!action.displayName.isEmpty)
         #expect(ShortcutCategory.allCases.contains(action.category))
     }
 
-    /// It reverses rows the grid is showing, so it belongs in the grid's context the way Add Row and
-    /// Delete do. Left to the `context` switch's `default:` it would be `.global`, and the recorder
-    /// would then call a grid combo free for it.
+    // Left to the context switch's `default:` it would be `.global`, and the recorder would call a grid combo free for it.
     @Test("Restore Previous Values is a data-grid command")
     func restorePreviousValuesIsAGridCommand() {
         #expect(ShortcutAction.restorePreviousValues.context == .dataGrid)
