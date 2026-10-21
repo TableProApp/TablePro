@@ -119,7 +119,10 @@ fn value_to_text(value: &Value, cap: impl Fn(&str) -> String) -> String {
 }
 
 pub fn value_to_display_text(value: &Value) -> String {
-    value_to_text(value, truncate_for_display)
+    match value {
+        Value::Text(text) if text.contains('\0') => truncate_for_display(&text.replace('\0', "\u{2400}")),
+        other => value_to_text(other, truncate_for_display),
+    }
 }
 
 pub(crate) fn value_to_search_text(value: &Value) -> Cow<'_, str> {
@@ -159,7 +162,11 @@ pub(crate) fn value_to_full_edit_text(value: &Value) -> String {
 }
 
 pub(super) fn value_is_inline_editable(value: &Value) -> bool {
-    !matches!(value, Value::Bytes(_) | Value::Undecodable(_))
+    match value {
+        Value::Bytes(_) | Value::Undecodable(_) => false,
+        Value::Text(text) => !text.contains('\0'),
+        _ => true,
+    }
 }
 
 pub(super) fn truncate_for_display(s: &str) -> String {
@@ -368,6 +375,18 @@ mod tests {
     #[test]
     fn display_text_shows_empty_bytes_as_empty_text() {
         assert_eq!(value_to_display_text(&Value::Bytes(Vec::new())), "");
+    }
+
+    #[test]
+    fn text_with_a_nul_shows_it_and_cannot_be_edited_inline() {
+        let value = Value::Text("a\0b".into());
+        assert_eq!(value_to_display_text(&value), "a\u{2400}b");
+        assert!(!value_is_inline_editable(&value));
+        assert_eq!(
+            value_to_full_edit_text(&value),
+            "a\0b",
+            "an exact copy keeps the real NUL"
+        );
     }
 
     #[test]

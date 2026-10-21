@@ -3445,7 +3445,7 @@ msgstr ""
 msgid "(auto)"
 msgstr ""
 
-#: apps/linux/app/src/ui/grid/display.rs:138
+#: apps/linux/app/src/ui/grid/display.rs:141
 #, rust-format
 msgid "{n} bytes total"
 msgstr ""
