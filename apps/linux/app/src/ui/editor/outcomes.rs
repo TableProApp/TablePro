@@ -442,6 +442,7 @@ where
         sql,
         control,
     } = execution;
+    let sent = bound_sql.clone();
     let started = stream_update(StreamUpdate::Started {
         identity,
         sql_preview: preview,
@@ -453,12 +454,12 @@ where
         finish_stream_cursor(cursor, true).await;
         return ScriptRunResult::Streamed(StreamTerminal::Cancelled);
     }
-    fetch_stream_pages(cursor, sql, control, stream_update, succeeded).await
+    fetch_stream_pages(cursor, (sql, &sent), control, stream_update, succeeded).await
 }
 
 async fn fetch_stream_pages<F, Fut>(
     cursor: super::session_mode::StatementCursor,
-    sql: &str,
+    (sql, sent): (&str, &str),
     control: &OperationControl,
     stream_update: &mut F,
     succeeded: &impl Fn(&str),
@@ -480,7 +481,7 @@ where
                 return ScriptRunResult::Streamed(StreamTerminal::TimedOut);
             }
             Err(error) => {
-                let message = failure_message(&error, sql, sql);
+                let message = failure_message(&error, sql, sent);
                 finish_stream_cursor(cursor, false).await;
                 return ScriptRunResult::Streamed(StreamTerminal::Failed(message));
             }
