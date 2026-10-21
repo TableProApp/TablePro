@@ -116,6 +116,23 @@ struct FieldEditorResolverTests {
         #expect(kind == .singleLine)
     }
 
+    @Test("a short value holding an invisible character opens the text view that marks it, while marks are on")
+    func invisibleCharacterNeedsTheTextView() {
+        let type = ColumnType.text(rawType: "VARCHAR(255)")
+        for value in ["abc\u{200B}", "1\u{00A0}000", "\u{FEFF}id", "a\u{202E}b"] {
+            #expect(
+                FieldEditorResolver.resolve(for: type, isLongText: false, originalValue: value, revealsInvisibleCharacters: true)
+                    == .multiLine,
+                "\(value.unicodeScalars.map { String($0.value, radix: 16) })"
+            )
+            #expect(FieldEditorResolver.resolve(for: type, isLongText: false, originalValue: value) == .singleLine)
+        }
+        #expect(
+            FieldEditorResolver.resolve(for: type, isLongText: false, originalValue: "hello", revealsInvisibleCharacters: true)
+                == .singleLine
+        )
+    }
+
     @Test("an empty long-text column still opens the multi-line editor")
     func emptyLongTextColumnStaysMultiLine() {
         let kind = FieldEditorResolver.resolve(
@@ -700,5 +717,30 @@ struct FieldEditorResolverImageTests {
             originalValue: "{}"
         )
         #expect(kind == .arrayElements(element: .json, values: []))
+    }
+}
+
+@MainActor
+struct FieldEditorResolverVectorTests {
+    @Test("A vector the viewer can read gets the vector field ahead of the JSON rule its brackets match")
+    func vectorField() {
+        let kind = FieldEditorResolver.resolve(
+            for: .vector(rawType: "vector(3)"),
+            isLongText: false,
+            originalValue: "[1,2,3]"
+        )
+        #expect(kind == .vector)
+    }
+
+    @Test("NULL and unreadable text keep the text editor, and a format left from the text days is ignored")
+    func otherwiseText() {
+        let vector = ColumnType.vector(rawType: "vector(3)")
+        #expect(FieldEditorResolver.resolve(for: vector, isLongText: false, originalValue: nil) == .singleLine)
+        #expect(FieldEditorResolver.resolve(for: vector, isLongText: false, originalValue: "oops") == .singleLine)
+        #expect(
+            FieldEditorResolver.resolve(
+                for: vector, isLongText: false, originalValue: "[1,2,3]", displayFormatOverride: .json
+            ) == .vector
+        )
     }
 }

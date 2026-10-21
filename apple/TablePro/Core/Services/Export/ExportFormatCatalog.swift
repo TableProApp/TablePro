@@ -8,8 +8,10 @@ internal struct InstallableExportFormat: Equatable, Sendable {
 }
 
 internal enum ExportFormatCatalog {
+    internal static let dataDictionaryFormatId = "datadict"
+
     private static let displayOrder = [
-        "csv", "json", "sql", "xlsx", "md", "parquet", "mql"
+        "csv", "json", "sql", "xlsx", "md", "parquet", "mql", dataDictionaryFormatId
     ]
 
     internal static func installable(in manifest: RegistryManifest?) -> [InstallableExportFormat] {
@@ -27,18 +29,29 @@ internal enum ExportFormatCatalog {
         installable(in: manifest).filter { !installedFormatIds.contains($0.formatId) }
     }
 
+    // A format that writes structure alone describes the catalog, so it needs objects to describe
+    // and an engine whose columns are declared rather than sampled from rows.
     internal static func available(
         _ plugins: [any ExportFormatPlugin],
-        forDatabaseTypeId databaseTypeId: String
+        forDatabaseTypeId databaseTypeId: String,
+        listsDatabaseObjects: Bool,
+        columnsAreSampled: Bool
     ) -> [any ExportFormatPlugin] {
         sorted(plugins.filter { plugin in
             let pluginType = type(of: plugin)
+            if writesStructureOnly(plugin), !listsDatabaseObjects || columnsAreSampled {
+                return false
+            }
             return accepts(
                 databaseTypeId: databaseTypeId,
                 supportedDatabaseTypeIds: pluginType.supportedDatabaseTypeIds,
                 excludedDatabaseTypeIds: pluginType.excludedDatabaseTypeIds
             )
         })
+    }
+
+    internal static func writesStructureOnly(_ plugin: any ExportFormatPlugin) -> Bool {
+        !plugin.readsRows(optionValues: plugin.defaultTableOptionValues(), kind: .table)
     }
 
     internal static func accepts(
@@ -80,6 +93,8 @@ internal enum ExportFormatCatalog {
         case "md": String(localized: "Markdown tables. Paste into a README, an issue or a wiki.")
         case "parquet": String(localized: "Columnar format. Read by DuckDB, Spark, pandas and BigQuery.")
         case "mql": String(localized: "MongoDB query language. Use to import into MongoDB.")
+        case dataDictionaryFormatId:
+            String(localized: "Every column's type, key, default and comment, with indexes and foreign keys. Reads no rows.")
         default: nil
         }
     }

@@ -703,10 +703,24 @@ class DataGridRowView: NSTableRowView {
         guard coordinator.isEditable, dataColumnIndex >= 0 else { return }
 
         let clicked = SetValueTarget(displayRow: rowIndex, columnIndex: dataColumnIndex)
+        let targets = coordinator.setValueTargets(clicked: clicked)
         let setValueMenu = buildSetValueMenu(
-            commands: coordinator.setValueCommands(for: coordinator.setValueTargets(clicked: clicked)),
+            commands: coordinator.setValueCommands(for: targets),
             clickedColumn: dataColumnIndex
         )
+        if coordinator.isSetCellsToValueOffered(for: targets) {
+            if !setValueMenu.items.isEmpty {
+                setValueMenu.addItem(.separator())
+            }
+            let item = NSMenuItem(
+                title: String(localized: "Set Cells to Value…"),
+                action: #selector(setCellsToValueFromContextMenu(_:)),
+                keyEquivalent: ""
+            )
+            item.representedObject = dataColumnIndex
+            item.target = self
+            setValueMenu.addItem(item)
+        }
         if !setValueMenu.items.isEmpty {
             let setValueItem = NSMenuItem(title: String(localized: "Set Value"), action: nil, keyEquivalent: "")
             setValueItem.submenu = setValueMenu
@@ -757,6 +771,13 @@ class DataGridRowView: NSTableRowView {
         guard let coordinator, let choice = sender.representedObject as? SetValueMenuChoice else { return }
         let clicked = SetValueTarget(displayRow: rowIndex, columnIndex: choice.clickedColumn)
         coordinator.applySetValue(choice.command, to: coordinator.setValueTargets(clicked: clicked))
+    }
+
+    @objc private func setCellsToValueFromContextMenu(_ sender: NSMenuItem) {
+        guard let coordinator, let column = sender.representedObject as? Int else { return }
+        coordinator.setCellsToValue(
+            coordinator.setValueTargets(clicked: SetValueTarget(displayRow: rowIndex, columnIndex: column))
+        )
     }
 
     @objc private func deleteRow() {

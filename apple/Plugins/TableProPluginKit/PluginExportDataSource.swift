@@ -72,6 +72,11 @@ public protocol PluginExportDataSource: AnyObject, Sendable {
 
     /// Mirrors the driver's creation scopes for a routine, trigger or event. Nil for every other kind.
     func fetchCreationScope(_ object: PluginExportTable) async throws -> PluginStatementScope?
+
+    func fetchIndexes(table: String, databaseName: String) async throws -> [PluginIndexInfo]
+
+    // Nil where the engine stores no comment on this kind of object, without asking the server.
+    func fetchObjectComment(_ object: PluginExportTable) async throws -> String?
 }
 
 public extension PluginExportDataSource {
@@ -116,4 +121,8 @@ public extension PluginExportDataSource {
     func closeSessionScope(_ scope: PluginSessionScope) async throws {}
 
     func fetchCreationScope(_ object: PluginExportTable) async throws -> PluginStatementScope? { nil }
+
+    func fetchIndexes(table: String, databaseName: String) async throws -> [PluginIndexInfo] { [] }
+
+    func fetchObjectComment(_ object: PluginExportTable) async throws -> String? { nil }
 }

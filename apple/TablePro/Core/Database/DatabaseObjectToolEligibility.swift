@@ -23,9 +23,6 @@ enum DatabaseObjectToolEligibility {
         @MainActor
         static func of(_ driver: DatabaseDriver?) -> Support {
             guard let driver else { return .none }
-            let commentable = TableInfo.TableType.allCases.filter { type in
-                driver.objectCommentStatement(name: "t", objectType: type.rawValue, schema: "s", comment: nil) != nil
-            }
             let droppable = UserDefinedTypeInfo.Kind.allCases.filter { kind in
                 driver.generateDropTypeSQL(type: UserDefinedTypeInfo(name: "t", kind: kind, schema: "s")) != nil
             }
@@ -33,9 +30,15 @@ enum DatabaseObjectToolEligibility {
                 canRefreshMaterializedViews: driver.refreshMaterializedViewStatement(
                     name: "t", schema: "s", concurrently: false
                 ) != nil,
-                commentableTypes: Set(commentable),
+                commentableTypes: commentableTypes(of: driver),
                 droppableTypeKinds: Set(droppable)
             )
+        }
+
+        static func commentableTypes(of driver: DatabaseDriver) -> Set<TableInfo.TableType> {
+            Set(TableInfo.TableType.allCases.filter { type in
+                driver.objectCommentStatement(name: "t", objectType: type.rawValue, schema: "s", comment: nil) != nil
+            })
         }
     }
 

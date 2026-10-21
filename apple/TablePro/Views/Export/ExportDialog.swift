@@ -12,6 +12,7 @@ struct ExportDialog: View {
     @Binding var isPresented: Bool
     let mode: ExportMode
     var sidebarTables: [TableInfo] = []
+    var initialFormatId: String?
 
     // MARK: - State
 
@@ -138,8 +139,10 @@ struct ExportDialog: View {
         }
         .onAppear {
             let available = availableFormats
-            if let lastFormatId = TransferDialogStorage.shared.loadLastExportFormatId(),
-               available.contains(where: { type(of: $0).formatId == lastFormatId }) {
+            if let initialFormatId, available.contains(where: { type(of: $0).formatId == initialFormatId }) {
+                config.formatId = initialFormatId
+            } else if let lastFormatId = TransferDialogStorage.shared.loadLastExportFormatId(),
+                      available.contains(where: { type(of: $0).formatId == lastFormatId }) {
                 config.formatId = lastFormatId
             } else if !available.contains(where: { type(of: $0).formatId == config.formatId }),
                       let first = available.first {
@@ -206,7 +209,9 @@ struct ExportDialog: View {
     private var availableFormats: [any ExportFormatPlugin] {
         ExportFormatCatalog.available(
             pluginManager.allExportPlugins(),
-            forDatabaseTypeId: mode.formatDatabaseTypeId
+            forDatabaseTypeId: mode.formatDatabaseTypeId,
+            listsDatabaseObjects: mode.listsDatabaseObjects,
+            columnsAreSampled: databaseType.columnsAreSampled
         )
     }
 
@@ -1105,6 +1110,7 @@ private struct ExportProgressSheet: View {
             processedRows: service.state.processedRows,
             totalRows: service.state.totalRows,
             statusMessage: service.state.statusMessage,
+            readsRows: service.state.readsRows,
             onStop: onStop
         )
     }

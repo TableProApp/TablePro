@@ -52,9 +52,29 @@ extension DataFileController {
         let original = table.cell(key: key, column: tabularColumn)
         let cell = text.map { editedCell($0, replacing: original, column: id) } ?? nullCell
         guard cell != original else { return }
+        if pendingCellEdits != nil {
+            pendingCellEdits?.append((key: key, columnID: id, cell: cell))
+            return
+        }
         var updated = table
         updated.setCells([(key: key, columnID: id, cell: cell)])
         commit(updated, actionName: String(localized: "Edit Cell"))
+    }
+
+    /// The cell edits made inside `work` are one undo step and one page refresh, rather than a whole page rebuilt
+    /// for every cell of a paste.
+    func batchCellEdits(actionName: String, _ work: () -> Void) {
+        guard pendingCellEdits == nil else {
+            work()
+            return
+        }
+        pendingCellEdits = []
+        work()
+        let edits = pendingCellEdits ?? []
+        pendingCellEdits = nil
+        guard !edits.isEmpty, var updated = table else { return }
+        updated.setCells(edits)
+        commit(updated, actionName: actionName)
     }
 
     func blankRow() -> [TabularCell] {

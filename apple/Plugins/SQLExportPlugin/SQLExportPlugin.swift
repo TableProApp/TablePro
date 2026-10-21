@@ -100,6 +100,10 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         optionValues.contains(true)
     }
 
+    func readsRows(optionValues: [Bool], kind: PluginExportObjectKind) -> Bool {
+        kind.carriesRows && (optionValues.count <= 2 || optionValues[2])
+    }
+
     var currentFileExtension: String {
         settings.compressWithGzip ? "sql.gz" : "sql"
     }
