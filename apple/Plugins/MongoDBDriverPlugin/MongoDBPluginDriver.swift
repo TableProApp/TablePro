@@ -515,14 +515,18 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         logicMode: String,
         background: Bool
     ) async throws -> Int? {
+        let filterJson = filterQueryBuilder(for: table)
+            .buildFilterDocument(from: filters, logicMode: logicMode)
+        return try await documentCount(table: table, filterDocument: filterJson, background: background)
+    }
+
+    func documentCount(table: String, filterDocument: String, background: Bool) async throws -> Int? {
         guard let conn = mongoConnection else {
             throw MongoDBPluginError.notConnected
         }
 
-        let filterJson = filterQueryBuilder(for: table)
-            .buildFilterDocument(from: filters, logicMode: logicMode)
         let count = try await conn.countDocuments(
-            database: currentDb, collection: table, filter: filterJson, background: background
+            database: currentDb, collection: table, filter: filterDocument, background: background
         )
         return Int(count)
     }
@@ -1098,7 +1102,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         }
     }
 
-    private func filterQueryBuilder(for collection: String) -> MongoDBQueryBuilder {
+    func filterQueryBuilder(for collection: String) -> MongoDBQueryBuilder {
         let normalizer = rawFilterNormalizer
         return MongoDBQueryBuilder(
             columnKinds: filterKinds(for: collection),

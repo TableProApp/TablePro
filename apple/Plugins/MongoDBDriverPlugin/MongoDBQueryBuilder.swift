@@ -59,9 +59,23 @@ nonisolated struct MongoDBQueryBuilder {
         limit: Int = 200,
         offset: Int = 0
     ) -> String {
-        let filterDoc = buildFilterDocument(from: queryFilters, logicMode: logicMode)
-        return decorate(
-            "\(Self.mongoCollectionAccessor(collection)).find(\(filterDoc))",
+        buildQuery(
+            collection: collection,
+            filterDocument: buildFilterDocument(from: queryFilters, logicMode: logicMode),
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildQuery(
+        collection: String,
+        filterDocument: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)] = [],
+        columns: [String] = [],
+        limit: Int = 200,
+        offset: Int = 0
+    ) -> String {
+        decorate(
+            "\(Self.mongoCollectionAccessor(collection)).find(\(filterDocument))",
             sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
         )
     }
