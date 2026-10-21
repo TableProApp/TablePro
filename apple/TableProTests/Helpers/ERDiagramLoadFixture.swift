@@ -43,6 +43,7 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
     internal var serverVersion: String? { nil }
 
     private let columns: [String: [ColumnInfo]]
+    private let foreignKeys: [String: [ForeignKeyInfo]]
     private let holds: [CatalogReadHold]
     private let failingReads: Int
     private let lock = NSLock()
@@ -51,11 +52,13 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
     internal init(
         connection: DatabaseConnection,
         columns: [String: [ColumnInfo]],
+        foreignKeys: [String: [ForeignKeyInfo]] = [:],
         holds: [CatalogReadHold],
         failingReads: Int
     ) {
         self.connection = connection
         self.columns = columns
+        self.foreignKeys = foreignKeys
         self.holds = holds
         self.failingReads = failingReads
     }
@@ -77,7 +80,7 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
         return columns
     }
 
-    internal func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] { [:] }
+    internal func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] { foreignKeys }
 
     internal func connect() async throws {}
     internal func disconnect() {}
@@ -153,7 +156,9 @@ internal struct ERDiagramLoadFixture {
         tableCount: Int = 3,
         columnsPerTable: Int = 50,
         holds: [CatalogReadHold] = [],
-        failingReads: Int = 0
+        failingReads: Int = 0,
+        foreignKeys: [String: [ForeignKeyInfo]] = [:],
+        schema: String? = nil
     ) {
         let connection = TestFixtures.makeConnection(database: "main", type: .duckdb)
         let columns = Dictionary(uniqueKeysWithValues: (0 ..< tableCount).map { table in
@@ -165,6 +170,7 @@ internal struct ERDiagramLoadFixture {
         let driver = ERDiagramCatalogDriver(
             connection: connection,
             columns: columns,
+            foreignKeys: foreignKeys,
             holds: holds,
             failingReads: failingReads
         )
@@ -180,7 +186,7 @@ internal struct ERDiagramLoadFixture {
         self.viewModel = ERDiagramViewModel(
             connectionId: connection.id,
             databaseName: connection.database,
-            schemaKey: "\(connection.database).default",
+            schemaKey: ERDiagramViewModel.schemaKey(databaseName: connection.database, schema: schema),
             services: Self.services(with: databaseManager)
         )
     }

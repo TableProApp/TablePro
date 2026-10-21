@@ -66,4 +66,28 @@ struct ERDiagramViewModelLoadTests {
         #expect(fixture.viewModel.loadState == .loaded)
         #expect(fixture.driver.catalogReadCount == 2)
     }
+
+    @Test("A key into another schema is not drawn to a same-named table of this one")
+    func keyIntoAnotherSchemaIsNotDrawn() async {
+        let fixture = ERDiagramLoadFixture(
+            foreignKeys: [
+                "table_1": [ForeignKeyInfo(
+                    name: "local_fk", column: "column_1", referencedTable: "table_0",
+                    referencedColumn: "column_0", referencedSchema: "main"
+                )],
+                "table_2": [ForeignKeyInfo(
+                    name: "audit_fk", column: "column_1", referencedTable: "table_0",
+                    referencedColumn: "column_0", referencedSchema: "audit"
+                )]
+            ],
+            schema: "main"
+        )
+        defer { fixture.tearDown() }
+
+        await fixture.viewModel.loadDiagram()
+
+        #expect(fixture.viewModel.graph.edges.map { $0.fkName } == ["local_fk"])
+        let audited = fixture.viewModel.graph.nodes.first { $0.tableName == "table_2" }
+        #expect(audited?.columns.first { $0.name == "column_1" }?.isForeignKey == true)
+    }
 }

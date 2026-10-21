@@ -16,12 +16,15 @@ struct ERDiagramPointerInputTests {
         var endedDrags = 0
         var scrolls: [CGSize] = []
         var copies = 0
+        var toggles: [UUID] = []
+        var joinRequests = 0
     }
 
     private struct Fixture {
         let window: NSWindow
         let sceneView: ERDiagramSceneView
         let recorder: Recorder
+        let nearId: UUID
         let farId: UUID
     }
 
@@ -34,7 +37,7 @@ struct ERDiagramPointerInputTests {
         CGRect(x: centre.x - 100, y: centre.y - 50, width: 200, height: 100)
     }
 
-    private func makeFixture(magnification: CGFloat) -> Fixture {
+    private func makeFixture(magnification: CGFloat, offersJoins: Bool = true) -> Fixture {
         let near = ERTableNode(id: UUID(), tableName: "near", columns: [], displayColumns: [], clusterId: nil)
         let far = ERTableNode(id: UUID(), tableName: "far", columns: [], displayColumns: [], clusterId: nil)
         let scene = ERDiagramScene(
@@ -43,7 +46,7 @@ struct ERDiagramPointerInputTests {
             nodeRects: [near.id: rect(centredOn: Self.nearCentre), far.id: rect(centredOn: Self.farCentre)],
             nodeIndex: [near.tableName: near.id, far.tableName: far.id],
             clusterColors: [:],
-            selectedNodeId: nil,
+            selectedNodeIds: [],
             size: Self.canvasSize
         )
 
@@ -64,7 +67,9 @@ struct ERDiagramPointerInputTests {
             updateDrag: { translation, _ in recorder.dragTranslations.append(translation) },
             endDrag: { recorder.endedDrags += 1 },
             scrollBy: { recorder.scrolls.append($0) },
-            copyImage: { recorder.copies += 1 }
+            copyImage: { recorder.copies += 1 },
+            toggleSelection: { recorder.toggles.append($0) },
+            buildJoinQuery: offersJoins ? { recorder.joinRequests += 1 } : nil
         )
 
         scrollView.documentView = sceneView
@@ -72,14 +77,19 @@ struct ERDiagramPointerInputTests {
         scrollView.magnification = magnification
         sceneView.scroll(CGPoint(x: Self.farCentre.x - 300 / magnification, y: Self.farCentre.y - 200 / magnification))
         window.layoutIfNeeded()
-        return Fixture(window: window, sceneView: sceneView, recorder: recorder, farId: far.id)
+        return Fixture(window: window, sceneView: sceneView, recorder: recorder, nearId: near.id, farId: far.id)
     }
 
-    private func mouseEvent(_ type: NSEvent.EventType, at windowPoint: CGPoint, in window: NSWindow) throws -> NSEvent {
+    private func mouseEvent(
+        _ type: NSEvent.EventType,
+        at windowPoint: CGPoint,
+        in window: NSWindow,
+        modifiers: NSEvent.ModifierFlags = []
+    ) throws -> NSEvent {
         try #require(NSEvent.mouseEvent(
             with: type,
             location: windowPoint,
-            modifierFlags: [],
+            modifierFlags: modifiers,
             timestamp: 0,
             windowNumber: window.windowNumber,
             context: nil,
@@ -199,6 +209,93 @@ struct ERDiagramPointerInputTests {
 
         #expect(fixture.recorder.endedDrags == 0)
         #expect(fixture.recorder.selections.isEmpty)
+    }
+
+    @Test("Command- or Shift-click toggles a table instead of replacing the selection", arguments: [true, false])
+    func modifiedClickToggles(usesCommand: Bool) throws {
+        let modifier: NSEvent.ModifierFlags = usesCommand ? .command : .shift
+        let fixture = makeFixture(magnification: 0.5)
+        let pointer = fixture.sceneView.convert(Self.farCentre, to: nil)
+
+        fixture.sceneView.mouseDown(with: try mouseEvent(.leftMouseDown, at: pointer, in: fixture.window, modifiers: modifier))
+        fixture.sceneView.mouseUp(with: try mouseEvent(.leftMouseUp, at: pointer, in: fixture.window, modifiers: modifier))
+
+        #expect(fixture.recorder.toggles == [fixture.farId])
+        #expect(fixture.recorder.selections.isEmpty)
+    }
+
+    @Test("A Command-click on empty canvas keeps the selection")
+    func modifiedClickOnEmptyCanvasKeepsSelection() throws {
+        let fixture = makeFixture(magnification: 1.0)
+        let pointer = fixture.sceneView.convert(Self.emptyPoint, to: nil)
+
+        fixture.sceneView.mouseDown(with: try mouseEvent(.leftMouseDown, at: pointer, in: fixture.window, modifiers: .command))
+        fixture.sceneView.mouseUp(with: try mouseEvent(.leftMouseUp, at: pointer, in: fixture.window, modifiers: .command))
+
+        #expect(fixture.recorder.toggles.isEmpty)
+        #expect(fixture.recorder.selections.isEmpty)
+    }
+
+    @Test("A right-click on an unselected table selects it and offers Build Join Query")
+    func contextMenuOffersTheJoin() throws {
+        let fixture = makeFixture(magnification: 0.5)
+        var scene = fixture.sceneView.scene
+        scene.selectedNodeIds = [fixture.nearId]
+        fixture.sceneView.scene = scene
+        let pointer = fixture.sceneView.convert(Self.farCentre, to: nil)
+
+        let menu = try #require(fixture.sceneView.menu(
+            for: try mouseEvent(.rightMouseDown, at: pointer, in: fixture.window)
+        ))
+        #expect(fixture.recorder.selections == [fixture.farId])
+        let item = try #require(menu.items.first)
+        #expect(item.title == String(localized: "Build Join Query…"))
+        #expect(fixture.sceneView.validateMenuItem(item))
+
+        NSApp.sendAction(try #require(item.action), to: item.target, from: item)
+        #expect(fixture.recorder.joinRequests == 1)
+    }
+
+    @Test("A right-click inside the selection keeps it, and empty canvas offers no menu")
+    func contextMenuKeepsSelection() throws {
+        let fixture = makeFixture(magnification: 0.5)
+        var scene = fixture.sceneView.scene
+        scene.selectedNodeIds = [fixture.nearId, fixture.farId]
+        fixture.sceneView.scene = scene
+
+        let onTable = fixture.sceneView.convert(Self.farCentre, to: nil)
+        let onEmpty = fixture.sceneView.convert(Self.emptyPoint, to: nil)
+
+        #expect(fixture.sceneView.menu(for: try mouseEvent(.rightMouseDown, at: onTable, in: fixture.window)) != nil)
+        #expect(fixture.recorder.selections.isEmpty)
+        #expect(fixture.sceneView.menu(for: try mouseEvent(.rightMouseDown, at: onEmpty, in: fixture.window)) == nil)
+    }
+
+    @Test("An engine that cannot build joins gets no menu and a disabled command")
+    func noJoinsNoCommand() throws {
+        let fixture = makeFixture(magnification: 1.0, offersJoins: false)
+        let pointer = fixture.sceneView.convert(Self.farCentre, to: nil)
+        let item = NSMenuItem(
+            title: "",
+            action: #selector(ERDiagramSceneView.buildJoinQuery(_:)),
+            keyEquivalent: ""
+        )
+
+        #expect(fixture.sceneView.menu(for: try mouseEvent(.rightMouseDown, at: pointer, in: fixture.window)) == nil)
+        #expect(!fixture.sceneView.validateMenuItem(item))
+    }
+
+    @Test("Every selected table is reported selected, the last one picked focused")
+    func multipleSelectionReachesAccessibility() {
+        let fixture = makeFixture(magnification: 0.5)
+        var scene = fixture.sceneView.scene
+        scene.selectedNodeIds = [fixture.farId, fixture.nearId]
+        fixture.sceneView.scene = scene
+
+        let selected = fixture.sceneView.accessibilitySelectedChildren() as? [ERDiagramNodeElement] ?? []
+        #expect(selected.map { $0.accessibilityLabel() } == ["far", "near"])
+        let focused = fixture.sceneView.accessibilityFocusedUIElement as? ERDiagramNodeElement
+        #expect(focused?.accessibilityLabel() == "near")
     }
 
     @Test("The selected table's element reports itself selected")

@@ -36,6 +36,8 @@ struct ERDiagramCanvasActions {
     let endDrag: () -> Void
     let scrollBy: (CGSize) -> Void
     let copyImage: () -> Void
+    var toggleSelection: (UUID) -> Void = { _ in }
+    var buildJoinQuery: (() -> Void)?
 }
 
 final class ERDiagramSceneView: NSView {
@@ -49,7 +51,7 @@ final class ERDiagramSceneView: NSView {
             if accessibilityTree.hasBeenAsked {
                 _ = accessibilityTree.elements(for: scene, owner: self)
             }
-            announceSelectionChange(from: oldValue.selectedNodeId)
+            announceSelectionChange(from: oldValue.selectedNodeIds)
         }
     }
 
@@ -60,6 +62,7 @@ final class ERDiagramSceneView: NSView {
         let windowStart: CGPoint
         var lastWindowPoint: CGPoint
         let nodeId: UUID?
+        let togglesSelection: Bool
         var isDragging = false
     }
 
@@ -156,16 +159,40 @@ final class ERDiagramSceneView: NSView {
         actions?.copyImage()
     }
 
+    // While the diagram has focus, Database > Build Join Query starts from its tables, not the sidebar's.
+    @objc func buildJoinQuery(_ sender: Any?) {
+        actions?.buildJoinQuery?()
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard let actions, actions.buildJoinQuery != nil else { return nil }
+        guard let nodeId = actions.nodeAt(convert(event.locationInWindow, from: nil)) else { return nil }
+        if !scene.selectedNodeIds.contains(nodeId) {
+            actions.select(nodeId)
+        }
+        let menu = NSMenu()
+        let item = NSMenuItem(
+            title: String(localized: "Build Join Query…"),
+            action: #selector(buildJoinQuery(_:)),
+            keyEquivalent: ""
+        )
+        item.target = self
+        menu.addItem(item)
+        return menu
+    }
+
     // MARK: - Pointer
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let point = convert(event.locationInWindow, from: nil)
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         press = Press(
             documentStart: point,
             windowStart: event.locationInWindow,
             lastWindowPoint: event.locationInWindow,
-            nodeId: actions?.nodeAt(point)
+            nodeId: actions?.nodeAt(point),
+            togglesSelection: modifiers.contains(.command) || modifiers.contains(.shift)
         )
     }
 
@@ -204,6 +231,10 @@ final class ERDiagramSceneView: NSView {
         self.press = nil
         if press.isDragging {
             actions?.endDrag()
+        } else if press.togglesSelection {
+            if let nodeId = press.nodeId {
+                actions?.toggleSelection(nodeId)
+            }
         } else {
             actions?.select(press.nodeId)
         }
@@ -288,7 +319,9 @@ final class ERDiagramSceneView: NSView {
     }
 
     override func accessibilitySelectedChildren() -> [Any]? {
-        selectedElement.map { [$0] } ?? []
+        guard !scene.selectedNodeIds.isEmpty else { return [] }
+        _ = accessibilityTree.elements(for: scene, owner: self)
+        return scene.selectedNodeIds.compactMap { accessibilityTree.element(for: $0) }
     }
 
     /// A layout area answers for its focus as well as its selection, or VoiceOver never moves to
@@ -303,10 +336,17 @@ final class ERDiagramSceneView: NSView {
         return accessibilityTree.element(for: selected)
     }
 
-    private func announceSelectionChange(from previous: UUID?) {
-        guard accessibilityTree.hasBeenAsked, previous != scene.selectedNodeId else { return }
+    private func announceSelectionChange(from previous: [UUID]) {
+        guard accessibilityTree.hasBeenAsked, previous != scene.selectedNodeIds else { return }
         NSAccessibility.post(element: self, notification: .selectedChildrenChanged)
         guard let element = selectedElement else { return }
         NSAccessibility.post(element: element, notification: .focusedUIElementChanged)
+    }
+}
+
+extension ERDiagramSceneView: NSMenuItemValidation {
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(buildJoinQuery(_:)) else { return true }
+        return actions?.buildJoinQuery != nil
     }
 }

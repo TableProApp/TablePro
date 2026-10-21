@@ -6,8 +6,13 @@ struct ERDiagramScene {
     var nodeRects: [UUID: CGRect] = [:]
     var nodeIndex: [String: UUID] = [:]
     var clusterColors: [UUID: NSColor] = [:]
-    var selectedNodeId: UUID?
+    var selectedNodeIds: [UUID] = []
     var size = CGSize(width: 800, height: 600)
+
+    var selectedNodeId: UUID? {
+        get { selectedNodeIds.last }
+        set { selectedNodeIds = newValue.map { [$0] } ?? [] }
+    }
 }
 
 @MainActor
@@ -42,7 +47,7 @@ enum ERDiagramSceneRenderer {
             ERDiagramNodeRenderer.drawNode(
                 node: node,
                 rect: rect,
-                isSelected: scene.selectedNodeId == node.id,
+                isSelected: scene.selectedNodeIds.contains(node.id),
                 clusterColor: scene.clusterColors[node.id],
                 palette: palette,
                 on: canvas
@@ -72,7 +77,7 @@ enum ERDiagramSceneRenderer {
 
     private static func unselected(_ scene: ERDiagramScene) -> ERDiagramScene {
         var flat = scene
-        flat.selectedNodeId = nil
+        flat.selectedNodeIds = []
         return flat
     }
 

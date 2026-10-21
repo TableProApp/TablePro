@@ -403,7 +403,7 @@ struct MainEditorContentView: View {
     private func erDiagramContent(tab: QueryTab) -> some View {
         Group {
             if let vm = erDiagramViewModels[tab.id] {
-                ERDiagramView(viewModel: vm)
+                ERDiagramView(viewModel: vm, onBuildJoinQuery: buildJoinQuery(from: vm))
             } else {
                 ProgressView(String(localized: "Loading schema…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -419,6 +419,14 @@ struct MainEditorContentView: View {
             }
         }
         .id(tab.id)
+    }
+
+    private func buildJoinQuery(from diagram: ERDiagramViewModel) -> (([String]) -> Void)? {
+        guard coordinator.canBuildJoinQuery else { return nil }
+        let coordinator = coordinator
+        return { tables in
+            coordinator.openJoinBuilder(database: diagram.databaseName, schema: diagram.schemaName, tables: tables)
+        }
     }
 
     // MARK: - Per-tab container picker

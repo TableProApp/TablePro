@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ERDiagramView: View {
     @ObservedObject var viewModel: ERDiagramViewModel
+    var onBuildJoinQuery: (([String]) -> Void)?
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     private var viewport: DiagramViewportController { viewModel.viewport }
@@ -48,7 +49,8 @@ struct ERDiagramView: View {
                     viewModel: viewModel,
                     viewport: viewport,
                     onExport: export,
-                    onCopyMermaid: copyMermaid
+                    onCopyMermaid: copyMermaid,
+                    onBuildJoinQuery: buildJoinQuery
                 )
             }
         }
@@ -73,6 +75,12 @@ struct ERDiagramView: View {
         )
     }
 
+    private var buildJoinQuery: (() -> Void)? {
+        guard let onBuildJoinQuery else { return nil }
+        let viewModel = viewModel
+        return { onBuildJoinQuery(viewModel.selectedTableNames) }
+    }
+
     private var canvasActions: ERDiagramCanvasActions {
         let viewModel = viewModel
         return ERDiagramCanvasActions(
@@ -85,7 +93,9 @@ struct ERDiagramView: View {
             copyImage: {
                 guard let image = exportImage() else { return }
                 ClipboardService.shared.writeImage(image)
-            }
+            },
+            toggleSelection: { viewModel.toggleSelection($0) },
+            buildJoinQuery: buildJoinQuery
         )
     }
 
@@ -96,7 +106,7 @@ struct ERDiagramView: View {
             nodeRects: viewModel.cachedNodeRects,
             nodeIndex: viewModel.graph.nodeIndex,
             clusterColors: nodeClusterColors(nodes: viewModel.graph.nodes),
-            selectedNodeId: viewModel.selectedNodeId,
+            selectedNodeIds: viewModel.selectedNodeIds,
             size: viewModel.cachedCanvasSize
         )
     }

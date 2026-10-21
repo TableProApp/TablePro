@@ -135,6 +135,9 @@
     "Pick the result to compare this one with." : {
 
     },
+    "Pick the tables to join. Their foreign keys become the join conditions." : {
+
+    },
     "Result %1$d: %2$@" : {
 
     },
@@ -6807,6 +6810,9 @@
           }
         }
       }
+    },
+    "%1$@ column of %2$@" : {
+
     },
     "%1$@ could not be read again before generating the script. %2$@" : {
       "localizations" : {
@@ -31827,6 +31833,15 @@
     "Bug" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Build a join query from the selected tables" : {
+
+    },
+    "Build Join Query" : {
+
+    },
+    "Build Join Query…" : {
+
     },
     "Build the SQL that brings the target in line" : {
       "localizations" : {
@@ -84138,6 +84153,9 @@
         }
       }
     },
+    "From" : {
+
+    },
     "From %@…" : {
       "localizations" : {
         "fr" : {
@@ -93106,6 +93124,9 @@
     "Inline suggestions and Review, Explain, Optimize and Fix run on this Mac and send nothing over the network." : {
 
     },
+    "Inner Join" : {
+
+    },
     "Insert" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -96153,6 +96174,9 @@
       }
     },
     "Join condition:" : {
+
+    },
+    "Joins" : {
 
     },
     "Joins this column with the one to its right." : {
@@ -99615,6 +99639,9 @@
           }
         }
       }
+    },
+    "Left Join" : {
+
     },
     "Left out" : {
       "localizations" : {
@@ -115590,6 +115617,9 @@
         }
       }
     },
+    "No foreign key links %@ to the tables before it, so it is cross joined." : {
+
+    },
     "No Foreign Keys Yet" : {
       "localizations" : {
         "fr" : {
@@ -118874,6 +118904,9 @@
         }
       }
     },
+    "No tables picked" : {
+
+    },
     "No tables selected for export" : {
       "localizations" : {
         "fr" : {
@@ -119708,6 +119741,9 @@
           }
         }
       }
+    },
+    "None (Cross Join)" : {
+
     },
     "None (Top Level)" : {
       "localizations" : {
@@ -125903,6 +125939,9 @@
           }
         }
       }
+    },
+    "Open in Query Tab" : {
+
     },
     "Open in Window" : {
       "localizations" : {
@@ -157683,6 +157722,9 @@
           }
         }
       }
+    },
+    "Second value" : {
+
     },
     "Second value is required for BETWEEN" : {
       "localizations" : {
@@ -193352,6 +193394,9 @@
           }
         }
       }
+    },
+    "This database reports no tables to join." : {
+
     },
     "This database reports no tables to search." : {
 

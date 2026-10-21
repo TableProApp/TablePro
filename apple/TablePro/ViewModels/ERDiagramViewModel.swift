@@ -86,8 +86,25 @@ final class ERDiagramViewModel: ObservableObject {
     /// back at 100% scrolled to the origin every time the user left the tab and returned.
     let viewport = DiagramViewportController()
 
-    /// Selection outlives the view for the same reason.
-    @Published var selectedNodeId: UUID?
+    // Outlives the view for the same reason, in pick order so a join starts at the first table.
+    @Published var selectedNodeIds: [UUID] = []
+
+    var selectedNodeId: UUID? {
+        get { selectedNodeIds.last }
+        set { selectedNodeIds = newValue.map { [$0] } ?? [] }
+    }
+
+    func toggleSelection(_ nodeId: UUID) {
+        if let index = selectedNodeIds.firstIndex(of: nodeId) {
+            selectedNodeIds.remove(at: index)
+        } else {
+            selectedNodeIds.append(nodeId)
+        }
+    }
+
+    var selectedTableNames: [String] {
+        selectedNodeIds.compactMap { id in graph.nodes.first { $0.id == id }?.tableName }
+    }
 
     // MARK: - Drag State
 
@@ -187,7 +204,8 @@ final class ERDiagramViewModel: ObservableObject {
             fullGraph = ERDiagramGraphBuilder.build(
                 allColumns: columns,
                 allForeignKeys: foreignKeys,
-                allIndexes: indexes
+                allIndexes: indexes,
+                isLocal: isLocalKey(in: scope)
             )
 
             nodeIdToName = Dictionary(uniqueKeysWithValues: fullGraph.nodes.map { ($0.id, $0.tableName) })
@@ -207,6 +225,16 @@ final class ERDiagramViewModel: ObservableObject {
         } catch {
             Self.logger.error("Failed to load ER diagram: \(error.localizedDescription)")
             loadState = .failed(error.localizedDescription)
+        }
+    }
+
+    private func isLocalKey(in scope: DatabaseScope) -> (ForeignKeyInfo) -> Bool {
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return { _ in true } }
+        let slot = EngineNamespaceSlot(databaseType: driver.connection.type)
+        return { key in
+            ForeignKeyTargetScope.pointsWithin(
+                scope, referencedDatabase: key.referencedDatabase, referencedSchema: key.referencedSchema, slot: slot
+            )
         }
     }
 

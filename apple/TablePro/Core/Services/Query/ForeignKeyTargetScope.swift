@@ -52,6 +52,24 @@ internal enum ForeignKeyTargetScope {
         }
     }
 
+    // A part the origin or the engine leaves unnamed cannot rule a key out.
+    internal static func pointsWithin(
+        _ origin: DatabaseScope,
+        referencedDatabase: String?,
+        referencedSchema: String?,
+        slot: EngineNamespaceSlot
+    ) -> Bool {
+        let target = resolve(
+            origin: origin,
+            referencedDatabase: referencedDatabase,
+            referencedSchema: referencedSchema,
+            slot: slot
+        )
+        let sameDatabase = origin.database.isEmpty || target.database == origin.database
+        guard let schema = origin.schema, let targetSchema = target.schema else { return sameDatabase }
+        return sameDatabase && targetSchema == schema
+    }
+
     internal static func tableScope(
         origin: DatabaseScope,
         referencedDatabase: String? = nil,
