@@ -92,9 +92,9 @@ public struct SQLQuotedName: Sendable, Equatable {
 public struct SQLContext: Sendable {
     public let clauseType: SQLClauseType
     public let prefix: String
-    public let prefixRange: Range<Int>     // UTF-16 offsets into the analyzed text
+    public private(set) var prefixRange: Range<Int>     // UTF-16 offsets into the analyzed text
     public let dotPrefix: String?          // "u" in "u.name"
-    public let tableReferences: [TableReference]
+    public private(set) var tableReferences: [TableReference]
     public let isInsideString: Bool
     public let isInsideComment: Bool
 
@@ -104,7 +104,7 @@ public struct SQLContext: Sendable {
     public let isAfterComma: Bool
     public let expectsObjectName: Bool     // The table-operand slot of FROM, JOIN or INTO
     public let comparisonColumn: String?   // The column on the other side of a comparison the cursor is a value in
-    public let quotedName: SQLQuotedName?
+    public private(set) var quotedName: SQLQuotedName?
 
     public init(
         clauseType: SQLClauseType,
@@ -139,22 +139,17 @@ public struct SQLContext: Sendable {
     }
 
     public func replacingTableReferences(_ references: [TableReference]) -> SQLContext {
-        SQLContext(
-            clauseType: clauseType,
-            prefix: prefix,
-            prefixRange: prefixRange,
-            dotPrefix: dotPrefix,
-            tableReferences: references,
-            isInsideString: isInsideString,
-            isInsideComment: isInsideComment,
-            cteNames: cteNames,
-            nestingLevel: nestingLevel,
-            currentFunction: currentFunction,
-            isAfterComma: isAfterComma,
-            expectsObjectName: expectsObjectName,
-            comparisonColumn: comparisonColumn,
-            quotedName: quotedName
-        )
+        var context = self
+        context.tableReferences = references
+        return context
+    }
+
+    // The same context for text that starts `delta` units later, as a window cut from a document does.
+    public func offset(by delta: Int) -> SQLContext {
+        var context = self
+        context.prefixRange = (prefixRange.lowerBound + delta)..<(prefixRange.upperBound + delta)
+        context.quotedName = quotedName.map { SQLQuotedName(open: $0.open + delta, close: $0.close.map { $0 + delta }) }
+        return context
     }
 
     // Ranks the statement-start keywords a popup seeds itself with before the first analysis answers.
@@ -204,23 +199,23 @@ public final class SQLContextAnalyzer {
             ),
             ("\\b(?:ADD|MODIFY|CHANGE)\\s+COLUMN\\s+\\w+\\s*$", .columnDef),
             ("\\bALTER\\s+TABLE\\s+[`\"']?\\w+[`\"']?\\s+(?:DROP|MODIFY|CHANGE|RENAME)" +
-             "\\s+(?:COLUMN\\s+)?[`\"']?\\w*[`\"']?\\s*$", .alterTableColumn),
+             "\\s++(?:COLUMN\\s++)?[`\"']?\\w*[`\"']?\\s*$", .alterTableColumn),
             ("\\bALTER\\s+TABLE\\s+[`\"']?\\w+[`\"']?\\s+\\w*$", .alterTable),
-            ("\\bCREATE\\s+TABLE\\s+[^(]*\\([^)]*$", .createTable),
-            ("\\bCREATE\\s+(?:TEMPORARY\\s+)?TABLE\\s+[^;]*\\([^)]*\\)\\s*\\w*$", .createTable),
+            ("\\bCREATE\\s+TABLE\\s++[^(]*\\([^)]*$", .createTable),
+            ("\\bCREATE\\s+(?:TEMPORARY\\s+)?TABLE\\s++[^;]*\\([^)]*\\)\\s*\\w*$", .createTable),
             ("\\bCREATE\\s+(?:TEMPORARY\\s+)?TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?\\w*$", .createTable),
             ("\\bDROP\\s+(?:TABLE|VIEW|INDEX)\\s+(?:IF\\s+EXISTS\\s+)?\\w*$", .dropObject),
             ("\\bCREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\w+\\s+ON\\s+\\w+\\s*\\([^)]*$", .createIndex),
             ("\\bCREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\w*$", .createIndex),
-            ("\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:MATERIALIZED\\s+)?VIEW\\s+\\w+\\s+AS\\s+[^;]*$",
+            ("\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:MATERIALIZED\\s+)?VIEW\\s+\\w+\\s+AS\\s++[^;]*$",
              .createView),
             ("\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:MATERIALIZED\\s+)?VIEW\\s+\\w*$", .createView),
             ("\\bUSING\\s*\\([^)]*$", .using),
             ("\\bOVER\\s*\\([^)]*$", .window),
-            ("\\bPARTITION\\s+BY\\s+[^)]*$", .window),
+            ("\\bPARTITION\\s+BY\\s++[^)]*$", .window),
             ("\\bIN\\s*\\([^)]*$", .inList),
             ("\\b(LIMIT|OFFSET)\\s+\\d*$", .limit),
-            ("\\bVALUES\\s*(?:\\([^)]*\\)\\s*,?\\s*)+\\w*$", .values),
+            ("\\bVALUES\\s*(?:\\([^)]*\\)\\s*+(?:,\\s*+)?)+\\w*$", .values),
             ("\\bVALUES\\s*\\([^)]*$", .values),
             ("\\bINSERT\\s+INTO\\s+\\w+\\s*\\([^)]*$", .insertColumns),
         ]
@@ -243,7 +238,8 @@ public final class SQLContextAnalyzer {
         let path = "(\(quotedSegment)(?:\\.\(quotedSegment))*)"
         let alias = "(?:\\s+(?:AS\\s+)?(\(quotedSegment)))?"
         let patterns = [
-            "(?i)(?:LEFT|RIGHT|INNER|OUTER|CROSS|FULL)?\\s*(?:OUTER)?\\s*JOIN\\s+\(path)\(alias)",
+            // MySQL's STRAIGHT_JOIN has no word boundary before JOIN.
+            "(?i)\\b(?:STRAIGHT_)?JOIN\\s+\(path)\(alias)",
             "(?i)\\bUPDATE\\s+\(path)\(alias)",
             "(?i)\\bINSERT\\s+INTO\\s+\(path)",
             "(?i)\\bCREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\w+\\s+ON\\s+\(path)"
@@ -504,7 +500,7 @@ public final class SQLContextAnalyzer {
         }
     }
 
-    private static func holds(_ span: SQLNonCodeSpan.Span, cursor: Int) -> Bool {
+    static func holds(_ span: SQLNonCodeSpan.Span, cursor: Int) -> Bool {
         guard cursor > span.start else { return false }
         if !span.isTerminated || span.kind == .lineComment {
             return cursor <= span.end
@@ -512,7 +508,7 @@ public final class SQLContextAnalyzer {
         return cursor < span.end
     }
 
-    private static func isQuotedIdentifier(
+    static func isQuotedIdentifier(
         _ span: SQLNonCodeSpan.Span,
         in text: NSString,
         grammar: SQLLexicalGrammar
@@ -718,18 +714,23 @@ public final class SQLContextAnalyzer {
         grammar: SQLLexicalGrammar
     ) -> (prefix: String, start: Int, dotPrefix: String?) {
         let ns = text.original
-        let segment = SQLTokenBoundary.segment(in: ns, endingAt: cursor, grammar: grammar)
-        let start = segment.start
+        let start: Int
+        let tokenStart: Int
+        if case .quotedIdentifier(let open, let close) = text.cursor {
+            // A quoted name may hold spaces, so the whole name is the prefix; an open one's range keeps its quote.
+            start = close == nil ? open : open + 1
+            tokenStart = open
+        } else {
+            let segment = SQLTokenBoundary.segment(in: ns, endingAt: cursor, grammar: grammar)
+            start = segment.start
+            tokenStart = segment.openQuote ?? start
+        }
         let prefix = SQLTokenBoundary.matchText(of: ns.substring(with: NSRange(location: start, length: cursor - start)))
 
-        let tokenStart = segment.openQuote ?? start
         guard tokenStart > 0, ns.character(at: tokenStart - 1) == Self.dot else {
             return (prefix, start, nil)
         }
         let qualifierEnd = tokenStart - 1
-        if case .quotedIdentifier(let spanStart, _) = text.cursor, qualifierEnd > spanStart {
-            return (prefix, start, nil)
-        }
 
         if let quotedStart = text.quotedIdentifierStarts[qualifierEnd] {
             let raw = ns.substring(with: NSRange(location: quotedStart, length: qualifierEnd - quotedStart))

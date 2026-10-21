@@ -45,6 +45,10 @@ nonisolated internal struct LibSSH2ForwardChannelOpener: SSHForwardChannelOpenin
 /// entry points behave identically to the caller: both return a channel that reads and
 /// writes the same way, and both signal "not ready yet" with `LIBSSH2_ERROR_EAGAIN`.
 nonisolated internal enum LibSSH2ForwardChannel {
+    // Another open or relay can read this channel's reply into libssh2's queue and leave the socket
+    // quiet, so a quiet wait is a retry and only the deadline ends an open.
+    static let openPollTimeoutMs: Int32 = 100
+
     static func open(
         session: OpaquePointer,
         destination: SSHForwardDestination,

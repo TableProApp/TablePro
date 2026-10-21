@@ -69,6 +69,111 @@ class HiddenKeyTests(unittest.TestCase):
         self.write("Plugins/A/Driver.swift", 'String(localized: "Count \\(n)")\n')
         self.assertEqual(localization.hidden_keys((self.root / "Plugins", self.root / "Packages")), [])
 
+    def test_ios_roots_are_the_linked_products_including_a_symlinked_one(self):
+        self.write(
+            "TableProMobile/project.yml",
+            "targets:\n"
+            "  App:\n"
+            "    dependencies:\n"
+            "      - target: Widget\n"
+            "      - package: Core\n"
+            "        products:\n"
+            "          - Models\n"
+            "          - Kit\n"
+            "      - package: Oracle\n"
+            "        product: OracleCore\n"
+            "      - framework: ../Libs/ios/Lib.xcframework\n",
+        )
+        self.write("Packages/Core/Sources/Models/Model.swift", 'String(localized: "Model message")\n')
+        self.write("Packages/Core/Sources/Unlinked/Mac.swift", 'String(localized: "Mac only")\n')
+        self.write("Packages/Oracle/Sources/OracleCore/Error.swift", 'String(localized: "Oracle message")\n')
+        self.write("Plugins/Kit/Error.swift", 'String(localized: "Kit message")\n')
+        (self.root / "Packages/Core/Sources/Kit").symlink_to("../../../Plugins/Kit", target_is_directory=True)
+
+        roots = localization.ios_hidden_source_roots(self.root / "TableProMobile/project.yml", self.root / "Packages")
+
+        self.assertEqual(
+            roots,
+            (
+                self.root / "Packages/Core/Sources/Models",
+                self.root / "Packages/Core/Sources/Kit",
+                self.root / "Packages/Oracle/Sources/OracleCore",
+            ),
+        )
+        self.assertEqual(localization.hidden_keys(roots), ["Model message", "Kit message", "Oracle message"])
+
+
+class ExtractedStringTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.objects = self.root / "Intermediates.noindex"
+
+    def tearDown(self):
+        shutil.rmtree(self.root)
+
+    def source(self, name: str, text: str) -> Path:
+        path = self.root / "src" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf8")
+        return path
+
+    def stringsdata(self, target, source, entries, configuration="Debug-iphonesimulator", age=0, name=None, value=None):
+        folder = self.objects / f"App.build/{configuration}/{target}.build/Objects-normal/arm64"
+        path = folder / f"{name or source.stem}.stringsdata"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        localizable = [
+            {"comment": comment, "key": key, "location": {"startingColumn": 1, "startingLine": line}}
+            for key, line, comment in entries
+        ]
+        if value is not None:
+            localizable[0]["value"] = value
+        plist = [{"comment": "", "key": "Plist", "location": {"startingColumn": 1, "startingLine": 1}}]
+        tables = {"Localizable": localizable, "InfoPlist": plist}
+        path.write_text(json.dumps({"source": str(source), "tables": tables, "version": 1}), encoding="utf8")
+        stamp = 1_000_000 - age
+        os.utime(path, (stamp, stamp))
+
+    def test_reads_the_newest_build_of_the_catalog_targets(self):
+        view = self.source("View.swift", 'Text("Shown")\n#Preview {\n    Text("Preview only")\n}\n')
+        widget = self.source("Widget.swift", 'Text("Widget text", comment: "Home screen")\n')
+        shortcuts = self.source("Shortcuts.swift", 'AppShortcut(shortTitle: "Run Query")\n')
+        self.stringsdata("App", view, [("Shown", 1, ""), ("Preview only", 2, "")])
+        self.stringsdata("App", view, [("Old", 1, "")], configuration="Release-iphoneos", age=60)
+        self.stringsdata("App", self.root / "src/Gone.swift", [("Deleted file", 1, "")])
+        self.stringsdata("App", shortcuts, [("Run Query", 1, "")])
+        self.stringsdata("App", shortcuts, [("Open Connection", 1, "")], name="ExtractedAppShortcutsMetadata")
+        self.stringsdata("AppTests", widget, [("Test", 1, "")])
+        self.stringsdata("Widget", widget, [("Widget text", 1, "Home screen")])
+
+        found = localization.extracted_strings(self.objects, ("App", "Widget"), "Localizable")
+
+        self.assertEqual(
+            localization.extracted_keys(found, "Localizable"),
+            ["Open Connection", "Run Query", "Shown", "Widget text"],
+        )
+
+    @unittest.skipUnless(shutil.which("xcrun"), "adding a key runs xcstringstool")
+    def test_adds_an_entry_as_xcode_writes_it(self):
+        menu = self.source("Menu.swift", 'String(localized: "menu.edit", defaultValue: "Edit", comment: "Edit menu")\n')
+        view = self.source("View.swift", 'Text("Shown")\n')
+        self.stringsdata("App", menu, [("menu.edit", 1, "Edit menu")], value="Edit")
+        self.stringsdata("App", view, [("Shown", 1, ""), ("Present", 1, "")])
+        found = localization.extracted_strings(self.objects, ("App",), "Localizable")
+
+        entries = localization.synced_entries(Path("Localizable.xcstrings"), found, ["menu.edit", "Shown"])
+
+        self.assertEqual(
+            entries,
+            {
+                "menu.edit": {
+                    "comment": "Edit menu",
+                    "extractionState": "extracted_with_value",
+                    "localizations": {"en": {"stringUnit": {"state": "new", "value": "Edit"}}},
+                },
+                "Shown": {},
+            },
+        )
+
 
 class ManagementTests(unittest.TestCase):
     def test_a_key_is_managed_only_when_manual_without_a_symbol(self):

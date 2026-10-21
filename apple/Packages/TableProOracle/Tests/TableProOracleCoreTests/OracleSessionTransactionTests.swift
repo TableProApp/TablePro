@@ -211,6 +211,63 @@ struct OracleSessionTransactionTests {
         #expect(!transaction.isOpen)
     }
 
+    @Test func testABlockOutsideATransactionCommitsAsItRuns() throws {
+        var transaction = OracleSessionTransaction()
+        #expect(try transaction.admit(.procedural, on: 1))
+        transaction.statementSucceeded(.procedural, on: 1)
+        #expect(!transaction.isOpen)
+    }
+
+    @Test func testABlockThatEndedTheTransactionClosesIt() throws {
+        var transaction = OracleSessionTransaction()
+        transaction.open()
+        _ = try transaction.admit(.other, on: 1)
+        #expect(!(try transaction.admit(.procedural, on: 1)))
+
+        transaction.statementSucceeded(.procedural, on: 1, serverHoldsTransaction: false)
+        #expect(!transaction.isOpen)
+        #expect(try transaction.admit(.other, on: 1))
+    }
+
+    @Test func testABlockTheServerRanInsideTheTransactionKeepsItOpen() throws {
+        var transaction = OracleSessionTransaction()
+        transaction.open()
+        _ = try transaction.admit(.other, on: 1)
+        _ = try transaction.admit(.procedural, on: 1)
+
+        transaction.statementSucceeded(.procedural, on: 1, serverHoldsTransaction: true)
+        #expect(transaction.isOpen)
+        #expect(!(try transaction.admit(.other, on: 1)))
+    }
+
+    @Test func testABlockWithNoConnectionToAskLeavesTheTransaction() throws {
+        var transaction = OracleSessionTransaction()
+        transaction.open()
+        _ = try transaction.admit(.other, on: 1)
+        _ = try transaction.admit(.procedural, on: 1)
+
+        transaction.statementSucceeded(.procedural, on: 1, serverHoldsTransaction: nil)
+        #expect(transaction.isOpen)
+    }
+
+    @Test func testARefusedBlockEndsTheTransactionWhenTheServerHoldsNone() throws {
+        var transaction = OracleSessionTransaction()
+        transaction.open()
+        _ = try transaction.admit(.other, on: 1)
+        _ = try transaction.admit(.procedural, on: 1)
+        transaction.statementFailed(.procedural, serverHoldsTransaction: false)
+        #expect(!transaction.isOpen)
+    }
+
+    @Test func testARefusedBlockLeavesTheTransactionOpenWhenTheServerStillHoldsIt() throws {
+        var transaction = OracleSessionTransaction()
+        transaction.open()
+        _ = try transaction.admit(.other, on: 1)
+        _ = try transaction.admit(.procedural, on: 1)
+        transaction.statementFailed(.procedural, serverHoldsTransaction: true)
+        #expect(transaction.isOpen)
+    }
+
     @Test func testOpeningAnOpenTransactionKeepsItsConnection() throws {
         var transaction = OracleSessionTransaction()
         transaction.open()

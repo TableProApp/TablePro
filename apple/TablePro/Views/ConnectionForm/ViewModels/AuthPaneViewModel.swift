@@ -42,6 +42,9 @@ final class AuthPaneViewModel: ObservableObject {
     /// it only if there was something to clear and the read succeeded.
     @Published private(set) var storedPasswordState: ConnectionStorage.StoredSecretState = .absent
 
+    // Lives only in connections.json: the form shows and tests it, never edits it.
+    @Published private(set) var passwordSource: PasswordSource?
+
     @Published var coordinator: WeakCoordinatorRef?
 
     var authFields: [ConnectionField] {
@@ -90,10 +93,15 @@ final class AuthPaneViewModel: ObservableObject {
 
     var usesCredentialProfile: Bool { credentialMode.profileId != nil }
 
+    // A prompt arrives as an override and a linked profile is resolved first, so either one leaves the source unused.
+    var passwordSourceInUse: PasswordSource? {
+        usesCredentialProfile || effectivePromptForPassword ? nil : passwordSource
+    }
+
     /// Enough to make a profile out of. A password-only engine such as Redis has no username, so
     /// requiring one hid the promotion exactly where it was most useful.
     var hasPromotableCredentials: Bool {
-        !resolvedUsername.isEmpty || !password.isEmpty || effectivePromptForPassword
+        !resolvedUsername.isEmpty || !password.isEmpty || effectivePromptForPassword || passwordSource != nil
     }
 
     var selectedCredentialProfile: CredentialProfile? {
@@ -127,19 +135,29 @@ final class AuthPaneViewModel: ObservableObject {
         if let refreshed = coordinator?.value?.storage.loadConnection(id: coordinator?.value?.connectionId ?? UUID()) {
             username = refreshed.username
             promptForPassword = refreshed.promptForPassword
+            passwordSource = refreshed.passwordSource
             storedPasswordState = coordinator?.value?.storage.passwordState(for: refreshed.id) ?? .absent
             password = coordinator?.value?.storage.loadPassword(for: refreshed.id) ?? ""
         }
     }
 
-    /// The credentials currently typed into the form, as an unsaved profile for the editor to open
-    /// with. Promoting what is already filled in beats making the user retype it.
-    func profileFromCurrentCredentials() -> CredentialProfile {
+    // Promoting what is already filled in beats making the user retype it.
+    func profileFromCurrentCredentials(sourceStoreIsTrusted: Bool) -> CredentialProfile {
         CredentialProfile(
             name: "",
             username: resolvedUsername,
-            passwordMode: effectivePromptForPassword ? .prompt : .stored
+            passwordMode: promotedPasswordMode(sourceStoreIsTrusted: sourceStoreIsTrusted)
         )
+    }
+
+    // Same order as a connect resolves them. A source leaves only a file TablePro last wrote, as in `unlinkConnections`.
+    private func promotedPasswordMode(sourceStoreIsTrusted: Bool) -> CredentialPasswordMode {
+        if effectivePromptForPassword { return .prompt }
+        if let passwordSource {
+            return sourceStoreIsTrusted ? .source(passwordSource) : .prompt
+        }
+        if usePgpass { return .pgpass }
+        return .stored
     }
 
     var usePgpass: Bool {
@@ -186,6 +204,7 @@ final class AuthPaneViewModel: ObservableObject {
     func load(from connection: DatabaseConnection, storage: ConnectionStorage) {
         username = connection.username
         promptForPassword = connection.promptForPassword
+        passwordSource = connection.passwordSource
         credentialMode = connection.credentialMode
         loadCredentialProfiles()
 
@@ -223,17 +242,27 @@ final class AuthPaneViewModel: ObservableObject {
         }
     }
 
+    var pgpassLookup: PgpassLookup? {
+        guard usePgpass, let network = coordinator?.value?.network else { return nil }
+        let endpoint = network.pgpassEndpoint
+        return PgpassLookup(
+            host: endpoint.host,
+            port: endpoint.port,
+            database: network.database,
+            username: PgpassReader.effectiveUsername(resolvedUsername)
+        )
+    }
+
     func updatePgpassStatus() {
-        guard let coordinator = coordinator?.value else { return }
-        guard usePgpass else {
+        guard let lookup = pgpassLookup else {
             pgpassStatus = .notChecked
             return
         }
         pgpassStatus = PgpassStatus.check(
-            host: coordinator.network.resolvedHost,
-            port: coordinator.network.resolvedPort,
-            database: coordinator.network.database,
-            username: PgpassReader.effectiveUsername(resolvedUsername)
+            host: lookup.host,
+            port: lookup.port,
+            database: lookup.database,
+            username: lookup.username
         )
     }
 }

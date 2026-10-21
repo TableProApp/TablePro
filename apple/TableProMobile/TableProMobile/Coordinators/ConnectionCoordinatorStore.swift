@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import TableProDatabase
 import TableProModels
+import TableProSSHTransport
 
 @MainActor
 @Observable
@@ -118,9 +119,20 @@ nonisolated extension DatabaseConnection {
             && database == other.database
             && sshEnabled == other.sshEnabled
             && sshConfiguration == other.sshConfiguration
-            && sslEnabled == other.sslEnabled
-            && sslConfiguration == other.sslConfiguration
+            && (!sshEnabled || tunnelSignsInTheSameWay(as: other))
+            && sslDialed == other.sslDialed
             && additionalFields == other.additionalFields
             && isSample == other.isSample
+    }
+
+    // The profile supplies the tunnel's password and TOTP secret, and the Mac's route, while it applies, its hops.
+    private func tunnelSignsInTheSameWay(as other: DatabaseConnection) -> Bool {
+        sshProfileId == other.sshProfileId
+            && sshConfiguration?.routeInEffect(sshRoute) == other.sshConfiguration?.routeInEffect(other.sshRoute)
+    }
+
+    // Compared as the driver dials, so a change that dials the same way keeps the session.
+    private var sslDialed: DriverSSLConfiguration {
+        DriverSSLConfiguration(sslEnabled: sslEnabled, configuration: sslConfiguration)
     }
 }

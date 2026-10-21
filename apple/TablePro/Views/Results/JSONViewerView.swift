@@ -236,7 +236,7 @@ internal struct JSONViewerView: View {
             commitAndClose("")
             return
         }
-        guard JsonSyntaxParser.parse(displayText) != nil else {
+        guard displayText.isValidJson else {
             showInvalidAlert = true
             return
         }

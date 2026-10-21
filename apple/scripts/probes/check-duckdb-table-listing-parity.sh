@@ -168,7 +168,18 @@ while IFS= read -r source; do
     SOURCES+=("$source")
 done < <(find "$PLUGIN" -maxdepth 1 -name '*.swift' | sort)
 
+# The plugin reads its completion vocabulary from this TableProCore module.
+VOCABULARY="$ROOT/Packages/TableProCore/Sources/TableProSQLVocabulary"
+xcrun swiftc -swift-version 6 -parse-as-library -module-name TableProSQLVocabulary -Onone \
+    -emit-module -emit-module-path "$WORK/TableProSQLVocabulary.swiftmodule" -emit-library -static \
+    -o "$WORK/libTableProSQLVocabulary.a" "$VOCABULARY"/*.swift > "$WORK/vocabulary.log" 2>&1 || {
+    echo "vocabulary module failed to compile:" >&2
+    grep -E 'error:' "$WORK/vocabulary.log" | sort -u | head -20 >&2
+    exit 3
+}
+
 xcrun swiftc -swift-version 6 -parse-as-library -module-name ListingParity -Onone \
+    -I "$WORK" -Xlinker "$WORK/libTableProSQLVocabulary.a" \
     -F "$FRAMEWORK_DIR" -framework TableProPluginKit -Xlinker -rpath -Xlinker "$FRAMEWORK_DIR" \
     -I "$PLUGIN/CDuckDB" -Xcc -I"$PLUGIN/CDuckDB/include" \
     -Xlinker -force_load -Xlinker "$LIB" -lc++ \

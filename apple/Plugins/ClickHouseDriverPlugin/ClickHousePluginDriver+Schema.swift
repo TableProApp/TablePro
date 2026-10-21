@@ -7,7 +7,7 @@ import Foundation
 import os
 import TableProPluginKit
 
-extension ClickHousePluginDriver {
+nonisolated extension ClickHousePluginDriver {
     // MARK: - Schema Operations
 
     /// Names the database rather than taking the session's, so a caller asking about another one is
@@ -434,7 +434,7 @@ extension ClickHousePluginDriver {
 /// catalog field a DEFAULT uses, and only a DEFAULT is a default. Reporting one of the others as
 /// one let an edit to an unrelated field restate it as `DEFAULT '<expression>'`, which stores the
 /// text of the expression in every row inserted afterwards.
-internal func clickhouseDefaultValue(kind: String?, expression: String?) -> String? {
+nonisolated internal func clickhouseDefaultValue(kind: String?, expression: String?) -> String? {
     guard kind == "DEFAULT", let expression, !expression.isEmpty else { return nil }
     return expression
 }

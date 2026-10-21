@@ -218,26 +218,6 @@ enum DataWriteExecutor {
         return DataWriteRun(results: results, sideStatements: sideStatements)
     }
 
-    /// For a caller that has statements rather than a plan: the discard path, which throws work
-    /// away and has no rows to hold anyone to.
-    nonisolated static func run(
-        statements: [ParameterizedStatement],
-        epilogue: [String] = [],
-        mode: PluginTransactionAccessMode = .readWrite,
-        on driver: DatabaseDriver
-    ) async throws -> DataWriteRun {
-        try await run(
-            DataWritePlan(
-                scope: DatabaseScope(connectionId: UUID(), database: "", schema: nil),
-                databaseType: .mysql,
-                steps: statements.map { DataWriteStep(kind: .rowWrite, statement: $0) },
-                epilogue: epilogue
-            ),
-            mode: mode,
-            on: driver
-        )
-    }
-
     private static func verify(
         _ step: DataWriteStep,
         rowsAffected: Int,
@@ -254,7 +234,14 @@ enum DataWriteExecutor {
             throw tooManyRowsError(owner: owner, table: table, expected: expected, actual: rowsAffected)
         }
 
-        guard step.matchesRowsWithoutKey, countsAreMeaningful, rowsAffected < expected else { return }
+        guard countsAreMeaningful, rowsAffected < expected else { return }
+        if step.refusesSharedKey, !step.matchesRowsWithoutKey {
+            logger.error(
+                "Keyed statement on '\(table, privacy: .private(mask: .hash))' affected \(rowsAffected, privacy: .public) rows, expected \(expected, privacy: .public)"
+            )
+            throw DataWriteError.keyNoLongerMatchesOneRow(table: table, expected: expected, actual: rowsAffected)
+        }
+        guard step.matchesRowsWithoutKey else { return }
         logger.error(
             "Keyless statement on '\(table, privacy: .private(mask: .hash))' affected \(rowsAffected, privacy: .public) rows, expected \(expected, privacy: .public)"
         )

@@ -37,6 +37,13 @@ enum MatchTest: Sendable, Hashable {
     case user(patterns: [HostPattern])
     case localUser(patterns: [HostPattern])
     case exec(command: String)
+    case localNetwork(networks: String)
+    case tagged(patterns: [HostPattern])
+    case command(patterns: [HostPattern])
+    case sessionType(patterns: [HostPattern])
+    case version(patterns: [HostPattern])
+    // ssh refuses a config with a criterion it does not know; here it keeps its block from applying.
+    case unsupported(keyword: String)
 }
 
 /// A `Match` criterion and whether a leading `!` negated it. ssh evaluates the criterion and then
@@ -69,6 +76,7 @@ enum SSHDirective: Sendable, Hashable {
     case addKeysToAgent(Bool)
     case useKeychain(Bool)
     case proxyJump(String)
+    case tag(String)
     case canonicalizeHostname(CanonicalizeMode)
     case canonicalDomains([String])
     case canonicalizePermittedCNAMEs(String)

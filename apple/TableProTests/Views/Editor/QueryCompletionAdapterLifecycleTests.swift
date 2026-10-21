@@ -283,11 +283,138 @@ extension GlobalStateSuites {
             #expect(response?.windowPosition.range == NSRange(location: 2, length: 0))
         }
 
+        // MARK: - A quoted name with a space
+
+        // The token start was a walk back that stops at the space: `[Order Det]` became `[Order Order Details]`.
+        @MainActor
+        @Test("accepting inside a bracketed name with a space replaces the whole name and steps past the close")
+        func acceptInsideABracketedNameWithASpace() async throws {
+            let controller = EditorControllerFixture.make(string: "SELECT * FROM [Order Det]")
+            let provider = await schema(["Details", "Order Details"])
+            let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .mssql)
+            let caret = CursorPosition(range: NSRange(location: 24, length: 0))
+
+            let response = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: caret,
+                isManualTrigger: false
+            )
+            let first = try #require(response?.items.first)
+            #expect(first.label == "Order Details")
+            #expect(response?.prefix == CodeSuggestionPrefix(range: NSRange(location: 15, length: 9), text: "Order Det"))
+
+            adapter.completionWindowApplyCompletion(item: first, textView: controller, cursorPosition: caret)
+
+            #expect(controller.textView.string == "SELECT * FROM [Order Details]")
+            #expect(controller.cursorPositions.first?.range == NSRange(location: 29, length: 0))
+        }
+
+        @MainActor
+        @Test("a space typed inside a bracketed name keeps the session and ranks on the whole name")
+        func spaceInsideABracketedNameKeepsTheSession() async {
+            let controller = EditorControllerFixture.make(string: "SELECT * FROM [Order]")
+            let provider = await schema(["Order Details", "Orders"])
+            let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .mssql)
+            _ = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: CursorPosition(range: NSRange(location: 20, length: 0)),
+                isManualTrigger: false
+            )
+
+            controller.textView.setText("SELECT * FROM [Order ]")
+            let reranked = adapter.completionOnCursorMove(
+                textView: controller,
+                cursorPosition: CursorPosition(range: NSRange(location: 21, length: 0))
+            )?.map(\.label)
+
+            #expect(reranked == ["Order Details"])
+        }
+
+        @MainActor
+        @Test("accepting inside an open backtick name closes it")
+        func acceptInsideAnOpenBacktickNameClosesIt() async throws {
+            let controller = EditorControllerFixture.make(string: "SELECT * FROM `Order Det")
+            let provider = await schema(["Details", "Order Details"])
+            let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .mysql)
+            let caret = CursorPosition(range: NSRange(location: 24, length: 0))
+
+            let response = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: caret,
+                isManualTrigger: false
+            )
+            let first = try #require(response?.items.first)
+            #expect(first.label == "Order Details")
+
+            adapter.completionWindowApplyCompletion(item: first, textView: controller, cursorPosition: caret)
+
+            #expect(controller.textView.string == "SELECT * FROM `Order Details`")
+            #expect(controller.cursorPositions.first?.range == NSRange(location: 29, length: 0))
+        }
+
+        @MainActor
+        @Test("accepting a column whose name holds a dot keeps it inside the quotes")
+        func dottedColumnStaysQuoted() async throws {
+            let source = SQLSchemaProvider.ColumnMetadataSource(
+                fetchColumns: { _, _ in [TestFixtures.makeColumnInfo(name: "order.total")] },
+                fetchAllColumns: { [:] }
+            )
+            let provider = SQLSchemaProvider(metadataSource: source)
+            await provider.updateTables([TestFixtures.makeTableInfo(name: "t")])
+            let controller = EditorControllerFixture.make(string: #"SELECT "ord" FROM t"#)
+            let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .postgresql)
+            let caret = CursorPosition(range: NSRange(location: 11, length: 0))
+
+            let response = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: caret,
+                isManualTrigger: false
+            )
+            let item = try #require(response?.items.first { $0.label == "order.total" })
+            adapter.completionWindowApplyCompletion(item: item, textView: controller, cursorPosition: caret)
+
+            #expect(controller.textView.string == #"SELECT "order.total" FROM t"#)
+        }
+
+        @MainActor
+        @Test("accepting a table-qualified column inside quotes replaces the quotes")
+        func qualifiedColumnReplacesTheQuotes() async throws {
+            let source = SQLSchemaProvider.ColumnMetadataSource(
+                fetchColumns: { table, _ in
+                    [TestFixtures.makeColumnInfo(name: table == "orders" ? "total" : "name")]
+                },
+                fetchAllColumns: { [:] }
+            )
+            let provider = SQLSchemaProvider(metadataSource: source)
+            await provider.updateTables([
+                TestFixtures.makeTableInfo(name: "orders"), TestFixtures.makeTableInfo(name: "customers")
+            ])
+            let controller = EditorControllerFixture.make(string: #"SELECT "to" FROM orders o, customers c"#)
+            let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .postgresql)
+            let caret = CursorPosition(range: NSRange(location: 10, length: 0))
+
+            let response = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: caret,
+                isManualTrigger: false
+            )
+            let item = try #require(response?.items.first { $0.label == "o.total" })
+            adapter.completionWindowApplyCompletion(item: item, textView: controller, cursorPosition: caret)
+
+            #expect(controller.textView.string == "SELECT o.total FROM orders o, customers c")
+        }
+
         // MARK: - Helpers
 
         @MainActor
         private func cursor(atEndOf text: String) -> CursorPosition {
             CursorPosition(range: NSRange(location: text.utf16.count, length: 0))
+        }
+
+        private func schema(_ tables: [String]) async -> SQLSchemaProvider {
+            let provider = SQLSchemaProvider()
+            await provider.updateTables(tables.map { TestFixtures.makeTableInfo(name: $0) })
+            return provider
         }
 
 

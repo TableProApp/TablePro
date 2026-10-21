@@ -23,7 +23,7 @@ extension ConnectionFormViewModel {
     var jumpHostCredentials: [UUID: JumpHostCredential] {
         guard sshEnabled else { return [:] }
         var credentials: [UUID: JumpHostCredential] = [:]
-        for hop in jumpHosts {
+        for hop in jumpHosts + routeHops {
             credentials[hop.id] = hop.credential
         }
         return credentials
@@ -34,16 +34,20 @@ extension ConnectionFormViewModel {
         let opening = existingConnection?.sshConfiguration?.jumpHosts.map(\.id) ?? []
         return Set(opening)
             .union(jumpHosts.map(\.id))
+            .union(routeHops.map(\.id))
             .union(storedSecrets.jumpHostCredentials.keys)
     }
 
     func jumpHost(_ id: UUID) -> JumpHostDraft? {
-        jumpHosts.first { $0.id == id }
+        jumpHosts.first { $0.id == id } ?? routeHops.first { $0.id == id }
     }
 
     func updateJumpHost(_ id: UUID, _ change: (inout JumpHostDraft) -> Void) {
-        guard let index = jumpHosts.firstIndex(where: { $0.id == id }) else { return }
-        change(&jumpHosts[index])
+        if let index = jumpHosts.firstIndex(where: { $0.id == id }) {
+            change(&jumpHosts[index])
+        } else if let index = routeHops.firstIndex(where: { $0.id == id }) {
+            change(&routeHops[index])
+        }
     }
 
     func keyStatus(of hop: JumpHostDraft) -> JumpHostKeyStatus {

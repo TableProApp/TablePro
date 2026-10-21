@@ -9,6 +9,7 @@ import Observation
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProSQLGrammar
 
 @MainActor
 final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {

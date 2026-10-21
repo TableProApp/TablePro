@@ -3,6 +3,7 @@ import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
 import TableProOracleCore
+import TableProSSHTransport
 import UniformTypeIdentifiers
 
 struct ConnectionFormView: View {
@@ -20,6 +21,7 @@ struct ConnectionFormView: View {
     @State private var showPKCS12Password = false
     @State private var pastingServiceAccountKey = false
     @State private var pushedJumpHostId: UUID?
+    @State private var reconnectingConnectionName: String?
 
     var onSaved: (UUID) -> Void
 
@@ -108,20 +110,20 @@ struct ConnectionFormView: View {
                     Section {
                         if viewModel.type == .oracle {
                             Picker(String(localized: "SSL Mode"), selection: $viewModel.oracleSSLMode) {
-                                Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
-                                Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
+                                Text(String(localized: "Disabled")).tag(SSLModeChoice.disable)
+                                Text(String(localized: "Preferred")).tag(SSLModeChoice.preferred)
+                                Text(String(localized: "Required")).tag(SSLModeChoice.require)
                                 if viewModel.offersOracleVerifyCa {
-                                    Text(String(localized: "Verify CA")).tag(SSLConfiguration.SSLMode.verifyCa)
+                                    Text(String(localized: "Verify CA")).tag(SSLModeChoice.verifyCa)
                                 }
-                                Text(String(localized: "Verify Identity")).tag(SSLConfiguration.SSLMode.verifyFull)
+                                Text(String(localized: "Verify Identity")).tag(SSLModeChoice.verifyFull)
                             }
                         } else if viewModel.type == .mssql {
-                            // The iOS driver encrypts without checking the certificate, because this form collects
-                            // no CA file for FreeTDS, so only Disabled and Required are listed.
-                            // See Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift for the FreeTDS contract.
+                            // No verify modes: this form collects no CA file for FreeTDS, so the iOS driver checks no certificate.
                             Picker(String(localized: "SSL Mode"), selection: $viewModel.mssqlSSLMode) {
-                                Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
-                                Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
+                                Text(String(localized: "Disabled")).tag(SSLModeChoice.disable)
+                                Text(String(localized: "Preferred")).tag(SSLModeChoice.preferred)
+                                Text(String(localized: "Required")).tag(SSLModeChoice.require)
                             }
                         }
                     } footer: {
@@ -163,6 +165,17 @@ struct ConnectionFormView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     ConfirmButton(title: "Save", action: handleSave)
                         .disabled(!viewModel.canSave || viewModel.isSaving)
+                        .confirmationDialog(
+                            String(localized: "Reconnect and Roll Back?"),
+                            isPresented: confirmingReconnect,
+                            titleVisibility: .visible,
+                            presenting: reconnectingConnectionName
+                        ) { _ in
+                            Button(String(localized: "Save and Reconnect"), role: .destructive) { save() }
+                            Button(String(localized: "Cancel"), role: .cancel) {}
+                        } message: { name in
+                            Text(OpenTransactionWarning.reconnectingOnSave(connectionName: name))
+                        }
                 }
             }
             .fileImporter(
@@ -474,36 +487,100 @@ struct ConnectionFormView: View {
 
         if viewModel.sshEnabled {
             Section {
-                TextField("SSH Host", text: $viewModel.sshHost)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                TextField("SSH Port", text: $viewModel.sshPort, prompt: Text(verbatim: "22"))
-                    .keyboardType(.numberPad)
-                TextField("SSH Username", text: $viewModel.sshUsername)
-                    .textInputAutocapitalization(.never)
+                Group {
+                    TextField("SSH Host", text: $viewModel.sshHost)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                    TextField("SSH Port", text: $viewModel.sshPort, prompt: Text(verbatim: "22"))
+                        .keyboardType(.numberPad)
+                    TextField("SSH Username", text: $viewModel.sshUsername)
+                        .textInputAutocapitalization(.never)
 
-                Picker("Auth Method", selection: $viewModel.sshAuthMethod) {
-                    Text("Password").tag(SSHConfiguration.SSHAuthMethod.password)
-                    Text("Private Key").tag(SSHConfiguration.SSHAuthMethod.privateKey)
+                    Picker("Auth Method", selection: $viewModel.sshAuthMethod) {
+                        Text("Password").tag(SSHConfiguration.SSHAuthMethod.password)
+                        Text("Private Key").tag(SSHConfiguration.SSHAuthMethod.privateKey)
+                        Text("Keyboard Interactive").tag(SSHConfiguration.SSHAuthMethod.keyboardInteractive)
+                    }
                 }
-                .pickerStyle(.segmented)
+                .disabled(viewModel.sshFollowsMacProfile)
             } header: {
                 Text("SSH Server")
             } footer: {
-                if let note = viewModel.sshAuthMethodNote {
+                if viewModel.sshFollowsMacProfile {
+                    Text("This tunnel follows an SSH profile on your Mac. Change the server there.")
+                } else if let note = viewModel.sshAuthMethodNote {
                     Text(note)
                 }
             }
 
             if viewModel.sshAuthMethod == .password {
                 Section("SSH Password") {
-                    SecureField("Password", text: $viewModel.sshPassword)
+                    if viewModel.sshFollowsMacProfile, viewModel.hasSSHProfilePassword {
+                        Text("Signs in with the SSH profile's password from iCloud Keychain.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        SecureField("Password", text: $viewModel.sshPassword)
+                    }
                 }
             } else if viewModel.sshAuthMethod == .privateKey {
                 privateKeySection(viewModel: viewModel)
+            } else if viewModel.sshAuthMethod == .keyboardInteractive {
+                Section {
+                    SecureField("Password (optional)", text: $viewModel.sshPassword)
+                } header: {
+                    Text("SSH Password")
+                } footer: {
+                    Text("Answers the server's password prompt. TablePro asks you for anything else when you connect.")
+                }
             }
 
-            JumpHostsSection(viewModel: viewModel) { pushedJumpHostId = $0 }
+            if viewModel.offersTwoFactor {
+                twoFactorSection(viewModel: viewModel)
+            }
+
+            JumpHostsSection(viewModel: viewModel, isEditable: !viewModel.sshFollowsMacProfile) { pushedJumpHostId = $0 }
+
+            if let route = viewModel.macRoute {
+                MacRouteSection(viewModel: viewModel, route: route)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func twoFactorSection(viewModel: ConnectionFormViewModel) -> some View {
+        @Bindable var viewModel = viewModel
+        Section {
+            Picker("TOTP", selection: $viewModel.totpMode) {
+                ForEach(TOTPMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            if viewModel.totpMode == .autoGenerate {
+                SecureField("TOTP Secret", text: $viewModel.totpSecret)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                Picker("Algorithm", selection: $viewModel.totpAlgorithm) {
+                    ForEach(TOTPAlgorithm.allCases) { algorithm in
+                        Text(verbatim: algorithm.rawValue).tag(algorithm)
+                    }
+                }
+                Picker("Digits", selection: $viewModel.totpDigits) {
+                    Text(verbatim: "6").tag(6)
+                    Text(verbatim: "8").tag(8)
+                }
+                Picker("Period", selection: $viewModel.totpPeriod) {
+                    Text("30 seconds").tag(30)
+                    Text("60 seconds").tag(60)
+                }
+            }
+        } header: {
+            Text("Two-Factor Authentication")
+        } footer: {
+            if viewModel.totpMode == .autoGenerate {
+                Text("The Base32 secret from your authenticator setup. TablePro enters the code when the server asks.")
+            } else {
+                Text("If the SSH server asks for a verification code, TablePro asks you for it when you connect.")
+            }
         }
     }
 
@@ -613,7 +690,25 @@ struct ConnectionFormView: View {
         }
     }
 
+    private var confirmingReconnect: Binding<Bool> {
+        Binding(
+            get: { reconnectingConnectionName != nil },
+            set: { if !$0 { reconnectingConnectionName = nil } }
+        )
+    }
+
+    // A save that redials drops the session, and the server rolls back the transaction it held.
     private func handleSave() {
+        let current = appState.connections.first { $0.id == viewModel.connectionId }
+        if let current, viewModel.redialsAfterSave(over: current),
+           appState.sessionTransactions.hold(for: current.id) != nil {
+            reconnectingConnectionName = current.name.isEmpty ? current.host : current.name
+            return
+        }
+        save()
+    }
+
+    private func save() {
         let reconnects = viewModel.reconnectsAfterSave
         Task {
             guard let savedId = await viewModel.save(appState: appState, secureStore: appState.secureStore) else {

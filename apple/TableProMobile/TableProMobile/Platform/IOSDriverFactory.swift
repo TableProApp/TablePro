@@ -2,6 +2,8 @@ import Foundation
 import os
 import TableProDatabase
 import TableProModels
+import TableProPluginKit
+import TableProQuery
 import TableProRedisCore
 
 nonisolated final class IOSDriverFactory: DriverFactory {
@@ -81,6 +83,13 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         if connection.iamSignIn != nil, !resolved.isEnabled {
             // A token is never sent in plaintext. SSL was off, so no certificate belongs to the raised mode.
             resolved = DriverSSLConfiguration(mode: .require)
+        } else if connection.iamSignIn != nil, resolved.isPreferred {
+            resolved = DriverSSLConfiguration(
+                mode: .require,
+                caCertificatePath: resolved.caCertificatePath,
+                clientCertificatePath: resolved.clientCertificatePath,
+                clientKeyPath: resolved.clientKeyPath
+            )
         }
         resolved.serverName = serverName
         return resolved
@@ -127,6 +136,9 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 signsInWithToken: connection.iamSignIn != nil
             )
         case .postgresql, .redshift:
+            guard connection.macSocketPath == nil else {
+                throw ConnectionError.localSocketNotSupported
+            }
             return PostgreSQLDriver(
                 host: connection.host,
                 port: connection.port,
@@ -152,15 +164,60 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         case .mssql:
             return MSSQLDriver(connection: connection, password: password)
         case .oracle:
-            return OracleDriver(connection: connection, password: password)
+            return OracleDriver(connection: connection, password: password, serverName: preTunnelHost)
+        case .clickhouse:
+            return PluginBackedDriver(
+                plugin: ClickHousePluginDriver(config: pluginConfig(
+                    for: connection,
+                    password: password,
+                    ssl: try ssl(for: connection, serverName: preTunnelHost),
+                    preTunnelHost: preTunnelHost
+                )),
+                dialedHosts: [connection.host],
+                queryTimeoutSeconds: connection.queryTimeoutSeconds,
+                rowChangeSuffix: Self.clickHouseWaitsForMutation,
+                rowPin: Self.clickHouseRowPart,
+                rowIdentity: .everyColumn,
+                readsOnly: { !SQLWriteClassifier.isWriteQuery($0, databaseType: .clickhouse) }
+            )
         default:
             throw ConnectionError.driverNotFound(connection.type.rawValue)
         }
     }
 
+    // A ClickHouse mutation applies in the background unless asked to wait. The row screen keeps the typed values once
+    // a save returns, and a delete looks for the row right after, so both need it applied.
+    static let clickHouseWaitsForMutation = " SETTINGS mutations_sync = 1"
+
+    // The lookup finds the only row holding these values, and a part never changes, so naming its part leaves out
+    // a copy inserted later. `_part_offset` would pin the row too, but a mutation filtering on it fails and stays
+    // queued before 25 (measured on 24.8: "Virtual column _part_offset must be filled by range reader").
+    static let clickHouseRowPart = ["_part"]
+
     static let supportedTypeList: [DatabaseType] = [
-        .sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle
+        .sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle,
+        .clickhouse
     ]
+
+    // A plugin reads the server behind a tunnel from its fields; one stored or imported there never stands in for it.
+    func pluginConfig(
+        for connection: DatabaseConnection,
+        password: String?,
+        ssl: DriverSSLConfiguration,
+        preTunnelHost: String?
+    ) -> DriverConnectionConfig {
+        var fields = connection.additionalFields
+        fields[DatabaseConnection.preTunnelHostKey] = preTunnelHost
+        return DriverConnectionConfig(
+            host: connection.host,
+            port: connection.port,
+            username: connection.username,
+            password: password ?? "",
+            database: connection.database,
+            ssl: ssl.pluginConfiguration,
+            additionalFields: fields
+        )
+    }
 
     static func refusal(for connection: DatabaseConnection) -> ConnectionError? {
         guard supportedTypeList.contains(connection.type) else {
@@ -172,6 +229,29 @@ nonisolated final class IOSDriverFactory: DriverFactory {
 
     func refusal(for connection: DatabaseConnection) -> ConnectionError? {
         Self.refusal(for: connection)
+    }
+
+    // A second SQLite reader can make the user's COMMIT fail with SQLITE_BUSY, and DuckDB opens a file once per process.
+    func opensCatalogConnections(for connection: DatabaseConnection) -> Bool {
+        switch connection.type {
+        case .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .mssql, .oracle:
+            true
+        default:
+            false
+        }
+    }
+
+    // MySQL: a server started with autocommit off would hold these reads in a transaction that never ends.
+    // SQL Server: a catalog view read waits on the user's uncommitted DDL, so it gives up and keeps the cache.
+    func prepareCatalogDriver(_ driver: any DatabaseDriver, for connection: DatabaseConnection) async throws {
+        switch connection.type {
+        case .mysql, .mariadb, .tidb, .oceanbase:
+            _ = try await driver.execute(query: "SET autocommit = 1")
+        case .mssql:
+            _ = try await driver.execute(query: "SET LOCK_TIMEOUT 2000")
+        default:
+            break
+        }
     }
 
     func supportedTypes() -> [DatabaseType] {

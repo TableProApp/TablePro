@@ -6,8 +6,8 @@
 import Foundation
 
 extension MainContentCoordinator {
-    func executeSidebarChanges(statements: [ParameterizedStatement]) async throws {
-        try await rowEditingCoordinator.executeSidebarChanges(statements: statements)
+    func executeSidebarChanges(steps: [DataWriteStep]) async throws {
+        try await rowEditingCoordinator.executeSidebarChanges(steps: steps)
     }
 
     func handleDiscard(

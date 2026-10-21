@@ -59,6 +59,11 @@ jobs:
             CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO COMPILATION_CACHE_ENABLE_CACHING=NO \
             | xcbeautify --renderer github-actions
 
+      # Only Xcode adds a new string to the catalog. A command-line build extracts it and moves on.
+      - name: Check the app's strings reach its catalog
+        if: ${{ !cancelled() }}
+        run: python3 scripts/localization.py extracted --target ios
+
       # --parallel is what makes swift test write the XCTest xunit file. Without it only the Swift
       # Testing one appears, and TableProOracle's cases are all XCTest.
       - name: Run the TableProCore package tests

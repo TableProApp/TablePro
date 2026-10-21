@@ -2,6 +2,7 @@ import Foundation
 import os
 import TableProMCP
 import TableProPluginKit
+import TableProSQLGrammar
 
 extension MCPConnectionBridge {
     static let schemaResourceTableLimit = 100

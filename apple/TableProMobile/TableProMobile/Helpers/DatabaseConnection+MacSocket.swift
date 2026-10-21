@@ -5,7 +5,7 @@ nonisolated extension DatabaseConnection {
     /// A tunnel replaces the socket on the Mac too, so only a direct connection would dial it.
     var macSocketPath: String? {
         switch type {
-        case .mysql, .mariadb, .tidb, .oceanbase:
+        case .mysql, .mariadb, .tidb, .oceanbase, .postgresql:
             guard !(sshEnabled && sshConfiguration != nil) else { return nil }
             return MySQLLocalSocket.path(in: additionalFields)
         default:

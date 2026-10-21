@@ -244,6 +244,36 @@ struct PasswordSourceResolverTests {
         PasswordCommandCache.shared.forget(connectionId: connection.id)
     }
 
+    @Test("A test runs the command now, whatever output a connect is reusing")
+    func testIgnoresTheReuseCache() async throws {
+        let counter = FileManager.default.temporaryDirectory.appendingPathComponent("tablepro-runs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: counter) }
+        let cache = PasswordCommandCache()
+        let context = ConnectionScriptContext(
+            connectionId: UUID(), connectionName: "c", host: "h", port: 1, user: "u", database: "d"
+        )
+        let source = PasswordSource.command(
+            shell: "echo run >> '\(counter.path)'; wc -l < '\(counter.path)' | tr -d ' '",
+            reuseSeconds: 600
+        )
+
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "1")
+        #expect(try await PasswordSourceResolver.test(source, for: context) == "2")
+        #expect(try await PasswordSourceResolver.test(source, for: context) == "3")
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "1")
+    }
+
+    @Test("A test fills in the connection's details like a connect does")
+    func testFillsConnectionDetails() async throws {
+        let context = ConnectionScriptContext(
+            connectionId: UUID(), connectionName: "c", host: "db.example.com", port: 5432, user: "u", database: "d"
+        )
+
+        let output = try await PasswordSourceResolver.test(.command(shell: "echo {host}:$TABLEPRO_PORT"), for: context)
+
+        #expect(output == "db.example.com:5432")
+    }
+
     @Test("Without a lifetime the command runs on every connect")
     func commandWithoutLifetimeRunsEachTime() async throws {
         let counter = FileManager.default.temporaryDirectory.appendingPathComponent("tablepro-runs-\(UUID().uuidString)")

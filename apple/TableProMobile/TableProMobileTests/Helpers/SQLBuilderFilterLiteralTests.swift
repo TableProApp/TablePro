@@ -69,4 +69,53 @@ struct SQLBuilderFilterLiteralTests {
             table: "files", schema: nil, type: .mysql, filters: filters, logicMode: .and
         ) == "SELECT COUNT(*) FROM `files` WHERE `path` = 'C:\\\\temp\\\\'")
     }
+
+    // ClickHouse reads backslash escapes inside backticks, so a name ending in a backslash would leave the quote open.
+    @Test("A ClickHouse filter quotes its column the way the table and the writes do")
+    func clickHouseColumnEndingInABackslash() {
+        let filters = [TableFilter(columnName: "a\\", filterOperator: .equal, value: "x")]
+        let sql = SQLBuilder.buildFilteredCount(table: "t", schema: nil, type: .clickhouse, filters: filters, logicMode: .and)
+        #expect(sql.contains("WHERE `a\\\\` = 'x'"))
+    }
+
+    // ClickHouse has no lowerUTF8 or LIKE for numbers, and CAST to a plain String fails on a NULL.
+    @Test("Contains on a ClickHouse number column reads it as nullable text")
+    func clickHousePatternOnANumberIsCast() {
+        let contains = TableFilter(columnName: "id", filterOperator: .contains, value: "1")
+        #expect(count(.clickhouse, contains, ColumnInfo(name: "id", typeName: "Int32")).contains("CAST(`id` AS Nullable(String))"))
+        #expect(!count(.clickhouse, contains, ColumnInfo(name: "id", typeName: "String")).contains("CAST("))
+    }
+
+    private func count(_ type: DatabaseType, _ filter: TableFilter, _ column: ColumnInfo) -> String {
+        SQLBuilder.buildFilteredCount(table: "t", schema: nil, type: type, filters: [filter], logicMode: .and, columns: [column])
+    }
+
+    // Open Table on a PostgreSQL bit(3) key ran `"b" = 101`, which has no operator, and the browser showed the error.
+    @Test("A PostgreSQL bit or boolean filter compares a quoted value")
+    func postgresBitAndBooleanAreQuoted() {
+        let bit = ColumnInfo(name: "b", typeName: "bit")
+        #expect(count(.postgresql, TableFilter(columnName: "b", value: "101"), bit) == "SELECT COUNT(*) FROM \"t\" WHERE \"b\" = '101'")
+        let flag = ColumnInfo(name: "f", typeName: "boolean")
+        #expect(count(.postgresql, TableFilter(columnName: "f", value: "1"), flag) == "SELECT COUNT(*) FROM \"t\" WHERE \"f\" = '1'")
+    }
+
+    @Test("Contains on a non-character column reads it as the engine's text type")
+    func patternOnNonCharacterColumnIsCast() {
+        let id = ColumnInfo(name: "id", typeName: "integer")
+        let contains = TableFilter(columnName: "id", filterOperator: .contains, value: "5")
+        #expect(count(.postgresql, contains, id).hasSuffix("WHERE CAST(\"id\" AS TEXT) ILIKE '%5%' ESCAPE '!'"))
+        #expect(count(.duckdb, contains, ColumnInfo(name: "id", typeName: "INTEGER"))
+            .hasSuffix("WHERE CAST(\"id\" AS VARCHAR) ILIKE '%5%' ESCAPE '!'"))
+        #expect(count(.mysql, contains, id).hasSuffix("WHERE `id` LIKE '%5%'"))
+        let uuid = TableFilter(columnName: "u", filterOperator: .contains, value: "a0")
+        #expect(count(.postgresql, uuid, ColumnInfo(name: "u", typeName: "uuid"))
+            .hasSuffix("WHERE CAST(\"u\" AS TEXT) ILIKE '%a0%' ESCAPE '!'"))
+        let day = TableFilter(columnName: "d", filterOperator: .contains, value: "2026")
+        #expect(count(.redshift, day, ColumnInfo(name: "d", typeName: "date"))
+            .hasSuffix("WHERE LOWER(CAST(\"d\" AS TEXT)) LIKE LOWER('%2026%') ESCAPE '!'"))
+        let name = ColumnInfo(name: "name", typeName: "character varying")
+        #expect(count(.postgresql, TableFilter(columnName: "name", filterOperator: .contains, value: "a"), name)
+            .hasSuffix("WHERE \"name\" ILIKE '%a%' ESCAPE '!'"))
+    }
 }
+

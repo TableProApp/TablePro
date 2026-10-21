@@ -18,13 +18,16 @@ struct IOSDriverFactoryRefusalTests {
 
     @Test(
         "Every type with a driver on iPhone and iPad opens here",
-        arguments: [DatabaseType.sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle]
+        arguments: [
+            DatabaseType.sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle,
+            .clickhouse
+        ]
     )
     func supportedTypeOpens(type: DatabaseType) {
         #expect(IOSDriverFactory.refusal(for: DatabaseConnection(type: type, host: "db.acme.io")) == nil)
     }
 
-    @Test("A type with no driver here is refused by its engine name", arguments: ["MongoDB", "ClickHouse", "Elasticsearch"])
+    @Test("A type with no driver here is refused by its engine name", arguments: ["MongoDB", "Cassandra", "Elasticsearch"])
     func typeWithoutDriverIsRefused(engine: String) {
         let connection = DatabaseConnection(type: DatabaseType(rawValue: engine), host: "db.acme.io")
 
@@ -35,6 +38,20 @@ struct IOSDriverFactoryRefusalTests {
     func macSocketIsRefused() {
         #expect(IOSDriverFactory.refusal(for: socketConnection()) == .localSocketNotSupported)
         #expect(IOSDriverFactory.refusal(for: socketConnection(sshHost: "bastion.acme.io")) == nil)
+    }
+
+    @Test("A PostgreSQL connection on a Mac socket is refused instead of dialing its leftover host")
+    func postgresMacSocketIsRefused() {
+        let connection = DatabaseConnection(
+            type: .postgresql,
+            host: "localhost",
+            additionalFields: [MySQLLocalSocket.fieldKey: "/tmp"]
+        )
+
+        #expect(IOSDriverFactory.refusal(for: connection) == .localSocketNotSupported)
+        #expect(throws: ConnectionError.localSocketNotSupported) {
+            try IOSDriverFactory().createDriver(for: connection, password: nil)
+        }
     }
 
     @Test("The connect path gets the device's answer, socket included, not the protocol default")

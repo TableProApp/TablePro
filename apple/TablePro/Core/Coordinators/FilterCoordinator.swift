@@ -542,7 +542,8 @@ final class FilterCoordinator: ObservableObject {
             dialect: dialect,
             columns: queryColumns?.columns ?? [],
             columnTypes: queryColumns?.columnTypes ?? [],
-            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType),
+            databaseType: databaseType
         )
         let filtersToPreview = filtersForPreview(in: state)
 

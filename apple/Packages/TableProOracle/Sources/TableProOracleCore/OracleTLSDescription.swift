@@ -12,17 +12,21 @@ public struct OracleTLSDescription: Sendable, Equatable {
     public var caCertificatePath: String?
     public var clientCertificatePath: String?
     public var clientKeyPath: String?
+    // The name the certificate must carry when the dialed host is a tunnel's loopback.
+    public var serverName: String?
 
     public init(
         mode: Mode = .disabled,
         caCertificatePath: String? = nil,
         clientCertificatePath: String? = nil,
-        clientKeyPath: String? = nil
+        clientKeyPath: String? = nil,
+        serverName: String? = nil
     ) {
         self.mode = mode
         self.caCertificatePath = Self.normalized(caCertificatePath)
         self.clientCertificatePath = Self.normalized(clientCertificatePath)
         self.clientKeyPath = Self.normalized(clientKeyPath)
+        self.serverName = Self.normalized(serverName)
     }
 
     public var verifiesCertificate: Bool { mode == .verifyCA || mode == .verifyIdentity }

@@ -99,7 +99,7 @@ extension SyncCoordinator {
         let deletedIds = ids.subtracting(connections.filter(\.localOnly).map(\.id))
         guard !deletedIds.isEmpty else { return true }
         connections.removeAll { deletedIds.contains($0.id) }
-        guard services.connectionStorage.saveConnections(connections) else {
+        guard services.connectionStorage.saveConnections(connections, byUser: false) else {
             Self.logger.error("Failed to apply remote connection deletions: persistence error")
             return false
         }

@@ -192,14 +192,14 @@ final class CredentialProfileStorage {
     /// `ExternalConnectionTrustKey` and the connection record pushed to iCloud, and blanking it
     /// would have pushed an empty username over the good value on a second Mac.
     @discardableResult
-    func writeUsernameThrough(_ profile: CredentialProfile) -> Bool {
+    func writeUsernameThrough(_ profile: CredentialProfile, byUser: Bool = true) -> Bool {
         let storage = connectionStorageProvider()
         let linked = Set(
             storage.loadConnections()
                 .filter { $0.credentialMode == .profile(id: profile.id) }
                 .map { $0.id }
         )
-        return storage.mutateConnections(ids: linked) { connection in
+        return storage.mutateConnections(ids: linked, byUser: byUser) { connection in
             connection.username = profile.username
         }
     }

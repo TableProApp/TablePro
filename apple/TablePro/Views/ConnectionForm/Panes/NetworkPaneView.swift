@@ -19,7 +19,7 @@ struct NetworkPaneView: View {
         Form {
             transportPicker
             transportSections
-            if coordinator.supportsSSL {
+            if coordinator.showsSSL {
                 SSLSections(
                     databaseType: coordinator.network.type,
                     usesLocalSocket: coordinator.network.usesLocalSocket,
@@ -60,7 +60,8 @@ struct NetworkPaneView: View {
     private var directSummary: String {
         ConnectionTunnelKind.directSummary(
             isFileBased: coordinator.network.connectionMode == .fileBased,
-            usesLocalSocket: coordinator.network.usesLocalSocket
+            usesLocalSocket: coordinator.network.usesLocalSocket,
+            localSocketSkipsTLS: coordinator.network.localSocketSkipsTLS
         )
     }
 

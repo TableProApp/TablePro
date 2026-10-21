@@ -10,6 +10,7 @@ struct SceneRootView: View {
     @EnvironmentObject private var sceneDelegate: TableProSceneDelegate
     @State private var coordinatorStore: ConnectionCoordinatorStore
     @State private var presenter: ScenePresenter
+    @State private var menuState = SceneMenuState()
 
     /// The launch lock arrives through the initializer rather than the environment because the
     /// restore binding's getter runs before any `.task`, so the hold has to exist before the first
@@ -25,6 +26,9 @@ struct SceneRootView: View {
         ConnectionListView()
             .environment(coordinatorStore)
             .environment(presenter)
+            .environment(menuState)
+            .focusedSceneValue(\.queryEditorActions, menuState.queryEditor)
+            .focusedSceneValue(\.connectedTabActions, menuState.tabs)
             .onChange(of: appState.connections) { previous, current in
                 coordinatorStore.reconcile(from: previous, to: current)
             }

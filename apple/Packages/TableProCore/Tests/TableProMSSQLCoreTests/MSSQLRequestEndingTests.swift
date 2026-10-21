@@ -20,7 +20,7 @@ struct MSSQLRequestEndingTests {
 
     @Test("The session question asks for the open transactions and the XACT_ABORT bit")
     func sessionQueryAsksForBoth() {
-        #expect(MSSQLRequestEnding.sessionQuery == "SELECT @@TRANCOUNT, @@OPTIONS & 16384")
+        #expect(MSSQLRequestEnding.sessionQuery == "EXEC sp_executesql N'SELECT @@TRANCOUNT, @@OPTIONS & 16384'")
     }
 
     @Test("An open transaction under XACT_ABORT reads the rest, because an attention rolls it back")

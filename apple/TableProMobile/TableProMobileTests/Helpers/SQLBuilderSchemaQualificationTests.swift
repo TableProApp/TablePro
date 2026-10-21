@@ -23,7 +23,7 @@ struct SQLBuilderSchemaQualificationTests {
     func deleteIsQualified() {
         let sql = SQLBuilder.buildDelete(
             table: "orders", schema: "sales", type: .mssql, driver: driver(),
-            primaryKeys: [(column: "id", value: "1")]
+            primaryKeys: [(column: "id", value: "1")], columns: []
         )
         #expect(sql.hasPrefix("DELETE FROM [sales].[orders] WHERE"))
     }
@@ -33,7 +33,7 @@ struct SQLBuilderSchemaQualificationTests {
         let sql = SQLBuilder.buildUpdate(
             table: "orders", schema: "sales", type: .mssql, driver: driver(),
             changes: [(column: "note", value: "x")],
-            primaryKeys: [(column: "id", value: "1")]
+            primaryKeys: [(column: "id", value: "1")], columns: []
         )
         #expect(sql.hasPrefix("UPDATE [sales].[orders] SET"))
     }

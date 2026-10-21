@@ -17,6 +17,7 @@ import Combine
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Which of the sidebar's three commands opened the sheet.
 internal enum ObjectCopyMode: Hashable, Sendable {

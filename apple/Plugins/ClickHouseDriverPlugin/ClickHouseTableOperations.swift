@@ -5,7 +5,7 @@
 
 import Foundation
 
-func clickHouseTableType(forEngine engine: String?) -> String {
+nonisolated func clickHouseTableType(forEngine engine: String?) -> String {
     switch engine {
     case "MaterializedView":
         return "MATERIALIZED VIEW"
@@ -19,19 +19,19 @@ func clickHouseTableType(forEngine engine: String?) -> String {
 /// ClickHouse reads backslash escapes inside a backquoted name, so the backslash is doubled first or
 /// `\`` would end the name early. `.literal` matches by code unit, so a combining mark after a
 /// backquote cannot hide it from the replacement.
-func clickHouseQuotedIdentifier(_ name: String) -> String {
+nonisolated func clickHouseQuotedIdentifier(_ name: String) -> String {
     let escaped = name
         .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
         .replacingOccurrences(of: "`", with: "``", options: .literal)
     return "`\(escaped)`"
 }
 
-func clickHouseDropObjectStatement(name: String, objectType: String) -> String? {
+nonisolated func clickHouseDropObjectStatement(name: String, objectType: String) -> String? {
     guard objectType == "MATERIALIZED VIEW" else { return nil }
     return "DROP VIEW \(clickHouseQuotedIdentifier(name))"
 }
 
-func clickHouseCommentStatement(
+nonisolated func clickHouseCommentStatement(
     name: String,
     database: String?,
     objectType: String,

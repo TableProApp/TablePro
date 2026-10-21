@@ -13,8 +13,8 @@
 [ -n "${TABLEPRO_LIB_OPENSSH_FIXTURE_SOURCED:-}" ] && return 0
 TABLEPRO_LIB_OPENSSH_FIXTURE_SOURCED=1
 
-# Tag and digest, so a re-pushed tag cannot change the server under a probe. The 10.3 tag is the
-# one linux/crates/test-fixtures/src/fixture_image.rs runs. Both images run sshd as the login user
+# Tag and digest, so a re-pushed tag cannot change the server under a probe. Both tags are the
+# ones linux/crates/test-fixtures/src/fixture_image.rs runs. Both images run sshd as the login user
 # and only that user can sign in.
 OPENSSH_FIXTURE_IMAGE_10="linuxserver/openssh-server:version-10.3_p1-r1@sha256:0f535b0faa7448511b23528165e9fbd4f1fe563b861b3dcaa5ddb0ddbfe2254c"
 OPENSSH_FIXTURE_IMAGE_9="linuxserver/openssh-server:version-9.9_p2-r0@sha256:edbbd662675be4f6a06c76c24f785adf68d7c69156152280842788e85d152a44"

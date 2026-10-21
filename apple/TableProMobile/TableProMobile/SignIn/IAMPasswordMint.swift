@@ -12,6 +12,8 @@ nonisolated struct IAMPasswordMint: Sendable {
         _ profileName: String
     ) async throws -> AWSCredentials
     typealias GoogleTokenFetch = @Sendable (GoogleServiceAccountKey) async throws -> String
+    typealias SSOTokenRefresh = @Sendable (AWSSSOTokenCacheEntry, _ startUrl: String, AWSSSOTokenStore) async
+        -> AWSSSOTokenCacheEntry
 
     static let liveRoleCredentials: RoleCredentialsFetch = { accessToken, settings, profileName in
         let role = try await AWSSSO.fetchRoleCredentials(
@@ -25,6 +27,14 @@ nonisolated struct IAMPasswordMint: Sendable {
             secretAccessKey: role.secretAccessKey,
             sessionToken: role.sessionToken,
             expiration: role.expiration
+        )
+    }
+
+    static let liveSSOTokenRefresh: SSOTokenRefresh = { token, startUrl, store in
+        await AWSSSOTokenRefresher.shared.current(
+            token,
+            key: AWSSSOTokenStore.account(forStartUrl: startUrl),
+            store: store
         )
     }
 
@@ -44,17 +54,20 @@ nonisolated struct IAMPasswordMint: Sendable {
     private let ssoTokens: AWSSSOTokenStore
     private let fetchRoleCredentials: RoleCredentialsFetch
     private let fetchGoogleToken: GoogleTokenFetch
+    private let refreshSSOToken: SSOTokenRefresh
     private let now: @Sendable () -> Date
 
     init(
         ssoTokens: AWSSSOTokenStore = AWSSSOTokenStore(),
         fetchRoleCredentials: @escaping RoleCredentialsFetch = IAMPasswordMint.liveRoleCredentials,
         fetchGoogleToken: @escaping GoogleTokenFetch = IAMPasswordMint.liveGoogleToken,
+        refreshSSOToken: @escaping SSOTokenRefresh = IAMPasswordMint.liveSSOTokenRefresh,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.ssoTokens = ssoTokens
         self.fetchRoleCredentials = fetchRoleCredentials
         self.fetchGoogleToken = fetchGoogleToken
+        self.refreshSSOToken = refreshSSOToken
         self.now = now
     }
 
@@ -160,9 +173,9 @@ nonisolated struct IAMPasswordMint: Sendable {
     ) async throws -> AWSCredentials {
         let device = try DeviceIAMCredentials.load(for: connection.id, from: secureStore)
         guard let settings = device.ssoSettings else { throw IAMSignInError.ssoNotSetUp }
-        guard let token = ssoTokens.token(startUrl: settings.startUrl), token.expiresAt > now() else {
-            throw IAMSignInError.ssoSignInRequired
-        }
+        guard let stored = ssoTokens.token(startUrl: settings.startUrl) else { throw IAMSignInError.ssoSignInRequired }
+        let token = await refreshSSOToken(stored, settings.startUrl, ssoTokens)
+        guard token.expiresAt > now() else { throw IAMSignInError.ssoSignInRequired }
         do {
             return try await fetchRoleCredentials(token.accessToken, settings, Self.profileName(of: connection))
         } catch AWSSSOError.sessionUnauthorized {

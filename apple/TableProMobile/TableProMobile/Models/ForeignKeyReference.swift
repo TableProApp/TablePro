@@ -64,7 +64,7 @@ nonisolated struct ForeignKeyReference: Hashable, Identifiable, Sendable {
         return filters
     }
 
-    private static func keys(in foreignKeys: [ForeignKeyInfo]) -> [[ForeignKeyInfo]] {
+    static func keys(in foreignKeys: [ForeignKeyInfo]) -> [[ForeignKeyInfo]] {
         var groups: [[ForeignKeyInfo]] = []
         for foreignKey in foreignKeys {
             if let index = groups.firstIndex(where: { sameKey($0[0], foreignKey) }) {

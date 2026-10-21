@@ -48,7 +48,7 @@ struct SocketPathPlaceholderTests {
     @Test("No other type offers a socket on this Mac")
     func otherTypesHaveNoLocalSocket() {
         let unknown = DatabaseType(rawValue: "FuturePlugin")
-        for type in [DatabaseType.tidb, .databend, .oceanbase, .postgresql, .redis, .sqlite, unknown] {
+        for type in [DatabaseType.tidb, .databend, .oceanbase, .redshift, .cockroachdb, DatabaseType(rawValue: "PGlite"), .redis, .sqlite, unknown] {
             #expect(PluginManager.shared.defaultLocalSocketPath(for: type) == nil, "\(type.rawValue)")
         }
     }

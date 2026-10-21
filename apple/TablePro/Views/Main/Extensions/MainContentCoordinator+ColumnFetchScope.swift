@@ -53,9 +53,14 @@ extension MainContentCoordinator {
         return true
     }
 
+    private var schemaColumnClassifier: ColumnTypeClassifier {
+        ColumnTypeClassifier(family: SQLTypeFamily.of(connection.type))
+    }
+
     func loadSchemaColumns(for tableName: String, scope: DatabaseScope?) async {
         guard let scope else { return }
         let key = schemaColumnsKey(tableName, scope: scope)
+        let classifier = schemaColumnClassifier
         await schemaColumns.load(key) { [services] in
             do {
                 let columns = try await services.databaseManager.withMetadataDriver(scope: scope) { driver in
@@ -65,7 +70,7 @@ extension MainContentCoordinator {
                     columnScopeLog.error("loadSchemaColumns: 0 columns for table=\(tableName, privacy: .private(mask: .hash)); cannot scope")
                     return nil
                 }
-                return SchemaColumnStore.Entry(fetchedColumns: columns)
+                return SchemaColumnStore.Entry(fetchedColumns: columns, classifier: classifier)
             } catch {
                 guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return nil }
                 columnScopeLog.error("loadSchemaColumns: fetchColumns failed for table=\(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
@@ -88,7 +93,7 @@ extension MainContentCoordinator {
         if let tableName, !schema.columns.isEmpty,
            tabSessionRegistry.definitionIsCurrent(asOf: claim.startedAt, for: claim.tabId) {
             schemaColumns.store(
-                SchemaColumnStore.Entry(fetchedColumns: schema.columns),
+                SchemaColumnStore.Entry(fetchedColumns: schema.columns, classifier: schemaColumnClassifier),
                 for: schemaColumnsKey(tableName, scope: scope)
             )
         }

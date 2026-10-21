@@ -7,6 +7,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProUtilities
 
 enum ExplainResultRouter {
@@ -34,7 +35,7 @@ enum ExplainResultRouter {
         let text = ExplainPlanTextFlattener.flatten(rows: rows)
         guard !text.isEmpty else { return nil }
 
-        let explainSQL = QueryClassifier.strippingLeadingComments(sql)
+        let explainSQL = SQLLeadingComments.stripping(sql)
         let variant = ExplainFormatResolver.matchingVariant(
             sql: explainSQL, declaredVariants: declaredVariants
         )

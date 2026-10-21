@@ -76,9 +76,17 @@ impl SshSession {
 
     pub(crate) fn master_exited(&self) -> TransportError {
         let status = *lock(&self.exit_status);
-        let detail = lock(&self.stderr_tail).lines().last().unwrap_or_default().to_owned();
+        let detail = exit_detail(&lock(&self.stderr_tail)).to_owned();
         SshFailure::MasterExited { status, detail }.into()
     }
+}
+
+fn exit_detail(stderr_tail: &str) -> &str {
+    stderr_tail
+        .lines()
+        // OpenSSH 10.1 and later print these after a key exchange that is not post-quantum.
+        .rfind(|line| !line.is_empty() && !line.starts_with("** "))
+        .unwrap_or_default()
 }
 
 #[async_trait]
@@ -152,5 +160,36 @@ impl Drop for SshForwardTransport {
         if self.session.forwards.send(request).is_err() {
             tracing::debug!("the ssh supervisor has stopped; the forward ends with the master");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_last_line_ssh_printed_is_the_detail() {
+        let tail = "Warning: Permanently added '[db]:22' to the list of known hosts.\n\
+                    Timeout, server db not responding.\n";
+
+        assert_eq!(exit_detail(tail), "Timeout, server db not responding.");
+        assert_eq!(exit_detail(""), "");
+    }
+
+    #[test]
+    fn the_post_quantum_warning_is_never_the_detail() {
+        let stderr = include_str!("../tests/fixtures/stderr/post_quantum_warning.txt");
+        let warning_only: String = stderr
+            .lines()
+            .filter(|line| line.starts_with("** "))
+            .map(|line| format!("{line}\n"))
+            .collect();
+
+        assert_eq!(
+            exit_detail(stderr),
+            "Warning: Permanently added '[172.17.0.1]:55002' (ED25519) to the list of known hosts."
+        );
+        assert_eq!(warning_only.lines().count(), 3);
+        assert_eq!(exit_detail(&warning_only), "");
     }
 }
