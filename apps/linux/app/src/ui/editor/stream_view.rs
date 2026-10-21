@@ -1,3 +1,6 @@
+mod pager;
+pub(super) use pager::build as build_pager;
+
 use relm4::gtk;
 use relm4::gtk::prelude::*;
 
@@ -70,7 +73,7 @@ pub(super) fn update_live_stream(
         .filter_map(|position| pages.nth_page(Some(position)))
         .filter_map(|page| shown_index(&page))
         .collect();
-    for (page_index, page) in result.page_indices.iter().copied().zip(&result.pages) {
+    for (position, (page_index, page)) in result.page_indices.iter().copied().zip(&result.pages).enumerate() {
         if shown.contains(&page_index) {
             continue;
         }
@@ -85,9 +88,10 @@ pub(super) fn update_live_stream(
         widget.set_widget_name(&page_widget_name(page_index));
         pages.append_page(
             &widget,
-            Some(&gtk::Label::new(Some(&stream_page_label(page_index, page)))),
+            Some(&gtk::Label::new(Some(&stream_page_label(result, position)))),
         );
     }
+    pages.notify("page");
     progress.set_text(&stream_progress_text(result));
     true
 }
@@ -188,5 +192,15 @@ mod tests {
         assert!(update_live_stream(&holder, &third, &evicted, &target));
         assert_eq!(pages.n_pages(), 2);
         assert!((0..pages.n_pages()).all(|position| pages.nth_page(Some(position)).as_ref() != Some(&first_grid)));
+    }
+    #[test]
+    fn short_retained_pages_use_received_row_positions_after_eviction() {
+        let (_, result) = streamed(&[8, 9], vec![page(&[105, 106]), page(&[107])], 7);
+        assert_eq!(stream_page_label(&result, 0), "Rows 5-6");
+        assert_eq!(stream_page_label(&result, 1), "Rows 7-7");
+        assert_eq!(
+            stream_progress_text(&result),
+            "Received 7 rows · 10 pages\nRetained rows 5-7. Earlier rows are no longer available."
+        );
     }
 }

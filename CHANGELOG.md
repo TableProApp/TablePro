@@ -162,6 +162,8 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 
 ### Fixed
 
+- Large SQL results use Previous/Next controls with row ranges and state when earlier rows are no longer retained.
+
 - Failed MCP token guesses can no longer lock out a valid token: the shared failed-attempt limit applies only after a token fails verification.
 - ClickHouse connections that name no certificate authority now trust the system certificate store, so corporate authorities installed on the machine verify; the bundled roots remain the fallback.
 - A MySQL CLONE INSTANCE statement with IDENTIFIED BY is no longer saved in query history.

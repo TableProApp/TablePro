@@ -37,7 +37,7 @@ Use First, Previous, Next and Last to move through table pages. Unsorted tables 
 
 Ctrl+E opens a SQL editor tab for the current connection.
 
-Supported single-statement PostgreSQL `SELECT`s load progressively. The grid keeps up to four pages of 5,000 rows; older pages leave the forward-only window and cannot be revisited there. Other engines and unsupported query shapes load a capped result. A truncated, failed or cancelled result is incomplete; see [result limits](known-limitations.md#data-and-values).
+Supported single-statement PostgreSQL `SELECT`s load progressively. The grid keeps up to four pages of 5,000 rows; use **Previous page** and **Next page** to navigate retained pages. The row summary states which rows remain when older pages leave the forward-only window. Discarded rows cannot be revisited there. Other engines and unsupported query shapes load a capped result. A truncated, failed or cancelled result is incomplete; see [result limits](known-limitations.md#data-and-values).
 
 SQL completion offers keywords and scoped table and column names. Choosing an identifier inserts its complete quoted SQL name. Table names keep their schema; column suggestions after an alias keep that alias. Arbitrary words elsewhere in the editor are not suggestions.
 

@@ -567,7 +567,7 @@ fn build_streamed_result_widget(
 ) -> gtk::Widget {
     let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let page_switcher = gtk::Notebook::new();
-    for (page_index, page) in result.page_indices.iter().copied().zip(&result.pages) {
+    for (position, (page_index, page)) in result.page_indices.iter().copied().zip(&result.pages).enumerate() {
         let widget = build_result_set_widget(
             page,
             grid_sender,
@@ -577,7 +577,7 @@ fn build_streamed_result_widget(
             result_view_key(outcome.identity, page_index as usize),
         );
         widget.set_widget_name(&super::stream_view::page_widget_name(page_index));
-        let label = gtk::Label::new(Some(&stream_page_label(page_index, page)));
+        let label = gtk::Label::new(Some(&stream_page_label(result, position)));
         page_switcher.append_page(&widget, Some(&label));
     }
     if let Some(page) = stream_terminal_page(result, outcome.identity.statement_index) {
@@ -588,6 +588,7 @@ fn build_streamed_result_widget(
         page_switcher.set_current_page(Some(page_switcher.n_pages() - 1));
     }
     let progress = gtk::Label::new(Some(&stream_progress_text(result)));
+    progress.set_wrap(true);
     if matches!(result.terminal, StreamTerminal::Loading) {
         page_switcher.set_widget_name(super::stream_view::LIVE_PAGES);
         progress.set_widget_name(super::stream_view::LIVE_PROGRESS);
@@ -607,24 +608,40 @@ fn build_streamed_result_widget(
             "The query will run again through a guarded cursor."
         ))));
     }
+    holder.append(&super::stream_view::build_pager(&page_switcher));
     holder.append(&page_switcher);
     holder.upcast()
 }
 
 pub(super) fn stream_progress_text(result: &StreamedResult) -> String {
-    crate::tr!("Received {rows} rows · {pages} pages")
+    let received = crate::tr!("Received {rows} rows · {pages} pages")
         .replace("{rows}", &result.total_rows.to_string())
-        .replace("{pages}", &result.total_pages.to_string())
+        .replace("{pages}", &result.total_pages.to_string());
+    let retained: usize = result.pages.iter().map(|page| page.rows.len()).sum();
+    if retained == result.total_rows {
+        return received;
+    }
+    let notice = crate::tr!("Retained rows {start}-{end}. Earlier rows are no longer available.")
+        .replace(
+            "{start}",
+            &result.total_rows.saturating_sub(retained).saturating_add(1).to_string(),
+        )
+        .replace("{end}", &result.total_rows.to_string());
+    format!("{received}\n{notice}")
 }
 
-pub(super) fn stream_page_label(page_index: u64, result: &QueryResult) -> String {
-    if result.rows.is_empty() {
+pub(super) fn stream_page_label(result: &StreamedResult, position: usize) -> String {
+    let Some(page) = result.pages.get(position).filter(|page| !page.rows.is_empty()) else {
         return crate::tr!("Rows 0");
-    }
-    let start = page_index
-        .saturating_mul(tablepro_core::MAX_QUERY_CURSOR_PAGE_ROWS as u64)
+    };
+    let retained: usize = result.pages.iter().map(|page| page.rows.len()).sum();
+    let preceding: usize = result.pages.iter().take(position).map(|page| page.rows.len()).sum();
+    let start = result
+        .total_rows
+        .saturating_sub(retained)
+        .saturating_add(preceding)
         .saturating_add(1);
-    let end = start.saturating_add(result.rows.len().saturating_sub(1) as u64);
+    let end = start.saturating_add(page.rows.len().saturating_sub(1));
     crate::tr!("Rows {start}-{end}")
         .replace("{start}", &start.to_string())
         .replace("{end}", &end.to_string())
@@ -637,7 +654,7 @@ fn stream_terminal_page(result: &StreamedResult, statement_index: usize) -> Opti
         StreamTerminal::Cancelled => Some(
             adw::StatusPage::builder()
                 .title(crate::tr!("Query cancelled"))
-                .description(crate::tr!("Rows already received remain available."))
+                .description(crate::tr!("Only retained rows remain available."))
                 .icon_name("process-stop-symbolic")
                 .vexpand(true)
                 .build()
@@ -646,7 +663,7 @@ fn stream_terminal_page(result: &StreamedResult, statement_index: usize) -> Opti
         StreamTerminal::TimedOut => Some(
             adw::StatusPage::builder()
                 .title(crate::tr!("Query timed out"))
-                .description(crate::tr!("Rows already received remain available."))
+                .description(crate::tr!("Only retained rows remain available."))
                 .icon_name("dialog-warning-symbolic")
                 .vexpand(true)
                 .build()

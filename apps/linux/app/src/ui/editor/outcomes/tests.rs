@@ -676,10 +676,10 @@ fn streamed_result_widgets_keep_pages_visible_during_loading_and_terminal_states
         3,
         StreamTerminal::Loading,
     );
-    assert_eq!(loading.n_pages(), 2);
+    assert_eq!((loading.shows_tabs(), loading.n_pages()), (false, 2));
     assert_eq!(loading.current_page(), Some(1));
     assert_eq!(streamed_page_tab_label(&loading, 0), "Rows 1-2");
-    assert_eq!(streamed_page_tab_label(&loading, 1), "Rows 5001-5001");
+    assert_eq!(streamed_page_tab_label(&loading, 1), "Rows 3-3");
 
     let empty = streamed_result_notebook(
         vec![std::sync::Arc::new(cursor_page(&[], false).result)],

@@ -646,6 +646,11 @@
       "tablepro-app",
       "--lib",
       "ui::editor::outcomes::lifetime_tests::streamed_widgets_release_evicted_pages_and_cancelled_results_on_close"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::stream_view::pager::tests::pager_navigates_retained_pages_and_status_without_retaining_its_notebook"
     ]
   ],
   "keyring": [

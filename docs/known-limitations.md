@@ -14,7 +14,11 @@ Documented application limits, behavior differences and known defects. Entries l
   results stop at 1 million rows, 10 million cells or 64 MiB estimated size.
   Single-statement PostgreSQL `SELECT`s in the SQL editor now stream cursor
   pages through Core and PolicyGuard, retaining at most four pages of up to
-  5,000 rows each. That cache is bounded by page and row count, not by cell
+  5,000 rows each. Previous/Next controls navigate only retained pages. The
+  received-row summary identifies the retained range when earlier rows have
+  been discarded; those rows cannot be revisited without running the query
+  again. Row ranges are positions in the result, not database row identifiers.
+  That cache is bounded by page and row count, not by cell
   bytes. A synthetic profile with four pinned results and one active stream
   reached 1,325 MiB RSS; see the [profile evidence](evidence/stream-retention-synthetic-2026-10-16/README.md).
   This does not measure normal queries or the complete process ceiling. Other

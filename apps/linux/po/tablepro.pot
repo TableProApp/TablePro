@@ -1393,10 +1393,12 @@ msgid "Copy selected rows as TSV"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/shortcuts.rs:213
+#: apps/linux/app/src/ui/editor/stream_view/pager.rs:9
 msgid "Previous page"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/shortcuts.rs:214
+#: apps/linux/app/src/ui/editor/stream_view/pager.rs:11
 msgid "Next page"
 msgstr ""
 
@@ -1760,7 +1762,7 @@ msgid "Unsaved changes will be permanently lost if you discard them."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/workspace_tabs.rs:931
-#: apps/linux/app/src/ui/editor/outcomes.rs:922
+#: apps/linux/app/src/ui/editor/outcomes.rs:939
 #: apps/linux/app/src/ui/editor/schema.rs:17
 #: apps/linux/app/src/ui/history_dialog.rs:1041
 msgid "Empty query"
@@ -2765,7 +2767,7 @@ msgid "cancelled"
 msgstr ""
 
 #: apps/linux/app/src/ui/editor/mod.rs:876
-#: apps/linux/app/src/ui/editor/outcomes.rs:639
+#: apps/linux/app/src/ui/editor/outcomes.rs:656
 msgid "Query cancelled"
 msgstr ""
 
@@ -2785,7 +2787,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/editor/mod.rs:903
 #: apps/linux/app/src/ui/editor/outcomes.rs:70
-#: apps/linux/app/src/ui/editor/outcomes.rs:648
+#: apps/linux/app/src/ui/editor/outcomes.rs:665
 #: apps/linux/app/src/ui/editor/streaming.rs:157
 msgid "Query timed out"
 msgstr ""
@@ -2892,101 +2894,106 @@ msgstr ""
 msgid "Status"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:597
+#: apps/linux/app/src/ui/editor/outcomes.rs:598
 msgid "Export all rows…"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:607
+#: apps/linux/app/src/ui/editor/outcomes.rs:608
 msgid "The query will run again through a guarded cursor."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:615
+#: apps/linux/app/src/ui/editor/outcomes.rs:617
 #, rust-format
 msgid "Received {rows} rows · {pages} pages"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:622
+#: apps/linux/app/src/ui/editor/outcomes.rs:624
+#, rust-format
+msgid "Retained rows {start}-{end}. Earlier rows are no longer available."
+msgstr ""
+
+#: apps/linux/app/src/ui/editor/outcomes.rs:635
 msgid "Rows 0"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:628
+#: apps/linux/app/src/ui/editor/outcomes.rs:645
 #, rust-format
 msgid "Rows {start}-{end}"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:640
-#: apps/linux/app/src/ui/editor/outcomes.rs:649
-msgid "Rows already received remain available."
+#: apps/linux/app/src/ui/editor/outcomes.rs:657
+#: apps/linux/app/src/ui/editor/outcomes.rs:666
+msgid "Only retained rows remain available."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:671
+#: apps/linux/app/src/ui/editor/outcomes.rs:688
 #, rust-format
 msgid "Result set {n} ({rows})"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:688
+#: apps/linux/app/src/ui/editor/outcomes.rs:705
 msgid "Result set"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:705
+#: apps/linux/app/src/ui/editor/outcomes.rs:722
 msgid "Copy error"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:712
+#: apps/linux/app/src/ui/editor/outcomes.rs:729
 #, rust-format
 msgid "Statement {n} failed"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:730
+#: apps/linux/app/src/ui/editor/outcomes.rs:747
 msgid "No rows returned"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:814
-#: apps/linux/app/src/ui/editor/outcomes.rs:817
+#: apps/linux/app/src/ui/editor/outcomes.rs:831
+#: apps/linux/app/src/ui/editor/outcomes.rs:834
 #, rust-format
 msgid "Result {n} ({rows})"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:820
+#: apps/linux/app/src/ui/editor/outcomes.rs:837
 #, rust-format
 msgid "Result {n} (error)"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:821
+#: apps/linux/app/src/ui/editor/outcomes.rs:838
 #, rust-format
 msgid "Result {n} (skipped)"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:825
-#: apps/linux/app/src/ui/editor/outcomes.rs:829
+#: apps/linux/app/src/ui/editor/outcomes.rs:842
+#: apps/linux/app/src/ui/editor/outcomes.rs:846
 #, rust-format
 msgid "{n} · {statement} ({rows})"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:833
+#: apps/linux/app/src/ui/editor/outcomes.rs:850
 #, rust-format
 msgid "{n} · {statement} (error)"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:836
+#: apps/linux/app/src/ui/editor/outcomes.rs:853
 #, rust-format
 msgid "{n} · {statement} (skipped)"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:848
+#: apps/linux/app/src/ui/editor/outcomes.rs:865
 msgid "Result"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:849
+#: apps/linux/app/src/ui/editor/outcomes.rs:866
 #, rust-format
 msgid "📌 {statement} ({rows})"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:897
+#: apps/linux/app/src/ui/editor/outcomes.rs:914
 msgid "Statement result"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/outcomes.rs:923
+#: apps/linux/app/src/ui/editor/outcomes.rs:940
 msgid "Type a SQL statement and press Run."
 msgstr ""
 
