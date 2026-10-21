@@ -29,6 +29,7 @@ actor CloudSQLProxyManager: TunnelManaging {
     private let systemBinaryLookup: (String) -> String?
     private var staleSweep: Task<Void, Never>?
     private let reaperTimings: StaleProcessReaper.Timings
+    private let ownsListener: @Sendable (Int32?, Int) -> Bool
 
     private static let runnerRegistry = OSAllocatedUnfairLock(initialState: [UUID: any SupervisedProcessRunner]())
 
@@ -38,9 +39,13 @@ actor CloudSQLProxyManager: TunnelManaging {
         runnerFactory: @escaping () -> any SupervisedProcessRunner = { ProcessSupervisedRunner() },
         binaryManager: CloudSQLProxyBinaryManager = .shared,
         systemBinaryLookup: @escaping (String) -> String? = { CLIExecutableFinder.findExecutable($0) },
-        reaperTimings: StaleProcessReaper.Timings = .production
+        reaperTimings: StaleProcessReaper.Timings = .production,
+        ownsListener: @escaping @Sendable (Int32?, Int) -> Bool = { pid, port in
+            pid.map { LoopbackPort.isListening(pid: $0, port: port) } ?? false
+        }
     ) {
         self.runnerFactory = runnerFactory
+        self.ownsListener = ownsListener
         self.binaryManager = binaryManager
         self.systemBinaryLookup = systemBinaryLookup
         self.reaperTimings = reaperTimings
@@ -291,7 +296,9 @@ actor CloudSQLProxyManager: TunnelManaging {
             if await monitor.streamEnded {
                 throw CloudSQLProxyError.startupFailed(stderrTail: await monitor.tail)
             }
-            if await LoopbackPort.isReachable(host: "127.0.0.1", port: port) {
+            // A program that took the port after the check above answers too, so the proxy has to own it.
+            if await LoopbackPort.isReachable(host: "127.0.0.1", port: port),
+               ownsListener(runner.processIdentifier, port) {
                 return
             }
             let remainingNanoseconds = UInt64(max(1, deadline.remainingMilliseconds)) * 1_000_000
