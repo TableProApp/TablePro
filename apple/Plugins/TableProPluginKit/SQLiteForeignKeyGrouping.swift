@@ -21,13 +21,21 @@ public enum SQLiteForeignKeyGrouping {
     // Rows: PRAGMA foreign_key_list's columns, then the table's DDL on the first row only. The pragma itself
     // finds the table, so a temporary table keeps its keys.
     public static func foreignKeysQuery(table: String) -> String {
+        foreignKeysQuery(table: table, schema: nil)
+    }
+
+    // A key in an attached database can only reference a table in that same database, so the parent's
+    // primary key is read from there too.
+    public static func foreignKeysQuery(table: String, schema: String?) -> String {
         let literal = "'\(SQLiteMasterQueries.escapeLiteral(table))'"
+        let inSchema = SQLiteMasterQueries.pragmaSchemaArgument(schema)
         return """
-            SELECT \(pragmaColumns),
+            SELECT \(pragmaColumns(schema: schema)),
                    CASE WHEN p.id = 0 AND p.seq = 0 THEN (
-                       SELECT sql FROM sqlite_master WHERE type = 'table' AND name = \(literal) COLLATE NOCASE
+                       SELECT sql FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
+                       WHERE type = 'table' AND name = \(literal) COLLATE NOCASE
                    ) END
-            FROM pragma_foreign_key_list(\(literal)) p
+            FROM pragma_foreign_key_list(\(literal)\(inSchema)) p
             ORDER BY p.id, p.seq
             """
     }
@@ -35,10 +43,15 @@ public enum SQLiteForeignKeyGrouping {
     // The same rows behind the table's name. GLOB, not LIKE: `_` is a LIKE wildcard, so LIKE 'sqlite_%' also
     // hides a user table like sqlitebrowser_x.
     public static func schemaForeignKeysQuery(excludingTableGlob glob: String? = nil) -> String {
+        schemaForeignKeysQuery(schema: nil, excludingTableGlob: glob)
+    }
+
+    public static func schemaForeignKeysQuery(schema: String?, excludingTableGlob glob: String?) -> String {
         let excluded = glob.map { " AND m.name NOT GLOB '\(SQLiteMasterQueries.escapeLiteral($0))'" } ?? ""
+        let inSchema = SQLiteMasterQueries.pragmaSchemaArgument(schema)
         return """
-            SELECT m.name, \(pragmaColumns), CASE WHEN p.id = 0 AND p.seq = 0 THEN m.sql END
-            FROM sqlite_master m, pragma_foreign_key_list(m.name) p
+            SELECT m.name, \(pragmaColumns(schema: schema)), CASE WHEN p.id = 0 AND p.seq = 0 THEN m.sql END
+            FROM \(SQLiteMasterQueries.catalogTable(schema: schema)) m, pragma_foreign_key_list(m.name\(inSchema)) p
             WHERE m.type = 'table' AND m.name NOT GLOB 'sqlite_*'\(excluded)
             ORDER BY m.name, p.id, p.seq
             """
@@ -46,29 +59,55 @@ public enum SQLiteForeignKeyGrouping {
 
     // `to` is null for a shorthand `REFERENCES parent`. pragma_table_info finds the parent by SQLite's own
     // name rule, which folds ASCII case only, unlike Swift's lowercased().
-    private static let pragmaColumns = """
+    private static func pragmaColumns(schema: String?) -> String {
+        """
         p.id, p.seq, p."table", p."from",
-               ifnull(p."to", (SELECT k.name FROM pragma_table_info(p."table") k WHERE k.pk = p.seq + 1)),
+               ifnull(p."to", (SELECT k.name FROM pragma_table_info(p."table"\(SQLiteMasterQueries.pragmaSchemaArgument(schema))) k
+                               WHERE k.pk = p.seq + 1)),
                p.on_update, p.on_delete, p."match"
         """
+    }
 
     public static func foreignKeys(table: String, fromRows rows: [[PluginCellValue]]) -> [PluginForeignKeyInfo] {
+        foreignKeys(table: table, schema: nil, fromRows: rows)
+    }
+
+    /// A key read from an attached database names that database as the referenced table's schema, so a
+    /// jump to the parent row lands in the attached database and not in a same-named table of the main one.
+    public static func foreignKeys(table: String, schema: String?, fromRows rows: [[PluginCellValue]]) -> [PluginForeignKeyInfo] {
         let listed = rows.filter { $0.count >= 9 }
-        return infos(
+        let keys = infos(
             table: table,
             pragmaRows: listed.map { Array($0.prefix(8)) },
             createTableSQL: listed.lazy.compactMap { $0[8].asText }.first
         )
+        guard let attached = SQLiteMasterQueries.attachedSchema(schema) else { return keys }
+        return keys.map {
+            PluginForeignKeyInfo(
+                name: $0.name,
+                column: $0.column,
+                referencedTable: $0.referencedTable,
+                referencedColumn: $0.referencedColumn,
+                referencedDatabase: nil,
+                referencedSchema: attached,
+                onDelete: $0.onDelete,
+                onUpdate: $0.onUpdate
+            )
+        }
     }
 
     public static func foreignKeysByTable(fromRows rows: [[PluginCellValue]]) -> [String: [PluginForeignKeyInfo]] {
+        foreignKeysByTable(schema: nil, fromRows: rows)
+    }
+
+    public static func foreignKeysByTable(schema: String?, fromRows rows: [[PluginCellValue]]) -> [String: [PluginForeignKeyInfo]] {
         var rowsByTable: [String: [[PluginCellValue]]] = [:]
         for row in rows {
             guard row.count >= 10, let table = row[0].asText else { continue }
             rowsByTable[table, default: []].append(Array(row.dropFirst()))
         }
         return rowsByTable.reduce(into: [:]) { result, entry in
-            result[entry.key] = foreignKeys(table: entry.key, fromRows: entry.value)
+            result[entry.key] = foreignKeys(table: entry.key, schema: schema, fromRows: entry.value)
         }
     }
 

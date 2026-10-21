@@ -58,5 +58,5 @@ internal func libSQLLooksLikeExpression(_ value: String) -> Bool {
 }
 
 internal func libSQLDefaultLiteralEscape(_ value: String) -> String {
-    value.replacingOccurrences(of: "\'", with: "\'\'")
+    value.replacingOccurrences(of: "\'", with: "\'\'", options: .literal)
 }

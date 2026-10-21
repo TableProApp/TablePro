@@ -1602,7 +1602,7 @@ final class MainContentCoordinator: ObservableObject {
         if result.isEmpty,
            let scope = selectedTabScope,
            let createSQL = try? await services.databaseManager.withMetadataDriver(scope: scope, { driver in
-               try await driver.fetchTableDDL(table: tableName)
+               try await driver.fetchTableDDL(table: tableName, schema: scope.schema)
            }) {
             for col in columnInfo {
                 if let values = QuerySqlParser.parseSQLiteCheckConstraintValues(

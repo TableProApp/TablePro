@@ -35,6 +35,15 @@ extension DatabaseTreeOutlineCoordinator {
                 if outlineView.isItemExpanded(sectionNode) { restoreFolderExpansion(under: sectionNode) }
             case .redisKeysSection:
                 setExpanded(sectionNode, searching || (viewModel?.isRedisKeysExpanded ?? true))
+            case .schema(let database, let schema) where listsAttachedSchemas:
+                let want = searching
+                    ? searchOpens(sectionNode, database: database, schema: schema)
+                    : windowState?.expandedTreeDatabaseSchemas.contains(DatabaseSchemaKey(database: database, schema: schema)) ?? false
+                setExpanded(sectionNode, want)
+                if outlineView.isItemExpanded(sectionNode) {
+                    triggerLoad(for: sectionNode)
+                    restoreObjectGroupExpansion(under: sectionNode)
+                }
             case .schema:
                 setExpanded(sectionNode, true)
                 if outlineView.isItemExpanded(sectionNode) {

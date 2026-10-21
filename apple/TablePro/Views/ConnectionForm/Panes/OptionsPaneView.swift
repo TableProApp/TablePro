@@ -23,6 +23,7 @@ struct OptionsPaneView: View {
     var body: some View {
         Form {
             driverSection
+            attachedDatabasesSection
             extensionsSection
             timeoutSection
             binaryValuesSection
@@ -239,6 +240,23 @@ struct OptionsPaneView: View {
             },
             set: { coordinator.advanced.additionalFieldValues[field.id] = $0 }
         )
+    }
+
+    // MARK: - Attached Databases
+
+    @ViewBuilder
+    private var attachedDatabasesSection: some View {
+        if let field = coordinator.advanced.attachedDatabaseListField {
+            Section {
+                AttachedDatabaseListEditor(value: advancedFieldBinding(for: field), databaseType: databaseType)
+            } header: {
+                Text(field.label)
+            } footer: {
+                Text("Attached each time the connection opens. Reach a table as name.table, and browse each database in the sidebar.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     // MARK: - Extensions

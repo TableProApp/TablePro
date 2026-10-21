@@ -154,8 +154,10 @@ extension MainContentCoordinator {
     ///
     /// The fallback template comes from the driver pinned to the view's schema, because a driver
     /// that qualifies the template, as SQL Server must, names the schema it is pinned to.
+    /// Not for a view in an attached database: its definition is read and written back without the
+    /// database's name, which reaches the main file.
     func editViewDefinition(_ ref: DatabaseTreeTableRef) {
-        guard let target = objectTarget(for: ref) else { return }
+        guard !ref.isInAttachedDatabase(of: connection.type), let target = objectTarget(for: ref) else { return }
         let viewName = ref.table.name
         Task {
             let lineComment = self.services.pluginManager.editorLanguage(for: self.connection.type).lineCommentMarker

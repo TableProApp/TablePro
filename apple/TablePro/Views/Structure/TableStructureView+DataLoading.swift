@@ -80,8 +80,11 @@ extension TableStructureView {
                 checkConstraints = try await structureLoader.checkConstraints()
             case .ddl:
                 let table = tableName
+                let schema = structureLoader.scope.schema
                 ddlStatement = try await structureLoader.perform { driver in
-                    try await TableDDLComposer.fetchDDL(for: table, using: driver, includesDependencies: true)
+                    try await TableDDLComposer.fetchDDL(
+                        for: table, using: driver, includesDependencies: true, schema: schema
+                    )
                 }
             case .triggers:
                 do {

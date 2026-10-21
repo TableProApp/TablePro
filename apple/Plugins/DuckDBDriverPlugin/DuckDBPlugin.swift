@@ -103,7 +103,8 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             fieldType: .stepper(range: ConnectionField.IntRange(0...DuckDBIdleRelease.maximumMinutes)),
             section: .advanced,
             visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local"])
-        )
+        ),
+        .attachedDatabases(visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local"]))
     ]
     static let fileExtensions: [String] = DuckDBFileKinds.all
     static let brandColorHex = "#FFD900"
@@ -196,6 +197,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let stateLock = NSLock()
     nonisolated(unsafe) private var _currentSchema: String = "main"
     nonisolated(unsafe) private var _currentDatabase: String?
+    nonisolated(unsafe) private var _attachSetup: [String] = []
+    nonisolated(unsafe) private var _connectionWarning: String?
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "DuckDBPluginDriver")
 
@@ -211,6 +214,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return _currentDatabase
     }
     var serverVersion: String? { String(cString: duckdb_library_version()) }
+    var connectionWarning: String? { stateLock.withLock { _connectionWarning } }
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
     var supportsTransactionalDDL: Bool { true }
@@ -320,6 +324,11 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             await connectionActor.close()
             throw error
         }
+        // After the position is read: with more than one catalog open and nothing `USE`d yet, the
+        // opened file's catalog can no longer be told from the attached ones.
+        // A CSV, Parquet or in-memory main file opens read-write whatever the setting says, but an
+        // attached database file can still be written, so it follows the setting itself.
+        await attachConfiguredDatabases(readOnly: config.additionalFields[DuckDBAccessMode.fieldId] == "true")
         await connectionActor.captureSettingsBaseline()
         await startIdleReleaseIfRequested()
     }
@@ -448,6 +457,27 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return only
     }
 
+    private func attachConfiguredDatabases(readOnly: Bool) async {
+        let databases: [AttachedDatabase]
+        do {
+            databases = try AttachedDatabaseList.decode(config.additionalFields[AttachedDatabaseList.fieldId])
+        } catch {
+            stateLock.withLock { _connectionWarning = error.localizedDescription }
+            return
+        }
+        var attached: [AttachedDatabase] = []
+        let actor = connectionActor
+        let failures = await AttachedDatabaseAttacher.attach(databases) { database in
+            _ = try await actor.executeQuery(DuckDBSchemaQueries.attach(database, readOnly: readOnly))
+            attached.append(database)
+        }
+        await actor.setConfiguredAttachments(attached, readOnly: readOnly)
+        stateLock.withLock {
+            _attachSetup = attached.map { DuckDBSchemaQueries.attach($0, readOnly: readOnly) }
+            _connectionWarning = AttachedDatabaseAttacher.warning(for: failures)
+        }
+    }
+
     private func readPosition() async throws -> DuckDBPositionParser.Position {
         let result = try await connectionActor.executeQuery(DuckDBSchemaQueries.currentPosition)
         var settings: [String: String] = [:]
@@ -507,6 +537,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         stateLock.withLock {
             _currentSchema = "main"
             _currentDatabase = nil
+            _attachSetup = []
         }
     }
 
@@ -529,7 +560,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// appended to, so a session that has switched database a dozen times replays one `USE`.
     private func refreshSessionSetup() async {
         var statements = ["SET autoinstall_known_extensions=1", "SET autoload_known_extensions=1"]
-        let (database, schema) = stateLock.withLock { (_currentDatabase, _currentSchema) }
+        let (database, schema, attachSetup) = stateLock.withLock { (_currentDatabase, _currentSchema, _attachSetup) }
+        statements += attachSetup
         if let database, !database.isEmpty {
             statements.append(DuckDBSchemaQueries.useSchema(schema, in: database))
         }

@@ -1453,11 +1453,12 @@ public extension PluginDatabaseDriver {
         }
     }
 
+    // `.literal` compares code units: the default compares grapheme clusters and skips a quote a
+    // combining mark follows, which then ends the literal early.
     func escapeStringLiteral(_ value: String) -> String {
-        var result = value
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\0", with: "")
-        return result
+        value
+            .replacingOccurrences(of: "\0", with: "", options: .literal)
+            .replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     func fetchSessionContexts() async throws -> [PluginSessionContext]? { nil }

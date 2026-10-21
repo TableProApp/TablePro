@@ -121,7 +121,8 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             objectToolSupport: .of(DatabaseManager.shared.driver(for: connectionId)),
             tableFolderOptions: tableFolderMenuOptions(clicked: clicked, selected: selectedRefs()),
             offersBrowsedFolders: creation.offersBrowsedFolders,
-            canShowAllTables: mainCoordinator?.allTablesListing() != nil
+            canShowAllTables: mainCoordinator?.allTablesListing() != nil,
+            listsAttachedSchemas: listsAttachedSchemas
         )
     }
 

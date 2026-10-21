@@ -53,6 +53,8 @@ struct DatabaseTreeRowContext {
     /// that decides whether partitions are listed at all, so a hidden set of partitions does not
     /// leave a number behind on the parent.
     var showsPartitions: Bool = true
+    /// The engine's schema rows are databases attached beside the opened file, never one to switch to.
+    var listsAttachedSchemas: Bool = false
 }
 
 struct DatabaseTreeRowView: View {
@@ -103,6 +105,8 @@ struct DatabaseTreeRowView: View {
             folderRow(ref)
         case .database(let metadata):
             databaseRow(metadata)
+        case .schema(_, let schema) where context.listsAttachedSchemas:
+            header(text: schema, systemImage: "cylinder", isActive: false, isSystem: false, caption: nil)
         case .schema(let database, let schema):
             header(
                 text: schema,

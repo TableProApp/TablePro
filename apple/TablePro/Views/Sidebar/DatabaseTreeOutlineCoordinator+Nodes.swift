@@ -160,13 +160,15 @@ extension DatabaseTreeOutlineCoordinator {
         nodes += sessionSectionNodes()
         let folders = flatFoldersSectionNodes()
         let kinds = visibleObjectKinds()
+        let attached = browsingDatabase.map { attachedSchemaNodes(database: $0) } ?? []
         nodes += folders
         nodes += kinds.map {
             node(id: DatabaseTreeNode.objectKindSectionId($0), kind: .objectKindSection($0))
         }
-        if folders.isEmpty, kinds.isEmpty, let status = flatEmptyRootStatus() {
+        if folders.isEmpty, kinds.isEmpty, attached.isEmpty, let status = flatEmptyRootStatus() {
             nodes.append(statusNode(parentId: DatabaseTreeNode.flatRootId, status: status))
         }
+        nodes += attached
         if let database = browsingDatabase {
             nodes += flatOtherSchemaMatches(database: database).map {
                 node(id: DatabaseTreeNode.schemaId(database: database, schema: $0), kind: .schema(database: database, schema: $0))
@@ -176,6 +178,21 @@ extension DatabaseTreeOutlineCoordinator {
             nodes.append(node(id: DatabaseTreeNode.redisKeysSectionId, kind: .redisKeysSection))
         }
         return nodes
+    }
+
+    internal var listsAttachedSchemas: Bool {
+        PluginManager.shared.listsAttachedDatabases(for: databaseType)
+    }
+
+    private func attachedSchemaNodes(database: String) -> [DatabaseTreeNode] {
+        guard listsAttachedSchemas, viewModel != nil else { return [] }
+        return SidebarAttachedSchemas.visible(
+            attached: schemaService.attachedSchemas(for: connectionId),
+            database: database,
+            searchText: searchText,
+            loadedContent: { self.loadedObjectBuckets(database: database, schema: $0) }
+        )
+        .map { node(id: DatabaseTreeNode.schemaId(database: database, schema: $0), kind: .schema(database: database, schema: $0)) }
     }
 
     /// A torn-down sidebar has no view model and lists nothing at all. Counting its way to a root of

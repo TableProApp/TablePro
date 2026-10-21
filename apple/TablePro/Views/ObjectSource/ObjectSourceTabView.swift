@@ -109,7 +109,8 @@ final class ObjectSourceLoader: ObservableObject {
                 let source = try await TableDDLComposer.fetchDDL(
                     for: objectRef.name,
                     using: driver,
-                    includesDependencies: true
+                    includesDependencies: true,
+                    schema: objectRef.schema
                 )
                 return Fetched(source: source, attributes: objectRef.attributes)
             }

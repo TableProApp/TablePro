@@ -32,6 +32,10 @@
     "“%@” has an open transaction. Deleting the connection rolls it back and discards its uncommitted changes." : {
 
     },
+    "\"%@\" is a name the database keeps for itself. Choose another name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "\"%@\" is in the list more than once." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -3172,6 +3176,14 @@
 
     },
     "Atom" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Attached Databases" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Attached databases open only for a database file on this Mac, not for a database on a server." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -6453,6 +6465,10 @@
           }
         }
       }
+    },
+    "Could not attach \"%@\": %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Could not build the %1$@ endpoint for the AWS region \"%2$@\"." : {
       "extractionState" : "manual",
@@ -13768,6 +13784,10 @@
           }
         }
       }
+    },
+    "More than one attached database is named \"%@\"." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "More than one row reads as this key, because a SQLite column with no type keeps a number and the same text apart. Change these rows with a query." : {
 
@@ -23324,6 +23344,14 @@
         }
       }
     },
+    "The attached database \"%@\" has no file." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The attached file \"%@\" has no name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The AWS SSO sign-in timed out before it was approved." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -25054,6 +25082,10 @@
           }
         }
       }
+    },
+    "The saved list of attached databases is not in a format TablePro can read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The saved Microsoft Entra ID sign-in expired. Sign in again." : {
       "extractionState" : "manual",

@@ -116,10 +116,18 @@ internal enum DatabaseTreeMenuSpec {
         if let objectRef = sourceObjectRef(for: ref) {
             items.append(.command(String(localized: "Show DDL"), .showObjectSource(objectRef)))
         }
-        if SidebarContextMenuLogic.isView(clickedTable: ref.table), !context.isReadOnly {
+        if SidebarContextMenuLogic.isView(clickedTable: ref.table), !context.isReadOnly,
+           !isInAttachedDatabase(ref, context: context) {
             items.append(.command(String(localized: "Edit View Definition"), .editViewDefinition(ref)))
         }
         return items
+    }
+
+    /// A table of a database attached beside the opened file. Export, import, transfer, copy and a
+    /// view's edit all name the table without that database, so they would read or write a same-named
+    /// table in the opened file and are not offered.
+    private static func isInAttachedDatabase(_ ref: DatabaseTreeTableRef, context: DatabaseTreeMenuContext) -> Bool {
+        context.listsAttachedSchemas && ref.qualifyingSchema != nil
     }
 
     /// A view's source opens in the read-only DDL viewer, addressed by the row's own database and
@@ -159,6 +167,9 @@ internal enum DatabaseTreeMenuSpec {
         /// schemas handed the dialog names it resolved against one of them.
         let sameScope = targets.filter { $0.qualifyingSchema == ref.qualifyingSchema }
         let names = Set(sameScope.map(\.table.name))
+        guard !isInAttachedDatabase(ref, context: context) else {
+            return maintenanceItems(ref, context: context)
+        }
         var items: [DatabaseTreeMenuItem] = [
             .command(String(localized: "Export…"), .exportTables(names: names, ref: ref))
         ]
@@ -182,26 +193,31 @@ internal enum DatabaseTreeMenuSpec {
         ) {
             items.append(.command(String(localized: "Refresh Materialized View…"), .refreshMaterializedView(ref)))
         }
+        return items + maintenanceItems(ref, context: context)
+    }
+
+    private static func maintenanceItems(
+        _ ref: DatabaseTreeTableRef,
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuItem] {
         let applicable = TableOperationEligibility.maintenanceOperations(
             context.maintenanceOperations,
             for: ref.table.type
         )
-        if SidebarContextMenuLogic.maintenanceGroupEnabled(
+        guard SidebarContextMenuLogic.maintenanceGroupEnabled(
             isReadOnly: context.isReadOnly,
             hasSelection: true,
             applicableOperations: applicable
-        ) {
-            items.append(.submenu(
-                title: String(localized: "Maintenance"),
-                items: applicable.map { operation in
-                    .command(
-                        operation.name,
-                        .maintenance(operation: operation, tableName: ref.table.name, ref: ref)
-                    )
-                }
-            ))
-        }
-        return items
+        ) else { return [] }
+        return [.submenu(
+            title: String(localized: "Maintenance"),
+            items: applicable.map { operation in
+                .command(
+                    operation.name,
+                    .maintenance(operation: operation, tableName: ref.table.name, ref: ref)
+                )
+            }
+        )]
     }
 
     /// Destructive last, behind its own separator, which is the only way macOS sets one apart:
@@ -426,6 +442,12 @@ internal enum DatabaseTreeMenuSpec {
         context: DatabaseTreeMenuContext
     ) -> [DatabaseTreeMenuSection] {
         let targets = SidebarMenuTarget.resolveContainers(clicked: clicked, selection: context.selectedContainers)
+        if context.listsAttachedSchemas, clicked.kind == .schema {
+            return [
+                DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshContainers(targets))]),
+                DatabaseTreeMenuSection([.command(copyNamesTitle(count: targets.count), .copyContainerNames(targets))])
+            ]
+        }
         var open: [DatabaseTreeMenuItem] = []
         /// Omitted rather than disabled: a menu item that can never fire in this state is noise, and
         /// the HIG prefers removing an item that does not apply over showing it greyed out.

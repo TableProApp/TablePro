@@ -75,6 +75,13 @@
         }
       }
     },
+    "\"%@\" is a name the database keeps for itself. Choose another name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "\"%@\" is an attached database. Change its tables' structure from a connection that opens it." : {
+
+    },
     "%1$@ column of %2$@" : {
 
     },
@@ -209,6 +216,26 @@
     "At the End" : {
 
     },
+    "Attach" : {
+
+    },
+    "Attach Database" : {
+
+    },
+    "Attach Database…" : {
+
+    },
+    "Attached Databases" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Attached databases open only for a database file on this Mac, not for a database on a server." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Attached each time the connection opens. Reach a table as name.table, and browse each database in the sidebar." : {
+
+    },
     "Base Type" : {
 
     },
@@ -257,6 +284,9 @@
     "Choose the base type." : {
 
     },
+    "Choose the database files to attach each time this connection opens." : {
+
+    },
     "Compare Result With…" : {
 
     },
@@ -286,6 +316,10 @@
     },
     "Could Not Stage the Change" : {
 
+    },
+    "Could not attach \"%@\": %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Could not connect to the database: %@" : {
 
@@ -369,6 +403,10 @@
     "Match Whole Rows" : {
 
     },
+    "More than one attached database is named \"%@\"." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Name the type." : {
 
     },
@@ -379,6 +417,9 @@
 
     },
     "New Type" : {
+
+    },
+    "No Attached Databases" : {
 
     },
     "No Columns in Common" : {
@@ -442,6 +483,9 @@
 
     },
     "Refuse NULL" : {
+
+    },
+    "Remove Attached Database" : {
 
     },
     "Remove the comment" : {
@@ -561,6 +605,14 @@
     "The JSON array must contain only objects." : {
 
     },
+    "The attached database \"%@\" has no file." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The attached file \"%@\" has no name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The changes were saved, but the type could not be read back. Reload before editing it again." : {
 
     },
@@ -585,11 +637,21 @@
     "The left result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the right." : {
 
     },
+    "The name a statement uses for this database, as in name.table." : {
+
+    },
     "The request timed out." : {
 
     },
     "The right result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the left." : {
 
+    },
+    "The saved list could not be read. Adding a database replaces it." : {
+
+    },
+    "The saved list of attached databases is not in a format TablePro can read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The schema changes staged in this diagram will be lost." : {
 
@@ -599,6 +661,10 @@
     },
     "The server refused a change. The changes before it were saved." : {
 
+    },
+    "The structure of a table in an attached database cannot be changed here." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The text encoding is invalid." : {
 

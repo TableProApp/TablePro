@@ -78,6 +78,9 @@ internal struct DatabaseTreeMenuContext {
     /// Whether Show All Tables has a listing to open, so an engine without one is not offered a command
     /// that does nothing.
     internal var canShowAllTables: Bool = false
+    /// The engine's schema rows are databases attached beside the opened file: reached by their
+    /// qualifier, never made active, and not exported or copied as a unit.
+    internal var listsAttachedSchemas: Bool = false
 }
 
 internal extension DatabaseTreeMenuContext {

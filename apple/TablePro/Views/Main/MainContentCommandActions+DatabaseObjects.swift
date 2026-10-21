@@ -22,7 +22,8 @@ extension MainContentCommandActions {
     }
 
     var canEditViewDefinition: Bool {
-        selectedObject?.type == .view
+        guard let ref = selectedObjectRef, ref.table.type == .view, let coordinator else { return false }
+        return !ref.isInAttachedDatabase(of: coordinator.connection.type)
     }
 
     func editViewDefinition() {

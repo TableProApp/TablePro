@@ -33,16 +33,23 @@ nonisolated internal enum SQLiteMaintenance {
         PluginMaintenanceOperation(name: integrityCheck, appliesTo: [], scope: .database)
     ]
 
-    internal static func statements(operation: String, table: String?) -> [String]? {
+    /// `schema` names an attached database. Each statement then targets that file: unqualified,
+    /// `VACUUM` and `integrity_check` act on the main one and `ANALYZE` on every one.
+    internal static func statements(operation: String, table: String?, schema: String? = nil) -> [String]? {
+        let attached = SQLiteMasterQueries.attachedSchema(schema).map(sqliteQuoteIdentifier)
+        let qualifiedTable = table.map {
+            SQLiteMasterQueries.qualifiedTable($0, schema: schema, quote: sqliteQuoteIdentifier)
+        }
         switch operation {
         case vacuum:
-            return [vacuum]
+            return [attached.map { "\(vacuum) \($0)" } ?? vacuum]
         case analyze:
-            return [table.map { "ANALYZE \(sqliteQuoteIdentifier($0))" } ?? "ANALYZE"]
+            return [(qualifiedTable ?? attached).map { "ANALYZE \($0)" } ?? "ANALYZE"]
         case reindex:
-            return [table.map { "REINDEX \(sqliteQuoteIdentifier($0))" } ?? "REINDEX"]
+            // A bare `REINDEX auth` reads `auth` as a collation or a table name, never as a database.
+            return [qualifiedTable.map { "REINDEX \($0)" } ?? "REINDEX"]
         case integrityCheck:
-            return ["PRAGMA integrity_check"]
+            return [attached.map { "PRAGMA \($0).integrity_check" } ?? "PRAGMA integrity_check"]
         default:
             return nil
         }

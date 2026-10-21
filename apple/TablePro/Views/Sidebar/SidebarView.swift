@@ -47,7 +47,27 @@ struct SidebarView: View {
     private var hasAnyMatch: Bool {
         SidebarObjectKind.allCases.contains { kind in
             countFor(kind: kind) > 0
-        } || !otherSchemaMatches.isEmpty || hasTemporaryMatch
+        } || !otherSchemaMatches.isEmpty || !attachedSchemaMatches.isEmpty || hasTemporaryMatch
+    }
+
+    private var attachedSchemaMatches: [String] {
+        guard rootShape == .flat, !viewModel.filterQuery.isEmpty, let database = activeDatabase,
+              PluginManager.shared.listsAttachedDatabases(for: viewModel.databaseType) else { return [] }
+        let searchText = viewModel.filterQuery
+        return SidebarAttachedSchemas.visible(
+            attached: schemaService.attachedSchemas(for: connectionId),
+            database: database,
+            searchText: searchText,
+            loadedContent: { schema in
+                DatabaseTreeFilter.loadedObjectBuckets(
+                    in: treeMetadata,
+                    connectionId: connectionId,
+                    database: database,
+                    schema: schema,
+                    searchText: searchText
+                )
+            }
+        )
     }
 
     private var hasTemporaryMatch: Bool {

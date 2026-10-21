@@ -13,24 +13,35 @@ public enum SQLiteIndexCatalog {
     private static let expressionColumnId = -2
 
     public static func indexesQuery(table: String) -> String {
-        """
+        indexesQuery(table: table, schema: nil)
+    }
+
+    public static func indexesQuery(table: String, schema: String?) -> String {
+        let inSchema = SQLiteMasterQueries.pragmaSchemaArgument(schema)
+        return """
         SELECT il.name, il."unique", il.origin, ix.cid, ix.name, m.sql
-        FROM pragma_index_list('\(SQLiteMasterQueries.escapeLiteral(table))') il
-        LEFT JOIN pragma_index_xinfo(il.name) ix ON ix.key = 1
-        LEFT JOIN sqlite_master m ON m.type = 'index' AND m.name = il.name
+        FROM pragma_index_list('\(SQLiteMasterQueries.escapeLiteral(table))'\(inSchema)) il
+        LEFT JOIN pragma_index_xinfo(il.name\(inSchema)) ix ON ix.key = 1
+        LEFT JOIN \(SQLiteMasterQueries.catalogTable(schema: schema)) m ON m.type = 'index' AND m.name = il.name
         ORDER BY il.seq, ix.seqno
         """
     }
 
-    public static let schemaIndexesQuery = """
+    public static let schemaIndexesQuery = schemaIndexesQuery(schema: nil)
+
+    public static func schemaIndexesQuery(schema: String?) -> String {
+        let inSchema = SQLiteMasterQueries.pragmaSchemaArgument(schema)
+        let catalog = SQLiteMasterQueries.catalogTable(schema: schema)
+        return """
         SELECT t.name, il.name, il."unique", il.origin, ix.cid, ix.name, m.sql
-        FROM sqlite_master t
-        JOIN pragma_index_list(t.name) il
-        LEFT JOIN pragma_index_xinfo(il.name) ix ON ix.key = 1
-        LEFT JOIN sqlite_master m ON m.type = 'index' AND m.name = il.name
+        FROM \(catalog) t
+        JOIN pragma_index_list(t.name\(inSchema)) il
+        LEFT JOIN pragma_index_xinfo(il.name\(inSchema)) ix ON ix.key = 1
+        LEFT JOIN \(catalog) m ON m.type = 'index' AND m.name = il.name
         WHERE t.type = 'table' AND t.name NOT GLOB 'sqlite_*'
         ORDER BY t.name, il.seq, ix.seqno
         """
+    }
 
     public static func indexes(fromRows rows: [[PluginCellValue]]) -> [PluginIndexInfo] {
         infos(grouping: rows.compactMap { Row($0, offset: 0) })

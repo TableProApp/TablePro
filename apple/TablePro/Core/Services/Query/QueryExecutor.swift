@@ -256,8 +256,8 @@ final class QueryExecutor {
         let (columns, approximateRowCount) = try await DatabaseManager.shared.withMetadataDriver(
             scope: scope
         ) { driver in
-            let columns = try await driver.fetchColumns(table: tableName)
-            let approximateRowCount = try? await driver.fetchApproximateRowCount(table: tableName)
+            let columns = try await driver.fetchColumns(table: tableName, schema: scope.schema)
+            let approximateRowCount = try? await driver.fetchApproximateRowCount(table: tableName, schema: scope.schema)
             return (columns, approximateRowCount)
         }
         let foreignKeys = await fetchForeignKeys(scope: scope, tableName: tableName)
@@ -270,7 +270,7 @@ final class QueryExecutor {
     private static func fetchForeignKeys(scope: DatabaseScope, tableName: String) async -> [ForeignKeyInfo]? {
         do {
             return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                try await driver.fetchForeignKeys(table: tableName)
+                try await driver.fetchForeignKeys(table: tableName, schema: scope.schema)
             }
         } catch {
             queryExecutorLog.error(

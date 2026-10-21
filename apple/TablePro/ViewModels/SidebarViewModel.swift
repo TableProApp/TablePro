@@ -256,7 +256,11 @@ final class SidebarViewModel: ObservableObject {
     private func observeListingDemand() {
         listingDemandObservations = [
             DatabaseTreeMetadataService.shared.onMainActorChange { [weak self] in self?.loadAllSchemaTablesForSearch() },
-            DatabaseManager.shared.onMainActorChange { [weak self] in self?.loadAllSchemaTablesForSearch() }
+            DatabaseManager.shared.onMainActorChange { [weak self] in self?.loadAllSchemaTablesForSearch() },
+            SchemaService.shared.$attachedSchemasInOrder
+                .removeDuplicates()
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in self?.loadAllSchemaTablesForSearch() }
         ]
     }
 
@@ -553,6 +557,7 @@ final class SidebarViewModel: ObservableObject {
         guard !filterQuery.isEmpty else { return }
         let service = DatabaseTreeMetadataService.shared
         let connectionId = connectionId
+        loadAttachedSchemaObjectsForSearch(service: service)
         let databases = Self.databasesListedForSearch(
             grouping: PluginManager.shared.databaseGroupingStrategy(for: databaseType),
             browsedDatabase: browsedDatabase,
@@ -573,6 +578,20 @@ final class SidebarViewModel: ObservableObject {
                 isConnected: isConnected,
                 service: service
             )
+        }
+    }
+
+    /// An attached database lists nothing until its row is opened, so a search reads every one the
+    /// connection holds, once, to judge it.
+    private func loadAttachedSchemaObjectsForSearch(service: DatabaseTreeMetadataService) {
+        guard PluginManager.shared.listsAttachedDatabases(for: databaseType),
+              let database = browsedDatabase,
+              DatabaseManager.shared.session(for: connectionId)?.status == .connected
+        else { return }
+        let connectionId = connectionId
+        for schema in SchemaService.shared.attachedSchemas(for: connectionId)
+            where service.objectsNeedFetch(connectionId: connectionId, database: database, schema: schema) {
+            Task { await service.loadObjects(connectionId: connectionId, database: database, schema: schema) }
         }
     }
 

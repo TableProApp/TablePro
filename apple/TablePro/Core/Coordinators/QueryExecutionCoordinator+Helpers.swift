@@ -776,7 +776,7 @@ extension QueryExecutionCoordinator {
             return .clear
         case .approximate:
             guard let count = try? await DatabaseManager.shared.withMetadataDriver(scope: scope, { driver in
-                try await driver.fetchApproximateRowCount(table: tableName)
+                try await driver.fetchApproximateRowCount(table: tableName, schema: scope.schema)
             }) else { return nil }
             return .count(count, isApproximate: true)
         case let .filteredNonSQL(filters, logicMode):

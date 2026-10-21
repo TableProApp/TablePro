@@ -13,7 +13,9 @@ extension TableStructureView {
     /// pair, the grid's per-column lock, the reorder drag and the grid delegate's own keyboard and
     /// context-menu paths all read this, so none of them can offer an edit another withholds.
     var editGate: StructureEditGate {
-        StructureEditGate(databaseType: connection.type, objectKind: objectKind, isSessionBound: isSessionBound)
+        StructureEditGate(
+            databaseType: connection.type, objectKind: objectKind, schema: schemaName, isSessionBound: isSessionBound
+        )
     }
 
     /// Whether this engine can add and remove foreign keys, which is not the same question as

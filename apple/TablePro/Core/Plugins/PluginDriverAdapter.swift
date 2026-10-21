@@ -606,9 +606,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func fetchTriggers(table: String) async throws -> [TriggerInfo] {
-        let schema = pluginDriver.currentSchema
-        let pluginTriggers = try await pluginDriver.fetchTriggers(table: table, schema: schema)
-        return pluginTriggers.map { TriggerInfo($0.adopting(table: table, schema: schema)) }
+        try await fetchTriggers(table: table, schema: nil)
+    }
+
+    func fetchTriggers(table: String, schema: String?) async throws -> [TriggerInfo] {
+        let resolvedSchema = schema ?? pluginDriver.currentSchema
+        let pluginTriggers = try await pluginDriver.fetchTriggers(table: table, schema: resolvedSchema)
+        return pluginTriggers.map { TriggerInfo($0.adopting(table: table, schema: resolvedSchema)) }
     }
 
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] {
@@ -722,9 +726,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+        try await fetchTableMetadata(tableName: tableName, schema: nil)
+    }
+
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         let pluginMeta = try await pluginDriver.fetchTableMetadata(
             table: tableName,
-            schema: pluginDriver.currentSchema
+            schema: schema ?? pluginDriver.currentSchema
         )
         return TableMetadata(pluginMeta)
     }
@@ -898,7 +906,11 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     var providesBulkForeignKeyFetch: Bool { pluginDriver.providesBulkForeignKeyFetch }
 
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
-        let pluginResult = try await pluginDriver.fetchAllForeignKeys(schema: pluginDriver.currentSchema)
+        try await fetchAllForeignKeys(schema: nil)
+    }
+
+    func fetchAllForeignKeys(schema: String?) async throws -> [String: [ForeignKeyInfo]] {
+        let pluginResult = try await pluginDriver.fetchAllForeignKeys(schema: schema ?? pluginDriver.currentSchema)
         return pluginResult.mapValues { $0.map(ForeignKeyInfo.init) }
     }
 

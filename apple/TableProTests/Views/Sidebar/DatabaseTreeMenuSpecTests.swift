@@ -696,6 +696,49 @@ struct DatabaseTreeMenuSpecTests {
         })
     }
 
+    @Test("An attached database's row offers Refresh and Copy Name, nothing that treats it as a schema to switch to")
+    func attachedDatabaseRowMenu() {
+        let clicked = DatabaseContainerRef.schema(database: "app.db", schema: "auth", isSystem: false)
+        var attached = context(clicked: .schema(database: "app.db", schema: "auth"), activeDatabase: "app.db", activeSchema: nil)
+        attached.listsAttachedSchemas = true
+
+        #expect(commands(DatabaseTreeMenuSpec.sections(for: attached)) == [
+            .refreshContainers([clicked]),
+            .copyContainerNames([clicked])
+        ])
+    }
+
+    @Test("A table of an attached database is opened, noted and changed in place, never exported or copied by bare name")
+    func attachedDatabaseTableMenu() {
+        let ref = DatabaseTreeTableRef(
+            database: "app.db",
+            schema: "auth",
+            table: TableInfo(name: "users", type: .view, rowCount: nil, schema: "auth")
+        )
+        var attached = context(clicked: .table(ref), activeDatabase: "app.db", activeSchema: nil)
+        attached.listsAttachedSchemas = true
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: attached))
+
+        #expect(issued.contains(.openInNewTab(ref)))
+        #expect(issued.contains(.showStructure(ref)))
+        #expect(!issued.contains { command in
+            switch command {
+            case .exportTables, .transferTables, .copyObjectsTo, .editViewDefinition: return true
+            default: return false
+            }
+        })
+
+        let main = DatabaseTreeTableRef(
+            database: "app.db", schema: nil, table: TableInfo(name: "users", type: .table, rowCount: nil, schema: nil)
+        )
+        var mainContext = context(clicked: .table(main), activeDatabase: "app.db", activeSchema: nil)
+        mainContext.listsAttachedSchemas = true
+        #expect(commands(DatabaseTreeMenuSpec.sections(for: mainContext)).contains { command in
+            if case .exportTables = command { return true }
+            return false
+        })
+    }
+
     @Test("An unfavorited database offers every environment under Add to Favorites")
     func databaseCanBeFavoritedWithEnvironment() {
         let database = DatabaseMetadata.minimal(name: "analytics", isSystem: false)

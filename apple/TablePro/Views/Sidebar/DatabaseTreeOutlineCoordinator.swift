@@ -85,7 +85,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private var treeObservations: [AnyCancellable] = []
 
     internal let schemaService = SchemaService.shared
-    internal let temporaryTables = TemporaryTableStore.shared
+    internal let temporaryTables: TemporaryTableStore
     private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
     private var favoriteDatabases: Set<FavoriteDatabaseEntry> = []
     private let favoritesObservers = OSAllocatedUnfairLock<[any NSObjectProtocol]>(uncheckedState: [])
@@ -94,11 +94,13 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     init(
         favoriteTablesStorage: FavoriteTablesStorage = .shared,
         favoriteDatabasesStorage: FavoriteDatabasesStorage = .shared,
-        tableFolderStorage: TableFolderStorage = .shared
+        tableFolderStorage: TableFolderStorage = .shared,
+        temporaryTables: TemporaryTableStore? = nil
     ) {
         self.favoriteTablesStorage = favoriteTablesStorage
         self.favoriteDatabasesStorage = favoriteDatabasesStorage
         self.tableFolderStorage = tableFolderStorage
+        self.temporaryTables = temporaryTables ?? .shared
         super.init()
     }
 
@@ -632,7 +634,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             routineDisplayLabel: { [weak self] ref in
                 self?.routineDisplayLabels[ref.id] ?? ref.routine.name
             },
-            showsPartitions: showsPartitions
+            showsPartitions: showsPartitions,
+            listsAttachedSchemas: listsAttachedSchemas
         )
     }
 

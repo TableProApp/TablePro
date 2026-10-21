@@ -35,10 +35,11 @@ extension MainContentCoordinator {
     func copyDDL(of ref: DatabaseTreeTableRef) {
         guard let target = objectTarget(for: ref) else { return }
         let name = target.name
+        let schema = target.schema
         Task {
             do {
                 let ddl = try await services.databaseManager.withMetadataDriver(scope: target.scope) { driver in
-                    try await TableDDLComposer.fetchDDL(for: name, using: driver, includesDependencies: true)
+                    try await TableDDLComposer.fetchDDL(for: name, using: driver, includesDependencies: true, schema: schema)
                 }
                 ClipboardService.shared.writeText(ddl)
             } catch {

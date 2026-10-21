@@ -24,12 +24,13 @@ func quoteIdentifierFromDialect(_ dialect: SQLDialectDescriptor) -> @Sendable (S
     let q = dialect.identifierQuote
     if q == "[" {
         return { name in
-            let escaped = name.replacingOccurrences(of: "]", with: "]]")
+            let escaped = name.replacingOccurrences(of: "]", with: "]]", options: .literal)
             return "[\(escaped)]"
         }
     }
     return { name in
-        let escaped = name.replacingOccurrences(of: q, with: q + q)
+        // By code unit: the default compares grapheme clusters and skips a quote a combining mark follows.
+        let escaped = name.replacingOccurrences(of: q, with: q + q, options: .literal)
         return "\(q)\(escaped)\(q)"
     }
 }
