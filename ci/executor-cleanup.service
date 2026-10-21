@@ -1,0 +1,8 @@
+[Unit]
+Description=Remove idle generated Forgejo Cargo artifacts
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/bookie-ci-cache cleanup
+Nice=19
+IOSchedulingClass=idle

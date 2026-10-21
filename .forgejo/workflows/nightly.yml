@@ -8,6 +8,10 @@ concurrency:
   group: bookie-lab
   cancel-in-progress: false
 
+defaults:
+  run:
+    shell: /usr/local/libexec/bookie-ci-cache run {0}
+
 env:
   CARGO_TERM_COLOR: never
   CARGO_INCREMENTAL: "0"

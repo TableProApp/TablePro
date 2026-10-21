@@ -1,4 +1,6 @@
 from pathlib import Path
+import configparser
+import fnmatch
 import importlib.util
 import json
 import os
@@ -414,7 +416,17 @@ class CiWorkflowTests(unittest.TestCase):
     def test_sonar_imports_python_tool_coverage_report(self):
         workflow = (ROOT / ".github/workflows/sonar-rust.yml").read_text()
         self.assertIn("coverage==7.10.6", workflow)
-        self.assertIn("coverage run --branch --source=scripts", workflow)
+        self.assertIn("coverage run -m unittest discover -s scripts/tests", workflow)
+        config = configparser.ConfigParser()
+        config.read(ROOT / '.coveragerc')
+        self.assertEqual(set(config['run']['patch'].split()), {'subprocess', 'execv'})
+        self.assertTrue(config['run'].getboolean('branch'))
+        self.assertTrue(config['run'].getboolean('parallel'))
+        self.assertEqual(config['run']['source'], 'scripts')
+        self.assertEqual(config['run']['omit'], 'scripts/tests/*')
+        commands = ['coverage erase', 'coverage run -m unittest', 'coverage combine', 'coverage xml']
+        positions = [workflow.index(command) for command in commands]
+        self.assertEqual(positions, sorted(positions))
         self.assertIn("unittest discover -s scripts/tests", workflow)
         self.assertIn("coverage xml -o target/sonar/python-coverage.xml", workflow)
         self.assertIn("-Dsonar.python.coverage.reportPaths=target/sonar/python-coverage.xml", workflow)
@@ -422,11 +434,10 @@ class CiWorkflowTests(unittest.TestCase):
     def test_sonar_excludes_python_test_sources_from_coverage(self):
         workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())
         exclusions = workspace["workspace"]["metadata"]["sonar"]["sonar.coverage.exclusions"]
-        self.assertIn("scripts/tests/test_check_crate_boundaries.py", exclusions)
-        self.assertIn("scripts/tests/test_gtk_runner.py", exclusions)
-        self.assertIn("scripts/tests/test_arch_candidate.py", exclusions)
-        self.assertIn("scripts/tests/test_csv_import_chooser.py", exclusions)
-        self.assertIn("scripts/tests/test_update_third_party_notices.py", exclusions)
+        for path in (ROOT / 'scripts/tests').rglob('test_*.py'):
+            relative = path.relative_to(ROOT).as_posix()
+            self.assertTrue(any(fnmatch.fnmatchcase(relative, pattern) for pattern in exclusions), relative)
+        self.assertFalse(any(fnmatch.fnmatchcase('scripts/ci-cache.py', pattern) for pattern in exclusions))
 
     def test_sonar_excludes_app_pinning_test_support_from_coverage(self):
         workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())

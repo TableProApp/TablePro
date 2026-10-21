@@ -52,7 +52,9 @@ jobs:
         run: |
           python3 -m venv target/sonar/venv
           target/sonar/venv/bin/python -m pip install --disable-pip-version-check coverage==7.10.6
-          target/sonar/venv/bin/python -m coverage run --branch --source=scripts --omit='scripts/tests/*' -m unittest discover -s scripts/tests
+          target/sonar/venv/bin/python -m coverage erase
+          target/sonar/venv/bin/python -m coverage run -m unittest discover -s scripts/tests
+          target/sonar/venv/bin/python -m coverage combine
           target/sonar/venv/bin/python -m coverage xml -o target/sonar/python-coverage.xml
 
       - name: Install SonarScanner for Cargo
