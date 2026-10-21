@@ -61,7 +61,15 @@ pub fn parse_connection_url(input: &str) -> Result<ParsedConnectionUrl, StorageE
         return Err(invalid("connection URL fragments are not supported"));
     }
     let (remainder, query) = remainder.split_once('?').unwrap_or((remainder, ""));
-    let tls_mode = query_tls_mode(driver_id, query)?.unwrap_or(TlsMode::Disabled);
+    let option = query_option(driver_id, query)?;
+    let tls_mode = match option {
+        Some(UrlOption::Tls(mode)) => mode,
+        _ => TlsMode::Disabled,
+    };
+    let socket = match option {
+        Some(UrlOption::Socket(path)) => Some(path),
+        _ => None,
+    };
     let (authority, path) = match remainder.split_once('/') {
         Some((authority, path)) => (authority, path),
         None => (remainder, ""),
@@ -91,13 +99,24 @@ pub fn parse_connection_url(input: &str) -> Result<ParsedConnectionUrl, StorageE
         }
     };
 
-    let (host, port) = split_host_port(host_port, default_port)?;
+    let (host, port) = match &socket {
+        Some(_) => socket_host_port(host_port, default_port)?,
+        None => split_host_port(host_port, default_port)?,
+    };
     let database = decode_field(path, "database")?;
 
+    let place = socket
+        .as_ref()
+        .map_or_else(|| host.clone(), |path| path.display().to_string());
     let name = if database.is_empty() {
-        host.clone()
+        place
     } else {
-        format!("{database} on {host}")
+        format!("{database} on {place}")
+    };
+    let (socket_dir, socket_path) = match socket {
+        Some(path) if driver_id == "mysql" => (None, Some(path)),
+        Some(path) => (Some(path), None),
+        None => (None, None),
     };
 
     let connection = SavedConnection {
@@ -107,8 +126,8 @@ pub fn parse_connection_url(input: &str) -> Result<ParsedConnectionUrl, StorageE
         driver_id: driver_id.to_string(),
         host,
         port,
-        socket_dir: None,
-        socket_path: None,
+        socket_dir,
+        socket_path,
         database,
         username,
         use_tls: tls_mode.encrypts(),
@@ -128,7 +147,12 @@ pub fn parse_connection_url(input: &str) -> Result<ParsedConnectionUrl, StorageE
     Ok(ParsedConnectionUrl { connection, password })
 }
 
-fn query_tls_mode(driver: &str, query: &str) -> Result<Option<TlsMode>, StorageError> {
+enum UrlOption {
+    Tls(TlsMode),
+    Socket(std::path::PathBuf),
+}
+
+fn query_option(driver: &str, query: &str) -> Result<Option<UrlOption>, StorageError> {
     if query.is_empty() {
         return Ok(None);
     }
@@ -142,6 +166,9 @@ fn query_tls_mode(driver: &str, query: &str) -> Result<Option<TlsMode>, StorageE
         .ok_or_else(|| invalid("connection URL options require a name and value"))?;
     let key = decode_field(key, "option name")?;
     let value = decode_field(value, "option value")?;
+    if matches!((driver, key.as_str()), ("mysql", "socket") | ("postgres", "host")) {
+        return local_socket(&value).map(|path| Some(UrlOption::Socket(path)));
+    }
     let mode = match (driver, key.as_str(), value.as_str()) {
         ("postgres", "sslmode", "disable") | ("mysql", "ssl-mode", "DISABLED") | ("mongodb", "tls", "false") => {
             TlsMode::Disabled
@@ -158,7 +185,34 @@ fn query_tls_mode(driver: &str, query: &str) -> Result<Option<TlsMode>, StorageE
             ));
         }
     };
-    Ok(Some(mode))
+    Ok(Some(UrlOption::Tls(mode)))
+}
+
+fn local_socket(value: &str) -> Result<std::path::PathBuf, StorageError> {
+    let path = std::path::Path::new(value);
+    let plain = path.components().all(|component| {
+        !matches!(
+            component,
+            std::path::Component::ParentDir | std::path::Component::CurDir
+        )
+    });
+    if !path.is_absolute() || !plain || path.parent().is_none() {
+        return Err(invalid("a local socket in a connection URL must be an absolute path"));
+    }
+    Ok(path.to_path_buf())
+}
+
+fn socket_host_port(authority: &str, default_port: u16) -> Result<(String, u16), StorageError> {
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((host, port)) => (host, parse_port(Some(port), default_port)?),
+        None => (authority, default_port),
+    };
+    if !host.is_empty() && !host.eq_ignore_ascii_case("localhost") {
+        return Err(invalid(
+            "a connection URL with a local socket must not name a network host",
+        ));
+    }
+    Ok(("localhost".into(), port))
 }
 
 fn split_host_port(authority: &str, default_port: u16) -> Result<(String, u16), StorageError> {
@@ -430,6 +484,59 @@ mod tests {
             "mysql://u@db/app?ssl-mode=invalid",
             "redis://u@db/app?tls=true",
             "postgres://u@db/app?sslmode=require#sslmode=disable",
+        ] {
+            assert!(parse_connection_url(url).is_err(), "{url}");
+        }
+    }
+
+    #[test]
+    fn a_mysql_socket_url_imports_a_local_socket_endpoint() {
+        for url in [
+            "mysql://app@/shop?socket=/run/mysqld/mysqld.sock",
+            "mariadb://app@localhost/shop?socket=%2Frun%2Fmysqld%2Fmysqld.sock",
+        ] {
+            let parsed = parse_connection_url(url).unwrap();
+            let connection = parsed.connection;
+            assert_eq!(connection.driver_id, "mysql", "{url}");
+            assert_eq!(
+                connection.socket_path.as_deref(),
+                Some(std::path::Path::new("/run/mysqld/mysqld.sock"))
+            );
+            assert_eq!(connection.socket_dir, None);
+            assert_eq!(connection.host, "localhost");
+            assert_eq!(connection.database, "shop");
+            assert_eq!(connection.username, "app");
+            assert_eq!(connection.tls_mode, Some(TlsMode::Disabled));
+            assert_eq!(connection.name, "shop on /run/mysqld/mysqld.sock");
+        }
+    }
+
+    #[test]
+    fn a_postgres_host_directory_imports_a_socket_directory_and_keeps_its_port() {
+        let parsed = parse_connection_url("postgresql://app:secret@:6543/shop?host=/run/postgresql").unwrap();
+        let connection = parsed.connection;
+        assert_eq!(
+            connection.socket_dir.as_deref(),
+            Some(std::path::Path::new("/run/postgresql"))
+        );
+        assert_eq!(connection.socket_path, None);
+        assert_eq!(connection.port, 6543);
+        assert!(parsed.password.is_some());
+        assert!(!serde_json::to_string(&connection).unwrap().contains("secret"));
+    }
+
+    #[test]
+    fn a_socket_url_must_name_an_absolute_local_path_and_no_network_host() {
+        for url in [
+            "mysql://app@/shop?socket=mysqld.sock",
+            "mysql://app@/shop?socket=/run/../tmp/mysqld.sock",
+            "mysql://app@/shop?socket=/",
+            "mysql://app@/shop?socket=",
+            "mysql://app@db.example.com/shop?socket=/run/mysqld/mysqld.sock",
+            "mysql://app@/shop?socket=/run/mysqld/mysqld.sock&ssl-mode=REQUIRED",
+            "postgres://app@/shop?socket=/run/postgresql",
+            "mysql://app@/shop?host=/run/mysqld",
+            "redis://app@/0?socket=/run/redis.sock",
         ] {
             assert!(parse_connection_url(url).is_err(), "{url}");
         }

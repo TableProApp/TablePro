@@ -15,7 +15,7 @@ Passwords are kept in your desktop keyring, never in BookiE's own files.
 - **SSH**: the form configures one SSH host. The built-in transport can use saved multi-hop routes, but the form cannot edit them yet. System OpenSSH uses jump hosts from your SSH configuration. BookiE asks before trusting an unknown host key, including keys presented by a jump host.
 - **TLS**: choose how strictly the server certificate is checked. "Verify full" checks both the certificate authority and the host name.
 - **Environment and read-only**: mark a connection as production, staging or local, and tick **Read-only** to refuse every change on it. A production connection shows a red **Production** badge, a tinted header bar and `[Production]` at the start of its window title, so it stands out in the taskbar and Alt-Tab.
-- **Import from URL** fills the form from a network connection URL such as `postgres://user@host:5432/db`. Local Unix socket paths must be set in the form or restored from a connection bundle.
+- **Import from URL** fills the form from a connection URL such as `postgres://user@host:5432/db`. A local Unix socket is written `mysql://user@/db?socket=/run/mysqld/mysqld.sock` or `postgres://user@/db?host=/run/postgresql`.
 - **Share connections**: export or import connections from the menu in the saved list. Encrypt the export with a passphrase to include stored database and SSH credentials. Plaintext exports contain no credentials.
 
 ## Browse a table
