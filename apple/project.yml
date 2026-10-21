@@ -368,6 +368,9 @@ targets:
       - target: MarkdownExport
         embed: true
         copy: { destination: plugins }
+      - target: DataDictionaryExport
+        embed: true
+        copy: { destination: plugins }
       - target: XLSXImport
         embed: true
         copy: { destination: plugins }
@@ -637,6 +640,15 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.MarkdownExportPlugin
 
+  DataDictionaryExport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: DataDictionaryExportPlugin
+      principalClass: DataDictionaryExportPlugin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.DataDictionaryExportPlugin
+
   XLSXImport:
     templates: [DriverPlugin]
     templateAttributes:
@@ -782,7 +794,7 @@ targets:
     templateAttributes:
       folder: ClickHouseDriverPlugin
 
-  # The ten bundled format plugins in one bundle: none links a C library, and no two declare the
+  # The eleven bundled format plugins in one bundle: none links a C library, and no two declare the
   # same top-level name. SQLiteLinkage is for the round-trip tests, which need the SQLite the driver ships.
   FormatPluginTests:
     templates: [SQLiteLinkage]
@@ -793,6 +805,9 @@ targets:
         excludes:
           - Info.plist
       - path: Plugins/CSVImportPlugin
+        excludes:
+          - Info.plist
+      - path: Plugins/DataDictionaryExportPlugin
         excludes:
           - Info.plist
       - path: Plugins/JSONExportPlugin
@@ -1207,6 +1222,7 @@ aggregateTargets:
       - CSVExport
       - CSVImport
       - ClickHouseDriver
+      - DataDictionaryExport
       - JSONExport
       - JSONImport
       - MQLExport

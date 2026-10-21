@@ -263,6 +263,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch table metadata (size, comment, engine, etc.)
     func fetchTableMetadata(tableName: String) async throws -> TableMetadata
 
+    // The comment alone, which some engines answer without the row probe their metadata runs.
+    func fetchObjectComment(tableName: String) async throws -> String?
+
     /// Fetch list of all databases on the server
     func fetchDatabases() async throws -> [String]
 
@@ -486,6 +489,10 @@ extension DatabaseDriver {
     func fetchIndexDDL(table: String) async throws -> [String] { [] }
 
     func fetchCommentDDL(table: String) async throws -> [String] { [] }
+
+    func fetchObjectComment(tableName: String) async throws -> String? {
+        try await fetchTableMetadata(tableName: tableName).comment
+    }
 
     func resolveQueryCompletionProfile(
         databaseTypeId: String,

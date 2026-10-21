@@ -152,12 +152,13 @@ public enum OracleSchemaQueries {
     public static let commitTransaction = "COMMIT"
     public static let rollbackTransaction = "ROLLBACK"
 
+    // By code unit: a grapheme match skips a quote followed by a combining mark.
     public static func escapeLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     public static func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     public static func setCurrentSchema(_ schema: String) -> String {

@@ -393,6 +393,7 @@ final class KeyHandlingTableView: NSTableView {
 
     @objc func paste(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
+        if coordinator?.pasteValueIntoSelectedCells() == true { return }
         if let anchor = pasteAnchorCell(),
            coordinator?.pasteCellsFromClipboard(anchorRow: anchor.row, anchorColumn: anchor.column) == true {
             return
@@ -420,6 +421,7 @@ final class KeyHandlingTableView: NSTableView {
     private var canPaste: Bool {
         guard let coordinator, coordinator.isEditable else { return false }
         if coordinator.delegate?.dataGridCanPasteRows() == true { return true }
+        if coordinator.canPasteValueIntoSelectedCells() { return true }
         guard let anchor = pasteAnchorCell() else { return false }
         return coordinator.canPasteCellsFromClipboard(anchorRow: anchor.row, anchorColumn: anchor.column)
     }
@@ -427,6 +429,9 @@ final class KeyHandlingTableView: NSTableView {
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
         if let command = Self.setValueCommand(for: item.action) {
             return canApplySetValue(command)
+        }
+        if item.action == #selector(SetValueCommandResponding.setCellsToValue(_:)) {
+            return coordinator?.isSetCellsToValueOffered(for: setValueTargets()) == true
         }
         if let canCopy = canPerformCopyCommand(item.action) {
             return canCopy
@@ -877,6 +882,10 @@ extension KeyHandlingTableView: SetValueCommandResponding {
 
     func generateUUIDv7(_ sender: Any?) {
         applySetValue(.uuid(.v7))
+    }
+
+    func setCellsToValue(_ sender: Any?) {
+        coordinator?.setCellsToValue(setValueTargets())
     }
 
     static func setValueCommand(for action: Selector?) -> SetValueCommand? {

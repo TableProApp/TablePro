@@ -416,6 +416,39 @@ extension TableViewCoordinator {
         }
     }
 
+    func showVectorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int, isEditable: Bool) {
+        guard presentsCell(row: row, tableColumnIndex: column) else { return }
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0, columnIndex < tableRows.columnTypes.count else { return }
+        guard let literal = cellTypedValue(at: row, column: columnIndex).asText,
+              VectorLiteral.isVectorText(literal) else {
+            if isEditable { beginCellEdit(row: row, tableColumnIndex: column) }
+            return
+        }
+
+        // Bound to the record, as the JSON editor is: a sort or a filter can move another row under this position.
+        let rowID = displayRow(at: row)?.id
+        let expectedDimensions = tableRows.columnTypes[columnIndex].vectorDimensions
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+
+        dismissActiveCellEditorPopover()
+        activeCellEditorPopover = PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            behavior: isEditable ? .applicationDefined : .semitransient
+        ) { [weak self] dismiss in
+            VectorValueView(
+                literal: literal,
+                expectedDimensions: expectedDimensions,
+                isEditable: isEditable,
+                onCommit: { newValue in
+                    self?.commitCellEdit(rowID: rowID, fallbackDisplayRow: row, columnIndex: columnIndex, newValue: newValue)
+                },
+                onDismiss: dismiss
+            )
+        }
+    }
+
     /// Only one cell editor popover is open at a time, and the outgoing one is closed before the
     /// next is presented rather than after. An `.applicationDefined` popover such as the array
     /// editor stays on screen until something closes it, so forgetting it would strand an editor

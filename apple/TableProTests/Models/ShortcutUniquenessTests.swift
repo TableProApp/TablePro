@@ -63,7 +63,7 @@ struct ShortcutUniquenessTests {
     @Test("Each newly rebindable command is listed under a category with a name", arguments: [
         ShortcutAction.showTablesList, .showFavoritesList, .restorePreviousValues,
         .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
-        .copyPath, .copyRelativePath,
+        .copyPath, .copyRelativePath, .setCellsToValue,
     ])
     func newlyRebindableCommandsAreListable(action: ShortcutAction) {
         #expect(!action.displayName.isEmpty)

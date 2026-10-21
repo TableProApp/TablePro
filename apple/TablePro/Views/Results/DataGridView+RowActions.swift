@@ -5,6 +5,7 @@
 
 import AppKit
 import os
+import TableProAutocomplete
 import TableProPluginKit
 
 private let rowActionsLogger = Logger(subsystem: "com.TablePro", category: "DataGridView+RowActions")
@@ -161,7 +162,8 @@ extension TableViewCoordinator {
                 databaseType: databaseType,
                 unwritableColumns: unwritableColumns(in: tableRows),
                 quoteIdentifier: driver?.quoteIdentifier,
-                escapeStringLiteral: driver?.escapeStringLiteral
+                escapeStringLiteral: driver?.escapeStringLiteral,
+                identifierSpelling: copiedIdentifierSpelling(for: databaseType)
             )
             let rows = indices.sorted().compactMap(displayRow(at:)).map { row in
                 SQLRowToStatementConverter.SourceRow(
@@ -194,13 +196,19 @@ extension TableViewCoordinator {
                 rowMatchPolicy: tableRows.rowMatchPolicy,
                 settableColumns: settable.columns(tableRows.columns),
                 quoteIdentifier: driver?.quoteIdentifier,
-                escapeStringLiteral: driver?.escapeStringLiteral
+                escapeStringLiteral: driver?.escapeStringLiteral,
+                identifierSpelling: copiedIdentifierSpelling(for: databaseType)
             )
             let rows = indices.sorted().compactMap { displayRow(at: $0).map(copiedSourceRow) }
             writeCopiedStatements(converter.generateUpdates(rows: rows))
         } catch {
             rowActionsLogger.error("copyRowsAsUpdate failed: \(error.publicLogShape, privacy: .public)")
         }
+    }
+
+    private func copiedIdentifierSpelling(for databaseType: DatabaseType) -> SQLIdentifierSpelling? {
+        guard let rules = databaseType.identifierRules else { return nil }
+        return SQLIdentifierSpelling(rules: rules, policy: SQLIdentifierCase.stored(for: connectionId))
     }
 
     private func unwritableColumns(in tableRows: TableRows) -> Set<String> {

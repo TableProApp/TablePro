@@ -7,12 +7,14 @@ import TableProSQLGrammar
 final class SQLCompletionService: QueryCompletionService {
     private let engine: CompletionEngine
     private let grammar: SQLLexicalGrammar
+    private let identifierCaseSource: @MainActor () -> SQLIdentifierCase
     private var lastContext = SQLContext.unanalyzed
 
     init(
         schemaProvider: SQLSchemaProvider?,
         databaseType: DatabaseType?,
-        profile: QueryCompletionProfile? = nil
+        profile: QueryCompletionProfile? = nil,
+        identifierCase: @escaping @MainActor () -> SQLIdentifierCase = { .default }
     ) {
         let dialect = profile?.resolvedDialect
             ?? databaseType.flatMap { PluginManager.shared.sqlDialect(for: $0) }
@@ -26,12 +28,14 @@ final class SQLCompletionService: QueryCompletionService {
             statementCompletions: statementCompletions
         )
         self.grammar = databaseType?.lexicalGrammar ?? .ansi
+        self.identifierCaseSource = identifierCase
     }
 
     var triggerCharacters: Set<String> { [".", " ", ":", "(", ","] }
 
     // Read per request, so a changed setting applies to the next keystroke rather than the next connection.
     private var keywordCase: SQLKeywordCase { AppSettingsManager.shared.editor.keywordCase }
+    private var identifierCase: SQLIdentifierCase { identifierCaseSource() }
 
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
         engine.updateFavoriteKeywords(keywords)
@@ -51,7 +55,8 @@ final class SQLCompletionService: QueryCompletionService {
             items,
             prefix: matchText,
             context: lastContext,
-            keywordCase: keywordCase
+            keywordCase: keywordCase,
+            identifierCase: identifierCase
         )
     }
 
@@ -61,7 +66,8 @@ final class SQLCompletionService: QueryCompletionService {
               let result = await engine.getCompletions(
                   text: window.text,
                   cursorPosition: offset - window.start,
-                  keywordCase: keywordCase
+                  keywordCase: keywordCase,
+                  identifierCase: identifierCase
               ) else {
             return nil
         }

@@ -32,6 +32,7 @@ enum ColumnType: Equatable, Sendable {
     case enumType(rawType: String?, values: [String]?)
     case set(rawType: String?, values: [String]?)
     case spatial(rawType: String?)
+    case vector(rawType: String?)
     indirect case array(rawType: String?, element: ColumnType)
 
     /// Raw database type name (e.g., "LONGTEXT", "VARCHAR(255)", "CLOB")
@@ -40,7 +41,7 @@ enum ColumnType: Equatable, Sendable {
         case .text(let raw), .integer(let raw), .decimal(let raw),
              .date(let raw), .timestamp(let raw), .datetime(let raw),
              .boolean(let raw), .blob(let raw), .json(let raw),
-             .spatial(let raw), .array(let raw, _):
+             .spatial(let raw), .vector(let raw), .array(let raw, _):
             return raw
         case .enumType(let raw, _), .set(let raw, _):
             return raw
@@ -64,6 +65,7 @@ enum ColumnType: Equatable, Sendable {
         case .enumType: return "Enum"
         case .set: return "Set"
         case .spatial: return "Spatial"
+        case .vector: return "Vector"
         case .array(_, let element): return "\(element.displayName) Array"
         }
     }
@@ -178,7 +180,7 @@ enum ColumnType: Equatable, Sendable {
             return true
         case .enumType(_, let values):
             return values?.contains("") ?? false
-        case .date, .timestamp, .datetime, .integer, .decimal, .boolean, .json, .spatial, .array:
+        case .date, .timestamp, .datetime, .integer, .decimal, .boolean, .json, .spatial, .vector, .array:
             return false
         }
     }
@@ -232,13 +234,28 @@ enum ColumnType: Equatable, Sendable {
             return .scalar
         case .json:
             return .json
-        case .blob, .spatial, .array:
+        case .blob, .spatial, .vector, .array:
             return nil
         }
     }
 
     /// Whether this array's elements can be edited one at a time
     var supportsElementEditing: Bool { arrayElementEditor != nil }
+
+    var isVectorType: Bool {
+        if case .vector = self { return true }
+        return false
+    }
+
+    // Only a lone number is a dimension count: Oracle spells `VECTOR(3, FLOAT32)` and Snowflake `VECTOR(FLOAT, 256)`.
+    var vectorDimensions: Int? {
+        guard case .vector(let rawType?) = self,
+              let open = rawType.firstIndex(of: "("),
+              let close = rawType[open...].firstIndex(of: ")") else { return nil }
+        let modifier = rawType[rawType.index(after: open)..<close].trimmingCharacters(in: .whitespaces)
+        guard let dimensions = Int(modifier), dimensions > 0 else { return nil }
+        return dimensions
+    }
 
     /// Compact lowercase badge label for sidebar
     var badgeLabel: String {
@@ -256,6 +273,7 @@ enum ColumnType: Equatable, Sendable {
         case .text(let rawType):
             return rawType == "RedisRaw" ? "raw" : "string"
         case .spatial: return "spatial"
+        case .vector: return "vector"
         case .array(_, let element): return "\(element.badgeLabel)[]"
         }
     }
@@ -274,7 +292,7 @@ enum ColumnType: Equatable, Sendable {
             return .set(rawType: rawType, values: values)
         case .array(let rawType, let element):
             return .array(rawType: rawType, element: element.withAllowedValues(values))
-        case .text, .integer, .decimal, .date, .timestamp, .datetime, .boolean, .blob, .json, .spatial:
+        case .text, .integer, .decimal, .date, .timestamp, .datetime, .boolean, .blob, .json, .spatial, .vector:
             return self
         }
     }

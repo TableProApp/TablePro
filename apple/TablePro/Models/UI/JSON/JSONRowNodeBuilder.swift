@@ -162,7 +162,7 @@ enum JSONRowNodeBuilder {
             case .isFalse: return .bool(false)
             default: return .string(text)
             }
-        case .text, .date, .timestamp, .datetime, .blob, .json, .enumType, .set, .spatial, .array:
+        case .text, .date, .timestamp, .datetime, .blob, .json, .enumType, .set, .spatial, .vector, .array:
             return .string(text)
         }
     }

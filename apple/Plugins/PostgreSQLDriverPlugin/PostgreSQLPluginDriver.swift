@@ -63,6 +63,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             await self?.probeCatalogPresence()
             await self?.probePostgisOids()
             await self?.probeEnumOids()
+            await self?.probeVectorTypes()
         }
         try await core.connect()
     }
@@ -92,6 +93,16 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             core.setPostgisOidMap(map)
         } catch {
             Self.logger.debug("PostGIS OID probe failed; spatial rewrite disabled for this session: \(error.localizedDescription)")
+        }
+    }
+
+    private func probeVectorTypes() async {
+        do {
+            let result = try await core.execute(query: PgvectorTypes.probeQuery)
+            let rows = result.rows.map { row in row.map(\.asText) }
+            core.mergeCatalogTypeNames(PgvectorTypes.names(fromProbeRows: rows))
+        } catch {
+            Self.logger.debug("pgvector type probe failed; vector columns resolve on first use: \(error.localizedDescription)")
         }
     }
 

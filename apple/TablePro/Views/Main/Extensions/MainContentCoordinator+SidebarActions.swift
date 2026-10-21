@@ -200,12 +200,20 @@ extension MainContentCoordinator {
     /// the dialog resolved `orders` against whichever container it considered current.
     func openExportDialog(preselectedTableNames: Set<String>? = nil, scope: DatabaseContainerRef? = nil) {
         exportPreselection = preselectedTableNames.map { .tables(names: $0, scope: scope) }
+        exportFormatId = nil
+        activeSheet = .exportDialog
+    }
+
+    func openExportDataDictionaryDialog() {
+        exportPreselection = nil
+        exportFormatId = ExportFormatCatalog.dataDictionaryFormatId
         activeSheet = .exportDialog
     }
 
     func openExportDialog(containers: [DatabaseContainerRef]) {
         guard !containers.isEmpty else { return }
         exportPreselection = .containers(containers)
+        exportFormatId = nil
         activeSheet = .exportDialog
     }
 

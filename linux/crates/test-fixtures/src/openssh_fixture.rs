@@ -34,6 +34,7 @@ impl OpenSshFixture {
     pub const DROP_IN: &'static str = "/config/sshd/sshd_config.d/tablepro.conf";
     pub const SSHD_CONFIG: &'static str = "/config/sshd/sshd_config";
     pub const CONTAINER_PORT: u16 = 2222;
+    const USER_CA: &'static str = "/tablepro/user_ca.pub";
 
     pub async fn start(variant: SshAuthVariant) -> Result<Self, FixtureError> {
         Self::start_with(variant, OpenSshOptions::selected()?, None).await
@@ -54,7 +55,10 @@ impl OpenSshFixture {
         let password = FixtureCredentials::generate_password();
         let host_certificate = match variant {
             SshAuthVariant::HostCertificate => Some(HostCertificate::generate().await?),
-            SshAuthVariant::Password | SshAuthVariant::PublicKey(_) | SshAuthVariant::KeyboardInteractive => None,
+            SshAuthVariant::Password
+            | SshAuthVariant::PublicKey(_)
+            | SshAuthVariant::UserCertificateAuthority(_)
+            | SshAuthVariant::KeyboardInteractive => None,
         };
         let mut request = options
             .version
@@ -75,6 +79,12 @@ impl OpenSshFixture {
             Self::DROP_IN,
             Self::drop_in(&variant, &options),
         )];
+        if let SshAuthVariant::UserCertificateAuthority(authority) = &variant {
+            files.push(ContainerFile::readable(
+                Self::USER_CA,
+                format!("{}\n", authority.public_key()),
+            ));
+        }
         if let Some(certificate) = &host_certificate {
             files.extend(certificate.files()?);
         }
@@ -114,6 +124,9 @@ impl OpenSshFixture {
             ),
             SshAuthVariant::HostCertificate => {
                 configuration.push_str(&format!("HostCertificate {}\n", HostCertificate::CERTIFICATE));
+            }
+            SshAuthVariant::UserCertificateAuthority(_) => {
+                configuration.push_str(&format!("TrustedUserCAKeys {}\n", Self::USER_CA));
             }
             SshAuthVariant::Password | SshAuthVariant::PublicKey(_) => {}
         }
@@ -190,6 +203,7 @@ async fn banner_received(host: &str, port: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SshKeyPair;
 
     #[test]
     fn every_variant_enables_tcp_forwarding_first_and_the_options_last() {
@@ -226,5 +240,19 @@ mod tests {
             OpenSshFixture::drop_in(&SshAuthVariant::HostCertificate, &OpenSshOptions::default())
                 .contains(HostCertificate::CERTIFICATE)
         );
+    }
+
+    #[tokio::test]
+    async fn a_user_certificate_authority_is_the_only_way_in() {
+        let authority = SshKeyPair::generate("tablepro-user-ca").await.unwrap();
+        let variant = SshAuthVariant::UserCertificateAuthority(authority);
+
+        let drop_in = OpenSshFixture::drop_in(&variant, &OpenSshOptions::default());
+
+        assert!(
+            drop_in.contains("TrustedUserCAKeys /tablepro/user_ca.pub\n"),
+            "{drop_in}"
+        );
+        assert!(!variant.password_access());
     }
 }

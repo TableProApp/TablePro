@@ -77,7 +77,7 @@ enum CellFilterMenuBuilder {
         switch columnType {
         case .integer, .decimal, .date, .timestamp, .datetime:
             return [.equal, .notEqual, .greaterThan, .lessThan]
-        case .text, .boolean, .enumType, .set, .blob, .json, .spatial, .array:
+        case .text, .boolean, .enumType, .set, .blob, .json, .spatial, .vector, .array:
             return [.equal, .notEqual]
         }
     }

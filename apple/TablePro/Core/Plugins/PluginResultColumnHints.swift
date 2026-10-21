@@ -37,6 +37,7 @@ extension ColumnType {
         case .enumType(_, let values): return .enumType(rawType: rawType, values: values)
         case .set(_, let values): return .set(rawType: rawType, values: values)
         case .spatial: return .spatial(rawType: rawType)
+        case .vector: return .vector(rawType: rawType)
         case .array(_, let element): return .array(rawType: rawType, element: element)
         }
     }

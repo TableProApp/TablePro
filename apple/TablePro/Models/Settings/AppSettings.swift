@@ -125,6 +125,7 @@ struct DataGridSettings: Codable, Equatable {
     var defaultSortBehavior: DefaultSortBehavior
     var defaultSortDirection: SortDirection
     var rowCopyFormat: RowCopyFormat
+    var showInvisibleCharacters: Bool
 
     static let `default` = DataGridSettings(
         rowHeight: .normal,
@@ -140,7 +141,8 @@ struct DataGridSettings: Codable, Equatable {
         truncateQueryResults: true,
         defaultSortBehavior: .none,
         defaultSortDirection: .ascending,
-        rowCopyFormat: .rows
+        rowCopyFormat: .rows,
+        showInvisibleCharacters: true
     )
 
     init(
@@ -157,7 +159,8 @@ struct DataGridSettings: Codable, Equatable {
         truncateQueryResults: Bool = true,
         defaultSortBehavior: DefaultSortBehavior = .none,
         defaultSortDirection: SortDirection = .ascending,
-        rowCopyFormat: RowCopyFormat = .rows
+        rowCopyFormat: RowCopyFormat = .rows,
+        showInvisibleCharacters: Bool = true
     ) {
         self.rowHeight = rowHeight
         self.dateFormat = dateFormat
@@ -173,6 +176,7 @@ struct DataGridSettings: Codable, Equatable {
         self.defaultSortBehavior = defaultSortBehavior
         self.defaultSortDirection = defaultSortDirection
         self.rowCopyFormat = rowCopyFormat
+        self.showInvisibleCharacters = showInvisibleCharacters
     }
 
     init(from decoder: Decoder) throws {
@@ -197,6 +201,9 @@ struct DataGridSettings: Codable, Equatable {
         defaultSortBehavior = container.decodeSetting(.defaultSortBehavior, default: fallback.defaultSortBehavior)
         defaultSortDirection = container.decodeSetting(.defaultSortDirection, default: fallback.defaultSortDirection)
         rowCopyFormat = container.decodeSetting(.rowCopyFormat, default: fallback.rowCopyFormat)
+        showInvisibleCharacters = container.decodeSetting(
+            .showInvisibleCharacters, default: fallback.showInvisibleCharacters
+        )
     }
 
     // MARK: - Validated Properties

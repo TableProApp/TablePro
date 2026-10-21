@@ -693,6 +693,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         return TableMetadata(pluginMeta)
     }
 
+    func fetchObjectComment(tableName: String) async throws -> String? {
+        try await pluginDriver.fetchObjectComment(table: tableName, schema: pluginDriver.currentSchema)
+    }
+
     func fetchDatabases() async throws -> [String] {
         try await pluginDriver.fetchDatabases()
     }

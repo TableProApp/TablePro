@@ -73,7 +73,12 @@ struct DataSourceExportTests {
 
     private func formatIds(for databaseTypeId: String) -> [String] {
         ExportFormatCatalog
-            .available([StubMQLFormat(), StubSQLFormat(), StubCSVFormat()], forDatabaseTypeId: databaseTypeId)
+            .available(
+                [StubMQLFormat(), StubSQLFormat(), StubCSVFormat()],
+                forDatabaseTypeId: databaseTypeId,
+                listsDatabaseObjects: false,
+                columnsAreSampled: false
+            )
             .map { type(of: $0).formatId }
     }
 

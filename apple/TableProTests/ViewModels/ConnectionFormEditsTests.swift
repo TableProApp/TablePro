@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProAutocomplete
 import TableProPluginKit
 import TableProSSHConfig
 import Testing
@@ -15,6 +16,7 @@ struct ConnectionFormEditsTests {
         iconName: String? = nil,
         connectTimeoutSeconds: Int? = nil,
         queryTimeoutSeconds: Int? = nil,
+        completionIdentifierCase: SQLIdentifierCase = .default,
         additionalFields: [String: String] = [:],
         ownedAdditionalFieldIDs: Set<String> = []
     ) -> ConnectionFormEdits {
@@ -44,6 +46,7 @@ struct ConnectionFormEditsTests {
             externalAccess: .readOnly,
             connectTimeoutSeconds: connectTimeoutSeconds,
             queryTimeoutSeconds: queryTimeoutSeconds,
+            completionIdentifierCase: completionIdentifierCase,
             redisDatabase: nil,
             startupCommands: nil,
             localOnly: false,
@@ -128,6 +131,15 @@ struct ConnectionFormEditsTests {
 
         #expect(customization.iconName == "made.up.symbol")
         #expect(result.iconName == "made.up.symbol")
+    }
+
+    @Test("Applying edits stores the identifier case, and As stored clears it")
+    func storesIdentifierCase() {
+        let picked = edits(completionIdentifierCase: .lower).applied(to: populatedConnection())
+        #expect(picked.completionIdentifierCase == .lower)
+
+        let cleared = edits(completionIdentifierCase: .asStored).applied(to: picked)
+        #expect(cleared.additionalFields[DatabaseConnection.completionIdentifierCaseKey] == nil)
     }
 
     @Test("Applying edits stores both connection timeout overrides")

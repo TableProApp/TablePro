@@ -31,6 +31,8 @@ struct DataGridCellAppearance: Equatable {
     let drawsFocusRing: Bool
     let focusColor: NSColor
     let checkboxMark: DataGridCheckboxMark?
+    /// Nil leaves invisible characters unmarked.
+    let specialCharacterColor: NSColor?
 
     static func resolve(
         kind: DataGridCellKind,
@@ -41,7 +43,8 @@ struct DataGridCellAppearance: Equatable {
         onEmphasizedSelection: Bool,
         hasOverlay: Bool,
         checkboxMark: DataGridCheckboxMark? = nil,
-        textTone: NSColor? = nil
+        textTone: NSColor? = nil,
+        revealsInvisibleCharacters: Bool = false
     ) -> DataGridCellAppearance {
         let deletedTextColor = state.visualState.isDeleted ? palette.deletedRowText : nil
         let font: NSFont
@@ -93,6 +96,10 @@ struct DataGridCellAppearance: Equatable {
             rawValue: content.rawValue
         )
         let isCursorVisible = state.isFocused && !hasOverlay
+        // The editor's orange, except over a fill of the cell's own, where it takes the text's color.
+        let specialCharacterColor: NSColor? = revealsInvisibleCharacters && content.placeholder == nil && kind != .checkbox
+            ? (findTint != nil || onEmphasizedSelection ? textColor : .systemOrange)
+            : nil
         let accessoryRole = DataGridCellAccessoryGlyph.Role(
             accessory: accessory,
             isEmphasized: onEmphasizedSelection,
@@ -115,7 +122,8 @@ struct DataGridCellAppearance: Equatable {
             drawsFocusBorder: isCursorVisible && onEmphasizedSelection,
             drawsFocusRing: isCursorVisible && !onEmphasizedSelection,
             focusColor: onEmphasizedSelection ? palette.selectionText : palette.focusRing,
-            checkboxMark: kind == .checkbox ? checkboxMark : nil
+            checkboxMark: kind == .checkbox ? checkboxMark : nil,
+            specialCharacterColor: specialCharacterColor
         )
     }
 

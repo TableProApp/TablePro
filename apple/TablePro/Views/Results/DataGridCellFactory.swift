@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import TableProPluginKit
+import TableProTextEngine
 
 @MainActor
 final class DataGridCellFactory {
@@ -40,7 +41,8 @@ final class DataGridCellFactory {
         displayFormat: ValueDisplayFormat? = nil,
         databaseType: DatabaseType? = nil,
         isLargeDataset: Bool = false,
-        nullDisplayString: String? = nil
+        nullDisplayString: String? = nil,
+        revealsInvisibleCharacters: Bool = false
     ) -> CGFloat {
         measureColumnWidth(
             for: columnName,
@@ -51,6 +53,7 @@ final class DataGridCellFactory {
             databaseType: databaseType,
             isLargeDataset: isLargeDataset,
             nullDisplayString: nullDisplayString,
+            revealsInvisibleCharacters: revealsInvisibleCharacters,
             budget: ColumnWidthBudget(
                 cap: Self.maxColumnWidth,
                 measuredCharLimit: Self.maxMeasureChars,
@@ -69,6 +72,7 @@ final class DataGridCellFactory {
         databaseType: DatabaseType? = nil,
         isLargeDataset: Bool = false,
         nullDisplayString: String? = nil,
+        revealsInvisibleCharacters: Bool = false,
         fittedColumnCount: Int = 1
     ) -> CGFloat {
         let cap = Self.fitToContentCap(availableWidth: availableWidth)
@@ -84,6 +88,7 @@ final class DataGridCellFactory {
             databaseType: databaseType,
             isLargeDataset: isLargeDataset,
             nullDisplayString: nullDisplayString,
+            revealsInvisibleCharacters: revealsInvisibleCharacters,
             budget: ColumnWidthBudget(
                 cap: cap,
                 measuredCharLimit: measuredCharLimit,
@@ -115,6 +120,7 @@ final class DataGridCellFactory {
         databaseType: DatabaseType?,
         isLargeDataset: Bool,
         nullDisplayString: String?,
+        revealsInvisibleCharacters: Bool,
         budget: ColumnWidthBudget
     ) -> CGFloat {
         let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
@@ -138,17 +144,22 @@ final class DataGridCellFactory {
                 displayFormat: displayFormat,
                 databaseType: databaseType
             ) ?? ""
+            let placeholder = DataGridCellContent.placeholder(
+                for: rawValue, isAbsent: tableRows.isAbsent(row: i, column: columnIndex)
+            )
             let value = DataGridCellContent.resolvedDisplayText(
                 formattedValue,
-                placeholder: DataGridCellContent.placeholder(
-                    for: rawValue, isAbsent: tableRows.isAbsent(row: i, column: columnIndex)
-                ),
+                placeholder: placeholder,
                 isLargeDataset: isLargeDataset,
                 nullDisplayString: resolvedNullDisplayString
             )
 
             let charCount = min((value as NSString).length, budget.measuredCharLimit)
-            maxWidth = max(maxWidth, CGFloat(charCount) * charWidth + accessory.measurementPadding)
+            let markedWidth = revealsInvisibleCharacters && placeholder == nil
+                ? Self.markedWidth(of: value, length: charCount)
+                : nil
+            let textWidth = markedWidth ?? CGFloat(charCount) * charWidth
+            maxWidth = max(maxWidth, textWidth + accessory.measurementPadding)
 
             if maxWidth >= budget.cap {
                 return budget.cap
@@ -156,6 +167,24 @@ final class DataGridCellFactory {
         }
 
         return min(max(maxWidth, Self.minColumnWidth), budget.cap)
+    }
+
+    // A mark is wider than the character it stands for, so a value holding one is laid out.
+    private static func markedWidth(of value: String, length: Int) -> CGFloat? {
+        let text = value as NSString
+        var index = 0
+        while index < length {
+            let unit = text.character(at: index)
+            if unit == 0x0D || SpecialCharacter.mayBeSpecial(unit) { break }
+            index += 1
+        }
+        guard index < length else { return nil }
+        let font = ThemeEngine.shared.dataGridFonts.regular
+        let marked = SpecialCharacterLine(
+            NSAttributedString(string: text.substring(to: length), attributes: [.font: font]),
+            style: SpecialCharacterStyle(marksLineBreaks: true)
+        )
+        return CGFloat(CTLineGetTypographicBounds(marked.line, nil, nil, nil))
     }
 }
 
@@ -182,6 +211,22 @@ internal extension String {
     }
 
     var sanitizedForCellDisplay: String {
+        flattenedOntoOneLine(keepingLoneCarriageReturns: false)
+    }
+
+    // A CR with no LF after it ends no line on any current system. It is usually what is left of a
+    // CRLF split on LF, so a cell keeps it for the renderer to mark.
+    var flattenedForCell: String {
+        flattenedOntoOneLine(keepingLoneCarriageReturns: true)
+    }
+
+    // What a cell shows while marks are off: the lone CR reads as the space it always did.
+    var shownWithoutMarks: String {
+        guard utf16.contains(0x0D) else { return self }
+        return replacingOccurrences(of: "\r", with: " ", options: .literal)
+    }
+
+    private func flattenedOntoOneLine(keepingLoneCarriageReturns: Bool) -> String {
         let nsString = self as NSString
         let length = nsString.length
         guard length > 0 else { return self }
@@ -192,6 +237,9 @@ internal extension String {
             let ch = nsString.character(at: i)
             guard ch == 0x0A || ch == 0x0D || ch == 0x0B || ch == 0x0C ||
                   ch == 0x85 || ch == 0x2028 || ch == 0x2029 else { continue }
+            if ch == 0x0D, keepingLoneCarriageReturns, i + 1 >= length || nsString.character(at: i + 1) != 0x0A {
+                continue
+            }
 
             if mutable == nil {
                 mutable = NSMutableString(capacity: length)

@@ -29,7 +29,7 @@ internal struct FieldEditorContent: View {
     /// take away the control that changes it back.
     private var isPicker: Bool {
         switch kind {
-        case .boolean, .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker: return true
+        case .boolean, .enumPicker, .setPicker, .arrayElements, .vector, .typePicker, .valuePicker: return true
         case .json, .phpSerialized, .image, .geometry, .blobHex, .schemaText, .multiLine, .singleLine: return false
         }
     }
@@ -41,7 +41,7 @@ internal struct FieldEditorContent: View {
         switch kind {
         case .json, .phpSerialized, .multiLine: return true
         case .geometry(let descriptor): return canExpand(kind: descriptor.textEditorKind, state: state)
-        case .image, .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .typePicker,
+        case .image, .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .vector, .typePicker,
              .valuePicker, .schemaText, .singleLine:
             return false
         }
@@ -56,7 +56,7 @@ internal struct FieldEditorContent: View {
         case .blobHex: return 60
         case .multiLine: return ResizableFieldMetrics.defaultTextHeight
         case .geometry(let descriptor): return pillHeight(for: descriptor.textEditorKind)
-        case .boolean, .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker,
+        case .boolean, .enumPicker, .setPicker, .arrayElements, .vector, .typePicker, .valuePicker,
              .schemaText, .singleLine:
             return nil
         }
@@ -95,6 +95,8 @@ internal struct FieldEditorContent: View {
                 onSetNull: onSetNull,
                 onSetDefault: onSetDefault
             )
+        case .vector:
+            VectorFieldEditorView(context: context, onSetNull: onSetNull, onSetDefault: onSetDefault)
         case .typePicker:
             TypePickerFieldView(context: context, databaseType: databaseType)
         case .valuePicker(let options):

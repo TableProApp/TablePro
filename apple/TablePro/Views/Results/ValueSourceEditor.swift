@@ -8,6 +8,7 @@ import SwiftUI
 
 internal struct ValueSourceEditor: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @Binding var text: String
     var isEditable: Bool
     var textContainerInset = NSSize(width: 4, height: 6)
@@ -18,7 +19,8 @@ internal struct ValueSourceEditor: View {
             isEditable: isEditable,
             font: themeEngine.valueFont,
             textContainerInset: textContainerInset,
-            style: .code
+            style: .code,
+            marksInvisibleCharacters: settingsManager.dataGrid.showInvisibleCharacters
         )
     }
 }
