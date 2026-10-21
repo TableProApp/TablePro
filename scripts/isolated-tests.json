@@ -690,6 +690,16 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::completion_provider::tests::large_catalog_materializes_only_requested_completion_proposals"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::completion_provider::tests::proposals_first_requested_after_catalog_retirement_do_not_edit_the_buffer"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::browse_tab::save_in_flight_tests::a_foreign_key_that_arrives_after_the_rows_marks_its_header"
     ],
     [

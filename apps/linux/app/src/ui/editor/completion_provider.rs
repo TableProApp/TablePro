@@ -1,3 +1,5 @@
+mod model;
+
 use std::cell::{OnceCell, RefCell};
 use std::rc::Rc;
 
@@ -121,13 +123,12 @@ pub(super) fn install(index: Rc<RefCell<SchemaIndex>>, lexing: super::session_le
 }
 
 impl Provider {
-    fn model(&self, context: &sourceview5::CompletionContext) -> gio::ListStore {
-        let model = gio::ListStore::new::<Proposal>();
+    fn model(&self, context: &sourceview5::CompletionContext) -> model::ProposalModel {
         let Some(buffer) = context.buffer() else {
-            return model;
+            return glib::Object::new();
         };
         let Some(text) = super::sql_text::analysis_text(buffer.upcast_ref()) else {
-            return model;
+            return glib::Object::new();
         };
         let source: Rc<str> = text.as_str().into();
         let cursor = super::statement_cursor::cursor_byte_offset(
@@ -136,23 +137,16 @@ impl Provider {
         );
         let index = self.imp().index.borrow();
         let Ok(index) = index.try_borrow() else {
-            return model;
+            return glib::Object::new();
         };
         let settings = self.imp().lexing.borrow().settings();
         let candidates = candidates_with(&source, cursor, &index, settings);
-        for (label, sql) in candidates.values {
-            let proposal: Proposal = glib::Object::new();
-            let _ = proposal.imp().insertion.set(Insertion {
-                label,
-                sql,
-                source: source.clone(),
-                cursor: buffer.iter_at_mark(&buffer.get_insert()).offset(),
-                range: candidates.range.clone(),
-                request: index.request(String::new()),
-            });
-            model.append(&proposal);
-        }
-        model
+        model::ProposalModel::new(
+            candidates,
+            source,
+            buffer.iter_at_mark(&buffer.get_insert()).offset(),
+            index.request(String::new()),
+        )
     }
 
     fn insert(&self, context: &sourceview5::CompletionContext, proposal: &sourceview5::CompletionProposal) {
@@ -169,9 +163,11 @@ impl Provider {
         let Ok(index) = index.try_borrow() else {
             return;
         };
-        let (start, end) = buffer.bounds();
+        let Some(text) = super::sql_text::analysis_text(buffer.upcast_ref()) else {
+            return;
+        };
         if !index.accepts(&insertion.request)
-            || buffer.text(&start, &end, true).as_str() != insertion.source.as_ref()
+            || text.as_str() != insertion.source.as_ref()
             || buffer.iter_at_mark(&buffer.get_insert()).offset() != insertion.cursor
         {
             return;

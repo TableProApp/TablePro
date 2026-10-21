@@ -128,6 +128,7 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 
 ### Changed
 
+- SQL completion creates suggestion objects as they are requested, reducing initial allocations for large catalogs.
 - The translation template is now named `bookie.pot` and is generated rather than committed, so it no longer conflicts between changes; each release attaches it.
 - Opening a SQL editor tab moves keyboard focus into the query instead of leaving typing in the sidebar search.
 - Closing or replacing table and query results releases associated data instead of accumulating memory.
