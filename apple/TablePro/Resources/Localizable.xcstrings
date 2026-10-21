@@ -97119,6 +97119,9 @@
         }
       }
     },
+    "Key bindings:" : {
+
+    },
     "Key column %@ is not present on both sides. Choose a different key." : {
       "localizations" : {
         "fr" : {
