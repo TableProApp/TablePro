@@ -1082,3 +1082,50 @@ fn the_row_menu_deletes_a_draft_row_by_discarding_it() {
     assert_eq!(transactions(&outputs), 0);
     controller.detach_runtime();
 }
+
+#[test]
+#[ignore = "requires isolated GTK display"]
+fn a_foreign_key_that_arrives_after_the_rows_marks_its_header() {
+    relm4::gtk::init().unwrap();
+    let (mut controller, observed) = launch(Uuid::new_v4());
+    load_two_rows(&controller, &observed);
+    let titles = |controller: &relm4::Controller<BrowseTab>| {
+        let view = controller
+            .model()
+            .current_column_view
+            .clone()
+            .expect("the grid is rendered");
+        let columns = view.columns();
+        (0..columns.n_items())
+            .filter_map(|index| columns.item(index))
+            .filter_map(|item| item.downcast::<relm4::gtk::ColumnViewColumn>().ok())
+            .map(|column| column.title().unwrap_or_default().to_string())
+            .collect::<Vec<_>>()
+    };
+    assert!(titles(&controller).iter().all(|title| !title.contains('\u{1F517}')));
+
+    controller
+        .sender()
+        .send(BrowseTabInput::ForeignKeysLoaded(vec![tablepro_core::ForeignKeyInfo {
+            name: "notes_title_fk".into(),
+            columns: vec!["title".into()],
+            ref_schema: Some("public".into()),
+            ref_table: "titles".into(),
+            ref_columns: vec!["name".into()],
+            on_delete: None,
+            on_update: None,
+        }]))
+        .unwrap();
+    pump(&observed);
+
+    let titles = titles(&controller);
+    assert!(
+        titles.iter().any(|title| title.starts_with("title \u{1F517}")),
+        "{titles:?}"
+    );
+    assert!(
+        titles.iter().any(|title| title.starts_with("id \u{1F511}")),
+        "{titles:?}"
+    );
+    controller.detach_runtime();
+}

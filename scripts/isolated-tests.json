@@ -686,6 +686,11 @@
       "tablepro-app",
       "--lib",
       "ui::editor::stream_view::tests::a_terminal_status_keeps_retained_grids_unbuilt_until_selected"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::a_foreign_key_that_arrives_after_the_rows_marks_its_header"
     ]
   ],
   "keyring": [
