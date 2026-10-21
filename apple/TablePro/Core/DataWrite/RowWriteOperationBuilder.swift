@@ -29,7 +29,8 @@ enum RowWriteOperationBuilder {
         columns: [String],
         primaryKeyColumns: [String],
         generatedColumns: Set<String>,
-        containsTableOperation: Bool
+        containsTableOperation: Bool,
+        rowsWithUnloadedValues: Set<RowID> = []
     ) -> [RowWriteOperation] {
         changes.compactMap { change in
             switch change.type {
@@ -44,7 +45,8 @@ enum RowWriteOperationBuilder {
                 return delete(
                     change, target: target, columns: columns,
                     primaryKeyColumns: primaryKeyColumns,
-                    containsTableOperation: containsTableOperation
+                    containsTableOperation: containsTableOperation,
+                    hasUnloadedValues: rowsWithUnloadedValues.contains(change.rowID)
                 )
             case .insert:
                 guard insertedRowIDs.contains(change.rowID) else { return nil }
@@ -118,13 +120,15 @@ enum RowWriteOperationBuilder {
         target: DataWriteTarget,
         columns: [String],
         primaryKeyColumns: [String],
-        containsTableOperation: Bool
+        containsTableOperation: Bool,
+        hasUnloadedValues: Bool
     ) -> RowWriteOperation {
         let refusal: RewindRefusal? = {
             if containsTableOperation { return .destructiveTableOperation }
             guard let originalRow = change.originalRow else { return .noPrimaryKey }
             if primaryKeyColumns.isEmpty { return .noPrimaryKey }
-            if originalRow.contains(where: exceedsCapture) { return .valueTooLarge }
+            // A value the page left on the server was larger than the inline limit and never read.
+            if hasUnloadedValues || originalRow.contains(where: exceedsCapture) { return .valueTooLarge }
             return nil
         }()
 

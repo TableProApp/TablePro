@@ -7,6 +7,7 @@ import SwiftUI
 
 internal struct MultiLineEditorView: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let context: FieldEditorContext
     var onPopOut: ((String) -> Void)?
     var isExpanded = false
@@ -25,7 +26,8 @@ internal struct MultiLineEditorView: View {
                 isEditable: !context.isReadOnly,
                 font: themeEngine.valueFont,
                 movesFocusOnTab: true,
-                style: .code
+                style: .code,
+                marksInvisibleCharacters: settingsManager.dataGrid.showInvisibleCharacters
             )
             .valueWell(clipsContent: true)
             .overlay(alignment: .topLeading) { placeholder }

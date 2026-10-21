@@ -31,6 +31,20 @@ struct ColumnLayoutStateTests {
         #expect(layout.columnOrder == ["name", "id"])
     }
 
+    @Test("Applying geometry carries the frozen column count, and resetting it unfreezes")
+    func frozenColumnCountFollowsGeometry() {
+        var layout = ColumnLayoutState()
+        var incoming = ColumnLayoutState()
+        incoming.columnOrder = ["id", "name"]
+        incoming.frozenColumnCount = 1
+
+        layout.applyGeometry(from: incoming)
+        #expect(layout.frozenColumnCount == 1)
+
+        layout.resetGeometry()
+        #expect(layout.frozenColumnCount == 0)
+    }
+
     @Test("Applying geometry preserves the existing hidden-column set")
     func applyGeometryPreservesHiddenColumns() {
         var layout = ColumnLayoutState()

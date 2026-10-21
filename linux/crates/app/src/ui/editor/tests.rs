@@ -140,11 +140,88 @@ fn only_a_run_that_sent_ddl_says_the_catalog_changed() {
     run_and_wait(&harness);
     assert!(harness.editor.last_run_changes_catalog());
 
-    harness.editor.buffer().set_text("UPDATE orders SET id = 2;");
+    harness
+        .editor
+        .buffer()
+        .set_text("UPDATE orders SET id = 2 WHERE id = 1;");
     run_and_wait(&harness);
     assert!(
         !harness.editor.last_run_changes_catalog(),
         "the last run's answer outlived it"
+    );
+}
+
+/// The editor in a window, which the Safe Mode question is shown over.
+fn shown(harness: &Harness) -> crate::test_support::OwnedWindow<adw::Window> {
+    crate::test_support::OwnedWindow::presented(adw::Window::builder().content(&harness.editor).build())
+}
+
+#[gtk4::test]
+fn confirm_writes_holds_an_update_for_an_answer_and_runs_a_select_at_once() {
+    let harness = editor_with(answering(), "SELECT 1;");
+    let session = harness.active.get().expect("the session");
+    assert!(session.set_safe_mode(tablepro_core::SafeModeLevel::ConfirmWrites));
+    let window = shown(&harness);
+
+    run_and_wait(&harness);
+    assert_eq!(sent(&harness.fake), ["SELECT 1"]);
+
+    harness
+        .editor
+        .buffer()
+        .set_text("UPDATE orders SET total = 0 WHERE id = 1;");
+    harness.editor.run();
+    wait_until(WAIT, || crate::workspace::visible_alert(&window).is_some()).expect("the question");
+    assert!(!harness.editor.is_running(), "the run started before the answer");
+    harness.editor.run();
+    assert_eq!(sent(&harness.fake), ["SELECT 1"]);
+
+    assert!(crate::workspace::answer(&window, "proceed"));
+    wait_until(WAIT, || sent(&harness.fake).len() == 2).expect("the update to go");
+    wait_until(WAIT, || !harness.editor.is_running()).expect("the run to end");
+    assert_eq!(
+        sent(&harness.fake),
+        ["SELECT 1", "UPDATE orders SET total = 0 WHERE id = 1"]
+    );
+}
+
+#[gtk4::test]
+fn cancelling_the_question_sends_nothing() {
+    let harness = editor_with(answering(), "DELETE FROM orders;");
+    let window = shown(&harness);
+
+    harness.editor.run();
+    wait_until(WAIT, || crate::workspace::visible_alert(&window).is_some()).expect("the question");
+    assert!(crate::workspace::answer(&window, "cancel"));
+    wait_until(WAIT, || !harness.editor.imp().confirming.get()).expect("the answer");
+    crate::test_support::drain_main_context();
+
+    assert!(sent(&harness.fake).is_empty(), "a cancelled DELETE was sent");
+    assert!(!harness.editor.is_running());
+}
+
+#[gtk4::test]
+fn read_only_refuses_a_write_without_sending_it() {
+    let harness = editor_with(
+        answering(),
+        "SELECT 1;\nUPDATE orders SET total = 0 WHERE id = 1;\nSELECT 2;",
+    );
+    harness.active.replace(session_on(
+        harness.fake.clone(),
+        harness.runtime.tasks(),
+        ConnectionScript {
+            read_only: true,
+            ..ConnectionScript::default()
+        },
+    ));
+
+    run_and_wait(&harness);
+
+    assert_eq!(sent(&harness.fake), ["SELECT 1"]);
+    let log = harness.editor.imp().log.borrow();
+    assert_eq!(
+        log.as_ref().and_then(|log| log.first_failure()),
+        Some("Safe Mode is Read-Only on this connection. Choose another level in the main menu to make changes.")
     );
 }
 
@@ -264,7 +341,7 @@ fn a_long_script_that_fails_early_builds_one_result_page() {
 fn an_open_transaction_marks_the_tab() {
     let mut runs = Replies::default();
     runs.always(FakeRun::completed(Vec::new()).leaving(TransactionState::InTransaction));
-    let harness = editor_with(runs, "BEGIN; UPDATE t SET a = 1");
+    let harness = editor_with(runs, "BEGIN; UPDATE t SET a = 1 WHERE id = 1");
     let changes = SignalLog::connect(&harness.editor, "transaction-changed", |values| {
         values[1].get::<bool>().expect("a flag")
     });
@@ -273,6 +350,138 @@ fn an_open_transaction_marks_the_tab() {
 
     assert!(harness.editor.has_open_transaction());
     assert_eq!(changes.take(), [true]);
+}
+
+// With a WHERE clause, so Safe Mode runs it without asking.
+const OPENS_A_TRANSACTION: &str = "BEGIN; UPDATE t SET a = 1 WHERE id = 1";
+
+/// The script opens a transaction, and COMMIT or ROLLBACK ends it.
+fn transaction_runs() -> Replies<FakeRun> {
+    let mut runs = Replies::default();
+    runs.when_sql_contains("COMMIT", FakeRun::completed(Vec::new()))
+        .when_sql_contains("ROLLBACK", FakeRun::completed(Vec::new()))
+        .always(FakeRun::completed(Vec::new()).leaving(TransactionState::InTransaction));
+    runs
+}
+
+fn button_labelled(harness: &Harness, label: &str) -> gtk4::Button {
+    crate::test_support::descendants(&harness.editor)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk4::Button>().ok())
+        .find(|button| button.label().as_deref() == Some(label))
+        .expect("the button")
+}
+
+/// It and every container up to the editor are visible.
+fn widget_shown(harness: &Harness, widget: &impl IsA<gtk4::Widget>) -> bool {
+    hidden_ancestor(harness, widget).is_none()
+}
+
+/// The first of it and its containers up to the editor that is hidden, by type, for a failure message.
+/// Each widget's own flag: `is_visible` also asks the window, which these tests never show.
+fn hidden_ancestor(harness: &Harness, widget: &impl IsA<gtk4::Widget>) -> Option<String> {
+    let editor = harness.editor.upcast_ref::<gtk4::Widget>();
+    std::iter::successors(Some(widget.as_ref().clone()), |widget| widget.parent())
+        .take_while(|widget| widget != editor)
+        .find(|widget| !widget.get_visible())
+        .map(|widget| format!("{} {:?}", widget.type_().name(), widget.widget_name()))
+}
+
+#[gtk4::test]
+fn commit_runs_on_the_tabs_session_and_keeps_the_script() {
+    let harness = editor_with(transaction_runs(), OPENS_A_TRANSACTION);
+    let _window = InWindow::new(&harness.editor);
+    run_and_wait(&harness);
+    let before = sent(&harness.fake);
+    let commit = button_labelled(&harness, "Commit");
+    assert_eq!(hidden_ancestor(&harness, &commit), None);
+    assert!(commit.is_sensitive(), "Commit is off with a transaction open");
+    assert_eq!(hidden_ancestor(&harness, &button_labelled(&harness, "Roll Back")), None);
+
+    commit.emit_clicked();
+    assert!(harness.editor.is_running(), "Commit did not start a run");
+    assert!(!commit.is_sensitive(), "Commit stayed on during the run");
+    wait_until(WAIT, || !harness.editor.is_running()).expect("the commit to end");
+
+    assert_eq!(sent(&harness.fake), [before, vec!["COMMIT".to_owned()]].concat());
+    assert_eq!(buffer_text(&harness.editor.buffer()), OPENS_A_TRANSACTION);
+    assert!(!harness.editor.has_open_transaction());
+    assert_eq!(harness.editor.open_transaction(), None);
+    assert!(!widget_shown(&harness, &commit), "the line outlived the transaction");
+    assert_eq!(
+        harness.editor.imp().results.n_entries(),
+        1,
+        "the results are not the COMMIT's"
+    );
+}
+
+#[gtk4::test]
+fn a_failed_transaction_offers_only_roll_back() {
+    let mut runs = Replies::default();
+    runs.always(FakeRun::completed(Vec::new()).leaving(TransactionState::Failed));
+    let harness = editor_with(runs, OPENS_A_TRANSACTION);
+    let _window = InWindow::new(&harness.editor);
+
+    run_and_wait(&harness);
+
+    assert_eq!(harness.editor.open_transaction(), Some(OpenTransaction::Failed));
+    assert_eq!(hidden_ancestor(&harness, &button_labelled(&harness, "Roll Back")), None);
+    assert!(!widget_shown(&harness, &button_labelled(&harness, "Commit")));
+}
+
+fn roll_back_prompt(harness: &Harness, window: &crate::test_support::OwnedWindow<adw::Window>) -> adw::AlertDialog {
+    button_labelled(harness, "Roll Back").emit_clicked();
+    let mut alert = None;
+    wait_until(WAIT, || {
+        alert = crate::workspace::visible_alert(window);
+        alert.is_some()
+    })
+    .expect("the rollback prompt");
+    alert.expect("the rollback prompt")
+}
+
+#[gtk4::test]
+fn roll_back_asks_first_and_cancel_keeps_the_transaction() {
+    adw::init().expect("libadwaita initialises under the test backend");
+    let harness = editor_with(transaction_runs(), OPENS_A_TRANSACTION);
+    let window = crate::test_support::OwnedWindow::presented(adw::Window::builder().content(&harness.editor).build());
+    run_and_wait(&harness);
+    let before = sent(&harness.fake);
+
+    let alert = roll_back_prompt(&harness, &window);
+
+    assert_eq!(alert.heading().as_deref(), Some("Roll Back the Transaction?"));
+    assert_eq!(alert.body().as_str(), "Its uncommitted changes are discarded.");
+    assert_eq!(alert.default_response().as_deref(), Some("cancel"));
+    assert_eq!(
+        alert.response_appearance("roll-back"),
+        adw::ResponseAppearance::Destructive
+    );
+    assert!(crate::workspace::answer(&window, "cancel"));
+    wait_until(WAIT, || crate::workspace::visible_alert(&window).is_none()).expect("the prompt to close");
+    crate::test_support::drain_main_context();
+    assert_eq!(sent(&harness.fake), before, "Cancel sent a statement");
+    assert!(harness.editor.has_open_transaction());
+}
+
+#[gtk4::test]
+fn roll_back_once_confirmed_runs_on_the_tabs_session() {
+    adw::init().expect("libadwaita initialises under the test backend");
+    let harness = editor_with(transaction_runs(), OPENS_A_TRANSACTION);
+    let window = crate::test_support::OwnedWindow::presented(adw::Window::builder().content(&harness.editor).build());
+    run_and_wait(&harness);
+
+    roll_back_prompt(&harness, &window);
+    assert!(crate::workspace::answer(&window, "roll-back"));
+    wait_until(WAIT, || {
+        sent(&harness.fake).last().map(String::as_str) == Some("ROLLBACK")
+    })
+    .expect("the rollback to be sent");
+    wait_until(WAIT, || !harness.editor.is_running()).expect("the rollback to end");
+
+    assert_eq!(buffer_text(&harness.editor.buffer()), OPENS_A_TRANSACTION);
+    assert!(!harness.editor.has_open_transaction());
+    assert!(!widget_shown(&harness, &button_labelled(&harness, "Roll Back")));
 }
 
 #[gtk4::test]

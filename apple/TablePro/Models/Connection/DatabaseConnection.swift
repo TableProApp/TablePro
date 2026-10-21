@@ -8,8 +8,10 @@
 import AppKit
 import Foundation
 import SwiftUI
+import TableProAutocomplete
 import TableProPluginKit
 import TableProSSHConfig
+import TableProSSHTransport
 
 // MARK: - External Access
 
@@ -151,6 +153,11 @@ struct DatabaseConnection: Identifiable, Hashable {
     static let connectTimeoutSecondsKey = "connectTimeoutSeconds"
     static let queryTimeoutSecondsKey = "queryTimeoutSeconds"
     static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
+    static let postDisconnectScriptKey = "postDisconnectScript"
+    static let scriptTimeoutSecondsKey = "scriptTimeoutSeconds"
+    static let completionIdentifierCaseKey = "completionIdentifierCase"
+    static let binaryInlineLimitKilobytesKey = "binaryInlineLimitKB"
+    static let binaryInlineLimitKilobytesRange = 1 ... 1_048_576
 
     let id: UUID
     var name: String
@@ -186,6 +193,8 @@ struct DatabaseConnection: Identifiable, Hashable {
     var isSample: Bool = false
     var isFavorite: Bool = false
     var passwordSource: PasswordSource?
+    // What a Mac last dialed for this tunnel, for devices without its ~/.ssh/config. Never dialed here.
+    var sshRoute: PublishedSSHRoute?
 
     var mongoAuthSource: String? {
         get { additionalFields["mongoAuthSource"]?.nilIfEmpty }
@@ -250,6 +259,31 @@ struct DatabaseConnection: Identifiable, Hashable {
         set { additionalFields["preConnectScript"] = newValue ?? "" }
     }
 
+    var postDisconnectScript: String? {
+        get { additionalFields[Self.postDisconnectScriptKey]?.nilIfEmpty }
+        set { additionalFields[Self.postDisconnectScriptKey] = newValue ?? "" }
+    }
+
+    var scriptTimeoutSeconds: Int? {
+        get {
+            guard let value = additionalFields[Self.scriptTimeoutSecondsKey].flatMap(Int.init),
+                  ConnectionScriptRunner.timeoutSecondsRange.contains(value)
+            else { return nil }
+            return value
+        }
+        set {
+            if let newValue, ConnectionScriptRunner.timeoutSecondsRange.contains(newValue) {
+                additionalFields[Self.scriptTimeoutSecondsKey] = String(newValue)
+            } else {
+                additionalFields.removeValue(forKey: Self.scriptTimeoutSecondsKey)
+            }
+        }
+    }
+
+    var effectiveScriptTimeoutSeconds: Int {
+        scriptTimeoutSeconds ?? ConnectionScriptRunner.defaultTimeoutSeconds
+    }
+
     var connectTimeoutSeconds: Int? {
         get {
             if let common = additionalFields[Self.connectTimeoutSecondsKey] {
@@ -282,6 +316,39 @@ struct DatabaseConnection: Identifiable, Hashable {
                 additionalFields[Self.queryTimeoutSecondsKey] = String(newValue)
             } else {
                 additionalFields.removeValue(forKey: Self.queryTimeoutSecondsKey)
+            }
+        }
+    }
+
+    var binaryInlineLimitKilobytes: Int? {
+        get {
+            guard let value = additionalFields[Self.binaryInlineLimitKilobytesKey].flatMap(Int.init),
+                  Self.binaryInlineLimitKilobytesRange.contains(value)
+            else { return nil }
+            return value
+        }
+        set {
+            if let newValue, Self.binaryInlineLimitKilobytesRange.contains(newValue) {
+                additionalFields[Self.binaryInlineLimitKilobytesKey] = String(newValue)
+            } else {
+                additionalFields.removeValue(forKey: Self.binaryInlineLimitKilobytesKey)
+            }
+        }
+    }
+
+    var binaryInlineLimitBytes: Int {
+        binaryInlineLimitKilobytes.map { $0 * 1_024 } ?? UnloadedValuePlan.defaultInlineByteLimit
+    }
+
+    var completionIdentifierCase: SQLIdentifierCase {
+        get {
+            additionalFields[Self.completionIdentifierCaseKey].flatMap(SQLIdentifierCase.init(rawValue:)) ?? .default
+        }
+        set {
+            if newValue == .default {
+                additionalFields.removeValue(forKey: Self.completionIdentifierCaseKey)
+            } else {
+                additionalFields[Self.completionIdentifierCaseKey] = newValue.rawValue
             }
         }
     }
@@ -438,6 +505,8 @@ internal extension DatabaseConnection {
         adopted.cloudSQLProxyMode = local.cloudSQLProxyMode
         adopted.socksProxyMode = local.socksProxyMode
         adopted.tunnelCommandMode = local.tunnelCommandMode
+        // The Connection record has no route field yet, so the route this Mac dialed stays on it.
+        adopted.sshRoute = local.sshRoute
         return adopted
     }
 }
@@ -453,6 +522,7 @@ extension DatabaseConnection: Codable {
         case safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
         case redisDatabase, startupCommands, sortOrder, localOnly, isSample, isFavorite
         case passwordSource
+        case sshRoute
     }
 
     init(from decoder: Decoder) throws {
@@ -476,6 +546,7 @@ extension DatabaseConnection: Codable {
         }
         groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
         sshProfileId = try container.decodeIfPresent(UUID.self, forKey: .sshProfileId)
+        sshRoute = try container.decodeIfPresent(PublishedSSHRoute.self, forKey: .sshRoute)
         credentialMode = try container.decodeIfPresent(CredentialMode.self, forKey: .credentialMode) ?? .inline
         preferredSafeModeLevel = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) ?? .silent
         aiPolicy = try container.decodeIfPresent(AIConnectionPolicy.self, forKey: .aiPolicy)
@@ -529,6 +600,7 @@ extension DatabaseConnection: Codable {
         }
         try container.encodeIfPresent(groupId, forKey: .groupId)
         try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
+        try container.encodeIfPresent(sshRoute, forKey: .sshRoute)
         try container.encode(credentialMode, forKey: .credentialMode)
         try container.encode(sshTunnelMode, forKey: .sshTunnelMode)
         if case .inline = cloudflareTunnelMode {

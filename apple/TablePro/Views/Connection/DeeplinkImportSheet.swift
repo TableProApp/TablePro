@@ -129,10 +129,11 @@ struct DeeplinkImportSheet: View {
     }
 
     private static func socketPath(_ connection: ExportableConnection) -> String? {
-        guard connection.sshConfig == nil, DatabaseType(rawValue: connection.type).supportsLocalSocket else {
-            return nil
-        }
-        return MySQLLocalSocket.path(in: connection.additionalFields ?? [:])
+        let type = DatabaseType(rawValue: connection.type)
+        guard connection.sshConfig == nil, type.supportsLocalSocket,
+              let path = MySQLLocalSocket.path(in: connection.additionalFields ?? [:])
+        else { return nil }
+        return LocalSocketEndpoint(path: path, port: connection.port, type: type).socketFile
     }
 
     private static func hostDisplay(_ connection: ExportableConnection) -> String {

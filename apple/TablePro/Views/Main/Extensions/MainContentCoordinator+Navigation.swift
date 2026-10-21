@@ -36,6 +36,7 @@ extension MainContentCoordinator {
             showStructure: showStructure,
             isView: !table.type.allowsRowEditing,
             objectType: table.type,
+            isTemporary: table.isTemporary,
             forceNonPreview: forceNonPreview,
             activateGridFocus: activateGridFocus,
             forceNewTab: forceNewTab
@@ -53,6 +54,7 @@ extension MainContentCoordinator {
         showStructure: Bool = false,
         isView: Bool = false,
         objectType: TableInfo.TableType? = nil,
+        isTemporary: Bool = false,
         forceNonPreview: Bool = false,
         activateGridFocus: Bool = false,
         forceNewTab: Bool = false
@@ -81,6 +83,7 @@ extension MainContentCoordinator {
             tableName: tableName,
             databaseName: currentDatabase,
             schemaName: resolvedSchema,
+            isTemporary: isTemporary,
             showStructure: showStructure,
             activateGridFocus: activateGridFocus,
             forceNonPreview: forceNonPreview,
@@ -100,13 +103,16 @@ extension MainContentCoordinator {
             requestGridFocus()
         }
 
-        if tabManager.tabs.isEmpty {
+        // In-place navigation would retarget the selected tab, and a pinned one is never retargeted.
+        let keepsPinnedTab = navigationModel == .inPlace && tabManager.selectedTab?.isPinned == true
+        if tabManager.tabs.isEmpty || keepsPinnedTab {
             let didOpen = addFirstTableTab(
                 tableName: tableName,
                 currentDatabase: currentDatabase,
                 resolvedSchema: resolvedSchema,
                 isView: isView,
                 objectType: objectType,
+                isTemporary: isTemporary,
                 createAsPreview: createAsPreview,
                 isInPlace: navigationModel == .inPlace
             )
@@ -161,6 +167,7 @@ extension MainContentCoordinator {
                 resolvedSchema: resolvedSchema,
                 isView: isView,
                 objectType: objectType,
+                isTemporary: isTemporary,
                 showStructure: showStructure,
                 createAsPreview: createAsPreview
             )
@@ -180,6 +187,7 @@ extension MainContentCoordinator {
             schemaName: resolvedSchema,
             isView: isView,
             objectType: objectType,
+            isTemporary: isTemporary,
             showStructure: showStructure,
             isPreview: createAsPreview,
             forcesNewTab: forceNewTab
@@ -192,6 +200,7 @@ extension MainContentCoordinator {
         tableName: String,
         databaseName: String,
         schemaName: String?,
+        isTemporary: Bool = false,
         showStructure: Bool,
         activateGridFocus: Bool,
         forceNonPreview: Bool = false,
@@ -199,7 +208,7 @@ extension MainContentCoordinator {
     ) -> WindowTabOpenDisposition? {
         func match(in tabManager: QueryTabManager) -> QueryTab? {
             tabManager.tabShowingTable(
-                named: tableName, databaseName: databaseName, schemaName: schemaName
+                named: tableName, databaseName: databaseName, schemaName: schemaName, isTemporary: isTemporary
             )
         }
 
@@ -246,6 +255,7 @@ extension MainContentCoordinator {
         resolvedSchema: String?,
         isView: Bool,
         objectType: TableInfo.TableType?,
+        isTemporary: Bool,
         createAsPreview: Bool,
         isInPlace: Bool
     ) -> Bool {
@@ -257,6 +267,7 @@ extension MainContentCoordinator {
                 schemaName: resolvedSchema,
                 isView: isView,
                 objectType: objectType,
+                isTemporary: isTemporary,
                 isPreview: createAsPreview
             )
         } catch {
@@ -275,6 +286,7 @@ extension MainContentCoordinator {
             tabManager.mutate(at: tabIndex) { tab in
                 tab.tableContext.isView = isView
                 tab.tableContext.objectType = objectType
+                tab.tableContext.isTemporary = isTemporary
                 tab.tableContext.isEditable = !isView
                 tab.tableContext.schemaName = resolvedSchema
                 tab.pagination.reset()
@@ -297,6 +309,7 @@ extension MainContentCoordinator {
         resolvedSchema: String?,
         isView: Bool,
         objectType: TableInfo.TableType?,
+        isTemporary: Bool,
         showStructure: Bool,
         createAsPreview: Bool
     ) -> Bool {
@@ -333,6 +346,7 @@ extension MainContentCoordinator {
                 databaseType: connection.type,
                 isView: isView,
                 objectType: objectType,
+                isTemporary: isTemporary,
                 databaseName: currentDatabase,
                 schemaName: resolvedSchema,
                 isPreview: createAsPreview
@@ -405,7 +419,7 @@ extension MainContentCoordinator {
     /// Only browsing asks. Following a foreign key never takes a tab over, because a reference can
     /// only be followed from a grid and the row the reader clicked is in that grid.
     var isActiveTabReusable: Bool {
-        guard let tab = tabManager.selectedTab else { return false }
+        guard let tab = tabManager.selectedTab, !tab.isPinned else { return false }
         if selectedTabHoldsProtectedContent { return false }
         if selectedTabFilterState.hasAppliedFilters
             || tab.hasUserActiveSort

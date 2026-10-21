@@ -1,4 +1,5 @@
 import Foundation
+import OracleNIO
 @testable import TableProOracleCore
 import Testing
 
@@ -94,6 +95,49 @@ struct OracleTLSMapperTests {
         #expect(OracleTLSMapper.certificateVerification(for: .verifyCA) == .noHostnameVerification)
         #expect(OracleTLSMapper.certificateVerification(for: .required) == .none)
         #expect(OracleTLSMapper.certificateVerification(for: .disabled) == .none)
+    }
+
+    @Test func testTunneledServerNameReachesTheDriverConfiguration() throws {
+        let options = OracleConnectionOptions(
+            host: "127.0.0.1",
+            port: 49_152,
+            user: "scott",
+            password: "tiger",
+            tls: OracleTLSDescription(mode: .verifyIdentity, serverName: "db.example.com")
+        )
+        let configuration = try OracleCoreConnection.configuration(for: options)
+        #expect(configuration.options.tlsServerName == "db.example.com")
+        #expect(configuration.serverNameForTLS == "db.example.com")
+        #expect(configuration.host == "127.0.0.1")
+    }
+
+    @Test func testNoServerNameLeavesTheDriverToNameTheDialedHost() throws {
+        let tunneled = try OracleCoreConnection.configuration(for: OracleConnectionOptions(
+            host: "127.0.0.1",
+            user: "scott",
+            password: "tiger",
+            tls: OracleTLSDescription(mode: .verifyIdentity)
+        ))
+        #expect(tunneled.options.tlsServerName == nil)
+        #expect(tunneled.serverNameForTLS == nil)
+
+        let direct = try OracleCoreConnection.configuration(for: OracleConnectionOptions(
+            host: "db.example.com",
+            user: "scott",
+            password: "tiger",
+            tls: OracleTLSDescription(mode: .verifyIdentity)
+        ))
+        #expect(direct.options.tlsServerName == nil)
+        #expect(direct.serverNameForTLS == "db.example.com")
+    }
+
+    @Test func testAnAddressIsNeverSentAsTheServerName() {
+        for address in ["10.0.0.5", "::1", "fe80::1"] {
+            let description = OracleTLSDescription(mode: .verifyIdentity, serverName: address)
+            #expect(OracleTLSMapper.serverName(for: description) == nil, "\(address)")
+        }
+        #expect(OracleTLSMapper.serverName(for: OracleTLSDescription(mode: .required, serverName: "  ")) == nil)
+        #expect(OracleTLSMapper.serverName(for: OracleTLSDescription(mode: .required, serverName: "db.example.com")) == "db.example.com")
     }
 
     private func assertCertificateUnavailable(

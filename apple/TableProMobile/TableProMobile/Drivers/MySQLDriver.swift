@@ -19,6 +19,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     let ssl: DriverSSLConfiguration
     let databaseType: DatabaseType
     private let connectionEncoding: MySQLConnectionEncoding
+    let signsInWithToken: Bool
 
     var supportsSchemas: Bool { false }
     var currentSchema: String? { nil }
@@ -39,7 +40,8 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         database: String,
         ssl: DriverSSLConfiguration = .disabled,
         databaseType: DatabaseType = .mysql,
-        connectionEncoding: MySQLConnectionEncoding = .utf8
+        connectionEncoding: MySQLConnectionEncoding = .utf8,
+        signsInWithToken: Bool = false
     ) {
         self.host = host
         self.port = port
@@ -49,6 +51,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         self.ssl = ssl
         self.databaseType = databaseType
         self.connectionEncoding = connectionEncoding
+        self.signsInWithToken = signsInWithToken
     }
 
     // MARK: - Connection
@@ -71,9 +74,13 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         }
     }
 
-    static func tableListStatement(for databaseType: DatabaseType, banner: String?) -> String {
+    // A database names another one's tables, as `otherdb.` in the editor does; nil reads the session's.
+    static func tableListStatement(for databaseType: DatabaseType, banner: String?, database: String? = nil) -> String {
         let flavor = serverFlavor(for: databaseType, banner: banner)
-        return MySQLServerVersion.hasInformationSchema(banner: banner, flavor: flavor) ? "SHOW FULL TABLES" : "SHOW TABLES"
+        let full = MySQLServerVersion.hasInformationSchema(banner: banner, flavor: flavor)
+        let statement = full ? "SHOW FULL TABLES" : "SHOW TABLES"
+        guard let database, !database.isEmpty else { return statement }
+        return "\(statement) FROM \(quotedIdentifier(database))"
     }
 
     static func readsForeignKeyCatalog(for databaseType: DatabaseType, banner: String?) -> Bool {
@@ -92,7 +99,8 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(
             host: host, port: port, user: user, password: password, database: database,
-            ssl: ssl, encoding: connectionEncoding, databaseType: databaseType
+            ssl: ssl, encoding: connectionEncoding, databaseType: databaseType,
+            signsInWithToken: signsInWithToken
         )
         serverVersion = await actor.serverVersion()
         for statement in Self.sessionSetupStatements(for: databaseType) {
@@ -195,7 +203,9 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        let raw = try await actor.execute(Self.tableListStatement(for: databaseType, banner: serverVersion))
+        let raw = try await actor.execute(
+            Self.tableListStatement(for: databaseType, banner: serverVersion, database: schema)
+        )
         return MySQLTableListing.tables(fromShowTables: raw.rows, databaseType: databaseType)
     }
 
@@ -314,13 +324,103 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func sessionTransactionState() async -> DriverTransactionState {
-        await actor.transactionState()
+        guard Self.reportsSessionStatusFlags(for: databaseType, banner: serverVersion) else { return .unknown }
+        return await actor.transactionState()
+    }
+
+    static func reportsSessionStatusFlags(for databaseType: DatabaseType, banner: String?) -> Bool {
+        serverFlavor(for: databaseType, banner: banner).reportsSessionStatusFlags
     }
 
     /// Databend reports no `NO_BACKSLASH_ESCAPES` flag, so its session says nothing.
     func sessionLexicalFacts() async -> SQLSessionLexicalFacts? {
         guard !Self.serverFlavor(for: databaseType, banner: serverVersion).isDatabend else { return nil }
         return await actor.lexicalFacts()
+    }
+}
+
+nonisolated enum MySQLTokenSignIn {
+    // A token session refuses a server without TLS before the token is sent; this names that refusal.
+    static func connectFailure(
+        signsInWithToken: Bool,
+        errorCode: UInt32,
+        serverCapabilities: UInt
+    ) -> IAMSignInError? {
+        guard signsInWithToken,
+              errorCode == UInt32(CR_SSL_CONNECTION_ERROR),
+              serverCapabilities & UInt(CLIENT_SSL) == 0 else { return nil }
+        return .encryptionNotEstablished
+    }
+}
+
+// The SSL mode as Connector/C options. MYSQL_OPT_SSL_ENFORCE alone falls back to plaintext when the
+// server offers no TLS (mariadb_lib.c:3643, my_auth.c:319-338), so only Preferred is left with that.
+nonisolated enum MySQLTLSPolicy: Equatable, Sendable {
+    case disabled
+    case preferred
+    case required
+    case verifyChain
+    case verifyIdentity
+
+    init(_ ssl: DriverSSLConfiguration, signsInWithToken: Bool = false) {
+        // A token is never sent in plaintext.
+        switch ssl.mode {
+        case .disable:
+            self = signsInWithToken ? .required : .disabled
+        case .require:
+            self = ssl.isPreferred && !signsInWithToken ? .preferred : .required
+        case .verifyCa:
+            self = .verifyChain
+        case .verifyFull:
+            self = .verifyIdentity
+        }
+    }
+
+    func apply(to handle: UnsafeMutablePointer<MYSQL>, ssl: DriverSSLConfiguration, serverName: MySQLTLSServerName?) {
+        switch self {
+        case .disabled, .preferred:
+            var enforce: my_bool = self == .preferred ? 1 : 0
+            var verify: my_bool = 0
+            mysql_options(handle, MYSQL_OPT_SSL_ENFORCE, &enforce)
+            mysql_options(handle, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &verify)
+        case .required:
+            tablepro_mysql_require_tls_without_verification(handle)
+        case .verifyChain:
+            tablepro_mysql_require_trusted_chain(handle)
+        case .verifyIdentity:
+            tablepro_mysql_require_server_identity(handle)
+        }
+        // Connector/C turns TLS on for any CA, certificate or key it is given (my_auth.c:396-407).
+        guard self != .disabled else { return }
+        if let serverName {
+            tablepro_mysql_set_tunneled_server_name(handle, serverName.pointer)
+        }
+        if let caPath = ssl.existingCACertificatePath {
+            _ = caPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CA, $0) }
+        }
+        if let clientCertPath = ssl.existingClientCertificatePath {
+            _ = clientCertPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CERT, $0) }
+        }
+        if let clientKeyPath = ssl.existingClientKeyPath {
+            _ = clientKeyPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_KEY, $0) }
+        }
+    }
+}
+
+// The name a tunneled connection's certificate must carry, as a C string the TLS callback reads
+// during the handshake.
+nonisolated final class MySQLTLSServerName: @unchecked Sendable {
+    let pointer: UnsafeMutablePointer<CChar>
+
+    init?(policy: MySQLTLSPolicy, ssl: DriverSSLConfiguration) {
+        guard policy == .verifyChain || policy == .verifyIdentity,
+              let name = ssl.serverName, !name.isEmpty,
+              let copy = strdup(name) else { return nil }
+        pointer = copy
+    }
+
+    deinit {
+        free(pointer)
     }
 }
 
@@ -426,20 +526,100 @@ nonisolated enum MySQLSessionTransaction {
 private actor MySQLActor {
     private var mysql: UnsafeMutablePointer<MYSQL>?
 
-    private static let connectDeadline: DispatchTimeInterval = .seconds(15)
+    private static let connectSeconds = 15
 
     private var encoding: MySQLConnectionEncoding = .utf8
     private var errorLanguage: String.Encoding?
     private var showTextIsBinary = false
+    private var tlsServerName: MySQLTLSServerName?
+
+    private struct AttemptFailure: Error {
+        let code: UInt32
+        let message: String
+        let serverCapabilities: UInt
+    }
 
     func connect(
         host: String, port: Int, user: String, password: String, database: String,
-        ssl: DriverSSLConfiguration, encoding: MySQLConnectionEncoding, databaseType: DatabaseType
+        ssl: DriverSSLConfiguration, encoding: MySQLConnectionEncoding, databaseType: DatabaseType,
+        signsInWithToken: Bool
     ) async throws {
         self.encoding = encoding
         errorLanguage = nil
         showTextIsBinary = false
         close()
+
+        guard let portU32 = UInt32(exactly: port), (1...65_535).contains(port) else {
+            throw MySQLError.connectionFailed(
+                "Port \(port) is out of range. Use a value between 1 and 65535."
+            )
+        }
+
+        let policy = MySQLTLSPolicy(ssl, signsInWithToken: signsInWithToken)
+        let serverName = MySQLTLSServerName(policy: policy, ssl: ssl)
+        let deadline = DispatchTime.now() + .seconds(Self.connectSeconds)
+        let endpoint = Endpoint(
+            host: host, port: portU32, user: user, password: password, database: database,
+            signsInWithToken: signsInWithToken
+        )
+        // Connector/C 3.4.4 takes a requested TLS for an established one and answers caching_sha2_password's full
+        // authentication with the typed password, so Preferred asks for TLS outright and falls back without it.
+        let firstPolicy: MySQLTLSPolicy = policy == .preferred ? .required : policy
+        let handle: UnsafeMutablePointer<MYSQL>
+        do {
+            do {
+                handle = try await open(endpoint, ssl: ssl, policy: firstPolicy, serverName: serverName, deadline: deadline)
+            } catch let failure as AttemptFailure
+                where policy == .preferred && MariaDBSSLClassifier.sslOnlyErrorCodes.contains(failure.code) {
+                // Preferred retries in plaintext after a failed handshake, as the Mac does.
+                handle = try await open(endpoint, ssl: ssl, policy: .disabled, serverName: nil, deadline: deadline)
+            }
+        } catch let failure as AttemptFailure where MySQLPlaintextPassword.isRefusal(code: failure.code) {
+            throw MySQLError.connectionFailed(MySQLPlaintextPassword.refusalMessage)
+        } catch let failure as AttemptFailure {
+            if let tokenFailure = MySQLTokenSignIn.connectFailure(
+                signsInWithToken: signsInWithToken,
+                errorCode: failure.code,
+                serverCapabilities: failure.serverCapabilities
+            ) {
+                throw tokenFailure
+            }
+            throw MariaDBSSLClassifier.classifySSLError(code: failure.code, message: failure.message)
+                ?? MySQLError.connectionFailed(failure.message)
+        }
+
+        guard MariaDBCharacterSet.establishSession(on: handle, encoding: encoding) else {
+            let msg = message(from: handle)
+            mysql_close(handle)
+            throw MySQLError.connectionFailed(msg)
+        }
+
+        let banner = mysql_get_server_info(handle).map { String(cString: $0) }
+        showTextIsBinary = MySQLDriver.labelsShowTextAsBinary(for: databaseType, banner: banner)
+        errorLanguage = MariaDBCharacterSet.errorLanguage(on: handle)
+        tlsServerName = serverName
+        self.mysql = handle
+    }
+
+    private struct Endpoint: Sendable {
+        let host: String
+        let port: UInt32
+        let user: String
+        let password: String
+        let database: String
+        let signsInWithToken: Bool
+    }
+
+    private func open(
+        _ endpoint: Endpoint,
+        ssl: DriverSSLConfiguration,
+        policy: MySQLTLSPolicy,
+        serverName: MySQLTLSServerName?,
+        deadline: DispatchTime
+    ) async throws -> UnsafeMutablePointer<MYSQL> {
+        let now = DispatchTime.now()
+        guard deadline > now else { throw Self.timedOut() }
+        let remaining = DispatchTimeInterval.nanoseconds(Int(deadline.uptimeNanoseconds - now.uptimeNanoseconds))
 
         guard let handle = mysql_init(nil) else {
             throw MySQLError.connectionFailed("Failed to initialize MySQL client")
@@ -460,60 +640,49 @@ private actor MySQLActor {
         var allowLocalInfile: UInt32 = 0
         mysql_options(handle, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
 
-        var sslEnforce: my_bool = ssl.isEnabled ? 1 : 0
-        mysql_options(handle, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
-        var sslVerify: my_bool = ssl.verifiesCertificate ? 1 : 0
-        mysql_options(handle, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
-        if let caPath = ssl.existingCACertificatePath {
-            _ = caPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CA, $0) }
+        policy.apply(to: handle, ssl: ssl, serverName: serverName)
+        if policy == .disabled || policy == .preferred {
+            _ = MySQLPlaintextPassword.methodsWithoutTLS.withCString {
+                mysql_options(handle, MARIADB_OPT_RESTRICTED_AUTH, $0)
+            }
         }
-        if let clientCertPath = ssl.existingClientCertificatePath {
-            _ = clientCertPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CERT, $0) }
-        }
-        if let clientKeyPath = ssl.existingClientKeyPath {
-            _ = clientKeyPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_KEY, $0) }
+        if endpoint.signsInWithToken {
+            // A no-op in Connector/C 3.4, which answers a cleartext request anyway; set to match the Mac.
+            var enableCleartext: my_bool = 1
+            mysql_options(handle, MYSQL_ENABLE_CLEARTEXT_PLUGIN, &enableCleartext)
         }
 
-        guard let portU32 = UInt32(exactly: port), (1...65_535).contains(port) else {
-            mysql_close(handle)
-            throw MySQLError.connectionFailed(
-                "Port \(port) is out of range. Use a value between 1 and 65535."
-            )
-        }
         // A late call closes the handle it was still using, rather than the caller closing it.
         nonisolated(unsafe) let unsafeHandle = handle
         let connected = try await runCancellableBlocking(
             on: DispatchQueue(label: "com.TablePro.mysql.connect.\(UUID().uuidString)"),
-            deadline: Self.connectDeadline,
-            timeoutError: {
-                MySQLError.connectionFailed(
-                    String(localized: "Timed out connecting to the MySQL server.")
-                )
-            },
+            deadline: remaining,
+            timeoutError: { Self.timedOut() },
             work: {
-                mysql_real_connect(
-                    unsafeHandle, host, user, password, database, portU32, nil, 0
-                ) != nil
+                withExtendedLifetime(serverName) {
+                    mysql_real_connect(
+                        unsafeHandle, endpoint.host, endpoint.user, endpoint.password, endpoint.database,
+                        endpoint.port, nil, 0
+                    ) != nil
+                }
             },
             discardLateResult: { _ in mysql_close(unsafeHandle) }
         )
 
         guard connected else {
-            let msg = message(from: handle)
+            let failure = AttemptFailure(
+                code: mysql_errno(handle),
+                message: message(from: handle),
+                serverCapabilities: handle.pointee.server_capabilities
+            )
             mysql_close(handle)
-            throw MySQLError.connectionFailed(msg)
+            throw failure
         }
+        return handle
+    }
 
-        guard MariaDBCharacterSet.establishSession(on: handle, encoding: encoding) else {
-            let msg = message(from: handle)
-            mysql_close(handle)
-            throw MySQLError.connectionFailed(msg)
-        }
-
-        let banner = mysql_get_server_info(handle).map { String(cString: $0) }
-        showTextIsBinary = MySQLDriver.labelsShowTextAsBinary(for: databaseType, banner: banner)
-        errorLanguage = MariaDBCharacterSet.errorLanguage(on: handle)
-        self.mysql = handle
+    private static func timedOut() -> MySQLError {
+        MySQLError.connectionFailed(String(localized: "Timed out connecting to the MySQL server."))
     }
 
     private func binaryStringsAreText(in query: String) -> Bool {
@@ -531,6 +700,7 @@ private actor MySQLActor {
         }
         mysql_close(mysql)
         self.mysql = nil
+        tlsServerName = nil
     }
 
     func ping() throws -> Bool {
@@ -598,8 +768,10 @@ private actor MySQLActor {
         )
     }
 
+    // As beginStream does: the server takes no command while a streamed result is unread ("Commands out of sync").
     func execute(_ query: String) throws -> RawMySQLResult {
         guard let mysql else { throw MySQLError.notConnected }
+        endLeftoverStream(of: mysql)
 
         let start = Date()
 

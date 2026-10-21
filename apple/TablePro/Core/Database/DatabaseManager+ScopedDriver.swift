@@ -36,7 +36,7 @@ extension DatabaseManager {
         guard let session = activeSessions[scope.connectionId] else {
             return .unavailable(String(localized: "Not connected to database"))
         }
-        guard !scope.isServerScoped else { return .sessionDriver }
+        guard !scope.isServerScoped, !scope.isSessionBound else { return .sessionDriver }
         return canPool(session) ? .pooled : .sessionDriver
     }
 
@@ -75,7 +75,7 @@ extension DatabaseManager {
             || sessionLanes.hasTransactionLoss(database: scope.database, for: scope.connectionId) {
             return .sessionDriver
         }
-        guard canPool(session) else {
+        guard canPool(session), !scope.isSessionBound else {
             return .unavailable(
                 String(
                     format: String(
@@ -384,16 +384,54 @@ extension DatabaseManager {
                 else {
                     throw DatabaseError.notConnected
                 }
-                guard let lane else { return try await turn(driver) }
+                guard let lane else {
+                    // A driver replaced while it held a transaction, which a Vault lease rotation can do.
+                    if let browsed = activeSessions[connectionId]?.resolvedBrowseDatabase,
+                       sessionLanes.takeTransactionLoss(database: browsed, for: connectionId) {
+                        throw DatabaseError.connectionFailed(Self.parkedTransactionLostMessage(database: browsed))
+                    }
+                    return try await recordingTransaction(on: driver, for: .init(connectionId: connectionId, lane: nil)) {
+                        try await turn(driver)
+                    }
+                }
                 let laneDriver = sessionLanes.isParked(driver, for: connectionId)
                     ? try await verifiedParkedDriver(driver, database: lane, for: connectionId)
                     : driver
                 if sessionLanes.takeTransactionLoss(database: lane, for: connectionId) {
                     throw DatabaseError.connectionFailed(Self.parkedTransactionLostMessage(database: lane))
                 }
-                return try await turn(laneDriver)
+                return try await recordingTransaction(on: laneDriver, for: .init(connectionId: connectionId, lane: lane)) {
+                    try await turn(laneDriver)
+                }
             }
         }
+    }
+
+    /// Read inside the turn, after the work and whether or not it threw, so nothing else runs on the
+    /// connection between the statement and the answer: a failed statement can leave the transaction
+    /// aborted, and a refused COMMIT can still have ended it.
+    private func recordingTransaction<R>(
+        on driver: DatabaseDriver,
+        for key: SessionTransactionTracker.Key,
+        _ work: () async throws -> R
+    ) async throws -> R {
+        guard driver.supportsTransactions else { return try await work() }
+        let outcome: Result<R, any Error>
+        do {
+            outcome = .success(try await work())
+        } catch {
+            outcome = .failure(error)
+        }
+        let state = await Self.boundedTransactionState(of: driver, clock: ContinuousClock())
+        sessionTransactions.record(state, on: driver, for: key)
+        return try outcome.get()
+    }
+
+    /// Whether `driver` is still the connection the key's lane runs on, browsed or parked.
+    internal func isLiveSessionDriver(_ driver: DatabaseDriver, for key: SessionTransactionTracker.Key) -> Bool {
+        guard let session = activeSessions[key.connectionId] else { return false }
+        guard let lane = key.lane else { return session.driver === driver }
+        return sessionDriver(for: key.connectionId, laneDatabase: lane) === driver
     }
 
     /// The turn that guards the browsed connection: per database for a connection that keeps one
@@ -410,6 +448,11 @@ extension DatabaseManager {
     private func laneDatabase(for scope: DatabaseScope, in session: ConnectionSession) -> String? {
         guard usesDatabaseLanes(session) else { return nil }
         return scope.isServerScoped ? session.resolvedBrowseDatabase : scope.database
+    }
+
+    internal func sessionDriver(holding scope: DatabaseScope) -> DatabaseDriver? {
+        guard let session = activeSessions[scope.connectionId] else { return nil }
+        return sessionDriver(for: scope.connectionId, laneDatabase: laneDatabase(for: scope, in: session))
     }
 
     /// The driver holding `laneDatabase` right now: the browsed one, or the one parked for it.

@@ -1,5 +1,6 @@
 import Foundation
 @_exported import TableProCoreTypes
+import TableProSSHTransport
 
 public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     public static let connectTimeoutSecondsKey = "connectTimeoutSeconds"
@@ -46,6 +47,12 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
 
     public var sshEnabled: Bool
     public var sshConfiguration: SSHConfiguration?
+    // The Mac's SSH profile this tunnel follows. The Mac owns its settings; its secrets sync by profile id.
+    public var sshProfileId: UUID?
+    // Set when this device unlinks the profile, until a pull shows the record without it. Never synced.
+    public var clearsSSHProfileLink = false
+    // What a Mac dialed after reading its ~/.ssh/config. Only the Mac writes it.
+    public var sshRoute: PublishedSSHRoute?
 
     public var sslEnabled: Bool
     public var sslConfiguration: SSLConfiguration?
@@ -118,7 +125,7 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, name, type, host, port, username, database, color, colorTag, iconName
         case isReadOnly, safeModeLevel, queryTimeoutSeconds, additionalFields
-        case sshEnabled, sshConfiguration, sslEnabled, sslConfiguration
+        case sshEnabled, sshConfiguration, sshProfileId, clearsSSHProfileLink, sshRoute, sslEnabled, sslConfiguration
         case groupId, tagId, tagIds, sortOrder, isFavorite, isSample
     }
 }
@@ -152,6 +159,9 @@ extension DatabaseConnection: Codable {
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields) ?? [:]
         sshEnabled = try container.decodeIfPresent(Bool.self, forKey: .sshEnabled) ?? false
         sshConfiguration = try container.decodeIfPresent(SSHConfiguration.self, forKey: .sshConfiguration)
+        sshProfileId = try? container.decodeIfPresent(UUID.self, forKey: .sshProfileId)
+        clearsSSHProfileLink = (try? container.decodeIfPresent(Bool.self, forKey: .clearsSSHProfileLink)) ?? false
+        sshRoute = try? container.decodeIfPresent(PublishedSSHRoute.self, forKey: .sshRoute)
         sslEnabled = try container.decodeIfPresent(Bool.self, forKey: .sslEnabled) ?? false
         sslConfiguration = try container.decodeIfPresent(SSLConfiguration.self, forKey: .sslConfiguration)
         groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
@@ -164,6 +174,7 @@ extension DatabaseConnection: Codable {
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
+        adoptConfigurationSwitches()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -183,6 +194,11 @@ extension DatabaseConnection: Codable {
         try container.encode(additionalFields, forKey: .additionalFields)
         try container.encode(sshEnabled, forKey: .sshEnabled)
         try container.encodeIfPresent(sshConfiguration, forKey: .sshConfiguration)
+        try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
+        if clearsSSHProfileLink {
+            try container.encode(clearsSSHProfileLink, forKey: .clearsSSHProfileLink)
+        }
+        try container.encodeIfPresent(sshRoute, forKey: .sshRoute)
         try container.encode(sslEnabled, forKey: .sslEnabled)
         try container.encodeIfPresent(sslConfiguration, forKey: .sslConfiguration)
         try container.encodeIfPresent(groupId, forKey: .groupId)
@@ -193,6 +209,19 @@ extension DatabaseConnection: Codable {
         try container.encode(isFavorite, forKey: .isFavorite)
         if isSample {
             try container.encode(isSample, forKey: .isSample)
+        }
+    }
+}
+
+public extension DatabaseConnection {
+    // The Mac keeps both switches inside the configurations and never writes these two fields, so a configuration that
+    // carries a switch decides. A copy stored before this read them the other way and heals on load.
+    mutating func adoptConfigurationSwitches() {
+        if let enabled = sshConfiguration?.macEnabled {
+            sshEnabled = enabled
+        }
+        if let ssl = sslConfiguration {
+            sslEnabled = ssl.mode != .disable
         }
     }
 }

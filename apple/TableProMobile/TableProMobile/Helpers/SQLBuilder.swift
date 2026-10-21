@@ -56,22 +56,69 @@ nonisolated enum SQLBuilder {
         table: String,
         schema: String?,
         key: [(column: String, value: String)],
+        columns: [ColumnInfo],
         type: DatabaseType,
         driver: any DatabaseDriver
     ) -> String {
         let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
-        let predicate = key.isEmpty ? "1 = 0" : keyPredicate(key, type: type, driver: driver)
+        let predicate = key.isEmpty ? "1 = 0" : keyPredicate(key, columns: columns, type: type, driver: driver)
         let pagination = paginationClause(orderBy: "", limit: 1, offset: 0, for: type)
         return "SELECT * FROM \(quotedTable) WHERE \(predicate) \(pagination)"
     }
 
-    // Through the driver's escaper: on MySQL a backslash escapes the next quote, so a hand-doubled `a\' OR 1=1 -- ` gets out.
-    private static func keyPredicate(
-        _ key: [(column: String, value: String)], type: DatabaseType, driver: any DatabaseDriver
+    // The literal rule the table browser's filter uses, so a row the lookup finds is the row Open Table lists.
+    // Text goes through the driver's escaper: on MySQL a backslash escapes the next quote, so a hand-doubled
+    // `a\' OR 1=1 -- ` gets out. With `uniqueIn`, a key that matches either way SQLite stores it also has to
+    // name a single row of that table, checked inside the statement so a row stored meanwhile cannot join it.
+    static func keyPredicate(
+        _ key: [(column: String, value: String)],
+        columns: [ColumnInfo],
+        type: DatabaseType,
+        driver: any DatabaseDriver,
+        uniqueIn quotedTable: String? = nil
     ) -> String {
-        key.map {
-            "\(quoteIdentifier($0.column, for: type)) = '\(driver.escapeStringLiteral($0.value))'"
+        let predicate = key.map { pair in
+            let column = quoteIdentifier(pair.column, for: type)
+            let info = FilterColumnKind.column(named: pair.column, in: columns)
+            switch FilterColumnKind.keyLiteral(pair.value, column: info, databaseType: type) {
+            case .number(let value):
+                return "\(column) = \(value)"
+            case .text(let value):
+                return "\(column) = '\(driver.escapeStringLiteral(value))'"
+            case .numberOrText(let value):
+                // CAST is the text the grid read, so a REAL another spelling of the same number parses to stays out.
+                return "\(column) IN (\(value), '\(value)') AND CAST(\(column) AS TEXT) = '\(value)'"
+            }
         }.joined(separator: " AND ")
+        guard let quotedTable, keyMatchesEitherWay(key, columns: columns, type: type) else { return predicate }
+        return "\(predicate) AND (SELECT COUNT(*) FROM \(quotedTable) WHERE \(predicate)) = 1"
+    }
+
+    // The one case where a key can name two rows: integer 5 and text '5' in a SQLite column with no type.
+    static func keyMatchesEitherWay(_ key: [(column: String, value: String)], columns: [ColumnInfo], type: DatabaseType) -> Bool {
+        key.contains { pair in
+            let info = FilterColumnKind.column(named: pair.column, in: columns)
+            guard case .numberOrText = FilterColumnKind.keyLiteral(pair.value, column: info, databaseType: type) else {
+                return false
+            }
+            return true
+        }
+    }
+
+    static func filterGenerator(dialect: SQLDialectDescriptor, type: DatabaseType) -> FilterSQLGenerator {
+        FilterSQLGenerator(dialect: dialect, databaseType: type, quoteIdentifier: { quoteIdentifier($0, for: type) })
+    }
+
+    static func buildKeyMatchCount(
+        table: String,
+        schema: String?,
+        key: [(column: String, value: String)],
+        columns: [ColumnInfo],
+        type: DatabaseType,
+        driver: any DatabaseDriver
+    ) -> String {
+        let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
+        return "SELECT COUNT(*) FROM \(quotedTable) WHERE \(keyPredicate(key, columns: columns, type: type, driver: driver))"
     }
 
     static func buildDelete(
@@ -79,10 +126,11 @@ nonisolated enum SQLBuilder {
         schema: String?,
         type: DatabaseType,
         driver: any DatabaseDriver,
-        primaryKeys: [(column: String, value: String)]
+        primaryKeys: [(column: String, value: String)],
+        columns: [ColumnInfo]
     ) -> String {
         let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
-        let predicate = keyPredicate(primaryKeys, type: type, driver: driver)
+        let predicate = keyPredicate(primaryKeys, columns: columns, type: type, driver: driver, uniqueIn: quotedTable)
         return "DELETE FROM \(quotedTable) WHERE \(predicate)"
     }
 
@@ -92,7 +140,8 @@ nonisolated enum SQLBuilder {
         type: DatabaseType,
         driver: any DatabaseDriver,
         changes: [(column: String, value: String?)],
-        primaryKeys: [(column: String, value: String)]
+        primaryKeys: [(column: String, value: String)],
+        columns: [ColumnInfo]
     ) -> String {
         let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
         let assignments = changes.map { col, val in
@@ -100,7 +149,7 @@ nonisolated enum SQLBuilder {
             if let val { return "\(qcol) = '\(driver.escapeStringLiteral(val))'" }
             return "\(qcol) = NULL"
         }.joined(separator: ", ")
-        let predicate = keyPredicate(primaryKeys, type: type, driver: driver)
+        let predicate = keyPredicate(primaryKeys, columns: columns, type: type, driver: driver, uniqueIn: quotedTable)
         return "UPDATE \(quotedTable) SET \(assignments) WHERE \(predicate)"
     }
 
@@ -165,7 +214,7 @@ nonisolated enum SQLBuilder {
         limit: Int, offset: Int
     ) -> String {
         let dialect = dialectDescriptor(for: type)
-        let generator = FilterSQLGenerator(dialect: dialect)
+        let generator = filterGenerator(dialect: dialect, type: type)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let pagination = paginationClause(orderBy: "", limit: limit, offset: offset, for: type)
@@ -183,7 +232,7 @@ nonisolated enum SQLBuilder {
         limit: Int, offset: Int
     ) -> String {
         let dialect = dialectDescriptor(for: type)
-        let generator = FilterSQLGenerator(dialect: dialect)
+        let generator = filterGenerator(dialect: dialect, type: type)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         let orderBy = buildOrderByClause(sortState, for: type)
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
@@ -200,7 +249,7 @@ nonisolated enum SQLBuilder {
         columns: [ColumnInfo] = []
     ) -> String {
         let dialect = dialectDescriptor(for: type)
-        let generator = FilterSQLGenerator(dialect: dialect)
+        let generator = filterGenerator(dialect: dialect, type: type)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         if whereClause.isEmpty {
@@ -274,7 +323,7 @@ nonisolated enum SQLBuilder {
         filters: [TableFilter], logicMode: FilterLogicMode, columns: [ColumnInfo], type: DatabaseType
     ) -> String? {
         let dialect = dialectDescriptor(for: type)
-        let generator = FilterSQLGenerator(dialect: dialect)
+        let generator = filterGenerator(dialect: dialect, type: type)
         let clause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         guard !clause.isEmpty else { return nil }
         let wherePrefix = "WHERE "
@@ -379,7 +428,8 @@ nonisolated enum SQLBuilder {
                 functions: [],
                 dataTypes: [],
                 likeEscapeStyle: .explicit,
-                caseSensitivityStyle: .ilikeOperator
+                caseSensitivityStyle: .ilikeOperator,
+                textCastTypeName: "TEXT"
             )
         case .redshift:
             return SQLDialectDescriptor(
@@ -388,7 +438,8 @@ nonisolated enum SQLBuilder {
                 functions: [],
                 dataTypes: [],
                 likeEscapeStyle: .explicit,
-                caseSensitivityStyle: .caseFoldFunction
+                caseSensitivityStyle: .caseFoldFunction,
+                textCastTypeName: "TEXT"
             )
         case .mssql:
             return SQLDialectDescriptor(
@@ -427,7 +478,8 @@ nonisolated enum SQLBuilder {
                 booleanLiteralStyle: .truefalse,
                 likeEscapeStyle: .explicit,
                 paginationStyle: .limit,
-                caseSensitivityStyle: .ilikeOperator
+                caseSensitivityStyle: .ilikeOperator,
+                textCastTypeName: "VARCHAR"
             )
         default:
             return SQLDialectDescriptor(

@@ -55,6 +55,12 @@ TableProPluginKit is built with Library Evolution, so an already-built plugin ke
 - The `TablePro` scheme builds only the bundled plugins, and a registry plugin's compile error still ends in `BUILD SUCCEEDED`. Run `verify.sh plugins` (the `AllPlugins` aggregate) after any change under `apple/Plugins/`.
 - `apple/scripts/ci/verify-plugin-loads.sh <dir>...` dlopens every built `.tableplugin` and names any that will not load. It does not instantiate the principal class.
 
+## Column type corpus
+
+- PostgreSQL, MySQL, MariaDB, ClickHouse, DuckDB, SQL Server, Oracle and SQLite each have a corpus in `apple/Plugins/ColumnTypeCorpus/Corpus/`: a column per type the driver lists, its values and the cell each reads as. A type added to `columnTypesByCategory` needs a column there; Repo Hygiene checks it.
+- After changing how one of those drivers reads, writes or exports a value, run `apple/scripts/probes/check-column-type-corpus.sh <engine>`. SQLite's corpus runs in `SQLiteDriverTests`.
+- A wrong cell is fixed in the driver, never in the corpus. A defect left for later is a `known` entry naming it, which fails the run once it passes.
+
 ## Structure
 
 - PluginKit-free logic a plugin shares with the iOS app lives in a TableProCore product, such as `TableProMySQLCore`, `TableProPostgreSQLCore` or `TableProRedisCore`.

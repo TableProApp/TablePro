@@ -13,6 +13,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// The statements that put deleted rows back, with what has to run around them outside the transaction.
 struct RestoreStatements {
@@ -114,6 +115,7 @@ struct RowChangeStatementFactory {
         try refuseServerOwnedEdits(in: changes)
         try refuseDefaultOnUpdate(in: changes)
         try refuseUnwritableExpressions(in: changes, insertedRowData: insertedRowData)
+        try refuseMisdimensionedVectors(in: changes, insertedRowData: insertedRowData)
         let insertedRowData = insertedRowData.mapValues(leavingServerOwnedColumnsToTheServer)
         let changes = changes.map(droppingServerOwnedExpressions)
         if let driverStatements = try pluginRowWrites(
@@ -208,6 +210,42 @@ struct RowChangeStatementFactory {
         }
     }
 
+    // The server refuses the whole save with `expected 3 dimensions, not 2`; this names the column first.
+    // Text the parser cannot read is left to the server, which owns the grammar.
+    private func refuseMisdimensionedVectors(
+        in changes: [RowChange],
+        insertedRowData: [RowID: [PluginCellValue]]
+    ) throws {
+        let classifier = ColumnTypeClassifier()
+        let expected = columnTypeNames.compactMapValues { classifier.classify(rawTypeName: $0).vectorDimensions }
+        guard !expected.isEmpty else { return }
+        for change in changes where change.type != .delete {
+            let kind: RowWriteKind = change.type == .insert ? .insert : .update
+            var written = change.cellChanges.filter { !$0.newIsExpression }.map { ($0.columnName, $0.newValue) }
+            if change.type == .insert, let stored = insertedRowData[change.rowID] {
+                written = zip(columns, stored).enumerated()
+                    .filter { !change.expressionColumns.contains($0.offset) }
+                    .map { ($0.element.0, $0.element.1) }
+            }
+            for (columnName, value) in written {
+                guard let dimensions = expected[columnName],
+                      case .text(let text) = value,
+                      let vector = VectorLiteral.parse(text),
+                      vector.dimensions != dimensions else { continue }
+                throw DataWriteError.changeRefused(
+                    table: tableName,
+                    kind: kind,
+                    reason: String(
+                        format: String(localized: "%1$@ takes %2$lld dimensions, and the value has %3$lld."),
+                        columnName,
+                        dimensions,
+                        vector.dimensions
+                    )
+                )
+            }
+        }
+    }
+
     private struct MarkedCell {
         let kind: RowWriteKind
         let columnName: String
@@ -273,7 +311,7 @@ struct RowChangeStatementFactory {
         deletedRowIDs: Set<RowID>,
         insertedRowIDs: Set<RowID>
     ) throws -> [AttributedStatement] {
-        let statements = try hostGenerator().generateAttributedStatements(
+        let statements = try hostGenerator(schemaName: savedSchemaName).generateAttributedStatements(
             from: changes,
             insertedRowData: insertedRowData,
             deletedRowIDs: deletedRowIDs,
@@ -316,6 +354,7 @@ struct RowChangeStatementFactory {
                     Set(restorable.indices.filter { absent.contains(restorable[$0]) })
                 }
             ) {
+                try refuseUnfilteredWrites(restored.map { $0.statement })
                 return RestoreStatements(statements: restored.map {
                     ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map(\.asAny))
                 })
@@ -435,6 +474,7 @@ struct RowChangeStatementFactory {
             throw DataWriteError.changeRefused(table: tableName, kind: nil, reason: error.localizedDescription)
         }
 
+        try refuseUnfilteredWrites(writes.map(\.statement))
         let unwritten = RowWriteCoverage.unwrittenChanges(
             changes,
             deletedRowIDs: deletedRowIDs,
@@ -452,6 +492,18 @@ struct RowChangeStatementFactory {
         }
     }
 
+    // The host's own generator never writes one, so only a driver's statements are read.
+    private func refuseUnfilteredWrites(_ statements: [String]) throws {
+        guard PluginManager.shared.editorLanguage(for: databaseType) == .sql else { return }
+        let readings = databaseType.lexicalReadings
+        for sql in statements {
+            for grammar in readings.distinct(for: sql) {
+                guard let write = SQLUnfilteredWrite.writes(in: sql, grammar: grammar).first else { continue }
+                throw DataWriteError.changeRefused(table: tableName, kind: write.kind, reason: write.reason)
+            }
+        }
+    }
+
     /// A keyless match can find nothing and still succeed, so it is held to its row where the engine's count is real.
     /// Only a statement naming one row: the default `generateRowWrites` puts every row on its first statement.
     private func keylessRowCount(of write: PluginRowWrite, keyed: PluginKeyedChanges) -> Int? {
@@ -466,8 +518,15 @@ struct RowChangeStatementFactory {
         }
     }
 
-    /// A save leaves the table unqualified, as it always has. A restore names the schema the record was saved
-    /// against, because the connection may be pointed at another one by the time the rows are asked for back.
+    /// A save leaves the table unqualified, as it always has, except in a database attached beside the
+    /// opened file: no session can be pointed at one, so an unqualified name would reach the main file's
+    /// table of that name.
+    private var savedSchemaName: String? {
+        PluginManager.shared.listsAttachedDatabases(for: databaseType) ? schemaName : nil
+    }
+
+    /// A restore names the schema the record was saved against, because the connection may be pointed
+    /// at another one by the time the rows are asked for back.
     private func hostGenerator(
         schemaName: String? = nil,
         generatedColumns: Set<String>? = nil,
@@ -536,6 +595,24 @@ struct PluginKeyedChanges {
         case .insert: return .insert
         case .update: return .update
         case .delete: return .delete
+        }
+    }
+}
+
+private extension SQLUnfilteredWrite {
+    var kind: RowWriteKind {
+        switch self {
+        case .update: return .update
+        case .delete: return .delete
+        }
+    }
+
+    var reason: String {
+        switch self {
+        case .update:
+            return String(localized: "The driver wrote an UPDATE with no WHERE clause, which would change every row.")
+        case .delete:
+            return String(localized: "The driver wrote a DELETE with no WHERE clause, which would remove every row.")
         }
     }
 }

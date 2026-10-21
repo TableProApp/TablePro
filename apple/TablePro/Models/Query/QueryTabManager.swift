@@ -128,7 +128,8 @@ final class QueryTabManager: ObservableObject {
     func moveTab(id: UUID, to destination: Int) {
         let strip = visibleTabs
         guard let source = strip.firstIndex(where: { $0.id == id }) else { return }
-        let clamped = min(max(destination, 0), strip.count - 1)
+        let group = Self.group(containing: source, in: strip)
+        let clamped = min(max(destination, group.lowerBound), group.upperBound)
         guard clamped != source else { return }
 
         let neighbourId = strip[clamped].id
@@ -145,7 +146,13 @@ final class QueryTabManager: ObservableObject {
     func canMoveTab(id: UUID, by offset: Int) -> Bool {
         let strip = visibleTabs
         guard let index = strip.firstIndex(where: { $0.id == id }) else { return false }
-        return strip.indices.contains(index + offset)
+        return Self.group(containing: index, in: strip).contains(index + offset)
+    }
+
+    // A tab never crosses the boundary between the pinned run and the rest.
+    private static func group(containing index: Int, in strip: [QueryTab]) -> ClosedRange<Int> {
+        let pinnedCount = strip.prefix { $0.isPinned }.count
+        return strip[index].isPinned ? 0 ... pinnedCount - 1 : pinnedCount ... strip.count - 1
     }
 
     func moveTab(id: UUID, by offset: Int) {
@@ -173,18 +180,59 @@ final class QueryTabManager: ObservableObject {
         tabs.first { $0.id == id }?.isPreview ?? false
     }
 
+    func isPinned(id: UUID) -> Bool {
+        tabs.first { $0.id == id }?.isPinned ?? false
+    }
+
+    // A preview is kept first, so a sidebar click never retargets a pinned tab.
+    func setPinned(_ pinned: Bool, id: UUID) {
+        guard tabs.contains(where: { $0.id == id && $0.isPinned != pinned }) else { return }
+        if pinned {
+            promotePreviewTab(id: id)
+        }
+        guard let source = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let before = tabs.map(\.id)
+        var tab = tabs[source]
+        tab.isPinned = pinned
+        var others = tabs
+        others.remove(at: source)
+        // Partitioned first, because an adopted or reopened pin can sit after unpinned tabs.
+        let pins = others.filter { $0.isPinned }
+        let rest = others.filter { !$0.isPinned }
+        tabs = pins + [tab] + rest
+        // The save follows `tabStructureVersion`, which only an id reorder bumps.
+        if tabs.map(\.id) == before {
+            tabStructureVersion += 1
+        }
+    }
+
     func selectTab(at index: Int) {
-        let strip = visibleTabs
-        guard strip.indices.contains(index) else { return }
-        selectedTabId = strip[index].id
+        guard let id = tabId(at: index) else { return }
+        selectedTabId = id
     }
 
     func selectTab(offsetBy offset: Int) {
+        guard let id = tabId(offsetBy: offset) else { return }
+        selectedTabId = id
+    }
+
+    // On screen: the selected tab of the connection the key window shows.
+    func isShowing(_ id: UUID) -> Bool {
+        isFrontmost && selectedTabId == id
+    }
+
+    func tabId(at index: Int) -> UUID? {
         let strip = visibleTabs
-        guard !strip.isEmpty else { return }
+        guard strip.indices.contains(index) else { return nil }
+        return strip[index].id
+    }
+
+    func tabId(offsetBy offset: Int) -> UUID? {
+        let strip = visibleTabs
+        guard !strip.isEmpty else { return nil }
         let current = selectedTab.flatMap { tab in strip.firstIndex { $0.id == tab.id } } ?? 0
         let count = strip.count
-        selectedTabId = strip[((current + offset) % count + count) % count].id
+        return strip[((current + offset) % count + count) % count].id
     }
 
     // MARK: - Recency
@@ -421,13 +469,14 @@ final class QueryTabManager: ObservableObject {
     /// A table can legitimately hold more than one tab now, so plain array order would send a
     /// sidebar click on the table you are already looking at to the other copy of it.
     func tabShowingTable(
-        named tableName: String, databaseName: String, schemaName: String?
+        named tableName: String, databaseName: String, schemaName: String?, isTemporary: Bool = false
     ) -> QueryTab? {
         func matches(_ tab: QueryTab) -> Bool {
             tab.tabType == .table
                 && tab.tableContext.tableName == tableName
                 && tab.tableContext.databaseName == databaseName
                 && tab.tableContext.schemaName == schemaName
+                && tab.tableContext.isTemporary == isTemporary
         }
         if let selected = selectedTab, matches(selected) { return selected }
         return tabs.first(where: matches)
@@ -446,12 +495,13 @@ final class QueryTabManager: ObservableObject {
         schemaName: String? = nil,
         isView: Bool = false,
         objectType: TableInfo.TableType? = nil,
+        isTemporary: Bool = false,
         isPreview: Bool = false,
         allowsDuplicate: Bool = false,
         quoteIdentifier: ((String) -> String)? = nil
     ) throws -> Bool {
         if !allowsDuplicate, let existingTab = tabShowingTable(
-            named: tableName, databaseName: databaseName, schemaName: schemaName
+            named: tableName, databaseName: databaseName, schemaName: schemaName, isTemporary: isTemporary
         ) {
             selectedTabId = existingTab.id
             notifyTableOpened(
@@ -478,6 +528,7 @@ final class QueryTabManager: ObservableObject {
         newTab.pagination = PaginationState(pageSize: pageSize)
         newTab.tableContext.databaseName = databaseName
         newTab.tableContext.objectType = objectType
+        newTab.tableContext.isTemporary = isTemporary
         newTab.tableContext.schemaName = schemaName
         newTab.isPreview = isPreview
         tabs.append(newTab)
@@ -497,10 +548,11 @@ final class QueryTabManager: ObservableObject {
         return schema == defaultSchema ? name : "\(schema).\(name)"
     }
 
-    func addCreateTableTab(databaseName: String = "") {
+    func addCreateTableTab(databaseName: String = "", schemaName: String? = nil) {
         let tabTitle = String(localized: "Create Table")
         var newTab = QueryTab(title: tabTitle, tabType: .createTable)
         newTab.tableContext.databaseName = databaseName
+        newTab.tableContext.schemaName = schemaName
         bindToVisibleContainer(&newTab)
         newTab.tableContext.isEditable = false
         newTab.hasUserInteraction = true
@@ -552,7 +604,9 @@ final class QueryTabManager: ObservableObject {
     /// One tab per object, so opening the same routine twice returns to the tab already showing
     /// it, the way opening the same table does.
     func addObjectSourceTab(objectRef: DatabaseObjectRef) {
-        if let existing = tabs.first(where: { $0.tabType == .objectSource && $0.display.objectRef == objectRef }) {
+        if let existing = tabs.first(where: {
+            $0.tabType == .objectSource && $0.display.objectRef?.namesSameObject(as: objectRef) == true
+        }) {
             selectedTabId = existing.id
             return
         }
@@ -653,6 +707,7 @@ final class QueryTabManager: ObservableObject {
     func replaceTabContent(
         tableName: String, databaseType: DatabaseType = .mysql,
         isView: Bool = false, objectType: TableInfo.TableType? = nil,
+        isTemporary: Bool = false,
         databaseName: String = "",
         schemaName: String? = nil, isPreview: Bool = false,
         quoteIdentifier: ((String) -> String)? = nil
@@ -685,7 +740,8 @@ final class QueryTabManager: ObservableObject {
             schemaName: schemaName,
             isEditable: !isView,
             isView: isView,
-            objectType: objectType
+            objectType: objectType,
+            isTemporary: isTemporary
         )
         /// Fresh for the same reason. A query tab keeps the file it was opened from, and a table
         /// carried that binding, so Save wrote the table's query into the file.
@@ -766,7 +822,9 @@ extension QueryTabManager {
     /// The tabs the strip lists: the visible entry's, plus the ones that name no container.
     var visibleTabs: [QueryTab] {
         if let cached = _visibleTabs { return cached }
-        let visible = tabs.filter(isVisible)
+        let listed = tabs.filter(isVisible)
+        // Derived, so a pinned tab a restore, reopen or move appends still lands in the pinned run.
+        let visible = listed.filter(\.isPinned) + listed.filter { !$0.isPinned }
         _visibleTabs = visible
         return visible
     }

@@ -3,7 +3,9 @@ import SwiftUI
 struct ERDiagramToolbar: View {
     @ObservedObject var viewModel: ERDiagramViewModel
     @ObservedObject var viewport: DiagramViewportController
-    let onExport: () -> Void
+    let onExport: (ERDiagramExportFormat) -> Void
+    let onCopyMermaid: () -> Void
+    var onBuildJoinQuery: (() -> Void)?
 
     var body: some View {
         DiagramZoomToolbar(viewport: viewport) {
@@ -35,12 +37,80 @@ struct ERDiagramToolbar: View {
             .help(String(localized: "Reset Layout"))
             .accessibilityLabel(String(localized: "Reset Layout"))
 
-            Button(action: onExport) {
-                Image(systemName: "square.and.arrow.up")
+            Button {
+                Task { await viewModel.refresh() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
             }
-            .help(String(localized: "Export as PNG"))
-            .accessibilityLabel(String(localized: "Export as PNG"))
+            .disabled(viewModel.isRefreshing)
+            .help(String(localized: "Refresh"))
+            .accessibilityLabel(String(localized: "Refresh"))
+            .accessibilityIdentifier("er-diagram-refresh")
+
+            if let onBuildJoinQuery {
+                Button(action: onBuildJoinQuery) {
+                    Image(systemName: "arrow.triangle.merge")
+                }
+                .help(String(localized: "Build a join query from the selected tables"))
+                .accessibilityLabel(String(localized: "Build Join Query"))
+                .accessibilityIdentifier("er-diagram-build-join")
+            }
+
+            exportMenu
+
+            if viewModel.hasStagedEdits {
+                Divider().frame(height: 16)
+
+                Button {
+                    confirmDiscard()
+                } label: {
+                    Image(systemName: "arrow.uturn.backward.circle")
+                }
+                .help(String(localized: "Discard Changes"))
+                .accessibilityLabel(String(localized: "Discard Changes"))
+                .accessibilityIdentifier("er-diagram-discard")
+            }
         }
         .padding(12)
+    }
+
+    private func confirmDiscard() {
+        let viewModel = viewModel
+        Task { @MainActor in
+            let confirmed = await AlertHelper.confirmDestructive(
+                title: String(localized: "Discard Changes?"),
+                message: String(localized: "The schema changes staged in this diagram will be lost."),
+                confirmButton: String(localized: "Discard"),
+                cancelButton: String(localized: "Cancel"),
+                window: viewModel.coordinator?.contentWindow
+            )
+            if confirmed {
+                viewModel.discardStagedEdits()
+            }
+        }
+    }
+
+    // Only `.contain` names an icon-only menu without hiding its items.
+    private var exportMenu: some View {
+        Menu {
+            ForEach(ERDiagramExportFormat.allCases) { format in
+                Button {
+                    onExport(format)
+                } label: {
+                    Text(verbatim: "\(format.name)\u{2026}")
+                }
+            }
+            Divider()
+            Button(String(localized: "Copy as Mermaid"), action: onCopyMermaid)
+        } label: {
+            Label(String(localized: "Export"), systemImage: "square.and.arrow.up")
+                .labelStyle(.iconOnly)
+        }
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(String(localized: "Export"))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(String(localized: "Export"))
+        .accessibilityIdentifier("er-diagram-export")
     }
 }

@@ -77,25 +77,7 @@ package extension TextSelectionManager {
         }
 
         let index = delta > 0 ? offset : offset - 1
-        guard decomposeCharacters else {
-            return string.rangeOfComposedCharacterSequence(at: index)
-        }
-        return rangeOfUnicodeScalar(in: string, at: index)
-    }
-
-    private func rangeOfUnicodeScalar(in string: NSString, at index: Int) -> NSRange {
-        let unit = string.character(at: index)
-        if UTF16.isLeadSurrogate(unit),
-           index + 1 < string.length,
-           UTF16.isTrailSurrogate(string.character(at: index + 1)) {
-            return NSRange(location: index, length: 2)
-        }
-        if UTF16.isTrailSurrogate(unit),
-           index > 0,
-           UTF16.isLeadSurrogate(string.character(at: index - 1)) {
-            return NSRange(location: index - 1, length: 2)
-        }
-        return NSRange(location: index, length: 1)
+        return string.caretStepRange(at: index, decomposing: decomposeCharacters)
     }
 
     /// Extends the selection by one "word".

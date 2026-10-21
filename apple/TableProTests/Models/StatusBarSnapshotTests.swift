@@ -64,6 +64,24 @@ struct StatusBarSnapshotTests {
         #expect(snapshot.isValueFiltered)
     }
 
+    @Test("The footer shows the active result's own message after a run of several statements")
+    func activeResultMessageReachesTheFooter() {
+        let tab = QueryTab(title: "Query 1", query: "CONSISTENCY ONE; SELECT * FROM t", tabType: .query)
+        let snapshot = StatusBarSnapshot(
+            tab: tab,
+            tableRows: TableRows(),
+            activeResultStatusMessage: "Consistency: ONE"
+        )
+        #expect(snapshot.statusMessage == "Consistency: ONE")
+    }
+
+    @Test("With no result of its own, the footer shows the run's message")
+    func runMessageWithoutAResultMessage() {
+        var tab = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        tab.execution.statusMessage = "Processed: 1 GB"
+        #expect(StatusBarSnapshot(tab: tab, tableRows: TableRows()).statusMessage == "Processed: 1 GB")
+    }
+
     @Test("Display row count defaults to the loaded count")
     func displayCountDefaultsToLoaded() {
         let snapshot = makeSnapshot(rowCount: 42)

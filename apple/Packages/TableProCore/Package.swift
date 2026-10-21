@@ -44,6 +44,8 @@ let package = Package(
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
         .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"]),
         .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"]),
+        .library(name: "TableProSQLVocabulary", targets: ["TableProSQLVocabulary"]),
+        .library(name: "TableProAutocomplete", targets: ["TableProAutocomplete"]),
         .library(name: "TableProSSHTransport", targets: ["TableProSSHTransport"]),
         .library(name: "CSQLite", targets: ["CSQLite"]),
         .library(name: "TableProSQLiteCore", targets: ["TableProSQLiteCore"]),
@@ -97,7 +99,7 @@ let package = Package(
         ),
         .target(
             name: "TableProModels",
-            dependencies: ["TableProPluginKit", "TableProCoreTypes"],
+            dependencies: ["TableProPluginKit", "TableProCoreTypes", "TableProSSHTransport"],
             path: "Sources/TableProModels"
         ),
         .target(
@@ -107,12 +109,14 @@ let package = Package(
         ),
         .target(
             name: "TableProDatabase",
-            dependencies: ["TableProModels", "TableProCoreTypes", "TableProPluginKit", "TableProSQLGrammar"],
+            dependencies: ["TableProModels", "TableProCoreTypes", "TableProPluginKit", "TableProSQLGrammar", "TableProSSHTransport"],
             path: "Sources/TableProDatabase"
         ),
         .target(
             name: "TableProQuery",
-            dependencies: ["TableProModels", "TableProPluginKit", "TableProCoreTypes", "TableProSQLGrammar"],
+            dependencies: [
+                "TableProModels", "TableProPluginKit", "TableProCoreTypes", "TableProSQLGrammar", "TableProRedisCore"
+            ],
             path: "Sources/TableProQuery"
         ),
         .target(
@@ -200,6 +204,20 @@ let package = Package(
             dependencies: [],
             path: "Sources/TableProSQLGrammar"
         ),
+        // Linked by the macOS app, six plugin bundles and the iOS app, so never TableProPluginKit.
+        .target(
+            name: "TableProSQLVocabulary",
+            dependencies: [],
+            path: "Sources/TableProSQLVocabulary",
+            swiftSettings: pluginCoreSettings
+        ),
+        // The macOS app links it, so never TableProPluginKit.
+        .target(
+            name: "TableProAutocomplete",
+            dependencies: ["TableProSQLGrammar", "TableProSQLVocabulary"],
+            path: "Sources/TableProAutocomplete",
+            swiftSettings: pluginCoreSettings
+        ),
         .target(
             name: "TableProSSHTransport",
             dependencies: [],
@@ -255,6 +273,11 @@ let package = Package(
             path: "Tests/TableProSpannerCoreTests"
         ),
         .testTarget(
+            name: "TableProTrinoCoreTests",
+            dependencies: ["TableProTrinoCore"],
+            path: "Tests/TableProTrinoCoreTests"
+        ),
+        .testTarget(
             name: "TableProTabularIOTests",
             dependencies: ["TableProTabularIO", "TableProPluginKit"],
             path: "Tests/TableProTabularIOTests"
@@ -306,7 +329,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProModelsTests",
-            dependencies: ["TableProModels", "TableProPluginKit"],
+            dependencies: ["TableProModels", "TableProPluginKit", "TableProSSHTransport"],
             path: "Tests/TableProModelsTests"
         ),
         .testTarget(
@@ -316,7 +339,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProDatabaseTests",
-            dependencies: ["TableProDatabase", "TableProModels", "TableProPluginKit", "TableProTestSupport"],
+            dependencies: ["TableProDatabase", "TableProModels", "TableProPluginKit", "TableProSSHTransport", "TableProTestSupport"],
             path: "Tests/TableProDatabaseTests"
         ),
         .testTarget(
@@ -328,6 +351,18 @@ let package = Package(
             name: "TableProSQLGrammarTests",
             dependencies: ["TableProSQLGrammar"],
             path: "Tests/TableProSQLGrammarTests"
+        ),
+        .testTarget(
+            name: "TableProSQLVocabularyTests",
+            dependencies: ["TableProSQLVocabulary", "TableProPluginKit"],
+            path: "Tests/TableProSQLVocabularyTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProAutocompleteTests",
+            dependencies: ["TableProAutocomplete", "TableProSQLGrammar"],
+            path: "Tests/TableProAutocompleteTests",
+            swiftSettings: pluginCoreSettings
         ),
         .testTarget(
             name: "TableProAnalyticsTests",
@@ -351,7 +386,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProSyncTests",
-            dependencies: ["TableProSync", "TableProSyncTransport", "TableProModels"],
+            dependencies: ["TableProSync", "TableProSyncTransport", "TableProModels", "TableProSSHTransport"],
             path: "Tests/TableProSyncTests"
         ),
         .testTarget(

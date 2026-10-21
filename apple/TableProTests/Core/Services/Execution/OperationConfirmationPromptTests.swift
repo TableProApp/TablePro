@@ -84,6 +84,7 @@ struct OperationConfirmationPromptTests {
         let subtitles = [
             OperationCaller.mcpClient(label: "Claude"),
             .appleScript(client: "Raycast"),
+            .shortcuts,
             .aiAssistant(sessionId: nil),
             .userInterface
         ].map { caller in

@@ -1,0 +1,12 @@
+#%PAM-1.0
+# sshd sends the password method and keyboard-interactive through this one stack, and answers each
+# hidden prompt of the password method with the password. So the code comes first and a failed code
+# falls through to the password: on passtotp the password step signs in and keyboard-interactive
+# asks for the code. That also lets a wrong code followed by the password in on passtotp, so a
+# wrong-code cell belongs on totp or keytotp. Those start with PASSWORD_ACCESS=false, which keeps
+# /etc/shadow from sshd, so pam_unix always fails there and only the code signs in. pam_unix also
+# reports an unreadable shadow entry as an expired account, hence pam_permit for the account check.
+auth [success=done default=ignore] pam_google_authenticator.so secret=/config/.google_authenticator
+auth required pam_unix.so
+account required pam_permit.so
+session include base-session

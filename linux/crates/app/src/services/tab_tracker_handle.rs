@@ -119,6 +119,10 @@ impl TabTrackerHandle {
         self.0.borrow().pending_state()
     }
 
+    pub(crate) fn preview_save(&self) -> Result<Option<(SaveTarget, TrackedChanges)>, SaveRejection> {
+        self.0.borrow().preview_save()
+    }
+
     pub(crate) fn begin_save(&self) -> Result<Option<SaveBatch>, SaveRejection> {
         self.0.borrow_mut().begin_save()
     }

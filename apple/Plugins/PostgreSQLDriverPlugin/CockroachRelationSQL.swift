@@ -17,6 +17,30 @@ import TableProPluginKit
 /// `schema` is non-optional on purpose: the `?? currentSchema` fallback stays at the call site,
 /// where the driver knows its own session, so no caller can reach these builders without one.
 public enum CockroachRelationSQL {
+    public static func tablesQuery(schema: String) -> String {
+        """
+        SELECT table_name, table_type
+        FROM information_schema.tables
+        WHERE table_schema = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+        ORDER BY table_name
+        """
+    }
+
+    public static func tablesQuery(inSchemas schemas: [String]) -> String {
+        """
+        SELECT table_name, table_type, table_schema
+        FROM information_schema.tables
+        WHERE \(PostgreSQLObjectQueries.membership("table_schema", in: schemas))
+        ORDER BY table_schema, table_name
+        """
+    }
+
+    public static func table(fromRow row: [String?]) -> PluginTableInfo? {
+        guard let name = row[safe: 0] ?? nil else { return nil }
+        let listedType = ((row[safe: 1] ?? nil) ?? "BASE TABLE").uppercased()
+        return PluginTableInfo(name: name, type: listedType.contains("VIEW") ? "VIEW" : "TABLE", schema: row[safe: 2] ?? nil)
+    }
+
     public static func showCreateTable(table: String, schema: String) -> String {
         "SHOW CREATE TABLE \(PostgreSQLObjectQueries.qualifiedName(schema: schema, name: table))"
     }

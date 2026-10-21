@@ -12,12 +12,11 @@ use tablepro_core::{
     ColumnInfo, Connection, FilterSet, ReadStatement, ResultEvent, ResultSink, SinkFlow, UserSql, Value, WriteKind,
 };
 
-use crate::conformance::resident_peak::ResidentPeak;
 use crate::conformance::support::{
     CALL_DEADLINE, apply_within, connect, count, create_scratch_table, expect, no_deadline, unexpected, within,
     writable,
 };
-use crate::conformance::{ConformanceFailure, LargeTableEngine};
+use crate::conformance::{ConformanceFailure, LargeTableEngine, ResidentPeak};
 use crate::lock;
 
 const CASE: &str = "a_million_row_table_pages_to_its_end_and_exports";

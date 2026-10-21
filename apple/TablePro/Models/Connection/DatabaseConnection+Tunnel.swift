@@ -81,14 +81,19 @@ extension DatabaseConnection {
         firstHostListEntry.map { HostListEndpoint.usesHTTPS($0.text) } ?? false
     }
 
+    var hostListEndpoints: [HostListEndpoint] {
+        hostListEntries.map(\.endpoint)
+    }
+
     private var firstHostListEntry: (text: String, endpoint: HostListEndpoint)? {
-        for fieldId in activeHostListFieldIds {
-            for text in (additionalFields[fieldId] ?? "").split(separator: ",").map(String.init) {
-                if let endpoint = HostListEndpoint.parse(text, defaultPort: port) {
-                    return (text, endpoint)
-                }
+        hostListEntries.first
+    }
+
+    private var hostListEntries: [(text: String, endpoint: HostListEndpoint)] {
+        activeHostListFieldIds.flatMap { fieldId in
+            (additionalFields[fieldId] ?? "").split(separator: ",").map(String.init).compactMap { text in
+                HostListEndpoint.parse(text, defaultPort: port).map { (text, $0) }
             }
         }
-        return nil
     }
 }

@@ -20,6 +20,7 @@ nonisolated private extension OracleRawResult {
 nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
     private let core: OracleCoreConnection
     private let host: String
+    let ssl: DriverSSLConfiguration
     private let fallbackSchema: String
 
     var supportsSchemas: Bool { true }
@@ -28,11 +29,12 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
     nonisolated(unsafe) private(set) var currentSchema: String?
     nonisolated(unsafe) private(set) var serverVersion: String?
 
-    init(connection: DatabaseConnection, password: String?) {
-        let ssl = DriverSSLConfiguration(
+    init(connection: DatabaseConnection, password: String?, serverName: String? = nil) {
+        var ssl = DriverSSLConfiguration(
             sslEnabled: connection.sslEnabled,
             configuration: connection.sslConfiguration
         )
+        ssl.serverName = serverName
         core = OracleCoreConnection(options: OracleConnectionOptions(
             host: connection.host,
             port: connection.port,
@@ -47,6 +49,7 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
             networkEncryption: OracleConnectionOptions.networkEncryption(from: connection.additionalFields)
         ))
         host = connection.host
+        self.ssl = ssl
         fallbackSchema = connection.username.uppercased()
         currentSchema = fallbackSchema
     }
@@ -115,14 +118,17 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
         AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let task = Task {
+                // Not a child task, so only this cancel stops the read once the reader stops, or the session
+                // reads every remaining row before it takes the next statement.
                 let coreStream = AsyncThrowingStream<OracleStreamElement, Error> { coreContinuation in
-                    Task {
+                    let coreTask = Task {
                         do {
                             try await core.streamQuery(query, continuation: coreContinuation)
                         } catch {
                             coreContinuation.finish(throwing: error)
                         }
                     }
+                    coreContinuation.onTermination = { @Sendable _ in coreTask.cancel() }
                 }
                 var emitted = 0
                 var headerColumns: [ColumnInfo] = []

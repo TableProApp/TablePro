@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProAutocomplete
 import TableProPluginKit
 
 /// What TablePro is allowed to do with this connection, and what it runs when it opens it.
@@ -22,10 +23,14 @@ struct OptionsPaneView: View {
     var body: some View {
         Form {
             driverSection
+            attachedDatabasesSection
             extensionsSection
             timeoutSection
+            binaryValuesSection
+            completionSection
             startupSection
             preConnectSection
+            postDisconnectSection
             safetySection
             if aiIsEnabled {
                 aiRulesSection
@@ -131,6 +136,83 @@ struct OptionsPaneView: View {
         )
     }
 
+    // MARK: - Binary values
+
+    @ViewBuilder
+    private var binaryValuesSection: some View {
+        if PluginManager.shared.binaryLengthFunction(for: databaseType) != nil {
+            Section {
+                LabeledContent(String(localized: "Load binary values up to")) {
+                    HStack(spacing: 4) {
+                        TextField(
+                            String(localized: "Load binary values up to"),
+                            value: $coordinator.customization.binaryInlineLimitKilobytes,
+                            format: .number.grouping(.never),
+                            prompt: Text(verbatim: binaryInlineLimitPlaceholder)
+                        )
+                        .labelsHidden()
+                        .frame(width: 100)
+                        .multilineTextAlignment(.trailing)
+                        .accessibilityIdentifier("connection-form-binary-inline-limit")
+                        Text(String(localized: "KB"))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text(String(localized: "Table Data"))
+            } footer: {
+                Text(String(localized: """
+                    A larger binary value stays on the server until you open, copy or export it. \
+                    Applies to tables with a primary key.
+                    """))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var binaryInlineLimitPlaceholder: String {
+        String(format: String(localized: "Default (%d)"), UnloadedValuePlan.defaultInlineByteLimit / 1_024)
+    }
+
+    // MARK: - Autocomplete
+
+    @ViewBuilder
+    private var completionSection: some View {
+        if databaseType.identifierRules != nil {
+            Section {
+                Picker(
+                    String(localized: "Identifier case"),
+                    selection: $coordinator.customization.completionIdentifierCase
+                ) {
+                    ForEach(SQLIdentifierCase.allCases, id: \.self) { identifierCase in
+                        Text(Self.title(for: identifierCase)).tag(identifierCase)
+                    }
+                }
+                .accessibilityIdentifier("connection-form-identifier-case")
+            } header: {
+                Text(String(localized: "Autocomplete"))
+            } footer: {
+                Text(String(localized: """
+                    Table, column and schema names take this case in autocomplete and in Copy as INSERT \
+                    and UPDATE when the server reads the new spelling as the same name. Other names are \
+                    quoted as stored.
+                    """))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private static func title(for identifierCase: SQLIdentifierCase) -> String {
+        switch identifierCase {
+        case .asStored: return String(localized: "As stored")
+        case .lower: return String(localized: "lowercase")
+        case .upper: return String(localized: "UPPERCASE")
+        case .matchTyped: return String(localized: "Match what I type")
+        }
+    }
+
     // MARK: - Driver options
 
     @ViewBuilder
@@ -158,6 +240,23 @@ struct OptionsPaneView: View {
             },
             set: { coordinator.advanced.additionalFieldValues[field.id] = $0 }
         )
+    }
+
+    // MARK: - Attached Databases
+
+    @ViewBuilder
+    private var attachedDatabasesSection: some View {
+        if let field = coordinator.advanced.attachedDatabaseListField {
+            Section {
+                AttachedDatabaseListEditor(value: advancedFieldBinding(for: field), databaseType: databaseType)
+            } header: {
+                Text(field.label)
+            } footer: {
+                Text("Attached each time the connection opens. Reach a table as name.table, and browse each database in the sidebar.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     // MARK: - Extensions
@@ -197,13 +296,53 @@ struct OptionsPaneView: View {
         Section {
             StartupCommandsEditor(text: $coordinator.advanced.preConnectScript, style: .code)
                 .frame(height: 80)
+                .accessibilityIdentifier("connection-form-pre-connect-script")
+            LabeledContent(String(localized: "Timeout")) {
+                HStack(spacing: 4) {
+                    TextField(
+                        String(localized: "Timeout"),
+                        value: $coordinator.advanced.scriptTimeoutSeconds,
+                        format: .number.grouping(.never),
+                        prompt: Text(verbatim: scriptTimeoutPlaceholder)
+                    )
+                    .labelsHidden()
+                    .frame(width: 100)
+                    .multilineTextAlignment(.trailing)
+                    .accessibilityIdentifier("connection-form-script-timeout")
+                    Text(String(localized: "seconds"))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .help(String(localized: "How long each script may run, from 1 to 300 seconds."))
         } header: {
             Text(String(localized: "Pre-Connect Script"))
         } footer: {
-            Text("Shell script to run before connecting. Non-zero exit aborts connection.")
+            Text(String(localized: """
+                Runs in bash before connecting. A non-zero exit aborts the connection. \
+                TABLEPRO_CONNECTION_NAME, TABLEPRO_HOST, TABLEPRO_PORT, TABLEPRO_USER and \
+                TABLEPRO_DATABASE describe the connection.
+                """))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var postDisconnectSection: some View {
+        Section {
+            StartupCommandsEditor(text: $coordinator.advanced.postDisconnectScript, style: .code)
+                .frame(height: 80)
+                .accessibilityIdentifier("connection-form-post-disconnect-script")
+        } header: {
+            Text(String(localized: "Post-Disconnect Script"))
+        } footer: {
+            Text("Runs in bash once the session ends, only after its pre-connect script ran. A failure is logged, not shown.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var scriptTimeoutPlaceholder: String {
+        String(format: String(localized: "Default (%d)"), ConnectionScriptRunner.defaultTimeoutSeconds)
     }
 
     // MARK: - Safety
@@ -256,10 +395,10 @@ struct OptionsPaneView: View {
             }
             if aiIsEnabled {
                 // swiftlint:disable:next line_length
-                Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, and AppleScript. Effective scope is the minimum of the requesting token's scope and the External Clients level."))
+                Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level."))
             } else {
                 // swiftlint:disable:next line_length
-                Text(String(localized: "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript) access this connection. Tokens cannot exceed this level even with full-access scope."))
+                Text(String(localized: "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope."))
             }
         }
         .font(.caption)

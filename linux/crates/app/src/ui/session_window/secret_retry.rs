@@ -102,7 +102,7 @@ mod tests {
             database: "shop".to_owned(),
             username: "app".to_owned(),
             tls: TlsConfig::verify_full(),
-            read_only: false,
+            safe_mode: tablepro_core::SafeModeLevel::Off,
             auth_mode,
             ssh: ssh.map(|auth| SavedSshConfig {
                 host: "bastion.example.com".to_owned(),
@@ -171,6 +171,28 @@ mod tests {
         );
         assert_eq!(refused_secret(&ssh_rejected(), &asked_by_ssh), None);
         assert_eq!(refused_secret(&ssh_rejected(), &agent), None);
+    }
+
+    #[test]
+    fn too_many_failed_attempts_offers_no_secret() {
+        let too_many = ConnectError::Driver(DriverError::Transport(TransportError::Ssh(
+            SshFailure::TooManyAuthenticationFailures {
+                host: "bastion.example.com".to_owned(),
+            },
+        )));
+        let auths = [
+            SavedSshAuth::Password,
+            SavedSshAuth::PrivateKey {
+                path: Some(PathBuf::from("/home/u/.ssh/id_ed25519")),
+                has_passphrase: true,
+            },
+            SavedSshAuth::Agent,
+        ];
+
+        for auth in auths {
+            let saved = saved(AuthMode::Password, Some(auth));
+            assert_eq!(refused_secret(&too_many, &saved), None, "{:?}", saved.ssh);
+        }
     }
 
     #[test]

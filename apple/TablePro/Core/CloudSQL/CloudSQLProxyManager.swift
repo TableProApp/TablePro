@@ -29,6 +29,7 @@ actor CloudSQLProxyManager: TunnelManaging {
     private let systemBinaryLookup: (String) -> String?
     private var staleSweep: Task<Void, Never>?
     private let reaperTimings: StaleProcessReaper.Timings
+    private let ownsListener: @Sendable (Int32?, Int) -> Bool
 
     private static let runnerRegistry = OSAllocatedUnfairLock(initialState: [UUID: any SupervisedProcessRunner]())
 
@@ -38,9 +39,13 @@ actor CloudSQLProxyManager: TunnelManaging {
         runnerFactory: @escaping () -> any SupervisedProcessRunner = { ProcessSupervisedRunner() },
         binaryManager: CloudSQLProxyBinaryManager = .shared,
         systemBinaryLookup: @escaping (String) -> String? = { CLIExecutableFinder.findExecutable($0) },
-        reaperTimings: StaleProcessReaper.Timings = .production
+        reaperTimings: StaleProcessReaper.Timings = .production,
+        ownsListener: @escaping @Sendable (Int32?, Int) -> Bool = { pid, port in
+            pid.map { LoopbackPort.isListening(pid: $0, port: port) } ?? false
+        }
     ) {
         self.runnerFactory = runnerFactory
+        self.ownsListener = ownsListener
         self.binaryManager = binaryManager
         self.systemBinaryLookup = systemBinaryLookup
         self.reaperTimings = reaperTimings
@@ -92,6 +97,16 @@ actor CloudSQLProxyManager: TunnelManaging {
             guard let port = config.localPort ?? LoopbackPort.allocateFree() else {
                 deleteCredentialsFile(at: credentialsFilePath)
                 throw CloudSQLProxyError.noAvailablePort
+            }
+            // Readiness only sees that something answers on the port, and a program already there would take the
+            // sign-in meant for the proxy, which can be a password or token the proxy's encryption lets go as typed.
+            if await LoopbackPort.isReachable(host: "127.0.0.1", port: port) {
+                guard config.localPort == nil else {
+                    deleteCredentialsFile(at: credentialsFilePath)
+                    throw CloudSQLProxyError.portInUse(port)
+                }
+                lastError = CloudSQLProxyError.noAvailablePort
+                continue
             }
             let runner = runnerFactory()
             let arguments = Self.buildArguments(config: config, port: port, credentialsFilePath: credentialsFilePath)
@@ -281,7 +296,9 @@ actor CloudSQLProxyManager: TunnelManaging {
             if await monitor.streamEnded {
                 throw CloudSQLProxyError.startupFailed(stderrTail: await monitor.tail)
             }
-            if await LoopbackPort.isReachable(host: "127.0.0.1", port: port) {
+            // A program that took the port after the check above answers too, so the proxy has to own it.
+            if await LoopbackPort.isReachable(host: "127.0.0.1", port: port),
+               ownsListener(runner.processIdentifier, port) {
                 return
             }
             let remainingNanoseconds = UInt64(max(1, deadline.remainingMilliseconds)) * 1_000_000

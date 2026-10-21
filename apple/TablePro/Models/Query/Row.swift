@@ -22,10 +22,18 @@ struct Row: Equatable, Sendable {
     /// The columns this row has no field for, which only an engine that tells a missing field from
     /// NULL reports. Their values read `.null`.
     var absentColumns: Set<Int> = []
+    // Column to byte length of a value the page left on the server; it reads `.null` until loaded.
+    var unloadedColumns: [Int: Int] = [:]
 
     func isAbsent(_ column: Int) -> Bool {
         absentColumns.contains(column)
     }
+
+    func unloadedByteCount(_ column: Int) -> Int? {
+        unloadedColumns[column]
+    }
+
+    var hasUnloadedValues: Bool { !unloadedColumns.isEmpty }
 
     subscript(column: Int) -> PluginCellValue {
         get { column >= 0 && column < values.count ? values[column] : .null }

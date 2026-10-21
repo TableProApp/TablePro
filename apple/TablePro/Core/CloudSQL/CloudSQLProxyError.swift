@@ -12,6 +12,7 @@ enum CloudSQLProxyError: Error, LocalizedError, Equatable {
     case credentialsWriteFailed
     case startupFailed(stderrTail: String)
     case readinessTimeout(stderrTail: String)
+    case portInUse(Int)
 
     var errorDescription: String? {
         switch self {
@@ -27,6 +28,11 @@ enum CloudSQLProxyError: Error, LocalizedError, Equatable {
             return stderrTail.isEmpty
                 ? String(localized: "The Cloud SQL Auth Proxy failed to start.")
                 : String(format: String(localized: "The Cloud SQL Auth Proxy failed to start: %@"), stderrTail)
+        case .portInUse(let port):
+            return String(
+                format: String(localized: "Another program is already listening on local port %d. Choose another port for the Cloud SQL Auth Proxy, or leave it empty."),
+                port
+            )
         case .readinessTimeout(let stderrTail):
             return stderrTail.isEmpty
                 ? String(localized: "The Cloud SQL Auth Proxy did not become ready in time.")

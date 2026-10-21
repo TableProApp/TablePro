@@ -1,5 +1,6 @@
 import Foundation
 import TableProModels
+import TableProRedisCore
 import TableProSQLGrammar
 
 /// Decides whether a statement batch writes, so Safe Mode can block or confirm it.
@@ -57,38 +58,12 @@ public enum SQLWriteClassifier {
         return !readKeywords.contains(keyword)
     }
 
+    // Read as the driver reads it, so a quoted verb is the command that runs. Unparseable text counts as a write.
     private static func redisWrites(_ command: String) -> Bool {
-        let verb = strippingLeadingTrivia(command)
-            .prefix { !$0.isWhitespace }
-            .uppercased()
-        guard !verb.isEmpty else { return false }
-        if verb == "CONFIG" {
-            let rest = strippingLeadingTrivia(command)
-                .dropFirst(verb.count)
-                .trimmingCharacters(in: .whitespaces)
-                .uppercased()
-            return !rest.hasPrefix("GET")
-        }
-        return !redisReadCommands.contains(verb)
+        guard let arguments = RedisArgumentCodec.split(command) else { return true }
+        let words = arguments.map { String(bytes: $0, encoding: .utf8) ?? "" }
+        return !RedisReadCommands.onlyReads(words[...])
     }
-
-    private static let redisReadCommands: Set<String> = [
-        "GET", "MGET", "STRLEN", "GETRANGE", "SUBSTR", "EXISTS", "TYPE", "TTL", "PTTL",
-        "EXPIRETIME", "PEXPIRETIME", "KEYS", "SCAN", "RANDOMKEY", "DBSIZE", "DUMP",
-        "HGET", "HMGET", "HGETALL", "HKEYS", "HVALS", "HLEN", "HEXISTS", "HRANDFIELD",
-        "HSCAN", "HSTRLEN", "LRANGE", "LLEN", "LINDEX", "LPOS",
-        "SMEMBERS", "SISMEMBER", "SMISMEMBER", "SCARD", "SRANDMEMBER", "SSCAN",
-        "SDIFF", "SINTER", "SUNION", "SINTERCARD",
-        "ZRANGE", "ZRANGEBYSCORE", "ZRANGEBYLEX", "ZREVRANGE", "ZREVRANGEBYSCORE",
-        "ZREVRANGEBYLEX", "ZRANK", "ZREVRANK", "ZSCORE", "ZMSCORE", "ZCARD", "ZCOUNT",
-        "ZLEXCOUNT", "ZSCAN", "ZRANDMEMBER", "ZDIFF", "ZINTER", "ZUNION", "ZINTERCARD",
-        "XRANGE", "XREVRANGE", "XLEN", "XREAD", "XINFO", "XPENDING",
-        "PFCOUNT", "BITCOUNT", "BITPOS", "GETBIT", "BITFIELD_RO",
-        "GEOPOS", "GEODIST", "GEOHASH", "GEOSEARCH", "GEORADIUS_RO", "GEORADIUSBYMEMBER_RO",
-        "SORT_RO", "OBJECT", "COMMAND", "INFO", "TIME", "LASTSAVE", "PING", "ECHO", "LOLWUT",
-        "JSON.GET", "JSON.MGET", "JSON.TYPE", "JSON.OBJKEYS", "JSON.ARRLEN", "JSON.STRLEN",
-        "TS.RANGE", "TS.REVRANGE", "TS.GET", "TS.MGET", "TS.INFO", "FT.SEARCH", "FT.INFO"
-    ]
 
     /// A CTE's leading keyword says nothing about what the statement finally does, so its code is
     /// searched for a write verb.
@@ -127,22 +102,5 @@ public enum SQLWriteClassifier {
             }
         }
         return keyword.isEmpty ? nil : keyword.uppercased()
-    }
-
-    private static func strippingLeadingTrivia(_ statement: String) -> String {
-        var rest = Substring(statement)
-        while true {
-            let beforeTrim = rest
-            rest = rest.drop(while: { $0.isWhitespace })
-            if rest.hasPrefix("--") {
-                rest = rest.drop(while: { !$0.isNewline })
-            } else if rest.hasPrefix("/*") {
-                rest = rest.dropFirst(2)
-                while !rest.isEmpty, !rest.hasPrefix("*/") { rest = rest.dropFirst() }
-                rest = rest.hasPrefix("*/") ? rest.dropFirst(2) : rest
-            }
-            if rest == beforeTrim { break }
-        }
-        return String(rest)
     }
 }

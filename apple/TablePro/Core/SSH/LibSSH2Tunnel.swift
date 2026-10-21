@@ -16,6 +16,7 @@ import TableProSSHTransport
 internal final class LibSSH2Tunnel: @unchecked Sendable {
     let connectionId: UUID
     let localPort: Int
+    let dialedRoute: DialedSSHRoute?
     let createdAt: Date
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "LibSSH2Tunnel")
@@ -84,10 +85,12 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         listenFD: Int32,
         connectionDeadline: ConnectionDeadline,
         timeoutEndpoint: ConnectionTimeoutEndpoint,
-        jumpChain: [JumpHop] = []
+        jumpChain: [JumpHop] = [],
+        dialedRoute: DialedSSHRoute? = nil
     ) {
         self.connectionId = connectionId
         self.localPort = localPort
+        self.dialedRoute = dialedRoute
         self.session = session
         self.socketFD = socketFD
         self.listenFD = listenFD
@@ -231,12 +234,14 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
                 clientRelays.notify(queue: relayQueue) { continuation.resume() }
             }
 
+            // Free before close: a closed number can go to another connection's socket, and this
+            // session's DISCONNECT would land in it.
             sessionQueue.sync {
-                Darwin.close(listenFD)
-                Darwin.close(socketFD)
                 libssh2_session_set_blocking(session, 1)
                 tablepro_libssh2_session_disconnect(session, "Closing tunnel")
                 libssh2_session_free(session)
+                Darwin.close(socketFD)
+                Darwin.close(listenFD)
             }
 
             for hop in jumpChain.reversed() {
@@ -326,11 +331,15 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             deadline: .distantFuture,
             pollForReadiness: { [weak self] directions in
                 guard let self else { return false }
-                return pollReady(
+                _ = pollReady(
                     fd: self.socketFD,
                     directions: directions,
-                    timeoutMs: Int32(clamping: max(1, connectionDeadline.remainingMilliseconds))
+                    timeoutMs: min(
+                        LibSSH2ForwardChannel.openPollTimeoutMs,
+                        Int32(clamping: max(1, connectionDeadline.remainingMilliseconds))
+                    )
                 )
+                return !connectionDeadline.isExpired
             }
         )
 
@@ -349,11 +358,8 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
                 }
             }
             if case .opened(let channel) = outcome {
-                sessionQueue.sync {
-                    libssh2_channel_close(channel)
-                    libssh2_channel_free(channel)
-                }
                 Darwin.close(clientFD)
+                freeChannel(channel)
                 return
             }
         }
@@ -451,13 +457,26 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         Darwin.close(clientFD)
         guard self.isRunning else { return }
 
-        sessionQueue.sync {
-            libssh2_channel_close(channel)
-            libssh2_channel_free(channel)
-        }
+        freeChannel(channel)
 
         if termination == .transportHangup {
             Self.logger.info("SSH transport hung up, marking tunnel dead for \(self.connectionId)")
+            markDead()
+        }
+    }
+
+    private func freeChannel(_ channel: OpaquePointer) {
+        let outcome = LibSSH2ChannelFree.run(
+            channel: channel,
+            session: session,
+            sessionQueue: sessionQueue,
+            transportFD: socketFD,
+            isActive: { [weak self] in self?.isRunning ?? false }
+        )
+        if outcome == .timedOut {
+            Self.logger.warning(
+                "Channel for \(self.connectionId) did not close within \(Int(LibSSH2ChannelFree.deadlineSeconds))s, marking tunnel dead"
+            )
             markDead()
         }
     }

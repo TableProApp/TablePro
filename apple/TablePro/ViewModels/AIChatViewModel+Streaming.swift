@@ -47,12 +47,13 @@ extension AIChatViewModel {
 
         let settings = services.appSettings.ai
 
-        let resolved = AIProviderFactory.resolve(
+        let answersOnDevice = answersLastTurnOnDevice
+        let resolved = answersOnDevice ? nil : AIProviderFactory.resolve(
             settings: settings,
             overrideProviderId: selectedProviderId,
             overrideModel: selectedModel
         )
-        guard let resolved else {
+        if !answersOnDevice, resolved == nil {
             clearPendingWalkthrough()
             errorMessage = String(localized: "No AI provider configured. Go to Settings > AI to add one.")
             return
@@ -74,6 +75,10 @@ extension AIChatViewModel {
             }
         }
 
+        guard let resolved else {
+            beginOnDeviceTurn()
+            return
+        }
         beginStreamingTurn(
             resolved: resolved,
             settings: settings,

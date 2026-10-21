@@ -9,6 +9,7 @@ import Combine
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 // MARK: - Schema Changes
 

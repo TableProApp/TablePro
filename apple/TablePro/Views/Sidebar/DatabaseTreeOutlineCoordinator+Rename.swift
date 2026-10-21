@@ -31,6 +31,9 @@ extension DatabaseTreeOutlineCoordinator {
         case .folder(let folder):
             nodeId = DatabaseTreeNode.tableFolderId(folder.id)
             name = folder.name
+        case .userType(let ref):
+            nodeId = DatabaseTreeNode.userTypeId(ref)
+            name = ref.type.name
         }
 
         let row = outlineView.row(forItem: nodeCache[nodeId])
@@ -74,6 +77,8 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.renameContainer(ref, to: newName)
         case .folder(let folder):
             renameFolder(folder, to: newName)
+        case .userType(let ref):
+            mainCoordinator?.renameUserType(ref, to: newName)
         }
     }
 

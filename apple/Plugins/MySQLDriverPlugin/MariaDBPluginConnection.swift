@@ -103,6 +103,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private let database: String
     private let sslConfig: SSLConfiguration
     private let enableCleartextPlugin: Bool
+    private let tunnelSecuresTransport: Bool
     private let queryTimeoutSeconds: Int
     private let connectionEncoding: MySQLConnectionEncoding
     private let connectTimeoutMilliseconds: Int
@@ -307,6 +308,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         database: String,
         sslConfig: SSLConfiguration,
         enableCleartextPlugin: Bool = false,
+        tunnelSecuresTransport: Bool = false,
         queryTimeoutSeconds: Int = 0,
         connectionEncoding: MySQLConnectionEncoding = .utf8,
         connectTimeoutMilliseconds: Int = MySQLConnectTimeout.defaultMilliseconds,
@@ -318,6 +320,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         self.database = database
         self.sslConfig = sslConfig
         self.enableCleartextPlugin = enableCleartextPlugin
+        self.tunnelSecuresTransport = tunnelSecuresTransport
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.connectionEncoding = connectionEncoding
         self.connectTimeoutMilliseconds = MySQLConnectTimeout(milliseconds: connectTimeoutMilliseconds).milliseconds
@@ -347,24 +350,21 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             }
             let mode = self.sslConfig.mode
             let startsWithTLS = MySQLLocalSocket.attemptsTLS(mode, overSocket: self.transport.isUnixSocket)
+            // Connector/C 3.4.4 takes a requested TLS for an established one and answers caching_sha2_password's full
+            // authentication with the typed password, so Preferred asks for TLS outright and falls back without it.
+            let firstMode: SSLMode = startsWithTLS ? (mode == .preferred ? .required : mode) : .disabled
             let session: EstablishedSession
             do {
-                session = try self.attemptConnect(enforceSSL: startsWithTLS, deadline: deadline)
+                session = try self.attemptConnect(mode: firstMode, deadline: deadline)
             } catch let error as MariaDBPluginError where startsWithTLS && mode == .preferred && MariaDBSSLClassifier.sslOnlyErrorCodes.contains(error.code) {
                 logger.notice("MySQL SSL handshake failed (code \(error.code)); falling back to plaintext for .preferred mode")
                 do {
-                    session = try self.attemptConnect(enforceSSL: false, deadline: deadline)
+                    session = try self.attemptConnect(mode: .disabled, deadline: deadline)
                 } catch let fallbackError as MariaDBPluginError {
-                    if let sslError = MariaDBSSLClassifier.classifySSLError(code: fallbackError.code, message: fallbackError.message) {
-                        throw sslError
-                    }
-                    throw fallbackError
+                    throw Self.connectError(fallbackError)
                 }
             } catch let error as MariaDBPluginError {
-                if let sslError = MariaDBSSLClassifier.classifySSLError(code: error.code, message: error.message) {
-                    throw sslError
-                }
-                throw error
+                throw Self.connectError(error)
             }
 
             let handle = session.handle
@@ -393,8 +393,15 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let errorLanguage: String.Encoding?
     }
 
+    private static func connectError(_ error: MariaDBPluginError) -> any Error {
+        if MySQLPlaintextPassword.isRefusal(code: error.code) {
+            return MariaDBPluginError(code: 0, message: MySQLPlaintextPassword.refusalMessage, sqlState: nil)
+        }
+        return MariaDBSSLClassifier.classifySSLError(code: error.code, message: error.message) ?? error
+    }
+
     private func attemptConnect(
-        enforceSSL: Bool,
+        mode: SSLMode,
         deadline: MySQLConnectDeadline
     ) throws -> EstablishedSession {
         var timeout = try connectSocketTimeoutSeconds(deadline: deadline)
@@ -418,24 +425,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var allowLocalInfile: UInt32 = 0
         mysql_options(mysql, MYSQL_OPT_LOCAL_INFILE, &allowLocalInfile)
 
-        var sslEnforce: my_bool = enforceSSL ? 1 : 0
-        mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &sslEnforce)
-
-        var sslVerify: my_bool = sslConfig.verifiesCertificate ? 1 : 0
-        mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &sslVerify)
-
-        // Connector/C turns TLS on for any CA, certificate or key it is given, so a plaintext attempt gets none.
-        if enforceSSL {
-            if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
-                _ = sslConfig.caCertificatePath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_CA, $0) }
-            }
-            if !sslConfig.clientCertificatePath.isEmpty {
-                _ = sslConfig.clientCertificatePath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_CERT, $0) }
-            }
-            if !sslConfig.clientKeyPath.isEmpty {
-                _ = sslConfig.clientKeyPath.withCString { mysql_options(mysql, MYSQL_OPT_SSL_KEY, $0) }
-            }
-        }
+        applyTLS(mode, to: mysql)
 
         mysql_options(mysql, MYSQL_SET_CHARSET_NAME, "utf8mb4")
 
@@ -653,21 +643,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         var killAllowLocalInfile: UInt32 = 0
         mysql_options(killConn, MYSQL_OPT_LOCAL_INFILE, &killAllowLocalInfile)
 
-        var killSSLEnforce: my_bool = effectiveSSLEnforced ? 1 : 0
-        mysql_options(killConn, MYSQL_OPT_SSL_ENFORCE, &killSSLEnforce)
-        var killSSLVerify: my_bool = effectiveSSLEnforced && sslConfig.verifiesCertificate ? 1 : 0
-        mysql_options(killConn, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &killSSLVerify)
-        if effectiveSSLEnforced {
-            if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
-                _ = sslConfig.caCertificatePath.withCString { mysql_options(killConn, MYSQL_OPT_SSL_CA, $0) }
-            }
-            if !sslConfig.clientCertificatePath.isEmpty {
-                _ = sslConfig.clientCertificatePath.withCString { mysql_options(killConn, MYSQL_OPT_SSL_CERT, $0) }
-            }
-            if !sslConfig.clientKeyPath.isEmpty {
-                _ = sslConfig.clientKeyPath.withCString { mysql_options(killConn, MYSQL_OPT_SSL_KEY, $0) }
-            }
-        }
+        // A session that came up over TLS keeps the kill on TLS, so the kill never reveals the password.
+        applyTLS(MariaDBTLSMode.killConnectionMode(sslConfig.mode, sessionUsedTLS: effectiveSSLEnforced), to: killConn)
 
         if enableCleartextPlugin {
             var killEnableCleartext: my_bool = 1
@@ -690,6 +667,28 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     }
 
     private static let killTimeoutSeconds: UInt32 = 5
+
+    // Connector/C turns TLS on for any CA, certificate or key it is given, so a plaintext attempt gets none.
+    private func applyTLS(_ mode: SSLMode, to handle: UnsafeMutablePointer<MYSQL>) {
+        MariaDBTLSMode.apply(mode, to: handle)
+        // A local socket never leaves this Mac, and the mysql client trusts it the same way. The Cloud SQL Auth Proxy and
+        // an SSH forward to the server's socket encrypt the way there, which their loopback listener cannot show as TLS.
+        if mode == .disabled || mode == .preferred, !transport.isUnixSocket, !tunnelSecuresTransport {
+            _ = MySQLPlaintextPassword.methodsWithoutTLS.withCString {
+                mysql_options(handle, MARIADB_OPT_RESTRICTED_AUTH, $0)
+            }
+        }
+        guard mode != .disabled else { return }
+        if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
+            _ = sslConfig.caCertificatePath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CA, $0) }
+        }
+        if !sslConfig.clientCertificatePath.isEmpty {
+            _ = sslConfig.clientCertificatePath.withCString { mysql_options(handle, MYSQL_OPT_SSL_CERT, $0) }
+        }
+        if !sslConfig.clientKeyPath.isEmpty {
+            _ = sslConfig.clientKeyPath.withCString { mysql_options(handle, MYSQL_OPT_SSL_KEY, $0) }
+        }
+    }
 
     /// The kill is a new sign-in, which an expired IAM token cannot make, so it asks the host for a
     /// current one. Every caller is on a dispatch queue that is about to block for the kill's own

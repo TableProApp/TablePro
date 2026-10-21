@@ -8,6 +8,7 @@ import TableProAutocomplete
 
 struct EditorSettingsView: View {
     @Binding var settings: EditorSettings
+    @Binding var formatter: SQLFormatterSettings
     @Binding var typography: TypographySettings
 
     var body: some View {
@@ -41,15 +42,21 @@ struct EditorSettingsView: View {
                     }
                 }
                 Toggle("Query parameters (:name syntax)", isOn: $settings.queryParametersEnabled)
-                Toggle("Vim mode", isOn: $settings.vimModeEnabled)
-                    .accessibilityIdentifier("vim-mode-toggle")
+                Picker("Key bindings:", selection: $settings.keyBindings) {
+                    Text("Standard").tag(EditorKeyBindings.standard)
+                    Text(verbatim: "Vim").tag(EditorKeyBindings.vim)
+                    Text(verbatim: "Emacs").tag(EditorKeyBindings.emacs)
+                }
+                .accessibilityIdentifier("key-bindings-picker")
             }
+
+            FormatterSection(settings: $formatter, editor: settings)
         }
         .formStyle(.grouped)
     }
 }
 
 #Preview {
-    EditorSettingsView(settings: .constant(.default), typography: .constant(.default))
+    EditorSettingsView(settings: .constant(.default), formatter: .constant(.default), typography: .constant(.default))
         .frame(width: 450, height: 500)
 }

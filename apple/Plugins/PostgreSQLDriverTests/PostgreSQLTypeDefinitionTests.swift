@@ -335,4 +335,59 @@ struct PostgreSQLTypeDefinitionTests {
         #expect(range.baseType == "numeric")
         #expect(range.attributes.first?.label == "Subtype")
     }
+
+    /// CREATE DOMAIN rejects NOT VALID ("syntax error at or near VALID", PostgreSQL 13 and 18), so
+    /// a check that was added without scanning stored values follows as the ALTER that added it.
+    @Test("An unvalidated check follows the CREATE DOMAIN as its own ALTER")
+    func unvalidatedCheckDDL() {
+        let ddl = PostgreSQLTypeDefinition.ddl(for: record(
+            name: "posint",
+            kind: .domain,
+            baseType: "integer",
+            constraints: [
+                PostgreSQLDomainConstraint(name: "positive", definition: "CHECK ((VALUE > 0))", isValidated: false),
+                PostgreSQLDomainConstraint(name: "small", definition: "CHECK ((VALUE < 100))")
+            ]
+        ))
+        #expect(ddl == """
+            CREATE DOMAIN "app"."posint" AS integer
+                CONSTRAINT "small" CHECK ((VALUE < 100));
+            ALTER DOMAIN "app"."posint" ADD CONSTRAINT "positive" CHECK ((VALUE > 0)) NOT VALID;
+            """)
+    }
+
+    @Test("The validated flags parse beside the definitions, and NOT VALID leaves the definition")
+    func validatedFlagParsing() throws {
+        var row = [PluginCellValue](repeating: .null, count: PostgreSQLTypeDefinition.Column.allCases.count)
+        row[PostgreSQLTypeDefinition.Column.identity.rawValue] = .text("1")
+        row[PostgreSQLTypeDefinition.Column.name.rawValue] = .text("posint")
+        row[PostgreSQLTypeDefinition.Column.schema.rawValue] = .text("app")
+        row[PostgreSQLTypeDefinition.Column.kind.rawValue] = .text("d")
+        row[PostgreSQLTypeDefinition.Column.baseType.rawValue] = .text("integer")
+        row[PostgreSQLTypeDefinition.Column.constraintNames.rawValue] = .text("{positive,small}")
+        row[PostgreSQLTypeDefinition.Column.constraintDefinitions.rawValue] = .text(
+            "{\"CHECK ((VALUE > 0)) NOT VALID\",\"CHECK ((VALUE < 100))\"}"
+        )
+        row[PostgreSQLTypeDefinition.Column.constraintValidated.rawValue] = .text("{false,true}")
+        let parsed = try #require(PostgreSQLTypeDefinition.record(from: row))
+        #expect(parsed.constraints == [
+            PostgreSQLDomainConstraint(name: "positive", definition: "CHECK ((VALUE > 0))", isValidated: false),
+            PostgreSQLDomainConstraint(name: "small", definition: "CHECK ((VALUE < 100))", isValidated: true)
+        ])
+    }
+
+    @Test("The transfer type carries a domain's comment, default, NOT NULL and checks")
+    func domainDetailsMapping() {
+        let info = PostgreSQLTypeDefinition.info(from: PostgreSQLUserDefinedTypeRecord(
+            identity: "9", name: "posint", schema: "app", kind: .domain,
+            comment: "Counts", baseType: "integer", isNotNull: true, defaultValue: "1",
+            constraints: [PostgreSQLDomainConstraint(name: "positive", definition: "CHECK ((VALUE > 0))", isValidated: false)]
+        ))
+        #expect(info.comment == "Counts")
+        #expect(info.defaultValue == "1")
+        #expect(info.isNotNull)
+        #expect(info.constraints == [
+            PluginUserDefinedTypeConstraint(name: "positive", definition: "CHECK ((VALUE > 0))", isValidated: false)
+        ])
+    }
 }

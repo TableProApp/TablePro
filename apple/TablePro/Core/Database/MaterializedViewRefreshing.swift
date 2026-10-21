@@ -45,7 +45,7 @@ enum MaterializedViewRefreshing {
         }
         try await DatabaseObjectCommandRunner.run(
             sql,
-            on: target,
+            in: target.scope,
             connection: connection,
             kind: .maintenance,
             operationDescription: String(localized: "Refresh Materialized View"),

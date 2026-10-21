@@ -34,3 +34,20 @@ i18n.gettext(
     '--directory=' + meson.project_source_root(),
   ],
 )
+
+# The build compiles each catalogue without --check. gettext 0.26 and
+# newer also check the {name} placeholders of every rust-format entry.
+msgfmt = find_program('msgfmt', required: false)
+if msgfmt.found()
+  fs = import('fs')
+  foreach line : fs.read('LINGUAS').split('\n')
+    foreach lang : line.split('#')[0].split()
+      test(
+        'po-' + lang,
+        msgfmt,
+        args: ['--check', '--output-file=/dev/null', meson.current_source_dir() / lang + '.po'],
+        suite: 'po',
+      )
+    endforeach
+  endforeach
+endif

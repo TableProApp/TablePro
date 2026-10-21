@@ -5,6 +5,7 @@
 import Foundation
 import TableProGeometry
 import TableProPluginKit
+import TableProTextEngine
 
 @MainActor
 internal enum FieldEditorResolver {
@@ -35,8 +36,13 @@ internal enum FieldEditorResolver {
         isLongText: Bool,
         originalValue: String?,
         displayFormatOverride: ValueDisplayFormat? = nil,
-        isBinaryValue: Bool = false
+        isBinaryValue: Bool = false,
+        revealsInvisibleCharacters: Bool = false
     ) -> FieldEditorKind {
+        // Ahead of the display format, as in the grid: a vector column offers none to choose.
+        if type.isVectorType, let originalValue, VectorLiteral.isVectorText(originalValue) {
+            return .vector
+        }
         let structuredAllowed: Bool
         if let override = displayFormatOverride {
             switch override {
@@ -46,7 +52,13 @@ internal enum FieldEditorResolver {
                 return .phpSerialized
             case .json:
                 return .json
-            case .text, .uuid, .unixTimestamp, .unixTimestampMillis:
+            case .messagePack, .protobuf:
+                // A NULL keeps the hex editor, the way bytes get into it.
+                if type.isBlobType || isBinaryValue, originalValue != nil, let format = override.binaryValueFormat {
+                    return .binaryValue(format)
+                }
+                structuredAllowed = true
+            case .text, .uuid, .uuidSwappedTime, .unixTimestamp, .unixTimestampMillis:
                 structuredAllowed = true
             }
         } else {
@@ -88,7 +100,7 @@ internal enum FieldEditorResolver {
         if BlobFormattingService.shared.requiresFormatting(columnType: type) {
             return .blobHex
         }
-        if isLongText || needsMultiLineEditor(originalValue) {
+        if isLongText || needsMultiLineEditor(originalValue, revealsInvisibleCharacters: revealsInvisibleCharacters) {
             return .multiLine
         }
         return .singleLine
@@ -134,7 +146,7 @@ internal enum FieldEditorResolver {
         case .json:
             guard let originalValue, isGeoJSON(originalValue) else { return nil }
             return .geometry(GeometryFieldDescriptor(textEditor: .json, source: .jsonColumn))
-        case .text, .integer, .decimal, .date, .timestamp, .datetime, .boolean, .blob, .enumType, .set, .array:
+        case .text, .integer, .decimal, .date, .timestamp, .datetime, .boolean, .blob, .enumType, .set, .vector, .array:
             return nil
         }
     }
@@ -191,11 +203,18 @@ internal enum FieldEditorResolver {
     /// `isLongText` only matches six exact type names, so a large value in `VARCHAR(MAX)`,
     /// `NCLOB` or ClickHouse's `Nullable(String)` never reached the multi-line editor. Whether a
     /// value belongs on one line is a property of the value, so ask the value as well.
-    static func needsMultiLineEditor(_ value: String?) -> Bool {
+    /// A one-line field cannot mark an invisible character, so a value holding one takes the text
+    /// view that can, while the marks are on.
+    static func needsMultiLineEditor(_ value: String?, revealsInvisibleCharacters: Bool = false) -> Bool {
         guard let value, !value.isEmpty else { return false }
         let text = value as NSString
         if text.length > multiLineValueThreshold { return true }
-        return text.rangeOfCharacter(from: .newlines).location != NSNotFound
+        if text.rangeOfCharacter(from: .newlines).location != NSNotFound { return true }
+        return revealsInvisibleCharacters && holdsInvisibleCharacter(text)
+    }
+
+    private static func holdsInvisibleCharacter(_ text: NSString) -> Bool {
+        (0 ..< text.length).contains { SpecialCharacter.classify(in: text, at: $0) != nil }
     }
 
     /// Two lines' worth at the inspector's minimum width. The value font is user-configurable, so how

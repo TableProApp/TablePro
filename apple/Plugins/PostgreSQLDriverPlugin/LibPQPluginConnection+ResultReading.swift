@@ -13,6 +13,7 @@ internal extension LibPQPluginConnection {
     struct ColumnMetadata {
         let columns: [String]
         let columnOids: [UInt32]
+        let columnTypeModifiers: [Int32]
         let columnTypeNames: [String]
     }
 
@@ -20,9 +21,11 @@ internal extension LibPQPluginConnection {
         let numFields = Int(PQnfields(result))
         var columns: [String] = []
         var columnOids: [UInt32] = []
+        var columnTypeModifiers: [Int32] = []
         var columnTypeNames: [String] = []
         columns.reserveCapacity(numFields)
         columnOids.reserveCapacity(numFields)
+        columnTypeModifiers.reserveCapacity(numFields)
         columnTypeNames.reserveCapacity(numFields)
 
         for i in 0..<numFields {
@@ -32,10 +35,19 @@ internal extension LibPQPluginConnection {
                 columns.append("column_\(i)")
             }
             let oid = UInt32(PQftype(result, Int32(i)))
+            // Only a column read straight from a table reports its own modifier: `v::vector(3)` over a
+            // `vector` column reports the cast's, which the column does not enforce.
+            let modifier = PQftable(result, Int32(i)) == 0 ? -1 : PQfmod(result, Int32(i))
             columnOids.append(oid)
-            columnTypeNames.append(typeNames.name(for: oid))
+            columnTypeModifiers.append(modifier)
+            columnTypeNames.append(typeNames.name(for: oid, modifier: modifier))
         }
-        return ColumnMetadata(columns: columns, columnOids: columnOids, columnTypeNames: columnTypeNames)
+        return ColumnMetadata(
+            columns: columns,
+            columnOids: columnOids,
+            columnTypeModifiers: columnTypeModifiers,
+            columnTypeNames: columnTypeNames
+        )
     }
 
     func fetchResults(

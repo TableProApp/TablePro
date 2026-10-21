@@ -16,6 +16,7 @@ use tablepro_core::sql_syntax::{
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
 
+use crate::cell_seed::CellPlan;
 use crate::clickhouse_type::ClickHouseType;
 use crate::param_value::param_name;
 
@@ -319,6 +320,11 @@ fn literal(value: &Value) -> Result<String, LiteralError> {
                 reason: format!("{:?}", undecodable.reason),
             });
         }
+        // A Map, Tuple, Variant or JSON value is the JSON the server
+        // wrote, which a string of it does not cast back from.
+        Value::Other(other) if matches!(ClickHouseType::parse(&other.type_name).plan, CellPlan::Raw { .. }) => {
+            format!("JSONExtract({}, {})", quoted(&other.text), quoted(&other.type_name))
+        }
         Value::Other(other) => quoted(&other.text),
         other => match value_to_text(other) {
             Some(text) => quoted(&text),
@@ -556,6 +562,30 @@ mod tests {
         assert_eq!(
             literal(&Value::Array(vec![Value::Int(1), Value::Text("a".to_owned())])),
             Ok("[1, 'a']".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_value_read_as_json_is_parsed_back_into_its_type() {
+        let other = |type_name: &str, text: &str| {
+            Value::Other(Box::new(tablepro_core::value::OtherValue {
+                type_name: type_name.to_owned(),
+                text: text.to_owned(),
+            }))
+        };
+
+        assert_eq!(
+            literal(&other("Map(String, UInt8)", r#"{"a":1}"#)),
+            Ok(r#"JSONExtract('{"a":1}', 'Map(String, UInt8)')"#.to_owned())
+        );
+        assert_eq!(
+            literal(&Value::Array(vec![other("Tuple(String, Int8)", r#"["it's",-1]"#)])),
+            Ok(r#"[JSONExtract('["it\'s",-1]', 'Tuple(String, Int8)')]"#.to_owned())
+        );
+        assert_eq!(
+            literal(&other("IPv4", "192.168.0.1")),
+            Ok("'192.168.0.1'".to_owned()),
+            "an address is the server's text, not JSON"
         );
     }
 

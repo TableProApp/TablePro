@@ -23,6 +23,15 @@ struct ImportProgressView: View {
                 .font(.title3.weight(.semibold))
 
             VStack(spacing: 8) {
+                if service.state.fileCount > 1 {
+                    HStack {
+                        Text(fileLine)
+                            .font(.body)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer()
+                    }
+                }
                 HStack {
                     if service.state.statusMessage.isEmpty {
                         Text("Executed ^[\(service.state.processedStatements) statement](inflect: true)")
@@ -58,6 +67,15 @@ struct ImportProgressView: View {
         } message: {
             Text("Statements already executed stay committed.")
         }
+    }
+
+    private var fileLine: String {
+        String(
+            format: String(localized: "%1$@ (%2$lld of %3$lld)"),
+            service.state.fileName,
+            Int64(service.state.fileIndex + 1),
+            Int64(service.state.fileCount)
+        )
     }
 
     private var progressValue: Double {

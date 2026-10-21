@@ -10,6 +10,14 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         var username: String
     }
 
+    // Raw values in the Mac's spelling, as SSHConfiguration stores them.
+    nonisolated struct TOTPSettings: Equatable, Sendable {
+        var mode: String
+        var algorithm: String
+        var digits: Int
+        var period: Int
+    }
+
     nonisolated struct SSHTunnel: Equatable, Sendable {
         var host: String
         var port: Int?
@@ -17,6 +25,7 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         var authMethod: SSHConfiguration.SSHAuthMethod
         var privateKeyPath: String?
         var jumpHosts: [JumpHostEdit] = []
+        var totp: TOTPSettings?
     }
 
     nonisolated struct OracleOptions: Equatable, Sendable {
@@ -25,6 +34,15 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         var sid: String
         var role: OracleConnectionOptions.Role
         var networkEncryption: OracleConnectionOptions.NetworkEncryption
+    }
+
+    nonisolated struct IAMOptions: Equatable, Sendable {
+        var method: IAMSignIn?
+        var region: String
+        var accessKeyId: String
+        var profileName: String
+        var rdsEndpoint: String
+        var replicationGroupId: String
     }
 
     var name: String
@@ -37,9 +55,10 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
     var tagId: UUID?
     var iconName: String?
     var safeModeLevel: SafeModeLevel
-    var sslMode: SSLConfiguration.SSLMode?
+    var sslMode: SSLModeChoice?
     var sshTunnel: SSHTunnel?
     var oracle: OracleOptions?
+    var iam: IAMOptions?
 
     static func tagIds(selecting tagId: UUID?, over existing: [UUID]) -> [UUID] {
         let others = existing.dropFirst().filter { $0 != tagId }
@@ -69,6 +88,7 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.sslMode) { applySSLMode(to: &connection) }
         if changed(\.sshTunnel) { applySSHTunnel(to: &connection, changedSince: opening?.sshTunnel) }
         if changed(\.oracle) { applyOracleOptions(to: &connection, changedSince: opening?.oracle) }
+        if changed(\.iam) { applyIAMOptions(to: &connection, changedSince: opening?.iam) }
         return connection
     }
 
@@ -86,16 +106,20 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
             connection.sslEnabled = false
             return
         }
-        var configuration = connection.sslConfiguration ?? SSLConfiguration()
-        configuration.mode = sslMode
-        connection.sslConfiguration = configuration
+        connection.sslConfiguration = sslMode.applied(to: connection.sslConfiguration ?? SSLConfiguration())
         connection.sslEnabled = sslMode != .disable
     }
 
     private func applySSHTunnel(to connection: inout DatabaseConnection, changedSince opening: SSHTunnel?) {
+        // Switched off, not cleared: the Mac keeps a disabled tunnel's settings, and the record carries them.
         guard let sshTunnel else {
             connection.sshEnabled = false
-            connection.sshConfiguration = nil
+            connection.sshConfiguration?.macEnabled = false
+            // The Mac rebuilds a profile tunnel from this link alone, so switching off drops the link.
+            if connection.sshProfileId != nil {
+                connection.clearsSSHProfileLink = true
+            }
+            connection.sshProfileId = nil
             return
         }
         func changed<Value: Equatable>(_ field: KeyPath<SSHTunnel, Value>) -> Bool {
@@ -108,6 +132,12 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.username) { configuration.username = sshTunnel.username }
         if changed(\.authMethod) { configuration.authMethod = sshTunnel.authMethod }
         if changed(\.privateKeyPath) { configuration.privateKeyPath = sshTunnel.privateKeyPath }
+        if changed(\.totp), let totp = sshTunnel.totp {
+            configuration.totpMode = totp.mode
+            configuration.totpAlgorithm = totp.algorithm
+            configuration.totpDigits = totp.digits
+            configuration.totpPeriod = totp.period
+        }
         if changed(\.jumpHosts) {
             configuration.jumpHosts = Self.rebuiltJumpHosts(
                 sshTunnel.jumpHosts,
@@ -183,5 +213,29 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.networkEncryption) {
             connection.additionalFields[Key.networkEncryption] = oracle.networkEncryption.rawValue
         }
+    }
+
+    private func applyIAMOptions(to connection: inout DatabaseConnection, changedSince opening: IAMOptions?) {
+        guard let iam else { return }
+        func changed<Value: Equatable>(_ field: KeyPath<IAMOptions, Value>) -> Bool {
+            Self.differs(field, from: opening, to: iam)
+        }
+        func write(_ value: String, to key: String) {
+            connection.additionalFields[key] = value.isEmpty ? nil : value
+        }
+
+        typealias Field = IAMSignIn.Field
+        if changed(\.method) {
+            if let method = iam.method {
+                connection.additionalFields[Field.method] = method.pickerValue
+            } else if connection.additionalFields[Field.method] != nil {
+                connection.additionalFields[Field.method] = IAMSignIn.passwordPickerValue
+            }
+        }
+        if changed(\.region) { write(iam.region, to: Field.region) }
+        if changed(\.accessKeyId) { write(iam.accessKeyId, to: Field.accessKeyId) }
+        if changed(\.profileName) { write(iam.profileName, to: Field.profileName) }
+        if changed(\.rdsEndpoint) { write(iam.rdsEndpoint, to: Field.rdsEndpoint) }
+        if changed(\.replicationGroupId) { write(iam.replicationGroupId, to: Field.replicationGroupId) }
     }
 }

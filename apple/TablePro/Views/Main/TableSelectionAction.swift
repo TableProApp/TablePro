@@ -82,8 +82,9 @@ enum SidebarObjectSelection: Equatable {
         tables: [TableInfo]
     ) -> SidebarObjectSelection {
         guard !tables.isEmpty else { return .leaveUnchanged }
+        // A temporary table has no row in the object list, only one of the same name that it hides.
         guard let tabTableName, !tabTableName.isEmpty,
-              let tabScope, let browseScope,
+              let tabScope, let browseScope, !tabScope.isSessionBound,
               tabScope.database == browseScope.database,
               let match = tables.first(where: { row($0, is: tabTableName, in: tabScope.schema) })
         else {

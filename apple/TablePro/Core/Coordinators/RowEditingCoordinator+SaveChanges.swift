@@ -8,6 +8,7 @@ import Foundation
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProSQLGrammar
 
 private let saveChangesLogger = Logger(subsystem: "com.TablePro", category: "RowEditingCoordinator")
 
@@ -84,18 +85,26 @@ extension RowEditingCoordinator {
         }
         let connId = parent.connection.id
         let kind: OperationKind = hasPendingTableOps ? .destructiveQuery : .writeQuery
-        let deleteConfirmation = BulkDeleteConfirmation(deletedRowCount: parent.changeManager.deletedRowIDs.count)
+        let deleteConfirmation = BulkDeleteConfirmation(
+            deletedRowCount: parent.changeManager.deletedRowIDs.count,
+            tableName: plan.rowOperations.first(where: { $0.kind == .delete })?.target.table
+        )
+        let confirmingTabId = parent.tabManager.selectedTabId
+        let confirmingChanges = parent.changeManager.pending
         Task { [weak self, parent] in
             guard let self else { return }
 
             if deleteConfirmation.isRequired {
-                let confirmed = await AlertHelper.confirmDestructive(
-                    title: deleteConfirmation.title,
-                    message: deleteConfirmation.message,
-                    confirmButton: deleteConfirmation.confirmButtonTitle,
-                    window: parent.contentWindow
-                )
-                guard confirmed else {
+                let preview = await previewCascade(of: plan)
+                // The window stays live while counting. A tab switched to holds the change manager this
+                // save would clear, and an edit made meanwhile is not in the plan, so either ends the save.
+                let planIsCurrent = parent.tabManager.selectedTabId == confirmingTabId
+                    && parent.changeManager.pending == confirmingChanges
+                var choice = BulkDeleteAlert.Choice.cancel
+                if planIsCurrent {
+                    choice = await BulkDeleteAlert.present(deleteConfirmation.with(preview), window: parent.contentWindow)
+                }
+                guard choice == .delete else {
                     if hasPendingTableOps {
                         restorePendingTableOperations(
                             connectionId: connId,
@@ -107,6 +116,16 @@ extension RowEditingCoordinator {
                     endSaveInFlight()
                     parent.saveCompletionContinuation?.resume(returning: false)
                     parent.saveCompletionContinuation = nil
+                    if !planIsCurrent, let index = parent.tabManager.tabs.firstIndex(where: { $0.id == confirmingTabId }) {
+                        parent.tabManager.mutate(at: index) {
+                            $0.execution.errorMessage = String(
+                                localized: "The changes were edited while the save was checking other tables. Save again to include them."
+                            )
+                        }
+                    }
+                    if case .showRows(let line) = choice {
+                        showCascadeRows(line, scope: plan.scope)
+                    }
                     return
                 }
             }
@@ -578,6 +597,32 @@ extension RowEditingCoordinator {
                 )
             )
         }
+    }
+
+    private func previewCascade(of plan: DataWritePlan) async -> CascadeDeletePreview? {
+        guard let root = CascadeDeleteRoot(operations: plan.rowOperations),
+              var environment = CascadeDeletePreviewer.Environment.live(
+                  scope: plan.scope,
+                  databaseType: plan.databaseType
+              )
+        else { return nil }
+        // The only prologue a save carries turns foreign key checks off for "Ignore foreign key checks".
+        environment.checksTurnedOffBySave = !plan.prologue.isEmpty
+        return await CascadeDeletePreviewer.preview(of: root, in: plan.scope, environment: environment)
+    }
+
+    // The save was cancelled first, so the staged deletes stay for the user to save after looking.
+    private func showCascadeRows(_ line: BulkDeleteConfirmation.Line, scope: DatabaseScope) {
+        guard let condition = line.filterCondition else { return }
+        parent.promotePreviewTab()
+        parent.openTabInNewWindow(
+            parent.makeFKReferencePayload(
+                filter: TableFilter(columnName: TableFilter.rawSQLColumn, rawSQL: condition),
+                referencedTable: line.table,
+                databaseName: scope.database,
+                schemaName: scope.schema
+            )
+        )
     }
 
     private func failSave(message: String) {

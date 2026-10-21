@@ -100,6 +100,7 @@ struct DataFileContentView: View {
         config.showRowNumbers = true
         config.hiddenColumns = controller.columnLayout.hiddenColumns
         config.supportsValueFilter = false
+        config.appliesRowCopyFormat = true
         config.filterMenuColumnTypes = controller.columnNames.ids.map {
             DataFileColumnTypes.filterType(for: controller.kind(of: $0))
         }

@@ -10,6 +10,7 @@ import SwiftUI
 import TableProPluginKit
 import TableProRedisCore
 import TableProSSHConfig
+import TableProSSHTransport
 import TableProSyncTransport
 
 @MainActor
@@ -305,7 +306,7 @@ final class ConnectionFormCoordinator: ObservableObject {
         advanced.write(into: &fields)
 
         var resolvedHost = network.resolvedHost
-        var resolvedPort = network.resolvedPort
+        var resolvedPort = network.resolvedLocalSocketEndpoint?.port ?? network.resolvedPort
 
         // An empty list means what its placeholder shows, never the Host it hid.
         if let hostList = PluginManager.shared.additionalConnectionFields(for: network.type).endpointHostList {
@@ -317,11 +318,21 @@ final class ConnectionFormCoordinator: ObservableObject {
             resolvedPort = primary.port
         }
 
-        let trimmedScript = advanced.preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedScript.isEmpty {
-            fields.removeValue(forKey: "preConnectScript")
+        for (key, script) in [
+            ("preConnectScript", advanced.preConnectScript),
+            (DatabaseConnection.postDisconnectScriptKey, advanced.postDisconnectScript)
+        ] {
+            if script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                fields.removeValue(forKey: key)
+            } else {
+                fields[key] = script
+            }
+        }
+        if let timeout = advanced.scriptTimeoutSeconds,
+           ConnectionScriptRunner.timeoutSecondsRange.contains(timeout) {
+            fields[DatabaseConnection.scriptTimeoutSecondsKey] = String(timeout)
         } else {
-            fields["preConnectScript"] = advanced.preConnectScript
+            fields.removeValue(forKey: DatabaseConnection.scriptTimeoutSecondsKey)
         }
 
         return ConnectionFormEdits(
@@ -350,6 +361,8 @@ final class ConnectionFormCoordinator: ObservableObject {
             externalAccess: advanced.externalAccess,
             connectTimeoutSeconds: customization.connectTimeoutSeconds,
             queryTimeoutSeconds: customization.queryTimeoutSeconds,
+            binaryInlineLimitKilobytes: customization.binaryInlineLimitKilobytes,
+            completionIdentifierCase: customization.completionIdentifierCase,
             redisDatabase: advanced.additionalFieldValues[RedisDatabaseIndex.fieldName].map {
                 RedisDatabaseIndex.parse($0) ?? 0
             },
@@ -597,19 +610,26 @@ final class ConnectionFormCoordinator: ObservableObject {
         }
     }
 
+    // What a password source sees for the values in the form, saved or not.
+    func passwordSourceContext() -> ConnectionScriptContext {
+        ConnectionScriptContext(connection: buildEdits().applied(to: DatabaseConnection(id: connectionId ?? UUID(), name: "")))
+    }
+
+    // The edits leave out the prompt flag and the source, which a save carries over. A test without them signs in differently from Connect.
+    func connectionForTest() -> DatabaseConnection {
+        var connection = buildEdits().applied(to: DatabaseConnection(id: UUID(), name: ""))
+        connection.promptForPassword = auth.effectivePromptForPassword
+        connection.passwordSource = auth.passwordSourceInUse
+        return connection
+    }
+
     func test() {
         guard testTask == nil else { return }
         isTesting = true
         testResult = nil
         let window = NSApp.keyWindow
 
-        var testConn = buildEdits().applied(to: DatabaseConnection(id: UUID(), name: ""))
-        /// `credentialMode` rides along from the edits, so the resolver finds the linked profile
-        /// under its own id rather than the throwaway connection's. The connection's own password
-        /// source is only resurrected when nothing else supplies a password.
-        testConn.passwordSource = auth.password.isEmpty && !auth.usesCredentialProfile
-            ? originalConnection?.passwordSource
-            : nil
+        let testConn = connectionForTest()
         temporaryTestIds.insert(testConn.id)
 
         let password = auth.password
@@ -699,7 +719,7 @@ final class ConnectionFormCoordinator: ObservableObject {
             } catch {
                 let fields = self?.auth.additionalFieldValues ?? [:]
                 if let provider = ConnectionSignInRegistry.provider(for: error, fields: fields) {
-                    await self?.offerSignIn(provider, fields: fields, testId: testConn.id, window: window)
+                    await self?.offerSignIn(provider, for: error, fields: fields, testId: testConn.id, window: window)
                     return
                 }
                 await MainActor.run {
@@ -732,6 +752,7 @@ final class ConnectionFormCoordinator: ObservableObject {
     /// alone rather than marked failed: the credential was the problem, not the settings.
     private func offerSignIn(
         _ provider: ConnectionSignInProvider,
+        for error: Error,
         fields: [String: String],
         testId: UUID,
         window: NSWindow?
@@ -739,7 +760,7 @@ final class ConnectionFormCoordinator: ObservableObject {
         cleanupTestSecrets(for: testId)
         isTesting = false
         testTask = nil
-        guard await ConnectionSignInPrompt.offer(provider, fields: fields, window: window) else { return }
+        guard await ConnectionSignInPrompt.offer(provider, for: error, fields: fields, window: window) else { return }
         AlertHelper.showInfoSheet(
             title: String(localized: "Signed In"),
             message: provider.signedInMessage,

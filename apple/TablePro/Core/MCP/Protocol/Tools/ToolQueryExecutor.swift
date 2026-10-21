@@ -29,8 +29,14 @@ enum ToolQueryExecutor {
             principal: context.principal,
             cancellation: context.cancellation,
             secrets: secrets,
-            unit: unit
+            unit: unit,
+            source: historySource(for: context)
         )
+    }
+
+    // A label from the client's own `clientInfo`, as Connected Clients shows; access is decided by the token.
+    static func historySource(for context: MCPRequestContext) -> QueryHistorySource {
+        context.meta.clientInfo?.name == CLIClientIdentity.name ? .commandLine : .mcp
     }
 
     static func executeAndLog(
@@ -42,9 +48,17 @@ enum ToolQueryExecutor {
         principal: MCPPrincipal,
         cancellation: MCPCancellationToken? = nil,
         secrets: [String] = [],
-        unit: Unit = .statement
+        unit: Unit = .statement,
+        source: QueryHistorySource = .mcp
     ) async throws -> JsonValue {
-        try await logged(services: services, query: query, scope: scope, principal: principal, secrets: secrets) {
+        try await logged(
+            services: services,
+            query: query,
+            scope: scope,
+            principal: principal,
+            secrets: secrets,
+            source: source
+        ) {
             try await run(
                 unit,
                 services: services,
@@ -72,7 +86,8 @@ enum ToolQueryExecutor {
             query: query,
             scope: scope,
             principal: context.principal,
-            secrets: secrets
+            secrets: secrets,
+            source: historySource(for: context)
         ) {
             let outcome = try await services.connectionBridge.runStatement(
                 scope: scope,
@@ -91,6 +106,7 @@ enum ToolQueryExecutor {
         scope: DatabaseScope,
         principal: MCPPrincipal,
         secrets: [String],
+        source: QueryHistorySource,
         operation: () async throws -> (Output, Int)
     ) async throws -> Output {
         let connectionId = scope.connectionId
@@ -107,7 +123,8 @@ enum ToolQueryExecutor {
                 executionTime: elapsed,
                 rowCount: rowCount,
                 wasSuccessful: true,
-                errorMessage: nil
+                errorMessage: nil,
+                source: source
             )
             await reportMcpQueryFinished(
                 .succeeded(OperationSummary(rowsReturned: rowCount)),
@@ -136,7 +153,8 @@ enum ToolQueryExecutor {
                 executionTime: elapsed,
                 rowCount: 0,
                 wasSuccessful: false,
-                errorMessage: redacted
+                errorMessage: redacted,
+                source: source
             )
             MCPAuditLogger.logQueryExecuted(
                 principal: principal,

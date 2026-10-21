@@ -26,4 +26,12 @@ struct RedisTLSOptionsMappingTests {
         #expect(options.verifiesCertificate == false)
         #expect(options.checksHostname == false)
     }
+
+    @Test("Through a tunnel, SNI and the hostname check use the server name, not the loopback")
+    func tunneledConnectionUsesTheServerName() {
+        let ssl = DriverSSLConfiguration(mode: .verifyFull, serverName: "cache.abc123.use1.cache.amazonaws.com")
+        let options = RedisTLSOptions(ssl: ssl, host: "127.0.0.1")
+        #expect(options.serverName == "cache.abc123.use1.cache.amazonaws.com")
+        #expect(options.expectedHost == "cache.abc123.use1.cache.amazonaws.com")
+    }
 }

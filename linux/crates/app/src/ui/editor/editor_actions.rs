@@ -1,9 +1,12 @@
 use gtk4::gio;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 
 use super::find_bar::Direction;
-use super::{SqlEditor, toggle_line_comment};
+use super::run_scope::ScopedText;
+use super::{OpenTransaction, SqlEditor, toggle_line_comment};
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 
 impl SqlEditor {
@@ -36,10 +39,14 @@ impl SqlEditor {
             entry("find-previous", |editor| {
                 editor.imp().find_bar.find(Direction::Previous)
             }),
+            entry("commit", SqlEditor::commit),
+            entry("roll-back", SqlEditor::confirm_roll_back),
         ]);
-        set_cancel_enabled(&actions, false);
+        sync_run_actions(&actions, false, None);
         self.insert_action_group("editor", Some(&actions));
-        self.connect_run_state_changed(move |_, running| set_cancel_enabled(&actions, running));
+        self.connect_run_state_changed(move |editor, running| {
+            sync_run_actions(&actions, running, editor.open_transaction());
+        });
 
         let imp = self.imp();
         imp.source_view
@@ -56,6 +63,42 @@ impl SqlEditor {
 }
 
 impl SqlEditor {
+    // Sent as typed SQL is, so the results, the history and the
+    // transaction line follow it. The buffer keeps the user's script.
+    fn commit(&self) {
+        self.end_transaction("COMMIT");
+    }
+
+    fn roll_back(&self) {
+        self.end_transaction("ROLLBACK");
+    }
+
+    fn end_transaction(&self, sql: &str) {
+        self.execute(ScopedText {
+            text: sql.to_owned(),
+            base_char: 0,
+        });
+    }
+
+    fn confirm_roll_back(&self) {
+        let dialog = adw::AlertDialog::new(
+            Some(&crate::i18n::gettext("Roll Back the Transaction?")),
+            Some(&crate::i18n::gettext("Its uncommitted changes are discarded.")),
+        );
+        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+        dialog.add_response("roll-back", &crate::i18n::gettext("Roll Back"));
+        dialog.set_response_appearance("roll-back", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let weak = self.downgrade();
+        dialog.connect_response(Some("roll-back"), move |_, _| {
+            if let Some(editor) = weak.upgrade() {
+                editor.roll_back();
+            }
+        });
+        dialog.present(Some(self));
+    }
+
     /// Escape while a query runs. The stop key's controller runs before
     /// the view's own, so a popup the view has open, such as the
     /// completion list, is closed here first, as the view's Escape would.
@@ -81,11 +124,18 @@ fn close_view_popups(view: &impl IsA<gtk4::Widget>) -> bool {
     closed
 }
 
-/// Off while nothing runs, so Escape goes on to the view and its
-/// completion popup.
-fn set_cancel_enabled(actions: &gio::SimpleActionGroup, enabled: bool) {
-    if let Some(cancel) = actions.lookup_action("cancel").and_downcast::<gio::SimpleAction>() {
-        cancel.set_enabled(enabled);
+/// Cancel is off while nothing runs, so Escape goes on to the view and
+/// its completion popup. The session takes one run at a time, so a
+/// commit or rollback waits for the run in flight.
+fn sync_run_actions(actions: &gio::SimpleActionGroup, running: bool, open: Option<OpenTransaction>) {
+    set_enabled(actions, "cancel", running);
+    set_enabled(actions, "roll-back", !running && open.is_some());
+    set_enabled(actions, "commit", !running && open == Some(OpenTransaction::Open));
+}
+
+fn set_enabled(actions: &gio::SimpleActionGroup, name: &str, enabled: bool) {
+    if let Some(action) = actions.lookup_action(name).and_downcast::<gio::SimpleAction>() {
+        action.set_enabled(enabled);
     }
 }
 

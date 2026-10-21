@@ -1,23 +1,35 @@
 import Foundation
+import os
 import TableProDatabase
 import TableProModels
 import TableProPluginKit
 
 // Runs a driver the Mac ships as a plugin, compiled into this app, the way the Mac's PluginDriverAdapter does.
 nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "PluginBackedDriver")
+
     private let plugin: any PluginDatabaseDriver
     private let dialedHosts: [String]
+    private let queryTimeoutSeconds: Int?
+    private let rowChangeSuffix: String
+    let rowPin: [String]
     private let readsOnly: @Sendable (String) -> Bool
     let rowIdentity: RowIdentity
 
     init(
         plugin: any PluginDatabaseDriver,
         dialedHosts: [String],
+        queryTimeoutSeconds: Int? = nil,
+        rowChangeSuffix: String = "",
+        rowPin: [String] = [],
         rowIdentity: RowIdentity,
         readsOnly: @escaping @Sendable (String) -> Bool
     ) {
         self.plugin = plugin
         self.dialedHosts = dialedHosts
+        self.queryTimeoutSeconds = queryTimeoutSeconds
+        self.rowChangeSuffix = rowChangeSuffix
+        self.rowPin = rowPin
         self.rowIdentity = rowIdentity
         self.readsOnly = readsOnly
     }
@@ -29,6 +41,13 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
             try await LocalNetworkPermission.shared.ensureAccess(for: host)
         }
         try await plugin.connect()
+        guard let queryTimeoutSeconds else { return }
+        // A server that refuses the limit still runs queries, as on the Mac.
+        do {
+            try await plugin.applyQueryTimeout(queryTimeoutSeconds)
+        } catch {
+            Self.logger.warning("The query timeout was not applied: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func disconnect() async throws {
@@ -78,17 +97,19 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         }
     }
 
-    func cancelCurrentQuery() async throws {
-        try plugin.cancelQuery()
-    }
+    // The plugin cancels whichever request it sent last, which can be another window's on this shared session. Stop
+    // ends the run's stream instead, and the plugin stops and kills that request alone.
+    func cancelCurrentQuery() async throws {}
 
     static func emit(
         _ result: PluginQueryResult,
         options: StreamOptions,
         into continuation: AsyncThrowingStream<StreamElement, Error>.Continuation
     ) {
-        let converted = QueryResult(from: result)
-        continuation.yield(.columns(converted.columns))
+        let columns = zip(result.columns, result.columnTypeNames).enumerated().map { index, pair in
+            ColumnInfo(name: pair.0, typeName: pair.1, ordinalPosition: index)
+        }
+        continuation.yield(.columns(columns))
         let keyIndices = options.lazyContext.map { context in
             context.primaryKeyColumns.map { key in result.columns.firstIndex(of: key) }
         }
@@ -117,7 +138,7 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
                 case .bytes(let data):
                     return .binary(byteCount: data.count, ref: ref)
                 case .text(let text):
-                    let typeName = index < converted.columns.count ? converted.columns[index].typeName : nil
+                    let typeName = index < columns.count ? columns[index].typeName : nil
                     return Cell.from(legacyValue: text, columnTypeName: typeName, options: options, ref: ref)
                 }
             }
@@ -125,14 +146,14 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
             emitted += 1
         }
 
-        if let message = converted.statusMessage {
+        if let message = result.statusMessage {
             continuation.yield(.statusMessage(message))
         }
-        if converted.rowsAffected != 0 {
-            continuation.yield(.rowsAffected(converted.rowsAffected))
+        if result.rowsAffected != 0 {
+            continuation.yield(.rowsAffected(result.rowsAffected))
         }
         // A plugin that capped the read itself returns exactly the cap and says it stopped there.
-        if converted.isTruncated {
+        if result.isTruncated {
             let reason: TruncationReason = emitted >= options.maxRows
                 ? .rowCap(options.maxRows)
                 : .driverLimit("driver returned isTruncated=true")
@@ -254,6 +275,12 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         columns: [String],
         values: [(column: String, value: String?)]
     ) throws -> [PluginRowWrite] {
+        // The plugin reads this text as "leave the column out", so storing it as a value cannot be expressed.
+        if values.contains(where: { $0.value == Self.defaultSentinel }) {
+            throw DatabaseError(message: String(format: String(
+                localized: "The text %@ cannot be inserted: this database reads it as the column's default."
+            ), Self.defaultSentinel))
+        }
         let given = Dictionary(values.map { ($0.column, $0.value) }, uniquingKeysWith: { _, last in last })
         let row = columns.map { column -> PluginCellValue in
             guard let value = given[column] else { return .text(Self.defaultSentinel) }
@@ -274,6 +301,70 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
             affected += max(result.rowsAffected, 0)
         }
         return affected
+    }
+
+    // A row inserted after the lookup lands outside the pinned part, so the write never reaches it. A part merged
+    // away before the write runs leaves the row as it was, which the check after an update reports.
+    func run(_ writes: [PluginRowWrite], changing target: RowTarget) async throws -> Int {
+        var pin = ""
+        var pinValues: [PluginCellValue] = []
+        if !rowPin.isEmpty {
+            let found = try await matchingRows(table: target.table, columns: target.columns, row: target.row)
+            guard found.count == 1, let position = found.first else {
+                throw found.isEmpty ? RowChangeRefusal.rowNotFound : RowChangeRefusal.identicalRows
+            }
+            guard position.count == rowPin.count else { throw Self.cannotWrite }
+            pin = rowPin.map { " AND \(plugin.quoteIdentifier($0)) = ?" }.joined()
+            pinValues = position
+        }
+        let affected = try await run(writes.map { write in
+            PluginRowWrite(
+                statement: write.statement + pin + rowChangeSuffix,
+                parameters: write.parameters + pinValues,
+                rowIndices: write.rowIndices
+            )
+        })
+        if !rowPin.isEmpty, let changes = target.changes {
+            try await confirmChanged(target, changes: changes)
+        }
+        return affected
+    }
+
+    // A row still holding its old values was not changed, unless the new values read the same, such as 1.0 for 1.
+    // Generated columns change with their sources, so the row as saved is never predicted.
+    private func confirmChanged(_ target: RowTarget, changes: [(column: String, value: String?)]) async throws {
+        let unchanged = try await matchingRows(table: target.table, columns: target.columns, row: target.row)
+        guard !unchanged.isEmpty else { return }
+        let alreadySaved = try await matchingRows(
+            table: target.table,
+            columns: target.columns + changes.map(\.column),
+            row: target.row + changes.map(\.value)
+        )
+        guard alreadySaved.count == unchanged.count else { throw RowChangeRefusal.rowNotFound }
+    }
+
+    func matchingRowCount(table: String, schema: String?, columns: [String], row: [String?]) async throws -> Int {
+        try await matchingRows(table: table, columns: columns, row: row).count
+    }
+
+    // Unqualified and with the same predicates as the plugin's own row writes, so it finds the rows they would touch:
+    // at most two, each as its pin values.
+    private func matchingRows(table: String, columns: [String], row: [String?]) async throws -> [[PluginCellValue]] {
+        guard !columns.isEmpty, columns.count == row.count else { throw Self.cannotWrite }
+        var parameters: [PluginCellValue] = []
+        let conditions = zip(columns, row).map { column, value -> String in
+            let quoted = plugin.quoteIdentifier(column)
+            guard let value else { return "\(quoted) IS NULL" }
+            parameters.append(.text(value))
+            return "\(quoted) = ?"
+        }
+        let selected = rowPin.isEmpty ? "1" : rowPin.map(plugin.quoteIdentifier).joined(separator: ", ")
+        let query = "SELECT \(selected) FROM \(plugin.quoteIdentifier(table)) WHERE \(conditions.joined(separator: " AND ")) LIMIT 2"
+        return try await plugin.executeParameterized(query: query, parameters: parameters).rows
+    }
+
+    private static var cannotWrite: DatabaseError {
+        DatabaseError(message: String(localized: "This database cannot write this change from iPhone or iPad."))
     }
 
     // The Mac's grid marks a cell left at the column default with this text, and the drivers leave such a column out.
@@ -298,7 +389,7 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
             insertedRowIndices: Set(inserted.keys),
             context: PluginRowWriteContext()
         ) else {
-            throw DatabaseError(message: String(localized: "This database cannot write this change from iPhone or iPad."))
+            throw Self.cannotWrite
         }
         return writes
     }

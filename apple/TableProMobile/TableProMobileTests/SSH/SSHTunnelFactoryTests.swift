@@ -74,15 +74,49 @@ struct SSHTunnelFactoryTests {
         #expect(stages.discardCount == 1)
     }
 
-    @Test("An auth method iOS cannot perform releases the session it already built")
-    func unsupportedAuthMethodDiscards() async {
+    @Test("Keyboard Interactive signs in over keyboard-interactive with the stored password and the prompter")
+    func keyboardInteractiveSignsIn() async throws {
         let stages = SpyTunnelStages()
 
-        await #expect(throws: SSHTunnelError.self) {
-            try await Self.create(stages: stages, authMethod: .keyboardInteractive)
-        }
+        _ = try await Self.create(stages: stages, authMethod: .keyboardInteractive)
 
-        #expect(stages.discardCount == 1)
+        #expect(stages.calls.contains("keyboardInteractive deploy"))
+        #expect(stages.secondSteps == ["password=secret totp=no prompter=yes"])
+    }
+
+    @Test("A password or a key is followed by keyboard-interactive, a jump host's key is not")
+    func secondStepFollowsTheServerMethodOnly() async throws {
+        let passwordStages = SpyTunnelStages()
+        _ = try await Self.create(stages: passwordStages, authMethod: .password)
+        #expect(passwordStages.secondSteps == ["password=secret totp=no prompter=yes"])
+
+        let keyStages = SpyTunnelStages()
+        _ = try await Self.create(
+            stages: keyStages,
+            authMethod: .privateKey,
+            jumpHosts: [Self.bastion],
+            jumpHostCredentials: [Self.bastion.id: .privateKey(key: "HOP KEY", passphrase: nil)]
+        )
+        #expect(keyStages.secondSteps == ["none", "password=- totp=no prompter=yes"])
+    }
+
+    @Test("Auto Generate with a stored secret answers the code; Prompt at Connect leaves it to the user")
+    func totpFollowsTheMode() async throws {
+        for (mode, expected) in [("auto_generate", "yes"), ("prompt_at_connect", "no")] {
+            let stages = SpyTunnelStages()
+            var config = Self.config(authMethod: .password)
+            config.totpMode = mode
+            _ = try await SSHTunnelFactory.create(
+                config: config,
+                destination: .tcp(host: "db.internal", port: 5_432),
+                credentials: SSHTunnelCredentials(password: "secret", totpSecret: "JBSWY3DPEHPK3PXP"),
+                prompter: StubPrompter(answer: true),
+                hostKeyStore: Self.temporaryHostKeyStore(),
+                ensureLocalNetworkAccess: { _ in },
+                makeStages: { stages }
+            )
+            #expect(stages.secondSteps == ["password=secret totp=\(expected) prompter=yes"])
+        }
     }
 
     @Test("An unanswerable host key question releases the session it already built")
@@ -138,8 +172,7 @@ struct SSHTunnelFactoryTests {
 
         let tunnel = try await SSHTunnelFactory.create(
             config: config,
-            remoteHost: "db.internal",
-            remotePort: 5_432,
+            destination: .tcp(host: "db.internal", port: 5_432),
             credentials: SSHTunnelCredentials(keyPassphrase: "server pass", privateKey: "SERVER KEY"),
             jumpHostCredentials: [
                 first.id: .privateKey(key: "HOP ONE KEY", passphrase: "hop pass"),
@@ -264,8 +297,7 @@ struct SSHTunnelFactoryTests {
         await #expect(throws: SSHTunnelError.usernameMissing(host: onTheHop ? hop.host : config.host)) {
             try await SSHTunnelFactory.create(
                 config: config,
-                remoteHost: "db.internal",
-                remotePort: 5_432,
+                destination: .tcp(host: "db.internal", port: 5_432),
                 credentials: Self.credentials(for: .password),
                 jumpHostCredentials: [hop.id: .privateKey(key: "HOP KEY", passphrase: nil)],
                 prompter: StubPrompter(answer: true),
@@ -304,8 +336,7 @@ struct SSHTunnelFactoryTests {
         await #expect(throws: SSHTunnelError.connectionFailed("\(named) is out of range. Use a value between 1 and 65535.")) {
             try await SSHTunnelFactory.create(
                 config: config,
-                remoteHost: "db.internal",
-                remotePort: remotePort,
+                destination: .tcp(host: "db.internal", port: remotePort),
                 credentials: Self.credentials(for: .password),
                 jumpHostCredentials: [hop.id: .privateKey(key: "HOP KEY", passphrase: nil)],
                 prompter: StubPrompter(answer: true),
@@ -339,6 +370,38 @@ struct SSHTunnelFactoryTests {
         let stages = SpyTunnelStages(failingAt: .authenticatePrivateKey, with: refusal)
 
         await #expect(throws: SSHTunnelError.jumpHostFailed(host: Self.bastion.host, reason: refusal.localizedDescription)) {
+            try await Self.create(
+                stages: stages,
+                authMethod: .password,
+                jumpHosts: [Self.bastion],
+                jumpHostCredentials: [Self.bastion.id: .privateKey(key: "HOP KEY", passphrase: nil)]
+            )
+        }
+
+        #expect(stages.discardCount == 1)
+    }
+
+    @Test(
+        "A named failure at a hop names the hop and keeps its words",
+        arguments: zip(
+            [SpyTunnelStages.Step.handshake, .authenticatePrivateKey, .authenticatePrivateKey, .authenticatePrivateKey],
+            [
+                SSHTunnelError.negotiationFailed(SSHNegotiationFailure(
+                    stage: .keyExchangeOrHostKey,
+                    serverSoftware: "OpenSSH_10.3",
+                    supported: ["curve25519-sha256"],
+                    supportedHostKeys: ["ssh-ed25519"]
+                )),
+                .passphraseIncorrect,
+                .securityKeyUnsupported,
+                .additionalFactorRequired(["keyboard-interactive"]),
+            ]
+        )
+    )
+    func namedHopFailureNamesTheHop(step: SpyTunnelStages.Step, failure: SSHTunnelError) async {
+        let stages = SpyTunnelStages(failingAt: step, with: failure)
+
+        await #expect(throws: SSHTunnelError.jumpHostFailed(host: Self.bastion.host, reason: failure.localizedDescription)) {
             try await Self.create(
                 stages: stages,
                 authMethod: .password,
@@ -452,8 +515,7 @@ struct SSHTunnelFactoryTests {
         tunnelConfig.jumpHosts = jumpHosts
         return try await SSHTunnelFactory.create(
             config: tunnelConfig,
-            remoteHost: "db.internal",
-            remotePort: 5_432,
+            destination: .tcp(host: "db.internal", port: 5_432),
             credentials: credentials ?? Self.credentials(for: authMethod),
             jumpHostCredentials: jumpHostCredentials,
             prompter: prompter,
@@ -544,12 +606,14 @@ nonisolated final class SpyTunnelStages: SSHTunnelStages, Sendable {
         case hostKey
         case authenticatePassword
         case authenticatePrivateKey
+        case authenticateKeyboardInteractive
         case authenticateNone
         case beginForwarding
 
         var authMethod: SSHConfiguration.SSHAuthMethod {
             switch self {
             case .authenticatePrivateKey: return .privateKey
+            case .authenticateKeyboardInteractive: return .keyboardInteractive
             case .authenticateNone: return .none
             default: return .password
             }
@@ -562,6 +626,7 @@ nonisolated final class SpyTunnelStages: SSHTunnelStages, Sendable {
         var destination: SSHForwardDestination?
         var suspended = false
         var calls: [String] = []
+        var secondSteps: [String] = []
     }
 
     let tunnel = SpyTunnel()
@@ -584,6 +649,9 @@ nonisolated final class SpyTunnelStages: SSHTunnelStages, Sendable {
     var forwardedTo: SSHForwardDestination? { state.withLock { $0.destination } }
 
     var calls: [String] { state.withLock { $0.calls } }
+
+    // What each sign-in was given for the keyboard-interactive step: "none" for a jump host.
+    var secondSteps: [String] { state.withLock { $0.secondSteps } }
 
     func waitUntilSuspended() async {
         while !state.withLock({ $0.suspended }) {
@@ -609,16 +677,41 @@ nonisolated final class SpyTunnelStages: SSHTunnelStages, Sendable {
         return (Data([0x01, 0x02]), "ssh-ed25519")
     }
 
-    func authenticatePassword(username: String, password: String) async throws {
+    func authenticatePassword(username: String, password: String, then secondStep: KeyboardInteractiveCredentials) async throws {
+        record(secondStep)
         try await run(.authenticatePassword, "password \(username)")
     }
 
-    func authenticatePublicKey(username: String, keyPath: String, passphrase: String?) async throws {
+    func authenticatePublicKey(
+        username: String,
+        keyPath: String,
+        passphrase: String?,
+        then secondStep: KeyboardInteractiveCredentials?
+    ) async throws {
+        record(secondStep)
         try await run(.authenticatePrivateKey, "keyFile \(username) \(keyPath) \(passphrase ?? "-")")
     }
 
-    func authenticatePublicKeyFromMemory(username: String, keyContent: String, passphrase: String?) async throws {
+    func authenticatePublicKeyFromMemory(
+        username: String,
+        keyContent: String,
+        passphrase: String?,
+        then secondStep: KeyboardInteractiveCredentials?
+    ) async throws {
+        record(secondStep)
         try await run(.authenticatePrivateKey, "key \(username) \(keyContent) \(passphrase ?? "-")")
+    }
+
+    func authenticateKeyboardInteractive(username: String, with credentials: KeyboardInteractiveCredentials) async throws {
+        record(credentials)
+        try await run(.authenticateKeyboardInteractive, "keyboardInteractive \(username)")
+    }
+
+    private func record(_ secondStep: KeyboardInteractiveCredentials?) {
+        let summary = secondStep.map {
+            "password=\($0.password ?? "-") totp=\($0.totp == nil ? "no" : "yes") prompter=\($0.prompter == nil ? "no" : "yes")"
+        } ?? "none"
+        state.withLock { $0.secondSteps.append(summary) }
     }
 
     func authenticateNone(username: String) async throws {

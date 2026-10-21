@@ -26,10 +26,7 @@ impl SshRuntimeCell {
                 let runtime_dir = self.runtime_dir.clone();
                 tokio::task::spawn_blocking(move || SshRuntime::acquire(&runtime_dir))
                     .await
-                    .map_err(|error| SshFailure::RuntimeDirUnsafe {
-                        path: self.runtime_dir.clone(),
-                        detail: format!("the runtime setup task failed: {error}"),
-                    })?
+                    .map_err(|error| crate::setup_task_failed(&error))?
             })
             .await
             .cloned()

@@ -19,7 +19,7 @@ extension SQLitePluginDriver {
     var providesBulkIndexFetch: Bool { true }
 
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
-        let result = try await execute(query: SQLiteIndexCatalog.schemaIndexesQuery)
+        let result = try await execute(query: SQLiteIndexCatalog.schemaIndexesQuery(schema: schema))
         return SQLiteIndexCatalog.indexesByTable(fromRows: result.rows)
     }
 
@@ -31,8 +31,8 @@ extension SQLitePluginDriver {
     /// that wants a count asks `fetchTableMetadata` for the one table it cares about.
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata] {
         let query = """
-            SELECT name FROM sqlite_master
-            WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+            SELECT name FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
+            WHERE type = 'table' AND name NOT GLOB 'sqlite_*'
             ORDER BY name
             """
         let result = try await execute(query: query)

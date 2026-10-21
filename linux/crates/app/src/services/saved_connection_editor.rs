@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use tablepro_core::SafeModeLevel;
 use tablepro_core::credentials::{SecretError, SecretKind, SecretLookup, SecretVault};
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionStore, SavedConnection};
@@ -206,6 +207,14 @@ impl SavedConnectionEditor {
             .ok_or(SavedConnectionError::NotFound(id))
     }
 
+    /// Give the connection `id` another Safe Mode level.
+    pub async fn set_safe_mode(&self, id: Uuid, level: SafeModeLevel) -> Result<(), SavedConnectionError> {
+        self.write(id, move |entry| entry.safe_mode = level)
+            .await?
+            .map(drop)
+            .ok_or(SavedConnectionError::NotFound(id))
+    }
+
     async fn list(&self) -> Result<Arc<[SavedConnection]>, SavedConnectionError> {
         let store = self.store.clone();
         Ok(self.tasks.spawn_blocking_task(move || store.load_blocking()).await??)
@@ -286,7 +295,7 @@ mod tests {
             database: "shop".to_owned(),
             username: "app".to_owned(),
             tls: TlsConfig::verify_full(),
-            read_only: false,
+            safe_mode: tablepro_core::SafeModeLevel::Off,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: Some(chrono::Utc::now()),
@@ -493,7 +502,7 @@ mod tests {
         let fixture = fixture().await;
         let before = fixture.vault.calls().len();
         let edited = SavedConnection {
-            read_only: true,
+            safe_mode: tablepro_core::SafeModeLevel::ReadOnly,
             ..fixture.saved.clone()
         };
 
@@ -508,7 +517,10 @@ mod tests {
             after.iter().all(|call| matches!(call, Call::Load(..))),
             "the keyring was written: {after:?}"
         );
-        assert!(stored(&fixture.store)[0].read_only);
+        assert_eq!(
+            stored(&fixture.store)[0].safe_mode,
+            tablepro_core::SafeModeLevel::ReadOnly
+        );
     }
 
     #[tokio::test]

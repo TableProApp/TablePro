@@ -8,13 +8,21 @@ rewrites a catalog. CONTRIBUTING.md has the commands.
     scripts/localization.py status              -> per-language coverage
     scripts/localization.py plugins [--add]     -> strings Xcode cannot see, missing or unmanaged
     scripts/localization.py plugins --target ios -> the same for the package targets the iOS app links
+    scripts/localization.py extracted [--add]   -> strings the app's last build extracted, missing
 
 Xcode extracts strings per target. Code in a plugin bundle or in a package under `Packages/`
 resolves `String(localized:)` against `Bundle.main`, which is the host app, so its strings must be
 in the app's catalog, yet no sync of the app target ever finds them in its sources. Xcode deletes
 such a key on its next sync (a build in Xcode, an export, an import) unless the key is managed
 manually. `plugins` checks that every one of them is present and manual.
+
+Only Xcode itself syncs a catalog: a build from the command line extracts the app's strings into
+`.stringsdata` files and never adds them. `extracted` reads those files from the last build and
+lists every key the catalog lacks. `--derived-data` names the build's DerivedData folder; without
+it, xcodebuild reports the project's default one.
 """
+
+from __future__ import annotations
 
 import argparse
 import json
@@ -30,6 +38,11 @@ CATALOGS = {
 }
 HIDDEN_SOURCE_ROOTS = (Path("Plugins"), Path("Packages"))
 IOS_PROJECT = Path("TableProMobile/project.yml")
+# The project, its scheme, and the targets whose sources hold the catalog.
+APP_BUILDS = {
+    "mac": ("TablePro.xcodeproj", "TablePro", ("TablePro",)),
+    "ios": ("TableProMobile/TableProMobile.xcodeproj", "TableProMobile", ("TableProMobile", "TableProWidgetExtension")),
+}
 
 # Xcode writes a catalog through JSONSerialization with exactly these options. Writing through the
 # same call keeps the file identical to what Xcode would write, so its next sync moves nothing.
@@ -135,12 +148,11 @@ def hidden_keys(roots: tuple[Path, ...] = HIDDEN_SOURCE_ROOTS) -> list[str]:
     return list(seen)
 
 
-def ios_hidden_source_roots() -> tuple[Path, ...]:
-    """The package targets the iOS app links. Every other package never ships on iOS, so its strings
-    do not belong in the iOS catalog."""
+# Only the package products the iOS app links ship on iOS, so only their strings belong in its catalog.
+def ios_hidden_source_roots(project: Path = IOS_PROJECT, packages: Path = Path("Packages")) -> tuple[Path, ...]:
     roots: list[Path] = []
     package = None
-    for line in IOS_PROJECT.read_text(encoding="utf8").splitlines():
+    for line in project.read_text(encoding="utf8").splitlines():
         stripped = line.strip()
         if stripped.startswith("- package:"):
             package = stripped.split(":", 1)[1].strip()
@@ -157,8 +169,9 @@ def ios_hidden_source_roots() -> tuple[Path, ...]:
         else:
             continue
         for product in products:
-            root = Path("Packages") / package / "Sources" / product
-            if root.is_dir() and not root.is_symlink():
+            # TableProPluginKit's root is a symlink to Plugins/, and its strings ship on iOS all the same.
+            root = packages / package / "Sources" / product
+            if root.is_dir():
                 roots.append(root)
     return tuple(dict.fromkeys(roots))
 
@@ -209,15 +222,120 @@ def plugins(add: bool, target: str) -> int:
     return 0
 
 
+# The compiler places a string from a #Preview body at the macro's line. A preview never ships, and
+# Xcode's own sync leaves its strings out of the catalog.
+PREVIEW_MACRO = re.compile(r"\s*#Preview\b")
+
+
+def objects_root(target: str, derived_data: Path | None) -> Path:
+    if derived_data is not None:
+        return derived_data / "Build" / "Intermediates.noindex"
+    project, scheme, _ = APP_BUILDS[target]
+    settings = subprocess.run(
+        ["xcodebuild", "-project", project, "-scheme", scheme, "-showBuildSettings", "-skipPackagePluginValidation"],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    for line in settings.splitlines():
+        name, _, value = line.strip().partition(" = ")
+        if name == "OBJROOT":
+            return Path(value)
+    sys.exit(f"FATAL: xcodebuild reported no OBJROOT for {project}")
+
+
+def extracted_strings(objects: Path, targets: tuple[str, ...], table: str) -> list[dict]:
+    newest: dict[tuple[str, str], tuple[float, dict]] = {}
+    for target in targets:
+        for path in objects.glob(f"*.build/*/{target}.build/**/*.stringsdata"):
+            data = json.loads(path.read_text(encoding="utf8"))
+            # A deleted file's copy stays behind until a clean build.
+            if not Path(data["source"]).is_file():
+                continue
+            # Each build configuration keeps its own copy: only the newest is current.
+            slot = (target, path.name)
+            modified = path.stat().st_mtime
+            if slot not in newest or modified > newest[slot][0]:
+                newest[slot] = (modified, data)
+
+    extracted: list[dict] = []
+    for _, (_, data) in sorted(newest.items()):
+        lines = Path(data["source"]).read_text(encoding="utf8", errors="replace").splitlines()
+        entries = []
+        for entry in (data.get("tables") or {}).get(table, []):
+            line = (entry.get("location") or {}).get("startingLine", 0)
+            if not (0 < line <= len(lines) and PREVIEW_MACRO.match(lines[line - 1])):
+                entries.append(entry)
+        if entries:
+            extracted.append({**data, "tables": {table: entries}})
+    return extracted
+
+
+def extracted_keys(extracted: list[dict], table: str) -> list[str]:
+    return list(dict.fromkeys(entry["key"] for data in extracted for entry in data["tables"][table]))
+
+
+# Xcode's own sync writes each new entry, so a key with a default value or a comment comes out as an
+# Xcode build would write it.
+def synced_entries(path: Path, extracted: list[dict], keys: list[str]) -> dict:
+    wanted = set(keys)
+    with tempfile.TemporaryDirectory() as scratch:
+        # xcstringstool matches a table to a catalog by the catalog's file name.
+        copy = Path(scratch) / path.name
+        copy.write_text(json.dumps({"sourceLanguage": "en", "strings": {}, "version": "1.1"}), encoding="utf8")
+        arguments = []
+        for index, data in enumerate(extracted):
+            entries = [entry for entry in data["tables"][path.stem] if entry["key"] in wanted]
+            if entries:
+                stringsdata = Path(scratch) / f"{index}.stringsdata"
+                stringsdata.write_text(json.dumps({**data, "tables": {path.stem: entries}}), encoding="utf8")
+                arguments += ["--stringsdata", str(stringsdata)]
+        subprocess.run(["xcrun", "xcstringstool", "sync", str(copy), *arguments], check=True, capture_output=True)
+        return json.loads(copy.read_text(encoding="utf8"))["strings"]
+
+
+def extracted(add: bool, target: str, derived_data: Path | None) -> int:
+    path = CATALOGS[target]
+    catalog = load(path)
+    strings = catalog["strings"]
+    objects = objects_root(target, derived_data)
+    targets = APP_BUILDS[target][2]
+    found = extracted_strings(objects, targets, path.stem)
+
+    if not found:
+        print(f"no build of {', '.join(targets)} under {objects}: build the app, then run this again")
+        return 2
+
+    pending = [key for key in extracted_keys(found, path.stem) if key not in strings]
+    if not pending:
+        print(f"ok: every string the last build of {', '.join(targets)} extracted is in {path}")
+        return 0
+
+    if not add:
+        print(f"{len(pending)} strings the app uses are missing from {path}:")
+        for key in pending[:20]:
+            print(f"  {key!r}")
+        if len(pending) > 20:
+            print(f"  ... and {len(pending) - 20} more")
+        print("Run with --add to add them, or build in Xcode, which adds them the same way.")
+        return 1
+
+    strings.update(synced_entries(path, found, pending))
+    write(path, catalog)
+    print(f"added {len(pending)} strings to {path}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["plugins", "status"])
+    parser.add_argument("command", choices=["extracted", "plugins", "status"])
     parser.add_argument("--target", choices=sorted(CATALOGS), default="mac")
-    parser.add_argument("--add", action="store_true", help="for plugins: add and manage the pending keys")
+    parser.add_argument("--add", action="store_true", help="for plugins and extracted: add the pending keys")
+    parser.add_argument("--derived-data", type=Path, help="for extracted: the DerivedData folder of the app's build")
     args = parser.parse_args()
 
     if args.command == "plugins":
         return plugins(args.add, args.target)
+    if args.command == "extracted":
+        return extracted(args.add, args.target, args.derived_data)
     status(args.target)
     return 0
 

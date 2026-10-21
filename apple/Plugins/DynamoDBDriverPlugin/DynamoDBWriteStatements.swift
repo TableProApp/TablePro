@@ -109,9 +109,8 @@ struct DynamoDBWriteStatements {
             guards.append("\(name) = ?")
             guardValues.append(cell.oldValue)
         }
-        guard !assignments.isEmpty || !removals.isEmpty else { return nil }
+        guard !assignments.isEmpty || !removals.isEmpty, let key = keyCondition(original) else { return nil }
 
-        let key = keyCondition(original)
         var statement = "UPDATE \(DynamoDBStatement.quote(table))"
         if !assignments.isEmpty {
             statement += " SET " + assignments.joined(separator: ", ")
@@ -124,18 +123,18 @@ struct DynamoDBWriteStatements {
     }
 
     private func delete(_ change: PluginRowChange) -> (statement: String, parameters: [PluginCellValue])? {
-        guard let original = change.originalRow else { return nil }
-        let key = keyCondition(original)
+        guard let original = change.originalRow, let key = keyCondition(original) else { return nil }
         let statement = "DELETE FROM \(DynamoDBStatement.quote(table)) WHERE "
             + key.terms.joined(separator: " AND ") + " RETURNING ALL OLD *"
         return (statement, key.values)
     }
 
-    private func keyCondition(_ row: [PluginCellValue]) -> (terms: [String], values: [PluginCellValue]) {
+    private func keyCondition(_ row: [PluginCellValue]) -> (terms: [String], values: [PluginCellValue])? {
+        guard !keyColumns.isEmpty else { return nil }
         var terms: [String] = []
         var values: [PluginCellValue] = []
         for column in keyColumns {
-            guard let index = columns.firstIndex(of: column), index < row.count else { continue }
+            guard let index = columns.firstIndex(of: column), index < row.count else { return nil }
             terms.append("\(DynamoDBStatement.quote(column)) = ?")
             values.append(row[index])
         }

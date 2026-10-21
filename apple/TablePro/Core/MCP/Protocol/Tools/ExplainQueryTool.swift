@@ -42,7 +42,9 @@ public struct ExplainQueryTool: MCPToolImplementation {
 
     public static let outputSchema: JsonValue? = MCPToolSchema.object(
         properties: [
-            "statement": MCPToolSchema.string(String(localized: "The statement that was sent, with its prefix")),
+            "statement": MCPToolSchema.string(
+                String(localized: "The statement that was sent, with its prefix, or alone when the driver builds the plan")
+            ),
             "execution_time_ms": MCPToolSchema.number(String(localized: "Round trip in milliseconds")),
             "columns": MCPToolSchema.array(String(localized: "Raw result columns"), of: MCPToolSchema.stringItem),
             "rows": MCPToolSchema.array(
@@ -65,9 +67,12 @@ public struct ExplainQueryTool: MCPToolImplementation {
                     properties: [
                         "id": MCPToolSchema.string(String(localized: "Variant id")),
                         "label": MCPToolSchema.string(String(localized: "Human label")),
-                        "sql_prefix": MCPToolSchema.string(String(localized: "Prefix the variant applies"))
+                        "sql_prefix": MCPToolSchema.string(String(localized: "Prefix the variant applies")),
+                        "runs_statement": MCPToolSchema.boolean(
+                            String(localized: "Whether the variant runs the statement to measure it")
+                        )
                     ],
-                    required: ["id", "label", "sql_prefix"]
+                    required: ["id", "label", "sql_prefix", "runs_statement"]
                 )
             )
         ],
@@ -94,9 +99,12 @@ public struct ExplainQueryTool: MCPToolImplementation {
         let timeoutSeconds = try MCPLimitResolver.resolveTimeoutSeconds(arguments, settings: settings)
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
-        let statement: String
+        // A registry plugin loads on first use, and its explain variants register with it.
+        await MainActor.run { _ = PluginManager.shared.driverPlugin(for: meta.databaseType) }
+
+        let request: MCPExplainRequest
         do {
-            statement = try MCPConnectionBridge.explainStatement(
+            request = try MCPConnectionBridge.explainRequest(
                 for: query,
                 databaseType: meta.databaseType,
                 variantId: variant,
@@ -107,7 +115,7 @@ public struct ExplainQueryTool: MCPToolImplementation {
         }
 
         try await MCPStatementGate.authorize(
-            sql: statement,
+            sql: request.gatedSQL,
             meta: meta,
             allowsDestructive: false,
             operationLabel: String(localized: "an explain"),
@@ -124,7 +132,7 @@ public struct ExplainQueryTool: MCPToolImplementation {
         do {
             var payload = try await services.connectionBridge.explainQuery(
                 scope: scope,
-                sql: statement,
+                request: request,
                 timeoutSeconds: timeoutSeconds,
                 cancellation: context.cancellation
             )

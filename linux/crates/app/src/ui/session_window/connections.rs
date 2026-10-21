@@ -7,6 +7,7 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
+use tablepro_core::SafeModeLevel;
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::{ConnectSource, PendingSave, RequestTarget, SessionKey};
 use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionListState, SavedConnection};
@@ -22,6 +23,8 @@ use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectDialogM
 use crate::ui::delete_connection_dialog::{self, DeleteConnectionDialog};
 use crate::ui::file_read::{FileReadError, read_capped_file};
 use crate::ui::ssh_inputs::SshEnvironment;
+use crate::ui::workspace::WorkspaceInput;
+use crate::workspace::CloseDecision;
 
 /// The password the user typed, so editing after a failure does not
 /// make them type it again. It stays in memory.
@@ -408,6 +411,138 @@ impl SessionWindow {
         });
     }
 
+    /// Move the session on screen to `level`, and the saved connection
+    /// with it. A level on the other side of Read-Only needs the
+    /// connection opened again, so the window reconnects once the tabs
+    /// may go; until then the saved level waits for the next connect.
+    pub(super) fn on_set_safe_mode(&self, level: SafeModeLevel) {
+        let (key, session) = match &*self.imp().page.borrow() {
+            SessionPage::Workspace { claim, session, .. } => (claim.key().clone(), session.clone()),
+            _ => return,
+        };
+        let saved = match key {
+            SessionKey::Saved(id) => self.stored_connection(id),
+            SessionKey::File(_) => None,
+        };
+        // The saved level can differ from the session's after a reconnect
+        // was declined, and a level still being written can land after
+        // this choice unless this one is written after it.
+        let differs = session.safe_mode() != level
+            || self.imp().level_saving.get()
+            || saved.as_ref().is_some_and(|saved| saved.safe_mode != level);
+        if differs {
+            let applied = session.safe_mode() == level || session.set_safe_mode(level);
+            match (saved.map(|saved| saved.id), applied) {
+                (Some(id), _) => self.save_safe_mode(LevelSave {
+                    id,
+                    level,
+                    reopen: !applied,
+                }),
+                (None, true) => {}
+                (None, false) => self.show_toast(&crate::i18n::gettext(
+                    "Save this connection to change it to or from Read-Only while it is open.",
+                )),
+            }
+        }
+        self.show_safe_mode();
+    }
+
+    /// The saved connection `id` as the list on disk holds it now.
+    fn stored_connection(&self, id: Uuid) -> Option<SavedConnection> {
+        match self.state()?.services.storage.connections().snapshot().state {
+            ConnectionListState::Ready(list) => list.iter().find(|entry| entry.id == id).cloned(),
+            ConnectionListState::Loading | ConnectionListState::Unavailable(_) => None,
+        }
+    }
+
+    /// Writes run one at a time, in the order chosen.
+    fn save_safe_mode(&self, save: LevelSave) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let imp = self.imp();
+        if imp.level_saving.replace(true) {
+            imp.level_next.set(Some(save));
+            return;
+        }
+        let LevelSave { id, level, reopen } = save;
+        let editor = state.services.saved_connection_editor.clone();
+        let hold = state.services.hold().acquire();
+        let window = self.downgrade();
+        let saving = async move { editor.set_safe_mode(id, level).await };
+        crate::runtime::spawn_and_deliver(&state.services.tasks, saving, move |outcome| {
+            drop(hold);
+            let Some(window) = window.upgrade() else {
+                return;
+            };
+            window.imp().level_saving.set(false);
+            if let Some(next) = window.imp().level_next.take() {
+                window.save_safe_mode(next);
+                return;
+            }
+            match flatten(outcome) {
+                Ok(()) if reopen => window.reopen_after_teardown(id),
+                Ok(()) => {}
+                Err(error) => window.show_saved_connection_error(
+                    |reason| crate::i18n::gettext_f("Safe Mode could not be saved. {reason}", &[("reason", reason)]),
+                    &error,
+                ),
+            }
+        });
+    }
+
+    /// Ask the tabs, as Disconnect does, then connect again.
+    fn reopen_after_teardown(&self, id: Uuid) {
+        let (Some(handle), Some(guards), Some(input)) = (self.workspace_handle(), self.close_guards(), self.input())
+        else {
+            return;
+        };
+        if !self.page_is(
+            |page| matches!(page, SessionPage::Workspace { claim, .. } if *claim.key() == SessionKey::Saved(id)),
+        ) {
+            return;
+        }
+        guards.begin_teardown();
+        if guards.may_tear_down(&handle) {
+            input.deliver(SessionWindowInput::ReopenApproved(id));
+            return;
+        }
+        let window = self.downgrade();
+        guards.ask_tear_down(self.upcast_ref(), &handle, move |decision| match decision {
+            CloseDecision::Approved => input.deliver(SessionWindowInput::ReopenApproved(id)),
+            _ => {
+                if let Some(window) = window.upgrade() {
+                    window.show_toast(&crate::i18n::gettext("Changes apply the next time you connect"));
+                }
+            }
+        });
+    }
+
+    pub(super) fn on_reopen_approved(&self, id: Uuid) {
+        let stored = self.stored_connection(id);
+        if !self.tear_down() {
+            return;
+        }
+        self.show_page(SessionPage::Picker);
+        match stored {
+            Some(saved) => self.on_open_saved(saved),
+            None => self.show_toast(&crate::i18n::gettext("The connection was deleted.")),
+        }
+    }
+
+    /// Tick the session's level in the main menu and name it in the
+    /// title.
+    pub(super) fn show_safe_mode(&self) {
+        let level = match &*self.imp().page.borrow() {
+            SessionPage::Workspace { session, .. } => Some(session.safe_mode()),
+            _ => None,
+        };
+        super::window_actions::show_safe_mode(self.upcast_ref(), level);
+        if let Some(input) = self.workspace().and_then(|workspace| workspace.input()) {
+            input.deliver(WorkspaceInput::SafeModeChanged);
+        }
+    }
+
     /// Run a change to a saved connection, holding the process until it
     /// lands so a quit right after it keeps it. Every picker redraws
     /// from the list the store then publishes.
@@ -617,6 +752,15 @@ impl SessionWindow {
             toasts.add_toast(crate::ui::plain_toast(&reset_failure_text(reason.as_deref())));
         });
     }
+}
+
+/// A Safe Mode level to write to the saved connection `id`, and whether
+/// the window then connects again to apply it.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct LevelSave {
+    id: Uuid,
+    level: SafeModeLevel,
+    reopen: bool,
 }
 
 /// One result from work that can fail and a task that can die.

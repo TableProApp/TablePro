@@ -659,22 +659,34 @@ final class SyncCoordinator: ObservableObject {
         SyncFailure(error) == .tokenExpired
     }
 
+    // A delta never resends a record the token passed, and a category toggle starts no run, so every pull checks.
+    private func adoptReadableContent(for settings: SyncSettings) {
+        guard metadataStorage.adoptReadableRecordTypes(Self.readableContent(for: settings)) else { return }
+        metadataStorage.saveToken(nil)
+        Self.logger.info("Reading record types the last pull skipped: cleared sync token for full fetch")
+    }
+
     /// Reports a failed download instead of passing over it: a run whose pull failed did not bring
     /// this Mac up to date, and must not say Synced or move Last Synced.
     private func performPull(echoGuard: SyncEchoGuard?) async -> SyncStepFailure? {
+        // Applied with the categories recorded here, so one turned off during the download is still read once.
+        let settings = services.appSettingsStorage.loadSync()
+        adoptReadableContent(for: settings)
         let token = metadataStorage.loadToken()
         let tokenStatus = token == nil ? "nil (full fetch)" : "present (delta)"
         Self.logger.info("Pull starting, token: \(tokenStatus)")
 
         do {
             let result = try await transport.pull(since: token)
-            return await applyPull(result, isFullFetch: token == nil, echoGuard: echoGuard) ? nil : .pullNotSaved
+            return await applyPull(result, isFullFetch: token == nil, settings: settings, echoGuard: echoGuard)
+                ? nil : .pullNotSaved
         } catch let error where Self.isTokenExpired(error) {
             Self.logger.warning("Change token expired, clearing and retrying with full fetch")
             metadataStorage.saveToken(nil)
             do {
                 let result = try await transport.pull(since: nil)
-                return await applyPull(result, isFullFetch: true, echoGuard: echoGuard) ? nil : .pullNotSaved
+                return await applyPull(result, isFullFetch: true, settings: settings, echoGuard: echoGuard)
+                    ? nil : .pullNotSaved
             } catch {
                 Self.logger.error("Full fetch after token expiry failed: \(error.localizedDescription)")
                 return SyncStepFailure(error)
@@ -685,8 +697,13 @@ final class SyncCoordinator: ObservableObject {
         }
     }
 
-    private func applyPull(_ result: PullResult, isFullFetch: Bool, echoGuard: SyncEchoGuard?) async -> Bool {
-        guard await applyPullResult(result, echoGuard: echoGuard) else { return false }
+    private func applyPull(
+        _ result: PullResult,
+        isFullFetch: Bool,
+        settings: SyncSettings,
+        echoGuard: SyncEchoGuard?
+    ) async -> Bool {
+        guard await applyPullResult(result, settings: settings, echoGuard: echoGuard) else { return false }
         if isFullFetch {
             seedLocalThemesIfPending(after: result)
         }
@@ -694,8 +711,12 @@ final class SyncCoordinator: ObservableObject {
     }
 
     @discardableResult
-    internal func applyPullResult(_ result: PullResult, echoGuard: SyncEchoGuard? = nil) async -> Bool {
-        let settings = services.appSettingsStorage.loadSync()
+    internal func applyPullResult(
+        _ result: PullResult,
+        settings: SyncSettings? = nil,
+        echoGuard: SyncEchoGuard? = nil
+    ) async -> Bool {
+        let settings = settings ?? services.appSettingsStorage.loadSync()
         let deletedRecordIDs = result.deletedRecordIDs.filter { recordID in
             echoGuard?.withholdsDeletion(recordID, tracker: changeTracker) != true
         }
@@ -808,7 +829,9 @@ final class SyncCoordinator: ObservableObject {
                 case .skipped: break
                 }
             case .sshProfile:
-                applyRemoteSSHProfile(record, tombstoneIds: sshTombstoneIds)
+                if !applyRemoteSSHProfile(record, tombstoneIds: sshTombstoneIds) {
+                    persistenceFailed = true
+                }
             case .credentialProfile:
                 if !applyRemoteCredentialProfile(record, tombstoneIds: credentialTombstoneIds) {
                     persistenceFailed = true
@@ -934,7 +957,7 @@ final class SyncCoordinator: ObservableObject {
         } else {
             connections.append(remoteConnection)
         }
-        guard services.connectionStorage.saveConnections(connections) else {
+        guard services.connectionStorage.saveConnections(connections, byUser: false) else {
             Self.logger.error("Failed to apply remote connection update: persistence error for \(remoteConnection.id, privacy: .public)")
             return .failed
         }
@@ -1004,19 +1027,20 @@ final class SyncCoordinator: ObservableObject {
         }
         guard services.credentialProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
         /// The connections linked to it carry a copy of the username, which every raw reader uses.
-        services.credentialProfileStorage.writeUsernameThrough(remoteProfile)
+        services.credentialProfileStorage.writeUsernameThrough(remoteProfile, byUser: false)
         return true
     }
 
-    private func applyRemoteSSHProfile(_ record: CKRecord, tombstoneIds: Set<String>) {
+    // False keeps the change token, so a profile this Mac failed to save arrives again.
+    private func applyRemoteSSHProfile(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
         let remoteProfile: SSHProfile
         do {
             remoteProfile = try SyncRecordMapper.toSSHProfile(record)
         } catch {
             Self.logger.error("Skipping remote SSH profile \(record.recordID.recordName, privacy: .public): \(error.publicLogShape, privacy: .public)")
-            return
+            return true
         }
-        if tombstoneIds.contains(remoteProfile.id.uuidString) { return }
+        if tombstoneIds.contains(remoteProfile.id.uuidString) { return true }
 
         var profiles = services.sshProfileStorage.loadProfiles()
         if let index = profiles.firstIndex(where: { $0.id == remoteProfile.id }) {
@@ -1024,10 +1048,11 @@ final class SyncCoordinator: ObservableObject {
         } else {
             profiles.append(remoteProfile)
         }
-        guard services.sshProfileStorage.saveProfilesWithoutSync(profiles) else { return }
+        guard services.sshProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
         /// A linked connection stores the profile's configuration, so an edit that arrives from
         /// another Mac has to reach those connections too or they keep tunnelling to the old host.
-        services.sshProfileStorage.refreshLinkedConnections(with: remoteProfile)
+        services.sshProfileStorage.refreshLinkedConnections(with: remoteProfile, byUser: false)
+        return true
     }
 
     private func applyRemoteSettings(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
@@ -1105,17 +1130,7 @@ final class SyncCoordinator: ObservableObject {
             Self.logger.info("No local connections: cleared sync token for full fetch")
         }
 
-        /// A pull returns only what changed since the token, so records of a type an earlier build
-        /// did not sync were passed over for good. The first run of a build that syncs more types
-        /// fetches the zone again, which is how table folders made on an upgraded Mac reach one that
-        /// upgrades later. Counted over the types verified in Production, because an unverified type
-        /// has no records on the server to fetch, plus the content kinds an older build skipped
-        /// inside a type it read (`readableContent`). Checked on every turn to on, because a sync
-        /// turned on mid-session after an upgrade would otherwise keep a token from before it.
-        if metadataStorage.adoptReadableRecordTypes(Self.readableContent) {
-            metadataStorage.saveToken(nil)
-            Self.logger.info("This build reads record types the last one did not: cleared sync token for full fetch")
-        }
+        adoptReadableContent(for: services.appSettingsStorage.loadSync())
         scheduleThemeSeedIfNeeded()
     }
 

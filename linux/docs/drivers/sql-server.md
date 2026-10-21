@@ -59,8 +59,8 @@ The sandbox has no `/etc/krb5.conf` of the host, and its `/tmp` is private, so a
 
 - Saves are refused before anything is sent (`ReadOnly(ClientGuard)`).
 - A generated read on a read-only connection runs inside `BEGIN TRANSACTION` and `ROLLBACK TRANSACTION`, so a filter fragment that writes is undone. A fragment that ends the guard's transaction itself (errors 266, 3902, 3903) is reported as refused by read-only mode, never as a success.
-- An export, on any connection, refuses user SQL that is not one batch of statements starting with `SELECT`, `WITH` or a parenthesis, or that contains a word that writes or runs code (`INSERT`, `EXEC`, `MERGE`, `INTO` and the like), and runs inside the same rolled-back transaction.
-- An editor session has no guard: it runs whatever the login may run.
+- An export, on any connection, refuses user SQL that is not one batch Safe Mode would count as a read (`tablepro_core::sql_syntax::statement_access`), and runs inside the same rolled-back transaction.
+- An editor session has no driver guard. At Safe Mode Read-Only the app refuses every editor statement it cannot tell reads, before it is sent (`tablepro_core::sql_syntax::statement_access`), which reads a batch with no `;` statement by statement.
 
 ## Stops and timeouts
 
@@ -94,6 +94,8 @@ SQL Server has no session statement timeout. A workspace call's deadline is the 
 `WriteAtomicity::Transactional` for row and schema changes. A save is `BEGIN TRANSACTION`, each step, then `COMMIT TRANSACTION`:
 
 - A statement with parameters runs through tiberius's `execute`; one without runs through `sp_executesql` with the statement alone, because SQL Server refuses `CREATE VIEW` or `CREATE TRIGGER` next to an empty parameter list.
+- A decimal parameter is cast to `decimal(38, s)`: `s` is the column's scale, or the value's when finer, as far as the value's integer digits leave room. SQL Server types the rows of a multi-row VALUES as UNION ALL does, so without one type for every row an import would narrow a full-precision value beside a shorter one.
+- tiberius gives a decimal parameter whose integer part is 0 one digit more than its scale, so a value at scale 38 would claim precision 39, which the server refuses. Such a value goes as its text, which the cast converts exactly.
 - The affected-row count includes rows a trigger touched, so a save proves it hit the right row with a probe before the statement rather than with that count.
 - A `COMMIT` the server answers with an error rolled back; one whose connection dropped is `CommitOutcomeUnknown` with no token. There is nothing to ask the server afterwards (`CommitResolutionSupport::Unavailable`).
 - SQL Server cannot suspend foreign keys for one batch, so a batch that asks for it is refused before anything is sent.

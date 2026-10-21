@@ -20,19 +20,6 @@ enum DataFilePrompts {
         }
     }
 
-    static func value(window: NSWindow?, completion: @escaping (String?) -> Void) {
-        let field = textField(initial: "", placeholder: String(localized: "Value"))
-        present(
-            message: String(localized: "Set Cells to Value"),
-            informative: String(localized: "Every targeted cell gets this value."),
-            confirm: String(localized: "Set"),
-            accessory: field,
-            window: window
-        ) { confirmed in
-            completion(confirmed ? field.stringValue : nil)
-        }
-    }
-
     static func splitSeparator(window: NSWindow?, completion: @escaping (TabularSplitSeparator?) -> Void) {
         let field = textField(initial: ",", placeholder: String(localized: "Separator"))
         let regexToggle = NSButton(checkboxWithTitle: String(localized: "Regular Expression"), target: nil, action: nil)

@@ -93,6 +93,8 @@ extension MainContentCoordinator {
         prune(&displayStateCache, keeping: openTabIds)
         prune(&tableMetadataCache, keeping: openTabIds)
         prune(&createTableDrafts, keeping: openTabIds)
+        prune(&userTypeEditors, keeping: openTabIds)
+        prune(&erDiagramModels, keeping: openTabIds)
         prune(&navigationHistories, keeping: openTabIds)
         toolbarState.forgetQueryTimings(keeping: openTabIds)
         for (tabId, session) in structureSessions where !openTabIds.contains(tabId) {
@@ -120,10 +122,12 @@ extension MainContentCoordinator {
         tabSessionRegistry.forgetFreshness(for: tabId)
         structureSessions.removeValue(forKey: tabId)?.releaseViewWiring()
         createTableDrafts.removeValue(forKey: tabId)
+        erDiagramModels.removeValue(forKey: tabId)
         tabsWithStagedPrincipals.remove(tabId)
         toolbarState.hasStructureChanges = false
         toolbarState.hasCreateTablePending = false
         toolbarState.hasPrincipalChanges = false
+        toolbarState.hasTypeChanges = false
     }
 
     /// A closed tab has to take its coordinator-side state with it, and this is the only place that
@@ -139,6 +143,8 @@ extension MainContentCoordinator {
         tabsWithStagedPrincipals.remove(tab.id)
         structureSessions.removeValue(forKey: tab.id)?.releaseViewWiring()
         createTableDrafts.removeValue(forKey: tab.id)
+        userTypeEditors.removeValue(forKey: tab.id)
+        erDiagramModels.removeValue(forKey: tab.id)
         navigationHistories.removeValue(forKey: tab.id)
         displayStateCache.removeValue(forKey: tab.id)
         tableMetadataCache.removeValue(forKey: tab.id)
@@ -147,6 +153,7 @@ extension MainContentCoordinator {
         toolbarState.hasStructureChanges = false
         toolbarState.hasCreateTablePending = false
         toolbarState.hasPrincipalChanges = false
+        toolbarState.hasTypeChanges = false
     }
 
     /// Ends what the tab was running, on the same terms a retarget does.

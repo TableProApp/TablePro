@@ -144,4 +144,20 @@ struct DatabaseConnectionAdditionalFieldsTests {
         #expect(connection(.postgresql).resolvesAWSIAMInDriver == false)
         #expect(connection(.redis).resolvesAWSIAMInDriver == false)
     }
+
+    @Test("The script timeout defaults to 10 seconds and keeps only 1 to 300")
+    func scriptTimeoutRange() {
+        var conn = TestFixtures.makeConnection()
+        #expect(conn.effectiveScriptTimeoutSeconds == 10)
+
+        conn.scriptTimeoutSeconds = 300
+        #expect(conn.effectiveScriptTimeoutSeconds == 300)
+
+        conn.scriptTimeoutSeconds = 301
+        #expect(conn.scriptTimeoutSeconds == nil)
+        #expect(conn.additionalFields[DatabaseConnection.scriptTimeoutSecondsKey] == nil)
+
+        conn.additionalFields[DatabaseConnection.scriptTimeoutSecondsKey] = "0"
+        #expect(conn.effectiveScriptTimeoutSeconds == 10)
+    }
 }

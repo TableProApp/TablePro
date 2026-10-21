@@ -182,6 +182,7 @@ struct MainContentView: View {
                 if !$0 {
                     coordinator.activeSheet = nil
                     coordinator.exportPreselection = nil
+                    coordinator.exportFormatId = nil
                     /// Cleared on every dismissal, Cancel included. The request holds the closure
                     /// that runs the rebuild, and that closure holds the structure view, which
                     /// holds this coordinator; leaving it set after a cancel keeps the cycle alive
@@ -236,9 +237,32 @@ struct MainContentView: View {
             CopyObjectsSheet(launch: launch, connection: connection)
         case .editObjectComment(let target):
             ObjectCommentSheet(target: target, connection: connection)
+        case .setSequenceNextValue(let target):
+            SetSequenceValueSheet(target: target, connection: connection)
+        case .editSequence(let target):
+            EditSequenceSheet(target: target, connection: connection)
         case .documentEditor(let request):
             DocumentEditorSheet(request: request, databaseType: connection.type)
-        case .exportDialog, .exportQueryResults, .importDialog, .rowImport,
+        case .createUserType(let database, let schema):
+            CreateUserTypeSheet(
+                connection: connection,
+                database: database ?? coordinator.browseDatabaseName,
+                schema: schema,
+                onCreated: { definition in
+                    coordinator.openCreatedUserType(definition, database: database ?? coordinator.browseDatabaseName)
+                }
+            )
+        case .searchDatabase(let session):
+            DatabaseSearchSheet(session: session) { result in
+                coordinator.openDatabaseSearchResult(result, in: session)
+            }
+        case .joinBuilder(let launch):
+            JoinBuilderSheet(model: JoinBuilderViewModel(launch: launch, connection: connection)) { sql in
+                coordinator.openJoinQuery(sql, database: launch.database)
+            }
+        case .generateRows(let session):
+            GenerateRowsSheet(session: session)
+        case .exportDialog, .exportQueryResults, .importDialog, .rowImport, .rowImportBatch,
              .transferTables, .backupDatabase, .restoreDatabase:
             transferSheetContent(for: sheet, dismiss: dismissBinding)
         case .maintenance(let operation, let tableName, let database, let schema):
@@ -315,9 +339,12 @@ struct MainContentView: View {
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
             hasStructureChanges: toolbarState.hasStructureChanges,
+            diagramEditsRevision: toolbarState.diagramEditsRevision,
+            selectedTabId: tabManager.selectedTabId,
             isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false,
             hasCreateTablePending: toolbarState.hasCreateTablePending,
-            hasPrincipalChanges: toolbarState.hasPrincipalChanges
+            hasPrincipalChanges: toolbarState.hasPrincipalChanges,
+            hasTypeChanges: toolbarState.hasTypeChanges
         )
     }
 
@@ -335,6 +362,15 @@ struct MainContentView: View {
                 table: currentTab.flatMap { coordinator.tableInfoIdentity(of: $0) }
             ) { [coordinator] tab in
                 await coordinator.loadTableMetadata(for: tab)
+            })
+            .modifier(InspectorValueLoadModifier(
+                inspector: trailingPaneState.inspector,
+                selection: coordinator.selectionState,
+                tabId: currentTab?.id,
+                selectsDataRows: gridSelectionOwner == .dataGrid,
+                contentVersion: currentTab?.schemaVersion ?? 0
+            ) { [coordinator] tabId, displayRow in
+                await coordinator.loadInspectorRowValues(tabId: tabId, displayRow: displayRow)
             })
             /// Keyed on the connection alone. The only driver that answers `fetchSessionContexts`
             /// is Snowflake, which pays two round trips for it, so this must not reload per query.
@@ -462,6 +498,11 @@ struct MainContentView: View {
                 }
                 Divider()
             }
+            ConnectionTransactionBar(
+                connectionId: connection.id,
+                transactions: DatabaseManager.shared.sessionTransactions,
+                databaseManager: DatabaseManager.shared
+            )
             editorContentView
         }
         .onChange(of: toolbarState.connectionWarning) { warning in

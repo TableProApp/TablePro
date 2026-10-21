@@ -32,7 +32,12 @@ internal enum EngineNamespaceSlot {
 
 @MainActor
 internal extension EngineNamespaceSlot {
+    /// An attached database is the qualifier in `auth.users`, which is the slot a schema takes.
     init(databaseType: DatabaseType) {
+        if PluginManager.shared.listsAttachedDatabases(for: databaseType) {
+            self = .schema
+            return
+        }
         self.init(
             supportsSchemas: PluginManager.shared.supportsSchemaSwitching(for: databaseType),
             supportsDatabases: PluginManager.shared.supportsDatabaseSwitching(for: databaseType)

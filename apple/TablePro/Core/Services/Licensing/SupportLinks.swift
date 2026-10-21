@@ -45,8 +45,6 @@ internal enum SupportReferrer: Equatable {
     }
 }
 
-/// The two places a person can pay for TablePro, and the only two outbound money links the app
-/// opens.
 internal enum SupportLinks {
     /// `appending(queryItems:)` writes the query ahead of the fragment, which is the only order
     /// that works: spelled `#pricing?ref=…` the whole tail is the fragment, so the parameter never
@@ -62,6 +60,8 @@ internal enum SupportLinks {
     /// The account's Macs page, the only place a seat can be freed from a Mac that holds none.
     /// A signed-out visit signs in and comes back here, not to the overview.
     internal static let accountMachines = URL(string: "https://tablepro.app/account/machines")!
+
+    internal static let licensingGuide = URL(string: "https://docs.tablepro.app/features/licensing")!
 
     internal static func pricing(_ referrer: SupportReferrer) -> URL {
         pricingPage.appending(queryItems: [URLQueryItem(name: "ref", value: referrer.parameterValue)])

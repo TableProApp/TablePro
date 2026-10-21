@@ -73,7 +73,9 @@ public enum PluginRowWriters {
                 .replacingOccurrences(of: "\r", with: " ")
         }
         var wasNeutralised = false
-        if options.sanitizesFormulas, let first = processed.first, isFormulaLead(first) {
+        // Scalars, not Characters: `\r\n` is one Character, so a Character test misses a Windows line break.
+        if options.sanitizesFormulas, let first = processed.unicodeScalars.first,
+           isFormulaLead(Character(first)), !isPlainNumber(processed) {
             processed = "'" + processed
             wasNeutralised = true
         }
@@ -84,15 +86,14 @@ public enum PluginRowWriters {
         case .never:
             return processed
         case .asNeeded:
-            let needsQuotes = processed.contains(options.delimiter)
-                || processed.contains("\"")
-                || processed.contains("\n")
-                || processed.contains("\r")
-                || processed.contains("\t")
-                || wasNeutralised
+            let needsQuotes = wasNeutralised
+                || processed.range(of: options.delimiter, options: .literal) != nil
+                || processed.unicodeScalars.contains { quotedScalars.contains($0) }
             return needsQuotes ? quoted(processed) : processed
         }
     }
+
+    private static let quotedScalars: Set<Unicode.Scalar> = ["\"", "\n", "\r", "\t"]
 
     /// A leading tab or carriage return is treated as a formula lead too: Excel strips it before
     /// parsing the cell, so `\t=1+1` reaches the formula engine exactly as `=1+1` would.
@@ -100,8 +101,38 @@ public enum PluginRowWriters {
         formulaPrefixes.contains(character) || character == "\t" || character == "\r"
     }
 
+    // A number is never a formula, and `'-5` is text to every reader, a spreadsheet included.
+    // The same rule as the Linux app's `is_plain_number`.
+    private static func isPlainNumber(_ value: String) -> Bool {
+        var rest = value.utf8[...]
+        func dropSign() {
+            if let sign = rest.first, sign == UInt8(ascii: "+") || sign == UInt8(ascii: "-") {
+                rest = rest.dropFirst()
+            }
+        }
+        func dropDigits() -> Int {
+            let digits = rest.prefix { (UInt8(ascii: "0") ... UInt8(ascii: "9")).contains($0) }.count
+            rest = rest.dropFirst(digits)
+            return digits
+        }
+        dropSign()
+        var digits = dropDigits()
+        if rest.first == UInt8(ascii: ".") {
+            rest = rest.dropFirst()
+            digits += dropDigits()
+        }
+        guard digits > 0 else { return false }
+        if let marker = rest.first, marker == UInt8(ascii: "e") || marker == UInt8(ascii: "E") {
+            rest = rest.dropFirst()
+            dropSign()
+            guard dropDigits() > 0 else { return false }
+        }
+        return rest.isEmpty
+    }
+
+    // Literal, or a quote that a combining mark follows is one composed character and is not doubled.
     private static func quoted(_ value: String) -> String {
-        "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     // MARK: - JSON

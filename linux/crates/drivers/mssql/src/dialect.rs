@@ -16,6 +16,7 @@ use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
 
 use crate::catalog::SqlServerType;
+use crate::encode::MAX_NUMERIC_DIGITS;
 
 /// A string literal in the national character set. Without the `N`, the
 /// server reads the text in the database's code page and loses every
@@ -78,6 +79,19 @@ impl SqlDialect for MssqlDialect {
             (ParamType::Text | ParamType::FixedText, BindTarget::Column(column)) if non_unicode(column) => {
                 format!("CAST({marker} AS {NON_UNICODE_TEXT})")
             }
+            // SQL Server types the rows of a multi-row VALUES as UNION ALL
+            // does, so a value at full precision beside a shorter one would
+            // lose digits to a type both fit. Every value that fits the
+            // column takes the same type, and a filter value keeps the
+            // digits it has on either side of the point.
+            (ParamType::Decimal, BindTarget::Column(column)) => match (&column.column_type.kind, &value) {
+                (ColumnKind::Decimal { scale: Some(scale), .. }, Value::Decimal(decimal)) => {
+                    let room = MAX_NUMERIC_DIGITS.saturating_sub(decimal.integer_digits().unwrap_or(0));
+                    let scale = decimal.scale().unwrap_or(0).max(*scale).min(room);
+                    format!("CAST({marker} AS decimal({MAX_NUMERIC_DIGITS}, {scale}))")
+                }
+                _ => marker,
+            },
             _ => marker,
         };
         Ok(Placeholder::bound(sql, BoundParam::new(value, param_type)?))
@@ -462,6 +476,31 @@ mod tests {
         dialect()
             .placeholder(0, value, BindTarget::Column(&column(declared)))
             .unwrap()
+    }
+
+    #[test]
+    fn a_decimal_binds_at_the_widest_precision_and_the_columns_scale() {
+        let decimal = |text: &str| Value::Decimal(text.parse().unwrap());
+
+        assert_eq!(
+            bound("decimal(38,38)", decimal("0")).sql,
+            "CAST(@P1 AS decimal(38, 38))"
+        );
+        assert_eq!(
+            bound("decimal(10,2)", decimal("1.5")).sql,
+            "CAST(@P1 AS decimal(38, 2))"
+        );
+        assert_eq!(
+            bound("decimal(10,2)", decimal("1.005")).sql,
+            "CAST(@P1 AS decimal(38, 3))",
+            "a filter value finer than the column was rounded"
+        );
+        assert_eq!(
+            bound("decimal(38,38)", decimal("1")).sql,
+            "CAST(@P1 AS decimal(38, 37))",
+            "a filter value past the column's integer digits overflowed"
+        );
+        assert_eq!(bound("decimal(10,2)", Value::Null).sql, "@P1");
     }
 
     #[test]

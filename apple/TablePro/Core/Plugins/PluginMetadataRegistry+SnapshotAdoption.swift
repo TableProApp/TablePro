@@ -12,19 +12,11 @@ import Foundation
 import TableProPluginKit
 
 extension PluginMetadataRegistry {
-    /// The curated entry describes a variant's engine, not its grammar. Its editor config is a
-    /// hand-written stub that exists so the app can answer before any plugin loads, and it is a
-    /// fraction of what the plugin ships: the PostgreSQL plugin carries 559 keywords, 90 data
-    /// types and an operator set against the stub's 84, 43, 28 and none. A variant therefore
-    /// takes the plugin's editor config, and the curated entry keeps only the facts it states
-    /// deliberately, meaning the ones where it differs from the curated primary.
-    ///
-    /// Two facts qualify: case-insensitive matching, which is why Redshift is spelled
-    /// `postgresqlDialect.withCaseSensitivityStyle(.caseFoldFunction)`, and the column type list,
-    /// which TiDB narrows (no spatial types) and Databend replaces with its own. Each has its own
-    /// named adoption here rather than a value comparison: `SQLDialectDescriptor` is not
-    /// `Equatable`, and a whole-descriptor diff would report "differs" for Redshift and hand it
-    /// the stub back.
+    // The curated entry is a stub that answers before any plugin loads (84 PostgreSQL keywords against the plugin's
+    // 559), so a variant takes the plugin's editor config and keeps only what the curated entry states on purpose:
+    // case-insensitive matching (Redshift), the column types TiDB narrows and Databend replaces, and pagination,
+    // which Presto writes as a bare `LIMIT` where the Trino plugin pages with `OFFSET`/`FETCH`.
+    // `SQLDialectDescriptor` is not `Equatable`, so each fact has a named adoption instead of a whole-value diff.
     static func adoptPluginEditorConfig(
         _ snapshot: inout PluginMetadataSnapshot,
         pluginSnapshot: PluginMetadataSnapshot,
@@ -44,15 +36,20 @@ extension PluginMetadataRegistry {
             )
         }
 
-        guard let curatedDialect,
-              let primaryDialect = curatedPrimary?.editor.sqlDialect,
-              curatedDialect.caseSensitivityStyle != primaryDialect.caseSensitivityStyle
-              || curatedDialect.caseFoldFunction != primaryDialect.caseFoldFunction
-        else { return }
-        snapshot.editor.sqlDialect = pluginDialect.withCaseSensitivityStyle(
-            curatedDialect.caseSensitivityStyle,
-            caseFoldFunction: curatedDialect.caseFoldFunction
-        )
+        guard let curatedDialect, let primaryDialect = curatedPrimary?.editor.sqlDialect else { return }
+        var dialect = pluginDialect
+        if curatedDialect.caseSensitivityStyle != primaryDialect.caseSensitivityStyle
+            || curatedDialect.caseFoldFunction != primaryDialect.caseFoldFunction {
+            dialect = dialect.withCaseSensitivityStyle(
+                curatedDialect.caseSensitivityStyle,
+                caseFoldFunction: curatedDialect.caseFoldFunction
+            )
+        }
+        if curatedDialect.paginationStyle != primaryDialect.paginationStyle
+            || curatedDialect.offsetFetchOrderBy != primaryDialect.offsetFetchOrderBy {
+            dialect = dialect.withPagination(of: curatedDialect)
+        }
+        snapshot.editor.sqlDialect = dialect
     }
 
     /// A plugin built before case-insensitive matching existed reports `.unsupported`,
@@ -117,5 +114,30 @@ extension PluginMetadataRegistry {
             && snapshot.supportsDatabaseSwitching
             && snapshot.capabilities.supportsSchemaSwitching
             && snapshot.schema.databaseGroupingStrategy == .bySchema
+    }
+}
+
+private extension SQLDialectDescriptor {
+    func withPagination(of source: SQLDialectDescriptor) -> SQLDialectDescriptor {
+        SQLDialectDescriptor(
+            identifierQuote: identifierQuote,
+            keywords: keywords,
+            functions: functions,
+            dataTypes: dataTypes,
+            tableOptions: tableOptions,
+            regexSyntax: regexSyntax,
+            booleanLiteralStyle: booleanLiteralStyle,
+            likeEscapeStyle: likeEscapeStyle,
+            paginationStyle: source.paginationStyle,
+            offsetFetchOrderBy: source.offsetFetchOrderBy,
+            requiresBackslashEscaping: requiresBackslashEscaping,
+            autoLimitStyle: autoLimitStyle,
+            caseSensitivityStyle: caseSensitivityStyle,
+            caseFoldFunction: caseFoldFunction,
+            operators: operators,
+            textCastTypeName: textCastTypeName,
+            functionNamesAreCaseInsensitive: functionNamesAreCaseInsensitive,
+            lexicalFeatures: lexicalFeatures
+        )
     }
 }

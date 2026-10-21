@@ -215,7 +215,7 @@ mod tests {
         active.replace(fake.session.clone());
         let hold = Rc::new(CountingHold::new());
         let editor = SqlEditor::new(SqlEditorInit {
-            initial_query: Some("BEGIN; UPDATE t SET a = 1".to_owned()),
+            initial_query: Some("BEGIN; UPDATE t SET a = 1 WHERE id = 1".to_owned()),
             settings: settings.get().clone(),
             history: None,
             tasks: runtime.tasks(),

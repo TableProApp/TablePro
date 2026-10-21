@@ -11,6 +11,7 @@ struct AIQueryActionAvailabilityTests {
     private func availability(
         aiEnabled: Bool = true,
         provider: Bool = true,
+        appleIntelligence: AppleIntelligenceAvailability? = nil,
         policy: AIConnectionPolicy? = .alwaysAllow,
         queryTab: Bool = true,
         connected: Bool = true,
@@ -19,6 +20,7 @@ struct AIQueryActionAvailabilityTests {
         AIQueryActionAvailability(
             aiEnabled: aiEnabled,
             hasActiveProvider: provider,
+            appleIntelligence: appleIntelligence,
             connectionPolicy: policy,
             isQueryTab: queryTab,
             isConnected: connected,
@@ -58,6 +60,30 @@ struct AIQueryActionAvailabilityTests {
             #expect(value.blockedReason != nil)
             #expect(value.hint(base: "Review with AI").hasPrefix("Review with AI\n"))
         }
+    }
+
+    @Test("Apple Intelligence answers the actions with no provider set up")
+    func appleIntelligenceNeedsNoProvider() {
+        let value = availability(provider: false, appleIntelligence: .available)
+        #expect(value.isEnabled)
+        #expect(value.blockedReason == nil)
+    }
+
+    @Test("Apple Intelligence that cannot run dims the actions with its reason, provider or not")
+    func appleIntelligenceUnavailable() {
+        let unavailable = AppleIntelligenceAvailability.unavailable(.appleIntelligenceNotEnabled)
+        for provider in [true, false] {
+            let value = availability(provider: provider, appleIntelligence: unavailable)
+            #expect(value.isVisible)
+            #expect(!value.isEnabled)
+            #expect(value.blockedReason == unavailable.unavailableExplanation)
+        }
+    }
+
+    @Test("A Never connection hides the actions even with Apple Intelligence on")
+    func appleIntelligenceKeepsThePolicy() {
+        let value = availability(appleIntelligence: .available, policy: .never)
+        #expect(!value.isVisible)
     }
 }
 

@@ -21,6 +21,8 @@ extension View {
 }
 
 private struct ForeignKeyPreviewModifier: ViewModifier {
+    // The window's session coordinator; `coordinator` is set only where a referenced table can be opened.
+    @Environment(ConnectionCoordinator.self) private var sessionCoordinator
     @Binding var item: FKPreviewItem?
     let session: ConnectionSession?
     let coordinator: ConnectionCoordinator?
@@ -44,6 +46,7 @@ private struct ForeignKeyPreviewModifier: ViewModifier {
                     databaseType: databaseType,
                     currentSchema: currentSchema,
                     allowsOpen: allowsOpen && coordinator != nil,
+                    refreshTransaction: { [sessionCoordinator] in await sessionCoordinator.refreshTransaction() },
                     onOpen: { requestedOpen = $0 }
                 )
             }
@@ -54,6 +57,7 @@ private struct ForeignKeyPreviewModifier: ViewModifier {
                         reference: reference
                     )
                     .environment(coordinator)
+                    .transactionBar(for: coordinator)
                 }
             }
     }

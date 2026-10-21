@@ -9,6 +9,7 @@ import CMariaDB
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLVocabulary
 
 // MARK: - Plugin Entry Point
 
@@ -82,33 +83,18 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             "FORCE", "USE", "IGNORE", "STRAIGHT_JOIN", "DUAL",
             "SHOW", "DESCRIBE", "EXPLAIN"
         ],
-        functions: [
-            "COUNT", "SUM", "AVG", "MAX", "MIN", "GROUP_CONCAT",
-            "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LENGTH", "LOWER", "UPPER",
-            "TRIM", "LTRIM", "RTRIM", "REPLACE",
-            "NOW", "CURDATE", "CURTIME", "DATE", "TIME", "YEAR", "MONTH", "DAY",
-            "DATE_ADD", "DATE_SUB", "DATEDIFF", "TIMESTAMPDIFF",
-            "ROUND", "CEIL", "FLOOR", "ABS", "MOD", "POW", "SQRT",
-            "CAST", "CONVERT"
-        ],
-        dataTypes: [
-            "INT", "INTEGER", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT",
-            "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL",
-            "CHAR", "VARCHAR", "TEXT", "TINYTEXT", "MEDIUMTEXT", "LONGTEXT",
-            "BLOB", "TINYBLOB", "MEDIUMBLOB", "LONGBLOB",
-            "DATE", "TIME", "DATETIME", "TIMESTAMP", "YEAR",
-            "ENUM", "SET", "JSON", "BOOL", "BOOLEAN"
-        ],
-        tableOptions: [
-            "ENGINE=InnoDB", "DEFAULT CHARSET=utf8mb4", "COLLATE=utf8mb4_unicode_ci",
-            "AUTO_INCREMENT=", "COMMENT=", "ROW_FORMAT="
-        ],
+        functions: SQLEngineVocabulary.mySQL.functions,
+        dataTypes: SQLEngineVocabulary.mySQL.dataTypes,
+        tableOptions: SQLEngineVocabulary.mySQL.tableOptions,
         regexSyntax: .regexp,
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .implicit,
         paginationStyle: .limit,
         requiresBackslashEscaping: true,
-        caseSensitivityStyle: .collationDefined
+        caseSensitivityStyle: .collationDefined,
+        operators: SQLEngineVocabulary.mySQL.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
+        textCastTypeName: nil,
+        functionNamesAreCaseInsensitive: SQLEngineVocabulary.mySQL.functionNamesAreCaseInsensitive
     )
 
     static let supportsDropDatabase = true
@@ -132,5 +118,19 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MySQLPluginDriver(config: config)
+    }
+}
+
+private extension SQLOperatorDescriptor {
+    init?(vocabulary entry: SQLEngineVocabulary.Operator) {
+        guard let category = Category(rawValue: entry.category),
+              let placement = Placement(rawValue: entry.placement) else { return nil }
+        self.init(
+            symbol: entry.symbol,
+            summary: entry.summary,
+            category: category,
+            placement: placement,
+            appliesToTypes: entry.appliesToTypes
+        )
     }
 }

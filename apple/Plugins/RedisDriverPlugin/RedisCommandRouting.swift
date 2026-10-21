@@ -308,6 +308,8 @@ struct RedisCommandRouting: Sendable {
         add(spec("memory", 0, 0, 0))
         add(spec("memory|stats", 0, 0, 0, request: .allShards, response: .special))
         add(spec("memory|usage", 2, 2, 1, readOnly: true))
+        add(spec("slowlog", 0, 0, 0))
+        add(spec("slowlog|get", 0, 0, 0, request: .allNodes))
         return table
     }()
 }

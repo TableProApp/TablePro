@@ -103,8 +103,9 @@ enum ForeignKeyRowFetcher {
 
         do {
             let table = reference.referencedTable
+            let schema = targetScope.schema
             let fetched = try await DatabaseManager.shared.withMetadataDriver(scope: targetScope) { driver in
-                try await driver.fetchForeignKeys(table: table)
+                try await driver.fetchForeignKeys(table: table, schema: schema)
             }
             return Dictionary(
                 fetched.map { ($0.column, JSONForeignKeyRef($0)) },

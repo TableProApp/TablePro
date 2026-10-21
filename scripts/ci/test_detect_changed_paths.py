@@ -210,6 +210,16 @@ class DetectChangedPathsTests(unittest.TestCase):
         self.assertEqual(self.verdict_after("macos", ".github/workflows/release-build.yml"), "false")
         self.assertEqual(self.verdict_after("macos", "apple/scripts/release/build.sh"), "false")
 
+    def test_macos_and_ios_run_on_the_catalog_check_their_builds_run(self):
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
+        self.seed = self.commit([])
+        for suite in ["macos", "ios"]:
+            with self.subTest(suite=suite):
+                self.assertEqual(self.verdict_after(suite, "apple/scripts/localization.py"), "true")
+                self.assertEqual(self.verdict_after(suite, "apple/scripts/test_localization.py"), "false")
+
     def test_macos_runs_on_the_build_setup_action(self):
         self.assertEqual(self.verdict_after("macos", ".github/actions/prepare-build/action.yml"), "true")
 

@@ -115,6 +115,37 @@ struct DataRefreshScopeTests {
         #expect(browseScope != tabScope)
     }
 
+    @Test("A tab on a temporary table reads on the session, a tab on a table of the same name does not")
+    func temporaryTableTabIsSessionBound() throws {
+        let connection = TestFixtures.makeConnection(database: "saved_default")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let (coordinator, tabManager) = makeCoordinator(
+            connection: connection,
+            browseDatabase: "orders",
+            tabDatabase: "orders"
+        )
+
+        #expect(coordinator.selectedTabScope?.isSessionBound == false)
+
+        let index = try #require(tabManager.selectedTabIndex)
+        tabManager.mutate(at: index) { $0.tableContext.isTemporary = true }
+
+        let scope = try #require(coordinator.selectedTabScope)
+        #expect(scope.isSessionBound)
+        #expect(scope.database == "orders")
+    }
+
+    @Test("A refresh of a database reaches a tab on a temporary table in it, and nothing else in another")
+    func databaseRefreshReachesATemporaryTableTab() {
+        let connectionId = UUID()
+        let orders = DatabaseScope(connectionId: connectionId, database: "orders", schema: "pg_temp_3")
+        let other = DatabaseScope(connectionId: connectionId, database: "other", schema: "pg_temp_3")
+
+        #expect(DataRefreshRequest(connectionId: connectionId, scope: orders).reaches(tabScope: orders.sessionBound))
+        #expect(DataRefreshRequest(connectionId: connectionId, scope: orders.sessionBound).reaches(tabScope: orders.sessionBound))
+        #expect(!DataRefreshRequest(connectionId: connectionId, scope: other).reaches(tabScope: orders.sessionBound))
+    }
+
     @Test("A refresh for another connection never matches this window")
     func refreshForAnotherConnectionIsIgnored() throws {
         let connection = TestFixtures.makeConnection(database: "saved_default")

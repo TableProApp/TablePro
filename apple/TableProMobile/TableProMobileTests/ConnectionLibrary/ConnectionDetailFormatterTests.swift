@@ -52,7 +52,7 @@ struct ConnectionDetailFormatterTests {
 
     @Test(
         "A connection that dials a socket on the Mac names the socket, not a host and port",
-        arguments: [DatabaseType.mysql, .mariadb, .tidb, .oceanbase]
+        arguments: [DatabaseType.mysql, .mariadb, .tidb, .oceanbase, .postgresql]
     )
     func macSocket(type: DatabaseType) {
         let withDatabase = DatabaseConnection(
@@ -97,14 +97,14 @@ struct ConnectionDetailFormatterTests {
             port: 3_307,
             additionalFields: [MySQLLocalSocket.fieldKey: "  "]
         )
-        let postgres = DatabaseConnection(
-            type: .postgresql,
+        let redshift = DatabaseConnection(
+            type: .redshift,
             host: "db.acme.io",
-            port: 5_432,
+            port: 5_439,
             additionalFields: [MySQLLocalSocket.fieldKey: "/tmp/mysql.sock"]
         )
 
         #expect(ConnectionDetailFormatter.detail(for: blank) == "db.acme.io:3307")
-        #expect(ConnectionDetailFormatter.detail(for: postgres) == "db.acme.io")
+        #expect(ConnectionDetailFormatter.detail(for: redshift) == "db.acme.io")
     }
 }

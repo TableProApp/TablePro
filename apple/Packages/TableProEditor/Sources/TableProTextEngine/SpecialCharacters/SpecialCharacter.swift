@@ -25,9 +25,22 @@ public extension ClassifiedSpecialCharacter {
 }
 
 public extension SpecialCharacter {
-    static func classify(in string: NSString, at index: Int) -> ClassifiedSpecialCharacter? {
+    // `marksLineBreaks` is for a view showing a value on one line, which draws no break for CR or LF.
+    static func classify(
+        in string: NSString,
+        at index: Int,
+        marksLineBreaks: Bool = false
+    ) -> ClassifiedSpecialCharacter? {
         guard index >= 0, index < string.length else { return nil }
-        guard mayBeSpecial(string.character(at: index)) else { return nil }
+        let unit = string.character(at: index)
+        if marksLineBreaks, lineBreakControls.contains(UInt32(unit)), let scalar = Unicode.Scalar(unit) {
+            return ClassifiedSpecialCharacter(
+                character: .marker(label: controlLabel(for: scalar.value)),
+                range: NSRange(location: index, length: 1),
+                scalar: scalar
+            )
+        }
+        guard mayBeSpecial(unit) else { return nil }
         guard let scalar = scalar(in: string, at: index) else { return nil }
         let range = NSRange(location: index, length: scalar.utf16.count)
         guard let character = classify(scalar, in: string, range: range) else { return nil }
@@ -58,6 +71,8 @@ public extension SpecialCharacter {
 
 private extension SpecialCharacter {
     static let preservedControls: Set<UInt32> = [0x09, 0x0A, 0x0D]
+
+    static let lineBreakControls: Set<UInt32> = [0x0A, 0x0D]
 
     static let combiningIgnorables: Set<UInt32> = [
         0x034F, 0x115F, 0x1160, 0x17B4, 0x17B5, 0x180B, 0x180C, 0x180D, 0x180F

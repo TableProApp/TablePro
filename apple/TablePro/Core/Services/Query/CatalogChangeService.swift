@@ -53,7 +53,8 @@ final class CatalogChangeService {
             SchemaRefreshService.shared,
             DatabaseTreeMetadataService.shared,
             SchemaProviderRegistry.shared,
-            QueryCompletionProfileRegistry.shared
+            QueryCompletionProfileRegistry.shared,
+            TemporaryTableStore.shared
         ]
         self.adoption = adoption ?? CatalogEditAdoption()
         self.isSessionLive = isSessionLive ?? { connectionId in
@@ -145,7 +146,9 @@ final class CatalogChangeService {
     private func recordCommittedTableEdits(of succeeded: SucceededStatements) {
         let connectionId = succeeded.scope.connectionId
         recordNameHazards(
-            of: DatabaseManager.startupStatements(from: startupCommands(connectionId)),
+            of: DatabaseManager.startupStatements(
+                from: startupCommands(connectionId), databaseType: succeeded.databaseType
+            ),
             databaseType: succeeded.databaseType,
             connectionId: connectionId
         )
@@ -217,7 +220,7 @@ final class CatalogChangeService {
     /// transaction ends, and the statement that ends it may run on a different driver of the same
     /// connection than the one that ran the DDL. Remembering which transaction held catalog changes
     /// cannot tell those drivers apart, so every transaction end refreshes the objects and schemas.
-    private static let transactionEndKinds: CatalogObjectKinds = [.objects, .schemas]
+    private static let transactionEndKinds: SQLCatalogObjectKinds = [.objects, .schemas]
 
     private static func change(for container: DatabaseContainerRef, connectionId: UUID) -> CatalogChange {
         switch container.kind {

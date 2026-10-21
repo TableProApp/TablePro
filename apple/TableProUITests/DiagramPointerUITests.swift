@@ -9,7 +9,14 @@ final class DiagramPointerUITests: UITestCase {
         let app = launch.app
 
         XCTAssertTrue(app.menuBars.firstMatch.waitToExist(timeout: 20), "The app must publish its menu bar")
-        menuItem("View ER Diagram", under: "Database", in: app).click()
+        // Database > View ER Diagram sits under the scroll arrow of that menu on the 1024x768 runner.
+        objectBrowser(in: window).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)).rightClick()
+        // The Database menu's copy exists too, so wait for the hittable one.
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { self.contextMenuItem("View ER Diagram", in: app).isHittable },
+            "The sidebar's empty-area menu must offer View ER Diagram"
+        )
+        contextMenuItem("View ER Diagram", in: app).click()
         let canvas = window.scrollViews.matching(identifier: "er-diagram-canvas").firstMatch
         XCTAssertTrue(canvas.waitToExist(timeout: 30), "The ER diagram must open on the fixture")
         XCTAssertTrue(

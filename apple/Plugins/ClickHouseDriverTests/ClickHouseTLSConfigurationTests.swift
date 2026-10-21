@@ -37,6 +37,14 @@ struct ClickHouseTLSConfigurationTests {
         #expect(try ClickHouseTLSDelegate.make(for: configuration(.required)) != nil)
     }
 
+    @Test("Only a dial to the tunnel's local end checks the certificate against the stored pre-tunnel host")
+    func serverNameOnlyBehindATunnel() {
+        let fields = ["preTunnelHost": "ch.example.com"]
+        #expect(ClickHousePluginDriver.tunnelServerName(dialing: "127.0.0.1", fields: fields) == "ch.example.com")
+        #expect(ClickHousePluginDriver.tunnelServerName(dialing: "ch.corp.example", fields: ["preTunnelHost": "evil.example"]) == nil)
+        #expect(ClickHousePluginDriver.tunnelServerName(dialing: "127.0.0.1", fields: [:]) == nil)
+    }
+
     @Test("Verify Identity with no CA certificate builds a delegate only when a server name is given")
     func verifyIdentityWithoutCAAndAServerName() throws {
         #expect(try ClickHouseTLSDelegate.make(for: configuration(.verifyIdentity), serverName: "clickhouse.internal") != nil)

@@ -94,6 +94,10 @@ xcodebuild -project TableProMobile/TableProMobile.xcodeproj -scheme TableProMobi
     -destination 'platform=iOS Simulator,name=<iPhone>' -parallel-testing-enabled NO -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO ARCHS=arm64
 ```
 
+## Performance
+
+`scripts/benchmark-app-paths.sh` times cold launch, opening a 1,000,000-row table and switching tabs, 10 runs each, and checks the median and 95th percentile against the budgets in `scripts/benchmark/app-paths/baseline.json`. Usage, permissions and the fixtures are in its header. In Instruments the same three paths are the `AppLaunch`, `TableLoad` and `TabSwitch` intervals under Points of Interest.
+
 ## Code style
 
 `.swiftlint.yml` is the source of truth. Run `swiftlint lint --strict <changed .swift files>`; CI lints all of `apple/` the same way on every pull request, and nothing lints during an Xcode build. Formatting the linter leaves to you:
@@ -118,7 +122,7 @@ The architecture is in the area rules under `.claude/rules/`, and its invariants
 | TableProEditor | `Packages/`, vendored from CodeEditSourceEditor and CodeEditTextView | The SQL editor |
 | TableProGrammars | `Packages/` | Tree-sitter grammars |
 | TableProCore | `Packages/` | Modules the macOS and iOS apps share |
-| TableProMacCore | `Packages/` | macOS-only modules the app links: utilities, autocomplete, SSH config, MCP |
+| TableProMacCore | `Packages/` | macOS-only modules the app links: utilities, SSH config, MCP |
 | TableProOracle | `Packages/`, wraps a pinned fork of OracleNIO | Oracle wire protocol |
 | Sparkle | SPM | Updates, EdDSA-signed |
 | Yams | SPM | YAML for project folder import |
@@ -140,7 +144,7 @@ xcodebuild -importLocalizations -project TablePro.xcodeproj -localizationPath Lo
 scripts/localization.py status              # what is translated, per language
 ```
 
-The export builds the app first, so run `scripts/download-libs.sh` and `scripts/generate-project.sh` once before it. Pass an existing language code to fill gaps, or a new one to start a language. Commit the catalog, not the export: `Localization/` is ignored. The iPhone and iPad app has its own catalog: run the same commands on `TableProMobile/TableProMobile.xcodeproj` with the `TableProMobile` scheme. Plugin and package strings: [`AGENTS.md`](AGENTS.md), Every change 3.
+The export builds the app first, so run `scripts/download-libs.sh` and `scripts/generate-project.sh` once before it. Pass an existing language code to fill gaps, or a new one to start a language. Commit the catalog, not the export: `Localization/` is ignored. The iPhone and iPad app has its own catalog: run the same commands on `TableProMobile/TableProMobile.xcodeproj` with the `TableProMobile` scheme. Plugin and package strings, and strings a command-line build added: [`AGENTS.md`](AGENTS.md), Every change 3.
 
 ## Troubleshooting
 

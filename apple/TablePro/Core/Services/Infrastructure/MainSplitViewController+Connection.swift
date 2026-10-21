@@ -24,14 +24,10 @@ internal extension MainSplitViewController {
         Logger(subsystem: "com.TablePro", category: "ConnectionWindow")
     }
 
-    /// Every path out of here settles the workspace, because a window that declines to dial and
-    /// says nothing is a window the resolver can only answer for with a timeout, and a state
-    /// reached by a timeout is a state nothing transitions into. That used to be the pane
-    /// resolver's job: it reported nothing for half a second and then fell back to
-    /// `.notConnected`, which is also what put a blank window on screen for the first half second
-    /// of every connect.
-    func startActivationConnectIfNeeded() {
-        guard autoConnect else { return }
+    // Every path settles the phase: a workspace that declines to dial silently is one the pane resolver
+    // could only time out on. `requested` is a caller asking a workspace not opened to dial on its own.
+    func startActivationConnectIfNeeded(requested: Bool = false) {
+        guard autoConnect || requested else { return }
         guard ConnectionWindowPhaseMachine.allowsActivationConnect(phase: phase) else { return }
         /// A workspace whose record has gone still names a connection through its session, so the
         /// pane has something to draw and nothing to dial with.
@@ -206,6 +202,7 @@ internal extension MainSplitViewController {
         }
         let signedIn = await ConnectionSignInPrompt.offer(
             provider,
+            for: error,
             fields: ConnectionSignInRegistry.fields(for: connection),
             window: view.window
         )

@@ -125,7 +125,8 @@ internal struct CompareMetadataService {
         return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
             guard let plugin = Self.pluginDriver(from: driver) else { return [] }
             let tables = try await plugin.fetchTables(schema: schema).filter { table in
-                guard wanted?.contains(table.name.lowercased()) ?? true else { return false }
+                guard wanted?.contains(table.name.lowercased()) ?? true,
+                      !CompareTableKindClassifier.isSequence(table) else { return false }
                 let kind = CompareTableKindClassifier.kind(of: table)
                 return kind == .table || includeViews
             }

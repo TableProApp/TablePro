@@ -67,6 +67,43 @@ extension PostgreSQLPluginDriver {
         PostgreSQLObjectQueries.createTypeTemplate(schema: schema ?? currentSchema ?? "public")
     }
 
+    func generateDropTypeSQL(type: PluginUserDefinedTypeInfo) -> String? {
+        PostgreSQLObjectQueries.dropType(
+            schema: type.schema ?? currentSchema ?? "public",
+            name: type.name,
+            kind: type.kind
+        )
+    }
+
+    func generateDropTypeSQL(type: PluginUserDefinedTypeInfo, cascade: Bool) -> String? {
+        PostgreSQLTypeStatements.drop(
+            schema: type.schema ?? currentSchema ?? "public",
+            name: type.name,
+            kind: type.kind,
+            cascade: cascade
+        )
+    }
+
+    func createUserDefinedTypeStatements(_ definition: PluginUserDefinedTypeDefinition) -> [String]? {
+        PostgreSQLTypeStatements.create(definition, schema: definition.schema ?? currentSchema ?? "public")
+    }
+
+    func alterUserDefinedTypeStatements(
+        type: PluginUserDefinedTypeInfo,
+        change: PluginUserDefinedTypeChange
+    ) -> [String]? {
+        PostgreSQLTypeStatements.alter(
+            type: type,
+            schema: type.schema ?? currentSchema ?? "public",
+            change: change,
+            capabilities: versionedCapabilities
+        )
+    }
+
+    func userDefinedTypeChangeRunsOutsideTransaction(_ change: PluginUserDefinedTypeChange) -> Bool {
+        PostgreSQLTypeStatements.runsOutsideTransaction(change, capabilities: versionedCapabilities)
+    }
+
     func generateAddEnumLabelSQL(
         type: PluginUserDefinedTypeInfo,
         label: String,

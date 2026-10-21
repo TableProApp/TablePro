@@ -155,7 +155,7 @@ targetTemplates:
   MySQLLinkage:
     dependencies:
       - package: TableProCore
-        products: [TableProGeometry, TableProLogRedaction, TableProMySQLCore]
+        products: [TableProGeometry, TableProLogRedaction, TableProMySQLCore, TableProSQLVocabulary]
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -182,7 +182,7 @@ targetTemplates:
   PostgreSQLLinkage:
     dependencies:
       - package: TableProCore
-        products: [TableProLogRedaction, TableProPostgreSQLCore]
+        products: [TableProLogRedaction, TableProPostgreSQLCore, TableProSQLVocabulary]
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -239,7 +239,7 @@ targetTemplates:
   SQLiteLinkage:
     dependencies:
       - package: TableProCore
-        products: [CSQLite, TableProSQLiteCore]
+        products: [CSQLite, TableProSQLiteCore, TableProSQLVocabulary]
     settings:
       base:
         OTHER_LDFLAGS:
@@ -288,6 +288,8 @@ targets:
         excludes:
           # main() for the tablepro-mcp helper.
           - CLI/BridgeMain.swift
+          # main() for the tablepro-cli helper behind `tablepro query`.
+          - CLI/CLIMain.swift
           # main() for the tablepro-imagerender helper, which is a whole executable on
           # its own: nothing in it is reachable from the app.
           - CLI/ImageRenderMain.swift
@@ -311,6 +313,8 @@ targets:
       # The MySQL plugin's socket key and path rules, so the app writes and checks the socket path
       # exactly as the driver reads it.
       - Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
+      # The PostgreSQL plugin's socket directory rules, for the same reason.
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLLocalSocket.swift
     dependencies:
       - target: TableProPluginKit
         embed: true
@@ -333,6 +337,12 @@ targets:
         copy:
           destination: executables
       - target: image-renderer
+        embed: true
+        codeSign: true
+        removeHeaders: false
+        copy:
+          destination: executables
+      - target: command-line
         embed: true
         codeSign: true
         removeHeaders: false
@@ -366,6 +376,9 @@ targets:
       - target: MarkdownExport
         embed: true
         copy: { destination: plugins }
+      - target: DataDictionaryExport
+        embed: true
+        copy: { destination: plugins }
       - target: XLSXImport
         embed: true
         copy: { destination: plugins }
@@ -390,9 +403,9 @@ targets:
       - package: Sparkle
       - package: Yams
       - package: TableProCore
-        products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
+        products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
       - package: TableProMacCore
-        products: [TableProAutocomplete, TableProMCP, TableProSSHConfig, TableProUtilities]
+        products: [TableProMCP, TableProSSHConfig, TableProUtilities]
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
     postCompileScripts:
       - name: Write WhatsNew.md
@@ -505,6 +518,27 @@ targets:
         # The app embeds it; installed on its own it turns the app archive into a generic one.
         SKIP_INSTALL: YES
         PRODUCT_NAME: tablepro-mcp
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
+
+  # ─── tablepro query and tablepro connections, embedded as Contents/MacOS/tablepro-cli ─
+
+  command-line:
+    type: tool
+    platform: macOS
+    sources:
+      - TablePro/CLI/CLIMain.swift
+    dependencies:
+      - package: TableProMacCore
+        products: [TableProMCP, TableProUtilities]
+    scheme: {}
+    settings:
+      base:
+        ENABLE_HARDENED_RUNTIME: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.tablepro-cli
+        # The app embeds it; installed on its own it turns the app archive into a generic one.
+        SKIP_INSTALL: YES
+        PRODUCT_NAME: tablepro-cli
         SWIFT_APPROACHABLE_CONCURRENCY: YES
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
 
@@ -635,6 +669,15 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.MarkdownExportPlugin
 
+  DataDictionaryExport:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: DataDictionaryExportPlugin
+      principalClass: DataDictionaryExportPlugin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.DataDictionaryExportPlugin
+
   XLSXImport:
     templates: [DriverPlugin]
     templateAttributes:
@@ -757,15 +800,33 @@ targets:
     templates: [PluginTests, SQLiteLinkage]
     templateAttributes:
       folder: SQLiteDriverPlugin
+    # SQLite runs the column type corpus here, through the export formats a user picks.
+    sources:
+      - path: Plugins/ColumnTypeCorpus
+        excludes:
+          - Corpus
+      - path: Plugins/CSVExportPlugin
+        excludes:
+          - Info.plist
+      - path: Plugins/JSONExportPlugin
+        excludes:
+          - Info.plist
+      - path: Plugins/SQLExportPlugin
+        excludes:
+          - Info.plist
+    dependencies:
+      - package: TableProCore
+        product: TableProSQLGrammar
 
   ClickHouseDriverTests:
     templates: [PluginTests, ClickHouseLinkage]
     templateAttributes:
       folder: ClickHouseDriverPlugin
 
-  # The ten bundled format plugins in one bundle: none links a C library, and no two declare the
-  # same top-level name.
+  # The eleven bundled format plugins in one bundle: none links a C library, and no two declare the
+  # same top-level name. SQLiteLinkage is for the round-trip tests, which need the SQLite the driver ships.
   FormatPluginTests:
+    templates: [SQLiteLinkage]
     type: bundle.unit-test
     platform: macOS
     sources:
@@ -773,6 +834,9 @@ targets:
         excludes:
           - Info.plist
       - path: Plugins/CSVImportPlugin
+        excludes:
+          - Info.plist
+      - path: Plugins/DataDictionaryExportPlugin
         excludes:
           - Info.plist
       - path: Plugins/JSONExportPlugin
@@ -904,6 +968,9 @@ targets:
     templateAttributes:
       folder: DuckDBDriverPlugin
       principalClass: DuckDBPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProSQLVocabulary
     settings:
       base:
         # Links no OpenSSL dylib, so no Libs/dylibs search path.
@@ -1018,7 +1085,7 @@ targets:
       principalClass: MSSQLPlugin
     dependencies:
       - package: TableProCore
-        products: [TableProCoreTypes, TableProLogRedaction, TableProMSSQLCore]
+        products: [TableProCoreTypes, TableProLogRedaction, TableProMSSQLCore, TableProSQLVocabulary]
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -1088,7 +1155,7 @@ targets:
       principalClass: OraclePlugin
     dependencies:
       - package: TableProCore
-        product: TableProLogRedaction
+        products: [TableProLogRedaction, TableProSQLVocabulary]
       - package: TableProOracle
         product: TableProOracleCore
 
@@ -1184,6 +1251,7 @@ aggregateTargets:
       - CSVExport
       - CSVImport
       - ClickHouseDriver
+      - DataDictionaryExport
       - JSONExport
       - JSONImport
       - MQLExport

@@ -211,6 +211,23 @@ struct PhpSerializeParserSpecialTests {
         #expect(payload == "xyzab")
     }
 
+    /// PHP 8.1 writes an enum case as `E:`. Before, any value holding one failed to parse at all.
+    @Test("E token returns .enumCase, inside an array too")
+    func enumCaseToken() {
+        #expect(PhpSerializeParser.parse(#"E:11:"Suit:Hearts";"#) == .enumCase(className: "Suit", caseName: "Hearts"))
+        #expect(PhpSerializeParser.parse(#"a:1:{i:0;E:15:"App\Suit:Spades";}"#) == .array([
+            PhpKeyValue(key: .int(0), value: .enumCase(className: "App\\Suit", caseName: "Spades")),
+        ]))
+        #expect(PhpSerializeParser.parse(#"E:4:"Suit";"#) == nil)
+    }
+
+    @Test("An enum case is a tree leaf that names its case")
+    func enumCaseTree() {
+        let tree = PhpTreeBuilder.build(from: .enumCase(className: "Suit", caseName: "Hearts"))
+        #expect(tree.displayValue == "Suit::Hearts")
+        #expect(tree.badgeLabel == "enum")
+    }
+
     @Test("r token returns .reference")
     func referenceLowerR() {
         #expect(PhpSerializeParser.parse("r:7;") == .reference(id: 7))
@@ -219,6 +236,16 @@ struct PhpSerializeParserSpecialTests {
     @Test("R token returns .reference")
     func referenceUpperR() {
         #expect(PhpSerializeParser.parse("R:42;") == .reference(id: 42))
+    }
+
+    @Test("A length past the end is refused, not added up until it overflows")
+    func forgedLengths() {
+        #expect(PhpSerializeParser.parse(#"a:1:{i:0;E:9223372036854775807:"x";}"#) == nil)
+        #expect(PhpSerializeParser.parse(#"s:9223372036854775807:"x";"#) == nil)
+        #expect(PhpSerializeParser.parse(#"O:9223372036854775807:"X":0:{}"#) == nil)
+        #expect(PhpSerializeParser.parse(#"C:1:"X":9223372036854775807:{}"#) == nil)
+        #expect(PhpSerializeParser.parse("a:9223372036854775807:{}") == nil)
+        #expect(PhpSerializeParser.parse(#"O:1:"X":9223372036854775807:{}"#) == nil)
     }
 
     @Test("o (PHP-3) token returns .unsupported")

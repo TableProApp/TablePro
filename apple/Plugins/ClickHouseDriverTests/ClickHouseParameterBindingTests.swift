@@ -19,6 +19,17 @@ struct ClickHouseParameterBindingTests {
         #expect(bound.params["p2"] == "two")
     }
 
+    // Measured on ClickHouse 25.8: `C:\new` sent as it is arrived as `C:`, a newline and `ew`, and a raw tab was refused.
+    @Test("A text parameter is sent in the escaped form ClickHouse reads it in")
+    func textParametersAreEscaped() {
+        let bound = ClickHouseParameterBinding.bind(
+            query: "SELECT ?, ?",
+            parameters: [.text(#"C:\new\table"#), .text("a\tb\nc\rd\u{0}e")]
+        )
+        #expect(bound.params["p1"] == #"C:\\new\\table"#)
+        #expect(bound.params["p2"] == #"a\tb\nc\rd\0e"#)
+    }
+
     // A String parameter cannot hold NULL: sent with no value it reaches a Nullable column as '' and fails a number.
     @Test("A null parameter is written into the statement as NULL")
     func nullParameterIsInlinedAsNull() {

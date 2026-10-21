@@ -32,6 +32,7 @@ struct OracleDictionaryQualificationTests {
             ("serverVersion", OracleSchemaQueries.serverVersion),
             ("users", OracleSchemaQueries.users),
             ("tables", OracleSchemaQueries.tables(schema: "HR")),
+            ("tables in schemas", OracleSchemaQueries.tables(inSchemas: ["HR", "SALES"]).joined(separator: "\n")),
             ("partitions", OracleSchemaQueries.partitions(schema: "HR", table: "T")),
             ("subpartitions", OracleSchemaQueries.subpartitions(schema: "HR", table: "T")),
             ("columns 11g", OracleSchemaQueries.columns(schema: "HR", table: "T", release: OracleServerRelease(major: 11))),

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 /// Which loaded lists a change overtakes. They are marked stale and read again by the next reader
 /// on screen; only the database list is read now.
@@ -84,7 +85,7 @@ extension DatabaseTreeMetadataService {
         func reached(_ key: ObjectsKey) -> Bool {
             key.connectionId == change.connectionId && change.reaches(database: key.database, schema: key.schema)
         }
-        func objectKeys(_ keys: some Sequence<ObjectsKey>, for kind: CatalogObjectKinds) -> Set<ObjectsKey> {
+        func objectKeys(_ keys: some Sequence<ObjectsKey>, for kind: SQLCatalogObjectKinds) -> Set<ObjectsKey> {
             guard change.kinds.contains(kind) else { return [] }
             return Set(keys.filter(reached))
         }

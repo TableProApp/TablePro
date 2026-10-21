@@ -21,6 +21,12 @@ nonisolated public struct PostgreSQLCapabilities: Sendable, Equatable {
     public var hasEnumAddValueIfNotExists: Bool { serverVersion >= 90_300 }
     /// ALTER TYPE ... RENAME VALUE landed in 10; before it a label can only be added.
     public var hasRenameEnumValue: Bool { serverVersion >= 100_000 }
+    /// Before 12, ALTER TYPE ... ADD VALUE answers "cannot run inside a transaction block".
+    public var hasEnumAddValueInTransaction: Bool { serverVersion >= 120_000 }
+    /// ALTER TYPE ... ADD, DROP, RENAME and ALTER ATTRIBUTE on a composite landed in 9.1.
+    public var hasCompositeAttributeAlteration: Bool { serverVersion >= 90_100 }
+    /// A domain check added NOT VALID, and VALIDATE CONSTRAINT to scan it later, landed in 9.2.
+    public var hasDomainConstraintValidation: Bool { serverVersion >= 90_200 }
     /// Every range gained a companion multirange in 14, with a name the creator may choose.
     public var hasMultirangeTypes: Bool { serverVersion >= 140_000 }
     public var hasForeignTablesCatalog: Bool { serverVersion >= 90_100 }

@@ -105,6 +105,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     }
 
     private var coalescedEdits: [CoalescedCellKey: CoalescedCellEdit] = [:]
+    private var loadedValues: [RowID: [Int: PluginCellValue]] = [:]
     private var coalescedOrder: [CoalescedCellKey] = []
 
     /// Whether a typed edit is waiting to become an undo step. The Edit menu reads it, because the
@@ -142,6 +143,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
 
     func clearChangesAndUndoHistory() {
         clearChanges()
+        loadedValues.removeAll()
         undoManagerProvider?()?.removeAllActions(withTarget: self)
     }
 
@@ -408,10 +410,25 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
 
     private func discardUndoHistory() {
         discardCoalescedUndoRun()
+        loadedValues.removeAll()
         undoManagerProvider?()?.removeAllActions(withTarget: self)
     }
 
+    // Kept beside the pending changes so a deletion an undo or redo records again gets them too.
+    func adoptLoadedValues(_ values: [RowID: [Int: PluginCellValue]]) {
+        for (rowID, cells) in values {
+            loadedValues[rowID, default: [:]].merge(cells) { _, loaded in loaded }
+        }
+        pending.adoptLoadedValues(values)
+    }
+
+    private func completedImage(_ row: [PluginCellValue], of rowID: RowID) -> [PluginCellValue] {
+        guard let cells = loadedValues[rowID] else { return row }
+        return RowChange.completing(row, with: cells)
+    }
+
     func recordRowDeletion(rowID: RowID, originalRow: [PluginCellValue], absentColumns: Set<Int> = []) {
+        let originalRow = completedImage(originalRow, of: rowID)
         pending.recordRowDeletion(rowID: rowID, originalRow: originalRow, absentColumns: absentColumns)
         registerUndo(actionName: String(localized: "Delete Row")) { target in
             target.applyDataUndo(.rowDeletion(rowID: rowID, originalRow: originalRow, absentColumns: absentColumns))
@@ -431,6 +448,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             }
             return
         }
+        let rows = rows.map { (rowID: $0.rowID, originalRow: completedImage($0.originalRow, of: $0.rowID)) }
         for (rowID, originalRow) in rows {
             pending.recordRowDeletion(rowID: rowID, originalRow: originalRow, absentColumns: absentColumns[rowID] ?? [])
         }
@@ -593,8 +611,10 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     private func applyRowDeletionUndo(
         rowID: RowID, originalRow: [PluginCellValue], absentColumns: Set<Int>, action: UndoAction
     ) {
+        // The pending deletion's image, which a value loaded since the delete has completed.
+        let image = completedImage(pending.change(forRow: rowID, type: .delete)?.originalRow ?? originalRow, of: rowID)
         registerUndo(actionName: String(localized: "Delete Row")) { target in
-            target.applyDataUndo(.rowDeletion(rowID: rowID, originalRow: originalRow, absentColumns: absentColumns))
+            target.applyDataUndo(.rowDeletion(rowID: rowID, originalRow: image, absentColumns: absentColumns))
         }
 
         if pending.isRowDeleted(rowID) {
@@ -604,7 +624,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
                 delta: .fullReplace
             )
         } else {
-            pending.reapplyRowDeletion(rowID: rowID, originalRow: originalRow, absentColumns: absentColumns)
+            pending.reapplyRowDeletion(rowID: rowID, originalRow: image, absentColumns: absentColumns)
             lastUndoResult = UndoResult(
                 action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil,
                 delta: .fullReplace
@@ -617,8 +637,12 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         absentColumns: [RowID: Set<Int>],
         action: UndoAction
     ) {
+        let images = rows.map { row in
+            let image = pending.change(forRow: row.rowID, type: .delete)?.originalRow ?? row.originalRow
+            return (rowID: row.rowID, originalRow: completedImage(image, of: row.rowID))
+        }
         registerUndo(actionName: String(localized: "Delete Rows")) { target in
-            target.applyDataUndo(.batchRowDeletion(rows: rows, absentColumns: absentColumns))
+            target.applyDataUndo(.batchRowDeletion(rows: images, absentColumns: absentColumns))
         }
 
         let isUndo = rows.contains { pending.isRowDeleted($0.rowID) }
@@ -631,7 +655,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
                 delta: .fullReplace
             )
         } else {
-            for (rowID, originalRow) in rows {
+            for (rowID, originalRow) in images {
                 pending.reapplyRowDeletion(
                     rowID: rowID, originalRow: originalRow, absentColumns: absentColumns[rowID] ?? []
                 )
@@ -705,7 +729,12 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     /// The steps are what runs. The operations are what a rewind would need, and they are built
     /// from the change set rather than read back off the statements, so a driver that writes its
     /// own statements still produces a complete record.
-    func buildRowWrites(database: String, schema: String?, containsTableOperation: Bool) throws -> RowWriteBuild {
+    func buildRowWrites(
+        database: String,
+        schema: String?,
+        containsTableOperation: Bool,
+        rowsWithUnloadedValues: Set<RowID> = []
+    ) throws -> RowWriteBuild {
         let factory = try statementFactory()
         let operations = RowWriteOperationBuilder.operations(
             from: pending.changes,
@@ -716,38 +745,35 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
             generatedColumns: generatedColumns,
-            containsTableOperation: containsTableOperation
+            containsTableOperation: containsTableOperation,
+            rowsWithUnloadedValues: rowsWithUnloadedValues
         )
 
-        let steps: [DataWriteStep]
-        switch try factory.rowWriteStatements(
+        let steps = try writeSteps(
             for: pending.changes,
             insertedRowData: pending.insertedRowData,
             deletedRowIDs: pending.deletedRowIDs,
-            insertedRowIDs: pending.insertedRowIDs
-        ) {
-        case .counted(let attributed):
-            steps = attributed.map {
-                DataWriteStep(
-                    kind: .rowWrite,
-                    statement: $0.statement,
-                    expectedRowCount: $0.rowCount,
-                    tableName: tableName,
-                    matchesRowsWithoutKey: primaryKeyColumns.isEmpty && $0.kind != .insert
-                )
-            }
-        case .driverWritten(let statements):
-            steps = statements.map {
-                DataWriteStep(
-                    kind: .rowWrite,
-                    statement: $0.statement,
-                    expectedRowCount: $0.keylessRowCount,
-                    tableName: tableName,
-                    matchesRowsWithoutKey: $0.keylessRowCount != nil
-                )
-            }
-        }
+            insertedRowIDs: pending.insertedRowIDs,
+            factory: factory
+        )
         return RowWriteBuild(steps: steps, operations: operations)
+    }
+
+    /// The statements for these changes, each held to the rows it should touch.
+    func writeSteps(
+        for changes: [RowChange],
+        insertedRowData: [RowID: [PluginCellValue]] = [:],
+        deletedRowIDs: Set<RowID> = [],
+        insertedRowIDs: Set<RowID> = [],
+        factory: RowChangeStatementFactory? = nil
+    ) throws -> [DataWriteStep] {
+        let statements = try (factory ?? statementFactory()).rowWriteStatements(
+            for: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs
+        )
+        return DataWriteStep.rowWrites(statements, tableName: tableName, primaryKeyColumns: primaryKeyColumns)
     }
 
     func statementFactory() throws -> RowChangeStatementFactory {

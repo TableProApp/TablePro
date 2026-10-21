@@ -13,7 +13,7 @@ import TableProPluginKit
 /// path had no automated coverage at all, which is how a foreign key clause that silently discarded
 /// the constraint name went unnoticed.
 internal func sqliteQuoteIdentifier(_ name: String) -> String {
-    let escaped = name.replacingOccurrences(of: "`", with: "``")
+    let escaped = name.replacingOccurrences(of: "`", with: "``", options: .literal)
     return "`\(escaped)`"
 }
 

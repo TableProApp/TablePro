@@ -2,6 +2,7 @@ import Foundation
 import os
 import TableProDatabase
 import TableProModels
+import TableProTabularIO
 
 @MainActor
 @Observable
@@ -90,6 +91,16 @@ final class RowDetailViewModel {
         )
     }
 
+    private func primaryKeyValues(at rowIndex: Int) -> [(column: String, value: String)]? {
+        Self.primaryKeyValues(cells: cells(at: rowIndex), columns: columns, columnDetails: columnDetails)
+    }
+
+    static func primaryKeyValues(
+        cells: [Cell], columns: [ColumnInfo], columnDetails: [ColumnInfo]
+    ) -> [(column: String, value: String)]? {
+        RowLocator.locate(cells: cells, columns: columns, columnDetails: columnDetails, identity: .keyColumns)?.keyValues
+    }
+
     var supportsLazyLoading: Bool { loadFullValueProvider != nil }
 
     var currentRow: [String?] {
@@ -107,6 +118,54 @@ final class RowDetailViewModel {
     func cells(at index: Int) -> [Cell] {
         guard index >= 0, index < rows.count else { return [] }
         return rows[index].cells
+    }
+
+    // A binary value stays a placeholder even when loaded: what the driver reads back is not its bytes.
+    func completeCells(at rowIndex: Int) -> [Cell] {
+        let overrides = fullValueOverrides[rowIndex] ?? [:]
+        return cells(at: rowIndex).enumerated().map { index, cell in
+            guard case .truncatedText = cell, let loaded = overrides[index] else { return cell }
+            return loaded.map(Cell.text) ?? .null
+        }
+    }
+
+    func completeValue(forRow rowIndex: Int, at index: Int) -> String? {
+        let rowCells = cells(at: rowIndex)
+        guard index >= 0, index < rowCells.count else { return nil }
+        switch rowCells[index] {
+        case .text(let value):
+            return value
+        case .truncatedText:
+            return fullValueOverrides[rowIndex]?[index] ?? nil
+        case .null, .binary:
+            return nil
+        }
+    }
+
+    // MariaDB's catalog names a JSON column longtext while its result column says JSON, so either type decides.
+    func isJSON(at index: Int) -> Bool {
+        guard index >= 0, index < columns.count else { return false }
+        let column = columns[index]
+        if ColumnInfo.isJSONType(typeName: column.typeName) { return true }
+        return columnDetail(for: column.name).map { ColumnInfo.isJSONType(typeName: $0.typeName) } ?? false
+    }
+
+    func jsonText(forRow rowIndex: Int, at index: Int) -> String? {
+        guard index < columns.count, let value = completeValue(forRow: rowIndex, at: index) else { return nil }
+        if isJSON(at: index) { return value }
+        let typeName = (columnDetail(for: columns[index].name) ?? columns[index]).typeName
+        guard ColumnInfo.mayHoldJSONText(typeName: typeName), Self.opensContainer(value) else { return nil }
+        switch JSONValidation.check(value) {
+        case .success(.object), .success(.array):
+            return value
+        default:
+            return nil
+        }
+    }
+
+    private static func opensContainer(_ value: String) -> Bool {
+        let first = value.utf8.first { $0 != 0x20 && $0 != 0x09 && $0 != 0x0A && $0 != 0x0D }
+        return first == UInt8(ascii: "{") || first == UInt8(ascii: "[")
     }
 
     func columnDetail(for name: String) -> ColumnInfo? {
@@ -236,7 +295,23 @@ final class RowDetailViewModel {
 
     private func holdsEmptyString(at index: Int) -> Bool {
         guard index >= 0, index < columns.count else { return true }
+        if isJSON(at: index) { return false }
         return (columnDetail(for: columns[index].name) ?? columns[index]).holdsEmptyString
+    }
+
+    var hasInvalidJSONEdit: Bool {
+        firstInvalidJSONEdit() != nil
+    }
+
+    private func firstInvalidJSONEdit() -> (column: String, failure: JSONValidation.Failure)? {
+        let original = currentRow
+        for index in editedColumnIndices where isJSON(at: index) {
+            let stored = index < original.count ? original[index] : nil
+            guard let value = writtenValue(at: index, stored: stored), !value.isEmpty,
+                  case .failure(let failure) = JSONValidation.check(value) else { continue }
+            return (columns[index].name, failure)
+        }
+        return nil
     }
 
     // MARK: - Save
@@ -246,6 +321,9 @@ final class RowDetailViewModel {
 
         pendingWriteConfirmation = false
         writeGate.cancel()
+        // The key and row checks below wait on the server; Save and Cancel stay disabled until they answer.
+        isSaving = true
+        defer { isSaving = false }
 
         guard RowLocator.canLocate(identity: rowIdentity, columns: columns, columnDetails: columnDetails) else {
             operationError = AppError(
@@ -279,6 +357,33 @@ final class RowDetailViewModel {
             return true
         }
 
+        if let invalid = firstInvalidJSONEdit() {
+            operationError = AppError(
+                category: .query,
+                title: String(localized: "Invalid JSON"),
+                message: String(format: String(localized: "The value of %@ is not valid JSON."), invalid.column),
+                recovery: invalid.failure.message,
+                underlying: nil
+            )
+            return false
+        }
+
+        if let keys = locator.keyValues, let shared = await SharedRowKey.error(
+            table: table.name, schema: schema, key: keys,
+            columns: columnDetails, type: databaseType, driver: session.driver
+        ) {
+            operationError = shared
+            return false
+        }
+        if let writer = session.driver as? any DriverRowWriting, let identical = await SharedRowKey.identicalRowsError(
+            writer: writer, table: table.name, schema: schema, locator: locator,
+            columns: locator.columnNames(of: columns), type: databaseType, isUpdate: true
+        ) {
+            operationError = identical
+            return false
+        }
+        guard isEditing else { return false }
+
         let batch: RowWriteBatch
         do {
             guard let built = try RowWriteBatch.update(
@@ -286,7 +391,8 @@ final class RowDetailViewModel {
                 schema: schema,
                 type: databaseType,
                 driver: session.driver,
-                columns: columns.map(\.name),
+                columns: locator.columnNames(of: columns),
+                columnDetails: columnDetails,
                 locator: locator,
                 changes: changes
             ) else { return false }
@@ -317,25 +423,86 @@ final class RowDetailViewModel {
     private func execute(_ batch: RowWriteBatch) async -> Bool {
         isSaving = true
         defer { isSaving = false }
+        let rowIndex = currentIndex
         let original = currentRow
-        let savedCells = Dictionary(uniqueKeysWithValues: editedColumnIndices.map { index in
+        let savedIndices = editedColumnIndices
+        let typedCells = Dictionary(uniqueKeysWithValues: savedIndices.map { index in
             let stored = index < original.count ? original[index] : nil
             return (index, writtenValue(at: index, stored: stored).map { Cell.text($0) } ?? .null)
         })
 
+        let affected: Int
         do {
-            try await batch.run()
-            guard currentIndex >= 0, currentIndex < rows.count else { return false }
-            commitSavedCells(savedCells, toRow: currentIndex)
-            isEditing = false
-            showSaveSuccess = true
-            onSaved?()
-            scheduleSuccessDismiss()
-            return true
+            affected = try await batch.run()
+        } catch let refusal as RowChangeRefusal {
+            operationError = SharedRowKey.error(for: refusal)
+            return false
         } catch {
             let context = ErrorContext(operation: "saveChanges", databaseType: databaseType)
             operationError = ErrorClassifier.classify(error, context: context)
             return false
+        }
+        guard rowIndex >= 0, rowIndex < rows.count else { return false }
+
+        let savedCells: [Int: Cell]
+        do {
+            savedCells = try await storedCells(at: savedIndices, inRow: rowIndex) ?? typedCells
+        } catch CellLookupError.rowNotFound where affected > 0 {
+            // The UPDATE landed; a trigger or another session has since changed the row's key.
+            Self.logger.error("The saved row is no longer under its primary key")
+            savedCells = typedCells
+        } catch CellLookupError.rowNotFound {
+            // A count of 0 proves nothing on SQL Server under SET NOCOUNT ON, so this never claims the UPDATE did not run.
+            operationError = AppError(
+                category: .query,
+                title: String(localized: "Row Not Found"),
+                message: CellLookupError.rowNotFound.localizedDescription,
+                recovery: String(localized: "Reload the table to see the row as it is now."),
+                underlying: CellLookupError.rowNotFound
+            )
+            return false
+        } catch {
+            Self.logger.error("Reading the saved row back failed: \(error.localizedDescription, privacy: .private)")
+            savedCells = typedCells
+        }
+        commitSavedCells(savedCells, toRow: rowIndex)
+        isEditing = false
+        showSaveSuccess = true
+        onSaved?()
+        scheduleSuccessDismiss()
+        return true
+    }
+
+    // The server can store other text than was sent: jsonb drops duplicate keys and reorders the rest. MySQL also
+    // counts only changed rows, so this read, not the affected count, tells a missing row from an unchanged one.
+    private func storedCells(at columnIndices: [Int], inRow rowIndex: Int) async throws -> [Int: Cell]? {
+        guard rowIdentity == .keyColumns, let loadFullValueProvider, let table,
+              let pkValues = primaryKeyValues(at: rowIndex) else { return nil }
+        let keys = pkValues.map { PrimaryKeyComponent(column: $0.column, value: $0.value) }
+        var stored: [Int: Cell] = [:]
+        for index in columnIndices {
+            let ref = CellRef(table: table.name, column: columns[index].name, primaryKey: keys)
+            stored[index] = try await loadFullValueProvider(ref).map { Cell.text($0) } ?? .null
+        }
+        return stored
+    }
+
+    func exportCurrentRow(as format: ExportFormat) -> String? {
+        do {
+            return try ClipboardExporter.exportRow(
+                columns: columns, cells: completeCells(at: currentIndex),
+                format: format, tableName: table?.name,
+                databaseType: databaseType, driver: session?.driver
+            )
+        } catch {
+            operationError = AppError(
+                category: .query,
+                title: String(localized: "Cannot Export"),
+                message: error.localizedDescription,
+                recovery: nil,
+                underlying: error
+            )
+            return nil
         }
     }
 

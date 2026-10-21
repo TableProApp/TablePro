@@ -146,6 +146,14 @@ final class SidebarViewModel: ObservableObject {
             )
         }
     }
+    @Published var isTemporaryExpanded: Bool {
+        didSet {
+            defaults.set(
+                isTemporaryExpanded,
+                forKey: SidebarPersistenceKey.temporaryExpanded(connectionId: connectionId)
+            )
+        }
+    }
     @Published var showOperationDialog = false
     @Published var pendingOperationType: TableOperationType?
     @Published var pendingOperationTables: [DatabaseTreeTableRef] = []
@@ -233,6 +241,11 @@ final class SidebarViewModel: ObservableObject {
             defaultValue: true,
             defaults: defaults
         )
+        self.isTemporaryExpanded = Self.loadExpansion(
+            perConnectionKey: SidebarPersistenceKey.temporaryExpanded(connectionId: connectionId),
+            defaultValue: true,
+            defaults: defaults
+        )
         /// Seeded once, at creation, from whatever the field already holds. Doing it from a view's
         /// initializer instead ran on every view-graph pass.
         self.filterQuery = self.sharedState.searchText
@@ -243,7 +256,11 @@ final class SidebarViewModel: ObservableObject {
     private func observeListingDemand() {
         listingDemandObservations = [
             DatabaseTreeMetadataService.shared.onMainActorChange { [weak self] in self?.loadAllSchemaTablesForSearch() },
-            DatabaseManager.shared.onMainActorChange { [weak self] in self?.loadAllSchemaTablesForSearch() }
+            DatabaseManager.shared.onMainActorChange { [weak self] in self?.loadAllSchemaTablesForSearch() },
+            SchemaService.shared.$attachedSchemasInOrder
+                .removeDuplicates()
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in self?.loadAllSchemaTablesForSearch() }
         ]
     }
 
@@ -450,14 +467,9 @@ final class SidebarViewModel: ObservableObject {
         if cachedFilteredByKindFingerprint?.count != fingerprint.count
             || cachedFilteredByKindFingerprint?.generation != fingerprint.generation
             || cachedFilteredByKindFingerprint?.query != fingerprint.query {
-            let bucket = self.tables(of: .table, from: tables)
-            let bucketView = self.tables(of: .view, from: tables)
-            let bucketMat = self.tables(of: .materializedView, from: tables)
-            let bucketForeign = self.tables(of: .foreignTable, from: tables)
-            cachedFilteredByKind[.table] = applyQuery(query, to: bucket)
-            cachedFilteredByKind[.view] = applyQuery(query, to: bucketView)
-            cachedFilteredByKind[.materializedView] = applyQuery(query, to: bucketMat)
-            cachedFilteredByKind[.foreignTable] = applyQuery(query, to: bucketForeign)
+            for tableKind in SidebarObjectKind.allCases where tableKind.category == .table {
+                cachedFilteredByKind[tableKind] = applyQuery(query, to: self.tables(of: tableKind, from: tables))
+            }
             cachedFilteredByKindFingerprint = fingerprint
         }
         return cachedFilteredByKind[kind] ?? []
@@ -545,6 +557,7 @@ final class SidebarViewModel: ObservableObject {
         guard !filterQuery.isEmpty else { return }
         let service = DatabaseTreeMetadataService.shared
         let connectionId = connectionId
+        loadAttachedSchemaObjectsForSearch(service: service)
         let databases = Self.databasesListedForSearch(
             grouping: PluginManager.shared.databaseGroupingStrategy(for: databaseType),
             browsedDatabase: browsedDatabase,
@@ -565,6 +578,20 @@ final class SidebarViewModel: ObservableObject {
                 isConnected: isConnected,
                 service: service
             )
+        }
+    }
+
+    /// An attached database lists nothing until its row is opened, so a search reads every one the
+    /// connection holds, once, to judge it.
+    private func loadAttachedSchemaObjectsForSearch(service: DatabaseTreeMetadataService) {
+        guard PluginManager.shared.listsAttachedDatabases(for: databaseType),
+              let database = browsedDatabase,
+              DatabaseManager.shared.session(for: connectionId)?.status == .connected
+        else { return }
+        let connectionId = connectionId
+        for schema in SchemaService.shared.attachedSchemas(for: connectionId)
+            where service.objectsNeedFetch(connectionId: connectionId, database: database, schema: schema) {
+            Task { await service.loadObjects(connectionId: connectionId, database: database, schema: schema) }
         }
     }
 

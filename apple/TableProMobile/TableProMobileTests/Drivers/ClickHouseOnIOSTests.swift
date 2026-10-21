@@ -11,6 +11,7 @@ struct ClickHouseOnIOSTests {
         return PluginBackedDriver(
             plugin: ClickHousePluginDriver(config: config),
             dialedHosts: [],
+            rowChangeSuffix: IOSDriverFactory.clickHouseWaitsForMutation,
             rowIdentity: .everyColumn,
             readsOnly: { _ in true }
         )
@@ -72,6 +73,7 @@ struct ClickHouseOnIOSTests {
 
         let writer = try #require(opened as? PluginBackedDriver)
         #expect(writer.rowIdentity == .everyColumn)
+        #expect(writer.rowPin == ["_part"])
         #expect(writer.supportsTransactions == false)
     }
 
@@ -90,5 +92,11 @@ struct ClickHouseOnIOSTests {
             #expect(mapped.clientCertificatePath == "/cert.pem")
             #expect(mapped.clientKeyPath == "/key.pem")
         }
+    }
+
+    @Test("The Mac's Preferred reaches the plugin as Preferred, so the shared driver decides what it means")
+    func preferredMapsToPreferred() {
+        let ssl = DriverSSLConfiguration(mode: .require, isPreferred: true)
+        #expect(ssl.pluginConfiguration.mode == .preferred)
     }
 }

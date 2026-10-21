@@ -85,8 +85,9 @@ struct ConnectionBundleExporterTests {
 
         #expect(ConnectionBundleCodec.isEncrypted(data))
         let bundle = try await ConnectionBundleCodec.decode(data, passphrase: "correct horse")
-        #expect(bundle.connections.map(\.settings.name) == ["Secret"])
-        #expect(bundle.credentials["c1"]?.password == "hunter2")
+        let connection = try #require(bundle.connections.first)
+        #expect(connection.settings.name == "Secret")
+        #expect(bundle.credentials[connection.ref]?.password == "hunter2")
     }
 
     @Test("An encrypted file does not open with the wrong passphrase")

@@ -35,37 +35,37 @@ extension TableViewCoordinator {
         let maxRow = min(anchorRow + block.lines.count, cachedRowCount)
         let maxCol = min(anchorPosition + block.width, presentedColumnCount)
         guard anchorRow < maxRow, anchorPosition < maxCol else { return false }
+        let pastedColumns = IndexSet((anchorPosition..<maxCol).compactMap { dataColumnIndex(atDisplayPosition: $0) })
+        guard unloadedValuesAreLoaded(displayRows: anchorRow..<maxRow, columns: pastedColumns, retry: { [weak self] in
+            _ = self?.pasteCellsFromClipboard(anchorRow: anchorRow, anchorColumn: anchorColumn)
+        }) else { return true }
 
         let undoManager = tableView?.window?.undoManager
         undoManager?.beginUndoGrouping()
 
-        let tableRows = tableRowsProvider()
         var refusedCell = false
-        for (gridRow, fields) in block.lines.enumerated() {
-            let targetRow = anchorRow + gridRow
-            guard targetRow < maxRow else { break }
-            guard !isRowDeleted(displayRow: targetRow) else { continue }
+        batchEdits(actionName: String(localized: "Paste Cells")) {
+            for (gridRow, fields) in block.lines.enumerated() {
+                let targetRow = anchorRow + gridRow
+                guard targetRow < maxRow else { break }
+                guard !isRowDeleted(displayRow: targetRow) else { continue }
 
-            for (gridCol, field) in fields.enumerated() {
-                let targetPosition = anchorPosition + gridCol
-                guard targetPosition < maxCol else { break }
-                guard let targetCol = dataColumnIndex(atDisplayPosition: targetPosition) else { continue }
-                let isCommitted: Bool
-                if block.isGridCopy {
-                    isCommitted = commitCopiedField(
+                for (gridCol, field) in fields.enumerated() {
+                    let targetPosition = anchorPosition + gridCol
+                    guard targetPosition < maxCol else { break }
+                    guard let targetCol = dataColumnIndex(atDisplayPosition: targetPosition) else { continue }
+                    guard let entry = pastedEntry(
                         field,
+                        of: block,
                         isExpression: block.isExpression(line: gridRow, field: gridCol),
-                        row: targetRow,
                         columnIndex: targetCol
-                    )
-                } else {
-                    let text = field.flatMap {
-                        Self.pastedText($0, columnType: tableRows.editingColumnType(at: targetCol))
+                    ) else {
+                        refusedCell = true
+                        continue
                     }
-                    isCommitted = commitEnteredText(text, row: targetRow, columnIndex: targetCol)
-                }
-                if !isCommitted {
-                    refusedCell = true
+                    commitTypedCellEdit(
+                        row: targetRow, columnIndex: targetCol, newValue: entry.value, isExpression: entry.isExpression
+                    )
                 }
             }
         }
@@ -97,6 +97,36 @@ extension TableViewCoordinator {
         }
     }
 
+    /// Answered without mutating anything so menu validation can ask it.
+    func canPasteValueIntoSelectedCells() -> Bool {
+        selectionFill() != nil
+    }
+
+    /// One value on the clipboard goes into every cell of a multi-cell selection, the way a spreadsheet pastes it.
+    /// False for anything else, which keeps the anchor paste: a block, one selected cell, or no cell selection.
+    func pasteValueIntoSelectedCells() -> Bool {
+        guard let fill = selectionFill() else { return false }
+        guard unloadedValuesAreLoaded(targets: fill.targets, retry: { [weak self] in
+            _ = self?.pasteValueIntoSelectedCells()
+        }) else { return true }
+        let isExpression = fill.block.isExpression(line: 0, field: 0)
+        stageEntry(into: fill.targets, actionName: String(localized: "Paste Cells")) { columnIndex in
+            pastedEntry(fill.field, of: fill.block, isExpression: isExpression, columnIndex: columnIndex)
+        }
+        return true
+    }
+
+    private func selectionFill() -> (block: CellPasteBlock, field: String?, targets: [SetValueTarget])? {
+        guard !selectionController.selection.isEmpty,
+              let block = clipboardCellBlock(),
+              block.lines.count == 1,
+              let line = block.lines.first,
+              line.count == 1 else { return nil }
+        let targets = setValueTargets(clicked: nil)
+        guard targets.count > 1 else { return nil }
+        return (block: block, field: line[0], targets: targets)
+    }
+
     /// The clipboard as a cell block, or nil when it belongs to the row-paste path instead.
     ///
     /// A clipboard holding one value fills the focused cell, which is what copying a cell and
@@ -105,14 +135,7 @@ extension TableViewCoordinator {
     /// table is still whole rows and stays with row paste, and so is anything TablePro's own row
     /// copy wrote, which carries its own pasteboard type.
     private func cellPasteBlock(anchorRow: Int, anchorColumn: Int) -> CellPasteBlock? {
-        guard isEditable else { return nil }
-        if ClipboardService.shared.hasGridRows { return nil }
-        guard let text = ClipboardService.shared.readText(), !text.isEmpty else { return nil }
-        guard (text as NSString).length <= Self.maxCellPasteLength else { return nil }
-
-        let block = Self.gridCopiedBlock(matching: text)
-            ?? CellPasteBlock(lines: Self.pastedLines(text).map { $0.components(separatedBy: "\t") }, isGridCopy: false)
-        guard let firstLine = block.lines.first else { return nil }
+        guard let block = clipboardCellBlock(), let firstLine = block.lines.first else { return nil }
 
         /// Whole rows are routed away by the result's own column count, not the presented one.
         /// `TSVRowParser` fills from data index 0 and knows nothing about which columns are on
@@ -136,6 +159,16 @@ extension TableViewCoordinator {
         return block
     }
 
+    /// The clipboard's fields, before anything decides where they land.
+    private func clipboardCellBlock() -> CellPasteBlock? {
+        guard isEditable else { return nil }
+        if ClipboardService.shared.hasGridRows { return nil }
+        guard let text = ClipboardService.shared.readText(), !text.isEmpty else { return nil }
+        guard (text as NSString).length <= Self.maxCellPasteLength else { return nil }
+        return Self.gridCopiedBlock(matching: text)
+            ?? CellPasteBlock(lines: Self.pastedLines(text).map { $0.components(separatedBy: "\t") }, isGridCopy: false)
+    }
+
     /// The fields of the grid's own copy, while the clipboard still holds the text it wrote. They are
     /// taken as they are rather than split from the text, where a value with a tab or a line break
     /// in it would become several fields and a NULL would read as the text `NULL`.
@@ -144,16 +177,26 @@ extension TableViewCoordinator {
         return CellPasteBlock(lines: copied.fields, isGridCopy: true, expressionFields: copied.expressionFields ?? [:])
     }
 
+    /// What a pasted field stages in a column, or nil when the column holds neither it nor NULL in its place.
+    ///
     /// The grid's copy says which fields were SQL, so a field it marked stages as SQL for the save to check against
-    /// this engine, and any other field is text however it reads: a stored `CURRENT_TIMESTAMP` is not promoted.
-    private func commitCopiedField(_ field: String?, isExpression: Bool, row: Int, columnIndex: Int) -> Bool {
-        if isExpression, let field {
-            commitTypedCellEdit(row: row, columnIndex: columnIndex, newValue: .text(field), isExpression: true)
-            return true
+    /// this engine, and any other field is text however it reads: a stored `CURRENT_TIMESTAMP` is not promoted. Text
+    /// from another app is read the way a typed cell is.
+    private func pastedEntry(
+        _ field: String?,
+        of block: CellPasteBlock,
+        isExpression: Bool,
+        columnIndex: Int
+    ) -> StagedCellEntry? {
+        let tableRows = tableRowsProvider()
+        guard block.isGridCopy else {
+            let text = field.flatMap { Self.pastedText($0, columnType: tableRows.editingColumnType(at: columnIndex)) }
+            return enteredCell(text, columnIndex: columnIndex)
         }
-        guard let value = tableRowsProvider().enteredValue(field, forColumn: columnIndex) else { return false }
-        commitTypedCellEdit(row: row, columnIndex: columnIndex, newValue: value)
-        return true
+        if isExpression, let field {
+            return (value: .text(field), isExpression: true)
+        }
+        return tableRows.enteredValue(field, forColumn: columnIndex).map { (value: $0, isExpression: false) }
     }
 
     /// Text from another app has no NULL of its own. A date, number or boolean cannot hold the

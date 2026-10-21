@@ -137,30 +137,36 @@ public final class OracleCoreConnection: @unchecked Sendable {
 
     // MARK: - Connection
 
-    public func connect() async throws {
+    static func configuration(
+        for options: OracleConnectionOptions
+    ) throws -> OracleNIO.OracleConnection.Configuration {
         let identifier = options.identifier
         let service: OracleServiceMethod = options.identifierMode == .sid
             ? .sid(identifier)
             : .serviceName(identifier)
-        let tls = try OracleTLSMapper.tls(for: options.tls)
         var configuration = OracleNIO.OracleConnection.Configuration(
             host: options.host,
             port: options.port,
             service: service,
             username: options.user,
             password: options.password,
-            tls: tls
+            tls: try OracleTLSMapper.tls(for: options.tls)
         )
-        configuration.mode = Self.authenticationMode(for: options.role)
-        configuration.nativeNetworkEncryption = Self.encryptionLevel(for: options.networkEncryption)
+        configuration.mode = authenticationMode(for: options.role)
+        configuration.nativeNetworkEncryption = encryptionLevel(for: options.networkEncryption)
         // The driver owns the channel, so it is the only thing that can end a login the
         // server has stopped answering, and it names the handshake phase when it does.
-        // The wrapper below stays a grace period behind it as a backstop for a driver
+        // The wrapper in connect() stays a grace period behind it as a backstop for a driver
         // that never returns at all.
         configuration.options.loginTimeout = .milliseconds(
             max(1, Int64((options.loginTimeoutSeconds * 1_000).rounded(.up)))
         )
-        let connectConfig = configuration
+        configuration.options.tlsServerName = OracleTLSMapper.serverName(for: options.tls)
+        return configuration
+    }
+
+    public func connect() async throws {
+        let connectConfig = try Self.configuration(for: options)
         let connectLogger = nioLogger
 
         let connectionId = Self.connectionCounter.withLock { counter -> Int in
@@ -579,14 +585,21 @@ public final class OracleCoreConnection: @unchecked Sendable {
         }
     }
 
-    private func recordSuccess(of role: OracleTransactionRole, on session: Int) {
-        state.withLock { $0.transaction.statementSucceeded(role, on: session) }
+    private func recordSuccess(of role: OracleTransactionRole, on session: Int) async {
+        var answer: Bool?
+        if role == .dataDefinition || role == .procedural, holdsTransaction {
+            answer = await serverHoldsTransaction()
+        }
+        let serverHoldsTransaction = answer
+        state.withLock {
+            $0.transaction.statementSucceeded(role, on: session, serverHoldsTransaction: serverHoldsTransaction)
+        }
     }
 
     /// Called under the query gate, so the answer about the transaction comes from the connection the refused
-    /// `COMMIT` or `ROLLBACK` ran on.
+    /// statement ran on.
     private func recordFailure(of role: OracleTransactionRole) async {
-        guard role == .endsTransaction, holdsTransaction else { return }
+        guard role.mayEndTransactionWhenRefused, holdsTransaction else { return }
         let serverHoldsTransaction = await serverHoldsTransaction()
         state.withLock { $0.transaction.statementFailed(role, serverHoldsTransaction: serverHoldsTransaction) }
     }
@@ -765,7 +778,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 let zones = await sessionZones(on: connection)
                 return try await collectRows(statement, options: admitted.options, zones: zones, on: connection)
             }
-            recordSuccess(of: role, on: admitted.session)
+            await recordSuccess(of: role, on: admitted.session)
             forgetSessionZonesIfChanged(by: query)
             await queryGate.release()
             return result
@@ -778,6 +791,53 @@ public final class OracleCoreConnection: @unchecked Sendable {
             await recordFailure(of: role)
             await queryGate.release()
             throw mapped
+        }
+    }
+
+    // One gate turn for both, so no ping or other caller's statement becomes the session's previous statement.
+    public func executeDiscardingRows(_ statement: String, thenQuery followUp: String) async throws -> OracleRawResult {
+        let role = OracleTransactionRole(of: statement)
+        await queryGate.acquire()
+
+        let connection: OracleNIO.OracleConnection
+        let admitted: (options: StatementOptions, session: Int)
+        do {
+            connection = try await reconnectedConnection()
+            admitted = try admit(role)
+            try await withQueryDeadline { [self] in
+                try await discardRows(OracleStatement(unsafeSQL: statement), options: admitted.options, on: connection)
+            }
+        } catch {
+            let mapped = mapExecutionError(error)
+            forgetSessionZonesIfChanged(by: statement)
+            await recordFailure(of: role)
+            await queryGate.release()
+            throw mapped
+        }
+
+        // Before recordSuccess: recording a DDL queries the server, and that query would become the previous statement.
+        let answer: Result<OracleRawResult, Error>
+        do {
+            answer = .success(try await withQueryDeadline { [self] in
+                try await collectRows(followUp, options: Self.sessionSetupOptions, on: connection)
+            })
+        } catch {
+            answer = .failure(mapExecutionError(error))
+        }
+        await recordSuccess(of: role, on: admitted.session)
+        forgetSessionZonesIfChanged(by: statement)
+        await queryGate.release()
+        return try answer.get()
+    }
+
+    private func discardRows(
+        _ statement: OracleStatement,
+        options: StatementOptions,
+        on connection: OracleNIO.OracleConnection
+    ) async throws {
+        let stream = try await connection.execute(statement, options: options, logger: nioLogger)
+        for try await _ in stream {
+            try Task.checkCancellation()
         }
     }
 
@@ -872,7 +932,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 let zones = await sessionZones(on: connection)
                 try await streamRows(query, options: admitted.options, zones: zones, on: connection, continuation: continuation)
             }
-            recordSuccess(of: role, on: admitted.session)
+            await recordSuccess(of: role, on: admitted.session)
             forgetSessionZonesIfChanged(by: query)
             await queryGate.release()
             continuation.finish()

@@ -76,6 +76,7 @@ nonisolated internal enum ClickHouseParameterBinding {
             case "\t": escaped.append(contentsOf: "\\t".unicodeScalars)
             case "\n": escaped.append(contentsOf: "\\n".unicodeScalars)
             case "\r": escaped.append(contentsOf: "\\r".unicodeScalars)
+            case "\0": escaped.append(contentsOf: "\\0".unicodeScalars)
             default: escaped.append(scalar)
             }
         }

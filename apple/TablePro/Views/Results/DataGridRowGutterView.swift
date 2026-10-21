@@ -49,15 +49,17 @@ final class DataGridRowGutterView: NSView {
     /// stored and then released still fires. Only the `object:` parameter is held weakly. This
     /// comment used to claim the opposite, which is why the gutter kept a registration per grid
     /// mount for the life of the process. (#2667)
-    private var frameObserver: (any NSObjectProtocol)?
+    private var frameObservers: [any NSObjectProtocol] = []
+
+    private var lastBand: DataGridPinnedBand?
+    private var lastViewport: NSRect?
 
     /// Taken off with the mount that made it, beside the coordinator's own observers.
-    var hasTableGeometryObserver: Bool { frameObserver != nil }
+    var hasTableGeometryObserver: Bool { !frameObservers.isEmpty }
 
     func detachTableGeometryObserver() {
-        guard let frameObserver else { return }
-        NotificationCenter.default.removeObserver(frameObserver)
-        self.frameObserver = nil
+        frameObservers.forEach(NotificationCenter.default.removeObserver)
+        frameObservers.removeAll()
     }
 
     /// Follows the table view's own height.
@@ -70,14 +72,17 @@ final class DataGridRowGutterView: NSView {
     /// the reader scrolls past it. Observing the frame is the one hook that sees all of them.
     func observeTableGeometry() {
         guard let tableView else { return }
-        frameObserver.map(NotificationCenter.default.removeObserver)
-        tableView.postsFrameChangedNotifications = true
-        frameObserver = NotificationCenter.default.addObserver(
-            forName: NSView.frameDidChangeNotification,
-            object: tableView,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.synchronizeGeometry() }
+        detachTableGeometryObserver()
+        // The clip view too: its width decides whether the frozen columns fit, with no column change.
+        for view in [tableView, tableView.enclosingScrollView?.contentView].compactMap({ $0 }) {
+            view.postsFrameChangedNotifications = true
+            frameObservers.append(NotificationCenter.default.addObserver(
+                forName: NSView.frameDidChangeNotification,
+                object: view,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.synchronizeGeometry() }
+            })
         }
         synchronizeGeometry()
     }
@@ -99,32 +104,51 @@ final class DataGridRowGutterView: NSView {
     /// Re-reads the width and height from the table. The width moves when the row count crosses a
     /// digit boundary and when the Data Grid Font changes; the height moves with the row count.
     func synchronizeGeometry() {
-        guard let tableView else { return }
-        let width = Self.width(of: tableView)
+        guard let tableView, let coordinator else { return }
+        let band = coordinator.pinnedBand()
+        let width = band.width
         let height = max(tableView.bounds.height, superview?.bounds.height ?? 0)
         isHidden = width <= 0
         /// The same help tag the mounted row-number cell carries. The strip is the handle a reorder
         /// drag starts from once the column has scrolled away, so the reason it cannot run has to be
         /// reachable here too.
-        toolTip = coordinator?.rowReorder.unavailableReason
+        removeAllToolTips()
+        if let reason = coordinator.rowReorder.unavailableReason, band.gutterWidth > 0 {
+            addToolTip(NSRect(x: 0, y: 0, width: band.gutterWidth, height: height), owner: reason as NSString, userData: nil)
+        }
+        let layoutChanged = lastBand.map { !$0.hasSameLayout(as: band) } ?? false
+        lastBand = band
+        if layoutChanged {
+            coordinator.pinnedBandLayoutDidChange()
+        }
         guard frame.size != NSSize(width: width, height: height) else { return }
         setFrameSize(NSSize(width: width, height: height))
+        needsDisplay = true
+    }
+
+    // The band draws offset-zero content, so only a vertical move or a resize exposes anything new.
+    func viewportDidMove(to visible: NSRect) {
+        defer { lastViewport = visible }
+        if let lastViewport, lastViewport.minY == visible.minY, lastViewport.size == visible.size { return }
         needsDisplay = true
     }
 
     // MARK: - Drawing
 
     /// The grid's leading strip as it stands at scroll offset zero, pinned, over the strip's whole
-    /// height: each row's background and number, the stripes the grid continues past the last row,
-    /// and the separator at the first data column's leading edge.
+    /// height: each row's background and number, the frozen columns, the stripes the grid continues
+    /// past the last row, and the separator at the first data column's leading edge.
     ///
     /// Opaque everywhere, because the columns scroll underneath it, past the last row included. That
     /// area matches only because the grid paints its own background there,
     /// `DataGridBodyChrome.drawTableBackground(in:of:)`, with the same stripe this strip paints.
     override func draw(_ dirtyRect: NSRect) {
         guard let tableView, let coordinator else { return }
-        let rowNumberColumn = tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
-        guard rowNumberColumn >= 0 else { return }
+        let band = coordinator.pinnedBand()
+        let rowNumberColumn = band.gutterWidth > 0
+            ? tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
+            : -1
+        guard rowNumberColumn >= 0 || band.isFreezing else { return }
 
         /// The same rule the header uses. An identity check on the first responder is not it: while
         /// a cell is being edited or viewed the responder is the overlay's text view beside the
@@ -139,16 +163,16 @@ final class DataGridRowGutterView: NSView {
         let palette = coordinator.cellRegistry.palette
         let scope = coordinator.themeScope
 
-        for band in DataGridBodyChrome.rowBands(in: dirtyRect, of: self, tableView: tableView) {
-            let stripRect = NSRect(x: 0, y: band.rect.minY, width: bounds.width, height: band.rect.height)
+        for rowBand in DataGridBodyChrome.rowBands(in: dirtyRect, of: self, tableView: tableView) {
+            let stripRect = NSRect(x: 0, y: rowBand.rect.minY, width: bounds.width, height: rowBand.rect.height)
             guard stripRect.intersects(dirtyRect) else { continue }
 
-            let isSelected = band.isTableRow && tableView.selectedRowIndexes.contains(band.row)
-            let state = band.isTableRow ? coordinator.visualState(for: band.row) : .empty
+            let isSelected = rowBand.isTableRow && tableView.selectedRowIndexes.contains(rowBand.row)
+            let state = rowBand.isTableRow ? coordinator.visualState(for: rowBand.row) : .empty
             DataGridBodyChrome.fill(
                 stripRect,
                 with: rowLayers(
-                    row: band.row,
+                    row: rowBand.row,
                     isSelected: isSelected,
                     emphasized: emphasized,
                     state: state,
@@ -157,17 +181,72 @@ final class DataGridRowGutterView: NSView {
                 ),
                 over: tableView.backgroundColor
             )
-            guard band.isTableRow else { continue }
-            let cellFrame = tableView.frameOfCell(atColumn: rowNumberColumn, row: band.row)
-            drawNumber(
-                band.row + pageOffset + 1,
-                in: NSRect(x: cellFrame.minX, y: stripRect.minY, width: cellFrame.width, height: stripRect.height),
-                font: font,
-                color: palette.rowNumberColor(for: state, onEmphasizedSelection: isSelected && emphasized)
-            )
+            guard rowBand.isTableRow else { continue }
+            if rowNumberColumn >= 0 {
+                let cellFrame = tableView.frameOfCell(atColumn: rowNumberColumn, row: rowBand.row)
+                drawNumber(
+                    rowBand.row + pageOffset + 1,
+                    in: NSRect(x: cellFrame.minX, y: stripRect.minY, width: cellFrame.width, height: stripRect.height),
+                    font: font,
+                    color: palette.rowNumberColor(for: state, onEmphasizedSelection: isSelected && emphasized)
+                )
+            }
+            if band.isFreezing {
+                drawFrozenCells(ofRow: rowBand.row, in: stripRect.intersection(dirtyRect), band: band, tableView: tableView)
+            }
         }
 
         drawColumnSeparator(in: dirtyRect, tableView: tableView, coordinator: coordinator)
+        guard band.isFreezing else { return }
+        drawFrozenDivider(in: dirtyRect, band: band, tableView: tableView)
+        drawSelectionOutline(in: dirtyRect, band: band, tableView: tableView)
+    }
+
+    static let frozenDividerThickness: CGFloat = 2
+
+    private func frozenArea(of band: DataGridPinnedBand, in rect: NSRect) -> NSRect {
+        NSRect(x: band.gutterWidth, y: rect.minY, width: band.width - band.gutterWidth, height: rect.height)
+            .intersection(rect)
+    }
+
+    // The row's own drawing, translated to where the row sits in the band.
+    private func drawFrozenCells(ofRow row: Int, in rect: NSRect, band: DataGridPinnedBand, tableView: NSTableView) {
+        let area = frozenArea(of: band, in: rect)
+        guard !area.isEmpty,
+              let rowView = tableView.rowView(atRow: row, makeIfNecessary: false) as? DataGridRowView,
+              let context = NSGraphicsContext.current?.cgContext else { return }
+        let rowTop = convert(tableView.rect(ofRow: row), from: tableView).minY
+        context.saveGState()
+        area.clip()
+        context.translateBy(x: 0, y: rowTop)
+        rowView.drawFrozenColumns(in: area.offsetBy(dx: 0, dy: -rowTop))
+        context.restoreGState()
+    }
+
+    private func drawFrozenDivider(in rect: NSRect, band: DataGridPinnedBand, tableView: NSTableView) {
+        let divider = NSRect(
+            x: band.width - Self.frozenDividerThickness,
+            y: rect.minY,
+            width: Self.frozenDividerThickness,
+            height: rect.height
+        )
+        guard divider.intersects(rect) else { return }
+        tableView.gridColor.setFill()
+        divider.fill()
+    }
+
+    // The overlay outlines in the table beneath, where the band covers the frozen part of it.
+    private func drawSelectionOutline(in rect: NSRect, band: DataGridPinnedBand, tableView: NSTableView) {
+        let area = frozenArea(of: band, in: rect)
+        guard !area.isEmpty,
+              let overlay = (tableView as? KeyHandlingTableView)?.selectionOverlay,
+              let context = NSGraphicsContext.current?.cgContext else { return }
+        let tableOriginY = convert(NSPoint.zero, from: tableView).y
+        context.saveGState()
+        area.clip()
+        context.translateBy(x: 0, y: tableOriginY)
+        overlay.drawSelection(in: area.offsetBy(dx: 0, dy: -tableOriginY))
+        context.restoreGState()
     }
 
     /// What the row under the strip paints, in its order, for `DataGridBodyChrome.fill` to blend over
@@ -380,8 +459,11 @@ final class DataGridRowGutterView: NSView {
     /// click there belongs to the grid: a double click adds a row and a single click clears the
     /// selection, both of which the strip used to swallow.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard let hit = super.hitTest(point) else { return nil }
-        return row(atLocalPoint: convert(point, from: superview)) >= 0 ? hit : nil
+        guard let hit = super.hitTest(point), let tableView else { return nil }
+        let local = convert(point, from: superview)
+        // A frozen cell's press goes on to the grid, which resolves it through `column(at:)`.
+        guard local.x < Self.width(of: tableView) else { return nil }
+        return row(atLocalPoint: local) >= 0 ? hit : nil
     }
 
     // MARK: - Accessibility
@@ -396,7 +478,15 @@ final class DataGridRowGutterView: NSView {
     /// points off screen. Below the last row, the grid.
     override func accessibilityHitTest(_ point: NSPoint) -> Any? {
         guard let tableView, let window else { return super.accessibilityHitTest(point) }
-        let row = row(atLocalPoint: convert(window.convertPoint(fromScreen: point), from: nil))
+        let local = convert(window.convertPoint(fromScreen: point), from: nil)
+        let row = row(atLocalPoint: local)
+        let frozen = tableView.column(at: convert(local, to: tableView))
+        if row >= 0, local.x >= Self.width(of: tableView), coordinator?.freezingBand()?.pins(frozen) == true {
+            DataGridAccessibility.markActive()
+            return tableView.view(atColumn: frozen, row: row, makeIfNecessary: false)
+                ?? tableView.rowView(atRow: row, makeIfNecessary: false)
+                ?? tableView.accessibilityHitTest(point)
+        }
         let column = tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
         guard row >= 0, column >= 0 else { return tableView.accessibilityHitTest(point) }
         if tableView.visibleRect.intersects(tableView.rect(ofColumn: column)),

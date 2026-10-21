@@ -19,6 +19,7 @@ struct QueryEditorView: View {
     var databaseScope: DatabaseScope?
     var connectionId: UUID?
     var tabID: UUID?
+    var sourceFileURL: URL?
     var claimFocusOnAppear: Bool = false
     var onFocusClaimed: (() -> Void)?
     var restoredCursorRange: NSRange?
@@ -61,7 +62,7 @@ struct QueryEditorView: View {
                 scope: scope,
                 commands: commands,
                 isExecuting: isExecuting,
-                vimMode: settingsManager.editor.vimModeEnabled ? vimMode : nil,
+                vimMode: settingsManager.editor.keyBindings == .vim ? vimMode : nil,
                 showsHistoryTip: showsHistoryTip,
                 onAIAction: { action in onAIAction?(action, .selectionOrStatementAtCursor) },
                 onRun: onRun,
@@ -94,6 +95,7 @@ struct QueryEditorView: View {
                 databaseScope: databaseScope,
                 connectionId: connectionId,
                 tabID: tabID,
+                sourceFileURL: sourceFileURL,
                 claimFocusOnAppear: claimFocusOnAppear,
                 onFocusClaimed: onFocusClaimed,
                 restoredCursorRange: restoredCursorRange,

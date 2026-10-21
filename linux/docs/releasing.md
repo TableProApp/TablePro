@@ -26,10 +26,10 @@ A repository admin does these once. The workflow's header names the same secrets
 
    The pull request changes only these files and `changelog.d/`. The `release-metadata` Meson test checks that they agree once the changelog heading exists, so the pull request fails before the tag does.
 2. **The tag**: `linux-vX.Y.Z` on the merged commit, pushed the same UTC day. The workflow compares the metainfo date with the commit date.
-3. **The workflow** checks the tag, builds and tests both packages on amd64 and arm64, publishes the GitHub release with the tarballs and the version's changelog section as notes, uploads the signed source package to the PPA, and posts the tag to COPR. A reviewer approves each step that uses the environment.
+3. **The workflow** checks the tag, builds and tests both packages on amd64 and arm64, publishes the GitHub release with the tarballs, the translation template `tablepro.pot` and the version's changelog section as notes, uploads the signed source package to the PPA, and posts the tag to COPR. A reviewer approves each step that uses the environment.
 4. **Afterwards**: watch the Launchpad build page of each series and the COPR build the workflow prints. A failed build there does not fail the workflow.
 
-A tag such as `linux-v0.2.0-rc.1` publishes a GitHub pre-release with the tarballs only, and skips the PPA and COPR. Its commit sets the version and the dates but adds no `CHANGELOG.md` section and keeps the fragments, so the stable release lists them; the pre-release notes are a towncrier draft of the fragments at the tag.
+A tag such as `linux-v0.2.0-rc.1` publishes a GitHub pre-release with the tarballs and the template only, and skips the PPA and COPR. Its commit sets the version and the dates but adds no `CHANGELOG.md` section and keeps the fragments, so the stable release lists them; the pre-release notes are a towncrier draft of the fragments at the tag.
 
 ## A packaging fix
 

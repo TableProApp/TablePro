@@ -23,6 +23,9 @@ final class SchemaService: ObservableObject {
     @Published private(set) var states: [CatalogKey: SchemaState] = [:]
     @Published private(set) var sideObjects: [CatalogKey: SideObjects] = [:]
     @Published private(set) var schemasInOrder: [CatalogKey: [String]] = [:]
+    /// Kept apart from `schemasInOrder`, which names the schemas a connection switches between. An
+    /// attached database is reached by its qualifier and is never switched to.
+    @Published private(set) var attachedSchemasInOrder: [CatalogKey: [String]] = [:]
     @Published private(set) var perSchemaStates: [SchemaKey: SchemaState] = [:]
     @Published private(set) var perSchemaSideObjects: [SchemaKey: SideObjects] = [:]
     @Published private(set) var generations: [UUID: Int] = [:]
@@ -218,6 +221,7 @@ final class SchemaService: ObservableObject {
         states = states.filter { !isForgotten($0.key) }
         sideObjects = sideObjects.filter { !isForgotten($0.key) }
         schemasInOrder = schemasInOrder.filter { !isForgotten($0.key) }
+        attachedSchemasInOrder = attachedSchemasInOrder.filter { !isForgotten($0.key) }
         loadGenerations = loadGenerations.filter { !isForgotten($0.key) }
         unrefreshedCatalogs = unrefreshedCatalogs.filter { !isForgotten($0) }
         perSchemaStates = perSchemaStates.filter { !isForgottenSchema($0.key) }
@@ -321,6 +325,10 @@ final class SchemaService: ObservableObject {
 
     func schemas(for connectionId: UUID) -> [String] {
         schemasInOrder[shownKey(connectionId)] ?? []
+    }
+
+    func attachedSchemas(for connectionId: UUID) -> [String] {
+        attachedSchemasInOrder[shownKey(connectionId)] ?? []
     }
 
     func schemaState(for connectionId: UUID, schema: String) -> SchemaState {
@@ -826,6 +834,7 @@ final class SchemaService: ObservableObject {
         states = states.filter { $0.key.connectionId != connectionId }
         sideObjects = sideObjects.filter { $0.key.connectionId != connectionId }
         schemasInOrder = schemasInOrder.filter { $0.key.connectionId != connectionId }
+        attachedSchemasInOrder = attachedSchemasInOrder.filter { $0.key.connectionId != connectionId }
         perSchemaStates = perSchemaStates.filter { $0.key.connectionId != connectionId }
         perSchemaSideObjects = perSchemaSideObjects.filter { $0.key.connectionId != connectionId }
         generations.removeValue(forKey: connectionId)
@@ -923,6 +932,10 @@ final class SchemaService: ObservableObject {
         if !supportsSchemas {
             schemasInOrder.removeValue(forKey: key)
         }
+        let listsAttached = !supportsSchemas && PluginManager.shared.listsAttachedDatabases(for: type)
+        if !listsAttached {
+            attachedSchemasInOrder.removeValue(forKey: key)
+        }
 
         let loadKey = LoadKey(connectionId: connectionId, scope: scope)
         let grouping = PluginManager.shared.databaseGroupingStrategy(for: type)
@@ -966,7 +979,7 @@ final class SchemaService: ObservableObject {
                 fetch: { try await driver.fetchUserDefinedTypes(schema: nil) }
             )
             : nil
-        async let schemasTask: [String]? = supportsSchemas
+        async let schemasTask: [String]? = supportsSchemas || listsAttached
             ? Self.fetchSchemasSafely(
                 key: loadKey,
                 dedup: schemasDedup,
@@ -1017,7 +1030,11 @@ final class SchemaService: ObservableObject {
             guard isCurrentLoadGeneration(generation, for: key, phase: "schemas-loaded") else {
                 return
             }
-            schemasInOrder[key] = loadedSchemas
+            if listsAttached {
+                attachedSchemasInOrder[key] = loadedSchemas
+            } else {
+                schemasInOrder[key] = loadedSchemas
+            }
         }
         bumpGeneration(connectionId)
     }

@@ -24,6 +24,7 @@ struct QueryFetchResult {
     var rowLocators: [String?]?
     /// Row index to the columns that row has no field for. See `PluginQueryResult.absentCells`.
     var absentCells: [Int: Set<Int>] = [:]
+    var unloadedCells: [Int: [Int: Int]] = [:]
 
     var resolvedTiming: PluginQueryTiming {
         timing ?? PluginQueryTiming(total: executionTime)
@@ -167,6 +168,25 @@ final class QueryExecutor {
         )
     }
 
+    nonisolated static func fetchExplainPlan(
+        driver: DatabaseDriver,
+        statement: String,
+        variantId: String
+    ) async throws -> QueryFetchResult {
+        let result = try await driver.explainPlan(statement: statement, variantId: variantId)
+        return QueryFetchResult(
+            columns: result.columns,
+            columnTypes: result.columnTypes,
+            rows: result.rows,
+            executionTime: result.executionTime,
+            rowsAffected: result.rowsAffected,
+            statusMessage: result.statusMessage,
+            isTruncated: result.isTruncated,
+            resultColumnMeta: result.columnMeta,
+            timing: result.timing
+        )
+    }
+
     nonisolated static func fetchQueryData(
         driver: DatabaseDriver,
         sql: String,
@@ -236,8 +256,8 @@ final class QueryExecutor {
         let (columns, approximateRowCount) = try await DatabaseManager.shared.withMetadataDriver(
             scope: scope
         ) { driver in
-            let columns = try await driver.fetchColumns(table: tableName)
-            let approximateRowCount = try? await driver.fetchApproximateRowCount(table: tableName)
+            let columns = try await driver.fetchColumns(table: tableName, schema: scope.schema)
+            let approximateRowCount = try? await driver.fetchApproximateRowCount(table: tableName, schema: scope.schema)
             return (columns, approximateRowCount)
         }
         let foreignKeys = await fetchForeignKeys(scope: scope, tableName: tableName)
@@ -250,7 +270,7 @@ final class QueryExecutor {
     private static func fetchForeignKeys(scope: DatabaseScope, tableName: String) async -> [ForeignKeyInfo]? {
         do {
             return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                try await driver.fetchForeignKeys(table: tableName)
+                try await driver.fetchForeignKeys(table: tableName, schema: scope.schema)
             }
         } catch {
             queryExecutorLog.error(

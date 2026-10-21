@@ -1,4 +1,4 @@
-use std::cell::{Cell, OnceCell};
+use std::cell::OnceCell;
 use std::marker::PhantomData;
 
 use gtk4::glib;
@@ -12,8 +12,6 @@ pub struct SidebarObject {
     pub(super) table: OnceCell<TableRef>,
     pub(super) kind: OnceCell<ObjectKind>,
     pub(super) title: OnceCell<String>,
-    pub(super) rank: Cell<u32>,
-    pub(super) search: OnceCell<String>,
     #[property(get = Self::schema)]
     schema: PhantomData<Option<String>>,
     #[property(get = Self::name)]
@@ -23,13 +21,6 @@ pub struct SidebarObject {
     /// The schema's heading, which groups the rows into sections.
     #[property(get = Self::section_title)]
     section_title: PhantomData<String>,
-    /// 0 for the default schema, 1 for the others, 2 for the engine's
-    /// own, so sections sort in that order before their titles.
-    #[property(get = Self::section_rank)]
-    section_rank: PhantomData<u32>,
-    /// `schema.name` in lowercase, which the search matches against.
-    #[property(get = Self::search_text)]
-    search_text: PhantomData<String>,
 }
 
 #[glib::object_subclass]
@@ -61,13 +52,5 @@ impl SidebarObject {
 
     fn section_title(&self) -> String {
         self.title.get().cloned().unwrap_or_default()
-    }
-
-    fn section_rank(&self) -> u32 {
-        self.rank.get()
-    }
-
-    fn search_text(&self) -> String {
-        self.search.get().cloned().unwrap_or_default()
     }
 }

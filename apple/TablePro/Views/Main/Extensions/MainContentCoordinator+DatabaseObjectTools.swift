@@ -2,7 +2,7 @@
 //  MainContentCoordinator+DatabaseObjectTools.swift
 //  TablePro
 //
-//  Copy DDL, Refresh Materialized View and Edit Comment on one table-like object.
+//  Copy DDL, Refresh Materialized View and Edit Comment on one object.
 //
 
 import AppKit
@@ -35,10 +35,11 @@ extension MainContentCoordinator {
     func copyDDL(of ref: DatabaseTreeTableRef) {
         guard let target = objectTarget(for: ref) else { return }
         let name = target.name
+        let schema = target.schema
         Task {
             do {
                 let ddl = try await services.databaseManager.withMetadataDriver(scope: target.scope) { driver in
-                    try await TableDDLComposer.fetchDDL(for: name, using: driver, includesDependencies: true)
+                    try await TableDDLComposer.fetchDDL(for: name, using: driver, includesDependencies: true, schema: schema)
                 }
                 ClipboardService.shared.writeText(ddl)
             } catch {
@@ -92,6 +93,7 @@ extension MainContentCoordinator {
                     message: String(format: String(localized: "“%@” now holds the current result of its query."), target.qualifiedName),
                     window: contentWindow
                 )
+            } catch ExecutionGateError.cancelledByUser {
             } catch {
                 AlertHelper.showErrorSheet(
                     title: String(localized: "Couldn't Refresh Materialized View"),
@@ -107,6 +109,18 @@ extension MainContentCoordinator {
     func editComment(of ref: DatabaseTreeTableRef) {
         guard !safeModeLevel.blocksAllWrites, let target = objectTarget(for: ref) else { return }
         activeSheet = .editObjectComment(target)
+    }
+
+    // MARK: - Sequences
+
+    func setSequenceNextValue(of ref: DatabaseTreeTableRef) {
+        guard !safeModeLevel.blocksAllWrites, let target = objectTarget(for: ref) else { return }
+        activeSheet = .setSequenceNextValue(target)
+    }
+
+    func editSequence(_ ref: DatabaseTreeTableRef) {
+        guard !safeModeLevel.blocksAllWrites, let target = objectTarget(for: ref) else { return }
+        activeSheet = .editSequence(target)
     }
 
     // MARK: - Object Changes

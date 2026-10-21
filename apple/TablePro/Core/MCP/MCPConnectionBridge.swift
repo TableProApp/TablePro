@@ -163,6 +163,23 @@ public actor MCPConnectionBridge {
         return (outcome.result, outcome.executionTimeMs)
     }
 
+    func runExplainPlan(
+        scope: DatabaseScope,
+        statement: String,
+        step: ExplainRequest.DriverStep,
+        timeoutSeconds: Int,
+        cancellation: MCPCancellationToken?
+    ) async throws -> (result: QueryResult, executionTimeMs: Double) {
+        let outcome = try await access.runExplainPlan(
+            scope: scope,
+            statement: statement,
+            step: step,
+            timeoutSeconds: timeoutSeconds,
+            cancellation: cancellation
+        )
+        return (outcome.result, outcome.executionTimeMs)
+    }
+
     static func encode(result: QueryResult, scope: DatabaseScope, executionTimeMs: Double) -> JsonValue {
         .object(fields(of: result, scope: scope, executionTimeMs: executionTimeMs))
     }
@@ -233,7 +250,7 @@ public actor MCPConnectionBridge {
     }
 
     static func statementText(_ query: String, databaseType: DatabaseType) -> String {
-        DatabaseAccessBridge.statementText(query, grammar: databaseType.lexicalGrammar)
+        DatabaseAccessBridge.statementText(query, databaseType: databaseType)
     }
 }
 

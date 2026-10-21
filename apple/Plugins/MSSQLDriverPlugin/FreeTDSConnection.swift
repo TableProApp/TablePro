@@ -502,6 +502,25 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     /// client closed the socket wrote nothing. Only the queue may close the handle and the queue may be inside a read,
     /// so the read is stopped the way a Stop stops it and the handle is closed behind it.
     func disconnect() {
+        guard let handle = detachHandle() else { return }
+        queue.async { [self] in
+            teardown(handle)
+        }
+    }
+
+    /// The same close, returning once the handle is closed: SQL Server refuses to drop or restore a database while
+    /// this session is still in it.
+    func disconnectAndWait() async {
+        guard let handle = detachHandle() else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async { [self] in
+                teardown(handle)
+                continuation.resume()
+            }
+        }
+    }
+
+    private func detachHandle() -> UnsafeMutablePointer<DBPROCESS>? {
         let handle = dbproc
         dbproc = nil
 
@@ -510,10 +529,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         lock.unlock()
 
         requestGate.stop()
-        guard let handle else { return }
-        queue.async { [self] in
-            teardown(handle)
-        }
+        return handle
     }
 
     /// A Stop. Safe from any thread, because it only marks the calls: see ``MSSQLRequestGate``.
@@ -537,6 +553,51 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     /// `countsToSkip` is how many statements the caller put in front of the batch, whose row counts are not the batch's.
     func executeBatch(_ batch: String, rowCap: Int?, countsToSkip: Int = 0) async throws -> MSSQLBatchReadout {
         try await read(batch, plan: .batch(rowCap: rowCap, countsToSkip: countsToSkip))
+    }
+
+    // One queue turn, so no other call runs while the setting is on.
+    func executeShowplan(_ statement: String, showplan: MSSQLShowplan) async throws -> MSSQLBatchReadout {
+        let queryToRun = String(statement)
+        let call = requestGate.enqueue()
+        return try await withTaskCancellationHandler {
+            try await freetdsDispatchAsync(on: queue) { [self] in
+                try self.showplanSync(queryToRun, showplan: showplan, call: call)
+            }
+        } onCancel: { [weak self] in
+            self?.cancelCurrentQuery()
+        }
+    }
+
+    private func showplanSync(_ statement: String, showplan: MSSQLShowplan, call: UInt64) throws -> MSSQLBatchReadout {
+        let answer: Result<MSSQLBatchReadout, Error>
+        do {
+            // A Stop can land after the server applied ON, so a failed ON is reset like a failed statement.
+            _ = try readSync(showplan.onStatement, call: call, plan: .singleResult, sink: .buffer, isAborted: nil)
+                .singleResult()
+            answer = .success(try readSync(
+                statement,
+                call: call,
+                plan: .batch(rowCap: 1, countsToSkip: 0),
+                sink: .buffer,
+                isAborted: nil
+            ))
+        } catch {
+            answer = .failure(error)
+        }
+
+        guard dbproc != nil else { return try answer.get() }
+        // Numbered after the statement, so a Stop that ended it does not skip the reset.
+        let resetCall = requestGate.enqueue()
+        do {
+            _ = try readSync(showplan.offStatement, call: resetCall, plan: .singleResult, sink: .buffer, isAborted: nil)
+                .singleResult()
+        } catch {
+            // A session left in showplan mode would plan every later statement instead of running it.
+            freetdsLogger.error("Closing the connection: \(showplan.offStatement, privacy: .public) failed")
+            disconnect()
+            throw MSSQLCoreError.queryFailed(MSSQLShowplan.resetFailedMessage)
+        }
+        return try answer.get()
     }
 
     /// What the latest request printed, handed over once.

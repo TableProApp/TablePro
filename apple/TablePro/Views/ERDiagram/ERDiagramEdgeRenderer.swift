@@ -1,6 +1,5 @@
 import AppKit
 
-/// Renders FK edges with crow's foot notation with CoreGraphics into the current drawing context.
 @MainActor
 enum ERDiagramEdgeRenderer {
     private struct ResolvedEdge {
@@ -12,14 +11,73 @@ enum ERDiagramEdgeRenderer {
     }
 
     private static let strokeWidth: CGFloat = 1.5
+    private static let selectedStrokeWidth: CGFloat = 3
+    private static let dashPattern: [CGFloat] = [6, 4]
+
+    struct Route {
+        let edge: EREdge
+        let path: CGPath
+        let markers: [CGPath]
+    }
+
+    struct Colors {
+        let stroke: CGColor
+        let selection: CGColor
+        let dropped: CGColor
+    }
 
     static func drawEdges(
         edges: [EREdge],
         nodeRects: [UUID: CGRect],
         nodeIndex: [String: UUID],
-        strokeColor: CGColor,
-        in context: CGContext
+        colors: Colors,
+        selectedEdgeId: UUID?,
+        on canvas: some ERDiagramCanvas
     ) {
+        for route in routes(edges: edges, nodeRects: nodeRects, nodeIndex: nodeIndex) {
+            let isSelected = route.edge.id == selectedEdgeId
+            let color: CGColor
+            if isSelected {
+                color = colors.selection
+            } else if route.edge.stagedEdit == .dropped {
+                color = colors.dropped
+            } else {
+                color = colors.stroke
+            }
+            let isPending = route.edge.stagedEdit != nil
+            // Each part is its own stroke, so a translucent edge darkens where a marker crosses it.
+            for part in [route.path] + route.markers {
+                let drawn = isPending ? part.copy(dashingWithPhase: 0, lengths: dashPattern) : part
+                canvas.stroke(
+                    drawn,
+                    color: color,
+                    lineWidth: isSelected ? selectedStrokeWidth : strokeWidth,
+                    rounded: true
+                )
+            }
+        }
+    }
+
+    // The topmost edge within `tolerance` of the point, in the order the edges are drawn.
+    static func edgeId(
+        at point: CGPoint,
+        tolerance: CGFloat,
+        edges: [EREdge],
+        nodeRects: [UUID: CGRect],
+        nodeIndex: [String: UUID]
+    ) -> UUID? {
+        routes(edges: edges, nodeRects: nodeRects, nodeIndex: nodeIndex)
+            .reversed()
+            .first { route in
+                route.path.boundingBoxOfPath.insetBy(dx: -tolerance, dy: -tolerance).contains(point)
+                    && route.path
+                    .copy(strokingWithWidth: tolerance * 2, lineCap: .round, lineJoin: .round, miterLimit: 1)
+                    .contains(point)
+            }?
+            .edge.id
+    }
+
+    static func routes(edges: [EREdge], nodeRects: [UUID: CGRect], nodeIndex: [String: UUID]) -> [Route] {
         let resolved: [ResolvedEdge] = edges.compactMap { edge -> ResolvedEdge? in
             guard let fromId = nodeIndex[edge.fromTable],
                   let toId = nodeIndex[edge.toTable],
@@ -29,9 +87,7 @@ enum ERDiagramEdgeRenderer {
             return ResolvedEdge(edge: edge, fromId: fromId, toId: toId, fromRect: fromRect, toRect: toRect)
         }
 
-        // A self edge gets its own loop and never a border port, so it is kept out of the counts
-        // and the pools: letting it take a spread slot would push a real edge off centre for a
-        // port that is never used.
+        // A self edge never takes a border port, so it stays out of the port counts.
         let pairs = resolved.filter { $0.fromId != $0.toId }
         var selfLoopIndex: [String: Int] = [:]
         var selfLoopCounts: [UUID: Int] = [:]
@@ -74,13 +130,7 @@ enum ERDiagramEdgeRenderer {
             }
         }
 
-        context.saveGState()
-        context.setStrokeColor(strokeColor)
-        context.setLineWidth(strokeWidth)
-        context.setLineCap(.round)
-        context.setLineJoin(.round)
-
-        for item in resolved {
+        return resolved.map { item in
             let key = edgeKey(item)
             let path: CGPath
             let srcPort: CGPoint
@@ -111,13 +161,13 @@ enum ERDiagramEdgeRenderer {
                 path = curve
             }
 
-            context.addPath(path)
-            context.strokePath()
-            drawSourceMarker(cardinality: item.edge.cardinality, at: srcPort, toward: cp1, in: context)
-            drawDestinationMarker(cardinality: item.edge.cardinality, at: dstPort, toward: cp2, in: context)
+            return Route(
+                edge: item.edge,
+                path: path,
+                markers: sourceMarker(cardinality: item.edge.cardinality, at: srcPort, toward: cp1)
+                    + destinationMarker(cardinality: item.edge.cardinality, at: dstPort, toward: cp2)
+            )
         }
-
-        context.restoreGState()
     }
 
     private static func edgeKey(_ item: ResolvedEdge) -> String {
@@ -140,21 +190,7 @@ enum ERDiagramEdgeRenderer {
         }
     }
 
-    /// A relationship a table has with itself, `employees.manager_id -> employees.id`, drawn as a
-    /// loop out of one side rather than as an edge between two nodes.
-    ///
-    /// `computePorts` cannot serve it. With one rect for both ends the vertical gap is negative, so
-    /// it takes the side-port branch, and the equality makes it choose the left border for the
-    /// source and the right border for the destination: a curve straight through the table, drawn
-    /// before the node's own opaque fill and therefore erased by it. Measured on a 220x80 node, 4
-    /// of 444 curve pixels survived, and both cardinality markers pointed into the body.
-    ///
-    /// Both ports go on the trailing edge and the control points push out past it, which is what
-    /// Graphviz does for a self edge (TSE93 5.1.3, "loops on the sides of nodes"). The horizontal
-    /// distance along the curve is `3 * bow * t * (1 - t)`, never negative, so the loop provably
-    /// never re-enters the node whatever its size; the bulge peaks at three quarters of `bow`.
-    /// The bow is capped at the layout's own column gap, unscaled, because that gap is what the
-    /// packer leaves to the right of a node and it does not grow with the text size.
+    // Out of the trailing edge and back (TSE93 5.1.3); the reach `3 * bow * t * (1 - t)` never re-enters the node.
     static func selfLoop(in rect: CGRect, index: Int) -> SelfLoop {
         let scale = ERDiagramLayout.typeScale
         let spread = min(
@@ -174,14 +210,10 @@ enum ERDiagramEdgeRenderer {
         )
     }
 
-    /// A ceiling on how far a nested loop can reach, so the 80pt of canvas padding the view model
-    /// adds is always enough to scroll to one: the bulge is three quarters of the bow and the
-    /// markers reach further still. Loops past the second on a single table coincide, which is the
-    /// better trade for a schema that has three.
+    // Keeps a nested loop inside the 80 pt of canvas padding the view model adds.
     private static let maximumBow: CGFloat = 84
 
-    /// Every point the loop and its two markers touch, which is more than the node rect: the export
-    /// crops to the drawn content, and cropping to the tables alone cuts the apex off.
+    // The export crops to what is drawn, and the loop with its markers reaches past the node rect.
     static func selfLoopBounds(in rect: CGRect, index: Int) -> CGRect {
         let loop = selfLoop(in: rect, index: index)
         let apex = rect.maxX + (loop.sourceControl.x - rect.maxX) * 0.75
@@ -194,85 +226,60 @@ enum ERDiagramEdgeRenderer {
         .insetBy(dx: -markerReach, dy: -markerReach)
     }
 
-    /// The crow's foot reaches 12pt along the tangent and spreads 8pt across it, and the stroke
-    /// adds its own half width.
+    // The crow's foot reaches 12 pt along the tangent and 8 pt across it, plus half the stroke.
     private static let markerReach: CGFloat = 14
 
     // MARK: - Cardinality Markers
 
-    private static func drawSourceMarker(
-        cardinality: ERCardinality,
-        at point: CGPoint,
-        toward target: CGPoint,
-        in context: CGContext
-    ) {
+    private static func sourceMarker(cardinality: ERCardinality, at point: CGPoint, toward target: CGPoint) -> [CGPath] {
         switch cardinality {
         case .oneToOne:
-            drawCompoundEndMarker(at: point, toward: target, isMany: false, isMandatory: true, in: context)
+            return compoundEndMarker(at: point, toward: target, isMany: false, isMandatory: true)
         case .zeroOrOneToOne:
-            drawCompoundEndMarker(at: point, toward: target, isMany: false, isMandatory: false, in: context)
+            return compoundEndMarker(at: point, toward: target, isMany: false, isMandatory: false)
         case .manyToOne:
-            drawCompoundEndMarker(at: point, toward: target, isMany: true, isMandatory: true, in: context)
+            return compoundEndMarker(at: point, toward: target, isMany: true, isMandatory: true)
         case .zeroOrManyToOne:
-            drawCompoundEndMarker(at: point, toward: target, isMany: true, isMandatory: false, in: context)
+            return compoundEndMarker(at: point, toward: target, isMany: true, isMandatory: false)
         case .manyToMany:
-            drawCrowFoot(at: point, toward: target, in: context)
-        default:
-            drawCompoundEndMarker(at: point, toward: target, isMany: true, isMandatory: true, in: context)
+            return [crowFoot(at: point, toward: target)]
         }
     }
 
-    private static func drawDestinationMarker(
-        cardinality: ERCardinality,
-        at point: CGPoint,
-        toward target: CGPoint,
-        in context: CGContext
-    ) {
+    private static func destinationMarker(cardinality: ERCardinality, at point: CGPoint, toward target: CGPoint) -> [CGPath] {
         switch cardinality {
         case .manyToMany:
-            drawCrowFoot(at: point, toward: target, in: context)
+            return [crowFoot(at: point, toward: target)]
         default:
-            drawOneBar(at: point, toward: target, in: context)
+            return [oneBar(at: point, toward: target)]
         }
     }
 
-    private static func drawCompoundEndMarker(
+    private static func compoundEndMarker(
         at point: CGPoint,
         toward target: CGPoint,
         isMany: Bool,
-        isMandatory: Bool,
-        in context: CGContext
-    ) {
-        if isMany {
-            drawCrowFoot(at: point, toward: target, in: context)
-        } else {
-            drawOneBar(at: point, toward: target, in: context)
-        }
+        isMandatory: Bool
+    ) -> [CGPath] {
+        let outer = isMany ? crowFoot(at: point, toward: target) : oneBar(at: point, toward: target)
 
         let angle = atan2(target.y - point.y, target.x - point.x)
         let innerOffset: CGFloat = 14
         let innerPoint = CGPoint(x: point.x + innerOffset * cos(angle), y: point.y + innerOffset * sin(angle))
+        let inner = isMandatory ? oneBar(at: innerPoint, toward: target) : circle(at: innerPoint)
 
-        if isMandatory {
-            drawOneBar(at: innerPoint, toward: target, in: context)
-        } else {
-            drawCircle(at: innerPoint, in: context)
-        }
+        return [outer, inner]
     }
 
-    private static func drawCircle(at point: CGPoint, in context: CGContext) {
+    private static func circle(at point: CGPoint) -> CGPath {
         let radius: CGFloat = 3.5
         let rect = CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)
-        context.addEllipse(in: rect)
-        context.strokePath()
+        return CGPath(ellipseIn: rect, transform: nil)
     }
 
     // MARK: - Port Selection
 
-    /// Top-to-bottom Sugiyama layout: edges exit from bottom, enter from top.
-    /// Multiple edges on the same table are spaced evenly along the edge.
-    /// Returns (srcPort, dstPort, verticalPorts).
-    /// Uses actual port-to-port gap to decide routing direction.
+    // Vertical ports only when the gap between the closest edges leaves room for a clean curve.
     static func computePorts(
         from fromRect: CGRect, to toRect: CGRect,
         srcIdx: Int, srcTotal: Int,
@@ -281,7 +288,6 @@ enum ERDiagramEdgeRenderer {
         let fromCenter = CGPoint(x: fromRect.midX, y: fromRect.midY)
         let toCenter = CGPoint(x: toRect.midX, y: toRect.midY)
 
-        // Measure the actual gap between the closest edges (not centers)
         let verticalGap: CGFloat
         if fromCenter.y < toCenter.y {
             verticalGap = toRect.minY - fromRect.maxY
@@ -289,8 +295,6 @@ enum ERDiagramEdgeRenderer {
             verticalGap = fromRect.minY - toRect.maxY
         }
 
-        // Use vertical (bottom→top) ports only when there's enough gap for clean routing.
-        // When tables overlap vertically or are too close, use side ports.
         let minGapForVertical: CGFloat = 30
 
         if verticalGap > minGapForVertical {
@@ -312,7 +316,6 @@ enum ERDiagramEdgeRenderer {
         }
     }
 
-    /// Distributes N ports evenly along an edge, with padding from corners.
     private static func spreadOffset(in length: CGFloat, index: Int, total: Int, base: CGFloat) -> CGFloat {
         let padding: CGFloat = min(length * 0.2, 30)
         let usable = length - padding * 2
@@ -328,12 +331,10 @@ enum ERDiagramEdgeRenderer {
         let cp2: CGPoint
 
         if verticalPorts {
-            // Bottom→top ports: control points are directly below src / above dst
             let offset = max(abs(dst.y - src.y) * 0.4, 20)
             cp1 = CGPoint(x: src.x, y: src.y + (dst.y > src.y ? offset : -offset))
             cp2 = CGPoint(x: dst.x, y: dst.y + (src.y > dst.y ? offset : -offset))
         } else {
-            // Side ports: control points are horizontally offset from src/dst
             let offset = max(abs(dst.x - src.x) * 0.4, 20)
             cp1 = CGPoint(x: src.x + (dst.x > src.x ? offset : -offset), y: src.y)
             cp2 = CGPoint(x: dst.x + (src.x > dst.x ? offset : -offset), y: dst.y)
@@ -347,7 +348,7 @@ enum ERDiagramEdgeRenderer {
 
     // MARK: - Crow's Foot (Many Side)
 
-    private static func drawCrowFoot(at point: CGPoint, toward target: CGPoint, in context: CGContext) {
+    private static func crowFoot(at point: CGPoint, toward target: CGPoint) -> CGPath {
         let length: CGFloat = 12
         let spread: CGFloat = 8
         let angle = atan2(target.y - point.y, target.x - point.x)
@@ -355,22 +356,22 @@ enum ERDiagramEdgeRenderer {
         let tip = CGPoint(x: point.x + length * cos(angle), y: point.y + length * sin(angle))
         let perpAngle = angle + .pi / 2
 
-        // Three prongs from the tip back to spread points
         let top = CGPoint(x: point.x + spread * cos(perpAngle), y: point.y + spread * sin(perpAngle))
         let bottom = CGPoint(x: point.x - spread * cos(perpAngle), y: point.y - spread * sin(perpAngle))
 
-        context.move(to: tip)
-        context.addLine(to: top)
-        context.move(to: tip)
-        context.addLine(to: point)
-        context.move(to: tip)
-        context.addLine(to: bottom)
-        context.strokePath()
+        let path = CGMutablePath()
+        path.move(to: tip)
+        path.addLine(to: top)
+        path.move(to: tip)
+        path.addLine(to: point)
+        path.move(to: tip)
+        path.addLine(to: bottom)
+        return path
     }
 
     // MARK: - One Bar (PK Side)
 
-    private static func drawOneBar(at point: CGPoint, toward target: CGPoint, in context: CGContext) {
+    private static func oneBar(at point: CGPoint, toward target: CGPoint) -> CGPath {
         let barWidth: CGFloat = 10
         let angle = atan2(target.y - point.y, target.x - point.x)
         let perpAngle = angle + .pi / 2
@@ -378,8 +379,9 @@ enum ERDiagramEdgeRenderer {
         let top = CGPoint(x: point.x + barWidth * cos(perpAngle), y: point.y + barWidth * sin(perpAngle))
         let bottom = CGPoint(x: point.x - barWidth * cos(perpAngle), y: point.y - barWidth * sin(perpAngle))
 
-        context.move(to: top)
-        context.addLine(to: bottom)
-        context.strokePath()
+        let path = CGMutablePath()
+        path.move(to: top)
+        path.addLine(to: bottom)
+        return path
     }
 }

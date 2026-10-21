@@ -142,7 +142,9 @@ fn read_only_message(error: &DriverError) -> String {
             "The server refused the write: {message}",
             &[("message", &diagnostics.message)],
         ),
-        _ => crate::i18n::gettext("This connection is read-only. Reopen it without read-only mode to make changes."),
+        _ => crate::i18n::gettext(
+            "Safe Mode is Read-Only on this connection. Choose another level in the main menu to make changes.",
+        ),
     }
 }
 

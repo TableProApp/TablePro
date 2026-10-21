@@ -1,5 +1,4 @@
 import SwiftUI
-import TableProModels
 
 struct ConnectionSSLSection: View {
     @Bindable var viewModel: ConnectionFormViewModel
@@ -10,10 +9,11 @@ struct ConnectionSSLSection: View {
     var body: some View {
         Section {
             Picker(String(localized: "SSL Mode"), selection: $viewModel.sslMode) {
-                Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
-                Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
-                Text(String(localized: "Verify CA")).tag(SSLConfiguration.SSLMode.verifyCa)
-                Text(String(localized: "Verify Identity")).tag(SSLConfiguration.SSLMode.verifyFull)
+                Text(String(localized: "Disabled")).tag(SSLModeChoice.disable)
+                Text(String(localized: "Preferred")).tag(SSLModeChoice.preferred)
+                Text(String(localized: "Required")).tag(SSLModeChoice.require)
+                Text(String(localized: "Verify CA")).tag(SSLModeChoice.verifyCa)
+                Text(String(localized: "Verify Identity")).tag(SSLModeChoice.verifyFull)
             }
 
             if viewModel.showsCertificateRows {
@@ -36,8 +36,13 @@ struct ConnectionSSLSection: View {
         } header: {
             Text("SSL")
         } footer: {
-            if viewModel.showsCertificateRows {
-                Text("Certificates stay on this device and are never synced. A PKCS#12 file fills in both the client certificate and its key.")
+            VStack(alignment: .leading, spacing: 4) {
+                if let note = viewModel.sslModeNote {
+                    Text(note)
+                }
+                if viewModel.showsCertificateRows {
+                    Text("Certificates stay on this device and are never synced. A PKCS#12 file fills in both the client certificate and its key.")
+                }
             }
         }
     }

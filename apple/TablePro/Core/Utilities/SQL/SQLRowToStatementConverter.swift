@@ -3,6 +3,7 @@
 //  TablePro
 
 import Foundation
+import TableProAutocomplete
 import TableProPluginKit
 
 /// Writes grid rows as INSERT and UPDATE text for the user to run, with the values written in.
@@ -62,7 +63,8 @@ internal struct SQLRowToStatementConverter {
         settableColumns: [String]? = nil,
         dialect: SQLDialectDescriptor? = nil,
         quoteIdentifier: ((String) -> String)? = nil,
-        escapeStringLiteral: ((String) -> String)? = nil
+        escapeStringLiteral: ((String) -> String)? = nil,
+        identifierSpelling: SQLIdentifierSpelling? = nil
     ) throws {
         self.tableName = tableName
         self.schemaName = schemaName
@@ -73,15 +75,20 @@ internal struct SQLRowToStatementConverter {
         self.rowMatchPolicy = rowMatchPolicy
         self.settableColumns = settableColumns
 
+        let quote: (String) -> String
         if let quoteIdentifier, let escapeStringLiteral {
-            self.quoteIdentifierFn = quoteIdentifier
+            quote = quoteIdentifier
             self.escapeStringFn = escapeStringLiteral
-            return
+        } else {
+            let resolvedDialect = try resolveSQLDialect(for: databaseType, explicit: dialect)
+            quote = quoteIdentifier ?? quoteIdentifierFromDialect(resolvedDialect)
+            self.escapeStringFn = escapeStringLiteral ?? escapeStringLiteralFromDialect(resolvedDialect)
         }
-
-        let resolvedDialect = try resolveSQLDialect(for: databaseType, explicit: dialect)
-        self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(resolvedDialect)
-        self.escapeStringFn = escapeStringLiteral ?? escapeStringLiteralFromDialect(resolvedDialect)
+        if let identifierSpelling {
+            self.quoteIdentifierFn = { identifierSpelling.statementName($0, quotedBy: quote) }
+        } else {
+            self.quoteIdentifierFn = quote
+        }
     }
 
     private var qualifiedTable: String {
@@ -111,6 +118,24 @@ internal struct SQLRowToStatementConverter {
             formatValue(cell.1, isExpression: row.expressionColumns.contains(index))
         }.joined(separator: ", ")
         return "INSERT INTO \(qualifiedTable) (\(columnList)) VALUES (\(values));"
+    }
+
+    // Every column is written, one row to a line, so a long script still reads and edits a row at a time.
+    internal func insertScript(rows: [[PluginCellValue]], rowsPerStatement: Int) -> String {
+        guard !columns.isEmpty, !rows.isEmpty else { return "" }
+        let header = "INSERT INTO \(qualifiedTable) (\(columns.map(quoteIdentifierFn).joined(separator: ", "))) VALUES"
+        let size = max(1, rowsPerStatement)
+        var statements: [String] = []
+        var start = 0
+        while start < rows.count {
+            let batch = rows[start..<min(start + size, rows.count)]
+            let tuples = batch.map { row in "(\(row.map { formatValue($0) }.joined(separator: ", ")))" }
+            statements.append(size == 1
+                ? "\(header) \(tuples[0]);"
+                : "\(header)\n  \(tuples.joined(separator: ",\n  "));")
+            start += size
+        }
+        return statements.joined(separator: "\n")
     }
 
     // MARK: - UPDATE

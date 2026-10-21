@@ -351,12 +351,14 @@ internal struct TreeSummaryFormats: Sendable {
     let keys: Count
     let items: Count
     let properties: Count
+    var fields = Count(one: "1 field", many: "%lld fields")
 
     static var localized: TreeSummaryFormats {
         TreeSummaryFormats(
             keys: Count(one: String(localized: "1 key"), many: String(localized: "%lld keys")),
             items: Count(one: String(localized: "1 item"), many: String(localized: "%lld items")),
-            properties: Count(one: String(localized: "1 property"), many: String(localized: "%lld properties"))
+            properties: Count(one: String(localized: "1 property"), many: String(localized: "%lld properties")),
+            fields: Count(one: String(localized: "1 field"), many: String(localized: "%lld fields"))
         )
     }
 }

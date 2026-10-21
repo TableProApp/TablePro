@@ -316,7 +316,7 @@
     scripts/ios/build-hiredis-ios.sh pins the same 1.2.0.'
 - id: libssh2
   name: libssh2
-  version: 1.11.1
+  version: 1.11.2-dev.3209951db4e4
   spdx: BSD-3-Clause
   copyrights:
   - Copyright (C) 2004-2007 Sara Golemon <sarag@libssh2.org>
@@ -329,17 +329,17 @@
   - Copyright (C) 2015 Microsoft Corp.
   - All rights reserved.
   homepageURL: https://libssh2.org
-  licenseTextURL: https://raw.githubusercontent.com/libssh2/libssh2/libssh2-1.11.1/COPYING
+  licenseTextURL: https://raw.githubusercontent.com/libssh2/libssh2/3209951db4e47ef902db047d12f9f464f835c27e/COPYING
   textFile: texts/libssh2.txt
   source: sh:LIBSSH2_VERSION
-  patched: true
+  patched: false
   platforms: [macos, ios]
-  notes: Linked by the main app target (SSH tunnels), not by a plugin. The tarball is fetched from the
-    GitHub release for libssh2-1.11.1 and pinned by SHA-256. Both patches are TablePro-authored CVE backports carrying
-    their own prose headers; the 1.11.1 tree they modify stays BSD-3-Clause. The repo also ships a LICENSES/
-    directory (BSD-2-Clause, BSD-3-Clause, FSFULLR, MIT, SAX-PD-2.0, curl) for REUSE compliance, covering
-    build and doc files rather than the library sources. scripts/ios/build-libssh2-ios.sh pins the same
-    1.11.1 for the iOS app.
+  notes: Linked by the main app target (SSH tunnels), not by a plugin. The tarball is GitHub's source
+    archive of master at commit 3209951db4e47ef902db047d12f9f464f835c27e, pinned by SHA-256, because no release
+    after 1.11.1 has ML-KEM key exchange or the CVE-2026-55199 and CVE-2026-55200 fixes. The repo also ships a
+    LICENSES/ directory (BSD-2-Clause, BSD-3-Clause, FSFULLR, MIT, SAX-PD-2.0, curl) for REUSE compliance,
+    covering build and doc files rather than the library sources. scripts/ios/build-libssh2-ios.sh pins the
+    same commit for the iOS app.
 - id: libuv
   name: libuv
   version: 1.48.0
@@ -471,28 +471,28 @@
     file from the project ships.
 - id: openssl
   name: OpenSSL
-  version: 3.4.3
+  version: 3.5.9
   spdx: Apache-2.0
   copyrights:
-  - Copyright (c) 1998-2025 The OpenSSL Project Authors
+  - Copyright (c) 1998-2026 The OpenSSL Project Authors
   - Copyright (c) 1995-1998 Eric A. Young, Tim J. Hudson
   - All rights reserved.
   homepageURL: https://www.openssl.org
-  licenseTextURL: https://raw.githubusercontent.com/openssl/openssl/openssl-3.4.3/LICENSE.txt
+  licenseTextURL: https://raw.githubusercontent.com/openssl/openssl/openssl-3.5.9/LICENSE.txt
   textFile: texts/openssl.txt
   source: sh:OPENSSL_VERSION
   patched: false
   platforms: [macos, ios]
   notes: OpenSSL 3.x is Apache-2.0 only; the old OpenSSL/SSLeay dual licence ended at 1.1.1. LICENSE.txt
     at the tag is the bare Apache-2.0 text with no copyright block, so the two holder lines above are
-    quoted from the Copyright section of README.md at the same tag (https://raw.githubusercontent.com/openssl/openssl/openssl-3.4.3/README.md,
+    quoted from the Copyright section of README.md at the same tag (https://raw.githubusercontent.com/openssl/openssl/openssl-3.5.9/README.md,
     lines 196-203). Source files carry the per-file form "Copyright <years> The OpenSSL Project Authors.
     All Rights Reserved." OPENSSL_VERSION in scripts/lib/common.sh is the pin for build-libssh2.sh,
     build-hiredis.sh, build-libmongoc.sh and build-libpq.sh, each of which builds OpenSSL from source for
     its own static link. Only build-libpq.sh installs the result into Libs/. scripts/create-openssl-dylibs.sh
     turns those static archives into the two shipped dylibs. build-mariadb.sh, build-cassandra.sh and
     build-freetds.sh use Homebrew's openssl@3 instead of the pin, so their OpenSSL version is whatever
-    brew has installed (UNVERIFIED at build time; the shipped dylibs are the pinned 3.4.3).
+    brew has installed (UNVERIFIED at build time; the shipped dylibs are the pinned 3.5.9).
 - id: oracle-nio
   name: OracleNIO
   version: rev:045a44674e9f9da3904e0f2b87995490a7cc88e4

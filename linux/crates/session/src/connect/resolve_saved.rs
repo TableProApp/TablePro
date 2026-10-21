@@ -65,7 +65,8 @@ fn saved_request(saved: &SavedConnection, drivers: &DriverRegistry) -> Result<Co
         },
         driver,
         target,
-        workspace_settings: WorkspaceSettings::workspace(saved.read_only),
+        workspace_settings: WorkspaceSettings::workspace(saved.safe_mode.blocks_writes()),
+        safe_mode: saved.safe_mode,
     })
 }
 
@@ -130,7 +131,7 @@ mod tests {
             database: "shop".to_owned(),
             username: "app".to_owned(),
             tls: TlsConfig::verify_full(),
-            read_only: true,
+            safe_mode: tablepro_core::SafeModeLevel::ReadOnly,
             auth_mode: AuthMode::Password,
             ssh,
             last_opened_at: None,

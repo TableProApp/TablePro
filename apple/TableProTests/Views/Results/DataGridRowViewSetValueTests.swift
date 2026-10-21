@@ -182,7 +182,28 @@ struct DataGridRowViewSetValueTests {
         let menu = try #require(rowView.contextMenu(target: .cell(dataColumn: 0)))
         let setValue = try #require(menu.items.first { $0.title == "Set Value" }?.submenu)
 
-        #expect(titles(setValue) == ["Generate UUID", "Generate UUIDv7"])
+        #expect(titles(setValue) == ["Generate UUID", "Generate UUIDv7", "-", "Set Cells to Value…"])
+    }
+
+    @Test("A NOT NULL number with no default still offers Set Cells to Value, alone")
+    func typedValueIsTheOnlyItemOnANotNullNumber() throws {
+        let fixture = makeFixture(
+            columns: ["id", "qty"],
+            columnTypes: [.integer(rawType: "int4"), .integer(rawType: "int4")],
+            rows: [[.text("1"), .text("5")]],
+            columnNullable: ["id": false, "qty": false]
+        )
+        let tableView = KeyHandlingTableView()
+        tableView.coordinator = fixture.coordinator
+        fixture.coordinator.tableView = tableView
+        let rowView = DataGridRowView()
+        rowView.coordinator = fixture.coordinator
+        rowView.rowIndex = 0
+
+        let menu = try #require(rowView.contextMenu(target: .cell(dataColumn: 1)))
+        let setValue = try #require(menu.items.first { $0.title == "Set Value" }?.submenu)
+
+        #expect(titles(setValue) == ["Set Cells to Value…"])
     }
 
     @Test("A read-only grid has no Set Value at all")

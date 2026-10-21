@@ -41,6 +41,22 @@ struct ERDiagramGraphBuilderTests {
         return node.isJunctionTable
     }
 
+    @Test("A key spelled in another case than the catalog, as SQLite reports one, still draws its edge")
+    func referenceSpellingFollowsTheCatalog() {
+        let graph = ERDiagramGraphBuilder.build(
+            allColumns: [
+                "Parent": [column("ID", primaryKey: true)],
+                "child": [column("id", primaryKey: true), column("Parent_Id")]
+            ],
+            allForeignKeys: ["child": [foreignKey(column: "parent_id", references: "parent", "id")]]
+        )
+
+        #expect(graph.edges.map { "\($0.fromTable).\($0.fromColumn) -> \($0.toTable).\($0.toColumn)" } == [
+            "child.Parent_Id -> Parent.ID"
+        ])
+        #expect(graph.nodes.first { $0.tableName == "child" }?.columns.first { $0.name == "Parent_Id" }?.isForeignKey == true)
+    }
+
     // MARK: - Cardinality
 
     @Test("Primary-key foreign key that is NOT NULL is one-to-one")
@@ -292,5 +308,22 @@ struct ERDiagramGraphBuilderTests {
         #expect(expanded.nodes.contains { $0.tableName == "user_roles" })
         #expect(expanded.edges.count == 2)
         #expect(!expanded.edges.contains { $0.cardinality == .manyToMany })
+    }
+
+    // MARK: - Order
+
+    @Test("Edges come out in table order, not in the order a dictionary happens to hold them")
+    func edgesFollowTableOrder() {
+        let tables = (0..<16).map { String(format: "t%02d", $0) }
+        var columns: [String: [ColumnInfo]] = ["parent": [column("id", primaryKey: true)]]
+        var foreignKeys: [String: [ForeignKeyInfo]] = [:]
+        for table in tables {
+            columns[table] = [column("id", primaryKey: true), column("parent_id")]
+            foreignKeys[table] = [foreignKey("\(table)_fk", column: "parent_id", references: "parent")]
+        }
+
+        let graph = ERDiagramGraphBuilder.build(allColumns: columns, allForeignKeys: foreignKeys)
+
+        #expect(graph.edges.map { $0.fromTable } == tables)
     }
 }

@@ -70,6 +70,8 @@ final class DataFileController: ObservableObject {
     weak var undoManager: UndoManager?
     weak var gridCoordinator: TableViewCoordinator?
     var onEdited: (() -> Void)?
+    /// Set while `batchCellEdits` runs, so the cell edits made inside it land as one commit.
+    var pendingCellEdits: [(key: Int, columnID: TabularColumnID, cell: TabularCell)]?
 
     private(set) var kind: DataFileKind?
     private(set) var content: DataFileContent?

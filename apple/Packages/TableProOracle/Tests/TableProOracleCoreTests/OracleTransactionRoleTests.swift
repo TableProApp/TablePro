@@ -64,16 +64,76 @@ struct OracleTransactionRoleTests {
         #expect(OracleTransactionRole(of: "SELECT \(values) FROM dual") == .query)
     }
 
+    @Test func testDataDefinitionIsReadAsTheCommitOracleRunsAroundIt() {
+        for sql in [
+            "CREATE TABLE t (a NUMBER)",
+            "create or replace view v AS SELECT 1 a FROM dual",
+            "-- keep\nCREATE INDEX t_a ON t (a)",
+            "ALTER TABLE t ADD (b NUMBER)",
+            "alter index t_a rebuild",
+            "ALTER USER hr IDENTIFIED BY secret",
+            "DROP TABLE t PURGE",
+            "TRUNCATE TABLE logs",
+            "RENAME t TO t2",
+            "GRANT SELECT ON emp TO hr",
+            "REVOKE SELECT ON emp FROM hr",
+            "COMMENT ON TABLE emp IS 'staff'",
+            "AUDIT SELECT ON emp",
+            "NOAUDIT SELECT ON emp",
+            "ANALYZE TABLE emp COMPUTE STATISTICS",
+            "ASSOCIATE STATISTICS WITH PACKAGES emp_stats",
+            "DISASSOCIATE STATISTICS FROM PACKAGES emp_stats",
+            "PURGE RECYCLEBIN",
+            "FLASHBACK TABLE emp TO BEFORE DROP",
+        ] {
+            #expect(OracleTransactionRole(of: sql) == .dataDefinition, "\(sql)")
+        }
+    }
+
+    @Test func testBlocksAndCallsAreProcedural() {
+        for sql in [
+            "BEGIN NULL; END;",
+            "begin execute immediate 'CREATE TABLE t (a NUMBER)'; end;",
+            "DECLARE v NUMBER; BEGIN v := 1; END;",
+            "declare v number; begin null; end;",
+            "CALL p()",
+            "call hr.p(1)",
+            "-- rebuild\nBEGIN NULL; END;",
+            "/* load */ DECLARE v NUMBER; BEGIN NULL; END;",
+            "<<outer>> BEGIN NULL; END;",
+            "/* labelled */ <<outer>>\nDECLARE v NUMBER; BEGIN NULL; END;",
+        ] {
+            #expect(OracleTransactionRole(of: sql) == .procedural, "\(sql)")
+        }
+    }
+
+    @Test func testOnlyARefusalThatMayHaveEndedTheTransactionAsksTheServer() {
+        #expect(OracleTransactionRole.procedural.mayEndTransactionWhenRefused)
+        #expect(OracleTransactionRole.dataDefinition.mayEndTransactionWhenRefused)
+        #expect(OracleTransactionRole.endsTransaction.mayEndTransactionWhenRefused)
+        #expect(!OracleTransactionRole.other.mayEndTransactionWhenRefused)
+        #expect(!OracleTransactionRole.query.mayEndTransactionWhenRefused)
+        #expect(!OracleTransactionRole.opensTransaction.mayEndTransactionWhenRefused)
+    }
+
+    @Test func testSessionAndSystemControlCommitNothing() {
+        for sql in [
+            "ALTER SESSION SET CURRENT_SCHEMA = \"HR\"",
+            "alter session set nls_date_format = 'YYYY-MM-DD'",
+            "/* switch */ ALTER SESSION SET CURRENT_SCHEMA = hr",
+            "ALTER SYSTEM FLUSH SHARED_POOL",
+            "SET ROLE ALL",
+        ] {
+            #expect(OracleTransactionRole(of: sql) == .other, "\(sql)")
+        }
+    }
+
     @Test func testEverythingElseIsOrdinaryWork() {
         for sql in [
             "INSERT INTO emp VALUES (1)",
             "UPDATE emp SET sal = sal * 2",
             "DELETE FROM emp",
             "MERGE INTO emp USING dual ON (1 = 1) WHEN MATCHED THEN UPDATE SET sal = 1",
-            "CREATE TABLE t (a NUMBER)",
-            "BEGIN NULL; END;",
-            "DECLARE v NUMBER; BEGIN v := 1; END;",
-            "CALL p()",
             "ALTER SESSION SET CURRENT_SCHEMA = hr",
             "SET ROLE ALL",
             "LOCK",

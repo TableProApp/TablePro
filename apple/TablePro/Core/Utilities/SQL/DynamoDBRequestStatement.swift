@@ -66,7 +66,7 @@ struct DynamoDBRequestStatement: Sendable, Equatable {
     let trailingText: String
 
     init?(_ statement: String) {
-        let text = StatementBlank.trimming(QueryClassifier.strippingLeadingComments(statement))
+        let text = StatementBlank.trimming(SQLLeadingComments.stripping(statement))
         let verb = text.prefix { $0.isLetter }
         guard !verb.isEmpty else { return nil }
         let afterVerb = text[verb.endIndex...].drop { $0.isWhitespace }

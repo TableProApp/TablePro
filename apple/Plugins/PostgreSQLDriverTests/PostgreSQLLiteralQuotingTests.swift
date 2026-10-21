@@ -38,6 +38,10 @@ struct PostgreSQLLiteralQuotingTests {
             PostgreSQLSchemaQueries.databaseMetadata(database: schema),
             PostgreSQLObjectQueries.userDefinedTypeList(schemas: [schema], capabilities: caps),
             CockroachRelationSQL.columnsQuery(schema: schema, table: table),
+            CockroachRelationSQL.tablesQuery(schema: schema),
+            CockroachRelationSQL.tablesQuery(inSchemas: [schema, table]),
+            RedshiftTableCatalog.listingQuery(schema: schema),
+            RedshiftTableCatalog.listingQuery(inSchemas: [schema, table]),
             PostgreSQLSchemaQueries.fetchPartitions(schema: schema, table: table),
             PostgreSQLSchemaQueries.columnsQuery(
                 schema: schema, table: table, capabilities: caps, includeMaterializedViews: true
@@ -139,6 +143,13 @@ struct PostgreSQLLiteralQuotingTests {
             PostgreSQLPrincipalQueries.searchObjects(pattern: #"a\b"#, limit: 10)
                 .contains(#"ILIKE E'%a\\b%'"#)
         )
+    }
+
+    @Test("A quote or backslash that a combining mark follows is still escaped")
+    func combiningMarkCannotHideAnEscape() {
+        #expect(PostgreSQLObjectQueries.quoteLiteral("x'\u{301} OR true--") == "'x''\u{301} OR true--'")
+        #expect(PostgreSQLObjectQueries.quoteLiteral("x\\\u{301}") == "E'x\\\\\u{301}'")
+        #expect(PostgreSQLObjectQueries.quoteIdentifier("a\"\u{301}") == "\"a\"\"\u{301}\"")
     }
 
     @Test("A NUL is dropped on both arms rather than reaching libpq")

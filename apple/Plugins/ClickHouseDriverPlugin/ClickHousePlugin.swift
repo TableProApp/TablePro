@@ -113,7 +113,7 @@ nonisolated final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin
         requiresBackslashEscaping: true,
         caseSensitivityStyle: .caseFoldFunction,
         caseFoldFunction: "lowerUTF8",
-        textCastTypeName: nil,
+        textCastTypeName: "Nullable(String)",
         functionNamesAreCaseInsensitive: false
     )
 
@@ -251,10 +251,17 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         try await connect(reportingStage: { _ in })
     }
 
+    // A tunnel dials its local end, so the certificate names the host behind it. Any other dial is checked against
+    // its own host, whatever a stored or imported field says.
+    static func tunnelServerName(dialing host: String, fields: [String: String]) -> String? {
+        guard ["127.0.0.1", "::1", "localhost"].contains(host.lowercased()) else { return nil }
+        return fields["preTunnelHost"]?.nilIfEmpty
+    }
+
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
         let tlsDelegate = try ClickHouseTLSDelegate.make(
             for: config.ssl,
-            serverName: config.additionalFields["preTunnelHost"]?.nilIfEmpty
+            serverName: Self.tunnelServerName(dialing: config.host, fields: config.additionalFields)
         )
         let connectTimeout = PluginConnectTimeout.milliseconds(
             in: config.additionalFields,
@@ -547,7 +554,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
 
     // MARK: - Kill Query
 
-    private func killQuery(queryId: String) {
+    func killQuery(queryId: String) {
         lock.lock()
         let connectedSession = session
         lock.unlock()
@@ -630,13 +637,15 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             shape: .streamed(rowCap: rowCap)
         )
         request.timeoutInterval = _queryTimeout.requestTimeoutInterval
-        try await streamTabSeparatedRows(
-            request: request,
-            session: session,
-            batchSize: min(5_000, rowCap + 1),
-            boundedOutputCut: isOutputCut,
-            continuation: continuation
-        )
+        try await killingOnCancel(queryId: queryId) {
+            try await streamTabSeparatedRows(
+                request: request,
+                session: session,
+                batchSize: min(5_000, rowCap + 1),
+                boundedOutputCut: isOutputCut,
+                continuation: continuation
+            )
+        }
     }
 
     /// `TabSeparatedWithNamesAndTypes` carries the names on line one and the types on line two, so
@@ -771,12 +780,14 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             shape: .streamed(rowCap: nil)
         )
         request.timeoutInterval = _queryTimeout.requestTimeoutInterval
-        try await streamTabSeparatedRows(
-            request: request,
-            session: session,
-            batchSize: 5_000,
-            continuation: continuation
-        )
+        try await killingOnCancel(queryId: queryId) {
+            try await streamTabSeparatedRows(
+                request: request,
+                session: session,
+                batchSize: 5_000,
+                continuation: continuation
+            )
+        }
     }
 
     private func streamingContext(

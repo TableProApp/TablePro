@@ -6,6 +6,11 @@
 import Foundation
 import TableProPluginKit
 
+internal struct LinkedFolderGitMenuState: Equatable {
+    internal let hasChanges: Bool
+    internal let isBusy: Bool
+}
+
 internal struct FavoritesMenuContext {
     internal let clicked: FavoritesOutlineNode.Kind?
     internal let allFolders: [SQLFavoriteFolder]
@@ -13,6 +18,7 @@ internal struct FavoritesMenuContext {
     internal let databaseEntityName: String
     internal let activeDatabase: String?
     internal let linkedFileGitStates: [UUID: LinkedFileGitState]
+    internal let linkedFolderGitStates: [UUID: LinkedFolderGitMenuState]
 
     internal init(
         clicked: FavoritesOutlineNode.Kind?,
@@ -20,7 +26,8 @@ internal struct FavoritesMenuContext {
         teamLibraryAvailable: Bool = false,
         databaseEntityName: String = "Database",
         activeDatabase: String? = nil,
-        linkedFileGitStates: [UUID: LinkedFileGitState] = [:]
+        linkedFileGitStates: [UUID: LinkedFileGitState] = [:],
+        linkedFolderGitStates: [UUID: LinkedFolderGitMenuState] = [:]
     ) {
         self.clicked = clicked
         self.allFolders = allFolders
@@ -28,6 +35,7 @@ internal struct FavoritesMenuContext {
         self.databaseEntityName = databaseEntityName
         self.activeDatabase = activeDatabase
         self.linkedFileGitStates = linkedFileGitStates
+        self.linkedFolderGitStates = linkedFolderGitStates
     }
 }
 
@@ -112,15 +120,27 @@ internal enum FavoritesMenuSpec {
         case .favorite(let favorite):
             return favoriteSections(favorite, context: context)
         case .linkedFavorite(let linked):
-            return linkedFavoriteSections(linked, gitState: context.linkedFileGitStates[linked.id])
+            return linkedFavoriteSections(
+                linked,
+                pathCommands: pathItems(node.content.filePath),
+                gitState: context.linkedFileGitStates[linked.id],
+                folderGitState: context.linkedFolderGitStates[linked.folderId]
+            )
         case .folder(let folder):
             return folderSections(folder)
         case .linkedFolder(let folder):
-            return linkedFolderSections(folder)
-        case .linkedSubfolder:
-            /// A subfolder mirrors a directory, so it owns no command of its own. It still gets the
-            /// background menu rather than an empty frame.
-            return backgroundSections(context)
+            return linkedFolderSections(
+                folder,
+                pathCommands: pathItems(node.content.filePath),
+                gitState: context.linkedFolderGitStates[folder.id]
+            )
+        case .linkedSubfolder(_, _, _, let url):
+            return [
+                FavoritesMenuSection(
+                    [.command(String(localized: "Show in Finder"), .revealLinkedSubfolder(url))]
+                        + pathItems(node.content.filePath)
+                )
+            ]
         }
     }
 
@@ -178,27 +198,37 @@ internal enum FavoritesMenuSpec {
 
     private static func linkedFavoriteSections(
         _ favorite: LinkedSQLFavorite,
-        gitState: LinkedFileGitState?
+        pathCommands: [FavoritesMenuItem],
+        gitState: LinkedFileGitState?,
+        folderGitState: LinkedFolderGitMenuState?
     ) -> [FavoritesMenuSection] {
         [
             FavoritesMenuSection([
                 .command(String(localized: "Open in Editor"), .openLinkedFavorite(favorite)),
                 .command(String(localized: "Edit Metadata…"), .editLinkedMetadata(favorite))
             ]),
-            FavoritesMenuSection(gitItems(favorite, gitState: gitState)),
-            FavoritesMenuSection([
-                .command(String(localized: "Copy Query"), .copyLinkedFavoriteQuery(favorite)),
-                .command(String(localized: "Show in Finder"), .revealLinkedFavorite(favorite))
-            ]),
+            FavoritesMenuSection(gitItems(favorite, gitState: gitState, folderGitState: folderGitState)),
+            FavoritesMenuSection(
+                [.command(String(localized: "Copy Query"), .copyLinkedFavoriteQuery(favorite))]
+                    + pathCommands
+                    + [.command(String(localized: "Show in Finder"), .revealLinkedFavorite(favorite))]
+            ),
             FavoritesMenuSection([
                 .command(String(localized: "Move File to Trash"), .trashLinkedFavorite(favorite))
             ])
         ]
     }
 
-    private static func gitItems(_ favorite: LinkedSQLFavorite, gitState: LinkedFileGitState?) -> [FavoritesMenuItem] {
+    private static func gitItems(
+        _ favorite: LinkedSQLFavorite,
+        gitState: LinkedFileGitState?,
+        folderGitState: LinkedFolderGitMenuState?
+    ) -> [FavoritesMenuItem] {
         guard let gitState else { return [] }
         var items: [FavoritesMenuItem] = []
+        if let status = gitState.status, !status.isConflicted, folderGitState?.isBusy == false {
+            items.append(.command(String(localized: "Commit…"), .commitLinkedFile(favorite)))
+        }
         if gitState.hasCommittedHistory {
             items.append(.command(String(localized: "Show History"), .showLinkedFileHistory(favorite)))
         }
@@ -208,12 +238,17 @@ internal enum FavoritesMenuSpec {
         return items
     }
 
-    private static func linkedFolderSections(_ folder: LinkedSQLFolder) -> [FavoritesMenuSection] {
+    private static func linkedFolderSections(
+        _ folder: LinkedSQLFolder,
+        pathCommands: [FavoritesMenuItem],
+        gitState: LinkedFolderGitMenuState?
+    ) -> [FavoritesMenuSection] {
         [
-            FavoritesMenuSection([
-                .command(String(localized: "Show in Finder"), .revealLinkedFolder(folder)),
-                .command(String(localized: "Copy Path"), .copyText(folder.expandedURL.path))
-            ]),
+            FavoritesMenuSection(
+                [.command(String(localized: "Show in Finder"), .revealLinkedFolder(folder))]
+                    + pathCommands
+            ),
+            FavoritesMenuSection(folderGitItems(folder, gitState: gitState)),
             FavoritesMenuSection([
                 .command(
                     folder.isEnabled ? String(localized: "Disable") : String(localized: "Enable"),
@@ -226,6 +261,28 @@ internal enum FavoritesMenuSpec {
                 .command(String(localized: "Remove from Sidebar"), .removeLinkedFolder(folder))
             ])
         ]
+    }
+
+    // Hidden while any Git command runs in the repository: two at once fight over its index lock.
+    private static func folderGitItems(_ folder: LinkedSQLFolder, gitState: LinkedFolderGitMenuState?) -> [FavoritesMenuItem] {
+        guard let gitState, !gitState.isBusy else { return [] }
+        var items: [FavoritesMenuItem] = []
+        if gitState.hasChanges {
+            items.append(.command(String(localized: "Commit…"), .commitLinkedFolder(folder)))
+        }
+        items.append(.command(String(localized: "Pull"), .pullLinkedFolder(folder)))
+        items.append(.command(String(localized: "Push"), .pushLinkedFolder(folder)))
+        return items
+    }
+
+    // Both shown rather than one behind Option: the HIG keeps dynamic items out of contextual menus.
+    private static func pathItems(_ path: FavoriteFilePath?) -> [FavoritesMenuItem] {
+        guard let path else { return [] }
+        var items: [FavoritesMenuItem] = [.command(String(localized: "Copy Path"), .copyPath(path.absolute))]
+        if let relative = path.relative {
+            items.append(.command(String(localized: "Copy Relative Path"), .copyRelativePath(relative)))
+        }
+        return items
     }
 
     private static func folderSections(_ folder: SQLFavoriteFolder) -> [FavoritesMenuSection] {

@@ -62,24 +62,15 @@ nonisolated enum RowInsertPlanner {
         allowAllDefaults: Bool,
         dropsEmptyPrimaryKey: Bool
     ) throws -> [[(column: String, value: String?)]] {
-        guard !columns.isEmpty else { throw IntentDataError.noColumns(table) }
-        let columnNames = Set(columns.map(\.name))
-        let primaryKeys = Set(columns.filter(\.isPrimaryKey).map(\.name))
-
-        return try rows.compactMap { row in
-            let unknown = row.keys.filter { !columnNames.contains($0) }
-            guard unknown.isEmpty else { throw IntentDataError.unknownColumns(unknown.sorted(), table) }
-
-            var values: [(column: String, value: String?)] = []
-            for column in columns {
-                guard !column.isServerOwned else { continue }
-                guard let value = row.value(for: column.name) else { continue }
-                if dropsEmptyPrimaryKey, primaryKeys.contains(column.name), value.isEmptyOrNull { continue }
-                values.append((column: column.name, value: value.sqlValue))
-            }
-            guard !values.isEmpty || allowAllDefaults else { return nil }
-            return values
-        }
+        try PayloadRowPlanner.values(
+            table: table,
+            columns: columns.map {
+                PayloadColumn(name: $0.name, isPrimaryKey: $0.isPrimaryKey, isServerOwned: $0.isServerOwned)
+            },
+            rows: rows,
+            allowAllDefaults: allowAllDefaults,
+            dropsEmptyPrimaryKey: dropsEmptyPrimaryKey
+        )
     }
 }
 
@@ -102,6 +93,17 @@ nonisolated enum RowInserter {
             rows: rows
         ) else { throw IntentDataError.noInsertableValues(table) }
 
-        return try await batch.run()
+        // The write joins an autocommit-off transaction, and this session closes right after, which would roll it back.
+        guard await driver.sessionTransactionState() == .implicitTransaction else {
+            return try await batch.run()
+        }
+        do {
+            let affected = try await batch.run()
+            try await driver.commitTransaction()
+            return affected
+        } catch {
+            try? await driver.rollbackTransaction()
+            throw error
+        }
     }
 }

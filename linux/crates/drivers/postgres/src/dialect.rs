@@ -58,7 +58,7 @@ impl SqlDialect for PgDialect {
         let binding = match target {
             BindTarget::Pattern => Binding::plain(ParamType::Text),
             BindTarget::EngineRowId(part) => row_id_binding(part, &value)?,
-            BindTarget::Column(column) => column_binding(column)?,
+            BindTarget::Column(column) => column_binding(column, &value)?,
         };
         let param = BoundParam::new(value, binding.param_type)?;
         let sql = match binding.cast {
@@ -231,7 +231,7 @@ fn row_id_binding(part: EngineRowIdPart, value: &Value) -> Result<Binding, BindE
     })
 }
 
-fn column_binding(column: &ColumnInfo) -> Result<Binding, BindError> {
+fn column_binding(column: &ColumnInfo, value: &Value) -> Result<Binding, BindError> {
     let column_type = &column.column_type;
     let catalog_cast = || {
         column_type
@@ -257,6 +257,11 @@ fn column_binding(column: &ColumnInfo) -> Result<Binding, BindError> {
         } => Binding::plain(ParamType::FixedText),
         ColumnKind::Text { .. } => Binding::plain(ParamType::Text),
         ColumnKind::Bytes { .. } => Binding::plain(ParamType::Bytes),
+        // A date or timestamp past chrono's last year is the server's own
+        // text, which the server reads under a cast to the column's type.
+        ColumnKind::Date | ColumnKind::Timestamp { .. } if matches!(value, Value::Other(_)) => {
+            Binding::server_text(catalog_cast()?)
+        }
         ColumnKind::Date => Binding::plain(ParamType::Date),
         ColumnKind::Time { with_offset: false, .. } => Binding::plain(ParamType::Time),
         ColumnKind::Time { with_offset: true, .. } => Binding::plain(ParamType::TimeTz),
@@ -584,6 +589,25 @@ mod tests {
                     .to_owned()
             )
         );
+    }
+
+    #[test]
+    fn a_date_past_chronos_last_year_binds_as_the_servers_text() {
+        let date = column(ColumnKind::Date, Some("date"));
+        let far = Value::Other(Box::new(tablepro_core::value::OtherValue {
+            type_name: "date".to_owned(),
+            text: "5874897-12-31".to_owned(),
+        }));
+
+        let placeholder = bind(0, far, &date).expect("a far date");
+
+        assert_eq!(placeholder.sql, "$1::date");
+        assert_eq!(
+            placeholder.param.as_ref().map(BoundParam::param_type),
+            Some(&ParamType::ServerText(SqlTypeExpr::from_catalog_text("date")))
+        );
+        let near = bind(0, Value::Date(Temporal::Infinity), &date).expect("an infinite date");
+        assert_eq!(near.sql, "$1", "a date chrono holds lost its binary form");
     }
 
     #[test]

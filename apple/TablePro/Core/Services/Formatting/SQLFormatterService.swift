@@ -2,13 +2,8 @@
 //  SQLFormatterService.swift
 //  TablePro
 //
-//  Token-based SQL formatter. Tokenizes input into a stream, then walks tokens
-//  with clause/nesting context to produce properly indented, readable SQL.
-//
 
 import Foundation
-
-// MARK: - Formatter Protocol
 
 protocol SQLFormatterProtocol {
     func format(
@@ -18,8 +13,6 @@ protocol SQLFormatterProtocol {
         options: SQLFormatterOptions
     ) throws -> SQLFormatterResult
 }
-
-// MARK: - Main Formatter Service
 
 struct SQLFormatterService: SQLFormatterProtocol {
     private static let maxInputSize = 10 * 1_024 * 1_024
@@ -54,7 +47,8 @@ struct SQLFormatterService: SQLFormatterProtocol {
         var tokenFormatter = SQLTokenFormatter(
             options: options,
             dialectFunctions: dialectProvider.functions,
-            dialectDataTypes: dialectProvider.dataTypes
+            dialectDataTypes: dialectProvider.dataTypes,
+            rewritesFunctionCase: dialectProvider.functionNamesAreCaseInsensitive
         )
         let formatted = tokenFormatter.format(tokens)
 
@@ -72,10 +66,8 @@ struct SQLFormatterService: SQLFormatterProtocol {
     }
 }
 
-// MARK: - Token Formatter (Stateful Walker)
-
-/// Walks the token stream with clause/nesting context to produce formatted output.
-/// Extracted from SQLFormatterService to keep each function under lint limits.
+// SELECT, SET and WHERE lists are written inline and kept open until their clause ends, when one that
+// overflows the line width gets its separators rewritten broken and its aliases aligned.
 internal struct SQLTokenFormatter {
     let options: SQLFormatterOptions
 
@@ -94,26 +86,38 @@ internal struct SQLTokenFormatter {
         "SERIAL", "BIGSERIAL",
     ]
 
+    // Width of `SELECT ` and `SET `, which the items after the first line up under.
+    private static let selectAlignment = 7
+    private static let setAlignment = 4
+
     private let functions: Set<String>
     private let dataTypes: Set<String>
+    private let rewritesFunctionCase: Bool
+    private let indentUnit: String
 
-    init(options: SQLFormatterOptions, dialectFunctions: Set<String> = [], dialectDataTypes: Set<String> = []) {
+    init(
+        options: SQLFormatterOptions,
+        dialectFunctions: Set<String> = [],
+        dialectDataTypes: Set<String> = [],
+        rewritesFunctionCase: Bool
+    ) {
         self.options = options
         self.functions = Self.builtinFunctions.union(dialectFunctions)
         self.dataTypes = Self.builtinDataTypes.union(dialectDataTypes)
+        self.rewritesFunctionCase = rewritesFunctionCase
+        self.indentUnit = options.indentUnit
     }
 
-    private var output = ""
+    private var output = FormatterOutput()
     private var clauseStack: [ClauseContext] = []
     private var afterNewline = true
-    private var isFirstClause = true
-    private var selectColumnIndent = 0
+    private var selectColumnPad = Pad(levels: 0)
     private var inSelectColumns = false
     private var skipCount = 0
     private var suppressNextSpace = false
-    private var caseBaseIndent = 0
-    /// Stack to save/restore selectColumnIndent across subquery boundaries
-    private var selectColumnIndentStack: [Int] = []
+    private var caseBasePad = Pad(levels: 0)
+    private var selectColumnPadStack: [Pad] = []
+    private var openLists: [PendingList] = []
 
     private enum ClauseContext {
         case select, from, where_, join, caseExpr, subquery, with
@@ -121,7 +125,30 @@ internal struct SQLTokenFormatter {
         case inlineParen, windowParen
     }
 
-    /// True after BETWEEN keyword — suppresses the next AND from being a clause break
+    // Indent levels render as the indent unit, alignment spaces as spaces after them.
+    private struct Pad {
+        var levels: Int
+        var spaces: Int = 0
+    }
+
+    private enum ListKind {
+        case select, set, conditions
+    }
+
+    private struct Separator {
+        let range: Range<Int>
+        let broken: String
+    }
+
+    private struct PendingList {
+        let kind: ListKind
+        let depth: Int
+        let lineStart: Int
+        var separators: [Separator] = []
+        var aliasOffsets: [Int: Int] = [:]
+    }
+
+    // True after BETWEEN, so the next AND stays inline.
     private var afterBetween = false
 
     private var newlinesAfterSemicolon: [Int: Int] = [:]
@@ -162,70 +189,49 @@ internal struct SQLTokenFormatter {
             processToken(token, mi: mi, prev: prev, next: next, next2: next2)
         }
 
-        return output.trimmingCharacters(in: .whitespacesAndNewlines)
+        closeLists(atOrDeeperThan: 0)
+        return output.string.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Token Processing
 
     private mutating func processToken(_ token: SQLToken, mi: Int, prev: SQLToken?, next: SQLToken?, next2: SQLToken?) {
-        if token.type == .comment {
+        switch token.type {
+        case .comment:
             handleComment(token)
-            return
-        }
-
-        if token.type == .punctuation {
+        case .punctuation:
             handlePunctuation(token, mi: mi, prev: prev, next: next)
-            return
-        }
-
-        if token.type == .keyword {
+        case .keyword:
             handleKeyword(token, prev: prev, next: next, next2: next2)
-            return
+        default:
+            appendToken(token.value)
         }
-
-        // All other tokens: identifiers, numbers, strings, operators, placeholders
-        appendToken(token.value)
     }
 
-    // MARK: - Comment Handling
-
     private mutating func handleComment(_ token: SQLToken) {
-        guard options.preserveComments else { return }
         if !afterNewline { newline() }
         output += token.value
         output += "\n"
         afterNewline = true
     }
 
-    // MARK: - Punctuation Handling
+    // MARK: - Punctuation
 
     private mutating func handlePunctuation(_ token: SQLToken, mi: Int, prev: SQLToken?, next: SQLToken?) {
         switch token.value {
         case ";":
             output += ";"
+            closeLists(atOrDeeperThan: 0)
             let originalNewlines = newlinesAfterSemicolon[mi] ?? 0
             let newlineCount = min(max(originalNewlines, 1), 3)
             output += String(repeating: "\n", count: newlineCount)
             afterNewline = true
-            isFirstClause = true
             clauseStack.removeAll()
-            selectColumnIndentStack.removeAll()
+            selectColumnPadStack.removeAll()
             inSelectColumns = false
 
         case ",":
-            output += ","
-            if inSelectColumns {
-                output += "\n" + String(repeating: " ", count: selectColumnIndent)
-                afterNewline = false
-                suppressNextSpace = true
-            } else if currentContext == .set {
-                output += "\n" + indentStr() + "    "
-                afterNewline = false
-                suppressNextSpace = true
-            } else if currentContext == .createTableBody {
-                output += "\n"
-                afterNewline = true
-            }
+            handleComma()
 
         case "(":
             handleOpenParen(next: next, prev: prev)
@@ -234,7 +240,6 @@ internal struct SQLTokenFormatter {
             handleCloseParen()
 
         case ".":
-            // Qualified name dot — no spaces around it
             output += "."
             afterNewline = false
             suppressNextSpace = true
@@ -244,34 +249,50 @@ internal struct SQLTokenFormatter {
         }
     }
 
-    private mutating func handleOpenParen(next: SQLToken?, prev: SQLToken?) {
-        // Subquery: ( SELECT ...
-        if next?.upperValue == "SELECT" {
-            if suppressNextSpace {
-                output += "("
-            } else {
-                output += " ("
+    private mutating func handleComma() {
+        if inSelectColumns && currentContext == .select {
+            appendCommaSeparator(kind: .select, alignedTo: selectColumnPad)
+        } else if currentContext == .set {
+            appendCommaSeparator(kind: .set, alignedTo: Pad(levels: indent, spaces: Self.setAlignment))
+        } else if currentContext == .createTableBody {
+            switch options.commaPosition {
+            case .trailing:
+                output += ",\n"
+                afterNewline = true
+            case .leading:
+                output += "\n" + render(Pad(levels: indent)) + ","
+                afterNewline = false
+                suppressNextSpace = false
             }
-            output += "\n"
-            selectColumnIndentStack.append(selectColumnIndent)
-            afterNewline = true
-            isFirstClause = true
-            suppressNextSpace = false
-            clauseStack.append(.subquery)
+        } else {
+            output += ","
+        }
+    }
+
+    private mutating func appendCommaSeparator(kind: ListKind, alignedTo pad: Pad) {
+        let broken: String
+        switch options.commaPosition {
+        case .trailing:
+            broken = ",\n" + render(pad)
+        case .leading:
+            broken = "\n" + render(Pad(levels: pad.levels, spaces: max(pad.spaces - 2, 0))) + ", "
+        }
+        appendSeparator(kind: kind, inline: ", ", broken: broken)
+        afterNewline = false
+        suppressNextSpace = true
+    }
+
+    private mutating func handleOpenParen(next: SQLToken?, prev: SQLToken?) {
+        if next?.upperValue == "SELECT" {
+            output += suppressNextSpace ? "(" : " ("
+            openBlock()
             return
         }
-        // CTE body: AS (
         if prev?.upperValue == "AS" && clauseStack.contains(.with) {
             output += " ("
-            output += "\n"
-            selectColumnIndentStack.append(selectColumnIndent)
-            afterNewline = true
-            isFirstClause = true
-            suppressNextSpace = false
-            clauseStack.append(.subquery)
+            openBlock()
             return
         }
-        // CREATE TABLE columns: table_name (
         if clauseStack.contains(.createTable) && !clauseStack.contains(.createTableBody) {
             output += " ("
             output += "\n"
@@ -280,7 +301,6 @@ internal struct SQLTokenFormatter {
             clauseStack.append(.createTableBody)
             return
         }
-        // Window function: OVER(...)
         if prev?.upperValue == "OVER" {
             output += "("
             afterNewline = false
@@ -288,8 +308,8 @@ internal struct SQLTokenFormatter {
             clauseStack.append(.windowParen)
             return
         }
-        // Structural keyword before paren needs space: VALUES (...), IN (...)
-        // Function calls and data type parens get no space: COUNT(*), VARCHAR(255)
+        // A structural keyword takes a space before its paren (`VALUES (`, `IN (`); a function call
+        // or a sized type does not (`COUNT(*)`, `VARCHAR(255)`).
         if let prevUpper = prev?.upperValue, prev?.type == .keyword,
            !functions.contains(prevUpper), !dataTypes.contains(prevUpper) {
             output += suppressNextSpace ? "(" : " ("
@@ -303,8 +323,15 @@ internal struct SQLTokenFormatter {
         clauseStack.append(.inlineParen)
     }
 
+    private mutating func openBlock() {
+        output += "\n"
+        selectColumnPadStack.append(selectColumnPad)
+        afterNewline = true
+        suppressNextSpace = false
+        clauseStack.append(.subquery)
+    }
+
     private mutating func handleCloseParen() {
-        // Inline or window paren: just close it
         if currentContext == .inlineParen || currentContext == .windowParen {
             clauseStack.removeLast()
             output += ")"
@@ -312,68 +339,66 @@ internal struct SQLTokenFormatter {
             suppressNextSpace = false
             return
         }
-        // Block paren (subquery or CREATE TABLE body): pop back to the block opener
         if let idx = clauseStack.lastIndex(where: Self.isBlockContext) {
+            closeLists(atOrDeeperThan: indent)
             clauseStack.removeSubrange(idx...)
             output += "\n" + indentStr() + ")"
             afterNewline = false
-            isFirstClause = false
-            // Restore outer SELECT state after leaving subquery
             inSelectColumns = clauseStack.contains(.select)
-            if let saved = selectColumnIndentStack.popLast() {
-                selectColumnIndent = saved
+            if let saved = selectColumnPadStack.popLast() {
+                selectColumnPad = saved
             }
             suppressNextSpace = false
             return
         }
-        // Unmatched paren — just append
         output += ")"
         afterNewline = false
         suppressNextSpace = false
     }
 
-    // MARK: - Keyword Handling
+    // MARK: - Keywords
 
     private mutating func handleKeyword(_ token: SQLToken, prev: SQLToken?, next: SQLToken?, next2: SQLToken?) {
+        // A word beside a dot is part of a qualified name (`e.end`, `dbo.len(x)`, `key.id`), and a
+        // name keeps its spelling on an engine with case-sensitive identifiers.
+        if prev?.value == "." || next?.value == "." {
+            appendToken(token.value)
+            return
+        }
         let upper = token.upperValue
         let kw = options.keywordCase.applied(upper: upper, original: token.value)
 
         switch upper {
         case "SELECT":
-            handleSelect(kw: kw)
+            handleSelect(kw: kw, prev: prev)
         case "FROM":
             handleFrom(kw: kw, prev: prev)
         case "WHERE":
-            handleClauseKeyword(kw: kw, context: .where_)
+            handleClauseKeyword(kw: kw, context: .where_, list: .conditions)
         case "AND", "OR":
             handleAndOr(kw: kw, upper: upper)
         case "JOIN":
             handleClauseKeyword(kw: kw, context: .join)
         case "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "NATURAL":
-            handleJoinPrefix(upper: upper, kw: kw, next: next, next2: next2)
+            handleJoinPrefix(token, kw: kw, next: next, next2: next2)
         case "OUTER":
-            break // absorbed by JOIN prefix handler
+            break // absorbed by the JOIN prefix handler
         case "ON":
             handleOn(kw: kw)
-        case "OVER":
+        case "OVER", "PARTITION", "BY", "ALL", "INTO", "TABLE":
             appendToken(kw)
-        case "PARTITION":
+        case "AS":
+            recordAliasIfTopLevel()
             appendToken(kw)
         case "BETWEEN":
             afterBetween = true
             appendToken(kw)
         case "ORDER", "GROUP":
-            handleOrderGroup(upper: upper, kw: kw, next: next)
-        case "BY":
-            // standalone BY (not consumed by ORDER/GROUP) — should not happen normally
-            appendToken(kw)
+            handleOrderGroup(kw: kw, next: next)
         case "HAVING", "LIMIT", "OFFSET":
             handleClauseKeyword(kw: kw, context: nil)
         case "UNION", "INTERSECT", "EXCEPT", "MINUS":
             handleSetOperation(upper: upper, kw: kw, next: next)
-        case "ALL":
-            // standalone ALL (not consumed by UNION ALL)
-            appendToken(kw)
         case "CASE":
             handleCase(kw: kw)
         case "WHEN", "ELSE":
@@ -384,120 +409,150 @@ internal struct SQLTokenFormatter {
         case "END":
             handleEnd(kw: kw)
         case "WITH":
-            handleWith(kw: kw)
+            handleWith(kw: kw, prev: prev)
         case "INSERT":
-            handleInsert(kw: kw, next: next)
-        case "INTO":
-            // standalone INTO (not consumed by INSERT INTO)
-            appendToken(kw)
+            handleInsert(kw: kw, prev: prev, next: next)
         case "VALUES":
-            newline()
+            // `a = VALUES(a)` in MySQL's ON DUPLICATE KEY UPDATE is a function call.
+            if prev?.type != .operator { newline() }
             appendToken(kw)
         case "UPDATE":
-            handleStatementStart(kw: kw, context: .update)
+            handleStatementStart(kw: kw, prev: prev, context: .update)
         case "SET":
-            handleClauseKeyword(kw: kw, context: .set)
+            handleClauseKeyword(kw: kw, context: .set, list: .set)
         case "DELETE":
-            handleStatementStart(kw: kw, context: nil)
+            handleStatementStart(kw: kw, prev: prev, context: nil)
         case "CREATE":
-            handleStatementStart(kw: kw, context: .createTable)
-        case "TABLE", "AS":
-            appendToken(kw)
+            handleStatementStart(kw: kw, prev: prev, context: .createTable)
         default:
-            if options.keywordCase.rewritesKeywords, functions.contains(upper) || dataTypes.contains(upper) {
-                appendToken(token.value)
-            } else {
-                appendToken(kw)
-            }
+            appendToken(cased(token, next: next))
         }
     }
 
-    // MARK: - Specific Keyword Handlers
+    // `count` and `date` can name columns, so only a call takes the function case, and only where the
+    // engine accepts any spelling of the function.
+    private func cased(_ token: SQLToken, next: SQLToken?) -> String {
+        let upper = token.upperValue
+        if functions.contains(upper) {
+            guard rewritesFunctionCase, next?.value == "(" else { return token.value }
+            return options.functionCase.applied(upper: upper, original: token.value)
+        }
+        if dataTypes.contains(upper) {
+            return token.value
+        }
+        return options.keywordCase.applied(upper: upper, original: token.value)
+    }
 
-    private mutating func handleSelect(kw: String) {
-        if !isFirstClause { newline() }
-        output += (afterNewline ? indentStr() : "") + kw
-        isFirstClause = false
+    private mutating func handleSelect(kw: String, prev: SQLToken?) {
+        // `GRANT SELECT, INSERT ON t`, `CREATE POLICY p ON t FOR SELECT`
+        if let prev, Self.statementKeywordModifiers.contains(prev.upperValue) {
+            appendToken(kw)
+            return
+        }
+        closeLists(atOrDeeperThan: indent)
+        if !afterNewline { newline() }
+        let lineStart = output.count
+        output += indentStr() + kw
         afterNewline = false
         inSelectColumns = true
-        selectColumnIndent = indent * options.indentSize + 7
+        selectColumnPad = Pad(levels: indent, spaces: Self.selectAlignment)
         clauseStack.append(.select)
+        openLists.append(PendingList(kind: .select, depth: indent, lineStart: lineStart))
     }
 
     private mutating func handleFrom(kw: String, prev: SQLToken?) {
-        if prev?.upperValue == "DELETE" {
-            newline()
+        // `EXTRACT(YEAR FROM d)`, `SUBSTRING(s FROM 2)`, `TRIM(BOTH ' ' FROM s)`
+        if isInsideNestedExpression {
             appendToken(kw)
-            inSelectColumns = false
             return
         }
+        closeLists(atOrDeeperThan: indent)
         inSelectColumns = false
         newline()
         appendToken(kw)
-        replaceTop(with: .from)
+        if prev?.upperValue != "DELETE" {
+            replaceTop(with: .from)
+        }
     }
 
-    private mutating func handleClauseKeyword(kw: String, context: ClauseContext?) {
+    private mutating func handleClauseKeyword(kw: String, context: ClauseContext?, list: ListKind? = nil) {
+        // `FILTER (WHERE ...)`, `(a JOIN b ON ...)`, `name TEXT CHARACTER SET utf8mb4`
+        if isInsideNestedExpression {
+            appendToken(kw)
+            return
+        }
+        closeLists(atOrDeeperThan: indent)
         inSelectColumns = false
         newline()
+        let lineStart = output.count
         appendToken(kw)
         if let ctx = context { replaceTop(with: ctx) }
+        if let list {
+            openLists.append(PendingList(kind: list, depth: indent, lineStart: lineStart))
+        }
     }
 
     private mutating func handleAndOr(kw: String, upper: String) {
-        // BETWEEN x AND y — AND stays inline
         if upper == "AND" && afterBetween {
             afterBetween = false
             output += " " + kw
             afterNewline = false
             return
         }
-        if currentContext == .where_ {
-            newline()
-            output += indentStr() + "  " + kw
-            afterNewline = false
-        } else {
+        guard currentContext == .where_ else {
             output += " " + kw
             afterNewline = false
+            return
         }
+        let pad = Pad(levels: indent + 1)
+        if afterNewline {
+            output += render(pad) + kw
+        } else {
+            appendSeparator(kind: .conditions, inline: " ", broken: "\n" + render(pad))
+            output += kw
+        }
+        afterNewline = false
     }
 
-    private mutating func handleJoinPrefix(upper: String, kw: String, next: SQLToken?, next2: SQLToken?) {
-        // LEFT OUTER JOIN → skip 2 tokens (OUTER, JOIN)
+    private mutating func handleJoinPrefix(_ token: SQLToken, kw: String, next: SQLToken?, next2: SQLToken?) {
+        let upper = token.upperValue
+        let joinWords: String
         if next?.upperValue == "OUTER" && next2?.upperValue == "JOIN" {
-            inSelectColumns = false
-            let joinKw = options.keywordCase.synthesized("\(upper) OUTER JOIN")
-            newline()
-            appendToken(joinKw)
-            replaceTop(with: .join)
+            joinWords = "\(upper) OUTER JOIN"
             skipCount = 2
-        // LEFT JOIN → skip 1 token (JOIN)
         } else if next?.upperValue == "JOIN" {
-            inSelectColumns = false
-            let joinKw = options.keywordCase.synthesized("\(upper) JOIN")
-            newline()
-            appendToken(joinKw)
-            replaceTop(with: .join)
+            joinWords = "\(upper) JOIN"
             skipCount = 1
         } else {
-            appendToken(kw)
+            // `LEFT(name, 3)`, `RIGHT(code, 2)`
+            appendToken(cased(token, next: next))
+            return
         }
+        let joinKw = options.keywordCase.synthesized(joinWords)
+        if isInsideNestedExpression {
+            appendToken(joinKw)
+            return
+        }
+        closeLists(atOrDeeperThan: indent)
+        inSelectColumns = false
+        newline()
+        appendToken(joinKw)
+        replaceTop(with: .join)
     }
 
     private mutating func handleOn(kw: String) {
-        if currentContext == .join {
+        if currentContext == .join && options.joinCondition == .newLine {
             newline()
-            output += indentStr() + "  " + kw
-            afterNewline = false
+            output += render(Pad(levels: indent + 1)) + kw
         } else {
             output += " " + kw
-            afterNewline = false
         }
+        afterNewline = false
     }
 
-    private mutating func handleOrderGroup(upper: String, kw: String, next: SQLToken?) {
-        // Inside window function parens — stay inline
-        if clauseStack.contains(.windowParen) {
+    private mutating func handleOrderGroup(kw: String, next: SQLToken?) {
+        // Window specs and aggregates keep it inline: `OVER (ORDER BY x)`, `STRING_AGG(a, ',' ORDER BY a)`
+        if clauseStack.contains(.windowParen) || isInsideNestedExpression {
             if next?.upperValue == "BY" {
                 let byKw = options.keywordCase.synthesized("BY")
                 output += " " + kw + " " + byKw
@@ -508,6 +563,7 @@ internal struct SQLTokenFormatter {
             }
             return
         }
+        closeLists(atOrDeeperThan: indent)
         inSelectColumns = false
         if next?.upperValue == "BY" {
             let byKw = options.keywordCase.synthesized("BY")
@@ -521,6 +577,7 @@ internal struct SQLTokenFormatter {
     }
 
     private mutating func handleSetOperation(upper: String, kw: String, next: SQLToken?) {
+        closeLists(atOrDeeperThan: indent)
         inSelectColumns = false
         if let blockIdx = clauseStack.lastIndex(where: Self.isBlockContext) {
             clauseStack.removeSubrange((blockIdx + 1)...)
@@ -532,7 +589,7 @@ internal struct SQLTokenFormatter {
         if upper == "UNION" && next?.upperValue == "ALL" {
             let allKw = options.keywordCase.synthesized("ALL")
             line += " " + allKw
-            skipCount = 1 // skip ALL
+            skipCount = 1
         }
 
         if clauseStack.contains(where: Self.isBlockContext) {
@@ -541,67 +598,152 @@ internal struct SQLTokenFormatter {
             output += "\n\n" + line + "\n\n"
         }
         afterNewline = true
-        isFirstClause = true
     }
 
     private mutating func handleCase(kw: String) {
-        if inSelectColumns {
-            caseBaseIndent = selectColumnIndent
-        } else {
-            caseBaseIndent = indent * options.indentSize
-        }
+        caseBasePad = inSelectColumns ? selectColumnPad : Pad(levels: indent)
         appendToken(kw)
         clauseStack.append(.caseExpr)
     }
 
     private mutating func handleWhenElse(kw: String) {
-        let whenIndent = caseBaseIndent + options.indentSize
-        output += "\n" + String(repeating: " ", count: whenIndent) + kw
+        let whenPad = Pad(levels: caseBasePad.levels + 1, spaces: caseBasePad.spaces)
+        output += "\n" + render(whenPad) + kw
         afterNewline = false
         suppressNextSpace = false
     }
 
     private mutating func handleEnd(kw: String) {
         if clauseStack.last == .caseExpr { clauseStack.removeLast() }
-        // Align END at same level as CASE
-        output += "\n" + String(repeating: " ", count: caseBaseIndent)
-        output += kw
+        output += "\n" + render(caseBasePad) + kw
         afterNewline = false
     }
 
-    private mutating func handleWith(kw: String) {
-        if !isFirstClause { output += "\n" }
-        output += kw
-        isFirstClause = false
-        afterNewline = false
+    private mutating func handleWith(kw: String, prev: SQLToken?) {
+        // `TIMESTAMP WITH TIME ZONE` in a column list or a cast is a type, not a CTE.
+        guard startStatement(kw: kw, prev: prev) else { return }
         clauseStack.append(.with)
     }
 
-    private mutating func handleInsert(kw: String, next: SQLToken?) {
-        if !isFirstClause { output += "\n" }
+    private mutating func handleInsert(kw: String, prev: SQLToken?, next: SQLToken?) {
+        guard startStatement(kw: kw, prev: prev) else { return }
         if next?.upperValue == "INTO" {
-            let intoKw = options.keywordCase.synthesized("INTO")
-            output += kw + " " + intoKw
-            skipCount = 1 // skip INTO
-        } else {
-            output += kw
+            output += " " + options.keywordCase.synthesized("INTO")
+            skipCount = 1
         }
-        isFirstClause = false
-        afterNewline = false
         clauseStack.append(.insert)
     }
 
-    private mutating func handleStatementStart(kw: String, context: ClauseContext?) {
-        if !isFirstClause { output += "\n" }
-        output += kw
-        isFirstClause = false
-        afterNewline = false
+    private mutating func handleStatementStart(kw: String, prev: SQLToken?, context: ClauseContext?) {
+        guard startStatement(kw: kw, prev: prev) else { return }
         if let ctx = context { clauseStack.append(ctx) }
+    }
+
+    // Inside parentheses, a column list or after a word it modifies, a statement keyword is part of a
+    // clause: `ON DELETE CASCADE`, `FOR UPDATE`, `ON DUPLICATE KEY UPDATE`, `BEFORE INSERT ON t`.
+    private static let statementKeywordModifiers: Set<String> = [
+        "ON", "FOR", "KEY", "BEFORE", "AFTER", "OF", "GRANT", "REVOKE", "WITH", ",",
+    ]
+
+    private mutating func startStatement(kw: String, prev: SQLToken?) -> Bool {
+        if isInsideNestedExpression || prev.map({ Self.statementKeywordModifiers.contains($0.upperValue) }) == true {
+            appendToken(kw)
+            return false
+        }
+        if !afterNewline { newline() }
+        output += indentStr() + kw
+        afterNewline = false
+        suppressNextSpace = false
+        return true
+    }
+
+    // MARK: - Lists
+
+    private mutating func appendSeparator(kind: ListKind, inline: String, broken: String) {
+        let start = output.count
+        guard let index = openLists.lastIndex(where: { $0.kind == kind && $0.depth == indent }) else {
+            output += broken
+            return
+        }
+        output += inline
+        openLists[index].separators.append(Separator(range: start..<output.count, broken: broken))
+    }
+
+    private mutating func recordAliasIfTopLevel() {
+        guard inSelectColumns, currentContext == .select, !afterNewline,
+              let index = openLists.lastIndex(where: { $0.kind == .select && $0.depth == indent })
+        else { return }
+        let column = openLists[index].separators.count
+        if openLists[index].aliasOffsets[column] == nil {
+            openLists[index].aliasOffsets[column] = output.count
+        }
+    }
+
+    private mutating func closeLists(atOrDeeperThan depth: Int) {
+        while let list = openLists.last, list.depth >= depth {
+            openLists.removeLast()
+            close(list)
+        }
+    }
+
+    private mutating func close(_ list: PendingList) {
+        guard !list.separators.isEmpty else { return }
+        let end = output.count
+        if options.lineWidth > 0, fitsOnOneLine(list.lineStart..<end) { return }
+
+        let aliasPadding = aliasPadding(for: list)
+        var rebuilt: [UInt8] = []
+        var cursor = list.lineStart
+        for column in 0...list.separators.count {
+            if let offset = list.aliasOffsets[column], let pad = aliasPadding[column], pad > 0 {
+                rebuilt.append(contentsOf: output.bytes[cursor..<offset])
+                rebuilt.append(contentsOf: repeatElement(UInt8(ascii: " "), count: pad))
+                cursor = offset
+            }
+            guard column < list.separators.count else { break }
+            let separator = list.separators[column]
+            rebuilt.append(contentsOf: output.bytes[cursor..<separator.range.lowerBound])
+            rebuilt.append(contentsOf: separator.broken.utf8)
+            cursor = separator.range.upperBound
+        }
+        rebuilt.append(contentsOf: output.bytes[cursor..<end])
+        output.replace(list.lineStart..<end, with: rebuilt)
+    }
+
+    private func fitsOnOneLine(_ range: Range<Int>) -> Bool {
+        !output.containsNewline(in: range) && columns(of: output.text(in: range)) <= options.lineWidth
+    }
+
+    // A column whose expression spans lines keeps its alias where it is.
+    private func aliasPadding(for list: PendingList) -> [Int: Int] {
+        guard options.alignAliases, list.kind == .select, list.aliasOffsets.count > 1 else { return [:] }
+        var widths: [Int: Int] = [:]
+        for (column, offset) in list.aliasOffsets {
+            let start = column == 0 ? list.lineStart : list.separators[column - 1].range.upperBound
+            guard !output.containsNewline(in: start..<offset) else { continue }
+            let leading = column == 0 ? "" : Self.lastLine(of: list.separators[column - 1].broken)
+            widths[column] = columns(of: leading) + columns(of: output.text(in: start..<offset))
+        }
+        guard let target = widths.values.max() else { return [:] }
+        return widths.mapValues { target - $0 }
+    }
+
+    private static func lastLine(of text: String) -> Substring {
+        guard let newline = text.lastIndex(of: "\n") else { return Substring(text) }
+        return text[text.index(after: newline)...]
+    }
+
+    private func columns<S: StringProtocol>(of text: S) -> Int {
+        text.reduce(0) { $0 + ($1 == "\t" ? options.indentWidth : 1) }
     }
 
     // MARK: - Helpers
 
     private var currentContext: ClauseContext? { clauseStack.last }
+
+    private var isInsideNestedExpression: Bool {
+        currentContext == .inlineParen || currentContext == .windowParen || currentContext == .createTableBody
+    }
 
     private static func isBlockContext(_ ctx: ClauseContext) -> Bool {
         ctx == .subquery || ctx == .createTableBody
@@ -618,8 +760,12 @@ internal struct SQLTokenFormatter {
         clauseStack.append(ctx)
     }
 
+    private func render(_ pad: Pad) -> String {
+        String(repeating: indentUnit, count: max(pad.levels, 0)) + String(repeating: " ", count: max(pad.spaces, 0))
+    }
+
     private func indentStr() -> String {
-        String(repeating: " ", count: indent * options.indentSize)
+        render(Pad(levels: indent))
     }
 
     private mutating func newline() {
@@ -637,5 +783,30 @@ internal struct SQLTokenFormatter {
         }
         afterNewline = false
         suppressNextSpace = false
+    }
+}
+
+// Bytes, so rewriting a list costs the list's length. Splices fall between tokens, so the UTF-8 stays valid.
+private struct FormatterOutput {
+    private(set) var bytes: [UInt8] = []
+
+    var count: Int { bytes.count }
+
+    var string: String { String(decoding: bytes, as: UTF8.self) } // swiftlint:disable:this optional_data_string_conversion
+
+    static func += (lhs: inout FormatterOutput, rhs: String) {
+        lhs.bytes.append(contentsOf: rhs.utf8)
+    }
+
+    func containsNewline(in range: Range<Int>) -> Bool {
+        bytes[range].contains(UInt8(ascii: "\n"))
+    }
+
+    func text(in range: Range<Int>) -> String {
+        String(decoding: bytes[range], as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
+    }
+
+    mutating func replace(_ range: Range<Int>, with replacement: [UInt8]) {
+        bytes.replaceSubrange(range, with: replacement)
     }
 }

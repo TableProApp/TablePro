@@ -19,6 +19,7 @@ struct CellPosition: Hashable {
 enum DataGridChangeVocabulary: Equatable {
     case pendingEdit
     case comparison
+    case resultComparison
 }
 
 struct RowVisualState: Equatable {
@@ -236,6 +237,8 @@ struct DataGridView: NSViewRepresentable {
         )
         coordinator.isRebuildingColumns = false
         coordinator.updateColumnPresentations(from: initialRows)
+        coordinator.frozenColumnCount = storedInitialLayout?.frozenColumnCount ?? 0
+        coordinator.lastBoundFrozenColumnCount = columnLayout.frozenColumnCount
 
         coordinator.rowReorder = rowReorder
         if rowReorder.isEnabled {
@@ -269,6 +272,11 @@ struct DataGridView: NSViewRepresentable {
         coordinator.paginationOffsetProvider = paginationOffsetProvider
         coordinator.changeManager = changeManager
         coordinator.selectionSummaryTracker.attach(selectionSummary)
+        // Only a change on the owner's side: Reset Columns, or a tab pointed at another table.
+        if columnLayout.frozenColumnCount != coordinator.lastBoundFrozenColumnCount {
+            coordinator.lastBoundFrozenColumnCount = columnLayout.frozenColumnCount
+            coordinator.frozenColumnCount = columnLayout.frozenColumnCount
+        }
 
         // The owner can change the filter while the grid is unmounted, so adopt and re-resolve
         // before the snapshot is built. A snapshot taken from the stale order would report no
@@ -457,6 +465,7 @@ struct DataGridView: NSViewRepresentable {
         )
         coordinator.isRebuildingColumns = false
         coordinator.invalidateColumnIndexCache()
+        coordinator.frozenColumnCount = storedLayout?.frozenColumnCount ?? 0
         coordinator.applyAccessoryWidthChanges(presentationChanges, tableRows: latestRows)
 
         coordinator.updateValueFilterHeaderIndicators()

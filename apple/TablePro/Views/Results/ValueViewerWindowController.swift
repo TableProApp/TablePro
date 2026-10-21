@@ -12,7 +12,7 @@ import TableProTheme
 @MainActor
 internal class ValueViewerWindowController {
     private static var activeWindows: [ObjectIdentifier: ValueViewerWindowController] = [:]
-    private static let defaultSize = NSSize(width: 640, height: 500)
+    static let defaultSize = NSSize(width: 640, height: 500)
     static let minSize = NSSize(width: 400, height: 300)
     private static let styleMask: NSWindow.StyleMask = [.titled, .closable, .resizable, .miniaturizable]
 
@@ -30,9 +30,10 @@ internal class ValueViewerWindowController {
         identifier: String,
         title: String,
         autosaveName: NSWindow.FrameAutosaveName,
+        size: NSSize = defaultSize,
         @ViewBuilder content: (@escaping () -> Void) -> Content
     ) {
-        let window = Self.makeWindow(identifier: identifier, title: title, content: content)
+        let window = Self.makeWindow(identifier: identifier, title: title, size: size, content: content)
 
         self.window = window
         windowBackdrop = ThemeWindowBackdrop(window: window)
@@ -58,17 +59,15 @@ internal class ValueViewerWindowController {
         window.makeKeyAndOrderFront(nil)
     }
 
-    /// A hosting view that is a window's content view rewrites that window's size limits from its
-    /// SwiftUI content on every constraint pass, so `NSWindow.minSize` alone lasts until the first
-    /// one: a viewer with a small toolbar could be dragged down to it. The floor is part of the
-    /// content, which is the size the hosting view publishes.
+    // The hosting view rewrites the window's size limits from its content on every constraint pass, so the floor lives in the content.
     static func makeWindow<Content: View>(
         identifier: String,
         title: String,
+        size: NSSize = defaultSize,
         @ViewBuilder content: (@escaping () -> Void) -> Content
     ) -> NSWindow {
         let window = ContentWindow(
-            contentRect: NSRect(origin: .zero, size: defaultSize),
+            contentRect: NSRect(origin: .zero, size: size),
             styleMask: styleMask,
             backing: .buffered,
             defer: false

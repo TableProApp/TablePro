@@ -116,16 +116,29 @@ extension DataFileController {
         }
     }
 
-    func applyCleanup(_ operation: TabularCleanupOperation, columns: [TabularColumnID], keys: [Int], actionName: String) {
-        guard !columns.isEmpty, !keys.isEmpty else { return }
+    func applyCleanup(_ operation: TabularCleanupOperation, target: DataFileCellTarget, actionName: String) {
+        let cells = target.cells.filter { !$0.keys.isEmpty }
+        guard !cells.isEmpty else { return }
         runMutation(title: String(localized: "Updating Cells…"), actionName: actionName) { table, progress in
-            let result = try await TabularCleanup.apply(operation, columns: columns, keys: keys, in: table, progress: progress)
-            guard result.changedCells > 0 else {
+            var values: [TabularColumnID: ColumnValues] = [:]
+            var changed = 0
+            let share = 1 / Double(cells.count)
+            for (index, column) in cells.enumerated() {
+                let result = try await TabularCleanup.apply(
+                    operation,
+                    columns: [column.column],
+                    keys: column.keys,
+                    in: table
+                ) { progress((Double(index) + $0) * share) }
+                values.merge(result.values) { _, latest in latest }
+                changed += result.changedCells
+            }
+            guard changed > 0 else {
                 return DataFileMutationOutcome(table: nil, message: String(localized: "No cells changed."))
             }
             return DataFileMutationOutcome(
-                table: Self.applying(result.values, to: table),
-                message: Self.changedCellsMessage(result.changedCells)
+                table: Self.applying(values, to: table),
+                message: Self.changedCellsMessage(changed)
             )
         }
     }
