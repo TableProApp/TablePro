@@ -1,0 +1,19 @@
+{
+  "cpu": {
+    "Architecture": "x86_64",
+    "CPU(s)": "16",
+    "Model name": "11th Gen Intel(R) Core(TM) i7-11700K @ 3.60GHz",
+    "Thread(s) per core": "2",
+    "Core(s) per socket": "8"
+  },
+  "kernel": "7.2.8-9-omarchy",
+  "libraries": [
+    "gtk4 1:4.24.1-1",
+    "glib2 2.90.1-1",
+    "libadwaita 1:1.10.0-1",
+    "gtksourceview5 5.22.0-1",
+    "perf 7.2.11-1",
+    "heaptrack 1.5.0-11"
+  ],
+  "mem_total": "MemTotal:       32578152 kB"
+}

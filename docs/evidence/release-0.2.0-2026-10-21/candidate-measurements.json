@@ -201,6 +201,942 @@
           "monotonic": 103746.230715331
         }
       ]
+    },
+    {
+      "name": "candidate-1m",
+      "result": {
+        "pid": 1576674,
+        "command_exit": 0,
+        "aborted": null,
+        "elapsed_seconds": 24.584,
+        "profiler_exit": -2
+      },
+      "peak_rss_mib": 262.43,
+      "cpu_seconds": 10.54,
+      "screen": "1280x1024",
+      "ui": {
+        "rows_requested": 1000000,
+        "cell_payload_bytes": 0,
+        "repetition": 1,
+        "rows_loaded_inferred": 120019,
+        "truncated_inferred": true,
+        "result_status": [
+          "done in 475 ms"
+        ],
+        "first_result_seconds": 1.11,
+        "rss_before_mb": 161.6,
+        "after_load": {
+          "rss_mb": 261.3,
+          "peak_mb": 261.3
+        },
+        "after_middle": {
+          "rss_mb": 262.2,
+          "peak_mb": 262.2,
+          "visible_rows": [
+            60006,
+            60014
+          ],
+          "scrollbar_value": 2100190.0
+        },
+        "after_end": {
+          "rss_mb": 262.2,
+          "peak_mb": 262.2,
+          "visible_rows": [
+            120011,
+            120019
+          ],
+          "scrollbar_value": 4200381.0
+        },
+        "after_return_top": {
+          "rss_mb": 262.4,
+          "peak_mb": 262.4,
+          "visible_rows": [
+            1,
+            9
+          ],
+          "scrollbar_value": 0.0
+        },
+        "scroll_seconds": {
+          "middle": 4.176,
+          "end": 4.248,
+          "top": 6.291
+        },
+        "visible_person_rows": [
+          1,
+          9
+        ],
+        "scrollbar_probes": [
+          {
+            "x": 1174,
+            "y": 461,
+            "height": 284,
+            "rows": [
+              120011,
+              120019
+            ]
+          }
+        ],
+        "peak_mb": 262.4
+      }
+    },
+    {
+      "name": "postgres-load-drained",
+      "result": {
+        "pid": 1587476,
+        "command_exit": 0,
+        "aborted": null,
+        "elapsed_seconds": 108.46,
+        "profiler_exit": -2
+      },
+      "peak_rss_mib": 509.53,
+      "cpu_seconds": 64.02,
+      "screen": "640x480",
+      "phases": [
+        {
+          "pid": 1587476,
+          "rss_kib": 171004,
+          "hwm_kib": 171004,
+          "pss_kib": 133628,
+          "private_kib": 119636,
+          "cpu_seconds": 0.69,
+          "available_kib": 26662604,
+          "phase": "connected-idle",
+          "monotonic": 104323.45868832
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 171004,
+          "hwm_kib": 171004,
+          "pss_kib": 133628,
+          "private_kib": 119636,
+          "cpu_seconds": 0.69,
+          "available_kib": 26661004,
+          "phase": "cycle-1-10000rows-128bytes-before",
+          "monotonic": 104323.460669189
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 183556,
+          "hwm_kib": 183556,
+          "pss_kib": 146253,
+          "private_kib": 132164,
+          "cpu_seconds": 0.92,
+          "available_kib": 26644680,
+          "phase": "cycle-1-10000rows-128bytes-after-result",
+          "monotonic": 104326.684117986
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 183560,
+          "hwm_kib": 183560,
+          "pss_kib": 146166,
+          "private_kib": 132168,
+          "cpu_seconds": 1.25,
+          "available_kib": 26642744,
+          "phase": "cycle-1-10000rows-128bytes-after-replacement",
+          "monotonic": 104329.280745792
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 184360,
+          "hwm_kib": 184360,
+          "pss_kib": 146966,
+          "private_kib": 132968,
+          "cpu_seconds": 1.31,
+          "available_kib": 26640560,
+          "phase": "cycle-1-10000rows-128bytes-after-close",
+          "monotonic": 104332.330458615
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 184444,
+          "hwm_kib": 184444,
+          "pss_kib": 147050,
+          "private_kib": 133052,
+          "cpu_seconds": 1.41,
+          "available_kib": 26640616,
+          "phase": "cycle-2-100000rows-128bytes-before",
+          "monotonic": 104332.638009666
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 200236,
+          "hwm_kib": 200236,
+          "pss_kib": 162841,
+          "private_kib": 148844,
+          "cpu_seconds": 2.92,
+          "available_kib": 26604808,
+          "phase": "cycle-2-100000rows-128bytes-after-result",
+          "monotonic": 104335.852927545
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 200236,
+          "hwm_kib": 200236,
+          "pss_kib": 162932,
+          "private_kib": 148844,
+          "cpu_seconds": 3.26,
+          "available_kib": 26600480,
+          "phase": "cycle-2-100000rows-128bytes-after-replacement",
+          "monotonic": 104338.455677647
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 200116,
+          "hwm_kib": 200452,
+          "pss_kib": 162708,
+          "private_kib": 148708,
+          "cpu_seconds": 3.31,
+          "available_kib": 26602376,
+          "phase": "cycle-2-100000rows-128bytes-after-close",
+          "monotonic": 104341.502152117
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 200348,
+          "hwm_kib": 200452,
+          "pss_kib": 162940,
+          "private_kib": 148940,
+          "cpu_seconds": 3.41,
+          "available_kib": 26602376,
+          "phase": "cycle-3-1000000rows-128bytes-before",
+          "monotonic": 104341.802039099
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 209004,
+          "hwm_kib": 209004,
+          "pss_kib": 171700,
+          "private_kib": 157612,
+          "cpu_seconds": 20.1,
+          "available_kib": 26586664,
+          "phase": "cycle-3-1000000rows-128bytes-after-result",
+          "monotonic": 104358.438687764
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 209004,
+          "hwm_kib": 209004,
+          "pss_kib": 171609,
+          "private_kib": 157612,
+          "cpu_seconds": 20.49,
+          "available_kib": 26588168,
+          "phase": "cycle-3-1000000rows-128bytes-after-replacement",
+          "monotonic": 104361.178672912
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 208804,
+          "hwm_kib": 209264,
+          "pss_kib": 171409,
+          "private_kib": 157412,
+          "cpu_seconds": 20.54,
+          "available_kib": 26601204,
+          "phase": "cycle-3-1000000rows-128bytes-after-close",
+          "monotonic": 104364.218430726
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 209036,
+          "hwm_kib": 209264,
+          "pss_kib": 171641,
+          "private_kib": 157644,
+          "cpu_seconds": 20.63,
+          "available_kib": 26601616,
+          "phase": "cycle-4-50000rows-8193bytes-before",
+          "monotonic": 104364.518851083
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 516500,
+          "hwm_kib": 516500,
+          "pss_kib": 479220,
+          "private_kib": 465132,
+          "cpu_seconds": 25.03,
+          "available_kib": 26185328,
+          "phase": "cycle-4-50000rows-8193bytes-after-result",
+          "monotonic": 104369.184046387
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 492516,
+          "hwm_kib": 520492,
+          "pss_kib": 455108,
+          "private_kib": 441108,
+          "cpu_seconds": 28.09,
+          "available_kib": 26196796,
+          "phase": "cycle-4-50000rows-8193bytes-after-replacement",
+          "monotonic": 104374.488650864
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 492516,
+          "hwm_kib": 520492,
+          "pss_kib": 455108,
+          "private_kib": 441108,
+          "cpu_seconds": 28.15,
+          "available_kib": 26187404,
+          "phase": "cycle-4-50000rows-8193bytes-after-close",
+          "monotonic": 104377.538163584
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 492516,
+          "hwm_kib": 520492,
+          "pss_kib": 455108,
+          "private_kib": 441108,
+          "cpu_seconds": 28.25,
+          "available_kib": 26191924,
+          "phase": "cycle-5-1000000rows-128bytes-before",
+          "monotonic": 104377.843729204
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 492516,
+          "hwm_kib": 520492,
+          "pss_kib": 455212,
+          "private_kib": 441124,
+          "cpu_seconds": 45.51,
+          "available_kib": 26289464,
+          "phase": "cycle-5-1000000rows-128bytes-after-result",
+          "monotonic": 104394.952351352
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 492516,
+          "hwm_kib": 520492,
+          "pss_kib": 455107,
+          "private_kib": 441108,
+          "cpu_seconds": 45.87,
+          "available_kib": 26289024,
+          "phase": "cycle-5-1000000rows-128bytes-after-replacement",
+          "monotonic": 104397.663398335
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 492516,
+          "hwm_kib": 520492,
+          "pss_kib": 455107,
+          "private_kib": 441108,
+          "cpu_seconds": 45.93,
+          "available_kib": 26289512,
+          "phase": "cycle-5-1000000rows-128bytes-after-close",
+          "monotonic": 104400.707070405
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 492516,
+          "hwm_kib": 520492,
+          "pss_kib": 455107,
+          "private_kib": 441108,
+          "cpu_seconds": 46.02,
+          "available_kib": 26289508,
+          "phase": "cycle-6-1000000rows-128bytes-before",
+          "monotonic": 104401.009901969
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 413276,
+          "hwm_kib": 520492,
+          "pss_kib": 375972,
+          "private_kib": 361884,
+          "cpu_seconds": 63.59,
+          "available_kib": 26363428,
+          "phase": "cycle-6-1000000rows-128bytes-after-result",
+          "monotonic": 104418.321843014
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 413276,
+          "hwm_kib": 520492,
+          "pss_kib": 375883,
+          "private_kib": 361884,
+          "cpu_seconds": 63.97,
+          "available_kib": 26360672,
+          "phase": "cycle-6-1000000rows-128bytes-after-replacement",
+          "monotonic": 104420.963965355
+        },
+        {
+          "pid": 1587476,
+          "rss_kib": 413172,
+          "hwm_kib": 520492,
+          "pss_kib": 375779,
+          "private_kib": 361780,
+          "cpu_seconds": 64.02,
+          "available_kib": 26364552,
+          "phase": "cycle-6-1000000rows-128bytes-after-close",
+          "monotonic": 104424.010777553
+        }
+      ],
+      "statuses": [
+        {
+          "case": "cycle-1-10000rows-128bytes",
+          "statuses": [
+            "Received 10000 rows \u00b7 2 pages"
+          ]
+        },
+        {
+          "case": "cycle-2-100000rows-128bytes",
+          "statuses": [
+            "Received 100000 rows \u00b7 20 pages\nRetained rows 80001-100000. Earlier rows are no longer available."
+          ]
+        },
+        {
+          "case": "cycle-3-1000000rows-128bytes",
+          "statuses": [
+            "Received 1000000 rows \u00b7 200 pages\nRetained rows 980001-1000000. Earlier rows are no longer available."
+          ]
+        },
+        {
+          "case": "cycle-4-50000rows-8193bytes",
+          "statuses": []
+        },
+        {
+          "case": "cycle-5-1000000rows-128bytes",
+          "statuses": [
+            "Received 1000000 rows \u00b7 200 pages\nRetained rows 980001-1000000. Earlier rows are no longer available."
+          ]
+        },
+        {
+          "case": "cycle-6-1000000rows-128bytes",
+          "statuses": [
+            "Received 1000000 rows \u00b7 200 pages\nRetained rows 980001-1000000. Earlier rows are no longer available."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "postgres-load-normal",
+      "screen": "1280x1024",
+      "result": {
+        "pid": 1711779,
+        "command_exit": 0,
+        "aborted": null,
+        "elapsed_seconds": 109.71,
+        "profiler_exit": -2
+      },
+      "peak_rss_mib": 512.59,
+      "peak_pss_mib": 474.79,
+      "cpu_seconds": 64.96,
+      "qualification": "All six cases exposed terminal schema failure; received row counts are not successful completion. See #1302.",
+      "phases": [
+        {
+          "pid": 1711779,
+          "rss_kib": 176592,
+          "hwm_kib": 176592,
+          "pss_kib": 137852,
+          "private_kib": 122424,
+          "cpu_seconds": 0.72,
+          "available_kib": 26589960,
+          "phase": "connected-idle",
+          "monotonic": 106872.682988217
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 176592,
+          "hwm_kib": 176592,
+          "pss_kib": 137852,
+          "private_kib": 122424,
+          "cpu_seconds": 0.72,
+          "available_kib": 26589960,
+          "phase": "cycle-1-10000rows-128bytes-before",
+          "monotonic": 106872.684814218
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 190048,
+          "hwm_kib": 190048,
+          "pss_kib": 151400,
+          "private_kib": 135884,
+          "cpu_seconds": 0.96,
+          "available_kib": 26596724,
+          "phase": "cycle-1-10000rows-128bytes-after-result",
+          "monotonic": 106875.914124046
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 190112,
+          "hwm_kib": 190112,
+          "pss_kib": 151338,
+          "private_kib": 135876,
+          "cpu_seconds": 1.42,
+          "available_kib": 26598300,
+          "phase": "cycle-1-10000rows-128bytes-after-replacement",
+          "monotonic": 106878.741821274
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 191364,
+          "hwm_kib": 191364,
+          "pss_kib": 152576,
+          "private_kib": 137100,
+          "cpu_seconds": 1.48,
+          "available_kib": 26623892,
+          "phase": "cycle-1-10000rows-128bytes-after-close",
+          "monotonic": 106881.784049394
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 191364,
+          "hwm_kib": 191364,
+          "pss_kib": 152576,
+          "private_kib": 137100,
+          "cpu_seconds": 1.58,
+          "available_kib": 26624384,
+          "phase": "cycle-2-100000rows-128bytes-before",
+          "monotonic": 106882.082134825
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 205528,
+          "hwm_kib": 205528,
+          "pss_kib": 166740,
+          "private_kib": 151264,
+          "cpu_seconds": 3.1,
+          "available_kib": 26612472,
+          "phase": "cycle-2-100000rows-128bytes-after-result",
+          "monotonic": 106885.310141776
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 205528,
+          "hwm_kib": 205528,
+          "pss_kib": 166834,
+          "private_kib": 151272,
+          "cpu_seconds": 3.59,
+          "available_kib": 26635936,
+          "phase": "cycle-2-100000rows-128bytes-after-replacement",
+          "monotonic": 106888.183253752
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 208440,
+          "hwm_kib": 208440,
+          "pss_kib": 169645,
+          "private_kib": 154184,
+          "cpu_seconds": 3.64,
+          "available_kib": 26648172,
+          "phase": "cycle-2-100000rows-128bytes-after-close",
+          "monotonic": 106891.224425573
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 208440,
+          "hwm_kib": 208440,
+          "pss_kib": 169645,
+          "private_kib": 154184,
+          "cpu_seconds": 3.75,
+          "available_kib": 26648144,
+          "phase": "cycle-3-1000000rows-128bytes-before",
+          "monotonic": 106891.53388584
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 214024,
+          "hwm_kib": 214024,
+          "pss_kib": 175330,
+          "private_kib": 159768,
+          "cpu_seconds": 20.53,
+          "available_kib": 26640776,
+          "phase": "cycle-3-1000000rows-128bytes-after-result",
+          "monotonic": 106908.287490176
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 214024,
+          "hwm_kib": 214024,
+          "pss_kib": 175225,
+          "private_kib": 159760,
+          "cpu_seconds": 21.02,
+          "available_kib": 26624292,
+          "phase": "cycle-3-1000000rows-128bytes-after-replacement",
+          "monotonic": 106911.166336318
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 216964,
+          "hwm_kib": 216964,
+          "pss_kib": 178165,
+          "private_kib": 162700,
+          "cpu_seconds": 21.08,
+          "available_kib": 26625388,
+          "phase": "cycle-3-1000000rows-128bytes-after-close",
+          "monotonic": 106914.20719666
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 216964,
+          "hwm_kib": 216964,
+          "pss_kib": 178165,
+          "private_kib": 162700,
+          "cpu_seconds": 21.18,
+          "available_kib": 26625388,
+          "phase": "cycle-4-50000rows-8193bytes-before",
+          "monotonic": 106914.50988197
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 518392,
+          "hwm_kib": 518392,
+          "pss_kib": 479686,
+          "private_kib": 464112,
+          "cpu_seconds": 25.64,
+          "available_kib": 26129112,
+          "phase": "cycle-4-50000rows-8193bytes-after-result",
+          "monotonic": 106919.215460882
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 524892,
+          "hwm_kib": 524892,
+          "pss_kib": 486097,
+          "private_kib": 470612,
+          "cpu_seconds": 28.81,
+          "available_kib": 26127372,
+          "phase": "cycle-4-50000rows-8193bytes-after-replacement",
+          "monotonic": 106924.629960042
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 524892,
+          "hwm_kib": 524892,
+          "pss_kib": 486096,
+          "private_kib": 470612,
+          "cpu_seconds": 28.87,
+          "available_kib": 26130456,
+          "phase": "cycle-4-50000rows-8193bytes-after-close",
+          "monotonic": 106927.675058718
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 524892,
+          "hwm_kib": 524892,
+          "pss_kib": 486096,
+          "private_kib": 470612,
+          "cpu_seconds": 28.97,
+          "available_kib": 26139244,
+          "phase": "cycle-5-1000000rows-128bytes-before",
+          "monotonic": 106927.976297904
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 524892,
+          "hwm_kib": 524892,
+          "pss_kib": 486186,
+          "private_kib": 470612,
+          "cpu_seconds": 46.29,
+          "available_kib": 26249692,
+          "phase": "cycle-5-1000000rows-128bytes-after-result",
+          "monotonic": 106945.135535805
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 447464,
+          "hwm_kib": 523068,
+          "pss_kib": 408653,
+          "private_kib": 393176,
+          "cpu_seconds": 46.79,
+          "available_kib": 26323436,
+          "phase": "cycle-5-1000000rows-128bytes-after-replacement",
+          "monotonic": 106947.984469598
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 447464,
+          "hwm_kib": 523068,
+          "pss_kib": 408653,
+          "private_kib": 393176,
+          "cpu_seconds": 46.86,
+          "available_kib": 26322324,
+          "phase": "cycle-5-1000000rows-128bytes-after-close",
+          "monotonic": 106951.03350918
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 447464,
+          "hwm_kib": 523068,
+          "pss_kib": 408653,
+          "private_kib": 393176,
+          "cpu_seconds": 46.95,
+          "available_kib": 26322324,
+          "phase": "cycle-6-1000000rows-128bytes-before",
+          "monotonic": 106951.336350512
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 462500,
+          "hwm_kib": 523068,
+          "pss_kib": 423794,
+          "private_kib": 408220,
+          "cpu_seconds": 64.47,
+          "available_kib": 26322628,
+          "phase": "cycle-6-1000000rows-128bytes-after-result",
+          "monotonic": 106968.589115807
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 462504,
+          "hwm_kib": 523068,
+          "pss_kib": 423698,
+          "private_kib": 408216,
+          "cpu_seconds": 64.98,
+          "available_kib": 26324180,
+          "phase": "cycle-6-1000000rows-128bytes-after-replacement",
+          "monotonic": 106971.467985562
+        },
+        {
+          "pid": 1711779,
+          "rss_kib": 462504,
+          "hwm_kib": 523068,
+          "pss_kib": 423698,
+          "private_kib": 408216,
+          "cpu_seconds": 65.05,
+          "available_kib": 26324048,
+          "phase": "cycle-6-1000000rows-128bytes-after-close",
+          "monotonic": 106974.512642319
+        }
+      ],
+      "statuses": [
+        {
+          "case": "cycle-1-10000rows-128bytes",
+          "statuses": [
+            "Received 10000 rows \u00b7 2 pages",
+            "Statement 1 failed"
+          ],
+          "labels": [
+            "BookiE",
+            "Copy error",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 87",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 10000 rows \u00b7 2 pages",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "Statement 1 failed",
+            "Status",
+            "The query will run again through a guarded cursor.",
+            "The result columns changed between pages.",
+            "Unfold all"
+          ]
+        },
+        {
+          "case": "cycle-2-100000rows-128bytes",
+          "statuses": [
+            "Received 100000 rows \u00b7 20 pages\nRetained rows 80001-100000. Earlier rows are no longer available.",
+            "Statement 1 failed"
+          ],
+          "labels": [
+            "BookiE",
+            "Copy error",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 88",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 100000 rows \u00b7 20 pages\nRetained rows 80001-100000. Earlier rows are no longer available.",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "Statement 1 failed",
+            "Status",
+            "The query will run again through a guarded cursor.",
+            "The result columns changed between pages.",
+            "Unfold all"
+          ]
+        },
+        {
+          "case": "cycle-3-1000000rows-128bytes",
+          "statuses": [
+            "Received 1000000 rows \u00b7 200 pages\nRetained rows 980001-1000000. Earlier rows are no longer available.",
+            "Statement 1 failed"
+          ],
+          "labels": [
+            "BookiE",
+            "Copy error",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 89",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 1000000 rows \u00b7 200 pages\nRetained rows 980001-1000000. Earlier rows are no longer available.",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "Statement 1 failed",
+            "Status",
+            "The query will run again through a guarded cursor.",
+            "The result columns changed between pages.",
+            "Unfold all"
+          ]
+        },
+        {
+          "case": "cycle-4-50000rows-8193bytes",
+          "statuses": [],
+          "labels": [
+            "BookiE",
+            "Copy error",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 88",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 30001-50000. Earlier rows are no longer available.",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "Statement 1 failed",
+            "Status",
+            "The query will run again through a guarded cursor.",
+            "The result columns changed between pages.",
+            "Unfold all"
+          ]
+        },
+        {
+          "case": "cycle-5-1000000rows-128bytes",
+          "statuses": [
+            "Received 1000000 rows \u00b7 200 pages\nRetained rows 980001-1000000. Earlier rows are no longer available.",
+            "Statement 1 failed"
+          ],
+          "labels": [
+            "BookiE",
+            "Copy error",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 89",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 1000000 rows \u00b7 200 pages\nRetained rows 980001-1000000. Earlier rows are no longer available.",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "Statement 1 failed",
+            "Status",
+            "The query will run again through a guarded cursor.",
+            "The result columns changed between pages.",
+            "Unfold all"
+          ]
+        },
+        {
+          "case": "cycle-6-1000000rows-128bytes",
+          "statuses": [
+            "Received 1000000 rows \u00b7 200 pages\nRetained rows 980001-1000000. Earlier rows are no longer available.",
+            "Statement 1 failed"
+          ],
+          "labels": [
+            "BookiE",
+            "Copy error",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 89",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 1000000 rows \u00b7 200 pages\nRetained rows 980001-1000000. Earlier rows are no longer available.",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "Statement 1 failed",
+            "Status",
+            "The query will run again through a guarded cursor.",
+            "The result columns changed between pages.",
+            "Unfold all"
+          ]
+        }
+      ]
+    }
+  ],
+  "tag_artifact": {
+    "archive_sha256": "3a9d10c2e22930aba86d8c828b7a25a2c1cf35386c7b92d8a0fd88c52ddc301e",
+    "binary_sha256": "d45556da8b994688987157cfc74e1d58e39d10894e11b157fc8077b2ccfbb386",
+    "candidate_binary_identical": true,
+    "build_run": 39674240261
+  },
+  "minimal_widget_probes": [
+    {
+      "name": "source-line",
+      "input_bytes": 8388608,
+      "peak_rss_mib": 1186.91,
+      "peak_pss_mib": 1157.01,
+      "result": {
+        "pid": 1745090,
+        "command_exit": 0,
+        "aborted": null,
+        "elapsed_seconds": 13.974,
+        "profiler_exit": null
+      },
+      "scope": "Standalone Python GTK widget; no BookiE code. Concurrent preflight excludes CPU comparisons."
+    },
+    {
+      "name": "source-multiline",
+      "input_bytes": 8388560,
+      "peak_rss_mib": 150.02,
+      "peak_pss_mib": 116.81,
+      "result": {
+        "pid": 1747626,
+        "command_exit": 0,
+        "aborted": null,
+        "elapsed_seconds": 10.76,
+        "profiler_exit": null
+      },
+      "scope": "Standalone Python GTK widget; no BookiE code. Concurrent preflight excludes CPU comparisons."
+    },
+    {
+      "name": "gtk-line",
+      "input_bytes": 8388608,
+      "peak_rss_mib": 1155.41,
+      "peak_pss_mib": 1128.3,
+      "result": {
+        "pid": 1752097,
+        "command_exit": 0,
+        "aborted": null,
+        "elapsed_seconds": 13.345,
+        "profiler_exit": null
+      },
+      "scope": "Standalone Python GTK widget; no BookiE code. Concurrent preflight excludes CPU comparisons."
     }
   ]
 }
