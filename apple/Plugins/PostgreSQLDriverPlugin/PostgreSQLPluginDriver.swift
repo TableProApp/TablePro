@@ -47,7 +47,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             .userFunctions,
             .userManagement,
             .schemaCompare,
-            .dataCompare
+            .dataCompare,
+            .temporaryTables
         ]
     }
 
@@ -187,6 +188,11 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? {
         guard !schemas.isEmpty else { return [] }
         return try await listTables(in: .schemas(schemas))
+    }
+
+    func fetchTemporaryTables() async throws -> [PluginTableInfo] {
+        let result = try await execute(query: PostgreSQLTableListing.temporaryTables)
+        return result.rows.compactMap { PostgreSQLTableListing.table(fromRow: $0.map(\.asText)) }
     }
 
     private func listTables(in scope: PostgreSQLTableListingScope) async throws -> [PluginTableInfo] {

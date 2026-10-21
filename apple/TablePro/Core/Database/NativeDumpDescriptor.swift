@@ -77,6 +77,12 @@ struct NativeDumpDescriptor: Sendable {
         /// flags that server needs. `mysqldump` 8.0 reads a table no MariaDB server has.
         let serverVersion: String?
 
+        // Whether the server's greeting offered TLS, for a tool whose SSL options depend on it. Nil when not read.
+        var serverOffersTLS: Bool?
+
+        // Set by `NativeDumpService.buildCommand` before the arguments are built.
+        var clientPluginFolder: MariaDBClientPluginFolder?
+
         init(
             connection: DatabaseConnection,
             database: String,
@@ -85,7 +91,8 @@ struct NativeDumpDescriptor: Sendable {
             scope: NativeDumpScope = .wholeDatabase,
             currentCatalog: String? = nil,
             localFilePath: String? = nil,
-            serverVersion: String? = nil
+            serverVersion: String? = nil,
+            serverOffersTLS: Bool? = nil
         ) {
             self.connection = connection
             self.database = database
@@ -95,6 +102,7 @@ struct NativeDumpDescriptor: Sendable {
             self.currentCatalog = currentCatalog
             self.localFilePath = localFilePath
             self.serverVersion = serverVersion
+            self.serverOffersTLS = serverOffersTLS
         }
 
         var host: String {
@@ -148,6 +156,11 @@ struct NativeDumpDescriptor: Sendable {
         let restoreArguments: @Sendable (Request, NativeDumpResolvedTool) throws -> [String]
         let environment: @Sendable (Request) -> [String: String]
 
+        // Runs once the tool is resolved, before the arguments are built, for checks that need the network or the tool.
+        let prepare: @Sendable (Request, NativeDumpResolvedTool) async throws -> Request
+
+        let clientPluginFolder: @Sendable (Request, NativeDumpResolvedTool) throws -> MariaDBClientPluginFolder?
+
         init(
             backupBinaries: [String],
             restoreBinaries: [String],
@@ -162,7 +175,9 @@ struct NativeDumpDescriptor: Sendable {
             backupArguments: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> [String],
             restoreArguments: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> [String],
             environment: @escaping @Sendable (Request) -> [String: String] = { _ in [:] },
-            configurationFileEntries: @escaping @Sendable (Request) -> [ConfigurationEntry] = { _ in [] }
+            configurationFileEntries: @escaping @Sendable (Request) -> [ConfigurationEntry] = { _ in [] },
+            prepare: @escaping @Sendable (Request, NativeDumpResolvedTool) async throws -> Request = { request, _ in request },
+            clientPluginFolder: @escaping @Sendable (Request, NativeDumpResolvedTool) throws -> MariaDBClientPluginFolder? = { _, _ in nil }
         ) {
             self.backupBinaries = backupBinaries
             self.restoreBinaries = restoreBinaries
@@ -178,6 +193,8 @@ struct NativeDumpDescriptor: Sendable {
             self.restoreArguments = restoreArguments
             self.environment = environment
             self.configurationFileEntries = configurationFileEntries
+            self.prepare = prepare
+            self.clientPluginFolder = clientPluginFolder
         }
 
         func binaries(for kind: NativeDumpKind) -> [String] {

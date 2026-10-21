@@ -40,6 +40,17 @@ struct SidebarObjectSelectionTests {
         #expect(selection == .mark([marked(TestFixtures.makeTableInfo(name: "orders"), database: "banshi_online")]))
     }
 
+    @Test("A tab on a temporary table marks nothing, though a listed table shares its name")
+    func temporaryTableTabMarksNothing() {
+        let selection = SidebarObjectSelection.resolve(
+            tabTableName: "orders",
+            tabScope: scope("banshi_online").sessionBound,
+            browseScope: scope("banshi_online"),
+            tables: tables
+        )
+        #expect(selection == .mark([]))
+    }
+
     @Test("A tab in another database marks nothing, so the same-named row stays clickable")
     func marksNothingForTabInAnotherDatabase() {
         let selection = SidebarObjectSelection.resolve(

@@ -101,6 +101,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// rest of the fetch, which for some drivers cancels the statement on the server.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult?
 
+    /// Runs a statement the app wrote to read, telling the driver it may only read. A driver that
+    /// evaluates statements in a scripting engine with state refuses any write the script reaches,
+    /// whatever an earlier statement redefined.
+    func executeRead(query: String) async throws -> QueryResult
+
     /// Whether ``executeBatch(query:rowCap:parameters:)`` sends a text to the server whole and answers with every
     /// result set it produced.
     var supportsResultSetBatches: Bool { get }
@@ -123,6 +128,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// What `fetchTables(schema:)` lists for each named schema, in one call, each row with its own
     /// schema and ordered by schema then name. Nil means the caller asks each schema itself.
     func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]?
+
+    var listsTemporaryTables: Bool { get }
+
+    // Only the session driver can answer: a pooled connection is another session.
+    func fetchTemporaryTables() async throws -> [TableInfo]
 
     /// Fetch the direct partitions of one partitioned table, with each one's bound, position and
     /// row estimate. A partition is not a table on every engine, so this cannot answer `TableInfo`:
@@ -472,6 +482,10 @@ extension DatabaseDriver {
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? { nil }
+
+    func executeRead(query: String) async throws -> QueryResult {
+        try await execute(query: query)
+    }
 
     var supportsResultSetBatches: Bool { false }
 
@@ -832,6 +846,10 @@ extension DatabaseDriver {
     func fetchTablesInAllSchemas() async throws -> [TableInfo]? { nil }
 
     func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? { nil }
+
+    var listsTemporaryTables: Bool { false }
+
+    func fetchTemporaryTables() async throws -> [TableInfo] { [] }
 
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] { [] }
 

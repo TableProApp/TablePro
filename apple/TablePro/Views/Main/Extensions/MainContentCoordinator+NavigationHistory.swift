@@ -73,7 +73,8 @@ extension MainContentCoordinator {
             sortSource: tab.sortState.source,
             page: tab.pagination.currentPage,
             pageSize: tab.pagination.pageSize,
-            anchorRowKey: capturePrimaryKeyAnchor(for: tab)
+            anchorRowKey: capturePrimaryKeyAnchor(for: tab),
+            isTemporary: tab.tableContext.isTemporary
         )
     }
 
@@ -172,6 +173,7 @@ extension MainContentCoordinator {
                 databaseType: connection.type,
                 isView: entry.isView,
                 objectType: entry.objectType,
+                isTemporary: entry.isTemporary,
                 databaseName: entry.databaseName,
                 schemaName: entry.schemaName
             )

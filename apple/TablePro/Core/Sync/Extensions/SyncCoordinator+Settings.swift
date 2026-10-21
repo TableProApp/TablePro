@@ -20,6 +20,7 @@ extension SyncCoordinator {
             case AppSettingsCategory.keyboard: return try encoder.encode(storage.loadKeyboard())
             case AppSettingsCategory.ai: return try encoder.encode(storage.loadAI())
             case AppSettingsCategory.notifications: return try encoder.encode(storage.loadNotifications())
+            case AppSettingsCategory.formatter: return try encoder.encode(storage.loadFormatter())
             case CustomSlashCommandStorage.syncCategory:
                 return try encoder.encode(CustomSlashCommandStorage.shared.commands)
             case let category where category.hasPrefix(FileColumnLayoutPersister.syncCategoryPrefix):
@@ -53,6 +54,8 @@ extension SyncCoordinator {
             case AppSettingsCategory.ai: manager.ai = try decoder.decode(AISettings.self, from: data)
             case AppSettingsCategory.notifications:
                 manager.notifications = try decoder.decode(NotificationSettings.self, from: data)
+            case AppSettingsCategory.formatter:
+                manager.formatter = try decoder.decode(SQLFormatterSettings.self, from: data)
             case CustomSlashCommandStorage.syncCategory:
                 CustomSlashCommandStorage.shared.applyRemote(try decoder.decode([CustomSlashCommand].self, from: data))
             case let category where category.hasPrefix(FileColumnLayoutPersister.syncCategoryPrefix):
@@ -75,8 +78,11 @@ extension SyncCoordinator {
     // picks up the theme records an older build skipped.
     static let themeContentKind = "\(SyncRecordType.settings.rawValue)/theme.v\(ThemeSchema.current)"
 
+    // Fetches the zone once for a formatter record this Mac skipped while on an older build.
+    static let formatterContentKind = "\(SyncRecordType.settings.rawValue)/\(AppSettingsCategory.formatter).v1"
+
     static var readableContent: Set<String> {
-        Set(SyncRecordType.verifiedInProduction.map(\.rawValue)).union([Self.themeContentKind])
+        Set(SyncRecordType.verifiedInProduction.map(\.rawValue)).union([Self.themeContentKind, Self.formatterContentKind])
     }
 
     // Only what this Mac applies: a pull skips a category that is off and still moves the token past it.
@@ -84,6 +90,7 @@ extension SyncCoordinator {
         var content = Set(SyncRecordType.verifiedInProduction.filter { settings.syncs($0) }.map(\.rawValue))
         if settings.syncs(.settings) {
             content.insert(Self.themeContentKind)
+            content.insert(Self.formatterContentKind)
         }
         return content
     }

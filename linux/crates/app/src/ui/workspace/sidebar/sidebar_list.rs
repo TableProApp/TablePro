@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
@@ -17,30 +17,33 @@ glib::wrapper! {
         @implements gio::ListModel, gtk::SectionModel;
 }
 
+/// The entries of an index a search keeps, in list order, and each
+/// section's rows among them. Worked out away from the GTK thread: a
+/// search reads every table's key.
+#[derive(Debug)]
+pub(crate) struct SidebarRows {
+    index: Arc<SidebarIndex>,
+    shown: Vec<u32>,
+    runs: Vec<(u32, u32)>,
+}
+
+impl SidebarRows {
+    /// `index`'s entries matching `query` as `search_key` gave it, every
+    /// one when it is empty.
+    pub(crate) fn new(index: Arc<SidebarIndex>, query: &str) -> Self {
+        let shown = matching(&index, query);
+        let runs = runs(&index, &shown);
+        Self { index, shown, runs }
+    }
+}
+
 impl SidebarList {
     pub(crate) fn new() -> Self {
         glib::Object::new()
     }
 
-    pub(crate) fn index(&self) -> Rc<SidebarIndex> {
+    pub(crate) fn index(&self) -> Arc<SidebarIndex> {
         self.imp().index.borrow().clone()
-    }
-
-    /// Show `index`, its entries matching `query` as `search_key` gave
-    /// it, every one when it is empty.
-    pub(crate) fn replace(&self, index: SidebarIndex, query: &str) {
-        let index = Rc::new(index);
-        let shown = matching(&index, query);
-        let imp = self.imp();
-        imp.objects.borrow_mut().clear();
-        imp.index.replace(index);
-        self.show(shown, true);
-    }
-
-    /// Show the entries matching `query`.
-    pub(crate) fn filter(&self, query: &str) {
-        let shown = matching(&self.index(), query);
-        self.show(shown, false);
     }
 
     /// How many rows were made since the index was last replaced.
@@ -58,18 +61,23 @@ impl SidebarList {
             .and_then(|position| u32::try_from(position).ok())
     }
 
-    /// Take every row out, then put the new ones in. GtkListView looks
-    /// for the rows it tracks, its scroll anchor among them, through
-    /// every row a change adds in place of them, which would make an
-    /// object for each; a change that only removes or only adds has
-    /// nothing to look through. The list opens at its first row, as a
-    /// new list or a new search should.
-    fn show(&self, shown: Vec<u32>, replaced: bool) {
+    /// Show `rows`, taking every row out, then putting the new ones in.
+    /// GtkListView looks for the rows it tracks, its scroll anchor among
+    /// them, through every row a change adds in place of them, which
+    /// would make an object for each; a change that only removes or only
+    /// adds has nothing to look through. The list opens at its first row,
+    /// as a new list or a new search should.
+    pub(crate) fn show(&self, rows: SidebarRows) {
+        let SidebarRows { index, shown, runs } = rows;
         let imp = self.imp();
+        let replaced = !Arc::ptr_eq(&imp.index.borrow(), &index);
         if !replaced && *imp.shown.borrow() == shown {
             return;
         }
-        let runs = runs(&self.index(), &shown);
+        if replaced {
+            imp.objects.borrow_mut().clear();
+            imp.index.replace(index);
+        }
         let removed = u32::try_from(imp.shown.take().len()).unwrap_or(u32::MAX);
         imp.runs.take();
         if removed > 0 {
@@ -141,6 +149,14 @@ mod tests {
         SidebarIndex::build(&objects, &schemas)
     }
 
+    fn replace(list: &SidebarList, index: SidebarIndex, query: &str) {
+        list.show(SidebarRows::new(Arc::new(index), query));
+    }
+
+    fn filter(list: &SidebarList, query: &str) {
+        list.show(SidebarRows::new(list.index(), query));
+    }
+
     fn sections(list: &SidebarList) -> Vec<(u32, u32)> {
         let mut found = Vec::new();
         let mut position = 0;
@@ -164,7 +180,8 @@ mod tests {
     #[gtk4::test]
     fn sections_are_the_runs_of_one_schema() {
         let list = SidebarList::new();
-        list.replace(
+        replace(
+            &list,
             index(&[
                 ("sales", "orders"),
                 ("public", "users"),
@@ -187,29 +204,30 @@ mod tests {
     #[gtk4::test]
     fn a_row_keeps_its_object_until_the_index_is_replaced() {
         let list = SidebarList::new();
-        list.replace(index(&[("public", "users"), ("public", "orders")]), "");
+        replace(&list, index(&[("public", "users"), ("public", "orders")]), "");
         let first = list.item(0);
 
-        list.filter(&search_key("o"));
-        list.filter("");
+        filter(&list, &search_key("o"));
+        filter(&list, "");
 
         assert_eq!(list.item(0), first, "a search made the row anew");
-        list.replace(index(&[("public", "users"), ("public", "orders")]), "");
+        replace(&list, index(&[("public", "users"), ("public", "orders")]), "");
         assert_ne!(list.item(0), first, "a new index kept an old row");
     }
 
     #[gtk4::test]
     fn a_search_is_one_change_and_none_when_the_rows_stay() {
         let list = SidebarList::new();
-        list.replace(
+        replace(
+            &list,
             index(&[("public", "users"), ("public", "orders"), ("sales", "user_log")]),
             "",
         );
         let seen = changes(&list);
 
-        list.filter(&search_key("user"));
-        list.filter(&search_key("user"));
-        list.filter(&search_key("users"));
+        filter(&list, &search_key("user"));
+        filter(&list, &search_key("user"));
+        filter(&list, &search_key("users"));
 
         assert_eq!(*seen.borrow(), [(0, 3, 0), (0, 0, 2), (0, 2, 0), (0, 0, 1)]);
         assert_eq!(sections(&list), [(0, 1)]);
@@ -222,7 +240,7 @@ mod tests {
         let list = SidebarList::new();
         let seen = changes(&list);
 
-        list.replace(index(&[]), "");
+        replace(&list, index(&[]), "");
 
         assert!(seen.borrow().is_empty());
         assert_eq!(list.section(0), (0, u32::MAX));
@@ -233,7 +251,8 @@ mod tests {
         let list = SidebarList::new();
         let query = search_key("ord");
 
-        list.replace(
+        replace(
+            &list,
             index(&[("public", "users"), ("public", "orders"), ("public", "carts")]),
             &query,
         );

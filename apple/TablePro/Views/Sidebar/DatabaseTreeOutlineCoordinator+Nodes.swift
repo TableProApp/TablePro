@@ -35,6 +35,10 @@ extension DatabaseTreeOutlineCoordinator {
             return recentTableRefs().map {
                 self.node(id: DatabaseTreeNode.recentTableId($0), kind: .recentTable($0))
             }
+        case .temporarySection:
+            return temporaryTableRefs().map {
+                self.node(id: DatabaseTreeNode.temporaryTableId($0), kind: .temporaryTable($0))
+            }
         case .foldersSection:
             return flatFolderNodes()
         case .tableFolder(let ref):
@@ -61,7 +65,7 @@ extension DatabaseTreeOutlineCoordinator {
             return redisChildren(of: nil)
         case .redisNode(let redisNode):
             return redisChildren(of: redisNode)
-        case .recentTable, .routine, .trigger, .userType, .status:
+        case .recentTable, .temporaryTable, .routine, .trigger, .userType, .status:
             return []
         }
     }
@@ -131,9 +135,7 @@ extension DatabaseTreeOutlineCoordinator {
 
     private func databaseTreeRootNodes() -> [DatabaseTreeNode] {
         var nodes: [DatabaseTreeNode] = []
-        if !recentTableRefs().isEmpty {
-            nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
-        }
+        nodes += sessionSectionNodes()
         let visible = DatabaseTreeVisibility.visible(
             databases: service.databases(for: connectionId),
             selected: sidebarState?.databaseFilterSelected ?? [],
@@ -155,9 +157,7 @@ extension DatabaseTreeOutlineCoordinator {
 
     private func flatRootNodes() -> [DatabaseTreeNode] {
         var nodes: [DatabaseTreeNode] = []
-        if !recentTableRefs().isEmpty {
-            nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
-        }
+        nodes += sessionSectionNodes()
         let folders = flatFoldersSectionNodes()
         let kinds = visibleObjectKinds()
         nodes += folders
@@ -269,9 +269,7 @@ extension DatabaseTreeOutlineCoordinator {
 
     private func hierarchicalRootNodes() -> [DatabaseTreeNode] {
         var nodes: [DatabaseTreeNode] = []
-        if !recentTableRefs().isEmpty {
-            nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
-        }
+        nodes += sessionSectionNodes()
         let browsable = DatabaseTreeVisibility.visibleSchemas(
             schemaService.schemas(for: connectionId),
             systemSchemas: systemSchemas,
@@ -370,6 +368,33 @@ extension DatabaseTreeOutlineCoordinator {
             case .node(let keyNode):
                 return node(id: DatabaseTreeNode.redisNodeId(keyNode), kind: .redisNode(keyNode))
             }
+        }
+    }
+
+    private func sessionSectionNodes() -> [DatabaseTreeNode] {
+        var nodes: [DatabaseTreeNode] = []
+        if !recentTableRefs().isEmpty {
+            nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
+        }
+        if !temporaryTableRefs().isEmpty {
+            nodes.append(node(id: DatabaseTreeNode.temporarySectionId, kind: .temporarySection))
+        }
+        return nodes
+    }
+
+    // The row's own schema stays nil: opening it must not move the browse cursor into `pg_temp_N`. The table carries
+    // the schema a query names it by.
+    internal func temporaryTableRefs() -> [DatabaseTreeTableRef] {
+        guard viewModel != nil else { return [] }
+        let database = browsingDatabase
+        let search = SidebarSearch(searchText)
+        return temporaryTables.tables(connectionId: connectionId, database: database ?? "").compactMap { table in
+            if !search.isEmpty {
+                guard search.matchesObject(named: table.name, database: database, schema: table.schema) else {
+                    return nil
+                }
+            }
+            return DatabaseTreeTableRef(database: database, schema: nil, table: table)
         }
     }
 

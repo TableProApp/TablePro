@@ -1086,6 +1086,17 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.duplicateCurrentDatabase(_:)), context))
     }
 
+    @Test("Search Database needs a connection and an engine it can search")
+    func searchDatabaseNeedsAnEligibleEngine() {
+        var context = MenuValidationContext()
+        context.canSearchDatabase = true
+        #expect(!enabled(#selector(MainSplitViewController.searchDatabase(_:)), context))
+        context.isConnected = true
+        #expect(enabled(#selector(MainSplitViewController.searchDatabase(_:)), context))
+        context.canSearchDatabase = false
+        #expect(!enabled(#selector(MainSplitViewController.searchDatabase(_:)), context))
+    }
+
     @Test("New Database needs a driver that switches containers")
     func createDatabaseNeedsContainerSupport() {
         var context = MenuValidationContext()

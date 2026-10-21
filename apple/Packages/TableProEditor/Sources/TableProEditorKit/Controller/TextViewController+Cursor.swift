@@ -74,6 +74,8 @@ extension TextViewController {
             positions.append(CursorPosition(range: selectedRange.range, start: start, end: end))
         }
 
+        snippetSelectionDidChange()
+
         isPostingCursorNotification = true
         cursorPositions = positions.sorted(by: { $0.range.location < $1.range.location })
         NotificationCenter.default.post(name: Self.cursorPositionUpdatedNotification, object: self)

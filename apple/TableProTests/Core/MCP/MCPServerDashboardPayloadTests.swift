@@ -109,6 +109,13 @@ struct MCPSessionControlStatementTests {
         #expect(clickHouse.message.contains("kill"))
     }
 
+    @Test("Kill on MongoDB, which only cancels, names the mode that works")
+    func killOnMongoNamesCancel() throws {
+        let mongo = try #require(try refusal(.mongodb, processId: "31745", cancelOnly: false))
+        #expect(mongo.code == .invalidArgument)
+        #expect(mongo.message.contains("cancel"))
+    }
+
     @Test("An engine with no session control keeps saying so")
     func engineWithoutSessionControl() throws {
         let error = try #require(try refusal(.typesense, processId: "1", cancelOnly: true))

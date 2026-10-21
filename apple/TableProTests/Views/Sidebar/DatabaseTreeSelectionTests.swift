@@ -36,6 +36,21 @@ struct DatabaseTreeSelectionTests {
     }
 }
 
+struct DatabaseTreeTemporarySelectionTests {
+    @Test("A temporary row opens its table but hands the Table menu nothing to act on")
+    func temporaryRowOpensButIsNotCommandable() {
+        let table = TableInfo(name: "scratch", type: .table, rowCount: nil, schema: "pg_temp_3")
+        let ref = DatabaseTreeTableRef(database: "app", schema: nil, table: table)
+        let node = DatabaseTreeNode(id: DatabaseTreeNode.temporaryTableId(ref), kind: .temporaryTable(ref))
+
+        #expect(DatabaseTreeSelection.isSelectable(node.kind))
+        #expect(!DatabaseTreeSelection.isSelectable(.temporarySection))
+        #expect(DatabaseTreeSelection.tableRef(of: node) == ref)
+        #expect(DatabaseTreeSelection.openableRefs(of: [node]) == [ref])
+        #expect(DatabaseTreeSelection.tableRefs(of: [node]).isEmpty)
+    }
+}
+
 struct SelectionDeltaTests {
     @Test("Single addition is detected")
     func singleAdditionDetected() {

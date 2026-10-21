@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
@@ -12,7 +12,7 @@ use super::sidebar_object::SidebarObject;
 
 #[derive(Default)]
 pub struct SidebarList {
-    pub(super) index: RefCell<Rc<SidebarIndex>>,
+    pub(super) index: RefCell<Arc<SidebarIndex>>,
     /// The entries the search keeps, in list order.
     pub(super) shown: RefCell<Vec<u32>>,
     /// Each section's rows in `shown`, from the first to past the last.
