@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProAutocomplete
 import TableProPluginKit
 import Testing
 
@@ -70,6 +71,35 @@ struct SQLRowToStatementConverterTests {
 
     private func plain(_ rows: [[PluginCellValue]]) -> [SQLRowToStatementConverter.SourceRow] {
         rows.map { SQLRowToStatementConverter.SourceRow(values: $0) }
+    }
+
+    // MARK: - Identifier case
+
+    private func spelledConverter(_ policy: SQLIdentifierCase) throws -> SQLRowToStatementConverter {
+        try SQLRowToStatementConverter(
+            tableName: "MY_TABLE",
+            columns: ["ID", "MixedCase", "ORDER"],
+            primaryKeyColumns: ["ID"],
+            databaseType: .snowflake,
+            dialect: Self.postgresDialect,
+            identifierSpelling: SQLIdentifierSpelling(
+                rules: SQLIdentifierRules(folding: .upper, reservedWords: ["ORDER"]),
+                policy: policy
+            )
+        )
+    }
+
+    @Test("A connection set to lowercase writes folded names bare and quotes the rest as stored")
+    func lowercaseIdentifierCase() throws {
+        let result = try spelledConverter(.lower).generateInserts(rows: plain([["1", "a", "b"]]))
+        #expect(result == "INSERT INTO my_table (id, \"MixedCase\", \"ORDER\") VALUES ('1', 'a', 'b');")
+    }
+
+    @Test("As stored and match what I type keep every name quoted, as before")
+    func storedIdentifierCaseQuotesEverything() throws {
+        let expected = "INSERT INTO \"MY_TABLE\" (\"ID\", \"MixedCase\", \"ORDER\") VALUES ('1', 'a', 'b');"
+        #expect(try spelledConverter(.asStored).generateInserts(rows: plain([["1", "a", "b"]])) == expected)
+        #expect(try spelledConverter(.matchTyped).generateInserts(rows: plain([["1", "a", "b"]])) == expected)
     }
 
     // MARK: - INSERT Generation

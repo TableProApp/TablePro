@@ -52,6 +52,9 @@ struct ExportState {
     var errorMessage: String?
     var warnings: [String] = []
 
+    // False for an export that writes no rows, which then reports its progress in objects.
+    var readsRows = true
+
     /// What the export wrote, as opposed to what went wrong with it. Kept apart from `warnings`
     /// because the success alert reads a non-empty `warnings` as a problem: it retitles itself,
     /// takes the caution icon, and drops its "Do not show this again" checkbox.
@@ -71,7 +74,11 @@ final class ExportService: ObservableObject {
     private let effectiveQueryTimeoutSeconds: Int
     private let exportPlugin: @MainActor (String) -> (any ExportFormatPlugin)?
 
-    init(driver: DatabaseDriver, databaseType: DatabaseType) {
+    init(
+        driver: DatabaseDriver,
+        databaseType: DatabaseType,
+        exportPlugin: @escaping @MainActor (String) -> (any ExportFormatPlugin)? = ExportService.installedExportPlugin
+    ) {
         self.driver = driver
         self.databaseType = databaseType
         self.effectiveQueryTimeoutSeconds = (driver as? PluginDriverAdapter)?.effectiveQueryTimeoutSeconds
@@ -79,7 +86,7 @@ final class ExportService: ObservableObject {
                 configuredSeconds: driver.connection.queryTimeoutSeconds,
                 globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
             )
-        self.exportPlugin = Self.installedExportPlugin
+        self.exportPlugin = exportPlugin
     }
 
     /// Rows already in memory still need the engine that produced them: a SQL export has to quote
@@ -188,8 +195,10 @@ final class ExportService: ObservableObject {
 
         let dataSource = ExportDataSourceAdapter(driver: driver, databaseType: databaseType)
 
+        let rowObjects = objects.filter { plugin.readsRows(optionValues: $0.optionValues, kind: $0.kind) }
+        state.readsRows = !rowObjects.isEmpty
         state.totalRows = await fetchTotalRowCount(
-            for: objects.filter { $0.kind.carriesRows },
+            for: rowObjects.filter { $0.kind.carriesRows },
             driver: driver,
             databaseType: databaseType,
             dataSource: dataSource

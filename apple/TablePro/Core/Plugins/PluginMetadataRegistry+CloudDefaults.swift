@@ -492,7 +492,8 @@ extension PluginMetadataRegistry {
                     fileExtensions: [],
                     databaseGroupingStrategy: .hierarchicalSchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .comment],
-                    systemDatabaseNamesIgnoreCase: true
+                    systemDatabaseNamesIgnoreCase: true,
+                    identifierRules: .snowflake
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: SQLDialectDescriptor(

@@ -55,6 +55,8 @@ public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
     /// language keywords, including value literals and `table.*`, and re-casing those is a
     /// correctness bug rather than a style choice.
     public let caseFolding: SQLCompletionCaseFolding
+    // Set on a name the catalog stores, so the connection's identifier rules can spell it.
+    public let identifier: SQLCompletionIdentifier?
     public var matchedRanges: [Range<Int>] = []
     public var fuzzyPenalty: Int = 0
     // `o.total` names a table and a column; a column literally named `order.total` is one name.
@@ -68,7 +70,8 @@ public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
         documentation: String? = nil,
         sortPriority: Int? = nil,
         filterText: String? = nil,
-        caseFolding: SQLCompletionCaseFolding = .fixed
+        caseFolding: SQLCompletionCaseFolding = .fixed,
+        identifier: SQLCompletionIdentifier? = nil
     ) {
         self.id = UUID()
         self.label = label
@@ -79,6 +82,7 @@ public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
         self.sortPriority = sortPriority ?? kind.basePriority
         self.filterText = filterText ?? label.lowercased()
         self.caseFolding = caseFolding
+        self.identifier = identifier
     }
 
     private init(recasing item: SQLCompletionItem, label: String, insertText: String) {
@@ -91,6 +95,7 @@ public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
         self.sortPriority = item.sortPriority
         self.filterText = item.filterText
         self.caseFolding = item.caseFolding
+        self.identifier = item.identifier
         self.matchedRanges = item.matchedRanges
         self.fuzzyPenalty = item.fuzzyPenalty
         self.isQualifiedReference = item.isQualifiedReference
@@ -217,7 +222,8 @@ public extension SQLCompletionItem {
             label: name,
             kind: isView ? .view : .table,
             insertText: name,
-            detail: isView ? "View" : "Table"
+            detail: isView ? "View" : "Table",
+            identifier: .catalog(name)
         )
     }
 
@@ -226,7 +232,8 @@ public extension SQLCompletionItem {
             label: name,
             kind: .schema,
             insertText: name,
-            detail: String(localized: "Schema")
+            detail: String(localized: "Schema"),
+            identifier: .catalog(name)
         )
     }
 
@@ -235,7 +242,8 @@ public extension SQLCompletionItem {
             label: name,
             kind: .schema,
             insertText: name,
-            detail: String(localized: "Database")
+            detail: String(localized: "Database"),
+            identifier: .catalog(name)
         )
     }
 
@@ -246,7 +254,8 @@ public extension SQLCompletionItem {
         isPrimaryKey: Bool = false,
         isNullable: Bool = true,
         defaultValue: String? = nil,
-        comment: String? = nil
+        comment: String? = nil,
+        identifier: SQLCompletionIdentifier? = nil
     ) -> SQLCompletionItem {
         var detailParts: [String] = []
         if isPrimaryKey { detailParts.append("PK") }
@@ -265,7 +274,8 @@ public extension SQLCompletionItem {
             kind: .column,
             insertText: name,
             detail: detail,
-            documentation: documentation
+            documentation: documentation,
+            identifier: identifier
         )
     }
 

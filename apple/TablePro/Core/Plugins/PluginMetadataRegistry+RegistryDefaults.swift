@@ -468,7 +468,8 @@ extension PluginMetadataRegistry {
                     fileExtensions: [],
                     databaseGroupingStrategy: .hierarchicalSchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment],
-                    rowMatchExcludedTypePrefixes: Self.oracleRowMatchExcludedTypePrefixes
+                    rowMatchExcludedTypePrefixes: Self.oracleRowMatchExcludedTypePrefixes,
+                    identifierRules: .oracle
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: oracleDialect,
