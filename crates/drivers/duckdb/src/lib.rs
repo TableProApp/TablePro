@@ -12,7 +12,7 @@ use duckdb::{
 
 use tablepro_core::{
     ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, DriverMaturity, ExecResult, MAX_QUERY_ROWS,
-    QueryResult, QueryResultBudget, TableInfo, Value,
+    OperationControl, QueryResult, QueryResultBudget, TableInfo, Value, run_server_cancellable,
 };
 use tempfile::TempDir;
 
@@ -62,6 +62,7 @@ impl DatabaseDriver for DuckdbDriver {
             .map_err(|e| DriverError::Internal(format!("duckdb connect join: {e}")))??;
         Ok(Box::new(DuckdbConnection {
             session: Arc::new(DuckdbSession {
+                interrupt: conn.interrupt_handle(),
                 conn: Mutex::new(conn),
                 _selected_file: selected_file,
             }),
@@ -306,6 +307,7 @@ struct DuckdbConnection {
 }
 
 struct DuckdbSession {
+    interrupt: Arc<duckdb::InterruptHandle>,
     conn: Mutex<DuckConnection>,
     _selected_file: Option<SelectedFlatFile>,
 }
@@ -313,6 +315,26 @@ struct DuckdbSession {
 struct SelectedFlatFile {
     _file: File,
     _private_dir: TempDir,
+}
+
+impl DuckdbConnection {
+    async fn interruptible<T>(
+        &self,
+        operation: impl std::future::Future<Output = Result<T, DriverError>>,
+        control: &OperationControl,
+    ) -> Result<T, DriverError> {
+        let handle = Arc::clone(&self.session.interrupt);
+        run_server_cancellable(
+            operation,
+            async move {
+                handle.interrupt();
+                Ok(())
+            },
+            |error| matches!(error, DriverError::Query { message, .. } if message.to_lowercase().contains("interrupt")),
+            control,
+        )
+        .await
+    }
 }
 
 #[async_trait]
@@ -424,6 +446,36 @@ impl Connection for DuckdbConnection {
             qualified(schema, table)
         );
         self.query(&sql).await
+    }
+
+    fn supports_server_cancellation(&self) -> bool {
+        true
+    }
+
+    async fn query_controlled(&self, sql: &str, control: &OperationControl) -> Result<QueryResult, DriverError> {
+        self.interruptible(self.query(sql), control).await
+    }
+
+    async fn query_params_controlled(
+        &self,
+        sql: &str,
+        params: &[Value],
+        control: &OperationControl,
+    ) -> Result<QueryResult, DriverError> {
+        self.interruptible(self.query_params(sql, params), control).await
+    }
+
+    async fn execute_controlled(&self, sql: &str, control: &OperationControl) -> Result<ExecResult, DriverError> {
+        self.interruptible(self.execute(sql), control).await
+    }
+
+    async fn execute_params_controlled(
+        &self,
+        sql: &str,
+        params: &[Value],
+        control: &OperationControl,
+    ) -> Result<ExecResult, DriverError> {
+        self.interruptible(self.execute_params(sql, params), control).await
     }
 
     async fn query(&self, sql: &str) -> Result<QueryResult, DriverError> {
@@ -843,7 +895,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_timed_out_query_reports_an_unknown_outcome() {
+    async fn a_timed_out_query_is_interrupted() {
         let conn = in_memory_connection().await;
         let control = tablepro_core::OperationControl::with_timeout(std::time::Duration::from_millis(5));
 
@@ -852,9 +904,28 @@ mod tests {
             .await;
 
         match result {
-            Err(DriverError::OperationOutcomeUnknown { .. }) => {}
-            other => panic!("expected OperationOutcomeUnknown, got {other:?}"),
+            Err(DriverError::TimedOut) => {}
+            other => panic!("expected TimedOut, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_long_query_stops_it_and_frees_the_connection() {
+        let conn = in_memory_connection().await;
+        let control = tablepro_core::OperationControl::with_timeout(std::time::Duration::from_millis(100));
+        let started = std::time::Instant::now();
+
+        let result = conn
+            .query_controlled(
+                "SELECT count(*) FROM range(1000000000000) a, range(1000000000000) b WHERE a.range + b.range = -1",
+                &control,
+            )
+            .await;
+
+        assert!(matches!(result, Err(DriverError::TimedOut)), "{result:?}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+        assert!(conn.query("SELECT 1").await.is_ok());
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
     }
 
     #[tokio::test]
