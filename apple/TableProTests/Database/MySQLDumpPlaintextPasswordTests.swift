@@ -108,8 +108,11 @@ struct MySQLDumpPlaintextPasswordTests {
         #expect(!built.arguments.contains { $0.hasPrefix("--ssl") })
     }
 
-    @Test("Modes that require TLS keep every plugin", arguments: [SSLMode.required, .verifyCa, .verifyIdentity])
-    func requiredKeepsPlugins(mode: SSLMode) throws {
+    @Test(
+        "Modes that require TLS keep every plugin",
+        arguments: [TableProPluginKit.SSLMode.required, .verifyCa, .verifyIdentity]
+    )
+    func requiredKeepsPlugins(mode: TableProPluginKit.SSLMode) throws {
         let built = try command(connection(mode))
         #expect(built.clientPluginFolder == nil)
         #expect(pluginDirectoryArgument(built) == nil)
