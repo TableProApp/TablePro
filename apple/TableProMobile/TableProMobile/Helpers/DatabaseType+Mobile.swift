@@ -14,6 +14,7 @@ nonisolated extension DatabaseType {
         case .mssql: return "1433"
         case .oracle: return "1521"
         case .clickhouse: return String(ClickHousePlugin.defaultPort)
+        case .mongodb: return "27017"
         case .sqlite, .duckdb: return ""
         default: return "3306"
         }
@@ -28,7 +29,7 @@ nonisolated extension DatabaseType {
 
     var speaksSQL: Bool {
         switch self {
-        case .redis: false
+        case .redis, .mongodb: false
         default: true
         }
     }
@@ -62,6 +63,7 @@ nonisolated extension DatabaseType {
         .redis,
         .mssql,
         .oracle,
-        .clickhouse
+        .clickhouse,
+        .mongodb
     ]
 }

@@ -75,6 +75,14 @@ public struct QueryScript: Sendable, Equatable {
             let commands = RedisCommandSplitter.commands(in: text)
             return QueryScript(units: commands.map { Unit(sql: $0.text) }, unitKind: .statement)
         }
+        if databaseType == .mongodb {
+            let source = text as NSString
+            let units = JavaScriptStatementScanner.executableStatements(in: text).compactMap { statement -> Unit? in
+                let range = statement.contentRange
+                return range.length > 0 ? Unit(sql: source.substring(with: range)) : nil
+            }
+            return QueryScript(units: units, unitKind: .statement)
+        }
 
         let grammar = executionGrammar(for: databaseType, session: session)
         let statements = SQLStatementScanner.executableStatements(in: text, grammar: grammar)
@@ -134,5 +142,12 @@ public struct QueryScript: Sendable, Equatable {
         }
         let rest = (source as NSString).substring(from: unitEnds[index])
         return QueryScript.plan(rest, databaseType: databaseType, sendsBatchesWhole: false, session: session)
+    }
+}
+
+extension JavaScriptStatementScanner.Statement {
+    // The span the Mac's QueryStatementScanner runs for a JavaScript statement.
+    var contentRange: NSRange {
+        SQLStatementScanner.LocatedStatement(sql: text, offset: range.location, hasContent: hasContent).contentRange
     }
 }

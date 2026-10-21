@@ -11,6 +11,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var isConnected = false
     var shouldFailConnect = false
     var holdsSuspensionBlockingResource = false
+    var currentDatabase: String?
     var onConnect: (@Sendable () -> Void)?
     var beforeConnect: (@Sendable () async -> Void)?
     var beforeDisconnect: (@Sendable () async -> Void)?

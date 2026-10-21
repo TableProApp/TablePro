@@ -19,6 +19,7 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private(set) var appliedQueryTimeouts: [Int] = []
     private(set) var cancelQueryCalls = 0
     private(set) var rowLookups: [(query: String, parameters: [PluginCellValue])] = []
+    private(set) var contexts: [PluginStatementContext] = []
 
     func connect() async throws {}
 
@@ -34,6 +35,21 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func execute(query: String) async throws -> PluginQueryResult {
         plainQueries.append(query)
         return scriptedResult
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        contexts.append(context)
+        return try await execute(query: query)
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        contexts.append(context)
+        return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {

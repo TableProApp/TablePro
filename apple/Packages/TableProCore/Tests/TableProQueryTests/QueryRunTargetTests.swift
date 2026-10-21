@@ -143,6 +143,17 @@ struct QueryRunTargetTests {
         #expect(target("GET a\n", caret: 6, .redis) == .nothing)
     }
 
+    @Test("MongoDB runs the JavaScript statement the caret is in, whole")
+    func mongoStatementAtTheCaret() {
+        let text = "db.a.find({})\ndb.b.find({x: 1})"
+        #expect(target(text, caret: 16, .mongodb) == .statement("db.b.find({x: 1})", range: NSRange(location: 14, length: 17)))
+        #expect(target(text, caret: 3, .mongodb) == .statement("db.a.find({})", range: NSRange(location: 0, length: 13)))
+
+        let body = "db.a.find({}).forEach(function (d) { print(d); });"
+        #expect(target(body, caret: 40, .mongodb) == .statement(body, range: NSRange(location: 0, length: (body as NSString).length)))
+        #expect(target(" \n// note\n", caret: 2, .mongodb) == .nothing)
+    }
+
     @Test("A Redis selection runs verbatim")
     func redisSelectionRunsVerbatim() {
         let resolved = QueryRunTarget.resolve(

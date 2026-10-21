@@ -2,7 +2,7 @@ import Foundation
 import TableProPluginKit
 
 nonisolated enum MongoDBSSLMapping {
-    static func uriParameters(for ssl: SSLConfiguration) -> [String] {
+    static func uriParameters(for ssl: SSLConfiguration, certificateKeyFile: String? = nil) -> [String] {
         guard ssl.isEnabled else { return [] }
         var params: [String] = ["tls=true"]
         switch ssl.mode {
@@ -19,10 +19,11 @@ nonisolated enum MongoDBSSLMapping {
                 ?? ssl.caCertificatePath
             params.append("tlsCAFile=\(encoded)")
         }
-        if !ssl.clientCertificatePath.isEmpty {
-            let encoded = ssl.clientCertificatePath
+        let certificateKeyFile = certificateKeyFile ?? ssl.clientCertificatePath
+        if !certificateKeyFile.isEmpty {
+            let encoded = certificateKeyFile
                 .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
-                ?? ssl.clientCertificatePath
+                ?? certificateKeyFile
             params.append("tlsCertificateKeyFile=\(encoded)")
         }
         return params

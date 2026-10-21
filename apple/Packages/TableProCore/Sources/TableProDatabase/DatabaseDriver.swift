@@ -41,6 +41,9 @@ public protocol DatabaseDriver: AnyObject, Sendable {
 
     var serverVersion: String? { get }
 
+    // The database the session is on, for a driver that moves it itself: a MongoDB `use`, or a connection naming none.
+    var currentDatabase: String? { get }
+
     func escapeStringLiteral(_ value: String) -> String
 }
 
@@ -56,6 +59,8 @@ public extension DatabaseDriver {
     }
 
     func sessionTransactionState() async -> DriverTransactionState { .unknown }
+
+    var currentDatabase: String? { nil }
 
     func escapeStringLiteral(_ value: String) -> String {
         SQLEscaping.ansiStringLiteral(value)

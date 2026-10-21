@@ -86,6 +86,7 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
     private var _writeConcern = MongoWriteConcern.serverDefault
     private var _isCancelled: Bool = false
     private var _queryTimeoutMS: Int32 = 0
+    private var _clientCertificateFile: MongoDBClientCertificateFile?
     #if canImport(CLibMongoc)
     private var _activeSessionLsid: OpaquePointer?
     #endif
@@ -163,7 +164,8 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         self.resolvedAuthSource = MongoDBAuthSourceResolver.resolve(
             explicitAuthSource: authSource,
             configuredDatabase: configuredDatabase,
-            useSrv: useSrv
+            useSrv: useSrv,
+            authMechanism: authMechanism
         )
         self.readPreference = readPreference
         self.writeConcern = writeConcern
@@ -214,10 +216,9 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
     }
 
     deinit {
+        removeClientCertificateFile()
         #if canImport(CLibMongoc)
-        // Capture the handle and queue to clean up asynchronously.
-        // By the time deinit runs, no other references exist, so the
-        // dispatched block is the sole owner of the pointer.
+        // No other reference exists by now, so the dispatched block is the sole owner of the handle.
         stateLock.lock()
         let handle = client
         client = nil
@@ -279,7 +280,10 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         var params = connectTimeout.uriParameters
         params.append("authSource=\(encodedAuthSource)")
 
-        params.append(contentsOf: MongoDBSSLMapping.uriParameters(for: ssl))
+        params.append(contentsOf: MongoDBSSLMapping.uriParameters(
+            for: ssl,
+            certificateKeyFile: clientCertificateFile?.path
+        ))
 
         if let rp = readPreference, !rp.isEmpty {
             params.append("readPreference=\(rp)")
@@ -343,13 +347,11 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         #if canImport(CLibMongoc)
         _ = Self.initOnce
         try await pluginDispatchAsync(on: queue) { [self] in
+            try prepareClientCertificateFile()
             let uriString = buildUri()
             logger.debug("Connecting to MongoDB at \(self.host):\(self.port)")
 
-            guard let newClient = mongoc_client_new(uriString) else {
-                logger.error("Failed to create MongoDB client")
-                throw MongoDBError.connectionFailed
-            }
+            let newClient = try Self.makeClient(uriString)
 
             var error = bson_error_t()
             guard let pingCmd = jsonToBson("{\"ping\": 1}") else {
@@ -418,6 +420,29 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
             queue.async { mongoc_client_destroy(handle) }
         }
         #endif
+        removeClientCertificateFile()
+    }
+
+    private var clientCertificateFile: MongoDBClientCertificateFile? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _clientCertificateFile
+    }
+
+    private func prepareClientCertificateFile() throws {
+        guard clientCertificateFile == nil,
+              let file = try MongoDBClientCertificateFile.joining(ssl) else { return }
+        stateLock.lock()
+        _clientCertificateFile = file
+        stateLock.unlock()
+    }
+
+    private func removeClientCertificateFile() {
+        stateLock.lock()
+        let file = _clientCertificateFile
+        _clientCertificateFile = nil
+        stateLock.unlock()
+        file?.remove()
     }
 
     // MARK: - Cancellation
@@ -455,15 +480,14 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         if let previous { bson_destroy(previous) }
     }
 
-    /// Aborts the in-flight operation server-side. The connection's own queue is blocked inside a
-    /// libmongoc call at this point, so the `killSessions` command needs its own client.
+    // The connection's own queue is blocked inside the call being cancelled, so killSessions needs its own client.
     private func killSession(lsid: OpaquePointer) {
         let uriString = buildUri()
         let session = QueueTransfer(value: lsid)
         controlQueue.async {
             let lsid = session.value
             defer { bson_destroy(lsid) }
-            guard let controlClient = mongoc_client_new(uriString) else { return }
+            guard let controlClient = try? MongoDBConnection.makeClient(uriString) else { return }
             defer { mongoc_client_destroy(controlClient) }
 
             let command = bson_new()
@@ -482,6 +506,23 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
                 logger.warning("killSessions failed with code \(error.code, privacy: .public)")
             }
         }
+    }
+
+    // The URI holds the password, so the error carries only libmongoc's reason.
+    private static func makeClient(_ uriString: String) throws -> OpaquePointer {
+        var error = bson_error_t()
+        guard let uri = mongoc_uri_new_with_error(uriString, &error) else {
+            let message = MongoBsonBuilder.errorMessage(&error)
+            logger.error("MongoDB connection string rejected: \(message)")
+            throw MongoDBError(code: error.code, message: message)
+        }
+        defer { mongoc_uri_destroy(uri) }
+        guard let client = mongoc_client_new_from_uri_with_error(uri, &error) else {
+            let message = MongoBsonBuilder.errorMessage(&error)
+            logger.error("Failed to create MongoDB client: \(message)")
+            throw MongoDBError(code: error.code, message: message)
+        }
+        return client
     }
     #endif
 

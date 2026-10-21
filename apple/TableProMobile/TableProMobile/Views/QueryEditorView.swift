@@ -405,7 +405,11 @@ struct QueryEditorView: View {
                 ContentUnavailableView {
                     Label("Run a Query", systemImage: "terminal")
                 } description: {
-                    Text("Write SQL and tap the play button.")
+                    if databaseType.speaksSQL {
+                        Text("Write SQL and tap the play button.")
+                    } else {
+                        Text("Write a query and tap the play button.")
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if viewModel.columns.isEmpty || viewModel.legacyRows.isEmpty && !runCompleted {
@@ -598,7 +602,7 @@ struct QueryEditorView: View {
         }
         if ClipboardExporter.incompleteColumns(columns: columns, cells: cells).isEmpty {
             Menu("Copy Row") {
-                ForEach(ExportFormat.allCases) { format in
+                ForEach(ExportFormat.offered(for: databaseType)) { format in
                     Button(format.rawValue) {
                         guard let text = try? ClipboardExporter.exportRow(
                             columns: columns, cells: cells,
@@ -662,7 +666,7 @@ struct QueryEditorView: View {
 
             if !viewModel.legacyRows.isEmpty {
                 Section("Share Results") {
-                    ForEach(ExportFormat.allCases) { format in
+                    ForEach(ExportFormat.offered(for: databaseType)) { format in
                         Button {
                             do throws(ClipboardExporter.IncompleteValues) {
                                 shareText = try ClipboardExporter.exportRows(
@@ -680,7 +684,7 @@ struct QueryEditorView: View {
                     }
                 }
                 Section("Copy Results") {
-                    ForEach(ExportFormat.allCases) { format in
+                    ForEach(ExportFormat.offered(for: databaseType)) { format in
                         Button {
                             do throws(ClipboardExporter.IncompleteValues) {
                                 let text = try ClipboardExporter.exportRows(
@@ -830,6 +834,7 @@ struct QueryEditorView: View {
         // Released before the change posts, so the reload it starts can open a catalog connection again.
         if holdsCatalog { appState.connectionManager.releaseCatalogConnections(for: connectionId) }
         postCatalogChanges(on: session)
+        await coordinator.followSessionDatabase()
         let phase = viewModel.phase
         let outcome = QueryExecutionOutcome(phase: phase)
 
@@ -870,8 +875,14 @@ struct QueryEditorView: View {
     // They are read as sent, since a run splits the rest of its text again after a statement that changes how the
     // session reads literals.
     private func postCatalogChanges(on session: ConnectionSession) {
-        guard databaseType.speaksSQL else { return }
         let statements = viewModel.sentStatements
+        // A key or a collection a write made or removed is on the lists too; only a proven read leaves them as they are.
+        guard databaseType.speaksSQL else {
+            if statements.contains(where: { SQLWriteClassifier.isWriteQuery($0, databaseType: databaseType) }) {
+                coordinator.noteCatalogChanged([.tables, .databases])
+            }
+            return
+        }
         appState.catalogChanges.noteSessionEffect(
             SessionLocalStatements.effect(of: statements, databaseType: databaseType),
             for: connectionId,

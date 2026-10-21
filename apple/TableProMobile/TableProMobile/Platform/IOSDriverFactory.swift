@@ -180,6 +180,23 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 rowIdentity: .everyColumn,
                 readsOnly: { !SQLWriteClassifier.isWriteQuery($0, databaseType: .clickhouse) }
             )
+        case .mongodb:
+            let tls = try MongoDBDialPlan.ssl(
+                try ssl(for: connection, serverName: preTunnelHost),
+                tunneled: preTunnelHost != nil
+            )
+            let config = pluginConfig(
+                for: connection,
+                password: password,
+                ssl: tls,
+                preTunnelHost: preTunnelHost,
+                fields: MongoDBDialPlan.additionalFields(of: connection, preTunnelHost: preTunnelHost)
+            )
+            return MongoDBBackedDriver(
+                mongo: MongoDBPluginDriver(config: config),
+                dialedHosts: preTunnelHost == nil ? MongoDBDialPlan.seedHosts(of: connection) : [connection.host],
+                queryTimeoutSeconds: connection.queryTimeoutSeconds
+            )
         default:
             throw ConnectionError.driverNotFound(connection.type.rawValue)
         }
@@ -196,7 +213,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
 
     static let supportedTypeList: [DatabaseType] = [
         .sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle,
-        .clickhouse
+        .clickhouse, .mongodb
     ]
 
     // A plugin reads the server behind a tunnel from its fields; one stored or imported there never stands in for it.
@@ -204,9 +221,10 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         for connection: DatabaseConnection,
         password: String?,
         ssl: DriverSSLConfiguration,
-        preTunnelHost: String?
+        preTunnelHost: String?,
+        fields: [String: String]? = nil
     ) -> DriverConnectionConfig {
-        var fields = connection.additionalFields
+        var fields = fields ?? connection.additionalFields
         fields[DatabaseConnection.preTunnelHostKey] = preTunnelHost
         return DriverConnectionConfig(
             host: connection.host,

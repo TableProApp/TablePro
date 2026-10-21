@@ -50,9 +50,9 @@ struct MacOnlyImportRowTests {
         #expect(MacOnlyConnection.importStatus(for: row.settings) == MacOnlyConnection.status)
     }
 
-    @Test("A MongoDB row stays preselected and reads the Mac only status")
-    func mongoDBRowIsMarked() throws {
-        let preview = try analyzed(type: DatabaseType.mongodb.rawValue)
+    @Test("A Cassandra row stays preselected and reads the Mac only status")
+    func cassandraRowIsMarked() throws {
+        let preview = try analyzed(type: DatabaseType.cassandra.rawValue)
         let row = try #require(preview.connections.first)
 
         #expect(row.unsupportedTypeId == nil)

@@ -10,6 +10,11 @@ nonisolated enum ExportFormat: String, CaseIterable, Identifiable {
     case csv = "CSV"
     case sqlInsert = "SQL INSERT"
     var id: String { rawValue }
+
+    // An INSERT statement means nothing to a key or a collection.
+    static func offered(for type: DatabaseType) -> [ExportFormat] {
+        type.speaksSQL ? allCases : [.json, .csv]
+    }
 }
 
 nonisolated enum ClipboardExporter {

@@ -1,7 +1,6 @@
 import Foundation
+import TableProSQLGrammar
 import Testing
-
-@testable import TableProUtilities
 
 struct JavaScriptStatementScannerTests {
     private func texts(_ source: String) -> [String] {

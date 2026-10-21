@@ -193,7 +193,7 @@ struct RowDetailView: View {
     @ViewBuilder
     private var shareMenuContent: some View {
         Section("Share") {
-            ForEach(ExportFormat.allCases) { format in
+            ForEach(ExportFormat.offered(for: viewModel.databaseType)) { format in
                 Button {
                     guard let text = viewModel.exportCurrentRow(as: format) else {
                         hapticError.toggle()
@@ -207,7 +207,7 @@ struct RowDetailView: View {
             }
         }
         Section("Copy to Clipboard") {
-            ForEach(ExportFormat.allCases) { format in
+            ForEach(ExportFormat.offered(for: viewModel.databaseType)) { format in
                 Button {
                     guard let text = viewModel.exportCurrentRow(as: format) else {
                         hapticError.toggle()

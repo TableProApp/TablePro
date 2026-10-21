@@ -7,6 +7,7 @@ import AppKit
 import Combine
 import os
 import SwiftUI
+import TableProConnectionLibrary
 import TableProPluginKit
 import TableProRedisCore
 import TableProSSHConfig

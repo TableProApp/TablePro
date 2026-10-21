@@ -5,21 +5,21 @@ import Testing
 
 @MainActor
 struct MacOnlyConnectionFormTests {
-    private func mongoConnection() -> DatabaseConnection {
+    private func cassandraConnection() -> DatabaseConnection {
         DatabaseConnection(
             name: "Events",
-            type: .mongodb,
-            host: "mongo.example.com",
-            port: 27_017,
+            type: .cassandra,
+            host: "cassandra.example.com",
+            port: 9_042,
             username: "reader",
             database: "events",
-            additionalFields: ["mongoAuthSource": "admin", "mongoReplicaSet": "rs0"]
+            additionalFields: ["cassandraLocalDatacenter": "dc1", "cassandraConsistency": "QUORUM"]
         )
     }
 
-    @Test("Renaming a MongoDB connection keeps its type, port and Mac fields")
+    @Test("Renaming a Cassandra connection keeps its type, port and Mac fields")
     func renameKeepsMacOnlyFields() {
-        let stored = mongoConnection()
+        let stored = cassandraConnection()
         let viewModel = ConnectionFormViewModel(editing: stored)
 
         viewModel.name = "Event Store"
@@ -27,11 +27,11 @@ struct MacOnlyConnectionFormTests {
         let built = viewModel.buildConnection()
 
         #expect(saved.name == "Event Store")
-        #expect(saved.type == .mongodb)
-        #expect(saved.port == 27_017)
+        #expect(saved.type == .cassandra)
+        #expect(saved.port == 9_042)
         #expect(saved.additionalFields == stored.additionalFields)
-        #expect(built.type == .mongodb)
-        #expect(built.port == 27_017)
+        #expect(built.type == .cassandra)
+        #expect(built.port == 9_042)
         #expect(built.additionalFields == stored.additionalFields)
     }
 }

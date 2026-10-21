@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import Network
+import TableProConnectionLibrary
 import TableProPluginKit
 
 @MainActor

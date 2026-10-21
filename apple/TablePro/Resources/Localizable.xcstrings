@@ -616,6 +616,10 @@
     "The changes were saved, but the type could not be read back. Reload before editing it again." : {
 
     },
+    "The client certificate and key could not be written to a temporary file." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The column “%1$@” is no longer in “%2$@”." : {
 
     },

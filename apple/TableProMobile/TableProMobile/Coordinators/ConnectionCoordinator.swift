@@ -86,7 +86,8 @@ final class ConnectionCoordinator {
         connection.type == .mysql || connection.type == .mariadb ||
         connection.type == .tidb || connection.type == .oceanbase ||
         connection.type == .postgresql || connection.type == .redshift ||
-        connection.type == .mssql || connection.type == .clickhouse
+        connection.type == .mssql || connection.type == .clickhouse ||
+        connection.type == .mongodb
     }
 
     var supportsSchemas: Bool {
@@ -718,6 +719,13 @@ final class ConnectionCoordinator {
     }
 
     // MARK: - Database / Schema Switching
+
+    // A MongoDB `use` moves the session itself, so the lists and the picker follow it there.
+    func followSessionDatabase() async {
+        guard supportsDatabaseSwitching, !anotherWindowHoldsEditor,
+              let current = session?.driver.currentDatabase, current != activeDatabase else { return }
+        await switchDatabase(to: current)
+    }
 
     func switchDatabase(to name: String) async {
         guard session != nil, name != activeDatabase, !isSwitching else { return }

@@ -1,10 +1,10 @@
 //
 //  HostListEndpointTests.swift
-//  TableProTests
+//  TableProConnectionLibraryTests
 //
 
 import Foundation
-@testable import TablePro
+import TableProConnectionLibrary
 import Testing
 
 struct HostListEndpointTests {
@@ -48,18 +48,5 @@ struct HostListEndpointTests {
         #expect(HostListEndpoint.parse("https://user:secret@es1:9200", defaultPort: 9_200) == nil)
         #expect(HostListEndpoint.parse("https://es1:9200/prefix", defaultPort: 9_200) == nil)
         #expect(HostListEndpoint.parseList("a:1,, ,b:2,", defaultPort: 9).map(\.entry) == ["a:1", "b:2"])
-    }
-
-    @Test("The tunnel forwards to the first node of a pasted URL list")
-    func tunnelUsesFirstParsedNode() {
-        let connection = DatabaseConnection(
-            name: "es",
-            host: "",
-            port: 9_200,
-            type: .elasticsearch,
-            additionalFields: ["esHosts": "https://10.0.0.1:9201,https://10.0.0.2:9200"]
-        )
-        #expect(connection.tunnelForwardEndpoint.host == "10.0.0.1")
-        #expect(connection.tunnelForwardEndpoint.port == 9_201)
     }
 }

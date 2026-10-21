@@ -20,14 +20,14 @@ struct IOSDriverFactoryRefusalTests {
         "Every type with a driver on iPhone and iPad opens here",
         arguments: [
             DatabaseType.sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle,
-            .clickhouse
+            .clickhouse, .mongodb
         ]
     )
     func supportedTypeOpens(type: DatabaseType) {
         #expect(IOSDriverFactory.refusal(for: DatabaseConnection(type: type, host: "db.acme.io")) == nil)
     }
 
-    @Test("A type with no driver here is refused by its engine name", arguments: ["MongoDB", "Cassandra", "Elasticsearch"])
+    @Test("A type with no driver here is refused by its engine name", arguments: ["Cassandra", "Elasticsearch", "Snowflake"])
     func typeWithoutDriverIsRefused(engine: String) {
         let connection = DatabaseConnection(type: DatabaseType(rawValue: engine), host: "db.acme.io")
 
@@ -59,7 +59,7 @@ struct IOSDriverFactoryRefusalTests {
         let factory: any DriverFactory = IOSDriverFactory()
 
         #expect(factory.refusal(for: socketConnection()) == .localSocketNotSupported)
-        #expect(factory.refusal(for: DatabaseConnection(type: .mongodb)) == .driverNotFound("MongoDB"))
+        #expect(factory.refusal(for: DatabaseConnection(type: .cassandra)) == .driverNotFound("Cassandra"))
         #expect(factory.supportedTypes() == IOSDriverFactory.supportedTypeList)
     }
 }

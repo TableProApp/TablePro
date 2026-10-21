@@ -5,7 +5,7 @@ import TableProModels
 import TableProPluginKit
 
 // Runs a driver the Mac ships as a plugin, compiled into this app, the way the Mac's PluginDriverAdapter does.
-nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
+nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "PluginBackedDriver")
 
     private let plugin: any PluginDatabaseDriver
@@ -14,8 +14,11 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
     private let rowChangeSuffix: String
     let rowPin: [String]
     private let readsOnly: @Sendable (String) -> Bool
+    private let provesReads: Bool
     let rowIdentity: RowIdentity
 
+    // `provesReads`: `readsOnly` is a proof rather than a guess, so a statement it passes runs marked read-only and the
+    // plugin refuses any write it makes, as the Mac's PluginStatementContext.statement does for MongoDB.
     init(
         plugin: any PluginDatabaseDriver,
         dialedHosts: [String],
@@ -23,7 +26,8 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         rowChangeSuffix: String = "",
         rowPin: [String] = [],
         rowIdentity: RowIdentity,
-        readsOnly: @escaping @Sendable (String) -> Bool
+        readsOnly: @escaping @Sendable (String) -> Bool,
+        provesReads: Bool = false
     ) {
         self.plugin = plugin
         self.dialedHosts = dialedHosts
@@ -32,6 +36,13 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         self.rowPin = rowPin
         self.rowIdentity = rowIdentity
         self.readsOnly = readsOnly
+        self.provesReads = provesReads
+    }
+
+    func statementContext(_ query: String) -> PluginStatementContext {
+        var context = PluginStatementContext()
+        context.readOnly = provesReads && readsOnly(query)
+        return context
     }
 
     // MARK: - Connection
@@ -61,6 +72,8 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
 
     var serverVersion: String? { plugin.serverVersion }
 
+    var currentDatabase: String? { nil }
+
     func escapeStringLiteral(_ value: String) -> String {
         plugin.escapeStringLiteral(value)
     }
@@ -68,12 +81,13 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
     // MARK: - Queries
 
     func execute(query: String) async throws -> QueryResult {
-        QueryResult(from: try await plugin.execute(query: query))
+        QueryResult(from: try await plugin.execute(query: query, context: statementContext(query)))
     }
 
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
         let plugin = plugin
         let isRead = readsOnly(query)
+        let context = statementContext(query)
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -82,7 +96,9 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
                     if isRead, let bounded = try await plugin.executeBoundedQuery(query: query, rowCap: options.maxRows) {
                         result = bounded
                     } else {
-                        result = try await plugin.executeUserQuery(query: query, rowCap: options.maxRows, parameters: nil)
+                        result = try await plugin.executeUserQuery(
+                            query: query, rowCap: options.maxRows, parameters: nil, context: context
+                        )
                     }
                     Self.emit(result, options: options, into: continuation)
                     continuation.finish()

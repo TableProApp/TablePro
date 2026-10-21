@@ -66,6 +66,11 @@ final class ConnectionFormViewModel {
     var oracleSID = ""
     var oracleRole: OracleConnectionOptions.Role = .normal
     var oracleNetworkEncryption: OracleConnectionOptions.NetworkEncryption = .accepted
+    var mongoHosts = ""
+    var mongoAuthSource = ""
+    var mongoAuthMechanism = ""
+    var mongoReplicaSet = ""
+    var mongoUsesSRV = false
     var iam = ConnectionIAMFormState()
 
     // Organization
@@ -167,6 +172,11 @@ final class ConnectionFormViewModel {
         oracleSID = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? ""
         oracleRole = OracleConnectionOptions.role(from: conn.additionalFields)
         oracleNetworkEncryption = OracleConnectionOptions.networkEncryption(from: conn.additionalFields)
+        mongoHosts = Self.mongoHosts(of: conn)
+        mongoAuthSource = conn.additionalFields[MongoDBDialPlan.authSourceField] ?? ""
+        mongoAuthMechanism = conn.additionalFields[MongoDBDialPlan.authMechanismField] ?? ""
+        mongoReplicaSet = conn.additionalFields[MongoDBDialPlan.replicaSetField] ?? ""
+        mongoUsesSRV = conn.additionalFields[MongoDBDialPlan.srvField] == "true"
         iam = ConnectionIAMFormState(connection: conn)
         sshEnabled = conn.sshEnabled
         groupId = conn.groupId
@@ -217,7 +227,32 @@ final class ConnectionFormViewModel {
         if type == .duckdb {
             return duckDBInMemory || !database.isEmpty
         }
+        if type == .mongodb {
+            return mongoHostsIssue == nil && !hasJumpHostWithoutHost
+        }
         return !host.isEmpty && !hasJumpHostWithoutHost
+    }
+
+    // The Mac's MongoDB form keeps the seed list in place of Host and Port, and stores its first entry there too.
+    static func mongoHosts(of connection: DatabaseConnection) -> String {
+        if let listed = connection.additionalFields[MongoDBDialPlan.hostsField], !listed.isEmpty { return listed }
+        guard !connection.host.isEmpty else { return "" }
+        let port = connection.port > 0 ? connection.port : Self.mongoDefaultPort
+        return HostListEndpoint(host: connection.host, port: port).entry
+    }
+
+    private static let mongoDefaultPort = 27_017
+
+    private var mongoEndpoints: [HostListEndpoint] {
+        HostListEndpoint.parseList(mongoHosts, defaultPort: Self.mongoDefaultPort)
+    }
+
+    var mongoHostsIssue: String? {
+        let entries = mongoHosts.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        if entries.isEmpty { return String(localized: "Enter at least one host.") }
+        guard let invalid = entries.first(where: { HostListEndpoint.parse($0, defaultPort: Self.mongoDefaultPort) == nil })
+        else { return nil }
+        return String(format: String(localized: "“%@” is not a host or host:port"), invalid)
     }
 
     var isFileBased: Bool {
@@ -247,11 +282,13 @@ final class ConnectionFormViewModel {
     }
 
     var edits: ConnectionFormEdits {
-        ConnectionFormEdits(
-            name: name.isEmpty ? (selectedFileURL?.lastPathComponent ?? host) : name,
+        let primary = type == .mongodb ? mongoEndpoints.first : nil
+        let dialedHost = primary?.host ?? self.host
+        return ConnectionFormEdits(
+            name: name.isEmpty ? (selectedFileURL?.lastPathComponent ?? dialedHost) : name,
             type: type,
-            host: host,
-            port: Int(port) ?? Int(type.defaultPort) ?? 0,
+            host: dialedHost,
+            port: primary?.port ?? Int(port) ?? Int(type.defaultPort) ?? 0,
             username: username,
             database: database,
             groupId: groupId,
@@ -261,6 +298,7 @@ final class ConnectionFormViewModel {
             sslMode: effectiveSSLMode,
             sshTunnel: sshTunnel,
             oracle: oracleOptions,
+            mongo: mongoOptions,
             iam: iamOptions
         )
     }
@@ -287,7 +325,21 @@ final class ConnectionFormViewModel {
         Use Required for Redis Cloud, Upstash, and AWS ElastiCache encrypted endpoints.
         """)
 
+    static let mongoPreferredForcesTLSMessage = String(
+        localized: "The MongoDB driver has no TLS fallback, so Preferred connects with TLS, as Required does."
+    )
+
     var sslModeNote: String? {
+        if type == .mongodb {
+            switch sslMode {
+            case .verifyCa, .verifyFull:
+                return hasCertificate(.certificateAuthority) ? nil : MongoDBDialPlan.verifyNeedsCAMessage
+            case .preferred:
+                return Self.mongoPreferredForcesTLSMessage
+            case .disable, .require:
+                return nil
+            }
+        }
         guard type == .redis, sslMode == .preferred else { return nil }
         return Self.redisPreferredForcesTLSMessage
     }
@@ -326,6 +378,17 @@ final class ConnectionFormViewModel {
             return sshAuthMethod
         }
         return stored
+    }
+
+    private var mongoOptions: ConnectionFormEdits.MongoOptions? {
+        guard type == .mongodb else { return nil }
+        return ConnectionFormEdits.MongoOptions(
+            hosts: mongoEndpoints.map(\.entry).joined(separator: ","),
+            authSource: mongoAuthSource.trimmingCharacters(in: .whitespaces),
+            authMechanism: mongoAuthMechanism,
+            replicaSet: mongoReplicaSet.trimmingCharacters(in: .whitespaces),
+            usesSRV: mongoUsesSRV
+        )
     }
 
     private var oracleOptions: ConnectionFormEdits.OracleOptions? {
@@ -426,6 +489,9 @@ final class ConnectionFormViewModel {
         guard oldType != type else { return }
         iam.keepMethodOffered(for: type)
         updateDefaultPort()
+        if type == .mongodb, mongoHosts.isEmpty, !host.isEmpty {
+            mongoHosts = HostListEndpoint(host: host, port: Self.mongoDefaultPort).entry
+        }
         selectedFileURL = nil
         database = ""
         pendingFile = nil
