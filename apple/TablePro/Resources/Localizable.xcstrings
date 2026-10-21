@@ -2167,6 +2167,9 @@
         }
       }
     },
+    "%@" : {
+
+    },
     "%@\nPreview tab. Double-click to keep it open." : {
       "localizations" : {
         "fr" : {
@@ -3058,6 +3061,9 @@
         }
       }
     },
+    "%@ connections do not support adding rows from Shortcuts." : {
+
+    },
     "%@ connections open a server, not a database file, so there is nothing to fetch over SSH." : {
       "localizations" : {
         "fr" : {
@@ -3428,6 +3434,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ n’a pas de colonne nommée %2$@"
+          }
+        }
+      }
+    },
+    "%@ has no column named %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ has no column named %2$@."
           }
         }
       }
@@ -3924,6 +3940,9 @@
           }
         }
       }
+    },
+    "%@ is read-only, so rows cannot be added." : {
+
     },
     "%@ is required" : {
       "localizations" : {
@@ -15169,6 +15188,9 @@
         }
       }
     },
+    "A dictionary for each row, keyed by column" : {
+
+    },
     "A different file already exists at %@." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -16852,6 +16874,9 @@
       }
     },
     "A transaction is open on this connection, and its uncommitted rows aren't in these counts." : {
+
+    },
+    "A transaction is open on this connection. Commit or roll it back in TablePro, then run the shortcut again." : {
 
     },
     "A tunnel forwards one address, and the node Sentinel names is on the server's own network, so Sentinel mode cannot run through one. Connect to a data node directly, or turn the tunnel off." : {
@@ -18763,6 +18788,9 @@
         }
       }
     },
+    "Add a row to ${table}" : {
+
+    },
     "Add an AI provider in Settings > AI first." : {
       "localizations" : {
         "fr" : {
@@ -19679,6 +19707,12 @@
         }
       }
     },
+    "Add multiple rows to a table on a saved connection. Provide the rows as a JSON array, CSV text, or a file." : {
+
+    },
+    "Add one row to a table on a saved connection. Provide the row as a JSON object or a CSV row." : {
+
+    },
     "Add Provider" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -19810,6 +19844,15 @@
         }
       }
     },
+    "Add Row to Table" : {
+
+    },
+    "Add Row to Table expects one row. Use Add Rows to Table for multiple rows." : {
+
+    },
+    "Add rows to ${table}" : {
+
+    },
     "Add rows to it" : {
       "localizations" : {
         "fr" : {
@@ -19819,6 +19862,9 @@
           }
         }
       }
+    },
+    "Add Rows to Table" : {
+
     },
     "Add Rule" : {
       "localizations" : {
@@ -20093,6 +20139,19 @@
           }
         }
       }
+    },
+    "Added %lld rows to %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Added %1$lld rows to %2$@."
+          }
+        }
+      }
+    },
+    "Added one row to %@." : {
+
     },
     "Adding check constraint %@ scans the table and fails if any existing row violates it." : {
       "localizations" : {
@@ -21210,6 +21269,9 @@
           }
         }
       }
+    },
+    "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, AppleScript, and Shortcuts. Effective scope is the minimum of the requesting token's scope and the External Clients level." : {
+
     },
     "AI Provider" : {
       "extractionState" : "stale",
@@ -46675,6 +46737,9 @@
         }
       }
     },
+    "connection" : {
+
+    },
     "Connection" : {
       "localizations" : {
         "fr" : {
@@ -48719,6 +48784,9 @@
           }
         }
       }
+    },
+    "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope." : {
+
     },
     "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript) access this connection. Tokens cannot exceed this level even with full-access scope." : {
       "localizations" : {
@@ -51599,6 +51667,9 @@
         }
       }
     },
+    "Could not connect to the database: %@" : {
+
+    },
     "Could not create %@." : {
       "localizations" : {
         "fr" : {
@@ -52742,6 +52813,9 @@
           }
         }
       }
+    },
+    "Could not read the columns of %@." : {
+
     },
     "Could not read the file. It may have been deleted or moved." : {
       "localizations" : {
@@ -56999,6 +57073,9 @@
         }
       }
     },
+    "database" : {
+
+    },
     "Database" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -57995,6 +58072,9 @@
           }
         }
       }
+    },
+    "Database or Schema" : {
+
     },
     "Database Schema" : {
       "extractionState" : "manual",
@@ -82179,6 +82259,9 @@
         }
       }
     },
+    "First Value" : {
+
+    },
     "Fish" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -89462,6 +89545,9 @@
         }
       }
     },
+    "import" : {
+
+    },
     "Import" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -92652,6 +92738,9 @@
           }
         }
       }
+    },
+    "insert" : {
+
     },
     "Insert" : {
       "extractionState" : "manual",
@@ -100605,6 +100694,16 @@
         }
       }
     },
+    "Line %lld of the file is not valid %@ text." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Line %1$lld of the file is not valid %2$@ text."
+          }
+        }
+      }
+    },
     "Line break" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -105364,6 +105463,9 @@
         }
       }
     },
+    "Match what I type" : {
+
+    },
     "Match what I type, otherwise lowercase" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -105375,9 +105477,6 @@
           }
         }
       }
-    },
-    "Match what I type" : {
-
     },
     "Match what I type, otherwise UPPERCASE" : {
       "extractionState" : "manual",
@@ -114279,6 +114378,9 @@
           }
         }
       }
+    },
+    "No data was provided to add." : {
+
     },
     "No database connection" : {
       "localizations" : {
@@ -124231,6 +124333,9 @@
         }
       }
     },
+    "open" : {
+
+    },
     "Open" : {
       "localizations" : {
         "fr" : {
@@ -126362,6 +126467,9 @@
           }
         }
       }
+    },
+    "Opens a database connection in TablePro" : {
+
     },
     "Opens an AWS Systems Manager port forwarding session through a target instance." : {
       "localizations" : {
@@ -136341,6 +136449,9 @@
         }
       }
     },
+    "Provide a JSON object or an array of objects." : {
+
+    },
     "Providers" : {
       "localizations" : {
         "fr" : {
@@ -137296,6 +137407,9 @@
           }
         }
       }
+    },
+    "query" : {
+
     },
     "Query" : {
       "localizations" : {
@@ -148161,6 +148275,9 @@
         }
       }
     },
+    "Result Format" : {
+
+    },
     "Result Options" : {
       "localizations" : {
         "fr" : {
@@ -149741,6 +149858,9 @@
         }
       }
     },
+    "row" : {
+
+    },
     "Row" : {
       "localizations" : {
         "fr" : {
@@ -149780,6 +149900,9 @@
           }
         }
       }
+    },
+    "Row (JSON or CSV)" : {
+
     },
     "Row %@ already exists. Edit that row, or give the new one another key." : {
       "extractionState" : "manual",
@@ -150385,6 +150508,9 @@
         }
       }
     },
+    "Row Limit" : {
+
+    },
     "Row no longer exists" : {
       "localizations" : {
         "fr" : {
@@ -150599,6 +150725,9 @@
         }
       }
     },
+    "rows" : {
+
+    },
     "Rows" : {
       "localizations" : {
         "fr" : {
@@ -150638,6 +150767,9 @@
           }
         }
       }
+    },
+    "Rows (JSON or CSV)" : {
+
     },
     "Rows %lld-%lld" : {
       "localizations" : {
@@ -151454,6 +151586,9 @@
         }
       }
     },
+    "Run ${query} on ${connection}" : {
+
+    },
     "Run a maintenance operation the engine supports, on one table or on the whole database. TablePro generates the statements; the user approves them. Needs tools:write." : {
       "localizations" : {
         "fr" : {
@@ -151493,6 +151628,9 @@
           }
         }
       }
+    },
+    "Run a SQL statement on a saved connection and pass the result to the next action." : {
+
     },
     "Run All Statements" : {
       "localizations" : {
@@ -151825,6 +151963,9 @@
           }
         }
       }
+    },
+    "Run Query" : {
+
     },
     "Run Script" : {
       "localizations" : {
@@ -157414,6 +157555,9 @@
         }
       }
     },
+    "select" : {
+
+    },
     "Select" : {
       "localizations" : {
         "fr" : {
@@ -161451,6 +161595,15 @@
           }
         }
       }
+    },
+    "Shortcuts" : {
+
+    },
+    "Shortcuts wants to add %1$lld rows to \"%2$@\"" : {
+
+    },
+    "Shortcuts wants to add a row to \"%@\"" : {
+
     },
     "Show" : {
       "localizations" : {
@@ -176646,9 +176799,6 @@
         }
       }
     },
-    "Table, column and schema names take this case in autocomplete and in Copy as INSERT and UPDATE when the server reads the new spelling as the same name. Other names are quoted as stored." : {
-
-    },
     "Table-level CHECK constraints" : {
       "localizations" : {
         "fr" : {
@@ -176658,6 +176808,9 @@
           }
         }
       }
+    },
+    "Table, column and schema names take this case in autocomplete and in Copy as INSERT and UPDATE when the server reads the new spelling as the same name. Other names are quoted as stored." : {
+
     },
     "TablePro" : {
       "extractionState" : "stale",
@@ -179841,6 +179994,9 @@
         }
       }
     },
+    "That connection no longer exists in TablePro." : {
+
+    },
     "That destination is not valid for this engine." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -182814,6 +182970,9 @@
         }
       }
     },
+    "The CSV data has no header row." : {
+
+    },
     "The Dameng connection is closed." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -182877,6 +183036,12 @@
     "The data changed after it was read." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The data could not be read: %@" : {
+
+    },
+    "The data has no values to insert into %@." : {
+
     },
     "The database “%@” has an open transaction. Closing rolls it back and discards its uncommitted changes." : {
       "localizations" : {
@@ -183955,6 +184120,9 @@
         }
       }
     },
+    "The first column of the first row" : {
+
+    },
     "The first sheet has no header row to map columns from." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -184288,6 +184456,9 @@
           }
         }
       }
+    },
+    "The JSON array must contain only objects." : {
+
     },
     "The JSON is nested more deeply than DynamoDB allows" : {
       "extractionState" : "manual",
@@ -189747,6 +189918,9 @@
         }
       }
     },
+    "The text encoding is invalid." : {
+
+    },
     "The text is not valid JSON." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -192066,6 +192240,9 @@
           }
         }
       }
+    },
+    "This connection's startup commands leave a transaction open, so rows added from Shortcuts could not be committed." : {
+
     },
     "This conversation is too long to continue. Start a new conversation and send your message there." : {
       "localizations" : {
@@ -198724,6 +198901,9 @@
           }
         }
       }
+    },
+    "Too many rows. Add up to %lld rows at a time." : {
+
     },
     "Tool" : {
       "localizations" : {

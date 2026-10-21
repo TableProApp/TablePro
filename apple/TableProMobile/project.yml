@@ -102,6 +102,8 @@ targets:
       - ../TablePro/Core/SSH/LibSSH2ForwardChannel.swift
       - ../TablePro/Core/SSH/LibSSH2JumpRelay.swift
       - ../TablePro/Core/SSH/SSHKeepAliveResult.swift
+      # Shortcuts payload parsing and row planning, shared with the macOS app's App Intents.
+      - ../TablePro/Core/Shortcuts/Shared
       # License texts behind the Acknowledgements screen, copied whole so each keeps the
       # texts/ path Acknowledgements.json names it by.
       - path: ../TablePro/Resources/ThirdPartyLicenses/texts
