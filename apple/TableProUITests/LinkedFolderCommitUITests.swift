@@ -106,21 +106,47 @@ struct GitFixtureRepository {
         try? FileManager.default.removeItem(at: root)
     }
 
+    // The runner is sandboxed, and the `/usr/bin/git` shim's xcrun refuses to run inside a sandbox.
+    private static let executable: URL? = {
+        var candidates: [String] = []
+        if let developer = ProcessInfo.processInfo.environment["DEVELOPER_DIR"] {
+            candidates.append(developer + "/usr/bin/git")
+        }
+        if let developer = try? FileManager.default.destinationOfSymbolicLink(atPath: "/var/db/xcode_select_link") {
+            candidates.append(developer + "/usr/bin/git")
+        }
+        let applications = (try? FileManager.default.contentsOfDirectory(atPath: "/Applications")) ?? []
+        candidates += applications.filter { $0.hasPrefix("Xcode") && $0.hasSuffix(".app") }.sorted()
+            .map { "/Applications/\($0)/Contents/Developer/usr/bin/git" }
+        candidates.append("/Library/Developer/CommandLineTools/usr/bin/git")
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }.map { URL(fileURLWithPath: $0) }
+    }()
+
     @discardableResult
     private static func git(_ arguments: [String], in directory: URL) throws -> String {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.executableURL = try XCTUnwrap(executable, "No git outside the xcrun shim")
         process.arguments = arguments
         process.currentDirectoryURL = directory
+        // The fixture ignores the developer's own Git config, signing and hooks included.
+        process.environment = [
+            "HOME": directory.path,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+            "PATH": "/usr/bin:/bin",
+        ]
         let output = Pipe()
+        let errors = Pipe()
         process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
+        process.standardError = errors
         try process.run()
         let data = output.fileHandleForReading.readDataToEndOfFile()
+        let message = errors.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
+            let detail = String(decoding: message, as: UTF8.self)
             throw NSError(domain: "GitFixtureRepository", code: Int(process.terminationStatus), userInfo: [
-                NSLocalizedDescriptionKey: "git \(arguments.joined(separator: " ")) exited \(process.terminationStatus)",
+                NSLocalizedDescriptionKey: "git \(arguments.joined(separator: " ")) exited \(process.terminationStatus): \(detail)",
             ])
         }
         return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
