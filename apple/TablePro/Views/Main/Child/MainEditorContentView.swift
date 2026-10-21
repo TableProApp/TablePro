@@ -718,7 +718,8 @@ struct MainEditorContentView: View {
     @ViewBuilder
     private func structureContent(tab: QueryTab, tableName: String) -> some View {
         let scope = structureScope(for: tab)
-        let identity = "\(scope?.qualifiedDescription ?? "").\(tableName)"
+        let binding = scope?.isSessionBound == true ? "#session" : ""
+        let identity = "\(scope?.qualifiedDescription ?? "").\(tableName)\(binding)"
         Group {
             if let session = coordinator.structureSessions[tab.id], session.identity == identity {
                 TableStructureView(
@@ -739,6 +740,7 @@ struct MainEditorContentView: View {
                             connection: connection,
                             databaseName: scope?.database ?? "",
                             schemaName: scope?.schema,
+                            isSessionBound: scope?.isSessionBound ?? false,
                             tableName: tableName,
                             objectKind: tab.tableContext.resolvedObjectKind(),
                             serverSupport: StructureServerSupport.forConnection(connection.id)

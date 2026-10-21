@@ -39,7 +39,7 @@ meson setup _build -Dprofile=development
 dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
-Four suites: `unit` is `cargo test --workspace --exclude tablepro`. `gtk`
+Five suites: `unit` is `cargo test --workspace --exclude tablepro`. `gtk`
 is `cargo test -p tablepro` with `GSK_RENDERER=cairo`, `GTK_A11Y=test`,
 `GDK_BACKEND=x11` and the build tree's schema directory, under a
 `dbus-run-session` of its own when one is installed, so its bus names
@@ -50,7 +50,9 @@ that bus. `data` runs `desktop-file-validate` and `appstreamcli
 validate`; the schema compiles with `--strict` as part of the build.
 `packaging` runs the unit tests in `build-aux/tests` and checks that
 `debian/copyright`, the RPM spec and the metainfo agree with `data/licenses`
-and the version Meson builds. In a `-Dprofile=default` build, which the
+and the version Meson builds. `po` runs `msgfmt --check` on each catalogue
+in `po/LINGUAS`; gettext 0.26 and newer also check its `{name}`
+placeholders. In a `-Dprofile=default` build, which the
 packages run, the unit and gtk suites build with `--release` but without
 its fat LTO, which would cost gigabytes and minutes per test binary.
 Tests that need Docker or a Secret Service are ignored. Without a display

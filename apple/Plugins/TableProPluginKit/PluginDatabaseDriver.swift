@@ -134,6 +134,11 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// What `fetchTables(schema:)` lists for each named schema, in one call, each row carrying its own
     /// schema. Nil means the host asks each schema in turn; an empty list answers empty with no query.
     func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]?
+
+    /// This session's own temporary tables. A row's `schema` qualifies it in a query, nil where the bare name
+    /// reaches it. Asked only of a driver that declares ``PluginCapabilities/temporaryTables``.
+    func fetchTemporaryTables() async throws -> [PluginTableInfo]
+
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo]
 
     /// The same partitions as `fetchPartitions`, with the bound, the ordinal position and the row
@@ -854,6 +859,8 @@ public extension PluginDatabaseDriver {
     func fetchTablesInAllSchemas() async throws -> [PluginTableInfo]? { nil }
 
     func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? { nil }
+
+    func fetchTemporaryTables() async throws -> [PluginTableInfo] { [] }
 
     /// Schemas whose objects live in a catalog outside the database itself, such
     /// as Redshift external schemas backed by Glue, Hive, or a federated source.

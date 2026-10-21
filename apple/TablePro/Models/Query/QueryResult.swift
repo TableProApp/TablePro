@@ -118,7 +118,8 @@ enum DatabaseError: Error, LocalizedError {
 /// Information about a database table
 struct TableInfo: Identifiable, Hashable, Sendable {
     var id: String {
-        "\(IdentityPath.qualified(name: name, schema: schema))_\(type.rawValue)"
+        let identity = "\(IdentityPath.qualified(name: name, schema: schema))_\(type.rawValue)"
+        return isTemporary ? identity + "_temporary" : identity
     }
     let name: String
     let type: TableType
@@ -148,6 +149,9 @@ struct TableInfo: Identifiable, Hashable, Sendable {
     // The column a sequence belongs to. Outside identity, like the comment.
     let ownedByTable: String?
     let ownedByColumn: String?
+
+    // Part of the identity: a temporary table and the table of the same name it hides are two objects.
+    let isTemporary: Bool
 
     enum TableType: String, Sendable, CaseIterable {
         case table = "TABLE"
@@ -222,7 +226,8 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         partitionCount: Int? = nil,
         isSystemVersioned: Bool = false,
         ownedByTable: String? = nil,
-        ownedByColumn: String? = nil
+        ownedByColumn: String? = nil,
+        isTemporary: Bool = false
     ) {
         self.name = name
         self.type = type
@@ -233,16 +238,18 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         self.isSystemVersioned = isSystemVersioned
         self.ownedByTable = ownedByTable
         self.ownedByColumn = ownedByColumn
+        self.isTemporary = isTemporary
     }
 
     static func == (lhs: TableInfo, rhs: TableInfo) -> Bool {
-        lhs.name == rhs.name && lhs.type == rhs.type && lhs.schema == rhs.schema
+        lhs.name == rhs.name && lhs.type == rhs.type && lhs.schema == rhs.schema && lhs.isTemporary == rhs.isTemporary
     }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(name)
         hasher.combine(type)
         hasher.combine(schema)
+        hasher.combine(isTemporary)
     }
 }
 

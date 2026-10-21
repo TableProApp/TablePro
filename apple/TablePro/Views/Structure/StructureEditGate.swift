@@ -20,12 +20,15 @@ import TableProPluginKit
 struct StructureEditGate {
     let databaseType: DatabaseType
     let objectKind: TableInfo.TableType
+    // A temporary table shows its structure read-only: the edit paths read the shared catalog, where its name can
+    // reach the database's own table of that name.
+    var isSessionBound = false
 
     private var matrix: StructureObjectEditMatrix {
         PluginManager.shared.structureEditMatrix(for: databaseType)
     }
 
-    private var canEditSchema: Bool { databaseType.supportsSchemaEditing }
+    var canEditSchema: Bool { databaseType.supportsSchemaEditing && !isSessionBound }
 
     func allows(_ operation: StructureEditOperation) -> Bool {
         resolve(operation).isAvailable
@@ -79,7 +82,7 @@ struct StructureEditGate {
     }
 
     var allowsTriggerEditing: Bool {
-        databaseType.supportsTriggerEditing && TriggerEditEligibility.kindAcceptsTriggers(objectKind)
+        !isSessionBound && databaseType.supportsTriggerEditing && TriggerEditEligibility.kindAcceptsTriggers(objectKind)
     }
 
     func locksField(at index: Int, on tab: StructureTab, orderedFields: [StructureColumnField]) -> Bool {

@@ -87,6 +87,16 @@ struct DatabaseTreeRowView: View {
             sectionHeader(String(localized: "Recent"))
         case .recentTable(let ref):
             tableRow(ref)
+        case .temporarySection:
+            sectionHeader(String(localized: "Temporary"))
+        case .temporaryTable(let ref):
+            TableRow(
+                table: ref.table,
+                isPendingTruncate: false,
+                isPendingDelete: false,
+                showsPartitionCount: context.showsPartitions,
+                accessibilityKind: String(localized: "Temporary Table")
+            )
         case .foldersSection:
             sectionHeader(String(localized: "Folders"))
         case .tableFolder(let ref):

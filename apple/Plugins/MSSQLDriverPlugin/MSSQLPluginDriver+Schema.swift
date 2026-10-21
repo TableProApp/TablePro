@@ -41,8 +41,17 @@ extension MSSQLPluginDriver {
         }
     }
 
+    func fetchTemporaryTables() async throws -> [PluginTableInfo] {
+        let result = try await execute(query: MSSQLSchemaQueries.temporaryTables)
+        return result.rows.compactMap { row in
+            row[safe: 0]?.asText.map { PluginTableInfo(name: $0, type: "TABLE") }
+        }
+    }
+
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let sql = MSSQLSchemaQueries.columns(schema: effectiveSchema(schema), table: table)
+        let sql = MSSQLSchemaQueries.namesTemporaryTable(table)
+            ? MSSQLSchemaQueries.temporaryColumns(table: table)
+            : MSSQLSchemaQueries.columns(schema: effectiveSchema(schema), table: table)
         let result = try await execute(query: sql)
         return result.rows.compactMap { row in
             MSSQLSchemaQueries.parseColumnRow(row.map(\.asText)).map(\.pluginColumnInfo)
@@ -54,7 +63,9 @@ extension MSSQLPluginDriver {
         /// SQL Server allows both `]` and `'` in an identifier.
         let objectLiteral = MSSQLStringLiteral.quoted(
             MSSQLSchemaQueries.bracketed(schema: effectiveSchema(schema), table: table))
-        let sql = """
+        let sql = MSSQLSchemaQueries.namesTemporaryTable(table)
+            ? MSSQLSchemaQueries.temporaryIndexes(table: table)
+            : """
             SELECT i.name, i.is_unique, i.is_primary_key, c.name AS column_name, i.type_desc
             FROM sys.indexes i
             JOIN sys.index_columns ic

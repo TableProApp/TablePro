@@ -146,6 +146,14 @@ final class SidebarViewModel: ObservableObject {
             )
         }
     }
+    @Published var isTemporaryExpanded: Bool {
+        didSet {
+            defaults.set(
+                isTemporaryExpanded,
+                forKey: SidebarPersistenceKey.temporaryExpanded(connectionId: connectionId)
+            )
+        }
+    }
     @Published var showOperationDialog = false
     @Published var pendingOperationType: TableOperationType?
     @Published var pendingOperationTables: [DatabaseTreeTableRef] = []
@@ -230,6 +238,11 @@ final class SidebarViewModel: ObservableObject {
         )
         self.isFoldersExpanded = Self.loadExpansion(
             perConnectionKey: SidebarPersistenceKey.foldersExpanded(connectionId: connectionId),
+            defaultValue: true,
+            defaults: defaults
+        )
+        self.isTemporaryExpanded = Self.loadExpansion(
+            perConnectionKey: SidebarPersistenceKey.temporaryExpanded(connectionId: connectionId),
             defaultValue: true,
             defaults: defaults
         )

@@ -167,6 +167,21 @@ struct DatabaseTreeMenuSpecTests {
         }
     }
 
+    // MARK: - Temporary tables
+
+    @Test("A temporary table offers only what runs on its own session")
+    func temporaryTableMenuStaysOnTheSession() {
+        let ref = DatabaseTreeTableRef(
+            database: "app",
+            schema: nil,
+            table: TableInfo(name: "scratch", type: .table, rowCount: nil, schema: "pg_temp_3")
+        )
+
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .temporaryTable(ref))))
+
+        #expect(issued == [.openInNewTab(ref), .showStructure(ref), .copyTableNames(["scratch"])])
+    }
+
     // MARK: - The empty area
 
     /// A right-click below the last row used to produce nothing at all, which also made View

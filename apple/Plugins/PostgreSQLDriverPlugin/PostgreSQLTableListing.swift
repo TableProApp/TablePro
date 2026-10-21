@@ -109,6 +109,21 @@ nonisolated enum PostgreSQLTableListing {
             """
     }
 
+    // Partitions are listed beside their parent: a partition row expands through the shared catalog, which cannot
+    // see a temporary one.
+    static let temporaryTables = """
+        SELECT c.relname AS table_name,
+               CASE c.relkind WHEN 'p' THEN 'PARTITIONED TABLE' WHEN 'v' THEN 'VIEW' ELSE 'BASE TABLE' END AS table_type,
+               pg_catalog.obj_description(c.oid, 'pg_class') AS table_comment,
+               CASE WHEN c.relkind = 'p' THEN (SELECT pg_catalog.count(*) FROM pg_catalog.pg_inherits ci WHERE ci.inhparent = c.oid) END AS partition_count,
+               n.nspname AS schema_name
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relnamespace = pg_catalog.pg_my_temp_schema()
+          AND c.relkind IN ('r', 'p', 'v')
+        ORDER BY c.relname
+        """
+
     /// The last rung, for an engine missing a catalog, function or column the catalog form names.
     static func informationSchemaQuery(in listing: PostgreSQLTableListingScope) -> String {
         let schemaColumn = listing.projectsSchema ? ",\n       t.table_schema AS schema_name" : ""

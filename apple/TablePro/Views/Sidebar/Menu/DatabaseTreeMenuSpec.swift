@@ -25,6 +25,8 @@ internal enum DatabaseTreeMenuSpec {
             ]
         case .table(let ref):
             return tableSections(ref, context: context)
+        case .temporaryTable(let ref):
+            return temporaryTableSections(ref)
         case .foldersSection:
             return [DatabaseTreeMenuSection([.command(String(localized: "New Folder"), .tableFolder(.create(.browsed)))])]
         case .tableFolder(let ref):
@@ -61,12 +63,23 @@ internal enum DatabaseTreeMenuSpec {
             return redisSections(node)
         case .redisKeysSection:
             return [DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshRedisKeys)])]
-        case .status, .recentSection:
+        case .status, .recentSection, .temporarySection:
             return backgroundSections(context)
         }
     }
 
     // MARK: - Objects
+
+    // Only what runs on the session that holds it: every other command reads or writes through a pooled connection.
+    private static func temporaryTableSections(_ ref: DatabaseTreeTableRef) -> [DatabaseTreeMenuSection] {
+        [
+            DatabaseTreeMenuSection([
+                .command(String(localized: "Open in New Tab"), .openInNewTab(ref)),
+                .command(String(localized: "Show Structure"), .showStructure(ref))
+            ]),
+            DatabaseTreeMenuSection([.command(copyNamesTitle(count: 1), .copyTableNames([ref.table.name]))])
+        ]
+    }
 
     private static func tableSections(
         _ ref: DatabaseTreeTableRef,

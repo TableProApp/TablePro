@@ -112,7 +112,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Flatpak | The Devel manifest builds on GNOME 51 for x86_64 and aarch64 with every Meson suite in the sandbox, and is linted, in the nightly Linux run |
 | .deb and .rpm | Ubuntu 26.04 and 26.10 and Fedora 44, built offline in CI the way Launchpad and COPR build them, linted, then installed and started in fresh containers; a `linux-v*` tag uploads to the PPA and starts the COPR build ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md)) |
 | Desktop integration | Desktop file with Open With for SQLite files, D-Bus activation, a man page, metainfo with screenshots, and SVG icons |
-| Translations | The app's own strings go through gettext, and CI fails when `POTFILES.in` is stale. The template is generated on demand with gettext 1.0 |
+| Translations | Vietnamese ships. The app's own strings go through gettext, and CI fails when `POTFILES.in` is stale or a translation loses a placeholder. CI builds the template with gettext 1.0 and publishes it from main and with each release; translators send pull requests against `po/*.po` ([po/README.md](po/README.md#where-translators-work)) |
 | Logs | stderr, which the session journals, with JSON lines on request. A panic also writes a crash report under `$XDG_STATE_HOME`, offered with Show Report on the next launch |
 | Tests | Unit, gtk (with an accessibility audit of the picker, the connect pages, the workspace, the connect dialog and every preferences page), data and packaging suites; connection, DDL and TLS conformance on every engine; Docker jobs for PostgreSQL with PgBouncer, MySQL and MariaDB, SQL Server, ClickHouse, SSH, the session and the grid save ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
 
@@ -149,7 +149,7 @@ Not built yet, in no order.
 - Before the first tag, the release setup [ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md#consequences) lists: the PPA, the COPR project, and the secrets and variable `release-linux.yml` names in its header.
 - Write the Flathub manifest and the exception request by hand, and submit them.
 - An AUR PKGBUILD, kept by the community.
-- The first translations in `po/LINGUAS`.
+- More languages: French, Korean, Turkish, and Simplified and Traditional Chinese, which the macOS app ships.
 - A manual pass with Orca, the keyboard alone, High Contrast, 1.5x text scaling and a right-to-left locale.
 - Install and use it on Ubuntu 26.04 and Fedora 44 by hand, and under KDE Plasma with the Adwaita style.
 - A Linux user guide on docs.tablepro.app, a page on the marketing site, and a support channel.

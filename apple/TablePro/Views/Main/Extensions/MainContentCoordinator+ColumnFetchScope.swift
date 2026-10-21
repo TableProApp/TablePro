@@ -140,6 +140,7 @@ extension MainContentCoordinator {
     /// makes two tabs on same-named tables in different databases share one entry.
     func schemaColumnsKey(_ tableName: String, scope: DatabaseScope?) -> String {
         guard let scope else { return "\(connectionId):::\(tableName)" }
-        return "\(scope.connectionId):\(scope.database):\(scope.schema ?? ""):\(tableName)"
+        let binding = scope.isSessionBound ? ":session" : ""
+        return "\(scope.connectionId):\(scope.database):\(scope.schema ?? ""):\(tableName)\(binding)"
     }
 }

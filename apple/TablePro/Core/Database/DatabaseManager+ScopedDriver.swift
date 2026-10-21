@@ -36,7 +36,7 @@ extension DatabaseManager {
         guard let session = activeSessions[scope.connectionId] else {
             return .unavailable(String(localized: "Not connected to database"))
         }
-        guard !scope.isServerScoped else { return .sessionDriver }
+        guard !scope.isServerScoped, !scope.isSessionBound else { return .sessionDriver }
         return canPool(session) ? .pooled : .sessionDriver
     }
 
@@ -75,7 +75,7 @@ extension DatabaseManager {
             || sessionLanes.hasTransactionLoss(database: scope.database, for: scope.connectionId) {
             return .sessionDriver
         }
-        guard canPool(session) else {
+        guard canPool(session), !scope.isSessionBound else {
             return .unavailable(
                 String(
                     format: String(
@@ -443,6 +443,11 @@ extension DatabaseManager {
     private func laneDatabase(for scope: DatabaseScope, in session: ConnectionSession) -> String? {
         guard usesDatabaseLanes(session) else { return nil }
         return scope.isServerScoped ? session.resolvedBrowseDatabase : scope.database
+    }
+
+    internal func sessionDriver(holding scope: DatabaseScope) -> DatabaseDriver? {
+        guard let session = activeSessions[scope.connectionId] else { return nil }
+        return sessionDriver(for: scope.connectionId, laneDatabase: laneDatabase(for: scope, in: session))
     }
 
     /// The driver holding `laneDatabase` right now: the browsed one, or the one parked for it.

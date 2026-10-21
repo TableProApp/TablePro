@@ -82,6 +82,7 @@ struct TableRow: View {
     /// name like a comment does, and it is not the comment: the comment is what the server stores
     /// against the object, and it is hidden behind its own setting.
     var partitionBound: String?
+    var accessibilityKind: String?
     var onToggleFavorite: (() -> Void)?
 
     @State private var isHovered = false
@@ -187,7 +188,7 @@ struct TableRow: View {
                 isPendingDelete: isPendingDelete,
                 isPendingTruncate: isPendingTruncate,
                 isFavorite: isFavorite,
-                kindOverride: partitionBound == nil ? nil : SidebarPartitionRow.kindLabel,
+                kindOverride: accessibilityKind ?? (partitionBound == nil ? nil : SidebarPartitionRow.kindLabel),
                 bound: partitionBound
             )
         )

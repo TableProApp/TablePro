@@ -129,6 +129,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// schema and ordered by schema then name. Nil means the caller asks each schema itself.
     func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]?
 
+    var listsTemporaryTables: Bool { get }
+
+    // Only the session driver can answer: a pooled connection is another session.
+    func fetchTemporaryTables() async throws -> [TableInfo]
+
     /// Fetch the direct partitions of one partitioned table, with each one's bound, position and
     /// row estimate. A partition is not a table on every engine, so this cannot answer `TableInfo`:
     /// a MySQL or Oracle partition name is unique only within its own table.
@@ -859,6 +864,10 @@ extension DatabaseDriver {
     func fetchTablesInAllSchemas() async throws -> [TableInfo]? { nil }
 
     func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? { nil }
+
+    var listsTemporaryTables: Bool { false }
+
+    func fetchTemporaryTables() async throws -> [TableInfo] { [] }
 
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] { [] }
 

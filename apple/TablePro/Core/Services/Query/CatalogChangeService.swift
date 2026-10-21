@@ -53,7 +53,8 @@ final class CatalogChangeService {
             SchemaRefreshService.shared,
             DatabaseTreeMetadataService.shared,
             SchemaProviderRegistry.shared,
-            QueryCompletionProfileRegistry.shared
+            QueryCompletionProfileRegistry.shared,
+            TemporaryTableStore.shared
         ]
         self.adoption = adoption ?? CatalogEditAdoption()
         self.isSessionLive = isSessionLive ?? { connectionId in
