@@ -26,8 +26,6 @@ struct MariaDBClientPluginFolder: Sendable, Equatable {
     // Homebrew uses the first.
     private static let layouts = ["lib/plugin", "lib/mysql/plugin"]
 
-    private static let refusedPluginPattern = #/Plugin ([A-Za-z0-9_]+) could not be loaded/#
-
     let url: URL
 
     static func pluginDirectory(forTool path: String) -> URL? {
@@ -60,7 +58,7 @@ struct MariaDBClientPluginFolder: Sendable, Equatable {
     // A plugin left out of the folder is one that sends the password as typed. One that was allowed but could not be
     // loaded keeps the tool's own words.
     func refusal(in stderr: String) -> String? {
-        let refused = stderr.matches(of: Self.refusedPluginPattern).map { String($0.output.1) }
+        let refused = stderr.matches(of: #/Plugin ([A-Za-z0-9_]+) could not be loaded/#).map { String($0.output.1) }
         guard refused.contains(where: { !Self.allowedPlugins.contains($0) }) else { return nil }
         return MySQLClientArguments.plaintextPasswordRefusal
     }

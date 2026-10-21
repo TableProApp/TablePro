@@ -320,27 +320,27 @@ struct MySQLDumpPlaintextPasswordTests {
     }
 }
 
-@MainActor
-struct MySQLDumpPlaintextPasswordServiceTests {
-    private final class FinishingRunner: NativeDumpRunner, @unchecked Sendable {
-        private let outcome: NativeDumpRunResult
-        private(set) var started = false
+private final class FinishingRunner: NativeDumpRunner, @unchecked Sendable {
+    private let outcome: NativeDumpRunResult
+    private(set) var started = false
 
-        init(_ outcome: NativeDumpRunResult) {
-            self.outcome = outcome
-        }
-
-        func start() throws {
-            started = true
-        }
-
-        func cancel() {}
-
-        var result: NativeDumpRunResult {
-            get async { outcome }
-        }
+    init(_ outcome: NativeDumpRunResult) {
+        self.outcome = outcome
     }
 
+    func start() throws {
+        started = true
+    }
+
+    func cancel() {}
+
+    var result: NativeDumpRunResult {
+        get async { outcome }
+    }
+}
+
+@MainActor
+struct MySQLDumpPlaintextPasswordServiceTests {
     private func job(folder: URL) -> NativeDumpJob {
         .process(
             NativeDumpCommand(

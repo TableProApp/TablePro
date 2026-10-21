@@ -57,6 +57,9 @@ enum MySQLClientArguments {
         guard flavor == .mariadb, reachesServerOverNetwork(connection) else { return false }
         switch connection.transportSSLConfiguration.mode {
         case .disabled: return true
+        // The greeting comes from a connection of its own. Someone on the path who answers the two differently can as
+        // well end the unverified TLS Preferred accepts, in the app's driver too; keeping the password from them is
+        // what Required is for.
         case .preferred: return serverOffersTLS != true
         case .required, .verifyCa, .verifyIdentity: return false
         }
