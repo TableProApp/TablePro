@@ -1006,3 +1006,79 @@ fn draft_mutation_routes_are_ignored_during_a_save() {
         "post-submit actions cannot dispatch another transaction"
     );
 }
+
+#[test]
+#[ignore = "requires isolated GTK display"]
+fn the_cell_menu_sets_a_draft_cell_to_null_in_the_draft() {
+    relm4::gtk::init().unwrap();
+    let tab_id = Uuid::new_v4();
+    let (mut controller, observed) = launch(tab_id);
+    load_two_rows(&controller, &observed);
+    add_draft_row(
+        &controller,
+        vec![Value::Int(3), Value::Text("draft".into()), Value::Text("body".into())],
+    );
+    pump(&observed);
+
+    controller
+        .sender()
+        .send(BrowseTabInput::GridSetCellNull {
+            row_position: 0,
+            col_index: 1,
+            row_key: Vec::new(),
+        })
+        .unwrap();
+    let outputs = pump(&observed);
+
+    let drafts = crate::services::change_tracker::with_tab_ref(tab_id, |tracker| tracker.drafts().to_vec()).unwrap();
+    assert_eq!(drafts.len(), 1);
+    assert_eq!(drafts[0].values[1], Value::Null);
+    assert!(drafts[0].touched[1], "the user's NULL must override a column default");
+    let row = controller
+        .model()
+        .list_store()
+        .unwrap()
+        .item(0)
+        .and_then(|item| item.downcast::<crate::ui::row_object::RowObject>().ok())
+        .unwrap();
+    assert_eq!(row.cell_value(1), Value::Null);
+    assert!(
+        !outputs
+            .iter()
+            .any(|output| matches!(output, BrowseTabOutput::ShowToast(_)))
+    );
+    controller.detach_runtime();
+}
+
+#[test]
+#[ignore = "requires isolated GTK display"]
+fn the_row_menu_deletes_a_draft_row_by_discarding_it() {
+    relm4::gtk::init().unwrap();
+    let tab_id = Uuid::new_v4();
+    let (mut controller, observed) = launch(tab_id);
+    load_two_rows(&controller, &observed);
+    add_draft_row(
+        &controller,
+        vec![Value::Int(3), Value::Text("draft".into()), Value::Text("body".into())],
+    );
+    pump(&observed);
+    assert_eq!(pending(tab_id), 1);
+
+    controller
+        .sender()
+        .send(BrowseTabInput::GridDeleteRowAt {
+            row_position: 0,
+            row_key: Vec::new(),
+        })
+        .unwrap();
+    let outputs = pump(&observed);
+
+    assert_eq!(
+        pending(tab_id),
+        0,
+        "deleting a draft discards it instead of queueing a delete"
+    );
+    assert_eq!(controller.model().list_store().unwrap().n_items(), 2);
+    assert_eq!(transactions(&outputs), 0);
+    controller.detach_runtime();
+}

@@ -1171,7 +1171,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/app/row_ops.rs:142
 #: apps/linux/app/src/ui/browse_tab/mod.rs:998
-#: apps/linux/app/src/ui/browse_tab/row_ops.rs:509
+#: apps/linux/app/src/ui/browse_tab/row_ops.rs:525
 msgid "Some row values were not fetched. Show hidden columns and reload before copying or exporting."
 msgstr ""
 
@@ -1925,21 +1925,21 @@ msgstr ""
 msgid "This cell can't be set to NULL because it is read-only or does not accept NULL."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/row_ops.rs:524
+#: apps/linux/app/src/ui/browse_tab/row_ops.rs:540
 msgid "Click a cell first, then paste to fill cells from that one"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/row_ops.rs:604
+#: apps/linux/app/src/ui/browse_tab/row_ops.rs:620
 msgid "Saving changes. Edit again when the save finishes."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/row_ops.rs:643
+#: apps/linux/app/src/ui/browse_tab/row_ops.rs:659
 #: apps/linux/app/src/ui/structure_tab/mod.rs:997
 #: apps/linux/app/src/ui/structure_tab/mod.rs:1003
 msgid "Cannot save"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/row_ops.rs:701
+#: apps/linux/app/src/ui/browse_tab/row_ops.rs:717
 #: apps/linux/app/src/ui/structure_tab/mod.rs:1076
 msgid "Save failed"
 msgstr ""

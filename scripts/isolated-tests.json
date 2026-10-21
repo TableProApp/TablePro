@@ -235,6 +235,16 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::browse_tab::save_in_flight_tests::the_cell_menu_sets_a_draft_cell_to_null_in_the_draft"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::the_row_menu_deletes_a_draft_row_by_discarding_it"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::browse_tab::save_in_flight_tests::read_only_tab_refuses_a_mixed_draft_and_stored_row_delete_atomically"
     ],
     [
