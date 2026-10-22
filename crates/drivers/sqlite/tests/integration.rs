@@ -194,6 +194,34 @@ async fn transaction_query_obeys_result_budget_and_remains_usable() {
 }
 
 #[tokio::test]
+async fn an_oversized_single_cell_is_refused_and_connection_remains_usable() {
+    let connection = SqliteDriver.connect(options_for(":memory:")).await.unwrap();
+    connection
+        .execute("CREATE TABLE large_value (payload TEXT)")
+        .await
+        .unwrap();
+    connection
+        .execute("INSERT INTO large_value VALUES (printf('%67108865s', 'x'))")
+        .await
+        .unwrap();
+    let result = connection.query("SELECT payload FROM large_value").await.unwrap();
+
+    assert!(result.truncated);
+    assert!(result.rows.is_empty());
+    let next = connection.query("SELECT 42 AS usable").await.unwrap();
+    assert_eq!(next.rows, vec![vec![Value::Int(42)]]);
+}
+
+#[tokio::test]
+async fn invalid_utf8_text_remains_a_byte_value_with_the_result_budget() {
+    let connection = SqliteDriver.connect(options_for(":memory:")).await.unwrap();
+    let result = connection.query("SELECT CAST(x'80' AS TEXT) AS payload").await.unwrap();
+
+    assert!(!result.truncated);
+    assert_eq!(result.rows, vec![vec![Value::Bytes(vec![0x80])]]);
+}
+
+#[tokio::test]
 async fn computed_coalesce_over_strict_any_keeps_fallback_metadata_and_storage_classes() {
     let connection = SqliteDriver.connect(options_for(":memory:")).await.unwrap();
     connection

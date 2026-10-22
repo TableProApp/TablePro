@@ -1,0 +1,25 @@
+{
+  "row_identity_tests": {
+    "passed": 15,
+    "failed": 0
+  },
+  "application_unit_tests": {
+    "passed": 726,
+    "ignored": 144,
+    "failed": 0
+  },
+  "preflight": {
+    "status": "passed",
+    "unit_passed": 2053,
+    "sandbox_passed": 2054,
+    "redis_cancellation_passed": 1
+  },
+  "application_clippy_all_targets": "passed",
+  "gtk_widgets": {
+    "passed": 106,
+    "failed": 0
+  },
+  "forgejo": "not run; publication pending",
+  "native_wayland": "not run; headless scope",
+  "followup": "Added shared-result source lifetime and edited-key coverage; focused tests, full app unit suite and application all-target Clippy rerun and passed. Earlier preflight/GTK runs precede this test-only addition; production code unchanged."
+}

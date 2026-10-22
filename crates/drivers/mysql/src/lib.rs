@@ -7,7 +7,7 @@ use sqlparser::dialect::MySqlDialect;
 use sqlparser::parser::Parser;
 use sqlx::mysql::{MySql, MySqlConnectOptions, MySqlPoolOptions, MySqlRow};
 use sqlx::pool::PoolConnection;
-use sqlx::{Column, Connection as SqlxConnection, Executor, Pool, Row, SqlSafeStr, Statement, TypeInfo};
+use sqlx::{Column, Connection as SqlxConnection, Executor, Pool, Row, SqlSafeStr, Statement, TypeInfo, ValueRef};
 
 use futures::stream::StreamExt;
 
@@ -646,19 +646,30 @@ async fn params_into_result(
             truncated = true;
             break;
         }
-        let values = (0..columns.len())
-            .map(|index| extract_value(&row, index))
-            .collect::<Vec<_>>();
-        if !budget.admit(&values) {
+        let Some(values) = budget.decode_and_admit_row(row.len(), mysql_row_payload_bytes(&row), || {
+            Ok::<_, DriverError>((0..columns.len()).map(|index| extract_value(&row, index)).collect())
+        })?
+        else {
             truncated = true;
             break;
-        }
+        };
         rows.push(values);
     }
     Ok(QueryResult {
         columns,
         rows,
         truncated,
+    })
+}
+
+fn mysql_row_payload_bytes(row: &MySqlRow) -> usize {
+    (0..row.len()).fold(0usize, |total, index| {
+        let length = match row.try_get_raw(index) {
+            Ok(value) if value.is_null() => 0,
+            Ok(value) => <&[u8] as sqlx::Decode<MySql>>::decode(value).map_or(usize::MAX, <[u8]>::len),
+            Err(_) => usize::MAX,
+        };
+        total.saturating_add(length)
     })
 }
 

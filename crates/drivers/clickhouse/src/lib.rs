@@ -458,19 +458,21 @@ async fn fetch_result(
             truncated = true;
             break;
         }
-        let raw: Vec<serde_json::Value> = parse_line(&line)?;
-        if let Some(message) = exception_row_message(&raw) {
-            return Err(DriverError::Query {
-                message: message.to_owned(),
-                sqlstate: None,
-                position: None,
-            });
-        }
-        let row = response_row(raw, &columns)?;
-        if !budget.admit(&row) {
+        let Some(row) = budget.decode_and_admit_row(columns.len(), line.len(), || {
+            let raw: Vec<serde_json::Value> = parse_line(&line)?;
+            if let Some(message) = exception_row_message(&raw) {
+                return Err(DriverError::Query {
+                    message: message.to_owned(),
+                    sqlstate: None,
+                    position: None,
+                });
+            }
+            response_row(raw, &columns)
+        })?
+        else {
             truncated = true;
             break;
-        }
+        };
         rows.push(row);
     }
 

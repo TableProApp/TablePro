@@ -145,16 +145,33 @@ pub struct QueryResultBudget {
 
 impl QueryResultBudget {
     pub fn admit(&mut self, row: &[Value]) -> bool {
-        let cells = self.cells.saturating_add(row.len());
         let row_bytes = row_size(row);
-        let bytes = self.bytes.saturating_add(row_bytes);
-        if self.rows >= MAX_QUERY_ROWS || cells > MAX_QUERY_RESULT_CELLS || bytes > MAX_QUERY_RESULT_BYTES {
+        if !self.can_admit(row.len(), row_bytes) {
             return false;
         }
         self.rows += 1;
-        self.cells = cells;
-        self.bytes = bytes;
+        self.cells += row.len();
+        self.bytes += row_bytes;
         true
+    }
+
+    pub fn decode_and_admit_row<E>(
+        &mut self,
+        cell_count: usize,
+        payload_bytes: usize,
+        decode: impl FnOnce() -> Result<Vec<Value>, E>,
+    ) -> Result<Option<Vec<Value>>, E> {
+        if !self.can_admit(cell_count, row_size_from_parts(cell_count, payload_bytes)) {
+            return Ok(None);
+        }
+        let row = decode()?;
+        Ok(self.admit(&row).then_some(row))
+    }
+
+    fn can_admit(&self, cells: usize, row_bytes: usize) -> bool {
+        self.rows < MAX_QUERY_ROWS
+            && self.cells.saturating_add(cells) <= MAX_QUERY_RESULT_CELLS
+            && self.bytes.saturating_add(row_bytes) <= MAX_QUERY_RESULT_BYTES
     }
 }
 
@@ -168,13 +185,17 @@ fn value_size(value: &Value) -> usize {
 }
 
 fn row_size(row: &[Value]) -> usize {
-    row.len()
+    let payload_bytes = row
+        .iter()
+        .fold(0usize, |total, value| total.saturating_add(value_size(value)));
+    row_size_from_parts(row.len(), payload_bytes)
+}
+
+fn row_size_from_parts(cells: usize, payload_bytes: usize) -> usize {
+    cells
         .saturating_mul(std::mem::size_of::<Value>())
         .saturating_add(std::mem::size_of::<Vec<Value>>())
-        .saturating_add(
-            row.iter()
-                .fold(0usize, |total, value| total.saturating_add(value_size(value))),
-        )
+        .saturating_add(payload_bytes)
 }
 
 fn json_heap_size(value: &serde_json::Value) -> usize {
@@ -285,6 +306,39 @@ mod tests {
         assert!(wire.get("enum_type").is_none());
         let decoded: ColumnInfo = serde_json::from_value(wire).unwrap();
         assert_eq!(decoded.enum_type, None);
+    }
+
+    #[test]
+    fn result_budget_rejects_raw_row_before_value_decode() {
+        let mut budget = QueryResultBudget::default();
+        let mut decoded = false;
+        let row = budget
+            .decode_and_admit_row(1, MAX_QUERY_RESULT_BYTES, || {
+                decoded = true;
+                Ok::<_, ()>(vec![Value::Text(String::new())])
+            })
+            .unwrap();
+
+        assert!(row.is_none());
+        assert!(!decoded);
+    }
+
+    #[test]
+    fn result_budget_tracks_decoded_row_bytes_after_preflight() {
+        let mut budget = QueryResultBudget {
+            bytes: MAX_QUERY_RESULT_BYTES - 128,
+            ..QueryResultBudget::default()
+        };
+        let expanded = budget
+            .decode_and_admit_row(1, 1, || Ok::<_, ()>(vec![Value::Text("x".repeat(256))]))
+            .unwrap();
+        assert!(expanded.is_none());
+
+        let row = budget
+            .decode_and_admit_row(1, 1, || Ok::<_, ()>(vec![Value::Text("x".into())]))
+            .unwrap();
+
+        assert_eq!(row, Some(vec![Value::Text("x".into())]));
     }
 
     #[test]

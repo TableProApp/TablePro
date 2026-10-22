@@ -1,0 +1,36 @@
+{
+  "base_sha": "a070efdd235e5586185b43806f9ddbdb06e8c619",
+  "binary_sha256": {
+    "baseline": "767cfc403a95c5bf5407d63a68b7de23b566b67d66e356c843303f569cf70539",
+    "candidate": "ab0bf1ff34919744e01e327be120d1f4c5081f36a8ca54b15348591e57a300d4"
+  },
+  "test": "ui::browse_tab::row_ops::row_identity_tests::wide_row_identity_checks_preserve_the_non_key_payload",
+  "payload_bytes": 16777216,
+  "matching_checks": 8,
+  "mismatched_checks": 1,
+  "baseline_peak_heap_decimal_mb": 33.8,
+  "candidate_peak_heap_decimal_mb": 17.03,
+  "baseline_allocation_calls": 2130,
+  "candidate_allocation_calls": 2112,
+  "profiles": [
+    {
+      "variant": "baseline",
+      "file": "row-key-baseline.zst",
+      "sha256": "6401d646cea905a8997e310d756bdce64f2c3bc6663ba7d721019a4321be369b",
+      "bytes": 41228
+    },
+    {
+      "variant": "candidate",
+      "file": "row-key-candidate.zst",
+      "sha256": "bdd9070e13b2a848f8a3ea1face073556bed2c07c1924dd7e106e78961e79dab",
+      "bytes": 40230
+    }
+  ],
+  "local_profile_directory": "bookie-test/profiles/row-key-2026-10-22",
+  "limits": [
+    "One capture per variant; no application latency claim.",
+    "The test pins existing key-match/refusal/value-preservation behavior.",
+    "Only stale-row validation is changed; other edit paths can still need full-row copies."
+  ],
+  "candidate_row_ops_diff_sha256": "d24e67de023876e186212df2df2ac942c2d3c1c58b75ecc1bc8c5e5370902a61"
+}

@@ -415,7 +415,7 @@ impl BrowseTab {
         if row_obj.draft_id().is_some() {
             return true;
         }
-        row_key_matches(&self.current_columns, &row_obj.cells_clone(), expected_key)
+        row_key_matches(&self.current_columns, &row_obj, expected_key)
     }
 
     fn reject_stale_row_edit(&mut self, row_position: u32, row_key: &[Value], sender: &ComponentSender<Self>) -> bool {
@@ -913,7 +913,7 @@ fn duplicate_row_values(columns: &[ColumnInfo], source_cells: &[Value]) -> Resul
 
 /// Compare the primary-key values a row carries now with the ones read
 /// when its editor opened.
-fn row_key_matches(columns: &[ColumnInfo], cells: &[Value], expected: &[Value]) -> bool {
+fn row_key_matches(columns: &[ColumnInfo], row: &crate::ui::row_object::RowObject, expected: &[Value]) -> bool {
     if expected.is_empty() {
         return true;
     }
@@ -921,12 +921,12 @@ fn row_key_matches(columns: &[ColumnInfo], cells: &[Value], expected: &[Value]) 
         .iter()
         .enumerate()
         .filter(|(_, column)| column.primary_key)
-        .map(|(index, _)| cells.get(index));
+        .map(|(index, _)| index);
     let mut wanted = expected.iter();
     loop {
         match (current.next(), wanted.next()) {
             (None, None) => return true,
-            (Some(Some(value)), Some(want)) if value == want => continue,
+            (Some(index), Some(want)) if row.with_cell_value(index, |value| value == want) == Some(true) => continue,
             _ => return false,
         }
     }
@@ -953,36 +953,87 @@ mod row_identity_tests {
         }
     }
 
+    fn matches_cells(columns: &[ColumnInfo], cells: &[Value], expected: &[Value]) -> bool {
+        let row = crate::ui::row_object::RowObject::new(cells.to_vec());
+        row_key_matches(columns, &row, expected)
+    }
+
+    #[test]
+    fn row_identity_checks_require_loaded_keys_but_not_loaded_payloads() {
+        let columns = [column("id", true), column("payload", false)];
+        let keyed = crate::ui::row_object::RowObject::new_projected(vec![Value::Int(7)], &[0], 2).unwrap();
+        assert!(row_key_matches(&columns, &keyed, &[Value::Int(7)]));
+        let key_missing =
+            crate::ui::row_object::RowObject::new_projected(vec![Value::Text("payload".into())], &[1], 2).unwrap();
+        assert!(!row_key_matches(&columns, &key_missing, &[Value::Int(7)]));
+    }
+
+    #[test]
+    fn shared_row_identity_uses_current_key_values_and_refuses_a_released_source() {
+        let columns = [column("id", true), column("payload", false)];
+        let result = std::sync::Arc::new(tablepro_core::QueryResult {
+            columns: columns.to_vec(),
+            rows: vec![vec![Value::Int(7), Value::Text("payload".into())]],
+            truncated: false,
+        });
+        let row = crate::ui::row_object::RowObject::from_shared(&result, 0, None).unwrap();
+        assert!(row_key_matches(&columns, &row, &[Value::Int(7)]));
+        row.set_cell(0, Value::Int(8));
+        assert!(!row_key_matches(&columns, &row, &[Value::Int(7)]));
+        assert!(row_key_matches(&columns, &row, &[Value::Int(8)]));
+        let released = crate::ui::row_object::RowObject::from_shared(&result, 0, None).unwrap();
+        drop(result);
+        assert!(!row_key_matches(&columns, &released, &[Value::Int(7)]));
+        assert!(row_key_matches(&columns, &row, &[Value::Int(8)]));
+    }
+
+    #[test]
+    fn wide_row_identity_checks_preserve_the_non_key_payload() {
+        let columns = [column("id", true), column("payload", false)];
+        let row = crate::ui::row_object::RowObject::new(vec![Value::Int(7), Value::Text("x".repeat(16 * 1024 * 1024))]);
+        for _ in 0..8 {
+            assert!(row_key_matches(&columns, &row, &[Value::Int(7)]));
+        }
+        assert!(!row_key_matches(&columns, &row, &[Value::Int(8)]));
+        assert_eq!(
+            row.with_cell_value(1, |value| match value {
+                Value::Text(text) => text.len(),
+                _ => 0,
+            }),
+            Some(16 * 1024 * 1024)
+        );
+    }
+
     #[test]
     fn the_same_row_still_matches_its_key() {
         let columns = [column("id", true), column("note", false)];
         let cells = [Value::Int(7), Value::Text("a".into())];
-        assert!(row_key_matches(&columns, &cells, &[Value::Int(7)]));
+        assert!(matches_cells(&columns, &cells, &[Value::Int(7)]));
     }
 
     #[test]
     fn a_different_row_at_the_same_position_is_refused() {
         let columns = [column("id", true), column("note", false)];
         let cells = [Value::Int(8), Value::Text("a".into())];
-        assert!(!row_key_matches(&columns, &cells, &[Value::Int(7)]));
+        assert!(!matches_cells(&columns, &cells, &[Value::Int(7)]));
     }
 
     #[test]
     fn editing_another_column_of_the_same_row_still_matches() {
         let columns = [column("id", true), column("note", false)];
         let cells = [Value::Int(7), Value::Text("edited".into())];
-        assert!(row_key_matches(&columns, &cells, &[Value::Int(7)]));
+        assert!(matches_cells(&columns, &cells, &[Value::Int(7)]));
     }
 
     #[test]
     fn every_component_of_a_composite_key_has_to_match() {
         let columns = [column("a", true), column("b", true), column("c", false)];
-        assert!(row_key_matches(
+        assert!(matches_cells(
             &columns,
             &[Value::Int(1), Value::Int(2), Value::Int(9)],
             &[Value::Int(1), Value::Int(2)]
         ));
-        assert!(!row_key_matches(
+        assert!(!matches_cells(
             &columns,
             &[Value::Int(1), Value::Int(3), Value::Int(9)],
             &[Value::Int(1), Value::Int(2)]
@@ -992,13 +1043,13 @@ mod row_identity_tests {
     #[test]
     fn a_key_that_lost_or_gained_a_component_is_refused() {
         let columns = [column("a", true), column("b", true)];
-        assert!(!row_key_matches(
+        assert!(!matches_cells(
             &columns,
             &[Value::Int(1), Value::Int(2)],
             &[Value::Int(1)]
         ));
         let one_key = [column("a", true), column("b", false)];
-        assert!(!row_key_matches(
+        assert!(!matches_cells(
             &one_key,
             &[Value::Int(1), Value::Int(2)],
             &[Value::Int(1), Value::Int(2)]
@@ -1008,8 +1059,8 @@ mod row_identity_tests {
     #[test]
     fn a_null_key_component_compares_by_value_like_any_other() {
         let columns = [column("a", true), column("b", false)];
-        assert!(row_key_matches(&columns, &[Value::Null, Value::Int(1)], &[Value::Null]));
-        assert!(!row_key_matches(
+        assert!(matches_cells(&columns, &[Value::Null, Value::Int(1)], &[Value::Null]));
+        assert!(!matches_cells(
             &columns,
             &[Value::Int(0), Value::Int(1)],
             &[Value::Null]
@@ -1019,7 +1070,7 @@ mod row_identity_tests {
     #[test]
     fn a_table_without_a_primary_key_has_nothing_to_compare() {
         let columns = [column("a", false)];
-        assert!(row_key_matches(&columns, &[Value::Int(1)], &[]));
+        assert!(matches_cells(&columns, &[Value::Int(1)], &[]));
     }
 
     #[test]
@@ -1099,7 +1150,7 @@ mod row_identity_tests {
     #[test]
     fn a_row_shorter_than_its_columns_is_refused_rather_than_assumed_equal() {
         let columns = [column("a", true), column("b", true)];
-        assert!(!row_key_matches(
+        assert!(!matches_cells(
             &columns,
             &[Value::Int(1)],
             &[Value::Int(1), Value::Int(2)]

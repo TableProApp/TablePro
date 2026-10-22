@@ -1,0 +1,23 @@
+	Command being timed: "$WORKTREE/target/resource-probes/postgres-candidate --ignored --exact query_budget_contract::an_oversized_single_cell_is_refused_and_connection_remains_usable --test-threads=1"
+	User time (seconds): 0.09
+	System time (seconds): 0.01
+	Percent of CPU this job got: 6%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:01.63
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 226124
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 4930
+	Voluntary context switches: 69
+	Involuntary context switches: 9
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 16
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

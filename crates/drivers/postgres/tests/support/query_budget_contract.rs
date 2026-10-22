@@ -45,6 +45,25 @@ async fn a_query_truncated_at_the_shared_byte_budget_preserves_order_and_pool_re
 
 #[tokio::test]
 #[ignore = "requires docker"]
+async fn an_oversized_single_cell_is_refused_and_connection_remains_usable() {
+    let (_container, opts) = super::start_pg().await;
+    let connection = super::connect(opts).await;
+    let result = connection
+        .query("SELECT repeat('x', 67108865) AS payload")
+        .await
+        .expect("oversized result is reported as truncated");
+
+    assert!(result.truncated);
+    assert!(result.rows.is_empty());
+    let next = connection
+        .query("SELECT 42::bigint AS usable")
+        .await
+        .expect("connection remains usable after rejecting the row");
+    assert_eq!(next.rows, vec![vec![Value::Int(42)]]);
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
 async fn a_byte_capped_query_aborts_its_transaction_until_rollback_then_reuses_the_connection() {
     let (_container, opts) = super::start_pg().await;
     let observer = super::connect(opts.clone()).await;

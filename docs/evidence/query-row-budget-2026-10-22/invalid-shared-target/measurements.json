@@ -1,0 +1,56 @@
+{
+  "baseline_sha": "ad9bb1447163c848919616773ab0971c5a2d2135",
+  "candidate_base_sha": "a070efdd235e5586185b43806f9ddbdb06e8c619",
+  "candidate_crates_diff_sha256": "83500c8df576fc4ecdffc6bc3cf5705883c789237f5741bf93dd9cfe0df5091f",
+  "test": "query_budget_contract::an_oversized_single_cell_is_refused_and_connection_remains_usable",
+  "notes": [
+    "Unoptimized test executables; same regression added to baseline without changing production code.",
+    "Three alternating baseline/candidate runs; Docker database process memory excluded.",
+    "Baseline and candidate base have identical committed crates trees.",
+    "Absolute worktree path replaced with $WORKTREE in time output."
+  ],
+  "runs": [
+    {
+      "variant": "baseline",
+      "attempt": 1,
+      "maximum_rss_kib": 226448,
+      "elapsed": "0:01.71",
+      "test_passed": true
+    },
+    {
+      "variant": "baseline",
+      "attempt": 2,
+      "maximum_rss_kib": 225988,
+      "elapsed": "0:01.64",
+      "test_passed": true
+    },
+    {
+      "variant": "baseline",
+      "attempt": 3,
+      "maximum_rss_kib": 225396,
+      "elapsed": "0:01.63",
+      "test_passed": true
+    },
+    {
+      "variant": "candidate",
+      "attempt": 1,
+      "maximum_rss_kib": 225964,
+      "elapsed": "0:01.66",
+      "test_passed": true
+    },
+    {
+      "variant": "candidate",
+      "attempt": 2,
+      "maximum_rss_kib": 226124,
+      "elapsed": "0:01.63",
+      "test_passed": true
+    },
+    {
+      "variant": "candidate",
+      "attempt": 3,
+      "maximum_rss_kib": 225724,
+      "elapsed": "0:01.64",
+      "test_passed": true
+    }
+  ]
+}

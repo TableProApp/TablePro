@@ -1,0 +1,65 @@
+{
+  "baseline_sha": "ad9bb1447163c848919616773ab0971c5a2d2135",
+  "candidate_base_sha": "a070efdd235e5586185b43806f9ddbdb06e8c619",
+  "candidate_crates_diff_sha256": "83500c8df576fc4ecdffc6bc3cf5705883c789237f5741bf93dd9cfe0df5091f",
+  "binary_sha256": {
+    "baseline": "daaa9b7423be60a4f590d003ac7973221c7444fd5bad7d25204ae98e349deb92",
+    "candidate": "622782803b7c9d3b619512708114cda264f26668105654a2d0989f62a5a39056"
+  },
+  "test": "query_budget_contract::an_oversized_single_cell_is_refused_and_connection_remains_usable",
+  "notes": [
+    "Unoptimized test executables; same regression added to baseline without changing production code.",
+    "Three alternating baseline/candidate runs; Docker database process memory excluded.",
+    "Baseline and candidate base have identical committed crates trees.",
+    "Candidate core and PostgreSQL build outputs cleaned before rebuild; executable digests differ.",
+    "Absolute worktree path replaced with $WORKTREE in time output."
+  ],
+  "runs": [
+    {
+      "variant": "baseline",
+      "attempt": 1,
+      "maximum_rss_kib": 226516,
+      "elapsed": "0:01.85",
+      "test_passed": true
+    },
+    {
+      "variant": "baseline",
+      "attempt": 2,
+      "maximum_rss_kib": 225940,
+      "elapsed": "0:02.14",
+      "test_passed": true
+    },
+    {
+      "variant": "baseline",
+      "attempt": 3,
+      "maximum_rss_kib": 226224,
+      "elapsed": "0:02.30",
+      "test_passed": true
+    },
+    {
+      "variant": "candidate",
+      "attempt": 1,
+      "maximum_rss_kib": 158704,
+      "elapsed": "0:02.50",
+      "test_passed": true
+    },
+    {
+      "variant": "candidate",
+      "attempt": 2,
+      "maximum_rss_kib": 159112,
+      "elapsed": "0:02.04",
+      "test_passed": true
+    },
+    {
+      "variant": "candidate",
+      "attempt": 3,
+      "maximum_rss_kib": 158560,
+      "elapsed": "0:02.27",
+      "test_passed": true
+    }
+  ],
+  "median_rss_kib": {
+    "baseline": 226224,
+    "candidate": 158704
+  }
+}

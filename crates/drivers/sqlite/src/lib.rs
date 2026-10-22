@@ -511,13 +511,14 @@ async fn stream_into_result(
             truncated = true;
             break;
         }
-        let values = (0..columns.len())
-            .map(|index| extract_value(&row, index))
-            .collect::<Vec<_>>();
-        if !budget.admit(&values) {
+        let payload_bytes = sqlite_row_payload_bytes(&row);
+        let Some(values) = budget.decode_and_admit_row(columns.len(), payload_bytes, || {
+            Ok::<_, DriverError>((0..columns.len()).map(|index| extract_value(&row, index)).collect())
+        })?
+        else {
             truncated = true;
             break;
-        }
+        };
         rows.push(values);
     }
     drop(stream);
@@ -786,6 +787,25 @@ fn untyped_value(row: &SqliteRow, idx: usize) -> Value {
         .unwrap_or_else(|_| Value::Undecodable(row.columns()[idx].type_info().name().to_string()))
 }
 
+fn sqlite_row_payload_bytes(row: &SqliteRow) -> usize {
+    (0..row.len()).fold(0usize, |total, index| {
+        let length = match row.try_get_raw(index) {
+            Ok(value) if value.is_null() => 0,
+            Ok(value) => match value.type_info().name() {
+                "TEXT" => row
+                    .try_get::<&str, _>(index)
+                    .map(str::len)
+                    .or_else(|_| row.try_get::<&[u8], _>(index).map(<[u8]>::len))
+                    .unwrap_or(usize::MAX),
+                "BLOB" => row.try_get::<&[u8], _>(index).map_or(usize::MAX, <[u8]>::len),
+                _ => 0,
+            },
+            Err(_) => usize::MAX,
+        };
+        total.saturating_add(length)
+    })
+}
+
 /// A declared column type is a hint, not a guarantee -- SQLite's type
 /// affinity can still store a row's actual value in a different
 /// storage class than the column's declared type. When the declared
@@ -869,13 +889,14 @@ async fn params_into_result(
             truncated = true;
             break;
         }
-        let values = (0..columns.len())
-            .map(|index| extract_value(&row, index))
-            .collect::<Vec<_>>();
-        if !budget.admit(&values) {
+        let payload_bytes = sqlite_row_payload_bytes(&row);
+        let Some(values) = budget.decode_and_admit_row(columns.len(), payload_bytes, || {
+            Ok::<_, DriverError>((0..columns.len()).map(|index| extract_value(&row, index)).collect())
+        })?
+        else {
             truncated = true;
             break;
-        }
+        };
         rows.push(values);
     }
     drop(stream);

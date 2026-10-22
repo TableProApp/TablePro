@@ -419,17 +419,18 @@ where
             column_origins = metadata.column_origins;
             type_names = metadata.type_names;
         }
-        // Decode while streaming so the wire rows and the final Value matrix
-        // do not both occupy memory for the entire result.
-        let values = type_names
-            .iter()
-            .enumerate()
-            .map(|(index, type_name)| extract_value(&row, index, type_name))
-            .collect::<Result<Vec<_>, _>>()?;
-        if !budget.admit(&values) {
+        let payload_bytes = pg_row_payload_bytes(&row).unwrap_or(usize::MAX);
+        let Some(values) = budget.decode_and_admit_row(row.len(), payload_bytes, || {
+            type_names
+                .iter()
+                .enumerate()
+                .map(|(index, type_name)| extract_value(&row, index, type_name))
+                .collect::<Result<Vec<_>, _>>()
+        })?
+        else {
             truncated = true;
             break;
-        }
+        };
         rows.push(values);
     }
     Ok((
@@ -441,6 +442,16 @@ where
         type_infos,
         column_origins,
     ))
+}
+
+fn pg_row_payload_bytes(row: &PgRow) -> Option<usize> {
+    (0..row.len()).try_fold(0usize, |total, index| {
+        let value = row.try_get_raw(index).ok()?;
+        if value.is_null() {
+            return Some(total);
+        }
+        Some(total.saturating_add(value.as_bytes().ok()?.len()))
+    })
 }
 
 struct PgColumnMetadata {

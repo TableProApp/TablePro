@@ -1,0 +1,10 @@
+reading file "$BUILD_TARGET/resource-probes/row-key-baseline.zst" - please wait, this might take some time...
+Debuggee command was: $BUILD_TARGET/resource-probes/row-key-baseline-tests --exact ui::browse_tab::row_ops::row_identity_tests::wide_row_identity_checks_preserve_the_non_key_payload --test-threads=1
+finished reading file, now analyzing data:
+
+total runtime: 0.057000s.
+calls to allocation functions: 2130 (37368/s)
+temporary memory allocations: 107 (1877/s)
+peak heap memory consumption: 33.80M
+peak RSS (including heaptrack overhead): 81.10M
+total memory leaked: 170.16K
