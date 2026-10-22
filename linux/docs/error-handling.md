@@ -65,7 +65,7 @@ Rules:
 | `WriteOutcome` | `RolledBack`, `RowGuardFailed`, `CommitOutcomeUnknown`, `PartiallyApplied` | Says what is in the database now. Only `RolledBack` and `RowGuardFailed` may say nothing changed. |
 | `File` | the four file variants | Names the path. A connect that failed on the file is not retried. |
 | `Busy` | `Busy`, `EditorSessionBusy` | Says to try again shortly, that another program or tab holds the file's lock, or to wait for the tab's statement. |
-| `Internal` | `GuardUnsupported`, `Decode`, `Protocol`; `SshFailure::Protocol` | Says what the driver could not do: check a save, read a value, read the reply. |
+| `Internal` | `GuardUnsupported`, `Decode`, `Protocol`; `SshFailure::Protocol` and `SshFailure::Internal` | Says what the driver could not do: check a save, read a value, read the reply. |
 
 ## `ServerDiagnostics`
 
@@ -128,7 +128,7 @@ The buttons are `TlsRemedy` in `crates/app/src/ui/error_text/tls_remedy.rs`: the
 
 `crates/app/src/ui/error_text/` turns errors into sentences: `driver_message` for a `DriverError`, `connect_error_message` and `operation_error_message` for the session's errors, and an SSH module for `SshFailure`. Every string goes through `crate::i18n`. Never show `Debug` or the `#[error]` text of an error, on its own or inside a sentence.
 
-The only text shown as it came is what another party wrote, inside a sentence that says whose it is: a server's `ServerDiagnostics`, the Secret Service's reply (the `service_message` of `SecretError::Backend`), OpenSSH's stderr, and the Kerberos and TLS library reports. The detail of an `Internal` error is logged at `trace` when it is shown, since it can quote what the server sent.
+The only text shown as it came is what another party wrote, inside a sentence that says whose it is: a server's `ServerDiagnostics`, the Secret Service's reply (the `service_message` of `SecretError::Backend`), OpenSSH's stderr, and the Kerberos library's report. A core crate's own detail is a value the app words, never English text: `SshFailure` carries exit statuses, I/O error kinds and `SshRuntimeDirProblem`. The TLS library's text is logged, and the `TlsFailure` alone picks the sentence. The detail of an `Internal` error is logged at `trace` when it is shown, since it can quote what the server sent.
 
 ## Logging
 

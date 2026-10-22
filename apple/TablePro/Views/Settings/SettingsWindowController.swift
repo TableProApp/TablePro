@@ -168,6 +168,7 @@ private struct SettingsPaneContent: View {
         case .editor:
             EditorSettingsView(
                 settings: $settingsManager.editor,
+                formatter: $settingsManager.formatter,
                 typography: $settingsManager.typography
             )
         case .data:

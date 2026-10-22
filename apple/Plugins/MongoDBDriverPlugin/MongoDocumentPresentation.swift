@@ -7,7 +7,7 @@ import Foundation
 /// as a 32-bit one, and libbson cannot read back the date text it writes for years past 9999.
 /// So each value is written the relaxed way only where that reads back as the same type and value,
 /// and keeps its canonical wrapper everywhere else.
-enum MongoDocumentPresentation {
+nonisolated enum MongoDocumentPresentation {
     static func editableText(_ document: MongoDocumentText) -> String {
         var output = ""
         write(readable(.object(document.members)), into: &output, indent: 0)

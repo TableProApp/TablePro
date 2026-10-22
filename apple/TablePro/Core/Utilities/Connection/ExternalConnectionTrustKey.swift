@@ -39,7 +39,7 @@ internal struct ExternalConnectionTrustKey: Hashable, Codable, Sendable {
             database: connection.database,
             username: connection.username,
             scopeName: scopeName ?? "",
-            socketPath: connection.localSocketPath
+            socketPath: connection.localSocketFile
         )
     }
 

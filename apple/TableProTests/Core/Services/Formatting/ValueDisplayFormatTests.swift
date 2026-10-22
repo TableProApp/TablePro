@@ -18,12 +18,18 @@ struct ValueDisplayFormatTests {
         #expect(ValueDisplayFormat.unixTimestampMillis.rawValue == "unixTimestampMillis")
         #expect(ValueDisplayFormat.json.rawValue == "json")
         #expect(ValueDisplayFormat.phpSerialized.rawValue == "phpSerialized")
+        #expect(ValueDisplayFormat.uuidSwappedTime.rawValue == "uuidSwappedTime")
+        #expect(ValueDisplayFormat.messagePack.rawValue == "messagePack")
+        #expect(ValueDisplayFormat.protobuf.rawValue == "protobuf")
     }
 
     @Test("only the formats that produce characters count as rendering binary as text")
     func rendersBinaryAsText() {
         #expect(ValueDisplayFormat.text.rendersBinaryAsText)
         #expect(ValueDisplayFormat.uuid.rendersBinaryAsText)
+        #expect(ValueDisplayFormat.uuidSwappedTime.rendersBinaryAsText)
+        #expect(ValueDisplayFormat.messagePack.rendersBinaryAsText)
+        #expect(ValueDisplayFormat.protobuf.rendersBinaryAsText)
         #expect(!ValueDisplayFormat.raw.rendersBinaryAsText)
         #expect(!ValueDisplayFormat.unixTimestamp.rendersBinaryAsText)
         #expect(!ValueDisplayFormat.json.rendersBinaryAsText)
@@ -49,12 +55,22 @@ struct ValueDisplayFormatTests {
         #expect(formats.contains(.unixTimestamp))
     }
 
-    @Test("blob column offers text and uuid but not json or phpSerialized")
+    @Test("blob column offers text, both UUID orders and the binary decoders, but not json or phpSerialized")
     func applicableForBlob() {
         let formats = ValueDisplayFormat.applicableFormats(for: .blob(rawType: "BLOB"))
         #expect(!formats.contains(.json))
         #expect(!formats.contains(.phpSerialized))
-        #expect(formats == [.raw, .text, .uuid])
+        #expect(formats == [.raw, .text, .uuid, .uuidSwappedTime, .messagePack, .protobuf])
+    }
+
+    @Test("The binary decoders and the swapped UUID stay off text and integer columns")
+    func binaryFormatsAreBlobOnly() {
+        for columnType in [ColumnType.text(rawType: "TEXT"), .integer(rawType: "INT")] {
+            let formats = ValueDisplayFormat.applicableFormats(for: columnType)
+            #expect(!formats.contains(.uuidSwappedTime))
+            #expect(!formats.contains(.messagePack))
+            #expect(!formats.contains(.protobuf))
+        }
     }
 
     @Test("MongoDB binary columns do not offer generic UUID formatting")
@@ -65,7 +81,7 @@ struct ValueDisplayFormatTests {
         )
 
         #expect(!formats.contains(.uuid))
-        #expect(formats == [.raw, .text])
+        #expect(formats == [.raw, .text, .messagePack, .protobuf])
     }
 
     @Test("nil column type returns only raw")

@@ -52,11 +52,11 @@ struct AIChatPanelView: View {
                 AIChatTranscriptView(viewModel: viewModel, contentWidth: contentWidth)
             }
 
-            if hasConfiguredProvider {
-                if let error = viewModel.errorMessage {
-                    errorBanner(error)
-                }
+            if let error = viewModel.errorMessage {
+                errorBanner(error)
+            }
 
+            if hasConfiguredProvider {
                 inputArea
             } else if !viewModel.messages.isEmpty {
                 noProviderFooter
@@ -122,6 +122,12 @@ struct AIChatPanelView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
+                if viewModel.isStreaming {
+                    Button(String(localized: "Stop Generating")) {
+                        viewModel.cancelStream()
+                    }
+                    .controlSize(.small)
+                }
                 Button(String(localized: "Settings…")) {
                     WindowOpener.shared.openSettings(tab: .ai)
                 }
@@ -151,10 +157,19 @@ struct AIChatPanelView: View {
         HStack(spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.yellow)
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .help(message)
+                if viewModel.onDeviceRefusal != nil, let provider = viewModel.fallbackProviderName {
+                    Button(String(format: String(localized: "Send to %@"), provider)) {
+                        viewModel.sendRefusedTurnToProvider()
+                    }
+                    .controlSize(.small)
+                }
+            }
             Spacer()
             Button {
                 viewModel.clearError()

@@ -27,6 +27,16 @@ struct PasswordSourceCodableTests {
         try decoder.decode([String: String].self, from: encoder.encode(source))
     }
 
+    @Test("A command keeps how long its result may be reused, and drops a value out of range")
+    func commandReuseSeconds() throws {
+        let reused = PasswordSource.command(shell: "aws rds generate-db-auth-token", reuseSeconds: 600)
+        #expect(try decoder.decode(PasswordSource.self, from: encoder.encode(reused)) == reused)
+
+        let json = #"{"kind":"command","shell":"s","reuseSeconds":0}"#
+        let decoded = try decoder.decode(PasswordSource.self, from: try #require(json.data(using: .utf8)))
+        #expect(decoded == .command(shell: "s"))
+    }
+
     @Test("Round-trips every kind")
     func roundTrips() throws {
         let sources: [PasswordSource] = [
@@ -67,6 +77,45 @@ struct PasswordSourceCodableTests {
         connection.passwordSource = .command(shell: "op read op://vault/feature-x/password")
         let decoded = try decoder.decode(DatabaseConnection.self, from: encoder.encode(connection))
         #expect(decoded.passwordSource == .command(shell: "op read op://vault/feature-x/password"))
+    }
+
+    @Test("A Vault database role round-trips with each sign-in method", arguments: [
+        VaultAuthMethod.token,
+        .appRole(mount: "approle", roleId: "role-1", secretIdPath: "~/.vault/secret-id"),
+        .oidc(mount: "oidc-corp", role: "dba"),
+    ])
+    func vaultDatabaseRoleRoundTrips(auth: VaultAuthMethod) throws {
+        let source = PasswordSource.vaultDatabaseRole(
+            VaultDatabaseRole(address: "https://vault.corp:8200", mount: "database", role: "readonly", auth: auth)
+        )
+        #expect(try decoder.decode(PasswordSource.self, from: encoder.encode(source)) == source)
+    }
+
+    @Test("Decodes the documented Vault database role shape, filling in the defaults")
+    func decodesDocumentedVaultRole() throws {
+        let tokenJSON = #"{"kind":"vaultDatabaseRole","mount":"database","role":"readonly"}"#
+        #expect(try decoder.decode(PasswordSource.self, from: Data(tokenJSON.utf8))
+            == .vaultDatabaseRole(VaultDatabaseRole(mount: "database", role: "readonly", auth: .token)))
+
+        let appRoleJSON = #"{"kind":"vaultDatabaseRole","address":"https://vault.corp:8200","mount":"database","#
+            + #""role":"readonly","auth":{"method":"approle","roleId":"r1","secretIdPath":"~/.vault/secret-id"}}"#
+        #expect(try decoder.decode(PasswordSource.self, from: Data(appRoleJSON.utf8))
+            == .vaultDatabaseRole(VaultDatabaseRole(
+                address: "https://vault.corp:8200",
+                mount: "database",
+                role: "readonly",
+                auth: .appRole(mount: "approle", roleId: "r1", secretIdPath: "~/.vault/secret-id")
+            )))
+
+        let oidcJSON = #"{"kind":"vaultDatabaseRole","mount":"database","role":"ro","auth":{"method":"oidc"}}"#
+        #expect(try decoder.decode(PasswordSource.self, from: Data(oidcJSON.utf8))
+            == .vaultDatabaseRole(VaultDatabaseRole(mount: "database", role: "ro", auth: .oidc(mount: "oidc", role: ""))))
+    }
+
+    @Test("A role reads its credentials under <mount>/creds/<role>")
+    func credentialsPath() {
+        #expect(VaultDatabaseRole(mount: "/database/", role: "readonly").credentialsPath == "database/creds/readonly")
+        #expect(VaultDatabaseRole(mount: "teams/db", role: "rw").credentialsPath == "teams/db/creds/rw")
     }
 
     @Test("A connection without a password source decodes to nil")

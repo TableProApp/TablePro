@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ERDiagramView: View {
     @ObservedObject var viewModel: ERDiagramViewModel
+    var onBuildJoinQuery: (([String]) -> Void)?
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     private var viewport: DiagramViewportController { viewModel.viewport }
@@ -44,16 +45,73 @@ struct ERDiagramView: View {
                 } else {
                     diagramCanvas
                 }
-                ERDiagramToolbar(viewModel: viewModel, viewport: viewport, onExport: exportDiagram)
+                ERDiagramToolbar(
+                    viewModel: viewModel,
+                    viewport: viewport,
+                    onExport: export,
+                    onCopyMermaid: copyMermaid,
+                    onBuildJoinQuery: buildJoinQuery
+                )
             }
         }
         .task { await viewModel.loadDiagram() }
+        .sheet(item: $viewModel.editSheet) { sheet in
+            editSheet(sheet)
+        }
+    }
+
+    // MARK: - Edit Sheets
+
+    @ViewBuilder
+    private func editSheet(_ sheet: ERDiagramEditSheet) -> some View {
+        let viewModel = viewModel
+        switch sheet {
+        case .addForeignKey(let draft):
+            ERDiagramForeignKeySheet(
+                draft: draft,
+                tables: viewModel.referenceableTables,
+                columns: { viewModel.columnNames(of: $0) },
+                defaultReferencedColumn: { viewModel.defaultReferencedColumn(in: $0) },
+                isNameTaken: { viewModel.isForeignKeyNameTaken($0) },
+                dialect: ForeignKeyDialect.forType(viewModel.editingConnection?.type ?? .mysql),
+                onAdd: { draft in
+                    viewModel.editSheet = nil
+                    viewModel.stageForeignKey(draft)
+                },
+                onCancel: { viewModel.editSheet = nil }
+            )
+        case .addColumn(let table):
+            ERDiagramColumnSheet(
+                table: table,
+                mode: .add,
+                databaseType: viewModel.editingConnection?.type ?? .mysql,
+                isNameTaken: { viewModel.isColumnNameTaken($0, in: table) },
+                onAdd: { column in
+                    viewModel.editSheet = nil
+                    viewModel.stageColumn(column, in: table)
+                },
+                onRename: { _ in },
+                onCancel: { viewModel.editSheet = nil }
+            )
+        case .renameColumn(let table, let column):
+            ERDiagramColumnSheet(
+                table: table,
+                mode: .rename(column),
+                databaseType: viewModel.editingConnection?.type ?? .mysql,
+                isNameTaken: { viewModel.isColumnNameTaken($0, in: table, ignoring: column) },
+                onAdd: { _ in },
+                onRename: { newName in
+                    viewModel.editSheet = nil
+                    viewModel.stageRename(of: column, to: newName, in: table)
+                },
+                onCancel: { viewModel.editSheet = nil }
+            )
+        }
     }
 
     // MARK: - Diagram Canvas
 
-    /// The scene is built here, during `body`, so observation sees every model property it reads;
-    /// the document view only receives the finished value.
+    // Built during `body`, so observation sees every model property the scene reads.
     private var diagramCanvas: some View {
         let scene = self.scene
         let actions = canvasActions
@@ -69,11 +127,17 @@ struct ERDiagramView: View {
         )
     }
 
+    private var buildJoinQuery: (() -> Void)? {
+        guard let onBuildJoinQuery else { return nil }
+        let viewModel = viewModel
+        return { onBuildJoinQuery(viewModel.selectedTableNames) }
+    }
+
     private var canvasActions: ERDiagramCanvasActions {
         let viewModel = viewModel
         return ERDiagramCanvasActions(
             nodeAt: { viewModel.nodeId(at: $0) },
-            select: { viewModel.selectedNodeId = $0 },
+            select: { viewModel.selectNode($0) },
             beginDrag: { viewModel.beginDrag(at: $0) },
             updateDrag: { viewModel.updateDrag(translation: $0, currentPoint: $1) },
             endDrag: { viewModel.endDrag() },
@@ -81,6 +145,24 @@ struct ERDiagramView: View {
             copyImage: {
                 guard let image = exportImage() else { return }
                 ClipboardService.shared.writeImage(image)
+            },
+            toggleSelection: { viewModel.toggleSelection($0) },
+            buildJoinQuery: buildJoinQuery,
+            edgeAt: { viewModel.edgeId(at: $0, tolerance: $1) },
+            columnAt: { viewModel.columnHit(at: $0) },
+            selectEdge: { viewModel.selectEdge($0) },
+            openTable: { id in
+                guard let table = viewModel.node(withId: id)?.tableName else { return }
+                viewModel.openTable(table)
+            },
+            menuSections: { viewModel.menuSections(for: $0) },
+            perform: { viewModel.perform($0) },
+            canDeleteSelection: { viewModel.canDeleteSelection },
+            deleteSelection: { viewModel.deleteSelection() },
+            canLinkColumns: { viewModel.canLinkColumns },
+            canLink: { viewModel.canLink(from: $0, to: $1) },
+            linkColumns: { source, target in
+                viewModel.beginForeignKey(from: source.tableName, column: source.columnName, to: target)
             }
         )
     }
@@ -92,7 +174,8 @@ struct ERDiagramView: View {
             nodeRects: viewModel.cachedNodeRects,
             nodeIndex: viewModel.graph.nodeIndex,
             clusterColors: nodeClusterColors(nodes: viewModel.graph.nodes),
-            selectedNodeId: viewModel.selectedNodeId,
+            selectedNodeIds: viewModel.selectedNodeIds,
+            selectedEdgeId: viewModel.selectedEdgeId,
             size: viewModel.cachedCanvasSize
         )
     }
@@ -110,21 +193,47 @@ struct ERDiagramView: View {
         return colors
     }
 
-    // MARK: - Export Rendering
+    // MARK: - Export
 
     private func exportImage() -> NSImage? {
         ERDiagramSceneRenderer.image(
             scene,
             appearance: viewport.effectiveAppearance,
-            scale: DiagramImageExporter.renderScale
+            scale: DiagramExporter.renderScale
         )
     }
 
-    private func exportDiagram() {
-        DiagramImageExporter.export(
-            exportImage(),
-            defaultFileName: "er-diagram.png",
+    private var exportTitle: String {
+        viewModel.schemaName.map { "\(viewModel.databaseName).\($0)" } ?? viewModel.databaseName
+    }
+
+    private func exportData(_ format: ERDiagramExportFormat) -> Data? {
+        switch format {
+        case .png:
+            return DiagramExporter.pngData(exportImage())
+        case .svg:
+            let svg = ERDiagramSceneRenderer.svgDocument(scene, appearance: viewport.effectiveAppearance, title: exportTitle)
+            return Data(svg.utf8)
+        case .pdf:
+            return ERDiagramSceneRenderer.pdfData(scene, appearance: viewport.effectiveAppearance, title: exportTitle)
+        case .mermaid:
+            return Data(ERDiagramMermaidWriter.document(for: viewModel.graph).utf8)
+        case .graphviz:
+            return Data(ERDiagramDOTWriter.document(for: viewModel.graph).utf8)
+        }
+    }
+
+    private func export(_ format: ERDiagramExportFormat) {
+        DiagramExporter.save(
+            exportData(format),
+            contentType: format.contentType,
+            formatName: format.name,
+            defaultFileName: "er-diagram.\(format.fileExtension)",
             title: String(localized: "Export ER Diagram")
         )
+    }
+
+    private func copyMermaid() {
+        ClipboardService.shared.writeText(ERDiagramMermaidWriter.markdownBlock(for: viewModel.graph))
     }
 }

@@ -41,7 +41,7 @@ Kinds: `unit` runs in the Meson unit suite, `gtk` in the gtk suite, `docker` in 
 | F-002 | gtk | `f002_late_show_create_reply_after_disconnect_is_dropped` | [crates/app/src/ui/session_window/tests/mod.rs](../crates/app/src/ui/session_window/tests/mod.rs) |
 | F-002 | gtk | `f002_a_late_catalog_commit_after_the_watch_drops_is_not_delivered` | [crates/app/src/ui/workspace/sidebar/catalog_watch.rs](../crates/app/src/ui/workspace/sidebar/catalog_watch.rs) |
 | F-003 | unit | `f003_truncated_file_is_unavailable_and_upsert_leaves_bytes_identical` | [crates/storage/src/connections.rs](../crates/storage/src/connections.rs) |
-| F-003 | unit | `f003_version_2_is_newer_and_never_written` | [crates/storage/src/connections.rs](../crates/storage/src/connections.rs) |
+| F-003 | unit | `f003_a_newer_version_is_never_written` | [crates/storage/src/connections.rs](../crates/storage/src/connections.rs) |
 | F-004 | gtk | `f004_edit_after_draft_insert_targets_edited_row` | [crates/app/src/ui/grid/column_factory.rs](../crates/app/src/ui/grid/column_factory.rs) |
 | F-004 | gtk | `f004_menu_set_null_after_draft_removal_targets_clicked_row` | [crates/app/src/ui/grid/column_factory.rs](../crates/app/src/ui/grid/column_factory.rs) |
 | F-004 | gtk | `f004_copy_row_as_insert_uses_row_below_draft` | [crates/app/src/ui/browse_tab/tests/mod.rs](../crates/app/src/ui/browse_tab/tests/mod.rs) |

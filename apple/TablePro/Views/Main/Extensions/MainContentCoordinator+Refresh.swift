@@ -8,6 +8,7 @@
 import AppKit
 import Combine
 import Foundation
+import TableProSQLGrammar
 
 extension MainContentCoordinator {
     // MARK: - Refresh Handling
@@ -48,6 +49,12 @@ extension MainContentCoordinator {
         }
         if tab.tabType == .tableListing {
             AppEvents.shared.tableListingRefreshRequested.send(tab.id)
+            return
+        }
+        if tab.tabType == .erDiagram {
+            if let diagram = erDiagramModels[tab.id] {
+                Task { await diagram.refresh() }
+            }
             return
         }
         if tab.display.resultsViewMode == .structure {

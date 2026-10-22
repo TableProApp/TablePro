@@ -17,7 +17,7 @@ enum MySQLClientArguments {
     /// | mode | MySQL | MariaDB |
     /// | --- | --- | --- |
     /// | disabled | `--ssl-mode=DISABLED` | `--skip-ssl` |
-    /// | preferred | `--ssl-mode=PREFERRED` | `--ssl --skip-ssl-verify-server-cert` |
+    /// | preferred | `--ssl-mode=PREFERRED` | `--ssl --skip-ssl-verify-server-cert`, or `--skip-ssl` when the server offers no TLS |
     /// | required | `--ssl-mode=REQUIRED` | `--ssl --ssl-verify-server-cert` |
     /// | verifyCa | `--ssl-mode=VERIFY_CA` | `--ssl --ssl-verify-server-cert` |
     /// | verifyIdentity | `--ssl-mode=VERIFY_IDENTITY` | `--ssl --ssl-verify-server-cert` |
@@ -30,11 +30,60 @@ enum MySQLClientArguments {
     /// `CN=totally.other.invalid`, so the flag requires TLS rather than an identity, and the
     /// identity check is what `--ssl-ca` adds. MariaDB has no hostname-only tier, so `verifyCa` and
     /// `verifyIdentity` reach it the same way.
-    static func tls(_ ssl: SSLConfiguration, flavor: NativeDumpToolFlavor, toolPath: String) throws -> [String] {
-        guard ssl.isEnabled else {
+    ///
+    /// MariaDB's `--ssl` without verification also sends the typed password when the server offers no
+    /// TLS and caching_sha2_password asks for full authentication, so Preferred dials in plaintext
+    /// when the server's greeting offered no TLS. Measured with mariadb-dump 13.0.2: `--skip-ssl`
+    /// asks for the server's RSA key instead. Nil means the greeting was not read.
+    static func tls(
+        _ ssl: SSLConfiguration,
+        flavor: NativeDumpToolFlavor,
+        toolPath: String,
+        serverOffersTLS: Bool? = nil
+    ) throws -> [String] {
+        guard ssl.isEnabled, !(flavor == .mariadb && ssl.mode == .preferred && serverOffersTLS == false) else {
             return disabledFlags(flavor: flavor)
         }
         return try modeFlags(ssl.mode, flavor: flavor, toolPath: toolPath) + certificateFlags(ssl)
+    }
+
+    // Hidden where the session might run without TLS. MariaDB's tools are the ones measured to send the password as
+    // typed there, and they have no option that refuses it.
+    static func hidesPlaintextPasswordPlugins(
+        _ connection: DatabaseConnection,
+        flavor: NativeDumpToolFlavor,
+        serverOffersTLS: Bool?
+    ) -> Bool {
+        guard flavor == .mariadb, reachesServerOverNetwork(connection) else { return false }
+        switch connection.transportSSLConfiguration.mode {
+        case .disabled: return true
+        // The greeting comes from a connection of its own. Someone on the path who answers the two differently can as
+        // well end the unverified TLS Preferred accepts, in the app's driver too; keeping the password from them is
+        // what Required is for.
+        case .preferred: return serverOffersTLS != true
+        case .required, .verifyCa, .verifyIdentity: return false
+        }
+    }
+
+    static func needsServerGreeting(_ connection: DatabaseConnection, flavor: NativeDumpToolFlavor) -> Bool {
+        flavor == .mariadb
+            && connection.transportSSLConfiguration.mode == .preferred
+            && reachesServerOverNetwork(connection)
+    }
+
+    // A unix socket, and a tunnel that encrypts the hop to the server itself, keep the password off the network.
+    private static func reachesServerOverNetwork(_ connection: DatabaseConnection) -> Bool {
+        MySQLLocalSocket.path(in: connection.additionalFields) == nil && !connection.tunnelSecuresTransport
+    }
+
+    static func pluginDirectory(_ folder: URL) -> [String] {
+        ["--plugin-dir=\(folder.path)"]
+    }
+
+    static var plaintextPasswordRefusal: String {
+        String(
+            localized: "The server asked for the password in plain text, which TablePro sends only over TLS. Set SSL Mode to Required, or turn TLS on for the server."
+        )
     }
 
     /// The protocol is always named, because both families read a host spelled `localhost` as their

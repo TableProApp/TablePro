@@ -25,6 +25,7 @@ mod tab_title;
 mod table_naming;
 #[cfg(test)]
 mod tests;
+mod transaction_banner;
 mod unsaved_icon;
 mod window_tabs;
 mod window_title;
@@ -47,7 +48,7 @@ use libadwaita::prelude::*;
 use relm4::{ComponentController, Controller};
 
 use tablepro_core::EditorSession;
-use tablepro_core::meta::{ObjectInfo, SchemaInfo};
+use tablepro_core::meta::SchemaInfo;
 use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
 use uuid::Uuid;
 
@@ -120,6 +121,7 @@ pub(crate) struct WorkspaceModel {
     all_schemas_listed: bool,
     toast_overlay: adw::ToastOverlay,
     reconnect_banner: adw::Banner,
+    transaction_banner: adw::Banner,
     /// Says the sidebar's list could not be read again, until a read
     /// lands.
     catalog_banner: adw::Banner,
@@ -164,7 +166,6 @@ pub(crate) struct WorkspaceModel {
     driver_id: String,
     /// The driver as the user knows it, for the header's subtitle.
     driver_name: String,
-    read_only: bool,
     /// Writes the tab list a moment after the last change.
     workspace: Rc<workspace_persistence::WorkspacePersistence>,
     /// Recently closed tabs for Ctrl+Shift+T. Pending edits are not
@@ -409,12 +410,11 @@ pub(crate) enum WorkspaceInput {
     RefreshCatalog,
     /// The default schema's list landed, as a reconnect commits it.
     DefaultListCommitted(ObjectListSnapshot),
-    /// The schemas the sidebar's sections are made from, read for
-    /// `objects`. `None` when they could not be read.
+    /// An object list indexed for the sidebar, with the schemas its
+    /// sections were made from.
     SidebarRead {
         read: u64,
-        objects: Arc<[ObjectInfo]>,
-        schemas: Option<Arc<[SchemaInfo]>>,
+        listing: sidebar::SidebarListing,
     },
     /// A reconnect replaced the connection.
     LinkChanged,
@@ -436,6 +436,8 @@ pub(crate) enum WorkspaceInput {
     WorkspaceLoaded(workspace_tabs::LoadedWorkspace),
     /// The banner's Reset: move the unreadable saved tabs aside.
     ResetWorkspaceLayout,
+    /// The session moved to another Safe Mode level, which the title names.
+    SafeModeChanged,
     WorkspaceLayoutReset(Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>),
     /// An editor draft failed to land after the last one did.
     DraftsNotSaved,
@@ -487,8 +489,10 @@ pub(crate) enum WorkspaceInput {
     /// A save started or settled, or tabs' changes were dropped.
     Workspace(crate::workspace::WorkspaceEvent),
     SavesInFlightChanged(usize),
-    /// An editor tab's transaction opened or ended.
+    /// An editor tab's transaction opened, failed or ended.
     EditorTransactionChanged,
+    /// The transaction banner's Show.
+    ShowTransactionTab,
     ShowAlert {
         title: String,
         body: String,
@@ -560,7 +564,7 @@ impl Workspace {
         let persistence = workspace_persistence::WorkspacePersistence::new(storage.workspaces().clone());
         let exports = workspace.export_ledger(&window, &services, &context, &input);
         let imports = import_ledger::ImportLedger::new(context.hold.clone(), window_inhibitor(&window));
-        let sidebar = sidebar::build(&workspace, &input, sidebar::SidebarAffordances::for_session(&session));
+        let sidebar = sidebar::build(&workspace, &input, &session, &tasks);
         let WorkspaceTabParts {
             tab_view,
             index,
@@ -577,6 +581,7 @@ impl Workspace {
         let history_gate = workspace_actions::spawn_history_gate(&window, history.availability());
         let watches = SessionWatches::new(&session, &input);
         let draft_failures = draft_failure_watch(&drafts, &input);
+        transaction_banner::connect_show(&imp.transaction_banner, &input);
 
         let driver_id = session.metadata().driver_id.clone();
         let driver_name = driver_display_name(&context, &driver_id);
@@ -602,6 +607,7 @@ impl Workspace {
             all_schemas_listed: false,
             toast_overlay: imp.toast_overlay.get(),
             reconnect_banner: imp.reconnect_banner.get(),
+            transaction_banner: imp.transaction_banner.get(),
             catalog_banner: imp.catalog_banner.get(),
             layout_banner: imp.layout_banner.get(),
             row_op_spinner: imp.row_op_spinner.get(),
@@ -626,7 +632,6 @@ impl Workspace {
             import_dialog: None,
             driver_id,
             driver_name,
-            read_only: session.read_only(),
             workspace: persistence,
             closed_tabs_stack: Rc::new(RefCell::new(VecDeque::with_capacity(CLOSED_TABS_CAPACITY))),
             _watches: watches,
@@ -894,7 +899,12 @@ impl WorkspaceModel {
         let metadata = self.context.active.metadata();
         let name = metadata.as_ref().map_or("", |metadata| metadata.name.as_str());
         let active = self.selected_workspace_tab_id().and_then(|id| self.tab_title(id));
-        let title = window_title::resolve_window_title(active.as_ref(), name, &self.driver_name, self.read_only);
+        let safe_mode = self
+            .context
+            .active
+            .get()
+            .map_or_else(Default::default, |session| session.safe_mode());
+        let title = window_title::resolve_window_title(active.as_ref(), name, &self.driver_name, safe_mode);
         self.window_title.set_title(&title.heading);
         self.window_title.set_subtitle(&title.subtitle);
         self.sidebar_title.set_title(name);
@@ -921,6 +931,7 @@ impl WorkspaceModel {
         if self.selected_workspace_tab_id() == Some(id) {
             self.refresh_window_title();
         }
+        self.refresh_transaction_banner();
     }
 
     /// Title every tab again when the schemas change whether table tabs
@@ -975,7 +986,7 @@ impl WorkspaceModel {
             WorkspaceInput::CatalogReadFailed(message) => self.on_catalog_read_failed(&message),
             WorkspaceInput::RefreshCatalog => self.refresh_catalog(),
             WorkspaceInput::DefaultListCommitted(snapshot) => self.on_default_list_committed(snapshot),
-            WorkspaceInput::SidebarRead { read, objects, schemas } => self.on_sidebar_read(read, &objects, schemas),
+            WorkspaceInput::SidebarRead { read, listing } => self.on_sidebar_read(read, listing),
             WorkspaceInput::LinkChanged => self.on_link_changed(),
             WorkspaceInput::TabCloseDecided { id, approved } => self.on_tab_close_decided(id, approved),
             WorkspaceInput::SelectTable {
@@ -988,7 +999,11 @@ impl WorkspaceModel {
             WorkspaceInput::StopSaving(id) => self.stop_saving(id),
             WorkspaceInput::Workspace(event) => self.on_workspace_event(event),
             WorkspaceInput::SavesInFlightChanged(count) => self.on_saves_in_flight_changed(count),
-            WorkspaceInput::EditorTransactionChanged => self.refresh_unsaved(),
+            WorkspaceInput::EditorTransactionChanged => {
+                self.refresh_unsaved();
+                self.refresh_transaction_banner();
+            }
+            WorkspaceInput::ShowTransactionTab => self.show_transaction_tab(),
             WorkspaceInput::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id),
             WorkspaceInput::CloseOtherWorkspaceTabs(id) => self.close_other_workspace_tabs(id),
             WorkspaceInput::CloseWorkspaceTabsToRight(id) => self.close_workspace_tabs_to_right(id),
@@ -1015,6 +1030,7 @@ impl WorkspaceModel {
             WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
+            WorkspaceInput::SafeModeChanged => self.refresh_window_title(),
             WorkspaceInput::WorkspaceLayoutReset(outcome) => self.on_workspace_layout_reset(outcome),
             WorkspaceInput::DraftsNotSaved => self.show_toast(&crate::i18n::gettext(
                 "Editor text could not be saved to disk, so it may not come back after TablePro restarts.",

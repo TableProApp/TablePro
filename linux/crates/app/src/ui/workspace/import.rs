@@ -8,11 +8,12 @@ use relm4::{Component, ComponentController};
 use std::ops::Range;
 use std::time::Duration;
 
+use futures::channel::oneshot;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::CellInput;
-use tablepro_core::import::{ImportColumn, ImportPlan, plan_import};
+use tablepro_core::import::{ImportColumn, ImportPlan, MAX_CSV_FILE_BYTES, plan_import};
 use tablepro_core::meta::TableRef;
-use tablepro_core::{CallOptions, DriverError, WriteKind};
+use tablepro_core::{CallOptions, DriverError, SafeModeLevel, WriteKind};
 use tablepro_session::runtime::Tasks;
 use tablepro_session::{OperationError, OperationKind, Session};
 use tokio_util::sync::CancellationToken;
@@ -20,7 +21,8 @@ use tokio_util::sync::CancellationToken;
 use crate::services::history_service::HistoryService;
 use crate::ui::error_text::{driver_message, operation_error_message};
 use crate::ui::file_read::{FileReadError, read_capped_file};
-use crate::ui::import_dialog::{CsvImport, MAX_CSV_FILE_BYTES, import_error_text};
+use crate::ui::import_dialog::{CsvImport, import_error_text};
+use crate::ui::write_confirmation::{self, WriteConfirmation};
 
 use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::DeliverInput;
@@ -155,6 +157,8 @@ impl WorkspaceModel {
         let history = Some(self.history.clone());
         let connection = self.context.active.metadata();
         let tasks = self.context.tasks.clone();
+        let ask = (session.safe_mode() == SafeModeLevel::ConfirmWrites)
+            .then(|| self.ask_before_import(&session.metadata().name, &import.table));
         let work = run_import(ImportRun {
             session,
             dialect,
@@ -163,6 +167,7 @@ impl WorkspaceModel {
             tasks: tasks.clone(),
             history,
             connection,
+            ask,
         });
         let imports = self.imports.clone();
         let input = self.input.clone();
@@ -185,6 +190,7 @@ impl WorkspaceModel {
                     input.deliver(WorkspaceInput::RefreshPage);
                     input.deliver(WorkspaceInput::ShowToast(crate::i18n::gettext("Import stopped.")));
                 }
+                Ok(Err(ImportEnd::Declined)) => {}
                 Ok(Err(ImportEnd::Failed(message))) => input.deliver(WorkspaceInput::ShowAlert {
                     title: crate::i18n::gettext("Couldn't Import"),
                     body: message,
@@ -198,6 +204,42 @@ impl WorkspaceModel {
     }
 }
 
+impl WorkspaceModel {
+    /// Show what the planned import writes once it is planned, and hand
+    /// the answer back to the import waiting for it.
+    fn ask_before_import(&self, connection: &str, table: &str) -> ImportQuestion {
+        let (preview, previewed) = oneshot::channel::<ImportPreview>();
+        let (answer, answered) = oneshot::channel();
+        let parent = self.dialog_parent();
+        let (connection, table) = (connection.to_owned(), table.to_owned());
+        glib::spawn_future_local(async move {
+            // No preview means the plan failed, which the import reports.
+            let Ok(planned) = previewed.await else {
+                return;
+            };
+            let confirmation = WriteConfirmation::import(&connection, &table, planned.rows, &planned.statements);
+            let agreed = match parent {
+                Some(parent) => write_confirmation::confirm(&parent, &confirmation).await,
+                None => false,
+            };
+            let _ = answer.send(agreed);
+        });
+        ImportQuestion { preview, answered }
+    }
+}
+
+/// What the import is asked before it writes, on a connection whose
+/// Safe Mode asks before every write.
+struct ImportQuestion {
+    preview: oneshot::Sender<ImportPreview>,
+    answered: oneshot::Receiver<bool>,
+}
+
+struct ImportPreview {
+    rows: usize,
+    statements: Vec<String>,
+}
+
 /// Everything an import needs once it leaves the GTK thread.
 struct ImportRun {
     session: Arc<Session>,
@@ -207,6 +249,7 @@ struct ImportRun {
     tasks: Tasks,
     history: Option<HistoryService>,
     connection: Option<tablepro_session::ConnectionMetadata>,
+    ask: Option<ImportQuestion>,
 }
 
 /// Why an import wrote nothing, or not everything.
@@ -214,6 +257,8 @@ struct ImportRun {
 enum ImportEnd {
     Empty,
     Stopped,
+    /// Safe Mode asked and the user kept the table as it was.
+    Declined,
     Failed(String),
 }
 
@@ -228,6 +273,7 @@ async fn run_import(run: ImportRun) -> Result<usize, ImportEnd> {
         tasks,
         history,
         connection,
+        ask,
     } = run;
     let first_line = first_data_line(&import);
     let planning_dialect = dialect.clone();
@@ -247,6 +293,18 @@ async fn run_import(run: ImportRun) -> Result<usize, ImportEnd> {
         .iter()
         .map(|step| step.statement.sql().to_owned())
         .collect();
+    if let Some(ask) = ask {
+        let preview = ImportPreview {
+            rows,
+            statements: sql.clone(),
+        };
+        if ask.preview.send(preview).is_err() || !ask.answered.await.unwrap_or(false) {
+            return Err(ImportEnd::Declined);
+        }
+        if cancel.is_cancelled() {
+            return Err(ImportEnd::Stopped);
+        }
+    }
     tracing::info!(
         rows,
         statements = sql.len(),
@@ -569,6 +627,55 @@ mod tests {
             tasks: crate::test_support::paused_tasks(),
             history: None,
             connection: None,
+            ask: None,
+        }
+    }
+
+    /// An import that asks first, and the answer `agree`, given once it
+    /// shows what it would run, which the answer hands back.
+    fn asked(mut run: ImportRun, agree: bool) -> (ImportRun, impl Future<Output = Option<ImportPreview>>) {
+        let (preview, previewed) = oneshot::channel::<ImportPreview>();
+        let (answer, answered) = oneshot::channel();
+        run.ask = Some(ImportQuestion { preview, answered });
+        let answering = async move {
+            let planned = previewed.await.ok()?;
+            let _ = answer.send(agree);
+            Some(planned)
+        };
+        (run, answering)
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn an_import_that_asks_first_writes_only_once_agreed() {
+        for agree in [false, true] {
+            let mut script = ConnectionScript::default();
+            script
+                .write_batch
+                .always(FakeReply::ok(WriteReport::new(vec![Some(2)])));
+            let (session, connection) = session(script);
+            let (asking, shown) = asked(
+                run(
+                    session,
+                    import("name,city\nAda,London\nGrace,\n"),
+                    CancellationToken::new(),
+                ),
+                agree,
+            );
+
+            let (ended, shown) = futures::join!(run_import(asking), shown);
+
+            let shown = shown.expect("a preview");
+            assert_eq!(shown.rows, 2);
+            assert_eq!(shown.statements.len(), 1, "{:?}", shown.statements);
+            match agree {
+                true => assert_eq!(ended.expect("the import"), 2),
+                false => assert!(matches!(ended, Err(ImportEnd::Declined)), "{ended:?}"),
+            }
+            assert_eq!(
+                CallCounters::get(&connection.counters().write_batch),
+                usize::from(agree),
+                "agreed: {agree}"
+            );
         }
     }
 

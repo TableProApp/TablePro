@@ -1,0 +1,249 @@
+{
+  "engine": "clickhouse",
+  "databaseTypeId": "ClickHouse",
+  "typeList": "Plugins/ClickHouseDriverPlugin/ClickHousePlugin.swift",
+  "createTable": "CREATE TABLE {table} ({id} Int32, {column} {type}) ENGINE = MergeTree ORDER BY {id}",
+  "clearTable": "TRUNCATE TABLE {table}",
+  "settleAfterSave": "SELECT count() FROM system.mutations WHERE database = currentDatabase() AND table = '{tableName}' AND NOT is_done",
+  "columns": [
+    {
+      "type": "UInt8",
+      "values": [{"sql": "0", "cell": "0"}, {"sql": "255", "cell": "255"}],
+      "edit": {"text": "12", "cell": "12"}
+    },
+    {
+      "type": "UInt16",
+      "values": [{"sql": "65535", "cell": "65535"}],
+      "edit": {"text": "1", "cell": "1"}
+    },
+    {
+      "type": "UInt32",
+      "values": [{"sql": "4294967295", "cell": "4294967295"}],
+      "edit": {"text": "2", "cell": "2"}
+    },
+    {
+      "type": "UInt64",
+      "values": [{"sql": "18446744073709551615", "cell": "18446744073709551615"}],
+      "edit": {"text": "18446744073709551614", "cell": "18446744073709551614"}
+    },
+    {
+      "type": "UInt128",
+      "values": [
+        {"sql": "340282366920938463463374607431768211455", "cell": "340282366920938463463374607431768211455"}
+      ],
+      "edit": {"text": "3", "cell": "3"}
+    },
+    {
+      "type": "UInt256",
+      "values": [
+        {"sql": "115792089237316195423570985008687907853269984665640564039457584007913129639935", "cell": "115792089237316195423570985008687907853269984665640564039457584007913129639935"}
+      ],
+      "edit": {"text": "4", "cell": "4"}
+    },
+    {
+      "type": "Int8",
+      "values": [{"sql": "-128", "cell": "-128"}, {"sql": "127", "cell": "127"}],
+      "edit": {"text": "-5", "cell": "-5"}
+    },
+    {
+      "type": "Int16",
+      "values": [{"sql": "-32768", "cell": "-32768"}],
+      "edit": {"text": "6", "cell": "6"}
+    },
+    {
+      "type": "Int32",
+      "values": [{"sql": "-2147483648", "cell": "-2147483648"}],
+      "edit": {"text": "7", "cell": "7"}
+    },
+    {
+      "type": "Int64",
+      "values": [{"sql": "-9223372036854775808", "cell": "-9223372036854775808"}],
+      "edit": {"text": "9223372036854775807", "cell": "9223372036854775807"}
+    },
+    {
+      "type": "Int128",
+      "values": [
+        {"sql": "-170141183460469231731687303715884105728", "cell": "-170141183460469231731687303715884105728"}
+      ],
+      "edit": {"text": "-8", "cell": "-8"}
+    },
+    {
+      "type": "Int256",
+      "values": [
+        {"sql": "-57896044618658097711785492504343953926634992332820282019728792003956564819968", "cell": "-57896044618658097711785492504343953926634992332820282019728792003956564819968"}
+      ],
+      "edit": {"text": "9", "cell": "9"}
+    },
+    {
+      "type": "Nullable(Int32)",
+      "covers": [],
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "1", "cell": "1"}],
+      "edit": {"row": 2, "cell": null}
+    },
+    {
+      "type": "Float32",
+      "values": [{"sql": "1.5", "cell": "1.5"}, {"sql": "-inf", "cell": "-inf"}, {"sql": "nan", "cell": "nan"}],
+      "edit": {"text": "2.25", "cell": "2.25"}
+    },
+    {
+      "type": "Float64",
+      "values": [{"sql": "0.1", "cell": "0.1"}, {"sql": "1.7976931348623157e308", "cell": "1.7976931348623157e308"}],
+      "edit": {"text": "-0.5", "cell": "-0.5"}
+    },
+    {
+      "type": "Decimal(38, 10)",
+      "values": [{"sql": "12345.6789", "cell": "12345.6789"}, {"sql": "-0.0000000001", "cell": "-0.0000000001"}],
+      "edit": {"text": "1.10", "cell": "1.1"}
+    },
+    {
+      "type": "Decimal32(2)",
+      "values": [{"sql": "1.5", "cell": "1.5"}],
+      "edit": {"text": "-99.99", "cell": "-99.99"}
+    },
+    {
+      "type": "Decimal64(4)",
+      "values": [{"sql": "123456789.1234", "cell": "123456789.1234"}],
+      "edit": {"text": "0", "cell": "0"}
+    },
+    {
+      "type": "Decimal128(20)",
+      "values": [{"sql": "toDecimal128('1.00000000000000000001', 20)", "cell": "1.00000000000000000001"}],
+      "edit": {"text": "2.5", "cell": "2.5"}
+    },
+    {
+      "type": "Decimal256(40)",
+      "values": [{"sql": "toDecimal256('0.1', 40)", "cell": "0.1"}],
+      "edit": {"text": "3", "cell": "3"}
+    },
+    {
+      "type": "String",
+      "values": [
+        {"sql": "''", "cell": ""},
+        {"sql": "'Ünïcödé ✓ 日本語 🦄'", "cell": "Ünïcödé ✓ 日本語 🦄"},
+        {"sql": "'line one\\nline two\\ttab'", "cell": "line one\nline two\ttab"},
+        {"sql": "'back\\\\slash ''quote'' \"double\"'", "cell": "back\\slash 'quote' \"double\""},
+        {"sql": "'true'", "cell": "true"},
+        {"sql": "'=1+1'", "cell": "=1+1"}
+      ],
+      "edit": {"row": 3, "text": "C:\\new\\table", "cell": "C:\\new\\table"}
+    },
+    {
+      "type": "Nullable(String)",
+      "covers": [],
+      "values": [{"sql": "NULL", "cell": null}, {"sql": "'x'", "cell": "x"}],
+      "edit": {"text": "y", "cell": "y"}
+    },
+    {
+      "type": "LowCardinality(String)",
+      "covers": [],
+      "values": [{"sql": "'low'", "cell": "low"}],
+      "edit": {"text": "card", "cell": "card"}
+    },
+    {
+      "type": "FixedString(4)",
+      "values": [{"sql": "'abcd'", "cell": "abcd"}],
+      "edit": {"text": "wxyz", "cell": "wxyz"}
+    },
+    {
+      "type": "Enum8('small' = 1, 'large' = 2, 'it''s' = -1)",
+      "covers": ["Enum8"],
+      "values": [{"sql": "'small'", "cell": "small"}, {"sql": "'it''s'", "cell": "it's"}],
+      "edit": {"text": "large", "cell": "large"}
+    },
+    {
+      "type": "Enum16('a' = 1000, 'b' = -1000)",
+      "covers": ["Enum16"],
+      "values": [{"sql": "'a'", "cell": "a"}],
+      "edit": {"text": "b", "cell": "b"}
+    },
+    {
+      "type": "Date",
+      "values": [{"sql": "'1970-01-01'", "cell": "1970-01-01"}, {"sql": "'2149-06-06'", "cell": "2149-06-06"}],
+      "edit": {"text": "2000-02-29", "cell": "2000-02-29"}
+    },
+    {
+      "type": "Date32",
+      "values": [{"sql": "'1900-01-01'", "cell": "1900-01-01"}, {"sql": "'2299-12-31'", "cell": "2299-12-31"}],
+      "edit": {"text": "2026-10-20", "cell": "2026-10-20"}
+    },
+    {
+      "type": "DateTime",
+      "values": [{"sql": "'2026-10-20 15:22:20'", "cell": "2026-10-20 15:22:20"}],
+      "edit": {"text": "1999-12-31 23:59:59", "cell": "1999-12-31 23:59:59"}
+    },
+    {
+      "type": "DateTime64(3)",
+      "values": [{"sql": "'2026-10-20 15:22:20.123'", "cell": "2026-10-20 15:22:20.123"}],
+      "edit": {"text": "2000-01-01 00:00:00.5", "cell": "2000-01-01 00:00:00.500"}
+    },
+    {
+      "type": "Bool",
+      "values": [{"sql": "true", "cell": "true"}, {"sql": "false", "cell": "false"}],
+      "edit": {"text": "false", "cell": "false"}
+    },
+    {
+      "type": "JSON",
+      "values": [{"sql": "'{\"a\": 1, \"b\": {\"c\": \"x\"}}'", "cell": "{\"a\":1,\"b\":{\"c\":\"x\"}}"}],
+      "edit": {"text": "{\"k\": \"v\"}", "cell": "{\"k\":\"v\"}"}
+    },
+    {
+      "type": "UUID",
+      "values": [{"sql": "'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'", "cell": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"}],
+      "edit": {"text": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12", "cell": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12"}
+    },
+    {
+      "type": "Array(Int32)",
+      "values": [{"sql": "[1, 2, 3]", "cell": "[1,2,3]"}, {"sql": "[]", "cell": "[]"}],
+      "edit": {"text": "[4,5]", "cell": "[4,5]"}
+    },
+    {
+      "type": "Array(Nullable(String))",
+      "covers": [],
+      "values": [{"sql": "['a', NULL, 'it''s']", "cell": "['a',NULL,'it\\'s']"}],
+      "edit": {"text": "['x']", "cell": "['x']"}
+    },
+    {
+      "type": "Map(String, UInt64)",
+      "values": [{"sql": "map('a', 1, 'b', 2)", "cell": "{'a':1,'b':2}"}],
+      "edit": {"text": "{'c':3}", "cell": "{'c':3}"},
+      "known": {
+        "edit": {"defect": "the grid binds the new value as a String parameter, which ClickHouse cannot cast to a Map (53)", "matches": "Code: 53\\."}
+      }
+    },
+    {
+      "type": "Tuple(Int32, String)",
+      "values": [{"sql": "(1, 'x')", "cell": "(1,'x')"}],
+      "edit": {"text": "(2,'y')", "cell": "(2,'y')"}
+    },
+    {
+      "type": "IPv4",
+      "values": [{"sql": "'127.0.0.1'", "cell": "127.0.0.1"}],
+      "edit": {"text": "10.0.0.1", "cell": "10.0.0.1"}
+    },
+    {
+      "type": "IPv6",
+      "values": [{"sql": "'::1'", "cell": "::1"}],
+      "edit": {"text": "2001:db8::1", "cell": "2001:db8::1"}
+    },
+    {
+      "type": "Point",
+      "values": [{"sql": "(1.5, 2)", "cell": "(1.5,2)"}],
+      "edit": {"text": "(0,-1)", "cell": "(0,-1)"}
+    },
+    {
+      "type": "Ring",
+      "values": [{"sql": "[(0, 0), (1, 1)]", "cell": "[(0,0),(1,1)]"}],
+      "edit": {"text": "[(2,2)]", "cell": "[(2,2)]"}
+    },
+    {
+      "type": "Polygon",
+      "values": [{"sql": "[[(0, 0), (1, 0), (1, 1)]]", "cell": "[[(0,0),(1,0),(1,1)]]"}],
+      "edit": {"text": "[[(0,0),(2,0),(2,2)]]", "cell": "[[(0,0),(2,0),(2,2)]]"}
+    },
+    {
+      "type": "MultiPolygon",
+      "values": [{"sql": "[[[(0, 0), (1, 0), (1, 1)]]]", "cell": "[[[(0,0),(1,0),(1,1)]]]"}],
+      "edit": {"text": "[[[(0,0),(3,0),(3,3)]]]", "cell": "[[[(0,0),(3,0),(3,3)]]]"}
+    }
+  ]
+}

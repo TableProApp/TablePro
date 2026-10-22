@@ -1,4 +1,5 @@
 import Foundation
+import TableProCoreTypes
 
 public enum MSSQLTLSFailureKind: Sendable {
     case serverRejectedPlaintext
@@ -9,23 +10,13 @@ public enum MSSQLTLSFailureKind: Sendable {
     case cipherMismatch
 }
 
-public enum MSSQLKerberosFailureKind: Sendable, Equatable {
-    case noCredential
-    case principalUnknown
-    case wrongPassword
-    case spnNotFound
-    case clockSkew
-    case realmNotResolved
-    case ticketExpired
-}
-
 public enum MSSQLCoreError: LocalizedError, Sendable {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)
     case cancelled
     case tlsHandshakeFailed(kind: MSSQLTLSFailureKind, serverMessage: String)
-    case kerberosAuthFailed(kind: MSSQLKerberosFailureKind, serverMessage: String)
+    case kerberosAuthFailed(kind: KerberosFailureKind, serverMessage: String)
     case connectionTimedOut(isKerberos: Bool)
 
     public var errorDescription: String? {

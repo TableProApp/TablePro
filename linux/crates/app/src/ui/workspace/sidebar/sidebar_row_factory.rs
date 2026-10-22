@@ -18,7 +18,22 @@ pub(super) fn row_factory(view: Weak<SidebarInner>) -> gtk::SignalListItemFactor
         let row = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
             .spacing(8)
+            .has_tooltip(true)
             .build();
+        // Asked for on hover: setting a tooltip queries the pointer's
+        // position, and a search binds two hundred rows at once.
+        let hovered = item.downgrade();
+        row.connect_query_tooltip(move |_, _, _, _, tooltip| {
+            let Some(object) = hovered
+                .upgrade()
+                .and_then(|item| item.item())
+                .and_downcast::<SidebarObject>()
+            else {
+                return false;
+            };
+            tooltip.set_text(Some(&object.qualified_name()));
+            true
+        });
         // The name says what the row is; the icon only tells a view from
         // a table at a glance.
         let icon = gtk::Image::builder()
@@ -45,14 +60,23 @@ pub(super) fn row_factory(view: Weak<SidebarInner>) -> gtk::SignalListItemFactor
         let (Some(row), Some(object)) = (item.child(), item.item().and_downcast::<SidebarObject>()) else {
             return;
         };
-        if let Some(icon) = row.first_child().and_downcast::<gtk::Image>() {
-            icon.set_icon_name(Some(&object.icon_name()));
+        // A recycled row usually shows a table again, and setting the
+        // same icon or description still redraws or re-announces it.
+        let icon_name = object.icon_name();
+        if let Some(icon) = row.first_child().and_downcast::<gtk::Image>()
+            && icon.icon_name().as_deref() != Some(icon_name.as_str())
+        {
+            icon.set_icon_name(Some(&icon_name));
         }
         if let Some(label) = row.last_child().and_downcast::<gtk::Label>() {
             label.set_label(&object.name());
         }
-        row.set_tooltip_text(Some(&object.qualified_name()));
-        item.set_accessible_description(&object.kind_name());
+        // The getter's binding cannot read an unset description, which a
+        // new row has; the property can.
+        let kind = object.kind_name();
+        if item.property::<Option<String>>("accessible-description").as_deref() != Some(kind.as_str()) {
+            item.set_accessible_description(&kind);
+        }
     });
     factory
 }

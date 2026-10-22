@@ -1,38 +1,23 @@
-//
-//  AgentAuthenticator.swift
-//  TablePro
-//
-
 import Foundation
 import os
 
 import CLibSSH2
 import TableProSSHConfig
+import TableProSSHTransport
 
 internal struct AgentAuthenticator: SSHAuthenticator {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AgentAuthenticator")
 
-    /// `MaxAuthTries` ends in an `SSH_MSG_DISCONNECT`, which `_libssh2_packet_add` answers by
-    /// setting `socket_state` and returning `LIBSSH2_ERROR_SOCKET_DISCONNECT`. That code is the
-    /// only one here on purpose: libssh2's agent backend reports its own socket failures as
-    /// `LIBSSH2_ERROR_SOCKET_SEND` and `LIBSSH2_ERROR_SOCKET_RECV`, so an agent that quit
-    /// mid-signing is indistinguishable from a server that hung up if either is included, and it
-    /// only ever returns `SOCKET_DISCONNECT` from `agent_disconnect_unix`, which
-    /// `libssh2_agent_userauth` never reaches. A refused key is
-    /// `LIBSSH2_ERROR_AUTHENTICATION_FAILED` or `LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED`, so an
-    /// ordinary rejection still moves on to the next key.
-    private static let serverHungUp = LIBSSH2_ERROR_SOCKET_DISCONNECT
-
     let socketPath: String?
     let socketOrigin: AgentSocketOrigin
 
-    /// The `IdentityFile` entries resolved for this host, from `~/.ssh/config` or the form.
+    // The `IdentityFile` entries resolved for this host, from `~/.ssh/config` or the form.
     var identityFiles: [String] = []
 
-    /// `IdentitiesOnly yes`, which drops every agent key that no identity file named.
+    // `IdentitiesOnly yes`, which drops every agent key that no identity file named.
     var identitiesOnly: Bool = false
 
-    /// Resolve SSH_AUTH_SOCK via launchctl for GUI apps that don't inherit shell env.
+    // An app launched from Finder does not inherit the shell's SSH_AUTH_SOCK.
     private static func resolveSocketViaLaunchctl() -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
@@ -109,28 +94,35 @@ internal struct AgentAuthenticator: SSHAuthenticator {
         }
 
         let order = try offerOrder(for: identities)
+        var unsigned = 0
         for (position, index) in order.enumerated() {
             let authRc = libssh2_agent_userauth(agent, username, identities[index])
             if authRc == 0 {
                 Self.logger.info("SSH agent authentication succeeded on key \(position + 1) of \(order.count)")
                 return
             }
-            if authRc == Self.serverHungUp {
-                Self.logger.error(
-                    "SSH server closed the connection after \(position + 1) of \(order.count) agent keys (rc=\(authRc))"
-                )
-                throw SSHTunnelError.authenticationFailed(reason: .agentServerClosedConnection)
+            if authRc == LIBSSH2_ERROR_METHOD_NONE {
+                unsigned += 1
             }
+        }
+
+        // No key reached the server, which an RSA key does when the server takes only ssh-rsa signatures.
+        if unsigned > 0, unsigned == order.count {
+            Self.logger.error("SSH agent authentication failed: no agent key has a signature the server takes")
+            throw SSHTunnelError.negotiationFailed(
+                .keySignature(serverBanner: LibSSH2Handshake.banner(session)),
+                jumpHost: nil
+            )
         }
 
         Self.logger.error("SSH agent authentication failed: none of \(order.count) identities accepted")
         throw SSHTunnelError.authenticationFailed(reason: .agentRejected)
     }
 
-    /// Walks the whole identity list before anything is offered, because the order to offer them
-    /// in is not the order the agent lists them in. The pointers belong to the agent handle and
-    /// stay valid until `libssh2_agent_free`, which the caller's `defer` runs after the last
-    /// `libssh2_agent_userauth`.
+    // Walks the whole identity list before anything is offered, because the order to offer them
+    // in is not the order the agent lists them in. The pointers belong to the agent handle and
+    // stay valid until `libssh2_agent_free`, which the caller's `defer` runs after the last
+    // `libssh2_agent_userauth`.
     private func collectIdentities(
         from agent: OpaquePointer
     ) throws -> [UnsafeMutablePointer<libssh2_agent_publickey>] {
@@ -180,14 +172,10 @@ internal struct AgentAuthenticator: SSHAuthenticator {
         return order
     }
 
-    /// Reached when no identity file yielded a public key, which is two different situations.
-    ///
-    /// No identity file at all is the ordinary case: the agent's own order stands and every key is
-    /// offered, exactly as before there was a preference. An identity file that named nothing
-    /// readable is a configuration mistake, and quietly offering every key there would hand the
-    /// user back the `MaxAuthTries` failure they set the file to avoid, with no clue why. Under
-    /// `IdentitiesOnly` that is refused outright; without it, `ssh` also falls back to the rest of
-    /// the agent, so the warning is the whole report.
+    // No identity file at all leaves the agent's own order. An identity file that named nothing
+    // readable is a configuration mistake, and offering every key there would hand back the
+    // `MaxAuthTries` failure the file was set to avoid. Under `IdentitiesOnly` that is refused;
+    // without it, `ssh` also falls back to the rest of the agent, so the warning is the whole report.
     private func unfilteredOrder(
         for identities: [UnsafeMutablePointer<libssh2_agent_publickey>]
     ) throws -> [Int] {

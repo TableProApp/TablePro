@@ -20,6 +20,44 @@ struct SSHTunnelCredentialsTests {
         #expect(credentials == SSHTunnelCredentials(password: "ssh-secret", keyPassphrase: "phrase", privateKey: "KEY"))
     }
 
+    @Test("A profile-linked tunnel signs in with the profile's password before an older one of its own")
+    func profilePasswordComesFirst() {
+        let id = UUID()
+        let profileId = UUID()
+        let store = MockSecureStore()
+        store.seed("com.TablePro.sshpassword.\(id.uuidString)", "stale")
+        store.seed("com.TablePro.sshprofile.password.\(profileId.uuidString)", "profile-secret")
+
+        let credentials = SSHTunnelCredentials(connectionId: id, sshProfileId: profileId, secureStore: store)
+
+        #expect(credentials.password == "profile-secret")
+    }
+
+    @Test("A key passphrase stays with the key on this device and falls back to the profile's")
+    func passphraseFollowsTheDeviceKey() {
+        let id = UUID()
+        let profileId = UUID()
+        let store = MockSecureStore()
+        store.seed("com.TablePro.sshprofile.keypassphrase.\(profileId.uuidString)", "profile-phrase")
+
+        #expect(SSHTunnelCredentials(connectionId: id, sshProfileId: profileId, secureStore: store).keyPassphrase == "profile-phrase")
+
+        store.seed("com.TablePro.keypassphrase.\(id.uuidString)", "")
+        #expect(SSHTunnelCredentials(connectionId: id, sshProfileId: profileId, secureStore: store).keyPassphrase == "profile-phrase")
+
+        store.seed("com.TablePro.keypassphrase.\(id.uuidString)", "device-phrase")
+        #expect(SSHTunnelCredentials(connectionId: id, sshProfileId: profileId, secureStore: store).keyPassphrase == "device-phrase")
+    }
+
+    @Test("A tunnel with no profile never reads another profile's secrets")
+    func noProfileReadsNoProfileSecrets() {
+        let id = UUID()
+        let store = MockSecureStore()
+        store.seed("com.TablePro.sshprofile.password.\(UUID().uuidString)", "someone-else")
+
+        #expect(SSHTunnelCredentials(connectionId: id, secureStore: store).password == nil)
+    }
+
     @Test("Empty stored values read as absent")
     func emptyIsAbsent() {
         let id = UUID()

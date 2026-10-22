@@ -1,12 +1,3 @@
-//
-//  ERDiagramScene.swift
-//  TablePro
-//
-//  Everything the diagram needs to paint one frame, and the two ways it is painted: into a view
-//  and into an export bitmap. One renderer serves both, so an exported PNG cannot drift from
-//  what is on screen.
-//
-
 import AppKit
 
 struct ERDiagramScene {
@@ -15,17 +6,21 @@ struct ERDiagramScene {
     var nodeRects: [UUID: CGRect] = [:]
     var nodeIndex: [String: UUID] = [:]
     var clusterColors: [UUID: NSColor] = [:]
-    var selectedNodeId: UUID?
+    var selectedNodeIds: [UUID] = []
+    var selectedEdgeId: UUID?
     var size = CGSize(width: 800, height: 600)
+
+    var selectedNodeId: UUID? {
+        get { selectedNodeIds.last }
+        set { selectedNodeIds = newValue.map { [$0] } ?? [] }
+    }
 }
 
 @MainActor
 enum ERDiagramSceneRenderer {
     static let exportPadding: CGFloat = 40
 
-    /// Everything the scene puts on the canvas, which is more than the tables: a self-referencing
-    /// table loops out past its own trailing edge, and cropping the export to the table rects alone
-    /// cuts the apex off.
+    // A self-referencing table loops out past its trailing edge.
     static func drawnBounds(of scene: ERDiagramScene) -> CGRect {
         var bounds = scene.nodeRects.values.reduce(CGRect.null) { $0.union($1) }
 
@@ -39,15 +34,18 @@ enum ERDiagramSceneRenderer {
         return bounds
     }
 
-    /// The context is expected to be flipped, which is what both callers hand it: the diagram view
-    /// is `isFlipped`, and the export builds a flipped `NSGraphicsContext` over its bitmap.
-    static func draw(_ scene: ERDiagramScene, palette: ERDiagramPalette, dirtyRect: CGRect, in context: CGContext) {
+    static func draw(_ scene: ERDiagramScene, palette: ERDiagramPalette, dirtyRect: CGRect, on canvas: some ERDiagramCanvas) {
         ERDiagramEdgeRenderer.drawEdges(
             edges: scene.edges,
             nodeRects: scene.nodeRects,
             nodeIndex: scene.nodeIndex,
-            strokeColor: palette.edge,
-            in: context
+            colors: ERDiagramEdgeRenderer.Colors(
+                stroke: palette.edge,
+                selection: palette.selectionRule,
+                dropped: palette.droppedEdge
+            ),
+            selectedEdgeId: scene.selectedEdgeId,
+            on: canvas
         )
 
         for node in scene.nodes {
@@ -55,27 +53,71 @@ enum ERDiagramSceneRenderer {
             ERDiagramNodeRenderer.drawNode(
                 node: node,
                 rect: rect,
-                isSelected: scene.selectedNodeId == node.id,
+                isSelected: scene.selectedNodeIds.contains(node.id),
                 clusterColor: scene.clusterColors[node.id],
                 palette: palette,
-                in: context
+                on: canvas
             )
         }
     }
 
-    /// Renders at natural scale whatever the viewport is doing, cropped to the nodes rather than to
-    /// the canvas, which is what the export has always promised.
-    ///
-    /// An offscreen bitmap has no appearance of its own, so the canvas's appearance is made current
-    /// for the whole render, and the palette is baked in it, or a dark or themed window exports in
-    /// other colors than the screen shows.
-    static func image(_ scene: ERDiagramScene, appearance: NSAppearance, scale: CGFloat) -> NSImage? {
+    // MARK: - Exports
+
+    private struct ExportFrame {
+        let size: CGSize
+        let origin: CGPoint
+        let dirtyRect: CGRect
+    }
+
+    private static func exportFrame(of scene: ERDiagramScene) -> ExportFrame {
         let bounds = drawnBounds(of: scene)
-        let size = bounds.isNull
-            ? CGSize(width: 100, height: 100)
-            : CGSize(width: bounds.width + exportPadding * 2, height: bounds.height + exportPadding * 2)
-        let pixelsWide = Int((size.width * scale).rounded())
-        let pixelsHigh = Int((size.height * scale).rounded())
+        guard !bounds.isNull else {
+            return ExportFrame(size: CGSize(width: 100, height: 100), origin: .zero, dirtyRect: .infinite)
+        }
+        return ExportFrame(
+            size: CGSize(width: bounds.width + exportPadding * 2, height: bounds.height + exportPadding * 2),
+            origin: CGPoint(x: exportPadding - bounds.minX, y: exportPadding - bounds.minY),
+            dirtyRect: bounds
+        )
+    }
+
+    private static func unselected(_ scene: ERDiagramScene) -> ERDiagramScene {
+        var flat = scene
+        flat.selectedNodeIds = []
+        flat.selectedEdgeId = nil
+        return flat
+    }
+
+    // An offscreen context has no appearance, so the canvas's is made current for the whole render.
+    private static func renderExport(
+        _ scene: ERDiagramScene,
+        frame: ExportFrame,
+        appearance: NSAppearance,
+        into cgContext: CGContext
+    ) {
+        cgContext.translateBy(x: 0, y: frame.size.height)
+        cgContext.scaleBy(x: 1, y: -1)
+
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: cgContext, flipped: true)
+
+        let palette = ERDiagramPalette(appearance: appearance)
+        let canvas = ERDiagramContextCanvas(context: cgContext)
+        appearance.performAsCurrentDrawingAppearance {
+            canvas.fill(CGPath(rect: CGRect(origin: .zero, size: frame.size), transform: nil), color: palette.backdrop)
+
+            cgContext.saveGState()
+            cgContext.translateBy(x: frame.origin.x, y: frame.origin.y)
+            draw(unselected(scene), palette: palette, dirtyRect: frame.dirtyRect, on: canvas)
+            cgContext.restoreGState()
+        }
+    }
+
+    static func image(_ scene: ERDiagramScene, appearance: NSAppearance, scale: CGFloat) -> NSImage? {
+        let frame = exportFrame(of: scene)
+        let pixelsWide = Int((frame.size.width * scale).rounded())
+        let pixelsHigh = Int((frame.size.height * scale).rounded())
         guard pixelsWide > 0, pixelsHigh > 0 else { return nil }
 
         guard let rep = NSBitmapImageRep(
@@ -90,34 +132,46 @@ enum ERDiagramSceneRenderer {
             bytesPerRow: 0,
             bitsPerPixel: 0
         ) else { return nil }
-        rep.size = size
+        rep.size = frame.size
 
         guard let base = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
-        let cgContext = base.cgContext
+        renderExport(scene, frame: frame, appearance: appearance, into: base.cgContext)
 
-        NSGraphicsContext.saveGraphicsState()
-        defer { NSGraphicsContext.restoreGraphicsState() }
-        cgContext.translateBy(x: 0, y: size.height)
-        cgContext.scaleBy(x: 1, y: -1)
-        NSGraphicsContext.current = NSGraphicsContext(cgContext: cgContext, flipped: true)
-
-        let palette = ERDiagramPalette(appearance: appearance)
-        appearance.performAsCurrentDrawingAppearance {
-            cgContext.setFillColor(palette.backdrop)
-            cgContext.fill(CGRect(origin: .zero, size: size))
-
-            cgContext.saveGState()
-            if !bounds.isNull {
-                cgContext.translateBy(x: -bounds.minX + exportPadding, y: -bounds.minY + exportPadding)
-            }
-            var flat = scene
-            flat.selectedNodeId = nil
-            draw(flat, palette: palette, dirtyRect: bounds.isNull ? .infinite : bounds, in: cgContext)
-            cgContext.restoreGState()
-        }
-
-        let image = NSImage(size: size)
+        let image = NSImage(size: frame.size)
         image.addRepresentation(rep)
         return image
+    }
+
+    static func pdfData(_ scene: ERDiagramScene, appearance: NSAppearance, title: String) -> Data? {
+        let frame = exportFrame(of: scene)
+        let data = NSMutableData()
+        guard let consumer = CGDataConsumer(data: data as CFMutableData) else { return nil }
+        var mediaBox = CGRect(origin: .zero, size: frame.size)
+        let info: [CFString: Any] = [
+            kCGPDFContextTitle: title,
+            kCGPDFContextCreator: "TablePro",
+        ]
+        guard let context = CGContext(consumer: consumer, mediaBox: &mediaBox, info as CFDictionary) else { return nil }
+
+        context.beginPDFPage(nil)
+        context.saveGState()
+        renderExport(scene, frame: frame, appearance: appearance, into: context)
+        context.restoreGState()
+        context.endPDFPage()
+        context.closePDF()
+        return data as Data
+    }
+
+    static func svgDocument(_ scene: ERDiagramScene, appearance: NSAppearance, title: String) -> String {
+        let frame = exportFrame(of: scene)
+        let palette = ERDiagramPalette(appearance: appearance)
+        let canvas = ERDiagramSVGCanvas()
+        appearance.performAsCurrentDrawingAppearance {
+            canvas.fill(CGPath(rect: CGRect(origin: .zero, size: frame.size), transform: nil), color: palette.backdrop)
+            canvas.translated(by: frame.origin) {
+                draw(unselected(scene), palette: palette, dirtyRect: frame.dirtyRect, on: canvas)
+            }
+        }
+        return canvas.document(size: frame.size, title: title)
     }
 }

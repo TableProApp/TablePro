@@ -27,6 +27,7 @@ import AppKit
 final class ERDiagramNodeElement: NSAccessibilityElement, @unchecked Sendable {
     fileprivate weak var owner: NSView?
     fileprivate private(set) var rect: CGRect = .zero
+    fileprivate private(set) var tableName = ""
     private var columns: [ERColumnDisplay] = []
     private var columnIdentities: [String] = []
     private var builtColumns: [ERDiagramColumnElement]?
@@ -34,6 +35,7 @@ final class ERDiagramNodeElement: NSAccessibilityElement, @unchecked Sendable {
     func configure(owner: NSView, node: ERTableNode, rect: CGRect, relationships: String?, isSelected: Bool) {
         self.owner = owner
         self.rect = rect
+        tableName = node.tableName
 
         setAccessibilityRole(.layoutItem)
         setAccessibilityRoleDescription(String(localized: "table"))
@@ -66,6 +68,16 @@ final class ERDiagramNodeElement: NSAccessibilityElement, @unchecked Sendable {
         return NSAccessibility.screenRect(fromView: owner, rect: rect)
     }
 
+    override func accessibilityPerformShowMenu() -> Bool {
+        guard let owner = owner as? ERDiagramSceneView else { return false }
+        let target = ERDiagramMenuTarget.table(tableName)
+        let rect = rect
+        MainActor.assumeIsolated {
+            owner.showMenu(for: target, at: rect)
+        }
+        return true
+    }
+
     /// Built on the first question rather than with the table, so a schema of five hundred tables
     /// does not pay for every column of every one of them before anything asks.
     override func accessibilityChildren() -> [Any]? {
@@ -85,10 +97,12 @@ final class ERDiagramNodeElement: NSAccessibilityElement, @unchecked Sendable {
 final class ERDiagramColumnElement: NSAccessibilityElement, @unchecked Sendable {
     private weak var node: ERDiagramNodeElement?
     private var index = 0
+    private var columnName = ""
 
     func configure(node: ERDiagramNodeElement, column: ERColumnDisplay, index: Int) {
         self.node = node
         self.index = index
+        columnName = column.name
 
         var traits: [String] = [column.dataType]
         if column.isPrimaryKey { traits.append(String(localized: "primary key")) }
@@ -104,6 +118,16 @@ final class ERDiagramColumnElement: NSAccessibilityElement, @unchecked Sendable 
     override func accessibilityFrame() -> NSRect {
         guard let node, let owner = node.owner else { return .zero }
         return NSAccessibility.screenRect(fromView: owner, rect: node.rowRect(at: index))
+    }
+
+    override func accessibilityPerformShowMenu() -> Bool {
+        guard let node, let owner = node.owner as? ERDiagramSceneView else { return false }
+        let target = ERDiagramMenuTarget.column(table: node.tableName, column: columnName)
+        let rect = node.rowRect(at: index)
+        MainActor.assumeIsolated {
+            owner.showMenu(for: target, at: rect)
+        }
+        return true
     }
 }
 
@@ -141,7 +165,7 @@ final class ERDiagramAccessibilityTree {
                 node: node,
                 rect: rect,
                 relationships: joins.description(of: node.tableName),
-                isSelected: scene.selectedNodeId == node.id
+                isSelected: scene.selectedNodeIds.contains(node.id)
             )
             kept[node.id] = element
             next.append(element)

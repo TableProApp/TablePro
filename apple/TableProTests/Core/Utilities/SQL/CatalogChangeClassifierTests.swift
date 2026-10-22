@@ -5,10 +5,11 @@
 
 import Foundation
 @testable import TablePro
+import TableProSQLGrammar
 import Testing
 
 struct CatalogChangeClassifierTests {
-    private func kinds(_ sql: String, _ type: DatabaseType = .postgresql) -> CatalogObjectKinds {
+    private func kinds(_ sql: String, _ type: DatabaseType = .postgresql) -> SQLCatalogObjectKinds {
         CatalogChangeClassifier.effect(of: sql, databaseType: type).kinds
     }
 
@@ -35,7 +36,7 @@ struct CatalogChangeClassifierTests {
 
     @Test("definitions map to the kind of object they name")
     func definitionsMapByObjectKeyword() {
-        let cases: [(sql: String, expected: CatalogObjectKinds)] = [
+        let cases: [(sql: String, expected: SQLCatalogObjectKinds)] = [
             ("CREATE TABLE sidebar_probe (id int)", .tables),
             ("DROP TABLE IF EXISTS sidebar_probe", .tables),
             ("ALTER TABLE orders ADD COLUMN note text", .tables),
@@ -68,9 +69,15 @@ struct CatalogChangeClassifierTests {
         #expect(kinds("/*!40101 SET NAMES utf8mb4 */", .mysql).isEmpty)
     }
 
+    @Test("a DROP a server runs past a comment it skips still refreshes the tables")
+    func skippedExecutableCommentDoesNotHideADrop() {
+        #expect(kinds("/*!99999 ' */ DROP TABLE orders -- '", .mysql).contains(.tables))
+        #expect(kinds("/*m! ' */ DROP TABLE orders -- '", .mysql).contains(.tables))
+    }
+
     @Test("a SQL Server batch is read past its first command")
     func sqlServerBatchIsReadPastItsFirstCommand() {
-        let cases: [(sql: String, expected: CatalogObjectKinds)] = [
+        let cases: [(sql: String, expected: SQLCatalogObjectKinds)] = [
             ("SET NOCOUNT ON\nCREATE TABLE hidden (id int)", .tables),
             ("BEGIN TRANSACTION\nDROP VIEW reporting", .tables),
             ("DECLARE @n int = 1\nEXEC dbo.rebuild @n", .everything),

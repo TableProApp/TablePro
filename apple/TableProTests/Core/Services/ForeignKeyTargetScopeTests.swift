@@ -24,6 +24,28 @@ struct ForeignKeyTargetScopeTests {
         #expect(EngineNamespaceSlot(supportsSchemas: false, supportsDatabases: false) == .unqualified)
     }
 
+    // MARK: - Within the origin
+
+    @Test("A key into another schema or database points outside, one into the same one or nowhere stays")
+    func pointsWithinTheOrigin() {
+        let sales = origin(schema: "sales")
+        #expect(ForeignKeyTargetScope.pointsWithin(sales, referencedDatabase: nil, referencedSchema: "sales", slot: .schema))
+        #expect(ForeignKeyTargetScope.pointsWithin(sales, referencedDatabase: nil, referencedSchema: nil, slot: .schema))
+        #expect(!ForeignKeyTargetScope.pointsWithin(sales, referencedDatabase: nil, referencedSchema: "billing", slot: .schema))
+        #expect(!ForeignKeyTargetScope.pointsWithin(sales, referencedDatabase: "archive", referencedSchema: "sales", slot: .schema))
+
+        let shop = origin(database: "shop")
+        #expect(ForeignKeyTargetScope.pointsWithin(shop, referencedDatabase: nil, referencedSchema: "shop", slot: .database))
+        #expect(!ForeignKeyTargetScope.pointsWithin(shop, referencedDatabase: nil, referencedSchema: "audit", slot: .database))
+        #expect(!ForeignKeyTargetScope.pointsWithin(sales, referencedDatabase: nil, referencedSchema: "Sales", slot: .schema))
+    }
+
+    @Test("A part the origin or the engine leaves unnamed keeps the key")
+    func unnamedPartKeepsKeys() {
+        #expect(ForeignKeyTargetScope.pointsWithin(origin(), referencedDatabase: nil, referencedSchema: "main", slot: .schema))
+        #expect(ForeignKeyTargetScope.pointsWithin(origin(schema: "main"), referencedDatabase: nil, referencedSchema: "x", slot: .unqualified))
+    }
+
     // MARK: - Resolution
 
     /// DuckDB, Trino, BigQuery, SurrealDB and CloudflareR2SQL all declare schemas and never report a

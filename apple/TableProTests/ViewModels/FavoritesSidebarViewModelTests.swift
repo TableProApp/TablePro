@@ -66,6 +66,54 @@ struct FavoriteNodeTests {
         #expect(disabled.id == enabled.id)
     }
 
+    // MARK: - File paths
+
+    private func linkedFile(_ relativePath: String, in folder: LinkedSQLFolder) -> LinkedSQLFavorite {
+        LinkedSQLFavorite(
+            folderId: folder.id,
+            fileURL: folder.expandedURL.appendingPathComponent(relativePath),
+            relativePath: relativePath,
+            name: (relativePath as NSString).lastPathComponent,
+            mtime: Date(),
+            fileSize: 1
+        )
+    }
+
+    @MainActor
+    @Test("Each linked subfolder knows its own path under the linked folder")
+    func linkedSubfoldersCarryTheirPaths() throws {
+        let folder = LinkedSQLFolder(path: "/tmp/queries")
+        let tree = FavoritesSidebarViewModel.linkedTree(
+            files: [linkedFile("reports/2026/daily.sql", in: folder)],
+            in: folder
+        )
+
+        let reports = try #require(tree.first)
+        let year = try #require(reports.children?.first)
+        let daily = try #require(year.children?.first)
+
+        #expect(reports.content.filePath == FavoriteFilePath(absolute: "/tmp/queries/reports", relative: "reports"))
+        #expect(year.content.filePath == FavoriteFilePath(absolute: "/tmp/queries/reports/2026", relative: "reports/2026"))
+        #expect(daily.content.filePath == FavoriteFilePath(
+            absolute: "/tmp/queries/reports/2026/daily.sql",
+            relative: "reports/2026/daily.sql"
+        ))
+    }
+
+    @Test("A linked folder's root has an absolute path and no relative one")
+    func linkedFolderRootPath() {
+        let folder = LinkedSQLFolder(path: "~/queries")
+        let node = FavoriteNode.linkedFolder(folder, children: [])
+
+        #expect(node.content.filePath == FavoriteFilePath(absolute: NSHomeDirectory() + "/queries", relative: nil))
+    }
+
+    @Test("Saved queries and their folders have no file path")
+    func storedNodesHaveNoPath() {
+        #expect(FavoriteNode.favorite(makeFavorite()).content.filePath == nil)
+        #expect(FavoriteNode.folder(makeFolder(), children: []).content.filePath == nil)
+    }
+
     // MARK: - collectFavorites
 
     @Test("collectFavorites from flat list")

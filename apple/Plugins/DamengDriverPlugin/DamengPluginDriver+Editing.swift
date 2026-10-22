@@ -2,28 +2,7 @@ import Foundation
 import TableProPluginKit
 
 extension DamengPluginDriver {
-    func generateStatements(
-        table: String,
-        columns: [String],
-        primaryKeyColumns: [String],
-        changes: [PluginRowChange],
-        insertedRowData: [Int: [PluginCellValue]],
-        deletedRowIndices: Set<Int>,
-        insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        generateStatements(
-            table: table,
-            schema: nil,
-            columns: columns,
-            primaryKeyColumns: primaryKeyColumns,
-            changes: changes,
-            insertedRowData: insertedRowData,
-            deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
-        )
-    }
-
-    func generateStatements(
+    func generateRowWrites(
         table: String,
         schema: String?,
         columns: [String],
@@ -32,43 +11,60 @@ extension DamengPluginDriver {
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+    ) throws -> [PluginRowWrite]? {
         let qualifiedTable = qualifiedName(schema: schema, object: table)
-        var statements: [(statement: String, parameters: [PluginCellValue])] = []
+        var writes: [PluginRowWrite] = []
         for change in changes {
+            let expressions = change.expressionColumns ?? []
             switch change.type {
             case .insert:
-                guard insertedRowIndices.contains(change.rowIndex),
-                      let row = insertedRowData[change.rowIndex],
-                      let statement = insertStatement(table: qualifiedTable, columns: columns, values: row) else {
-                    continue
-                }
-                statements.append(statement)
+                guard insertedRowIndices.contains(change.rowIndex), let row = insertedRowData[change.rowIndex],
+                      let statement = insertStatement(table: qualifiedTable, columns: columns, values: row, expressions: expressions)
+                else { continue }
+                writes.append(PluginRowWrite(statement: statement.statement, parameters: statement.parameters, rowIndices: [change.rowIndex]))
             case .update:
-                guard let statement = updateStatement(
-                    table: qualifiedTable,
-                    columns: columns,
-                    primaryKeyColumns: primaryKeyColumns,
-                    change: change
-                ) else {
-                    continue
+                guard !change.cellChanges.isEmpty else { continue }
+                let match = try rowMatch(table: qualifiedTable, columns: columns, primaryKeyColumns: primaryKeyColumns, change: change)
+                var parameters: [PluginCellValue] = []
+                let assignments = change.cellChanges.map { cell -> String in
+                    let column = quoteIdentifier(cell.columnName)
+                    if cell.newValue == Self.defaultMarker { return "\(column) = DEFAULT" }
+                    if expressions.contains(cell.columnIndex), case .text(let sql) = cell.newValue { return "\(column) = \(sql)" }
+                    parameters.append(cell.newValue)
+                    return "\(column) = ?"
                 }
-                statements.append(statement)
+                writes.append(PluginRowWrite(
+                    statement: "UPDATE \(qualifiedTable) SET \(assignments.joined(separator: ", ")) WHERE \(match.predicate) AND ROWNUM = 1",
+                    parameters: parameters + match.parameters,
+                    rowIndices: [change.rowIndex],
+                    lookup: match.lookup
+                ))
             case .delete:
-                guard deletedRowIndices.contains(change.rowIndex),
-                      let statement = deleteStatement(
-                          table: qualifiedTable,
-                          columns: columns,
-                          primaryKeyColumns: primaryKeyColumns,
-                          change: change
-                      ) else {
-                    continue
-                }
-                statements.append(statement)
+                guard deletedRowIndices.contains(change.rowIndex) else { continue }
+                let match = try rowMatch(table: qualifiedTable, columns: columns, primaryKeyColumns: primaryKeyColumns, change: change)
+                writes.append(PluginRowWrite(
+                    statement: "DELETE FROM \(qualifiedTable) WHERE \(match.predicate) AND ROWNUM = 1",
+                    parameters: match.parameters,
+                    rowIndices: [change.rowIndex],
+                    lookup: match.lookup
+                ))
             }
         }
-        return statements.isEmpty ? nil : statements
+        return writes
     }
+
+    func generateIdentityPreservingInsert(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        rows: [[PluginCellValue]]
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        let qualifiedTable = qualifiedName(schema: schema, object: table)
+        return rows.compactMap { insertStatement(table: qualifiedTable, columns: columns, values: $0, expressions: []) }
+    }
+
+    private static let defaultMarker = PluginCellValue.text("__DEFAULT__")
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
         guard !definition.columns.isEmpty else { return nil }
@@ -203,15 +199,18 @@ extension DamengPluginDriver {
     private func insertStatement(
         table: String,
         columns: [String],
-        values: [PluginCellValue]
+        values: [PluginCellValue],
+        expressions: Set<Int>
     ) -> (statement: String, parameters: [PluginCellValue])? {
         var insertColumns: [String] = []
         var placeholders: [String] = []
         var parameters: [PluginCellValue] = []
         for (index, value) in values.enumerated() where index < columns.count {
             insertColumns.append(quoteIdentifier(columns[index]))
-            if value.asText == "__DEFAULT__" {
+            if value == Self.defaultMarker {
                 placeholders.append("DEFAULT")
+            } else if expressions.contains(index), case .text(let sql) = value {
+                placeholders.append(sql)
             } else {
                 placeholders.append("?")
                 parameters.append(value)
@@ -224,46 +223,35 @@ extension DamengPluginDriver {
         )
     }
 
-    private func updateStatement(
+    // ROWNUM = 1 picks one of the rows a keyless match finds, which need not be the one edited, so a keyless change
+    // first has to find exactly one row.
+    private func rowMatch(
         table: String,
         columns: [String],
         primaryKeyColumns: [String],
         change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        guard !change.cellChanges.isEmpty, let original = change.originalRow else { return nil }
-        var parameters = change.cellChanges.map(\.newValue)
-        let assignments = change.cellChanges.map { "\(quoteIdentifier($0.columnName)) = ?" }
-        guard let predicate = rowPredicate(
-            columns: columns,
-            primaryKeyColumns: primaryKeyColumns,
-            original: original,
-            parameters: &parameters
-        ) else {
-            return nil
-        }
-        return (
-            "UPDATE \(table) SET \(assignments.joined(separator: ", ")) WHERE \(predicate) AND ROWNUM = 1",
-            parameters
-        )
-    }
-
-    private func deleteStatement(
-        table: String,
-        columns: [String],
-        primaryKeyColumns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        guard let original = change.originalRow else { return nil }
+    ) throws -> (predicate: String, parameters: [PluginCellValue], lookup: PluginRowLookup?) {
         var parameters: [PluginCellValue] = []
-        guard let predicate = rowPredicate(
+        guard let original = change.originalRow, let predicate = rowPredicate(
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
             original: original,
             parameters: &parameters
         ) else {
-            return nil
+            throw PluginRowWriteRefusal(
+                rowIndex: change.rowIndex,
+                reason: String(localized: "The row's loaded values are missing, so it cannot be found again.")
+            )
         }
-        return ("DELETE FROM \(table) WHERE \(predicate) AND ROWNUM = 1", parameters)
+        let lookup = primaryKeyColumns.isEmpty
+            ? PluginRowLookup(
+                query: "SELECT 1 FROM \(table) WHERE \(predicate) AND ROWNUM <= 2",
+                parameters: parameters,
+                rowCount: 1,
+                pinsRows: false
+            )
+            : nil
+        return (predicate, parameters, lookup)
     }
 
     private func rowPredicate(

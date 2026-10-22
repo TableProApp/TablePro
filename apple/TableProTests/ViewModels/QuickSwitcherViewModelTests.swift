@@ -1227,4 +1227,96 @@ struct QuickSwitcherViewModelTests {
         #expect(localStore.recentItemIds().isEmpty)
         #expect(remoteStore.recentItemIds() == ["history_remote"])
     }
+
+    private func tableItems(_ names: [String]) -> [QuickSwitcherItem] {
+        names.map { QuickSwitcherItem(frecencyKey: "table:\($0)", name: $0, kind: .table, subtitle: "") }
+    }
+
+    @Test("Rows follow the groups and carry each header on its group's first item only")
+    func rowsCarryHeadersOnFirstItems() async {
+        let vm = makeViewModel(items: sampleItems())
+        vm.scope = .tables
+        await vm.flushPendingFilter()
+
+        #expect(vm.rows.map(\.id) == vm.flatItems.map(\.id))
+        let titled = vm.rows.filter { $0.sectionTitle != nil }
+        #expect(titled.map(\.sectionTitle) == vm.groups.map(\.header))
+        #expect(titled.map(\.id) == vm.groups.compactMap { $0.items.first?.id })
+        #expect(Set(vm.rows.map(\.id)).count == vm.rows.count)
+    }
+
+    @Test("An arrow pressed before a new query's results land moves within those results")
+    func arrowBeforeRefilterLandsInNewResults() async {
+        let vm = makeViewModel(items: tableItems(["Album", "Artist", "Employee", "Genre", "Invoice", "MediaType"]))
+        vm.scope = .tables
+        await vm.flushPendingFilter()
+
+        vm.searchText = "e"
+        vm.moveSelection(by: 1)
+        await vm.flushPendingFilter()
+
+        #expect(vm.flatItems.count > 2)
+        #expect(vm.selectedItemId == vm.flatItems[1].id)
+    }
+
+    @Test("Arrows pressed before a new query's results land replay in order, each clamped to the list")
+    func pendingArrowsReplayWithClamping() async {
+        let vm = makeViewModel(items: tableItems(["Album", "Artist", "Employee", "Genre", "Invoice", "MediaType"]))
+        vm.scope = .tables
+        await vm.flushPendingFilter()
+
+        vm.searchText = "e"
+        vm.moveSelection(by: -1)
+        vm.moveSelection(by: 1)
+        await vm.flushPendingFilter()
+
+        #expect(vm.flatItems.count > 2)
+        #expect(vm.selectedItemId == vm.flatItems[1].id)
+    }
+
+    @Test("A keystroke drops an arrow that was waiting for the previous query's results")
+    func keystrokeDropsPendingArrow() async {
+        let vm = makeViewModel(items: tableItems(["Album", "Artist", "Employee", "Genre", "Invoice", "MediaType"]))
+        vm.scope = .tables
+        await vm.flushPendingFilter()
+
+        vm.searchText = "e"
+        vm.moveSelection(by: 1)
+        vm.searchText = "em"
+        await vm.flushPendingFilter()
+
+        #expect(vm.selectedItemId == vm.flatItems.first?.id)
+    }
+
+    @Test("A refilter of the same search moves the selection at once and keeps the search generation")
+    func sameSearchRefilterDoesNotDeferArrows() async {
+        let vm = makeViewModel(items: tableItems(["Album", "Artist", "Employee", "Genre"]))
+        vm.scope = .tables
+        await vm.flushPendingFilter()
+        let generation = vm.searchGeneration
+
+        vm.allItems = tableItems(["Album", "Artist", "Employee", "Genre", "Invoice"])
+        #expect(vm.isFiltering)
+        vm.moveSelection(by: 1)
+        #expect(vm.selectedItemId == "table:Artist")
+        await vm.flushPendingFilter()
+
+        #expect(vm.selectedItemId == "table:Artist")
+        #expect(vm.searchGeneration == generation)
+    }
+
+    @Test("A new query bumps the search generation even when it keeps the selected row")
+    func newQueryBumpsSearchGeneration() async {
+        let vm = makeViewModel(items: tableItems(["orders", "order_items", "customers"]))
+        vm.searchText = "orders"
+        await vm.flushPendingFilter()
+        let generation = vm.searchGeneration
+        #expect(vm.selectedItem()?.name == "orders")
+
+        vm.searchText = "order"
+        await vm.flushPendingFilter()
+
+        #expect(vm.selectedItem()?.name == "orders")
+        #expect(vm.searchGeneration == generation + 1)
+    }
 }

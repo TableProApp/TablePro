@@ -12,6 +12,7 @@ struct ResultSetMenu: View {
     let isSpelledOut: Bool
     let onActivate: (UUID) -> Void
     let onTogglePin: (UUID) -> Void
+    let onCompare: (UUID) -> Void
     let onClose: (UUID) -> Void
     let onCloseOthers: (UUID) -> Void
 
@@ -44,6 +45,9 @@ struct ResultSetMenu: View {
                 ) {
                     onTogglePin(active.id)
                 }
+
+                Button(String(localized: "Compare Result With…")) { onCompare(active.id) }
+                    .disabled(!model.canCompare(active))
 
                 Button(String(localized: "Close Result")) { onClose(active.id) }
                     .disabled(!model.canClose(active))

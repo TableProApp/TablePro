@@ -1,6 +1,7 @@
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProTabularIO
 import UIKit
 import UniformTypeIdentifiers
 
@@ -9,9 +10,65 @@ nonisolated enum ExportFormat: String, CaseIterable, Identifiable {
     case csv = "CSV"
     case sqlInsert = "SQL INSERT"
     var id: String { rawValue }
+
+    // An INSERT statement means nothing to a key or a collection.
+    static func offered(for type: DatabaseType) -> [ExportFormat] {
+        type.speaksSQL ? allCases : [.json, .csv]
+    }
 }
 
 nonisolated enum ClipboardExporter {
+    nonisolated struct IncompleteValues: LocalizedError, Equatable {
+        let columns: [String]
+
+        var errorDescription: String? {
+            String(
+                format: String(localized: "Binary values and values not loaded in full cannot be exported: %@."),
+                ListFormatter.localizedString(byJoining: columns)
+            )
+        }
+    }
+
+    nonisolated struct TooLarge: LocalizedError, Equatable {
+        var errorDescription: String? {
+            String(localized: "The full values on this page need more memory than this device has free. Choose a smaller page size and try again.")
+        }
+    }
+
+    static func incompleteColumns(columns: [ColumnInfo], cells: [Cell]) -> [String] {
+        incompleteColumns(columns: columns, rows: [cells])
+    }
+
+    static func exportRow(
+        columns: [ColumnInfo],
+        cells: [Cell],
+        format: ExportFormat,
+        tableName: String? = nil,
+        databaseType: DatabaseType,
+        driver: (any DatabaseDriver)?
+    ) throws(IncompleteValues) -> String {
+        let values = try completeValues(columns: columns, rows: [cells])
+        return exportRow(
+            columns: columns, row: values[0],
+            format: format, tableName: tableName, databaseType: databaseType, driver: driver
+        )
+    }
+
+    static func exportRows(
+        columns: [ColumnInfo],
+        rows: [[Cell]],
+        format: ExportFormat,
+        tableName: String? = nil,
+        databaseType: DatabaseType,
+        driver: (any DatabaseDriver)?
+    ) throws(IncompleteValues) -> String {
+        let values = try completeValues(columns: columns, rows: rows)
+        return exportRows(
+            columns: columns, rows: values,
+            format: format, tableName: tableName, databaseType: databaseType, driver: driver
+        )
+    }
+
     static func exportRow(
         columns: [ColumnInfo],
         row: [String?],
@@ -83,18 +140,42 @@ nonisolated enum ClipboardExporter {
 
     // MARK: - Private
 
+    private static func incompleteColumns(columns: [ColumnInfo], rows: [[Cell]]) -> [String] {
+        columns.indices.compactMap { index in
+            let isIncomplete = rows.contains { cells in
+                guard index < cells.count else { return false }
+                switch cells[index] {
+                case .null, .text: return false
+                case .truncatedText, .binary: return true
+                }
+            }
+            return isIncomplete ? columns[index].name : nil
+        }
+    }
+
+    private static func completeValues(columns: [ColumnInfo], rows: [[Cell]]) throws(IncompleteValues) -> [[String?]] {
+        let incomplete = incompleteColumns(columns: columns, rows: rows)
+        guard incomplete.isEmpty else { throw IncompleteValues(columns: incomplete) }
+        return rows.map { cells in
+            cells.map { cell -> String? in
+                if case .text(let value) = cell { return value }
+                return nil
+            }
+        }
+    }
+
     private static func rowToJson(columns: [ColumnInfo], row: [String?]) -> String {
         var pairs: [String] = []
         for (i, col) in columns.enumerated() {
             let value = i < row.count ? row[i] : nil
-            let key = "  \"\(escapeJsonString(col.name))\""
+            let key = "  " + JSONText.stringLiteral(col.name)
             if let value {
                 if isJsonNumber(value) {
                     pairs.append("\(key): \(value)")
                 } else if value == "true" || value == "false" {
                     pairs.append("\(key): \(value)")
                 } else {
-                    pairs.append("\(key): \"\(escapeJsonString(value))\"")
+                    pairs.append("\(key): \(JSONText.stringLiteral(value))")
                 }
             } else {
                 pairs.append("\(key): null")
@@ -152,8 +233,7 @@ nonisolated enum ClipboardExporter {
         return escapeCsvField(value)
     }
 
-    /// The JSON number grammar over ASCII digits only, so a VARCHAR like "01234", "+5", "0x10" or
-    /// "\u{0661}\u{0662}\u{0663}" stays a quoted string rather than a token no JSON parser accepts.
+    // ASCII digits only, so "01234", "+5" or Arabic-Indic digits stay quoted strings.
     private static func isJsonNumber(_ value: String) -> Bool {
         var characters = Substring(value)
         if characters.first == "-" { characters = characters.dropFirst() }
@@ -205,13 +285,5 @@ nonisolated enum ClipboardExporter {
             return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
         }
         return field
-    }
-
-    private static func escapeJsonString(_ str: String) -> String {
-        str.replacingOccurrences(of: "\\", with: "\\\\")
-           .replacingOccurrences(of: "\"", with: "\\\"")
-           .replacingOccurrences(of: "\n", with: "\\n")
-           .replacingOccurrences(of: "\r", with: "\\r")
-           .replacingOccurrences(of: "\t", with: "\\t")
     }
 }

@@ -134,6 +134,11 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// What `fetchTables(schema:)` lists for each named schema, in one call, each row carrying its own
     /// schema. Nil means the host asks each schema in turn; an empty list answers empty with no query.
     func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]?
+
+    /// This session's own temporary tables. A row's `schema` qualifies it in a query, nil where the bare name
+    /// reaches it. Asked only of a driver that declares ``PluginCapabilities/temporaryTables``.
+    func fetchTemporaryTables() async throws -> [PluginTableInfo]
+
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo]
 
     /// The same partitions as `fetchPartitions`, with the bound, the ordinal position and the row
@@ -174,9 +179,14 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// inline. A driver that answers here must not also declare the same comments in
     /// `fetchTableDDL`, or the dump sets each one twice.
     func fetchCommentDDL(table: String, schema: String?) async throws -> [String]
+
+    // A driver whose fetchTableMetadata reads rows answers this from the catalog alone.
+    func fetchObjectComment(table: String, schema: String?) async throws -> String?
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo]
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo]
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo]
+    /// The columns of `table` an UPDATE can never assign, even to the value they hold.
+    func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String>
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo]
     var providesBulkTriggerFetch: Bool { get }
     func fetchTriggerDDL(_ trigger: PluginTriggerInfo) async throws -> String
@@ -563,6 +573,13 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func foreignKeyDisableStatements() -> [String]?
     func foreignKeyEnableStatements() -> [String]?
 
+    /// `UPDATE <table> SET <assignments> WHERE <predicate>` in this engine's own form, or nil for that form. The host
+    /// quotes the table and renders both clauses; a placeholder in them binds in order, assignments first.
+    func rowUpdateStatement(table: String, assignments: String, predicate: String) -> String?
+    /// `DELETE FROM <table> WHERE <predicate>` in this engine's own form, or nil for that form. A nil predicate
+    /// removes every row.
+    func rowDeleteStatement(table: String, predicate: String?) -> String?
+
     /// Creates a schema, for a copy that has just created the database it goes in.
     ///
     /// A new database carries only whatever schema its engine gives it, so duplicating one that
@@ -614,6 +631,20 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability?
 
+    // Nil where the engine has no sequences, which keeps the sequence commands off the menu.
+    func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails?
+
+    func sequenceNextValueStatement(
+        for sequence: PluginSequenceDetails,
+        nextValue: PluginSequenceNextValue
+    ) -> String?
+
+    // Names only the settings that differ from `sequence`; nil when none do.
+    func alterSequenceStatement(
+        for sequence: PluginSequenceDetails,
+        settings: PluginSequenceSettings
+    ) -> String?
+
     // Maintenance operations (optional — return nil if not supported)
     func supportedMaintenanceOperations() -> [String]?
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]?
@@ -630,6 +661,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     // EXPLAIN query building (optional)
     func buildExplainQuery(_ sql: String) -> String?
 
+    // For a variant declared with ExplainStep.driver. The statement carries no prefix.
+    func explainPlan(statement: String, variantId: String) async throws -> PluginQueryResult
+
     func injectRowLimit(_ sql: String, limit: Int) -> String?
 
     func quoteIdentifier(_ name: String) -> String
@@ -638,6 +672,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     func createViewTemplate() -> String?
     func editViewFallbackTemplate(viewName: String) -> String?
+    func createSequenceTemplate() -> String?
     func castColumnToText(_ column: String) -> String
 
     // Trigger editing (optional — return nil when unsupported)
@@ -667,6 +702,22 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
         placement: PluginEnumLabelPlacement?
     ) -> String?
     func generateRenameEnumLabelSQL(type: PluginUserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String?
+    func generateDropTypeSQL(type: PluginUserDefinedTypeInfo) -> String?
+
+    /// The statements that create a type. Nil for a kind the engine cannot create from a statement,
+    /// which keeps that kind off the New Type sheet.
+    func createUserDefinedTypeStatements(_ definition: PluginUserDefinedTypeDefinition) -> [String]?
+
+    /// The statements for one queued change. Nil for a change this engine or server version cannot
+    /// make, which keeps it out of the editor.
+    func alterUserDefinedTypeStatements(type: PluginUserDefinedTypeInfo, change: PluginUserDefinedTypeChange) -> [String]?
+
+    /// Whether this server refuses the change's statements inside a transaction block, so a save
+    /// holding it has to run each statement on its own.
+    func userDefinedTypeChangeRunsOutsideTransaction(_ change: PluginUserDefinedTypeChange) -> Bool
+
+    /// `cascade` also drops what depends on the type. Nil when the engine has no such drop.
+    func generateDropTypeSQL(type: PluginUserDefinedTypeInfo, cascade: Bool) -> String?
 
     // All-tables metadata SQL (optional — returns nil for non-SQL databases)
     func allTablesMetadataSQL(schema: String?) -> String?
@@ -695,6 +746,7 @@ public extension PluginDatabaseDriver {
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] { [] }
 
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] { [] }
+    func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String> { [] }
 
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] { [] }
 
@@ -784,6 +836,31 @@ public extension PluginDatabaseDriver {
         to newLabel: String
     ) -> String? { nil }
 
+    func generateDropTypeSQL(type: PluginUserDefinedTypeInfo) -> String? { nil }
+
+    func createUserDefinedTypeStatements(_ definition: PluginUserDefinedTypeDefinition) -> [String]? { nil }
+
+    /// A driver that only answers the two enum label hooks keeps them reachable through this one.
+    func alterUserDefinedTypeStatements(
+        type: PluginUserDefinedTypeInfo,
+        change: PluginUserDefinedTypeChange
+    ) -> [String]? {
+        switch change {
+        case .addEnumLabel(let label, let placement):
+            return generateAddEnumLabelSQL(type: type, label: label, placement: placement).map { [$0] }
+        case .renameEnumLabel(let oldLabel, let newLabel):
+            return generateRenameEnumLabelSQL(type: type, from: oldLabel, to: newLabel).map { [$0] }
+        default:
+            return nil
+        }
+    }
+
+    func generateDropTypeSQL(type: PluginUserDefinedTypeInfo, cascade: Bool) -> String? {
+        cascade ? nil : generateDropTypeSQL(type: type)
+    }
+
+    func userDefinedTypeChangeRunsOutsideTransaction(_ change: PluginUserDefinedTypeChange) -> Bool { false }
+
     /// Engines whose partitions are metadata on one table object, rather than
     /// separate relations, have nothing to nest and keep the empty default.
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] { [] }
@@ -833,6 +910,8 @@ public extension PluginDatabaseDriver {
     func fetchTablesInAllSchemas() async throws -> [PluginTableInfo]? { nil }
 
     func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? { nil }
+
+    func fetchTemporaryTables() async throws -> [PluginTableInfo] { [] }
 
     /// Schemas whose objects live in a catalog outside the database itself, such
     /// as Redshift external schemas backed by Glue, Hive, or a federated source.
@@ -964,6 +1043,10 @@ public extension PluginDatabaseDriver {
     /// comments and for one that stores none. A driver that overrides this must drop the same
     /// statements from `fetchTableDDL` in the same change.
     func fetchCommentDDL(table: String, schema: String?) async throws -> [String] { [] }
+
+    func fetchObjectComment(table: String, schema: String?) async throws -> String? {
+        try await fetchTableMetadata(table: table, schema: schema).comment
+    }
 
     /// Answers whether `fetchAllIndexes` is a single query rather than the N+1 default below.
     var providesBulkIndexFetch: Bool { false }
@@ -1239,6 +1322,8 @@ public extension PluginDatabaseDriver {
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? { nil }
     func foreignKeyDisableStatements() -> [String]? { nil }
     func foreignKeyEnableStatements() -> [String]? { nil }
+    func rowUpdateStatement(table: String, assignments: String, predicate: String) -> String? { nil }
+    func rowDeleteStatement(table: String, predicate: String?) -> String? { nil }
     func createSchemaStatement(name: String) -> String? { nil }
 
     func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]? { nil }
@@ -1264,6 +1349,22 @@ public extension PluginDatabaseDriver {
         nil
     }
 
+    func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails? { nil }
+
+    func sequenceNextValueStatement(
+        for sequence: PluginSequenceDetails,
+        nextValue: PluginSequenceNextValue
+    ) -> String? {
+        nil
+    }
+
+    func alterSequenceStatement(
+        for sequence: PluginSequenceDetails,
+        settings: PluginSequenceSettings
+    ) -> String? {
+        nil
+    }
+
     func supportedMaintenanceOperations() -> [String]? { nil }
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]? { nil }
 
@@ -1276,10 +1377,15 @@ public extension PluginDatabaseDriver {
 
     func buildExplainQuery(_ sql: String) -> String? { nil }
 
+    func explainPlan(statement: String, variantId: String) async throws -> PluginQueryResult {
+        throw PluginDriverUnsupportedOperation.explainPlan
+    }
+
     func injectRowLimit(_ sql: String, limit: Int) -> String? { nil }
 
     func createViewTemplate() -> String? { nil }
     func editViewFallbackTemplate(viewName: String) -> String? { nil }
+    func createSequenceTemplate() -> String? { nil }
     func castColumnToText(_ column: String) -> String { column }
     func allTablesMetadataSQL(schema: String?) -> String? { nil }
     func defaultExportQuery(table: String) -> String? { nil }
@@ -1359,11 +1465,12 @@ public extension PluginDatabaseDriver {
         }
     }
 
+    // `.literal` compares code units: the default compares grapheme clusters and skips a quote a
+    // combining mark follows, which then ends the literal early.
     func escapeStringLiteral(_ value: String) -> String {
-        var result = value
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\0", with: "")
-        return result
+        value
+            .replacingOccurrences(of: "\0", with: "", options: .literal)
+            .replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     func fetchSessionContexts() async throws -> [PluginSessionContext]? { nil }
@@ -1546,32 +1653,33 @@ public extension PluginDatabaseDriver {
         if Self.isNumericLiteral(value) {
             return value
         }
-        var escaped = ""
-        escaped.reserveCapacity(value.count + 2)
+        var escaped = String.UnicodeScalarView()
         escaped.append("'")
         let escapeBackslashes = requiresBackslashEscapingInLiterals
-        for char in value {
-            switch char {
+        // Scalars, not Characters: a quote with a combining mark after it is one Character no case matched, so it
+        // went out single and ended the literal.
+        for scalar in value.unicodeScalars {
+            switch scalar {
             case "'":
-                escaped.append("''")
+                escaped.append(contentsOf: "''".unicodeScalars)
             case "\0":
                 continue
             case "\\" where escapeBackslashes:
-                escaped.append("\\\\")
+                escaped.append(contentsOf: #"\\"#.unicodeScalars)
             case "\n" where escapeBackslashes:
-                escaped.append("\\n")
+                escaped.append(contentsOf: #"\n"#.unicodeScalars)
             case "\r" where escapeBackslashes:
-                escaped.append("\\r")
+                escaped.append(contentsOf: #"\r"#.unicodeScalars)
             case "\t" where escapeBackslashes:
-                escaped.append("\\t")
+                escaped.append(contentsOf: #"\t"#.unicodeScalars)
             case "\u{1A}" where escapeBackslashes:
-                escaped.append("\\Z")
+                escaped.append(contentsOf: #"\Z"#.unicodeScalars)
             default:
-                escaped.append(char)
+                escaped.append(scalar)
             }
         }
         escaped.append("'")
-        return escaped
+        return String(escaped)
     }
 
     static func isNumericLiteral(_ value: String) -> Bool {

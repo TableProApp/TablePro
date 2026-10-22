@@ -20,6 +20,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
     case view
     case materializedView
     case foreignTable
+    case sequence
     case procedure
     case function
     case trigger
@@ -35,6 +36,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case .function:         return String(localized: "Function")
         case .trigger:          return String(localized: "Trigger")
         case .type:             return String(localized: "Type")
+        case .sequence:         return String(localized: "Sequence")
         }
     }
 
@@ -48,6 +50,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case .function:         return String(localized: "Functions")
         case .trigger:          return String(localized: "Triggers")
         case .type:             return String(localized: "Types")
+        case .sequence:         return String(localized: "Sequences")
         }
     }
 
@@ -61,6 +64,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case .function:         return String(localized: "No functions")
         case .trigger:          return String(localized: "No triggers")
         case .type:             return String(localized: "No types")
+        case .sequence:         return String(localized: "No sequences")
         }
     }
 
@@ -82,12 +86,13 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case .function:         return "function"
         case .trigger:          return "bolt"
         case .type:             return "cube"
+        case .sequence:         return "number"
         }
     }
 
     var category: SidebarObjectCategory {
         switch self {
-        case .table, .view, .materializedView, .foreignTable: return .table
+        case .table, .view, .materializedView, .foreignTable, .sequence: return .table
         case .procedure, .function:                           return .routine
         case .trigger:                                        return .trigger
         case .type:                                           return .type
@@ -99,6 +104,7 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         case "VIEW":              return .view
         case "MATERIALIZED VIEW": return .materializedView
         case "FOREIGN TABLE":     return .foreignTable
+        case "SEQUENCE":          return .sequence
         default:                  return .table
         }
     }

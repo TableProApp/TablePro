@@ -24,7 +24,7 @@ nonisolated enum ConnectionDetailFormatter {
         }
         var endpoint = connection.host
         let defaultPort = connection.type.defaultPort
-        if !defaultPort.isEmpty, String(connection.port) != defaultPort {
+        if connection.port != 0, !defaultPort.isEmpty, String(connection.port) != defaultPort {
             endpoint += ":\(connection.port)"
         }
         if !connection.database.isEmpty {
@@ -33,6 +33,14 @@ nonisolated enum ConnectionDetailFormatter {
         guard connection.sshEnabled, let ssh = connection.sshConfiguration, !ssh.host.isEmpty else {
             return endpoint
         }
+        if let socketPath = connection.sshForwardUnixSocketPath {
+            endpoint = forwardedSocketDetail(socketPath, database: connection.database)
+        }
         return String(format: String(localized: "%1$@ via %2$@"), endpoint, ssh.host)
+    }
+
+    private static func forwardedSocketDetail(_ path: String, database: String) -> String {
+        guard !database.isEmpty else { return String(format: String(localized: "Socket %@"), path) }
+        return String(format: String(localized: "%1$@ on socket %2$@"), database, path)
     }
 }

@@ -17,6 +17,8 @@ struct QueryHistorySourceTests {
         #expect(QueryHistorySource.structureDDL.rawValue == "structure_ddl")
         #expect(QueryHistorySource.dataImport.rawValue == "import")
         #expect(QueryHistorySource.mcp.rawValue == "mcp")
+        #expect(QueryHistorySource.script.rawValue == "script")
+        #expect(QueryHistorySource.commandLine.rawValue == "command_line")
     }
 
     @Test("the default filter hides app-generated statements")
@@ -28,6 +30,7 @@ struct QueryHistorySourceTests {
         #expect(QueryHistorySource.userAuthored.contains(.structureDDL) == false)
         #expect(QueryHistorySource.userAuthored.contains(.dataImport) == false)
         #expect(QueryHistorySource.userAuthored.contains(.mcp) == false)
+        #expect(QueryHistorySource.userAuthored.contains(.commandLine) == false)
     }
 
     @Test("every source is presentable")
@@ -132,6 +135,14 @@ struct HistoryDateRangeTests {
             .editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp
         ]
         #expect(QueryHistorySource.migratingStoredSelection(before) == Set(QueryHistorySource.allCases))
+    }
+
+    @Test("Every earlier all-sources selection widens to include Shortcuts and Command Line")
+    func everythingMigratesToIncludeCommandLine() {
+        let base: Set<QueryHistorySource> = [.editor, .explain, .tableBrowse, .rowEdit, .structureDDL, .dataImport, .mcp]
+        for before in [base.union([.script]), base.union([.script, .shortcuts])] {
+            #expect(QueryHistorySource.migratingStoredSelection(before) == Set(QueryHistorySource.allCases))
+        }
     }
 
     @Test("A custom selection is left exactly as the user set it")

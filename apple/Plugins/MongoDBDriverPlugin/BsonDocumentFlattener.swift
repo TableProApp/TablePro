@@ -11,7 +11,7 @@ import os
 import TableProNumberFormatting
 import TableProPluginKit
 
-enum BsonValueKind: Hashable {
+nonisolated enum BsonValueKind: Hashable {
     case double
     case string
     case document
@@ -38,12 +38,12 @@ enum BsonValueKind: Hashable {
 /// Documents as Swift values beside the canonical Extended JSON each was read from. The
 /// dictionaries have lost the stored field order and which numeric type each number was; the text
 /// has not.
-struct MongoReadDocuments {
+nonisolated struct MongoReadDocuments {
     let dictionaries: [[String: Any]]
     let texts: [String]
 }
 
-struct BsonDocumentFlattener {
+nonisolated struct BsonDocumentFlattener {
     // MARK: - Public API
 
     /// Union of all field names across all documents.
@@ -277,8 +277,19 @@ struct BsonDocumentFlattener {
 
     private static let iso8601Formatter = OSAllocatedUnfairLock(uncheckedState: ISO8601DateFormatter())
 
+    // A BSON date holds milliseconds. Text without them names another instant, which an `_id` filter or a
+    // value written back would then match or store.
     private static func iso8601Text(for date: Date) -> String {
-        iso8601Formatter.withLockUnchecked { $0.string(from: date) }
+        // A BSON date can hold any Int64, and one near either end reads back from `Date` past what Int64 holds.
+        guard let milliseconds = Int64(exactly: (date.timeIntervalSince1970 * 1_000).rounded()),
+              milliseconds.magnitude < 1 << 62 else {
+            return iso8601Formatter.withLockUnchecked { $0.string(from: date) }
+        }
+        let fraction = ((milliseconds % 1_000) + 1_000) % 1_000
+        let whole = Date(timeIntervalSince1970: TimeInterval(milliseconds - fraction) / 1_000)
+        let text = iso8601Formatter.withLockUnchecked { $0.string(from: whole) }
+        guard fraction != 0, text.hasSuffix("Z") else { return text }
+        return String(text.dropLast()) + String(format: ".%03lldZ", fraction)
     }
 
     private static func displayString(for num: NSNumber) -> String {
@@ -414,22 +425,6 @@ struct BsonDocumentFlattener {
     }
 
     // MARK: - Type Inference
-
-    /// The kind every non-null value of a field shares, or nil when they differ or there are none.
-    static func uniformKind(
-        of field: String,
-        in documents: [[String: Any]],
-        representation: MongoDBUuidRepresentation
-    ) -> BsonValueKind? {
-        var shared: BsonValueKind?
-        for doc in documents {
-            guard let value = doc[field], !(value is NSNull) else { continue }
-            let kind = valueKind(for: value, representation: representation)
-            if let shared, shared != kind { return nil }
-            shared = kind
-        }
-        return shared
-    }
 
     /// Every kind each top-level field holds in the documents, nulls aside.
     static func heldKinds(

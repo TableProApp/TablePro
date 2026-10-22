@@ -108,26 +108,13 @@ struct ColumnJumpPanelContent: View {
     }
 
     private var resultsList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(viewModel.matches) { match in
-                        columnRow(match)
-                    }
-                }
-                .padding(.vertical, QuickSwitcherMetrics.listVerticalPadding)
-            }
-            .frame(height: listHeight)
-            .onAppear {
-                if let id = viewModel.selectedId {
-                    proxy.scrollTo(id)
-                }
-            }
-            .onChange(of: viewModel.selectedId) { newValue in
-                if let id = newValue {
-                    proxy.scrollTo(id)
-                }
-            }
+        QuickSwitcherList(
+            rows: viewModel.matches,
+            selection: viewModel.selectedId,
+            search: viewModel.searchGeneration,
+            height: listHeight
+        ) { match in
+            columnRow(match)
         }
     }
 
@@ -210,7 +197,6 @@ struct ColumnJumpPanelContent: View {
         .accessibilityValue(Text(accessibilityValue(for: entry)))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { onCommit(entry) }
-        .id(match.id)
     }
 
     private func iconView(isSelected: Bool) -> some View {

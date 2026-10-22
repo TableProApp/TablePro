@@ -20,7 +20,7 @@ internal enum ColumnTypeSQLQuoting {
             return RowValueCopyFormatter.isIntegerLiteral(value)
         case .decimal:
             return PluginNumericLiteral.isValid(value)
-        case .text, .date, .timestamp, .datetime, .boolean, .blob, .json, .enumType, .set, .spatial, .array:
+        case .text, .date, .timestamp, .datetime, .boolean, .blob, .json, .enumType, .set, .spatial, .vector, .array:
             return false
         }
     }
@@ -30,7 +30,7 @@ internal enum ColumnTypeSQLQuoting {
         switch type {
         case .text, .enumType, .set:
             return true
-        case .integer, .decimal, .date, .timestamp, .datetime, .boolean, .blob, .json, .spatial, .array:
+        case .integer, .decimal, .date, .timestamp, .datetime, .boolean, .blob, .json, .spatial, .vector, .array:
             return false
         }
     }
@@ -50,12 +50,15 @@ internal enum ColumnTypeSQLQuoting {
     /// and XML have no equality operator on the engines that define them (Oracle ORA-00932, SQL
     /// Server error 402, PostgreSQL `operator does not exist: xml = unknown`), and neither does
     /// PostgreSQL's `json`.
-    static func hasEqualityOperator(_ type: ColumnType) -> Bool {
+    static func hasEqualityOperator(_ type: ColumnType, family: SQLTypeFamily? = nil) -> Bool {
         switch type {
         case .text(let rawType):
             guard let rawType else { return true }
-            return !typesWithoutEquality.contains(baseName(of: rawType))
-        case .integer, .decimal, .date, .timestamp, .datetime, .boolean, .enumType, .set:
+            let base = baseName(of: rawType)
+            // SQL Server's legacy TEXT is NTEXT's single-byte twin, also with no `=` (error 402).
+            if family == .mssql, base == "TEXT" { return false }
+            return !typesWithoutEquality.contains(base)
+        case .integer, .decimal, .date, .timestamp, .datetime, .boolean, .enumType, .set, .vector:
             return true
         case .blob, .json, .spatial, .array:
             return false

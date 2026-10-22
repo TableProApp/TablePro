@@ -31,6 +31,18 @@ public enum OracleTLSMapper {
         return .require(try NIOSSLContext(configuration: configuration))
     }
 
+    // NIOSSL refuses an IP address as SNI, so an address leaves OracleNIO checking the dialed host.
+    public static func serverName(for description: OracleTLSDescription) -> String? {
+        guard let name = description.serverName, !isIPAddress(name) else { return nil }
+        return name
+    }
+
+    private static func isIPAddress(_ name: String) -> Bool {
+        var ipv4 = in_addr()
+        var ipv6 = in6_addr()
+        return inet_pton(AF_INET, name, &ipv4) == 1 || inet_pton(AF_INET6, name, &ipv6) == 1
+    }
+
     public static func certificateVerification(
         for mode: OracleTLSDescription.Mode
     ) -> CertificateVerification {

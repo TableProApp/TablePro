@@ -349,7 +349,9 @@ private extension Data {
                 append(contentsOf: [0x26, 0x71, 0x75, 0x6F, 0x74, 0x3B]) // &quot;
             case 0x27: // '
                 append(contentsOf: [0x26, 0x61, 0x70, 0x6F, 0x73, 0x3B]) // &apos;
-            case 0x09, 0x0A, 0x0D: // Tab, LF, CR — allowed in XML 1.0
+            case 0x0D: // A raw CR reads back as LF under XML end-of-line handling
+                append(contentsOf: [0x26, 0x23, 0x31, 0x33, 0x3B]) // &#13;
+            case 0x09, 0x0A: // Tab and LF are allowed in XML 1.0
                 append(byte)
             case 0x00...0x08, 0x0B, 0x0C, 0x0E...0x1F: // Illegal XML 1.0 control chars
                 break // Strip silently

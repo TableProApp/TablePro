@@ -20,9 +20,11 @@ use crate::argv::{ControlOp, master_args};
 use crate::askpass_bridge::AskpassBridge;
 use crate::hop_config;
 use crate::host_key_checking::HostKeyChecking;
+use crate::identity_pin::pin_key_file;
 use crate::known_hosts::{known_hosts_lookup, spawn_failure};
 use crate::password_owner::password_owner;
 use crate::route::{JumpHop, Route, lookup, trace_route};
+use crate::runtime::unsafe_dir;
 use crate::stderr_classify::{ClassifyContext, classify};
 use crate::supervisor::{ForwardCancel, Supervisor, TASKS, run_control};
 use crate::{SshAuth, SshConfig, SshServices, lock};
@@ -70,6 +72,7 @@ struct MasterPlan {
     strict_hosts: Vec<String>,
     route: Route,
     master_config: Option<PathBuf>,
+    identities_only: bool,
 }
 
 impl MasterPlan {
@@ -92,6 +95,16 @@ impl MasterPlan {
             SshAuth::Agent | SshAuth::PrivateKey { .. } | SshAuth::KeyboardInteractive => None,
         };
         let host_keys = resolved.as_deref().and_then(HostKeyChecking::from_ssh_g);
+        let identities_only = match &config.auth {
+            SshAuth::PrivateKey { path: Some(key), .. } => tokio::select! {
+                pin = pin_key_file(&services.ssh_keygen_program, key, resolved.as_deref()) => pin,
+                () = cancel.cancelled() => return Err(SshFailure::InteractionCancelled.into()),
+            },
+            SshAuth::PrivateKey { path: None, .. }
+            | SshAuth::Agent
+            | SshAuth::Password { .. }
+            | SshAuth::KeyboardInteractive => false,
+        };
         let route = tokio::select! {
             route = trace_route(&services.ssh_program, config_file, resolved.as_deref()) => route,
             () = cancel.cancelled() => return Err(SshFailure::InteractionCancelled.into()),
@@ -105,6 +118,7 @@ impl MasterPlan {
             strict_hosts: strict_hosts(resolved.as_deref(), &route.hops),
             route,
             master_config,
+            identities_only,
         })
     }
 
@@ -123,6 +137,7 @@ impl MasterPlan {
                 liveness,
                 self.host_keys,
                 self.master_config.as_deref(),
+                self.identities_only,
             ))
             .env("SSH_ASKPASS", &services.askpass_program)
             .env("SSH_ASKPASS_REQUIRE", "force")
@@ -147,7 +162,7 @@ impl SshSession {
         let runtime = services.runtime.get().await?;
         let master_dir = tokio::task::spawn_blocking(move || runtime.create_master_dir())
             .await
-            .map_err(|error| protocol(&format!("the ssh setup task failed: {error}")))??;
+            .map_err(|error| crate::setup_task_failed(&error))??;
         let control = master_dir.join("control");
 
         let (listener, owner_uid) = match prepare(&master_dir, &control).await {
@@ -363,7 +378,7 @@ async fn pin_jump_hosts(
         hop_config::write(&master_dir, &contents)
     })
     .await
-    .map_err(|error| protocol(&format!("the ssh setup task failed: {error}")))?
+    .map_err(|error| crate::setup_task_failed(&error))?
     .map(Some)
     .map_err(TransportError::from)
 }
@@ -409,16 +424,10 @@ async fn prepare(master_dir: &Path, control: &Path) -> Result<(UnixListener, u32
         .into());
     }
     let askpass = master_dir.join("askpass");
-    let listener = UnixListener::bind(&askpass).map_err(|error| SshFailure::RuntimeDirUnsafe {
-        path: askpass.clone(),
-        detail: error.to_string(),
-    })?;
+    let listener = UnixListener::bind(&askpass).map_err(|error| unsafe_dir(&askpass, &error))?;
     let owner_uid = tokio::fs::metadata(master_dir)
         .await
-        .map_err(|error| SshFailure::RuntimeDirUnsafe {
-            path: master_dir.to_owned(),
-            detail: error.to_string(),
-        })?
+        .map_err(|error| unsafe_dir(master_dir, &error))?
         .uid();
     Ok((listener, owner_uid))
 }
@@ -434,7 +443,8 @@ async fn handshake(
 ) -> Handshake {
     let mut deadline = HandshakeDeadline::new(liveness.ssh_handshake_timeout);
     let Some(mut stdout) = child.stdout.take() else {
-        return Handshake::Failed(protocol("the ssh stdout pipe was not captured"));
+        tracing::warn!("the ssh master's stdout was not piped");
+        return Handshake::Failed(SshFailure::Internal.into());
     };
     let mut discarded = Vec::new();
     let stdout_closed = stdout.read_to_end(&mut discarded);
@@ -475,10 +485,13 @@ async fn handshake(
         status = child.wait() => Handshake::Exited(status.ok().and_then(|status| status.code())),
         output = check => match output {
             Ok(output) if output.status.success() => Handshake::Ready,
-            Ok(output) => Handshake::Failed(protocol(&format!(
-                "ssh -O check failed: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            ))),
+            Ok(output) => Handshake::Failed(
+                SshFailure::Protocol {
+                    status: output.status.code(),
+                    detail: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+                }
+                .into(),
+            ),
             Err(error) => Handshake::Failed(spawn_failure(&services.ssh_program, &error).into()),
         },
         () = tokio::time::sleep_until(deadline.deadline()) => {
@@ -519,13 +532,6 @@ pub(crate) async fn remove_dir(dir: &Path) {
     if let Err(error) = tokio::fs::remove_dir_all(dir).await {
         tracing::debug!(%error, dir = %dir.display(), "could not remove an ssh master directory");
     }
-}
-
-fn protocol(detail: &str) -> TransportError {
-    SshFailure::Protocol {
-        detail: detail.to_owned(),
-    }
-    .into()
 }
 
 #[cfg(test)]
@@ -586,6 +592,50 @@ mod tests {
         assert_eq!(strict_hosts("open", &["strict-jump"]).await, ["192.0.2.1"]);
         assert!(strict_hosts("unset", &["ask-jump", "new-jump"]).await.is_empty());
         assert!(strict_hosts("open", &[]).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_master_that_exited_keeps_ssh_s_last_line_and_no_words_of_ours() {
+        let dir = tempfile::tempdir().unwrap();
+        let services = SshServices {
+            runtime: Arc::new(crate::SshRuntimeCell::new(dir.path().join("runtime"))),
+            ssh_program: "ssh".into(),
+            ssh_keygen_program: "ssh-keygen".into(),
+            askpass_program: "tablepro-askpass".into(),
+            config_file: None,
+        };
+        let config = SshConfig {
+            destination: SshDestination::new("db", None, None).unwrap(),
+            jump_hosts: Vec::new(),
+            auth: SshAuth::Agent,
+        };
+        let exited = async |stderr: &str| {
+            let master_dir = tempfile::tempdir_in(dir.path()).unwrap().keep();
+            let master = Master {
+                child: Command::new("sh").args(["-c", "exit 3"]).spawn().unwrap(),
+                control: master_dir.join("control"),
+                master_dir,
+                stderr_tail: Arc::new(Mutex::new(stderr.to_owned())),
+            };
+            let session = SshSession::supervise(&config, &services, &LivenessPolicy::DESKTOP, master, None);
+            session.closed().await;
+            session.master_exited()
+        };
+
+        assert_eq!(
+            exited("").await,
+            TransportError::Ssh(SshFailure::MasterExited {
+                status: Some(3),
+                detail: String::new(),
+            })
+        );
+        assert_eq!(
+            exited("debug1: closing\nConnection to db closed by remote host.\n").await,
+            TransportError::Ssh(SshFailure::MasterExited {
+                status: Some(3),
+                detail: "Connection to db closed by remote host.".to_owned(),
+            })
+        );
     }
 
     #[test]

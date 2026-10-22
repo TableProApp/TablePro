@@ -32,6 +32,11 @@ enum TableRowLogic {
         }
     }
 
+    static func ownerDescription(for table: TableInfo) -> String? {
+        guard let ownedByTable = table.ownedByTable, let ownedByColumn = table.ownedByColumn else { return nil }
+        return String(format: String(localized: "Owned by %@"), "\(ownedByTable).\(ownedByColumn)")
+    }
+
     static func showsLeadingIcon(showObjectIcons: Bool, isPendingTruncate: Bool, isPendingDelete: Bool) -> Bool {
         showObjectIcons || isPendingTruncate || isPendingDelete
     }
@@ -51,6 +56,9 @@ enum TableRowLogic {
         }
         if let partitions = SidebarPartitionRow.tableAccessibilitySuffix(partitionCount: table.partitionCount) {
             label += ", " + partitions
+        }
+        if let owner = ownerDescription(for: table) {
+            label += ", " + owner
         }
         if isPendingDelete {
             label += ", " + String(localized: "pending delete")
@@ -74,6 +82,7 @@ struct TableRow: View {
     /// name like a comment does, and it is not the comment: the comment is what the server stores
     /// against the object, and it is hidden behind its own setting.
     var partitionBound: String?
+    var accessibilityKind: String?
     var onToggleFavorite: (() -> Void)?
 
     @State private var isHovered = false
@@ -171,6 +180,7 @@ struct TableRow: View {
             }
         }
         .onHover { isHovered = $0 }
+        .modifier(OwnerHelp(text: TableRowLogic.ownerDescription(for: table)))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             TableRowLogic.accessibilityLabel(
@@ -178,10 +188,22 @@ struct TableRow: View {
                 isPendingDelete: isPendingDelete,
                 isPendingTruncate: isPendingTruncate,
                 isFavorite: isFavorite,
-                kindOverride: partitionBound == nil ? nil : SidebarPartitionRow.kindLabel,
+                kindOverride: accessibilityKind ?? (partitionBound == nil ? nil : SidebarPartitionRow.kindLabel),
                 bound: partitionBound
             )
         )
         .modifier(FavoriteAccessibilityAction(isFavorite: isFavorite, toggle: onToggleFavorite))
+    }
+}
+
+private struct OwnerHelp: ViewModifier {
+    let text: String?
+
+    func body(content: Content) -> some View {
+        if let text {
+            content.help(text)
+        } else {
+            content
+        }
     }
 }

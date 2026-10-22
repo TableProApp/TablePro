@@ -688,6 +688,25 @@ struct CompareSQLLiteralTextTests {
                 for: .text("007"), columnType: .text(rawType: "CHAR(3)"), databaseType: .mysql, driver: driver
             ) == "'007'")
     }
+
+    // #3777: the PluginKit default left a backslash single, which ClickHouse reads as an escape.
+    @Test
+    func clickHouseTextGoesThroughTheDriversOwnEscaper() {
+        let clickHouse = BackslashEscapingDriver()
+
+        #expect(CompareSQLLiteral.textLiteral(#"C:\new"#, columnType: nil, databaseType: .clickhouse, driver: clickHouse)
+            == #"'C:\\new'"#)
+        #expect(CompareSQLLiteral.textLiteral(#"x\' OR 1=1 --"#, columnType: nil, databaseType: .clickhouse, driver: clickHouse)
+            == #"'x\\'' OR 1=1 --'"#)
+        #expect(CompareSQLLiteral.textLiteral("42", columnType: .integer(rawType: "UInt8"), databaseType: .clickhouse, driver: clickHouse)
+            == "42")
+    }
+}
+
+private final class BackslashEscapingDriver: PluginDriverStub, @unchecked Sendable {
+    func escapeStringLiteral(_ value: String) -> String {
+        value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "''")
+    }
 }
 
 struct DataCompareOptionsDecodingTests {

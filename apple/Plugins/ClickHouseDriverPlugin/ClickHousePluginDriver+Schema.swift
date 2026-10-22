@@ -7,7 +7,7 @@ import Foundation
 import os
 import TableProPluginKit
 
-extension ClickHousePluginDriver {
+nonisolated extension ClickHousePluginDriver {
     // MARK: - Schema Operations
 
     /// Names the database rather than taking the session's, so a caller asking about another one is
@@ -102,6 +102,20 @@ extension ClickHousePluginDriver {
                 allowedValues: EnumValueParser.parseClickHouseEnum(from: ClickHousePluginDriver.unwrapTypeWrappers(dataType))
             )
         }
+    }
+
+    // A mutation refuses any column of the sorting, primary or partition key, even set to the value it holds.
+    func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String> {
+        let result = try await execute(query: Self.immutableColumnsSQL(table: table, schema: schema))
+        return Set(result.rows.compactMap { $0[safe: 0]?.asText })
+    }
+
+    static func immutableColumnsSQL(table: String, schema: String?) -> String {
+        """
+        SELECT name FROM system.columns
+        WHERE database = \(databaseExpression(schema)) AND table = \(stringLiteral(table))
+        AND (is_in_sorting_key OR is_in_primary_key OR is_in_partition_key)
+        """
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
@@ -434,7 +448,7 @@ extension ClickHousePluginDriver {
 /// catalog field a DEFAULT uses, and only a DEFAULT is a default. Reporting one of the others as
 /// one let an edit to an unrelated field restate it as `DEFAULT '<expression>'`, which stores the
 /// text of the expression in every row inserted afterwards.
-internal func clickhouseDefaultValue(kind: String?, expression: String?) -> String? {
+nonisolated internal func clickhouseDefaultValue(kind: String?, expression: String?) -> String? {
     guard kind == "DEFAULT", let expression, !expression.isEmpty else { return nil }
     return expression
 }

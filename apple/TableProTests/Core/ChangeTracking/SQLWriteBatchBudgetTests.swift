@@ -127,6 +127,17 @@ struct SQLWriteBatchBudgetTests {
             "two of these exceed a mebibyte of rendered SQL, so the second must close the batch")
     }
 
+    // #3777: 800 rows of an id and 1,100 bytes of text fit the parameter rate, and went out as a 1.2 MB URL.
+    @Test
+    func clickHouseIsChargedForTheLiteralsItWrites() throws {
+        let clickhouse = try SQLWriteBatchBudget(columnCount: 2, generator: generator(.clickhouse))
+        let row = [PluginCellValue.text("800"), .text(String(repeating: "'", count: 1_100))]
+
+        #expect(clickhouse.rendersValuesAsLiterals)
+        #expect(clickhouse.byteCount(of: row) == 12 + 6 + 12 + 2_200)
+        #expect(SQLWriteBatchBudget.maximumBytes / clickhouse.byteCount(of: row) < 800)
+    }
+
     /// A multi-byte value is charged its UTF-8 length, not its character count: the packet the
     /// server measures carries bytes.
     @Test

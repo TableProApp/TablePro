@@ -101,9 +101,18 @@ final class AIChatViewModel: ObservableObject {
 
     var pendingWalkthroughBeforeSQL: String?
     var pendingWalkthroughSource: QueryEditorAnchor?
+    var onDeviceModel: any OnDeviceLanguageModel = SystemOnDeviceLanguageModel()
+    var onDeviceTurnID: UUID?
+    @Published var onDeviceRefusal: OnDeviceRefusal?
     var queryContextMetadata: any ScopedMetadataProviding
     var inFlightColumnFetches: [String: Task<Void, Never>] = [:]
     var inFlightSchemaLoad: Task<Void, Never>?
+    var relevantTableNames: [String] = []
+    var bulkColumnReadTableCount: Int?
+    var schemaCacheScope: String?
+    // A custom command's message carries the schema it rendered, so its tables are ranked by the
+    // user's own words instead.
+    var schemaQuestionOverride: (turnID: UUID, text: String)?
     nonisolated(unsafe) var streamingTask: Task<Void, Never>?
     var prepTask: Task<Void, Never>?
 
@@ -235,8 +244,9 @@ final class AIChatViewModel: ObservableObject {
         return descriptor.supportsImages(fetched: catalog.fetchedInfo(providerID: config.id, modelID: model))
     }
 
-    func sendWithContext(prompt: String) {
+    func sendWithContext(prompt: String, schemaQuestion: String? = nil) {
         let userMessage = ChatTurn(role: .user, blocks: [.text(prompt)])
+        schemaQuestionOverride = schemaQuestion.map { (userMessage.id, $0) }
         messages.append(userMessage)
         trimMessagesIfNeeded()
         clearError()
@@ -296,14 +306,22 @@ final class AIChatViewModel: ObservableObject {
               let lastAssistantIndex = messages.lastIndex(where: { $0.role == .assistant })
         else { return }
 
-        AIProviderFactory.copilotDeleteLastTurn(sessionId: sessionId)
+        let answeredOnDevice = messages[lastAssistantIndex].providerId == AppleIntelligenceAvailability.providerID
+        if !answeredOnDevice {
+            AIProviderFactory.copilotDeleteLastTurn(sessionId: sessionId)
+        }
+        let wasLast = lastAssistantIndex == messages.count - 1
         messages.remove(at: lastAssistantIndex)
+        if wasLast, answeredOnDevice, let asked = messages.last, asked.role == .user {
+            onDeviceTurnID = asked.id
+        }
         clearError()
         startStreaming()
     }
 
     func clearError() {
         errorMessage = nil
+        onDeviceRefusal = nil
         if case .failed = streamingState {
             streamingState = .idle
         }
@@ -354,6 +372,10 @@ final class AIChatViewModel: ObservableObject {
         inFlightColumnFetches.removeAll()
         inFlightSchemaLoad?.cancel()
         inFlightSchemaLoad = nil
+        relevantTableNames = []
+        bulkColumnReadTableCount = nil
+        schemaCacheScope = nil
+        schemaQuestionOverride = nil
         currentQuery = nil
         queryResults = nil
         editorTarget = nil

@@ -11,6 +11,14 @@ import Foundation
 import TableProPluginKit
 import Testing
 
+private final class TruncatingEngineDriver: PluginDriverStub, @unchecked Sendable {
+    func quoteIdentifier(_ name: String) -> String { "`\(name)`" }
+
+    func rowDeleteStatement(table: String, predicate: String?) -> String? {
+        predicate == nil ? "TRUNCATE TABLE \(table)" : nil
+    }
+}
+
 struct ObjectCopyPlanTests {
     private func endpoint(
         _ database: String,
@@ -255,5 +263,19 @@ struct ObjectCopyPlanTests {
 
         #expect(copy.partialNotes.map(\.selection.name) == ["orders", "totals"])
         #expect(copy.partialNotes.last?.text == SourceObjectIndexes.notCarriedByTargetNote)
+    }
+
+    @Test("Emptying a table the engine takes no bare DELETE on uses the driver's own statement")
+    func emptyingUsesDriverDeleteForm() {
+        let statements = ObjectCopyPlanner.emptyStatements(
+            table: "orders",
+            schema: nil,
+            prefersDelete: true,
+            driver: TruncatingEngineDriver(),
+            databaseType: .clickhouse
+        )
+
+        #expect(statements.map(\.sql) == ["TRUNCATE TABLE `orders`"])
+        #expect(statements.allSatisfy { $0.isRefusedByDefault })
     }
 }

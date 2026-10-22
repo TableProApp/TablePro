@@ -54,6 +54,22 @@ struct ScopedDriverRoutingTests {
         #expect(explicit?.schema == "staging", "An explicit schema still passes through")
     }
 
+    @Test("A filtered count runs with the page where the driver types filters by the rows it read")
+    func filteredCountRunsWithThePage() {
+        let mongo = Self.makeSession(type: .mongodb, browseDatabase: "app")
+        let mysql = Self.makeSession(type: .mysql, browseDatabase: "app")
+        defer {
+            DatabaseManager.shared.removeSession(for: mongo.id)
+            DatabaseManager.shared.removeSession(for: mysql.id)
+        }
+
+        let scope = Self.scope(mongo, database: "app")
+        #expect(DatabaseManager.shared.rowCountRunsWithPage(scope, filtered: true))
+        #expect(DatabaseManager.shared.executionRoute(for: scope) == .sessionDriver)
+        #expect(!DatabaseManager.shared.rowCountRunsWithPage(scope, filtered: false))
+        #expect(!DatabaseManager.shared.rowCountRunsWithPage(Self.scope(mysql, database: "app"), filtered: true))
+    }
+
     @Test("A pin-capable engine keeps the user's SQL on the session driver")
     func pinCapableEngineUsesTheSessionDriver() throws {
         let connection = Self.makeSession(type: .mysql, browseDatabase: "inventory")
@@ -84,6 +100,31 @@ struct ScopedDriverRoutingTests {
         #expect(serverScoped.isServerScoped)
         #expect(DatabaseManager.shared.executionRoute(for: serverScoped) == .sessionDriver)
         #expect(DatabaseManager.shared.metadataRoute(for: serverScoped) == .sessionDriver)
+    }
+
+    @Test("A temporary table's metadata is read on the session even where the engine pools")
+    func sessionBoundMetadataStaysOnTheSessionDriver() {
+        let connection = Self.makeSession(type: .postgresql, browseDatabase: "orders")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let own = Self.scope(connection, database: "orders")
+
+        #expect(DatabaseManager.shared.metadataRoute(for: own) == .pooled)
+        #expect(DatabaseManager.shared.metadataRoute(for: own.sessionBound) == .sessionDriver)
+        #expect(DatabaseManager.shared.executionRoute(for: own.sessionBound) == .sessionDriver)
+    }
+
+    @Test("A temporary table of a database with no session of its own is refused, never read from a pool")
+    func sessionBoundForeignDatabaseIsUnavailable() {
+        let connection = Self.makeSession(type: .postgresql, browseDatabase: "inventory")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let foreign = Self.scope(connection, database: "orders").sessionBound
+
+        guard case .unavailable = DatabaseManager.shared.executionRoute(for: foreign) else {
+            Issue.record("A pooled connection is another session and cannot see the table")
+            return
+        }
     }
 
     @Test("A reconnect-required engine runs a foreign database on a pooled connection")

@@ -55,7 +55,6 @@ final class SQLFileParser: Sendable {
     private static let kSlash: unichar = 0x2F
     private static let kStar: unichar = 0x2A
     private static let kHash: unichar = 0x23
-    private static let kExclamation: unichar = 0x21
     private static let kNewline: unichar = 0x0A
     private static let kSpace: unichar = 0x20
     private static let kTab: unichar = 0x09
@@ -63,8 +62,6 @@ final class SQLFileParser: Sendable {
     private static let kDollar: unichar = 0x24
     private static let kCapitalE: unichar = 0x45
     private static let kSmallE: unichar = 0x65
-    private static let kCapitalM: unichar = 0x4D
-    private static let kSmallM: unichar = 0x6D
     private static let kOpenBracket: unichar = 0x5B
     private static let kCloseBracket: unichar = 0x5D
     private static let kCapitalG: unichar = 0x47
@@ -139,6 +136,22 @@ final class SQLFileParser: Sendable {
     private static let delimiterPrefix = "DELIMITER "
     private static let delimiterPrefixLength = 10
 
+    // mysqldump writes `DELIMITER ;;`, whose new delimiter is the rest of the line, so a `;` in it ends nothing.
+    private static func readsDelimiterDirective(_ ctx: ParserContext) -> Bool {
+        guard ctx.grammar.contains(.delimiterDirective), let statement = ctx.currentStatement else { return false }
+        let length = statement.length
+        var index = 0
+        while index < length, isWhitespace(statement.character(at: index)) {
+            index += 1
+        }
+        let prefix = delimiterPrefix as NSString
+        guard length - index >= prefix.length,
+              statement.substring(with: NSRange(location: index, length: prefix.length)).uppercased() == delimiterPrefix
+        else { return false }
+        let rest = NSRange(location: index, length: length - index)
+        return statement.range(of: "\n", options: [], range: rest).location == NSNotFound
+    }
+
     private static func extractDelimiterChange(_ text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.uppercased().hasPrefix(delimiterPrefix) else { return nil }
@@ -154,7 +167,9 @@ final class SQLFileParser: Sendable {
         var hasStatementContent = false
         var currentLine = 1
         var statementStartLine = 1
-        var isConditionalComment = false
+        // A run `/*! ... */` body is code to the server, comments and quotes included, so it is read as code and sent
+        // whole, and a `;` inside it ends nothing.
+        var insideConditionalComment = false
         var commentDepth = 0
         var currentDelimiter: NSString = ";" as NSString
         var isSingleCharDelimiter = true
@@ -231,13 +246,7 @@ final class SQLFileParser: Sendable {
 
         /// Whether the comment being read goes into the text sent.
         var keepsComments: Bool {
-            readsBatches || (keepsStatementComments && hasStatementContent)
-        }
-
-        /// Whether the block comment being read goes into the statement, which a conditional comment always does,
-        /// being SQL the server runs.
-        var keepsCommentText: Bool {
-            keepsComments || isConditionalComment
+            readsBatches || (keepsStatementComments && hasStatementContent) || insideConditionalComment
         }
     }
 
@@ -249,6 +258,7 @@ final class SQLFileParser: Sendable {
     private static func resetStatement(_ ctx: inout ParserContext) {
         ctx.currentStatement?.setString("")
         ctx.hasStatementContent = false
+        ctx.insideConditionalComment = false
         ctx.boundaries?.reset()
         ctx.word.removeAll(keepingCapacity: true)
     }
@@ -454,23 +464,8 @@ final class SQLFileParser: Sendable {
             return StepResult(advanced: false, deferred: false)
         }
 
-        if char == kSlash, let next = nextChar, next == kStar {
-            ctx.isConditionalComment = ctx.grammar.contains(.executableComments)
-                && SqlLexer.executableCommentOpenerLength(nsBuffer, at: i, length: bufLen) != nil
-            ctx.commentDepth = 1
-            ctx.state = .inMultiLineComment
-            if ctx.isConditionalComment {
-                (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
-                    ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
-            } else {
-                ctx.boundaries?.observeGap()
-            }
-            if ctx.keepsCommentText {
-                appendChar(char, to: ctx.currentStatement)
-                appendChar(next, to: ctx.currentStatement)
-            }
-            i += 2
-            return StepResult(advanced: true, deferred: false)
+        if let step = processBlockCommentMarker(&ctx, char: char, nextChar: nextChar, i: &i, nsBuffer: nsBuffer, bufLen: bufLen) {
+            return step
         }
 
         if ctx.grammar.contains(.escapeStringPrefix)
@@ -545,8 +540,8 @@ final class SQLFileParser: Sendable {
             return StepResult(advanced: false, deferred: false)
         }
 
-        if !ctx.isSingleCharDelimiter
-            && matchesDelimiter(at: i, delimiter: ctx.currentDelimiter, in: nsBuffer, bufLen: bufLen) {
+        if !ctx.isSingleCharDelimiter, !ctx.insideConditionalComment, !readsDelimiterDirective(ctx),
+           matchesDelimiter(at: i, delimiter: ctx.currentDelimiter, in: nsBuffer, bufLen: bufLen) {
             yieldAndReset(&ctx)
             i += ctx.currentDelimiter.length
             return StepResult(advanced: true, deferred: false)
@@ -565,10 +560,55 @@ final class SQLFileParser: Sendable {
         return StepResult(advanced: false, deferred: false)
     }
 
+    /// A `/*` opens a comment, or the code of a conditional comment the server runs, which a `*/` read as code closes.
+    private static func processBlockCommentMarker(
+        _ ctx: inout ParserContext,
+        char: unichar,
+        nextChar: unichar?,
+        i: inout Int,
+        nsBuffer: NSString,
+        bufLen: Int
+    ) -> StepResult? {
+        if ctx.insideConditionalComment, char == kStar, nextChar == kSlash {
+            appendRange(&ctx, from: i, to: i + 2, in: nsBuffer)
+            ctx.insideConditionalComment = false
+            i += 2
+            return StepResult(advanced: true, deferred: false)
+        }
+        guard char == kSlash, let next = nextChar, next == kStar else { return nil }
+        if ctx.grammar.contains(.executableComments) {
+            // `/*M!` takes four units to tell apart from a plain comment.
+            if i + 3 >= bufLen, !ctx.atEndOfInput {
+                return StepResult(advanced: false, deferred: true)
+            }
+            if SqlLexer.executableCommentOpenerLength(nsBuffer, at: i, length: bufLen) != nil {
+                (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
+                    ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
+                ctx.insideConditionalComment = true
+                appendRange(&ctx, from: i, to: i + 2, in: nsBuffer)
+                i += 2
+                return StepResult(advanced: true, deferred: false)
+            }
+        }
+        ctx.commentDepth = 1
+        ctx.state = .inMultiLineComment
+        ctx.boundaries?.observeGap()
+        if ctx.keepsComments {
+            appendChar(char, to: ctx.currentStatement)
+            appendChar(next, to: ctx.currentStatement)
+        }
+        i += 2
+        return StepResult(advanced: true, deferred: false)
+    }
+
     /// A `;` ends the statement unless the grammar holds it inside a PL/SQL unit or a routine body, and a statement
     /// that owns the `;` that ends it keeps it. In a batch it ends nothing, unless the batch has grown past what the
     /// server takes in one request.
     private static func processSemicolon(_ ctx: inout ParserContext, at i: Int) {
+        if ctx.insideConditionalComment || readsDelimiterDirective(ctx) {
+            appendChar(kSemicolon, to: ctx.currentStatement)
+            return
+        }
         if ctx.readsBatches {
             appendChar(kSemicolon, to: ctx.currentStatement)
             let batchEnd = ctx.unitsBeforeBuffer + i + 1
@@ -836,10 +876,10 @@ final class SQLFileParser: Sendable {
         nextChar: unichar?,
         i: inout Int
     ) -> Bool {
-        if ctx.keepsCommentText {
+        if ctx.keepsComments {
             appendChar(char, to: ctx.currentStatement)
         }
-        if char == kSlash, nextChar == kStar, !ctx.isConditionalComment, ctx.grammar.contains(.nestedBlockComments) {
+        if char == kSlash, nextChar == kStar, ctx.grammar.contains(.nestedBlockComments) {
             if ctx.keepsComments {
                 appendChar(kStar, to: ctx.currentStatement)
             }
@@ -848,14 +888,13 @@ final class SQLFileParser: Sendable {
             return true
         }
         if char == kStar, let next = nextChar, next == kSlash {
-            if ctx.keepsCommentText {
+            if ctx.keepsComments {
                 appendChar(next, to: ctx.currentStatement)
             }
             ctx.commentDepth -= 1
             i += 2
-            guard ctx.commentDepth <= 0 || ctx.isConditionalComment else { return true }
+            guard ctx.commentDepth <= 0 else { return true }
             ctx.state = .normal
-            ctx.isConditionalComment = false
             ctx.commentDepth = 0
             return true
         }

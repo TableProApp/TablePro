@@ -139,19 +139,74 @@ public enum SQLNonCodeSpan {
         guard SqlLexer.startsBlockComment(text, at: index, length: length) else { return nil }
         if grammar.contains(.executableComments),
            let opener = SqlLexer.executableCommentOpenerLength(text, at: index, length: length) {
-            let span = SqlLexer.skipExecutableComment(
-                text,
-                from: index,
-                openerLength: opener,
-                length: length,
-                backslashEscapes: grammar.backslashEscapes(inQuote:)
-            )
-            return closedSpan(.executableComment, at: index, span, closerLength: 2)
+            return executableCommentSpan(at: index, openerLength: opener, in: text, length: length, grammar: grammar)
         }
-        let span = grammar.contains(.nestedBlockComments)
+        let comment = plainBlockComment(at: index, in: text, length: length, grammar: grammar)
+        return closedSpan(.blockComment, at: index, comment, closerLength: 2)
+    }
+
+    private static func plainBlockComment(
+        at index: Int,
+        in text: NSString,
+        length: Int,
+        grammar: SQLLexicalGrammar
+    ) -> SqlLexer.Span {
+        grammar.contains(.nestedBlockComments)
             ? SqlLexer.skipNestedBlockComment(text, from: index, length: length)
             : SqlLexer.skipBlockComment(text, from: index, length: length)
-        return closedSpan(.blockComment, at: index, span, closerLength: 2)
+    }
+
+    // The server lexes a run body as code, comments included, and a nested opener opens no second level: the first
+    // `*/` read as code closes the comment. Measured on MySQL 8.0 and 8.4 and MariaDB 10.11 and 11.4.
+    private static func executableCommentSpan(
+        at index: Int,
+        openerLength: Int,
+        in text: NSString,
+        length: Int,
+        grammar: SQLLexicalGrammar
+    ) -> Span {
+        var cursor = index + openerLength
+        var newlines = 0
+        while cursor < length {
+            let character = text.character(at: cursor)
+            if character == SqlLexer.star, cursor + 1 < length, text.character(at: cursor + 1) == SqlLexer.slash {
+                return Span(
+                    kind: .executableComment,
+                    start: index,
+                    end: cursor + 2,
+                    contentEnd: cursor,
+                    newlines: newlines,
+                    isTerminated: true
+                )
+            }
+            if SqlLexer.startsBlockComment(text, at: cursor, length: length) {
+                if let nested = SqlLexer.executableCommentOpenerLength(text, at: cursor, length: length) {
+                    cursor += nested
+                    continue
+                }
+                let comment = plainBlockComment(at: cursor, in: text, length: length, grammar: grammar)
+                newlines += comment.newlines
+                cursor = comment.next
+                continue
+            }
+            if let inner = span(at: cursor, in: text, grammar: grammar) {
+                newlines += inner.newlines
+                cursor = max(inner.end, cursor + 1)
+                continue
+            }
+            if character == SqlLexer.newline {
+                newlines += 1
+            }
+            cursor += 1
+        }
+        return Span(
+            kind: .executableComment,
+            start: index,
+            end: length,
+            contentEnd: length,
+            newlines: newlines,
+            isTerminated: false
+        )
     }
 
     private static func startsLineComment(

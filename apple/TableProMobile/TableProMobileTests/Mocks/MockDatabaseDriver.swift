@@ -10,6 +10,8 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var scriptedExecuteResults: [Result<QueryResult, Error>] = []
     var scriptedColumns: [ColumnInfo] = []
     var scriptedForeignKeys: [ForeignKeyInfo] = []
+    var fetchForeignKeysError: Error?
+    var fetchColumnsError: Error?
     var scriptedTables: [TableInfo] = []
     var scriptedDatabases: [String] = []
     var scriptedSchemas: [String] = []
@@ -18,14 +20,21 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var scriptedTransactionStates: [DriverTransactionState] = []
     /// Answered in order, one per call, then nil.
     var scriptedLexicalFacts: [SQLSessionLexicalFacts?] = []
+    var pingError: Error?
+    var fetchTablesError: Error?
+    var commitError: Error?
+    var rollbackError: Error?
 
     private(set) var executedQueries: [String] = []
     private(set) var fetchColumnsCalls: Int = 0
     private(set) var fetchForeignKeysCalls: Int = 0
+    private(set) var fetchColumnsSchemas: [String?] = []
+    private(set) var fetchForeignKeysSchemas: [String?] = []
     private(set) var beganTransactionModes: [PluginTransactionAccessMode] = []
     private(set) var didBeginTransaction = false
     private(set) var didCommitTransaction = false
     private(set) var didRollbackTransaction = false
+    private(set) var pingCount = 0
 
     var supportsSchemas: Bool = false
     var currentSchema: String?
@@ -43,12 +52,23 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
 
     var beforeDisconnect: (@Sendable () async -> Void)?
     var beforeExecute: (@Sendable () async -> Void)?
+    var beforeTransactionState: (@Sendable () async -> Void)?
+    var beforeFetchTables: (@Sendable () async -> Void)?
+    var beforeConnect: (@Sendable () async -> Void)?
+    private(set) var connectSawCancellation = false
 
-    func connect() async throws {}
+    func connect() async throws {
+        await beforeConnect?()
+        connectSawCancellation = Task.isCancelled
+    }
     func disconnect() async throws {
         await beforeDisconnect?()
     }
-    func ping() async throws -> Bool { true }
+    func ping() async throws -> Bool {
+        pingCount += 1
+        if let pingError { throw pingError }
+        return true
+    }
     func cancelCurrentQuery() async throws {}
 
     func execute(query: String) async throws -> QueryResult {
@@ -63,10 +83,16 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
         }
     }
 
-    func fetchTables(schema: String?) async throws -> [TableInfo] { scriptedTables }
+    func fetchTables(schema: String?) async throws -> [TableInfo] {
+        await beforeFetchTables?()
+        if let fetchTablesError { throw fetchTablesError }
+        return scriptedTables
+    }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         fetchColumnsCalls += 1
+        fetchColumnsSchemas.append(schema)
+        if let fetchColumnsError { throw fetchColumnsError }
         return scriptedColumns
     }
 
@@ -74,13 +100,17 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
         fetchForeignKeysCalls += 1
+        fetchForeignKeysSchemas.append(schema)
+        if let fetchForeignKeysError { throw fetchForeignKeysError }
         return scriptedForeignKeys
     }
 
     func fetchDatabases() async throws -> [String] { scriptedDatabases }
     func fetchSchemas() async throws -> [String] { scriptedSchemas }
     func switchDatabase(to name: String) async throws {}
-    func switchSchema(to name: String) async throws {}
+    func switchSchema(to name: String) async throws {
+        currentSchema = name
+    }
     func beginTransaction() async throws { didBeginTransaction = true }
 
     func beginTransaction(mode: PluginTransactionAccessMode) async throws {
@@ -88,14 +118,23 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
         didBeginTransaction = true
     }
 
-    func commitTransaction() async throws { didCommitTransaction = true }
-    func rollbackTransaction() async throws { didRollbackTransaction = true }
+    func commitTransaction() async throws {
+        if let commitError { throw commitError }
+        didCommitTransaction = true
+    }
+
+    func rollbackTransaction() async throws {
+        if let rollbackError { throw rollbackError }
+        didRollbackTransaction = true
+    }
+
     func sessionLexicalFacts() async -> SQLSessionLexicalFacts? {
         guard !scriptedLexicalFacts.isEmpty else { return nil }
         return scriptedLexicalFacts.removeFirst()
     }
 
     func sessionTransactionState() async -> DriverTransactionState {
+        await beforeTransactionState?()
         guard !scriptedTransactionStates.isEmpty else { return scriptedTransactionState }
         return scriptedTransactionStates.removeFirst()
     }

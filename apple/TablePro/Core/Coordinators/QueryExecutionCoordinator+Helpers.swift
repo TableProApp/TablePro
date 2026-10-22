@@ -216,7 +216,8 @@ extension QueryExecutionCoordinator {
         source: ResultSourceChange = .newSource,
         serverOutput: PluginServerOutput = .none,
         rowLocators: [String?]? = nil,
-        absentCells: [Int: Set<Int>] = [:]
+        absentCells: [Int: Set<Int>] = [:],
+        unloadedCells: [Int: [Int: Int]] = [:]
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -268,7 +269,8 @@ extension QueryExecutionCoordinator {
             hasAuthoritativeSchema: resolved.hasAuthoritativeSchema,
             foreignKeysFetched: resolved.foreignKeysFetched,
             rowLocators: rowLocators,
-            absentCells: absentCells
+            absentCells: absentCells,
+            unloadedCells: unloadedCells
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
         let definitionChanged = parent.tabSessionRegistry.needsDefinition(existingTabId)
@@ -774,11 +776,11 @@ extension QueryExecutionCoordinator {
             return .clear
         case .approximate:
             guard let count = try? await DatabaseManager.shared.withMetadataDriver(scope: scope, { driver in
-                try await driver.fetchApproximateRowCount(table: tableName)
+                try await driver.fetchApproximateRowCount(table: tableName, schema: scope.schema)
             }) else { return nil }
             return .count(count, isApproximate: true)
         case let .filteredNonSQL(filters, logicMode):
-            guard let count = try? await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk, { driver in
+            guard let count = try? await DatabaseManager.shared.withRowCountDriver(scope: scope, filtered: true, { driver in
                 try await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode)
             }) else { return .clear }
             return .count(count, isApproximate: false)

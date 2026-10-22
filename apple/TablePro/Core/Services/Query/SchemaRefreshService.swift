@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Every window of a connection shares one refresh: a request for the same connection and
 /// database joins the one in flight.
@@ -190,7 +191,7 @@ final class SchemaRefreshService {
         let provider = providerRegistry.getOrCreate(for: browseScope)
         let browseDatabase = browseScope.database
         let tables = schemaService.allLoadedTables(for: connectionId)
-        let schemas = schemaService.schemas(for: connectionId)
+        let schemas = schemaService.schemas(for: connectionId) + schemaService.attachedSchemas(for: connectionId)
         let connection = databaseManager?.session(for: connectionId)?.connection
         do {
             try await metadataDriverProvider.withMetadataDriver(scope: browseScope) { driver in

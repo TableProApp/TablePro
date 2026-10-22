@@ -9,17 +9,16 @@
 import Combine
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 enum DatabaseObjectCommandError: LocalizedError, Equatable {
     case notConnected
     case unsupported
-    case denied(String)
 
     var errorDescription: String? {
         switch self {
         case .notConnected: String(localized: "Not connected to database")
         case .unsupported: String(localized: "This database cannot run this command on this object")
-        case let .denied(reason): reason
         }
     }
 }
@@ -30,10 +29,9 @@ enum ObjectCommentEditing {
     /// predate a change made in another window or another app.
     static func currentComment(of target: DatabaseObjectTarget) async throws -> String? {
         let name = target.name
-        let metadata = try await DatabaseManager.shared.withMetadataDriver(scope: target.scope) { driver in
-            try await driver.fetchTableMetadata(tableName: name)
+        return try await DatabaseManager.shared.withMetadataDriver(scope: target.scope) { driver in
+            try await driver.fetchObjectComment(tableName: name)
         }
-        return metadata.comment
     }
 
     static func statement(for comment: String?, on target: DatabaseObjectTarget, driver: DatabaseDriver) -> String? {
@@ -62,7 +60,7 @@ enum ObjectCommentEditing {
         }
         try await DatabaseObjectCommandRunner.run(
             sql,
-            on: target,
+            in: target.scope,
             connection: connection,
             kind: .schemaMutation,
             operationDescription: String(localized: "Edit Comment"),
@@ -80,12 +78,15 @@ enum ObjectCommentEditing {
 enum DatabaseObjectCommandRunner {
     static func run(
         _ sql: String,
-        on target: DatabaseObjectTarget,
+        in scope: DatabaseScope,
         connection: DatabaseConnection,
         kind: OperationKind,
         operationDescription: String,
+        isConfirmationPreCleared: Bool = false,
         gate: any ExecutionGate
     ) async throws {
+        var capabilities = CallerCapabilities.interactiveUser
+        if isConfirmationPreCleared { capabilities.insert(.confirmationPreCleared) }
         let decision = await gate.authorize(
             OperationRequest(
                 connectionId: connection.id,
@@ -93,17 +94,12 @@ enum DatabaseObjectCommandRunner {
                 sql: sql,
                 kind: kind,
                 caller: .userInterface,
-                capabilities: .interactiveUser,
+                capabilities: capabilities,
                 operationDescription: operationDescription
             )
         )
-        guard case .authorized = decision else {
-            throw DatabaseObjectCommandError.denied(
-                decision.deniedReason ?? String(localized: "Operation not permitted")
-            )
-        }
+        if let denial = decision.denialError { throw denial }
 
-        let scope = target.scope
         let startedAt = Date()
         try await DatabaseManager.shared.withScopedDriver(
             scope: scope,

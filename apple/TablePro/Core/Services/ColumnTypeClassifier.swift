@@ -10,6 +10,13 @@
 import Foundation
 
 struct ColumnTypeClassifier {
+    /// The engine's type family, when the caller knows it. Without one a `BIT` is a boolean.
+    let family: SQLTypeFamily?
+
+    init(family: SQLTypeFamily? = nil) {
+        self.family = family
+    }
+
     func classify(rawTypeName: String) -> ColumnType {
         let stripped = stripTrailingAttributes(stripWrappers(rawTypeName))
         if Self.isAngleBracketCompositeType(stripped) {
@@ -45,6 +52,11 @@ struct ColumnTypeClassifier {
         // MySQL convention: TINYINT(1) means boolean
         if upper == "TINYINT", params == "1" {
             return .boolean(rawType: rawTypeName)
+        }
+
+        // A PostgreSQL or DuckDB `bit` holds digits like `101`: a boolean picker writes `true` into it, which the server refuses.
+        if upper == "BIT", let family, family.readsAsBitString(stripped) {
+            return .text(rawType: rawTypeName)
         }
 
         if let factory = Self.typeLookup[upper] {
@@ -226,6 +238,10 @@ struct ColumnTypeClassifier {
             "GEO_POINT", "GEO_SHAPE", "SDO_GEOMETRY", "ST_GEOMETRY", "RING"
         ] {
             map[key] = { .spatial(rawType: $0) }
+        }
+
+        for key in ["VECTOR", "HALFVEC", "SPARSEVEC"] {
+            map[key] = { .vector(rawType: $0) }
         }
 
         /// An Oracle `BFILE` cell is the `BFILENAME('DIR', 'file')` call that points at the file, never its bytes,

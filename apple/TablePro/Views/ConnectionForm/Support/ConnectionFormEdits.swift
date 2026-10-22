@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProAutocomplete
 import TableProSSHConfig
 
 struct ConnectionFormEdits: Equatable {
@@ -32,6 +33,8 @@ struct ConnectionFormEdits: Equatable {
     var externalAccess: ExternalAccessLevel
     var connectTimeoutSeconds: Int?
     var queryTimeoutSeconds: Int?
+    var binaryInlineLimitKilobytes: Int?
+    var completionIdentifierCase: SQLIdentifierCase = .default
     var redisDatabase: Int?
     var startupCommands: String?
     var localOnly: Bool
@@ -40,9 +43,13 @@ struct ConnectionFormEdits: Equatable {
 
     static let appManagedAdditionalFieldIDs: Set<String> = [
         "preConnectScript",
+        DatabaseConnection.postDisconnectScriptKey,
+        DatabaseConnection.scriptTimeoutSecondsKey,
         "promptForPassword",
         DatabaseConnection.connectTimeoutSecondsKey,
         DatabaseConnection.queryTimeoutSecondsKey,
+        DatabaseConnection.binaryInlineLimitKilobytesKey,
+        DatabaseConnection.completionIdentifierCaseKey,
         DatabaseConnection.sshForwardUnixSocketPathKey,
         MySQLLocalSocket.fieldKey
     ]
@@ -78,6 +85,8 @@ struct ConnectionFormEdits: Equatable {
         result.additionalFields = mergedAdditionalFields(onto: base.additionalFields)
         result.connectTimeoutSeconds = connectTimeoutSeconds
         result.queryTimeoutSeconds = queryTimeoutSeconds
+        result.binaryInlineLimitKilobytes = binaryInlineLimitKilobytes
+        result.completionIdentifierCase = completionIdentifierCase
         return result
     }
 

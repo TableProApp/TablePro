@@ -6,7 +6,7 @@ import TableProPluginKit
 /// Every copy goes through `rebuilt`, which carries the column metadata, the timing, the row
 /// locators and the absent cells across. Rebuilding field by field is how a copy used to drop the
 /// timing, and dropping the locators would leave every row of a table uneditable without a word.
-extension PluginQueryResult {
+nonisolated extension PluginQueryResult {
     func withRowsAffected(_ count: Int) -> PluginQueryResult {
         guard count != rowsAffected else { return self }
         return rebuilt(rowsAffected: count)

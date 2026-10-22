@@ -14,11 +14,11 @@ import os
 import OSLog
 import TableProPluginKit
 
-let logger = Logger(subsystem: "com.TablePro", category: "MongoDBConnection")
+nonisolated let logger = Logger(subsystem: "com.TablePro", category: "MongoDBConnection")
 
 // MARK: - Error Types
 
-struct MongoDBError: Error {
+nonisolated struct MongoDBError: Error {
     let code: UInt32
     let message: String
 
@@ -30,7 +30,7 @@ struct MongoDBError: Error {
     )
 }
 
-extension MongoDBError: PluginDriverError {
+nonisolated extension MongoDBError: PluginDriverError {
     var pluginErrorMessage: String { message }
     var pluginErrorCode: Int? { Int(code) }
 }
@@ -39,7 +39,7 @@ extension MongoDBError: PluginDriverError {
 
 /// Hands a BSON pointer or a decoded document between the serial queue and the awaiting caller.
 /// Only one of the two touches it at a time, which is what the compiler cannot see through `Any`.
-private struct QueueTransfer<Value>: @unchecked Sendable {
+nonisolated private struct QueueTransfer<Value>: @unchecked Sendable {
     let value: Value
 }
 
@@ -48,7 +48,7 @@ private struct QueueTransfer<Value>: @unchecked Sendable {
 /// Async entry points use `queue.async` + continuations. Synchronous entry points
 /// detect on-queue re-entry via `queueKey` and call sync helpers directly to
 /// avoid `dispatch_sync` deadlocks when an on-queue block re-enters a public API.
-final class MongoDBConnection: @unchecked Sendable {
+nonisolated final class MongoDBConnection: @unchecked Sendable {
     // MARK: - Properties
 
     #if canImport(CLibMongoc)
@@ -86,9 +86,11 @@ final class MongoDBConnection: @unchecked Sendable {
     private var _writeConcern = MongoWriteConcern.serverDefault
     private var _isCancelled: Bool = false
     private var _queryTimeoutMS: Int32 = 0
+    private var _clientCertificateFile: MongoDBClientCertificateFile?
     #if canImport(CLibMongoc)
     private var _activeSessionLsid: OpaquePointer?
     #endif
+    private var _sessionsBeingKilled = MongoSessionKills()
 
     var isConnected: Bool {
         stateLock.lock()
@@ -163,7 +165,8 @@ final class MongoDBConnection: @unchecked Sendable {
         self.resolvedAuthSource = MongoDBAuthSourceResolver.resolve(
             explicitAuthSource: authSource,
             configuredDatabase: configuredDatabase,
-            useSrv: useSrv
+            useSrv: useSrv,
+            authMechanism: authMechanism
         )
         self.readPreference = readPreference
         self.writeConcern = writeConcern
@@ -214,10 +217,9 @@ final class MongoDBConnection: @unchecked Sendable {
     }
 
     deinit {
+        removeClientCertificateFile()
         #if canImport(CLibMongoc)
-        // Capture the handle and queue to clean up asynchronously.
-        // By the time deinit runs, no other references exist, so the
-        // dispatched block is the sole owner of the pointer.
+        // No other reference exists by now, so the dispatched block is the sole owner of the handle.
         stateLock.lock()
         let handle = client
         client = nil
@@ -234,81 +236,24 @@ final class MongoDBConnection: @unchecked Sendable {
     // MARK: - URI Construction
 
     private func buildUri() -> String {
-        let scheme = useSrv ? "mongodb+srv" : "mongodb"
-        var uri = "\(scheme)://"
-
-        if !user.isEmpty {
-            let encodedUser = user.addingPercentEncoding(withAllowedCharacters: .urlUserAllowed) ?? user
-            if let password = password, !password.isEmpty {
-                let encodedPassword = password.addingPercentEncoding(
-                    withAllowedCharacters: .urlPasswordAllowed
-                ) ?? password
-                uri += "\(encodedUser):\(encodedPassword)@"
-            } else {
-                uri += "\(encodedUser)@"
-            }
-        }
-
-        if useSrv {
-            let srvHost = Self.stripPort(fromSrvHost: host)
-            let encodedHost = srvHost.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? srvHost
-            uri += encodedHost
-        } else if host.contains(",") {
-            let segments = host.split(separator: ",").compactMap { segment -> String? in
-                let parts = segment.split(separator: ":", maxSplits: 1)
-                guard let first = parts.first else { return nil }
-                let h = String(first).trimmingCharacters(in: .whitespaces)
-                guard !h.isEmpty else { return nil }
-                let encodedH = h.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? h
-                if parts.count > 1 {
-                    return "\(encodedH):\(parts[1].trimmingCharacters(in: .whitespaces))"
-                }
-                return "\(encodedH):\(port)"
-            }
-            uri += segments.isEmpty ? "localhost:\(port)" : segments.joined(separator: ",")
-        } else {
-            let encodedHost = host.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? host
-            uri += "\(encodedHost):\(port)"
-        }
-
-        let encodedDb = database.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? database
-        uri += database.isEmpty ? "/" : "/\(encodedDb)"
-
-        let encodedAuthSource = resolvedAuthSource
-            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? resolvedAuthSource
-        var params = connectTimeout.uriParameters
-        params.append("authSource=\(encodedAuthSource)")
-
-        params.append(contentsOf: MongoDBSSLMapping.uriParameters(for: ssl))
-
-        if let rp = readPreference, !rp.isEmpty {
-            params.append("readPreference=\(rp)")
-        }
-        if let wc = writeConcern, !wc.isEmpty {
-            params.append("w=\(wc)")
-        }
-        if let mechanism = authMechanism, !mechanism.isEmpty {
-            params.append("authMechanism=\(mechanism)")
-        }
-        if let rs = replicaSet, !rs.isEmpty {
-            params.append("replicaSet=\(rs)")
-        }
-
-        var explicitKeys: Set<String> = [
-            "connectTimeoutMS", "serverSelectionTimeoutMS",
-            "authSource", "authMechanism", "replicaSet",
-            "tls", "tlsAllowInvalidCertificates", "tlsAllowInvalidHostnames",
-            "tlsCAFile", "tlsCertificateKeyFile"
-        ]
-        if let readPreference, !readPreference.isEmpty { explicitKeys.insert("readPreference") }
-        if let writeConcern, !writeConcern.isEmpty { explicitKeys.insert("w") }
-        for (key, value) in extraUriParams where !explicitKeys.contains(key) {
-            let encodedValue = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
-            params.append("\(key)=\(encodedValue)")
-        }
-
-        uri += "?" + params.joined(separator: "&")
-        return uri
+        MongoDBConnectionURI(
+            useSrv: useSrv,
+            host: host,
+            port: port,
+            user: user,
+            password: password,
+            database: database,
+            options: MongoDBConnectionURI.options(
+                connectTimeout: connectTimeout,
+                authSource: resolvedAuthSource,
+                ssl: MongoDBSSLMapping.uriOptions(for: ssl, certificateKeyFile: clientCertificateFile?.path),
+                readPreference: readPreference,
+                writeConcern: writeConcern,
+                authMechanism: authMechanism,
+                replicaSet: replicaSet,
+                extraParams: extraUriParams
+            )
+        ).text
     }
 
     /// Strips a trailing `:port` from a hostname intended for an SRV URI.
@@ -343,13 +288,11 @@ final class MongoDBConnection: @unchecked Sendable {
         #if canImport(CLibMongoc)
         _ = Self.initOnce
         try await pluginDispatchAsync(on: queue) { [self] in
+            try prepareClientCertificateFile()
             let uriString = buildUri()
             logger.debug("Connecting to MongoDB at \(self.host):\(self.port)")
 
-            guard let newClient = mongoc_client_new(uriString) else {
-                logger.error("Failed to create MongoDB client")
-                throw MongoDBError.connectionFailed
-            }
+            let newClient = try Self.makeClient(uriString)
 
             var error = bson_error_t()
             guard let pingCmd = jsonToBson("{\"ping\": 1}") else {
@@ -383,10 +326,13 @@ final class MongoDBConnection: @unchecked Sendable {
 
             self.client = newClient
             let configuredWriteConcern = MongoWriteConcern(client: newClient)
+            // Read here, on the connection's queue, so building a browse query never waits on the server.
+            let version = self.fetchServerVersionSync()
 
             self.stateLock.lock()
             self._isConnected = true
             self._writeConcern = configuredWriteConcern
+            self._cachedServerVersion = version
             self.stateLock.unlock()
 
             logger.info("Connected to MongoDB at \(self.host):\(self.port)")
@@ -418,6 +364,29 @@ final class MongoDBConnection: @unchecked Sendable {
             queue.async { mongoc_client_destroy(handle) }
         }
         #endif
+        removeClientCertificateFile()
+    }
+
+    private var clientCertificateFile: MongoDBClientCertificateFile? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _clientCertificateFile
+    }
+
+    private func prepareClientCertificateFile() throws {
+        guard clientCertificateFile == nil,
+              let file = try MongoDBClientCertificateFile.joining(ssl) else { return }
+        stateLock.lock()
+        _clientCertificateFile = file
+        stateLock.unlock()
+    }
+
+    private func removeClientCertificateFile() {
+        stateLock.lock()
+        let file = _clientCertificateFile
+        _clientCertificateFile = nil
+        stateLock.unlock()
+        file?.remove()
     }
 
     // MARK: - Cancellation
@@ -426,13 +395,20 @@ final class MongoDBConnection: @unchecked Sendable {
         stateLock.lock()
         _isCancelled = true
         #if canImport(CLibMongoc)
-        let lsid: OpaquePointer? = _activeSessionLsid.flatMap { bson_copy($0) }
+        var kill: (lsid: OpaquePointer, key: String)?
+        if let active = _activeSessionLsid, let key = bsonToJson(active), let copy = bson_copy(active) {
+            if _sessionsBeingKilled.begin(key) {
+                kill = (copy, key)
+            } else {
+                bson_destroy(copy)
+            }
+        }
         #endif
         stateLock.unlock()
 
         #if canImport(CLibMongoc)
-        guard let lsid else { return }
-        killSession(lsid: lsid)
+        guard let kill else { return }
+        killSession(lsid: kill.lsid, key: kill.key)
         #endif
     }
 
@@ -455,15 +431,17 @@ final class MongoDBConnection: @unchecked Sendable {
         if let previous { bson_destroy(previous) }
     }
 
-    /// Aborts the in-flight operation server-side. The connection's own queue is blocked inside a
-    /// libmongoc call at this point, so the `killSessions` command needs its own client.
-    private func killSession(lsid: OpaquePointer) {
+    // The connection's own queue is blocked inside the call being cancelled, so killSessions needs its own client.
+    private func killSession(lsid: OpaquePointer, key: String) {
         let uriString = buildUri()
         let session = QueueTransfer(value: lsid)
-        controlQueue.async {
+        controlQueue.async { [weak self] in
             let lsid = session.value
-            defer { bson_destroy(lsid) }
-            guard let controlClient = mongoc_client_new(uriString) else { return }
+            defer {
+                bson_destroy(lsid)
+                self?.finishedKilling(key)
+            }
+            guard let controlClient = try? MongoDBConnection.makeClient(uriString) else { return }
             defer { mongoc_client_destroy(controlClient) }
 
             let command = bson_new()
@@ -482,6 +460,29 @@ final class MongoDBConnection: @unchecked Sendable {
                 logger.warning("killSessions failed with code \(error.code, privacy: .public)")
             }
         }
+    }
+
+    private func finishedKilling(_ key: String) {
+        stateLock.lock()
+        _sessionsBeingKilled.end(key)
+        stateLock.unlock()
+    }
+
+    // The URI holds the password, so the error carries only libmongoc's reason.
+    private static func makeClient(_ uriString: String) throws -> OpaquePointer {
+        var error = bson_error_t()
+        guard let uri = mongoc_uri_new_with_error(uriString, &error) else {
+            let message = MongoBsonBuilder.errorMessage(&error)
+            logger.error("MongoDB connection string rejected: \(message)")
+            throw MongoDBError(code: error.code, message: message)
+        }
+        defer { mongoc_uri_destroy(uri) }
+        guard let client = mongoc_client_new_from_uri_with_error(uri, &error) else {
+            let message = MongoBsonBuilder.errorMessage(&error)
+            logger.error("Failed to create MongoDB client: \(message)")
+            throw MongoDBError(code: error.code, message: message)
+        }
+        return client
     }
     #endif
 
@@ -551,6 +552,13 @@ final class MongoDBConnection: @unchecked Sendable {
         return nil
         #endif
     }
+
+    var knownServerVersion: String? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _cachedServerVersion
+    }
+
     func currentDatabase() -> String { database }
 
     // MARK: - Command Execution
@@ -944,7 +952,7 @@ final class MongoDBConnection: @unchecked Sendable {
 }
 
 
-final class MongoStreamState: @unchecked Sendable {
+nonisolated final class MongoStreamState: @unchecked Sendable {
     var cursor: OpaquePointer?
     var collection: OpaquePointer?
     var drained = false
@@ -953,7 +961,7 @@ final class MongoStreamState: @unchecked Sendable {
 
 // MARK: - BSON Helpers
 
-extension MongoDBConnection {
+nonisolated extension MongoDBConnection {
     /// Convert a JSON string to a bson_t pointer. Caller must call bson_destroy on the result.
     ///
     /// An object opening with `$type`, `$regex` or `$options` becomes the document it is written as,
@@ -973,7 +981,7 @@ extension MongoDBConnection {
 // so they must be gated at the extension level.
 // Internal (not private) so tests can access unwrapExtendedJson.
 #if canImport(CLibMongoc)
-extension MongoDBConnection {
+nonisolated extension MongoDBConnection {
     func bsonToDict(_ bson: OpaquePointer?) -> [String: Any] {
         guard let bson = bson, let jsonStr = bsonToJson(bson),
               let data = jsonStr.data(using: .utf8),

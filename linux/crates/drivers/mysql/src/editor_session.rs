@@ -157,7 +157,7 @@ impl Shared {
     /// Run the script, stopping it on a cancel, at the deadline, when
     /// the session closes or when the sink stops reading. A stop is KILL
     /// QUERY on a connection of the session's own; the statement then
-    /// has the cancel grace to end.
+    /// has the cancel grace to end, and nothing after it is sent.
     async fn supervise(
         &self,
         held: &mut Held,
@@ -166,52 +166,88 @@ impl Shared {
         sink: &mut dyn ResultSink,
     ) -> Result<(RunEnd, bool), DriverError> {
         let limit = options.row_limit;
-        if let Err(error) = set_select_limit(held, self.flavour, limit).await {
-            return finished(Err(error)).map(|end| (end, true));
-        }
         let deadline = options.deadline.map(|limit| Instant::now() + limit);
-        let consumer_gone = CancellationToken::new();
-        let running = run_script(
-            &mut held.connection,
-            self.flavour,
-            sql.as_str(),
-            limit,
-            sink,
-            &consumer_gone,
-        );
+        let stopped = CancellationToken::new();
+        // Read synchronously before each statement goes out, since the
+        // select below sees a stop only once the run waits.
+        let halt = || self.stop_due(options, deadline).is_some();
+        let flavour = self.flavour;
+        let running = async {
+            set_select_limit(held, flavour, limit).await?;
+            run_script(&mut held.connection, flavour, sql.as_str(), limit, sink, &stopped, halt).await
+        };
         let mut running = std::pin::pin!(running);
         let stop = tokio::select! {
-            outcome = &mut running => return finished(outcome).map(|end| (end, true)),
+            outcome = &mut running => {
+                return match outcome {
+                    // Stopped between statements: nothing runs to KILL.
+                    Ok(RunOutcome { halted: true, .. }) => {
+                        let stop = self.stop_due(options, deadline).unwrap_or(Stop::Cancelled);
+                        Ok((stopped_end(stop, false), true))
+                    }
+                    outcome => finished(outcome).map(|end| (end, true)),
+                };
+            }
             () = options.cancel.cancelled() => Stop::Cancelled,
             () = self.closing.cancelled() => Stop::Cancelled,
-            () = consumer_gone.cancelled() => Stop::Cancelled,
+            () = stopped.cancelled() => Stop::Cancelled,
             () = elapsed(deadline) => Stop::DeadlineElapsed,
         };
+        stopped.cancel();
         let until = Instant::now() + self.liveness.cancel_grace;
-        // Nothing more is read until the KILL has landed. A batch the
-        // server is still sending then waits on the socket, so it cannot
-        // move on to its next statement before the KILL stops it.
-        let delivered = tokio::time::timeout_at(until, self.control.kill_query(self.connection_id))
+        // Nothing more is read until the KILL has its answer, so it lands
+        // while the statement it names is still the connection's last.
+        let answered = tokio::time::timeout_at(until, self.control.kill_query(self.connection_id))
             .await
-            .ok()
-            .map(|sent| sent.is_ok());
+            .is_ok();
         let settled = tokio::time::timeout_at(until, &mut running).await.ok();
-        let server_cancelled = delivered == Some(true);
-        let end = match stop {
-            Stop::Cancelled => RunEnd::Cancelled,
-            Stop::DeadlineElapsed => RunEnd::TimedOut { server_cancelled },
-        };
+        let confirmed = matches!(&settled, Some(Err(error)) if confirms_stop(error));
+        let end = stopped_end(stop, confirmed);
         match settled {
-            // Whatever the statement did once it was stopped, the run
-            // ends as stopped: its result may be cut short by the KILL.
-            Some(Ok(_)) => Ok((end, true)),
             Some(Err(DriverError::ConnectionLost { during })) => Err(DriverError::ConnectionLost { during }),
-            Some(Err(_)) => Ok((end, true)),
+            // An unanswered KILL may still land, on whatever runs next here.
+            _ if !answered => Ok((end, false)),
+            Some(_) => Ok((end, true)),
             // The statement would not stop, so the connection still has
             // its answer coming and cannot take another run.
             None => Ok((end, false)),
         }
     }
+
+    fn stop_due(&self, options: &RunOptions, deadline: Option<Instant>) -> Option<Stop> {
+        if options.cancel.is_cancelled() || self.closing.is_cancelled() {
+            Some(Stop::Cancelled)
+        } else if deadline.is_some_and(|at| Instant::now() >= at) {
+            Some(Stop::DeadlineElapsed)
+        } else {
+            None
+        }
+    }
+}
+
+/// A stopped run reads as stopped whatever its statement did after the
+/// stop, since nothing after it ran.
+fn stopped_end(stop: Stop, confirmed: bool) -> RunEnd {
+    match stop {
+        Stop::Cancelled => RunEnd::Cancelled,
+        Stop::DeadlineElapsed => RunEnd::TimedOut {
+            server_cancelled: confirmed,
+        },
+    }
+}
+
+/// The statement ended with the server's word that it was stopped: 1317
+/// from the KILL, or the server's own statement timeout. An OK, or a
+/// KILL that only returned OK, says nothing about it.
+fn confirms_stop(error: &DriverError) -> bool {
+    matches!(
+        error,
+        DriverError::Cancelled
+            | DriverError::Timeout {
+                phase: TimeoutPhase::Statement,
+                server_cancelled: true,
+            }
+    )
 }
 
 async fn set_select_limit(held: &mut Held, flavour: MySqlFlavour, limit: RowLimit) -> Result<(), DriverError> {
@@ -228,8 +264,10 @@ async fn set_select_limit(held: &mut Held, flavour: MySqlFlavour, limit: RowLimi
 
 fn finished(outcome: Result<RunOutcome, DriverError>) -> Result<RunEnd, DriverError> {
     match outcome {
-        Ok(RunOutcome { consumer_gone: true }) => Ok(RunEnd::Cancelled),
-        Ok(RunOutcome { consumer_gone: false }) => Ok(RunEnd::Completed),
+        Ok(RunOutcome {
+            consumer_gone: true, ..
+        }) => Ok(RunEnd::Cancelled),
+        Ok(RunOutcome { .. }) => Ok(RunEnd::Completed),
         // A connection that is gone ends the session; a statement the
         // server refused ends the run.
         Err(error @ DriverError::ConnectionLost { .. }) => Err(error),
@@ -314,5 +352,35 @@ impl EditorSession for MysqlEditorSession {
             let _ = tokio::time::timeout(shared.liveness.close_timeout, held.connection.close()).await;
         }
         shared.control.close().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::BusyReason;
+
+    use super::*;
+
+    #[test]
+    fn a_timeout_reads_as_stopped_by_the_server_only_when_the_statement_said_so() {
+        let server_timeout = DriverError::Timeout {
+            phase: TimeoutPhase::Statement,
+            server_cancelled: true,
+        };
+
+        assert!(confirms_stop(&DriverError::Cancelled));
+        assert!(confirms_stop(&server_timeout));
+        assert!(!confirms_stop(&DriverError::Busy(BusyReason::NoFreeConnection)));
+        assert_eq!(
+            stopped_end(Stop::DeadlineElapsed, false),
+            RunEnd::TimedOut {
+                server_cancelled: false
+            }
+        );
+        assert_eq!(
+            stopped_end(Stop::DeadlineElapsed, true),
+            RunEnd::TimedOut { server_cancelled: true }
+        );
+        assert_eq!(stopped_end(Stop::Cancelled, false), RunEnd::Cancelled);
     }
 }

@@ -75,7 +75,8 @@ struct StatusBarSnapshot: Equatable {
         hasStructureActions: Bool = false,
         isQueryPlan: Bool = false,
         paginationCapability: PaginationCapability = .offset,
-        hasServerOutput: Bool = false
+        hasServerOutput: Bool = false,
+        activeResultStatusMessage: String? = nil
     ) {
         let loaded = tableRows?.rows.count ?? 0
         let displayed = displayRowCount ?? loaded
@@ -100,7 +101,8 @@ struct StatusBarSnapshot: Equatable {
             hasStructureActions: hasStructureActions,
             isQueryPlan: isQueryPlan,
             pagination: pagination,
-            statusMessage: tab?.execution.statusMessage,
+            // A run of several statements leaves each one's message on its own result, not on the tab.
+            statusMessage: activeResultStatusMessage ?? tab?.execution.statusMessage,
             paginationCapability: paginationCapability
         )
     }

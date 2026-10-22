@@ -1,5 +1,6 @@
 import Foundation
 import TableProModels
+import TableProRedisCore
 import TableProSQLGrammar
 
 /// The requests one run of a query text makes, in the order it makes them.
@@ -64,10 +65,6 @@ public struct QueryScript: Sendable, Equatable {
         units.reduce(0) { $0 + max($1.repeatCount, 1) }
     }
 
-    /// Redis speaks commands, not SQL, and its driver reads the whole text as one command.
-    ///
-    /// `session` is what the connection says about its own literals, such as PostgreSQL's
-    /// `standard_conforming_strings`: with it off, `'a\';b'` is one literal, and the default reading would cut it.
     public static func plan(
         _ text: String,
         databaseType: DatabaseType,
@@ -75,15 +72,19 @@ public struct QueryScript: Sendable, Equatable {
         session: SQLSessionLexicalFacts? = nil
     ) -> QueryScript {
         if databaseType == .redis {
-            let command = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return QueryScript(units: command.isEmpty ? [] : [Unit(sql: command)], unitKind: .statement)
+            let commands = RedisCommandSplitter.commands(in: text)
+            return QueryScript(units: commands.map { Unit(sql: $0.text) }, unitKind: .statement)
+        }
+        if databaseType == .mongodb {
+            let source = text as NSString
+            let units = JavaScriptStatementScanner.executableStatements(in: text).compactMap { statement -> Unit? in
+                let range = statement.contentRange
+                return range.length > 0 ? Unit(sql: source.substring(with: range)) : nil
+            }
+            return QueryScript(units: units, unitKind: .statement)
         }
 
-        let grammar = SQLLexicalReadings.resolve(
-            databaseTypeId: databaseType.rawValue,
-            declared: nil,
-            session: session
-        ).execution
+        let grammar = executionGrammar(for: databaseType, session: session)
         let statements = SQLStatementScanner.executableStatements(in: text, grammar: grammar)
 
         guard sendsBatchesWhole else {
@@ -103,8 +104,33 @@ public struct QueryScript: Sendable, Equatable {
         )
         return QueryScript(
             units: batches.map { Unit(sql: $0.sql, repeatCount: $0.repeatCount) },
-            unitKind: .batch
+            unitKind: .batch,
+            session: session,
+            source: nil,
+            unitEnds: [],
+            databaseType: databaseType
         )
+    }
+
+    /// The statements a unit runs: the unit itself, or each statement of a batch, so a `ROLLBACK` after a `SELECT` in
+    /// one `GO` batch still counts.
+    public func statements(in unit: Unit) -> [String] {
+        guard unitKind == .batch, let databaseType else { return [unit.sql] }
+        let grammar = Self.executionGrammar(for: databaseType, session: session)
+        return SQLStatementScanner.executableStatements(in: unit.sql, grammar: grammar).map(\.sql)
+    }
+
+    // A bare Redis argument may end in a byte Foundation trims, such as a vertical tab or a no-break space.
+    public static func trimmed(_ text: String, databaseType: DatabaseType) -> String {
+        guard databaseType == .redis else { return text.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let commands = RedisCommandSplitter.commands(in: text)
+        guard let first = commands.first, let last = commands.last else { return "" }
+        let start = first.range.location
+        return (text as NSString).substring(with: NSRange(location: start, length: NSMaxRange(last.range) - start))
+    }
+
+    static func executionGrammar(for databaseType: DatabaseType, session: SQLSessionLexicalFacts?) -> SQLLexicalGrammar {
+        SQLLexicalReadings.resolve(databaseTypeId: databaseType.rawValue, declared: nil, session: session).execution
     }
 
     /// The text after unit `index`, split again under `session`, for a statement that changed how the session reads
@@ -116,5 +142,12 @@ public struct QueryScript: Sendable, Equatable {
         }
         let rest = (source as NSString).substring(from: unitEnds[index])
         return QueryScript.plan(rest, databaseType: databaseType, sendsBatchesWhole: false, session: session)
+    }
+}
+
+extension JavaScriptStatementScanner.Statement {
+    // The span the Mac's QueryStatementScanner runs for a JavaScript statement.
+    var contentRange: NSRange {
+        SQLStatementScanner.LocatedStatement(sql: text, offset: range.location, hasContent: hasContent).contentRange
     }
 }

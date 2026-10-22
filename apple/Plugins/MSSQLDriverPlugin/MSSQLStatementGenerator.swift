@@ -152,7 +152,12 @@ struct MSSQLStatementGenerator {
         var conditions: [String] = []
         var parameters: [PluginCellValue] = []
         for column in matchColumns {
-            guard let index = columns.firstIndex(of: column), index < originalRow.count else { continue }
+            guard let index = columns.firstIndex(of: column), index < originalRow.count else {
+                throw PluginRowWriteRefusal(
+                    rowIndex: rowIndex,
+                    reason: isKeyless ? Self.rowNotLoadedReason : Self.keyNotLoadedReason
+                )
+            }
             if isKeyless, context.rowMatchExcludedColumns.contains(column) {
                 throw PluginRowWriteRefusal(rowIndex: rowIndex, reason: Self.unmatchableReason(column))
             }
@@ -181,6 +186,14 @@ struct MSSQLStatementGenerator {
         String(format: String(localized: "The server fills in %@, so it cannot be given a value."), column)
     }
 
+    private static let keyNotLoadedReason = String(
+        localized: "The row's primary key is not loaded, so the row cannot be found."
+    )
+
+    private static let rowNotLoadedReason = String(
+        localized: "The table has no primary key, so this row cannot be identified."
+    )
+
     private static func unmatchableReason(_ column: String) -> String {
         String(
             format: String(localized: "This table has no primary key, and %@ cannot be compared to find the row."),
@@ -195,6 +208,6 @@ struct MSSQLStatementGenerator {
     }
 
     static func quote(_ name: String) -> String {
-        "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
+        "[\(name.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
     }
 }

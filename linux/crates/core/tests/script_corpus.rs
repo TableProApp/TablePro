@@ -213,6 +213,65 @@ fn backtick_identifier_with_semicolon() {
 }
 
 #[test]
+fn mysql_executable_comments_are_statements() {
+    let text = "/*!40101 SET NAMES utf8mb4 */;\n/*!40103 SET TIME_ZONE='+00:00' */;\n\
+                CREATE TABLE t (id int) /*!50100 PARTITION BY HASH (id) */;\n/* plain */;\nSELECT 1;";
+    assert_eq!(
+        statements(SqlGrammar::MySql, text),
+        [
+            "/*!40101 SET NAMES utf8mb4 */",
+            "/*!40103 SET TIME_ZONE='+00:00' */",
+            "CREATE TABLE t (id int) /*!50100 PARTITION BY HASH (id) */",
+            "SELECT 1"
+        ]
+    );
+}
+
+#[test]
+fn a_mysql_executable_comment_ends_where_the_server_ends_it() {
+    let text = "SELECT 1 /*! AS '*/' */; SELECT 2 /*!50100 -- */\n*/; SELECT 3;";
+    assert_eq!(
+        statements(SqlGrammar::MySql, text),
+        ["SELECT 1 /*! AS '*/' */", "SELECT 2 /*!50100 -- */\n*/", "SELECT 3"]
+    );
+}
+
+#[test]
+fn a_dumped_mysql_trigger_is_one_batch() {
+    let text = "DELIMITER ;;\n/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`%`*/ /*!50003 TRIGGER t1 BEFORE INSERT ON t \
+                FOR EACH ROW BEGIN SET NEW.a = 1; END */;;\nDELIMITER ;\n";
+    assert_eq!(
+        batch_texts(&plan(SqlGrammar::MySql, text), text),
+        [
+            "/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`%`*/ /*!50003 TRIGGER t1 BEFORE INSERT ON t FOR EACH ROW BEGIN SET NEW.a = 1; END */"
+        ]
+    );
+}
+
+#[test]
+fn an_open_mysql_executable_comment_is_reported() {
+    let plan = plan(SqlGrammar::MySql, "SELECT 1; /*!40101 SET @a = 1;");
+    assert_eq!(
+        plan.diagnostics(),
+        [ScriptDiagnostic::Unterminated {
+            construct: OpenConstruct::BlockComment,
+            start: 10,
+        }]
+    );
+}
+
+#[test]
+fn other_engines_read_a_bang_comment_as_a_comment() {
+    for grammar in [SqlGrammar::PostgreSql, SqlGrammar::Sqlite, SqlGrammar::ClickHouse] {
+        assert_eq!(
+            statements(grammar, "/*! SELECT 1 */; SELECT 2;"),
+            ["SELECT 2"],
+            "{grammar:?}"
+        );
+    }
+}
+
+#[test]
 fn backslash_escaped_quote() {
     let text = r"SELECT 'it\'s; fine'; SELECT 2;";
     assert_eq!(

@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import SwiftUI
+import TableProAutocomplete
 import TableProPluginKit
 
 /// Everything a `DatabaseType` knows by asking the plugin registry.
@@ -128,6 +129,14 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.columnsAreSampled ?? false
     }
 
+    var patternFiltersReadAnyColumn: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.patternFiltersReadAnyColumn ?? false
+    }
+
+    var filtersTypedByReadRows: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.filtersTypedByReadRows ?? false
+    }
+
     var authenticationIsDatabaseScoped: Bool {
         PluginMetadataRegistry.shared.snapshot(for: self)?
             .capabilities.authenticationIsDatabaseScoped ?? false
@@ -144,6 +153,10 @@ extension DatabaseType {
 
     var implicitSchemaName: String? {
         PluginMetadataRegistry.shared.snapshot(for: self)?.schema.implicitSchemaName
+    }
+
+    var identifierRules: SQLIdentifierRules? {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.schema.identifierRules
     }
 
     var supportsCloudSQLProxy: Bool {

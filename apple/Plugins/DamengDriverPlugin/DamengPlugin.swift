@@ -153,7 +153,10 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        [.parameterizedQueries, .transactions, .alterTableDDL, .multiSchema, .schemaCompare, .dataCompare]
+        [
+            .parameterizedQueries, .transactions, .alterTableDDL, .multiSchema, .schemaCompare, .dataCompare,
+            .rowWrites, .cellExpressions,
+        ]
     }
 
     var supportsSchemas: Bool { true }

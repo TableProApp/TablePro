@@ -45,7 +45,8 @@ internal extension MainWindowToolbar {
             supportsImport: databaseType.map { PluginManager.shared.supportsImport(for: $0) } ?? false,
             supportsServerDashboard: databaseType.map { ServerDashboardQueryProviderFactory.supportsDashboard(for: $0) }
                 ?? false,
-            isAIEnabled: AppSettingsManager.shared.ai.enabled
+            isAIEnabled: AppSettingsManager.shared.ai.enabled,
+            stagesObjectChanges: tab?.tabType == .objectSource && tab?.display.objectRef?.kind == .userType
         )
     }
 

@@ -57,7 +57,8 @@ extension DatabaseManager {
         let forwardEndpoint = connection.tunnelForwardEndpoint
         effectiveFields[DatabaseConnection.preTunnelHostKey] = forwardEndpoint.host
         effectiveFields[DatabaseConnection.preTunnelPortKey] = String(forwardEndpoint.port)
-        effectiveFields[DatabaseConnection.tunnelSecuresTransportKey] = securesTransport ? "true" : nil
+        // An SSH forward to the server's own socket is encrypted the whole way, as the proxy's hop is.
+        effectiveFields[DatabaseConnection.tunnelSecuresTransportKey] = securesTransport || forwardsToUnixSocket ? "true" : nil
         /// A host list names the servers the driver would reach for itself, and behind a tunnel
         /// there is one forwarded endpoint instead, so the list has to go. An SRV connection is
         /// the exception: its host is a lookup name rather than a server to dial, the driver
@@ -71,6 +72,10 @@ extension DatabaseManager {
             }
         }
         if connection.type.pluginTypeId == "MongoDB", !connection.usesMongoSrv {
+            // The driver reads option keys without case, so an imported `directconnection=false` would still apply.
+            for key in effectiveFields.keys where key.lowercased() == "mongoparam_directconnection" {
+                effectiveFields[key] = nil
+            }
             effectiveFields["mongoParam_directConnection"] = "true"
         }
         if connection.type.pluginTypeId == "Redis" {

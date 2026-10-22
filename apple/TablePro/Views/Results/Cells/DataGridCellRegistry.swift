@@ -12,6 +12,7 @@ final class DataGridCellRegistry {
     weak var accessoryDelegate: DataGridCellAccessoryDelegate?
 
     private(set) var nullDisplayString: String
+    private(set) var showsInvisibleCharacters: Bool
     private(set) var palette: DataGridCellPalette
     private(set) var scope: ThemeScope
     private var paletteKey: PaletteKey
@@ -28,6 +29,7 @@ final class DataGridCellRegistry {
     init(scope: ThemeScope = .live) {
         self.scope = scope
         nullDisplayString = AppSettingsManager.shared.dataGrid.nullDisplay
+        showsInvisibleCharacters = AppSettingsManager.shared.dataGrid.showInvisibleCharacters
         let appearance = NSApp?.effectiveAppearance ?? NSAppearance.currentDrawing()
         paletteKey = Self.paletteKey(for: appearance)
         palette = scope.dataGridCellPalette(in: appearance)
@@ -35,6 +37,7 @@ final class DataGridCellRegistry {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.nullDisplayString = AppSettingsManager.shared.dataGrid.nullDisplay
+                self?.showsInvisibleCharacters = AppSettingsManager.shared.dataGrid.showInvisibleCharacters
             }
     }
 

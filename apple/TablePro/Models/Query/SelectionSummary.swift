@@ -87,7 +87,7 @@ internal extension SelectionSummaryColumnPolicy {
         case .text(let rawType):
             guard let rawType, !rawType.isEmpty else { return .numericIfParsable }
             return .countOnly
-        case .date, .timestamp, .datetime, .boolean, .blob, .json, .enumType, .set, .spatial, .array:
+        case .date, .timestamp, .datetime, .boolean, .blob, .json, .enumType, .set, .spatial, .vector, .array:
             return .countOnly
         }
     }

@@ -13,7 +13,7 @@ import Foundation
 /// is only used where the server applies it exactly: a key that cannot be addressed by a path, an
 /// array whose length changed, a value whose type changed, or keys the server would append in an
 /// order the edit did not write all fall back to writing the nearest enclosing value whole.
-enum MongoNestedValueDiff {
+nonisolated enum MongoNestedValueDiff {
     typealias Value = MongoDocumentText.Value
     typealias Member = MongoDocumentText.Member
 

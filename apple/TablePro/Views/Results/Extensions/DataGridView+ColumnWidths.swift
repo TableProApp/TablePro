@@ -15,7 +15,8 @@ extension TableViewCoordinator {
             displayFormat: columnIndex < columnDisplayFormats.count ? columnDisplayFormats[columnIndex] : nil,
             databaseType: databaseType,
             isLargeDataset: isLargeDataset,
-            nullDisplayString: cellRegistry.nullDisplayString
+            nullDisplayString: cellRegistry.nullDisplayString,
+            revealsInvisibleCharacters: cellRegistry.showsInvisibleCharacters
         )
     }
 
@@ -36,6 +37,7 @@ extension TableViewCoordinator {
             databaseType: databaseType,
             isLargeDataset: isLargeDataset,
             nullDisplayString: cellRegistry.nullDisplayString,
+            revealsInvisibleCharacters: cellRegistry.showsInvisibleCharacters,
             fittedColumnCount: fittedColumnCount
         )
     }

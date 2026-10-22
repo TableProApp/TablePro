@@ -35,6 +35,10 @@ internal final class WindowManager {
             if let existing = host.workspaces.workspace(for: payload.connectionId) {
                 host.workspaces.select(payload.connectionId)
                 existing.open(payload)
+                // Dials only where a new window would: never one the user canceled or disconnected.
+                if autoConnect {
+                    host.startActivationConnectIfNeeded(requested: true)
+                }
             } else {
                 host.adoptWorkspace(payload: payload, autoConnect: autoConnect)
             }
@@ -154,6 +158,14 @@ internal final class WindowManager {
             .filter(\.isVisible)
             .compactMap { $0.contentViewController as? MainSplitViewController }
             .first
+    }
+
+    // Front to back and visible or not: a hidden app or a minimized window still has a selection to restore.
+    internal func shownConnectionId() -> UUID? {
+        let ordered = ([NSApp.keyWindow].compactMap { $0 } + NSApp.orderedWindows)
+            .lazy
+            .compactMap { $0.contentViewController as? MainSplitViewController }
+        return (ordered.first ?? hosts().first)?.workspaces.selectedConnectionId
     }
 
     /// The window already hosting this connection wins, so opening a table for it never lands in
@@ -489,6 +501,8 @@ internal final class WindowManager {
                 self?.release(windowKey: key)
             }
         }
+        // The window's first workspace joined before its registry reported membership changes.
+        SessionRecoveryTracker.sync()
     }
 
     private func release(windowKey: ObjectIdentifier) {
@@ -632,14 +646,6 @@ internal final class WindowManager {
             else { return false }
             return host.workspaces.contains(connectionId)
         }
-    }
-
-    internal func connectionIdsRetainingRestoreIntent() -> [UUID] {
-        var seen = Set<UUID>()
-        return controllers.values
-            .compactMap { $0.window?.contentViewController as? MainSplitViewController }
-            .flatMap(\.connectionIdsRetainingRestoreIntent)
-            .filter { seen.insert($0).inserted }
     }
 
     /// Closing a connection removes its workspace. The window itself only closes once it has no

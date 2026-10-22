@@ -29,13 +29,26 @@ final class IOSSyncCoordinator {
         case superseded
     }
 
+    private enum RemoteApply {
+        case saved
+        // Connections, groups and tags landed and the saved queries did not, so only the token waits.
+        case savedQueriesHeld
+        case notSaved
+    }
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "Sync")
+
+    // Plus a kind for each field an older build pulled without reading.
+    static let readableRecordTypes = Set(
+        [SyncRecordType.connection, .group, .tag, .favorite, .favoriteFolder].map(\.rawValue)
+    ).union([ConnectionSyncField.sshRouteContentKind])
 
     private(set) var status: SyncStatus
     private(set) var lastSyncDate: Date?
 
     @ObservationIgnored private let metadata: SyncMetadataStorage
     @ObservationIgnored private let recordCache: SyncRecordCache
+    @ObservationIgnored private var sshFieldsReadFromCache: Set<UUID> = []
     @ObservationIgnored private let makeTransport: () -> any IOSSyncTransport
     @ObservationIgnored private let isEnabled: () -> Bool
     @ObservationIgnored private let networkMonitor: SyncNetworkMonitor?
@@ -63,10 +76,13 @@ final class IOSSyncCoordinator {
     @ObservationIgnored private var editGenerations: [EditKey: Int] = [:]
     @ObservationIgnored private var accountChangeObservation: AnyCancellable?
 
-    @ObservationIgnored var onConnectionsChanged: (([DatabaseConnection]) -> Void)?
-    @ObservationIgnored var onGroupsChanged: (([ConnectionGroup]) -> Void)?
-    @ObservationIgnored var onTagsChanged: (([ConnectionTag]) -> Void)?
+    // Each returns whether the merged list was saved; false holds the change token for a replay.
+    @ObservationIgnored var onConnectionsChanged: (([DatabaseConnection]) -> Bool)?
+    @ObservationIgnored var onGroupsChanged: (([ConnectionGroup]) -> Bool)?
+    @ObservationIgnored var onTagsChanged: (([ConnectionTag]) -> Bool)?
     @ObservationIgnored var getCurrentState: (() -> LibraryState?)?
+    @ObservationIgnored var getSavedQueries: (() -> SavedQueryContents?)?
+    @ObservationIgnored var onSavedQueriesChanged: ((SavedQueryContents) -> Bool)?
 
     private static var recordCacheDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -167,7 +183,7 @@ final class IOSSyncCoordinator {
     private func prepareFullUpload() {
         metadata.saveToken(nil)
         metadata.zoneState = .unknown
-        recordCache.removeAll()
+        dropRecordCache()
         markAllLocalDataDirty()
     }
 
@@ -285,7 +301,7 @@ final class IOSSyncCoordinator {
         /// The old zone's records went with it. Kept, their system fields would make every later
         /// save into a zone another device recreated fail as an unknown record.
         if nextZone == .removed, zone != .removed {
-            recordCache.removeAll()
+            dropRecordCache()
             metadata.saveToken(nil)
         }
         metadata.zoneState = nextZone
@@ -320,7 +336,7 @@ final class IOSSyncCoordinator {
         case .previousAccountUnknown:
             Self.logger.notice("An earlier build synced without recording its iCloud account, so sync starts over once")
         }
-        recordCache.removeAll()
+        dropRecordCache()
         lastSyncDate = metadata.lastSyncDate
         return true
     }
@@ -357,30 +373,45 @@ final class IOSSyncCoordinator {
         metadata.zoneState = .confirmed
 
         let changes = PullChanges(pulled)
+        let keptEdits = pendingEditRecordNames()
         let connCount = changes.changedConnections.count
         let groupCount = changes.changedGroups.count
         let tagCount = changes.changedTags.count
-        Self.logger.info("Pulled \(connCount) connections, \(groupCount) groups, \(tagCount) tags")
+        let queryCount = changes.savedQueries.changedQueries.count
+        let folderCount = changes.savedQueries.changedFolders.count
+        Self.logger.info(
+            "Pulled \(connCount) connections, \(groupCount) groups, \(tagCount) tags, \(queryCount) saved queries, \(folderCount) folders"
+        )
 
-        guard applyRemoteChanges(changes) else {
+        let applied = applyRemoteChanges(changes)
+        guard applied != .notSaved else {
             return RunResult(admission: admission, failure: .pullNotSaved)
         }
-        /// Committed before the upload, so an upload that fails does not make every later run
-        /// download and merge everything since the last clean sync again.
-        if let newToken = pulled.newToken {
+        // Committed before the upload, so a failed upload does not make every later run download everything again.
+        if applied == .saved, let newToken = pulled.newToken {
             metadata.saveToken(newToken)
         }
-        recordCache.store(pulled.changedRecords)
+        cacheRecords(pulled.changedRecords, takenBy: applied, keptEdits: keptEdits)
         recordCache.remove(pulled.deletedRecordIDs)
+        settleLegacySSLModes(pulled: pulled.changedRecords)
+        let heldDownload: SyncStepFailure? = applied == .saved ? nil : .pullNotSaved
 
-        guard admission == .full else { return RunResult(admission: admission, failure: nil) }
-        guard let pushFailure = await push(using: transport) else {
-            return RunResult(admission: admission, failure: nil)
+        guard admission == .full else { return RunResult(admission: admission, failure: heldDownload) }
+        let pushed = await push(using: transport)
+        let download = heldDownload ?? (pushed.adoptedMergedSaves ? nil : .pullNotSaved)
+        guard let pushFailure = pushed.failure else {
+            return RunResult(admission: admission, failure: download)
         }
-        return RunResult(admission: admission, failure: await refined(pushFailure, using: transport))
+        let upload = await refined(pushFailure, using: transport)
+        return RunResult(admission: admission, failure: SyncStepFailure.decisive(upload: upload, download: download))
     }
 
     private func fetchChanges(using transport: any IOSSyncTransport) async throws -> PullResult {
+        // A delta never resends what an earlier build skipped, so a build that reads more types fetches everything once.
+        if metadata.adoptReadableRecordTypes(Self.readableRecordTypes) {
+            Self.logger.notice("This build reads record types an earlier one skipped, so it fetches everything once")
+            metadata.saveToken(nil)
+        }
         do {
             return try await transport.pull(since: metadata.loadToken())
         } catch let error where SyncFailure(error) == .tokenExpired {
@@ -511,6 +542,16 @@ final class IOSSyncCoordinator {
         addTombstone(tagId.uuidString, type: .tag)
     }
 
+    func markDirty(savedQueries queryIds: [UUID], folders folderIds: [UUID] = []) {
+        markDirty(queryIds.map(\.uuidString), type: .favorite)
+        markDirty(folderIds.map(\.uuidString), type: .favoriteFolder)
+    }
+
+    func markDeleted(savedQueries queryIds: [UUID], folders folderIds: [UUID] = []) {
+        metadata.addTombstones(queryIds.map(\.uuidString), type: .favorite)
+        metadata.addTombstones(folderIds.map(\.uuidString), type: .favoriteFolder)
+    }
+
     private func markDirty(_ ids: [String], type: SyncRecordType) {
         for id in ids {
             editGenerations[EditKey(type: type, id: id), default: 0] += 1
@@ -527,6 +568,23 @@ final class IOSSyncCoordinator {
         markDirty(state.connections.filter(\.participatesInSync).map(\.id.uuidString), type: .connection)
         markDirty(state.groups.map(\.id.uuidString), type: .group)
         markDirty(state.tags.map(\.id.uuidString), type: .tag)
+        guard let savedQueries = getSavedQueries?() else { return }
+        let syncs = Self.ownerSyncs(in: state.connections)
+        markDirty(savedQueries.queries.filter { syncs($0.connectionId) }.map(\.id.uuidString), type: .favorite)
+        markDirty(savedQueries.folders.filter { syncs($0.connectionId) }.map(\.id.uuidString), type: .favoriteFolder)
+    }
+
+    // A record owned by a connection that never leaves the device (the sample) stays local too.
+    private static func ownersKeptOff(in connections: [DatabaseConnection]) -> Set<UUID> {
+        Set(connections.filter { !$0.participatesInSync }.map(\.id))
+    }
+
+    private static func ownerSyncs(keptOff: Set<UUID>) -> (UUID?) -> Bool {
+        { owner in owner.map { !keptOff.contains($0) } ?? true }
+    }
+
+    private static func ownerSyncs(in connections: [DatabaseConnection]) -> (UUID?) -> Bool {
+        ownerSyncs(keptOff: ownersKeptOff(in: connections))
     }
 
     /// An edit made while a run is in flight queues one more run instead of cancelling it, because
@@ -546,54 +604,146 @@ final class IOSSyncCoordinator {
 
     // MARK: - Apply
 
-    private func applyRemoteChanges(_ remote: PullChanges) -> Bool {
-        guard let state = getCurrentState?() else { return false }
-        onConnectionsChanged?(mergeConnections(local: state.connections, remote: remote))
-        onGroupsChanged?(mergeGroups(local: state.groups, remote: remote))
-        onTagsChanged?(mergeTags(local: state.tags, remote: remote))
+    // A copy an older iOS build stored lost the Mac's Preferred, which only the server's record still holds: the one this
+    // pull brought, else the cached one, and nothing fresher exists once the cache is about to go.
+    private func settleLegacySSLModes(pulled: [CKRecord] = []) {
+        let latest = Dictionary(pulled.map { ($0.recordID.recordName, $0) }, uniquingKeysWith: { _, last in last })
+        guard var connections = getCurrentState?()?.connections else { return }
+        var changed = false
+        for index in connections.indices {
+            guard let local = connections[index].sslConfiguration, local.isLegacyRequire else { continue }
+            let recordName = SyncRecordType.connection.recordName(for: connections[index].id.uuidString)
+            // Only Preferred or Required is in question, so certificate paths edited on either side do not matter.
+            guard let cached = latest[recordName] ?? recordCache.record(named: recordName),
+                  let server = SyncRecordMapper.serverSSL(in: cached),
+                  server.mode == local.mode else { continue }
+            connections[index].sslConfiguration?.settleLegacyRequire(asMacPreferred: server.isMacPreferred)
+            changed = true
+        }
+        if changed, onConnectionsChanged?(connections) != true {
+            Self.logger.error("The SSL modes settled from the cached records were not saved")
+        }
+    }
+
+    private func dropRecordCache() {
+        settleLegacySSLModes()
+        recordCache.removeAll()
+    }
+
+    private func applyRemoteChanges(_ remote: PullChanges) -> RemoteApply {
+        guard let state = getCurrentState?() else { return .notSaved }
+        let merged = mergeConnections(local: state.connections, remote: remote)
+        let connectionsSaved = onConnectionsChanged?(merged.connections) ?? true
+        // Marked read only once saved, so a pull whose save failed reads the cache again next time.
+        if connectionsSaved { sshFieldsReadFromCache.formUnion(merged.adoptedFromCache) }
+        let groupsSaved = onGroupsChanged?(mergeGroups(local: state.groups, remote: remote)) ?? true
+        let tagsSaved = onTagsChanged?(mergeTags(local: state.tags, remote: remote)) ?? true
+        guard connectionsSaved, groupsSaved, tagsSaved else {
+            Self.logger.error("A pulled library change was not saved, so the change token is held")
+            return .notSaved
+        }
+        return applyRemoteSavedQueries(remote.savedQueries) ? .saved : .savedQueriesHeld
+    }
+
+    // Read after the connection callbacks ran, so a connection deleted elsewhere has already taken its records.
+    private func applyRemoteSavedQueries(_ remote: SavedQueryRemoteChanges) -> Bool {
+        guard !remote.isEmpty else { return true }
+        guard let local = getSavedQueries?() else {
+            Self.logger.error("Saved queries arrived while the stored ones are not loaded, so the change token is held")
+            return false
+        }
+        let keptOff = Self.ownersKeptOff(in: getCurrentState?()?.connections ?? [])
+        let outcome = SavedQueryRemoteMerge.merge(
+            local: local,
+            remote: remote,
+            pending: pendingSavedQueryEdits(),
+            keptLocalOwners: keptOff
+        )
+        if outcome.contents != local {
+            guard onSavedQueriesChanged?(outcome.contents) == true else {
+                Self.logger.error("Pulled saved queries were not saved, so the change token is held")
+                return false
+            }
+        }
+        // Pushed even when nothing changed here: a stale copy that lost its keyword still holds it in iCloud.
+        guard !outcome.releasedKeywordIds.isEmpty else { return true }
+        Self.logger.info("Keyword conflicts resolved: \(outcome.releasedKeywordIds.count, privacy: .public)")
+        let syncs = Self.ownerSyncs(keptOff: keptOff)
+        let released = Set(outcome.releasedKeywordIds)
+        let pushed = outcome.contents.queries.filter { released.contains($0.id) && syncs($0.connectionId) }
+        markDirty(pushed.map(\.id.uuidString), type: .favorite)
         return true
+    }
+
+    private func pendingSavedQueryEdits() -> SavedQueryPendingEdits {
+        SavedQueryPendingEdits(
+            dirtyQueryIds: metadata.dirtyIds(for: .favorite),
+            dirtyFolderIds: metadata.dirtyIds(for: .favoriteFolder),
+            deletedQueryIds: tombstonedIds(for: .favorite),
+            deletedFolderIds: tombstonedIds(for: .favoriteFolder)
+        )
+    }
+
+    private func tombstonedIds(for type: SyncRecordType) -> Set<String> {
+        Set(metadata.tombstones(for: type).map(\.id))
     }
 
     // MARK: - Push
 
+    private struct PushResult {
+        var failure: SyncStepFailure?
+        // False when a merged save could not be written here, which holds the run like a pull that was not saved.
+        var adoptedMergedSaves = true
+    }
+
     /// Whatever went through is settled even when a later batch threw, so a saved record is not
     /// sent again and a cached record does not stand in with a stale change tag.
-    private func push(using transport: any IOSSyncTransport) async -> SyncStepFailure? {
+    private func push(using transport: any IOSSyncTransport) async -> PushResult {
         let zoneID = await transport.currentZoneID
-        guard let state = getCurrentState?() else { return nil }
+        guard let state = getCurrentState?() else { return PushResult() }
         let generationsAtPush = editGenerations
-        let batch = pushBatch(from: state, in: zoneID)
-        guard !batch.records.isEmpty || !batch.deletions.isEmpty else { return nil }
+        let batch = pushBatch(from: state, savedQueries: getSavedQueries?(), in: zoneID)
+        guard !batch.edits.isEmpty || !batch.deletions.isEmpty else { return PushResult() }
 
+        let edits = Dictionary(batch.edits.map { ($0.recordID, $0) }, uniquingKeysWith: { _, last in last })
         var outcome: PushOutcome
         var interruption: (any Error)?
         do {
-            outcome = try await transport.push(records: batch.records, deletions: batch.deletions)
+            outcome = try await SyncConflictRebase.push(
+                records: batch.edits.map(\.record),
+                deletions: batch.deletions,
+                edits: edits
+            ) {
+                try await transport.push(records: $0, deletions: $1)
+            } fetch: {
+                try await transport.fetch(recordIDs: $0)
+            }
         } catch let interrupted as SyncPushInterruption {
             outcome = interrupted.completed
             interruption = interrupted.cause
         } catch {
             Self.logger.error("Push failed: \(error.localizedDescription, privacy: .private)")
-            return SyncStepFailure(error)
+            return PushResult(failure: SyncStepFailure(error))
         }
         outcome.acceptMissingDeletions(of: batch.deletions)
-        settle(outcome, generationsAtPush: generationsAtPush)
+        let adopted = settle(outcome, edits: edits, generationsAtPush: generationsAtPush)
 
         let itemFailure = SyncStepFailure(outcome)
         if let interruption {
             Self.logger.error("Push stopped part way: \(interruption.localizedDescription, privacy: .private)")
             /// A blocker an earlier batch hit explains the interruption too; anything less does not.
-            return itemFailure.flatMap { $0.failure.stopsUpload ? $0 : nil } ?? SyncStepFailure(interruption)
+            let failure = itemFailure.flatMap { $0.failure.stopsUpload ? $0 : nil } ?? SyncStepFailure(interruption)
+            return PushResult(failure: failure, adoptedMergedSaves: adopted)
         }
         if let itemFailure {
             let pending = outcome.failures.count
             Self.logger.error("Push left \(pending, privacy: .public) items pending: \(String(describing: itemFailure.failure), privacy: .public)")
         }
-        return itemFailure
+        return PushResult(failure: itemFailure, adoptedMergedSaves: adopted)
     }
 
-    private func settle(_ outcome: PushOutcome, generationsAtPush: [EditKey: Int]) {
-        recordCache.store(Array(outcome.savedRecords.values))
+    private func settle(_ outcome: PushOutcome, edits: [CKRecord.ID: SyncRecordEdit], generationsAtPush: [EditKey: Int]) -> Bool {
+        recordCache.store(outcome.savedBases(pushed: edits))
         recordCache.remove(Array(outcome.deletedRecordIDs))
 
         for recordID in outcome.savedRecords.keys {
@@ -608,53 +758,110 @@ final class IOSSyncCoordinator {
             guard let parsed = SyncRecordMapper.parse(recordName: recordID.recordName) else { continue }
             metadata.removeTombstone(parsed.id, type: parsed.type)
         }
+
+        return adoptRebasedSaves(outcome)
     }
 
-    private func pushBatch(from state: LibraryState, in zoneID: CKRecordZone.ID) -> (records: [CKRecord], deletions: [CKRecord.ID]) {
-        var records: [CKRecord] = []
+    // A rebased save holds another device's change too, which the local copy takes as from a pull.
+    private func adoptRebasedSaves(_ outcome: PushOutcome) -> Bool {
+        let rebased = outcome.savedRecords.filter { outcome.rebasedRecordIDs.contains($0.key) }.map(\.value)
+        guard !rebased.isEmpty else { return true }
+        let keptEdits = pendingEditRecordNames()
+        let pulled = PullResult(changedRecords: rebased, deletedRecordIDs: [], newToken: nil)
+        let applied = applyRemoteChanges(PullChanges(pulled))
+        guard applied != .notSaved else {
+            Self.logger.error("A merged save was not applied here, so the next pull brings it")
+            return false
+        }
+        cacheRecords(rebased, takenBy: applied, keptEdits: keptEdits)
+        return applied == .saved
+    }
+
+    // The cache holds only what the local copy holds: a copy that kept its edit keeps the record the edit
+    // was made on, so its push is refused and merged instead of restating fields it never changed.
+    private func cacheRecords(_ records: [CKRecord], takenBy applied: RemoteApply, keptEdits: Set<String>) {
+        let savedQueryTypes = [SyncRecordType.favorite, .favoriteFolder].map(\.rawValue)
+        recordCache.store(records.filter { record in
+            !keptEdits.contains(record.recordID.recordName)
+                && (applied == .saved || !savedQueryTypes.contains(record.recordType))
+        })
+    }
+
+    // With no cached record there is no base to keep, and the pulled one serves as well as any.
+    private func pendingEditRecordNames() -> Set<String> {
+        var names: Set<String> = []
+        for type in [SyncRecordType.connection, .group, .tag, .favorite, .favoriteFolder] {
+            for id in metadata.dirtyIds(for: type).union(tombstonedIds(for: type)) {
+                let name = type.recordName(for: id)
+                if recordCache.holdsRecord(named: name) {
+                    names.insert(name)
+                }
+            }
+        }
+        return names
+    }
+
+    private func pushBatch(
+        from state: LibraryState,
+        savedQueries: SavedQueryContents?,
+        in zoneID: CKRecordZone.ID
+    ) -> (edits: [SyncRecordEdit], deletions: [CKRecord.ID]) {
+        var edits: [SyncRecordEdit] = []
         var deletions: [CKRecord.ID] = []
 
         let dirtyConnIDs = metadata.dirtyIds(for: .connection)
         for connection in state.connections
             where connection.participatesInSync && dirtyConnIDs.contains(connection.id.uuidString) {
-            let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
-            if let existing = recordCache.record(for: recordID) {
-                SyncRecordMapper.updateRecord(existing, with: connection)
-                records.append(existing)
-            } else {
-                records.append(SyncRecordMapper.toRecord(connection, zoneID: zoneID))
-            }
+            let base = cachedRecord(.connection, id: connection.id.uuidString, in: zoneID)
+            edits.append(SyncRecordMapper.edit(connection, base: base, zoneID: zoneID))
         }
 
         let dirtyGroupIDs = metadata.dirtyIds(for: .group)
         for group in state.groups where dirtyGroupIDs.contains(group.id.uuidString) {
-            let recordID = SyncRecordMapper.recordID(type: .group, id: group.id.uuidString, in: zoneID)
-            if let existing = recordCache.record(for: recordID) {
-                SyncRecordMapper.updateRecord(existing, with: group)
-                records.append(existing)
-            } else {
-                records.append(SyncRecordMapper.toRecord(group, zoneID: zoneID))
-            }
+            let base = cachedRecord(.group, id: group.id.uuidString, in: zoneID)
+            edits.append(SyncRecordMapper.edit(group, base: base, zoneID: zoneID))
         }
 
         let dirtyTagIDs = metadata.dirtyIds(for: .tag)
         for tag in state.tags where dirtyTagIDs.contains(tag.id.uuidString) {
-            let recordID = SyncRecordMapper.recordID(type: .tag, id: tag.id.uuidString, in: zoneID)
-            if let existing = recordCache.record(for: recordID) {
-                SyncRecordMapper.updateRecord(existing, with: tag)
-                records.append(existing)
-            } else {
-                records.append(SyncRecordMapper.toRecord(tag, zoneID: zoneID))
-            }
+            let base = cachedRecord(.tag, id: tag.id.uuidString, in: zoneID)
+            edits.append(SyncRecordMapper.edit(tag, base: base, zoneID: zoneID))
         }
 
-        for type in [SyncRecordType.connection, .group, .tag] {
+        var deletedTypes: [SyncRecordType] = [.connection, .group, .tag]
+        if let savedQueries {
+            edits += savedQueryEdits(savedQueries, connections: state.connections, in: zoneID)
+            deletedTypes += [.favorite, .favoriteFolder]
+        }
+
+        for type in deletedTypes {
             for tombstone in metadata.tombstones(for: type) {
                 deletions.append(SyncRecordMapper.recordID(type: type, id: tombstone.id, in: zoneID))
             }
         }
 
-        return (records, deletions)
+        return (edits, deletions)
+    }
+
+    private func cachedRecord(_ type: SyncRecordType, id: String, in zoneID: CKRecordZone.ID) -> CKRecord? {
+        recordCache.record(for: SyncRecordMapper.recordID(type: type, id: id, in: zoneID))
+    }
+
+    private func savedQueryEdits(
+        _ contents: SavedQueryContents,
+        connections: [DatabaseConnection],
+        in zoneID: CKRecordZone.ID
+    ) -> [SyncRecordEdit] {
+        let syncs = Self.ownerSyncs(in: connections)
+        let dirtyFolderIds = metadata.dirtyIds(for: .favoriteFolder)
+        let dirtyQueryIds = metadata.dirtyIds(for: .favorite)
+        let folders = contents.folders
+            .filter { dirtyFolderIds.contains($0.id.uuidString) && syncs($0.connectionId) }
+            .map { SyncRecordMapper.edit($0, base: cachedRecord(.favoriteFolder, id: $0.id.uuidString, in: zoneID), zoneID: zoneID) }
+        let queries = contents.queries
+            .filter { dirtyQueryIds.contains($0.id.uuidString) && syncs($0.connectionId) }
+            .map { SyncRecordMapper.edit($0, base: cachedRecord(.favorite, id: $0.id.uuidString, in: zoneID), zoneID: zoneID) }
+        return folders + queries
     }
 
     // MARK: - Pull
@@ -666,6 +873,7 @@ final class IOSSyncCoordinator {
         var deletedGroupIDs: Set<UUID> = []
         var changedTags: [ConnectionTag] = []
         var deletedTagIDs: Set<UUID> = []
+        var savedQueries = SavedQueryRemoteChanges()
 
         init(_ result: PullResult) {
             for record in result.changedRecords {
@@ -682,6 +890,14 @@ final class IOSSyncCoordinator {
                     if let tag = SyncRecordMapper.toTag(record) {
                         changedTags.append(tag)
                     }
+                case SyncRecordType.favorite.rawValue:
+                    if let query = SyncRecordMapper.toSavedQuery(record) {
+                        savedQueries.changedQueries.append(query)
+                    }
+                case SyncRecordType.favoriteFolder.rawValue:
+                    if let folder = SyncRecordMapper.toSavedQueryFolder(record) {
+                        savedQueries.changedFolders.append(folder)
+                    }
                 default:
                     break
                 }
@@ -697,6 +913,10 @@ final class IOSSyncCoordinator {
                     deletedGroupIDs.insert(uuid)
                 case .tag:
                     deletedTagIDs.insert(uuid)
+                case .favorite:
+                    savedQueries.deletedQueryIds.insert(uuid)
+                case .favoriteFolder:
+                    savedQueries.deletedFolderIds.insert(uuid)
                 default:
                     break
                 }
@@ -706,13 +926,53 @@ final class IOSSyncCoordinator {
 
     // MARK: - Merge
 
-    private func mergeConnections(local: [DatabaseConnection], remote: PullChanges) -> [DatabaseConnection] {
-        merge(
+    private func mergeConnections(
+        local: [DatabaseConnection],
+        remote: PullChanges
+    ) -> (connections: [DatabaseConnection], adoptedFromCache: Set<UUID>) {
+        let pulledRoutes = Dictionary(
+            remote.changedConnections.map { ($0.id, $0.sshRoute) },
+            uniquingKeysWith: { _, last in last }
+        )
+        var adopted: Set<UUID> = []
+        let connections = merge(
             local: local,
             changed: remote.changedConnections,
             deleted: remote.deletedConnectionIDs,
-            dirtyIds: metadata.dirtyIds(for: .connection)
-        )
+            dirtyIds: metadata.dirtyIds(for: .connection),
+            tombstonedIds: tombstonedIds(for: .connection)
+        ).map { connection -> DatabaseConnection in
+            // Only a Mac writes the route, so a copy with edits waiting to go up still takes the pulled one.
+            if let pulledRoute = pulledRoutes[connection.id] {
+                var routed = connection
+                routed.sshRoute = pulledRoute
+                return routed
+            }
+            guard let cached = adoptingCachedSSHFields(connection) else { return connection }
+            adopted.insert(connection.id)
+            return cached
+        }
+        return (connections, adopted)
+    }
+
+    // A connection stored before this build read `sshProfileId` lacks it until its record changes
+    // again, and the record pulled earlier already holds it. A record in this
+    // pull is newer than the cache, which is written only after it.
+    private func adoptingCachedSSHFields(_ connection: DatabaseConnection) -> DatabaseConnection? {
+        guard connection.sshConfiguration != nil, connection.sshProfileId == nil,
+              !connection.clearsSSHProfileLink,
+              !sshFieldsReadFromCache.contains(connection.id)
+        else { return nil }
+        // The cache is keyed by record name alone, so any zone finds it.
+        let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: CKRecordZone.default().zoneID)
+        guard let record = recordCache.record(for: recordID),
+              let cached = SyncRecordMapper.toConnection(record)
+        else { return nil }
+        // The profile's password goes to the server this copy names, so a copy that names another one takes no link.
+        guard cached.sshConfiguration?.publishedRouteInput == connection.sshConfiguration?.publishedRouteInput else { return nil }
+        var adopted = connection
+        adopted.sshProfileId = cached.sshProfileId
+        return adopted
     }
 
     private func mergeGroups(local: [ConnectionGroup], remote: PullChanges) -> [ConnectionGroup] {
@@ -720,7 +980,8 @@ final class IOSSyncCoordinator {
             local: local,
             changed: remote.changedGroups,
             deleted: remote.deletedGroupIDs,
-            dirtyIds: metadata.dirtyIds(for: .group)
+            dirtyIds: metadata.dirtyIds(for: .group),
+            tombstonedIds: tombstonedIds(for: .group)
         )
     }
 
@@ -729,7 +990,8 @@ final class IOSSyncCoordinator {
             local: local,
             changed: remote.changedTags,
             deleted: remote.deletedTagIDs,
-            dirtyIds: metadata.dirtyIds(for: .tag)
+            dirtyIds: metadata.dirtyIds(for: .tag),
+            tombstonedIds: tombstonedIds(for: .tag)
         )
     }
 
@@ -737,10 +999,13 @@ final class IOSSyncCoordinator {
         local: [Item],
         changed: [Item],
         deleted: Set<UUID>,
-        dirtyIds: Set<String>
+        dirtyIds: Set<String>,
+        tombstonedIds: Set<String>
     ) -> [Item] where Item.ID == UUID {
         var result = local.filter { !deleted.contains($0.id) }
-        for remoteItem in changed where !deleted.contains(remoteItem.id) {
+        // A record deleted here and not pushed yet stays deleted, or the pull brings it back before the push.
+        for remoteItem in changed
+            where !deleted.contains(remoteItem.id) && !tombstonedIds.contains(remoteItem.id.uuidString) {
             guard let index = result.firstIndex(where: { $0.id == remoteItem.id }) else {
                 result.append(remoteItem)
                 continue

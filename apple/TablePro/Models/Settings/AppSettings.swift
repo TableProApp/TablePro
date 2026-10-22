@@ -86,6 +86,29 @@ enum DefaultSortBehavior: String, Codable, CaseIterable, Identifiable, Equatable
     }
 }
 
+// IN Clause, INSERT and UPDATE are left out: they need a column or a single table, so no grid can always produce them.
+enum RowCopyFormat: String, Codable, CaseIterable, Identifiable {
+    case rows
+    case rowsWithHeaders
+    case json
+    case csv
+    case csvWithHeaders
+    case markdown
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .rows: return "TSV"
+        case .rowsWithHeaders: return String(localized: "TSV with Headers")
+        case .json: return "JSON"
+        case .csv: return "CSV"
+        case .csvWithHeaders: return String(localized: "CSV with Headers")
+        case .markdown: return "Markdown"
+        }
+    }
+}
+
 /// Data grid settings
 struct DataGridSettings: Codable, Equatable {
     var rowHeight: DataGridRowHeight
@@ -101,6 +124,8 @@ struct DataGridSettings: Codable, Equatable {
     var truncateQueryResults: Bool
     var defaultSortBehavior: DefaultSortBehavior
     var defaultSortDirection: SortDirection
+    var rowCopyFormat: RowCopyFormat
+    var showInvisibleCharacters: Bool
 
     static let `default` = DataGridSettings(
         rowHeight: .normal,
@@ -115,7 +140,9 @@ struct DataGridSettings: Codable, Equatable {
         queryResultRowCap: 10_000,
         truncateQueryResults: true,
         defaultSortBehavior: .none,
-        defaultSortDirection: .ascending
+        defaultSortDirection: .ascending,
+        rowCopyFormat: .rows,
+        showInvisibleCharacters: true
     )
 
     init(
@@ -131,7 +158,9 @@ struct DataGridSettings: Codable, Equatable {
         queryResultRowCap: Int = 10_000,
         truncateQueryResults: Bool = true,
         defaultSortBehavior: DefaultSortBehavior = .none,
-        defaultSortDirection: SortDirection = .ascending
+        defaultSortDirection: SortDirection = .ascending,
+        rowCopyFormat: RowCopyFormat = .rows,
+        showInvisibleCharacters: Bool = true
     ) {
         self.rowHeight = rowHeight
         self.dateFormat = dateFormat
@@ -146,6 +175,8 @@ struct DataGridSettings: Codable, Equatable {
         self.truncateQueryResults = truncateQueryResults
         self.defaultSortBehavior = defaultSortBehavior
         self.defaultSortDirection = defaultSortDirection
+        self.rowCopyFormat = rowCopyFormat
+        self.showInvisibleCharacters = showInvisibleCharacters
     }
 
     init(from decoder: Decoder) throws {
@@ -169,6 +200,10 @@ struct DataGridSettings: Codable, Equatable {
         truncateQueryResults = container.decodeSetting(.truncateQueryResults, default: fallback.truncateQueryResults)
         defaultSortBehavior = container.decodeSetting(.defaultSortBehavior, default: fallback.defaultSortBehavior)
         defaultSortDirection = container.decodeSetting(.defaultSortDirection, default: fallback.defaultSortDirection)
+        rowCopyFormat = container.decodeSetting(.rowCopyFormat, default: fallback.rowCopyFormat)
+        showInvisibleCharacters = container.decodeSetting(
+            .showInvisibleCharacters, default: fallback.showInvisibleCharacters
+        )
     }
 
     // MARK: - Validated Properties

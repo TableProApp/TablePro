@@ -16,7 +16,7 @@ import TableProPluginKit
 /// time, because each of those scans can run for minutes. Every read goes to the primary, where the
 /// writes go. A read the user's role does not allow stops the save rather than letting it run
 /// unchecked. `shortfallAfterWriting` checks what the statements left behind.
-struct MongoFieldChangeCheck {
+nonisolated struct MongoFieldChangeCheck {
     let connection: MongoDBConnection
     let database: String
     let collection: String

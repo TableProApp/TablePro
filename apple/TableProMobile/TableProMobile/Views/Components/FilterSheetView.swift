@@ -10,6 +10,7 @@ struct FilterSheetView: View {
     @Binding var logicMode: FilterLogicMode
     let columns: [ColumnInfo]
     let databaseType: DatabaseType
+    var operators: [FilterOperator] = FilterOperator.allCases
     let onApply: () -> Void
     let onClear: () -> Void
 
@@ -53,15 +54,13 @@ struct FilterSheetView: View {
                             }
 
                             Picker("Operator", selection: binding.filterOperator) {
-                                ForEach(FilterOperator.allCases, id: \.self) { op in
+                                ForEach(operators, id: \.self) { op in
                                     Text(op.displayName).tag(op)
                                 }
                             }
 
                             if filter.filterOperator.needsValue {
-                                TextField("Value", text: binding.value)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
+                                LiteralTextField("Value", text: binding.value)
                             }
 
                             if filter.filterOperator.supportsCaseSensitivity, isCaseSensitivityAdjustable {
@@ -69,9 +68,7 @@ struct FilterSheetView: View {
                             }
 
                             if filter.filterOperator == .between {
-                                TextField("Second value", text: binding.secondValue)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
+                                LiteralTextField("Second value", text: binding.secondValue)
                             }
                         }
                     }

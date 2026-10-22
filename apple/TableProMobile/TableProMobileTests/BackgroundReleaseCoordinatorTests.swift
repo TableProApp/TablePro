@@ -26,19 +26,6 @@ private final class SpyBackgroundTaskAsserter: BackgroundTaskAsserting {
     }
 }
 
-private final class StubDriverFactory: DriverFactory, @unchecked Sendable {
-    var drivers: [String: any DatabaseDriver] = [:]
-
-    func createDriver(for connection: DatabaseConnection, password: String?) throws -> any DatabaseDriver {
-        guard let driver = drivers[connection.type.rawValue] else {
-            throw ConnectionError.driverNotFound(connection.type.rawValue)
-        }
-        return driver
-    }
-
-    func supportedTypes() -> [DatabaseType] { [] }
-}
-
 private func makeConnection(_ type: String) -> DatabaseConnection {
     DatabaseConnection(name: "Test", type: DatabaseType(rawValue: type))
 }

@@ -15,6 +15,7 @@ import Foundation
 import os
 import TableProCoreTypes
 import TableProMSSQLCore
+import TableProPluginKit
 
 nonisolated private let freetdsLogger = Logger(subsystem: "com.TablePro", category: "FreeTDSConnection")
 
@@ -272,7 +273,6 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     /// stop a call through this gate and never through db-lib.
     private let requestGate = MSSQLRequestGate()
 
-    private static let kerberosEnvLock = NSLock()
     private static let loginStartLock = NSLock()
     private static let deadlineQueue = DispatchQueue(label: "com.TablePro.freetds.connect-deadline", qos: .userInitiated)
 
@@ -372,13 +372,15 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     ) throws -> UnsafeMutablePointer<DBPROCESS>? {
         Self.loginStartLock.lock()
         defer { Self.loginStartLock.unlock() }
-        let timeoutMilliseconds = deadline.remainingMilliseconds
-        guard timeoutMilliseconds > 0 else {
-            throw MSSQLCoreError.connectionTimedOut(isKerberos: options.authMethod == .windows)
+        return try withKerberosEnvironmentIfNeeded(deadline: deadline) {
+            let timeoutMilliseconds = deadline.remainingMilliseconds
+            guard timeoutMilliseconds > 0 else {
+                throw MSSQLCoreError.connectionTimedOut(isKerberos: options.authMethod == .windows)
+            }
+            let seconds = Int32(max(1, (timeoutMilliseconds + 999) / 1_000))
+            _ = dbsetlogintime(seconds)
+            return dbopen(login, serverName)
         }
-        let seconds = Int32(max(1, (timeoutMilliseconds + 999) / 1_000))
-        _ = dbsetlogintime(seconds)
-        return withKerberosEnvironmentIfNeeded { dbopen(login, serverName) }
     }
 
     private func discardKerberosCache() {
@@ -422,28 +424,26 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         if let kind = MSSQLTLSClassifier.classifySSLError(detail) {
             return .tlsHandshakeFailed(kind: kind, serverMessage: detail)
         }
-        if options.authMethod == .windows, let kind = MSSQLKerberosClassifier.classify(detail) {
+        if options.authMethod == .windows, let kind = KerberosFailureClassifier.classify(detail) {
             return .kerberosAuthFailed(kind: kind, serverMessage: detail)
         }
         return .connectionFailed("Failed to connect to \(options.host):\(options.port): \(msg)")
     }
 
     private func withKerberosEnvironmentIfNeeded(
-        _ body: () -> UnsafeMutablePointer<DBPROCESS>?
-    ) -> UnsafeMutablePointer<DBPROCESS>? {
-        guard let cachePath = options.kerberosCachePath else { return body() }
-        Self.kerberosEnvLock.lock()
-        let previous = getenv("KRB5CCNAME").map { String(cString: $0) }
-        setenv("KRB5CCNAME", "FILE:\(cachePath)", 1)
-        defer {
-            if let previous {
-                setenv("KRB5CCNAME", previous, 1)
-            } else {
-                unsetenv("KRB5CCNAME")
-            }
-            Self.kerberosEnvLock.unlock()
+        deadline: MSSQLConnectDeadline,
+        _ body: () throws -> UnsafeMutablePointer<DBPROCESS>?
+    ) throws -> UnsafeMutablePointer<DBPROCESS>? {
+        guard options.authMethod == .windows else { return try body() }
+        do {
+            return try KerberosCredentialCache.using(
+                options.kerberosCachePath,
+                until: Date(timeIntervalSinceNow: Double(deadline.remainingMilliseconds) / 1_000),
+                body
+            )
+        } catch is KerberosCredentialCache.WaitTimedOut {
+            throw MSSQLCoreError.connectionTimedOut(isKerberos: true)
         }
-        return body()
     }
 
     private func adopt(_ proc: UnsafeMutablePointer<DBPROCESS>) {
@@ -502,6 +502,25 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     /// client closed the socket wrote nothing. Only the queue may close the handle and the queue may be inside a read,
     /// so the read is stopped the way a Stop stops it and the handle is closed behind it.
     func disconnect() {
+        guard let handle = detachHandle() else { return }
+        queue.async { [self] in
+            teardown(handle)
+        }
+    }
+
+    /// The same close, returning once the handle is closed: SQL Server refuses to drop or restore a database while
+    /// this session is still in it.
+    func disconnectAndWait() async {
+        guard let handle = detachHandle() else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async { [self] in
+                teardown(handle)
+                continuation.resume()
+            }
+        }
+    }
+
+    private func detachHandle() -> UnsafeMutablePointer<DBPROCESS>? {
         let handle = dbproc
         dbproc = nil
 
@@ -510,10 +529,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         lock.unlock()
 
         requestGate.stop()
-        guard let handle else { return }
-        queue.async { [self] in
-            teardown(handle)
-        }
+        return handle
     }
 
     /// A Stop. Safe from any thread, because it only marks the calls: see ``MSSQLRequestGate``.
@@ -537,6 +553,51 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     /// `countsToSkip` is how many statements the caller put in front of the batch, whose row counts are not the batch's.
     func executeBatch(_ batch: String, rowCap: Int?, countsToSkip: Int = 0) async throws -> MSSQLBatchReadout {
         try await read(batch, plan: .batch(rowCap: rowCap, countsToSkip: countsToSkip))
+    }
+
+    // One queue turn, so no other call runs while the setting is on.
+    func executeShowplan(_ statement: String, showplan: MSSQLShowplan) async throws -> MSSQLBatchReadout {
+        let queryToRun = String(statement)
+        let call = requestGate.enqueue()
+        return try await withTaskCancellationHandler {
+            try await freetdsDispatchAsync(on: queue) { [self] in
+                try self.showplanSync(queryToRun, showplan: showplan, call: call)
+            }
+        } onCancel: { [weak self] in
+            self?.cancelCurrentQuery()
+        }
+    }
+
+    private func showplanSync(_ statement: String, showplan: MSSQLShowplan, call: UInt64) throws -> MSSQLBatchReadout {
+        let answer: Result<MSSQLBatchReadout, Error>
+        do {
+            // A Stop can land after the server applied ON, so a failed ON is reset like a failed statement.
+            _ = try readSync(showplan.onStatement, call: call, plan: .singleResult, sink: .buffer, isAborted: nil)
+                .singleResult()
+            answer = .success(try readSync(
+                statement,
+                call: call,
+                plan: .batch(rowCap: 1, countsToSkip: 0),
+                sink: .buffer,
+                isAborted: nil
+            ))
+        } catch {
+            answer = .failure(error)
+        }
+
+        guard dbproc != nil else { return try answer.get() }
+        // Numbered after the statement, so a Stop that ended it does not skip the reset.
+        let resetCall = requestGate.enqueue()
+        do {
+            _ = try readSync(showplan.offStatement, call: resetCall, plan: .singleResult, sink: .buffer, isAborted: nil)
+                .singleResult()
+        } catch {
+            // A session left in showplan mode would plan every later statement instead of running it.
+            freetdsLogger.error("Closing the connection: \(showplan.offStatement, privacy: .public) failed")
+            disconnect()
+            throw MSSQLCoreError.queryFailed(MSSQLShowplan.resetFailedMessage)
+        }
+        return try answer.get()
     }
 
     /// What the latest request printed, handed over once.

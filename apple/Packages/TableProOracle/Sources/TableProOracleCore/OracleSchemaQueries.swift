@@ -8,12 +8,15 @@ public struct OracleTableRow: Sendable, Equatable {
     /// count.
     public let isPartitioned: Bool
     public let partitionCount: Int?
+    // Nil from a one-schema listing, which does not project the owner.
+    public let schema: String?
 
-    public init(name: String, isView: Bool, isPartitioned: Bool = false, partitionCount: Int? = nil) {
+    public init(name: String, isView: Bool, isPartitioned: Bool = false, partitionCount: Int? = nil, schema: String? = nil) {
         self.name = name
         self.isView = isView
         self.isPartitioned = isPartitioned
         self.partitionCount = partitionCount
+        self.schema = schema
     }
 }
 
@@ -152,12 +155,13 @@ public enum OracleSchemaQueries {
     public static let commitTransaction = "COMMIT"
     public static let rollbackTransaction = "ROLLBACK"
 
+    // By code unit: a grapheme match skips a quote followed by a combining mark.
     public static func escapeLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     public static func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     public static func setCurrentSchema(_ schema: String) -> String {
@@ -185,6 +189,29 @@ public enum OracleSchemaQueries {
             SELECT view_name, 'VIEW', 'N', NULL FROM \(OracleDictionary.allViews) WHERE owner = '\(owner)'
             ORDER BY 1
             """
+    }
+
+    // ORA-01795: an IN list holds at most 1,000 expressions.
+    public static let maxOwnersPerTableListing = 1_000
+
+    // Names the owners so the read skips SYS and the other Oracle-maintained schemas the host drops.
+    public static func tables(inSchemas schemas: [String]) -> [String] {
+        stride(from: 0, to: schemas.count, by: maxOwnersPerTableListing).map { start in
+            let chunk = schemas[start..<min(start + maxOwnersPerTableListing, schemas.count)]
+            let owners = chunk.map { "'\(escapeLiteral($0))'" }.joined(separator: ", ")
+            return """
+                SELECT t.table_name, 'BASE TABLE' AS table_type,
+                       CASE WHEN pt.table_name IS NULL THEN 'N' ELSE 'Y' END AS is_partitioned,
+                       CASE WHEN pt.interval IS NULL THEN pt.partition_count END AS partition_count,
+                       t.owner
+                FROM \(OracleDictionary.allTables) t
+                LEFT JOIN \(OracleDictionary.allPartTables) pt ON pt.owner = t.owner AND pt.table_name = t.table_name
+                WHERE t.owner IN (\(owners))
+                UNION ALL
+                SELECT view_name, 'VIEW', 'N', NULL, owner FROM \(OracleDictionary.allViews) WHERE owner IN (\(owners))
+                ORDER BY 5, 1
+                """
+        }
     }
 
     /// One partitioned table's partitions. `HIGH_VALUE` is deliberately absent: it is a LONG
@@ -475,7 +502,8 @@ public enum OracleSchemaQueries {
             name: name,
             isView: row[safe: 1]?.stringValue == "VIEW",
             isPartitioned: row[safe: 2]?.stringValue == "Y",
-            partitionCount: row[safe: 3]?.stringValue.flatMap(Int.init)
+            partitionCount: row[safe: 3]?.stringValue.flatMap(Int.init),
+            schema: row[safe: 4]?.stringValue
         )
     }
 

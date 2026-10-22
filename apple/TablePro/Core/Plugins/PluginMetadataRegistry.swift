@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProAutocomplete
 import TableProPluginKit
 import TableProUtilities
 
@@ -102,6 +103,13 @@ struct PluginMetadataSnapshot: Sendable {
         /// MongoDB collection lists the fields found in its first documents, so a field missing from
         /// one side's list says nothing about whether that side holds it.
         var columnsAreSampled: Bool = false
+        /// Whether a contains, starts with or ends with filter matches a scalar column of any type by the text it shows,
+        /// so a search can send number and date columns too. MongoDB's builder converts the value before it matches.
+        var patternFiltersReadAnyColumn: Bool = false
+        /// Whether the driver types a filter's values by the kinds it learned from rows it read, so a count of a
+        /// filtered table runs on the driver that read the page. A pooled driver read nothing and would type the same
+        /// filter another way: a date compared as a string counts no rows.
+        var filtersTypedByReadRows: Bool = false
         var isEngineReadOnly: Bool = false
 
         /// Which connection field carries the path of the local database file this driver opens,
@@ -140,6 +148,12 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsRemoteDatabaseSession: Bool = false
 
         var supportsPrincipalConnectionLimit: Bool = true
+
+        // False where users and roles are different kinds: there a role never logs in, and Can log in is a user's lock.
+        var supportsRoleLogin: Bool = true
+
+        // Set, a table page reads a large binary value's size through it and loads the value on demand.
+        var binaryLengthFunction: String?
 
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
@@ -195,6 +209,8 @@ struct PluginMetadataSnapshot: Sendable {
         /// Teradata and Snowflake compare database names without regard to case, so `dbc` is the
         /// system database `DBC`. Every other engine keeps case: MySQL can hold a user database `MySQL`.
         let systemDatabaseNamesIgnoreCase: Bool
+        // Nil for an engine that keeps the case of an unquoted name, or whose rule is not curated yet.
+        let identifierRules: SQLIdentifierRules?
 
         init(
             defaultSchemaName: String,
@@ -213,7 +229,8 @@ struct PluginMetadataSnapshot: Sendable {
             implicitSchemaName: String? = nil,
             rowMatchExcludedTypePrefixes: [String] = [],
             rowMatchTextTypePrefixes: [String] = [],
-            systemDatabaseNamesIgnoreCase: Bool = false
+            systemDatabaseNamesIgnoreCase: Bool = false,
+            identifierRules: SQLIdentifierRules? = nil
         ) {
             self.defaultSchemaName = defaultSchemaName
             self.defaultGroupName = defaultGroupName
@@ -232,6 +249,7 @@ struct PluginMetadataSnapshot: Sendable {
             self.rowMatchExcludedTypePrefixes = rowMatchExcludedTypePrefixes
             self.rowMatchTextTypePrefixes = rowMatchTextTypePrefixes
             self.systemDatabaseNamesIgnoreCase = systemDatabaseNamesIgnoreCase
+            self.identifierRules = identifierRules
         }
 
         static let defaults = SchemaInfo(
@@ -372,7 +390,8 @@ struct PluginMetadataSnapshot: Sendable {
                 implicitSchemaName: schema.implicitSchemaName,
                 rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes,
                 rowMatchTextTypePrefixes: schema.rowMatchTextTypePrefixes,
-                systemDatabaseNamesIgnoreCase: schema.systemDatabaseNamesIgnoreCase
+                systemDatabaseNamesIgnoreCase: schema.systemDatabaseNamesIgnoreCase,
+                identifierRules: schema.identifierRules
             ),
             editor: editor,
             connection: connection
@@ -444,7 +463,8 @@ struct PluginMetadataSnapshot: Sendable {
                 implicitSchemaName: source.schema.implicitSchemaName,
                 rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes,
                 rowMatchTextTypePrefixes: schema.rowMatchTextTypePrefixes,
-                systemDatabaseNamesIgnoreCase: schema.systemDatabaseNamesIgnoreCase
+                systemDatabaseNamesIgnoreCase: schema.systemDatabaseNamesIgnoreCase,
+                identifierRules: schema.identifierRules
             ),
             editor: editor, connection: connection
         )
@@ -491,6 +511,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         reverseTypeIndex["PGlite"] = "PostgreSQL"
         reverseTypeIndex["ScyllaDB"] = "Cassandra"
         reverseTypeIndex["Turso"] = "libSQL"
+        reverseTypeIndex["Presto"] = "Trino"
         reverseTypeIndex["Firebase Realtime Database"] = "Firestore"
     }
 
@@ -760,6 +781,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsColumnSort: existingSnapshot?.capabilities.supportsColumnSort ?? true,
                 supportsMatchAnyFilters: existingSnapshot?.capabilities.supportsMatchAnyFilters ?? true,
                 columnsAreSampled: existingSnapshot?.capabilities.columnsAreSampled ?? false,
+                patternFiltersReadAnyColumn: existingSnapshot?.capabilities.patternFiltersReadAnyColumn ?? false,
+                filtersTypedByReadRows: existingSnapshot?.capabilities.filtersTypedByReadRows ?? false,
                 isEngineReadOnly: existingSnapshot?.capabilities.isEngineReadOnly ?? false,
                 localFilePathField: existingSnapshot?.capabilities.localFilePathField,
                 newDatabaseFileExtensions: existingSnapshot?.capabilities.newDatabaseFileExtensions ?? [],
@@ -768,7 +791,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsRemoteDatabaseSession: existingSnapshot?.capabilities
                     .supportsRemoteDatabaseSession ?? false,
                 supportsPrincipalConnectionLimit: existingSnapshot?.capabilities
-                    .supportsPrincipalConnectionLimit ?? true
+                    .supportsPrincipalConnectionLimit ?? true,
+                supportsRoleLogin: existingSnapshot?.capabilities.supportsRoleLogin ?? true,
+                binaryLengthFunction: existingSnapshot?.capabilities.binaryLengthFunction
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,
@@ -787,7 +812,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 implicitSchemaName: existingSnapshot?.schema.implicitSchemaName,
                 rowMatchExcludedTypePrefixes: existingSnapshot?.schema.rowMatchExcludedTypePrefixes ?? [],
                 rowMatchTextTypePrefixes: existingSnapshot?.schema.rowMatchTextTypePrefixes ?? [],
-                systemDatabaseNamesIgnoreCase: existingSnapshot?.schema.systemDatabaseNamesIgnoreCase ?? false
+                systemDatabaseNamesIgnoreCase: existingSnapshot?.schema.systemDatabaseNamesIgnoreCase ?? false,
+                identifierRules: existingSnapshot?.schema.identifierRules
             ),
             editor: PluginMetadataSnapshot.EditorConfig(
                 sqlDialect: driverType.sqlDialect,

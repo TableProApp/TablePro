@@ -37,7 +37,16 @@ impl ControlLink {
     /// it rather than leaving a half-read answer for the next one.
     pub(crate) async fn kill_query(&self, id: u64) -> Result<(), DriverError> {
         let mut held = self.connection.lock().await;
-        let mut physical = match held.take() {
+        // The server may have closed the kept one since the last stop, at
+        // its wait_timeout or a restart. A ping says so without sending
+        // the KILL, which, once sent, must not be sent again elsewhere.
+        let mut kept = held.take();
+        if let Some(physical) = kept.as_mut()
+            && physical.connection.ping().await.is_err()
+        {
+            kept = None;
+        }
+        let mut physical = match kept {
             Some(physical) => physical,
             None => {
                 self.endpoint
@@ -45,23 +54,9 @@ impl ControlLink {
                     .await?
             }
         };
-        let flavour = physical.flavour;
-        let killed = physical
-            .connection
-            .execute(AssertSqlSafe(format!("KILL QUERY {id}")))
-            .await
-            .map_err(|error| map_error(&error, flavour));
-        match killed {
-            Ok(_) => {
-                *held = Some(physical);
-                Ok(())
-            }
-            Err(error) if server_number(&error) == Some(NO_SUCH_THREAD) => {
-                *held = Some(physical);
-                Ok(())
-            }
-            Err(error) => Err(error),
-        }
+        kill(&mut physical, id).await?;
+        *held = Some(physical);
+        Ok(())
     }
 
     pub(crate) async fn close(&self) {
@@ -70,6 +65,19 @@ impl ControlLink {
             let bound = self.endpoint.liveness().close_timeout;
             let _ = tokio::time::timeout(bound, physical.connection.close()).await;
         }
+    }
+}
+
+async fn kill(physical: &mut MySqlPhysical, id: u64) -> Result<(), DriverError> {
+    let flavour = physical.flavour;
+    let killed = physical
+        .connection
+        .execute(AssertSqlSafe(format!("KILL QUERY {id}")))
+        .await
+        .map_err(|error| map_error(&error, flavour));
+    match killed {
+        Err(error) if server_number(&error) != Some(NO_SUCH_THREAD) => Err(error),
+        _ => Ok(()),
     }
 }
 

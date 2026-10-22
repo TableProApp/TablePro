@@ -18,6 +18,7 @@ mod results_pane;
 mod run_history;
 mod run_log;
 mod run_scope;
+mod safe_mode_gate;
 mod script_runner;
 mod sidebar_policy;
 mod significant_tokens;
@@ -49,11 +50,13 @@ use self::imp::RunningScript;
 use self::result_widgets::PageActions;
 use self::run_log::{EntryKind, RunEvent, RunLog};
 use self::run_scope::ScopedText;
-use self::script_runner::{RUN_ROW_LIMIT, ScriptRun, plan_batches, run_in_tab};
+use self::script_runner::{RUN_ROW_LIMIT, RunBatch, ScriptRun, plan_batches, run_in_tab};
+pub(crate) use self::transaction_dirty::OpenTransaction;
 use super::clipboard::{CopyRequest, InClauseRows};
 use super::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
 use super::grid::{GridMsg, GridSink, present_row_json};
 use super::handler_guard::HandlerGuard;
+use super::write_confirmation::{self, WriteConfirmation};
 use crate::services::active_session::ActiveSession;
 use crate::services::history_service::HistoryService;
 use crate::workspace::WorkOutcome;
@@ -75,6 +78,16 @@ pub struct SqlEditorInit {
     /// Keeps the process alive while the tab's connection closes.
     pub hold: Rc<dyn ProcessHold>,
     pub close_timeout: Duration,
+}
+
+/// What one run sends, planned before Safe Mode asks about it, so the
+/// answer covers exactly what then runs.
+struct PlannedRun {
+    scoped: ScopedText,
+    batches: Vec<RunBatch>,
+    policy: tablepro_core::sql_syntax::script::BatchErrorPolicy,
+    warnings: Vec<String>,
+    grammar: SqlGrammar,
 }
 
 pub(crate) struct EditorDeps {
@@ -137,6 +150,12 @@ impl SqlEditor {
     /// Whether the tab's connection holds a transaction the user opened.
     pub fn has_open_transaction(&self) -> bool {
         self.imp().transaction_dirty.get()
+    }
+
+    /// The transaction the results line names. Unlike
+    /// `has_open_transaction`, an engine that cannot say has none.
+    pub(crate) fn open_transaction(&self) -> Option<OpenTransaction> {
+        self.imp().open_transaction.get()
     }
 
     /// Whether the last run sent a statement that can change what the
@@ -368,7 +387,7 @@ impl SqlEditor {
 
     fn execute(&self, scoped: ScopedText) {
         let imp = self.imp();
-        if self.is_running() || imp.shut_down.get() {
+        if self.is_running() || imp.shut_down.get() || imp.confirming.get() {
             return;
         }
         let Some(deps) = self.deps() else {
@@ -391,6 +410,50 @@ impl SqlEditor {
             self.say(&crate::i18n::gettext("There is nothing to run."));
             return;
         }
+        let gated = safe_mode_gate::gate(batches, grammar, session.safe_mode());
+        let planned = PlannedRun {
+            scoped,
+            batches: gated.batches,
+            policy,
+            warnings,
+            grammar,
+        };
+        if gated.confirm.is_empty() {
+            self.start_run(session, planned);
+            return;
+        }
+        let confirmation = WriteConfirmation::statements(&session.metadata().name, &gated.confirm, gated.destructive);
+        imp.confirming.set(true);
+        let weak = self.downgrade();
+        glib::spawn_future_local(async move {
+            let Some(editor) = weak.upgrade() else {
+                return;
+            };
+            let answered = write_confirmation::confirm(editor.upcast_ref(), &confirmation).await;
+            editor.imp().confirming.set(false);
+            // The answer covers the connection it was asked on.
+            let same_session = editor
+                .deps()
+                .and_then(|deps| deps.session.get())
+                .is_some_and(|current| Arc::ptr_eq(&current, &session));
+            if answered && same_session && !editor.is_running() && !editor.imp().shut_down.get() {
+                editor.start_run(session, planned);
+            }
+        });
+    }
+
+    fn start_run(&self, session: Arc<tablepro_session::Session>, planned: PlannedRun) {
+        let imp = self.imp();
+        let Some(deps) = self.deps() else {
+            return;
+        };
+        let PlannedRun {
+            scoped,
+            batches,
+            policy,
+            warnings,
+            grammar,
+        } = planned;
         imp.changes_catalog.set(
             batches
                 .iter()
@@ -512,15 +575,14 @@ impl SqlEditor {
         imp.run_button.set_sensitive(true);
         imp.stop_button.set_visible(false);
         imp.results.set_running(false);
-        let (summary, label, dirty, first, entry, outcome) = {
+        let (summary, transaction, first, entry, outcome) = {
             let log = imp.log.borrow();
             let Some(log) = log.as_ref() else {
                 return;
             };
             (
                 log.summary(),
-                transaction_dirty::transaction_label(log.lost(), log.transaction()),
-                transaction_dirty::transaction_dirty(log.lost(), log.transaction(), log.has_run()),
+                RunTransaction::of(log),
                 log.first_to_show(),
                 run_history::history_entry(query, metadata, started_at, log),
                 log.outcome(),
@@ -533,11 +595,17 @@ impl SqlEditor {
             WorkOutcome::Succeeded | WorkOutcome::Cancelled => gtk4::AccessibleAnnouncementPriority::Medium,
         };
         crate::ui::a11y::announce(&*imp.results, &summary, priority);
-        imp.results.set_transaction(label.as_deref());
+        imp.results
+            .set_transaction(transaction.label.as_deref(), transaction.offers_commit);
         if let Some(first) = first.and_then(|first| u32::try_from(first).ok()) {
             imp.results.select(first);
         }
-        if imp.transaction_dirty.replace(dirty) != dirty {
+        let dirty = transaction.dirty;
+        let dirty_changed = imp.transaction_dirty.replace(dirty) != dirty;
+        // Open to failed keeps the tab dirty, and the window still names
+        // the change on its other tabs.
+        let open_changed = imp.open_transaction.replace(transaction.open) != transaction.open;
+        if dirty_changed || open_changed {
             self.emit_by_name::<()>("transaction-changed", &[&dirty]);
         }
         self.record_history(entry, dialect);
@@ -832,6 +900,25 @@ impl SqlEditor {
                 editor.insert_file(file, true).await;
             }
         });
+    }
+}
+
+struct RunTransaction {
+    label: Option<String>,
+    offers_commit: bool,
+    dirty: bool,
+    open: Option<OpenTransaction>,
+}
+
+impl RunTransaction {
+    fn of(log: &RunLog) -> Self {
+        let (lost, state) = (log.lost(), log.transaction());
+        Self {
+            label: transaction_dirty::transaction_label(lost, state),
+            offers_commit: transaction_dirty::offers_commit(lost, state),
+            dirty: transaction_dirty::transaction_dirty(lost, state, log.has_run()),
+            open: transaction_dirty::open_transaction(lost, state),
+        }
     }
 }
 

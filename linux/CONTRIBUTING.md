@@ -54,7 +54,7 @@ meson dist -C _build --no-tests --formats xztar
 
 Inside a desktop session, `dbus-run-session -- meson test -C _build` runs the same suites without xvfb.
 
-The fast job also runs a few source greps and the lychee line below, from the repository root. The supply-chain and Docker jobs run the rest, among others; `.github/workflows/build-linux.yml` has every job, and the Docker job runs the last line once per package that has Docker tests:
+The fast job also runs a few source greps. The docs job runs the lychee line below from the repository root, and the supply-chain and Docker jobs run the rest, among others; `.github/workflows/build-linux.yml` has every job, and the Docker job runs the last line once per package that has Docker tests:
 
 ```bash
 cargo deny --locked check advisories bans licenses sources
@@ -124,6 +124,10 @@ docs(linux): clarify the TLS step for a new driver
 ## Changelog
 
 A user-visible change adds one towncrier fragment, `changelog.d/<PR>.<type>.md` in this directory, which the release turns into a [CHANGELOG.md](CHANGELOG.md) section ([docs/releasing.md](docs/releasing.md)). `apple/CHANGELOG.md` and `apple/changelog.d/` are the macOS release notes; a Linux change never goes there. [`.claude/rules/changelog.md`](../.claude/rules/changelog.md) has the rules for both.
+
+## Translations
+
+Translations come in as pull requests against `po/<locale>.po`, one language per pull request. [po/README.md](po/README.md#where-translators-work) has where to get the template, which languages are wanted and when a language joins `po/LINGUAS`.
 
 ## Pull requests
 

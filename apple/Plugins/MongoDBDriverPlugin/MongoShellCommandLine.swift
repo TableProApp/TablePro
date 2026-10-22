@@ -10,7 +10,7 @@ import Foundation
 /// `use orders` and `show collections` are shell syntax: mongosh reads them before the engine ever
 /// sees them, and so does this. Everything else is left exactly as typed, so a statement that only
 /// happens to start with the word `use` as an identifier is untouched.
-enum MongoShellCommandLine {
+nonisolated enum MongoShellCommandLine {
     private static let shownTopics: Set<String> = [
         "dbs", "databases", "collections", "tables"
     ]

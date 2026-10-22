@@ -9,6 +9,7 @@ import Foundation
 import os
 import TableProAutocomplete
 import TableProPluginKit
+import TableProSQLGrammar
 
 actor SQLSchemaProvider {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLSchemaProvider")
@@ -208,6 +209,13 @@ actor SQLSchemaProvider {
     private func fallbackTableLabel(for key: ColumnCacheKey, canonicalName: String) -> String {
         guard let schema = key.schema, schema != getDefaultSchema()?.lowercased() else { return canonicalName }
         return "\(schema).\(canonicalName)"
+    }
+
+    // The cache key holds the names lowercased, so only a table the list names keeps its stored spelling.
+    private func fallbackTableParts(for key: ColumnCacheKey, storedName: String?) -> [SQLCompletionIdentifier.Part] {
+        let table: SQLCompletionIdentifier.Part = storedName.map { .catalog($0) } ?? .statement(key.name, quoted: false)
+        guard let schema = key.schema, schema != getDefaultSchema()?.lowercased() else { return [table] }
+        return [.statement(schema, quoted: false), table]
     }
 
     /// The schema a table can be named in without its schema: the engine's implicit schema when it
@@ -423,17 +431,9 @@ actor SQLSchemaProvider {
 
     // MARK: - AI Schema Context
 
-    func buildSchemaContextForAI(settings: AISettings) async -> String? {
+    // The tables the statement at the cursor reads take the column budget first.
+    func buildSchemaContextForAI(settings: AISettings, editorText: String? = nil, cursorOffset: Int = 0) async -> String? {
         guard !tables.isEmpty, let connection = connectionInfo else { return nil }
-
-        let listedTables = tables
-        var schemaTables: [AISchemaTable] = []
-        schemaTables.reserveCapacity(listedTables.count)
-        for table in listedTables.prefix(settings.maxSchemaTables) {
-            let columns = await getColumns(for: table.name, schema: table.schema)
-            schemaTables.append(AISchemaTable(table: table, columns: columns))
-        }
-        schemaTables += listedTables.dropFirst(settings.maxSchemaTables).map { AISchemaTable(table: $0) }
 
         let dbType = connection.type
         let capturedConnection = connection
@@ -447,6 +447,32 @@ actor SQLSchemaProvider {
             let langName = PluginManager.shared.queryLanguageName(for: dbType)
             return (resolvedName, quote, lang, langName)
         }
+
+        var listedTables = tables
+        if let editorText, editorLanguage == .sql, listedTables.count > settings.maxSchemaTables {
+            let grammar = dbType.lexicalGrammar
+            let statement = SQLStatementScanner.statementAtCursor(
+                in: editorText,
+                cursorPosition: cursorOffset,
+                grammar: grammar
+            )
+            let first = AISchemaContext.indices(
+                of: AISchemaContext.referencedTables(in: statement, grammar: grammar),
+                in: listedTables,
+                defaultSchema: defaultSchema
+            )
+            let picked = Set(first)
+            listedTables = first.map { listedTables[$0] }
+                + listedTables.indices.filter { !picked.contains($0) }.map { listedTables[$0] }
+        }
+
+        var schemaTables: [AISchemaTable] = []
+        schemaTables.reserveCapacity(listedTables.count)
+        for table in listedTables.prefix(settings.maxSchemaTables) {
+            let columns = await getColumns(for: table.name, schema: table.schema)
+            schemaTables.append(AISchemaTable(table: table, columns: columns))
+        }
+        schemaTables += listedTables.dropFirst(settings.maxSchemaTables).map { AISchemaTable(table: $0) }
 
         return AISchemaContext.buildSystemPrompt(
             databaseType: dbType,
@@ -570,7 +596,8 @@ actor SQLSchemaProvider {
                 SQLCompletionItem.column(
                     $0.name, dataType: $0.type, tableName: tableName,
                     isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
-                    defaultValue: $0.defaultValue, comment: $0.comment
+                    defaultValue: $0.defaultValue, comment: $0.comment,
+                    identifier: .catalog($0.name)
                 )
             }
         }
@@ -625,12 +652,14 @@ actor SQLSchemaProvider {
         // swiftlint:disable:next large_tuple
         var itemDataBuilder: [(
             label: String, insertText: String, type: String?, table: String,
-            isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?
+            isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?,
+            identifier: SQLCompletionIdentifier?, isQualified: Bool
         )] = []
 
         let hasMultipleRefs = references.count > 1
         for ref in references {
             let refId = ref.identifier
+            let qualifier = SQLCompletionProvider.qualifierPart(for: ref)
             if let derivedColumns = ref.derivedColumns {
                 for name in derivedColumns {
                     let label = hasMultipleRefs ? "\(refId).\(name)" : name
@@ -638,7 +667,11 @@ actor SQLSchemaProvider {
                         (
                             label: label, insertText: label, type: nil,
                             table: refId, isPK: false, isNullable: true,
-                            defaultValue: nil, comment: nil
+                            defaultValue: nil, comment: nil,
+                            identifier: hasMultipleRefs
+                                ? SQLCompletionIdentifier([qualifier, .statement(name, quoted: false)])
+                                : nil,
+                            isQualified: hasMultipleRefs
                         ))
                 }
                 continue
@@ -653,7 +686,11 @@ actor SQLSchemaProvider {
                         label: label, insertText: insertText, type: column.dataType,
                         table: ref.tableName, isPK: column.isPrimaryKey,
                         isNullable: column.isNullable, defaultValue: column.defaultValue,
-                        comment: column.comment
+                        comment: column.comment,
+                        identifier: SQLCompletionIdentifier(
+                            hasMultipleRefs ? [qualifier, .catalog(column.name)] : [.catalog(column.name)]
+                        ),
+                        isQualified: hasMultipleRefs
                     ))
             }
         }
@@ -663,11 +700,14 @@ actor SQLSchemaProvider {
 
         return await MainActor.run {
             itemData.map {
-                SQLCompletionItem.column(
+                var item = SQLCompletionItem.column(
                     $0.label, dataType: $0.type, tableName: $0.table,
                     isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
-                    defaultValue: $0.defaultValue, comment: $0.comment
+                    defaultValue: $0.defaultValue, comment: $0.comment,
+                    identifier: $0.identifier
                 )
+                item.isQualifiedReference = $0.isQualified
+                return item
             }
         }
     }
@@ -682,8 +722,13 @@ actor SQLSchemaProvider {
             tables.map { ($0.name.lowercased(), $0.name) },
             uniquingKeysWith: { first, _ in first }
         )
+        // Keyed by schema too: a table's spelling in one schema says nothing about a namesake in another.
+        let storedNames = Dictionary(
+            tables.map { (cacheKey(table: $0.name, schema: $0.schema), $0.name) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
-        var allEntries: [(table: String, col: ColumnInfo)] = []
+        var allEntries: [(table: String, tableParts: [SQLCompletionIdentifier.Part], col: ColumnInfo)] = []
         var nameCount: [String: Int] = [:]
 
         // Sorted, because this emission order is what `rankResults` falls back to for candidates
@@ -694,8 +739,9 @@ actor SQLSchemaProvider {
         for key in columnCache.keys.sorted(by: Self.isOrderedBefore) {
             guard let columns = columnCache[key] else { continue }
             let tableName = fallbackTableLabel(for: key, canonicalName: canonicalNames[key.name] ?? key.name)
+            let tableParts = fallbackTableParts(for: key, storedName: storedNames[key])
             for col in columns {
-                allEntries.append((table: tableName, col: col))
+                allEntries.append((table: tableName, tableParts: tableParts, col: col))
                 nameCount[col.name.lowercased(), default: 0] += 1
             }
         }
@@ -703,7 +749,8 @@ actor SQLSchemaProvider {
         // swiftlint:disable:next large_tuple
         var itemDataBuilder: [(
             label: String, insertText: String, type: String, table: String,
-            isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?
+            isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?,
+            identifier: SQLCompletionIdentifier, isQualified: Bool
         )] = []
 
         for entry in allEntries {
@@ -715,7 +762,11 @@ actor SQLSchemaProvider {
                 label: label, insertText: insertText, type: entry.col.dataType,
                 table: entry.table, isPK: entry.col.isPrimaryKey,
                 isNullable: entry.col.isNullable, defaultValue: entry.col.defaultValue,
-                comment: entry.col.comment
+                comment: entry.col.comment,
+                identifier: SQLCompletionIdentifier(
+                    isAmbiguous ? entry.tableParts + [.catalog(entry.col.name)] : [.catalog(entry.col.name)]
+                ),
+                isQualified: isAmbiguous
             ))
         }
 
@@ -726,9 +777,11 @@ actor SQLSchemaProvider {
                 var item = SQLCompletionItem.column(
                     $0.label, dataType: $0.type, tableName: $0.table,
                     isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
-                    defaultValue: $0.defaultValue, comment: $0.comment
+                    defaultValue: $0.defaultValue, comment: $0.comment,
+                    identifier: $0.identifier
                 )
                 item.sortPriority = 150
+                item.isQualifiedReference = $0.isQualified
                 return item
             }
         }

@@ -10,8 +10,26 @@ pub fn significant_tokens(text: &str, grammar: SqlGrammar, settings: LexicalSett
     let plan = ScriptPlan::build(text, grammar, settings);
     let mut tokens: Vec<SignificantToken> = Vec::new();
     let mut spacing = Spacing::default();
+    // A MySQL executable comment is compared as written: the formatter
+    // takes it for a comment, and which of its text is a string depends
+    // on the server.
+    let mut executable: Option<usize> = None;
     for token in plan.tokens(0..text.len()) {
         let slice = text.get(token.range.clone()).unwrap_or_default();
+        if token.kind == ScriptTokenKind::ExecutableMarker || executable.is_some() {
+            let start = *executable.get_or_insert(token.range.start);
+            if token.kind == ScriptTokenKind::ExecutableMarker && slice == "*/" {
+                executable = None;
+                push(
+                    &mut tokens,
+                    &mut spacing,
+                    grammar,
+                    token.kind,
+                    text.get(start..token.range.end).unwrap_or_default(),
+                );
+            }
+            continue;
+        }
         if token.kind == ScriptTokenKind::Whitespace {
             spacing.spaced = true;
             spacing.line_break |= slice.contains('\n');
@@ -23,17 +41,37 @@ pub fn significant_tokens(text: &str, grammar: SqlGrammar, settings: LexicalSett
             ScriptTokenKind::LineComment | ScriptTokenKind::BlockComment => slice.trim_end(),
             _ => slice,
         };
-        let gap = tokens.last().map_or(Gap::Free, |previous| {
-            gap_between(grammar, previous, token.kind, body, spacing)
-        });
-        tokens.push(SignificantToken {
-            kind: token.kind,
-            text: body.to_owned(),
-            gap,
-        });
-        spacing = Spacing::default();
+        push(&mut tokens, &mut spacing, grammar, token.kind, body);
+    }
+    if let Some(start) = executable {
+        let rest = text.get(start..).unwrap_or_default();
+        push(
+            &mut tokens,
+            &mut spacing,
+            grammar,
+            ScriptTokenKind::ExecutableMarker,
+            rest,
+        );
     }
     tokens
+}
+
+fn push(
+    tokens: &mut Vec<SignificantToken>,
+    spacing: &mut Spacing,
+    grammar: SqlGrammar,
+    kind: ScriptTokenKind,
+    body: &str,
+) {
+    let gap = tokens.last().map_or(Gap::Free, |previous| {
+        gap_between(grammar, previous, kind, body, *spacing)
+    });
+    tokens.push(SignificantToken {
+        kind,
+        text: body.to_owned(),
+        gap,
+    });
+    *spacing = Spacing::default();
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,7 +147,8 @@ fn spacing_is_free(kind: ScriptTokenKind, text: &str) -> bool {
         | ScriptTokenKind::CloseParen
         | ScriptTokenKind::Semicolon
         | ScriptTokenKind::LineComment
-        | ScriptTokenKind::BlockComment => true,
+        | ScriptTokenKind::BlockComment
+        | ScriptTokenKind::ExecutableMarker => true,
         ScriptTokenKind::Punct => matches!(
             text,
             "," | "." | "=" | "<" | ">" | "+" | "-" | "*" | "/" | "%" | "^" | "|" | "!" | "~" | "[" | "]"
@@ -128,6 +167,22 @@ mod tests {
 
     fn tokens(text: &str) -> Vec<SignificantToken> {
         tokens_for(text, SqlGrammar::PostgreSql)
+    }
+
+    #[test]
+    fn a_mysql_executable_comment_must_stay_as_written() {
+        // Under NO_BACKSLASH_ESCAPES the indented line is inside a string.
+        let source = "SELECT 1 /*! , 'a\\' AS x, '\n    foo\n' */";
+        let reindented = "SELECT 1 /*! , 'a\\' AS x, '\n foo\n' */";
+
+        assert_ne!(
+            tokens_for(source, SqlGrammar::MySql),
+            tokens_for(reindented, SqlGrammar::MySql)
+        );
+        assert_eq!(
+            tokens_for(source, SqlGrammar::MySql),
+            tokens_for(&source.replace("1 /*!", "1\n/*!"), SqlGrammar::MySql)
+        );
     }
 
     #[test]

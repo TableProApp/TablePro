@@ -943,6 +943,22 @@ struct ConnectionURLParserTests {
         #expect(parsed.isView == false)
     }
 
+    @Test("A query value is decoded once, and an encoded plus stays a plus, in a standard or an SSH URL", arguments: [
+        "postgresql://user@host/db",
+        "postgresql+ssh://me@bastion/user@10.0.0.5/db"
+    ])
+    func queryValuesDecodeOnce(base: String) throws {
+        let url = base + "?name=C%2B%2B+DB&value=a%2Bb&condition=n+%2B+1+%3D+2&schema=s%2525"
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse")
+            return
+        }
+        #expect(parsed.connectionName == "C++ DB")
+        #expect(parsed.filterValue == "a+b")
+        #expect(parsed.filterCondition == "n + 1 = 2")
+        #expect(parsed.schema == "s%25")
+    }
+
     @Test("Connection name from name parameter in standard URL")
     func testConnectionNameFromStandardURL() {
         let result = ConnectionURLParser.parse("mysql://root@localhost/db?name=My+Database")

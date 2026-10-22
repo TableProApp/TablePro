@@ -57,9 +57,20 @@ The app scheme compiles only the plugins the app embeds. The `AllPlugins` aggreg
 xcodebuild build -project TablePro.xcodeproj -scheme AllPlugins -destination 'platform=macOS' -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO
 ```
 
-`scripts/release/build.sh plugins --unsigned` builds the registry plugins the way a release does, universal, into `build/release/plugins`: [`RELEASING.md`](RELEASING.md#reproducing-a-release-build).
-
 `scripts/install-plugin-dev.sh <Target>` copies a registry plugin you built in Debug into the user plugins folder.
+
+### A Release build
+
+`scripts/release/build.sh` builds the app and the registry plugins the way a tag does, universal, into `build/release/`; `package.sh` writes the assets to `dist/`. Release Build runs the same:
+
+```bash
+export VERSION=0.0.0-dev BUILD=9999999
+scripts/release/build.sh app --unsigned && scripts/release/package.sh app --unsigned
+scripts/build-dameng.sh both && scripts/build-hana.sh both
+scripts/release/build.sh plugins --unsigned && scripts/release/package.sh plugins --unsigned
+```
+
+Signed: drop `--unsigned`, with the Developer ID identity and the provisioning profile `scripts/release/ExportOptions.plist` names. `scripts/release/notarize.sh <path>...` needs the profile `xcrun notarytool store-credentials TablePro --key <p8> --key-id <id> --issuer <issuer>` creates.
 
 ### Clean builds
 
@@ -82,6 +93,10 @@ swift test --package-path Packages/TableProCore --filter '<Target>.<Suite>'
 xcodebuild -project TableProMobile/TableProMobile.xcodeproj -scheme TableProMobile test -only-testing:TableProMobileTests/<Suite> \
     -destination 'platform=iOS Simulator,name=<iPhone>' -parallel-testing-enabled NO -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO ARCHS=arm64
 ```
+
+## Performance
+
+`scripts/benchmark-app-paths.sh` times cold launch, opening a 1,000,000-row table and switching tabs, 10 runs each, and checks the median and 95th percentile against the budgets in `scripts/benchmark/app-paths/baseline.json`. Usage, permissions and the fixtures are in its header. In Instruments the same three paths are the `AppLaunch`, `TableLoad` and `TabSwitch` intervals under Points of Interest.
 
 ## Code style
 
@@ -107,7 +122,7 @@ The architecture is in the area rules under `.claude/rules/`, and its invariants
 | TableProEditor | `Packages/`, vendored from CodeEditSourceEditor and CodeEditTextView | The SQL editor |
 | TableProGrammars | `Packages/` | Tree-sitter grammars |
 | TableProCore | `Packages/` | Modules the macOS and iOS apps share |
-| TableProMacCore | `Packages/` | macOS-only modules the app links: utilities, autocomplete, SSH config, MCP |
+| TableProMacCore | `Packages/` | macOS-only modules the app links: utilities, SSH config, MCP |
 | TableProOracle | `Packages/`, wraps a pinned fork of OracleNIO | Oracle wire protocol |
 | Sparkle | SPM | Updates, EdDSA-signed |
 | Yams | SPM | YAML for project folder import |
@@ -129,7 +144,7 @@ xcodebuild -importLocalizations -project TablePro.xcodeproj -localizationPath Lo
 scripts/localization.py status              # what is translated, per language
 ```
 
-The export builds the app first, so run `scripts/download-libs.sh` and `scripts/generate-project.sh` once before it. Pass an existing language code to fill gaps, or a new one to start a language. Commit the catalog, not the export: `Localization/` is ignored. The iPhone and iPad app has its own catalog: run the same commands on `TableProMobile/TableProMobile.xcodeproj` with the `TableProMobile` scheme. Plugin and package strings: [`AGENTS.md`](AGENTS.md), Every change 3.
+The export builds the app first, so run `scripts/download-libs.sh` and `scripts/generate-project.sh` once before it. Pass an existing language code to fill gaps, or a new one to start a language. Commit the catalog, not the export: `Localization/` is ignored. The iPhone and iPad app has its own catalog: run the same commands on `TableProMobile/TableProMobile.xcodeproj` with the `TableProMobile` scheme. Plugin and package strings, and strings a command-line build added: [`AGENTS.md`](AGENTS.md), Every change 3.
 
 ## Troubleshooting
 

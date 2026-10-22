@@ -50,9 +50,40 @@ internal struct LicenseActivationFailure: Equatable {
     let link: LicenseActivationLink?
 }
 
+internal struct LicenseFeatureGroup: Equatable, Identifiable {
+    let tier: LicenseTier
+    let includedTier: LicenseTier?
+    let features: [ProFeature]
+    let access: ProFeatureAccess
+
+    var id: LicenseTier { tier }
+}
+
 /// Turns license state into what the pane shows. Pure and free of any view type, so the whole grid
 /// of states can be tested without building a view, the same way `LicenseManager.resolveStatus` is.
 internal enum LicensePresentation {
+    static func featureGroups(
+        status: LicenseStatus,
+        tier: LicenseTier,
+        features: [ProFeature] = ProFeature.allCases
+    ) -> [LicenseFeatureGroup] {
+        var tiers: [LicenseTier] = []
+        for feature in features where !tiers.contains(feature.requiredTier) {
+            tiers.append(feature.requiredTier)
+        }
+        // Lowest tier first whatever the case order, so each plan names the one it builds on.
+        tiers.sort { !$0.unlocks($1) }
+
+        return tiers.enumerated().map { index, groupTier in
+            LicenseFeatureGroup(
+                tier: groupTier,
+                includedTier: index > 0 ? tiers[index - 1] : nil,
+                features: features.filter { $0.requiredTier == groupTier },
+                access: LicenseManager.resolveAccess(status: status, tier: tier, requiredTier: groupTier)
+            )
+        }
+    }
+
     /// Whether this license currently entitles anything.
     ///
     /// The pane uses it to decide whether a renewal field belongs beside the license, not whether

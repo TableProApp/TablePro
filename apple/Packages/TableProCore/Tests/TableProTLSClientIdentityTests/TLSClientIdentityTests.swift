@@ -24,6 +24,12 @@ struct IdentityCase: Sendable, CustomTestStringConvertible {
             commonName: "probe-client"
         ),
         IdentityCase(
+            testDescription: "RSA PKCS#1 PEM with CRLF line endings",
+            certificate: Data(TLSTestFixtures.clientCertificate.replacingOccurrences(of: "\n", with: "\r\n").utf8),
+            privateKey: Data(TLSTestFixtures.clientKeyPKCS1.replacingOccurrences(of: "\n", with: "\r\n").utf8),
+            commonName: "probe-client"
+        ),
+        IdentityCase(
             testDescription: "DER certificate with a DER PKCS#8 RSA key",
             certificate: TLSTestFixtures.der(TLSTestFixtures.clientCertificate),
             privateKey: TLSTestFixtures.der(TLSTestFixtures.clientKeyPKCS8),

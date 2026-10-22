@@ -11,6 +11,7 @@ struct ConnectionPromptAlert: ViewModifier {
     @Bindable var queue: ConnectionPromptQueue
 
     @State private var shown: ConnectionPrompt?
+    @State private var typed: [String] = []
 
     func body(content: Content) -> some View {
         content
@@ -25,6 +26,9 @@ struct ConnectionPromptAlert: ViewModifier {
                 ),
                 presenting: shown
             ) { prompt in
+                ForEach(prompt.fields.indices, id: \.self) { index in
+                    field(prompt.fields[index], at: index)
+                }
                 Button(prompt.confirmTitle, role: buttonRole(for: prompt)) {
                     answer(prompt, accepted: true)
                 }
@@ -37,13 +41,34 @@ struct ConnectionPromptAlert: ViewModifier {
                 Text(prompt.message)
             }
             .onChange(of: queue.current, initial: true) { _, next in
+                typed = Array(repeating: "", count: next?.fields.count ?? 0)
                 shown = next
             }
     }
 
+    @ViewBuilder
+    private func field(_ field: ConnectionPrompt.Field, at index: Int) -> some View {
+        let text = Binding(
+            get: { index < typed.count ? typed[index] : "" },
+            set: { value in
+                guard index < typed.count else { return }
+                typed[index] = value
+            }
+        )
+        if field.isSecure {
+            SecureField(field.label, text: text)
+                .textContentType(field.isCode ? .oneTimeCode : .password)
+        } else {
+            TextField(field.label, text: text)
+                .textContentType(field.isCode ? .oneTimeCode : nil)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
+    }
+
     private func answer(_ prompt: ConnectionPrompt, accepted: Bool) {
         shown = nil
-        queue.answer(prompt.id, accepted: accepted)
+        queue.answer(prompt.id, accepted: accepted, typed: accepted ? typed : [])
     }
 
     private func buttonRole(for prompt: ConnectionPrompt) -> ButtonRole? {

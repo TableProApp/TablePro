@@ -184,25 +184,17 @@ struct QuickSwitcherPanelContent: View {
     }
 
     private var resultsList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(viewModel.groups) { group in
-                        if let header = group.header {
-                            sectionHeader(header)
-                        }
-                        ForEach(group.items) { item in
-                            itemRow(item)
-                        }
-                    }
+        QuickSwitcherList(
+            rows: viewModel.rows,
+            selection: viewModel.selectedItemId,
+            search: viewModel.searchGeneration,
+            height: listHeight
+        ) { row in
+            VStack(spacing: 0) {
+                if let title = row.sectionTitle {
+                    sectionHeader(title)
                 }
-                .padding(.vertical, QuickSwitcherMetrics.listVerticalPadding)
-            }
-            .frame(height: listHeight)
-            .onChange(of: viewModel.selectedItemId) { newValue in
-                if let id = newValue {
-                    proxy.scrollTo(id)
-                }
+                itemRow(row.item)
             }
         }
     }
@@ -295,7 +287,6 @@ struct QuickSwitcherPanelContent: View {
         .accessibilityValue(Text(namesLocation(item) ? item.subtitle : ""))
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { onCommit(item, .open) }
-        .id(item.id)
     }
 
     private func iconView(for item: QuickSwitcherItem, isSelected: Bool) -> some View {

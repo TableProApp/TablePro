@@ -73,6 +73,11 @@ extension TableViewCoordinator {
     func applyFillColumn(columnIndex: Int, content: FillColumnContent) {
         let targetRows = fillTargetRows()
         guard !targetRows.isEmpty else { return }
+        let retry: @MainActor () -> Void = { [weak self] in
+            self?.applyFillColumn(columnIndex: columnIndex, content: content)
+        }
+        guard unloadedValuesAreLoaded(displayRows: targetRows, columns: IndexSet(integer: columnIndex), retry: retry)
+        else { return }
 
         let undoManager = tableView?.window?.undoManager
         undoManager?.beginUndoGrouping()

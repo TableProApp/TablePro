@@ -18,6 +18,8 @@ extension ConnectionFormViewModel {
         for role in CertificateRole.allCases {
             guard let pem = certificateStore.pem(role: role, for: connectionId) else { continue }
             storedCertificateRoles.insert(role)
+            // This runs again when a pushed screen pops, which must not undo a staged or removed certificate.
+            guard pendingCertificates[role] == nil, !removedCertificates.contains(role) else { continue }
             certificateSummaries[role] = summary(for: role, pem: pem)
         }
     }

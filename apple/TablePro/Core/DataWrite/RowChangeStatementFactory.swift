@@ -13,16 +13,25 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// The statements that put deleted rows back, with what has to run around them outside the transaction.
 struct RestoreStatements {
     let statements: [ParameterizedStatement]
+    // One per statement.
+    let lookups: [RowLookup?]
     /// Run before the transaction opens and after it ends, on the same session: SQL Server's `IDENTITY_INSERT`.
     let prologue: [String]
     let epilogue: [String]
 
-    init(statements: [ParameterizedStatement], prologue: [String] = [], epilogue: [String] = []) {
+    init(
+        statements: [ParameterizedStatement],
+        lookups: [RowLookup?]? = nil,
+        prologue: [String] = [],
+        epilogue: [String] = []
+    ) {
         self.statements = statements
+        self.lookups = lookups ?? Array(repeating: nil, count: statements.count)
         self.prologue = prologue
         self.epilogue = epilogue
     }
@@ -40,6 +49,8 @@ struct DriverWrittenStatement {
     let statement: ParameterizedStatement
     /// The rows a match without a primary key has to find, or nil when nothing vouches for the count.
     let keylessRowCount: Int?
+    var kind: RowWriteKind?
+    var lookup: RowLookup?
 }
 
 @MainActor
@@ -101,6 +112,19 @@ struct RowChangeStatementFactory {
         }
     }
 
+    // A driver's lookups stay with their statements, which cannot run without them.
+    func lookedUpStatements(
+        for changes: [RowChange],
+        deletedRowIDs: Set<RowID> = []
+    ) throws -> RestoreStatements {
+        switch try rowWriteStatements(for: changes, deletedRowIDs: deletedRowIDs) {
+        case .counted(let statements):
+            return RestoreStatements(statements: statements.map(\.statement))
+        case .driverWritten(let statements):
+            return RestoreStatements(statements: statements.map(\.statement), lookups: statements.map(\.lookup))
+        }
+    }
+
     /// Every statement the changes need, or a throw naming the changes that would be left out.
     ///
     /// The host's statements carry the rows they touch, so the executor can hold the server to that
@@ -114,6 +138,7 @@ struct RowChangeStatementFactory {
         try refuseServerOwnedEdits(in: changes)
         try refuseDefaultOnUpdate(in: changes)
         try refuseUnwritableExpressions(in: changes, insertedRowData: insertedRowData)
+        try refuseMisdimensionedVectors(in: changes, insertedRowData: insertedRowData)
         let insertedRowData = insertedRowData.mapValues(leavingServerOwnedColumnsToTheServer)
         let changes = changes.map(droppingServerOwnedExpressions)
         if let driverStatements = try pluginRowWrites(
@@ -124,7 +149,6 @@ struct RowChangeStatementFactory {
         ) {
             return .driverWritten(driverStatements)
         }
-        try refuseMatchesReachingOtherRows(in: changes, deletedRowIDs: deletedRowIDs)
         return .counted(
             try hostStatements(
                 for: changes,
@@ -133,44 +157,6 @@ struct RowChangeStatementFactory {
                 insertedRowIDs: insertedRowIDs
             )
         )
-    }
-
-    // These engines write their own rows, yet their saves reach the host's UPDATE and DELETE, keyed on a key the
-    // engine does not keep unique, with no row count to hold them to (#3776). Dameng enforces its primary key.
-    private static let enginesWithoutUniqueRowMatch: Set<DatabaseType> = [.clickhouse, .snowflake, .trino]
-
-    private func refuseMatchesReachingOtherRows(in changes: [RowChange], deletedRowIDs: Set<RowID>) throws {
-        let reason: String
-        if Self.enginesWithoutUniqueRowMatch.contains(databaseType) {
-            reason = String(
-                format: String(
-                    localized: "This version of TablePro cannot write %@ rows from the grid. Use a SQL statement instead."
-                ),
-                databaseType.displayName
-            )
-        } else if databaseType == .dameng, primaryKeyColumns.isEmpty {
-            reason = String(
-                format: String(
-                    localized: """
-                    This version of TablePro cannot write rows of a %@ table without a primary key from the grid. \
-                    Use a SQL statement instead.
-                    """
-                ),
-                databaseType.displayName
-            )
-        } else {
-            return
-        }
-        for change in changes {
-            switch change.type {
-            case .update:
-                throw DataWriteError.changeRefused(table: tableName, kind: .update, reason: reason)
-            case .delete where deletedRowIDs.contains(change.rowID):
-                throw DataWriteError.changeRefused(table: tableName, kind: .delete, reason: reason)
-            case .insert, .delete:
-                continue
-            }
-        }
     }
 
     /// A value staged for a column the server owns can never be written, however it got staged: the grid offers no
@@ -247,6 +233,42 @@ struct RowChangeStatementFactory {
         }
     }
 
+    // The server refuses the whole save with `expected 3 dimensions, not 2`; this names the column first.
+    // Text the parser cannot read is left to the server, which owns the grammar.
+    private func refuseMisdimensionedVectors(
+        in changes: [RowChange],
+        insertedRowData: [RowID: [PluginCellValue]]
+    ) throws {
+        let classifier = ColumnTypeClassifier()
+        let expected = columnTypeNames.compactMapValues { classifier.classify(rawTypeName: $0).vectorDimensions }
+        guard !expected.isEmpty else { return }
+        for change in changes where change.type != .delete {
+            let kind: RowWriteKind = change.type == .insert ? .insert : .update
+            var written = change.cellChanges.filter { !$0.newIsExpression }.map { ($0.columnName, $0.newValue) }
+            if change.type == .insert, let stored = insertedRowData[change.rowID] {
+                written = zip(columns, stored).enumerated()
+                    .filter { !change.expressionColumns.contains($0.offset) }
+                    .map { ($0.element.0, $0.element.1) }
+            }
+            for (columnName, value) in written {
+                guard let dimensions = expected[columnName],
+                      case .text(let text) = value,
+                      let vector = VectorLiteral.parse(text),
+                      vector.dimensions != dimensions else { continue }
+                throw DataWriteError.changeRefused(
+                    table: tableName,
+                    kind: kind,
+                    reason: String(
+                        format: String(localized: "%1$@ takes %2$lld dimensions, and the value has %3$lld."),
+                        columnName,
+                        dimensions,
+                        vector.dimensions
+                    )
+                )
+            }
+        }
+    }
+
     private struct MarkedCell {
         let kind: RowWriteKind
         let columnName: String
@@ -312,7 +334,7 @@ struct RowChangeStatementFactory {
         deletedRowIDs: Set<RowID>,
         insertedRowIDs: Set<RowID>
     ) throws -> [AttributedStatement] {
-        let statements = try hostGenerator().generateAttributedStatements(
+        let statements = try hostGenerator(schemaName: savedSchemaName).generateAttributedStatements(
             from: changes,
             insertedRowData: insertedRowData,
             deletedRowIDs: deletedRowIDs,
@@ -355,6 +377,7 @@ struct RowChangeStatementFactory {
                     Set(restorable.indices.filter { absent.contains(restorable[$0]) })
                 }
             ) {
+                try refuseUnfilteredWrites(restored.map { $0.statement })
                 return RestoreStatements(statements: restored.map {
                     ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map(\.asAny))
                 })
@@ -421,6 +444,7 @@ struct RowChangeStatementFactory {
     /// A driver that throws on the probe is refusing a change it owns, so it still owns the engine.
     var pluginOwnsStatementGeneration: Bool {
         guard let pluginDriver else { return false }
+        if pluginDriver.capabilities.contains(.rowWrites) { return true }
         let probe = PluginRowChange(rowIndex: 0, type: .update, cellChanges: [], originalRow: nil)
         do {
             return try pluginDriver.generateRowWrites(
@@ -454,7 +478,7 @@ struct RowChangeStatementFactory {
         )
         let writes: [PluginRowWrite]
         do {
-            guard let generated = try pluginDriver.generateRowWrites(
+            let generated = try pluginDriver.generateRowWrites(
                 table: tableName,
                 schema: schemaName,
                 columns: columns,
@@ -464,8 +488,15 @@ struct RowChangeStatementFactory {
                 deletedRowIndices: keyed.deletedRowIndices,
                 insertedRowIndices: keyed.insertedRowIndices,
                 context: rowWriteContext
-            ) else { return nil }
-            writes = generated
+            )
+            // A driver that writes its own rows never hands one back to the host, whose statements are not its engine's.
+            if let generated {
+                writes = generated
+            } else if pluginDriver.capabilities.contains(.rowWrites) {
+                writes = []
+            } else {
+                return nil
+            }
         } catch let refusal as PluginRowWriteRefusal {
             throw DataWriteError.changeRefused(
                 table: tableName, kind: keyed.writeKind(ofRowIndex: refusal.rowIndex), reason: refusal.reason
@@ -474,6 +505,7 @@ struct RowChangeStatementFactory {
             throw DataWriteError.changeRefused(table: tableName, kind: nil, reason: error.localizedDescription)
         }
 
+        try refuseUnfilteredWrites(writes.map(\.statement))
         let unwritten = RowWriteCoverage.unwrittenChanges(
             changes,
             deletedRowIDs: deletedRowIDs,
@@ -483,11 +515,30 @@ struct RowChangeStatementFactory {
         guard unwritten.isEmpty else {
             throw DataWriteError.changesNotWritable(table: tableName, unwritten: UnwrittenRowCounts(unwritten))
         }
-        return writes.map {
+        return writes.map { write in
             DriverWrittenStatement(
-                statement: ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map(\.asAny)),
-                keylessRowCount: keylessRowCount(of: $0, keyed: keyed)
+                statement: ParameterizedStatement(sql: write.statement, parameters: write.parameters.map(\.asAny)),
+                keylessRowCount: write.lookup == nil ? keylessRowCount(of: write, keyed: keyed) : nil,
+                kind: write.rowIndices.first.flatMap(keyed.writeKind(ofRowIndex:)),
+                lookup: write.lookup.map(RowLookup.init)
             )
+        }
+    }
+
+    // The host's own generator never writes one, so only a driver's statements are read.
+    private func refuseUnfilteredWrites(_ statements: [String]) throws {
+        guard PluginManager.shared.editorLanguage(for: databaseType) == .sql else { return }
+        let readings = databaseType.lexicalReadings
+        for sql in statements {
+            // A driver writes no executable comments, so one that set too many to read is read as written.
+            let lexings = readings.lexings(of: sql).map { Array($0) }
+                ?? readings.distinct(for: sql).map { SQLLexing(grammar: $0, text: sql) }
+            for lexing in lexings {
+                guard let write = SQLUnfilteredWrite.writes(in: lexing.text, grammar: lexing.grammar).first else {
+                    continue
+                }
+                throw DataWriteError.changeRefused(table: tableName, kind: write.kind, reason: write.reason)
+            }
         }
     }
 
@@ -505,8 +556,15 @@ struct RowChangeStatementFactory {
         }
     }
 
-    /// A save leaves the table unqualified, as it always has. A restore names the schema the record was saved
-    /// against, because the connection may be pointed at another one by the time the rows are asked for back.
+    /// A save leaves the table unqualified, as it always has, except in a database attached beside the
+    /// opened file: no session can be pointed at one, so an unqualified name would reach the main file's
+    /// table of that name.
+    private var savedSchemaName: String? {
+        PluginManager.shared.listsAttachedDatabases(for: databaseType) ? schemaName : nil
+    }
+
+    /// A restore names the schema the record was saved against, because the connection may be pointed
+    /// at another one by the time the rows are asked for back.
     private func hostGenerator(
         schemaName: String? = nil,
         generatedColumns: Set<String>? = nil,
@@ -575,6 +633,24 @@ struct PluginKeyedChanges {
         case .insert: return .insert
         case .update: return .update
         case .delete: return .delete
+        }
+    }
+}
+
+private extension SQLUnfilteredWrite {
+    var kind: RowWriteKind {
+        switch self {
+        case .update: return .update
+        case .delete: return .delete
+        }
+    }
+
+    var reason: String {
+        switch self {
+        case .update:
+            return String(localized: "The driver wrote an UPDATE with no WHERE clause, which would change every row.")
+        case .delete:
+            return String(localized: "The driver wrote a DELETE with no WHERE clause, which would remove every row.")
         }
     }
 }

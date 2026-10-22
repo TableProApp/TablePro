@@ -228,4 +228,18 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     func dataGridDidCloseCellOverlay() {
         coordinator?.resumeDeferredTableRefresh()
     }
+
+    func dataGridLoadUnloadedValues(
+        rowIDs: [RowID],
+        columns: IndexSet?,
+        completion: @escaping @MainActor (Bool) -> Void
+    ) {
+        guard let coordinator, let tabId = coordinator.tabManager.selectedTab?.id else {
+            completion(false)
+            return
+        }
+        Task { @MainActor in
+            completion(await coordinator.loadUnloadedValues(tabId: tabId, rowIDs: rowIDs, columns: columns))
+        }
+    }
 }

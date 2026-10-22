@@ -163,6 +163,8 @@ nonisolated enum ConnectionLibraryEditing {
         copy.id = newId
         copy.name = name
         copy.isFavorite = false
+        // Only a Mac writes the route, so the copy's record never carries it and the next pull would drop it.
+        copy.sshRoute = nil
 
         let groupId = effectiveGroupId(of: source, validGroupIds: validGroupIds)
         let siblings = LibrarySorting.sorted(

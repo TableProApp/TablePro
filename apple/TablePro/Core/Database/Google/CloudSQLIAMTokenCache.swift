@@ -1,30 +1,19 @@
-//
-//  CloudSQLIAMTokenCache.swift
-//  TablePro
-//
-
 import Foundation
 import TableProGoogleCloud
 import TableProPluginKit
 
-/// What a Cloud SQL IAM connection signs in with, copied from the connection so a token can be
-/// minted off the main actor.
+// Copied from the connection so a token can be minted off the main actor.
 struct CloudSQLIAMLogin: Sendable, Equatable {
     let connectionId: UUID
     let source: GoogleCredentialSource
 }
 
-/// One token provider per connection, so the connect, each metadata connection, a reconnect and a
-/// backup share a token until five minutes before it expires.
+// One provider per connection, so the connect, each metadata connection, a reconnect and a backup
+// share a token until five minutes before it expires.
 actor CloudSQLIAMTokenCache {
     static let shared = CloudSQLIAMTokenCache()
 
-    /// The scope `gcloud sql generate-login-token` and the Cloud SQL connectors ask for. It allows a
-    /// database sign-in and nothing else, so a token that leaks cannot call another Google API.
-    static let scopes = ["https://www.googleapis.com/auth/sqlservice.login"]
-
-    /// The credential bytes a provider was built from. An edited key or a new gcloud login reads
-    /// different bytes, which replaces the provider and the token it holds.
+    // An edited key or a new gcloud login reads different bytes, which replaces the provider and its token.
     private struct Fingerprint: Equatable {
         let source: GoogleCredentialSource
         let documents: [String: Data]
@@ -66,7 +55,7 @@ actor CloudSQLIAMTokenCache {
         do {
             credentials = try GoogleTokenProviders.credentials(
                 from: login.source,
-                scopes: Self.scopes,
+                scopes: GoogleCloudSQLLogin.scopes,
                 restrictsUserLogin: true,
                 readFile: { path in
                     let contents = readFile(path)

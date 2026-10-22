@@ -2,6 +2,7 @@ import Foundation
 @testable import TableProMobile
 import TableProModels
 import TableProOracleCore
+import TableProSSHTransport
 import Testing
 
 @MainActor
@@ -111,7 +112,7 @@ struct ConnectionFormEditsTests {
     func sshEditKeepsMacFields() {
         var ssh = SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy")
         ssh.jumpHosts = [SSHJumpHost(host: "jump.example.com")]
-        ssh.macTotpMode = "autoGenerate"
+        ssh.totpMode = "autoGenerate"
         ssh.macAgentSocketPath = "/tmp/agent.sock"
         var snapshot = storedConnection()
         snapshot.sshEnabled = true
@@ -123,7 +124,7 @@ struct ConnectionFormEditsTests {
 
         #expect(saved.sshConfiguration?.port == 2_222)
         #expect(saved.sshConfiguration?.jumpHosts == ssh.jumpHosts)
-        #expect(saved.sshConfiguration?.macTotpMode == "autoGenerate")
+        #expect(saved.sshConfiguration?.totpMode == "autoGenerate")
         #expect(saved.sshConfiguration?.macAgentSocketPath == "/tmp/agent.sock")
     }
 
@@ -196,18 +197,241 @@ struct ConnectionFormEditsTests {
         #expect(saved.sshConfiguration?.macEnabled == true)
     }
 
-    @Test("Turning SSH off clears the tunnel")
-    func sshOffClearsTheTunnel() {
+    @Test("A tunnel turned on in a new connection is written switched on for the Mac")
+    func newTunnelWritesMacEnabled() throws {
+        let viewModel = ConnectionFormViewModel()
+        viewModel.host = "db.example.com"
+        viewModel.sshEnabled = true
+        viewModel.sshHost = "bastion.example.com"
+        viewModel.sshUsername = "deploy"
+
+        let saved = viewModel.buildConnection()
+        let encoded = try JSONEncoder().encode(try #require(saved.sshConfiguration))
+        let json = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+
+        #expect(saved.sshEnabled)
+        #expect(saved.sshConfiguration?.macEnabled == true)
+        #expect(json["enabled"] as? Bool == true)
+    }
+
+    @Test("An SSH edit on a tunnel that never stored the Mac's switch writes it on")
+    func sshEditWritesMissingMacEnabled() {
         var snapshot = storedConnection()
         snapshot.sshEnabled = true
         snapshot.sshConfiguration = SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy")
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        viewModel.sshPort = "2222"
+        let saved = viewModel.applyingEdits(to: snapshot)
+
+        #expect(saved.sshConfiguration?.macEnabled == true)
+    }
+
+    @Test("Removing, reordering and adding hops keeps each remaining hop's Mac credential")
+    func hopListEditsKeepMacFieldsById() throws {
+        let first = SSHJumpHost(
+            host: "bastion1.example.com", username: "ops",
+            macAuthMethod: .privateKey, macPrivateKeyPath: "/Users/me/.ssh/bastion1"
+        )
+        let second = SSHJumpHost(host: "bastion2.internal", username: "ops")
+        let third = SSHJumpHost(
+            host: "bastion3.internal", port: 2_222, username: "ops",
+            macAuthMethod: .privateKey, macPrivateKeyPath: "/Users/me/.ssh/bastion3"
+        )
+        var snapshot = storedConnection()
+        snapshot.sshEnabled = true
+        snapshot.sshConfiguration = SSHConfiguration(
+            host: "db-ssh.internal", username: "deploy", jumpHosts: [first, second, third]
+        )
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        viewModel.removeJumpHosts(atOffsets: IndexSet(integer: 1))
+        viewModel.moveJumpHosts(fromOffsets: IndexSet(integer: 1), toOffset: 0)
+        let added = viewModel.addJumpHost()
+        viewModel.updateJumpHost(added) { $0.host = "bastion4.internal" }
+        let saved = try #require(viewModel.applyingEdits(to: snapshot).sshConfiguration)
+
+        let ids = saved.jumpHosts.map { $0.id }
+        #expect(ids == [third.id, first.id, added])
+        #expect(saved.jumpHosts[0] == third)
+        #expect(saved.jumpHosts[1] == first)
+        #expect(saved.jumpHosts[2].host == "bastion4.internal")
+        #expect(saved.jumpHosts[2].port == nil)
+        #expect(saved.jumpHosts[2].macAuthMethod == .sshAgent)
+        #expect(saved.jumpHosts[2].macPrivateKeyPath.isEmpty)
+    }
+
+    @Test("A hop edit keeps a Mac edit to that hop and a hop the Mac added while the form was open")
+    func hopEditKeepsMacEditsAndMacHops() throws {
+        let first = SSHJumpHost(host: "bastion1.example.com", username: "ops")
+        let second = SSHJumpHost(host: "bastion2.internal", username: "ops")
+        var snapshot = storedConnection()
+        snapshot.sshEnabled = true
+        snapshot.sshConfiguration = SSHConfiguration(
+            host: "db-ssh.internal", username: "deploy", jumpHosts: [first, second]
+        )
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+        let macAdded = SSHJumpHost(host: "bastion3.internal", username: "ops")
+        var current = snapshot
+        current.sshConfiguration?.jumpHosts[0].host = "bastion1-new.example.com"
+        current.sshConfiguration?.jumpHosts[0].macAuthMethod = .privateKey
+        current.sshConfiguration?.jumpHosts[0].macPrivateKeyPath = "/Users/me/.ssh/bastion1"
+        current.sshConfiguration?.jumpHosts.append(macAdded)
+
+        viewModel.updateJumpHost(first.id) { $0.username = "admin" }
+        let saved = try #require(viewModel.applyingEdits(to: current).sshConfiguration)
+
+        let ids = saved.jumpHosts.map { $0.id }
+        #expect(ids == [first.id, second.id, macAdded.id])
+        #expect(saved.jumpHosts[0].username == "admin")
+        #expect(saved.jumpHosts[0].host == "bastion1-new.example.com")
+        #expect(saved.jumpHosts[0].macAuthMethod == .privateKey)
+        #expect(saved.jumpHosts[0].macPrivateKeyPath == "/Users/me/.ssh/bastion1")
+        #expect(saved.jumpHosts[2] == macAdded)
+    }
+
+    @Test("A hop removed in the form stays removed while one the Mac added survives")
+    func removedHopStaysRemoved() throws {
+        let first = SSHJumpHost(host: "bastion1.example.com", username: "ops")
+        let second = SSHJumpHost(host: "bastion2.internal", username: "ops")
+        var snapshot = storedConnection()
+        snapshot.sshEnabled = true
+        snapshot.sshConfiguration = SSHConfiguration(
+            host: "db-ssh.internal", username: "deploy", jumpHosts: [first, second]
+        )
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+        let macAdded = SSHJumpHost(host: "bastion3.internal", username: "ops")
+        var current = snapshot
+        current.sshConfiguration?.jumpHosts.append(macAdded)
+
+        viewModel.removeJumpHosts(atOffsets: IndexSet(integer: 0))
+        let saved = try #require(viewModel.applyingEdits(to: current).sshConfiguration)
+
+        let ids = saved.jumpHosts.map { $0.id }
+        #expect(ids == [second.id, macAdded.id])
+    }
+
+    @Test("A hop field edit keeps the chain another device saved while the form was open")
+    func hopFieldEditKeepsTheRecordsChain() throws {
+        let first = SSHJumpHost(host: "bastion1.example.com", username: "ops")
+        let removed = SSHJumpHost(host: "bastion2.internal", username: "ops")
+        let last = SSHJumpHost(host: "bastion3.internal", username: "ops")
+        var snapshot = storedConnection()
+        snapshot.sshEnabled = true
+        snapshot.sshConfiguration = SSHConfiguration(
+            host: "db-ssh.internal", username: "deploy", jumpHosts: [first, removed, last]
+        )
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+        let inserted = SSHJumpHost(host: "bastion-mid.internal", username: "ops")
+        var current = snapshot
+        current.sshConfiguration?.jumpHosts = [first, inserted, last]
+
+        viewModel.updateJumpHost(first.id) { $0.username = "admin" }
+        viewModel.updateJumpHost(removed.id) { $0.port = "2222" }
+        let saved = try #require(viewModel.applyingEdits(to: current).sshConfiguration)
+
+        let ids = saved.jumpHosts.map { $0.id }
+        #expect(ids == [first.id, inserted.id, last.id])
+        #expect(saved.jumpHosts[0].username == "admin")
+    }
+
+    @Test("Reordering and adding hops leaves out a hop removed elsewhere and keeps one inserted elsewhere in place")
+    func hopListEditMergesTheRecordsChain() throws {
+        let first = SSHJumpHost(host: "bastion1.example.com", username: "ops")
+        let removed = SSHJumpHost(host: "bastion2.internal", username: "ops")
+        let last = SSHJumpHost(host: "bastion3.internal", username: "ops")
+        var snapshot = storedConnection()
+        snapshot.sshEnabled = true
+        snapshot.sshConfiguration = SSHConfiguration(
+            host: "db-ssh.internal", username: "deploy", jumpHosts: [first, removed, last]
+        )
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+        let inserted = SSHJumpHost(host: "bastion-mid.internal", username: "ops")
+        var current = snapshot
+        current.sshConfiguration?.jumpHosts = [first, inserted, last]
+
+        viewModel.moveJumpHosts(fromOffsets: IndexSet(integer: 2), toOffset: 0)
+        let added = viewModel.addJumpHost()
+        viewModel.updateJumpHost(added) { $0.host = "bastion4.internal" }
+        let saved = try #require(viewModel.applyingEdits(to: current).sshConfiguration)
+
+        let ids = saved.jumpHosts.map { $0.id }
+        #expect(ids == [last.id, first.id, inserted.id, added])
+    }
+
+    @Test("An SSH edit that leaves the hops alone keeps a hop order the Mac set while the form was open")
+    func untouchedHopsKeepMacOrder() throws {
+        let first = SSHJumpHost(host: "bastion1.example.com", username: "ops")
+        let second = SSHJumpHost(host: "bastion2.internal", username: "ops")
+        var snapshot = storedConnection()
+        snapshot.sshEnabled = true
+        snapshot.sshConfiguration = SSHConfiguration(
+            host: "db-ssh.internal", username: "deploy", jumpHosts: [first, second]
+        )
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+        var current = snapshot
+        current.sshConfiguration?.jumpHosts = [second, first]
+
+        viewModel.sshPort = "2222"
+        let saved = try #require(viewModel.applyingEdits(to: current).sshConfiguration)
+
+        #expect(saved.jumpHosts == [second, first])
+        #expect(saved.port == 2_222)
+    }
+
+    @Test("Turning SSH off keeps the tunnel's settings, switched off for the Mac too")
+    func sshOffKeepsTheTunnelSwitchedOff() {
+        var ssh = SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy")
+        ssh.jumpHosts = [SSHJumpHost(host: "jump.example.com", username: "deploy")]
+        ssh.totpMode = "autoGenerate"
+        var snapshot = storedConnection()
+        snapshot.sshEnabled = true
+        snapshot.sshConfiguration = ssh
         let viewModel = ConnectionFormViewModel(editing: snapshot)
 
         viewModel.sshEnabled = false
         let saved = viewModel.applyingEdits(to: snapshot)
 
         #expect(!saved.sshEnabled)
-        #expect(saved.sshConfiguration == nil)
+        #expect(saved.sshConfiguration?.macEnabled == false)
+        #expect(saved.sshConfiguration?.host == "bastion.example.com")
+        #expect(saved.sshConfiguration?.jumpHosts == ssh.jumpHosts)
+        #expect(saved.sshConfiguration?.totpMode == "autoGenerate")
+    }
+
+    @Test("Turning SSH off drops the Mac's SSH profile link, which would otherwise keep the tunnel on there")
+    func sshOffDropsTheProfileLink() {
+        var snapshot = storedConnection()
+        snapshot.sshEnabled = true
+        snapshot.sshConfiguration = SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy")
+        snapshot.sshProfileId = UUID()
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        viewModel.sshEnabled = false
+        let saved = viewModel.applyingEdits(to: snapshot)
+        #expect(saved.sshProfileId == nil)
+        #expect(saved.clearsSSHProfileLink)
+    }
+
+    @Test("An edit with the tunnel on keeps the Mac's route and profile link")
+    func editKeepsRouteAndProfileLink() {
+        var snapshot = storedConnection()
+        snapshot.sshEnabled = true
+        let ssh = SSHConfiguration(host: "db", username: "")
+        snapshot.sshConfiguration = ssh
+        snapshot.sshProfileId = UUID()
+        snapshot.sshRoute = PublishedSSHRoute(
+            publisher: UUID(),
+            input: ssh.publishedRouteInput,
+            hops: [],
+            target: .init(alias: "db", host: "10.0.0.5", port: 22, username: "deploy")
+        )
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        viewModel.name = "Renamed"
+        let saved = viewModel.applyingEdits(to: snapshot)
+        #expect(saved.sshProfileId == snapshot.sshProfileId)
+        #expect(saved.sshRoute == snapshot.sshRoute)
     }
 
     @Test("An SSL mode change keeps certificate paths set after the form opened")
@@ -223,6 +447,115 @@ struct ConnectionFormEditsTests {
         #expect(saved.sslConfiguration?.mode == .verifyFull)
         #expect(saved.sslConfiguration?.caCertificatePath == "/Users/mac/ca.pem")
         #expect(saved.sslEnabled)
+    }
+
+    private func storedConnection(type: DatabaseType, preferred: Bool) -> DatabaseConnection {
+        var connection = storedConnection()
+        connection.type = type
+        connection.sslConfiguration = SSLConfiguration(
+            mode: .require,
+            caCertificatePath: "/Users/mac/ca.pem",
+            clientCertificatePath: "/Users/mac/client.pem",
+            clientKeyPath: "/Users/mac/client.key",
+            isMacPreferred: preferred
+        )
+        return connection
+    }
+
+    private func setSSLChoice(_ choice: SSLModeChoice, on viewModel: ConnectionFormViewModel) {
+        switch viewModel.type {
+        case .mssql: viewModel.mssqlSSLMode = choice
+        case .oracle: viewModel.oracleSSLMode = choice
+        default: viewModel.sslMode = choice
+        }
+    }
+
+    @Test("Required over a Mac Preferred saves Required, clears the preference and keeps the paths", arguments: [
+        DatabaseType.postgresql, .mssql, .oracle
+    ])
+    func requiredOverPreferredSavesRequired(type: DatabaseType) {
+        let snapshot = storedConnection(type: type, preferred: true)
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        setSSLChoice(.require, on: viewModel)
+        let saved = viewModel.applyingEdits(to: snapshot)
+
+        #expect(saved.sslEnabled)
+        #expect(saved.sslConfiguration?.mode == .require)
+        #expect(saved.sslConfiguration?.isMacPreferred == false)
+        #expect(saved.sslConfiguration?.caCertificatePath == "/Users/mac/ca.pem")
+        #expect(saved.sslConfiguration?.clientCertificatePath == "/Users/mac/client.pem")
+        #expect(saved.sslConfiguration?.clientKeyPath == "/Users/mac/client.key")
+    }
+
+    @Test("Preferred over Required saves the preference and keeps the paths", arguments: [
+        DatabaseType.postgresql, .mssql, .oracle
+    ])
+    func preferredOverRequiredSavesPreferred(type: DatabaseType) {
+        let snapshot = storedConnection(type: type, preferred: false)
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        setSSLChoice(.preferred, on: viewModel)
+        let saved = viewModel.applyingEdits(to: snapshot)
+
+        #expect(saved.sslEnabled)
+        #expect(saved.sslConfiguration?.mode == .require)
+        #expect(saved.sslConfiguration?.isMacPreferred == true)
+        #expect(saved.sslConfiguration?.clientCertificatePath == "/Users/mac/client.pem")
+    }
+
+    @Test("Preferred over a disabled connection turns SSL on")
+    func preferredOverDisabledTurnsSSLOn() {
+        var snapshot = storedConnection()
+        snapshot.sslEnabled = false
+        snapshot.sslConfiguration = nil
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        viewModel.sslMode = .preferred
+        let saved = viewModel.applyingEdits(to: snapshot)
+
+        #expect(saved.sslEnabled)
+        #expect(saved.sslConfiguration?.mode == .require)
+        #expect(saved.sslConfiguration?.isMacPreferred == true)
+    }
+
+    @Test("An edit that leaves a Mac Preferred alone keeps it", arguments: [
+        DatabaseType.postgresql, .mssql, .oracle
+    ])
+    func untouchedPreferredStaysPreferred(type: DatabaseType) {
+        let snapshot = storedConnection(type: type, preferred: true)
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        viewModel.port = "5433"
+        let saved = viewModel.applyingEdits(to: snapshot)
+
+        #expect(saved.port == 5_433)
+        #expect(saved.sslConfiguration == snapshot.sslConfiguration)
+        #expect(saved.sslConfiguration?.isMacPreferred == true)
+    }
+
+    @Test("A Preferred left as it opened does not overwrite an SSL mode the Mac saved while the form was open")
+    func untouchedPreferredKeepsMacChange() {
+        let snapshot = storedConnection(type: .postgresql, preferred: true)
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+        var current = snapshot
+        current.sslConfiguration = SSLConfiguration(mode: .verifyFull, caCertificatePath: "/Users/mac/ca.pem")
+
+        viewModel.name = "Renamed"
+        let saved = viewModel.applyingEdits(to: current)
+
+        #expect(saved.sslConfiguration == current.sslConfiguration)
+    }
+
+    @Test("Required over Preferred is a change, and picking Preferred again is not")
+    func preferredAndRequiredAreDistinctChanges() {
+        let viewModel = ConnectionFormViewModel(editing: storedConnection(type: .postgresql, preferred: true))
+
+        viewModel.sslMode = .require
+        #expect(viewModel.hasChanges)
+
+        viewModel.sslMode = .preferred
+        #expect(viewModel.hasChanges == false)
     }
 
     @Test("An Oracle edit keeps additional fields added after the form opened")

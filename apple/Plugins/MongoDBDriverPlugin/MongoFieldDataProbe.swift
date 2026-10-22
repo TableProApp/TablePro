@@ -14,7 +14,7 @@ import Foundation
 ///
 /// The stages are ones MongoDB 4.0 has, the oldest server libmongoc 1.28 connects to: `$addFields`
 /// with `$$REMOVE` rather than the `$set` and `$unset` stages, which arrived in 4.2.
-enum MongoFieldDataProbe {
+nonisolated enum MongoFieldDataProbe {
     /// The ceiling for each pass when the query timeout is set to No limit. A scan the user cannot
     /// stop from the Structure tab must still end.
     static let unlimitedTimeoutCeilingMS: Int32 = 600_000

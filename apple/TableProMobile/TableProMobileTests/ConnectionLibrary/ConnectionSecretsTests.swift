@@ -67,13 +67,43 @@ struct ConnectionSecretsTests {
             "com.TablePro.password.",
             "com.TablePro.sshpassword.",
             "com.TablePro.keypassphrase.",
-            "com.TablePro.sshkeydata."
+            "com.TablePro.sshkeydata.",
+            "com.TablePro.jumphostkeys.",
+            "com.TablePro.totpsecret.",
+            "com.TablePro.plugin.awsSecretAccessKey.",
+            "com.TablePro.plugin.awsSessionToken.",
+            "com.TablePro.plugin.gcpServiceAccountKey.",
+            "com.TablePro.deviceiam."
         ])
         let id = UUID()
         #expect(ConnectionSecretKind.sshPrivateKey.account(for: id) == "com.TablePro.sshkeydata.\(id.uuidString)")
+        #expect(
+            ConnectionSecretKind.awsSecretAccessKey.account(for: id)
+                == "com.TablePro.plugin.awsSecretAccessKey.\(id.uuidString)"
+        )
     }
 
-    @Test("The orphan sweep takes the passwords of a connection that is gone and nothing else")
+    @Test("A device-only sign-in key never syncs, whatever Sync Passwords says")
+    func deviceIAMNeverSyncs() {
+        let id = UUID()
+
+        #expect(!KeychainSecureStore.synchronizes(ConnectionSecretKind.deviceIAM.account(for: id), syncsPasswords: true))
+        #expect(!KeychainSecureStore.synchronizes(ConnectionSecretKind.deviceIAM.account(for: id), syncsPasswords: false))
+        #expect(ConnectionSecretKind.allCases.filter { $0.isDeviceOnly } == [.deviceIAM])
+    }
+
+    @Test("A connection's own secrets follow Sync Passwords, the Mac's IAM keys included")
+    func ownSecretsFollowSyncPasswords() {
+        let id = UUID()
+        let synced = ConnectionSecretKind.allCases.filter { !$0.isDeviceOnly }
+
+        for kind in synced {
+            #expect(KeychainSecureStore.synchronizes(kind.account(for: id), syncsPasswords: true))
+            #expect(!KeychainSecureStore.synchronizes(kind.account(for: id), syncsPasswords: false))
+        }
+    }
+
+    @Test("The orphan sweep takes the secrets of a connection that is gone and nothing else")
     func sweepTakesOrphanedPasswordsOnly() {
         let kept = UUID()
         let removed = UUID()
@@ -85,7 +115,11 @@ struct ConnectionSecretsTests {
         #expect(Set(orphaned) == [
             ConnectionSecretKind.password.account(for: removed),
             ConnectionSecretKind.sshPassword.account(for: removed),
-            ConnectionSecretKind.keyPassphrase.account(for: removed)
+            ConnectionSecretKind.keyPassphrase.account(for: removed),
+            ConnectionSecretKind.awsSecretAccessKey.account(for: removed),
+            ConnectionSecretKind.awsSessionToken.account(for: removed),
+            ConnectionSecretKind.gcpServiceAccountKey.account(for: removed),
+            ConnectionSecretKind.deviceIAM.account(for: removed)
         ])
     }
 
@@ -94,6 +128,37 @@ struct ConnectionSecretsTests {
         let account = ConnectionSecretKind.sshPrivateKey.account(for: UUID())
 
         #expect(ConnectionSecretKind.orphanedAccounts([account], keeping: [UUID()]).isEmpty)
+    }
+
+    @Test("The orphan sweep never takes jump host keys, which may be the only copy")
+    func sweepSparesJumpHostKeys() {
+        let account = ConnectionSecretKind.jumpHostKeys.account(for: UUID())
+
+        #expect(ConnectionSecretKind.orphanedAccounts([account], keeping: [UUID()]).isEmpty)
+    }
+
+    @Test("The orphan sweep never takes a TOTP secret, which may be the only copy")
+    func sweepSparesTOTPSecrets() {
+        let account = ConnectionSecretKind.totpSecret.account(for: UUID())
+
+        #expect(ConnectionSecretKind.orphanedAccounts([account], keeping: [UUID()]).isEmpty)
+    }
+
+    @Test("A duplicate gets its own copy of the jump host keys, which outlives the original")
+    func duplicateCopiesJumpHostKeys() throws {
+        let source = UUID()
+        let copy = UUID()
+        let keys: [UUID: JumpHostCredential] = [
+            UUID(): .privateKey(key: "HOP KEY", passphrase: "pass"),
+            UUID(): .sshServerKey
+        ]
+        try JumpHostCredentialStore.save(keys, for: source, in: secureStore)
+
+        #expect(secrets.copy(from: source, to: copy))
+        secrets.delete(for: source)
+
+        #expect(try JumpHostCredentialStore.load(for: copy, in: secureStore) == keys)
+        #expect(try JumpHostCredentialStore.load(for: source, in: secureStore).isEmpty)
     }
 
     @Test("The orphan sweep takes nothing before the connections have loaded")

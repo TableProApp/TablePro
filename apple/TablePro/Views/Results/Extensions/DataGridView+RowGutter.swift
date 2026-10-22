@@ -9,9 +9,9 @@ extension TableViewCoordinator {
     /// The single way to reach a column, for Find, cell navigation and the inline editor alike.
     ///
     /// AppKit aligns a column left of the viewport flush with the clip view's leading edge, which is
-    /// where the pinned row gutter sits, so the column it just scrolled to would arrive underneath
-    /// it. The correction is one-sided: a column already clear of the gutter must produce no scroll
-    /// at all, or every arrow keypress fights AppKit and the viewport drifts.
+    /// where the pinned band (row gutter and frozen columns) sits, so the column it just scrolled to
+    /// would arrive underneath it. The correction is one-sided: a column already clear of the band
+    /// must produce no scroll at all, or every arrow keypress fights AppKit and the viewport drifts.
     ///
     /// The correction scrolls through `scroll(_:)`, which moves the header with the rows. Scrolling
     /// the clip view and reflecting it leaves the header clip where it was, measured on macOS 27, so
@@ -22,14 +22,17 @@ extension TableViewCoordinator {
     /// divider where the window's edge resize takes the press.
     func scrollColumnToVisible(tableColumnIndex index: Int) {
         guard let tableView, index >= 0, index < tableView.numberOfColumns else { return }
+        let band = pinnedBand()
+        // A frozen column is on screen at every offset; AppKit would scroll back to its home.
+        guard !band.pins(index) else { return }
         tableView.scrollColumnToVisible(index)
         guard let clipView = tableView.enclosingScrollView?.contentView else { return }
         let columnRect = tableView.rect(ofColumn: index)
         guard columnRect.width > 0 else { return }
         let visible = clipView.bounds
-        let gutterWidth = DataGridRowGutterView.width(of: tableView)
-        let hidden = visible.minX + gutterWidth - columnRect.minX
-        if gutterWidth > 0, hidden > 0 {
+        let pinnedWidth = band.width
+        let hidden = visible.minX + pinnedWidth - columnRect.minX
+        if pinnedWidth > 0, hidden > 0 {
             tableView.scroll(NSPoint(x: visible.minX - hidden, y: visible.minY))
             return
         }
@@ -38,7 +41,7 @@ extension TableViewCoordinator {
         let shortfall = trailingEdge - visible.maxX
         guard shortfall > 0,
               columnRect.maxX <= visible.maxX,
-              columnRect.minX - gutterWidth >= visible.minX + shortfall else { return }
+              columnRect.minX - pinnedWidth >= visible.minX + shortfall else { return }
         tableView.scroll(NSPoint(x: visible.minX + shortfall, y: visible.minY))
     }
 

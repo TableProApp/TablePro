@@ -42,6 +42,10 @@ struct TableQueryBuilder {
         pluginDriver = driver
     }
 
+    func usesPluginDriver(_ driver: (any PluginDatabaseDriver)?) -> Bool {
+        pluginDriver === driver
+    }
+
     // MARK: - Identifier Quoting
 
     func quoteIdentifier(_ name: String) -> String {
@@ -65,6 +69,7 @@ struct TableQueryBuilder {
         sortState: SortState? = nil,
         columns: [String] = [],
         selectColumns: [String]? = nil,
+        unloadedValues: UnloadedValuePlan? = nil,
         limit: Int = 200,
         offset: Int = 0
     ) -> String {
@@ -82,7 +87,7 @@ struct TableQueryBuilder {
         }
 
         let quotedTable = qualifiedTable(tableName, schema: schemaName)
-        var query = "SELECT \(selectClause(selectColumns)) FROM \(quotedTable)"
+        var query = "SELECT \(selectClause(selectColumns, unloadedValues: unloadedValues)) FROM \(quotedTable)"
 
         if let orderBy = orderByOrOffsetFetchDefault(sortState: sortState, columns: columns) {
             query += " \(orderBy)"
@@ -101,6 +106,7 @@ struct TableQueryBuilder {
         columns: [String] = [],
         columnTypes: [ColumnType] = [],
         selectColumns: [String]? = nil,
+        unloadedValues: UnloadedValuePlan? = nil,
         limit: Int = 200,
         offset: Int = 0
     ) -> String? {
@@ -125,11 +131,11 @@ struct TableQueryBuilder {
         guard let dialect else { return nil }
 
         let quotedTable = qualifiedTable(tableName, schema: schemaName)
-        var query = "SELECT \(selectClause(selectColumns)) FROM \(quotedTable)"
+        var query = "SELECT \(selectClause(selectColumns, unloadedValues: unloadedValues)) FROM \(quotedTable)"
 
         let filterGen = FilterSQLGenerator(
             dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
-            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType), databaseType: databaseType
         )
         let whereClause = filterGen.generateWhereClause(from: filters.filter { $0.isEnabled }, logicMode: logicMode)
         if !whereClause.isEmpty {
@@ -152,6 +158,7 @@ struct TableQueryBuilder {
         sortState: SortState? = nil,
         columns: [String] = [],
         selectColumns: [String]? = nil,
+        unloadedValues: UnloadedValuePlan? = nil,
         limit: Int = 200,
         offset: Int = 0
     ) -> String {
@@ -173,7 +180,8 @@ struct TableQueryBuilder {
 
         return buildBaseQuery(
             tableName: tableName, schemaName: schemaName, sortState: sortState,
-            columns: columns, selectColumns: selectColumns, limit: limit, offset: offset
+            columns: columns, selectColumns: selectColumns, unloadedValues: unloadedValues,
+            limit: limit, offset: offset
         )
     }
 
@@ -191,7 +199,7 @@ struct TableQueryBuilder {
         let activeFilters = filters.filter { $0.isEnabled }
         let filterGen = FilterSQLGenerator(
             dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
-            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType), databaseType: databaseType
         )
         let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode)
 
@@ -208,8 +216,11 @@ struct TableQueryBuilder {
             .mapValues(\.pluginColumnKind)
     }
 
-    private func selectClause(_ selectColumns: [String]?) -> String {
+    private func selectClause(_ selectColumns: [String]?, unloadedValues: UnloadedValuePlan?) -> String {
         guard let selectColumns, !selectColumns.isEmpty else { return "*" }
+        if let unloadedValues {
+            return unloadedValues.selectList(for: selectColumns, quote: quote)
+        }
         return selectColumns.map { quote($0) }.joined(separator: ", ")
     }
 

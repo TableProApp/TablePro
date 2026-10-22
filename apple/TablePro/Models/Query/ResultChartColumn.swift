@@ -36,7 +36,7 @@ struct ResultChartColumn: Identifiable, Equatable, Sendable {
             return .date
         case .text, .boolean, .enumType, .set:
             return .category
-        case .blob, .json, .spatial, .array:
+        case .blob, .json, .spatial, .vector, .array:
             return nil
         }
     }

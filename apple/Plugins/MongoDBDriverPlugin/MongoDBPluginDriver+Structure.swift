@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-extension MongoDBPluginDriver {
+nonisolated extension MongoDBPluginDriver {
     func generateModifyColumnSQL(
         table: String,
         oldColumn: PluginColumnDefinition,

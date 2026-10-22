@@ -115,3 +115,72 @@ async fn a_row_that_fails_in_a_later_statement_rolls_the_whole_file_back() {
         vec![vec![Value::Int(0)]]
     );
 }
+
+/// SQL Server types the rows of a multi-row VALUES as UNION ALL types
+/// them, so a value at full precision beside a shorter one must not be
+/// narrowed to a type both fit.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_decimal_at_full_precision_keeps_every_digit_beside_shorter_ones() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE dbo.fractions (id int PRIMARY KEY, v decimal(38, 38))",
+            "CREATE TABLE dbo.amounts (id int PRIMARY KEY, v decimal(38, 2))",
+        ],
+    )
+    .await;
+    let files: [(&str, &[u8]); 2] = [
+        (
+            "fractions",
+            b"id,v\n1,0.12345678901234567890123456789012345678\n2,0\n3,0.5\n",
+        ),
+        ("amounts", b"id,v\n1,123456789012345678901234567890123456.78\n2,1\n"),
+    ];
+    for (table, csv) in files {
+        import_csv(
+            connection.as_ref(),
+            &dbo(table),
+            csv,
+            &CsvImportOptions::default(),
+            within(CALL),
+        )
+        .await
+        .unwrap_or_else(|failure| panic!("the import into {table}: {failure:?}"));
+    }
+
+    let text = |rows: Vec<Vec<Value>>| -> Vec<String> {
+        rows.into_iter()
+            .map(|row| match row.into_iter().next() {
+                Some(Value::Text(text)) => text,
+                other => panic!("{other:?}"),
+            })
+            .collect()
+    };
+    assert_eq!(
+        text(
+            rows(
+                connection.as_ref(),
+                "SELECT CAST(v AS nvarchar(60)) FROM dbo.fractions ORDER BY id"
+            )
+            .await
+        ),
+        [
+            "0.12345678901234567890123456789012345678",
+            "0.00000000000000000000000000000000000000",
+            "0.50000000000000000000000000000000000000"
+        ]
+    );
+    assert_eq!(
+        text(
+            rows(
+                connection.as_ref(),
+                "SELECT CAST(v AS nvarchar(60)) FROM dbo.amounts ORDER BY id"
+            )
+            .await
+        ),
+        ["123456789012345678901234567890123456.78", "1.00"]
+    );
+}

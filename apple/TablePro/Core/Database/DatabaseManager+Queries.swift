@@ -47,23 +47,31 @@ extension DatabaseManager {
 
         // A remote file answers the only question this button asks without moving the file.
         if connection.activeTunnelKind == .remoteFile {
-            let reached = try await testRemoteDatabaseFile(
-                connection,
-                sshPassword: sshPassword,
-                deadline: ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
-            )
-            return ConnectionTestResult(succeeded: reached)
+            do {
+                let reached = try await testRemoteDatabaseFile(
+                    connection,
+                    sshPassword: sshPassword,
+                    deadline: ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
+                )
+                return ConnectionTestResult(succeeded: reached)
+            } catch {
+                throw await diagnosedConnectFailure(error, for: connection)
+            }
         }
 
         let preparedConfiguration = try await DatabaseDriverFactory.prepareConfiguration(for: connection)
         let deadline = ConnectionDeadline(configuredSeconds: connection.connectTimeoutSeconds)
 
-        // Build effective connection (creates SSH tunnel if needed)
-        let testConnection = try await buildEffectiveConnection(
-            for: connection,
-            sshPasswordOverride: sshPassword,
-            deadline: deadline
-        )
+        let testConnection: DatabaseConnection
+        do {
+            testConnection = try await buildEffectiveConnection(
+                for: connection,
+                sshPasswordOverride: sshPassword,
+                deadline: deadline
+            )
+        } catch {
+            throw await diagnosedConnectFailure(error, for: connection)
+        }
 
         let tunnelManager = activeTunnelManager(for: connection)
 
@@ -91,7 +99,7 @@ extension DatabaseManager {
                     Self.logger.warning("Tunnel cleanup failed for \(connection.name): \(error.localizedDescription)")
                 }
             }
-            throw reportedError
+            throw await diagnosedConnectFailure(reportedError, for: connection)
         }
 
         if let tunnelManager {

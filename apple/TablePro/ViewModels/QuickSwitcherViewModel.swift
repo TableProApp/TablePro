@@ -51,6 +51,15 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         let items: [QuickSwitcherItem]
     }
 
+    /// One list row per item. A group's header is drawn with its first item, so revealing that
+    /// item also reveals the header.
+    struct Row: Identifiable {
+        let item: QuickSwitcherItem
+        let sectionTitle: String?
+
+        var id: String { item.id }
+    }
+
     /// What the panel's own connection is browsing, which is what its table rows are built for.
     struct TableSource {
         let database: String?
@@ -122,10 +131,15 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     @Published private(set) var isLoadingCrossConnectionQueries = false
     @Published private(set) var crossConnectionQueryContentRevision = 0
     @Published var selectedItemId: String?
+    /// Bumped when a refilter answers a new query or scope, so the list scrolls to the selection
+    /// even when the new search kept the same row selected.
+    @Published private(set) var searchGeneration = 0
+    private var pendingSelectionMoves: [Int] = []
 
     @Published var searchText = "" {
         didSet {
             guard oldValue != searchText else { return }
+            pendingSelectionMoves = []
             scheduleFilter(debounced: true)
             refreshListingDemand()
         }
@@ -134,6 +148,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     @Published var scope: QuickSwitcherScope = .all {
         didSet {
             guard oldValue != scope else { return }
+            pendingSelectionMoves = []
             scheduleFilter(debounced: false)
             refreshListingDemand()
         }
@@ -141,6 +156,14 @@ internal final class QuickSwitcherViewModel: ObservableObject {
 
     var flatItems: [QuickSwitcherItem] {
         groups.flatMap(\.items)
+    }
+
+    var rows: [Row] {
+        groups.flatMap { group in
+            group.items.enumerated().map { index, item in
+                Row(item: item, sectionTitle: index == 0 ? group.header : nil)
+            }
+        }
     }
 
     /// Whether the panel is still fetching the results it is being asked to show.
@@ -850,6 +873,11 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     }
 
     func moveSelection(by delta: Int) {
+        // The pending refilter resets the selection when it lands, so the key belongs to its results.
+        if isFiltering, trimmedSearchText != selectionQuery || scope != selectionScope {
+            pendingSelectionMoves.append(delta)
+            return
+        }
         let items = flatItems
         guard !items.isEmpty else {
             selectedItemId = nil
@@ -903,6 +931,15 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             self.groups = groups
             self.isFiltering = false
             self.reconcileSelection(query: query, scope: scope)
+            self.applyPendingSelectionMoves()
+        }
+    }
+
+    private func applyPendingSelectionMoves() {
+        let moves = pendingSelectionMoves
+        pendingSelectionMoves = []
+        for delta in moves {
+            moveSelection(by: delta)
         }
     }
 
@@ -929,6 +966,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         if isSameSearch, let current = selectedItemId, items.contains(where: { $0.id == current }) {
             return
         }
+        if !isSameSearch { searchGeneration += 1 }
         selectedItemId = items.first?.id
     }
 
@@ -945,6 +983,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         return source.filter { includedKinds.contains($0.kind) }
     }
 
+    @concurrent
     nonisolated private static func emptyQueryGroups(
         items: [QuickSwitcherItem],
         scope: QuickSwitcherScope,
@@ -1040,6 +1079,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         }
     }
 
+    @concurrent
     nonisolated private static func filteredGroups(
         items: [QuickSwitcherItem],
         query: String,

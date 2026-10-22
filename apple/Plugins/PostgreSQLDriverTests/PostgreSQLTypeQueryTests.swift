@@ -45,7 +45,7 @@ struct PostgreSQLTypeQueryTests {
             "AS field_names", "AS field_types", "AS field_collations", "AS base_type", "AS collation",
             "AS not_null", "AS default_value", "AS constraint_names", "AS constraint_definitions",
             "AS range_subtype", "AS range_canonical", "AS range_subtype_diff", "AS range_opclass",
-            "AS range_collation", "AS range_multirange", "AS spelling"
+            "AS range_collation", "AS range_multirange", "AS spelling", "AS constraint_validated"
         ]
         #expect(aliases.count == PostgreSQLTypeDefinition.Column.allCases.count)
         var searchStart = sql.startIndex
@@ -259,5 +259,15 @@ struct PostgreSQLTypeQueryTests {
         let template = PostgreSQLObjectQueries.createTypeTemplate(schema: "sales")
         #expect(template.hasPrefix("CREATE TYPE \"sales\".\"type_name\" AS ENUM ("))
         #expect(template.hasSuffix(");"))
+    }
+
+    @Test("A domain drops as a domain and every other kind as a type, without CASCADE")
+    func dropStatement() {
+        #expect(PostgreSQLObjectQueries.dropType(schema: "app", name: "email", kind: .domain)
+            == "DROP DOMAIN \"app\".\"email\"")
+        for kind in [PluginUserDefinedTypeKind.enumeration, .composite, .range] {
+            #expect(PostgreSQLObjectQueries.dropType(schema: "app", name: "Mood \"x\"", kind: kind)
+                == "DROP TYPE \"app\".\"Mood \"\"x\"\"\"")
+        }
     }
 }

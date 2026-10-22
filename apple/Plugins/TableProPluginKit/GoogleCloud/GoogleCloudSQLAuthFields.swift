@@ -9,10 +9,14 @@ public enum GoogleCloudSQLAuthFields {
     public static let methods: Set<String> = [applicationDefault, serviceAccount]
 
     public static func standardWithAWS() -> [ConnectionField] {
+        standardWithAWS(additionalMethods: [])
+    }
+
+    static func standardWithAWS(additionalMethods: [ConnectionField.DropdownOption]) -> [ConnectionField] {
         AWSAuthFields.standard(additionalMethods: [
             .init(value: applicationDefault, label: String(localized: "Google Cloud IAM (Application Default)")),
             .init(value: serviceAccount, label: String(localized: "Google Cloud IAM (Service Account)"))
-        ]) + [
+        ] + additionalMethods) + [
             ConnectionField(
                 id: serviceAccountKeyFieldId,
                 label: String(localized: "Service Account Key"),

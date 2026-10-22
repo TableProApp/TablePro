@@ -1,6 +1,7 @@
 import CloudKit
 import Foundation
 @testable import TablePro
+import TableProSSHConfig
 import TableProSyncTransport
 import TableProTestSupport
 import Testing
@@ -263,6 +264,33 @@ struct SyncCoordinatorEchoTests {
         #expect(merged.name == "Renamed")
         #expect(merged.port == 6_543)
         #expect(tracker.dirtyRecords(for: .connection).contains(connectionId.uuidString))
+    }
+
+    @Test("A dirty copy takes another device's SSH change even when that device spelled the JSON differently")
+    func mergeComparesValuesNotSpelling() async throws {
+        var connection = TestFixtures.makeConnection(name: "Primary")
+        connection.sshConfig = SSHConfiguration(enabled: true, host: "bastion.example.com", port: 22, username: "deploy")
+        let base = SyncRecordMapper.toCKRecord(connection, in: Self.zoneID)
+        let spelledElsewhere = JSONEncoder()
+        spelledElsewhere.outputFormatting = .prettyPrinted
+        base[ConnectionSyncField.sshConfigJson.key] = try spelledElsewhere.encode(connection.sshConfig) as CKRecordValue
+        recordCache.store([base])
+        #expect(connections.addConnection(connection))
+        _ = connections.mutateConnections(ids: [connection.id]) { $0.name = "Renamed here" }
+        var remote = connection
+        remote.sshConfig.port = 2_222
+        let remoteRecord = SyncRecordMapper.toCKRecord(remote, in: Self.zoneID)
+        let transport = ScriptedSyncTransport(
+            zoneID: Self.zoneID,
+            rejecting: [base.recordID],
+            pulled: { _ in PullResult(changedRecords: [remoteRecord], deletedRecordIDs: [], newToken: nil) }
+        )
+
+        _ = await makeCoordinator(transport: transport).runSyncCycle()
+
+        let merged = try #require(connections.loadConnection(id: connection.id))
+        #expect(merged.name == "Renamed here")
+        #expect(merged.sshConfig.port == 2_222)
     }
 
     @Test("A connection's own echo keeps this Mac's External Clients level and transport modes")

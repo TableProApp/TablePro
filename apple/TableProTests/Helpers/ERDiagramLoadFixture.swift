@@ -42,7 +42,8 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
     internal var status: ConnectionStatus = .connected
     internal var serverVersion: String? { nil }
 
-    private let columns: [String: [ColumnInfo]]
+    private var columns: [String: [ColumnInfo]]
+    private let foreignKeys: [String: [ForeignKeyInfo]]
     private let holds: [CatalogReadHold]
     private let failingReads: Int
     private let lock = NSLock()
@@ -51,11 +52,13 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
     internal init(
         connection: DatabaseConnection,
         columns: [String: [ColumnInfo]],
+        foreignKeys: [String: [ForeignKeyInfo]] = [:],
         holds: [CatalogReadHold],
         failingReads: Int
     ) {
         self.connection = connection
         self.columns = columns
+        self.foreignKeys = foreignKeys
         self.holds = holds
         self.failingReads = failingReads
     }
@@ -74,10 +77,26 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
             await holds[index].release.wait()
         }
         guard index >= failingReads else { throw CatalogReadFailure() }
-        return columns
+        return lock.withLock { columns }
     }
 
-    internal func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] { [:] }
+    // A table created elsewhere between two reads.
+    internal func addTable(_ name: String, columns tableColumns: [ColumnInfo]) {
+        lock.withLock { columns[name] = tableColumns }
+    }
+
+    private var listedTables: [TableInfo] = []
+    private var failsTableListing = false
+
+    internal func list(_ tables: [TableInfo]) {
+        lock.withLock { listedTables = tables }
+    }
+
+    internal func failTableListing() {
+        lock.withLock { failsTableListing = true }
+    }
+
+    internal func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] { foreignKeys }
 
     internal func connect() async throws {}
     internal func disconnect() {}
@@ -95,9 +114,13 @@ internal final class ERDiagramCatalogDriver: DatabaseDriver, @unchecked Sendable
         Self.emptyResult
     }
 
-    internal func fetchTables() async throws -> [TableInfo] { [] }
+    internal func fetchTables() async throws -> [TableInfo] {
+        let (tables, fails) = lock.withLock { (listedTables, failsTableListing) }
+        guard !fails else { throw CatalogReadFailure() }
+        return tables
+    }
     internal func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
-    internal func fetchColumns(table: String) async throws -> [ColumnInfo] { columns[table] ?? [] }
+    internal func fetchColumns(table: String) async throws -> [ColumnInfo] { lock.withLock { columns[table] ?? [] } }
     internal func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
     internal func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
     internal func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
@@ -153,7 +176,9 @@ internal struct ERDiagramLoadFixture {
         tableCount: Int = 3,
         columnsPerTable: Int = 50,
         holds: [CatalogReadHold] = [],
-        failingReads: Int = 0
+        failingReads: Int = 0,
+        foreignKeys: [String: [ForeignKeyInfo]] = [:],
+        schema: String? = nil
     ) {
         let connection = TestFixtures.makeConnection(database: "main", type: .duckdb)
         let columns = Dictionary(uniqueKeysWithValues: (0 ..< tableCount).map { table in
@@ -165,6 +190,7 @@ internal struct ERDiagramLoadFixture {
         let driver = ERDiagramCatalogDriver(
             connection: connection,
             columns: columns,
+            foreignKeys: foreignKeys,
             holds: holds,
             failingReads: failingReads
         )
@@ -180,7 +206,7 @@ internal struct ERDiagramLoadFixture {
         self.viewModel = ERDiagramViewModel(
             connectionId: connection.id,
             databaseName: connection.database,
-            schemaKey: "\(connection.database).default",
+            schemaKey: ERDiagramViewModel.schemaKey(databaseName: connection.database, schema: schema),
             services: Self.services(with: databaseManager)
         )
     }

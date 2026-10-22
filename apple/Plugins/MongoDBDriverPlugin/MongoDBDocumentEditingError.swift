@@ -1,7 +1,7 @@
 import Foundation
 
 /// Why a document cannot be opened for editing or saved, in words for the user.
-enum MongoDBDocumentEditingError: Error, Equatable, LocalizedError {
+nonisolated enum MongoDBDocumentEditingError: Error, Equatable, LocalizedError {
     case unsupportedOperation
     case unknownDocument
     case documentChanged

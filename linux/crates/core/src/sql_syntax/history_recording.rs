@@ -1,6 +1,8 @@
 use super::SqlGrammar;
 use super::credential_rules::CredentialRules;
-use super::statement_tokens::{StatementToken, lex_statements};
+use super::script::ScriptPlan;
+use super::statement_access::CLIENT_SPLITS;
+use super::statement_tokens::{StatementToken, lex_statements, statements_of};
 
 /// Whether what the user ran may go into the query history.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,17 +25,43 @@ pub enum WithholdReason {
 /// nest.
 const MAX_BODY_DEPTH: u8 = 4;
 
-/// Whether `sql` may be kept, split the way the editor splits it for
-/// `grammar`. The text is never rewritten: an entry is kept whole or not
+/// Whether `sql` may be kept, read every way a server of `grammar` may
+/// read it. The text is never rewritten: an entry is kept whole or not
 /// at all, so History can neither show nor run a statement with a secret
 /// cut out of it.
 pub fn classify_for_history(grammar: SqlGrammar, rules: &CredentialRules, sql: &str) -> HistoryRecording {
-    let script = lex_statements(sql, grammar);
-    if script.unterminated {
-        return HistoryRecording::Withhold(WithholdReason::Untokenizable);
+    classify_as_sent(grammar, rules, sql, CLIENT_SPLITS)
+}
+
+/// The whole text, then each piece a `DELIMITER` line cuts it into, which
+/// a client sends apart.
+fn classify_as_sent(grammar: SqlGrammar, rules: &CredentialRules, sql: &str, splits: u8) -> HistoryRecording {
+    let whole = classify_every_way(grammar, rules, sql);
+    if whole != HistoryRecording::Record || splits == 0 {
+        return whole;
     }
-    match carries_credentials(grammar, rules, &script.statements, 0) {
-        true => HistoryRecording::Withhold(WithholdReason::CredentialStatement),
+    ScriptPlan::client_pieces(sql, grammar)
+        .into_iter()
+        .map(|piece| classify_as_sent(grammar, rules, piece, splits - 1))
+        .find(|recording| *recording != HistoryRecording::Record)
+        .unwrap_or(HistoryRecording::Record)
+}
+
+fn classify_every_way(grammar: SqlGrammar, rules: &CredentialRules, sql: &str) -> HistoryRecording {
+    let Some(plans) = ScriptPlan::server_readings(sql, grammar) else {
+        return HistoryRecording::Withhold(WithholdReason::Untokenizable);
+    };
+    let mut unterminated = false;
+    for plan in plans {
+        let script = statements_of(sql, &plan);
+        if script.unterminated {
+            unterminated = true;
+        } else if carries_credentials(grammar, rules, &script.statements, 0) {
+            return HistoryRecording::Withhold(WithholdReason::CredentialStatement);
+        }
+    }
+    match unterminated {
+        true => HistoryRecording::Withhold(WithholdReason::Untokenizable),
         false => HistoryRecording::Record,
     }
 }
@@ -393,6 +421,23 @@ mod tests {
             classify(SqlGrammar::PostgreSql, "SELECT 1 /*! CREATE USER u */"),
             HistoryRecording::Record
         );
+    }
+
+    #[test]
+    fn a_credential_any_server_reading_runs_is_withheld() {
+        for sql in [
+            "SELECT 1 /*!, '*/'; CREATE USER u IDENTIFIED BY 'p'; SELECT ' */",
+            "SELECT 1 /*!50000 # */ '\n; CREATE USER u IDENTIFIED BY 'p'; -- '\n*/",
+            // A server older than 99999 skips the comment past its nested
+            // `/* */`, so the CREATE USER after it runs.
+            "SELECT 1 /*!99999 /* */ ' */ ; CREATE USER u IDENTIFIED BY 'p'; -- ' */",
+            // Split again at its DELIMITER line, the last line goes alone.
+            "SELECT 1;\nDELIMITER ; /*!99999 '*/ `' */\nSELECT 1 /*!99999 ' */ ; CREATE USER u IDENTIFIED BY 'p'; -- ` ' */",
+            // Under NO_BACKSLASH_ESCAPES the first string ends at `\'`.
+            r"INSERT INTO paths VALUES ('C:\temp\'); CREATE USER u IDENTIFIED BY 'p'; -- it's done",
+        ] {
+            assert_ne!(classify(SqlGrammar::MySql, sql), HistoryRecording::Record, "{sql}");
+        }
     }
 
     proptest! {

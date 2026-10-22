@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProAutocomplete
 import TableProPluginKit
 import Testing
 
@@ -72,6 +73,35 @@ struct SQLRowToStatementConverterTests {
         rows.map { SQLRowToStatementConverter.SourceRow(values: $0) }
     }
 
+    // MARK: - Identifier case
+
+    private func spelledConverter(_ policy: SQLIdentifierCase) throws -> SQLRowToStatementConverter {
+        try SQLRowToStatementConverter(
+            tableName: "MY_TABLE",
+            columns: ["ID", "MixedCase", "ORDER"],
+            primaryKeyColumns: ["ID"],
+            databaseType: .snowflake,
+            dialect: Self.postgresDialect,
+            identifierSpelling: SQLIdentifierSpelling(
+                rules: SQLIdentifierRules(folding: .upper, reservedWords: ["ORDER"]),
+                policy: policy
+            )
+        )
+    }
+
+    @Test("A connection set to lowercase writes folded names bare and quotes the rest as stored")
+    func lowercaseIdentifierCase() throws {
+        let result = try spelledConverter(.lower).generateInserts(rows: plain([["1", "a", "b"]]))
+        #expect(result == "INSERT INTO my_table (id, \"MixedCase\", \"ORDER\") VALUES ('1', 'a', 'b');")
+    }
+
+    @Test("As stored and match what I type keep every name quoted, as before")
+    func storedIdentifierCaseQuotesEverything() throws {
+        let expected = "INSERT INTO \"MY_TABLE\" (\"ID\", \"MixedCase\", \"ORDER\") VALUES ('1', 'a', 'b');"
+        #expect(try spelledConverter(.asStored).generateInserts(rows: plain([["1", "a", "b"]])) == expected)
+        #expect(try spelledConverter(.matchTyped).generateInserts(rows: plain([["1", "a", "b"]])) == expected)
+    }
+
     // MARK: - INSERT Generation
 
     @Test("Single row produces one INSERT statement")
@@ -116,6 +146,34 @@ struct SQLRowToStatementConverterTests {
         #expect(result == "INSERT INTO `users` (`id`, `name`, `email`) VALUES ('1', 'O''Brien', 'o''brien@example.com');")
     }
 
+    // MARK: - INSERT script
+
+    @Test("A script writes one tuple a line, closing each statement at its row limit")
+    func insertScriptBatchesRows() throws {
+        let converter = try makeConverter(columns: ["id", "name"], dialect: Self.postgresDialect)
+        let rows: [[PluginCellValue]] = [["1", "Ada"], ["2", .null], ["3", "O'Neil"]]
+
+        let script = converter.insertScript(rows: rows, rowsPerStatement: 2)
+
+        #expect(script == """
+            INSERT INTO "users" ("id", "name") VALUES
+              ('1', 'Ada'),
+              ('2', NULL);
+            INSERT INTO "users" ("id", "name") VALUES
+              ('3', 'O''Neil');
+            """)
+    }
+
+    @Test("An engine that takes one row a statement gets one INSERT a row")
+    func insertScriptOneRowEach() throws {
+        let converter = try makeConverter(columns: ["id"], dialect: Self.postgresDialect)
+
+        #expect(converter.insertScript(rows: [["1"], ["2"]], rowsPerStatement: 1) == """
+            INSERT INTO "users" ("id") VALUES ('1');
+            INSERT INTO "users" ("id") VALUES ('2');
+            """)
+    }
+
     // MARK: - UPDATE Generation
 
     @Test("UPDATE with primary key excludes PK from SET and uses PK in WHERE")
@@ -148,11 +206,51 @@ struct SQLRowToStatementConverterTests {
 
     // MARK: - Database-Specific Quoting
 
-    @Test("ClickHouse fallback uses standard UPDATE syntax (plugin handles ALTER TABLE at runtime)")
+    @Test("Without a driver's own form, the standard UPDATE is written")
     func clickhouseFallbackUsesStandardUpdate() throws {
         let converter = try makeConverter(databaseType: .clickhouse, dialect: Self.clickhouseDialect)
         let result = converter.generateUpdates(rows: plain([["1", "Alice", "alice@example.com"]]))
         #expect(result == "UPDATE `users` SET `name` = 'Alice', `email` = 'alice@example.com' WHERE `id` = '1';")
+    }
+
+    @Test("A driver's own UPDATE form is used, as ClickHouse's mutation")
+    func driverUpdateFormIsUsed() throws {
+        let converter = try SQLRowToStatementConverter(
+            tableName: "users",
+            columns: ["id", "name"],
+            primaryKeyColumns: ["id"],
+            databaseType: .clickhouse,
+            dialect: Self.clickhouseDialect,
+            rowUpdateStatement: { table, assignments, predicate in
+                "ALTER TABLE \(table) UPDATE \(assignments) WHERE \(predicate) SETTINGS mutations_sync = 1"
+            }
+        )
+        let result = converter.generateUpdates(rows: plain([["1", "Alice"], ["2", "Bob"]]))
+        #expect(result == """
+            ALTER TABLE `users` UPDATE `name` = 'Alice' WHERE `id` = '1' SETTINGS mutations_sync = 1;
+            ALTER TABLE `users` UPDATE `name` = 'Bob' WHERE `id` = '2' SETTINGS mutations_sync = 1;
+            """)
+    }
+
+    @Test("Where rows share the key, the row is found by every column and the unchanged key stays out of SET")
+    func repeatingKeyMatchesTheWholeRow() throws {
+        let converter = try SQLRowToStatementConverter(
+            tableName: "events",
+            columns: ["d", "id", "doc"],
+            primaryKeyColumns: ["d"],
+            databaseType: .clickhouse,
+            rowMatchPolicy: RowMatchPolicy(textColumns: ["doc"]),
+            dialect: Self.clickhouseDialect,
+            rowUpdateStatement: { table, assignments, predicate in
+                "ALTER TABLE \(table) UPDATE \(assignments) WHERE \(predicate) SETTINGS mutations_sync = 1"
+            },
+            matchesEveryColumn: true
+        )
+        let result = converter.generateUpdates(rows: plain([["2026-01-01", "1", "{}"]]))
+        #expect(result == """
+            ALTER TABLE `events` UPDATE `id` = '1', `doc` = '{}' WHERE `d` = '2026-01-01' AND `id` = '1' AND CONCAT(`doc`) = '{}' \
+            SETTINGS mutations_sync = 1;
+            """)
     }
 
     /// The `N` is not decoration: a plain `'…'` is a `varchar` literal, so pasting these

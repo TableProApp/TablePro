@@ -15,6 +15,7 @@ mod flavour_suite;
 mod lenient_server;
 mod metadata;
 mod non_transactional;
+mod round_trip;
 mod row_limit;
 mod server_time_zone;
 mod support;

@@ -102,7 +102,11 @@ struct FavoritesMenuSpecTests {
             .query(.folder(folder, children: [])),
             .query(.linkedFolder(linked, children: [])),
             .query(.linkedSubfolder(
-                folderId: linked.id, displayName: "reports", pathPrefix: "reports", children: []
+                folderId: linked.id,
+                displayName: "reports",
+                pathPrefix: "reports",
+                url: URL(fileURLWithPath: "/tmp/queries/reports", isDirectory: true),
+                children: []
             ))
         ]
 
@@ -395,6 +399,83 @@ struct FavoritesMenuSpecTests {
         #expect(issued.contains(.discardLinkedFileChanges(file)))
     }
 
+    private func items(_ sections: [FavoritesMenuSection]) -> [[FavoritesMenuCommand]] {
+        sections.nonEmptySections().map { commands($0.items) }
+    }
+
+    @Test("A linked file copies its absolute and relative paths between Copy Query and Show in Finder")
+    func linkedFileOffersBothPaths() {
+        let file = LinkedSQLFavorite(
+            folderId: UUID(),
+            fileURL: URL(fileURLWithPath: "/tmp/queries/reports/daily.sql"),
+            relativePath: "reports/daily.sql",
+            name: "daily",
+            mtime: Date(),
+            fileSize: 10
+        )
+        let groups = items(FavoritesMenuSpec.sections(for: FavoritesMenuContext(clicked: .query(.linkedFavorite(file)))))
+
+        #expect(groups.contains([
+            .copyLinkedFavoriteQuery(file),
+            .copyPath("/tmp/queries/reports/daily.sql"),
+            .copyRelativePath("reports/daily.sql"),
+            .revealLinkedFavorite(file)
+        ]))
+    }
+
+    @Test("A linked folder copies its absolute path and has no relative one")
+    func linkedFolderOffersAbsolutePathOnly() {
+        let folder = LinkedSQLFolder(path: "/tmp/queries")
+        let groups = items(FavoritesMenuSpec.sections(for: context(clicked: .query(.linkedFolder(folder, children: [])))))
+
+        #expect(groups.first == [.revealLinkedFolder(folder), .copyPath("/tmp/queries")])
+        #expect(!groups.joined().contains { if case .copyRelativePath = $0 { true } else { false } })
+    }
+
+    @Test("A linked subfolder reveals and copies its own paths instead of the background menu")
+    func linkedSubfolderOffersItsPaths() {
+        let url = URL(fileURLWithPath: "/tmp/queries/reports/2026", isDirectory: true)
+        let subfolder = FavoriteNode.linkedSubfolder(
+            folderId: UUID(),
+            displayName: "2026",
+            pathPrefix: "reports/2026",
+            url: url,
+            children: []
+        )
+        let groups = items(FavoritesMenuSpec.sections(for: context(clicked: .query(subfolder))))
+
+        #expect(groups == [[
+            .revealLinkedSubfolder(url),
+            .copyPath("/tmp/queries/reports/2026"),
+            .copyRelativePath("reports/2026")
+        ]])
+    }
+
+    @Test("A saved query and its folder live in the database, so they offer no path")
+    func storedRowsOfferNoPath() {
+        let kinds: [FavoritesOutlineNode.Kind] = [
+            .query(.favorite(favorite())),
+            .query(.folder(SQLFavoriteFolder(name: "Reports"), children: []))
+        ]
+
+        for kind in kinds {
+            let issued = commands(FavoritesMenuSpec.sections(for: context(clicked: kind)))
+            #expect(!issued.contains { command in
+                switch command {
+                case .copyPath, .copyRelativePath: true
+                default: false
+                }
+            })
+        }
+    }
+
+    @Test("The path commands show the File menu's shortcuts")
+    func pathCommandsShareTheMenuBarShortcuts() {
+        #expect(FavoritesMenuCommand.copyPath("/tmp/a.sql").shortcutAction == .copyPath)
+        #expect(FavoritesMenuCommand.copyRelativePath("a.sql").shortcutAction == .copyRelativePath)
+        #expect(FavoritesMenuCommand.copyText("SELECT 1").shortcutAction == nil)
+    }
+
     @Test("An untracked file offers neither history nor Discard Changes")
     func untrackedFile() {
         let file = linkedFile()
@@ -402,5 +483,74 @@ struct FavoritesMenuSpecTests {
         #expect(!issued.contains(.showLinkedFileHistory(file)))
         #expect(!issued.contains(.discardLinkedFileChanges(file)))
         #expect(issued.contains(.trashLinkedFavorite(file)))
+    }
+
+    private func folderCommands(
+        _ folder: LinkedSQLFolder,
+        gitState: LinkedFolderGitMenuState?
+    ) -> [[FavoritesMenuCommand]] {
+        items(FavoritesMenuSpec.sections(for: FavoritesMenuContext(
+            clicked: .query(.linkedFolder(folder, children: [])),
+            linkedFolderGitStates: gitState.map { [folder.id: $0] } ?? [:]
+        )))
+    }
+
+    @Test("A linked folder in a repository offers Commit, Pull and Push as one group after its paths")
+    func linkedFolderGitGroup() {
+        let folder = LinkedSQLFolder(path: "/tmp/queries")
+        let groups = folderCommands(folder, gitState: LinkedFolderGitMenuState(hasChanges: true, isBusy: false))
+
+        #expect(groups.count == 4)
+        #expect(groups[1] == [.commitLinkedFolder(folder), .pullLinkedFolder(folder), .pushLinkedFolder(folder)])
+    }
+
+    @Test("A clean linked folder offers Pull and Push but nothing to commit")
+    func cleanLinkedFolder() {
+        let folder = LinkedSQLFolder(path: "/tmp/queries")
+        let issued = folderCommands(folder, gitState: LinkedFolderGitMenuState(hasChanges: false, isBusy: false)).joined()
+
+        #expect(!issued.contains(.commitLinkedFolder(folder)))
+        #expect(issued.contains(.pullLinkedFolder(folder)))
+        #expect(issued.contains(.pushLinkedFolder(folder)))
+    }
+
+    @Test("A linked folder outside a repository, or one whose repository is busy, offers no Git commands")
+    func linkedFolderWithoutGit() {
+        let folder = LinkedSQLFolder(path: "/tmp/queries")
+        for state in [nil, LinkedFolderGitMenuState(hasChanges: true, isBusy: true)] {
+            let issued = folderCommands(folder, gitState: state).joined()
+            #expect(!issued.contains(.commitLinkedFolder(folder)))
+            #expect(!issued.contains(.pullLinkedFolder(folder)))
+            #expect(!issued.contains(.pushLinkedFolder(folder)))
+            #expect(issued.contains(.removeLinkedFolder(folder)))
+        }
+    }
+
+    private func linkedCommands(
+        _ file: LinkedSQLFavorite,
+        gitState: LinkedFileGitState,
+        folderState: LinkedFolderGitMenuState
+    ) -> [FavoritesMenuCommand] {
+        commands(FavoritesMenuSpec.sections(for: FavoritesMenuContext(
+            clicked: .query(.linkedFavorite(file)),
+            linkedFileGitStates: [file.id: gitState],
+            linkedFolderGitStates: [file.folderId: folderState]
+        )))
+    }
+
+    @Test("A changed linked file offers Commit first in its Git group, unless it is conflicted or its repository is busy")
+    func changedFileOffersCommit() {
+        let file = linkedFile()
+        let idle = LinkedFolderGitMenuState(hasChanges: true, isBusy: false)
+        let modified = GitFileStatus(staged: .unmodified, unstaged: .modified)
+
+        let issued = linkedCommands(file, gitState: .changed(modified), folderState: idle)
+        #expect(issued.firstIndex(of: .commitLinkedFile(file)) == issued.firstIndex(of: .showLinkedFileHistory(file)).map { $0 - 1 })
+        #expect(linkedCommands(file, gitState: .changed(.untracked), folderState: idle).contains(.commitLinkedFile(file)))
+        #expect(!linkedCommands(file, gitState: .clean, folderState: idle).contains(.commitLinkedFile(file)))
+        let conflicted = GitFileStatus(staged: .unmerged, unstaged: .unmerged, isUnmergedEntry: true)
+        #expect(!linkedCommands(file, gitState: .changed(conflicted), folderState: idle).contains(.commitLinkedFile(file)))
+        let busy = LinkedFolderGitMenuState(hasChanges: true, isBusy: true)
+        #expect(!linkedCommands(file, gitState: .changed(modified), folderState: busy).contains(.commitLinkedFile(file)))
     }
 }

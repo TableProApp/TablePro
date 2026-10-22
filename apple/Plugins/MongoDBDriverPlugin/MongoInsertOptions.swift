@@ -14,7 +14,7 @@ import Foundation
 /// libbson's `BSON_VALIDATE_UTF8` and `BSON_VALIDATE_UTF8_ALLOW_NULL`, so a key that is not UTF-8
 /// is still refused. It is never `false` or 0, which turns every check off, and for a replace that
 /// includes the one keeping an update operator out of the replacement.
-enum MongoInsertOptions {
+nonisolated enum MongoInsertOptions {
     static let validation = 1 | 8
 
     static let json = #"{"validate":\#(validation)}"#

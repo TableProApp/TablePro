@@ -38,8 +38,12 @@ pub async fn forget_host_key(services: &SshServices, config: &SshConfig, known_h
     args.push(config.destination.host().into());
 
     let resolved = run(&services.ssh_program, &args).await?;
-    let lookup = known_hosts_lookup(&resolved).ok_or_else(|| SshFailure::ConfigRejected {
-        detail: "ssh -G printed no hostname".to_owned(),
+    let lookup = known_hosts_lookup(&resolved).ok_or_else(|| {
+        tracing::warn!("ssh -G printed no hostname");
+        SshFailure::Protocol {
+            status: None,
+            detail: String::new(),
+        }
     })?;
     forget_known_host(services, &lookup, known_hosts).await
 }
@@ -160,8 +164,10 @@ pub(crate) fn spawn_failure(program: &Path, error: &io::Error) -> SshFailure {
             program: program.to_owned(),
         }
     } else {
-        SshFailure::ConfigRejected {
-            detail: format!("could not run {}: {error}", program.display()),
+        tracing::debug!(%error, program = %program.display(), "could not start a program");
+        SshFailure::LaunchFailed {
+            program: program.to_owned(),
+            kind: error.kind(),
         }
     }
 }
@@ -361,5 +367,45 @@ mod tests {
             spawn_failure(Path::new("/nonexistent/ssh"), &error),
             SshFailure::OpenSshClientMissing { .. }
         ));
+    }
+
+    #[tokio::test]
+    async fn a_program_that_will_not_start_keeps_the_kind_and_not_the_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("ssh");
+        tablepro_test_support::write_executable(&program, b"#!/bin/sh\n", 0o644).unwrap();
+        let services = SshServices {
+            ssh_program: program.clone(),
+            ..services(dir.path())
+        };
+
+        let refused = forget_host_key(&services, &tunnel("db"), &dir.path().join("known_hosts")).await;
+
+        assert_eq!(
+            refused,
+            Err(SshFailure::LaunchFailed {
+                program,
+                kind: io::ErrorKind::PermissionDenied,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn ssh_g_without_a_hostname_is_unexpected_output_with_no_words_of_ours() {
+        let dir = tempfile::tempdir().unwrap();
+        let services = SshServices {
+            ssh_program: fake_ssh(dir.path(), &[("db", "port 22\\n".to_owned())]),
+            ..services(dir.path())
+        };
+
+        let refused = forget_host_key(&services, &tunnel("db"), &dir.path().join("known_hosts")).await;
+
+        assert_eq!(
+            refused,
+            Err(SshFailure::Protocol {
+                status: None,
+                detail: String::new(),
+            })
+        );
     }
 }

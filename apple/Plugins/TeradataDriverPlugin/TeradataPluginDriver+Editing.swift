@@ -48,13 +48,15 @@ extension TeradataPluginDriver {
                         isExpression: expressionColumns.contains($0.columnIndex)
                     )
                 }
-                guard !assignments.isEmpty else { continue }
-                let whereClause = keyPredicate(primaryKeyColumns, columns: columns, change: change)
-                statements.append(("UPDATE \(target) SET \(assignments.joined(separator: ", "))\(whereClause)", []))
+                guard !assignments.isEmpty,
+                      let whereClause = keyPredicate(primaryKeyColumns, columns: columns, change: change)
+                else { continue }
+                statements.append(("UPDATE \(target) SET \(assignments.joined(separator: ", ")) WHERE \(whereClause)", []))
             case .delete:
-                guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                let whereClause = keyPredicate(primaryKeyColumns, columns: columns, change: change)
-                statements.append(("DELETE FROM \(target)\(whereClause)", []))
+                guard deletedRowIndices.contains(change.rowIndex),
+                      let whereClause = keyPredicate(primaryKeyColumns, columns: columns, change: change)
+                else { continue }
+                statements.append(("DELETE FROM \(target) WHERE \(whereClause)", []))
             }
         }
         return statements.isEmpty ? nil : statements
@@ -69,24 +71,26 @@ extension TeradataPluginDriver {
         return currentDatabaseName
     }
 
-    private func keyPredicate(_ primaryKeyColumns: [String], columns: [String], change: PluginRowChange) -> String {
+    private func keyPredicate(_ primaryKeyColumns: [String], columns: [String], change: PluginRowChange) -> String? {
         let keyColumns = primaryKeyColumns.isEmpty ? columns : primaryKeyColumns
-        let conditions = keyColumns.map { column -> String in
-            let value = oldValue(for: column, columns: columns, change: change)
-            if case .null = value { return "\(quote(column)) IS NULL" }
-            return "\(quote(column)) = \(sqlLiteral(value))"
+        var conditions: [String] = []
+        for column in keyColumns {
+            // A value that was never loaded is not NULL, and matching it as one finds the wrong rows.
+            guard let value = oldValue(for: column, columns: columns, change: change) else { return nil }
+            if case .null = value {
+                conditions.append("\(quote(column)) IS NULL")
+            } else {
+                conditions.append("\(quote(column)) = \(sqlLiteral(value))")
+            }
         }
-        return conditions.isEmpty ? "" : " WHERE " + conditions.joined(separator: " AND ")
+        return conditions.isEmpty ? nil : conditions.joined(separator: " AND ")
     }
 
-    private func oldValue(for column: String, columns: [String], change: PluginRowChange) -> PluginCellValue {
+    private func oldValue(for column: String, columns: [String], change: PluginRowChange) -> PluginCellValue? {
         if let originalRow = change.originalRow,
            let index = columns.firstIndex(of: column), index < originalRow.count {
             return originalRow[index]
         }
-        if let cell = change.cellChanges.first(where: { $0.columnName == column }) {
-            return cell.oldValue
-        }
-        return .null
+        return change.cellChanges.first(where: { $0.columnName == column })?.oldValue
     }
 }

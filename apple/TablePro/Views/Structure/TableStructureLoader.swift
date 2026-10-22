@@ -38,32 +38,37 @@ struct TableStructureLoader {
 
     func columns() async throws -> [ColumnInfo] {
         let table = tableName
-        return try await perform { try await $0.fetchColumns(table: table) }
+        let schema = scope.schema
+        return try await perform { try await $0.fetchColumns(table: table, schema: schema) }
     }
 
     func indexes() async throws -> [IndexInfo] {
         let table = tableName
-        return try await perform { try await $0.fetchIndexes(table: table) }
+        let schema = scope.schema
+        return try await perform { try await $0.fetchIndexes(table: table, schema: schema) }
     }
 
     func foreignKeys() async throws -> [ForeignKeyInfo] {
         let table = tableName
-        return try await perform { try await $0.fetchForeignKeys(table: table) }
+        let schema = scope.schema
+        return try await perform { try await $0.fetchForeignKeys(table: table, schema: schema) }
     }
 
     func checkConstraints() async throws -> [CheckConstraintInfo] {
         let table = tableName
-        return try await perform { try await $0.fetchCheckConstraints(table: table) }
+        let schema = scope.schema
+        return try await perform { try await $0.fetchCheckConstraints(table: table, schema: schema) }
     }
 
     func triggers() async throws -> [TriggerInfo] {
         let table = tableName
-        return try await perform { try await $0.fetchTriggers(table: table) }
+        let schema = scope.schema
+        return try await perform { try await $0.fetchTriggers(table: table, schema: schema) }
     }
 
     func tableComment() async throws -> String? {
         let table = tableName
-        return try await perform { try await $0.fetchTableMetadata(tableName: table).comment }
+        return try await perform { try await $0.fetchObjectComment(tableName: table) }
     }
 
     func concurrentRefreshAvailability() async throws -> PluginConcurrentRefreshAvailability? {
@@ -76,14 +81,15 @@ struct TableStructureLoader {
     /// A comment that fails to load is reported in the result, so the columns still land.
     func coreTabs(includingForeignKeys: Bool, includingTableComment: Bool) async throws -> CoreTabs {
         let table = tableName
+        let schema = scope.schema
         return try await perform { driver in
-            let columns = try await driver.fetchColumns(table: table)
-            let indexes = try await driver.fetchIndexes(table: table)
-            let foreignKeys = includingForeignKeys ? try await driver.fetchForeignKeys(table: table) : []
+            let columns = try await driver.fetchColumns(table: table, schema: schema)
+            let indexes = try await driver.fetchIndexes(table: table, schema: schema)
+            let foreignKeys = includingForeignKeys ? try await driver.fetchForeignKeys(table: table, schema: schema) : []
             var comment: MetadataFetchOutcome<String?>?
             if includingTableComment {
                 do {
-                    comment = .fetched(try await driver.fetchTableMetadata(tableName: table).comment)
+                    comment = .fetched(try await driver.fetchObjectComment(tableName: table))
                 } catch is CancellationError {
                     comment = .cancelled
                 } catch {

@@ -29,4 +29,11 @@ public struct PluginCapabilities: OptionSet, Sendable {
     public static let cellExpressions       = PluginCapabilities(rawValue: 1 << 16)
     /// The driver stores canonical UUID text written into a UUID-typed column as a UUID.
     public static let uuidCellText          = PluginCapabilities(rawValue: 1 << 17)
+    /// The driver lists its session's temporary tables through `fetchTemporaryTables()`.
+    public static let temporaryTables       = PluginCapabilities(rawValue: 1 << 18)
+    /// The driver writes every row change through `generateRowWrites`, and the host never writes one for it, whether
+    /// or not the driver builds its own browse query.
+    public static let rowWrites             = PluginCapabilities(rawValue: 1 << 19)
+    /// Rows can share the primary key the driver reports, so it does not name one row: ClickHouse's is its sorting key.
+    public static let repeatingPrimaryKey   = PluginCapabilities(rawValue: 1 << 20)
 }

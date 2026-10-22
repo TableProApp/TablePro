@@ -123,6 +123,9 @@ final class RowEditingCoordinator: ObservableObject {
               let storageIndex = DisplayRowMapping.rowIndex(
                   forDisplay: index, displayIDs: parent.activeGridDisplayIDs, in: tableRows
               ) else { return }
+        guard parent.unloadedValuesAreLoaded(displayRows: [index], retry: { [weak self] in
+            self?.duplicateSelectedRow(index: index)
+        }) else { return }
 
         parent.dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
 
@@ -321,6 +324,7 @@ final class RowEditingCoordinator: ObservableObject {
         for (rowID, value) in valuesByRow {
             guard let storageRow = tableRows.index(of: rowID) else { continue }
             let row = tableRows.rows[storageRow]
+            guard row.unloadedByteCount(columnIndex) == nil else { continue }
             let values = Array(row.values)
             let removesField = removedRowIDs.contains(rowID) && parent.changeManager.supportsFieldRemoval
             let absence = FieldAbsence(
@@ -415,6 +419,9 @@ final class RowEditingCoordinator: ObservableObject {
 
     func copySelectedRowsToClipboard(indices: Set<Int>) {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
+        guard parent.unloadedValuesAreLoaded(displayRows: indices, retry: { [weak self] in
+            self?.copySelectedRowsToClipboard(indices: indices)
+        }) else { return }
         let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
         parent.rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
@@ -426,6 +433,9 @@ final class RowEditingCoordinator: ObservableObject {
 
     func copySelectedRowsWithHeaders(indices: Set<Int>) {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
+        guard parent.unloadedValuesAreLoaded(displayRows: indices, retry: { [weak self] in
+            self?.copySelectedRowsWithHeaders(indices: indices)
+        }) else { return }
         let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
         parent.rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
@@ -438,6 +448,9 @@ final class RowEditingCoordinator: ObservableObject {
 
     func copySelectedRowsAsJson(indices: Set<Int>) {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
+        guard parent.unloadedValuesAreLoaded(displayRows: indices, retry: { [weak self] in
+            self?.copySelectedRowsAsJson(indices: indices)
+        }) else { return }
         let output = ResultJsonSerializer.serialize(
             tableRows: parent.tabSessionRegistry.tableRows(for: tab.id),
             displayIDs: parent.activeGridDisplayIDs,

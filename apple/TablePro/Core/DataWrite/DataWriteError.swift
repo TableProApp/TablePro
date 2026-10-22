@@ -17,6 +17,7 @@ enum DataWriteError: LocalizedError, Equatable {
     case tooManyRowsAffectedUnrecoverable(table: String, expected: Int, actual: Int)
     case tooManyRowsAffectedInSessionTransaction(table: String, expected: Int, actual: Int)
     case rowsNoLongerMatch(table: String, expected: Int, actual: Int)
+    case keyNoLongerMatchesOneRow(table: String, expected: Int, actual: Int)
 
     var errorDescription: String? {
         switch self {
@@ -70,7 +71,8 @@ enum DataWriteError: LocalizedError, Equatable {
                 ),
                 table, actual, expected
             )
-        case .rowsNoLongerMatch(let table, let expected, let actual):
+        case .rowsNoLongerMatch(let table, let expected, let actual),
+             .keyNoLongerMatchesOneRow(let table, let expected, let actual):
             return String(
                 format: String(
                     localized: "A statement on '%1$@' matched %2$d rows instead of %3$d, so nothing was saved."
@@ -132,7 +134,7 @@ enum DataWriteError: LocalizedError, Equatable {
             return String(
                 localized: "This database has no statement for a new row that sets no column. Enter a value in at least one column, or insert the row with a query."
             )
-        case .changeRefused, .changesNotWritable:
+        case .changeRefused, .changesNotWritable, .keyNoLongerMatchesOneRow:
             return String(
                 localized: "Nothing was saved, and every change is still pending. Undo what cannot be written, or make it with a query, then save again."
             )

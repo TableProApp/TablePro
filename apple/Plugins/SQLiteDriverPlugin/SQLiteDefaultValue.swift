@@ -58,5 +58,5 @@ internal func sqliteLooksLikeExpression(_ value: String) -> Bool {
 }
 
 internal func sqliteDefaultLiteralEscape(_ value: String) -> String {
-    value.replacingOccurrences(of: "\'", with: "\'\'")
+    value.replacingOccurrences(of: "\'", with: "\'\'", options: .literal)
 }

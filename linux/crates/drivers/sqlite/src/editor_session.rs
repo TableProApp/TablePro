@@ -170,16 +170,27 @@ impl Shared {
             .deadline
             .or(self.statement_timeout)
             .map(|limit| Instant::now() + limit);
-        let running = run_script(connection, sql.as_str(), Some(options.row_limit), sink);
+        // Read before each statement, since the select below sees a stop
+        // only once the run waits.
+        let halt = || stop_due(options, flag, deadline).is_some();
+        let running = run_script(connection, sql.as_str(), Some(options.row_limit), sink, halt);
         tokio::pin!(running);
         let stop = tokio::select! {
-            outcome = &mut running => return finished(outcome),
+            outcome = &mut running => {
+                return match outcome {
+                    Ok(outcome) if outcome.halted => {
+                        Ok(halted_end(stop_due(options, flag, deadline).unwrap_or(Stop::Cancelled)))
+                    }
+                    outcome => finished(outcome),
+                };
+            }
             () = options.cancel.cancelled() => Stop::Cancelled,
             () = deadline::elapsed(deadline) => Stop::DeadlineElapsed,
         };
         flag.raise();
         let settled = tokio::time::timeout(self.cancel_grace, &mut running).await;
         Ok(match (stop, settled) {
+            (_, Ok(Ok(outcome))) if outcome.halted => halted_end(stop),
             (_, Ok(Ok(outcome))) => completed(outcome),
             (Stop::Cancelled, Ok(Err(error))) if flag.stopped(&error) => RunEnd::Cancelled,
             (Stop::DeadlineElapsed, Ok(Err(error))) if flag.stopped(&error) => {
@@ -213,6 +224,28 @@ fn finished(outcome: Result<StreamOutcome, DriverError>) -> Result<RunEnd, Drive
     match outcome {
         Ok(outcome) => Ok(completed(outcome)),
         Err(error) => session_failure(error),
+    }
+}
+
+/// A close raises the flag too, and reads as a cancel.
+fn stop_due(options: &RunOptions, flag: &InterruptFlag, deadline: Option<Instant>) -> Option<Stop> {
+    if deadline.is_some_and(|at| Instant::now() >= at) && !options.cancel.is_cancelled() {
+        Some(Stop::DeadlineElapsed)
+    } else if options.cancel.is_cancelled() || flag.is_raised() {
+        Some(Stop::Cancelled)
+    } else {
+        None
+    }
+}
+
+/// The statement before the stop ended on its own, so SQLite stopped
+/// nothing.
+fn halted_end(stop: Stop) -> RunEnd {
+    match stop {
+        Stop::Cancelled => RunEnd::Cancelled,
+        Stop::DeadlineElapsed => RunEnd::TimedOut {
+            server_cancelled: false,
+        },
     }
 }
 

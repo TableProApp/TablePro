@@ -3,12 +3,29 @@ import TableProModels
 import TableProOracleCore
 
 nonisolated struct ConnectionFormEdits: Equatable, Sendable {
+    nonisolated struct JumpHostEdit: Equatable, Sendable, Identifiable {
+        var id: UUID
+        var host: String
+        var port: Int?
+        var username: String
+    }
+
+    // Raw values in the Mac's spelling, as SSHConfiguration stores them.
+    nonisolated struct TOTPSettings: Equatable, Sendable {
+        var mode: String
+        var algorithm: String
+        var digits: Int
+        var period: Int
+    }
+
     nonisolated struct SSHTunnel: Equatable, Sendable {
         var host: String
         var port: Int?
         var username: String
         var authMethod: SSHConfiguration.SSHAuthMethod
         var privateKeyPath: String?
+        var jumpHosts: [JumpHostEdit] = []
+        var totp: TOTPSettings?
     }
 
     nonisolated struct OracleOptions: Equatable, Sendable {
@@ -17,6 +34,24 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         var sid: String
         var role: OracleConnectionOptions.Role
         var networkEncryption: OracleConnectionOptions.NetworkEncryption
+    }
+
+    // The fields the Mac's MongoDB plugin declares that a connection needs to open: `hosts` stands in for Host and Port.
+    nonisolated struct MongoOptions: Equatable, Sendable {
+        var hosts: String
+        var authSource: String
+        var authMechanism: String
+        var replicaSet: String
+        var usesSRV: Bool
+    }
+
+    nonisolated struct IAMOptions: Equatable, Sendable {
+        var method: IAMSignIn?
+        var region: String
+        var accessKeyId: String
+        var profileName: String
+        var rdsEndpoint: String
+        var replicationGroupId: String
     }
 
     var name: String
@@ -29,9 +64,11 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
     var tagId: UUID?
     var iconName: String?
     var safeModeLevel: SafeModeLevel
-    var sslMode: SSLConfiguration.SSLMode?
+    var sslMode: SSLModeChoice?
     var sshTunnel: SSHTunnel?
     var oracle: OracleOptions?
+    var mongo: MongoOptions?
+    var iam: IAMOptions?
 
     static func tagIds(selecting tagId: UUID?, over existing: [UUID]) -> [UUID] {
         let others = existing.dropFirst().filter { $0 != tagId }
@@ -61,6 +98,8 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.sslMode) { applySSLMode(to: &connection) }
         if changed(\.sshTunnel) { applySSHTunnel(to: &connection, changedSince: opening?.sshTunnel) }
         if changed(\.oracle) { applyOracleOptions(to: &connection, changedSince: opening?.oracle) }
+        if changed(\.mongo) { applyMongoOptions(to: &connection, changedSince: opening?.mongo) }
+        if changed(\.iam) { applyIAMOptions(to: &connection, changedSince: opening?.iam) }
         return connection
     }
 
@@ -78,16 +117,20 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
             connection.sslEnabled = false
             return
         }
-        var configuration = connection.sslConfiguration ?? SSLConfiguration()
-        configuration.mode = sslMode
-        connection.sslConfiguration = configuration
+        connection.sslConfiguration = sslMode.applied(to: connection.sslConfiguration ?? SSLConfiguration())
         connection.sslEnabled = sslMode != .disable
     }
 
     private func applySSHTunnel(to connection: inout DatabaseConnection, changedSince opening: SSHTunnel?) {
+        // Switched off, not cleared: the Mac keeps a disabled tunnel's settings, and the record carries them.
         guard let sshTunnel else {
             connection.sshEnabled = false
-            connection.sshConfiguration = nil
+            connection.sshConfiguration?.macEnabled = false
+            // The Mac rebuilds a profile tunnel from this link alone, so switching off drops the link.
+            if connection.sshProfileId != nil {
+                connection.clearsSSHProfileLink = true
+            }
+            connection.sshProfileId = nil
             return
         }
         func changed<Value: Equatable>(_ field: KeyPath<SSHTunnel, Value>) -> Bool {
@@ -100,13 +143,69 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.username) { configuration.username = sshTunnel.username }
         if changed(\.authMethod) { configuration.authMethod = sshTunnel.authMethod }
         if changed(\.privateKeyPath) { configuration.privateKeyPath = sshTunnel.privateKeyPath }
+        if changed(\.totp), let totp = sshTunnel.totp {
+            configuration.totpMode = totp.mode
+            configuration.totpAlgorithm = totp.algorithm
+            configuration.totpDigits = totp.digits
+            configuration.totpPeriod = totp.period
+        }
+        if changed(\.jumpHosts) {
+            configuration.jumpHosts = Self.rebuiltJumpHosts(
+                sshTunnel.jumpHosts,
+                over: configuration.jumpHosts,
+                changedSince: opening?.jumpHosts
+            )
+        }
+        // The Mac reads a missing `enabled` as off.
         if opening == nil {
             connection.sshEnabled = true
-            if configuration.macEnabled != nil {
-                configuration.macEnabled = true
-            }
+            configuration.macEnabled = true
+        } else if configuration.macEnabled == nil, connection.sshEnabled {
+            configuration.macEnabled = true
         }
         connection.sshConfiguration = configuration
+    }
+
+    // Each hop keeps the record's Mac credential fields and takes only the fields the form changed.
+    // Where the form left the chain alone, the record's chain wins, since another device may have
+    // saved it while the form was open: a field edit keeps the record's order, a hop removed there
+    // stays removed, and a hop added there keeps its place after the hop before it.
+    private static func rebuiltJumpHosts(
+        _ edits: [JumpHostEdit],
+        over current: [SSHJumpHost],
+        changedSince opening: [JumpHostEdit]?
+    ) -> [SSHJumpHost] {
+        let currentHops = Dictionary(current.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let openingHops = Dictionary((opening ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let editedHops = Dictionary(edits.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
+        func applyingEdit(to hop: SSHJumpHost) -> SSHJumpHost {
+            guard let edit = editedHops[hop.id] else { return hop }
+            var hop = hop
+            let opened = openingHops[hop.id]
+            if differs(\JumpHostEdit.host, from: opened, to: edit) { hop.host = edit.host }
+            if differs(\JumpHostEdit.port, from: opened, to: edit) { hop.port = edit.port }
+            if differs(\JumpHostEdit.username, from: opened, to: edit) { hop.username = edit.username }
+            return hop
+        }
+
+        if let opening, edits.map(\.id) == opening.map(\.id) {
+            return current.map(applyingEdit(to:))
+        }
+
+        var merged = edits.compactMap { edit -> SSHJumpHost? in
+            if let hop = currentHops[edit.id] { return applyingEdit(to: hop) }
+            guard openingHops[edit.id] == nil else { return nil }
+            return SSHJumpHost(id: edit.id, host: edit.host, port: edit.port, username: edit.username)
+        }
+        guard opening != nil else { return merged }
+        for (index, hop) in current.enumerated() where openingHops[hop.id] == nil && editedHops[hop.id] == nil {
+            let anchor = current[..<index].reversed().lazy
+                .compactMap { previous in merged.firstIndex { $0.id == previous.id } }
+                .first
+            merged.insert(hop, at: anchor.map { $0 + 1 } ?? 0)
+        }
+        return merged
     }
 
     private func applyOracleOptions(to connection: inout DatabaseConnection, changedSince opening: OracleOptions?) {
@@ -125,5 +224,43 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.networkEncryption) {
             connection.additionalFields[Key.networkEncryption] = oracle.networkEncryption.rawValue
         }
+    }
+
+    private func applyMongoOptions(to connection: inout DatabaseConnection, changedSince opening: MongoOptions?) {
+        guard let mongo else { return }
+        func changed<Value: Equatable>(_ field: KeyPath<MongoOptions, Value>) -> Bool {
+            Self.differs(field, from: opening, to: mongo)
+        }
+
+        typealias Plan = MongoDBDialPlan
+        if changed(\.hosts) { connection.additionalFields[Plan.hostsField] = mongo.hosts }
+        if changed(\.authSource) { connection.additionalFields[Plan.authSourceField] = mongo.authSource }
+        if changed(\.authMechanism) { connection.additionalFields[Plan.authMechanismField] = mongo.authMechanism }
+        if changed(\.replicaSet) { connection.additionalFields[Plan.replicaSetField] = mongo.replicaSet }
+        if changed(\.usesSRV) { connection.additionalFields[Plan.srvField] = mongo.usesSRV ? "true" : "false" }
+    }
+
+    private func applyIAMOptions(to connection: inout DatabaseConnection, changedSince opening: IAMOptions?) {
+        guard let iam else { return }
+        func changed<Value: Equatable>(_ field: KeyPath<IAMOptions, Value>) -> Bool {
+            Self.differs(field, from: opening, to: iam)
+        }
+        func write(_ value: String, to key: String) {
+            connection.additionalFields[key] = value.isEmpty ? nil : value
+        }
+
+        typealias Field = IAMSignIn.Field
+        if changed(\.method) {
+            if let method = iam.method {
+                connection.additionalFields[Field.method] = method.pickerValue
+            } else if connection.additionalFields[Field.method] != nil {
+                connection.additionalFields[Field.method] = IAMSignIn.passwordPickerValue
+            }
+        }
+        if changed(\.region) { write(iam.region, to: Field.region) }
+        if changed(\.accessKeyId) { write(iam.accessKeyId, to: Field.accessKeyId) }
+        if changed(\.profileName) { write(iam.profileName, to: Field.profileName) }
+        if changed(\.rdsEndpoint) { write(iam.rdsEndpoint, to: Field.rdsEndpoint) }
+        if changed(\.replicationGroupId) { write(iam.replicationGroupId, to: Field.replicationGroupId) }
     }
 }

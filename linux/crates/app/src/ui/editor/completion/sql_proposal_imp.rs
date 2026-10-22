@@ -1,4 +1,4 @@
-use std::cell::{Cell, OnceCell};
+use std::cell::OnceCell;
 
 use gtk4::glib;
 use gtk4::subclass::prelude::*;
@@ -11,8 +11,6 @@ pub struct SqlProposal {
     pub kind: OnceCell<ProposalKind>,
     pub label: OnceCell<String>,
     pub insert_text: OnceCell<String>,
-    /// The last fuzzy score, written by the filter for the sorter.
-    pub priority: Cell<u32>,
 }
 
 #[glib::object_subclass]

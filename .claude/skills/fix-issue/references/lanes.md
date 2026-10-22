@@ -33,7 +33,7 @@ End with a concrete recommendation: the API, the states, the example strings.
 
 ## hunt
 
-Find what else is wrong, not the reported bug. Everything you report that survives verification ships in this PR, so report only defects, each with a `file:line` and a failure scenario someone could hit.
+Find what else is wrong, not the reported bug. Everything you report that survives verification ships in this run's PR, another app's code included, so report only defects, each with a `file:line` and a failure scenario someone could hit.
 
 Look in the subsystem the fix touches, then wherever the same cause or pattern lives:
 

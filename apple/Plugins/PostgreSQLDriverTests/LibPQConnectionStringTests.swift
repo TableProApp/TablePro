@@ -79,6 +79,51 @@ struct LibPQConnectionStringTests {
         )
     }
 
+    private func buildKerberos(host: String, serviceHost: String? = nil) -> String {
+        LibPQConnectionString.build(
+            host: host,
+            port: 5_432,
+            user: "alice",
+            password: nil,
+            database: "app",
+            sslConfig: SSLConfiguration(),
+            options: nil,
+            kerberos: LibPQKerberosSignIn(gssEncryptionMode: "require", cachePath: nil, serviceHost: serviceHost)
+        )
+    }
+
+    @Test("Any other sign-in never tries GSS encryption and refuses GSS authentication")
+    func otherSignInsStayOffGSS() {
+        let conninfo = build()
+
+        #expect(conninfo.contains("gssencmode='disable'"))
+        #expect(conninfo.contains("require_auth='!gss'"))
+    }
+
+    @Test("A Kerberos sign-in passes its GSS Encryption mode and allows GSS authentication")
+    func kerberosPassesGSSEncryption() {
+        let conninfo = buildKerberos(host: "db.corp.example.com")
+
+        #expect(conninfo.contains("gssencmode='require'"))
+        #expect(!conninfo.contains("require_auth"))
+        #expect(!conninfo.contains("password="))
+        #expect(conninfo.hasPrefix("host='db.corp.example.com' port="))
+    }
+
+    @Test("Behind a tunnel, GSS names the server's own host while libpq dials the tunnel")
+    func kerberosThroughATunnel() {
+        let conninfo = buildKerberos(host: "127.0.0.1", serviceHost: "db.corp.example.com")
+
+        #expect(conninfo.hasPrefix("host='db.corp.example.com' hostaddr='127.0.0.1' port="))
+    }
+
+    @Test("A tunnel host that is not an address keeps the plain host", arguments: ["localhost", "/tmp"])
+    func kerberosWithoutAnAddressKeepsTheHost(host: String) {
+        let conninfo = buildKerberos(host: host, serviceHost: "db.corp.example.com")
+
+        #expect(!conninfo.contains("db.corp.example.com"))
+    }
+
     @Test("The session is pinned to UTF8 in the startup packet, so RESET ALL and DISCARD ALL keep it")
     func pinsClientEncoding() {
         #expect(build().contains("client_encoding='UTF8'"))

@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-enum MongoDBFindLimitPolicy {
+nonisolated enum MongoDBFindLimitPolicy {
     /// Server-side limit for a user query. One document beyond the row cap is requested so the
     /// caller can tell "exactly a full page" from "there is more", without ever asking the server
     /// for the whole collection.

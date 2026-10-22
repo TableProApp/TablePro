@@ -50,6 +50,30 @@ internal extension MainContentCoordinator {
         return nil
     }
 
+    /// A folder holding a single file a row format reads opens the sheet for one file. Files no row format reads
+    /// are named in the batch sheet, or in an alert when nothing else is left.
+    func presentRowImportBatch(_ resolution: ImportBatchFiles.Resolution) {
+        guard let first = resolution.files.first else {
+            presentError(
+                String(localized: "Nothing to Import"),
+                String(
+                    format: String(localized: "None of these files import into a table: %@."),
+                    resolution.leftOut.map(\.lastPathComponent).formatted(.list(type: .and))
+                ),
+                workspaceWindow
+            )
+            return
+        }
+        releaseImportFile()
+        if resolution.files.count == 1, resolution.leftOut.isEmpty {
+            importFile = ImportFileHandoff(url: first.url, ownsFile: false)
+            activeSheet = .rowImport(formatId: first.formatId)
+            return
+        }
+        importBatch = resolution
+        activeSheet = .rowImportBatch
+    }
+
     func reportImportRefusal(_ refusal: RowImportRefusal) {
         guard case .importNotSupported = refusal else { return }
         presentError(

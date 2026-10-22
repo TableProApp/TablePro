@@ -4,8 +4,7 @@ use futures_util::TryStreamExt;
 use sqlx::mysql::MySqlConnection;
 use sqlx::{AssertSqlSafe, Either, Executor as _, Row as _};
 use tablepro_core::column::ResultColumn;
-use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
+use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, statement_access};
 use tablepro_core::{
     DriverError, ReadOnlyRefusal, ReadStatement, ResultEvent, ResultSink, SinkFlow, StreamSummary, Truncation, Value,
 };
@@ -19,11 +18,6 @@ use crate::mysql_wire_format::MySqlWireFormat;
 use crate::workspace_call::{describe, prepared};
 
 const BATCH_ROWS: usize = 256;
-
-/// The first words a statement may start with in a streamed read. Each
-/// only reads, and none ends the read-only transaction the read relies
-/// on; anything else, a CALL or a COMMIT, is refused before it is sent.
-const READING_STATEMENTS: [&str; 7] = ["SELECT", "WITH", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "TABLE"];
 
 /// Every row of a read, into the sink, inside a read-only transaction.
 /// The connection has no statement timeout: an export can take minutes,
@@ -80,25 +74,15 @@ pub(crate) async fn stream(
 }
 
 /// User SQL that does anything but read is refused: a write fails in the
-/// read-only transaction anyway, but a COMMIT or DDL would end it first.
+/// read-only transaction anyway, but a COMMIT or DDL would end it first,
+/// and the server runs what a `/*! */` comment holds.
 pub(crate) fn refuse_writes(sql: &str) -> Result<(), DriverError> {
-    let plan = ScriptPlan::build(sql, SqlGrammar::MySql, LexicalSettings::default_for(SqlGrammar::MySql));
-    for statement in plan.statements() {
-        let first = plan
-            .tokens(statement.range.clone())
-            .find(|token| !token.kind.is_trivia());
-        let reads = match first {
-            Some(token) if token.kind == ScriptTokenKind::OpenParen => true,
-            Some(token) if token.kind == ScriptTokenKind::Word => sql
-                .get(token.range)
-                .is_some_and(|word| READING_STATEMENTS.iter().any(|known| word.eq_ignore_ascii_case(known))),
-            _ => false,
-        };
-        if !reads {
-            return Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard));
+    match statement_access(sql, SqlGrammar::MySql) {
+        StatementAccess::Read => Ok(()),
+        StatementAccess::Write | StatementAccess::Destructive => {
+            Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))
         }
     }
-    Ok(())
 }
 
 struct Emitter<'a> {
@@ -205,6 +189,8 @@ mod tests {
             "CALL p()",
             "BEGIN",
             "CREATE TABLE t (a int)",
+            "SELECT 1 /*! ; COMMIT; DELETE FROM t */",
+            "SELECT * FROM t INTO OUTFILE '/tmp/t.csv'",
         ] {
             assert_eq!(
                 refuse_writes(sql),

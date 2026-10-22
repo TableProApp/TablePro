@@ -5,6 +5,7 @@ import TableProTrinoCore
 
 final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     let config: DriverConnectionConfig
+    let flavor: TrinoServerFlavor
     let session: TrinoSessionState
     private let lock = NSLock()
     private var _client: TrinoStatementClient?
@@ -15,6 +16,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.config = config
+        self.flavor = TrinoServerFlavor(driverVariant: config.additionalFields["driverVariant"])
         self.session = TrinoSessionState(
             catalog: config.database.isEmpty ? nil : config.database,
             schema: Self.trimmedField(config.additionalFields["trinoSchema"])
@@ -22,7 +24,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     var capabilities: PluginCapabilities {
-        [.multiSchema, .cancelQuery, .materializedViews, .dataCompare]
+        [.multiSchema, .cancelQuery, .materializedViews, .dataCompare, .rowWrites, .cellExpressions, .uuidCellText]
     }
 
     func cacheColumnTypes(_ types: [String: String], key: String) {
@@ -43,7 +45,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func connect() async throws {
-        let clientConfig = try Self.makeClientConfig(config)
+        let clientConfig = try Self.makeClientConfig(config, flavor: flavor)
         let transport = URLSessionTrinoTransport(tls: clientConfig.tls)
         let connectTimeoutMilliseconds = PluginConnectTimeout.milliseconds(
             in: config.additionalFields,
@@ -60,7 +62,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let result: TrinoResultSet
         do {
-            result = try await client.execute("SELECT version()")
+            result = try await client.execute(flavor.connectStatement)
         } catch let error as TrinoError {
             lock.withLock {
                 if _client === client { _client = nil }
@@ -74,10 +76,14 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return true
         }
         guard adopted else { throw TrinoError.cancelled }
-        if case .text(let version)? = result.rows.first?.first {
-            lock.withLock { _serverVersion = "Trino \(version)" }
+        let versionResult = flavor.versionStatement == flavor.connectStatement
+            ? result
+            : try? await client.execute(flavor.versionStatement)
+        let product = flavor.productName
+        if case .text(let version)? = versionResult?.rows.first?.first {
+            lock.withLock { _serverVersion = "\(product) \(version)" }
         } else {
-            lock.withLock { _serverVersion = "Trino" }
+            lock.withLock { _serverVersion = product }
         }
     }
 
@@ -194,7 +200,10 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return String(format: String(localized: "%1$@: %2$lld rows"), updateType, Int64(count))
     }
 
-    private static func makeClientConfig(_ config: DriverConnectionConfig) throws -> TrinoClientConfig {
+    private static func makeClientConfig(
+        _ config: DriverConnectionConfig,
+        flavor: TrinoServerFlavor
+    ) throws -> TrinoClientConfig {
         let useTLS = config.ssl.isEnabled
         let port = config.port > 0 ? config.port : (useTLS ? 8_443 : 8_080)
         let clientConfig = TrinoClientConfig(
@@ -206,7 +215,8 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             catalog: config.database.isEmpty ? nil : config.database,
             schema: trimmedField(config.additionalFields["trinoSchema"]),
             timeZone: trimmedField(config.additionalFields["trinoTimeZone"]),
-            auth: resolveAuth(config)
+            auth: resolveAuth(config),
+            flavor: flavor
         )
         return clientConfig
     }

@@ -109,7 +109,7 @@ private struct ICloudPage: View {
         OnboardingPageLayout {
             OnboardingHeader(
                 title: "Sync with iCloud",
-                message: "Keep your connections, groups, and tags the same on your iPhone, iPad, and Mac.",
+                message: "Keep your connections, groups, tags, and saved queries the same on your iPhone, iPad, and Mac.",
                 image: .symbol("icloud")
             )
         } content: {

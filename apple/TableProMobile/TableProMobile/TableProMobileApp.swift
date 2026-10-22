@@ -32,6 +32,9 @@ struct TableProMobileApp: App {
                 .environment(appState)
                 .environment(lockState)
         }
+        .commands {
+            QueryCommands()
+        }
         .onChange(of: scenePhase) { _, phase in
             guard !TestRuntime.isActive else { return }
             lockState.handleScenePhase(phase)

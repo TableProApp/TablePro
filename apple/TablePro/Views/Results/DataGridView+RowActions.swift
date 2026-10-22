@@ -5,6 +5,7 @@
 
 import AppKit
 import os
+import TableProAutocomplete
 import TableProPluginKit
 
 private let rowActionsLogger = Logger(subsystem: "com.TablePro", category: "DataGridView+RowActions")
@@ -26,13 +27,38 @@ extension TableViewCoordinator {
         delegate?.dataGridAddRow()
     }
 
+    func copyRows(at indices: Set<Int>, as format: RowCopyFormat) {
+        guard unloadedValuesAreLoaded(displayRows: indices, retry: { [weak self] in
+            self?.copyRows(at: indices, as: format)
+        }) else { return }
+        switch format {
+        case .rows: delegate?.dataGridCopyRows(indices)
+        case .rowsWithHeaders: copyRowsWithHeaders(at: indices)
+        case .json: copyRowsAsJson(at: indices)
+        case .csv: copyRowsAsCsv(at: indices, includeHeaders: false)
+        case .csvWithHeaders: copyRowsAsCsv(at: indices, includeHeaders: true)
+        case .markdown: copyRowsAsMarkdown(at: indices)
+        }
+    }
+
+    func copyRowsInCopyFormat(at indices: Set<Int>) {
+        copyRows(at: indices, as: rowCopyFormat)
+    }
+
     func copyRowsWithHeaders(at indices: Set<Int>) {
-        let sortedIndices = indices.sorted()
+        copyRowsAsTSV(at: indices, includeHeaders: true)
+    }
+
+    func copyRowsAsTSV(at indices: Set<Int>, includeHeaders: Bool) {
+        guard unloadedValuesAreLoaded(displayRows: indices, retry: { [weak self] in
+            self?.copyRowsAsTSV(at: indices, includeHeaders: includeHeaders)
+        }) else { return }
+        let sortedIndices = clipboardDisplayIndices(indices)
         let tableRows = tableRowsProvider()
         let projection = visibleColumnProjection
         let columnTypes = projection.columnTypes(tableRows.columnTypes)
         let columns = projection.columns(tableRows.columns)
-        var tsvRows: [String] = [columns.joined(separator: "\t")]
+        var tsvRows: [String] = includeHeaders ? [columns.joined(separator: "\t")] : []
         var htmlRows: [[String]] = []
         var copiedRows: [Row] = []
 
@@ -43,19 +69,44 @@ extension TableViewCoordinator {
             htmlRows.append(formatted)
             copiedRows.append(row)
         }
+        guard !copiedRows.isEmpty else { return }
 
         let tsv = tsvRows.joined(separator: "\n")
-        let html = HtmlTableEncoder.encode(rows: htmlRows, headers: columns)
-        let payload = GridRowsClipboardPayload(
+        let html = includeHeaders ? HtmlTableEncoder.encode(rows: htmlRows, headers: columns) : nil
+        ClipboardService.shared.writeRows(
+            tsv: tsv,
+            html: html,
+            gridRows: rowsPayload(copiedRows, columns: columns, projection: projection)
+        )
+    }
+
+    // The ceiling each format's converter already puts on its text, taken first so the paste payload holds the same rows.
+    private func clipboardDisplayIndices(_ indices: Set<Int>) -> [Int] {
+        let sorted = indices.sorted()
+        let limit = RowOperationsManager.maxClipboardRows
+        guard sorted.count > limit else { return sorted }
+        rowActionsLogger.warning("Clipboard copy truncated: \(sorted.count) rows selected, capping at \(limit)")
+        return Array(sorted.prefix(limit))
+    }
+
+    // Carried by every row copy, so a paste into a grid takes the rows rather than parsing the text.
+    private func rowsPayload(
+        _ rows: [Row],
+        columns: [String],
+        projection: VisibleColumnProjection
+    ) -> GridRowsClipboardPayload {
+        GridRowsClipboardPayload(
             columns: columns,
-            copying: copiedRows,
-            expressionColumns: copiedRows.map { changeManager.expressionColumns(forRow: $0.id) },
+            copying: rows,
+            expressionColumns: rows.map { changeManager.expressionColumns(forRow: $0.id) },
             projection: projection
         )
-        ClipboardService.shared.writeRows(tsv: tsv, html: html, gridRows: payload)
     }
 
     func copyCellValue(at rowIndex: Int, columnIndex: Int) {
+        guard unloadedValuesAreLoaded(displayRows: [rowIndex], columns: IndexSet(integer: columnIndex), retry: { [weak self] in
+            self?.copyCellValue(at: rowIndex, columnIndex: columnIndex)
+        }) else { return }
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
         guard let row = displayRow(at: rowIndex), columnIndex < row.values.count else { return }
@@ -86,7 +137,9 @@ extension TableViewCoordinator {
 
         let value = cell.asText ?? "NULL"
 
+        // A format saved before the column changed type is skipped here as the cell skips it.
         if columnIndex < columnDisplayFormats.count, let format = columnDisplayFormats[columnIndex], format != .raw,
+           format.isApplicable(to: columnType, databaseType: databaseType),
            let formatted = ValueDisplayFormatter.apply(value, format: format, columnType: columnType) {
             return formatted
         }
@@ -94,8 +147,23 @@ extension TableViewCoordinator {
         return BlobFormattingService.shared.formatIfNeeded(value, columnType: columnType, for: .copy)
     }
 
+    // The statements leave out the columns the server owns, which only the schema names, so they wait for it as Duplicate does.
+    var canCopyRowsAsInsert: Bool {
+        guard let databaseType, databaseType != .mongodb, databaseType != .redis, tableName != nil else { return false }
+        return tableRowsProvider().hasAuthoritativeSchema
+    }
+
+    // A table without a key is matched on every column, so one no match can compare leaves nothing to find the row by.
+    var canCopyRowsAsUpdate: Bool {
+        guard canCopyRowsAsInsert else { return false }
+        return !primaryKeyColumns.isEmpty || tableRowsProvider().rowMatchPolicy.excludedColumns.isEmpty
+    }
+
     func copyRowsAsInsert(at indices: Set<Int>) {
         guard let tableName, let databaseType else { return }
+        guard unloadedValuesAreLoaded(displayRows: indices, retry: { [weak self] in
+            self?.copyRowsAsInsert(at: indices)
+        }) else { return }
         let tableRows = tableRowsProvider()
         let projection = selectedColumnProjection()
         let driver = resolveDriver()
@@ -108,7 +176,8 @@ extension TableViewCoordinator {
                 databaseType: databaseType,
                 unwritableColumns: unwritableColumns(in: tableRows),
                 quoteIdentifier: driver?.quoteIdentifier,
-                escapeStringLiteral: driver?.escapeStringLiteral
+                escapeStringLiteral: driver?.escapeStringLiteral,
+                identifierSpelling: copiedIdentifierSpelling(for: databaseType)
             )
             let rows = indices.sorted().compactMap(displayRow(at:)).map { row in
                 SQLRowToStatementConverter.SourceRow(
@@ -127,6 +196,9 @@ extension TableViewCoordinator {
     /// key, or with no key by every column it has, hidden ones included, as it is stored rather than as edited.
     func copyRowsAsUpdate(at indices: Set<Int>) {
         guard let tableName, let databaseType else { return }
+        guard unloadedValuesAreLoaded(displayRows: indices, retry: { [weak self] in
+            self?.copyRowsAsUpdate(at: indices)
+        }) else { return }
         let tableRows = tableRowsProvider()
         let settable = selectionController.isEmpty ? visibleColumnProjection : selectedColumnProjection()
         let driver = resolveDriver()
@@ -141,13 +213,21 @@ extension TableViewCoordinator {
                 rowMatchPolicy: tableRows.rowMatchPolicy,
                 settableColumns: settable.columns(tableRows.columns),
                 quoteIdentifier: driver?.quoteIdentifier,
-                escapeStringLiteral: driver?.escapeStringLiteral
+                escapeStringLiteral: driver?.escapeStringLiteral,
+                identifierSpelling: copiedIdentifierSpelling(for: databaseType),
+                rowUpdateStatement: driver?.rowUpdateStatement,
+                matchesEveryColumn: driver?.primaryKeyNamesOneRow == false
             )
             let rows = indices.sorted().compactMap { displayRow(at: $0).map(copiedSourceRow) }
             writeCopiedStatements(converter.generateUpdates(rows: rows))
         } catch {
             rowActionsLogger.error("copyRowsAsUpdate failed: \(error.publicLogShape, privacy: .public)")
         }
+    }
+
+    private func copiedIdentifierSpelling(for databaseType: DatabaseType) -> SQLIdentifierSpelling? {
+        guard let rules = databaseType.identifierRules else { return nil }
+        return SQLIdentifierSpelling(rules: rules, policy: SQLIdentifierCase.stored(for: connectionId))
     }
 
     private func unwritableColumns(in tableRows: TableRows) -> Set<String> {
@@ -192,41 +272,62 @@ extension TableViewCoordinator {
 
     func copyRowsAsJson(at indices: Set<Int>) {
         guard !indices.isEmpty else { return }
+        guard unloadedValuesAreLoaded(displayRows: indices, retry: { [weak self] in
+            self?.copyRowsAsJson(at: indices)
+        }) else { return }
+        let tableRows = tableRowsProvider()
+        let projection = selectedColumnProjection()
+        let displayIndices = clipboardDisplayIndices(indices)
         let output = ResultJsonSerializer.serialize(
-            tableRows: tableRowsProvider(),
+            tableRows: tableRows,
             displayIDs: displayIDs,
-            selectedDisplayIndices: indices,
-            columns: selectedColumnProjection()
+            selectedDisplayIndices: Set(displayIndices),
+            columns: projection
         )
         guard output.rowCount > 0 else { return }
-        ClipboardService.shared.writeText(output.json)
+        let copied = displayIndices.compactMap(displayRow(at:))
+        ClipboardService.shared.writeText(
+            output.json,
+            gridRows: rowsPayload(copied, columns: projection.columns(tableRows.columns), projection: projection)
+        )
     }
 
     func copyRowsAsCsv(at indices: Set<Int>, includeHeaders: Bool) {
+        guard unloadedValuesAreLoaded(displayRows: indices, retry: { [weak self] in
+            self?.copyRowsAsCsv(at: indices, includeHeaders: includeHeaders)
+        }) else { return }
         let projection = selectedColumnProjection()
-        let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
-        guard !rows.isEmpty else { return }
+        let copied = clipboardDisplayIndices(indices).compactMap(displayRow(at:))
+        guard !copied.isEmpty else { return }
         let tableRows = tableRowsProvider()
-        let converter = CsvRowConverter(
-            columns: projection.columns(tableRows.columns),
-            columnTypes: projection.columnTypes(tableRows.columnTypes)
+        let columns = projection.columns(tableRows.columns)
+        let converter = CsvRowConverter(columns: columns, columnTypes: projection.columnTypes(tableRows.columnTypes))
+        ClipboardService.shared.writeCsv(
+            converter.generateCsv(rows: copied.map { projection.values(Array($0.values)) }, includeHeaders: includeHeaders),
+            gridRows: rowsPayload(copied, columns: columns, projection: projection)
         )
-        ClipboardService.shared.writeCsv(converter.generateCsv(rows: rows, includeHeaders: includeHeaders))
     }
 
     func copyRowsAsMarkdown(at indices: Set<Int>) {
+        guard unloadedValuesAreLoaded(displayRows: indices, retry: { [weak self] in
+            self?.copyRowsAsMarkdown(at: indices)
+        }) else { return }
         let projection = selectedColumnProjection()
-        let rows = indices.sorted().compactMap { displayRow(at: $0).map { projection.values(Array($0.values)) } }
-        guard !rows.isEmpty else { return }
+        let copied = clipboardDisplayIndices(indices).compactMap(displayRow(at:))
+        guard !copied.isEmpty else { return }
         let tableRows = tableRowsProvider()
-        let converter = MarkdownTableConverter(
-            columns: projection.columns(tableRows.columns),
-            columnTypes: projection.columnTypes(tableRows.columnTypes)
+        let columns = projection.columns(tableRows.columns)
+        let converter = MarkdownTableConverter(columns: columns, columnTypes: projection.columnTypes(tableRows.columnTypes))
+        ClipboardService.shared.writeText(
+            converter.generateMarkdown(rows: copied.map { projection.values(Array($0.values)) }),
+            gridRows: rowsPayload(copied, columns: columns, projection: projection)
         )
-        ClipboardService.shared.writeText(converter.generateMarkdown(rows: rows))
     }
 
     func copyRowsAsInClause(at indices: Set<Int>, columnIndex: Int) {
+        guard unloadedValuesAreLoaded(displayRows: indices, columns: IndexSet(integer: columnIndex), retry: { [weak self] in
+            self?.copyRowsAsInClause(at: indices, columnIndex: columnIndex)
+        }) else { return }
         let rows: [[PluginCellValue]] = indices.sorted().compactMap { displayRow(at: $0).map { Array($0.values) } }
         guard !rows.isEmpty else { return }
         let tableRows = tableRowsProvider()
@@ -247,6 +348,9 @@ extension TableViewCoordinator {
         let totalRows = displayIDs?.count ?? tableRows.rows.count
         let rowCount = min(totalRows, PluginRowLimits.emergencyMax)
         guard rowCount > 0 else { return }
+        guard unloadedValuesAreLoaded(displayRows: 0..<rowCount, columns: IndexSet(integer: columnIndex), retry: { [weak self] in
+            self?.copyColumnValues(columnIndex: columnIndex)
+        }) else { return }
 
         let columnType = tableRows.columnTypes.indices.contains(columnIndex)
             ? tableRows.columnTypes[columnIndex]
@@ -411,6 +515,10 @@ extension TableViewCoordinator {
         let positions = Array(rect.columns.lowerBound...rect.columns.upperBound)
             .filter { $0 >= 0 && $0 < presentedColumnCount }
         guard rowRange.lowerBound <= rowRange.upperBound, !positions.isEmpty else { return }
+        let copiedColumns = IndexSet(positions.compactMap { dataColumnIndex(atDisplayPosition: $0) })
+        guard unloadedValuesAreLoaded(displayRows: rowRange, columns: copiedColumns, retry: { [weak self] in
+            self?.copyGridSelection(selection)
+        }) else { return }
         let isTruncated = selectedRowCount > maxRows
         if isTruncated {
             rowActionsLogger.warning("Clipboard copy truncated: \(selectedRowCount) rows selected, capping at \(maxRows)")

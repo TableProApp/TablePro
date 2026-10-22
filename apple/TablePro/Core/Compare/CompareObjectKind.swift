@@ -68,4 +68,9 @@ internal enum CompareTableKindClassifier {
     internal static func isForeign(_ table: PluginTableInfo) -> Bool {
         table.type.uppercased().contains("FOREIGN")
     }
+
+    // A sequence is listed beside the tables but has no columns to compare or rows to copy.
+    internal static func isSequence(_ table: PluginTableInfo) -> Bool {
+        PluginTableKindDecoder.decode(table.type).kind == .sequence
+    }
 }

@@ -210,4 +210,28 @@ struct ConnectionFailureClassifierTests {
 
         #expect(!info.message.contains("hunter2"))
     }
+
+    @Test("A Local Network refusal names the permission and the host, and keeps the driver's words for Copy Details")
+    func localNetworkRefusalOffersSystemSettings() {
+        let driverError = NSError(
+            domain: "com.TablePro.test",
+            code: Int(EHOSTUNREACH),
+            userInfo: [NSLocalizedDescriptionKey: "could not connect to server: No route to host"]
+        )
+        let error = LocalNetworkAccessError(
+            hop: LocalNetworkHop(role: .sshServer, host: "192.168.1.9"),
+            underlying: driverError
+        )
+
+        guard case .actionRequired(let info, let action) = ConnectionFailureClassifier.outcome(for: error) else {
+            Issue.record("Expected the pane to offer a fix")
+            return
+        }
+        #expect(action == .openLocalNetworkSettings)
+        #expect(info.title == String(localized: "Local Network Access Required"))
+        #expect(info.message.contains("192.168.1.9"))
+        #expect(info.recoverySuggestion?.contains("Local Network") == true)
+        #expect(!info.lines.contains { $0.contains("No route to host") })
+        #expect(info.details == "could not connect to server: No route to host")
+    }
 }

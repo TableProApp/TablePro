@@ -22,6 +22,7 @@ The app's data goes to the store its shape calls for. The `storage` crate owns t
 - `subscribe` hands out a watch of `ConnectionListSnapshot`, so every picker sees every writer's change.
 - A file that cannot be read, or that another version wrote, leaves the store `Unavailable`, and it refuses every write until the user picks Reset (`reset_unreadable_blocking`), which moves the file aside.
 - A `SavedConnection` does **not** carry a password. Secrets live in the keyring, keyed by the connection's UUID, so a rename or a new host keeps them.
+- `safe_mode` is the connection's Safe Mode level: `off`, `confirm_writes` or `read_only`. It has no default, since guessing Off would drop a guard. Version 1 of the file had a `read_only` switch instead, which reads as `read_only` when on and `off` when off.
 - `group` is a `ConnectionGroupName`: trimmed, 1 to 64 characters, no control characters. Earlier builds stored any name, so a stored one is read with its control characters turned into spaces and cut to 64 characters, and a blank one reads as no group.
 - An edit, a copy or a move to another group goes through the app's `SavedConnectionEditor`, which writes the keyring first. A refused secret stops before the list changes, and the secrets of a copy whose entry did not land are deleted again. Edits and copies run one at a time, so two windows editing one connection never leave the host of one with the password of the other.
 
@@ -235,8 +236,10 @@ script lexer:
   only with a given word (`GRANT ... IDENTIFIED`), and functions or engines
   that take a password (`dblink`, `OPENROWSET`, `s3`). A routine body is
   read for the statements inside it, whether dollar-quoted or, on
-  PostgreSQL, a plain string after `DO` or `AS`. So is a MySQL `/*!`
-  comment, which the server runs.
+  PostgreSQL, a plain string after `DO` or `AS`. The text is read every
+  way the server may read it: with and without backslash escapes, and
+  with each MySQL `/*!` comment run or skipped as each server version
+  would.
 - A string, quoted name or comment that never closes withholds it too, since
   what is inside a literal is then a guess.
 
@@ -313,6 +316,6 @@ A keyring failure is a `SecretError` from `tablepro-core`, not a `StorageError`;
 - A JSON document is a `VersionedDocument` with a `version` field. A new shape bumps its `VERSION` and appends a step to its `UPGRADES`, which turns a file of the version before into the new shape. `decode_document` runs an older file through every step it is behind, oldest first, so a user who skipped releases keeps their data. A step that shipped is never changed or dropped.
 - The upgrade happens in memory. The file stays as it was until the next save writes the current version.
 - A file older than the first step, one a step cannot read, or one from a newer build is never written over. The connection list and a workspace wait for the user's Reset, which moves the file aside; the smaller state files move an unusable file aside themselves.
-- Each released version of the connection list and the workspace file has a golden file that a test reads into the model it was written from: `crates/storage/tests/fixtures/connections-v1.json` and `crates/app/tests/fixtures/workspace-v1.json`. A committed fixture is never edited. A format change adds the new version's fixture and updates the expected models of the old ones, which now read through the upgrade.
+- Each released version of the connection list and the workspace file has a golden file that a test reads into the model it was written from: `crates/storage/tests/fixtures/connections-v1.json`, `connections-v2.json` and `crates/app/tests/fixtures/workspace-v1.json`. A committed fixture is never edited. A format change adds the new version's fixture and updates the expected models of the old ones, which now read through the upgrade.
 - The history database moves forward by sqlx migration: a new timestamped file under `crates/storage/migrations/` with its own fixture test, never an edit to an applied one.
 - Update this page, and add a fragment to the Linux changelog.

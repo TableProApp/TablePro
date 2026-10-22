@@ -26,10 +26,15 @@ extension DatabaseManager {
         sshPasswordOverride: String? = nil,
         deadline: ConnectionDeadline
     ) async throws -> DatabaseConnection {
-        let connection = SSHProfileStorage.shared.refreshingLinkedProfile(original)
+        var connection = SSHProfileStorage.shared.refreshingLinkedProfile(original)
+        // Only the tunnel this connect opens says it secures the transport; a saved or imported field never does.
+        connection.additionalFields[DatabaseConnection.tunnelSecuresTransportKey] = nil
         let enabledKinds = connection.enabledTunnelKinds
         guard enabledKinds.count <= 1 else {
             throw ConnectionTunnelError.mutualExclusivityViolation(enabledKinds)
+        }
+        if let refusal = ConnectionTunnelError.refusal(for: connection) {
+            throw refusal
         }
         switch enabledKinds.first {
         case .cloudflare:
@@ -98,6 +103,11 @@ extension DatabaseManager {
             totpPeriod: sshConfig.totpPeriod,
             deadline: deadline
         )
+        if let dialed = await SSHTunnelManager.shared.dialedRoute(connectionId: connection.id) {
+            connectionStorage.recordDialedSSHRoute(dialed, for: connection.id) {
+                SSHProfileStorage.shared.refreshingLinkedProfile($0)
+            }
+        }
 
         return tunneledConnection(
             from: connection,

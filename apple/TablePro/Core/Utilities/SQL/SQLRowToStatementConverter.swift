@@ -3,6 +3,7 @@
 //  TablePro
 
 import Foundation
+import TableProAutocomplete
 import TableProPluginKit
 
 /// Writes grid rows as INSERT and UPDATE text for the user to run, with the values written in.
@@ -48,6 +49,9 @@ internal struct SQLRowToStatementConverter {
     private let settableColumns: [String]?
     private let quoteIdentifierFn: (String) -> String
     private let escapeStringFn: (String) -> String
+    private let rowUpdateFn: ((_ table: String, _ assignments: String, _ predicate: String) -> String?)?
+    // Rows can share the key, so the row is found by every column while the key still stays out of SET.
+    private let matchesEveryColumn: Bool
 
     private static let maxRows = 50_000
 
@@ -62,9 +66,14 @@ internal struct SQLRowToStatementConverter {
         settableColumns: [String]? = nil,
         dialect: SQLDialectDescriptor? = nil,
         quoteIdentifier: ((String) -> String)? = nil,
-        escapeStringLiteral: ((String) -> String)? = nil
+        escapeStringLiteral: ((String) -> String)? = nil,
+        identifierSpelling: SQLIdentifierSpelling? = nil,
+        rowUpdateStatement: ((_ table: String, _ assignments: String, _ predicate: String) -> String?)? = nil,
+        matchesEveryColumn: Bool = false
     ) throws {
         self.tableName = tableName
+        self.rowUpdateFn = rowUpdateStatement
+        self.matchesEveryColumn = matchesEveryColumn
         self.schemaName = schemaName
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
@@ -73,15 +82,20 @@ internal struct SQLRowToStatementConverter {
         self.rowMatchPolicy = rowMatchPolicy
         self.settableColumns = settableColumns
 
+        let quote: (String) -> String
         if let quoteIdentifier, let escapeStringLiteral {
-            self.quoteIdentifierFn = quoteIdentifier
+            quote = quoteIdentifier
             self.escapeStringFn = escapeStringLiteral
-            return
+        } else {
+            let resolvedDialect = try resolveSQLDialect(for: databaseType, explicit: dialect)
+            quote = quoteIdentifier ?? quoteIdentifierFromDialect(resolvedDialect)
+            self.escapeStringFn = escapeStringLiteral ?? escapeStringLiteralFromDialect(resolvedDialect)
         }
-
-        let resolvedDialect = try resolveSQLDialect(for: databaseType, explicit: dialect)
-        self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(resolvedDialect)
-        self.escapeStringFn = escapeStringLiteral ?? escapeStringLiteralFromDialect(resolvedDialect)
+        if let identifierSpelling {
+            self.quoteIdentifierFn = { identifierSpelling.statementName($0, quotedBy: quote) }
+        } else {
+            self.quoteIdentifierFn = quote
+        }
     }
 
     private var qualifiedTable: String {
@@ -113,6 +127,24 @@ internal struct SQLRowToStatementConverter {
         return "INSERT INTO \(qualifiedTable) (\(columnList)) VALUES (\(values));"
     }
 
+    // Every column is written, one row to a line, so a long script still reads and edits a row at a time.
+    internal func insertScript(rows: [[PluginCellValue]], rowsPerStatement: Int) -> String {
+        guard !columns.isEmpty, !rows.isEmpty else { return "" }
+        let header = "INSERT INTO \(qualifiedTable) (\(columns.map(quoteIdentifierFn).joined(separator: ", "))) VALUES"
+        let size = max(1, rowsPerStatement)
+        var statements: [String] = []
+        var start = 0
+        while start < rows.count {
+            let batch = rows[start..<min(start + size, rows.count)]
+            let tuples = batch.map { row in "(\(row.map { formatValue($0) }.joined(separator: ", ")))" }
+            statements.append(size == 1
+                ? "\(header) \(tuples[0]);"
+                : "\(header)\n  \(tuples.joined(separator: ",\n  "));")
+            start += size
+        }
+        return statements.joined(separator: "\n")
+    }
+
     // MARK: - UPDATE
 
     internal func generateUpdates(rows: [SourceRow]) -> String {
@@ -124,9 +156,11 @@ internal struct SQLRowToStatementConverter {
     /// column out would let the statement change rows that differ only in it.
     private func updateStatement(row: SourceRow) -> String? {
         guard !row.isPendingInsert, let whereClause = rowMatch(storedValues: row.storedValues) else { return nil }
-        let assignments = assignments(for: row)
+        let assignments = assignments(for: row).joined(separator: ", ")
         guard !assignments.isEmpty else { return nil }
-        return "UPDATE \(qualifiedTable) SET \(assignments.joined(separator: ", ")) WHERE \(whereClause);"
+        let statement = rowUpdateFn?(qualifiedTable, assignments, whereClause)
+            ?? "UPDATE \(qualifiedTable) SET \(assignments) WHERE \(whereClause)"
+        return statement + ";"
     }
 
     private var keyColumnsPresent: Bool {
@@ -150,8 +184,8 @@ internal struct SQLRowToStatementConverter {
     }
 
     private func rowMatch(storedValues: [PluginCellValue]) -> String? {
-        guard primaryKeyColumns.isEmpty || keyColumnsPresent else { return nil }
-        if keyColumnsPresent {
+        guard primaryKeyColumns.isEmpty || keyColumnsPresent || matchesEveryColumn else { return nil }
+        if keyColumnsPresent, !matchesEveryColumn {
             let conditions = primaryKeyColumns.compactMap { key -> String? in
                 guard let index = columns.firstIndex(of: key), storedValues.indices.contains(index),
                       !storedValues[index].isNull else { return nil }

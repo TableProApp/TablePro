@@ -121,7 +121,7 @@ class DataGridRowView: NSTableRowView {
               let dataColumn = coordinator.dataColumnIndex(from: tableView.tableColumns[tableColumnIndex].identifier)
         else { return false }
 
-        let columnRect = view.convert(tableView.rect(ofColumn: tableColumnIndex), from: tableView)
+        let columnRect = view.convert(coordinator.displayedRect(ofColumn: tableColumnIndex), from: tableView)
         let cellRect = NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height)
         if coordinator.presentsCheckboxCell(columnIndex: dataColumn) {
             guard DataGridCheckboxMark.frame(in: cellRect).contains(point) else { return false }
@@ -160,14 +160,17 @@ class DataGridRowView: NSTableRowView {
     ///
     /// The columns are still real `NSTableColumn`s, so AppKit answers which of them the area covers
     /// and where each one sits; only the cell content is drawn rather than mounted.
-    func drawCells(in dirtyRect: NSRect, of view: NSView) {
+    func drawCells(in dirtyRect: NSRect, of view: NSView, includesFrozenColumns: Bool = false) {
         guard let coordinator, let tableView = coordinator.tableView else { return }
         coordinator.cellRegistry.preparePalette(in: NSAppearance.currentDrawing())
         let inTableView = view.convert(dirtyRect, to: tableView)
         let dragged = Self.draggedColumnIndex(of: tableView)
         let themedRange = themedRangeColumns()
+        // The pinned band draws these, as the row-number cell leaves its number to the gutter.
+        let frozen = includesFrozenColumns ? IndexSet() : coordinator.freezingBand()?.frozenColumns ?? IndexSet()
 
-        for tableColumnIndex in tableView.columnIndexes(in: inTableView) where tableColumnIndex != dragged {
+        for tableColumnIndex in tableView.columnIndexes(in: inTableView)
+        where tableColumnIndex != dragged && !frozen.contains(tableColumnIndex) {
             drawCell(
                 atTableColumnIndex: tableColumnIndex,
                 in: tableView.rect(ofColumn: tableColumnIndex),
@@ -175,6 +178,23 @@ class DataGridRowView: NSTableRowView {
                 onThemedRange: themedRange.contains(tableColumnIndex)
             )
         }
+    }
+
+    // Called by the pinned band inside a context translated to this row's origin.
+    func drawFrozenColumns(in rect: NSRect) {
+        drawCellSelectionFill(in: rect, scope: themeScope)
+        drawCells(in: rect, of: contentView, includesFrozenColumns: true)
+        drawDraggedColumn(in: rect, of: contentView)
+    }
+
+    fileprivate func forwardInvalidationToPinnedBand(_ rect: NSRect) {
+        guard let coordinator, coordinator.frozenColumnCount > 0, let tableView = coordinator.tableView else { return }
+        coordinator.pinnedBandNeedsDisplay(rowRect: rect, row: tableView.row(for: self))
+    }
+
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        super.setNeedsDisplay(invalidRect)
+        forwardInvalidationToPinnedBand(invalidRect)
     }
 
     /// The columns of an unselected row that a cell range covers with a theme's opaque selection,
@@ -466,6 +486,16 @@ class DataGridRowView: NSTableRowView {
         return item
     }
 
+    // Copy over a cell range copies the range, so the clicked cell needs a command of its own.
+    private func makeCopyCellValueItem(dataColumn: Int) -> NSMenuItem {
+        let item = NSMenuItem(
+            title: String(localized: "Copy Cell Value"), action: #selector(copyClickedCellValue(_:)), keyEquivalent: ""
+        )
+        item.representedObject = dataColumn
+        item.target = self
+        return item
+    }
+
     /// Deliberately not `menu(for:)`. The table view owns context-menu handling because it
     /// is the only level that can re-target the selection to the clicked row first; a row
     /// view answering `menuForEvent:` would swallow the event and act on the old selection.
@@ -494,6 +524,9 @@ class DataGridRowView: NSTableRowView {
         }
 
         menu.addItem(makeCopyItem(target: target))
+        if case .cell(let clickedColumn) = target {
+            menu.addItem(makeCopyCellValueItem(dataColumn: clickedColumn))
+        }
 
         let copyAsMenu = NSMenu()
 
@@ -550,12 +583,7 @@ class DataGridRowView: NSTableRowView {
             copyAsMenu.addItem(inClauseItem)
         }
 
-        /// The statements leave out the columns the server owns, which only the schema names, so the items stay away
-        /// until it has arrived, as Duplicate does.
-        if let dbType = coordinator.databaseType,
-           dbType != .mongodb && dbType != .redis,
-           coordinator.tableName != nil,
-           coordinator.tableRowsProvider().hasAuthoritativeSchema {
+        if coordinator.canCopyRowsAsInsert {
             copyAsMenu.addItem(NSMenuItem.separator())
 
             let insertItem = NSMenuItem(
@@ -565,10 +593,7 @@ class DataGridRowView: NSTableRowView {
             insertItem.target = self
             copyAsMenu.addItem(insertItem)
 
-            /// A table without a key is matched on every column, so one no match can compare leaves nothing to find
-            /// the row by.
-            let matchPolicy = coordinator.tableRowsProvider().rowMatchPolicy
-            if !coordinator.primaryKeyColumns.isEmpty || matchPolicy.excludedColumns.isEmpty {
+            if coordinator.canCopyRowsAsUpdate {
                 let updateItem = NSMenuItem(
                     title: String(localized: "UPDATE Statement(s)"),
                     action: #selector(copyAsUpdate),
@@ -698,10 +723,24 @@ class DataGridRowView: NSTableRowView {
         guard coordinator.isEditable, dataColumnIndex >= 0 else { return }
 
         let clicked = SetValueTarget(displayRow: rowIndex, columnIndex: dataColumnIndex)
+        let targets = coordinator.setValueTargets(clicked: clicked)
         let setValueMenu = buildSetValueMenu(
-            commands: coordinator.setValueCommands(for: coordinator.setValueTargets(clicked: clicked)),
+            commands: coordinator.setValueCommands(for: targets),
             clickedColumn: dataColumnIndex
         )
+        if coordinator.isSetCellsToValueOffered(for: targets) {
+            if !setValueMenu.items.isEmpty {
+                setValueMenu.addItem(.separator())
+            }
+            let item = NSMenuItem(
+                title: String(localized: "Set Cells to Value…"),
+                action: #selector(setCellsToValueFromContextMenu(_:)),
+                keyEquivalent: ""
+            )
+            item.representedObject = dataColumnIndex
+            item.target = self
+            setValueMenu.addItem(item)
+        }
         if !setValueMenu.items.isEmpty {
             let setValueItem = NSMenuItem(title: String(localized: "Set Value"), action: nil, keyEquivalent: "")
             setValueItem.submenu = setValueMenu
@@ -754,6 +793,13 @@ class DataGridRowView: NSTableRowView {
         coordinator.applySetValue(choice.command, to: coordinator.setValueTargets(clicked: clicked))
     }
 
+    @objc private func setCellsToValueFromContextMenu(_ sender: NSMenuItem) {
+        guard let coordinator, let column = sender.representedObject as? Int else { return }
+        coordinator.setCellsToValue(
+            coordinator.setValueTargets(clicked: SetValueTarget(displayRow: rowIndex, columnIndex: column))
+        )
+    }
+
     @objc private func deleteRow() {
         guard let coordinator else { return }
         coordinator.delegate?.dataGridDeleteRows(coordinator.currentRowSelection(fallbackRow: rowIndex))
@@ -790,11 +836,21 @@ class DataGridRowView: NSTableRowView {
             if let columnIndex = focusedDataColumnIndex(in: coordinator) {
                 coordinator.copyCellValue(at: rowIndex, columnIndex: columnIndex)
             } else {
-                copySelectedOrCurrentRow()
+                copySelectedOrCurrentRowInCopyFormat()
             }
         case .row, .none:
-            copySelectedOrCurrentRow()
+            copySelectedOrCurrentRowInCopyFormat()
         }
+    }
+
+    private func copySelectedOrCurrentRowInCopyFormat() {
+        guard let coordinator else { return }
+        coordinator.copyRowsInCopyFormat(at: coordinator.currentRowSelection(fallbackRow: rowIndex))
+    }
+
+    @objc private func copyClickedCellValue(_ sender: NSMenuItem) {
+        guard let coordinator, let columnIndex = sender.representedObject as? Int else { return }
+        coordinator.copyCellValue(at: rowIndex, columnIndex: columnIndex)
     }
 
     @objc private func pasteRows() {
@@ -823,6 +879,7 @@ class DataGridRowView: NSTableRowView {
 
     private func focusedDataColumnIndex(in coordinator: TableViewCoordinator) -> Int? {
         guard let tableView = coordinator.tableView as? KeyHandlingTableView,
+              !tableView.isCursorSeededByRowSelection,
               tableView.focusedRow == rowIndex,
               tableView.presentsDataColumn(at: tableView.focusedColumn) else { return nil }
         return DataGridView.dataColumnIndex(
@@ -961,6 +1018,11 @@ final class DataGridRowContentView: NSView {
         rowView?.drawCells(in: dirtyRect, of: self)
         rowView?.drawColumnSeparators(in: dirtyRect, of: self)
         rowView?.drawDraggedColumn(in: dirtyRect, of: self)
+    }
+
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        super.setNeedsDisplay(invalidRect)
+        rowView?.forwardInvalidationToPinnedBand(convert(invalidRect, to: rowView))
     }
 
     override func mouseDown(with event: NSEvent) {

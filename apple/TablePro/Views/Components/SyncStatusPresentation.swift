@@ -26,12 +26,7 @@ internal struct SyncNotice: Equatable {
     let actions: [SyncNoticeAction]
 }
 
-/// How macOS words a sync status, for the welcome indicator and the Sync pane alike.
-///
-/// The one place that does, so the two cannot describe the same state in different words. It reads
-/// only `SyncStatus`, which carries no text, so CloudKit's own descriptions and record ids have no
-/// way onto the screen. Every switch is exhaustive: a new status has to be worded here before the
-/// app builds.
+// Reads only `SyncStatus`, which carries no text, so CloudKit's own descriptions never reach the Sync pane.
 internal struct SyncStatusPresentation {
     let status: SyncStatus
     let lastSyncDate: Date?
@@ -43,29 +38,6 @@ internal struct SyncStatusPresentation {
 }
 
 internal extension SyncStatusPresentation {
-    /// Sync the person turned off has nothing to report, and an indicator would only restate the
-    /// switch.
-    var showsIndicator: Bool {
-        status != .disabled(.userDisabled)
-    }
-
-    var indicatorLabel: String {
-        switch status {
-        case .idle:
-            return String(localized: "Synced")
-        case .syncing:
-            return String(localized: "Syncing…")
-        case .error(let error):
-            return Self.indicatorLabel(for: error)
-        case .disabled(.licenseRequired), .disabled(.licenseExpired):
-            return String(localized: "Sync Off")
-        case .disabled(.licenseUnverified):
-            return String(localized: "Sync Paused")
-        case .disabled(.userDisabled):
-            return ""
-        }
-    }
-
     /// Every symbol here ships with macOS 13. The circlepath and dashed iCloud variants do not.
     var symbolName: String {
         switch status {
@@ -96,33 +68,6 @@ internal extension SyncStatusPresentation {
             return true
         case .idle, .syncing, .disabled:
             return false
-        }
-    }
-
-    var helpText: String {
-        helpText(relativeTo: Date())
-    }
-
-    func helpText(relativeTo now: Date) -> String {
-        switch status {
-        case .idle:
-            guard let lastSyncDate else { return String(localized: "iCloud Sync is active") }
-            let formatter = RelativeDateTimeFormatter()
-            formatter.unitsStyle = .full
-            let relative = formatter.localizedString(for: lastSyncDate, relativeTo: now)
-            return String(format: String(localized: "Last synced %@"), relative)
-        case .syncing:
-            return String(localized: "Syncing with iCloud…")
-        case .error(let error):
-            return Self.message(for: error)
-        case .disabled(.licenseRequired):
-            return ProFeature.iCloudSync.planRequirement
-        case .disabled(.licenseExpired):
-            return String(localized: "License expired, sync paused")
-        case .disabled(.licenseUnverified):
-            return String(localized: "License not verified in 30 days, sync paused. Click to check again.")
-        case .disabled(.userDisabled):
-            return ""
         }
     }
 
@@ -244,27 +189,6 @@ private extension SyncStatusPresentation {
 
     static var licenseUnverifiedMessage: String {
         String(localized: "TablePro has not confirmed this license with the server in 30 days.")
-    }
-
-    static func indicatorLabel(for error: SyncError) -> String {
-        switch error {
-        case .blocked(.storageFull):
-            return String(localized: "iCloud Full")
-        case .blocked(.signedOut):
-            return String(localized: "No iCloud")
-        case .blocked(.accountNotReady), .blocked(.dataDeletedFromICloud):
-            return String(localized: "Sync Paused")
-        case .blocked(.accountRestricted), .blocked(.unavailable):
-            return String(localized: "Sync Off")
-        case .blocked(.appUpdateRequired):
-            return String(localized: "Update Needed")
-        case .offline:
-            return String(localized: "Offline")
-        case .busy:
-            return String(localized: "Sync Delayed")
-        case .recordsRejected, .pullNotSaved, .unexpected:
-            return String(localized: "Sync Error")
-        }
     }
 
     static func symbolName(for blocker: SyncBlocker) -> String {

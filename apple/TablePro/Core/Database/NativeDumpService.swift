@@ -42,6 +42,7 @@ enum NativeDumpError: LocalizedError, Equatable {
     case sourceUnreadable
     case engineStatementUnavailable
     case incompatibleTool(message: String)
+    case unreachableServer(message: String)
 
     var errorDescription: String? {
         switch self {
@@ -61,7 +62,7 @@ enum NativeDumpError: LocalizedError, Equatable {
             return String(localized: "The selected backup file is not readable.")
         case .engineStatementUnavailable:
             return String(localized: "TablePro could not read the database's own name from the connection.")
-        case .incompatibleTool(let message):
+        case .incompatibleTool(let message), .unreachableServer(let message):
             return message
         }
     }
@@ -100,6 +101,8 @@ struct NativeDumpCommand: Equatable {
     /// standard input. Removed once the process exits, however it exits.
     let temporaryCredentialsFileURL: URL?
 
+    let clientPluginFolder: MariaDBClientPluginFolder?
+
     /// Which direction a redirected file goes: a restore feeds it in as standard input, a backup
     /// takes standard output and writes it out.
     let isRestore: Bool
@@ -114,6 +117,7 @@ struct NativeDumpCommand: Equatable {
         delivery: NativeDumpDescriptor.OutputDelivery = .toolWritesFile,
         redirectedFileURL: URL? = nil,
         temporaryCredentialsFileURL: URL? = nil,
+        clientPluginFolder: MariaDBClientPluginFolder? = nil,
         isRestore: Bool = false,
         exitPolicy: NativeDumpExitPolicy = .zeroExitOnly
     ) {
@@ -124,6 +128,7 @@ struct NativeDumpCommand: Equatable {
         self.delivery = delivery
         self.redirectedFileURL = redirectedFileURL
         self.temporaryCredentialsFileURL = temporaryCredentialsFileURL
+        self.clientPluginFolder = clientPluginFolder
         self.isRestore = isRestore
         self.exitPolicy = exitPolicy
     }
@@ -149,6 +154,19 @@ internal extension NativeDumpJob {
     var exitPolicy: NativeDumpExitPolicy {
         guard case .process(let command) = self else { return .zeroExitOnly }
         return command.exitPolicy
+    }
+
+    var clientPluginFolder: MariaDBClientPluginFolder? {
+        guard case .process(let command) = self else { return nil }
+        return command.clientPluginFolder
+    }
+
+    // For a job that never reaches a runner, which is what removes these otherwise.
+    func discardTemporaryFiles() {
+        guard case .process(let command) = self else { return }
+        for url in [command.temporaryCredentialsFileURL, command.clientPluginFolder?.url].compactMap(\.self) {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 }
 
@@ -185,6 +203,9 @@ final class NativeDumpService: ObservableObject {
     private var stateObservers: [UUID: AsyncStream<NativeDumpState>.Continuation] = [:]
     private var toolName = "dump"
     private var cancelRequested = false
+    private var preparation: Task<NativeDumpDescriptor.Request, any Error>?
+    // The Vault lease the tool signs in with, held until the tool exits.
+    private var credentialLease: VaultLease?
 
     func stateUpdates() -> AsyncStream<NativeDumpState> {
         let (stream, continuation) = AsyncStream<NativeDumpState>.makeStream()
@@ -201,6 +222,12 @@ final class NativeDumpService: ObservableObject {
 
     private func setState(_ newState: NativeDumpState) {
         state = newState
+        switch newState {
+        case .finished, .failed, .cancelled:
+            releaseCredentialLease()
+        case .idle, .running, .cancelling:
+            break
+        }
         for continuation in stateObservers.values {
             continuation.yield(newState)
         }
@@ -255,26 +282,32 @@ final class NativeDumpService: ObservableObject {
             }
         }
 
-        let effective = session?.effectiveConnection ?? connection
-        /// The same resolution the connect used. Reading the Keychain directly, which this used to
-        /// do, meant a dump of a connection whose password comes from a `PasswordSource`, from
-        /// `~/.pgpass` or from an AWS IAM token ran with no password at all.
-        /// The error is raised, not swallowed. A password source whose file is missing, whose
-        /// command failed, or whose store is untrusted used to become a missing password and a
-        /// misleading authentication failure from the server.
-        let password = try await ConnectionCredentialResolver.resolvePassword(
+        var effective = session?.effectiveConnection ?? connection
+        // The connect's own resolution, errors included: a Keychain read misses every other source.
+        let signIn = try await ConnectionCredentialResolver.resolveSignIn(
             for: effective,
             fields: DatabaseDriverFactory.resolvedAdditionalFields(for: effective)
                 ?? effective.additionalFields,
             override: session?.cachedPassword
         )
+        if let username = signIn.username {
+            effective.username = username
+        }
+        let password = signIn.password
+        releaseCredentialLease()
+        credentialLease = signIn.lease
+        signIn.lease?.start { _ in }
+        var jobStarted = false
+        defer {
+            if !jobStarted { releaseCredentialLease() }
+        }
         let localFilePath = Self.localFilePath(for: effective)
         let catalog = descriptor.engineStatements == nil
             ? nil
             : await Self.resolvedCatalog(connectionId: connection.id, database: database)
 
         let serverVersion = session?.driver?.serverVersion
-        let request = NativeDumpDescriptor.Request(
+        var request = NativeDumpDescriptor.Request(
             connection: effective,
             database: database,
             fileURL: fileURL,
@@ -293,6 +326,10 @@ final class NativeDumpService: ObservableObject {
                 serverVersion: serverVersion
             )
             toolName = resolved.name
+            guard let prepared = try await prepare(request, with: { try await tool.prepare($0, resolved) }) else {
+                return
+            }
+            request = prepared
             let command = try Self.buildCommand(
                 kind: kind,
                 tool: tool,
@@ -323,7 +360,37 @@ final class NativeDumpService: ObservableObject {
             )
         }
 
+        jobStarted = true
         Self.logger.info("\(self.toolName, privacy: .public) started db=\(database, privacy: .private(mask: .hash))")
+    }
+
+    private func releaseCredentialLease() {
+        credentialLease?.release()
+        credentialLease = nil
+    }
+
+    // Nil when a cancel arrived while it ran: the checks it was making stop, and the run reads as cancelled rather than
+    // as the error the stop caused.
+    func prepare(
+        _ request: NativeDumpDescriptor.Request,
+        with preparation: @escaping @Sendable (NativeDumpDescriptor.Request) async throws -> NativeDumpDescriptor.Request
+    ) async throws -> NativeDumpDescriptor.Request? {
+        guard !cancelRequested else {
+            setState(.cancelled)
+            return nil
+        }
+        let task = Task { try await preparation(request) }
+        self.preparation = task
+        defer { self.preparation = nil }
+        do {
+            return try await task.value
+        } catch {
+            guard !cancelRequested else {
+                setState(.cancelled)
+                return nil
+            }
+            throw error
+        }
     }
 
     /// Test-friendly entry: hands the job to the runner and wires up termination and progress.
@@ -334,9 +401,16 @@ final class NativeDumpService: ObservableObject {
         fileURL: URL,
         totalBytesEstimate: Int64? = nil
     ) throws {
-        if case .running = state { throw NativeDumpError.alreadyRunning }
-        if case .cancelling = state { throw NativeDumpError.alreadyRunning }
+        if case .running = state {
+            job.discardTemporaryFiles()
+            throw NativeDumpError.alreadyRunning
+        }
+        if case .cancelling = state {
+            job.discardTemporaryFiles()
+            throw NativeDumpError.alreadyRunning
+        }
         guard !cancelRequested else {
+            job.discardTemporaryFiles()
             setState(.cancelled)
             return
         }
@@ -345,6 +419,7 @@ final class NativeDumpService: ObservableObject {
         try runner.start()
         self.runner = runner
         let exitPolicy = job.exitPolicy
+        let pluginFolder = job.clientPluginFolder
 
         setState(.running(database: database, fileURL: fileURL, bytesProcessed: 0, totalBytes: totalBytesEstimate))
         if kind == .backup {
@@ -353,7 +428,13 @@ final class NativeDumpService: ObservableObject {
 
         Task { @MainActor [weak self] in
             guard let result = await self?.runner?.result else { return }
-            self?.handleTermination(result: result, database: database, fileURL: fileURL, exitPolicy: exitPolicy)
+            self?.handleTermination(
+                result: result,
+                database: database,
+                fileURL: fileURL,
+                exitPolicy: exitPolicy,
+                pluginFolder: pluginFolder
+            )
         }
     }
 
@@ -365,6 +446,7 @@ final class NativeDumpService: ObservableObject {
     /// the user just said to leave alone.
     func cancel() {
         cancelRequested = true
+        preparation?.cancel()
         guard case .running = state else { return }
         setState(.cancelling)
         runner?.cancel()
@@ -491,7 +573,16 @@ final class NativeDumpService: ObservableObject {
         resolved: NativeDumpResolvedTool,
         request: NativeDumpDescriptor.Request
     ) throws -> NativeDumpCommand {
-        var arguments = try tool.arguments(for: kind, request: request, resolved: resolved)
+        var request = request
+        let pluginFolder = try tool.clientPluginFolder(request, resolved)
+        request.clientPluginFolder = pluginFolder
+        var arguments: [String]
+        do {
+            arguments = try tool.arguments(for: kind, request: request, resolved: resolved)
+        } catch {
+            if let pluginFolder { try? FileManager.default.removeItem(at: pluginFolder.url) }
+            throw error
+        }
         var environment = minimalEnvironment()
         environment.merge(tool.environment(request)) { _, new in new }
         if tool.requiresUntranslatedMessages {
@@ -515,6 +606,7 @@ final class NativeDumpService: ObservableObject {
             delivery: delivery,
             redirectedFileURL: delivery == .standardOutput ? request.fileURL : nil,
             temporaryCredentialsFileURL: credentialsFileURL,
+            clientPluginFolder: pluginFolder,
             isRestore: kind == .restore,
             exitPolicy: tool.exitPolicy(for: kind)
         )
@@ -587,7 +679,8 @@ final class NativeDumpService: ObservableObject {
         result: NativeDumpRunResult,
         database: String,
         fileURL: URL,
-        exitPolicy: NativeDumpExitPolicy
+        exitPolicy: NativeDumpExitPolicy,
+        pluginFolder: MariaDBClientPluginFolder?
     ) {
         byteSizeTask?.cancel()
         byteSizeTask = nil
@@ -626,9 +719,10 @@ final class NativeDumpService: ObservableObject {
         }
 
         if kind == .backup { Self.removeDestination(fileURL) }
-        let summary = result.stderr.isEmpty
-            ? String(format: String(localized: "Process exited with code %d"), Int(result.exitCode))
-            : result.stderr
+        let summary = pluginFolder?.refusal(in: result.stderr)
+            ?? (result.stderr.isEmpty
+                ? String(format: String(localized: "Process exited with code %d"), Int(result.exitCode))
+                : result.stderr)
         setState(.failed(message: summary, targetMayBeModified: kind == .restore))
         Self.logger.error("\(self.toolName, privacy: .public) failed code=\(result.exitCode) db=\(database, privacy: .private(mask: .hash)) stderr=\(result.stderr)")
     }

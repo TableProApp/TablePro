@@ -1,5 +1,7 @@
 import Foundation
 import TableProModels
+import TableProPluginKit
+import TableProRedisCore
 import TableProSQLGrammar
 
 /// Decides whether a statement batch writes, so Safe Mode can block or confirm it.
@@ -11,7 +13,8 @@ import TableProSQLGrammar
 ///
 /// The batch is split into statements the way its engine lexes it, by the grammar the Mac reads
 /// too, and under every reading the engine could be using: the run splits by one reading, and a
-/// `DELETE` hidden behind a quote that only another reading closes still reaches the server. On an
+/// `DELETE` hidden behind a quote that only another reading closes still reaches the server. Each
+/// MySQL server version that skips a different set of `/*!` comments is one more reading. On an
 /// engine that needs no `;`, every statement that begins inside one is read as well, because SQL
 /// Server runs `SELECT 1` followed by `DROP TABLE t` as two statements.
 public enum SQLWriteClassifier {
@@ -31,12 +34,23 @@ public enum SQLWriteClassifier {
     ]
 
     public static func isWriteQuery(_ sql: String, databaseType: DatabaseType) -> Bool {
-        if databaseType == .redis { return redisWrites(sql) }
+        if databaseType == .redis {
+            return RedisCommandSplitter.commands(in: sql).contains { redisWrites($0.text) }
+        }
+        if databaseType == .mongodb {
+            let verdict = MongoStatementClassifier.verdict(
+                sql, shadowsCollection: MongoCollectionAccessor.isShadowedByDatabaseMember
+            )
+            return verdict.tier != .read
+        }
         let readings = SQLLexicalReadings.resolve(databaseTypeId: databaseType.rawValue, declared: nil, session: nil)
-        return readings.distinct(for: sql).contains { grammar in
-            SQLStatementScanner.executableStatements(in: sql, grammar: grammar).contains { statement in
-                SQLUnterminatedStatements.runnable(in: statement.sql, grammar: grammar).contains { runnable in
-                    statementWrites(runnable, grammar: grammar)
+        guard let lexings = readings.lexings(of: sql) else { return true }
+        var seen: Set<SQLLexing> = []
+        return lexings.contains { lexing in
+            SQLStatementScanner.executableStatements(in: lexing.text, grammar: lexing.grammar).contains { statement in
+                SQLUnterminatedStatements.runnable(in: statement.sql, grammar: lexing.grammar).contains { runnable in
+                    seen.insert(SQLLexing(grammar: lexing.grammar, text: runnable)).inserted
+                        && statementWrites(runnable, grammar: lexing.grammar)
                 }
             }
         }
@@ -55,40 +69,12 @@ public enum SQLWriteClassifier {
         return !readKeywords.contains(keyword)
     }
 
-    /// Redis speaks commands, not SQL, so the SQL path would call every `GET` a write. The read set
-    /// is the one QueryClassifier.swift:436-451 already curates for the Mac.
+    // Read as the driver reads it, so a quoted verb is the command that runs. Unparseable text counts as a write.
     private static func redisWrites(_ command: String) -> Bool {
-        let verb = strippingLeadingTrivia(command)
-            .prefix { !$0.isWhitespace }
-            .uppercased()
-        guard !verb.isEmpty else { return false }
-        if verb == "CONFIG" {
-            let rest = strippingLeadingTrivia(command)
-                .dropFirst(verb.count)
-                .trimmingCharacters(in: .whitespaces)
-                .uppercased()
-            return !rest.hasPrefix("GET")
-        }
-        return !redisReadCommands.contains(verb)
+        guard let arguments = RedisArgumentCodec.split(command) else { return true }
+        let words = arguments.map { String(bytes: $0, encoding: .utf8) ?? "" }
+        return !RedisReadCommands.onlyReads(words[...])
     }
-
-    private static let redisReadCommands: Set<String> = [
-        "GET", "MGET", "STRLEN", "GETRANGE", "SUBSTR", "EXISTS", "TYPE", "TTL", "PTTL",
-        "EXPIRETIME", "PEXPIRETIME", "KEYS", "SCAN", "RANDOMKEY", "DBSIZE", "DUMP",
-        "HGET", "HMGET", "HGETALL", "HKEYS", "HVALS", "HLEN", "HEXISTS", "HRANDFIELD",
-        "HSCAN", "HSTRLEN", "LRANGE", "LLEN", "LINDEX", "LPOS",
-        "SMEMBERS", "SISMEMBER", "SMISMEMBER", "SCARD", "SRANDMEMBER", "SSCAN",
-        "SDIFF", "SINTER", "SUNION", "SINTERCARD",
-        "ZRANGE", "ZRANGEBYSCORE", "ZRANGEBYLEX", "ZREVRANGE", "ZREVRANGEBYSCORE",
-        "ZREVRANGEBYLEX", "ZRANK", "ZREVRANK", "ZSCORE", "ZMSCORE", "ZCARD", "ZCOUNT",
-        "ZLEXCOUNT", "ZSCAN", "ZRANDMEMBER", "ZDIFF", "ZINTER", "ZUNION", "ZINTERCARD",
-        "XRANGE", "XREVRANGE", "XLEN", "XREAD", "XINFO", "XPENDING",
-        "PFCOUNT", "BITCOUNT", "BITPOS", "GETBIT", "BITFIELD_RO",
-        "GEOPOS", "GEODIST", "GEOHASH", "GEOSEARCH", "GEORADIUS_RO", "GEORADIUSBYMEMBER_RO",
-        "SORT_RO", "OBJECT", "COMMAND", "INFO", "TIME", "LASTSAVE", "PING", "ECHO", "LOLWUT",
-        "JSON.GET", "JSON.MGET", "JSON.TYPE", "JSON.OBJKEYS", "JSON.ARRLEN", "JSON.STRLEN",
-        "TS.RANGE", "TS.REVRANGE", "TS.GET", "TS.MGET", "TS.INFO", "FT.SEARCH", "FT.INFO"
-    ]
 
     /// A CTE's leading keyword says nothing about what the statement finally does, so its code is
     /// searched for a write verb.
@@ -127,22 +113,5 @@ public enum SQLWriteClassifier {
             }
         }
         return keyword.isEmpty ? nil : keyword.uppercased()
-    }
-
-    private static func strippingLeadingTrivia(_ statement: String) -> String {
-        var rest = Substring(statement)
-        while true {
-            let beforeTrim = rest
-            rest = rest.drop(while: { $0.isWhitespace })
-            if rest.hasPrefix("--") {
-                rest = rest.drop(while: { !$0.isNewline })
-            } else if rest.hasPrefix("/*") {
-                rest = rest.dropFirst(2)
-                while !rest.isEmpty, !rest.hasPrefix("*/") { rest = rest.dropFirst() }
-                rest = rest.hasPrefix("*/") ? rest.dropFirst(2) : rest
-            }
-            if rest == beforeTrim { break }
-        }
-        return String(rest)
     }
 }

@@ -2,6 +2,8 @@ import Darwin
 import Foundation
 import os
 
+import TableProSSHTransport
+
 extension LibSSH2TunnelFactory {
     private struct ResolvedSocketAddress: @unchecked Sendable {
         let storage: sockaddr_storage
@@ -46,10 +48,11 @@ extension LibSSH2TunnelFactory {
                 }
             }
 
-            if connectResult != 0, errno != EINPROGRESS {
+            let connectErrno = errno
+            if connectResult != 0, connectErrno != EINPROGRESS {
                 attempt.unregisterTransportInterrupt(interruptId)
                 Darwin.close(descriptor)
-                lastError = "Connection to \(host):\(port) failed"
+                lastError = "Connection to \(host):\(port) failed: \(String(cString: strerror(connectErrno)))"
                 continue
             }
 
@@ -60,6 +63,7 @@ extension LibSSH2TunnelFactory {
                     1,
                     Int32(clamping: deadline.remainingMilliseconds)
                 )
+                let pollErrno = errno
 
                 if pollResult <= 0 {
                     attempt.unregisterTransportInterrupt(interruptId)
@@ -68,7 +72,7 @@ extension LibSSH2TunnelFactory {
                     if pollResult == 0 {
                         throw deadline.timeoutError(for: endpoint)
                     }
-                    lastError = "Connection to \(host):\(port) failed: \(String(cString: strerror(errno)))"
+                    lastError = "Connection to \(host):\(port) failed: \(String(cString: strerror(pollErrno)))"
                     continue
                 }
 
@@ -184,26 +188,8 @@ extension LibSSH2TunnelFactory {
     }
 
     private static func configureKeepAlive(_ descriptor: Int32) {
-        var enabled: Int32 = 1
-        if setsockopt(
-            descriptor,
-            SOL_SOCKET,
-            SO_KEEPALIVE,
-            &enabled,
-            socklen_t(MemoryLayout<Int32>.size)
-        ) != 0 {
-            logger.warning("Failed to set SO_KEEPALIVE: \(String(cString: strerror(errno)))")
-        }
-
-        var idleSeconds: Int32 = 60
-        if setsockopt(
-            descriptor,
-            IPPROTO_TCP,
-            TCP_KEEPALIVE,
-            &idleSeconds,
-            socklen_t(MemoryLayout<Int32>.size)
-        ) != 0 {
-            logger.warning("Failed to set TCP_KEEPALIVE: \(String(cString: strerror(errno)))")
+        for refusal in SSHTransportKeepAlive.enable(on: descriptor) {
+            logger.warning("Failed to set \(refusal, privacy: .public)")
         }
     }
 }

@@ -5,25 +5,26 @@
 
 import Foundation
 
-/// Mints the token an IAM connection signs in with, for the connect and again for each sign-in the
-/// driver makes after it. It never needs the main actor.
+// Mints for the connect and again for every later sign-in the driver makes, never on the main actor.
 enum IAMPasswordMinter: Sendable {
     case aws(AWSIAMTokenSigner)
+    case redshift(RedshiftIAMSignIn)
     case googleCloud(CloudSQLIAMLogin)
 
-    /// A Google token request carries its own 30-second limit, and the connect races the whole
-    /// resolution against its deadline, so only the AWS credential requests take the deadline.
-    func mint(deadline: ConnectionDeadline?) async throws -> String {
+    // Only AWS requests take the deadline: a Google token request carries its own 30-second limit.
+    func mint(deadline: ConnectionDeadline?) async throws -> ResolvedSignIn {
         switch self {
         case .aws(let signer):
-            return try await signer.token(deadline: deadline)
+            return ResolvedSignIn(username: nil, password: try await signer.token(deadline: deadline))
+        case .redshift(let signIn):
+            return try await signIn.signIn(deadline: deadline)
         case .googleCloud(let login):
-            return try await CloudSQLIAMTokenCache.shared.accessToken(for: login)
+            return ResolvedSignIn(username: nil, password: try await CloudSQLIAMTokenCache.shared.accessToken(for: login))
         }
     }
 
-    /// For the sign-ins a driver makes after the connect, which the connect's deadline no longer covers.
+    // A later sign-in is past the connect's deadline.
     var refreshPassword: @Sendable () async throws -> String {
-        { try await mint(deadline: nil) }
+        { try await mint(deadline: nil).password }
     }
 }

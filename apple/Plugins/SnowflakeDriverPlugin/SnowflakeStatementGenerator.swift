@@ -9,42 +9,82 @@
 //
 
 import Foundation
-import os
 import TableProPluginKit
 
 struct SnowflakeStatementGenerator {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SnowflakeStatementGenerator")
-
     let qualifiedTable: String
     let columns: [String]
     let columnTypeNames: [String]
     let primaryKeyColumns: [String]
 
-    func generateStatements(
+    // Snowflake does not enforce a primary key, so a key match can reach several rows too: every update and delete
+    // first has to find exactly one.
+    func rowWrites(
         from changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])] {
-        var statements: [(statement: String, parameters: [PluginCellValue])] = []
+    ) throws -> [PluginRowWrite] {
+        var writes: [PluginRowWrite] = []
         for change in changes {
             switch change.type {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex),
                       let statement = insertStatement(for: change, insertedRowData: insertedRowData) else { continue }
-                statements.append(statement)
+                writes.append(PluginRowWrite(statement: statement.statement, parameters: statement.parameters, rowIndices: [change.rowIndex]))
             case .update:
-                guard let statement = updateStatement(for: change) else { continue }
-                statements.append(statement)
+                guard !change.cellChanges.isEmpty else { continue }
+                let condition = try whereClause(for: change)
+                let expressions = change.expressionColumns ?? []
+                var setClauses: [String] = []
+                var parameters: [PluginCellValue] = []
+                for cellChange in change.cellChanges {
+                    let column = quoteIdentifier(cellChange.columnName)
+                    if expressions.contains(cellChange.columnIndex), case .text(let sql) = cellChange.newValue {
+                        setClauses.append("\(column) = \(sql)")
+                    } else {
+                        setClauses.append("\(column) = \(placeholder(for: cellChange.columnName))")
+                        parameters.append(cellChange.newValue)
+                    }
+                }
+                writes.append(PluginRowWrite(
+                    statement: "UPDATE \(qualifiedTable) SET \(setClauses.joined(separator: ", ")) WHERE \(condition.sql)",
+                    parameters: parameters + condition.parameters,
+                    rowIndices: [change.rowIndex],
+                    lookup: lookup(condition)
+                ))
             case .delete:
-                guard deletedRowIndices.contains(change.rowIndex),
-                      let statement = deleteStatement(for: change) else { continue }
-                statements.append(statement)
+                guard deletedRowIndices.contains(change.rowIndex) else { continue }
+                let condition = try whereClause(for: change)
+                writes.append(PluginRowWrite(
+                    statement: "DELETE FROM \(qualifiedTable) WHERE \(condition.sql)",
+                    parameters: condition.parameters,
+                    rowIndices: [change.rowIndex],
+                    lookup: lookup(condition)
+                ))
             @unknown default:
                 continue
             }
         }
-        return statements
+        return writes
+    }
+
+    func restoreStatements(rows: [[PluginCellValue]]) -> [(statement: String, parameters: [PluginCellValue])] {
+        rows.enumerated().compactMap { index, row in
+            insertStatement(
+                for: PluginRowChange(rowIndex: index, type: .insert, cellChanges: [], originalRow: nil),
+                insertedRowData: [index: row]
+            )
+        }
+    }
+
+    private func lookup(_ condition: (sql: String, parameters: [PluginCellValue])) -> PluginRowLookup {
+        PluginRowLookup(
+            query: "SELECT 1 FROM \(qualifiedTable) WHERE \(condition.sql) LIMIT 2",
+            parameters: condition.parameters,
+            rowCount: 1,
+            pinsRows: false
+        )
     }
 
     /// What the grid stages for a column the user leaves to the server's default. It is a marker, never a value.
@@ -70,6 +110,7 @@ struct SnowflakeStatementGenerator {
             }
         }
         guard !values.isEmpty else { return nil }
+        let expressions = Set((change.expressionColumns ?? []).compactMap { columns.indices.contains($0) ? columns[$0] : nil })
         values.removeAll { $0.value == Self.defaultMarker }
         guard !values.isEmpty else {
             guard let firstColumn = columns.first else { return nil }
@@ -77,8 +118,11 @@ struct SnowflakeStatementGenerator {
         }
 
         let names = values.map { quoteIdentifier($0.column) }
-        let placeholders = values.map { placeholder(for: $0.column) }
-        let parameters = values.map(\.value)
+        let placeholders = values.map { value -> String in
+            if expressions.contains(value.column), case .text(let sql) = value.value { return sql }
+            return placeholder(for: value.column)
+        }
+        let parameters = values.filter { !expressions.contains($0.column) }.map(\.value)
         let usesSelect = values.contains { Self.isSemiStructured(typeName(for: $0.column)) }
 
         let statement = usesSelect
@@ -87,42 +131,20 @@ struct SnowflakeStatementGenerator {
         return (statement, parameters)
     }
 
-    private func updateStatement(for change: PluginRowChange) -> (statement: String, parameters: [PluginCellValue])? {
-        guard !change.cellChanges.isEmpty else { return nil }
-        guard let condition = whereClause(for: change) else {
-            Self.logger.error("Skipping UPDATE for \(qualifiedTable, privacy: .public): no identifying columns to build a WHERE clause")
-            return nil
-        }
-
-        var setClauses: [String] = []
-        var parameters: [PluginCellValue] = []
-        for cellChange in change.cellChanges {
-            setClauses.append("\(quoteIdentifier(cellChange.columnName)) = \(placeholder(for: cellChange.columnName))")
-            parameters.append(cellChange.newValue)
-        }
-        parameters.append(contentsOf: condition.parameters)
-
-        let statement = "UPDATE \(qualifiedTable) SET \(setClauses.joined(separator: ", ")) WHERE \(condition.sql)"
-        return (statement, parameters)
-    }
-
-    private func deleteStatement(for change: PluginRowChange) -> (statement: String, parameters: [PluginCellValue])? {
-        guard let condition = whereClause(for: change) else {
-            Self.logger.error("Skipping DELETE for \(qualifiedTable, privacy: .public): no identifying columns to build a WHERE clause")
-            return nil
-        }
-        return ("DELETE FROM \(qualifiedTable) WHERE \(condition.sql)", condition.parameters)
-    }
-
-    private func whereClause(for change: PluginRowChange) -> (sql: String, parameters: [PluginCellValue])? {
-        guard let originalRow = change.originalRow else { return nil }
+    private func whereClause(for change: PluginRowChange) throws -> (sql: String, parameters: [PluginCellValue]) {
+        let refusal = PluginRowWriteRefusal(
+            rowIndex: change.rowIndex,
+            reason: String(localized: "The row's loaded values are missing, so it cannot be found again.")
+        )
+        guard let originalRow = change.originalRow else { throw refusal }
 
         let keyColumns = primaryKeyColumns.isEmpty ? columns : primaryKeyColumns
         var conditions: [String] = []
         var parameters: [PluginCellValue] = []
 
         for column in keyColumns {
-            guard let index = columns.firstIndex(of: column), index < originalRow.count else { continue }
+            // Leaving a column out of the match reaches every row that shares the rest.
+            guard let index = columns.firstIndex(of: column), index < originalRow.count else { throw refusal }
             if Self.isSemiStructured(typeName(for: column)) { continue }
             let value = originalRow[index]
             if case .null = value {
@@ -133,7 +155,7 @@ struct SnowflakeStatementGenerator {
             }
         }
 
-        guard !conditions.isEmpty else { return nil }
+        guard !conditions.isEmpty else { throw refusal }
         return (conditions.joined(separator: " AND "), parameters)
     }
 

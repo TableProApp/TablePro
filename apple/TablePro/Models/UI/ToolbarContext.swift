@@ -52,6 +52,9 @@ internal struct ToolbarContext: Equatable {
 
     internal let isAIEnabled: Bool
 
+    /// A type's tab queues changes the commit control saves; every other object tab only reads.
+    internal let stagesObjectChanges: Bool
+
     /// The subset of the context that may move an item in or out of the titlebar, or change what
     /// one says.
     ///
@@ -71,6 +74,7 @@ internal struct ToolbarContext: Equatable {
         internal let supportsImport: Bool
         internal let supportsServerDashboard: Bool
         internal let isAIEnabled: Bool
+        internal var stagesObjectChanges = false
     }
 
     internal var visibilityKey: VisibilityKey {
@@ -82,7 +86,8 @@ internal struct ToolbarContext: Equatable {
             supportsContainerSwitching: supportsContainerSwitching,
             supportsImport: supportsImport,
             supportsServerDashboard: supportsServerDashboard,
-            isAIEnabled: isAIEnabled
+            isAIEnabled: isAIEnabled,
+            stagesObjectChanges: stagesObjectChanges
         )
     }
 
@@ -105,7 +110,8 @@ internal struct ToolbarContext: Equatable {
         supportsContainerSwitching: Bool = false,
         supportsImport: Bool = false,
         supportsServerDashboard: Bool = false,
-        isAIEnabled: Bool = false
+        isAIEnabled: Bool = false,
+        stagesObjectChanges: Bool = false
     ) {
         self.tabKind = tabKind
         self.resultsMode = resultsMode
@@ -126,6 +132,7 @@ internal struct ToolbarContext: Equatable {
         self.supportsImport = supportsImport
         self.supportsServerDashboard = supportsServerDashboard
         self.isAIEnabled = isAIEnabled
+        self.stagesObjectChanges = stagesObjectChanges
     }
 
     /// The whole context over a key the caller already computed, so the eight slow-moving facts
@@ -163,7 +170,8 @@ internal struct ToolbarContext: Equatable {
             supportsContainerSwitching: key.supportsContainerSwitching,
             supportsImport: key.supportsImport,
             supportsServerDashboard: key.supportsServerDashboard,
-            isAIEnabled: key.isAIEnabled
+            isAIEnabled: key.isAIEnabled,
+            stagesObjectChanges: key.stagesObjectChanges
         )
     }
 }

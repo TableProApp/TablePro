@@ -31,7 +31,8 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             section: .authentication,
             hidesPassword: true
         )
-    ] + GoogleCloudSQLAuthFields.standardWithAWS() + [
+    ] + KerberosAuthFields.standardWithAWSAndGoogleCloud() + [
+        KerberosAuthFields.gssEncryptionField(),
         AWSAuthFields.rdsEndpointField(),
         ConnectionField(
             id: "connectionOptions",

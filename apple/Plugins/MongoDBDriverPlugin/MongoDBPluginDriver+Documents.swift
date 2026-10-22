@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-extension MongoDBPluginDriver {
+nonisolated extension MongoDBPluginDriver {
     func documentWriteStatement(_ write: PluginDocumentWrite) throws -> String? {
         try documentWritePlan(write)?.statement
     }
@@ -27,6 +27,25 @@ extension MongoDBPluginDriver {
                 database: currentDb, collection: write.table, filter: filter, replacement: replacement
             )
             guard matched > 0 else { throw MongoDBDocumentEditingError.documentChanged }
+        }
+    }
+
+    // A nested field the grid cut at BsonDocumentFlattener.maxNestedJsonLength, as the grid renders it, read whole from
+    // the stored document the locator names. Nil when that document holds no document or array there.
+    func storedNestedText(table: String, locator: String, field: String) async throws -> String? {
+        guard let conn = mongoConnection else { throw MongoDBPluginError.notConnected }
+        let identity = try MongoDocumentIdentity(locator: locator)
+        let stored = try await conn.readMatchingDocuments(database: currentDb, collection: table, identity: identity)
+        let matches = stored.filter { identity.identifies($0.canonical) }
+        guard let match = matches.first else { return nil }
+        guard matches.count == 1 else { throw MongoDBDocumentEditingError.ambiguousIdentity }
+        guard case .object(let members) = try MongoDocumentText.Value(parsing: match.canonical),
+              let member = members.first(where: { $0.key == field })?.value else { return nil }
+        switch member {
+        case .object, .array:
+            return MongoExtendedJsonForm.display(member).compactText
+        default:
+            return nil
         }
     }
 

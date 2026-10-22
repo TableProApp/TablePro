@@ -293,3 +293,55 @@ struct ExternalStatementGateTests {
         ))
     }
 }
+
+struct ExternalStatementGateExecutableCommentTests {
+    private func refusal(_ sql: String, access: ExternalAccessLevel, allowsDestructive: Bool) -> ExternalStatementGateError? {
+        let statement = ExternalStatementGate.Statement(
+            sql: sql,
+            connectionId: UUID(),
+            databaseType: .mysql,
+            externalAccess: access,
+            loadsExtensions: false,
+            allowsDestructive: allowsDestructive,
+            allowsMultiStatement: false,
+            destructiveAlternative: nil
+        )
+        do {
+            _ = try ExternalStatementGate.classify(statement)
+            return nil
+        } catch let error as ExternalStatementGateError {
+            return error
+        } catch {
+            return nil
+        }
+    }
+
+    @Test("A DROP behind an executable comment is refused when the caller may not drop", arguments: [
+        "/*!99999 ' */ DROP TABLE orders -- '",
+        "/*M!999999 ' */ DROP TABLE orders -- '",
+        "/*m! ' */ DROP TABLE orders -- '",
+        "/*! /* ' */ DROP TABLE orders */",
+    ])
+    func hiddenDropIsRefused(sql: String) {
+        #expect(refusal(sql, access: .readWrite, allowsDestructive: false)
+            == .denied(String(localized: "This statement drops or truncates data.")))
+    }
+
+    @Test("A write behind a lowercase /*m! is refused on a read-only connection")
+    func hiddenWriteIsRefusedOnReadOnly() {
+        #expect(refusal("WITH c AS (SELECT 1) /*m! ' */ DELETE FROM orders -- '", access: .readOnly, allowsDestructive: true)
+            == .denied(String(localized: "This connection is read only for external clients.")))
+    }
+
+    @Test("A file written behind an executable comment is refused", arguments: [
+        "SELECT * FROM orders /*m! ' */ INTO OUTFILE '/tmp/x' -- '",
+        "SELECT * FROM orders /*!99999 ' */ INTO OUTFILE '/tmp/x' -- '",
+    ])
+    func hiddenOutfileIsRefused(sql: String) {
+        guard case .denied(let reason) = refusal(sql, access: .readWrite, allowsDestructive: true) else {
+            Issue.record("not refused: \(sql)")
+            return
+        }
+        #expect(reason.contains("files"))
+    }
+}

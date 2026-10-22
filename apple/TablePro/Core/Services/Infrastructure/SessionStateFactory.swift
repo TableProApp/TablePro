@@ -71,6 +71,9 @@ enum SessionStateFactory {
         )
         let databaseType = connection.type
         tabMgr.onTableOpened = { tableName, schemaName, databaseName, isView, objectType, isPreview in
+            // A temporary table goes with its session, and a Recent entry would outlive it.
+            let scope = DatabaseScope(connectionId: connectionId, database: databaseName, schema: schemaName)
+            guard !TemporaryTableStore.shared.holds(table: tableName, in: scope) else { return }
             SharedSidebarState.forConnection(connectionId).recordTableOpen(
                 database: databaseName, schema: schemaName, name: tableName,
                 isView: isView, objectType: objectType, isPreview: isPreview,

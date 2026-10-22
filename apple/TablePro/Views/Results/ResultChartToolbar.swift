@@ -109,8 +109,11 @@ struct ResultChartToolbar: View {
     /// to the status bar, which shows them in chart mode too, so repeating them here would give the
     /// same fact two different phrasings.
     private var notices: [String] {
-        guard let projection else { return [] }
-        var notices = projection.limits.map { Self.noticeText(for: $0, loadedRowCount: projection.loadedRowCount) }
+        projection.map(Self.notices(for:)) ?? []
+    }
+
+    static func notices(for projection: ResultChartProjection) -> [String] {
+        var notices = projection.limits.map { noticeText(for: $0, loadedRowCount: projection.loadedRowCount) }
         if projection.skippedRowCount > 0 {
             notices.append(String(format: String(localized: "%d skipped"), projection.skippedRowCount))
         }

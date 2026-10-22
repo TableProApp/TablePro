@@ -20,6 +20,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let localDatabaseRuntime: any LibSQLLocalDatabaseRuntime
     private var backend: Backend?
     private var _serverVersion: String?
+    private var _connectionWarning: String?
     nonisolated(unsafe) private var _dbHandleForInterrupt: OpaquePointer?
     private let lock = NSLock()
 
@@ -29,6 +30,11 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return _serverVersion
+    }
+    var connectionWarning: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return _connectionWarning
     }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { isLocalMode }
@@ -86,15 +92,23 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         let extensions = try LoadableExtensionList.decode(config.additionalFields[LoadableExtensionList.fieldId])
+        let attachments = try AttachedDatabaseList.decode(config.additionalFields[AttachedDatabaseList.fieldId])
         let localBackend = SQLiteLocalBackend(runtime: localDatabaseRuntime)
         try await localBackend.open(path: path, loading: extensions)
         let rawHandle = await localBackend.dbHandleForInterrupt
         let versionResult = try await localBackend.executeQuery("SELECT sqlite_version()")
         let version = versionResult.rows.first?.first?.asText ?? "SQLite"
+        let failures = await AttachedDatabaseAttacher.attach(attachments) { database in
+            _ = try await localBackend.executeParameterizedQuery(
+                "ATTACH DATABASE ? AS ?",
+                parameters: [.text(database.expandedPath), .text(database.name)]
+            )
+        }
 
         lock.withLock {
             _dbHandleForInterrupt = rawHandle != 0 ? OpaquePointer(bitPattern: rawHandle) : nil
             _serverVersion = version
+            _connectionWarning = AttachedDatabaseAttacher.warning(for: failures)
             backend = .local(localBackend)
         }
 
@@ -315,26 +329,35 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Schema Operations
 
+    /// The databases attached beside a local file. A remote database is one database on the server
+    /// and cannot attach anything, so it is not asked.
+    func fetchSchemas() async throws -> [String] {
+        guard isLocalMode else { return [] }
+        let result = try await execute(query: SQLiteMasterQueries.attachedDatabasesQuery)
+        return result.rows.compactMap { $0[safe: 0]?.asText }
+    }
+
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let query = """
-            SELECT name, type FROM sqlite_master
+            SELECT name, type FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
             WHERE type IN ('table', 'view')
-            AND name NOT LIKE 'sqlite_%'
+            AND name NOT GLOB 'sqlite_*'
             AND name NOT GLOB 'libsql_*'
             ORDER BY name
             """
         let result = try await execute(query: query)
+        let attached = SQLiteMasterQueries.attachedSchema(schema)
         return result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText else { return nil }
             let typeString = row[safe: 1]?.asText ?? "table"
             let tableType = typeString.lowercased() == "view" ? "VIEW" : "TABLE"
-            return PluginTableInfo(name: name, type: tableType)
+            return PluginTableInfo(name: name, type: tableType, schema: attached)
         }
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let safeTable = escapeStringLiteral(table)
-        let query = "PRAGMA table_info('\(safeTable)')"
+        let query = "SELECT * FROM pragma_table_info('\(safeTable)'\(SQLiteMasterQueries.pragmaSchemaArgument(schema)))"
         let result = try await execute(query: query)
 
         return result.rows.compactMap { row in
@@ -361,8 +384,9 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let query = """
             SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk
-            FROM sqlite_master m, pragma_table_info(m.name) p
-            WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' AND m.name NOT GLOB 'libsql_*'
+            FROM \(SQLiteMasterQueries.catalogTable(schema: schema)) m,
+                 pragma_table_info(m.name\(SQLiteMasterQueries.pragmaSchemaArgument(schema))) p
+            WHERE m.type = 'table' AND m.name NOT GLOB 'sqlite_*' AND m.name NOT GLOB 'libsql_*'
             ORDER BY m.name, p.cid
             """
         let result = try await execute(query: query)
@@ -400,88 +424,29 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        let query = """
-            SELECT m.name AS table_name, p.id, p."table" AS referenced_table,
-                   p."from" AS column_name, p."to" AS referenced_column,
-                   p.on_update, p.on_delete
-            FROM sqlite_master m, pragma_foreign_key_list(m.name) p
-            WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' AND m.name NOT GLOB 'libsql_*'
-            ORDER BY m.name, p.id, p.seq
-            """
-        let result = try await execute(query: query)
-
-        var allForeignKeys: [String: [PluginForeignKeyInfo]] = [:]
-
-        for row in result.rows {
-            guard row.count >= 7,
-                  let tableName = row[0].asText,
-                  let id = row[1].asText,
-                  let refTable = row[2].asText,
-                  let fromCol = row[3].asText,
-                  let toCol = row[4].asText else {
-                continue
-            }
-
-            let onUpdate = row[5].asText ?? "NO ACTION"
-            let onDelete = row[6].asText ?? "NO ACTION"
-
-            let fk = PluginForeignKeyInfo(
-                name: "fk_\(tableName)_\(id)",
-                column: fromCol,
-                referencedTable: refTable,
-                referencedColumn: toCol,
-                onDelete: onDelete,
-                onUpdate: onUpdate
-            )
-
-            allForeignKeys[tableName, default: []].append(fk)
-        }
-
-        return allForeignKeys
+        let query = SQLiteForeignKeyGrouping.schemaForeignKeysQuery(schema: schema, excludingTableGlob: "libsql_*")
+        return SQLiteForeignKeyGrouping.foreignKeysByTable(schema: schema, fromRows: try await execute(query: query).rows)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let result = try await execute(query: SQLiteIndexCatalog.indexesQuery(table: table))
+        let result = try await execute(query: SQLiteIndexCatalog.indexesQuery(table: table, schema: schema))
         return SQLiteIndexCatalog.indexes(fromRows: result.rows)
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        let safeTable = escapeStringLiteral(table)
-        let query = "PRAGMA foreign_key_list('\(safeTable)')"
-        let result = try await execute(query: query)
-
-        return result.rows.compactMap { row in
-            guard row.count >= 5,
-                  let refTable = row[2].asText,
-                  let fromCol = row[3].asText,
-                  let toCol = row[4].asText else {
-                return nil
-            }
-
-            let id = row[0].asText ?? "0"
-            let onUpdate = row.count >= 6 ? (row[5].asText ?? "NO ACTION") : "NO ACTION"
-            let onDelete = row.count >= 7 ? (row[6].asText ?? "NO ACTION") : "NO ACTION"
-
-            return PluginForeignKeyInfo(
-                name: "fk_\(table)_\(id)",
-                column: fromCol,
-                referencedTable: refTable,
-                referencedColumn: toCol,
-                onDelete: onDelete,
-                onUpdate: onUpdate
-            )
-        }
+        let result = try await execute(query: SQLiteForeignKeyGrouping.foreignKeysQuery(table: table, schema: schema))
+        return SQLiteForeignKeyGrouping.foreignKeys(table: table, schema: schema, fromRows: result.rows)
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        try await sqliteTriggerList(table: table)
+        try await sqliteTriggerList(table: table, schema: schema)
     }
 
     var supportsTransactionalDDL: Bool { true }
 
     func createTriggerTemplate(table: String, schema: String?) -> String? {
         """
-        CREATE TRIGGER \(quoteIdentifier("trigger_name"))
+        CREATE TRIGGER \(SQLiteMasterQueries.qualifiedTable("trigger_name", schema: schema, quote: quoteIdentifier))
         AFTER INSERT ON \(quoteIdentifier(table))
         BEGIN
             -- INSERT INTO audit ...;
@@ -490,7 +455,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        "DROP TRIGGER IF EXISTS \(quoteIdentifier(name))"
+        "DROP TRIGGER IF EXISTS \(SQLiteMasterQueries.qualifiedTable(name, schema: schema, quote: quoteIdentifier))"
     }
 
     /// A view's `CREATE VIEW` sits in `sqlite_master` beside the tables, so one read answers both.
@@ -499,7 +464,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let safeTable = escapeStringLiteral(table)
         let query = """
-            SELECT type, sql FROM sqlite_master
+            SELECT type, sql FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
             WHERE type IN ('table', 'view') AND name = '\(safeTable)'
             """
         let result = try await execute(query: query)
@@ -521,7 +486,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// of the dump: those come back with the constraint inside `CREATE TABLE`.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
         let result = try await execute(query: """
-            SELECT sql FROM sqlite_master
+            SELECT sql FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
             WHERE type = 'index'
               AND tbl_name = '\(escapeStringLiteral(table))'
               AND sql IS NOT NULL
@@ -533,7 +498,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let safeView = escapeStringLiteral(view)
         let query = """
-            SELECT sql FROM sqlite_master
+            SELECT sql FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
             WHERE type = 'view' AND name = '\(safeView)'
             """
         let result = try await execute(query: query)
@@ -547,8 +512,8 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        let safeTableName = table.replacingOccurrences(of: "\"", with: "\"\"")
-        let countQuery = "SELECT COUNT(*) FROM (SELECT 1 FROM \"\(safeTableName)\" LIMIT 100001)"
+        let qualified = SQLiteMasterQueries.qualifiedTable(table, schema: schema, quote: quoteIdentifier)
+        let countQuery = "SELECT COUNT(*) FROM (SELECT 1 FROM \(qualified) LIMIT 100001)"
         let countResult = try await execute(query: countQuery)
         let rowCount: Int64? = {
             guard let row = countResult.rows.first, let countStr = row.first?.asText else { return nil }
@@ -583,15 +548,14 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Identifier Quoting
 
     func quoteIdentifier(_ name: String) -> String {
-        let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
+        let escaped = name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
         return "\"\(escaped)\""
     }
 
     func escapeStringLiteral(_ value: String) -> String {
-        var result = value
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\0", with: "")
-        return result
+        value
+            .replacingOccurrences(of: "\0", with: "", options: .literal)
+            .replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     func castColumnToText(_ column: String) -> String {
@@ -628,11 +592,11 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Table Operations
 
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
-        ["DELETE FROM \(quoteIdentifier(table))"]
+        ["DELETE FROM \(SQLiteMasterQueries.qualifiedTable(table, schema: schema, quote: quoteIdentifier))"]
     }
 
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
-        "DROP \(objectType) IF EXISTS \(quoteIdentifier(name))"
+        "DROP \(objectType) IF EXISTS \(SQLiteMasterQueries.qualifiedTable(name, schema: schema, quote: quoteIdentifier))"
     }
 
     // MARK: - All Tables Metadata
@@ -640,7 +604,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func allTablesMetadataSQL(schema: String?) -> String? {
         """
         SELECT
-            '' as schema,
+            '\(escapeStringLiteral(SQLiteMasterQueries.attachedSchema(schema) ?? ""))' as schema,
             name,
             type as kind,
             '' as charset,
@@ -650,9 +614,9 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             '' as data_size,
             '' as index_size,
             '' as comment
-        FROM sqlite_master
+        FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
         WHERE type IN ('table', 'view')
-        AND name NOT LIKE 'sqlite_%'
+        AND name NOT GLOB 'sqlite_*'
         AND name NOT GLOB 'libsql_*'
         ORDER BY name
         """
@@ -734,7 +698,8 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         columns: [PluginColumnDefinition],
         desiredOrder: [String]
     ) async throws -> PluginColumnReorderPlan? {
-        try await SQLiteColumnReorderPlanner.plan(
+        try Self.requireMainDatabase(schema)
+        return try await SQLiteColumnReorderPlanner.plan(
             tableName: table,
             desiredOrder: desiredOrder,
             isRunnable: isLocalMode,
@@ -749,6 +714,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         schema: String?,
         respecification: PluginTableRespecification
     ) async throws -> PluginColumnReorderPlan? {
+        try Self.requireMainDatabase(schema)
         guard !respecification.isEmpty,
               let context = try await SQLiteTableRebuildPlanner.context(
                   tableName: table,
@@ -764,8 +730,19 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    /// The rebuild and reorder planners read the main database's catalog and write unqualified
+    /// statements, so a table in an attached database is refused rather than rebuilt in the wrong file.
+    static func requireMainDatabase(_ schema: String?) throws {
+        guard SQLiteMasterQueries.attachedSchema(schema) == nil else {
+            throw LibSQLError(
+                message: String(localized: "The structure of a table in an attached database cannot be changed here.")
+            )
+        }
+    }
+
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? {
-        try await SQLiteColumnReorderPlanner.schemaFingerprint(
+        try Self.requireMainDatabase(schema)
+        return try await SQLiteColumnReorderPlanner.schemaFingerprint(
             tableName: table,
             execute: { try await self.execute(query: $0) }
         )

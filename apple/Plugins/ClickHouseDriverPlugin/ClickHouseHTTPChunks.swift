@@ -15,7 +15,7 @@ import TableProPluginKit
 /// resumed once the reader has finished with it, so a slow writer downstream stops the download
 /// rather than letting the rest of the result pile up in memory. That resume is why the body is
 /// read through `forEachChunk` and not by iterating a sequence: a caller cannot forget it.
-internal final class ClickHouseHTTPChunks: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+nonisolated internal final class ClickHouseHTTPChunks: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     /// An error body is text the user reads, not a result. Its last bytes are kept, because a
     /// failure on 25.10 and later can arrive as HTTP 500 with the rows written so far ahead of
     /// the text. ClickHouse exception text runs to a few kilobytes at most.

@@ -157,7 +157,7 @@ extension MainContentCoordinator {
                     scope: scope,
                     workload: .bulk
                 ) { driver in
-                    try await driver.fetchAllForeignKeys()
+                    try await driver.fetchAllForeignKeys(schema: scope.schema)
                 }
             } catch {
                 Self.logger.info(
@@ -210,7 +210,7 @@ extension MainContentCoordinator {
         let generation = tableMetadataGeneration
         do {
             let metadata = try await services.databaseManager.withMetadataDriver(scope: scope) { driver in
-                try await driver.fetchTableMetadata(tableName: table.table)
+                try await driver.fetchTableMetadata(tableName: table.table, schema: scope.schema)
             }
             /// The fetch cannot be cancelled, so it can land after its tab moved onto another table on
             /// the same id, or closed, and stored then it would show the numbers of what the tab used

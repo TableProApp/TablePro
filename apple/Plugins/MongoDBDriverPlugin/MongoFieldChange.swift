@@ -14,7 +14,7 @@ import TableProPluginKit
 /// and every run idempotent: a rename skips a document that already holds the new name, so nothing
 /// is ever overwritten, and running the same statement again after a stop touches only the documents
 /// it had not reached.
-enum MongoFieldChange: Equatable, Sendable {
+nonisolated enum MongoFieldChange: Equatable, Sendable {
     case rename(from: String, to: String)
     case remove(String)
 
@@ -97,7 +97,7 @@ enum MongoFieldChange: Equatable, Sendable {
     }
 }
 
-enum MongoFieldName {
+nonisolated enum MongoFieldName {
     /// Why an update cannot name this field, or nil when it can.
     ///
     /// `$rename` and `$unset` read a dot as a path into an embedded document and refuse a leading
@@ -128,7 +128,7 @@ enum MongoFieldName {
 }
 
 /// The field edits of one save, in the order their statements run.
-struct MongoFieldChangePlan: Equatable, Sendable {
+nonisolated struct MongoFieldChangePlan: Equatable, Sendable {
     let changes: [MongoFieldChange]
     let refusal: String?
 

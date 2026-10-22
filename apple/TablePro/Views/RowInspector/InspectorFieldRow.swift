@@ -214,11 +214,11 @@ internal struct InspectorFieldRow: View {
     /// opt out: each carries a toolbar beside the value and names the value font on its own text.
     private static func valueFont(for kind: FieldEditorKind) -> Font? {
         switch kind {
-        case .json, .phpSerialized, .image:
+        case .json, .phpSerialized, .binaryValue, .image:
             return nil
         case .geometry:
             return nil
-        case .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker,
+        case .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .vector, .typePicker, .valuePicker,
              .schemaText, .multiLine, .singleLine:
             return ThemeEngine.shared.valueFontSwiftUI
         }

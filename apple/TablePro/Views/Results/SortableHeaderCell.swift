@@ -20,8 +20,8 @@ final class SortableHeaderCell: NSTableHeaderCell {
     var isValueFiltered: Bool = false
     var isFunnelVisible: Bool = false
     var supportsValueFilter: Bool = true
-    /// Switched off for one pass of `SortableHeaderView.draw`: the row-number title belongs to the
-    /// pinned heading alone, and the overhang a bounce exposes takes a heading's chrome with no cell.
+    /// Switched off for one pass of `SortableHeaderView.draw`: the row-number and frozen titles belong
+    /// to the pinned headings alone, and the overhang a bounce exposes takes a heading's chrome with no cell.
     var drawsInterior = true
     var drawsDivider = true
 

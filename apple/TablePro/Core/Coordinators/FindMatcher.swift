@@ -20,8 +20,11 @@ enum FindMatcher {
     /// Columns a `LIKE` comparison can be built against without a cast. Postgres has no implicit
     /// integer to text conversion, so `id ILIKE '%abc%'` fails the whole query rather than matching
     /// nothing. Client-side matching is looser on purpose: it compares the text already on screen.
-    static func isServerSearchable(_ columnType: ColumnType?) -> Bool {
-        switch columnType {
+    /// An engine whose pattern filters read a scalar column by its shown text searches those too. A nested value's
+    /// JSON is text only on screen.
+    static func isServerSearchable(_ columnType: ColumnType?, patternReadsAnyColumn: Bool = false) -> Bool {
+        if patternReadsAnyColumn, columnType?.isJsonType != true { return isSearchable(columnType) }
+        return switch columnType {
         case .text, .enumType, .set, nil: true
         default: false
         }

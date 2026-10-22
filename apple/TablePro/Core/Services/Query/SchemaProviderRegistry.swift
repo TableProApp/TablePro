@@ -8,6 +8,7 @@
 
 import Foundation
 import os
+import TableProSQLGrammar
 
 /// Answers which scopes something is still rendering, so eviction can drop only the providers
 /// nothing holds.

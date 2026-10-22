@@ -30,6 +30,7 @@ enum ForeignKeyLookupQuery {
         searchTerm: String,
         dialect: SQLDialectDescriptor,
         stringLiteralPrefix: String,
+        databaseType: DatabaseType? = nil,
         quoteIdentifier: @escaping (String) -> String
     ) -> String? {
         let selected = selectedColumns(key: key, labels: labels)
@@ -39,7 +40,8 @@ enum ForeignKeyLookupQuery {
             columns: selected.map(\.name),
             columnTypes: selected.map(\.type),
             quoteIdentifier: quoteIdentifier,
-            stringLiteralPrefix: stringLiteralPrefix
+            stringLiteralPrefix: stringLiteralPrefix,
+            databaseType: databaseType
         )
 
         /// A referenced column may be a nullable `UNIQUE` one, and ascending order puts its NULLs

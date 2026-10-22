@@ -9,7 +9,7 @@ import TableProNumberFormatting
 import TableProPluginKit
 import TableProTLSClientIdentity
 
-final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
+nonisolated final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "ClickHouse Driver"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "ClickHouse database support via HTTP interface"
@@ -113,7 +113,7 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
         requiresBackslashEscaping: true,
         caseSensitivityStyle: .caseFoldFunction,
         caseFoldFunction: "lowerUTF8",
-        textCastTypeName: nil,
+        textCastTypeName: "Nullable(String)",
         functionNamesAreCaseInsensitive: false
     )
 
@@ -124,7 +124,7 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
 
 // MARK: - Error Types
 
-struct ClickHouseError: Error, PluginDriverError {
+nonisolated struct ClickHouseError: Error, PluginDriverError {
     let message: String
 
     var pluginErrorMessage: String { message }
@@ -158,7 +158,7 @@ struct ClickHouseError: Error, PluginDriverError {
 
 // MARK: - Internal Query Result
 
-struct CHQueryResult {
+nonisolated struct CHQueryResult {
     let columns: [String]
     let columnTypeNames: [String]
     let rows: [[PluginCellValue]]
@@ -172,7 +172,7 @@ struct CHQueryResult {
 
 // MARK: - Plugin Driver
 
-final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     let config: DriverConnectionConfig
     private let sessionConfiguration: URLSessionConfiguration
     private var _serverVersion: String?
@@ -209,6 +209,10 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .cancelQuery,
             .materializedViews,
             .dataCompare,
+            .rowWrites,
+            .cellExpressions,
+            .uuidCellText,
+            .repeatingPrimaryKey,
         ]
     }
 
@@ -220,19 +224,24 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         Self.escapeStringLiteral(value)
     }
 
-    /// The backslash goes first, or every escape written after it is escaped again.
+    // Only escapes ClickHouse decodes: it reads an unknown one such as MySQL's `\Z` as a backslash and the letter.
     static func escapeStringLiteral(_ value: String) -> String {
-        var result = value
-        result = result.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-        result = result.replacingOccurrences(of: "'", with: "''", options: .literal)
-        result = result.replacingOccurrences(of: "\n", with: "\\n", options: .literal)
-        result = result.replacingOccurrences(of: "\r", with: "\\r", options: .literal)
-        result = result.replacingOccurrences(of: "\t", with: "\\t", options: .literal)
-        result = result.replacingOccurrences(of: "\0", with: "\\0", options: .literal)
-        result = result.replacingOccurrences(of: "\u{08}", with: "\\b", options: .literal)
-        result = result.replacingOccurrences(of: "\u{0C}", with: "\\f", options: .literal)
-        result = result.replacingOccurrences(of: "\u{1A}", with: "\\Z", options: .literal)
-        return result
+        var escaped = String.UnicodeScalarView()
+        escaped.reserveCapacity(value.utf8.count)
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\\": escaped.append(contentsOf: #"\\"#.unicodeScalars)
+            case "'": escaped.append(contentsOf: "''".unicodeScalars)
+            case "\n": escaped.append(contentsOf: #"\n"#.unicodeScalars)
+            case "\r": escaped.append(contentsOf: #"\r"#.unicodeScalars)
+            case "\t": escaped.append(contentsOf: #"\t"#.unicodeScalars)
+            case "\0": escaped.append(contentsOf: #"\0"#.unicodeScalars)
+            case "\u{08}": escaped.append(contentsOf: #"\b"#.unicodeScalars)
+            case "\u{0C}": escaped.append(contentsOf: #"\f"#.unicodeScalars)
+            default: escaped.append(scalar)
+            }
+        }
+        return String(escaped)
     }
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
@@ -251,8 +260,18 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await connect(reportingStage: { _ in })
     }
 
+    // A tunnel dials its local end, so the certificate names the host behind it. Any other dial is checked against
+    // its own host, whatever a stored or imported field says.
+    static func tunnelServerName(dialing host: String, fields: [String: String]) -> String? {
+        guard ["127.0.0.1", "::1", "localhost"].contains(host.lowercased()) else { return nil }
+        return fields["preTunnelHost"]?.nilIfEmpty
+    }
+
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
-        let tlsDelegate = try ClickHouseTLSDelegate.make(for: config.ssl)
+        let tlsDelegate = try ClickHouseTLSDelegate.make(
+            for: config.ssl,
+            serverName: Self.tunnelServerName(dialing: config.host, fields: config.additionalFields)
+        )
         let connectTimeout = PluginConnectTimeout.milliseconds(
             in: config.additionalFields,
             default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)
@@ -376,126 +395,96 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - DML Statement Generation
 
-    func generateStatements(
+    func generateRowWrites(
         table: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
+    ) throws -> [PluginRowWrite]? {
+        try generateRowWrites(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices, context: PluginRowWriteContext()
+        )
+    }
+
+    // The sorting key repeats, so it never names a row: every write matches the whole row (ClickHouseRowWrites).
+    func generateRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
+        try ClickHouseRowWrites.writes(
+            table: table,
+            schema: schema,
+            columns: columns,
+            changes: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices,
+            context: context,
+            forms: rowWriteForms
+        )
+    }
+
+    // A lightweight UPDATE or DELETE when the user may not wait for a mutation: each finishes before it returns.
+    private var rowWriteForms: ClickHouseRowWrites.Forms {
+        ClickHouseRowWrites.Forms(
+            update: { [self] table, assignments, predicate in
+                rowUpdateStatement(table: table, assignments: assignments, predicate: predicate)
+                    ?? "UPDATE \(table) SET \(assignments) WHERE \(predicate)"
+            },
+            delete: { [self] table, predicate in
+                rowDeleteStatement(table: table, predicate: predicate) ?? "DELETE FROM \(table) WHERE \(predicate)"
+            }
+        )
+    }
+
+    // No column is filled by the server unasked, so the row goes back with every value it had.
+    func generateIdentityPreservingInsert(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        rows: [[PluginCellValue]]
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        var statements: [(statement: String, parameters: [PluginCellValue])] = []
-
-        for change in changes {
-            switch change.type {
-            case .insert:
-                guard insertedRowIndices.contains(change.rowIndex) else { continue }
-                if let values = insertedRowData[change.rowIndex] {
-                    if let stmt = generateClickHouseInsert(table: table, columns: columns, values: values) {
-                        statements.append(stmt)
-                    }
-                }
-            case .update:
-                if let stmt = generateClickHouseUpdate(table: table, columns: columns, change: change) {
-                    statements.append(stmt)
-                }
-            case .delete:
-                guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                if let stmt = generateClickHouseDelete(table: table, columns: columns, change: change) {
-                    statements.append(stmt)
-                }
-            }
+        let target = ClickHouseRowWrites.qualified(table: table, schema: schema)
+        return rows.enumerated().map { index, row in
+            let write = ClickHouseRowWrites.insert(
+                into: target, columns: columns, values: row, expressions: [], rowIndex: index
+            )
+            return (write.statement, write.parameters)
         }
-
-        return statements.isEmpty ? nil : statements
     }
 
-    private func generateClickHouseInsert(
-        table: String,
-        columns: [String],
-        values: [PluginCellValue]
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        var nonDefaultColumns: [String] = []
-        var parameters: [PluginCellValue] = []
-
-        for (index, value) in values.enumerated() {
-            if value.asText == "__DEFAULT__" { continue }
-            guard index < columns.count else { continue }
-            nonDefaultColumns.append(clickHouseQuotedIdentifier(columns[index]))
-            parameters.append(value)
-        }
-
-        guard !nonDefaultColumns.isEmpty else { return nil }
-
-        let columnList = nonDefaultColumns.joined(separator: ", ")
-        let placeholders = parameters.map { _ in "?" }.joined(separator: ", ")
-        let sql = "INSERT INTO \(clickHouseQuotedIdentifier(table)) (\(columnList)) VALUES (\(placeholders))"
-        return (statement: sql, parameters: parameters)
+    // A plain UPDATE needs lightweight updates enabled on the table. A mutation returns before it applies unless
+    // asked to wait, and only a waited one reports a failure instead of staying queued. A user who may not wait
+    // gets the plain form, which finishes before it returns or is refused.
+    func rowUpdateStatement(table: String, assignments: String, predicate: String) -> String? {
+        guard let wait = mutationWait else { return nil }
+        return "ALTER TABLE \(table) UPDATE \(assignments) WHERE \(predicate)\(wait)"
     }
 
-    private func generateClickHouseUpdate(
-        table: String,
-        columns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        guard !change.cellChanges.isEmpty else { return nil }
-
-        let escapedTable = clickHouseQuotedIdentifier(table)
-        var parameters: [PluginCellValue] = []
-
-        let setClauses = change.cellChanges.map { cellChange -> String in
-            let col = clickHouseQuotedIdentifier(cellChange.columnName)
-            parameters.append(cellChange.newValue)
-            return "\(col) = ?"
-        }.joined(separator: ", ")
-
-        guard let whereClause = buildWhereClause(
-            columns: columns, change: change, parameters: &parameters
-        ) else { return nil }
-
-        let sql = "ALTER TABLE \(escapedTable) UPDATE \(setClauses) WHERE \(whereClause)"
-        return (statement: sql, parameters: parameters)
+    // DELETE needs a WHERE, and a lightweight DELETE is refused on a table with projections and on Memory, where the
+    // mutation works.
+    func rowDeleteStatement(table: String, predicate: String?) -> String? {
+        guard let predicate else { return "TRUNCATE TABLE \(table)" }
+        guard let wait = mutationWait else { return nil }
+        return "ALTER TABLE \(table) DELETE WHERE \(predicate)\(wait)"
     }
 
-    private func generateClickHouseDelete(
-        table: String,
-        columns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        let escapedTable = clickHouseQuotedIdentifier(table)
-        var parameters: [PluginCellValue] = []
-
-        guard let whereClause = buildWhereClause(
-            columns: columns, change: change, parameters: &parameters
-        ) else { return nil }
-
-        let sql = "ALTER TABLE \(escapedTable) DELETE WHERE \(whereClause)"
-        return (statement: sql, parameters: parameters)
-    }
-
-    private func buildWhereClause(
-        columns: [String],
-        change: PluginRowChange,
-        parameters: inout [PluginCellValue]
-    ) -> String? {
-        guard let originalRow = change.originalRow else { return nil }
-
-        var conditions: [String] = []
-        for (index, columnName) in columns.enumerated() {
-            guard index < originalRow.count else { continue }
-            let col = clickHouseQuotedIdentifier(columnName)
-            let value = originalRow[index]
-            if value.isNull {
-                conditions.append("\(col) IS NULL")
-            } else {
-                parameters.append(value)
-                conditions.append("\(col) = ?")
-            }
-        }
-
-        guard !conditions.isEmpty else { return nil }
-        return conditions.joined(separator: " AND ")
+    private var mutationWait: String? {
+        serverProfile.allows(.mutationsSync, "1") ? " SETTINGS mutations_sync = 1" : nil
     }
 
     func cancelQuery() throws {
@@ -544,7 +533,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Kill Query
 
-    private func killQuery(queryId: String) {
+    func killQuery(queryId: String) {
         lock.lock()
         let connectedSession = session
         lock.unlock()
@@ -627,13 +616,15 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             shape: .streamed(rowCap: rowCap)
         )
         request.timeoutInterval = _queryTimeout.requestTimeoutInterval
-        try await streamTabSeparatedRows(
-            request: request,
-            session: session,
-            batchSize: min(5_000, rowCap + 1),
-            boundedOutputCut: isOutputCut,
-            continuation: continuation
-        )
+        try await killingOnCancel(queryId: queryId) {
+            try await streamTabSeparatedRows(
+                request: request,
+                session: session,
+                batchSize: min(5_000, rowCap + 1),
+                boundedOutputCut: isOutputCut,
+                continuation: continuation
+            )
+        }
     }
 
     /// `TabSeparatedWithNamesAndTypes` carries the names on line one and the types on line two, so
@@ -768,12 +759,14 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             shape: .streamed(rowCap: nil)
         )
         request.timeoutInterval = _queryTimeout.requestTimeoutInterval
-        try await streamTabSeparatedRows(
-            request: request,
-            session: session,
-            batchSize: 5_000,
-            continuation: continuation
-        )
+        try await killingOnCancel(queryId: queryId) {
+            try await streamTabSeparatedRows(
+                request: request,
+                session: session,
+                batchSize: 5_000,
+                continuation: continuation
+            )
+        }
     }
 
     private func streamingContext(
@@ -932,7 +925,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
 // MARK: - TLS Delegate
 
-final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+nonisolated final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
     private enum Strategy {
         case systemTrust
         case skipVerify
@@ -941,6 +934,8 @@ final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Send
 
     private let strategy: Strategy
     private let clientCredential: URLCredential?
+    // Behind a tunnel the session dials 127.0.0.1, so the certificate is checked against this name instead.
+    private let serverName: String?
     private let lock = NSLock()
     private var refusal: SSLHandshakeError?
 
@@ -948,19 +943,20 @@ final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Send
         lock.withLock { refusal }
     }
 
-    private init(strategy: Strategy, clientCredential: URLCredential?) {
+    private init(strategy: Strategy, clientCredential: URLCredential?, serverName: String?) {
         self.strategy = strategy
         self.clientCredential = clientCredential
+        self.serverName = serverName
     }
 
-    static func make(for ssl: SSLConfiguration) throws -> ClickHouseTLSDelegate? {
+    static func make(for ssl: SSLConfiguration, serverName: String? = nil) throws -> ClickHouseTLSDelegate? {
         guard ssl.isEnabled else { return nil }
         let strategy = try serverTrustStrategy(for: ssl)
         let clientCredential = try clientCredential(for: ssl)
-        if case .systemTrust = strategy, clientCredential == nil {
+        if case .systemTrust = strategy, clientCredential == nil, serverName == nil {
             return nil
         }
-        return ClickHouseTLSDelegate(strategy: strategy, clientCredential: clientCredential)
+        return ClickHouseTLSDelegate(strategy: strategy, clientCredential: clientCredential, serverName: serverName)
     }
 
     private static func serverTrustStrategy(for ssl: SSLConfiguration) throws -> Strategy {
@@ -1035,21 +1031,33 @@ final class ClickHouseTLSDelegate: NSObject, URLSessionDelegate, @unchecked Send
 
         switch strategy {
         case .systemTrust:
-            completionHandler(.performDefaultHandling, nil)
+            guard let serverName else {
+                completionHandler(.performDefaultHandling, nil)
+                return
+            }
+            evaluate(serverTrust, hostname: serverName as CFString, completionHandler: completionHandler)
         case .skipVerify:
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
         case .verifyChain(let anchor, let checksHostname):
             SecTrustSetAnchorCertificates(serverTrust, [anchor] as CFArray)
-            let hostname = checksHostname ? challenge.protectionSpace.host as CFString : nil
-            SecTrustSetPolicies(serverTrust, [SecPolicyCreateSSL(true, hostname)] as CFArray)
-            var evaluationError: CFError?
-            guard SecTrustEvaluateWithError(serverTrust, &evaluationError) else {
-                record(Self.refusal(for: evaluationError))
-                completionHandler(.cancelAuthenticationChallenge, nil)
-                return
-            }
-            completionHandler(.useCredential, URLCredential(trust: serverTrust))
+            let hostname = checksHostname ? (serverName ?? challenge.protectionSpace.host) as CFString : nil
+            evaluate(serverTrust, hostname: hostname, completionHandler: completionHandler)
         }
+    }
+
+    private func evaluate(
+        _ serverTrust: SecTrust,
+        hostname: CFString?,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        SecTrustSetPolicies(serverTrust, [SecPolicyCreateSSL(true, hostname)] as CFArray)
+        var evaluationError: CFError?
+        guard SecTrustEvaluateWithError(serverTrust, &evaluationError) else {
+            record(Self.refusal(for: evaluationError))
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        completionHandler(.useCredential, URLCredential(trust: serverTrust))
     }
 
     private func answerClientCertificate(

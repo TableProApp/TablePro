@@ -3,12 +3,12 @@ import TableProAutocomplete
 import TableProPluginKit
 
 struct QueryCompletionSession {
-    /// What the popup shows when it opens.
     let items: [SQLCompletionItem]
-    /// What it re-ranks against while it stays open, which is wider than `items` so a longer
-    /// prefix can promote a candidate the opening prefix ranked out of view.
+    // Wider than `items`, so a longer prefix can promote a candidate the opening prefix ranked out of view.
     let candidates: [SQLCompletionItem]
     let replacementRange: NSRange
+    // In document offsets. The re-rank and the accept read it, since a local walk back stops at a space in the name.
+    var quotedName: SQLQuotedName?
 }
 
 @MainActor
@@ -26,7 +26,8 @@ enum QueryCompletionServiceFactory {
     static func make(
         schemaProvider: SQLSchemaProvider?,
         databaseType: DatabaseType?,
-        profile: QueryCompletionProfile? = nil
+        profile: QueryCompletionProfile? = nil,
+        connectionId: UUID? = nil
     ) -> QueryCompletionService {
         let language = databaseType.map { PluginManager.shared.editorLanguage(for: $0) } ?? .sql
 
@@ -37,7 +38,8 @@ enum QueryCompletionServiceFactory {
             return SQLCompletionService(
                 schemaProvider: schemaProvider,
                 databaseType: databaseType,
-                profile: profile
+                profile: profile,
+                identifierCase: { SQLIdentifierCase.stored(for: connectionId) }
             )
         }
     }

@@ -22,6 +22,21 @@ enum HanaCatalogQueries {
             """
     }
 
+    static func tables(inSchemas schemas: [String]) -> String {
+        let owners = schemas.map(HanaSQL.quoteLiteral).joined(separator: ", ")
+        return """
+            SELECT TABLE_NAME, 'TABLE' AS OBJECT_TYPE, COMMENTS, SCHEMA_NAME
+            FROM SYS.TABLES
+            WHERE SCHEMA_NAME IN (\(owners))
+              AND IS_USER_DEFINED_TYPE = 'FALSE'
+            UNION ALL
+            SELECT VIEW_NAME, 'VIEW', COMMENTS, SCHEMA_NAME
+            FROM SYS.VIEWS
+            WHERE SCHEMA_NAME IN (\(owners))
+            ORDER BY 4, 1
+            """
+    }
+
     static func columns(schema: String, table: String?) -> String {
         let owner = HanaSQL.quoteLiteral(schema)
         let tableFilter = table.map { "\n      AND TABLE_NAME = \(HanaSQL.quoteLiteral($0))" } ?? ""

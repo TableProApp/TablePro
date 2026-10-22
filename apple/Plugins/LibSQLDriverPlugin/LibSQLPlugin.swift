@@ -130,6 +130,7 @@ final class LibSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             section: .authentication,
             visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"])
         ),
+        .attachedDatabases(visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"])),
         .loadableExtensions(visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"]))
     ]
 

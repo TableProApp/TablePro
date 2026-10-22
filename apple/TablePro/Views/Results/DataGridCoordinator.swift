@@ -121,6 +121,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         return AppSettingsManager.shared.dataGrid.defaultSortDirection
     }
 
+    var appliesRowCopyFormat: Bool = false
+
+    var rowCopyFormat: RowCopyFormat {
+        guard appliesRowCopyFormat else { return .rows }
+        return AppSettingsManager.shared.dataGrid.rowCopyFormat
+    }
+
     private var columnIndexByDataIndex: [Int: Int] = [:]
     /// Display position to data index, rebuilt lazily. `presentedDataColumns` reads it; a drag and
     /// the cell-range fill both ask per event and per row, and deriving it walks every attached
@@ -277,6 +284,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         primaryKeyColumns = configuration.primaryKeyColumns
         tabType = configuration.tabType
         appliesRowSortPreferences = configuration.appliesRowSortPreferences
+        appliesRowCopyFormat = configuration.appliesRowCopyFormat
         supportsColumnSort = configuration.supportsColumnSort
     }
 
@@ -297,7 +305,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             }
             guard !layout.columnWidths.isEmpty
                 || layout.columnContentWidths?.isEmpty == false
-                || layout.columnOrder?.isEmpty == false else { return nil }
+                || layout.columnOrder?.isEmpty == false
+                || layout.frozenColumnCount > 0 else { return nil }
             return layout
         }
 
@@ -306,7 +315,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
         if binding.columnWidths.isEmpty,
            binding.columnContentWidths?.isEmpty != false,
-           binding.columnOrder == nil {
+           binding.columnOrder == nil,
+           binding.frozenColumnCount == 0 {
             return nil
         }
         return binding
@@ -391,6 +401,12 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         return true
     }
 
+    // A table tab's binding may never have carried the frozen count restored from disk.
+    func resetColumnGeometry() {
+        resetColumnWidthOwnership()
+        frozenColumnCount = 0
+    }
+
     func resetColumnWidthOwnership() {
         userSizedColumnNames.removeAll()
         shouldRecalculateAutomaticColumnWidths = true
@@ -434,6 +450,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         layout.columnWidths = legacyWidths
         layout.columnContentWidths = contentWidths.isEmpty ? nil : contentWidths
         layout.columnOrder = order
+        layout.frozenColumnCount = frozenColumnCount
         return layout
     }
 
@@ -551,6 +568,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// after it, the reader's own gestures are the only thing that moves the selection.
     var hasRestoredSelection = false
     weak var rowGutter: DataGridRowGutterView?
+    var frozenColumnCount = 0 {
+        didSet {
+            guard frozenColumnCount != oldValue else { return }
+            frozenColumnsDidChange()
+        }
+    }
+    // What the owner's binding last said, so only an owner-side change (Reset Columns) is adopted.
+    var lastBoundFrozenColumnCount = 0
     /// The last value `publishRowSelection()` wrote, or nil before it has written one. `nil` has to
     /// mean "nothing published yet" rather than "empty", or a tab restoring an empty selection would
     /// be mistaken for one this coordinator produced and never reach the table view.
@@ -617,13 +642,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func applyDataGridSettingsChange(from previous: DataGridSettings, to settings: DataGridSettings) {
-        guard let tableView else { return }
-        let newRowHeight = CGFloat(settings.rowHeight.rawValue)
-        if tableView.rowHeight != newRowHeight {
-            tableView.rowHeight = newRowHeight
-            tableView.tile()
-            repaintRowGutter()
-        }
+        guard tableView != nil else { return }
+        applyRowHeight(DataGridMetrics.rowHeight(settings.rowHeight, font: ThemeEngine.shared.dataGridFonts.regular))
 
         let dataChanged = previous.dateFormat != settings.dateFormat
             || previous.nullDisplay != settings.nullDisplay
@@ -631,7 +651,18 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
         if dataChanged {
             reformatDisplayedText()
+        } else if previous.showInvisibleCharacters != settings.showInvisibleCharacters {
+            redrawVisibleCells()
         }
+    }
+
+    func applyRowHeight(_ rowHeight: CGFloat) {
+        guard let tableView, tableView.rowHeight != rowHeight else { return }
+        keepingFirstVisibleRow {
+            tableView.rowHeight = rowHeight
+            tableView.tile()
+        }
+        repaintRowGutter()
     }
 
     func observeThemeChanges() {
@@ -651,8 +682,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         themeDidChange()
     }
 
-    /// `themeChanged` also fires for an Accent, Highlight or Increase Contrast change, and none of
-    /// them moves a value, so this repaints what is on screen and never reloads or refetches.
+    // Also fires for Accent, Highlight and Increase Contrast, none of which moves a value: repaint, never reload.
     func themeDidChange() {
         guard let tableView else { return }
         cellRegistry.preparePalette(in: tableView.effectiveAppearance)
@@ -664,8 +694,19 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             rowView.needsDisplay = true
             (rowView as? DataGridRowView)?.redrawCells()
         }
-        // The row-number font decides the column's width, which the pinned gutter mirrors.
-        resizeRowNumberColumnForCurrentRange()
+        let resize = {
+            // The row-number font decides the column's width, which the pinned gutter mirrors.
+            self.resizeRowNumberColumnForCurrentRange()
+            self.applyRowHeight(DataGridMetrics.rowHeight(
+                AppSettingsManager.shared.dataGrid.rowHeight,
+                font: ThemeEngine.shared.dataGridFonts.regular
+            ))
+        }
+        if let openOverlay = [overlayEditor as CellOverlayBase?, overlayViewer].compactMap({ $0 }).first(where: { $0.isActive }) {
+            openOverlay.followGrid(through: resize)
+        } else {
+            resize()
+        }
         repaintRowGutter()
         selectionController.overlay?.needsDisplay = true
     }
@@ -1081,12 +1122,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 let rawValue = row.values[column]
                 let columnType = column < columnTypes.count ? columnTypes[column] : nil
                 guard findSearches(rawValue, column: column, columnType: columnType) else { return nil }
-                return displayValue(
+                let shown = displayValue(
                     forID: row.id,
                     column: column,
                     rawValue: rawValue,
                     columnType: columnType
                 )
+                return cellRegistry.showsInvisibleCharacters ? shown : shown?.shownWithoutMarks
             }
         )
     }
@@ -1280,7 +1322,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         for i in 0..<columns.count {
             let name = columns[i]
             let columnType = i < types.count ? types[i] : nil
-            if columnType?.supportsElementEditing == true {
+            if columnType?.supportsElementEditing == true || columnType?.isVectorType == true {
                 enumSet.insert(i)
             } else if let values = enumValues[name], !values.isEmpty {
                 let isExcluded = columnType?.isJsonType == true

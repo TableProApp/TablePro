@@ -580,7 +580,16 @@ final class SyncCoordinator: ObservableObject {
         var outcome: PushOutcome
         var interruption: Error?
         do {
-            outcome = try await transport.push(records: batch.records, deletions: deletions)
+            let transport = transport
+            outcome = try await SyncConflictRebase.push(
+                records: batch.records,
+                deletions: deletions,
+                edits: batch.editsByRecordID
+            ) {
+                try await transport.push(records: $0, deletions: $1)
+            } fetch: {
+                try await transport.fetch(recordIDs: $0)
+            }
         } catch let interrupted as SyncPushInterruption {
             outcome = interrupted.completed
             interruption = interrupted.cause
@@ -590,7 +599,7 @@ final class SyncCoordinator: ObservableObject {
         }
         outcome.acceptMissingDeletions(of: deletions)
 
-        recordCache.store(Array(outcome.savedRecords.values))
+        recordCache.store(outcome.savedBases(pushed: batch.editsByRecordID))
         recordCache.remove(Array(outcome.deletedRecordIDs))
 
         let savedRecords = settleSavedRecords(outcome, batch: batch, identities: identities, snapshot: snapshot)
@@ -659,22 +668,34 @@ final class SyncCoordinator: ObservableObject {
         SyncFailure(error) == .tokenExpired
     }
 
+    // A delta never resends a record the token passed, and a category toggle starts no run, so every pull checks.
+    private func adoptReadableContent(for settings: SyncSettings) {
+        guard metadataStorage.adoptReadableRecordTypes(Self.readableContent(for: settings)) else { return }
+        metadataStorage.saveToken(nil)
+        Self.logger.info("Reading record types the last pull skipped: cleared sync token for full fetch")
+    }
+
     /// Reports a failed download instead of passing over it: a run whose pull failed did not bring
     /// this Mac up to date, and must not say Synced or move Last Synced.
     private func performPull(echoGuard: SyncEchoGuard?) async -> SyncStepFailure? {
+        // Applied with the categories recorded here, so one turned off during the download is still read once.
+        let settings = services.appSettingsStorage.loadSync()
+        adoptReadableContent(for: settings)
         let token = metadataStorage.loadToken()
         let tokenStatus = token == nil ? "nil (full fetch)" : "present (delta)"
         Self.logger.info("Pull starting, token: \(tokenStatus)")
 
         do {
             let result = try await transport.pull(since: token)
-            return await applyPull(result, isFullFetch: token == nil, echoGuard: echoGuard) ? nil : .pullNotSaved
+            return await applyPull(result, isFullFetch: token == nil, settings: settings, echoGuard: echoGuard)
+                ? nil : .pullNotSaved
         } catch let error where Self.isTokenExpired(error) {
             Self.logger.warning("Change token expired, clearing and retrying with full fetch")
             metadataStorage.saveToken(nil)
             do {
                 let result = try await transport.pull(since: nil)
-                return await applyPull(result, isFullFetch: true, echoGuard: echoGuard) ? nil : .pullNotSaved
+                return await applyPull(result, isFullFetch: true, settings: settings, echoGuard: echoGuard)
+                    ? nil : .pullNotSaved
             } catch {
                 Self.logger.error("Full fetch after token expiry failed: \(error.localizedDescription)")
                 return SyncStepFailure(error)
@@ -685,8 +706,13 @@ final class SyncCoordinator: ObservableObject {
         }
     }
 
-    private func applyPull(_ result: PullResult, isFullFetch: Bool, echoGuard: SyncEchoGuard?) async -> Bool {
-        guard await applyPullResult(result, echoGuard: echoGuard) else { return false }
+    private func applyPull(
+        _ result: PullResult,
+        isFullFetch: Bool,
+        settings: SyncSettings,
+        echoGuard: SyncEchoGuard?
+    ) async -> Bool {
+        guard await applyPullResult(result, settings: settings, echoGuard: echoGuard) else { return false }
         if isFullFetch {
             seedLocalThemesIfPending(after: result)
         }
@@ -694,19 +720,29 @@ final class SyncCoordinator: ObservableObject {
     }
 
     @discardableResult
-    internal func applyPullResult(_ result: PullResult, echoGuard: SyncEchoGuard? = nil) async -> Bool {
-        let settings = services.appSettingsStorage.loadSync()
+    internal func applyPullResult(
+        _ result: PullResult,
+        settings: SyncSettings? = nil,
+        echoGuard: SyncEchoGuard? = nil
+    ) async -> Bool {
+        let settings = settings ?? services.appSettingsStorage.loadSync()
         let deletedRecordIDs = result.deletedRecordIDs.filter { recordID in
             echoGuard?.withholdsDeletion(recordID, tracker: changeTracker) != true
         }
+        let pendingEdits = await recordNamesWithPendingEdits()
+        let admitted = PullResult(
+            changedRecords: result.changedRecords.filter { !pendingEdits.contains($0.recordID.recordName) },
+            deletedRecordIDs: result.deletedRecordIDs,
+            newToken: result.newToken
+        )
         let storesPersisted = applyRemoteChanges(
-            result,
+            admitted,
             deletedRecordIDs: deletedRecordIDs,
             settings: settings,
             echoGuard: echoGuard
         )
         let favoritesOutcome = await services.sqlFavoriteManager.applyRemote(
-            remoteSQLFavoriteBatch(from: result, deletedRecordIDs: deletedRecordIDs, settings: settings),
+            remoteSQLFavoriteBatch(from: admitted, deletedRecordIDs: deletedRecordIDs, settings: settings),
             echoGuard: echoGuard
         )
 
@@ -724,8 +760,10 @@ final class SyncCoordinator: ObservableObject {
             metadataStorage.saveToken(newToken)
         }
 
-        recordCache.store(result.changedRecords.filter { record in
+        // Only what the local copy took: a record of a category this Mac does not sync stays out until a full fetch applies it.
+        recordCache.store(admitted.changedRecords.filter { record in
             echoGuard?.withholds(record.recordID, tracker: changeTracker) != true
+                && SyncRecordType(rawValue: record.recordType).map { settings.syncs($0) } == true
         })
         recordCache.remove(result.deletedRecordIDs)
 
@@ -733,6 +771,29 @@ final class SyncCoordinator: ObservableObject {
             "Pull completed: \(result.changedRecords.count) changed, \(result.deletedRecordIDs.count) deleted"
         )
         return true
+    }
+
+    // Left alone by a pull, a copy with an edit waiting to go up keeps it, and its push is refused and merges
+    // the edit onto the newer record. Built the way the push builds it, so only a real change counts; a
+    // connection merges on pull instead.
+    private func recordNamesWithPendingEdits() async -> Set<String> {
+        let snapshot = changeTracker.editSnapshot()
+        guard !snapshot.dirty.isEmpty else { return [] }
+        let merged = SyncEchoGuard.typesMergedOnPull.map(\.rawValue)
+        let batch = await collectPushBatch(
+            snapshot: snapshot,
+            boundary: syncBoundary(settings: services.appSettingsStorage.loadSync()),
+            zoneID: await transport.currentZoneID
+        )
+        var names = Set(batch.edits.lazy
+            .filter { $0.hasBase && $0.changesContent && !merged.contains($0.record.recordType) }
+            .map(\.recordID.recordName))
+        // An edit made while the batch was read is newer than anything it saw.
+        for identity in changeTracker.editSnapshot().dirty
+            where !SyncEchoGuard.typesMergedOnPull.contains(identity.type) && changeTracker.hasEdit(identity, since: snapshot) {
+            names.insert(identity.type.recordName(for: identity.id))
+        }
+        return names
     }
 
     // Performance: storage reads here (loadSync, loadConnections, loadGroups, etc.) run on
@@ -808,7 +869,9 @@ final class SyncCoordinator: ObservableObject {
                 case .skipped: break
                 }
             case .sshProfile:
-                applyRemoteSSHProfile(record, tombstoneIds: sshTombstoneIds)
+                if !applyRemoteSSHProfile(record, tombstoneIds: sshTombstoneIds) {
+                    persistenceFailed = true
+                }
             case .credentialProfile:
                 if !applyRemoteCredentialProfile(record, tombstoneIds: credentialTombstoneIds) {
                     persistenceFailed = true
@@ -884,17 +947,13 @@ final class SyncCoordinator: ObservableObject {
     @discardableResult
     private func mergeLocalEdits(into remoteRecord: CKRecord, localConnection: DatabaseConnection) -> DatabaseConnection? {
         guard let base = recordCache.record(for: remoteRecord.recordID) else { return nil }
-
-        let localRecord = SyncRecordMapper.toCKRecord(localConnection, in: remoteRecord.recordID.zoneID)
-        guard let merged = remoteRecord.copy() as? CKRecord else { return nil }
-
-        let localFields = localRecord.fields(ConnectionSyncField.self)
-        let baseFields = base.fields(ConnectionSyncField.self)
-        let mergedFields = merged.fields(ConnectionSyncField.self)
-        for field in ConnectionSyncField.allCases where field != .modifiedAtLocal {
-            guard !CKRecord.isEqualRecordValue(localFields[field], baseFields[field]) else { continue }
-            mergedFields[field] = localFields[field]
-        }
+        let edit = SyncRecordMapper.connectionEdit(
+            localConnection,
+            in: remoteRecord.recordID.zoneID,
+            base: base,
+            publisher: services.connectionStorage.sshRoutePublisherId
+        )
+        guard let merged = edit.rebased(onto: remoteRecord) else { return nil }
 
         do {
             return try SyncRecordMapper.toConnection(merged)
@@ -934,7 +993,7 @@ final class SyncCoordinator: ObservableObject {
         } else {
             connections.append(remoteConnection)
         }
-        guard services.connectionStorage.saveConnections(connections) else {
+        guard services.connectionStorage.saveConnections(connections, byUser: false) else {
             Self.logger.error("Failed to apply remote connection update: persistence error for \(remoteConnection.id, privacy: .public)")
             return .failed
         }
@@ -1004,19 +1063,20 @@ final class SyncCoordinator: ObservableObject {
         }
         guard services.credentialProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
         /// The connections linked to it carry a copy of the username, which every raw reader uses.
-        services.credentialProfileStorage.writeUsernameThrough(remoteProfile)
+        services.credentialProfileStorage.writeUsernameThrough(remoteProfile, byUser: false)
         return true
     }
 
-    private func applyRemoteSSHProfile(_ record: CKRecord, tombstoneIds: Set<String>) {
+    // False keeps the change token, so a profile this Mac failed to save arrives again.
+    private func applyRemoteSSHProfile(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
         let remoteProfile: SSHProfile
         do {
             remoteProfile = try SyncRecordMapper.toSSHProfile(record)
         } catch {
             Self.logger.error("Skipping remote SSH profile \(record.recordID.recordName, privacy: .public): \(error.publicLogShape, privacy: .public)")
-            return
+            return true
         }
-        if tombstoneIds.contains(remoteProfile.id.uuidString) { return }
+        if tombstoneIds.contains(remoteProfile.id.uuidString) { return true }
 
         var profiles = services.sshProfileStorage.loadProfiles()
         if let index = profiles.firstIndex(where: { $0.id == remoteProfile.id }) {
@@ -1024,10 +1084,11 @@ final class SyncCoordinator: ObservableObject {
         } else {
             profiles.append(remoteProfile)
         }
-        guard services.sshProfileStorage.saveProfilesWithoutSync(profiles) else { return }
+        guard services.sshProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
         /// A linked connection stores the profile's configuration, so an edit that arrives from
         /// another Mac has to reach those connections too or they keep tunnelling to the old host.
-        services.sshProfileStorage.refreshLinkedConnections(with: remoteProfile)
+        services.sshProfileStorage.refreshLinkedConnections(with: remoteProfile, byUser: false)
+        return true
     }
 
     private func applyRemoteSettings(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
@@ -1105,17 +1166,7 @@ final class SyncCoordinator: ObservableObject {
             Self.logger.info("No local connections: cleared sync token for full fetch")
         }
 
-        /// A pull returns only what changed since the token, so records of a type an earlier build
-        /// did not sync were passed over for good. The first run of a build that syncs more types
-        /// fetches the zone again, which is how table folders made on an upgraded Mac reach one that
-        /// upgrades later. Counted over the types verified in Production, because an unverified type
-        /// has no records on the server to fetch, plus the content kinds an older build skipped
-        /// inside a type it read (`readableContent`). Checked on every turn to on, because a sync
-        /// turned on mid-session after an upgrade would otherwise keep a token from before it.
-        if metadataStorage.adoptReadableRecordTypes(Self.readableContent) {
-            metadataStorage.saveToken(nil)
-            Self.logger.info("This build reads record types the last one did not: cleared sync token for full fetch")
-        }
+        adoptReadableContent(for: services.appSettingsStorage.loadSync())
         scheduleThemeSeedIfNeeded()
     }
 

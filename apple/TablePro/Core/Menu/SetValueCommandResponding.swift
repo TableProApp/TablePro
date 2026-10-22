@@ -14,4 +14,5 @@ import AppKit
     func setValueDefault(_ sender: Any?)
     func generateUUIDv4(_ sender: Any?)
     func generateUUIDv7(_ sender: Any?)
+    func setCellsToValue(_ sender: Any?)
 }

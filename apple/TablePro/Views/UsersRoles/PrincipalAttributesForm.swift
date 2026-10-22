@@ -21,7 +21,7 @@ struct PrincipalAttributesForm: View {
 
             Section {
                 Toggle(String(localized: "Can log in"), isOn: canLoginBinding)
-                    .disabled(!viewModel.capabilities.roleMembership)
+                    .disabled(!viewModel.allowsLoginToggle(for: principal))
 
                 Button(String(localized: "Change Password…")) {
                     viewModel.activeSheet = .changePassword(principal.ref)

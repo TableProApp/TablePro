@@ -21,7 +21,7 @@ final class SSLPaneViewModel: ObservableObject {
     /// Silent on a driver that renders no SSL section, so a stored mode the form cannot show
     /// cannot disable Save over a certificate field the user has no way to reach.
     var validationIssues: [String] {
-        guard coordinator?.value?.supportsSSL ?? true else { return [] }
+        guard coordinator?.value?.showsSSL ?? true else { return [] }
         let type = coordinator?.value?.network.type
         guard type?.supportsPerConnectionCertificatePaths ?? true else { return [] }
         var issues: [String] = []

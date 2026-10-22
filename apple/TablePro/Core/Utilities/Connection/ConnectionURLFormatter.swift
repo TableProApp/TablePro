@@ -34,6 +34,10 @@ struct ConnectionURLFormatter {
             )
         }
 
+        if connection.type.pluginTypeId == DatabaseType.mongodb.rawValue, connection.mongoUseSrv {
+            return formatMongoSrv(connection, password: password)
+        }
+
         return formatStandard(connection, scheme: scheme, defaultPort: schemeType.defaultPort, password: password)
     }
 
@@ -83,6 +87,26 @@ struct ConnectionURLFormatter {
         return url
     }
 
+    // An SRV record names the servers and their ports, so the URL carries the lookup name alone.
+    private static func formatMongoSrv(_ connection: DatabaseConnection, password: String?) -> String {
+        var result = "mongodb+srv://"
+        if !connection.username.isEmpty {
+            result += percentEncodeUserinfo(connection.username)
+            if let password, !password.isEmpty {
+                result += ":\(percentEncodeUserinfo(password))"
+            }
+            result += "@"
+        }
+        let listed = connection.additionalFields["mongoHosts"]?
+            .split(separator: ",").first.map { $0.trimmingCharacters(in: .whitespaces) }
+        let host = listed.flatMap { $0.isEmpty ? nil : $0 } ?? connection.host
+        result += host.split(separator: ":").first.map(String.init) ?? host
+        let database = connection.database
+        result += "/\(database.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? database)"
+        let query = buildQueryString(connection)
+        return query.isEmpty ? result : "\(result)?\(query)"
+    }
+
     private static func formatSSH(
         _ connection: DatabaseConnection,
         sshConfig ssh: SSHConfiguration,
@@ -126,6 +150,7 @@ struct ConnectionURLFormatter {
         if connection.type == .redis {
             sshPathComponent = redisPath(for: connection)
         }
+        sshPathComponent += catalogSchemaSuffix(for: connection, path: sshPathComponent)
         result += "/\(sshPathComponent)"
 
         let query = buildQueryString(connection, sshConfig: ssh)
@@ -152,9 +177,13 @@ struct ConnectionURLFormatter {
             result += "@"
         }
 
-        let socketPath = connection.localSocketPath
-        if socketPath != nil {
+        let socket = connection.localSocketEndpoint
+        let socketIsDirectory = connection.type.localSocketIsDirectory
+        if let socket {
             result += "localhost"
+            if socketIsDirectory, socket.port != defaultPort {
+                result += ":\(socket.port)"
+            }
         } else if connection.type.pluginTypeId == "MongoDB",
            let mongoHosts = connection.additionalFields["mongoHosts"], !mongoHosts.isEmpty {
             result += mongoHosts
@@ -171,12 +200,17 @@ struct ConnectionURLFormatter {
         if connection.type == .redis {
             pathComponent = redisPath(for: connection)
         }
+        pathComponent += catalogSchemaSuffix(for: connection, path: pathComponent)
         // Unencoded, a `#` or `?` in the name would swallow the query, socket included.
         result += "/\(pathComponent.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? pathComponent)"
 
         var params: [String] = []
-        if let socketPath {
-            params.append("socket=\(percentEncodeSocketPath(socketPath))")
+        if let socket {
+            params.append(
+                socketIsDirectory
+                    ? "host=\(percentEncodeSocketDirectory(socket.path))"
+                    : "socket=\(percentEncodeSocketPath(socket.path))"
+            )
         }
         let query = buildQueryString(connection)
         if !query.isEmpty {
@@ -189,14 +223,27 @@ struct ConnectionURLFormatter {
         return result
     }
 
-    private static let socketPathAllowed = CharacterSet(
+    private static let unreservedAllowed = CharacterSet(
         charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
     )
 
     // MySQL's documented form, `socket=%2Ftmp%2Fmysql.sock`. Only unreserved characters stay
     // literal, so `+` and a space survive both percent and form decoding.
     private static func percentEncodeSocketPath(_ path: String) -> String {
-        path.addingPercentEncoding(withAllowedCharacters: socketPathAllowed) ?? path
+        path.addingPercentEncoding(withAllowedCharacters: unreservedAllowed) ?? path
+    }
+
+    // libpq's documented form, `?host=/var/run/postgresql`: a query keeps `/` as it is.
+    private static func percentEncodeSocketDirectory(_ path: String) -> String {
+        path.addingPercentEncoding(withAllowedCharacters: unreservedAllowed.union(CharacterSet(charactersIn: "/"))) ?? path
+    }
+
+    // Trino and Presto read the path as /catalog/schema, as ConnectionURLParser does.
+    private static func catalogSchemaSuffix(for connection: DatabaseConnection, path: String) -> String {
+        guard connection.type.pluginTypeId == DatabaseType.trino.rawValue, !path.isEmpty,
+              let schema = connection.additionalFields["trinoSchema"]?.trimmingCharacters(in: .whitespaces),
+              !schema.isEmpty else { return "" }
+        return "/\(schema)"
     }
 
     private static func redisPath(for connection: DatabaseConnection) -> String {
@@ -212,13 +259,7 @@ struct ConnectionURLFormatter {
         var params: [String] = []
 
         if !connection.name.isEmpty {
-            let encoded = connection.name
-                .replacingOccurrences(of: " ", with: "+")
-                .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)?
-                .replacingOccurrences(of: "&", with: "%26")
-                .replacingOccurrences(of: "=", with: "%3D")
-                ?? connection.name
-            params.append("name=\(encoded)")
+            params.append("name=\(formEncode(connection.name))")
         }
 
         if ssh.enabled && ssh.authMethod == .privateKey {
@@ -248,33 +289,45 @@ struct ConnectionURLFormatter {
 
         if let tagId = connection.tagIds.first,
            let tag = TagStorage.shared.tag(for: tagId) {
-            let encoded = tag.name
-                .replacingOccurrences(of: " ", with: "+")
-                .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)?
-                .replacingOccurrences(of: "&", with: "%26")
-                .replacingOccurrences(of: "=", with: "%3D")
-                ?? tag.name
-            params.append("env=\(encoded)")
+            params.append("env=\(formEncode(tag.name))")
         }
 
-        if let authSource = connection.mongoAuthSource, !authSource.isEmpty {
-            params.append("authSource=\(percentEncodeQueryValue(authSource))")
-        }
-        if let authMech = connection.mongoAuthMechanism, !authMech.isEmpty {
-            params.append("authMechanism=\(percentEncodeQueryValue(authMech))")
-        }
-        if let replicaSet = connection.mongoReplicaSet, !replicaSet.isEmpty {
-            params.append("replicaSet=\(percentEncodeQueryValue(replicaSet))")
-        }
-        if connection.mongoUseSrv {
-            params.append("mongoUseSrv=true")
-        }
-        if let uuidRepresentation = connection.additionalFields["mongoUuidRepresentation"],
-           !uuidRepresentation.isEmpty {
-            params.append("uuidRepresentation=\(percentEncodeQueryValue(uuidRepresentation))")
-        }
+        params.append(contentsOf: mongoParameters(connection))
 
         return params.joined(separator: "&")
+    }
+
+    // The standard option names, so the URL opens in other MongoDB tools as well as here: the fields, then the typed
+    // parameters the driver sends beside them.
+    private static func mongoParameters(_ connection: DatabaseConnection) -> [String] {
+        let fields: [(key: String, value: String?)] = [
+            ("authSource", connection.mongoAuthSource),
+            ("authMechanism", connection.mongoAuthMechanism),
+            ("replicaSet", connection.mongoReplicaSet),
+            ("readPreference", connection.mongoReadPreference),
+            ("w", connection.mongoWriteConcern),
+            ("uuidRepresentation", connection.additionalFields["mongoUuidRepresentation"].flatMap { $0.isEmpty ? nil : $0 })
+        ]
+        let written = fields.compactMap { key, value in value.map { (key: key, value: $0) } }
+        // An SRV connection always runs TLS, without verification while the SSL mode is still Disabled.
+        let ssl = connection.usesMongoSrv && !connection.sslConfig.isEnabled
+            ? SSLConfiguration(mode: .required) : connection.sslConfig
+        let typed = MongoTypedParameters.sent(
+            by: connection, besides: written.map(\.key),
+            tls: ssl.isEnabled, skipsVerification: ssl.mode == .preferred || ssl.mode == .required
+        )
+        return (written + typed).map { "\(percentEncodeMongoOption($0.key))=\(percentEncodeMongoOption($0.value))" }
+    }
+
+    // The parser reads `name` and `env` form-style, a space as `+`, so a literal `+` is written `%2B`.
+    private static func formEncode(_ value: String) -> String {
+        let allowed = unreservedAllowed.union(CharacterSet(charactersIn: " "))
+        return (value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value).replacingOccurrences(of: " ", with: "+")
+    }
+
+    // Other MongoDB drivers split options on `;` and read `+` as a space, so only unreserved characters stay literal.
+    private static func percentEncodeMongoOption(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: unreservedAllowed) ?? value
     }
 
     private static func colorHex(_ color: ConnectionColor) -> String? {
@@ -296,6 +349,7 @@ struct ConnectionURLFormatter {
             return EtcdTLSModeField.sslMode(forFieldValue: connection.additionalFields[EtcdTLSModeField.fieldId])
                 .map(sslModeParamValue)
         }
+        guard !connection.localSocketSkipsTLS else { return nil }
         let mode = connection.sslConfig.mode
         let portImpliesTLS = connection.type.impliedSSLMode(forPort: connection.port) != nil
         guard mode != connection.type.defaultSSLMode || portImpliesTLS else { return nil }
@@ -316,12 +370,5 @@ struct ConnectionURLFormatter {
         var allowed = CharacterSet.urlUserAllowed
         allowed.remove(charactersIn: ":@")
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
-    }
-
-    private static func percentEncodeQueryValue(_ value: String) -> String {
-        value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)?
-            .replacingOccurrences(of: "&", with: "%26")
-            .replacingOccurrences(of: "=", with: "%3D")
-            ?? value
     }
 }

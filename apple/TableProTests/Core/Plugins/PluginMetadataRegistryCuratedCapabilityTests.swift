@@ -292,6 +292,20 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(StructureEditEligibility.allows(.dropColumn, on: .table, matrix: built.structureEditing.structureEdits))
     }
 
+    @Test("MongoDB keeps how its filters read fields when its plugin registers")
+    func mongoDBKeepsHowItsFiltersReadFields() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockMongoDBPlugin.self)
+
+        #expect(
+            built.capabilities.patternFiltersReadAnyColumn == true,
+            "Search all rows would drop number, date and boolean fields"
+        )
+        #expect(
+            built.capabilities.filtersTypedByReadRows == true,
+            "A pooled count would type a filter by nothing and disagree with the page"
+        )
+    }
+
     @Test("DynamoDB keeps its full-scan count when its plugin registers")
     func dynamoDBKeepsItsFullScanCount() {
         let registry = PluginMetadataRegistry.shared
@@ -340,6 +354,34 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(scylla?.supportsMatchAnyFilters == cassandra?.supportsMatchAnyFilters)
     }
 
+    // ScyllaDB's form shows its curated fields even once the Cassandra plugin is loaded (registerVariant).
+    @Test("Cassandra and ScyllaDB offer the consistency levels their driver reads")
+    func cassandraFamilyOffersConsistencyLevels() throws {
+        let registry = PluginMetadataRegistry.shared
+        let cassandra = try #require(registry.snapshot(forRegisteredTypeId: "Cassandra"))
+            .connection.additionalConnectionFields
+        let scylla = try #require(registry.snapshot(forRegisteredTypeId: "ScyllaDB"))
+            .connection.additionalConnectionFields
+        let expected = [
+            "cassandraConsistency": ["", "LOCAL_ONE", "ONE", "TWO", "THREE", "QUORUM", "LOCAL_QUORUM", "EACH_QUORUM",
+                                     "ALL", "ANY"],
+            "cassandraSerialConsistency": ["", "SERIAL", "LOCAL_SERIAL"],
+        ]
+
+        for (id, values) in expected {
+            for fields in [cassandra, scylla] {
+                let field = try #require(fields.first { $0.id == id })
+                guard case .dropdown(let options) = field.fieldType else {
+                    Issue.record("\(id) is not a dropdown")
+                    continue
+                }
+                let offered = options.map { $0.value }
+                #expect(offered == values, "\(id)")
+                #expect(field.section == .advanced)
+            }
+        }
+    }
+
     /// Measured: `ADD … NOT NULL` and `COMMENT ON COLUMN` are syntax errors, `ALTER … TYPE` is refused, and only a
     /// primary key column can be renamed, so the Structure tab offers adding and dropping a column and nothing else.
     @Test("Cassandra and ScyllaDB offer only the column edits CQL can run", arguments: ["Cassandra", "ScyllaDB"])
@@ -357,6 +399,13 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(snapshot.capabilities.supportsAddIndex == false)
         #expect(snapshot.capabilities.supportsRoutines)
         #expect(snapshot.capabilities.supportsDatabaseTriggerBrowse)
+    }
+
+    @Test("Cassandra and ScyllaDB list user-defined types before their plugin loads", arguments: ["Cassandra", "ScyllaDB"])
+    func cassandraBrowsesUserDefinedTypes(typeId: String) throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+
+        #expect(snapshot.capabilities.supportsUserDefinedTypeBrowse)
     }
 
     @Test("Cassandra keeps its structure edits when its plugin registers")
@@ -519,6 +568,8 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.supportsColumnSort == true)
         #expect(built.capabilities.supportsMatchAnyFilters == true)
         #expect(built.capabilities.columnsAreSampled == false)
+        #expect(built.capabilities.patternFiltersReadAnyColumn == false)
+        #expect(built.capabilities.filtersTypedByReadRows == false)
         #expect(built.capabilities.tlsImpliedPorts.isEmpty)
         #expect(built.capabilities.verifiesServerWithSystemTrust == false)
         #expect(built.capabilities.supportsPerConnectionCertificatePaths == true)

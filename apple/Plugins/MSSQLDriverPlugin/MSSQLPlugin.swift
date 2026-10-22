@@ -6,8 +6,10 @@
 import Foundation
 import os
 import TableProCoreTypes
+import TableProKerberos
 import TableProMSSQLCore
 import TableProPluginKit
+import TableProSQLVocabulary
 
 // MARK: - Core ↔ Plugin Bridges
 
@@ -219,37 +221,18 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             "OVER", "PARTITION", "ROW_NUMBER", "RANK", "DENSE_RANK",
             "RETURNING", "OUTPUT", "INSERTED", "DELETED"
         ],
-        functions: [
-            "COUNT", "SUM", "AVG", "MAX", "MIN", "STRING_AGG",
-            "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LEN", "LOWER", "UPPER",
-            "TRIM", "LTRIM", "RTRIM", "REPLACE", "CHARINDEX", "PATINDEX",
-            "STUFF", "FORMAT",
-            "GETDATE", "GETUTCDATE", "SYSDATETIME", "CURRENT_TIMESTAMP",
-            "DATEADD", "DATEDIFF", "DATENAME", "DATEPART",
-            "CONVERT", "CAST",
-            "ROUND", "CEILING", "FLOOR", "ABS", "POWER", "SQRT", "RAND",
-            "ISNULL", "ISNUMERIC", "ISDATE", "COALESCE", "NEWID",
-            "OBJECT_ID", "OBJECT_NAME", "SCHEMA_NAME", "DB_NAME",
-            "SCOPE_IDENTITY", "@@IDENTITY", "@@ROWCOUNT"
-        ],
-        dataTypes: [
-            "INT", "INTEGER", "TINYINT", "SMALLINT", "BIGINT",
-            "DECIMAL", "NUMERIC", "FLOAT", "REAL", "MONEY", "SMALLMONEY",
-            "CHAR", "VARCHAR", "NCHAR", "NVARCHAR", "TEXT", "NTEXT",
-            "BINARY", "VARBINARY", "IMAGE",
-            "DATE", "TIME", "DATETIME", "DATETIME2", "SMALLDATETIME", "DATETIMEOFFSET",
-            "BIT", "UNIQUEIDENTIFIER", "XML", "SQL_VARIANT",
-            "ROWVERSION", "TIMESTAMP", "HIERARCHYID"
-        ],
-        tableOptions: [
-            "ON", "CLUSTERED", "NONCLUSTERED", "WITH", "TEXTIMAGE_ON"
-        ],
+        functions: SQLEngineVocabulary.sqlServer.functions,
+        dataTypes: SQLEngineVocabulary.sqlServer.dataTypes,
+        tableOptions: SQLEngineVocabulary.sqlServer.tableOptions,
         regexSyntax: .unsupported,
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
         paginationStyle: .offsetFetch,
         autoLimitStyle: .top,
-        caseSensitivityStyle: .collationDefined
+        caseSensitivityStyle: .collationDefined,
+        operators: SQLEngineVocabulary.sqlServer.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
+        textCastTypeName: nil,
+        functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlServer.functionNamesAreCaseInsensitive
     )
 
     static let supportsDropDatabase = true
@@ -262,9 +245,37 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsCheckConstraints = true
     static let supportsCheckConstraintEditing = true
     static let supportsGeneratedColumns = false
+    static let explainVariants: [ExplainVariant] = [
+        .driverPlan(
+            id: MSSQLShowplan.estimated.variantId,
+            label: String(localized: "Estimated Plan"),
+            format: .sqlServerShowplanXML,
+            runsStatement: false
+        ),
+        .driverPlan(
+            id: MSSQLShowplan.actual.variantId,
+            label: String(localized: "Actual Plan"),
+            format: .sqlServerShowplanXML,
+            runsStatement: true
+        )
+    ]
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MSSQLPluginDriver(config: config)
+    }
+}
+
+private extension SQLOperatorDescriptor {
+    init?(vocabulary entry: SQLEngineVocabulary.Operator) {
+        guard let category = Category(rawValue: entry.category),
+              let placement = Placement(rawValue: entry.placement) else { return nil }
+        self.init(
+            symbol: entry.symbol,
+            summary: entry.summary,
+            category: category,
+            placement: placement,
+            appliesToTypes: entry.appliesToTypes
+        )
     }
 }
 
@@ -275,6 +286,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var freeTDSConn: FreeTDSConnection?
     var currentSchemaName: String
     private var _serverVersion: String?
+    let principalState = OSAllocatedUnfairLock(initialState: MSSQLPrincipalState())
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MSSQLPluginDriver")
 
@@ -304,12 +316,13 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .resultSetBatches,
             .cellExpressions,
             .uuidCellText,
+            .userManagement,
+            .temporaryTables,
         ]
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        let escaped = name.replacingOccurrences(of: "]", with: "]]")
-        return "[\(escaped)]"
+        "[\(MSSQLSchemaQueries.escapeBracket(name))]"
     }
 
     // MARK: - View Templates
@@ -424,8 +437,12 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deadline: MSSQLConnectDeadline
     ) async throws -> String? {
         guard authMethod == .windows else { return nil }
-        let host = config.host
-        let port = config.port
+        let tunneledHost = config.additionalFields["preTunnelHost"].flatMap { $0.isEmpty ? nil : $0 }
+        let host = tunneledHost ?? config.host
+        let port = tunneledHost == nil
+            ? config.port
+            : config.additionalFields["preTunnelPort"].flatMap { Int($0) } ?? config.port
+        let fallback = tunneledHost == nil ? nil : MSSQLKerberosSPN.unrealmed(host: host, port: port)
         let timeoutMilliseconds = try remainingConnectTimeout(deadline, authMethod: authMethod)
         do {
             return try await runCancellableBlocking(
@@ -435,6 +452,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 work: {
                     MSSQLKerberosRealmResolver.canonicalService(forHost: host)
                         .flatMap { MSSQLKerberosSPN.build(host: $0.host, port: port, realm: $0.realm) }
+                        ?? fallback
                 }
             )
         } catch is KerberosRealmResolutionTimeout {
@@ -442,7 +460,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 throw MSSQLCoreError.connectionTimedOut(isKerberos: true)
             }
             Self.logger.warning("Kerberos realm resolution timed out; using the default service principal")
-            return nil
+            return fallback
         }
     }
 
@@ -465,11 +483,16 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .trimmingCharacters(in: .whitespaces)
         let password = config.additionalFields[MSSQLKerberosField.password] ?? ""
         guard !principal.isEmpty, !password.isEmpty else { return nil }
-        return try await MSSQLKerberosCredentials.acquireTicket(
-            principal: principal,
-            password: password,
-            timeoutMilliseconds: try remainingConnectTimeout(deadline, authMethod: authMethod)
-        )
+        do {
+            return try await KerberosTicket.acquire(
+                principal: principal,
+                password: password,
+                timeoutMilliseconds: try remainingConnectTimeout(deadline, authMethod: authMethod),
+                timeoutError: { MSSQLCoreError.connectionTimedOut(isKerberos: true) }
+            )
+        } catch KerberosTicketError.rejected(let kind, let message) {
+            throw MSSQLCoreError.kerberosAuthFailed(kind: kind, serverMessage: message)
+        }
     }
 
     private func remainingConnectTimeout(
@@ -511,16 +534,20 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         _ = try await execute(query: "BEGIN TRANSACTION")
     }
 
-    /// One round trip, and only when a caller is about to own a transaction on this session. It
-    /// goes through `executeInternal` rather than `execute` so the app's query cancellation and
-    /// history never see it.
+    // executeInternal rather than execute, so the app's query cancellation and history never see the probe.
     func sessionTransactionState() async -> PluginSessionTransactionState {
         guard let result = try? await executeInternal(MSSQLSessionTransaction.probe) else { return .unknown }
         let row = result.rows.first
-        return MSSQLSessionTransaction.state(
+        let state = MSSQLSessionTransaction.state(
             tranCount: row?.first?.asText,
             transactionState: row?.dropFirst().first?.asText
         )
+        switch state {
+        case .idle: return .idle
+        case .open: return .inTransaction
+        case .uncommittable: return .abortedTransaction
+        case nil: return .unknown
+        }
     }
 
     // MARK: - Query Execution
@@ -627,6 +654,29 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 countsToSkip: binding?.prependedStatementCount ?? 0
             )
             return readout.toPluginBatchResult(executionTime: Date().timeIntervalSince(startTime), binding: binding)
+        } catch let error as MSSQLCoreError {
+            throw MSSQLPluginError(coreError: error)
+        }
+    }
+
+    func explainPlan(statement: String, variantId: String) async throws -> PluginQueryResult {
+        guard let showplan = MSSQLShowplan(rawValue: variantId) else {
+            throw PluginDriverUnsupportedOperation.explainPlan
+        }
+        guard let conn = freeTDSConn else {
+            throw MSSQLPluginError.notConnected
+        }
+        let startTime = Date()
+        do {
+            let readout = try await conn.executeShowplan(statement, showplan: showplan)
+            let documents = try showplan.planDocuments(in: readout)
+            return PluginQueryResult(
+                columns: [MSSQLShowplan.planColumnName],
+                columnTypeNames: ["XML"],
+                rows: documents.map { [.text($0)] },
+                rowsAffected: 0,
+                executionTime: Date().timeIntervalSince(startTime)
+            )
         } catch let error as MSSQLCoreError {
             throw MSSQLPluginError(coreError: error)
         }
@@ -889,33 +939,15 @@ enum MSSQLKerberosField {
 }
 
 enum MSSQLKerberosMessage {
-    static func describe(kind: MSSQLKerberosFailureKind, serverMessage: String) -> String {
-        let summary: String
-        let suggestion: String
-        switch kind {
-        case .noCredential:
-            summary = String(localized: "No Kerberos ticket was found.")
-            suggestion = String(localized: "Run kinit user@REALM.COM in Terminal, or enter a Kerberos principal and password, then reconnect.")
-        case .principalUnknown:
-            summary = String(localized: "The Kerberos principal is unknown to the domain.")
-            suggestion = String(localized: "Check the principal spelling and realm, for example user@REALM.COM with the realm in uppercase.")
-        case .wrongPassword:
-            summary = String(localized: "The Kerberos password was rejected.")
-            suggestion = String(localized: "Re-enter the domain password for this principal.")
-        case .spnNotFound:
-            summary = String(localized: "The SQL Server Kerberos service principal name is not registered.")
-            suggestion = String(localized: "Ask your administrator to register the SPN, for example MSSQLSvc/host.domain.com:1433, and connect by hostname rather than IP address.")
-        case .clockSkew:
-            summary = String(localized: "This Mac's clock is too far out of sync with the domain controller.")
-            suggestion = String(localized: "Turn on Set time automatically in System Settings > General > Date & Time, then reconnect.")
-        case .realmNotResolved:
-            summary = String(localized: "The Kerberos realm could not be resolved.")
-            suggestion = String(localized: "Confirm this network resolves the domain, or add the realm to /etc/krb5.conf.")
-        case .ticketExpired:
-            summary = String(localized: "The Kerberos ticket has expired.")
-            suggestion = String(localized: "Run kinit user@REALM.COM to renew it, then reconnect.")
-        }
-        return "\(summary) \(suggestion) (\(serverMessage))"
+    static func describe(kind: KerberosFailureKind, serverMessage: String) -> String {
+        KerberosFailureMessage.describe(
+            kind: kind,
+            serverMessage: serverMessage,
+            spnNotFound: (
+                summary: String(localized: "The SQL Server Kerberos service principal name is not registered."),
+                suggestion: String(localized: "Ask your administrator to register the SPN, for example MSSQLSvc/host.domain.com:1433, and connect by hostname rather than IP address.")
+            )
+        )
     }
 }
 

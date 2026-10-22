@@ -61,20 +61,14 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let resolvedSchema = schema ?? core.currentSchema
-        let query = """
-            SELECT table_name, table_type
-            FROM information_schema.tables
-            WHERE table_schema = \(PostgreSQLObjectQueries.quoteLiteral(resolvedSchema))
-            ORDER BY table_name
-            """
-        let result = try await execute(query: query)
-        return result.rows.compactMap { row -> PluginTableInfo? in
-            guard let name = row[0].asText else { return nil }
-            let typeStr = (row[1].asText ?? "BASE TABLE").uppercased()
-            let type = typeStr.contains("VIEW") ? "VIEW" : "TABLE"
-            return PluginTableInfo(name: name, type: type)
-        }
+        let result = try await execute(query: CockroachRelationSQL.tablesQuery(schema: schema ?? core.currentSchema))
+        return result.rows.compactMap { CockroachRelationSQL.table(fromRow: $0.map(\.asText)) }
+    }
+
+    func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? {
+        guard !schemas.isEmpty else { return [] }
+        let result = try await execute(query: CockroachRelationSQL.tablesQuery(inSchemas: schemas))
+        return result.rows.compactMap { CockroachRelationSQL.table(fromRow: $0.map(\.asText)) }
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {

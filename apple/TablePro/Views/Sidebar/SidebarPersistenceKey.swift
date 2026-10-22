@@ -20,6 +20,10 @@ enum SidebarPersistenceKey {
         "sidebar.\(connectionId.uuidString).folders.expanded"
     }
 
+    static func temporaryExpanded(connectionId: UUID) -> String {
+        "sidebar.\(connectionId.uuidString).temporary.expanded"
+    }
+
     static func selectedTab(connectionId: UUID) -> String {
         "sidebar.selectedTab.\(connectionId.uuidString)"
     }
@@ -50,6 +54,7 @@ enum SidebarPersistenceKey {
             redisKeysExpanded(connectionId: connectionId),
             recentsExpanded(connectionId: connectionId),
             foldersExpanded(connectionId: connectionId),
+            temporaryExpanded(connectionId: connectionId),
             selectedTab(connectionId: connectionId),
             selectedFavorite(connectionId: connectionId),
             favoriteDatabaseEnvironmentFilter(connectionId: connectionId),

@@ -59,7 +59,7 @@ internal enum FavoritesOutlineSelection {
             case .favorite(let favorite): return favorite.name
             case .folder(let folder): return folder.name
             case .linkedFolder(let folder): return folder.name
-            case .linkedSubfolder(_, let displayName, _): return displayName
+            case .linkedSubfolder(_, let displayName, _, _): return displayName
             case .linkedFavorite(let linked): return linked.name
             }
         }

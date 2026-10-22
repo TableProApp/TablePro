@@ -96,6 +96,58 @@ struct PluginMetadataRegistryVariantTests {
         #expect(dialect.caseSensitivityStyle == .caseFoldFunction)
     }
 
+    @Test("Presto keeps a bare LIMIT when the Trino plugin's grammar pages with OFFSET and FETCH")
+    func prestoKeepsLimitPaging() throws {
+        let registry = PluginMetadataRegistry.shared
+        var pluginSnapshot = try #require(registry.snapshot(forRegisteredTypeId: "Trino"))
+        pluginSnapshot.editor.sqlDialect = Self.syntheticDialect(
+            caseSensitivityStyle: .regexFlag,
+            paginationStyle: .offsetFetch
+        )
+        defer { registry.unregister(typeId: "Presto") }
+
+        registry.registerVariant(pluginSnapshot: pluginSnapshot, forTypeId: "Presto", primaryTypeId: "Trino")
+
+        let presto = try #require(registry.snapshot(for: .presto))
+        let dialect = try #require(presto.editor.sqlDialect)
+        #expect(dialect.keywords.contains("SYNTHETIC_KEYWORD"))
+        #expect(dialect.paginationStyle == .limit)
+        #expect(presto.capabilities.pagination == .leadingRowsOnly(maximumRows: nil))
+        #expect(presto.displayName == "Presto")
+    }
+
+    @Test("Trino keeps paging with OFFSET and FETCH")
+    func trinoKeepsOffsetFetch() throws {
+        let trino = try #require(PluginMetadataRegistry.shared.snapshot(for: .trino))
+        #expect(trino.editor.sqlDialect?.paginationStyle == .offsetFetch)
+        #expect(trino.capabilities.pagination == .offset)
+    }
+
+    @Test("Presto is offered before its plugin loads, and is served by the Trino plugin")
+    func prestoIsATrinoVariant() throws {
+        let registry = PluginMetadataRegistry.shared
+        let presto = try #require(registry.snapshot(for: .presto))
+        #expect(presto.isDownloadable)
+        #expect(presto.iconName == "presto-icon")
+        #expect(DatabaseType.presto.pluginTypeId == "Trino")
+        #expect(registry.databaseType(forUrlScheme: "presto") == .presto)
+        #expect(registry.databaseType(forUrlScheme: "trino") == .trino)
+    }
+
+    @MainActor
+    @Test("A Presto browse reads the leading rows with LIMIT, never OFFSET or FETCH NEXT")
+    func prestoBrowseWritesLimitOnly() {
+        let builder = TableQueryBuilder(
+            databaseType: .presto,
+            dialect: PluginManager.shared.sqlDialect(for: .presto),
+            pagination: PluginManager.shared.paginationCapability(for: .presto)
+        )
+        let query = builder.buildBaseQuery(tableName: "nation", schemaName: "tiny", limit: 1_000, offset: 1_000)
+        #expect(query.hasSuffix("LIMIT 1000"))
+        #expect(!query.contains("OFFSET"))
+        #expect(!query.contains("FETCH"))
+    }
+
     @Test("a variant type resolves its own snapshot, not the plugin type's")
     func variantSnapshotResolvesByRawValue() throws {
         let registry = PluginMetadataRegistry.shared
@@ -123,7 +175,8 @@ struct PluginMetadataRegistryVariantTests {
     }
 
     private static func syntheticDialect(
-        caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle
+        caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle,
+        paginationStyle: SQLDialectDescriptor.PaginationStyle = .limit
     ) -> SQLDialectDescriptor {
         SQLDialectDescriptor(
             identifierQuote: "\"",
@@ -133,7 +186,8 @@ struct PluginMetadataRegistryVariantTests {
             regexSyntax: .tilde,
             booleanLiteralStyle: .truefalse,
             likeEscapeStyle: .explicit,
-            paginationStyle: .limit,
+            paginationStyle: paginationStyle,
+            offsetFetchOrderBy: "",
             caseSensitivityStyle: caseSensitivityStyle,
             operators: [SQLOperatorDescriptor(symbol: "@@", summary: "synthetic", category: .fullText)]
         )

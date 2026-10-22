@@ -99,6 +99,10 @@ extension ConnectionFormCoordinator {
         services.pluginManager.supportsSSL(for: network.type)
     }
 
+    var showsSSL: Bool {
+        supportsSSL && !network.localSocketSkipsTLS
+    }
+
     internal var tunnelCommandPreview: String? {
         let endpoint = buildEdits().applied(to: DatabaseConnection(name: "")).tunnelForwardEndpoint
         return TunnelCommandBuilder.previewCommand(

@@ -25,6 +25,7 @@ on:
       - "linux/crates/**/meson.build"
       - "linux/data/**/meson.build"
       - "linux/po/meson.build"
+      - "linux/po/LINGUAS"
       - ".github/workflows/linux-packages.yml"
   # Nightly on main, so a failure only one distribution's build shows turns
   # up before tag time. Three hours after build-linux.yml's nightly, so the
@@ -84,7 +85,7 @@ jobs:
         env:
           TAG: ${{ inputs.release-tag }}
         run: linux/build-aux/packaging/fetch-release-sources.sh --install-deps "$GITHUB_REPOSITORY" "$TAG" _packages/sources
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-sources
           path: _packages/sources
@@ -106,7 +107,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-sources
           path: _packages/sources
@@ -129,7 +130,7 @@ jobs:
             series="$series${series:+, }\"$name\""
           done
           echo "series=[$series]" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-source-package
           path: _packages/source
@@ -151,7 +152,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-source-package
           path: _packages/source
@@ -163,7 +164,7 @@ jobs:
           linux/build-aux/packaging/build-deb.sh "${changes%_source.changes}.dsc" _packages/deb
       - name: Keep the Meson test log
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-deb-testlog-${{ matrix.series }}-${{ runner.arch }}
           path: _packages/deb/testlog.txt
@@ -172,10 +173,17 @@ jobs:
       - name: Install, start and validate in a fresh container
         env:
           SERIES: ${{ matrix.series }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
         run: |
+          set -- "$(find _packages/deb -name 'tablepro_*.deb')"
+          # A published release's tarballs may ship other languages than
+          # this checkout's LINGUAS names.
+          if [ -z "$RELEASE_TAG" ]; then
+            set -- "$@" linux/po/LINGUAS
+          fi
           docker run --rm -v "$PWD:$PWD" -w "$PWD" "ubuntu:$SERIES" \
-            linux/build-aux/packaging/smoke-test.sh "$(find _packages/deb -name 'tablepro_*.deb')"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+            linux/build-aux/packaging/smoke-test.sh "$@"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-deb-${{ matrix.series }}-${{ runner.arch }}
           path: _packages/deb
@@ -197,7 +205,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-sources
           path: _packages/sources
@@ -208,13 +216,13 @@ jobs:
           linux/build-aux/packaging/build-rpm.sh "$dist" "$vendor" _packages/rpm
       - name: Keep the Meson test log
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-rpm-testlog-${{ runner.arch }}
           path: _packages/rpm/testlog.txt
           if-no-files-found: ignore
           retention-days: 7
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-rpm-${{ runner.arch }}
           path: _packages/rpm
@@ -235,9 +243,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-rpm-${{ runner.arch }}
           path: _packages/rpm
       - name: Install, start and validate
-        run: linux/build-aux/packaging/smoke-test.sh "$(find _packages/rpm -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')"
+        run: |
+          linux/build-aux/packaging/smoke-test.sh \
+            "$(find _packages/rpm -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')" linux/po/LINGUAS

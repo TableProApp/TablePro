@@ -24,14 +24,16 @@ struct ClickHouseRequestTests {
     private static func items(
         _ shape: ClickHouseResponseShape,
         _ profile: ClickHouseServerProfile,
-        executionTimeLimit: Int? = nil
+        executionTimeLimit: Int? = nil,
+        statementBytes: Int = 0
     ) -> [String: String] {
         let items = ClickHousePluginDriver.queryItems(
             database: "default",
             queryId: "q1",
             executionTimeLimit: executionTimeLimit,
             shape: shape,
-            profile: profile
+            profile: profile,
+            statementBytes: statementBytes
         )
         return Dictionary(items.map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { _, last in last })
     }
@@ -129,6 +131,92 @@ struct ClickHouseRequestTests {
         let items = Self.items(.buffered(parameters: ["b": "2", "a": nil]), Self.server258)
         #expect(items["param_a"] == "")
         #expect(items["param_b"] == "2")
+    }
+
+    @Test("A statement longer than max_query_size gets room for exactly itself")
+    func longStatementGetsItsOwnQuerySize() {
+        let profile = ClickHouseServerProfile.testing(writableSettings: [.maxQuerySize])
+        #expect(Self.items(.buffered(parameters: nil), profile, statementBytes: 300_080)["max_query_size"] == "300080")
+        #expect(Self.items(.streamed(rowCap: nil), profile, statementBytes: 300_080)["max_query_size"] == "300080")
+        #expect(Self.items(.buffered(parameters: nil), profile, statementBytes: 262_144)["max_query_size"] == nil)
+        #expect(Self.items(.buffered(parameters: nil), profile)["max_query_size"] == nil)
+    }
+
+    @Test("The user's own max_query_size decides when a statement needs more")
+    func statementComparesWithTheUsersLimit() {
+        let lowered = ClickHouseServerProfile(
+            version: nil, writableSettings: [.maxQuerySize], catalog: [], maxQuerySize: 100_000
+        )
+        let raised = ClickHouseServerProfile(
+            version: nil, writableSettings: [.maxQuerySize], catalog: [], maxQuerySize: 10_485_760
+        )
+        #expect(Self.items(.buffered(parameters: nil), lowered, statementBytes: 150_000)["max_query_size"] == "150000")
+        #expect(Self.items(.buffered(parameters: nil), raised, statementBytes: 1_000_000)["max_query_size"] == nil)
+    }
+
+    @Test("max_query_size is not sent to a user who may not set it, or above a constraint's max")
+    func querySizeFollowsTheProfile() {
+        let constrained = ClickHouseServerProfile(
+            version: nil,
+            settingLimits: [.maxQuerySize: ClickHouseSettingLimits(max: 500_000)],
+            catalog: []
+        )
+        let buffered = ClickHouseResponseShape.buffered(parameters: nil)
+        #expect(Self.items(buffered, Self.readonlyUser, statementBytes: 300_000)["max_query_size"] == nil)
+        #expect(Self.items(buffered, constrained, statementBytes: 600_000)["max_query_size"] == nil)
+        #expect(Self.items(buffered, constrained, statementBytes: 400_000)["max_query_size"] == "400000")
+    }
+
+    // #3777: as `param_` items the server refused a value over 128 KiB and a URL over 1 MiB.
+    @Test("A long bound value travels in the body, never the URL, and the statement says how long it is")
+    func longBoundValueTravelsInTheBody() async throws {
+        let server = ClickHouseStubServer()
+        let driver = server.connectedDriver()
+        driver.serverProfile = ClickHouseServerProfile.testing(writableSettings: [.maxQuerySize])
+        let short = String(repeating: "a", count: 200_000)
+        let long = String(repeating: "b", count: 300_000)
+
+        _ = try await driver.executeParameterized(query: "INSERT INTO t (s) VALUES (?)", parameters: [.text(short)])
+        _ = try await driver.executeParameterized(
+            query: "ALTER TABLE t UPDATE s = ? WHERE id = ?", parameters: [.text(long), .text("1")]
+        )
+
+        let requests = server.requests
+        #expect(requests.count == 2)
+        for request in requests {
+            #expect(!request.queryItems.keys.contains { $0.hasPrefix("param_") })
+        }
+        #expect(requests.first?.body == "INSERT INTO t (s) VALUES (CAST('\(short)' AS String))")
+        #expect(requests.first?.item("max_query_size") == nil)
+        let update = "ALTER TABLE t UPDATE s = '\(long)' WHERE id = '1'"
+        #expect(requests.last?.body == update)
+        #expect(requests.last?.item("max_query_size") == String(update.utf8.count))
+    }
+
+    // A data sync writes its values into the statements it runs, so a long one needs the same room.
+    @Test("A statement without bound values that is longer than max_query_size gets room too")
+    func plainStatementGetsItsOwnQuerySize() async throws {
+        let server = ClickHouseStubServer()
+        let driver = server.connectedDriver()
+        driver.serverProfile = ClickHouseServerProfile.testing(writableSettings: [.maxQuerySize])
+        let statement = "ALTER TABLE t UPDATE s = '\(String(repeating: "c", count: 300_000))' WHERE id = 1"
+
+        _ = try await driver.execute(query: statement + ";")
+
+        #expect(server.requests.first?.item("max_query_size") == String(statement.utf8.count))
+    }
+
+    // Measured on 25.8: `param_p=a+b` arrived as `a b`, since the server decodes a form-encoded `+` as a space.
+    @Test("A plus sign in a URL value is percent-encoded")
+    func plusSignIsEncoded() throws {
+        let driver = ClickHouseStubServer().connectedDriver()
+        let request = try driver.buildRequest(
+            query: "SELECT {p1:String}", database: "a+b", queryId: nil, executionTimeLimit: nil,
+            shape: .buffered(parameters: ["p1": "+1 555 & x=y"])
+        )
+        let query = try #require(request.url?.absoluteString)
+        #expect(query.contains("database=a%2Bb"))
+        #expect(query.contains("param_p1=%2B1%20555%20%26%20x%3Dy"))
     }
 
     @Test("An accepted execution time limit rides on both shapes")

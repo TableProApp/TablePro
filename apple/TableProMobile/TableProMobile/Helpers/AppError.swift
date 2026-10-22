@@ -3,6 +3,7 @@ import os
 import TableProDatabase
 import TableProModels
 import TableProOracleCore
+import TableProPluginKit
 import TableProRedisCore
 
 // MARK: - Error Category
@@ -25,9 +26,10 @@ nonisolated struct AppError: LocalizedError, Sendable {
     let message: String
     let recovery: String?
     let underlying: Error?
-    /// Set when an Oracle listener rejected the connect identifier and named the
-    /// mode it was given, so the form can offer the other mode in one tap.
+    // Set when an Oracle listener rejected the connect identifier and named the
+    // mode it was given, so the form can offer the other mode in one tap.
     let suggestedOracleMode: OracleConnectionOptions.IdentifierMode?
+    let opensEditor: Bool
 
     init(
         category: AppErrorCategory,
@@ -35,7 +37,8 @@ nonisolated struct AppError: LocalizedError, Sendable {
         message: String,
         recovery: String?,
         underlying: Error?,
-        suggestedOracleMode: OracleConnectionOptions.IdentifierMode? = nil
+        suggestedOracleMode: OracleConnectionOptions.IdentifierMode? = nil,
+        opensEditor: Bool = false
     ) {
         self.category = category
         self.title = title
@@ -43,9 +46,22 @@ nonisolated struct AppError: LocalizedError, Sendable {
         self.recovery = recovery
         self.underlying = underlying
         self.suggestedOracleMode = suggestedOracleMode
+        self.opensEditor = opensEditor
     }
 
     var errorDescription: String? { message }
+}
+
+nonisolated extension AppError {
+    // The device refuses these before any network work, so a second attempt fails the same way.
+    var canRetry: Bool {
+        switch underlying as? ConnectionError {
+        case .driverNotFound?, .localSocketNotSupported?, .kerberosNotSupported?:
+            false
+        default:
+            true
+        }
+    }
 }
 
 // MARK: - Error Context
@@ -55,12 +71,20 @@ nonisolated struct ErrorContext: Sendable {
     let databaseType: DatabaseType?
     let host: String?
     let sshEnabled: Bool
+    let signsInWithIAM: Bool
 
-    init(operation: String, databaseType: DatabaseType? = nil, host: String? = nil, sshEnabled: Bool = false) {
+    init(
+        operation: String,
+        databaseType: DatabaseType? = nil,
+        host: String? = nil,
+        sshEnabled: Bool = false,
+        signsInWithIAM: Bool = false
+    ) {
         self.operation = operation
         self.databaseType = databaseType
         self.host = host
         self.sshEnabled = sshEnabled
+        self.signsInWithIAM = signsInWithIAM
     }
 }
 
@@ -112,6 +136,18 @@ nonisolated enum ErrorClassifier {
 
         if let connectionError = error as? ConnectionError {
             return connectionFailure(connectionError)
+        }
+
+        if let signInError = signInFailure(error, context: context) {
+            return signInError
+        }
+
+        if let tlsError = error as? SSLHandshakeError {
+            return tlsFailure(tlsError)
+        }
+
+        if let tunnelError = error as? SSHTunnelError, let classified = sshTunnelFailure(tunnelError) {
+            return classified
         }
 
         if let redisError = error as? RedisError, let classified = redisFailure(redisError, context: context) {
@@ -187,9 +223,8 @@ nonisolated enum ErrorClassifier {
         )
     }
 
-    /// A typed error is classified by its case. The substring rules below read a message the user
-    /// writes part of, so a connection called "Prod Tunnel" reported itself as an SSH tunnel failure.
-    private static func connectionFailure(_ error: ConnectionError) -> AppError {
+    // By case, never by text: the substring rules read a name the user typed, such as "Prod Tunnel".
+    static func connectionFailure(_ error: ConnectionError) -> AppError {
         switch error {
         case .previousSessionStillClosing:
             return AppError(
@@ -202,9 +237,9 @@ nonisolated enum ErrorClassifier {
         case .driverNotFound:
             return AppError(
                 category: .config,
-                title: String(localized: "Driver Unavailable"),
+                title: String(localized: "Opens on Mac Only"),
                 message: error.localizedDescription,
-                recovery: String(localized: "This build has no driver for that database type."),
+                recovery: String(localized: "Open it in TablePro on your Mac."),
                 underlying: error
             )
         case .notConnected:
@@ -229,6 +264,14 @@ nonisolated enum ErrorClassifier {
                 title: String(localized: "Socket Unavailable"),
                 message: error.localizedDescription,
                 recovery: String(localized: "Open it on the Mac, or change it there to connect by host and port."),
+                underlying: error
+            )
+        case .kerberosNotSupported:
+            return AppError(
+                category: .config,
+                title: String(localized: "Kerberos Unavailable"),
+                message: error.localizedDescription,
+                recovery: String(localized: "Open it on the Mac, or change it there to sign in with a password."),
                 underlying: error
             )
         }
@@ -332,11 +375,14 @@ nonisolated enum ErrorClassifier {
 
     private static func auth(_ error: Error, context: ErrorContext) -> AppError {
         let dbName = context.databaseType?.rawValue ?? String(localized: "Database")
+        let recovery = context.signsInWithIAM
+            ? String(localized: "This connection signs in with IAM, not a password. Check that the database user is set up for IAM sign-in.")
+            : String(format: String(localized: "Check your %@ username and password."), dbName)
         return AppError(
             category: .auth,
             title: String(localized: "Authentication Failed"),
             message: error.localizedDescription,
-            recovery: String(format: String(localized: "Check your %@ username and password."), dbName),
+            recovery: recovery,
             underlying: error
         )
     }

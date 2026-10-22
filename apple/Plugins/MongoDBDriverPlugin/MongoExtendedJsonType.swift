@@ -5,7 +5,7 @@ import Foundation
 /// Canonical Extended JSON writes every typed value as a one-field object whose key starts with `$`,
 /// so the key alone says the type. An object whose first key starts with `$` and is none of these is
 /// an ordinary subdocument, which is what the server stores it as.
-enum MongoExtendedJsonType {
+nonisolated enum MongoExtendedJsonType {
     static func name(of value: MongoDocumentText.Value) -> String? {
         switch value {
         case .array:

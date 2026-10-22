@@ -1,18 +1,20 @@
 import Foundation
 import TableProAutocomplete
 import TableProPluginKit
+import TableProSQLGrammar
 
 @MainActor
 final class SQLCompletionService: QueryCompletionService {
     private let engine: CompletionEngine
+    private let grammar: SQLLexicalGrammar
+    private let identifierCaseSource: @MainActor () -> SQLIdentifierCase
     private var lastContext = SQLContext.unanalyzed
-
-    private static let windowRadius = 5_000
 
     init(
         schemaProvider: SQLSchemaProvider?,
         databaseType: DatabaseType?,
-        profile: QueryCompletionProfile? = nil
+        profile: QueryCompletionProfile? = nil,
+        identifierCase: @escaping @MainActor () -> SQLIdentifierCase = { .default }
     ) {
         let dialect = profile?.resolvedDialect
             ?? databaseType.flatMap { PluginManager.shared.sqlDialect(for: $0) }
@@ -25,30 +27,26 @@ final class SQLCompletionService: QueryCompletionService {
             dialect: dialect,
             statementCompletions: statementCompletions
         )
+        self.grammar = databaseType?.lexicalGrammar ?? .ansi
+        self.identifierCaseSource = identifierCase
     }
 
     var triggerCharacters: Set<String> { [".", " ", ":", "(", ","] }
 
-    /// Read per request rather than captured, so changing the setting applies to the next
-    /// keystroke instead of the next connection.
+    // Read per request, so a changed setting applies to the next keystroke rather than the next connection.
     private var keywordCase: SQLKeywordCase { AppSettingsManager.shared.editor.keywordCase }
+    private var identifierCase: SQLIdentifierCase { identifierCaseSource() }
 
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
         engine.updateFavoriteKeywords(keywords)
     }
 
     func tokenStart(in text: NSString, endingAt offset: Int) -> Int {
-        SQLTokenBoundary.segmentStart(in: text, endingAt: offset)
+        SQLTokenBoundary.segmentStart(in: text, endingAt: offset, grammar: grammar)
     }
 
-    /// The incremental path reads its own prefix off the live token, which carries an opening
-    /// identifier quote, so it takes the same match text the analyzer resolves for a fresh request.
-    ///
-    /// A token that is nothing but quotes declines instead of widening to every candidate: a
-    /// re-rank cannot tell an identifier quote from the opening of a string, which `"` is on
-    /// MySQL, and matching everything there would hold the popup open inside a string literal.
-    /// Declining closes it, and the next character asks the analyzer, which reads the quote in
-    /// its own context.
+    // A quotes-only token declines instead of matching everything: a re-rank cannot tell an identifier quote from a
+    // MySQL string's `"`, and the next character asks the analyzer, which can.
     func rank(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
         let matchText = SQLTokenBoundary.matchText(of: prefix)
         guard !matchText.isEmpty || prefix.isEmpty else { return [] }
@@ -57,49 +55,34 @@ final class SQLCompletionService: QueryCompletionService {
             items,
             prefix: matchText,
             context: lastContext,
-            keywordCase: keywordCase
+            keywordCase: keywordCase,
+            identifierCase: identifierCase
         )
     }
 
     func completions(in text: NSString, at offset: Int, isManualTrigger: Bool) async -> QueryCompletionSession? {
-        guard !suppressesAfterStatementBreak(in: text, at: offset) else { return nil }
-
-        let windowStart = max(0, offset - Self.windowRadius)
-        let windowEnd = min(text.length, offset + Self.windowRadius)
-        let window = text.substring(with: NSRange(location: windowStart, length: windowEnd - windowStart))
-
-        guard let context = await engine.getCompletions(
-            text: window,
-            cursorPosition: offset - windowStart,
-            keywordCase: keywordCase
-        ) else {
+        guard !SQLCompletionTriggerPolicy.suppressesAfterStatementBreak(in: text, at: offset),
+              let window = await SQLCompletionWindow.cut(text as String, around: offset, grammar: grammar),
+              let result = await engine.getCompletions(
+                  text: window.text,
+                  cursorPosition: offset - window.start,
+                  keywordCase: keywordCase,
+                  identifierCase: identifierCase
+              ) else {
             return nil
         }
-        guard !SQLCompletionTriggerPolicy.suppressesEmptyPrefix(
-            context.sqlContext,
-            isManualTrigger: isManualTrigger
-        ) else { return nil }
 
-        lastContext = context.sqlContext
+        let context = result.sqlContext.offset(by: window.start)
+        guard !SQLCompletionTriggerPolicy.suppressesEmptyPrefix(context, isManualTrigger: isManualTrigger) else {
+            return nil
+        }
+
+        lastContext = context
         return QueryCompletionSession(
-            items: context.items,
-            candidates: context.candidates,
-            replacementRange: NSRange(
-                location: context.replacementRange.location + windowStart,
-                length: context.replacementRange.length
-            )
+            items: result.items,
+            candidates: result.candidates,
+            replacementRange: NSRange(context.prefixRange),
+            quotedName: context.quotedName
         )
-    }
-
-    private func suppressesAfterStatementBreak(in text: NSString, at offset: Int) -> Bool {
-        guard offset > 0, offset - 1 < text.length else { return false }
-
-        let previous = text.character(at: offset - 1)
-        let semicolon = UInt16(UnicodeScalar(";").value)
-        let newline = UInt16(UnicodeScalar("\n").value)
-        guard previous == semicolon || previous == newline else { return false }
-        guard offset < text.length else { return true }
-
-        return text.substring(from: offset).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }

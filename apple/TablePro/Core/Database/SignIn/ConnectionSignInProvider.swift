@@ -5,6 +5,7 @@ enum ConnectionSignInKind: String, Equatable, CaseIterable {
     case awsSSO
     case entraID
     case googleOAuth
+    case vaultOIDC
 }
 
 /// A driver credential that a person can renew by signing in again.
@@ -23,11 +24,12 @@ struct ConnectionSignInProvider: Sendable {
     let message: @Sendable ([String: String]) -> String
     let signedInMessage: String
     let failureTitle: String
-    let signIn: @MainActor @Sendable ([String: String], NSWindow?) async throws -> Void
+    // Gets the failure it claimed, which can carry what to sign in to.
+    let signIn: @MainActor @Sendable (Error, [String: String], NSWindow?) async throws -> Void
 }
 
 enum ConnectionSignInRegistry {
-    static let providers: [ConnectionSignInProvider] = [.awsSSO, .entraID, .googleOAuth]
+    static let providers: [ConnectionSignInProvider] = [.awsSSO, .entraID, .googleOAuth, .vaultOIDC]
 
     /// The provider that recognises this failure, if any. `fields` is the connection's
     /// `additionalFields`.
@@ -76,7 +78,7 @@ extension ConnectionSignInProvider {
         },
         signedInMessage: String(localized: "AWS SSO sign-in finished. Test the connection again."),
         failureTitle: String(localized: "AWS SSO Sign-In Failed"),
-        signIn: { fields, _ in
+        signIn: { _, fields, _ in
             try await AWSSSOLoginService.signIn(profileName: AWSSSOLoginService.signInProfileName(from: fields))
         }
     )
@@ -88,7 +90,7 @@ extension ConnectionSignInProvider {
         message: { _ in String(localized: "Sign in to Microsoft Entra ID with your browser?") },
         signedInMessage: String(localized: "Microsoft Entra ID sign-in finished. Test the connection again."),
         failureTitle: String(localized: "Microsoft Entra ID Sign-In Failed"),
-        signIn: { fields, window in
+        signIn: { _, fields, window in
             try await EntraSignInService.signIn(fields: fields, window: window)
         }
     )
@@ -100,8 +102,21 @@ extension ConnectionSignInProvider {
         message: { _ in String(localized: "Sign in to Google with your browser?") },
         signedInMessage: String(localized: "Google sign-in finished. Test the connection again."),
         failureTitle: String(localized: "Google Sign-In Failed"),
-        signIn: { fields, _ in
+        signIn: { _, fields, _ in
             try await GoogleSignInService.signIn(fields: fields)
+        }
+    )
+
+    static let vaultOIDC = ConnectionSignInProvider(
+        kind: .vaultOIDC,
+        claims: { error, _ in (error as? VaultError)?.oidcLogin != nil },
+        title: String(localized: "Vault Sign-In Required"),
+        message: { _ in String(localized: "Sign in to Vault with your browser?") },
+        signedInMessage: String(localized: "Vault sign-in finished. Test the connection again."),
+        failureTitle: String(localized: "Vault Sign-In Failed"),
+        signIn: { error, _, _ in
+            guard let login = (error as? VaultError)?.oidcLogin else { return }
+            try await VaultAuthenticator.shared.signIn(login)
         }
     )
 }

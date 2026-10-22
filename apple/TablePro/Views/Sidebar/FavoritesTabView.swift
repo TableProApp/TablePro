@@ -8,6 +8,7 @@ internal struct FavoritesTabView: View {
     @ObservedObject private var licenseManager = LicenseManager.shared
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     @ObservedObject private var gitStatusStore = LinkedFolderGitStatusStore.shared
+    @ObservedObject private var gitActions = LinkedFolderGitActions.shared
     @ObservedObject private var schemaService = SchemaService.shared
     @ObservedObject private var treeMetadata = DatabaseTreeMetadataService.shared
     @Environment(\.sidebarRowSize) private var systemRowSize
@@ -22,6 +23,7 @@ internal struct FavoritesTabView: View {
     @State private var linkedMetadataTarget: LinkedSQLFavorite?
     @State private var linkedFolderToRemove: LinkedSQLFolder?
     @State private var showRemoveLinkedFolderAlert = false
+    @State private var commitTarget: LinkedFolderCommitTarget?
     @State private var tableOpenTask: Task<Void, Never>?
     let connectionId: UUID
     let databaseType: DatabaseType
@@ -185,6 +187,9 @@ internal struct FavoritesTabView: View {
         } message: { folder in
             Text(String(format: String(localized: "The folder \"%@\" will be deleted. Items inside will be moved to the parent level."), folder.name))
         }
+        .sheet(item: $commitTarget) { target in
+            LinkedFolderCommitSheet(target: target)
+        }
         .sheet(item: $linkedMetadataTarget) { file in
             LinkedFavoriteMetadataDialog(
                 favorite: file,
@@ -337,7 +342,8 @@ internal struct FavoritesTabView: View {
                 renamingFolderId: viewModel.renamingFolderId,
                 allFolders: viewModel.nodes.collectFolders(),
                 teamLibraryAvailable: licenseManager.isFeatureAvailable(.teamLibrary),
-                linkedFileGitStates: gitStatusStore.states(for: Self.linkedFavorites(in: items))
+                linkedFileGitStates: gitStatusStore.states(for: Self.linkedFavorites(in: items)),
+                linkedFolderGitStates: linkedFolderGitStates
             ),
             selection: $sharedSidebarState.selectedFavorite,
             rowSizePreference: settingsManager.general.sidebarRowSize,
@@ -429,11 +435,20 @@ internal struct FavoritesTabView: View {
         case .folder(let folder):
             FavoriteFolderRowView(folder: folder)
         case .linkedFolder(let folder):
-            LinkedFolderRowLabel(folder: folder)
-        case .linkedSubfolder(_, let displayName, _):
+            LinkedFolderRowLabel(folder: folder, gitOperation: gitActions.operation(for: folder.id))
+        case .linkedSubfolder(_, let displayName, _, _):
             LinkedSubfolderRowLabel(displayName: displayName)
         case .linkedFavorite(let linked):
             LinkedFavoriteRowView(favorite: linked, gitState: gitStatusStore.state(for: linked))
+        }
+    }
+
+    private var linkedFolderGitStates: [UUID: LinkedFolderGitMenuState] {
+        gitStatusStore.snapshots.mapValues { snapshot in
+            LinkedFolderGitMenuState(
+                hasChanges: !snapshot.statuses.isEmpty,
+                isBusy: gitActions.operations[snapshot.repository.topLevel] != nil
+            )
         }
     }
 
@@ -624,6 +639,21 @@ internal struct FavoritesTabView: View {
             coordinator?.showVersionHistory(of: favorite)
         case .discardLinkedFileChanges(let favorite):
             discardChanges(to: favorite)
+        case .commitLinkedFile(let favorite):
+            guard let folder = LinkedSQLFolderStorage.shared.loadFolders().first(where: { $0.id == favorite.folderId }) else {
+                return
+            }
+            commitTarget = LinkedFolderCommitTarget(folder: folder, preselectedPath: favorite.relativePath)
+        case .commitLinkedFolder(let folder):
+            commitTarget = LinkedFolderCommitTarget(folder: folder)
+        case .pullLinkedFolder(let folder):
+            gitActions.pull(folder)
+        case .pushLinkedFolder(let folder):
+            gitActions.push(folder)
+        case .copyPath(let path), .copyRelativePath(let path):
+            ClipboardService.shared.writeText(path)
+        case .revealLinkedSubfolder(let url):
+            NSWorkspace.shared.activateFileViewerSelecting([url])
         case .revealLinkedFolder(let folder):
             viewModel.revealLinkedFolder(folder)
         case .setLinkedFolderEnabled(let folder, let isEnabled):

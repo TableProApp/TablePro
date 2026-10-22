@@ -21,11 +21,9 @@ MAX_LEAD_LINES = 6
 # [0-9], not \d: \d also matches non-ASCII digits.
 GRAMMAR = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-beta\.(0|[1-9][0-9]*))?")
 
-# Each workflow's test job has the workflow's name.
-TEST_WORKFLOWS = (
-    (".github/workflows/macos-tests.yml", "macOS Tests"),
-    (".github/workflows/ios-tests.yml", "iOS and Package Tests"),
-)
+CI_WORKFLOW = ".github/workflows/ci.yml"
+# A job of a called workflow is named "<ci.yml job> / <its own job>".
+TEST_JOBS = ("macos / macOS Tests", "ios / iOS and Package Tests")
 DETECTOR = "scripts/ci/detect-changed-paths.sh"
 SHIPPED = "shipped"
 FRAGMENTS = "changelog.d/"
@@ -169,7 +167,7 @@ class GitHub:
 
     def job_conclusions(self, run_id: str, job: str) -> List[str]:
         return self._api(f"repos/{self.repository}/actions/runs/{run_id}/jobs?filter=latest&per_page=100",
-                         f".jobs[] | select(.name == \"{job}\") | .conclusion // \"\"")
+                         f".jobs[] | select(.name == \"{job}\") | .conclusion // \"\"", paginate=True)
 
 
 def detector(root: Path, run: Callable = subprocess.run) -> Callable[[str, str, str], bool]:
@@ -303,27 +301,25 @@ def fragment_errors(paths: List[str], version: Version) -> List[str]:
     return [f"{version.tag} still has {', '.join(fragments)} in {FRAGMENTS}; assemble again on the line head"]
 
 
-def run_error(github: GitHub, run: Run, name: str) -> Optional[str]:
+def run_errors(github: GitHub, run: Run) -> List[str]:
     if run.status != "completed":
-        return f"{name} is {run.status} at {run.url}: re-run Verify once it is green"
+        return [f"CI is {run.status} at {run.url}: re-run Verify once it is green"]
     if run.conclusion != "success":
-        return f"{name} ended '{run.conclusion}' at {run.url}"
-    jobs = github.job_conclusions(run.id, name)
-    if jobs != ["success"]:
-        return f"{name} ran no tests at {run.url} (job: {', '.join(jobs) or 'none'})"
-    return None
+        return [f"CI ended '{run.conclusion}' at {run.url}"]
+    errors = []
+    for job in TEST_JOBS:
+        conclusions = github.job_conclusions(run.id, job)
+        if conclusions != ["success"]:
+            errors.append(f"{job} ran no tests at {run.url} (job: {', '.join(conclusions) or 'none'})")
+    return errors
 
 
 def push_run_errors(github: GitHub, sha: str, line: str) -> List[str]:
     branch = f"release/{line}"
-    runs = github.push_runs(sha, branch)
-    errors = []
-    for path, name in TEST_WORKFLOWS:
-        found = [run for run in runs if run.path == path]
-        if not found:
-            errors.append(f"no {name} push run on {branch} at {sha}")
-        errors += [error for error in (run_error(github, run, name) for run in found) if error is not None]
-    return errors
+    runs = [run for run in github.push_runs(sha, branch) if run.path == CI_WORKFLOW]
+    if not runs:
+        return [f"no CI push run on {branch} at {sha}"]
+    return [error for run in runs for error in run_errors(github, run)]
 
 
 def check(tag: str, git: Git, github: GitHub, changed: Callable[[str, str, str], bool]) -> List[str]:

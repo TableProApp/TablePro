@@ -14,6 +14,9 @@ set -eo pipefail
 # Built for the app's deployment target, not the host's: a Homebrew libpq crashes an older
 # macOS with "Symbol not found" (e.g. _strchrnul).
 #
+# Built with GSSAPI against the GSS framework, for Kerberos sign-in and gssencmode. The plugin
+# links -framework GSS.
+#
 # Usage:
 #   ./scripts/build-libpq.sh [arm64|x86_64|both]
 #
@@ -55,6 +58,7 @@ build_libpq() {
     local arch=$1
     local openssl_prefix="$BUILD_DIR/install-openssl-$arch"
     local prefix="$BUILD_DIR/install-libpq-$arch"
+    local gss_include="$BUILD_DIR/gss-include"
 
     echo ""
     echo "🔨 Building libpq (PostgreSQL $PG_VERSION) for $arch..."
@@ -73,21 +77,29 @@ build_libpq() {
         host="x86_64-apple-darwin"
     fi
 
+    make_gss_include_dir "$gss_include"
+
     # Tell configure strchrnul is available. PG will use an extern declaration
     # instead of its own static inline (which conflicts with the macOS SDK's
     # non-static declaration). We provide our own implementation below.
+    #
+    # configure also requires gss_store_cred_into and gssapi_ext.h, which the GSS framework does
+    # not have. Only the server's credential delegation uses them; libpq includes gssapi.h alone.
     MACOSX_DEPLOYMENT_TARGET=$DEPLOY_TARGET \
+    CPPFLAGS="-I$gss_include -I$openssl_prefix/include" \
     CFLAGS="-arch $arch -mmacosx-version-min=$DEPLOY_TARGET -Wno-unguarded-availability-new -I$openssl_prefix/include" \
     LDFLAGS="-arch $arch -L$openssl_prefix/lib" \
     PKG_CONFIG_PATH="$openssl_prefix/lib64/pkgconfig:$openssl_prefix/lib/pkgconfig" \
     ac_cv_func_strchrnul=yes \
+    ac_cv_search_gss_store_cred_into="-framework GSS" \
+    ac_cv_header_gssapi_gssapi_ext_h=yes \
     ./configure \
         --prefix="$prefix" \
         --host="$host" \
         --with-ssl=openssl \
         --without-readline \
         --without-icu \
-        --without-gssapi > /dev/null 2>&1
+        --with-gssapi > /dev/null 2>&1
 
     # Provide strchrnul implementation for macOS < 15.4 (where it doesn't exist
     # in the system library). This gets archived into libpgport.a so the final
@@ -110,6 +122,16 @@ COMPAT_EOF
     cc -arch "$arch" -mmacosx-version-min="$DEPLOY_TARGET" \
         -c -o src/port/strchrnul_compat.o src/port/strchrnul_compat.c
     run_quiet ar rs src/port/libpgport_shlib.a src/port/strchrnul_compat.o
+
+    # Without ENABLE_GSS both GSS sources compile to empty objects and the build still succeeds.
+    # grep without -q drains nm, so pipefail never sees a SIGPIPE.
+    local symbol
+    for symbol in _pg_GSS_have_cred_cache _pqsecure_open_gss; do
+        if ! nm src/interfaces/libpq/libpq.a 2> /dev/null | grep " T $symbol\$" > /dev/null; then
+            echo "ERROR: libpq $arch has no $symbol; GSSAPI was not compiled in." >&2
+            exit 1
+        fi
+    done
 
     mkdir -p "$prefix/lib"
     cp src/interfaces/libpq/libpq.a "$prefix/lib/"

@@ -20,6 +20,7 @@ final class SideObjectsMockDriver: DatabaseDriver, @unchecked Sendable {
     var routinesBySchema: [String: [RoutineInfo]] = [:]
     var routinesError: Error?
     var triggersBySchema: [String: [TriggerInfo]] = [:]
+    var schemasToReturn: [String] = []
     var routineSchemaRequests: [String?] = []
     var triggerSchemaRequests: [String?] = []
 
@@ -69,7 +70,7 @@ final class SideObjectsMockDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchDatabases() async throws -> [String] { [] }
-    func fetchSchemas() async throws -> [String] { [] }
+    func fetchSchemas() async throws -> [String] { schemasToReturn }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         DatabaseMetadata(

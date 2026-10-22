@@ -1,14 +1,3 @@
-//
-//  AWSIAMAuthTests.swift
-//  TableProTests
-//
-//  Covers the pure, deterministic parts of RDS IAM authentication: the SigV4
-//  primitives against published test vectors, the presigned token structure,
-//  region derivation from RDS hostnames, the access-key credential resolver,
-//  and the AWS config INI parser. Profile/SSO resolution and the live SSO
-//  network exchange require the filesystem/AWS and are not unit-tested.
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
@@ -34,220 +23,6 @@ struct AWSSigV4Tests {
         #expect(AWSSigV4.uriEncode("a/b") == "a%2Fb")
         #expect(AWSSigV4.uriEncode("us-east-1/rds-db") == "us-east-1%2Frds-db")
         #expect(AWSSigV4.uriEncode("safe-._~AZ09") == "safe-._~AZ09")
-    }
-}
-
-struct RDSAuthTokenGeneratorTests {
-    private let credentials = AWSCredentials(
-        accessKeyId: "AKIDEXAMPLE",
-        secretAccessKey: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-        sessionToken: nil
-    )
-    private let fixedDate = Date(timeIntervalSince1970: 1_440_938_160)
-
-    private func makeToken(sessionToken: String? = nil) -> String {
-        RDSAuthTokenGenerator.generateToken(
-            host: "mydb.us-east-1.rds.amazonaws.com",
-            port: 5_432,
-            region: "us-east-1",
-            username: "iam_user",
-            credentials: AWSCredentials(
-                accessKeyId: credentials.accessKeyId,
-                secretAccessKey: credentials.secretAccessKey,
-                sessionToken: sessionToken
-            ),
-            now: fixedDate
-        )
-    }
-
-    @Test("Token has the documented shape and no scheme")
-    func tokenShape() {
-        let token = makeToken()
-        #expect(!token.hasPrefix("https://"))
-        #expect(token.hasPrefix("mydb.us-east-1.rds.amazonaws.com:5432/?"))
-        #expect(token.contains("Action=connect"))
-        #expect(token.contains("DBUser=iam_user"))
-        #expect(token.contains("X-Amz-Algorithm=AWS4-HMAC-SHA256"))
-        #expect(token.contains("X-Amz-Expires=900"))
-        #expect(token.contains("X-Amz-Credential=AKIDEXAMPLE%2F"))
-        #expect(token.contains("%2Frds-db%2Faws4_request"))
-        #expect(token.contains("X-Amz-Signature="))
-    }
-
-    @Test("Same inputs produce the same token")
-    func deterministic() {
-        let first = makeToken()
-        let second = makeToken()
-        #expect(first == second)
-    }
-
-    @Test("Session token is included only for temporary credentials")
-    func sessionToken() {
-        #expect(!makeToken().contains("X-Amz-Security-Token"))
-        #expect(makeToken(sessionToken: "FQoGZXIvYXdzEXAMPLE").contains("X-Amz-Security-Token=FQoGZXIvYXdzEXAMPLE"))
-    }
-}
-
-struct RDSEndpointTests {
-    @Test("Derives region from cluster hostname")
-    func clusterHostname() {
-        #expect(RDSEndpoint.region(forHost: "mydb.cluster-abc123.us-east-1.rds.amazonaws.com") == "us-east-1")
-    }
-
-    @Test("Derives region from instance hostname")
-    func instanceHostname() {
-        #expect(RDSEndpoint.region(forHost: "mydb.abc123.us-west-2.rds.amazonaws.com") == "us-west-2")
-    }
-
-    @Test("Derives region from China partition hostname")
-    func chinaHostname() {
-        #expect(RDSEndpoint.region(forHost: "mydb.abc.cn-north-1.rds.amazonaws.com.cn") == "cn-north-1")
-    }
-
-    @Test("Returns nil for non-RDS hosts")
-    func nonRDSHost() {
-        #expect(RDSEndpoint.region(forHost: "localhost") == nil)
-        #expect(RDSEndpoint.region(forHost: "db.example.com") == nil)
-    }
-}
-
-struct RDSSigningEndpointResolverTests {
-    private func resolve(
-        host: String = "mydb.abc123.us-east-1.rds.amazonaws.com",
-        port: Int = 5_432,
-        preTunnelHost: String? = nil,
-        preTunnelPort: Int? = nil,
-        override: String? = nil,
-        defaultPort: Int = 5_432
-    ) throws -> RDSSigningEndpoint {
-        try RDSSigningEndpointResolver.resolve(
-            configuredHost: host,
-            configuredPort: port,
-            preTunnelHost: preTunnelHost,
-            preTunnelPort: preTunnelPort,
-            override: override,
-            defaultPort: defaultPort
-        )
-    }
-
-    @Test("A direct connection signs its own endpoint")
-    func directConnection() throws {
-        let endpoint = try resolve()
-        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.us-east-1.rds.amazonaws.com", port: 5_432))
-    }
-
-    @Test("A tunneled connection signs the endpoint from before the rewrite")
-    func tunneledConnection() throws {
-        let endpoint = try resolve(
-            host: "127.0.0.1",
-            port: 62_000,
-            preTunnelHost: "mydb.abc123.us-east-1.rds.amazonaws.com",
-            preTunnelPort: 5_432
-        )
-        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.us-east-1.rds.amazonaws.com", port: 5_432))
-    }
-
-    @Test("The endpoint override wins over the tunnel and the configured host")
-    func overrideWins() throws {
-        let endpoint = try resolve(
-            host: "127.0.0.1",
-            port: 62_000,
-            preTunnelHost: "old.abc123.us-east-1.rds.amazonaws.com",
-            preTunnelPort: 5_432,
-            override: "mydb.abc123.ap-south-1.rds.amazonaws.com:5433"
-        )
-        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.ap-south-1.rds.amazonaws.com", port: 5_433))
-    }
-
-    @Test("An override without a port falls back to the engine default")
-    func overrideWithoutPort() throws {
-        let endpoint = try resolve(
-            host: "127.0.0.1",
-            port: 54_321,
-            override: "mydb.abc123.ap-south-1.rds.amazonaws.com",
-            defaultPort: 5_432
-        )
-        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.ap-south-1.rds.amazonaws.com", port: 5_432))
-    }
-
-    @Test("A blank override is ignored")
-    func blankOverrideIgnored() throws {
-        let endpoint = try resolve(override: "   ")
-        #expect(endpoint.host == "mydb.abc123.us-east-1.rds.amazonaws.com")
-    }
-
-    @Test("An override keeps only the host and port of a pasted URL")
-    func overrideStripsSchemeAndPath() throws {
-        let endpoint = try resolve(override: "postgresql://mydb.abc123.us-east-1.rds.amazonaws.com:5432/postgres")
-        #expect(endpoint == RDSSigningEndpoint(host: "mydb.abc123.us-east-1.rds.amazonaws.com", port: 5_432))
-    }
-
-    @Test("A local forward with no override is rejected before the token is signed")
-    func loopbackIsRejected() {
-        for host in ["127.0.0.1", "localhost", "::1", "127.0.0.53"] {
-            #expect(throws: AWSAuthError.rdsEndpointUnresolved(host: host)) {
-                _ = try resolve(host: host, port: 54_321)
-            }
-        }
-    }
-
-    @Test("A tunnel to a loopback destination is rejected too")
-    func loopbackPreTunnelHostIsRejected() {
-        #expect(throws: AWSAuthError.rdsEndpointUnresolved(host: "localhost")) {
-            _ = try resolve(host: "127.0.0.1", port: 62_000, preTunnelHost: "localhost", preTunnelPort: 5_432)
-        }
-    }
-
-    @Test("A malformed override is rejected with the value the user typed")
-    func malformedOverrideIsRejected() {
-        for value in ["mydb.rds.amazonaws.com:port", "mydb.rds.amazonaws.com:0", ":5432", "127.0.0.1:5432"] {
-            #expect(throws: AWSAuthError.rdsEndpointInvalid(value)) {
-                _ = try resolve(override: value)
-            }
-        }
-    }
-
-    @Test("An override may not redirect the token away from the host being dialled")
-    func overrideCannotRedirectToAnotherHost() {
-        #expect(throws: AWSAuthError.rdsEndpointUnresolved(host: "evil.example.com")) {
-            _ = try resolve(
-                host: "evil.example.com",
-                port: 5_432,
-                override: "prod.abc123.us-east-1.rds.amazonaws.com:5432"
-            )
-        }
-    }
-
-    @Test("An override that restates the dialled host is accepted")
-    func overrideMatchingDialledHostIsAccepted() throws {
-        let endpoint = try resolve(
-            host: "mydb.abc123.us-east-1.rds.amazonaws.com",
-            port: 5_432,
-            override: "MyDB.abc123.us-east-1.RDS.amazonaws.com:5433"
-        )
-        #expect(endpoint.port == 5_433)
-    }
-
-    @Test("A pre-tunnel host is ignored when the socket is not a local forward")
-    func preTunnelHostIgnoredForRemoteDial() throws {
-        let endpoint = try resolve(
-            host: "evil.example.com",
-            port: 5_432,
-            preTunnelHost: "prod.abc123.us-east-1.rds.amazonaws.com",
-            preTunnelPort: 5_432
-        )
-        #expect(endpoint == RDSSigningEndpoint(host: "evil.example.com", port: 5_432))
-    }
-
-    @Test("The region comes from the signing host, not the local forward")
-    func regionFollowsSigningHost() throws {
-        let endpoint = try resolve(
-            host: "127.0.0.1",
-            port: 62_000,
-            preTunnelHost: "mydb.abc123.ap-south-1.rds.amazonaws.com",
-            preTunnelPort: 5_432
-        )
-        #expect(RDSEndpoint.region(forHost: endpoint.host) == "ap-south-1")
     }
 }
 
@@ -371,9 +146,17 @@ struct RegistryAWSIAMFieldsTests {
         #expect(field?.isSecure == true)
     }
 
-    @Test("Redshift and CockroachDB do not offer AWS IAM auth")
+    @Test("Redshift offers AWS IAM auth with its own endpoint field, not the RDS one")
+    func redshiftHasIAM() {
+        let ids = fieldIds(forTypeId: "Redshift")
+        #expect(ids.contains("awsAuth"))
+        #expect(ids.contains("awsProfileName"))
+        #expect(ids.contains(RedshiftIAMSignIn.endpointFieldId))
+        #expect(!ids.contains("awsRDSEndpoint"))
+    }
+
+    @Test("CockroachDB, TiDB and Databend do not offer AWS IAM auth")
     func excludedTypesHaveNoIAM() {
-        #expect(!fieldIds(forTypeId: "Redshift").contains("awsAuth"))
         #expect(!fieldIds(forTypeId: "CockroachDB").contains("awsAuth"))
         #expect(!fieldIds(forTypeId: "TiDB").contains("awsAuth"))
         #expect(!fieldIds(forTypeId: "Databend").contains("awsAuth"))

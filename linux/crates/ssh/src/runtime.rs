@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use rustix::fs::{CWD, Mode, OFlags, fstat, mkdirat, openat};
 use rustix::io::Errno;
-use tablepro_core::SshFailure;
+use tablepro_core::{SshFailure, SshRuntimeDirProblem};
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -29,7 +29,7 @@ impl SshRuntime {
             let _ = std::fs::remove_dir(&instance_dir);
             return Err(SshFailure::RuntimeDirUnsafe {
                 path: root,
-                detail: "the directory belongs to another user".to_owned(),
+                problem: SshRuntimeDirProblem::OtherOwner,
             });
         }
         let lock_path = instance_dir.join("lock");
@@ -39,10 +39,8 @@ impl SshRuntime {
             .mode(0o600)
             .open(&lock_path)
             .map_err(|error| unsafe_dir(&lock_path, &error))?;
-        lock.try_lock().map_err(|error| SshFailure::RuntimeDirUnsafe {
-            path: lock_path,
-            detail: error.to_string(),
-        })?;
+        lock.try_lock()
+            .map_err(|error| unsafe_dir(&lock_path, &io::Error::from(error)))?;
         Ok(Arc::new(Self {
             root,
             instance_dir,
@@ -99,7 +97,7 @@ fn create_missing_levels(runtime_dir: &Path) -> Result<(), SshFailure> {
         let Some(name) = dir.file_name() else {
             return Err(SshFailure::RuntimeDirUnsafe {
                 path: dir.to_owned(),
-                detail: "the path does not end in a directory name".to_owned(),
+                problem: SshRuntimeDirProblem::NoDirectoryName,
             });
         };
         match mkdirat(&parent, name, Mode::RWXU) {
@@ -117,7 +115,7 @@ fn create_missing_levels(runtime_dir: &Path) -> Result<(), SshFailure> {
         if stat.st_uid != owner {
             return Err(SshFailure::RuntimeDirUnsafe {
                 path: dir.to_owned(),
-                detail: "the directory belongs to another user".to_owned(),
+                problem: SshRuntimeDirProblem::OtherOwner,
             });
         }
         parent = child;
@@ -139,13 +137,15 @@ fn private_dir(path: &Path) -> Result<std::fs::Metadata, SshFailure> {
     if !metadata.is_dir() {
         return Err(SshFailure::RuntimeDirUnsafe {
             path: path.to_owned(),
-            detail: "the path is not a directory".to_owned(),
+            problem: SshRuntimeDirProblem::NotADirectory,
         });
     }
     if metadata.mode() & 0o077 != 0 {
         return Err(SshFailure::RuntimeDirUnsafe {
             path: path.to_owned(),
-            detail: format!("the directory mode is {:o}, expected 700", metadata.mode() & 0o777),
+            problem: SshRuntimeDirProblem::OpenToOthers {
+                mode: metadata.mode() & 0o777,
+            },
         });
     }
     Ok(metadata)
@@ -168,10 +168,11 @@ fn create_unique_dir(parent: &Path, id_bytes: usize) -> Result<(String, PathBuf)
     }
 }
 
-fn unsafe_dir(path: &Path, error: &io::Error) -> SshFailure {
+pub(crate) fn unsafe_dir(path: &Path, error: &io::Error) -> SshFailure {
+    tracing::debug!(%error, path = %path.display(), "the SSH runtime directory failed a check");
     SshFailure::RuntimeDirUnsafe {
         path: path.to_owned(),
-        detail: error.to_string(),
+        problem: SshRuntimeDirProblem::Io { kind: error.kind() },
     }
 }
 
@@ -251,9 +252,43 @@ mod tests {
         let root = temp.path().join("ssh");
         std::fs::create_dir(&root).unwrap();
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o770)).unwrap();
+        assert_eq!(
+            SshRuntime::acquire(temp.path()).err(),
+            Some(SshFailure::RuntimeDirUnsafe {
+                path: root,
+                problem: SshRuntimeDirProblem::OpenToOthers { mode: 0o770 },
+            })
+        );
+    }
+
+    #[test]
+    fn a_file_where_the_root_goes_is_not_a_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("ssh");
+        std::fs::write(&root, b"").unwrap();
+
+        assert_eq!(
+            SshRuntime::acquire(temp.path()).err(),
+            Some(SshFailure::RuntimeDirUnsafe {
+                path: root,
+                problem: SshRuntimeDirProblem::NotADirectory,
+            })
+        );
+    }
+
+    #[test]
+    fn an_io_failure_keeps_its_kind_and_not_its_text() {
+        let temp = tempfile::tempdir().unwrap();
+        let blocked = temp.path().join("blocked");
+        std::fs::write(&blocked, b"").unwrap();
+        let runtime_dir = blocked.join("app");
+
         assert!(matches!(
-            SshRuntime::acquire(temp.path()),
-            Err(SshFailure::RuntimeDirUnsafe { .. })
+            SshRuntime::acquire(&runtime_dir),
+            Err(SshFailure::RuntimeDirUnsafe {
+                problem: SshRuntimeDirProblem::Io { .. },
+                ..
+            })
         ));
     }
 }

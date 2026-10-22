@@ -1,0 +1,60 @@
+{
+  "recorded": "2026-10-22",
+  "machine": {
+    "model": "Mac16,11",
+    "chip": "Apple M4 Pro",
+    "memoryGB": 24,
+    "macOS": "27.0.1"
+  },
+  "app": {
+    "version": "0.0.0-dev",
+    "build": "1",
+    "configuration": "Release"
+  },
+  "runs": 10,
+  "budgetRule": "1.25x the baseline median and p95, rounded up to 5 ms",
+  "paths": {
+    "launch-welcome": {
+      "median": 511.4,
+      "p95": 527.2,
+      "budgetMedian": 640,
+      "budgetP95": 660
+    },
+    "launch-restore": {
+      "median": 484.4,
+      "p95": 500.5,
+      "budgetMedian": 610,
+      "budgetP95": 630
+    },
+    "table-sqlite": {
+      "median": 105.9,
+      "p95": 163.5,
+      "budgetMedian": 135,
+      "budgetP95": 205
+    },
+    "table-mysql": {
+      "median": 123.5,
+      "p95": 138.0,
+      "budgetMedian": 155,
+      "budgetP95": 175
+    },
+    "table-postgresql": {
+      "median": 95.2,
+      "p95": 149.3,
+      "budgetMedian": 120,
+      "budgetP95": 190
+    },
+    "tabs-next": {
+      "median": 117.8,
+      "p95": 132.8,
+      "budgetMedian": 150,
+      "budgetP95": 170
+    },
+    "tabs-recent": {
+      "median": 99.2,
+      "p95": 110.2,
+      "budgetMedian": 125,
+      "budgetP95": 140
+    }
+  }
+}

@@ -827,7 +827,7 @@ internal struct ObjectCopyPlanner {
     /// DELETE whenever the run promises to roll the table back. TRUNCATE commits implicitly on the
     /// engines that offer it without transactional DDL, so a copy that failed afterwards rolled the
     /// new rows back and left the target's own gone for good.
-    nonisolated private static func emptyStatements(
+    nonisolated static func emptyStatements(
         table: String,
         schema: String?,
         prefersDelete: Bool,
@@ -840,7 +840,7 @@ internal struct ObjectCopyPlanner {
         let truncate = prefersDelete
             ? nil
             : driver.truncateTableStatements(table: table, schema: schema, cascade: false)?.first
-        let sql = truncate ?? "DELETE FROM \(qualified)"
+        let sql = truncate ?? driver.rowDeleteStatement(table: qualified, predicate: nil) ?? "DELETE FROM \(qualified)"
         let summary = String(format: String(localized: "Empty %@ before copying"), table)
         let hazards = [SyncHazard(
             kind: .dataLoss,

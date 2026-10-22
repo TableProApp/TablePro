@@ -93,6 +93,62 @@ class DetectChangedPathsTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("linux", path), "false")
 
+    def test_linux_docs_runs_only_the_docs_job(self):
+        for path in [
+            "linux/README.md",
+            "linux/docs/testing.md",
+            "linux/docs/decisions/0018-ppa-copr-and-flathub-later.md",
+            "linux/changelog.d/3500.fixed.md",
+            "linux/po/README.md",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux", path), "false")
+                self.assertEqual(self.verdict_after("linux-docs", path), "true")
+
+    def test_linux_runs_on_the_markdown_its_jobs_read(self):
+        for path in [
+            "linux/CHANGELOG.md",
+            "linux/docs/regression-tests.md",
+            "linux/data/licenses/THIRD-PARTY-NOTICE.md",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux", path), "true")
+
+    def test_linux_runs_on_markdown_beside_code(self):
+        self.git("checkout", "-q", "-B", "case", self.seed)
+        self.commit(["linux/docs/testing.md", "linux/crates/app/src/main.rs"])
+        self.assertEqual(self.detect("linux", self.seed), (0, "true"))
+
+    def test_linux_docs_runs_on_every_linux_path(self):
+        for path in ["linux/crates/app/src/main.rs", ".github/workflows/build-linux.yml"]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux-docs", path), "true")
+        self.assertEqual(self.verdict_after("linux-docs", "apple/TablePro/App.swift"), "false")
+
+    def test_swiftlint_runs_on_swift_and_its_configs(self):
+        for path in [
+            "apple/TablePro/App.swift",
+            "apple/Packages/TableProCore/Sources/Core.swift",
+            "apple/.swiftlint.yml",
+            "apple/TableProTests/.swiftlint.yml",
+            ".github/workflows/swiftlint.yml",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("swiftlint", path), "true")
+        for path in ["linux/crates/app/src/main.rs", "apple/CHANGELOG.md", "apple/project.yml", "README.md"]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("swiftlint", path), "false")
+
+    def test_the_ci_workflow_runs_every_suite(self):
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
+        self.seed = self.commit([])
+        for suite in ["macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs"]:
+            with self.subTest(suite=suite):
+                self.assertEqual(self.verdict_after(suite, ".github/workflows/ci.yml"), "true")
+        self.assertEqual(self.verdict_after("shipped", ".github/workflows/ci.yml"), "false")
+
     def test_unknown_flag_exits_2(self):
         self.assertEqual(self.detect("--since")[0], 2)
 
@@ -153,6 +209,16 @@ class DetectChangedPathsTests(unittest.TestCase):
         self.assertEqual(self.verdict_after("macos", "apple/Plugins/MySQLDriverTests/MySQLTests.swift"), "true")
         self.assertEqual(self.verdict_after("macos", ".github/workflows/release-build.yml"), "false")
         self.assertEqual(self.verdict_after("macos", "apple/scripts/release/build.sh"), "false")
+
+    def test_macos_and_ios_run_on_the_catalog_check_their_builds_run(self):
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
+        self.seed = self.commit([])
+        for suite in ["macos", "ios"]:
+            with self.subTest(suite=suite):
+                self.assertEqual(self.verdict_after(suite, "apple/scripts/localization.py"), "true")
+                self.assertEqual(self.verdict_after(suite, "apple/scripts/test_localization.py"), "false")
 
     def test_macos_runs_on_the_build_setup_action(self):
         self.assertEqual(self.verdict_after("macos", ".github/actions/prepare-build/action.yml"), "true")
@@ -241,7 +307,7 @@ class DetectChangedPathsTests(unittest.TestCase):
         base = self.commit([])
         self.git("update-ref", "refs/remotes/origin/main", base)
         self.commit(["apple/CHANGELOG.md"])
-        for suite in ["macos", "plugins", "ios", "oracle", "hana", "release", "linux"]:
+        for suite in ["macos", "plugins", "ios", "oracle", "hana", "release", "swiftlint", "linux", "linux-docs"]:
             with self.subTest(suite=suite):
                 self.assertEqual(self.detect(suite, base), (0, "false"))
                 self.assertEqual(self.detect(suite, base, ref="refs/heads/release/0.83"), (0, "true"))

@@ -64,6 +64,13 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridTextTone(row displayRow: Int, column: Int) -> NSColor?
     /// Nil lets the grid derive the rules from its column types and display formats.
     func dataGridSummaryColumnPolicy() -> SelectionSummaryColumnPolicy?
+    /// True when the window ran its own Set Cells to Value over these cells, so the grid's items and the window's do
+    /// the same thing.
+    func dataGridSetCellsToValue(_ targets: [SetValueTarget]) -> Bool
+    /// Runs the cell edits of one command, so an owner that writes each edit through can write them once.
+    func dataGridBatchEdits(actionName: String, _ edits: () -> Void)
+    /// Loads the values a page left on the server. The completion is true once every one arrived.
+    func dataGridLoadUnloadedValues(rowIDs: [RowID], columns: IndexSet?, completion: @escaping @MainActor (Bool) -> Void)
 }
 
 extension DataGridViewDelegate {
@@ -76,6 +83,15 @@ extension DataGridViewDelegate {
     func dataGridAccessibilityText(row displayRow: Int, column: Int) -> String? { nil }
     func dataGridTextTone(row displayRow: Int, column: Int) -> NSColor? { nil }
     func dataGridSummaryColumnPolicy() -> SelectionSummaryColumnPolicy? { nil }
+    func dataGridSetCellsToValue(_ targets: [SetValueTarget]) -> Bool { false }
+    func dataGridBatchEdits(actionName: String, _ edits: () -> Void) { edits() }
+    func dataGridLoadUnloadedValues(
+        rowIDs: [RowID],
+        columns: IndexSet?,
+        completion: @escaping @MainActor (Bool) -> Void
+    ) {
+        completion(false)
+    }
     func dataGridDidEditCell(row: Int, column: Int, newValue: String?) {}
     func dataGridDeleteRows(_ indices: Set<Int>) {}
     func dataGridCopyRows(_ indices: Set<Int>) {}

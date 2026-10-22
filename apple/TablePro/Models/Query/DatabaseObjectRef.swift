@@ -212,6 +212,21 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
         )
     }
 
+    /// Whether two refs name one object. The attributes are what a listing learned and change with
+    /// a comment edit, so they are left out. An identity is only compared, never trusted alone: some
+    /// drivers fill it with the object's kind or its signature, which many objects share.
+    func namesSameObject(as other: DatabaseObjectRef) -> Bool {
+        guard kind == other.kind,
+              database == other.database,
+              name == other.name,
+              schema == other.schema,
+              table == other.table,
+              argumentSignature == other.argumentSignature
+        else { return false }
+        guard let identity, let otherIdentity = other.identity else { return true }
+        return identity == otherIdentity
+    }
+
     /// A file name for Export, safe on every filesystem the save panel can reach.
     var suggestedFileName: String {
         let base = [schema, table, name].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: "_")

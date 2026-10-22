@@ -12,28 +12,49 @@ import Foundation
 import CLibSSH2
 import TableProSSHTransport
 
-/// Routes channel reads/writes through the serial `sessionQueue` because libssh2
-/// is not thread-safe per session. Maps libssh2 return codes to the transport
-/// agnostic results consumed by `SSHChannelRelay`.
+// Every call goes through the serial sessionQueue: libssh2 is not thread-safe per session.
 nonisolated internal struct LibSSH2ChannelIO: SSHChannelIO {
     let channel: OpaquePointer
     let session: OpaquePointer
     let sessionQueue: DispatchQueue
 
+    // libssh2 hands a transport error (-43 on EOF, -13 on DISCONNECT, -12, a failed re-key) to every channel call; only these end just one channel.
+    private static let channelScopedErrors: Set<Int> = [
+        Int(LIBSSH2_ERROR_CHANNEL_OUTOFORDER),
+        Int(LIBSSH2_ERROR_CHANNEL_FAILURE),
+        Int(LIBSSH2_ERROR_CHANNEL_REQUEST_DENIED),
+        Int(LIBSSH2_ERROR_CHANNEL_UNKNOWN),
+        Int(LIBSSH2_ERROR_CHANNEL_WINDOW_EXCEEDED),
+        Int(LIBSSH2_ERROR_CHANNEL_PACKET_EXCEEDED),
+        Int(LIBSSH2_ERROR_CHANNEL_CLOSED),
+        Int(LIBSSH2_ERROR_CHANNEL_EOF_SENT),
+        Int(LIBSSH2_ERROR_CHANNEL_WINDOW_FULL),
+    ]
+
+    static func readResult(_ returnCode: Int) -> ChannelReadResult {
+        if returnCode > 0 { return .bytes(returnCode) }
+        if returnCode == 0 { return .closed }
+        if returnCode == Int(LIBSSH2_ERROR_EAGAIN) { return .wouldBlock }
+        return channelScopedErrors.contains(returnCode) ? .closed : .transportFailed
+    }
+
+    static func writeResult(_ returnCode: Int) -> ChannelWriteResult {
+        if returnCode > 0 { return .bytes(returnCode) }
+        if returnCode == 0 { return .closed }
+        if returnCode == Int(LIBSSH2_ERROR_EAGAIN) { return .wouldBlock }
+        return channelScopedErrors.contains(returnCode) ? .closed : .transportFailed
+    }
+
     func read(into buffer: UnsafeMutablePointer<CChar>, count: Int) -> ChannelReadResult {
         let result = sessionQueue.sync { Int(tablepro_libssh2_channel_read(channel, buffer, count)) }
-        if result > 0 { return .bytes(result) }
-        if result == 0 { return .closed }
-        if sessionQueue.sync(execute: { libssh2_channel_eof(channel) }) != 0 { return .closed }
-        if result == Int(LIBSSH2_ERROR_EAGAIN) { return .wouldBlock }
-        return .closed
+        if result == Int(LIBSSH2_ERROR_EAGAIN), sessionQueue.sync(execute: { libssh2_channel_eof(channel) }) != 0 {
+            return .closed
+        }
+        return Self.readResult(result)
     }
 
     func write(_ buffer: UnsafePointer<CChar>, count: Int) -> ChannelWriteResult {
-        let result = sessionQueue.sync { Int(tablepro_libssh2_channel_write(channel, buffer, count)) }
-        if result > 0 { return .bytes(result) }
-        if result == Int(LIBSSH2_ERROR_EAGAIN) { return .wouldBlock }
-        return .closed
+        Self.writeResult(sessionQueue.sync { Int(tablepro_libssh2_channel_write(channel, buffer, count)) })
     }
 
     func blockDirections() -> RelayDirections {

@@ -119,6 +119,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         RecentConnectionsRecorder.shared.start()
+        if #available(macOS 14.0, *) {
+            ShortcutsParameterRefresher.shared.start()
+        }
 
         LaunchTracer.shared.mark(.didFinishLaunchingEnded)
         AppLaunchCoordinator.shared.didFinishLaunching()
@@ -163,6 +166,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task {
             await MCPServerManager.shared.stop()
+            await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

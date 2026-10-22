@@ -19,10 +19,14 @@ final class StructureGridDelegate: DataGridViewDelegate {
     /// reach the methods below directly, so each of them asks the same gate rather than trusting a
     /// button to have been dimmed. (#2726)
     let objectKind: TableInfo.TableType
+    var schemaName: String?
+    var isSessionBound = false
 
     /// The single answer to "may this edit be offered", shared with the view that presents this grid.
     var editGate: StructureEditGate {
-        StructureEditGate(databaseType: connection.type, objectKind: objectKind)
+        StructureEditGate(
+            databaseType: connection.type, objectKind: objectKind, schema: schemaName, isSessionBound: isSessionBound
+        )
     }
 
     /// Whether this engine can add and remove foreign keys on this object, which is not the same
@@ -638,7 +642,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
 
     private func makeEmptySpaceMenu() -> NSMenu? {
         guard selectedTab != .ddl, selectedTab != .parts, selectedTab != .triggers else { return nil }
-        guard connection.type.supportsSchemaEditing else { return nil }
+        guard editGate.canEditSchema else { return nil }
 
         let menu = NSMenu()
         let label: String
@@ -730,22 +734,15 @@ final class StructureGridDelegate: DataGridViewDelegate {
         let headers = provider.columns
         guard !headers.isEmpty else { return }
 
-        var lines: [String] = [headers.map { escapeCSVField($0) }.joined(separator: ",")]
+        var lines: [String] = [headers.map(CsvRowConverter.encode).joined(separator: ",")]
         for row in indices.sorted() {
             guard let rowData = provider.row(at: row) else { continue }
-            let line = rowData.map { escapeCSVField($0 ?? "") }.joined(separator: ",")
+            let line = rowData.map { CsvRowConverter.encode($0 ?? "") }.joined(separator: ",")
             lines.append(line)
         }
 
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
-    }
-
-    private func escapeCSVField(_ value: String) -> String {
-        if value.contains(",") || value.contains("\"") || value.contains("\n") {
-            return "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
-        }
-        return value
     }
 
     private func handleCopyAsJSON(_ indices: Set<Int>) {

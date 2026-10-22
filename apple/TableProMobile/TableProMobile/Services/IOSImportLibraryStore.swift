@@ -4,6 +4,7 @@ import TableProConnectionLibrary
 import TableProDatabase
 import TableProImport
 import TableProModels
+import TableProRedisCore
 
 @MainActor
 struct IOSImportLibraryStore: ImportLibraryStore {
@@ -23,11 +24,11 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                     port: connection.port,
                     database: connection.database,
                     username: connection.username,
-                    redisDatabase: nil,
+                    redisDatabase: ConnectionMatchKey.redisDatabase(in: connection.additionalFields),
                     socketPath: MySQLLocalSocket.path(in: connection.additionalFields)
                 )
             )
-        })
+        }, savedQueries: appState.savedQueries.ledgerEntries() ?? [])
     }
 
     func addImportedProfiles(_ profiles: [PlannedCredentialProfile]) throws -> [BundleRef: UUID] {
@@ -101,7 +102,12 @@ struct IOSImportLibraryStore: ImportLibraryStore {
         var added: [UUID] = []
         var replaced: [UUID] = []
         for resolved in connections {
-            let connection = DatabaseConnection(importing: resolved)
+            let connection = DatabaseConnection(
+                importedSettings: resolved.planned.settings,
+                id: resolved.planned.id,
+                groupId: resolved.groupId,
+                tagIds: resolved.tagIds
+            )
             switch resolved.planned.write {
             case .add:
                 if appState.addConnection(connection) {
@@ -112,6 +118,21 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                     var updated = connection
                     updated.sortOrder = stored.sortOrder
                     updated.isFavorite = stored.isFavorite
+                    updated.sshConfiguration = JumpHostCredentialStore.keepingHopIds(
+                        from: stored.sshConfiguration,
+                        into: updated.sshConfiguration
+                    )
+                    // A file carries no route, and the stored one is dialed only while it still describes the tunnel.
+                    updated.sshRoute = stored.sshRoute
+                    // A Mac SSH profile's password goes to whatever server this connection's tunnel names, so the link
+                    // survives only when the file names the same one.
+                    if stored.sshProfileId != nil {
+                        if updated.sshConfiguration?.publishedRouteInput == stored.sshConfiguration?.publishedRouteInput {
+                            updated.sshProfileId = stored.sshProfileId
+                        } else {
+                            updated.clearsSSHProfileLink = true
+                        }
+                    }
                     stored = updated
                 }
                 if outcome.isSaved {
@@ -133,7 +154,8 @@ struct IOSImportLibraryStore: ImportLibraryStore {
         let secrets: [(ConnectionSecretKind, String?)] = [
             (.password, credentials.password),
             (.sshPassword, credentials.sshPassword),
-            (.keyPassphrase, credentials.keyPassphrase)
+            (.keyPassphrase, credentials.keyPassphrase),
+            (.totpSecret, credentials.totpSecret)
         ]
         for case let (kind, value?) in secrets {
             do {
@@ -146,7 +168,7 @@ struct IOSImportLibraryStore: ImportLibraryStore {
     }
 }
 
-internal extension SSLConfiguration.SSLMode {
+nonisolated extension SSLConfiguration.SSLMode {
     // iOS has no Preferred mode, and an unknown mode must never weaken a connection to plain text.
     init(importing portable: PortableSSLMode?) {
         guard let portable else {
@@ -162,13 +184,12 @@ internal extension SSLConfiguration.SSLMode {
     }
 }
 
-private extension DatabaseConnection {
-    init(importing resolved: ResolvedConnection) {
-        let settings = resolved.planned.settings
+nonisolated extension DatabaseConnection {
+    init(importedSettings settings: ExportableConnection, id: UUID = UUID(), groupId: UUID? = nil, tagIds: [UUID] = []) {
         let safeModeLevel = SafeModeLevel(wireValue: settings.safeModeLevel, isReadOnly: false)
         let sslMode = settings.sslConfig.map { SSLConfiguration.SSLMode(importing: $0.portableMode) } ?? .disable
         self.init(
-            id: resolved.planned.id,
+            id: id,
             name: settings.name,
             type: DatabaseType(rawValue: settings.type),
             host: settings.host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : settings.host,
@@ -180,7 +201,7 @@ private extension DatabaseConnection {
             isReadOnly: safeModeLevel.blocksWrites,
             safeModeLevel: safeModeLevel,
             queryTimeoutSeconds: settings.queryTimeoutSeconds,
-            additionalFields: settings.additionalFields ?? [:],
+            additionalFields: Self.importedAdditionalFields(settings),
             sshEnabled: settings.sshConfig?.enabled == true,
             sshConfiguration: settings.sshConfig.flatMap { Self.sshConfiguration($0) },
             sslEnabled: sslMode != .disable,
@@ -189,18 +210,29 @@ private extension DatabaseConnection {
                     mode: sslMode,
                     caCertificatePath: Self.expandedPath(ssl.caCertificatePath),
                     clientCertificatePath: Self.expandedPath(ssl.clientCertificatePath),
-                    clientKeyPath: Self.expandedPath(ssl.clientKeyPath)
+                    clientKeyPath: Self.expandedPath(ssl.clientKeyPath),
+                    isMacPreferred: ssl.portableMode == .preferred
                 )
             },
-            groupId: resolved.groupId,
-            tagIds: resolved.tagIds
+            groupId: groupId,
+            tagIds: tagIds
         )
         connectTimeoutSeconds = settings.connectTimeoutSeconds
     }
 
-    static func sshConfiguration(_ ssh: ExportableSSHConfig) -> SSHConfiguration? {
+    // The Mac falls back to its own Redis index when the additional field is unset, so the import reads it the same way.
+    private static func importedAdditionalFields(_ settings: ExportableConnection) -> [String: String] {
+        var fields = settings.additionalFields ?? [:]
+        if DatabaseType(rawValue: settings.type) == .redis, fields[RedisDatabaseIndex.fieldName] == nil,
+           let redisDatabase = settings.redisDatabase {
+            fields[RedisDatabaseIndex.fieldName] = String(redisDatabase)
+        }
+        return fields
+    }
+
+    private static func sshConfiguration(_ ssh: ExportableSSHConfig) -> SSHConfiguration? {
         guard ssh.enabled else { return nil }
-        return SSHConfiguration(
+        var configuration = SSHConfiguration(
             host: ssh.host,
             port: ssh.port,
             username: ssh.username,
@@ -216,9 +248,14 @@ private extension DatabaseConnection {
                 )
             }
         )
+        configuration.totpMode = ssh.totpMode
+        configuration.totpAlgorithm = ssh.totpAlgorithm
+        configuration.totpDigits = ssh.totpDigits
+        configuration.totpPeriod = ssh.totpPeriod
+        return configuration
     }
 
-    static func sshAuthMethod(_ raw: String) -> SSHConfiguration.SSHAuthMethod {
+    private static func sshAuthMethod(_ raw: String) -> SSHConfiguration.SSHAuthMethod {
         switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "privatekey", "publickey", "private key": .privateKey
         case "sshagent", "agent", "ssh agent": .sshAgent
@@ -228,7 +265,7 @@ private extension DatabaseConnection {
         }
     }
 
-    static func expandedPath(_ path: String?) -> String? {
+    private static func expandedPath(_ path: String?) -> String? {
         guard let path else { return nil }
         let expanded = PathPortability.expandHome(path)
         return expanded.isEmpty ? nil : expanded

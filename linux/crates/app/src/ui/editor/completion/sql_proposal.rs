@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use gtk4::glib;
 use gtk4::subclass::prelude::*;
 
@@ -20,10 +18,6 @@ impl SqlProposal {
         let _ = imp.label.set(label.to_owned());
         let _ = imp.insert_text.set(insert_text.to_owned());
         proposal
-    }
-
-    pub fn keyword(keyword: &str) -> Self {
-        Self::new(ProposalKind::Keyword, keyword, keyword)
     }
 
     pub fn kind(&self) -> &ProposalKind {
@@ -47,23 +41,6 @@ impl SqlProposal {
         self.cased(text, word)
     }
 
-    pub fn priority(&self) -> u32 {
-        self.imp().priority.get()
-    }
-
-    pub fn set_priority(&self, priority: u32) {
-        self.imp().priority.set(priority);
-    }
-
-    /// The list order: the closest match first, then what the
-    /// statement names before keywords. Ties keep the catalog's order,
-    /// which lists a table's columns as the table defines them.
-    pub fn compare(&self, other: &Self) -> Ordering {
-        self.priority()
-            .cmp(&other.priority())
-            .then_with(|| self.kind().rank().cmp(&other.kind().rank()))
-    }
-
     fn cased(&self, text: &str, word: &str) -> String {
         let lowercase = word.chars().any(char::is_lowercase) && !word.chars().any(char::is_uppercase);
         if self.kind().is_keyword() && lowercase {
@@ -80,7 +57,7 @@ mod tests {
 
     #[test]
     fn a_keyword_follows_the_case_typed() {
-        let select = SqlProposal::keyword("SELECT");
+        let select = SqlProposal::new(ProposalKind::Keyword, "SELECT", "SELECT");
 
         assert_eq!(select.insert_text("sel"), "select");
         assert_eq!(select.insert_text("SEL"), "SELECT");
@@ -95,17 +72,5 @@ mod tests {
 
         assert_eq!(table.insert_text("us"), "\"Users\"");
         assert_eq!(table.shown_text("us"), "Users");
-    }
-
-    #[test]
-    fn closer_matches_sort_first_then_by_kind() {
-        let keyword = SqlProposal::keyword("USING");
-        let table = SqlProposal::new(ProposalKind::Table, "users", "users");
-        keyword.set_priority(3);
-        table.set_priority(3);
-
-        assert_eq!(table.compare(&keyword), Ordering::Less);
-        keyword.set_priority(1);
-        assert_eq!(table.compare(&keyword), Ordering::Greater);
     }
 }

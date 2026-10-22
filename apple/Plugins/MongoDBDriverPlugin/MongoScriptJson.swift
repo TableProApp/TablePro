@@ -7,7 +7,7 @@ import Foundation
 /// request leaves them untouched as text. A document rebuilt from a Swift dictionary comes back
 /// with its fields reordered, and BSON field order decides how an embedded document compares, what
 /// a compound index matches and where `_id` sits.
-enum MongoScriptJson {
+nonisolated enum MongoScriptJson {
     static func success(_ value: String) -> String {
         "{\"ok\":true,\"v\":\(value)}"
     }

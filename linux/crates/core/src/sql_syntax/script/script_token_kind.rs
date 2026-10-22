@@ -13,6 +13,9 @@ pub enum ScriptTokenKind {
     CloseParen,
     Punct,
     Directive,
+    /// The `/*!50100` that opens a MySQL executable comment, or the `*/`
+    /// that closes it. What stands between the two is code.
+    ExecutableMarker,
     Unterminated,
 }
 

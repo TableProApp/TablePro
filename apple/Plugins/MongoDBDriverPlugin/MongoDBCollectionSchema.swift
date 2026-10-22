@@ -1,7 +1,7 @@
 import Foundation
 import TableProPluginKit
 
-enum MongoDBBsonType {
+nonisolated enum MongoDBBsonType {
     static let aliases: [String] = [
         "double", "string", "object", "array", "binData", "objectId", "bool", "date", "null",
         "regex", "javascript", "int", "timestamp", "long", "decimal", "minKey", "maxKey", "number"
@@ -43,7 +43,7 @@ enum MongoDBBsonType {
     }
 }
 
-struct MongoDBDeclaredField: Equatable, Sendable {
+nonisolated struct MongoDBDeclaredField: Equatable, Sendable {
     let name: String
     let bsonTypes: [String]
     let isRequired: Bool
@@ -74,7 +74,7 @@ struct MongoDBDeclaredField: Equatable, Sendable {
 /// The columns a collection presents: the fields its documents hold, then the fields its
 /// validator declares that no document in hand holds yet. A new collection has no documents, and
 /// sampling alone showed it as `_id` and nothing else.
-enum MongoDBCollectionShape {
+nonisolated enum MongoDBCollectionShape {
     static func emptyCollectionColumns(declaring schema: MongoDBCollectionSchema) -> [String] {
         [MongoDBCollectionDDL.idField] + schema.fields.map(\.name).filter { $0 != MongoDBCollectionDDL.idField }
     }
@@ -85,7 +85,7 @@ enum MongoDBCollectionShape {
     }
 }
 
-struct MongoDBCollectionSchema: Equatable, Sendable {
+nonisolated struct MongoDBCollectionSchema: Equatable, Sendable {
     let fields: [MongoDBDeclaredField]
     /// Whether a field the validator's `properties` do not name may hold null: an
     /// `additionalProperties` schema decides it for every such field.

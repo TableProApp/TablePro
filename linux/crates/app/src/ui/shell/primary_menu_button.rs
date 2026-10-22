@@ -2,7 +2,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 
 /// The ids of the menus in `gtk/menus.ui`.
-const PRIMARY_MENU: &str = "primary_menu";
+pub(crate) const PRIMARY_MENU: &str = "primary_menu";
 pub(crate) const TAB_OVERVIEW_MENU: &str = "tab_overview_menu";
 
 /// A menu GtkApplication read from `gtk/menus.ui` at startup. A missing

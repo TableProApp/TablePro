@@ -16,7 +16,7 @@ import os
 /// always has a point or an exponent, a date inside 1970 to 9999 is ISO text with milliseconds, and
 /// every other type keeps its wrapper. `$numberLong` stays wrapped, because the relaxed form of a
 /// small 64-bit integer reads back as an int32.
-enum MongoExtendedJsonForm {
+nonisolated enum MongoExtendedJsonForm {
     typealias Value = MongoDocumentText.Value
     typealias Member = MongoDocumentText.Member
 
@@ -193,7 +193,7 @@ enum MongoExtendedJsonForm {
 ///
 /// JavaScript lists array-index keys first, in ascending order, and treats `__proto__` as the
 /// prototype rather than as a key, so neither kind of name reaches the server where it was written.
-enum MongoShellKeyOrder {
+nonisolated enum MongoShellKeyOrder {
     static func survives(_ keys: [String]) -> Bool {
         guard !keys.contains("__proto__") else { return false }
         let moved = keys.filter(MongoDBCollectionDDL.isReorderedByTheShell)
@@ -209,7 +209,7 @@ enum MongoShellKeyOrder {
     }
 }
 
-extension MongoDocumentText.Value {
+nonisolated extension MongoDocumentText.Value {
     var isContainer: Bool {
         switch self {
         case .object, .array: return true
