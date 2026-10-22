@@ -8,6 +8,14 @@ OUT="${DEB_OUT:-$ROOT/apps/linux/packaging/out}"
 VERSION="${DEB_VERSION:-$(python3 "$ROOT/scripts/check-release-version.py" --print)-1}"
 ARCH="${DEB_ARCH:-amd64}"
 PKG_NAME="bookie_${VERSION}_${ARCH}"
+PROFILE="${BOOKIE_BUILD_PROFILE:-dist}"
+case "$PROFILE" in
+  dist | release) ;;
+  *)
+    echo "BOOKIE_BUILD_PROFILE must be dist or release, got: $PROFILE" >&2
+    exit 2
+    ;;
+esac
 mkdir -p "$OUT"
 
 # Force on-disk target dir: agent environments may point CARGO_TARGET_DIR
@@ -21,25 +29,25 @@ if [[ -f "$ROOT/scripts/dev-env.sh" ]]; then
 fi
 
 if [[ "${DEB_SKIP_BUILD:-0}" != "1" ]]; then
-  echo "==> cargo build --release -p tablepro-app -p tablepro-agentd"
-  cargo build --release -p tablepro-app -p tablepro-agentd --locked
-  cargo build --release -p tablepro-ssh --bin tablepro-askpass --locked
+  echo "==> cargo build --profile $PROFILE -p tablepro-app -p tablepro-agentd"
+  cargo build --profile "$PROFILE" -p tablepro-app -p tablepro-agentd --locked
+  cargo build --profile "$PROFILE" -p tablepro-ssh --bin tablepro-askpass --locked
 else
-  echo "==> DEB_SKIP_BUILD=1; packaging existing release binaries"
+  echo "==> DEB_SKIP_BUILD=1; packaging existing $PROFILE binaries"
 fi
 
 for bin in tablepro-app tablepro-agentd tablepro-askpass; do
-  if [[ ! -x "$CARGO_TARGET_DIR/release/$bin" ]]; then
-    echo "missing $CARGO_TARGET_DIR/release/$bin; run without DEB_SKIP_BUILD" >&2
+  if [[ ! -x "$CARGO_TARGET_DIR/$PROFILE/$bin" ]]; then
+    echo "missing $CARGO_TARGET_DIR/$PROFILE/$bin; run without DEB_SKIP_BUILD" >&2
     exit 1
   fi
 done
 
 STAGE="$OUT/$PKG_NAME"
 rm -rf "$STAGE"
-install -Dsm755 "$CARGO_TARGET_DIR/release/tablepro-app" "$STAGE/usr/bin/bookie"
-install -Dsm755 "$CARGO_TARGET_DIR/release/tablepro-agentd" "$STAGE/usr/bin/bookie-agentd"
-install -Dsm755 "$CARGO_TARGET_DIR/release/tablepro-askpass" "$STAGE/usr/bin/tablepro-askpass"
+install -Dsm755 "$CARGO_TARGET_DIR/$PROFILE/tablepro-app" "$STAGE/usr/bin/bookie"
+install -Dsm755 "$CARGO_TARGET_DIR/$PROFILE/tablepro-agentd" "$STAGE/usr/bin/bookie-agentd"
+install -Dsm755 "$CARGO_TARGET_DIR/$PROFILE/tablepro-askpass" "$STAGE/usr/bin/tablepro-askpass"
 ln -s bookie "$STAGE/usr/bin/tablepro"
 ln -s bookie-agentd "$STAGE/usr/bin/tablepro-agentd"
 install -Dm644 apps/linux/flatpak/com.tablepro.linux.desktop "$STAGE/usr/share/applications/com.tablepro.linux.desktop"

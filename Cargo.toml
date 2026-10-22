@@ -126,3 +126,9 @@ debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = false
+
+[profile.dist]
+inherits = "release"
+lto = "thin"
+codegen-units = 1
+panic = "unwind"

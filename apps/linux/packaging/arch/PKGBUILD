@@ -37,11 +37,27 @@ prepare() {
   cargo metadata --locked --offline --format-version 1 --no-deps > /dev/null
 }
 
+_build_profile() {
+  case "${BOOKIE_BUILD_PROFILE:-dist}" in
+    dist | release) printf '%s\n' "${BOOKIE_BUILD_PROFILE:-dist}" ;;
+    *)
+      printf 'BOOKIE_BUILD_PROFILE must be dist or release, got: %s\n' "$BOOKIE_BUILD_PROFILE" >&2
+      return 1
+      ;;
+  esac
+}
+
+_cargo_profile_dir() {
+  printf '%s/target/%s\n' "$srcdir" "$(_build_profile)"
+}
+
 build() {
+  local profile
+  profile="$(_build_profile)"
   cd "$srcdir/TablePro-${_commit}"
   export CARGO_TARGET_DIR="$srcdir/target"
-  cargo build --release --locked --offline -p tablepro-app -p tablepro-agentd
-  cargo build --release --locked --offline -p tablepro-ssh --bin tablepro-askpass
+  cargo build --profile "$profile" --locked --offline -p tablepro-app -p tablepro-agentd
+  cargo build --profile "$profile" --locked --offline -p tablepro-ssh --bin tablepro-askpass
 }
 
 check() {
@@ -53,10 +69,12 @@ check() {
 }
 
 package() {
+  local built
+  built="$(_cargo_profile_dir)"
   cd "$srcdir/TablePro-${_commit}"
-  install -Dm755 "$srcdir/target/release/tablepro-app" "$pkgdir/usr/bin/bookie"
-  install -Dm755 "$srcdir/target/release/tablepro-agentd" "$pkgdir/usr/bin/bookie-agentd"
-  install -Dm755 "$srcdir/target/release/tablepro-askpass" "$pkgdir/usr/bin/tablepro-askpass"
+  install -Dm755 "$built/tablepro-app" "$pkgdir/usr/bin/bookie"
+  install -Dm755 "$built/tablepro-agentd" "$pkgdir/usr/bin/bookie-agentd"
+  install -Dm755 "$built/tablepro-askpass" "$pkgdir/usr/bin/tablepro-askpass"
   ln -s bookie "$pkgdir/usr/bin/tablepro"
   ln -s bookie-agentd "$pkgdir/usr/bin/tablepro-agentd"
   install -Dm644 apps/linux/flatpak/com.tablepro.linux.desktop \

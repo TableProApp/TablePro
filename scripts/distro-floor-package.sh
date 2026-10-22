@@ -24,7 +24,7 @@ if [ -z "$package" ]; then
   staging="$cache/$sha.partial"
   rm -rf "$staging"
   mkdir -p "$staging"
-  docker run --rm -e "HOST_IDS=$(id -u):$(id -g)" -v "$root:/src:ro" -v "$staging:/out" \
+  docker run --rm -e "HOST_IDS=$(id -u):$(id -g)" -e "BOOKIE_BUILD_PROFILE=${BOOKIE_BUILD_PROFILE:-release}" -v "$root:/src:ro" -v "$staging:/out" \
     -v bookie-floor-build-target:/target "$image" bash -ceu '
       trap "chown -R \"$HOST_IDS\" /out" EXIT
       apt-get update -qq

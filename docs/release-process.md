@@ -13,6 +13,8 @@ A release is a git tag named `linux-vX.Y.Z` on the `linux` branch. Pushing the t
 | `bookie.pot` | `scripts/update-translations.py` | gettext template for translators; not committed to the repository |
 | `SHA256SUMS` | the publish job | `sha256sum --check SHA256SUMS` |
 
+The `.deb`, the Arch package and the AppImage build with the `dist` Cargo profile (thin LTO, one codegen unit), which makes the installed binaries about a quarter smaller. Test jobs build packages faster with `BOOKIE_BUILD_PROFILE=release`; `build-deb.sh` and the PKGBUILD accept only `dist` or `release`. The Flatpak manifest still builds with `release`.
+
 Every file also has build provenance recorded by GitHub (`gh attestation verify <file> --repo cozyGarage/BookiE`). Releases below 1.0 are marked pre-release. The AppImage is built on Debian testing, so it needs a distribution with a comparable glibc.
 
 ## Cutting a release
