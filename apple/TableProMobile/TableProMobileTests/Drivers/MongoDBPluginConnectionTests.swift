@@ -127,6 +127,23 @@ struct MongoDBPluginConnectionTests {
     }
 }
 
+struct MongoSessionKillsTests {
+    @Test("A session is killed once until that kill ends, so a resent Stop queues no second one")
+    func killsCoalescePerSession() {
+        var kills = MongoSessionKills()
+        let first = kills.begin("a")
+        let resent = kills.begin("a")
+        let other = kills.begin("b")
+        kills.end("a")
+        let afterEnd = kills.begin("a")
+
+        #expect(first)
+        #expect(!resent)
+        #expect(other)
+        #expect(afterEnd)
+    }
+}
+
 struct MongoDBHostListTests {
     @Test("Each host is written with its port once", arguments: [
         ("localhost", "localhost:27017"),

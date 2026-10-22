@@ -90,6 +90,7 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
     #if canImport(CLibMongoc)
     private var _activeSessionLsid: OpaquePointer?
     #endif
+    private var _sessionsBeingKilled = MongoSessionKills()
 
     var isConnected: Bool {
         stateLock.lock()
@@ -453,13 +454,20 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         stateLock.lock()
         _isCancelled = true
         #if canImport(CLibMongoc)
-        let lsid: OpaquePointer? = _activeSessionLsid.flatMap { bson_copy($0) }
+        var kill: (lsid: OpaquePointer, key: String)?
+        if let active = _activeSessionLsid, let key = bsonToJson(active), let copy = bson_copy(active) {
+            if _sessionsBeingKilled.begin(key) {
+                kill = (copy, key)
+            } else {
+                bson_destroy(copy)
+            }
+        }
         #endif
         stateLock.unlock()
 
         #if canImport(CLibMongoc)
-        guard let lsid else { return }
-        killSession(lsid: lsid)
+        guard let kill else { return }
+        killSession(lsid: kill.lsid, key: kill.key)
         #endif
     }
 
@@ -483,12 +491,15 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
     }
 
     // The connection's own queue is blocked inside the call being cancelled, so killSessions needs its own client.
-    private func killSession(lsid: OpaquePointer) {
+    private func killSession(lsid: OpaquePointer, key: String) {
         let uriString = buildUri()
         let session = QueueTransfer(value: lsid)
-        controlQueue.async {
+        controlQueue.async { [weak self] in
             let lsid = session.value
-            defer { bson_destroy(lsid) }
+            defer {
+                bson_destroy(lsid)
+                self?.finishedKilling(key)
+            }
             guard let controlClient = try? MongoDBConnection.makeClient(uriString) else { return }
             defer { mongoc_client_destroy(controlClient) }
 
@@ -508,6 +519,12 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
                 logger.warning("killSessions failed with code \(error.code, privacy: .public)")
             }
         }
+    }
+
+    private func finishedKilling(_ key: String) {
+        stateLock.lock()
+        _sessionsBeingKilled.end(key)
+        stateLock.unlock()
     }
 
     // The URI holds the password, so the error carries only libmongoc's reason.
