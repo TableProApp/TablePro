@@ -23,7 +23,7 @@ class XWindowAttributes(ctypes.Structure):
     ]
 
 
-ATSPI_WINDOW_Y_OFFSET = int(os.environ.get("TABLEPRO_GTK_Y_OFFSET", "19"))
+ATSPI_WINDOW_Y_OFFSET = gtk_input.window_y_offset()
 
 
 def x11_resize_window(width, height):

@@ -1,0 +1,18 @@
+{
+  "base": "a070efdd235e5586185b43806f9ddbdb06e8c619",
+  "environment": "Ubuntu 24.04 container, GTK 4.14.5, Adw.ApplicationWindow, isolated D-Bus and Xvfb",
+  "clicks": {
+    "old_default_19": false,
+    "selected_default_5": true
+  },
+  "target": {
+    "window": {
+      "x": 81,
+      "y": 69,
+      "width": 1126,
+      "height": 34
+    }
+  },
+  "selector_unit_tests": 4,
+  "forgejo_acceptance": "not run"
+}
