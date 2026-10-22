@@ -14,6 +14,7 @@
     <key name="query-timeout-secs" type="u"><default>60</default></key>
     <key name="csv-include-header" type="b"><default>true</default></key>
     <key name="color-scheme" type="s"><default>'system'</default></key>
+    <key name="theme" type="s"><default>'default'</default></key>
     <key name="editor-font-family" type="s"><default>''</default></key>
     <key name="editor-vim-mode" type="b"><default>false</default></key>
     <key name="null-display" type="s"><default>'standard'</default></key>
@@ -33,6 +34,7 @@
     <key name="query-timeout-secs" type="u"><default>60</default></key>
     <key name="csv-include-header" type="b"><default>true</default></key>
     <key name="color-scheme" type="s"><default>'system'</default></key>
+    <key name="theme" type="s"><default>'default'</default></key>
     <key name="editor-font-family" type="s"><default>''</default></key>
     <key name="editor-vim-mode" type="b"><default>false</default></key>
     <key name="null-display" type="s"><default>'standard'</default></key>

@@ -14,6 +14,8 @@ pub struct Preferences {
     #[serde(default)]
     pub color_scheme: ColorSchemePref,
     #[serde(default)]
+    pub theme: ThemePref,
+    #[serde(default)]
     pub editor_font_family: String,
     #[serde(default)]
     pub editor_vim_mode: bool,
@@ -95,6 +97,52 @@ impl ColorSchemePref {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemePref {
+    #[default]
+    Default,
+    Ledger,
+    Catppuccin,
+    Tokyo,
+    Gruvbox,
+}
+
+impl ThemePref {
+    pub const ALL: [Self; 5] = [
+        Self::Default,
+        Self::Ledger,
+        Self::Catppuccin,
+        Self::Tokyo,
+        Self::Gruvbox,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Ledger => "ledger",
+            Self::Catppuccin => "catppuccin",
+            Self::Tokyo => "tokyo",
+            Self::Gruvbox => "gruvbox",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|theme| theme.key() == key)
+            .unwrap_or_default()
+    }
+
+    pub fn index(self) -> u32 {
+        Self::ALL.iter().position(|theme| *theme == self).unwrap_or(0) as u32
+    }
+
+    pub fn from_index(index: u32) -> Self {
+        Self::ALL.get(index as usize).copied().unwrap_or_default()
+    }
+}
+
 fn default_history_retention_days() -> u32 {
     30
 }
@@ -121,6 +169,7 @@ impl Default for Preferences {
             query_timeout_secs: default_query_timeout_secs(),
             csv_include_header: default_csv_include_header(),
             color_scheme: ColorSchemePref::default(),
+            theme: ThemePref::default(),
             editor_font_family: String::new(),
             editor_vim_mode: false,
             null_display: NullDisplayPref::default(),
@@ -139,6 +188,20 @@ mod tests {
                 .unwrap();
         assert!(prefs.open_tables_in_preview_tab);
     }
+    #[test]
+    fn theme_rows_and_keys_agree_and_unknown_keys_fall_back() {
+        for (position, theme) in ThemePref::ALL.into_iter().enumerate() {
+            assert_eq!(ThemePref::from_index(position as u32), theme);
+            assert_eq!(ThemePref::from_key(theme.key()), theme);
+        }
+        assert_eq!(ThemePref::from_key("neon"), ThemePref::Default);
+        assert_eq!(ThemePref::from_index(99), ThemePref::Default);
+        let old: Preferences =
+            serde_json::from_str(r#"{"default_page_size":1000,"confirm_destructive":true,"editor_font_size":12}"#)
+                .unwrap();
+        assert_eq!(old.theme, ThemePref::Default);
+    }
+
     #[test]
     fn null_display_rows_and_keys_agree_and_unknown_keys_fall_back() {
         for (position, style) in NullDisplayPref::ALL.into_iter().enumerate() {

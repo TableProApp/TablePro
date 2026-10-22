@@ -2,7 +2,7 @@ use relm4::adw::prelude::*;
 use relm4::gtk::gio;
 use relm4::{adw, gtk};
 
-use crate::services::preferences::{ColorSchemePref, NullDisplayPref, PreferencesStore};
+use crate::services::preferences::{ColorSchemePref, NullDisplayPref, PreferencesStore, ThemePref};
 
 /// Must match `browse_tab`'s own `PAGE_SIZE_OPTIONS` (duplicated there and
 /// in `workspace_state.rs`, the same way those two already duplicate each
@@ -106,6 +106,29 @@ pub fn present(
         }
     });
 
+    let theme_row = adw::ComboRow::new();
+    theme_row.set_title(&crate::tr!("Theme"));
+    theme_row.set_subtitle(&crate::tr!(
+        "Colours for windows, sidebars and accents. Works with light and dark appearance."
+    ));
+    theme_row.set_model(Some(&gtk::StringList::new(
+        &crate::ui::theme::labels()
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+    )));
+    theme_row.set_selected(current.theme.index());
+    theme_row.connect_selected_notify({
+        let preferences = preferences.clone();
+        move |row| {
+            let theme = ThemePref::from_index(row.selected());
+            crate::ui::theme::apply(theme);
+            if let Err(error) = preferences.update(|prefs| prefs.theme = theme) {
+                tracing::warn!(%error, "preferences: theme rejected");
+            }
+        }
+    });
+
     let null_row = adw::ComboRow::new();
     null_row.set_title(&crate::tr!("NULL display"));
     null_row.set_subtitle(&crate::tr!(
@@ -135,6 +158,7 @@ pub fn present(
     general.add(&browse_group);
 
     appearance_group.add(&scheme_row);
+    appearance_group.add(&theme_row);
     appearance.add(&appearance_group);
 
     let history_group = adw::PreferencesGroup::builder()

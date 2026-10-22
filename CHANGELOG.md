@@ -4,6 +4,7 @@
 
 ### Added
 
+- Preferences has a **Theme** choice: Default, Ledger (the BookiE brand colours), Catppuccin, Tokyo Night and Gruvbox, each with a light and a dark variant that follows the Appearance setting. The SQL editor, the Structure tab's SQL preview and the JSON cell editor follow the theme too.
 - SQLite files open from the file manager (Open With BookiE), and `bookie books.db` or `bookie postgres://user@host/db` opens a database file or a connection URL from a terminal. A URL asks you to confirm before it is imported and connected; a missing or non-database file is refused instead of creating an empty database. A second launch hands its argument to the running window. DuckDB files open from the terminal only.
 
 ### Changed

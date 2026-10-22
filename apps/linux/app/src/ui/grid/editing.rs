@@ -437,6 +437,7 @@ fn show_json_popover(label: &CellEditor, col_index: usize, sender: &relm4::Sende
     buffer.set_text(&seed);
 
     let view = sourceview5::View::with_buffer(&buffer);
+    crate::ui::theme::style_editor(&view);
     view.set_show_line_numbers(true);
     view.set_monospace(true);
     view.set_auto_indent(true);

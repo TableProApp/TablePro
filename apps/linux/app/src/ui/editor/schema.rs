@@ -1,6 +1,5 @@
 use relm4::adw::prelude::*;
-use relm4::{adw, gtk};
-use sourceview5::prelude::*;
+use relm4::gtk;
 
 pub fn derive_tab_label(query: &str) -> String {
     for line in query.lines() {
@@ -18,16 +17,7 @@ pub fn derive_tab_label(query: &str) -> String {
 }
 
 pub(crate) fn apply_editor_scheme(view: &sourceview5::View) {
-    let scheme_name = if adw::StyleManager::default().is_dark() {
-        "Adwaita-dark"
-    } else {
-        "Adwaita"
-    };
-    if let Some(scheme) = sourceview5::StyleSchemeManager::default().scheme(scheme_name)
-        && let Ok(buffer) = view.buffer().downcast::<sourceview5::Buffer>()
-    {
-        buffer.set_style_scheme(Some(&scheme));
-    }
+    crate::ui::theme::style_editor(view);
 }
 
 /// Scopes the font-size CSS to source views carrying this class, rather

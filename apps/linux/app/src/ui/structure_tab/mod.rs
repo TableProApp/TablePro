@@ -34,9 +34,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use relm4::adw::prelude::*;
-use relm4::gtk::glib;
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, adw, gtk};
-use sourceview5::prelude::BufferExt;
 
 use tablepro_core::sql_ddl::{BuildDdlError, DraftColumn};
 use tablepro_core::{ColumnInfo, ForeignKeyInfo, IndexInfo};
@@ -158,11 +156,6 @@ pub struct StructureTab {
     /// flag is set; `StructureLoaded` flips it back and triggers a
     /// fresh recompute against the up-to-date snapshots.
     refetching: Rc<Cell<bool>>,
-    /// Disconnected in `shutdown`. Mirrors the same leak in
-    /// `ui/editor/mod.rs`: without this, every tab's `connect_dark_notify`
-    /// closure -- which strongly captures this tab's SQL preview buffer --
-    /// stayed registered on the process-global `AdwStyleManager` forever.
-    dark_notify_handler: Option<glib::SignalHandlerId>,
 }
 
 #[derive(Debug)]
@@ -530,14 +523,7 @@ impl SimpleComponent for StructureTab {
         sql_view.set_left_margin(6);
         sql_view.set_right_margin(6);
         sql_view.set_bottom_margin(6);
-        // Match the system light / dark scheme. Mirrors the editor.rs
-        // hook so the SQL preview's syntax colours track the user's
-        // theme choice instead of staying frozen on the boot scheme.
-        apply_sql_scheme(&sql_buffer);
-        let buffer_for_theme = sql_buffer.clone();
-        let dark_notify_handler = adw::StyleManager::default().connect_dark_notify(move |_| {
-            apply_sql_scheme(&buffer_for_theme);
-        });
+        crate::ui::theme::style_editor(&sql_view);
         let sql_scroll = gtk::ScrolledWindow::builder().child(&sql_view).vexpand(true).build();
         // Copy SQL toolbar — saves the user from clicking into the
         // sourceview, Ctrl+A, Ctrl+C every time they want to paste
@@ -797,19 +783,12 @@ impl SimpleComponent for StructureTab {
             next_column_seq: Rc::new(RefCell::new(1)),
             column_popovers: Rc::new(RefCell::new(Vec::new())),
             refetching: Rc::new(Cell::new(false)),
-            dark_notify_handler: Some(dark_notify_handler),
         };
 
         // Initial render so New-mode tabs aren't blank.
         sender.input(StructureTabInput::Refresh);
 
         ComponentParts { model, widgets: () }
-    }
-
-    fn shutdown(&mut self, _widgets: &mut Self::Widgets, _output: relm4::Sender<Self::Output>) {
-        if let Some(handler) = self.dark_notify_handler.take() {
-            adw::StyleManager::default().disconnect(handler);
-        }
     }
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
@@ -1078,19 +1057,5 @@ impl SimpleComponent for StructureTab {
                 });
             }
         }
-    }
-}
-
-/// Pick the sourceview5 style scheme matching the active Adwaita
-/// light / dark mode. Called on init and on `connect_dark_notify`
-/// so the SQL preview tracks system theme switches.
-fn apply_sql_scheme(buffer: &sourceview5::Buffer) {
-    let scheme_name = if adw::StyleManager::default().is_dark() {
-        "Adwaita-dark"
-    } else {
-        "Adwaita"
-    };
-    if let Some(scheme) = sourceview5::StyleSchemeManager::default().scheme(scheme_name) {
-        buffer.set_style_scheme(Some(&scheme));
     }
 }

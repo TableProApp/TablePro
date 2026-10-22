@@ -31,6 +31,7 @@ mod ssh_prompt;
 mod ssh_section;
 mod structure_tab;
 mod structure_tab_dialogs;
+mod theme;
 mod welcome_view;
 
 pub use app::{App, AppInit};

@@ -9,7 +9,7 @@ use relm4::adw;
 use super::config_io::{atomic_write_bytes, atomic_write_json, xdg_config_path};
 use super::state_file::StateFile;
 
-pub use tablepro_app_services::preferences::{ColorSchemePref, NullDisplayPref, Preferences};
+pub use tablepro_app_services::preferences::{ColorSchemePref, NullDisplayPref, Preferences, ThemePref};
 
 pub fn color_scheme_style(scheme: ColorSchemePref) -> adw::ColorScheme {
     match scheme {
@@ -176,6 +176,7 @@ fn read_settings(settings: &gio::Settings) -> Preferences {
         query_timeout_secs: settings.uint("query-timeout-secs"),
         csv_include_header: settings.boolean("csv-include-header"),
         color_scheme: ColorSchemePref::from_key(settings.string("color-scheme").as_str()),
+        theme: ThemePref::from_key(settings.string("theme").as_str()),
         editor_font_family: settings.string("editor-font-family").to_string(),
         editor_vim_mode: settings.boolean("editor-vim-mode"),
         null_display: NullDisplayPref::from_key(settings.string("null-display").as_str()),
@@ -193,6 +194,7 @@ fn write_settings(settings: &gio::Settings, prefs: &Preferences) -> Result<(), S
         settings.set_uint("query-timeout-secs", prefs.query_timeout_secs),
         settings.set_boolean("csv-include-header", prefs.csv_include_header),
         settings.set_string("color-scheme", prefs.color_scheme.key()),
+        settings.set_string("theme", prefs.theme.key()),
         settings.set_string("editor-font-family", &prefs.editor_font_family),
         settings.set_boolean("editor-vim-mode", prefs.editor_vim_mode),
         settings.set_string("null-display", prefs.null_display.key()),
@@ -640,6 +642,15 @@ mod tests {
         });
         assert_eq!(before.editor_font_family, "");
         assert_eq!(after.editor_font_family, "Iosevka");
+    }
+
+    #[test]
+    fn the_theme_defaults_to_default_and_survives_a_gsettings_round_trip() {
+        let (before, after) = after_a_round_trip("/com/tablepro/linux/theme/", |prefs| {
+            prefs.theme = ThemePref::Gruvbox;
+        });
+        assert_eq!(before.theme, ThemePref::Default);
+        assert_eq!(after.theme, ThemePref::Gruvbox);
     }
 
     #[test]
