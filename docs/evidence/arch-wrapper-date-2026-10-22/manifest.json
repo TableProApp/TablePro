@@ -1,0 +1,90 @@
+{
+  "base": "f22a4905ddfe4cff74fd37247d4d028ac9c534e3",
+  "source_sha256": {
+    "scripts/test-arch-package-container.sh": "20ac64a0202ebb5db026b325f30836aadfe2afc70def3d5505fb18a4bedcf864",
+    "scripts/tests/test_arch_package_container.py": "645666401e49e7c4ab0ae18641b5d76a1f814e466c570a9cd8dab87fbaf8f2b4",
+    "scripts/test-arch-package.sh": "e06f4e627de094b2a933f45aa9e3efc5158dfe026f4a45243cbc106030c4990f",
+    "scripts/validate-arch-package.sh": "0888355eafda95fb73b718f97389f0cd61a7174934d97e0f44f90d8766eaa4f1"
+  },
+  "checks": {
+    "wrapper_unit_tests": 10,
+    "preflight": {
+      "status": "passed",
+      "harness": 355,
+      "unit": 2056,
+      "sandbox": 2059,
+      "redis_cancellation": 1
+    },
+    "shellcheck": "passed",
+    "bash_syntax": "passed",
+    "real_package_lifecycle": {
+      "status": "passed",
+      "old": "0.1.5-1",
+      "candidate": "0.2.0-1",
+      "candidate_is_existing_draft": true,
+      "existing_config_refusal": "passed",
+      "existing_history_refusal": "passed",
+      "upgrade_removal_sentinels": "preserved",
+      "fixture_cleanup": "passed",
+      "container_removed": true
+    }
+  },
+  "packages": {
+    "candidate_is_existing_draft": true,
+    "candidate_checksum_verified": true,
+    "packages": [
+      {
+        "file": "bookie-0.1.5-1-x86_64.pkg.tar.zst",
+        "sha256": "c9d1b0ff043d0ae05cb0f26de3485928ca1c5916f9582816e459a71f2aafecd7",
+        "depends": [
+          "gtk4>=1:4.22",
+          "glib2>=2.88",
+          "libadwaita>=1:1.9",
+          "gtksourceview5>=5.18",
+          "libsecret",
+          "openssl",
+          "krb5",
+          "sqlite"
+        ]
+      },
+      {
+        "file": "bookie-0.2.0-1-x86_64.pkg.tar.zst",
+        "sha256": "3a9d10c2e22930aba86d8c828b7a25a2c1cf35386c7b92d8a0fd88c52ddc301e",
+        "depends": [
+          "gtk4>=1:4.14",
+          "glib2>=2.80",
+          "libadwaita>=1:1.5",
+          "gtksourceview5>=5.12",
+          "libsecret",
+          "openssl",
+          "krb5",
+          "sqlite"
+        ],
+        "source_commit": "bd31a1d8b3dc83200c324b9f37fa83f3660d8aab",
+        "release_date": "2026-10-21"
+      }
+    ]
+  },
+  "scope": "wrapper data forwarding plus existing artifact lifecycle; not a full wrapper candidate rebuild or native desktop qualification",
+  "review": "source/lifecycle/input self-review, not independent",
+  "pending": [
+    "GitHub exact-head checks",
+    "maintainer Forgejo",
+    "full wrapper rebuild/nightly",
+    "native desktop acceptance"
+  ],
+  "artifacts_sha256": {
+    "README.md": "efc9bf1d398d6b54fae4cbac5e1182cc9a402f3304d3ad22410cdfe54d9a8f2e",
+    "acceptance.sh": "4dd091617bde3333b1e0a8a23339dc20e6d317165047d8ae712bf87b71018e48",
+    "bash-syntax.log.gz": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+    "before.log.gz": "c73ccb7ace49c5eedc3eb33e7808a07af49b28d62f5563204d6a8d8ee2d06a28",
+    "container-cleanup.json": "ce7f3634643f4df66036a2b52dead05b1dc51460b878d36dba964f47597e17d9",
+    "container-exit.json": "5bc232b82de377a5655a39a2af9d7ae0fc868de5b9df957e18905cb914606c88",
+    "container.json": "6e6606a6be67b282c4b5b0874f83ca5734e6738eb1aabedc981a4e0afc85261f",
+    "final-preflight.log.gz": "9613da73f30c995819014b0910ce80f05dae1d10dd9da681c58c3a5a925366c9",
+    "focused.log.gz": "adfe1a8fb3c7a2413abb3218be91f43a271a922a6dc52456bfd4b648523ba74f",
+    "package-lifecycle.log.gz": "04ff11635f7d5cc803048d1b8200b830ab06db940253b9284e9419da1c017947",
+    "packages.json": "1f3d14c59dbcb38ee000d50632d0614198639453d85f3868dd9d16830f2193b9",
+    "shellcheck.log.gz": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83"
+  }
+}

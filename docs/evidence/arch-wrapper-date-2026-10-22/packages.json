@@ -1,0 +1,36 @@
+{
+  "candidate_is_existing_draft": true,
+  "candidate_checksum_verified": true,
+  "packages": [
+    {
+      "file": "bookie-0.1.5-1-x86_64.pkg.tar.zst",
+      "sha256": "c9d1b0ff043d0ae05cb0f26de3485928ca1c5916f9582816e459a71f2aafecd7",
+      "depends": [
+        "gtk4>=1:4.22",
+        "glib2>=2.88",
+        "libadwaita>=1:1.9",
+        "gtksourceview5>=5.18",
+        "libsecret",
+        "openssl",
+        "krb5",
+        "sqlite"
+      ]
+    },
+    {
+      "file": "bookie-0.2.0-1-x86_64.pkg.tar.zst",
+      "sha256": "3a9d10c2e22930aba86d8c828b7a25a2c1cf35386c7b92d8a0fd88c52ddc301e",
+      "depends": [
+        "gtk4>=1:4.14",
+        "glib2>=2.80",
+        "libadwaita>=1:1.5",
+        "gtksourceview5>=5.12",
+        "libsecret",
+        "openssl",
+        "krb5",
+        "sqlite"
+      ],
+      "source_commit": "bd31a1d8b3dc83200c324b9f37fa83f3660d8aab",
+      "release_date": "2026-10-21"
+    }
+  ]
+}

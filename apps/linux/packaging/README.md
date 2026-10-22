@@ -9,10 +9,20 @@ The recipe in [`arch/PKGBUILD`](arch/PKGBUILD) accepts only an immutable commit 
 After committing and validating the candidate (no published tag required), from the repository root:
 
 ```bash
-TABLEPRO_RC_COMMIT="$(git rev-parse HEAD)" TABLEPRO_RC_VERSION=0.2.0 ./scripts/build-arch-rc.sh
+TABLEPRO_RC_COMMIT="$(git rev-parse HEAD)" \
+TABLEPRO_RC_VERSION="$(python3 scripts/check-release-version.py --print)" \
+TABLEPRO_RC_DATE="$(date -u +%F)" bash scripts/build-arch-rc.sh
 ```
 
-The example builds the current 0.2.0 candidate from the committed tree; it does not rebuild the released 0.1.5 package. The helper refuses a dirty tree or a candidate SHA other than `HEAD`. It archives that exact local commit, computes the checksum, builds with `makepkg`, and runs `namcap` and package-content validation. Set `TABLEPRO_RC_TAG=linux-v…` instead of `TABLEPRO_RC_COMMIT` to verify an already published tag against the remote. The Arch package replaces/conflicts with `tablepro`; it retains production paths, application ID, gettext domain, keyring records, and legacy commands. Publication remains a separate decision.
+The example builds the workspace release version from the committed tree. The helper refuses a dirty tree or a candidate SHA other than `HEAD`. It archives that exact local commit, computes the checksum, builds with `makepkg`, and runs `namcap` and package-content validation. Set `TABLEPRO_RC_TAG=linux-v…` instead of `TABLEPRO_RC_COMMIT` to verify an already published tag against the remote. The Arch package replaces/conflicts with `tablepro`; it retains production paths, application ID, gettext domain, keyring records, and legacy commands. Publication remains a separate decision.
+
+The standalone build, upgrade and removal wrapper runs in an isolated Arch container:
+
+```bash
+bash scripts/test-arch-package-container.sh
+```
+
+Its version defaults to the workspace version and must match it. The candidate date uses `ARCH_CANDIDATE_DATE`, then an inherited `TABLEPRO_RC_DATE`, then the current UTC date. Pin `ARCH_CANDIDATE_DATE` when repeating a dated candidate. Invalid versions and calendar dates are refused before Docker starts. `ARCH_RELEASED_URL` selects the published upgrade fixture.
 
 Package-content checks can run in a clean Arch VM or container; they do not qualify PKG-1. Install, upgrade, rollback and removal acceptance requires the target Arch or Omarchy system running Hyprland on native Wayland. Run the UI smoke in that graphical session:
 
