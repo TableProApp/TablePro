@@ -170,7 +170,7 @@ Microsoft's mssql-tds is checked again each release as a SQL Server client. Toda
 
 ### Ideas
 
-Not committed: server monitoring (sessions, locks, slow queries), maintenance commands, backup and restore, replication status, comparing result sets, schema diff and data sync between connections, scheduled queries, and opt-in usage telemetry.
+Not committed: server monitoring (sessions, locks, slow queries), maintenance commands, backup and restore, replication status, comparing result sets, schema diff and data sync between connections, drawn query plans, scheduled queries, and opt-in usage telemetry.
 
 ## Release criteria
 
