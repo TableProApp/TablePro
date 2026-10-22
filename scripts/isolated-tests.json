@@ -350,6 +350,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::grid::column_visibility::tests::resetting_widths_forgets_the_saved_widths_and_frees_the_columns"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::grid::display::tests::typed_widget_slots_round_trip_and_keep_same_value_types_apart"
     ],
     [

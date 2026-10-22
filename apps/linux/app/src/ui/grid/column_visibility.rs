@@ -74,13 +74,40 @@ fn present(
             toggle(index, row, &rows, &columns, &names, &persist);
         });
     }
+    let widths = adw::PreferencesGroup::new();
+    let reset = adw::ActionRow::builder()
+        .title(crate::tr!("Column widths"))
+        .subtitle(crate::tr!("Forget the widths you set by dragging"))
+        .build();
+    let reset_button = gtk::Button::builder()
+        .label(crate::tr!("Reset"))
+        .valign(gtk::Align::Center)
+        .build();
+    {
+        let (columns, persist) = (columns.clone(), persist.clone());
+        reset_button.connect_clicked(move |_| reset_widths(&columns, &persist));
+    }
+    reset.add_suffix(&reset_button);
+    widths.add(&reset);
     let page = adw::PreferencesPage::new();
     page.add(&group);
+    page.add(&widths);
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&adw::HeaderBar::new());
     toolbar.set_content(Some(&page));
     dialog.set_child(Some(&toolbar));
     dialog.present(Some(view));
+}
+
+fn reset_widths(columns: &[gtk::glib::WeakRef<gtk::ColumnViewColumn>], persist: &Option<Persist>) {
+    if let Some((id, table, store)) = persist
+        && let Err(error) = store.forget_widths(*id, table)
+    {
+        tracing::warn!(%error, "column widths were not reset");
+    }
+    for column in columns.iter().filter_map(|column| column.upgrade()) {
+        column.set_fixed_width(-1);
+    }
 }
 
 fn toggle(
@@ -161,5 +188,29 @@ mod tests {
             store.hidden_columns(id, "users"),
             ["name", "email"].map(String::from).into_iter().collect()
         );
+    }
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn resetting_widths_forgets_the_saved_widths_and_frees_the_columns() {
+        gtk::init().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let store = ColumnWidthStore::load_in(dir.path());
+        let id = uuid::Uuid::new_v4();
+        let columns: Vec<gtk::ColumnViewColumn> = ["id", "name"]
+            .iter()
+            .map(|name| gtk::ColumnViewColumn::new(Some(name), None::<gtk::ListItemFactory>))
+            .collect();
+        for (column, name) in columns.iter().zip(["id", "name"]) {
+            column.set_fixed_width(180);
+            store.save(id, "users", name, 180).unwrap();
+        }
+        store.save(id, "other", "id", 77).unwrap();
+        let weak: Vec<_> = columns.iter().map(|column| column.downgrade()).collect();
+
+        reset_widths(&weak, &Some((id, "users".to_string(), store.clone())));
+
+        assert!(columns.iter().all(|column| column.fixed_width() < 0));
+        assert_eq!(store.load(id, "users", "id"), None);
+        assert_eq!(store.load(id, "other", "id"), Some(77));
     }
 }

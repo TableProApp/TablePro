@@ -40,7 +40,7 @@ Drivers are linked at build time. There is no plugin system ([ADR 0001](decision
 - NULL, empty text and unsupported values look different. Booleans show a check box with a third state for NULL.
 - The header shows each column's type. Primary key columns have a key mark, foreign key columns a link mark, and a column comment appears under the name.
 - Filter with the filter bar, and save filters by name per table. Sort by clicking a header.
-- Hide and reorder columns. The choice is remembered per table.
+- Hide and reorder columns, and reset dragged column widths. The choice is remembered per table.
 - Long values show a preview and their size. View Value, Copy Value and Edit Full Value work on the whole value.
 - The row inspector shows every column of the selected row. Selection statistics show count, sum, average, minimum and maximum.
 

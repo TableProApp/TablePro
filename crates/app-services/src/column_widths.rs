@@ -120,6 +120,15 @@ impl ColumnWidthStore {
         })
     }
 
+    pub fn forget_widths(&self, connection_id: Uuid, table: &str) -> Result<(), String> {
+        let key = connection_id.to_string();
+        self.file.update(|map| {
+            if let Some(tables) = map.get_mut(&key) {
+                tables.remove(table);
+            }
+        })
+    }
+
     pub fn forget_connection(&self, connection_id: Uuid) -> Result<(), String> {
         let key = connection_id.to_string();
         self.file.update(|map| {
@@ -338,5 +347,23 @@ mod tests {
             reopened.column_order(id, "users"),
             vec!["name".to_string(), "id".to_string()]
         );
+    }
+
+    #[test]
+    fn forgetting_widths_clears_one_table_and_keeps_the_others() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ColumnWidthStore::load_in(dir.path());
+        let id = Uuid::new_v4();
+        store.save(id, "orders", "total", 140).unwrap();
+        store.save(id, "orders", "note", 300).unwrap();
+        store.save(id, "items", "sku", 90).unwrap();
+        store.forget_widths(id, "orders").unwrap();
+        assert_eq!(store.load(id, "orders", "total"), None);
+        assert_eq!(store.load(id, "orders", "note"), None);
+        assert_eq!(store.load(id, "items", "sku"), Some(90));
+        store.flush().unwrap();
+        let reopened = ColumnWidthStore::load_in(dir.path());
+        assert_eq!(reopened.load(id, "orders", "total"), None);
+        assert_eq!(reopened.load(id, "items", "sku"), Some(90));
     }
 }
