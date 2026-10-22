@@ -56,9 +56,14 @@ public struct PushOutcome: Sendable {
         self.failures = failures
     }
 
-    // A rebased save also holds another device's change, which the local copy takes from the next pull.
-    public var savedRecordsOfLocalCopies: [CKRecord] {
-        savedRecords.filter { !rebasedRecordIDs.contains($0.key) }.map(\.value)
+    // A rebased save also holds another device's change the local copy has not taken yet, so the record this
+    // device pushed stays the base until it does. Its old change tag gets the next push refused and merged
+    // onto the saved one, an edit back to an earlier value included.
+    public func savedBases(pushed edits: [CKRecord.ID: SyncRecordEdit]) -> [CKRecord] {
+        savedRecords.map { recordID, saved in
+            guard rebasedRecordIDs.contains(recordID), let pushed = edits[recordID]?.record else { return saved }
+            return pushed
+        }
     }
 
     public var hasFailures: Bool { !failures.isEmpty }

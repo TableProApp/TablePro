@@ -697,13 +697,14 @@ final class IOSSyncCoordinator {
         let batch = pushBatch(from: state, savedQueries: getSavedQueries?(), in: zoneID)
         guard !batch.edits.isEmpty || !batch.deletions.isEmpty else { return nil }
 
+        let edits = Dictionary(batch.edits.map { ($0.recordID, $0) }, uniquingKeysWith: { _, last in last })
         var outcome: PushOutcome
         var interruption: (any Error)?
         do {
             outcome = try await SyncConflictRebase.push(
                 records: batch.edits.map(\.record),
                 deletions: batch.deletions,
-                edits: Dictionary(batch.edits.map { ($0.recordID, $0) }, uniquingKeysWith: { _, last in last })
+                edits: edits
             ) {
                 try await transport.push(records: $0, deletions: $1)
             } fetch: {
@@ -717,7 +718,7 @@ final class IOSSyncCoordinator {
             return SyncStepFailure(error)
         }
         outcome.acceptMissingDeletions(of: batch.deletions)
-        settle(outcome, generationsAtPush: generationsAtPush)
+        settle(outcome, edits: edits, generationsAtPush: generationsAtPush)
 
         let itemFailure = SyncStepFailure(outcome)
         if let interruption {
@@ -732,8 +733,8 @@ final class IOSSyncCoordinator {
         return itemFailure
     }
 
-    private func settle(_ outcome: PushOutcome, generationsAtPush: [EditKey: Int]) {
-        recordCache.store(outcome.savedRecordsOfLocalCopies)
+    private func settle(_ outcome: PushOutcome, edits: [CKRecord.ID: SyncRecordEdit], generationsAtPush: [EditKey: Int]) {
+        recordCache.store(outcome.savedBases(pushed: edits))
         recordCache.remove(Array(outcome.deletedRecordIDs))
 
         for recordID in outcome.savedRecords.keys {

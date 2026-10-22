@@ -7,6 +7,11 @@ import TableProSyncTransport
 import Testing
 
 @MainActor
+private final class UndoOnce {
+    var pending = true
+}
+
+@MainActor
 struct SyncConflictRebaseTests {
     private static let zoneID = SyncTestEnvironment.zoneID
     private let environment: SyncTestEnvironment
@@ -262,6 +267,35 @@ struct SyncConflictRebaseTests {
         #expect(await coordinator.applyPullResult(PullResult(changedRecords: [server], deletedRecordIDs: [], newToken: nil)))
 
         #expect(environment.tags.tag(for: tag.id)?.name == "production")
+    }
+
+    @Test("A field set back to its old value while a merged save is in flight reaches iCloud on the next push")
+    func undoDuringMergedSaveIsPushed() async throws {
+        let (tag, cached, server) = try recolouredTag()
+        let tags = environment.tags
+        let undo = UndoOnce()
+        let transport = ScriptedSyncTransport(
+            zoneID: Self.zoneID,
+            duringPush: {
+                guard undo.pending else { return }
+                undo.pending = false
+                _ = tags.saveTags([tag])
+            },
+            echoing: { records, _ in Self.latestPushes(records) }
+        )
+        await transport.holdNewerCopy(server, of: cached.recordID)
+        let coordinator = environment.makeCoordinator(transport: transport)
+
+        _ = await coordinator.runSyncCycle()
+        #expect(environment.tags.tag(for: tag.id)?.color == .red)
+
+        let merged = try await lastPush(of: cached.recordID, in: transport)
+        await transport.holdNewerCopy(merged, of: cached.recordID)
+        #expect(await coordinator.runSyncCycle() == nil)
+
+        let pushed = try #require(SyncRecordMapper.toTag(try await lastPush(of: cached.recordID, in: transport)))
+        #expect(pushed.name == "production")
+        #expect(pushed.color == .red)
     }
 
     @Test("A route lands on the server's copy by the rules a dial uses")

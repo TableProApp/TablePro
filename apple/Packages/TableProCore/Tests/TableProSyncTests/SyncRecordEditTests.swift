@@ -173,7 +173,7 @@ struct SyncRecordEditTests {
         #expect(outcome.didSave(edit.recordID))
         #expect(outcome.hasFailures == false)
         #expect(outcome.rebasedRecordIDs == [edit.recordID])
-        #expect(outcome.savedRecordsOfLocalCopies.isEmpty)
+        #expect(outcome.savedBases(pushed: [edit.recordID: edit]).first === pushed)
     }
 
     @Test("A record refused in every round stays pending")
@@ -367,7 +367,7 @@ struct SyncRecordEditTests {
         } catch let interruption as SyncPushInterruption {
             #expect(interruption.completed.didSave(saved.recordID))
             #expect(interruption.completed.failures[edit.recordID]?.isConflict == true)
-            #expect(interruption.completed.savedRecordsOfLocalCopies.map(\.recordID) == [saved.recordID])
+            #expect(interruption.completed.savedBases(pushed: [edit.recordID: edit]).map(\.recordID) == [saved.recordID])
             #expect(SyncFailure(interruption) == .offline)
         }
     }

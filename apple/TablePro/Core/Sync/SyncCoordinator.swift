@@ -599,7 +599,7 @@ final class SyncCoordinator: ObservableObject {
         }
         outcome.acceptMissingDeletions(of: deletions)
 
-        recordCache.store(outcome.savedRecordsOfLocalCopies)
+        recordCache.store(outcome.savedBases(pushed: batch.editsByRecordID))
         recordCache.remove(Array(outcome.deletedRecordIDs))
 
         let savedRecords = settleSavedRecords(outcome, batch: batch, identities: identities, snapshot: snapshot)

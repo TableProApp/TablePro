@@ -1467,6 +1467,43 @@ struct IOSSyncCoordinatorTests {
         #expect(coordinator.status.error == nil)
     }
 
+    @Test("A field set back to its old value while a merged save is in flight reaches iCloud on the next sync")
+    func undoDuringMergedSaveIsPushed() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Production", type: .postgresql, host: "db", port: 5_432)
+        box.connections = [local]
+        let cached = SyncRecordMapper.toRecord(local, zoneID: zoneID)
+        SyncRecordCache(directory: cacheDirectory, defaults: nil).store([cached])
+        let server = try copy(cached)
+        server.fields(ConnectionSyncField.self)[.name] = "Production (Mac)"
+        let transport = FakeSyncTransport(remoteRecords: [server], box: box)
+        await transport.holdNewerCopy(server)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        box.connections[0].port = 6_543
+        coordinator.markDirty(local.id)
+        var undone = false
+        box.duringPush = {
+            guard !undone else { return }
+            undone = true
+            box.connections[0].port = 5_432
+            coordinator.markDirty(local.id)
+        }
+
+        await coordinator.sync()
+        #expect(box.connections.first?.port == 5_432)
+
+        let merged = try #require(await transport.pushedRecords.last { $0.recordID == cached.recordID })
+        await transport.holdNewerCopy(merged)
+        await coordinator.sync()
+
+        let pushed = try #require(await transport.pushedRecords.last { $0.recordID == cached.recordID })
+        let sent = try #require(SyncRecordMapper.toConnection(pushed))
+        #expect(sent.name == "Production (Mac)")
+        #expect(sent.port == 5_432)
+        #expect(box.connections.first?.port == 5_432)
+        #expect(box.connections.first?.name == "Production (Mac)")
+    }
+
     @Test("A saved query edited here keeps the name another device gave it")
     func dirtySavedQueryKeepsAnotherDevicesName() async throws {
         let box = LibraryStateBox()
