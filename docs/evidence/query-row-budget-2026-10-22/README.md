@@ -1,6 +1,6 @@
 # Query row decoding budget, October 22
 
-Status: local candidate; not committed, published or accepted by Forgejo.
+Status: merged into Linux through [#1394](https://github.com/cozyGarage/BookiE/pull/1394), commit `d38a0185608b7a6f4e42c2ac70456047cc676dab`. The owning issue is closed. Measurements below retain their original candidate scope.
 Owning issue: [#1382](https://github.com/cozyGarage/BookiE/issues/1382).
 
 ## Defect and change
@@ -31,7 +31,7 @@ The shared unit regression additionally checks that a small raw row which expand
 
 The earlier claim that MySQL preflight was reverted is superseded: borrowed SQLx byte decoding is present in the candidate, and its transaction byte-budget/reuse regression passed, including the subsequent `SELECT 42`.
 
-Remaining acceptance: publish and review the patch; run GitHub checks and the exact committed candidate through Forgejo; verify results on the current Linux baseline. The wider CPU and memory work remains open under [#1272](https://github.com/cozyGarage/BookiE/issues/1272).
+Delivery update: the patch was published as #1392 and included in merged train #1394. The [owning issue closure](https://github.com/cozyGarage/BookiE/issues/1382#issuecomment-6339653734) records acceptance. This review did not independently rerun or inspect the Forgejo run. The wider CPU and memory work remains open under [#1272](https://github.com/cozyGarage/BookiE/issues/1272).
 
 ## Repeated comparison with preserved output
 
