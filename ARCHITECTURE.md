@@ -4,6 +4,10 @@
 
 The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE). The Cargo workspace lives at the repository root (Rust 1.98). Crate and Cargo binary names stay `tablepro-*`. Packaging and Meson install `bookie` / `bookie-agentd` and add `tablepro` / `tablepro-agentd` aliases. App ID, XDG paths, keyring schema, UUIDs, audit format and protocol contracts stay `tablepro` / `com.tablepro.linux`. Check the [active sprint](docs/bookie-0.2-sprint.md) before renaming any of them.
 
+![BookiE architecture overview: the desktop app and the headless MCP host reach every database through one PolicyGuard, then routing and static drivers](docs/images/architecture-overview.svg)
+
+DuckDB is an optional build feature and is not shown. The diagrams below give the detail.
+
 ## Repository layout
 
 | Path | Holds |
@@ -105,7 +109,7 @@ flowchart TB
     end
 
     subgraph drivers["Static drivers"]
-        drv["postgres · mysql · sqlite · mssql<br/>clickhouse · redis · mongodb · duckdb"]
+        drv["postgres · mysql · sqlite · mssql<br/>clickhouse · redis · mongodb<br/>duckdb (optional build feature)"]
     end
 
     app --> mcp
@@ -179,6 +183,10 @@ The optional cursor path is governed by `PolicyGuard`: it accepts one read state
 ## Governed request pipeline
 
 One path for the GTK app, MCP tools and `bookie-agentd`:
+
+![The request path: resolve, route, connect, guard, execute, record](docs/images/request-path.svg)
+
+The sequence in detail:
 
 ```mermaid
 sequenceDiagram

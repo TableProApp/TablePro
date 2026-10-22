@@ -1,6 +1,46 @@
-# BookiE
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/banner-dark.svg">
+    <img alt="BookiE: a native database client for Linux" src="docs/brand/banner-light.svg" width="100%">
+  </picture>
+</p>
 
 BookiE is a free, open-source database client for Linux, built for data analysts, database administrators, and developers. Browse tables, write SQL, investigate results, and review changes in a native desktop workspace.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/browse-dark.png">
+    <img alt="BookiE browsing a table of books, with column types, a key mark on the primary key and a link mark on the foreign key" src="docs/images/browse-light.png" width="100%">
+  </picture>
+</p>
+
+## At a glance
+
+| | |
+|---|---|
+| Platform | Linux, with a native GTK4 and libadwaita interface. |
+| Databases | PostgreSQL, MySQL and MariaDB, SQLite, SQL Server and ClickHouse. MongoDB and Redis are experimental. See the [driver maturity table](docs/adding-drivers.md#driver-maturity). |
+| Cost | Every shipped feature is free, with no account, license key, subscription or paid tier. |
+| Credentials | Kept in the desktop keyring (Secret Service). |
+| Safety | Every statement is checked before it runs, and governed operations are recorded in a local audit journal. |
+| AI agents | Optional Model Context Protocol access through the same checks. |
+| License | [GNU Affero General Public License v3.0 or later](LICENSE). |
+
+## Install
+
+Each release lists a Debian package, an Arch package, a Flatpak bundle and an AppImage on the [release page](https://github.com/cozyGarage/BookiE/releases), with a `SHA256SUMS` file. The Debian and Arch packages are the main install paths. Library requirements and install acceptance are in [platforms](docs/platforms.md).
+
+The AppImage is for trying BookiE without installing it. It does not bundle the GtkSourceView data, so on a system that lacks it the SQL editor has no syntax highlighting ([#1325](https://github.com/cozyGarage/BookiE/issues/1325)).
+
+To build from source, see [Build and run](#build-and-run).
+
+## First steps
+
+1. Click the `+` in the window header, choose the database type and fill in the connection.
+2. Click **Test**, then **Connect**.
+3. Click a table in the sidebar to browse it, or press Ctrl+E to open a SQL editor.
+
+The [user guide](docs/user-guide.md) has the full walk-through and the keyboard shortcuts. The [feature list](docs/features.md) shows what BookiE can do, with screenshots.
 
 ## Why BookiE?
 
@@ -24,21 +64,13 @@ See the [driver maturity table](docs/adding-drivers.md#driver-maturity) for curr
 
 BookiE targets Linux. The current 0.2.0 desktop target and package requirements are documented in [platforms](docs/platforms.md).
 
-## Named query parameters
+## Architecture
 
-Write `:name` anywhere a value belongs:
+![BookiE architecture overview: the desktop app and the headless MCP host reach every database through one PolicyGuard, then routing and static drivers](docs/images/architecture-overview.svg)
 
-```sql
-SELECT * FROM orders WHERE customer = :customer AND total > :minimum;
-```
+Every database handle that the desktop app, the MCP tools and `bookie-agentd` receive is a `PolicyGuard`. Token scopes and connection allowlists do not replace it. Drivers are linked at build time and the interface is native GTK, with no embedded browser. The desktop app uses `tablepro-app-services` for GTK-free application state and service logic.
 
-Running the statement asks for one value per name and sends them as driver-bound parameters. Each value has a type choice: `Auto` (whole numbers and decimals are detected, everything else is text), `Text`, `Integer`, `Decimal`, `Boolean`, or `Null`. Placeholders inside string literals, quoted identifiers, comments, dollar-quoted bodies, PostgreSQL `::` casts, and existing `$1` or `?` placeholders are left alone.
-
-## Editor productivity
-
-- **Completion**: typing after `FROM` or `JOIN` offers tables; elsewhere it offers the columns of the tables named in the statement. `alias.` and `table.` narrow to that table's columns, and columns are fetched on demand for tables you reference.
-- **Favorites**: Ctrl+D saves the current editor query under a name in `$XDG_CONFIG_HOME/tablepro/favorites.json`. Saving an existing name replaces its statement.
-- **Open Quickly**: Ctrl+P searches favorites, open tabs, and saved connections. Type to filter (name, statement text, or initials), arrow keys to move, Enter to open, Escape to dismiss.
+[`ARCHITECTURE.md`](ARCHITECTURE.md) has the crate map, the request pipeline, trait boundaries and deliberate limits.
 
 ## Development
 
@@ -50,9 +82,6 @@ Start with the [documentation map](docs/README.md) and [completion and continuat
 
 The product name is BookiE. Installed commands are `bookie` and `bookie-agentd`, with `tablepro*` aliases for compatibility. Existing installations keep their settings and credentials: app ID, configuration and data paths, keyring schema, UUIDs, audit format, and protocol contracts retain their existing `tablepro` / `com.tablepro.linux` identifiers. Cargo packages and binaries remain `tablepro-app` / `tablepro-agentd`, and crate names remain `tablepro-*`.
 
-## Architecture
-
-Crate map, Mermaid pipeline diagrams, trait boundaries and deliberate limits live in [`ARCHITECTURE.md`](ARCHITECTURE.md). The desktop app uses `tablepro-app-services` for GTK-free application state and service logic. Every GUI, MCP and agent database handle is a `PolicyGuard`; token scopes and connection allowlists do not replace it. Drivers are linked at build time. The UI is native GTK (no embedded browser).
 
 ## Build requirements
 
@@ -143,6 +172,8 @@ Start at [the documentation map](docs/README.md) for audience and ownership. Com
 | Active sprint | [docs/bookie-0.2-sprint.md](docs/bookie-0.2-sprint.md) |
 | Architecture | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | User guide | [docs/user-guide.md](docs/user-guide.md) |
+| Feature list with screenshots | [docs/features.md](docs/features.md) |
+| Brand: logo, colours, screenshots | [docs/brand/README.md](docs/brand/README.md) |
 | Contributing / agent rules | [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) |
 | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 

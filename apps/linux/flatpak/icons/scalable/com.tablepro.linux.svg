@@ -9,9 +9,9 @@
     <path d="M33 68h20"/>
   </g>
   <g fill="#c5d0c2">
-    <rect x="74" y="44" width="7" height="7" rx="1.5"/>
-    <rect x="83" y="44" width="7" height="7" rx="1.5"/>
-    <rect x="92" y="44" width="7" height="7" rx="1.5"/>
+    <rect x="74" y="44" width="7" height="7" rx="1.5" fill="#c9a24b"/>
+    <rect x="83" y="44" width="7" height="7" rx="1.5" fill="#c9a24b"/>
+    <rect x="92" y="44" width="7" height="7" rx="1.5" fill="#c9a24b"/>
     <rect x="74" y="53" width="7" height="7" rx="1.5"/>
     <rect x="83" y="53" width="7" height="7" rx="1.5"/>
     <rect x="92" y="53" width="7" height="7" rx="1.5"/>

@@ -16,7 +16,7 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 
 | Audience | Documents |
 |---|---|
-| People using BookiE | [User guide](user-guide.md), [platforms](platforms.md), [root README](../README.md) |
+| People using BookiE | [User guide](user-guide.md), [feature list](features.md), [platforms](platforms.md), [root README](../README.md) |
 | Maintainers reviewing capability scope | [Capability review](capability-review.md) |
 | Contributors writing code | [AGENTS.md](../AGENTS.md), [architecture](../ARCHITECTURE.md) (including [where new code goes](../ARCHITECTURE.md#where-new-code-goes) and the boundary checklist), [code conventions](code-conventions.md), [adding drivers](adding-drivers.md), [state management](state-management.md), [connections](connections.md), [disconnection contracts](disconnection-contracts.md), [storage](storage.md), [error handling](error-handling.md) |
 | Releases | [Release process](release-process.md): tags, packages, release notes |
@@ -46,6 +46,8 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 | Crates, request pipeline, where new code goes, DAG, rename boundary, CI gate split | [Architecture](../ARCHITECTURE.md) (Mermaid map, trait boundaries, ownership table) | Match the manifests and [AGENTS.md](../AGENTS.md); cheap vs Forgejo detail stays in the [validation playbook](validation-playbook.md#ci-tiers) |
 | A user-visible change | The [changelog](../CHANGELOG.md) | One line of user impact; no test or evidence notes |
 | What a user can do and how | The [user guide](user-guide.md) | Update with the feature that changes it |
+| What BookiE does, by task, with screenshots | The [feature list](features.md) | Update with the feature that changes it; screenshots follow the [brand guide](brand/README.md#screenshots) |
+| Name, logo, colours and image files | The [brand guide](brand/README.md) | Change the guide and the files together |
 | Run-specific proof (manifests, focused logs) | `evidence/<topic>[-<sha>]-<YYYY-MM-DD>/` | A `manifest.json` or concise `README.md`, with only the artifacts needed to check the claim; link it from the owning row or board |
 | A finished review, audit or long history | [archive/](archive/) | Dated file name; corrections to links or neutral wording must preserve the recorded evidence, dates and decisions |
 
