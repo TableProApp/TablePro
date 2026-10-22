@@ -42,7 +42,7 @@ pub enum AppMsg {
     OpenSaved(SavedConnection),
     LoadDatabases,
     DatabasesLoaded {
-        connection_id: Uuid,
+        origin: crate::services::catalog::CatalogOrigin,
         result: Result<Vec<String>, String>,
     },
     SwitchDatabase(String),

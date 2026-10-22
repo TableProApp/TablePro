@@ -880,6 +880,7 @@ impl App {
         self.do_persist_workspace_state_now();
         self.cancel_all_editor_runs();
         self.read_scopes.borrow_mut().cancel_all();
+        self.database_list_cancel.borrow().cancel();
         // Drop per-tab pending-change trackers — disconnecting wipes
         // the connection and its row identities, so any pending edits
         // would no longer be commitable.

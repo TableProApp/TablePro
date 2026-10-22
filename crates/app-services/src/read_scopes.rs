@@ -11,6 +11,7 @@ pub enum ReadScope {
     ForeignKeys,
     EnumLabels,
     Structure,
+    CellValue,
 }
 
 #[derive(Debug, Default)]
@@ -56,6 +57,17 @@ mod tests {
         let second = scopes.start(tab, ReadScope::Page);
         assert!(first.is_cancelled());
         assert!(!second.is_cancelled());
+    }
+
+    #[test]
+    fn a_cell_value_read_stops_when_its_tab_closes_or_a_newer_value_is_opened() {
+        let mut scopes = ReadScopes::default();
+        let tab = Uuid::new_v4();
+        let first = scopes.start(tab, ReadScope::CellValue);
+        let second = scopes.start(tab, ReadScope::CellValue);
+        assert!(first.is_cancelled());
+        scopes.cancel_tab(tab);
+        assert!(second.is_cancelled());
     }
 
     #[test]

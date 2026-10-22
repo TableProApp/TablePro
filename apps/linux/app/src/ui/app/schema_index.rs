@@ -67,6 +67,7 @@ impl App {
     }
 
     pub(super) fn reset_schema_fetches(&self) {
+        self.schema_index.borrow_mut().invalidate_columns();
         self.requested_columns.borrow_mut().clear();
         crate::services::request_generation::replace_in_flight(&self.schema_fetch_cancel);
     }

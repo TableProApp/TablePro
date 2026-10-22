@@ -726,6 +726,35 @@ GLib.MainLoop().run()
         ]
         assert not unnamed, "controls without an accessible name:\n" + "\n".join(unnamed)
 
+    def wide_result_jumps_by_keyboard_and_keeps_headers_over_their_cells(database, base):
+        ui.run_sql("SELECT " + ", ".join(f"{1000 + index} AS c{index}" for index in range(1, 301)))
+        wait_for_result_column("c1")
+
+        def showing(node):
+            return node is not None and node.getState().contains(pyatspi.STATE_SHOWING)
+
+        def left_edge(node):
+            return node.queryComponent().getExtents(pyatspi.WINDOW_COORDS).x
+
+        for index in (150, 300, 1):
+            ui.press_x11_key("j", ("Control_L", "Shift_L"))
+            search = ui.wait_for_node(name="Search columns")
+            search.queryEditableText().setTextContents(f"c{index}")
+            time.sleep(0.3)
+            ui.press_x11_key("Return")
+            ui.wait_for_node(name="Search columns", present=False)
+            header = cell = None
+            deadline = time.monotonic() + ui.WAIT_SECONDS
+            while time.monotonic() < deadline:
+                header = ui.find_node_containing(f"c{index}\n", role=pyatspi.ROLE_LABEL)
+                cell = ui.find_node(name=str(1000 + index), role=pyatspi.ROLE_LABEL)
+                if showing(header) and showing(cell):
+                    break
+                time.sleep(ui.POLL_SECONDS)
+            assert showing(header) and showing(cell), f"c{index} was not scrolled into view:\n{ui.accessible_snapshot()}"
+            offset = abs(left_edge(header) - left_edge(cell))
+            assert offset <= 12, f"c{index}: header at {left_edge(header)}, cell at {left_edge(cell)}"
+
     def narrow_window_keeps_main_and_editor_toolbar_actions_reachable(database, base):
         ui.open_saved_connection(ui.CONNECTION_NAME)
         window = ui.wait_for_frame_containing(" — BookiE")
@@ -1634,6 +1663,7 @@ GLib.MainLoop().run()
         ctrl_tab_returns_to_the_most_recently_used_tab,
         holding_ctrl_while_pressing_tab_walks_deeper_into_the_history,
         interactive_controls_have_accessible_names,
+        wide_result_jumps_by_keyboard_and_keeps_headers_over_their_cells,
         narrow_window_keeps_main_and_editor_toolbar_actions_reachable,
         connection_colour_chooser_has_an_accessible_button,
         alt_arrows_jump_between_statements,

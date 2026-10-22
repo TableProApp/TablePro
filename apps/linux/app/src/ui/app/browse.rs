@@ -63,11 +63,12 @@ impl App {
         };
         let timeout_secs =
             crate::services::operation_control::timeout_for(&self.preferences, &self.database, self.connection_id);
+        let token = self.read_scopes.borrow_mut().start(tab_id, ReadScope::CellValue);
         let reply = sender.clone();
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
-                    let control = crate::services::operation_control::bounded(timeout_secs);
+                    let control = crate::services::operation_control::bounded_with(timeout_secs, token);
                     let result = conn
                         .query_params_controlled(&query.sql, &query.params, &control)
                         .await

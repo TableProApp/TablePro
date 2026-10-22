@@ -148,7 +148,7 @@ Every test belongs to one tier with one script and one gate. Use the [validation
 | driver-tls | `tests/driver-tls` | `scripts/test-driver-tls.sh` |
 | release | `tests/release` against PostgreSQL | `scripts/test-postgres-release.sh` |
 | gtk-widgets | `#[ignore]` widget tests listed in `scripts/isolated-tests.json` under `gtk` | `scripts/test-gtk-widgets.sh` |
-| keyring | `#[ignore]` tests listed under `keyring` | `scripts/test-secret-service.sh` |
+| keyring | `#[ignore]` tests listed under `keyring`, after those under `keyring-fresh` (run before any default keyring exists) | `scripts/test-secret-service.sh` |
 | gtk | `apps/linux/app/tests/gtk_safety.py` on an installed build | `scripts/test-gtk-safety.sh` |
 
 All tiers run on Forgejo (`.forgejo/workflows/ci.yml` and `nightly.yml`). New gtk-widgets and keyring tests must be added to `isolated-tests.json`, and the ignored-test inventory regenerated, or the tier fails. A new crate goes into the crate lists in `preflight.sh` and `test-sandbox.sh`.

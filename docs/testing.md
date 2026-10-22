@@ -59,7 +59,7 @@ Add a row here when you add a guardrail.
 
 ## Storage tests
 
-Storage tests use temporary directories and explicit file paths for JSON and audit behavior. Query-history tests use SQLite. The Secret Service round-trip test is ignored by default because it needs a keyring. `scripts/test-secret-service.sh` always creates an isolated D-Bus/keyring session, even when invoked from a desktop session.
+Storage tests use temporary directories and explicit file paths for JSON and audit behavior. Query-history tests use SQLite. The Secret Service round-trip test is ignored by default because it needs a keyring. `scripts/test-secret-service.sh` always creates an isolated D-Bus/keyring session, even when invoked from a desktop session. It first runs the `keyring-fresh` tests against a keyring daemon that has no default collection yet (reading or deleting a missing password must not create one), then unlocks a test keyring for the `keyring` tests.
 
 Tests that change XDG environment variables must avoid racing with other tests. Prefer internal functions that accept a path when the module already provides them.
 

@@ -184,7 +184,9 @@ async fn load_secret(id: Uuid, kind: &str) -> Result<Option<SecretString>, Stora
 }
 
 async fn load_secret_with_attrs(attrs: &HashMap<&'static str, String>) -> Result<Option<SecretString>, StorageError> {
-    let keyring = open().await?;
+    let Some(keyring) = open_without_creating_a_keyring().await? else {
+        return Ok(None);
+    };
     let items = keyring.search_items(attrs).await.map_err(map_err)?;
     let Some(item) = items.into_iter().next() else {
         return Ok(None);
@@ -199,16 +201,36 @@ async fn delete_secret(id: Uuid, kind: &str) -> Result<(), StorageError> {
 }
 
 async fn delete_secret_with_attrs(attrs: &HashMap<&'static str, String>) -> Result<(), StorageError> {
-    let keyring = open().await?;
+    let Some(keyring) = open_without_creating_a_keyring().await? else {
+        return Ok(());
+    };
     keyring.delete(attrs).await.map_err(map_err)?;
     Ok(())
 }
 
 async fn open() -> Result<Keyring, StorageError> {
-    Keyring::new().await.map_err(|error| match keyring_failure(&error) {
+    Keyring::new().await.map_err(open_error)
+}
+
+async fn open_without_creating_a_keyring() -> Result<Option<Keyring>, StorageError> {
+    if std::path::Path::new("/.flatpak-info").exists() {
+        return open().await.map(Some);
+    }
+    let service = oo7::dbus::Service::new()
+        .await
+        .map_err(|error| open_error(error.into()))?;
+    let collection = service
+        .with_alias(oo7::dbus::Service::DEFAULT_COLLECTION)
+        .await
+        .map_err(|error| open_error(error.into()))?;
+    Ok(collection.map(Keyring::DBus))
+}
+
+fn open_error(error: oo7::Error) -> StorageError {
+    match keyring_failure(&error) {
         crate::KeyringFailure::Other(_) => StorageError::Keyring(crate::KeyringFailure::Unavailable),
         failure => StorageError::Keyring(failure),
-    })
+    }
 }
 
 fn map_err(e: oo7::Error) -> StorageError {
@@ -403,6 +425,25 @@ mod tests {
         assert_eq!(
             a.get("connection-id").map(String::as_str),
             Some("550e8400-e29b-41d4-a716-446655440000")
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "needs a fresh Secret Service with no default collection: dbus-run-session, then gnome-keyring-daemon --daemonize --components=secrets without --unlock"]
+    async fn reading_a_missing_password_does_not_create_a_keyring() {
+        let service = oo7::dbus::Service::new().await.unwrap();
+        let default = || service.with_alias(oo7::dbus::Service::DEFAULT_COLLECTION);
+        assert!(
+            default().await.unwrap().is_none(),
+            "this test needs a service without a default collection"
+        );
+
+        assert!(load_password(Uuid::new_v4()).await.unwrap().is_none());
+        delete_password(Uuid::new_v4()).await.unwrap();
+
+        assert!(
+            default().await.unwrap().is_none(),
+            "a read or delete created the default keyring"
         );
     }
 

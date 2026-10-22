@@ -71,6 +71,40 @@ impl CatalogOrigin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn session() -> (Arc<dyn Connection>, ConnectionIdentity) {
+        use tablepro_core::DatabaseDriver;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let options = tablepro_core::ConnectOptions {
+            database: ":memory:".into(),
+            ..Default::default()
+        };
+        let connection: Arc<dyn Connection> =
+            Arc::from(runtime.block_on(drivers_sqlite::SqliteDriver.connect(options)).unwrap());
+        let identity = ConnectionIdentity::from_connection(&connection);
+        (connection, identity)
+    }
+
+    #[test]
+    fn a_result_from_an_older_session_of_the_same_connection_is_rejected() {
+        let id = Uuid::new_v4();
+        let (_old, old_identity) = session();
+        let (_new, new_identity) = session();
+        let origin = CatalogOrigin {
+            id,
+            identity: old_identity.clone(),
+        };
+        assert!(origin.matches(Some(id), Some(&old_identity)));
+        assert!(
+            !origin.matches(Some(id), Some(&new_identity)),
+            "a database switch reuses the id"
+        );
+        assert!(!origin.matches(Some(Uuid::new_v4()), Some(&old_identity)));
+        assert!(!origin.matches(None, None));
+    }
     #[test]
     fn committed_ddl_refreshes_but_rollback_and_savepoint_do_not_publish() {
         let mut changes = CatalogChanges::default();

@@ -794,5 +794,12 @@
       "--lib",
       "connection_bundle::tests::importing_a_bundle_keeps_existing_hop_credentials_until_replacement_is_asked_for"
     ]
+  ],
+  "keyring-fresh": [
+    [
+      "tablepro-storage",
+      "--lib",
+      "secrets::tests::reading_a_missing_password_does_not_create_a_keyring"
+    ]
   ]
 }
