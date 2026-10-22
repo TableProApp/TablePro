@@ -51,10 +51,17 @@ internal struct TypographySettings: Codable, Equatable, Sendable {
         min(max(size, sizeRange.lowerBound), sizeRange.upperBound)
     }
 
-    /// Nil at either end of the range, which is what dims Zoom In and Zoom Out there.
+    // Nil at either end of the range, which is what dims Zoom In and Zoom Out there.
     internal func editorFontSize(zoomedBy delta: Int) -> Int? {
-        let current = clampedEditorFontSize
-        let zoomed = Self.clamp(current + delta)
+        Self.size(clampedEditorFontSize, zoomedBy: delta)
+    }
+
+    internal func dataGridFontSize(zoomedBy delta: Int) -> Int? {
+        Self.size(clampedDataGridFontSize, zoomedBy: delta)
+    }
+
+    private static func size(_ current: Int, zoomedBy delta: Int) -> Int? {
+        let zoomed = clamp(current + delta)
         return zoomed == current ? nil : zoomed
     }
 }
