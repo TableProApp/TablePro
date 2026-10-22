@@ -1,10 +1,10 @@
 # Database workspace
 
-Draft behavior extracted from the native GTK implementation. [AGENTS](../../AGENTS.md) and accepted ADRs remain authoritative. Open implementation and acceptance: [UI-43 / #1349](https://github.com/cozyGarage/BookiE/issues/1349).
+Draft behavior extracted from the native GTK implementation. [AGENTS](../../AGENTS.md) and accepted ADRs remain authoritative. Open implementation and acceptance: [UI-44 / #1349](https://github.com/cozyGarage/BookiE/issues/1349).
 
 ## Editor
 
-**Run** and `Ctrl+Enter` execute the whole buffer. The Run menu also exposes the current statement at the cursor, equivalent to `Ctrl+Shift+Enter`; selection alone does not change execution scope. Existing admission guards refuse overlapping runs. The same statement planner, parameter binding, policy and audit pipeline handles both actions ([ADR 0016](../../docs/decisions/0016-governed-consumer-seam.md)).
+**Run** and `Ctrl+Enter` execute the selected text when a non-blank selection exists, otherwise the whole buffer. The Run menu also exposes the current statement at the cursor, equivalent to `Ctrl+Shift+Enter`. Existing admission guards refuse overlapping runs. The same statement planner, parameter binding, policy and audit pipeline handles both actions ([ADR 0016](../../docs/decisions/0016-governed-consumer-seam.md)).
 
 When the owned editor session reports an open transaction, a separate row offers commit-and-close and rollback-and-close. Actions capture the session UUID and recheck live connection identity, transaction state, execution, lexing, opening and teardown state before dispatch. These are the existing controlled session-end operations, not autocommit switches or shared-connection transaction SQL ([ADR 0008](../../docs/decisions/0008-connection-and-session-ownership.md)). The reported commit outcome is preserved.
 

@@ -305,7 +305,6 @@ impl SimpleComponent for App {
                     pack_start = &gtk::ToggleButton {
                         set_icon_name: "sidebar-show-symbolic",
                         set_tooltip_text: Some(crate::tr!("Tables sidebar").as_str()),
-                        set_visible: false,
                     },
 
                     #[name = "databases_button"]

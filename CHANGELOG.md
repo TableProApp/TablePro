@@ -6,10 +6,8 @@
 
 - Positioned SQL errors offer Go to error in the result and Errors views, restoring the editor and placing the caret in the original statement; changed queries and connections require a fresh run.
 - SQL editors have a hideable, resizable results panel with an Errors view, maximize/restore controls and Ctrl+J.
-
 - The query editor has visible run scopes and result-file export choices, plus commit-and-close and rollback-and-close controls for an owned session with an open transaction.
-- Tables and views expand to show bounded field/type previews, with a Structure shortcut; the docked sidebar has a native resize handle and its toggle stays available at every window width.
-
+- Tables and views expand to show bounded field/type previews, with a Structure shortcut; the docked sidebar has a native resize handle, and the header **Tables sidebar** button shows or hides it at every window width.
 - Run (Ctrl+Enter or the Run button) executes the selected text when something is selected, and the whole editor otherwise. It goes through the same guard, policy and audit path as any run.
 - The Columns dialog has a Reset button that forgets the column widths you set by dragging for that table.
 - The Session button shows how long its transaction has been open ("Session · transaction open · 12 min") once it passes a minute, so a forgotten transaction holding locks stands out.
@@ -28,17 +26,19 @@
 - Grid headers preserve exact engine type case and keep comments, key and nullability metadata in a native column-details menu.
 - Oversized text and JSON cells use shorter visible previews to reduce text-layout work; full values remain available through View Value and Copy Value.
 - Editing rows with large values uses less temporary memory when verifying the row identity.
-
 - Large streamed results discard older wide pages sooner to limit retained row memory, while keeping the newest page and showing the retained range.
 - Oversized streamed result rows are rejected before value decoding, reducing memory spikes.
 - The Debian package is named `bookie` (`bookie_X.Y.Z-1_amd64.deb`). It replaces an installed `tablepro` package and keeps your settings, saved connections and credentials. The `tablepro` commands remain as aliases.
+- Selecting rows with large text or binary cells no longer copies their contents to calculate numeric summaries.
+- Large JSON previews use less temporary memory.
+- Inspecting a row with oversized cell previews avoids copying the full row contents.
+- Multi-line SQL edits update workspace query state once per undoable action, reducing repeated full-script copying.
+- Saving workspaces with large SQL drafts uses less temporary memory.
 
 ### Fixed
 
 - PostgreSQL: a table named without its schema is found through the whole `search_path`, as PostgreSQL itself resolves it. Before, only the first schema on the path was searched, so SQL completion showed no columns (and structure lookups found nothing) for a table that lives in a later schema.
-- In a window narrower than 960 px the tables sidebar no longer opens over the workspace after connecting, where it swallowed the first click on Run and the other editor controls. A **Show tables** button in the header opens it on demand, and the sidebar returns by itself when the window is widened.
 - Removing a saved connection asks for confirmation once and preserves the database.
-
 - Saved connection names remain readable in narrow lists, with secondary actions available from a menu.
 - SQLite refuses to drop a table in an attached database while other tables there still reference it, so their ON DELETE actions no longer empty those tables.
 - The Structure tab lists MySQL tables that have an index on an expression, and Show CREATE TABLE explains that an expression index cannot be recreated instead of writing it as a column index (MySQL, PostgreSQL, SQLite).
@@ -47,23 +47,11 @@
 - The main window has a minimum size, which stops repeated libadwaita warnings on older libadwaita releases.
 - Choosing a kind in the Catalog dialog no longer resizes its dropdown and shifts the schema search field.
 - SQL completion popups remain usable when suggestions disappear and return, instead of triggering a GTK critical or showing a blank popup.
-- Spaces pasted around a connection's host or database name are removed before connecting; file paths are kept as typed.
-- Inspecting a row with oversized cell previews avoids copying the full row contents.
+- Spaces pasted around a connection's host are removed before connecting; database names and file paths are kept exactly as typed.
 - A PostgreSQL `VOID` result, such as `SELECT pg_sleep(0)`, shows as an empty value instead of undecodable.
-- Selecting rows with large text or binary cells no longer copies their contents to calculate numeric summaries.
-- In a window narrower than 960 px the tables sidebar no longer opens over the workspace after connecting, where it swallowed the first click on Run and the other editor controls. A **Show tables** button in the header opens it on demand, and the sidebar returns by itself when the window is widened.
-- Large JSON previews use less temporary memory.
-- Inspecting a row with oversized cell previews avoids copying the full row contents.
-- Saved connection names remain readable in narrow lists, with secondary actions available from a menu.
-- Multi-line SQL edits update workspace query state once per undoable action, reducing repeated full-script copying.
-
-- Closing SQL editors releases their retained query text and search state.
-- Large JSON previews use less temporary memory.
-- Saving workspaces with large SQL drafts uses less temporary memory.
-
+- In a window narrower than 960 px the tables sidebar no longer opens over the workspace after connecting, where it swallowed the first click on Run and the other editor controls. A **Tables sidebar** button in the header opens it on demand, and the sidebar returns by itself when the window is widened.
 - Closing SQL editors releases their retained query text and search state.
 - SQL execution waits for a dedicated session to open, so an immediate query cannot run outside the selected session.
-
 - Opening a connection that has no stored password no longer makes the system keyring ask you to create a new keyring. Reading or removing a password now uses the keyring only if it already exists; the keyring is created only when a password is actually saved.
 - Loading a cell's full value (row inspector, View Value) is cancelled when its tab closes, the connection changes or a newer value is opened, instead of running on until its timeout.
 - A schema change stops the SQL-completion column lookups still running from before it.
@@ -71,12 +59,9 @@
 - A cancelled Structure tab load no longer replaces the newer one.
 - A new empty editor tab takes the first free "Query N" title instead of counting open editors, so closing Query 1 and opening a new tab no longer produces a second "Query 2".
 - Closing a result grid releases its selection and row inspector.
-
 - Long text previews show embedded NUL characters visibly instead of cutting off the remaining preview.
 - Streamed result pages wait until their first display frame before building a grid, avoiding work for discarded pages.
 - SQL query controls and secondary tools use separate rows to stay reachable in narrow editor panes.
-- SQL query controls and secondary tools use separate rows to stay reachable in narrow editor panes.
-- In a window narrower than 960 px the tables sidebar no longer opens over the workspace after connecting, where it swallowed the first click on Run and the other editor controls. A **Show tables** button in the header opens or closes it at any window width, and the sidebar returns by itself when the window is widened.
 - Discarding changes to a SQL file closes its tab without reopening the same save prompt.
 - PostgreSQL queries ending on a full result page complete without a false column-change error.
 

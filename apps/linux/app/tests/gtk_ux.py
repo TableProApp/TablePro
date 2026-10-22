@@ -820,6 +820,42 @@ GLib.MainLoop().run()
                     f"{name} is outside the {width} px window: "
                     f"x={extents.x}, width={extents.width}\n{ui.accessible_snapshot()}"
                 )
+    def tables_sidebar_button_hides_the_docked_sidebar_and_opens_the_overlay(database, base):
+        ui.open_saved_connection(ui.CONNECTION_NAME)
+        window = ui.wait_for_frame_containing(" — BookiE")
+
+        def wait_for_sidebar(shown):
+            deadline = time.monotonic() + ui.WAIT_SECONDS
+            while True:
+                search = ui.find_node(name="Search tables", role=pyatspi.ROLE_TOGGLE_BUTTON)
+                if (search is not None and search.getState().contains(pyatspi.STATE_SHOWING)) == shown:
+                    return
+                assert time.monotonic() < deadline, (
+                    f"the tables sidebar did not {'appear' if shown else 'hide'}:\n{ui.accessible_snapshot()}"
+                )
+                time.sleep(ui.POLL_SECONDS)
+
+        for width in (1200, 900):
+            x11_resize_window(width, 760)
+            time.sleep(0.5)
+            bounds = window.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+            assert bounds.width == width, f"window did not resize to {width} px: {bounds.width} px"
+            toggle = ui.wait_for_node(name="Tables sidebar", role=pyatspi.ROLE_TOGGLE_BUTTON)
+            extents = toggle.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+            assert toggle.getState().contains(pyatspi.STATE_SHOWING) and extents.width > 0, (
+                f"the Tables sidebar button is not shown at {width} px:\n{ui.accessible_snapshot()}"
+            )
+            assert extents.x >= 0 and extents.x + extents.width <= bounds.width, (
+                f"the Tables sidebar button is outside the {width} px window: x={extents.x}, width={extents.width}"
+            )
+            # Wide windows dock the sidebar open; narrow ones collapse it into a closed overlay.
+            docked = width == 1200
+            wait_for_sidebar(docked)
+            ui.invoke(toggle)
+            wait_for_sidebar(not docked)
+            ui.invoke(toggle)
+            wait_for_sidebar(docked)
+
     def connection_colour_chooser_has_an_accessible_button(database, base):
         ui.invoke_accessible_action("win.disconnect")
         ui.wait_for_node(name="Open saved connection", role=pyatspi.ROLE_TOGGLE_BUTTON)
@@ -1776,6 +1812,7 @@ GLib.MainLoop().run()
         interactive_controls_have_accessible_names,
         wide_result_jumps_by_keyboard_and_keeps_headers_over_their_cells,
         narrow_window_keeps_main_and_editor_toolbar_actions_reachable,
+        tables_sidebar_button_hides_the_docked_sidebar_and_opens_the_overlay,
         connection_colour_chooser_has_an_accessible_button,
         sql_editor_clickables_all_have_a_keyboard_path,
         alt_arrows_jump_between_statements,

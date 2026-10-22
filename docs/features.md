@@ -48,7 +48,7 @@ Drivers are linked at build time. There is no plugin system ([ADR 0001](decision
 
 ![The SQL editor in the dark theme, with a result below](images/sql-editor-dark.png)
 
-- Ctrl+E opens an editor tab. Ctrl+Enter runs the script. Ctrl+Shift+Enter runs the statement at the cursor. Escape cancels a running query when the server supports it.
+- Ctrl+E opens an editor tab. Ctrl+Enter runs the selected text, or the whole script when nothing is selected. Ctrl+Shift+Enter runs the statement at the cursor. Escape cancels a running query when the server supports it.
 - Syntax highlighting, code folding and a side-by-side split of the same query.
 - Completion offers keywords, tables after `FROM` and `JOIN`, and the columns of the tables named in the statement. `alias.` and `table.` narrow the list. Chosen names are inserted quoted for the engine.
 - Write `:name` where a value belongs. BookiE asks for each value and sends it as a bound parameter. Each value has a type choice: `Auto`, `Text`, `Integer`, `Decimal`, `Boolean` or `Null`. Placeholders inside string literals, quoted identifiers, comments, dollar-quoted bodies, PostgreSQL `::` casts and existing `$1` or `?` placeholders are left alone.
@@ -109,7 +109,7 @@ BookiE can let an AI assistant use saved connections through the Model Context P
 
 - The Run menu exposes whole-script and current-statement execution, with shortcuts, plus labeled export choices for individual loaded result sets or a guarded stream rerun.
 - Owned editor sessions show transaction state and commit/rollback-and-close controls. Shared-connection transaction refusal and audit rules still apply.
-- The tables sidebar can be toggled at all widths, resized with a native divider when docked, and expanded for bounded field/type previews. Narrow windows keep the overlay closed after connection.
+- The header **Tables sidebar** button shows or hides the tables sidebar at every width. Wide windows dock it with a native resize divider; below 960 px it becomes an overlay that stays closed after connection. Tables expand for bounded field/type previews.
 - Grid headers retain exact engine type case. Their native details menu exposes key, nullability and comment metadata.
 - Export presents data scope before format and keeps unqualified full-table snapshot export unavailable.
 

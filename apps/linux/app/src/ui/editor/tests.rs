@@ -79,3 +79,14 @@ fn dropped_sql_reader_enforces_the_exact_byte_limit() {
     assert!(read_sql_text(&path, 8).is_err());
     std::fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn run_menu_labels_the_run_all_action_as_running_the_selection_first() {
+    let items = super::toolbar_actions::run_menu_items();
+    let (label, _, accelerator) = items
+        .iter()
+        .find(|(_, action, _)| *action == "editor-run.all")
+        .expect("the Run menu offers editor-run.all");
+    assert_eq!(label, "Run selection or all statements");
+    assert_eq!(*accelerator, "<Primary>Return");
+}

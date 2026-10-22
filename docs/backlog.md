@@ -15,7 +15,7 @@ The nine selected packets under [#1149](https://github.com/cozyGarage/BookiE/iss
 
 Finish existing pull requests first, then address destructive operations [#1176](https://github.com/cozyGarage/BookiE/issues/1176) and [#1175](https://github.com/cozyGarage/BookiE/issues/1175), value preservation [#1177](https://github.com/cozyGarage/BookiE/issues/1177), and the security findings below. Reproduce each report before changing behavior. Keep one lane-owned fix and one serialized Forgejo gate at a time.
 
-Continue existing dependency chains after those fixes: object write capabilities #1065 before shared grid guards #1031, and bounded server messages #1033 before the GTK consumer #1034. Edit ownership #1029, workspace identity #1054 and stream budgets #1032 retain their acceptance. New features remain selected separately; issue status and lane belong to Project #3.
+Continue existing dependency chains after those fixes: object write capabilities #1065 before shared grid guards #1031, and bounded server messages #1033 before the GTK consumer #1034. Edit ownership #1029 and stream budgets #1032 retain their acceptance. New features remain selected separately; issue status and lane belong to Project #3.
 
 ## TablePro and dbx review defects
 
@@ -41,10 +41,8 @@ From the 2026-10-22 dbflux review and the audit of closed issues. Each is an iss
 
 | ID / issue | Item | Lane |
 |---|---|---|
-| RV-12 / [#1354](https://github.com/cozyGarage/BookiE/issues/1354) | MySQL index listing probably fails on a functional index | B3 |
-| RV-13 / [#1364](https://github.com/cozyGarage/BookiE/issues/1364) | SQLite DROP TABLE on an attached schema may bypass the child-row guard | B3 |
 | PERF-11 / [#580](https://github.com/cozyGarage/BookiE/issues/580) | Reopened: catalog scoping, many-schema performance, restricted-role metadata | UX |
-| DBF-1 / [#1355](https://github.com/cozyGarage/BookiE/issues/1355) | In-app audit viewer, then error toasts carrying the operation id | UX |
+| DBF-1 / [#1355](https://github.com/cozyGarage/BookiE/issues/1355) | Error toasts carrying the operation id (the audit viewer shipped in #1378) | UX |
 | DBF-2 to DBF-4 / [#1356](https://github.com/cozyGarage/BookiE/issues/1356), [#1357](https://github.com/cozyGarage/BookiE/issues/1357), [#1358](https://github.com/cozyGarage/BookiE/issues/1358) | Measure PostgreSQL row-cap drain, SQLite early cancel, verify-ca hostname per engine | B3 / B4 |
 | DBF-6 / [#1360](https://github.com/cozyGarage/BookiE/issues/1360) | Keyboard-path coverage registry | UX |
 | B4-24 / [#1365](https://github.com/cozyGarage/BookiE/issues/1365) | Decide the TLS fingerprint pin | B4 |
@@ -61,7 +59,6 @@ The approved native workflow improvements are tracked by [UI-44 / #1349](https:/
 | SNAP-2 to SNAP-4 | Database snapshots: PostgreSQL, SQL Server, then SQLite and DuckDB file copies | ADR 0015 records the accepted design; this is post-0.2.0 implementation work, not a release commitment; limit 5 snapshots per database |
 | UI-1b | Edit SSH jump chains in the form | Storage, transport, bundle v2 and per-hop passphrase coverage merged in #490, #492, #494 and #528; GTK editing stays refused until its complete path passes |
 | UI-19 | Foreign key value picker, estimated counts | FK navigation, paste TSV and the ENUM and SET pickers (PostgreSQL, MySQL, MariaDB) landed |
-| UI-38 | Local filters and sorting for materialized SQL results | Exact-value filtering and local sort are implemented; settings are retained per statement/result set across reruns and pin/unpin. Selection follows the same materialized result; [#609](https://github.com/cozyGarage/BookiE/issues/609) owns remaining acceptance. App-restart persistence is not included |
 | UI-39 | Pending grid edit cues that work without color and are announced to assistive technology | Modified, inserted and deleted rows need persistent visible state cues, accessible descriptions, and coverage for revert and widget recycling ([#1126](https://github.com/cozyGarage/BookiE/issues/1126)) |
 | UI-20 | Server output (NOTICE, PRINT) and a timing breakdown | with PERF-4 |
 | UI-22, UI-23, UI-26 | Multi-cursor editing, typed PostgreSQL activity console, reusable SSH profiles | accepted for later; preview tabs, split panes, SQL code folding and the docked query history panel have landed (#618, #630, #754, #619); PostgreSQL catalog objects are already built (UI-23) |

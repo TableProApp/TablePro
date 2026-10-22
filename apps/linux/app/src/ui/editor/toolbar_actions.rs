@@ -132,14 +132,7 @@ impl SqlEditor {
 
     pub(super) fn refresh_result_exports(&self) {
         let menu = gtk::gio::Menu::new();
-        for (label, action, accelerator) in [
-            (crate::tr!("Run all statements"), "editor-run.all", "<Primary>Return"),
-            (
-                crate::tr!("Run current statement"),
-                "editor-run.current",
-                "<Primary><Shift>Return",
-            ),
-        ] {
+        for (label, action, accelerator) in run_menu_items() {
             let item = gtk::gio::MenuItem::new(Some(&label), Some(action));
             item.set_attribute_value("accel", Some(&accelerator.to_variant()));
             menu.append_item(&item);
@@ -192,4 +185,19 @@ impl SqlEditor {
         }
         self.run_options.set_menu_model(Some(&menu));
     }
+}
+
+pub(super) fn run_menu_items() -> [(String, &'static str, &'static str); 2] {
+    [
+        (
+            crate::tr!("Run selection or all statements"),
+            "editor-run.all",
+            "<Primary>Return",
+        ),
+        (
+            crate::tr!("Run current statement"),
+            "editor-run.current",
+            "<Primary><Shift>Return",
+        ),
+    ]
 }
