@@ -144,7 +144,20 @@ final class SyncTestEnvironment {
 actor ScriptedSyncTransport: SyncTransport {
     static let accountId = "tests"
 
-    let currentZoneID: CKRecordZone.ID
+    private let zoneID: CKRecordZone.ID
+    private var duringZoneRead: @MainActor @Sendable () async -> Void = {}
+
+    var currentZoneID: CKRecordZone.ID {
+        get async {
+            await duringZoneRead()
+            return zoneID
+        }
+    }
+
+    // Runs at every read of the zone, the way an edit lands while the coordinator waits on the transport.
+    func whileZoneIsRead(_ action: @escaping @MainActor @Sendable () async -> Void) {
+        duringZoneRead = action
+    }
     private let rejectedRecordIDs: Set<CKRecord.ID>
     private let missingRecordIDs: Set<CKRecord.ID>
     private let interruption: (any Error)?
@@ -230,7 +243,7 @@ actor ScriptedSyncTransport: SyncTransport {
         duringPush: @escaping @MainActor @Sendable () async -> Void = {},
         echoing pulled: @escaping @Sendable (_ records: [CKRecord], _ deletions: [CKRecord.ID]) -> PullResult
     ) {
-        self.currentZoneID = zoneID
+        self.zoneID = zoneID
         self.rejectedRecordIDs = rejectedRecordIDs
         self.missingRecordIDs = missingRecordIDs
         self.interruption = interruption

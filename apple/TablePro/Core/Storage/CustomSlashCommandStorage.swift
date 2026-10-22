@@ -49,16 +49,17 @@ final class CustomSlashCommandStorage: ObservableObject {
 
     // Two Macs can each add a command under one name before they sync, and a name picks one command, so a later one takes a free name.
     nonisolated static func renamingCollisions(_ commands: [CustomSlashCommand]) -> [CustomSlashCommand] {
-        var taken: Set<String> = []
-        return commands.map { command in
+        var kept: [CustomSlashCommand] = []
+        for command in commands {
             var named = command
             var suffix = 2
-            while !taken.insert(named.name.lowercased()).inserted {
+            while kept.contains(where: { $0.name.caseInsensitiveCompare(named.name) == .orderedSame }) {
                 named.name = "\(command.name)-\(suffix)"
                 suffix += 1
             }
-            return named
+            kept.append(named)
         }
+        return kept
     }
 
     func isDuplicate(_ name: String, excluding id: UUID? = nil) -> Bool {

@@ -250,6 +250,44 @@ struct SyncConflictRebaseTests {
         #expect(commands.map(\.id) == [shared.id, theirs.id, mine.id])
     }
 
+    @Test("Command names that differ only as a lookup ignores are told apart")
+    func collidingNamesFollowLookup() {
+        let first = CustomSlashCommand(name: "Straße", promptTemplate: "one")
+        let second = CustomSlashCommand(name: "STRASSE", promptTemplate: "two")
+        #expect(first.name.caseInsensitiveCompare(second.name) == .orderedSame)
+
+        let renamed = CustomSlashCommandStorage.renamingCollisions([first, second])
+
+        #expect(renamed.map(\.name) == ["Straße", "STRASSE-2"])
+    }
+
+    @Test("A tag edited while the pull reads what is pending keeps the edit")
+    func editDuringPendingReadIsKept() async throws {
+        let pending = ConnectionTag(name: "pending", color: .red)
+        let clean = ConnectionTag(name: "clean", color: .red)
+        try environment.tags.addTag(pending)
+        try environment.tags.addTag(clean)
+        environment.recordCache.store([pending, clean].map { SyncRecordMapper.toCKRecord($0, in: Self.zoneID) })
+        environment.tracker.clearDirty(.tag, id: clean.id.uuidString)
+        let server = SyncRecordMapper.toCKRecord(ConnectionTag(id: clean.id, name: "clean elsewhere", color: .red), in: Self.zoneID)
+        let transport = ScriptedSyncTransport(zoneID: Self.zoneID)
+        let tags = environment.tags
+        var recoloured = clean
+        recoloured.color = .green
+        let edit = recoloured
+        await transport.whileZoneIsRead {
+            var all = tags.loadTags()
+            all.removeAll { $0.id == edit.id }
+            _ = tags.saveTags(all + [edit])
+        }
+        let coordinator = environment.makeCoordinator(transport: transport)
+
+        #expect(await coordinator.applyPullResult(PullResult(changedRecords: [server], deletedRecordIDs: [], newToken: nil)))
+
+        #expect(environment.tags.tag(for: clean.id)?.color == .green)
+        #expect(environment.tags.tag(for: clean.id)?.name == "clean")
+    }
+
     @Test("A pulled record of a category this Mac does not sync is not cached")
     func unsyncedCategoryStaysOutOfTheCache() async throws {
         let tag = ConnectionTag(name: "prod", color: .red)

@@ -785,9 +785,15 @@ final class SyncCoordinator: ObservableObject {
             boundary: syncBoundary(settings: services.appSettingsStorage.loadSync()),
             zoneID: await transport.currentZoneID
         )
-        return Set(batch.edits.lazy
+        var names = Set(batch.edits.lazy
             .filter { $0.hasBase && $0.changesContent && !merged.contains($0.record.recordType) }
             .map(\.recordID.recordName))
+        // An edit made while the batch was read is newer than anything it saw.
+        for identity in changeTracker.editSnapshot().dirty
+            where !SyncEchoGuard.typesMergedOnPull.contains(identity.type) && changeTracker.hasEdit(identity, since: snapshot) {
+            names.insert(identity.type.recordName(for: identity.id))
+        }
+        return names
     }
 
     // Performance: storage reads here (loadSync, loadConnections, loadGroups, etc.) run on
