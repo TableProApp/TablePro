@@ -7,6 +7,7 @@ nonisolated protocol SSHUserAuthSession {
     func methodList() -> String?
     func isAuthenticated() -> Bool
     func lastError() -> String?
+    func serverBanner() -> String?
     func password(_ password: String) -> Int32
     func keyboardInteractive(_ answers: KeyboardInteractiveAnswers) -> Int32
     func publicKeyFromFile(privateKeyPath: String, publicKeyPath: String?, passphrase: String?) -> Int32
@@ -216,6 +217,11 @@ nonisolated struct LibSSH2Authentication {
         }
         if rc == 0 { return }
 
+        // libssh2 sent nothing, since it makes no signature for this key that the server takes.
+        if rc == LIBSSH2_ERROR_METHOD_NONE {
+            throw SSHTunnelError.negotiationFailed(.keySignature(serverBanner: session.serverBanner()), jumpHost: nil)
+        }
+
         // These come from reading the key before anything reaches the server, so the list is
         // unchanged and reading it again would only cost a try, since OpenSSH counts a second "none".
         if Self.localKeyFailures.contains(rc) {
@@ -332,6 +338,10 @@ nonisolated struct LibSSH2UserAuthSession: SSHUserAuthSession {
         libssh2_session_last_error(session, &message, &length, 0)
         guard let message, length > 0 else { return nil }
         return String(cString: message)
+    }
+
+    func serverBanner() -> String? {
+        LibSSH2Handshake.banner(session)
     }
 
     func password(_ password: String) -> Int32 {

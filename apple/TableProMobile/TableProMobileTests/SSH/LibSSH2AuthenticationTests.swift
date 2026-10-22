@@ -7,6 +7,7 @@ import Testing
 struct LibSSH2AuthenticationTests {
     // libssh2's return codes, named here because the test target does not import CLibSSH2.
     static let rcFile: Int32 = -16
+    static let rcMethodNone: Int32 = -17
     static let rcAuthenticationFailed: Int32 = -18
     static let rcPublicKeyUnverified: Int32 = -19
     static let rcKeyFileAuthFailed: Int32 = -48
@@ -458,6 +459,27 @@ struct LibSSH2AuthenticationTests {
         #expect(!session.calls.dropFirst().contains(.methodList))
     }
 
+    @Test(
+        "A key with no signature algorithm the server takes is named, with no keyboard-interactive after it",
+        arguments: [true, false]
+    )
+    func keySignatureMismatchIsNamed(encrypted: Bool) {
+        let session = ScriptedAuthSession(
+            lists: ["publickey,keyboard-interactive"],
+            key: .failing(Self.rcMethodNone, "No signing signature matched"),
+            banner: "SSH-2.0-OpenSSH_7.4"
+        )
+
+        #expect(throws: SSHTunnelError.negotiationFailed(.keySignature(serverBanner: "SSH-2.0-OpenSSH_7.4"), jumpHost: nil)) {
+            try LibSSH2Authentication(session: session).publicKey(
+                .memory(Self.openSSHKey(type: "ssh-rsa", encrypted: encrypted)),
+                passphrase: "hunter2",
+                then: KeyboardInteractiveAnswers(password: "hunter2")
+            )
+        }
+        #expect(session.calls == [.methodList, .keyMemory])
+    }
+
     @Test("An encrypted key file goes without its .pub and a plain one keeps it", arguments: [true, false])
     func encryptedKeyFileDropsThePublicKey(encrypted: Bool) throws {
         let session = ScriptedAuthSession(lists: ["publickey"])
@@ -595,6 +617,7 @@ nonisolated final class ScriptedAuthSession: SSHUserAuthSession {
     private let prompts: [String]
     private let keyboardInteractiveReply: Reply
     private let keyReply: Reply
+    private let banner: String?
     private var currentError: String?
 
     private(set) var calls: [Call] = []
@@ -607,7 +630,8 @@ nonisolated final class ScriptedAuthSession: SSHUserAuthSession {
         password: Reply = .accepted,
         prompts: [String] = [],
         keyboardInteractive: Reply = .accepted,
-        key: Reply = .accepted
+        key: Reply = .accepted,
+        banner: String? = nil
     ) {
         self.lists = lists
         self.authenticated = authenticated
@@ -616,6 +640,7 @@ nonisolated final class ScriptedAuthSession: SSHUserAuthSession {
         self.prompts = prompts
         self.keyboardInteractiveReply = keyboardInteractive
         self.keyReply = key
+        self.banner = banner
     }
 
     func methodList() -> String? {
@@ -635,6 +660,10 @@ nonisolated final class ScriptedAuthSession: SSHUserAuthSession {
     func lastError() -> String? {
         calls.append(.lastError)
         return currentError
+    }
+
+    func serverBanner() -> String? {
+        banner
     }
 
     func password(_ password: String) -> Int32 {

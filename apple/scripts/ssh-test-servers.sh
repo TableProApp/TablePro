@@ -20,8 +20,8 @@
 #   ssh-test-servers.sh start <server>   # start a killed server again and wait for its banner
 #   ssh-test-servers.sh env              # NAME=value lines for a runner to eval
 #
-# Servers: v10 v9 pq10 pq9 kex10 cipher10 mac10 rsa256 rsa512 kbdpass passtotp passtotp1 keytotp totp
-# maxauth hop1 hop2 loss.
+# Servers: v10 v9 pq10 pq9 kex10 cipher10 mac10 sha1kex rsahost sha1mac rsasig rsa256 rsa512 kbdpass passtotp
+# passtotp1 keytotp totp maxauth hop1 hop2 loss.
 # A bare up removes what an earlier up left and makes new keys; up with names restarts only those.
 # Ports run from TABLEPRO_SSH_TEST_PORT_BASE + 1 (default 22601). Keys live in TABLEPRO_SSH_TEST_DIR
 # (default $TMPDIR/tablepro-ssh-test-servers). decoy-1 to decoy-4 are keys no server accepts, for an
@@ -45,7 +45,7 @@ PASSWORD="tppass"
 KEY_PASSPHRASE="tp-key-pass"
 # The usual documentation example: it signs in to these throwaway servers and nowhere else.
 TOTP_SECRET="JBSWY3DPEHPK3PXP"
-SERVERS="v10 v9 pq10 pq9 kex10 cipher10 mac10 rsa256 rsa512 kbdpass passtotp passtotp1 keytotp totp maxauth hop1 hop2 loss"
+SERVERS="v10 v9 pq10 pq9 kex10 cipher10 mac10 sha1kex rsahost sha1mac rsasig rsa256 rsa512 kbdpass passtotp passtotp1 keytotp totp maxauth hop1 hop2 loss"
 AUTHORIZED_KEYS="ed25519 ed25519-pass rsa rsa-pass ecdsa ecdsa-pass rsa-pem rsa-pem-pass ecdsa-pem ecdsa-pem-pass sk-ed25519"
 DECOY_KEYS="decoy-1 decoy-2 decoy-3 decoy-4"
 
@@ -70,6 +70,10 @@ server_spec() {
         mac10) echo "10 5 mac-only true" ;;
         kex10) echo "10 16 kex-only true" ;;
         cipher10) echo "10 17 cipher-only true" ;;
+        sha1kex) echo "10 18 sha1-kex true" ;;
+        rsahost) echo "10 19 rsa-host-key true" ;;
+        sha1mac) echo "10 20 sha1-mac true" ;;
+        rsasig) echo "10 21 rsa-sha1-signature true" ;;
         rsa256) echo "10 6 rsa-sha2-256 true" ;;
         rsa512) echo "10 7 rsa-sha2-512 true" ;;
         kbdpass) echo "10 8 kbdint-password true" ;;
