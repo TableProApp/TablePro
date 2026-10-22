@@ -8,6 +8,7 @@ mod folding;
 pub(crate) mod open_file;
 mod query_changes;
 mod run_lifecycle;
+mod session_age;
 mod session_lexing;
 use run_lifecycle::{clear_results_box, dim_previous_results};
 use tablepro_core::sql_format as format_plan;
@@ -72,6 +73,7 @@ pub struct SqlEditor {
     run_button: gtk::Button,
     folding: std::rc::Rc<std::cell::RefCell<folding::FoldController>>,
     session_button: gtk::ToggleButton,
+    transaction_clock: session_age::TransactionClock,
     session: Option<session_mode::EditorSession>,
     retired_session_connection_id: Option<(Uuid, Uuid)>,
     opening_session_id: Option<Uuid>,
@@ -602,6 +604,7 @@ impl SimpleComponent for SqlEditor {
             find,
             run_button: widgets.run_button.clone(),
             session_button: widgets.session_button.clone(),
+            transaction_clock: Default::default(),
             session: None,
             retired_session_connection_id: None,
             opening_session_id: None,

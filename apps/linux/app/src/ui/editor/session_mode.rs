@@ -288,14 +288,6 @@ fn session_end_dialog(button: &gtk::ToggleButton, on_end: impl Fn(bool) + 'stati
     dialog
 }
 
-pub(crate) fn session_label(transaction_open: bool) -> String {
-    if transaction_open {
-        crate::tr!("Session · transaction open")
-    } else {
-        crate::tr!("Session")
-    }
-}
-
 impl SqlEditor {
     pub(super) fn statement_target(&self, pooled: Arc<dyn Connection>) -> StatementTarget {
         match &self.session {
@@ -405,7 +397,7 @@ impl SqlEditor {
                     connection_identity: Some(connection_identity),
                     transaction_open: false,
                 });
-                self.session_button.set_label(&session_label(false));
+                self.transaction_clock.reset(&self.session_button);
             }
             Ok(OpenedSession(shared)) => self.close_session_for_teardown(shared, sender),
             Err(message) => {
@@ -458,7 +450,7 @@ impl SqlEditor {
         self.session_button.set_sensitive(false);
         self.run_button.set_sensitive(false);
         self.status.set_label(&crate::tr!("Closing session…"));
-        self.session_button.set_label(&session_label(false));
+        self.transaction_clock.reset(&self.session_button);
         self.session_button.remove_css_class("warning");
         if self.session_button.is_active() {
             self.session_button.set_active(false);
@@ -529,7 +521,9 @@ impl SqlEditor {
             ));
             return;
         }
-        self.session_button.set_label(&session_label(transaction_open));
+        self.transaction_clock
+            .set_open(transaction_open, std::time::Instant::now());
+        self.transaction_clock.show(&self.session_button);
         if transaction_open {
             self.session_button.add_css_class("warning");
         } else {
@@ -539,7 +533,7 @@ impl SqlEditor {
 
     pub(super) fn end_session(&mut self, sender: &ComponentSender<Self>) {
         self.opening_session_id = None;
-        self.session_button.set_label(&session_label(false));
+        self.transaction_clock.reset(&self.session_button);
         self.session_button.remove_css_class("warning");
         if let Some(session) = self.session.take() {
             if self.ending_session_id == Some(session.id) {
@@ -592,7 +586,7 @@ impl SqlEditor {
             self.retired_session_connection_id = Some((session.connection_id, session.id));
         }
         self.ending_session_id = None;
-        self.session_button.set_label(&session_label(false));
+        self.transaction_clock.reset(&self.session_button);
         self.session_button.remove_css_class("warning");
         if self.session_button.is_active() {
             self.session_button.set_active(false);
@@ -1071,12 +1065,6 @@ mod tests {
             .await
             .expect("repeated cleanup is idempotent");
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
-    fn the_session_button_says_when_a_transaction_is_open() {
-        assert_eq!(session_label(false), "Session");
-        assert_eq!(session_label(true), "Session · transaction open");
     }
 
     #[tokio::test]
