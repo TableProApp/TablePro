@@ -10,6 +10,9 @@ pub mod logging;
 mod services;
 mod ui;
 
+const MIN_ASYNC_WORKERS: usize = 2;
+const MAX_ASYNC_WORKERS: usize = 4;
+
 pub fn run() {
     glib::set_prgname(Some(config::APP_ID));
     tablepro_transport::install_crypto_provider();
@@ -20,6 +23,7 @@ pub fn run() {
         return;
     }
     tablepro_policy::withhold_panic_messages();
+    configure_async_runtime();
     if let Err(error) = gtk4::gio::resources_register_include!("tablepro.gresource") {
         tracing::error!(%error, "could not register application resources");
         return;
@@ -123,6 +127,22 @@ pub fn run() {
     }
 }
 
+fn configure_async_runtime() {
+    let available = std::thread::available_parallelism()
+        .ok()
+        .map(std::num::NonZeroUsize::get);
+    let workers = async_worker_threads(available);
+    if relm4::RELM_THREADS.set(workers).is_err() {
+        tracing::warn!(workers, "async runtime was configured before startup");
+    }
+}
+
+fn async_worker_threads(available: Option<usize>) -> usize {
+    available.map_or(MIN_ASYNC_WORKERS, |count| {
+        count.clamp(MIN_ASYNC_WORKERS, MAX_ASYNC_WORKERS)
+    })
+}
+
 fn initialize_ui() -> RelmApp<<ui::App as relm4::Component>::Input> {
     use gtk4::prelude::*;
 
@@ -161,4 +181,17 @@ fn enable_system_openssh(database: Arc<services::database_service::DatabaseServi
             Err(error) => tracing::info!(error = %error, "system OpenSSH connections are unavailable"),
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::async_worker_threads;
+
+    #[test]
+    fn database_commands_never_share_a_single_async_worker() {
+        assert_eq!(async_worker_threads(None), 2);
+        assert_eq!(async_worker_threads(Some(1)), 2);
+        assert_eq!(async_worker_threads(Some(3)), 3);
+        assert_eq!(async_worker_threads(Some(64)), 4);
+    }
 }

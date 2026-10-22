@@ -26,6 +26,7 @@
 - Grid headers preserve exact engine type case and keep comments, key and nullability metadata in a native column-details menu.
 - Oversized text and JSON cells use shorter visible previews to reduce text-layout work; full values remain available through View Value and Copy Value.
 - Editing rows with large values uses less temporary memory when verifying the row identity.
+- Background database work runs on up to four threads, so one slow operation no longer holds up others such as loading the sidebar or another tab.
 - Query results hold each cell in less than half the memory, so large results use less memory and more rows fit within the result size limit.
 
 - Large streamed results discard older wide pages sooner to limit retained row memory, while keeping the newest page and showing the retained range.
