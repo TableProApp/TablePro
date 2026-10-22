@@ -97,24 +97,25 @@ struct MongoDBQueryBuilderTests {
         #expect(builder.buildFilterDocument(from: [raw, rows[1]]) == MongoDBQueryBuilder.impossibleFilter)
     }
 
-    @Test("A count reuses the filter its page was built with, whatever the page taught the driver since")
-    func countReusesThePageFilter() throws {
-        let driver = MongoDBPluginDriver(config: DriverConnectionConfig(
-            host: "db.example.com", port: 27_017, username: "u", password: "p", database: "app"
-        ))
-        let rows = [PluginQueryFilter(column: "a", op: "!=", value: "1")]
-        let query = try #require(driver.buildFilteredQuery(
-            table: "orders", schema: nil, queryFilters: rows, logicMode: "and",
-            sortColumns: [], columns: [], limit: 50, offset: 0, columnKinds: [:]
-        ))
-        let signature = MongoDBPluginDriver.filterSignature(rows, logicMode: "and")
-        let recorded = try #require(driver.pageFilter(signature: signature, table: "orders"))
+    @Test("A filtered page keeps the kinds of the fields it filtered on, so its count is typed as the page was")
+    func filteredPageKeepsItsFieldsKinds() {
+        let filter = MongoDBQueryBuilder(columnKinds: ["a": .int32], matchesShownText: true).buildFilterDocument(
+            from: [
+                PluginQueryFilter(column: "a", op: "!=", value: "1"),
+                PluginQueryFilter(column: "b.c", op: "CONTAINS", value: "x", isCaseSensitive: false)
+            ],
+            logicMode: "and"
+        )
+        let fields = MongoFilterFields.named(in: filter)
+        #expect(fields.isSuperset(of: ["a", "b.c", "b"]))
+        #expect(!fields.contains("1"))
 
-        #expect(query.contains(recorded))
-        #expect(driver.pageFilter(signature: signature, table: "customers") == nil)
-        #expect(driver.pageFilter(signature: MongoDBPluginDriver.filterSignature(rows, logicMode: "or"), table: "orders") == nil)
-        let other = [PluginQueryFilter(column: "a", op: "!=", value: "2")]
-        #expect(driver.pageFilter(signature: MongoDBPluginDriver.filterSignature(other, logicMode: "and"), table: "orders") == nil)
+        let page: [String: BsonValueKind] = ["a": .string, "b": .document, "n": .string]
+        let previous: [String: BsonValueKind] = ["a": .int32, "n": .int32]
+        let merged = MongoDBPluginDriver.kinds(page, keepingFrom: previous, of: fields)
+        #expect(merged["a"] == .int32)
+        #expect(merged["n"] == .string)
+        #expect(merged["b"] == .document)
     }
 
     @Test("Only a find in the session's database with no projection teaches the collection's kinds")

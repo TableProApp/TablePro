@@ -21,7 +21,6 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     private var identityKindsByCollection: [String: Set<BsonValueKind>] = [:]
     private var binarySubtypesByCollection: [String: MongoDBBinarySubtypes] = [:]
     private var fieldKindsByCollection: [String: MongoDBFieldKinds] = [:]
-    private var pageFiltersByCollection: [String: (signature: String, document: String)] = [:]
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoDBPluginDriver")
 
@@ -244,7 +243,8 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
                             from: documents, startTime: startTime,
                             isTruncated: isTruncated, collection: collection,
                             declared: declared,
-                            recordsKinds: outcome.returnsStoredDocuments(in: self.currentDb)
+                            recordsKinds: outcome.returnsStoredDocuments(in: self.currentDb),
+                            filteredFields: outcome.find?.filteredFields ?? []
                         )
                     }
                 ),
@@ -516,9 +516,8 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         logicMode: String,
         background: Bool
     ) async throws -> Int? {
-        let signature = Self.filterSignature(filters, logicMode: logicMode)
-        let filterJson = pageFilter(signature: signature, table: table)
-            ?? filterQueryBuilder(for: table).buildFilterDocument(from: filters, logicMode: logicMode)
+        let filterJson = filterQueryBuilder(for: table)
+            .buildFilterDocument(from: filters, logicMode: logicMode)
         return try await documentCount(table: table, filterDocument: filterJson, background: background)
     }
 
@@ -787,37 +786,11 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         columnKinds: [String: PluginColumnKind]
     ) -> String? {
         let builder = filterQueryBuilder(for: table)
-        let document = builder.buildFilterDocument(from: queryFilters, logicMode: logicMode)
-        recordPageFilter(document, signature: Self.filterSignature(queryFilters, logicMode: logicMode), table: table)
         return builder.buildQuery(
-            collection: table, filterDocument: document,
+            collection: table,
+            filterDocument: builder.buildFilterDocument(from: queryFilters, logicMode: logicMode),
             sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
         )
-    }
-
-    // A page's own rows can change the kinds that type a filter value before its count is built, so the count reuses
-    // the document the page ran: a field holding both 1 and "1" would otherwise count the documents the page left out.
-    func recordPageFilter(_ document: String, signature: String, table: String, database: String? = nil) {
-        let key = columnKindKey(table, database: database)
-        columnKindLock.withLock { pageFiltersByCollection[key] = (signature, document) }
-    }
-
-    func pageFilter(signature: String, table: String, database: String? = nil) -> String? {
-        let key = columnKindKey(table, database: database)
-        guard let page = columnKindLock.withLock({ pageFiltersByCollection[key] }), page.signature == signature else {
-            return nil
-        }
-        return page.document
-    }
-
-    static func filterSignature(_ filters: [PluginQueryFilter], logicMode: String) -> String {
-        let rows = filters.map { filter in
-            [
-                filter.column, filter.op, filter.value, filter.isCaseSensitive ? "1" : "0",
-                filter.secondValue ?? "\u{0}", filter.elementScope ?? "\u{0}"
-            ].joined(separator: "\u{1F}")
-        }
-        return ([logicMode] + rows).joined(separator: "\u{1E}")
     }
 
     func generateRowWrites(
@@ -997,7 +970,8 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
                 self.buildPluginResult(
                     from: MongoReadDocuments(dictionaries: documents.dictionaries, texts: []), startTime: Date(),
                     isTruncated: isTruncated, collection: collection,
-                    recordsKinds: outcome.returnsStoredDocuments(in: self.currentDb)
+                    recordsKinds: outcome.returnsStoredDocuments(in: self.currentDb),
+                    filteredFields: outcome.find?.filteredFields ?? []
                 )
             }
         )
@@ -1020,7 +994,8 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         isTruncated: Bool = false,
         collection: String = "",
         declared: MongoDBCollectionSchema = .empty,
-        recordsKinds: Bool = false
+        recordsKinds: Bool = false,
+        filteredFields: Set<String> = []
     ) -> PluginQueryResult {
         let documents = read.dictionaries
         if documents.isEmpty {
@@ -1036,9 +1011,9 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             for: sampled, documents: documents, representation: uuidRepresentation
         )
         if recordsKinds {
-            rememberColumnKinds(sampledKinds, for: sampled, collection: collection)
+            rememberColumnKinds(sampledKinds, for: sampled, collection: collection, keeping: filteredFields)
             rememberIdentityKinds(of: documents, collection: collection)
-            rememberFieldPathKinds(from: documents, collection: collection)
+            rememberFieldPathKinds(from: documents, collection: collection, keeping: filteredFields)
             rememberBinarySubtypes(of: documents, collection: collection)
             rememberFieldKinds(of: documents, collection: collection)
         }
@@ -1085,14 +1060,40 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         return result
     }
 
-    private func rememberColumnKinds(_ kinds: [BsonValueKind], for columns: [String], collection: String) {
+    private func rememberColumnKinds(
+        _ kinds: [BsonValueKind],
+        for columns: [String],
+        collection: String,
+        keeping filteredFields: Set<String> = []
+    ) {
         guard !collection.isEmpty else { return }
         var byName: [String: BsonValueKind] = [:]
         for (index, name) in columns.enumerated() where index < kinds.count {
             byName[name] = kinds[index]
         }
         let key = columnKindKey(collection)
-        columnKindLock.withLock { columnKindsByCollection[key] = byName }
+        columnKindLock.withLock {
+            columnKindsByCollection[key] = Self.kinds(
+                byName, keepingFrom: columnKindsByCollection[key] ?? [:], of: filteredFields
+            )
+        }
+    }
+
+    // A filtered page holds only the values its filter let through, so it says nothing about the fields it filtered
+    // on: a field holding 1 and "1" filtered by `!= 1` returns only strings. Those keep the kind they had, or the
+    // page's count, typed again after the page, would count other documents than the page shows.
+    static func kinds(
+        _ page: [String: BsonValueKind],
+        keepingFrom previous: [String: BsonValueKind],
+        of filteredFields: Set<String>
+    ) -> [String: BsonValueKind] {
+        var merged = page
+        for field in filteredFields {
+            if let kept = previous[field] {
+                merged[field] = kept
+            }
+        }
+        return merged
     }
 
     /// Added to rather than replaced, so a value keeps its subtype after another page or another tab
@@ -1139,13 +1140,21 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     /// build the filter. Sampling through `sampleFieldPaths` cannot do it: that call is routed
     /// through `MetadataConnectionPool`, so it lands on a different driver instance whose cache
     /// the filter path never reads.
-    private func rememberFieldPathKinds(from documents: [[String: Any]], collection: String) {
+    private func rememberFieldPathKinds(
+        from documents: [[String: Any]],
+        collection: String,
+        keeping filteredFields: Set<String> = []
+    ) {
         guard !collection.isEmpty, !documents.isEmpty else { return }
         let sampled = Array(documents.prefix(MongoStreamProjection.sampleSize))
         let kinds = BsonDocumentFlattener.fieldPathKinds(from: sampled, representation: uuidRepresentation)
         guard !kinds.isEmpty else { return }
         let key = columnKindKey(collection)
-        columnKindLock.withLock { fieldPathKindsByCollection[key] = kinds }
+        columnKindLock.withLock {
+            fieldPathKindsByCollection[key] = Self.kinds(
+                kinds, keepingFrom: fieldPathKindsByCollection[key] ?? [:], of: filteredFields
+            )
+        }
     }
 
     /// Kinds a filter can be typed against: the flat columns the grid shows, plus every nested
@@ -1185,7 +1194,6 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             fieldPathKindsByCollection = fieldPathKindsByCollection.filter { !isStale($0.key) }
             declaredSchemasByCollection = declaredSchemasByCollection.filter { !isStale($0.key) }
             identityKindsByCollection = identityKindsByCollection.filter { !isStale($0.key) }
-            pageFiltersByCollection = pageFiltersByCollection.filter { !isStale($0.key) }
         }
     }
 }

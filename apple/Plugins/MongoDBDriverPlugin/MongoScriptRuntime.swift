@@ -10,6 +10,7 @@ nonisolated struct MongoScriptFindShape: Equatable, Sendable {
     let database: String
     let returnsWholeDocuments: Bool
     let skip: Int
+    var filteredFields: Set<String> = []
 }
 
 /// What one statement of a script evaluated to.
