@@ -418,14 +418,21 @@ impl SimpleComponent for BrowseTab {
         root.set_content(Some(inspector.widget()));
 
         let sync_top_bar_slot: std::rc::Rc<dyn Fn()> = {
-            let root_for_sync = root.clone();
-            let read_only_for_sync = read_only_banner.clone();
-            let no_pk_for_sync = no_pk_banner.clone();
-            let filter_for_sync = filter_strip.widget.clone();
+            // Weak: these widgets own the notify handlers that hold this closure (#1432).
+            let root_for_sync = root.downgrade();
+            let read_only_for_sync = read_only_banner.downgrade();
+            let no_pk_for_sync = no_pk_banner.downgrade();
+            let filter_for_sync = filter_strip.widget.downgrade();
             std::rc::Rc::new(move || {
-                let any_revealed =
-                    read_only_for_sync.is_revealed() || no_pk_for_sync.is_revealed() || filter_for_sync.reveals_child();
-                root_for_sync.set_reveal_top_bars(any_revealed);
+                let (Some(root), Some(read_only), Some(no_pk), Some(filter)) = (
+                    root_for_sync.upgrade(),
+                    read_only_for_sync.upgrade(),
+                    no_pk_for_sync.upgrade(),
+                    filter_for_sync.upgrade(),
+                ) else {
+                    return;
+                };
+                root.set_reveal_top_bars(read_only.is_revealed() || no_pk.is_revealed() || filter.reveals_child());
             })
         };
         sync_top_bar_slot();

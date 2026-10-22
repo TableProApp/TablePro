@@ -912,3 +912,37 @@ fn a_page_sql_export_leaves_out_columns_the_server_fills() {
     );
     assert!(page[0].primary_key);
 }
+
+#[test]
+#[ignore = "requires isolated GTK display"]
+fn a_closed_browse_tab_releases_its_root_widget() {
+    use relm4::gtk::prelude::ObjectExt;
+    relm4::gtk::init().unwrap();
+    let controller = BrowseTab::builder()
+        .launch(BrowseTabInit {
+            tab_id: Uuid::new_v4(),
+            schema: Some("public".into()),
+            table: "customers".into(),
+            driver_id: "postgres".into(),
+            connection_id: None,
+            read_only: true,
+            page_size: 100,
+            initial_offset: 0,
+            initial_sort: None,
+            persistence: crate::services::persistence_stores::PersistenceStores {
+                column_widths: None,
+                filter_settings: None,
+                csv_import_mappings: None,
+                named_filter_presets: None,
+            },
+            database: std::sync::Arc::new(crate::services::database_service::DatabaseService::new_isolated()),
+        })
+        .detach();
+    let root = controller.widget().downgrade();
+    drop(controller);
+    spin_for(
+        &relm4::gtk::glib::MainContext::default(),
+        std::time::Duration::from_millis(100),
+    );
+    assert!(root.upgrade().is_none(), "the closed browse tab root is still alive");
+}

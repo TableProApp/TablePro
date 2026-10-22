@@ -37,6 +37,7 @@
 
 ### Fixed
 
+- Closing a table browse tab releases its widgets and loaded rows.
 - PostgreSQL: a table named without its schema is found through the whole `search_path`, as PostgreSQL itself resolves it. Before, only the first schema on the path was searched, so SQL completion showed no columns (and structure lookups found nothing) for a table that lives in a later schema.
 - Removing a saved connection asks for confirmation once and preserves the database.
 - Saved connection names remain readable in narrow lists, with secondary actions available from a menu.

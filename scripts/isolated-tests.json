@@ -896,6 +896,11 @@
       "tablepro-app",
       "--lib",
       "ui::editor::dispatch_tests::error_navigation_tests::a_selected_query_error_keeps_its_original_unicode_offset"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::tests::a_closed_browse_tab_releases_its_root_widget"
     ]
   ],
   "keyring": [
