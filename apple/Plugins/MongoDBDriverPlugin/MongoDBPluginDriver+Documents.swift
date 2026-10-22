@@ -35,7 +35,7 @@ nonisolated extension MongoDBPluginDriver {
     func storedNestedText(table: String, locator: String, field: String) async throws -> String? {
         guard let conn = mongoConnection else { throw MongoDBPluginError.notConnected }
         let identity = try MongoDocumentIdentity(locator: locator)
-        let stored = try await conn.readStoredDocuments(database: currentDb, collection: table, identity: identity)
+        let stored = try await conn.readMatchingDocuments(database: currentDb, collection: table, identity: identity)
         let matches = stored.filter { identity.identifies($0.canonical) }
         guard let match = matches.first else { return nil }
         guard matches.count == 1 else { throw MongoDBDocumentEditingError.ambiguousIdentity }

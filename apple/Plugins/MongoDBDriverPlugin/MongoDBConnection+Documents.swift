@@ -93,6 +93,26 @@ nonisolated extension MongoDBConnection {
         #endif
     }
 
+    // The same exact read without the checks an edit needs, since a view, a time-series collection or an older server
+    // can be read whole but not replaced.
+    func readMatchingDocuments(
+        database: String,
+        collection: String,
+        identity: MongoDocumentIdentity
+    ) async throws -> [MongoStoredDocument] {
+        #if canImport(CLibMongoc)
+        let options = MongoEditableDocument.readOptions(maxTimeMS: effectiveMaxTimeMS(background: false))
+        return try await readOnClient { [self] client in
+            try checkCancelled()
+            return try exactMatches(
+                client: client, database: database, collection: collection, identity: identity, options: options
+            )
+        }
+        #else
+        throw MongoDBError.libmongocUnavailable
+        #endif
+    }
+
     /// Replaces the document `filter` matches and answers how many it matched, which is 0 when the
     /// stored document is no longer the one the edit started from.
     ///
