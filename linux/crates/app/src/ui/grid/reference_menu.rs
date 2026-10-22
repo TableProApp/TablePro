@@ -4,8 +4,10 @@ use std::sync::Arc;
 
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
+use tablepro_core::ForeignKeyInfo;
 use tablepro_core::browse::{ReferenceError, RowReference};
 use tablepro_core::column::ResultColumn;
+use tablepro_core::ddl::InboundForeignKey;
 use tablepro_core::meta::TableRef;
 
 use super::{GridCell, GridMsg, GridSink, KeysHandle, RowObject, TabGridContext, TableKeys};
@@ -67,27 +69,21 @@ impl ReferenceMenu {
         let Some(column) = self.columns.get(cell.column()) else {
             return Offers::default();
         };
-        let shown = self.tab.snapshot(&row).to_values();
         let open = keys
             .outbound
             .iter()
             .enumerate()
             .filter(|(_, key)| key.columns.contains(&column.name))
-            .filter(|(_, key)| leads_somewhere(RowReference::referenced(&keys.table, key, &self.columns, &shown)))
+            .filter(|(_, key)| leads_somewhere(self.referenced_by(&keys.table, key, &row)))
             .map(|(index, _)| index)
             .collect();
-        // Other rows point at the row as it was saved; a draft is not
-        // saved, so nothing points at it yet.
-        let referencing = match row.cells() {
-            Some(saved) => keys
-                .inbound
-                .iter()
-                .enumerate()
-                .filter(|(_, key)| leads_somewhere(RowReference::referencing(&keys.table, key, &self.columns, &saved)))
-                .map(|(index, _)| index)
-                .collect(),
-            None => Vec::new(),
-        };
+        let referencing = keys
+            .inbound
+            .iter()
+            .enumerate()
+            .filter(|(_, key)| self.referencing_by(&keys.table, key, &row).is_some_and(leads_somewhere))
+            .map(|(index, _)| index)
+            .collect();
         Offers {
             keys: Some(keys),
             open,
@@ -145,8 +141,7 @@ impl ReferenceMenu {
         let armed = self.armed.borrow();
         let keys = armed.keys.as_ref()?;
         let key = keys.outbound.get(index)?;
-        let shown = self.tab.snapshot(row).to_values();
-        Some(RowReference::referenced(&keys.table, key, &self.columns, &shown))
+        Some(self.referenced_by(&keys.table, key, row))
     }
 
     /// The rows the inbound key at `index` holds that point at `row`.
@@ -154,8 +149,50 @@ impl ReferenceMenu {
         let armed = self.armed.borrow();
         let keys = armed.keys.as_ref()?;
         let key = keys.inbound.get(index)?;
+        self.referencing_by(&keys.table, key, row)
+    }
+
+    /// The row `key` points at from `row` as the grid shows it, pending
+    /// edits included.
+    fn referenced_by(
+        &self,
+        source: &TableRef,
+        key: &ForeignKeyInfo,
+        row: &RowObject,
+    ) -> Result<RowReference, ReferenceError> {
+        let (columns, values) = self.key_cells(&key.columns, |index| {
+            Some(self.tab.with_effective_value(row, index, |value, _| value.clone()))
+        });
+        RowReference::referenced(source, key, &columns, &values)
+    }
+
+    /// The rows of `key` that point at `row` as it was saved, since that
+    /// is what they reference. A draft is not saved, so `None`.
+    fn referencing_by(
+        &self,
+        source: &TableRef,
+        key: &InboundForeignKey,
+        row: &RowObject,
+    ) -> Option<Result<RowReference, ReferenceError>> {
         let saved = row.cells()?;
-        Some(RowReference::referencing(&keys.table, key, &self.columns, &saved))
+        let (columns, values) = self.key_cells(&key.referenced_columns, |index| saved.get(index).cloned());
+        Some(RowReference::referencing(source, key, &columns, &values))
+    }
+
+    /// The row's columns named `names` with their values, read through
+    /// `value`, so a row of large cells copies only its key's.
+    fn key_cells(
+        &self,
+        names: &[String],
+        value: impl Fn(usize) -> Option<tablepro_core::Value>,
+    ) -> (Vec<ResultColumn>, Vec<tablepro_core::Value>) {
+        names
+            .iter()
+            .filter_map(|name| {
+                let index = self.columns.iter().position(|column| column.name == *name)?;
+                Some((self.columns.get(index)?.clone(), value(index)?))
+            })
+            .unzip()
     }
 
     /// The one outbound key the armed menu offers, for its plain item.
