@@ -1,0 +1,11 @@
+{
+  "binary_sha256": "13b319c1e21179991ed1760e6d36d1bc2cf0b397c4b21c139ce992bd071894cc",
+  "source": "15c3a9f9f303d4598672a11b5c062e3abe9f80dc",
+  "result": {
+    "scenario": "repeated_editor_close_cycles",
+    "status": "passed",
+    "error": null
+  },
+  "trace_sha256": "5c96059fa7601817bbd23bdcce15f3f801e6b99da6733ce41cacfb9e537509ab",
+  "report_sha256": "2fcc7cc8640f264d752a00c28dd7f09bd7de4615159c1b696a64fa8bfe8cb62c"
+}

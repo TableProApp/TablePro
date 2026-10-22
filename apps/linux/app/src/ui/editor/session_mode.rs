@@ -357,6 +357,7 @@ impl SqlEditor {
         let session_id = Uuid::new_v4();
         self.opening_session_id = Some(session_id);
         self.session_open_in_flight = true;
+        self.refresh_run_button();
         let sender = sender.clone();
         relm4::spawn(async move {
             let result = connection
@@ -390,6 +391,7 @@ impl SqlEditor {
             } else {
                 self.try_start_session_teardown(sender);
             }
+            self.refresh_run_button();
             return;
         }
         self.opening_session_id = None;
@@ -411,6 +413,7 @@ impl SqlEditor {
                 self.status.set_label(&message);
             }
         }
+        self.refresh_run_button();
         self.try_start_session_teardown(sender);
     }
 
@@ -473,7 +476,7 @@ impl SqlEditor {
         self.session_teardown_active = false;
         self.session_teardown_running = false;
         self.session_button.set_sensitive(true);
-        self.run_button.set_sensitive(self.run_generation.active.is_empty());
+        self.refresh_run_button();
         if let Err(message) = &result {
             self.status.set_label(message);
         }

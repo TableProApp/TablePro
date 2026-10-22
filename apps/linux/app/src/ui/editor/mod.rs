@@ -551,20 +551,18 @@ impl SimpleComponent for SqlEditor {
         split_view.secondary_view().completion().add_provider(&provider);
 
         let cursor_info = widgets.cursor_info.clone();
-        let view_for_cursor = widgets.source_view.clone();
-        let update_cursor = move || {
-            let buffer = view_for_cursor.buffer();
+        let update_cursor = move |buffer: &gtk::TextBuffer| {
             let mark = buffer.get_insert();
             let iter = buffer.iter_at_mark(&mark);
             let line = iter.line() + 1;
             let col = iter.line_offset() + 1;
             cursor_info.set_label(&format!("Ln {line}, Col {col}"));
         };
-        update_cursor();
+        update_cursor(&widgets.source_view.buffer());
         widgets
             .source_view
             .buffer()
-            .connect_cursor_position_notify(move |_| update_cursor());
+            .connect_cursor_position_notify(move |buffer| update_cursor(buffer));
 
         let refresh_completion = completion_provider::build_completion_refresh(
             widgets.source_view.clone(),
@@ -581,17 +579,15 @@ impl SimpleComponent for SqlEditor {
             .connect_cursor_position_notify(move |_| refresh_on_cursor());
 
         let drop_generation = std::rc::Rc::new(DropGeneration::default());
-        let view_for_change = widgets.source_view.clone();
         let sender_for_change = sender.clone();
         let refresh_on_change = refresh_completion.clone();
         let drop_generation_for_change = drop_generation.clone();
         let folding_for_change = folding.clone();
-        widgets.source_view.buffer().connect_changed(move |_| {
+        widgets.source_view.buffer().connect_changed(move |buffer| {
             drop_generation_for_change.changed();
-            if let Ok(buffer) = view_for_change.buffer().downcast::<sourceview5::Buffer>() {
-                folding_for_change.borrow_mut().clear(&buffer);
+            if let Some(buffer) = buffer.downcast_ref::<sourceview5::Buffer>() {
+                folding_for_change.borrow_mut().clear(buffer);
             }
-            let buffer = view_for_change.buffer();
             let (start, end) = buffer.bounds();
             let text = buffer.text(&start, &end, true).to_string();
             let _ = sender_for_change.output(SqlEditorOutput::QueryChanged(text));
@@ -1003,7 +999,7 @@ impl SqlEditor {
         parameter_values: std::collections::HashMap<String, tablepro_core::Value>,
         sender: ComponentSender<Self>,
     ) {
-        if self.session_ending() {
+        if !self.can_start_run() || self.session_ending() {
             self.status.set_label(&crate::tr!("Waiting for session to finish"));
             return;
         }

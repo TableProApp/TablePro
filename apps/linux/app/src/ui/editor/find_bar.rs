@@ -113,37 +113,41 @@ impl FindBar {
     ) {
         let this = self.handle();
         let settings = settings.clone();
-        let entry = self.entry.clone();
         let handle = this.clone();
-        self.entry.connect_search_changed(move |_| {
+        self.entry.connect_search_changed(move |entry| {
             let text = entry.text();
             settings.set_search_text((!text.is_empty()).then_some(text.as_str()));
-            handle.step(true, true);
+            handle.with(|target| target.step(true, true));
         });
         let handle = this.clone();
-        self.entry.connect_activate(move |_| handle.step(true, false));
+        self.entry
+            .connect_activate(move |_| handle.with(|target| target.step(true, false)));
         let handle = this.clone();
-        self.entry.connect_next_match(move |_| handle.step(true, false));
+        self.entry
+            .connect_next_match(move |_| handle.with(|target| target.step(true, false)));
         let handle = this.clone();
-        self.entry.connect_previous_match(move |_| handle.step(false, false));
+        self.entry
+            .connect_previous_match(move |_| handle.with(|target| target.step(false, false)));
         let handle = this.clone();
-        next.connect_clicked(move |_| handle.step(true, false));
+        next.connect_clicked(move |_| handle.with(|target| target.step(true, false)));
         let handle = this.clone();
-        previous.connect_clicked(move |_| handle.step(false, false));
+        previous.connect_clicked(move |_| handle.with(|target| target.step(false, false)));
         let handle = this.clone();
-        replace_one.connect_clicked(move |_| handle.replace_current());
+        replace_one.connect_clicked(move |_| handle.with(|target| target.replace_current()));
         let handle = this.clone();
-        replace_all.connect_clicked(move |_| handle.replace_all());
+        replace_all.connect_clicked(move |_| handle.with(|target| target.replace_all()));
         let handle = this.clone();
         self.context
-            .connect_occurrences_count_notify(move |_| handle.refresh_count());
+            .connect_occurrences_count_notify(move |_| handle.with(|target| target.refresh_count()));
         let handle = this;
         self.bar.connect_search_mode_enabled_notify(move |bar| {
             let open = bar.is_search_mode();
-            handle.context.set_highlight(open);
-            if !open {
-                handle.view.grab_focus();
-            }
+            handle.with(|target| {
+                target.context.set_highlight(open);
+                if !open {
+                    target.view.grab_focus();
+                }
+            });
         });
     }
 
@@ -153,22 +157,49 @@ impl FindBar {
         let case_handle = handle.clone();
         self.match_case.connect_toggled(move |toggle| {
             case_settings.set_case_sensitive(toggle.is_active());
-            case_handle.step(true, true);
+            case_handle.with(|target| target.step(true, true));
         });
         let regex_settings = settings.clone();
         self.regex.connect_toggled(move |toggle| {
             regex_settings.set_regex_enabled(toggle.is_active());
-            handle.step(true, true);
+            handle.with(|target| target.step(true, true));
         });
     }
 
-    fn handle(&self) -> FindHandle {
-        FindHandle {
-            view: self.view.clone(),
-            context: self.context.clone(),
-            replace_entry: self.replace_entry.clone(),
-            count: self.count.clone(),
+    fn handle(&self) -> WeakFindHandle {
+        WeakFindHandle {
+            view: self.view.downgrade(),
+            context: self.context.downgrade(),
+            replace_entry: self.replace_entry.downgrade(),
+            count: self.count.downgrade(),
         }
+    }
+}
+
+#[derive(Clone)]
+struct WeakFindHandle {
+    view: gtk::glib::WeakRef<sourceview5::View>,
+    context: gtk::glib::WeakRef<sourceview5::SearchContext>,
+    replace_entry: gtk::glib::WeakRef<gtk::Entry>,
+    count: gtk::glib::WeakRef<gtk::Label>,
+}
+
+impl WeakFindHandle {
+    fn with(&self, action: impl FnOnce(FindHandle)) {
+        let (Some(view), Some(context), Some(replace_entry), Some(count)) = (
+            self.view.upgrade(),
+            self.context.upgrade(),
+            self.replace_entry.upgrade(),
+            self.count.upgrade(),
+        ) else {
+            return;
+        };
+        action(FindHandle {
+            view,
+            context,
+            replace_entry,
+            count,
+        });
     }
 }
 
@@ -331,7 +362,7 @@ mod tests {
         assert_eq!(find.context.occurrences_count(), 3);
         assert_eq!(find.count.text(), "1 of 3");
 
-        find.handle().step(true, false);
+        find.handle().with(|target| target.step(true, false));
         assert_eq!(find.count.text(), "2 of 3");
 
         buffer.set_text("Aa aA");
@@ -355,7 +386,7 @@ mod tests {
         settle(&find.context);
 
         find.replace_entry.set_text("b");
-        find.handle().replace_all();
+        find.handle().with(|target| target.replace_all());
         let (start, end) = buffer.bounds();
         assert_eq!(buffer.text(&start, &end, false), "select b, b from t where b = 1");
     }

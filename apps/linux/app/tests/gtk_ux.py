@@ -316,14 +316,7 @@ GLib.MainLoop().run()
     def postgres_session_commit_distinguishes_aborted_rollback_from_recovered_commit(database, base):
         def run_session_sql(sql):
             ui.set_editor_text(sql)
-            deadline = time.monotonic() + ui.WAIT_SECONDS
-            while time.monotonic() < deadline:
-                button = ui.wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON)
-                if button.getState().contains(pyatspi.STATE_SENSITIVE):
-                    ui.invoke(button)
-                    return
-                time.sleep(ui.POLL_SECONDS)
-            raise AssertionError(f"session query did not become available for {sql!r}:\n{ui.accessible_snapshot()}")
+            ui.invoke(ui.wait_for_sensitive_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON))
 
         ui.open_saved_connection(ui.POSTGRES_CONNECTION_NAME)
         ui.wait_for_frame_containing(f"{ui.POSTGRES_CONNECTION_NAME} — BookiE")
@@ -1157,7 +1150,9 @@ GLib.MainLoop().run()
         ui.wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON)
         ui.invoke(ui.wait_for_node(name="Session", role=pyatspi.ROLE_TOGGLE_BUTTON))
         ui.wait_for_node(name="Session", role=pyatspi.ROLE_TOGGLE_BUTTON)
-        ui.run_sql("BEGIN")
+        ui.set_editor_text("BEGIN")
+        ui.invoke(ui.wait_for_sensitive_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON))
+        ui.wait_for_node_containing("done in")
         ui.wait_for_node(name="Session · transaction open", role=pyatspi.ROLE_TOGGLE_BUTTON)
         # Observe the insert result before issuing the SELECT. The GTK action
         # starts query work asynchronously, so dispatching both back-to-back

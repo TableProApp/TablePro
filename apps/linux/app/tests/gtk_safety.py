@@ -274,6 +274,16 @@ def wait_for_node(name=None, role=None, present=True, timeout=WAIT_SECONDS):
     raise AssertionError(f"expected accessible node {name!r} to {expectation}:\n{accessible_snapshot()}")
 
 
+def wait_for_sensitive_node(name, role=None, timeout=WAIT_SECONDS):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        node = find_node(name=name, role=role)
+        if node is not None and node.getState().contains(pyatspi.STATE_SENSITIVE):
+            return node
+        time.sleep(POLL_SECONDS)
+    raise AssertionError(f"expected accessible node {name!r} to become sensitive:\n{accessible_snapshot()}")
+
+
 def invoke(node):
     candidates = []
     candidate = node

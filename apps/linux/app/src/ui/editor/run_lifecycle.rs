@@ -26,7 +26,7 @@ impl SqlEditor {
     }
 
     pub(super) fn begin_run(&mut self, sql: String, single_statement: bool, sender: ComponentSender<Self>) {
-        if self.session_teardown_active || !self.run_generation.active.is_empty() {
+        if !self.can_start_run() {
             return;
         }
         if single_statement {
@@ -42,7 +42,7 @@ impl SqlEditor {
     }
 
     pub(super) fn plan_and_run(&mut self, sql: String, sender: ComponentSender<Self>) {
-        if self.session_teardown_active || !self.run_generation.active.is_empty() {
+        if !self.can_start_run() {
             return;
         }
         let driver_id = self.metadata().map(|metadata| metadata.driver_id).unwrap_or_default();
@@ -92,11 +92,19 @@ impl SqlEditor {
         supports_server_cancellation: bool,
         sender: &ComponentSender<Self>,
     ) {
-        self.run_button.set_sensitive(!running && !self.session_teardown_active);
+        self.run_button.set_sensitive(!running && self.can_start_run());
         self.cancel_button
             .set_visible(show_cancel_button(running, supports_server_cancellation));
         self.running_spinner.set_visible(running);
         let _ = sender.output(SqlEditorOutput::RunStateChanged(running));
+    }
+
+    pub(super) fn can_start_run(&self) -> bool {
+        !self.session_open_in_flight && !self.session_teardown_active && self.run_generation.active.is_empty()
+    }
+
+    pub(super) fn refresh_run_button(&self) {
+        self.run_button.set_sensitive(self.can_start_run());
     }
 
     pub(super) fn finish_run(

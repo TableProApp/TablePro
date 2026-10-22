@@ -148,3 +148,4 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 - [Linux follow-up review, October 22](archive/linux-follow-up-review-2026-10-22.md): merged result-memory fixes, corrected evidence status and nonduplicating UI acceptance order.
 
 - [Arch wrapper release date, October 22](evidence/arch-wrapper-date-2026-10-22/README.md): mandatory-date forwarding, boundary regressions and real isolated package upgrade/removal evidence.
+- [Dedicated-session opening guard, October 22](evidence/session-opening-guard-2026-10-22/README.md): standalone held-open regression and current-Linux source checks.

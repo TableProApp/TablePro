@@ -190,7 +190,11 @@ pub(super) fn build_completion_refresh(
     known_lexing: super::session_lexing::KnownLexing,
     sender: relm4::ComponentSender<super::SqlEditor>,
 ) -> std::rc::Rc<dyn Fn()> {
+    let view = view.downgrade();
     std::rc::Rc::new(move || {
+        let Some(view) = view.upgrade() else {
+            return;
+        };
         let buffer = view.buffer();
         let Some(sql) = super::sql_text::analysis_text(&buffer) else {
             return;

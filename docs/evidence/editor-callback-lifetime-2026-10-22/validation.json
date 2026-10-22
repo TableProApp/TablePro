@@ -1,0 +1,19 @@
+{
+  "base": "09a600d5fa078dc9c0984a4aa6d6e59f29034469",
+  "regression": "ui::editor::dispatch_tests::dropping_an_editor_releases_its_source_view_and_buffer",
+  "before": {
+    "exit_code": 101,
+    "failure": "editor view remains alive",
+    "log_sha256": "22d89acd244bcf9249dd4cdc5dc95a91f51a6a8a925f5d3f3ece55ca58b03372"
+  },
+  "after": {
+    "exit_code": 0,
+    "log_sha256": "8567e4c48ed3b7cd8e361c472eca8c3adfec51f63835bdd49055f99d8ae9be14"
+  },
+  "preflight": "passed",
+  "app_all_target_clippy": "passed",
+  "gtk_widget_count": 105,
+  "independent_review": "not performed; separate self-review completed",
+  "optimized_comparison": "ten matched optimized runs passed; see paired-measurements.json; default-input-method RSS benefit unproven",
+  "app_unit_tests_passed": 718
+}

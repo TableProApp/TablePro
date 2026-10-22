@@ -20,12 +20,14 @@ use super::{SqlEditor, SqlEditorInit, SqlEditorInput};
 use crate::services::database_service::{ConnectionMetadata, DatabaseService, ReconnectParams};
 
 struct PendingQuery {
+    dedicated_session: bool,
     token: CancellationToken,
     parameters: Vec<Value>,
     release: oneshot::Sender<Result<QueryResultBatch, DriverError>>,
 }
 
 struct HeldConnection {
+    open_wait: Arc<std::sync::Mutex<Option<oneshot::Receiver<()>>>>,
     calls: Arc<AtomicUsize>,
     requests: mpsc::Sender<PendingQuery>,
 }
@@ -42,12 +44,24 @@ impl Connection for HeldConnection {
         self.calls.fetch_add(1, Ordering::SeqCst);
         self.requests
             .send(PendingQuery {
+                dedicated_session: false,
                 token: control.cancellation_token().clone(),
                 parameters: parameters.to_vec(),
                 release,
             })
             .unwrap();
         wait.await.unwrap()
+    }
+
+    async fn open_session(&self) -> Result<Box<dyn tablepro_core::Session>, DriverError> {
+        let wait = self.open_wait.lock().unwrap().take();
+        if let Some(wait) = wait {
+            wait.await.unwrap();
+        }
+        Ok(Box::new(HeldSession {
+            calls: self.calls.clone(),
+            requests: self.requests.clone(),
+        }))
     }
 
     fn supports_server_cancellation(&self) -> bool {
@@ -97,7 +111,43 @@ impl Connection for HeldConnection {
     }
 }
 
+struct HeldSession {
+    calls: Arc<AtomicUsize>,
+    requests: mpsc::Sender<PendingQuery>,
+}
+
+#[async_trait::async_trait]
+impl tablepro_core::Session for HeldSession {
+    async fn query_params_controlled(
+        &mut self,
+        _sql: &str,
+        parameters: &[Value],
+        control: &OperationControl,
+    ) -> Result<QueryResult, DriverError> {
+        let (release, wait) = oneshot::channel();
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.requests
+            .send(PendingQuery {
+                dedicated_session: true,
+                token: control.cancellation_token().clone(),
+                parameters: parameters.to_vec(),
+                release,
+            })
+            .unwrap();
+        Ok(wait.await.unwrap()?.result_sets.remove(0))
+    }
+
+    fn is_usable(&self) -> bool {
+        true
+    }
+
+    async fn close(self: Box<Self>) -> Result<(), DriverError> {
+        Ok(())
+    }
+}
+
 struct EditorFixture {
+    open_wait: Arc<std::sync::Mutex<Option<oneshot::Receiver<()>>>>,
     controller: Controller<SqlEditor>,
     database: Arc<DatabaseService>,
     connection_id: Uuid,
@@ -115,6 +165,7 @@ impl EditorFixture {
         let connection_id = Uuid::new_v4();
         let (requests, incoming) = mpsc::channel();
         let calls = Arc::new(AtomicUsize::new(0));
+        let open_wait = Arc::new(std::sync::Mutex::new(None));
         assert!(database.activate(
             connection_id,
             ConnectionMetadata {
@@ -127,6 +178,7 @@ impl EditorFixture {
                 query_timeout_secs: None,
             },
             Box::new(HeldConnection {
+                open_wait: open_wait.clone(),
                 calls: calls.clone(),
                 requests
             }),
@@ -151,6 +203,7 @@ impl EditorFixture {
             .detach();
         drop(_entered);
         Self {
+            open_wait,
             controller,
             database,
             connection_id,
@@ -250,6 +303,32 @@ fn parameter_response() -> SqlEditorInput {
         },
         values: [("value".into(), Value::Int(2))].into(),
     }
+}
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn editor_waits_for_its_session_before_accepting_any_run_input() {
+    let fixture = EditorFixture::new();
+    let (release, wait) = oneshot::channel();
+    fixture.open_wait.lock().unwrap().replace(wait);
+    fixture.controller.model().session_button.set_active(true);
+    spin_until(|| fixture.controller.model().session_open_in_flight);
+    assert!(!fixture.controller.model().run_button.is_sensitive());
+    for secondary in [false, true] {
+        fixture.shortcut("<Primary>Return", secondary);
+        fixture.shortcut("<Primary><Shift>Return", secondary);
+    }
+    fixture.controller.sender().send(parameter_response()).unwrap();
+    fixture.process_inputs();
+    assert_eq!(fixture.calls.load(Ordering::SeqCst), 0);
+    assert!(fixture.requests.try_recv().is_err());
+    release.send(()).unwrap();
+    spin_until(|| fixture.controller.model().session.is_some() && fixture.controller.model().run_button.is_sensitive());
+    fixture.shortcut("<Primary>Return", false);
+    let running = fixture.next_query();
+    assert!(running.dedicated_session);
+    assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
+    fixture.finish(running, success());
 }
 
 #[test]
@@ -380,4 +459,37 @@ fn editor_actions_fit_narrow_rows_with_running_and_retry_controls() {
     }
     gtk::style_context_remove_provider_for_display(&root.display(), &css);
     window.close();
+}
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn dropping_an_editor_releases_its_source_view_and_buffer() {
+    adw::init().unwrap();
+    let native = sourceview5::View::new();
+    native.set_im_module(Some("simple"));
+    let native_weak = native.downgrade();
+    drop(native);
+    spin_until(|| native_weak.upgrade().is_none());
+    let mut fixture = EditorFixture::new();
+    fixture.controller.model().source_view.set_im_module(Some("simple"));
+    fixture
+        .controller
+        .model()
+        .split_view
+        .secondary_view()
+        .set_im_module(Some("simple"));
+    let _runtime = std::mem::replace(&mut fixture._runtime, tokio::runtime::Runtime::new().unwrap());
+    let root = fixture.controller.widget().downgrade();
+    let view = fixture.controller.model().source_view.downgrade();
+    let buffer = fixture.controller.model().source_view.buffer().downgrade();
+    drop(fixture);
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let context = gtk::glib::MainContext::default();
+    while Instant::now() < deadline {
+        context.iteration(false);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(root.upgrade().is_none(), "editor root remains alive");
+    assert!(view.upgrade().is_none(), "editor view remains alive");
+    assert!(buffer.upgrade().is_none(), "editor buffer remains alive");
 }

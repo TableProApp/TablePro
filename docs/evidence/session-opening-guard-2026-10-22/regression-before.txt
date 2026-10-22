@@ -1,0 +1,2 @@
+assertion failed: !fixture.controller.model().run_button.is_sensitive()
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 872 filtered out; finished in 0.14s
