@@ -101,7 +101,7 @@ impl ReferenceMenu {
                 if let Some(key) = keys.outbound.get(index) {
                     let target = TableRef::new(key.ref_schema.clone(), key.ref_table.clone());
                     self.choices.append_item(&choice(
-                        &key_label(&keys.table, &target, &key.columns),
+                        &key_label(&keys.table, &target, &key.ref_columns),
                         OPEN_CHOICE,
                         index,
                     ));
@@ -228,8 +228,9 @@ fn choice(label: &str, action: &str, index: usize) -> gio::MenuItem {
     item
 }
 
-/// The other table, named with its schema where that is not the
-/// source's, and the key's columns on the side that holds the key.
+/// The rows an item opens: the other table, named with its schema where
+/// that is not the source's, and the columns its filter is on. Two keys
+/// from one column into one table differ there.
 fn key_label(source: &TableRef, table: &TableRef, columns: &[String]) -> String {
     let name = match (&table.schema, table.schema == source.schema) {
         (Some(schema), false) => format!("{schema}.{}", table.name),
@@ -413,12 +414,8 @@ pub(super) mod tests {
             offered,
             [
                 item("Open Referenced Row", None, None),
-                item("tenants (tenant__id)", Some("cell.open-reference"), Some(0)),
-                item(
-                    "crm.customers (tenant__id, customer__id)",
-                    Some("cell.open-reference"),
-                    Some(1)
-                ),
+                item("tenants (id)", Some("cell.open-reference"), Some(0)),
+                item("crm.customers (tenant__id, id)", Some("cell.open-reference"), Some(1)),
             ]
         );
         assert_eq!(followed(&grid), [(crm, filter(&[("tenant_id", "7"), ("id", "42")]))]);
