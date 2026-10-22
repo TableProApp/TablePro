@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- Long text previews show embedded NUL characters visibly instead of cutting off the remaining preview.
 - Streamed result pages wait until their first display frame before building a grid, avoiding work for discarded pages.
 - SQL query controls and secondary tools use separate rows to stay reachable in narrow editor panes.
 - SQL query controls and secondary tools use separate rows to stay reachable in narrow editor panes.

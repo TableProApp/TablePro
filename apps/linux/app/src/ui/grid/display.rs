@@ -140,7 +140,7 @@ pub(crate) fn value_to_search_text(value: &Value) -> Cow<'_, str> {
 pub(crate) fn preview_to_display_text(preview: &crate::ui::row_object::CellPreview) -> String {
     let total = crate::tr!("{n} bytes total").replace("{n}", &preview.byte_count.to_string());
     match &preview.value {
-        Value::Text(text) | Value::JsonText(text) => format!("{text}… ({total})"),
+        Value::Text(text) | Value::JsonText(text) => format!("{}… ({total})", text.replace('\0', "\u{2400}")),
         Value::Bytes(bytes) => {
             let head = bytes
                 .iter()
@@ -599,6 +599,18 @@ mod tests {
         blob[0] = 0x00;
         assert_eq!(value_to_display_text(&Value::Bytes(blob)), "<100001 bytes>");
         assert_eq!(value_to_display_text(&Value::Bytes(vec![0x00])), "<1 bytes>");
+    }
+
+    #[test]
+    fn text_preview_shows_nul_without_cutting_the_sample_or_changing_its_value() {
+        let preview = crate::ui::row_object::CellPreview {
+            value: Value::Text("before\0after".into()),
+            byte_count: 9000,
+        };
+        let view = CellView::from_preview(&preview);
+        assert_eq!(view.text_for_bind(false), "before␀after… (9000 bytes total)");
+        assert!(!view.inline_editable);
+        assert_eq!(preview.value, Value::Text("before\0after".into()));
     }
 
     #[test]
