@@ -3,18 +3,61 @@ use super::paste::parse_clipboard_grid;
 use super::value_parse::parse_grid_cell_input;
 use super::{
     BrowsePageRequest, BrowseTab, BrowseTabInit, BrowseTabInput, BrowseTabOutput, PageRequestTracker,
-    RowCountRequestTracker, columns_for_browse_page, next_page_available, projection_for_loaded_page,
+    RowCountRequestTracker, columns_for_browse_page, next_page_offset, previous_page_offset,
+    projection_for_loaded_page,
 };
 use relm4::{Component, ComponentController};
 
+fn browse_page(rows: usize, truncated: bool) -> QueryResult {
+    QueryResult {
+        columns: Vec::new(),
+        rows: vec![vec![Value::Int(1)]; rows],
+        truncated,
+    }
+}
+
 #[test]
 fn browse_next_page_uses_known_total_and_page_size_fallback() {
-    assert!(!next_page_available(0, 2, Some(2), 2));
-    assert!(next_page_available(0, 2, Some(3), 2));
-    assert!(!next_page_available(2, 2, Some(4), 2));
-    assert!(next_page_available(2, 2, Some(5), 2));
-    assert!(next_page_available(0, 2, None, 2));
-    assert!(!next_page_available(0, 2, None, 1));
+    let full = browse_page(2, false);
+    let short = browse_page(1, false);
+    assert_eq!(next_page_offset(0, 2, Some(2), Some(&full)), None);
+    assert_eq!(next_page_offset(0, 2, Some(3), Some(&full)), Some(2));
+    assert_eq!(next_page_offset(2, 2, Some(4), Some(&full)), None);
+    assert_eq!(next_page_offset(2, 2, Some(5), Some(&full)), Some(4));
+    assert_eq!(next_page_offset(0, 2, None, Some(&full)), Some(2));
+    assert_eq!(next_page_offset(0, 2, None, Some(&short)), None);
+}
+
+#[test]
+fn next_page_after_a_truncated_page_continues_from_the_first_row_not_shown() {
+    let truncated = browse_page(37, true);
+    assert_eq!(next_page_offset(0, 100, Some(5_000), Some(&truncated)), Some(37));
+    assert_eq!(
+        next_page_offset(10_037, 100, Some(50_000), Some(&truncated)),
+        Some(10_074)
+    );
+    assert_eq!(next_page_offset(4_963, 100, Some(5_000), Some(&truncated)), None);
+}
+
+#[test]
+fn a_truncated_page_has_a_next_page_when_the_total_is_unknown() {
+    assert_eq!(next_page_offset(0, 100, None, Some(&browse_page(37, true))), Some(37));
+}
+
+#[test]
+fn a_truncated_page_without_rows_skips_only_the_row_larger_than_the_budget() {
+    let empty = browse_page(0, true);
+    assert_eq!(next_page_offset(200, 100, None, Some(&empty)), Some(201));
+    assert_eq!(next_page_offset(200, 100, Some(5_000), Some(&empty)), Some(201));
+    assert_eq!(next_page_offset(4_999, 100, Some(5_000), Some(&empty)), None);
+}
+
+#[test]
+fn previous_page_after_a_truncated_advance_stops_at_the_first_row() {
+    assert_eq!(previous_page_offset(37, 100), Some(0));
+    assert_eq!(previous_page_offset(137, 100), Some(37));
+    assert_eq!(previous_page_offset(200, 100), Some(100));
+    assert_eq!(previous_page_offset(0, 100), None);
 }
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 use uuid::Uuid;

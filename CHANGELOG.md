@@ -46,6 +46,7 @@
 - The Structure tab lists MySQL tables that have an index on an expression, and Show CREATE TABLE explains that an expression index cannot be recreated instead of writing it as a column index (MySQL, PostgreSQL, SQLite).
 - Open tabs, the active tab and sidebar group state are saved per database. Switching a saved connection to another database no longer restores the first database's tabs against the second, where a same-named table could show with the wrong page, sort or filter. Each database gets its own tabs back when you return to it; workspaces saved by earlier versions restore for the database you connect to first.
 - Table browsing identifies when the result byte limit cuts a page short.
+- Next page in table browsing continues from the first row not shown when the result byte limit cut the page short, instead of skipping the remaining rows or disabling Next.
 - The main window has a minimum size, which stops repeated libadwaita warnings on older libadwaita releases.
 - Choosing a kind in the Catalog dialog no longer resizes its dropdown and shifts the schema search field.
 - SQL completion popups remain usable when suggestions disappear and return, instead of triggering a GTK critical or showing a blank popup.

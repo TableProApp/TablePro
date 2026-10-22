@@ -407,16 +407,15 @@ impl BrowseTab {
     }
 
     pub(super) fn update_next_page_sensitivity(&self) {
-        let loaded_rows = self
-            .current_result
-            .as_ref()
-            .map_or(0, |result| result.rows.len() as u64);
-        self.next_button.set_sensitive(next_page_available(
-            self.current_offset,
-            self.page_size,
-            self.current_total_rows,
-            loaded_rows,
-        ));
+        self.next_button.set_sensitive(
+            next_page_offset(
+                self.current_offset,
+                self.page_size,
+                self.current_total_rows,
+                self.current_result.as_deref(),
+            )
+            .is_some(),
+        );
     }
 
     pub(super) fn update_paginator_label(&self) {
@@ -465,38 +464,44 @@ impl BrowseTab {
 
 fn paginator_summary(result: &QueryResult, offset: u64, total: Option<u64>) -> String {
     let n_rows = result.rows.len();
-    let label = if n_rows == 0 {
-        crate::tr!("No rows on this page")
-    } else {
-        let start = format_thousands(offset + 1);
-        let end = format_thousands(offset + n_rows as u64);
-        match total {
-            Some(total) => crate::tr!("Rows {start} – {end} of {total}")
-                .replace("{start}", &start)
-                .replace("{end}", &end)
-                .replace("{total}", &format_thousands(total)),
-            None => crate::tr!("Rows {start} – {end}")
-                .replace("{start}", &start)
-                .replace("{end}", &end),
-        }
-    };
-    if result.truncated {
-        format!("{label} ({})", crate::tr!("result truncated"))
-    } else {
-        label
+    if n_rows == 0 {
+        return if result.truncated {
+            crate::tr!("No rows on this page (result truncated)")
+        } else {
+            crate::tr!("No rows on this page")
+        };
     }
+    let template = match (total.is_some(), result.truncated) {
+        (true, true) => crate::tr!("Rows {start} – {end} of {total} (result truncated)"),
+        (true, false) => crate::tr!("Rows {start} – {end} of {total}"),
+        (false, true) => crate::tr!("Rows {start} – {end} (result truncated)"),
+        (false, false) => crate::tr!("Rows {start} – {end}"),
+    };
+    template
+        .replace("{start}", &format_thousands(offset + 1))
+        .replace("{end}", &format_thousands(offset + n_rows as u64))
+        .replace("{total}", &total.map(format_thousands).unwrap_or_default())
 }
 
-pub(super) fn next_page_available(
+pub(super) fn next_page_offset(
     current_offset: u64,
     page_size: u64,
     total_rows: Option<u64>,
-    loaded_rows: u64,
-) -> bool {
-    match total_rows {
-        Some(total) => current_offset.saturating_add(loaded_rows) < total,
-        None => loaded_rows == page_size,
-    }
+    page: Option<&QueryResult>,
+) -> Option<u64> {
+    let loaded_rows = page.map_or(0, |page| page.rows.len() as u64);
+    let truncated = page.is_some_and(|page| page.truncated);
+    let shown_rows = if truncated { loaded_rows.max(1) } else { loaded_rows };
+    let available = match total_rows {
+        Some(total) => current_offset.saturating_add(shown_rows) < total,
+        None => truncated || loaded_rows == page_size,
+    };
+    let step = if truncated { shown_rows } else { page_size };
+    available.then(|| current_offset.saturating_add(step))
+}
+
+pub(super) fn previous_page_offset(current_offset: u64, page_size: u64) -> Option<u64> {
+    (current_offset > 0).then(|| current_offset.saturating_sub(page_size))
 }
 
 pub(super) fn extract_keyset_cursor(
@@ -650,30 +655,45 @@ mod tests {
         assert_eq!(format_thousands(1_000_000), "1,000,000");
     }
 
+    fn page(rows: usize, truncated: bool) -> QueryResult {
+        QueryResult {
+            columns: vec![column("payload", false)],
+            rows: vec![vec![Value::Text("large".into())]; rows],
+            truncated,
+        }
+    }
+
     #[test]
     fn truncated_browse_pages_disclose_the_result_limit() {
-        let result = QueryResult {
-            columns: vec![column("payload", false)],
-            rows: vec![vec![Value::Text("large".into())]],
-            truncated: true,
-        };
-
-        let summary = paginator_summary(&result, 0, Some(5_000));
-
-        assert!(summary.contains(&crate::tr!("result truncated")));
+        assert_eq!(
+            paginator_summary(&page(37, true), 1_000, Some(5_000)),
+            "Rows 1,001 – 1,037 of 5,000 (result truncated)"
+        );
+        assert_eq!(
+            paginator_summary(&page(37, true), 0, None),
+            "Rows 1 – 37 (result truncated)"
+        );
     }
 
     #[test]
     fn a_truncated_browse_page_without_rows_still_discloses_the_result_limit() {
-        let result = QueryResult {
-            columns: vec![column("payload", false)],
-            rows: Vec::new(),
-            truncated: true,
-        };
+        assert_eq!(
+            paginator_summary(&page(0, true), 0, Some(5_000)),
+            "No rows on this page (result truncated)"
+        );
+    }
 
-        let summary = paginator_summary(&result, 0, Some(5_000));
-
-        assert!(summary.contains(&crate::tr!("result truncated")));
+    #[test]
+    fn untruncated_browse_pages_have_no_result_limit_suffix() {
+        assert_eq!(
+            paginator_summary(&page(100, false), 1_000, Some(5_000)),
+            "Rows 1,001 – 1,100 of 5,000"
+        );
+        assert_eq!(paginator_summary(&page(100, false), 0, None), "Rows 1 – 100");
+        assert_eq!(
+            paginator_summary(&page(0, false), 0, Some(5_000)),
+            "No rows on this page"
+        );
     }
 
     #[test]

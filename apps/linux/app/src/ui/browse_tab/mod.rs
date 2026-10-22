@@ -887,8 +887,8 @@ impl SimpleComponent for BrowseTab {
                 }
             }
             BrowseTabInput::PrevPage => {
-                if self.current_offset >= self.page_size {
-                    self.current_offset -= self.page_size;
+                if let Some(previous_offset) = previous_page_offset(self.current_offset, self.page_size) {
+                    self.current_offset = previous_offset;
                     self.reverse_page = self.current_offset >= tablepro_core::KEYSET_OFFSET_THRESHOLD
                         && self.current_sort.is_none()
                         && self.keyset_first_cursor.is_some();
@@ -906,19 +906,15 @@ impl SimpleComponent for BrowseTab {
                 }
             }
             BrowseTabInput::NextPage => {
-                let loaded_rows = self
-                    .current_result
-                    .as_ref()
-                    .map_or(0, |result| result.rows.len() as u64);
-                if !next_page_available(
+                let Some(next_offset) = next_page_offset(
                     self.current_offset,
                     self.page_size,
                     self.current_total_rows,
-                    loaded_rows,
-                ) {
+                    self.current_result.as_deref(),
+                ) else {
                     return;
-                }
-                self.current_offset += self.page_size;
+                };
+                self.current_offset = next_offset;
                 self.keyset_before_cursor = None;
                 self.reverse_page = false;
                 self.last_page = false;
