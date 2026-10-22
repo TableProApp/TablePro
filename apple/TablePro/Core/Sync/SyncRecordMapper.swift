@@ -478,8 +478,7 @@ struct SyncRecordMapper {
         let baseData = base.flatMap(Self.settingsData(from:))
         // A base an older build wrote in another key order holds the same options, which is no edit.
         let baseAsWritten = SyncJSONMerge.sameDocument(baseData, settingsData) ? record : nil
-        // A theme is one design, replaced whole on pull too, so its colors are not mixed with another Mac's.
-        let mergesOptions = ThemeCatalog.themeId(forSyncCategory: category) == nil
+        let mergesOptions = mergesOptions(of: category)
         return SyncRecordEdit(AppSettingsSyncField.self, record: record, base: base, baseAsWritten: baseAsWritten) { merged, server in
             guard mergesOptions, let document = SyncJSONMerge.document(
                 base: baseData,
@@ -490,6 +489,14 @@ struct SyncRecordMapper {
                 ? Self.renamingCommandCollisions(in: document)
                 : document
         }
+    }
+
+    // Only where options stand alone: a shortcut chord has to stay unique, the active AI provider has to be one
+    // of the providers, and a theme is one design, replaced whole on pull too. Those go up whole.
+    private static func mergesOptions(of category: String) -> Bool {
+        category != AppSettingsCategory.keyboard
+            && category != AppSettingsCategory.ai
+            && ThemeCatalog.themeId(forSyncCategory: category) == nil
     }
 
     private static func renamingCommandCollisions(in document: Data) -> Data {

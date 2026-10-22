@@ -195,9 +195,11 @@ struct SyncConflictRebaseTests {
         #expect(document == ["a": 2, "b": 2])
     }
 
-    @Test("A theme both Macs changed goes up whole from this Mac, never mixed")
-    func themeIsNotMixed() throws {
-        let category = ThemeCatalog.syncCategory(for: "ocean")
+    @Test(
+        "Shortcuts, AI providers and a theme both Macs changed go up whole from this Mac, never mixed",
+        arguments: [AppSettingsCategory.keyboard, AppSettingsCategory.ai, ThemeCatalog.syncCategory(for: "ocean")]
+    )
+    func wholeCategoriesAreNotMixed(category: String) throws {
         let base = SyncRecordMapper.toCKRecord(category: category, settingsData: Data(#"{"a":1,"b":1}"#.utf8), in: Self.zoneID)
         let server = try copy(base)
         server.fields(AppSettingsSyncField.self)[.settingsJson] = Data(#"{"a":2,"b":1}"#.utf8)
