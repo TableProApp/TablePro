@@ -64,6 +64,7 @@ async fn query_cursor_returns_ordered_pages_and_an_empty_final_page() {
         .unwrap();
 
     let mut rows = Vec::new();
+    let mut columns = None;
     for expected_has_next in [true, true, false] {
         let page = session
             .fetch_query_cursor_page_controlled(cursor, &no_timeout())
@@ -72,6 +73,11 @@ async fn query_cursor_returns_ordered_pages_and_an_empty_final_page() {
         assert_eq!(page.has_next_page, expected_has_next);
         assert!(!page.result.truncated);
         assert_eq!(page.result.columns.len(), 5);
+        if let Some(expected) = &columns {
+            assert_eq!(&page.result.columns, expected);
+        } else {
+            columns = Some(page.result.columns.clone());
+        }
         let row_count = page.result.rows.len();
         rows.extend(page.result.rows);
         if expected_has_next {

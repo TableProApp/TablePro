@@ -138,10 +138,10 @@ impl tablepro_core::Session for PgSession {
             .active_cursor
             .as_mut()
             .ok_or_else(|| DriverError::Internal("the active PostgreSQL cursor disappeared during fetch".into()))?;
-        if !page.columns.is_empty() {
-            cursor.columns.clone_from(&page.columns);
-        } else if !cursor.columns.is_empty() {
+        if page.rows.is_empty() && !cursor.columns.is_empty() {
             page.columns.clone_from(&cursor.columns);
+        } else if !page.columns.is_empty() {
+            cursor.columns.clone_from(&page.columns);
         }
         let has_next_page = page.rows.len() == MAX_QUERY_CURSOR_PAGE_ROWS;
         Ok(QueryCursorPage {
