@@ -4,7 +4,7 @@ use std::time::Duration;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_syntax::HistoryRecording;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::query_history::NewEntry;
+use tablepro_storage::query_history::{MAX_QUERY_BYTES, NewEntry};
 use tablepro_storage::{QueryHistory, StoragePaths};
 use tokio::sync::watch;
 
@@ -97,6 +97,12 @@ impl HistoryService {
                 tracing::debug!(connection = %entry.connection_id, "no dialect, so the run is not recorded");
                 return;
             };
+            // The store refuses it anyway, and reading it for credentials
+            // lexes it once per way the server may read it.
+            if entry.query.len() > MAX_QUERY_BYTES {
+                tracing::debug!(connection = %entry.connection_id, "a run too large for the history was not recorded");
+                return;
+            }
             if let HistoryRecording::Withhold(reason) = dialect.history_recording(&entry.query) {
                 tracing::debug!(connection = %entry.connection_id, ?reason, "a run was kept out of the history");
                 return;

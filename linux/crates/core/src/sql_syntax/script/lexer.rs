@@ -4,7 +4,11 @@ use std::ops::Range;
 use crate::sql_syntax::script::script_rules::{
     BackslashPolicy, BracketIdentifier, DollarQuote, HashComment, QuoteKind, QuoteRule, ScriptSyntax,
 };
+use crate::sql_syntax::script::server_reading::{CommentRead, NameQuotes, ServerReading, dollar_tag_end, read_at};
 use crate::sql_syntax::script::{LexicalSettings, OpenConstruct, ScriptTokenKind};
+
+/// MariaDB's MSSQL mode ends a `[name]` at a `]` that is not doubled.
+const MARIADB_BRACKETS: BracketIdentifier = BracketIdentifier::Doubling;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LexedToken {
@@ -18,24 +22,38 @@ pub(crate) struct Lexer<'a> {
     bytes: &'a [u8],
     syntax: &'static ScriptSyntax,
     settings: LexicalSettings,
+    reading: ServerReading,
     pos: usize,
     missing_heredoc_closers: HashSet<&'a str>,
+    /// Where the executable comment the lexer is inside opened.
+    executable: Option<usize>,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(text: &'a str, syntax: &'static ScriptSyntax, settings: LexicalSettings) -> Self {
+    pub fn new(
+        text: &'a str,
+        syntax: &'static ScriptSyntax,
+        settings: LexicalSettings,
+        reading: ServerReading,
+    ) -> Self {
         Self {
             text,
             bytes: text.as_bytes(),
             syntax,
             settings,
+            reading,
             pos: 0,
             missing_heredoc_closers: HashSet::new(),
+            executable: None,
         }
     }
 
     pub fn position(&self) -> usize {
         self.pos
+    }
+
+    pub fn open_executable_comment(&self) -> Option<usize> {
+        self.executable
     }
 
     pub fn at_line_start(&self) -> bool {
@@ -50,6 +68,12 @@ impl<'a> Lexer<'a> {
         let start = self.pos;
         let first = *self.bytes.get(start)?;
         let token = match delimiter {
+            // The server ends an executable comment at the first `*/`
+            // that stands where a token could start.
+            _ if self.executable.is_some() && self.text[start..].starts_with("*/") => {
+                self.executable = None;
+                self.plain(ScriptTokenKind::ExecutableMarker, start + 2)
+            }
             Some(delimiter) if !delimiter.is_empty() && self.text[start..].starts_with(delimiter) => {
                 self.plain(ScriptTokenKind::Semicolon, start + delimiter.len())
             }
@@ -65,10 +89,10 @@ impl<'a> Lexer<'a> {
             b if is_space(b) => self.plain(ScriptTokenKind::Whitespace, self.whitespace_end(start)),
             b'-' if next == Some(b'-') && self.dash_comment_starts(start) => self.line_comment(start),
             b'#' if self.hash_comment_starts(next) => self.line_comment(start),
-            b'/' if next == Some(b'*') => self.block_comment(start),
+            b'/' if next == Some(b'*') => self.comment(start),
             b'/' if next == Some(b'/') && self.syntax.slash_slash_comment => self.line_comment(start),
             b'\'' => self.quoted(start, self.syntax.single_quote),
-            b'"' => self.quoted(start, self.syntax.double_quote),
+            b'"' => self.quoted(start, self.double_quote()),
             b'`' => match self.syntax.backtick {
                 Some(rule) => self.quoted(start, rule),
                 None => self.plain(ScriptTokenKind::Punct, start + 1),
@@ -143,6 +167,47 @@ impl<'a> Lexer<'a> {
         self.plain(ScriptTokenKind::LineComment, end)
     }
 
+    fn comment(&mut self, start: usize) -> LexedToken {
+        let read = match self.syntax.executable_comments {
+            true => read_at(&self.bytes[start..], self.reading),
+            false => None,
+        };
+        match read {
+            None => self.block_comment(start),
+            Some(CommentRead::Runs { content_start }) => {
+                self.executable.get_or_insert(start);
+                self.plain(ScriptTokenKind::ExecutableMarker, start + content_start)
+            }
+            Some(CommentRead::Skipped) => self.skipped_comment(start),
+        }
+    }
+
+    /// A comment a server's version skips, read as its `consume_comment`
+    /// reads it: bytes to the first `*/`, past one level of `/* */`.
+    fn skipped_comment(&self, start: usize) -> LexedToken {
+        let close = |from: usize| {
+            self.text
+                .get(from..)
+                .and_then(|rest| rest.find("*/"))
+                .map(|offset| from + offset + 2)
+        };
+        let mut index = start + 2;
+        while let Some(&b) = self.bytes.get(index) {
+            let next = self.bytes.get(index + 1).copied();
+            if b == b'/' && next == Some(b'*') {
+                match close(index + 2) {
+                    Some(end) => index = end,
+                    None => break,
+                }
+            } else if b == b'*' && next == Some(b'/') {
+                return self.plain(ScriptTokenKind::BlockComment, index + 2);
+            } else {
+                index += 1;
+            }
+        }
+        self.unterminated(start, OpenConstruct::BlockComment)
+    }
+
     fn block_comment(&self, start: usize) -> LexedToken {
         let mut depth = 1u32;
         let mut index = start + 2;
@@ -206,8 +271,22 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn double_quote(&self) -> QuoteRule {
+        match self.reading.name_quotes() {
+            NameQuotes::Default => self.syntax.double_quote,
+            NameQuotes::Ansi | NameQuotes::Brackets => QuoteRule {
+                kind: QuoteKind::QuotedIdentifier,
+                backslash: BackslashPolicy::Never,
+            },
+        }
+    }
+
     fn bracketed(&self, start: usize) -> LexedToken {
-        let doubling = match self.syntax.bracket_identifier {
+        let rule = match self.reading.name_quotes() {
+            NameQuotes::Brackets => MARIADB_BRACKETS,
+            NameQuotes::Default | NameQuotes::Ansi => self.syntax.bracket_identifier,
+        };
+        let doubling = match rule {
             BracketIdentifier::None => return self.plain(ScriptTokenKind::Punct, start + 1),
             BracketIdentifier::NoDoubling => false,
             BracketIdentifier::Doubling => true,
@@ -224,6 +303,11 @@ impl<'a> Lexer<'a> {
     }
 
     fn dollar(&mut self, start: usize, delimiter: Option<&str>) -> LexedToken {
+        if self.reading.quotes_dollar_tags()
+            && let Some(token) = self.mysql_dollar_quote(start)
+        {
+            return token;
+        }
         match self.syntax.dollar_quote {
             DollarQuote::Tagged => {
                 if let Some(opener_end) = self.tagged_opener_end(start) {
@@ -245,6 +329,34 @@ impl<'a> Lexer<'a> {
             return self.word(start, delimiter);
         }
         self.plain(ScriptTokenKind::Punct, start + 1)
+    }
+
+    /// MySQL 8.1 and later quote text in `$tag$ … $tag$` where a token
+    /// starts, as `get_dollar_quoted_text` reads it. A `$` that breaks a
+    /// partial match of the closer cannot start the next one.
+    fn mysql_dollar_quote(&self, start: usize) -> Option<LexedToken> {
+        // After `.` or `@` the server is inside a name.
+        if start
+            .checked_sub(1)
+            .and_then(|before| self.bytes.get(before))
+            .is_some_and(|b| matches!(b, b'.' | b'@'))
+        {
+            return None;
+        }
+        let opener_end = dollar_tag_end(self.bytes, start)?;
+        let closer = &self.bytes[start..opener_end];
+        let mut matched = 0;
+        for (index, &b) in self.bytes.iter().enumerate().skip(opener_end) {
+            if matched > 0 && b == closer[matched] {
+                matched += 1;
+                if matched == closer.len() {
+                    return Some(self.plain(ScriptTokenKind::DollarQuoted, index + 1));
+                }
+            } else {
+                matched = usize::from(matched == 0 && b == b'$');
+            }
+        }
+        Some(self.unterminated(start, OpenConstruct::DollarQuoted))
     }
 
     fn tagged_opener_end(&self, start: usize) -> Option<usize> {

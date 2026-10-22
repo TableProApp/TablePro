@@ -1,5 +1,5 @@
 use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
+use tablepro_core::sql_syntax::script::{ScriptPlan, ScriptTokenKind};
 
 /// Words that add, rename or remove what the sidebar lists. They count
 /// anywhere in a statement: a SQL Server batch needs no `;` between its
@@ -10,11 +10,15 @@ const SCHEMA_VERBS: [&str; 7] = ["CREATE", "ALTER", "DROP", "RENAME", "ATTACH", 
 /// once it commits.
 const TRANSACTION_ENDS: [&str; 2] = ["COMMIT", "END"];
 
-/// Whether running `text` can change the tables the catalog lists. A
-/// commit counts as the statement's first word, and `SELECT … INTO`
-/// counts too, since PostgreSQL and SQL Server create its target table.
+/// Whether running `text` can change the tables the catalog lists, read
+/// every way the server may read it. A commit counts as the statement's
+/// first word, and `SELECT … INTO` counts too, since PostgreSQL and SQL
+/// Server create its target table.
 pub(super) fn changes_catalog(text: &str, grammar: SqlGrammar) -> bool {
-    let plan = ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar));
+    ScriptPlan::server_readings(text, grammar).is_none_or(|mut plans| plans.any(|plan| plan_changes(text, &plan)))
+}
+
+fn plan_changes(text: &str, plan: &ScriptPlan) -> bool {
     let is = |word: &str, set: &[&str]| set.iter().any(|verb| word.eq_ignore_ascii_case(verb));
     plan.statements().iter().any(|statement| {
         let words: Vec<&str> = plan
@@ -100,6 +104,17 @@ mod tests {
             SqlGrammar::PostgreSql
         ));
         assert!(!changes_catalog("SELECT id FROM orders", SqlGrammar::PostgreSql));
+    }
+
+    #[test]
+    fn ddl_only_some_mysql_server_versions_run_counts() {
+        for sql in [
+            "/*!50001 CREATE VIEW v AS SELECT 1 */",
+            "SELECT 1 /*!99999 /* */ ' */ ; DROP TABLE orders; -- '",
+            r"SELECT 'C:\'; DROP TABLE orders; -- '",
+        ] {
+            assert!(changes_catalog(sql, SqlGrammar::MySql), "{sql}");
+        }
     }
 
     #[test]

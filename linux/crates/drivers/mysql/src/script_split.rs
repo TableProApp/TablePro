@@ -16,7 +16,7 @@ pub(crate) fn texts(sql: &str) -> Vec<&str> {
         return vec![sql];
     }
     let tokens: Vec<ScriptToken> = plan.tokens(0..sql.len()).collect();
-    let units = units(sql, &tokens);
+    let units = units(&tokens);
     let directives = tokens.iter().any(|token| token.kind == ScriptTokenKind::Directive);
     // One statement goes as written: the client's view of where it ends
     // can differ from the server's, as under NO_BACKSLASH_ESCAPES.
@@ -27,27 +27,19 @@ pub(crate) fn texts(sql: &str) -> Vec<&str> {
 }
 
 /// The text between each two terminators, less the whitespace and plain
-/// comments at its edges. The server runs what a `/*!` comment holds, so
-/// such a comment is code, even standing alone.
-fn units(sql: &str, tokens: &[ScriptToken]) -> Vec<Range<usize>> {
+/// comments at its edges.
+fn units(tokens: &[ScriptToken]) -> Vec<Range<usize>> {
     let mut units = Vec::new();
     let mut code: Option<Range<usize>> = None;
     for token in tokens {
         if matches!(token.kind, ScriptTokenKind::Semicolon | ScriptTokenKind::Directive) {
             units.extend(code.take());
-        } else if !token.kind.is_trivia() || executable(sql, token) {
+        } else if !token.kind.is_trivia() {
             code = Some(code.map_or(token.range.clone(), |code| code.start..token.range.end));
         }
     }
     units.extend(code);
     units
-}
-
-fn executable(sql: &str, token: &ScriptToken) -> bool {
-    token.kind == ScriptTokenKind::BlockComment
-        && sql
-            .get(token.range.clone())
-            .is_some_and(|text| text.starts_with("/*!") || text.starts_with("/*M!"))
 }
 
 /// The client's split holds only for statements it reads as the server
@@ -59,7 +51,7 @@ fn whole_by_server(sql: &str, tokens: &[ScriptToken], units: &[Range<usize>]) ->
     let read_by_the_server = |token: &ScriptToken| {
         let text = sql.get(token.range.clone()).unwrap_or_default();
         match token.kind {
-            ScriptTokenKind::BlockComment => executable(sql, token),
+            ScriptTokenKind::ExecutableMarker => true,
             ScriptTokenKind::StringLiteral => text.contains('\\'),
             ScriptTokenKind::Word => text.contains('$'),
             ScriptTokenKind::Punct => !PLAIN_PUNCTUATION.contains(text),

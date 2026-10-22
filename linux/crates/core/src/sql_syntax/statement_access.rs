@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use crate::sql_syntax::SqlGrammar;
-use crate::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptToken, ScriptTokenKind};
+use crate::sql_syntax::script::{ScriptPlan, ScriptToken, ScriptTokenKind};
 
 /// What running a piece of SQL can do, from its own words. Ordered, so
 /// the strictest of several statements is their maximum.
@@ -148,34 +150,58 @@ const CLAUSE_WORDS: [&str; 15] = [
 /// The strictest access among the statements of `sql`.
 ///
 /// A statement reads only when its words show it does, so anything
-/// unrecognized counts as a write. Where a string ends can hang on a
-/// session setting the app cannot see, such as `NO_BACKSLASH_ESCAPES`,
-/// so the text is read both ways and the stricter answer stands.
+/// unrecognized counts as a write. The text is read every way a server
+/// may read it and the strictest answer stands: where a string ends can
+/// hang on a session setting the app cannot see, such as
+/// `NO_BACKSLASH_ESCAPES`, and which MySQL executable comments run hangs
+/// on the server's version. Each piece a `DELIMITER` line cuts it into is
+/// read on its own too, since a client sends them apart.
 pub fn statement_access(sql: &str, grammar: SqlGrammar) -> StatementAccess {
-    [false, true]
-        .into_iter()
-        .map(|backslash_escapes| access_under(sql, grammar, LexicalSettings { backslash_escapes }))
-        .max()
-        .unwrap_or(StatementAccess::Write)
+    access_as_sent(sql, grammar, CLIENT_SPLITS)
 }
 
-fn access_under(sql: &str, grammar: SqlGrammar, settings: LexicalSettings) -> StatementAccess {
-    let plan = ScriptPlan::build(sql, grammar, settings);
+/// How many times a script can be split by `DELIMITER` lines on its way:
+/// once by the editor, once more by the driver.
+pub(crate) const CLIENT_SPLITS: u8 = 2;
+
+fn access_as_sent(sql: &str, grammar: SqlGrammar, splits: u8) -> StatementAccess {
+    let whole = access_every_way(sql, grammar);
+    if whole == StatementAccess::Destructive || splits == 0 {
+        return whole;
+    }
+    ScriptPlan::client_pieces(sql, grammar)
+        .into_iter()
+        .map(|piece| access_as_sent(piece, grammar, splits - 1))
+        .fold(whole, StatementAccess::max)
+}
+
+fn access_every_way(sql: &str, grammar: SqlGrammar) -> StatementAccess {
+    let Some(plans) = ScriptPlan::server_readings(sql, grammar) else {
+        return StatementAccess::Destructive;
+    };
+    let mut strictest = None;
+    for plan in plans {
+        let access = access_in(sql, grammar, &plan);
+        if access == StatementAccess::Destructive {
+            return access;
+        }
+        strictest = strictest.max(Some(access));
+    }
+    strictest.unwrap_or(StatementAccess::Write)
+}
+
+fn access_in(sql: &str, grammar: SqlGrammar, plan: &ScriptPlan) -> StatementAccess {
     let unreadable = match plan.diagnostics().is_empty() {
         true => StatementAccess::Read,
         false => StatementAccess::Write,
     };
-    // A comment between statements is sent too, so every token is
-    // searched, not only those inside a statement.
-    let all: Vec<ScriptToken> = plan.tokens(0..sql.len()).collect();
-    let hidden = executable_comments(sql, grammar, &all);
     plan.statements()
         .iter()
         .map(|statement| {
             let tokens: Vec<ScriptToken> = plan.tokens(statement.range.clone()).collect();
             access_of(sql, grammar, &tokens)
         })
-        .fold(unreadable.max(hidden), StatementAccess::max)
+        .fold(unreadable, StatementAccess::max)
 }
 
 fn access_of(sql: &str, grammar: SqlGrammar, tokens: &[ScriptToken]) -> StatementAccess {
@@ -254,27 +280,6 @@ fn opens_as_read(part: &[Code<'_>], grammar: SqlGrammar) -> bool {
     }
 }
 
-/// MySQL and MariaDB run the text inside `/*! … */` and `/*M! … */`, so
-/// a statement holding one is at least a write, and as harmful as what
-/// the comment holds.
-fn executable_comments(sql: &str, grammar: SqlGrammar, tokens: &[ScriptToken]) -> StatementAccess {
-    if grammar != SqlGrammar::MySql {
-        return StatementAccess::Read;
-    }
-    tokens
-        .iter()
-        .filter(|token| token.kind == ScriptTokenKind::BlockComment)
-        .filter_map(|token| sql.get(token.range.clone()))
-        .filter_map(|comment| comment.strip_prefix("/*!").or_else(|| comment.strip_prefix("/*M!")))
-        .map(|inner| {
-            let inner = inner.strip_suffix("*/").unwrap_or(inner);
-            let inner = inner.trim_start_matches(|c: char| c.is_ascii_digit());
-            statement_access(inner, grammar).max(StatementAccess::Write)
-        })
-        .max()
-        .unwrap_or(StatementAccess::Read)
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Word,
@@ -308,7 +313,13 @@ fn code_of<'a>(sql: &'a str, tokens: &[ScriptToken]) -> Vec<Code<'a>> {
     let mut depth = 0usize;
     tokens
         .iter()
-        .filter(|token| !token.kind.is_trivia() && token.kind != ScriptTokenKind::Directive)
+        .filter(|token| {
+            !token.kind.is_trivia()
+                && !matches!(
+                    token.kind,
+                    ScriptTokenKind::Directive | ScriptTokenKind::ExecutableMarker
+                )
+        })
         .map(|token| {
             let text = sql.get(token.range.clone()).unwrap_or_default();
             let at = depth;
@@ -377,15 +388,21 @@ fn defines_routine(statement: &[Code<'_>]) -> bool {
 /// data-modifying CTE.
 fn statement_destroys(code: &[Code<'_>], grammar: SqlGrammar) -> bool {
     let starts = statement_starts(code);
-    starts.iter().enumerate().any(|(nth, &start)| {
+    // Each start's segment runs to the next start at its depth, found in
+    // one pass from the end.
+    let mut next_at_depth: HashMap<usize, usize> = HashMap::new();
+    let mut ends = vec![code.len(); starts.len()];
+    for (nth, &start) in starts.iter().enumerate().rev() {
         let depth = code[start].depth;
-        let end = starts[nth + 1..]
-            .iter()
-            .copied()
-            .find(|&next| code[next].depth == depth)
-            .unwrap_or(code.len());
-        segment_destroys(&code[start..end], grammar)
-    })
+        if let Some(&next) = next_at_depth.get(&depth) {
+            ends[nth] = next;
+        }
+        next_at_depth.insert(depth, start);
+    }
+    starts
+        .iter()
+        .zip(ends)
+        .any(|(&start, end)| segment_destroys(&code[start..end], grammar))
 }
 
 fn statement_starts(code: &[Code<'_>]) -> Vec<usize> {
@@ -780,9 +797,111 @@ mod tests {
             access("SELECT 1 /*! ; DROP TABLE orders */", SqlGrammar::MySql),
             StatementAccess::Destructive
         );
+        for sql in [
+            "SELECT 1 /*M!100000 , 2 */",
+            "SELECT /*!40001 SQL_NO_CACHE */ * FROM orders",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MySql), StatementAccess::Read, "{sql}");
+        }
+        // A server older than 99999 skips the SELECT and runs the SET.
         assert_eq!(
-            access("SELECT 1 /*M!100000 , 2 */", SqlGrammar::MySql),
+            access("/*!99999 SELECT */ SET GLOBAL read_only = 0", SqlGrammar::MySql),
             StatementAccess::Write
+        );
+    }
+
+    #[test]
+    fn an_executable_comment_ends_where_the_server_ends_it() {
+        for sql in [
+            "SELECT 1 /*!, '*/'; DROP TABLE orders; SELECT ' */",
+            "SELECT 1 /*! -- */ '\n; DROP TABLE orders; -- '\n*/",
+            "SELECT 1 /*! # */ '\n; DROP TABLE orders; -- '\n*/",
+            "SELECT 1 /*! AS `*/`; DROP TABLE orders; SELECT ` */",
+            "SELECT 1;\n/*! DROP TABLE orders;",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MySql), StatementAccess::Destructive, "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_skipped_executable_comment_ends_where_the_server_ends_it() {
+        for sql in [
+            "/*!99999 ' */ DROP TABLE orders -- '",
+            "SELECT 1 /*!99999 /* */ ' */ ; DROP TABLE orders; -- '",
+            "SELECT 1 /*M!999999 /* */ ' */ ; DROP TABLE orders; -- '",
+            // MySQL reads `/*M!` as a plain comment, with no nesting.
+            "SELECT 1 /*M! ' /* x */ ; DROP TABLE orders; -- '",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MySql), StatementAccess::Destructive, "{sql}");
+        }
+    }
+
+    #[test]
+    fn executable_comments_are_read_for_every_server_version() {
+        for sql in [
+            "/*!40000 DELETE FROM orders */ /*!99999 WHERE id = 1 */",
+            "/*!99999 ON */ DROP TABLE orders",
+            "DELETE FROM orders /*!50700 WHERE id = 1 */",
+            "DELETE FROM orders /*M!100000 WHERE id = 1 */",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MySql), StatementAccess::Destructive, "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_mysql_81_dollar_quote_ends_where_the_server_ends_it() {
+        for sql in [
+            "CREATE PROCEDURE p() LANGUAGE JAVASCRIPT AS $$ /* $$; DROP TABLE orders; -- */",
+            // A `$` that breaks a partial match of `$a$` cannot start one.
+            "CREATE FUNCTION f() RETURNS int LANGUAGE JAVASCRIPT AS $a$ $$a$ /* $a$; DROP TABLE orders; -- */",
+            "CREATE PROCEDURE p() LANGUAGE JAVASCRIPT /*!80100 AS $$ */ ' $$ */; DROP TABLE orders; -- '",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MySql), StatementAccess::Destructive, "{sql}");
+        }
+        for sql in ["SELECT a$b$c, t.$x$ FROM t", "SELECT '$$; DROP TABLE orders' FROM t"] {
+            assert_eq!(access(sql, SqlGrammar::MySql), StatementAccess::Read, "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_line_only_a_client_reads_as_delimiter_is_sql_to_the_server() {
+        for sql in [
+            "BEGIN NOT ATOMIC SELECT 1 /*!99999 ' */ ;\ndelimiter : LOOP DROP TABLE t; LEAVE delimiter; END LOOP;\nEND -- ' */",
+            "BEGIN NOT ATOMIC SELECT 'a\\' ;\ndelimiter : LOOP DROP TABLE t; LEAVE delimiter; END LOOP;\nEND -- '",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MySql), StatementAccess::Destructive, "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_name_quote_the_session_sql_mode_sets_takes_the_stricter_reading() {
+        for sql in [
+            // ANSI_QUOTES: `"y\"` is a name, so the DROP stands outside it.
+            r#"SELECT 'a\' , ' AS "y\" ; DROP TABLE t ; -- " AS b, '\''"#,
+            // MariaDB's MSSQL mode reads `[a']` as a name.
+            "SELECT 1 AS [a'] ; DROP TABLE t ; -- ']",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::MySql), StatementAccess::Destructive, "{sql}");
+        }
+    }
+
+    #[test]
+    fn each_piece_a_client_sends_is_read_on_its_own() {
+        // The editor reads the third line as part of the statement; split
+        // again with `;` as the delimiter, it is a DELIMITER line, and the
+        // last line goes alone.
+        let batch = "SELECT 1;\nDELIMITER ; /*!99999 '*/ `' */\nSELECT 1 /*!99999 ' */ ; DROP TABLE t; -- ` ' */";
+        assert_eq!(access(batch, SqlGrammar::MySql), StatementAccess::Destructive);
+    }
+
+    #[test]
+    fn a_galera_node_runs_99997_comments() {
+        assert_eq!(
+            access(
+                "/*M! /*!99997 DROP TABLE orders -- */ SELECT 1 -- \n*/",
+                SqlGrammar::MySql
+            ),
+            StatementAccess::Destructive
         );
     }
 
