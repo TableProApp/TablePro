@@ -9,6 +9,7 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // How many rows each row lookup finds, in order: the check before a change, the lookup when it runs, and the
     // check after it.
     var rowCounts: [Int] = [1, 1, 0]
+    var onFetchTables: (@Sendable () async -> Void)?
 
     private(set) var boundedQueries: [(query: String, rowCap: Int)] = []
     private(set) var plainQueries: [String] = []
@@ -72,7 +73,10 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return scriptedResult
     }
 
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
+    func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
+        await onFetchTables?()
+        return []
+    }
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { scriptedColumns }
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }

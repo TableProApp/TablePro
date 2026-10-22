@@ -229,40 +229,50 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
 
     // MARK: - Catalog
 
+    // A catalog read shares the connection a cancel reaches, so it takes its turn with statements: a Stop for a
+    // statement queued behind it would otherwise end the read.
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        try await plugin.fetchTables(schema: schema).map(TableInfo.init(from:))
+        let plugin = plugin
+        return try await exclusively { try await plugin.fetchTables(schema: schema) }.map(TableInfo.init(from:))
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
-        try await plugin.fetchColumns(table: table, schema: schema).enumerated().map { index, column in
-            ColumnInfo(from: column, ordinalPosition: index)
-        }
+        let plugin = plugin
+        return try await exclusively { try await plugin.fetchColumns(table: table, schema: schema) }
+            .enumerated().map { index, column in ColumnInfo(from: column, ordinalPosition: index) }
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
-        try await plugin.fetchIndexes(table: table, schema: schema).map(IndexInfo.init(from:))
+        let plugin = plugin
+        return try await exclusively { try await plugin.fetchIndexes(table: table, schema: schema) }.map(IndexInfo.init(from:))
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
-        try await plugin.fetchForeignKeys(table: table, schema: schema).map(ForeignKeyInfo.init(from:))
+        let plugin = plugin
+        return try await exclusively { try await plugin.fetchForeignKeys(table: table, schema: schema) }
+            .map(ForeignKeyInfo.init(from:))
     }
 
     func fetchDatabases() async throws -> [String] {
-        try await plugin.fetchDatabases()
+        let plugin = plugin
+        return try await exclusively { try await plugin.fetchDatabases() }
     }
 
     func switchDatabase(to name: String) async throws {
-        try await plugin.switchDatabase(to: name)
+        let plugin = plugin
+        try await exclusively { try await plugin.switchDatabase(to: name) }
     }
 
     var supportsSchemas: Bool { plugin.supportsSchemas }
 
     func fetchSchemas() async throws -> [String] {
-        try await plugin.fetchSchemas()
+        let plugin = plugin
+        return try await exclusively { try await plugin.fetchSchemas() }
     }
 
     func switchSchema(to name: String) async throws {
-        try await plugin.switchSchema(to: name)
+        let plugin = plugin
+        try await exclusively { try await plugin.switchSchema(to: name) }
     }
 
     var currentSchema: String? { plugin.currentSchema }

@@ -162,6 +162,29 @@ struct MongoDBOnIOSTests {
         #expect(readOnly == [false])
     }
 
+    @Test("A catalog read takes its turn with statements, so cancelling it reaches only that read")
+    func catalogReadsJoinTheRequestLine() async throws {
+        let plugin = StubPluginDriver()
+        let (entered, enter) = AsyncStream<Void>.makeStream()
+        let (released, release) = AsyncStream<Void>.makeStream()
+        plugin.onFetchTables = {
+            enter.yield()
+            for await _ in released { break }
+        }
+        let driver = PluginBackedDriver(
+            plugin: plugin, dialedHosts: [], rowIdentity: .keyColumns, readsOnly: { _ in true },
+            cancelsRunningRequest: { try? plugin.cancelQuery() }
+        )
+
+        let read = Task { try await driver.fetchTables(schema: nil) }
+        for await _ in entered { break }
+        read.cancel()
+        release.yield()
+        _ = try? await read.value
+
+        #expect(plugin.cancelQueryCalls >= 1)
+    }
+
     @Test("Behind a tunnel the seed list goes and the driver talks to the forward alone")
     func tunnelDropsTheSeedList() throws {
         let fields = try MongoDBDialPlan.additionalFields(

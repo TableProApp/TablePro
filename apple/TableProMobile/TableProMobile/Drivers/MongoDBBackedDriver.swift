@@ -47,11 +47,11 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
     // Bounded like the Mac's background count, so a slow count never holds the session the next page needs.
     func rowCount(_ request: TableReadRequest) async throws -> Int? {
         let builder = mongo.filterQueryBuilder(for: request.table)
-        return try await mongo.documentCount(
-            table: request.table,
-            filterDocument: Self.filterDocument(for: request, builder: builder),
-            background: true
-        )
+        let filter = Self.filterDocument(for: request, builder: builder)
+        let mongo = mongo
+        return try await exclusively {
+            try await mongo.documentCount(table: request.table, filterDocument: filter, background: true)
+        }
     }
 
     func storedValue(
@@ -83,7 +83,7 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
         // The plugin cuts a long nested value for display; the stored document holds it whole.
         if let shown = row[index], JSONTruncation.isIncompleteStructure(shown),
            let locator = found.rowLocators?.first ?? nil,
-           let whole = try await mongo.storedNestedText(table: table, locator: locator, field: column) {
+           let whole = try await exclusively({ try await mongo.storedNestedText(table: table, locator: locator, field: column) }) {
             return whole
         }
         return row[index]
