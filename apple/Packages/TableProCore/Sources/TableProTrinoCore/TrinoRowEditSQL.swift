@@ -4,11 +4,18 @@ public struct TrinoColumnValue: Sendable, Equatable {
     public let name: String
     public let value: TrinoValue
     public let typeName: String
+    // SQL the host vetted, such as `current_timestamp`, written as it is instead of the value.
+    public let expression: String?
 
-    public init(name: String, value: TrinoValue, typeName: String) {
+    public init(name: String, value: TrinoValue, typeName: String, expression: String? = nil) {
         self.name = name
         self.value = value
         self.typeName = typeName
+        self.expression = expression
+    }
+
+    var sql: String {
+        expression ?? TrinoLiteral.render(value, typeName: typeName)
     }
 }
 
@@ -16,7 +23,7 @@ public enum TrinoRowEditSQL {
     public static func insert(qualifiedTable: String, columns: [TrinoColumnValue]) -> String? {
         guard !columns.isEmpty else { return nil }
         let names = columns.map { TrinoIntrospectionSQL.quoteIdentifier($0.name) }.joined(separator: ", ")
-        let values = columns.map { TrinoLiteral.render($0.value, typeName: $0.typeName) }.joined(separator: ", ")
+        let values = columns.map(\.sql).joined(separator: ", ")
         return "INSERT INTO \(qualifiedTable) (\(names)) VALUES (\(values))"
     }
 
@@ -27,7 +34,7 @@ public enum TrinoRowEditSQL {
     ) -> String? {
         guard !assignments.isEmpty, let predicate = predicate(keyColumns) else { return nil }
         let sets = assignments
-            .map { "\(TrinoIntrospectionSQL.quoteIdentifier($0.name)) = \(TrinoLiteral.render($0.value, typeName: $0.typeName))" }
+            .map { "\(TrinoIntrospectionSQL.quoteIdentifier($0.name)) = \($0.sql)" }
             .joined(separator: ", ")
         return "UPDATE \(qualifiedTable) SET \(sets) WHERE \(predicate)"
     }
@@ -35,6 +42,12 @@ public enum TrinoRowEditSQL {
     public static func delete(qualifiedTable: String, keyColumns: [TrinoColumnValue]) -> String? {
         guard let predicate = predicate(keyColumns) else { return nil }
         return "DELETE FROM \(qualifiedTable) WHERE \(predicate)"
+    }
+
+    // Finds at most two of the rows a write with these key columns would reach.
+    public static func lookup(qualifiedTable: String, keyColumns: [TrinoColumnValue]) -> String? {
+        guard let predicate = predicate(keyColumns) else { return nil }
+        return "SELECT 1 FROM \(qualifiedTable) WHERE \(predicate) LIMIT 2"
     }
 
     static func predicate(_ keyColumns: [TrinoColumnValue]) -> String? {

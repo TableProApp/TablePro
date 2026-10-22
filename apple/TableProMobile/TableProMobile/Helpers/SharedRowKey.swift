@@ -29,7 +29,7 @@ nonisolated enum SharedRowKey {
 
     static func error(for refusal: RowChangeRefusal) -> AppError {
         switch refusal {
-        case .rowNotFound:
+        case .rowNotFound, .notApplied:
             AppError(
                 category: .query,
                 title: String(localized: "Row Not Found"),

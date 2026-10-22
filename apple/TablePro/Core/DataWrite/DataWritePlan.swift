@@ -84,6 +84,32 @@ struct RowWriteOperation: Codable, Sendable, Equatable {
     }
 }
 
+// A driver's `PluginRowLookup`, bound for the executor.
+struct RowLookup: Sendable {
+    let query: ParameterizedStatement
+    let rowCount: Int
+    let pinsRows: Bool
+    let check: ParameterizedStatement?
+
+    init(query: ParameterizedStatement, rowCount: Int, pinsRows: Bool, check: ParameterizedStatement? = nil) {
+        self.query = query
+        self.rowCount = rowCount
+        self.pinsRows = pinsRows
+        self.check = check
+    }
+
+    init(_ lookup: PluginRowLookup) {
+        self.init(
+            query: ParameterizedStatement(sql: lookup.query, parameters: lookup.parameters.map(\.asAny)),
+            rowCount: lookup.rowCount,
+            pinsRows: lookup.pinsRows,
+            check: lookup.check.map {
+                ParameterizedStatement(sql: $0, parameters: lookup.checkParameters.map(\.asAny))
+            }
+        )
+    }
+}
+
 /// One statement, and how many rows it is allowed to touch.
 struct DataWriteStep: Sendable {
     enum Kind: Sendable, Equatable {
@@ -105,6 +131,9 @@ struct DataWriteStep: Sendable {
     let matchesRowsWithoutKey: Bool
     // The statement refuses a SQLite key that matches more than one row, so a short count is a failed save.
     let refusesSharedKey: Bool
+    let rowKind: RowWriteKind?
+    // Finds the statement's rows right before it runs, for a driver whose engine has no key that names one row.
+    let lookup: RowLookup?
 
     init(
         kind: Kind,
@@ -112,7 +141,9 @@ struct DataWriteStep: Sendable {
         expectedRowCount: Int? = nil,
         tableName: String? = nil,
         matchesRowsWithoutKey: Bool = false,
-        refusesSharedKey: Bool = false
+        refusesSharedKey: Bool = false,
+        rowKind: RowWriteKind? = nil,
+        lookup: RowLookup? = nil
     ) {
         self.kind = kind
         self.statement = statement
@@ -120,6 +151,8 @@ struct DataWriteStep: Sendable {
         self.tableName = tableName
         self.matchesRowsWithoutKey = matchesRowsWithoutKey
         self.refusesSharedKey = refusesSharedKey
+        self.rowKind = rowKind
+        self.lookup = lookup
     }
 }
 
@@ -148,7 +181,9 @@ extension DataWriteStep {
                     statement: $0.statement,
                     expectedRowCount: $0.keylessRowCount,
                     tableName: tableName,
-                    matchesRowsWithoutKey: $0.keylessRowCount != nil
+                    matchesRowsWithoutKey: $0.keylessRowCount != nil,
+                    rowKind: $0.kind,
+                    lookup: $0.lookup
                 )
             }
         }
@@ -227,7 +262,7 @@ struct DataWritePlan: Sendable {
     /// asks someone to approve `WHERE "id" = ?`, which names no row at all.
     var displayStatements: [String] {
         prologue
-            + steps.map { SQLParameterInliner.inline($0.statement, databaseType: databaseType) }
+            + steps.flatMap { SQLParameterInliner.inline($0, databaseType: databaseType) }
             + epilogue
     }
 

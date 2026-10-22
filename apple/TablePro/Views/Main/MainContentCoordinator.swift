@@ -895,15 +895,17 @@ final class MainContentCoordinator: ObservableObject {
         trailingPaneProxy?.showInspector()
     }
 
-    /// Set up the plugin driver for query building dispatch on the query builder and change manager.
     internal func setupPluginDriver() {
         guard let driver = services.databaseManager.driver(for: connectionId) else { return }
-        let pluginDriver = driver.queryBuildingPluginDriver
-        /// `pluginDriver` is published, so writing the same driver back on every appearance
-        /// re-evaluated every view that reads the change manager for nothing.
-        guard pluginDriver !== changeManager.pluginDriver else { return }
-        queryBuilder.setPluginDriver(pluginDriver)
-        changeManager.pluginDriver = pluginDriver
+        // Both are published: writing the same driver back on every appearance re-evaluates every view that reads them.
+        let browseBuilder = driver.queryBuildingPluginDriver
+        if !queryBuilder.usesPluginDriver(browseBuilder) {
+            queryBuilder.setPluginDriver(browseBuilder)
+        }
+        let rowWriter = driver.rowWritingPluginDriver
+        if rowWriter !== changeManager.pluginDriver {
+            changeManager.pluginDriver = rowWriter
+        }
     }
 
     func markTeardownScheduled() {

@@ -29,6 +29,15 @@
         }
       }
     },
+    "%@ holds values that cannot be compared, so the row cannot be found again." : {
+
+    },
+    "The row has no loaded values to be found by." : {
+
+    },
+    "The row's loaded values are missing, so it cannot be found again." : {
+
+    },
     "“%@” has an open transaction. Deleting the connection rolls it back and discards its uncommitted changes." : {
 
     },

@@ -59,7 +59,7 @@ internal enum ShortcutsRowWriter {
         // as MongoDB's does, keeps that reading on the connection it read it on.
         let (plan, rowCount) = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
             let columns = try await driver.fetchColumns(table: request.table, schema: scope.schema)
-            let pluginDriver = driver.queryBuildingPluginDriver
+            let pluginDriver = driver.rowWritingPluginDriver
             return try await MainActor.run {
                 try writePlan(
                     for: request.rows,

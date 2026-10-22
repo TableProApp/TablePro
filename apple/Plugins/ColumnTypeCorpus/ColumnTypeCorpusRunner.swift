@@ -356,26 +356,39 @@ struct ColumnTypeCorpusRunner: Sendable {
                            newValue: newValue)],
             originalRow: original
         )
-        let statements: [(sql: String, parameters: [PluginCellValue])]
-        if let writes = try driver.generateRowWrites(
+        let writes: [PluginRowWrite]
+        if let generated = try driver.generateRowWrites(
             table: table, schema: nil, columns: page.columns, primaryKeyColumns: primaryKey, changes: [change],
             insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: [], context: context
         ) {
-            statements = writes.map { ($0.statement, $0.parameters) }
+            writes = generated
         } else {
-            statements = [hostUpdate(
-                table: table, read: page, original: original, newValue: newValue, primaryKey: primaryKey
-            )]
+            let host = hostUpdate(table: table, read: page, original: original, newValue: newValue, primaryKey: primaryKey)
+            writes = [PluginRowWrite(statement: host.sql, parameters: host.parameters, rowIndices: [0])]
         }
+        let statements = writes.map { (sql: $0.statement, parameters: $0.parameters) }
 
+        // The way DataWriteExecutor runs a write with a lookup: on exactly the rows it finds, then checked.
         let transactional = driver.supportsTransactions
         do {
             if transactional { try await driver.beginTransaction() }
-            for statement in statements {
-                if statement.parameters.isEmpty {
-                    _ = try await driver.execute(query: statement.sql)
+            for write in writes {
+                var parameters = write.parameters
+                if let lookup = write.lookup {
+                    let found = try await driver.executeParameterized(query: lookup.query, parameters: lookup.parameters).rows
+                    guard found.count == lookup.rowCount else {
+                        throw StepFailure(problems: ["\(lookup.query) found \(found.count) rows, expected \(lookup.rowCount)"])
+                    }
+                    if lookup.pinsRows { parameters += found.flatMap { $0 } }
+                }
+                if parameters.isEmpty {
+                    _ = try await driver.execute(query: write.statement)
                 } else {
-                    _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+                    _ = try await driver.executeParameterized(query: write.statement, parameters: parameters)
+                }
+                if let check = write.lookup?.check,
+                   try await !driver.executeParameterized(query: check, parameters: write.lookup?.checkParameters ?? []).rows.isEmpty {
+                    throw StepFailure(problems: ["\(write.statement) left its row as it was"])
                 }
             }
             if transactional { try await driver.commitTransaction() }

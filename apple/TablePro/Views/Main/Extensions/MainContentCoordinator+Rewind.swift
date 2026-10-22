@@ -142,7 +142,11 @@ extension MainContentCoordinator {
     private func buildAndPresentRewindPlan(for record: RewindRecord, scope: DatabaseScope) async {
         let executor = RewindExecutor(connection: connection, scope: scope)
         do {
-            let plan = try await executor.plan(for: record, factory: rewindStatementFactory(for: record))
+            let plan = try await executor.plan(
+                for: record,
+                factory: rewindStatementFactory(for: record),
+                browseBuilder: services.databaseManager.driver(for: connectionId)?.queryBuildingPluginDriver
+            )
             rewindPlan = plan
             activeSheet = .rewind
         } catch {

@@ -6,9 +6,10 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var answersBoundedReads = true
     var hasTransactions = false
     var scriptedColumns: [PluginColumnInfo] = []
-    // How many rows each row lookup finds, in order: the check before a change, the lookup when it runs, and the
-    // check after it.
+    // How many rows each row lookup finds, in order: the check before a change, then the writer's lookup when it runs.
     var rowCounts: [Int] = [1, 1, 0]
+    // How many rows each writer's check after a write finds; a row means the write did not land.
+    var checkRows: [Int] = []
 
     private(set) var boundedQueries: [(query: String, rowCap: Int)] = []
     private(set) var plainQueries: [String] = []
@@ -19,6 +20,7 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private(set) var appliedQueryTimeouts: [Int] = []
     private(set) var cancelQueryCalls = 0
     private(set) var rowLookups: [(query: String, parameters: [PluginCellValue])] = []
+    private(set) var checks: [(query: String, parameters: [PluginCellValue])] = []
 
     func connect() async throws {}
 
@@ -37,12 +39,20 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        if query.hasPrefix("SELECT "), query.hasSuffix(" LIMIT 2") {
+        if query.hasPrefix("LOOKUP ") || (query.hasPrefix("SELECT ") && query.hasSuffix(" LIMIT 2")) {
             rowLookups.append((query, parameters))
             let count = rowCounts.isEmpty ? 0 : rowCounts.removeFirst()
             return PluginQueryResult(
                 columns: ["_part"], columnTypeNames: ["String"],
                 rows: Array(repeating: [.text("all_1_1_0")], count: count),
+                rowsAffected: 0, timing: PluginQueryTiming(total: 0)
+            )
+        }
+        if query.hasPrefix("CHECK ") {
+            checks.append((query, parameters))
+            let count = checkRows.isEmpty ? 0 : checkRows.removeFirst()
+            return PluginQueryResult(
+                columns: ["1"], columnTypeNames: ["UInt8"], rows: Array(repeating: [.text("1")], count: count),
                 rowsAffected: 0, timing: PluginQueryTiming(total: 0)
             )
         }
@@ -93,6 +103,38 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         generatedColumns = columns
         return changes.map { change in
             (statement: "WRITE \(change.type) \(table)", parameters: change.originalRow ?? insertedRowData[change.rowIndex] ?? [])
+        }
+    }
+
+    // Like ClickHouse's writer: an update or delete finds its row and is pinned to it, then checked.
+    func generateRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
+        let statements = generateStatements(
+            table: table, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        ) ?? []
+        return zip(changes, statements).map { change, statement in
+            let row = change.originalRow ?? []
+            let lookup = change.type == .insert ? nil : PluginRowLookup(
+                query: "LOOKUP \(change.type) \(table)",
+                parameters: row,
+                rowCount: 1,
+                pinsRows: true,
+                check: "CHECK \(change.type) \(table)",
+                checkParameters: row + change.cellChanges.map(\.newValue)
+            )
+            return PluginRowWrite(
+                statement: statement.statement, parameters: statement.parameters, rowIndices: [change.rowIndex], lookup: lookup
+            )
         }
     }
 }

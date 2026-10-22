@@ -18,12 +18,20 @@ import TableProSQLGrammar
 /// The statements that put deleted rows back, with what has to run around them outside the transaction.
 struct RestoreStatements {
     let statements: [ParameterizedStatement]
+    // One per statement.
+    let lookups: [RowLookup?]
     /// Run before the transaction opens and after it ends, on the same session: SQL Server's `IDENTITY_INSERT`.
     let prologue: [String]
     let epilogue: [String]
 
-    init(statements: [ParameterizedStatement], prologue: [String] = [], epilogue: [String] = []) {
+    init(
+        statements: [ParameterizedStatement],
+        lookups: [RowLookup?]? = nil,
+        prologue: [String] = [],
+        epilogue: [String] = []
+    ) {
         self.statements = statements
+        self.lookups = lookups ?? Array(repeating: nil, count: statements.count)
         self.prologue = prologue
         self.epilogue = epilogue
     }
@@ -41,6 +49,8 @@ struct DriverWrittenStatement {
     let statement: ParameterizedStatement
     /// The rows a match without a primary key has to find, or nil when nothing vouches for the count.
     let keylessRowCount: Int?
+    var kind: RowWriteKind?
+    var lookup: RowLookup?
 }
 
 @MainActor
@@ -99,6 +109,19 @@ struct RowChangeStatementFactory {
             return statements.map(\.statement)
         case .driverWritten(let statements):
             return statements.map(\.statement)
+        }
+    }
+
+    // A driver's lookups stay with their statements, which cannot run without them.
+    func lookedUpStatements(
+        for changes: [RowChange],
+        deletedRowIDs: Set<RowID> = []
+    ) throws -> RestoreStatements {
+        switch try rowWriteStatements(for: changes, deletedRowIDs: deletedRowIDs) {
+        case .counted(let statements):
+            return RestoreStatements(statements: statements.map(\.statement))
+        case .driverWritten(let statements):
+            return RestoreStatements(statements: statements.map(\.statement), lookups: statements.map(\.lookup))
         }
     }
 
@@ -421,6 +444,7 @@ struct RowChangeStatementFactory {
     /// A driver that throws on the probe is refusing a change it owns, so it still owns the engine.
     var pluginOwnsStatementGeneration: Bool {
         guard let pluginDriver else { return false }
+        if pluginDriver.capabilities.contains(.rowWrites) { return true }
         let probe = PluginRowChange(rowIndex: 0, type: .update, cellChanges: [], originalRow: nil)
         do {
             return try pluginDriver.generateRowWrites(
@@ -454,7 +478,7 @@ struct RowChangeStatementFactory {
         )
         let writes: [PluginRowWrite]
         do {
-            guard let generated = try pluginDriver.generateRowWrites(
+            let generated = try pluginDriver.generateRowWrites(
                 table: tableName,
                 schema: schemaName,
                 columns: columns,
@@ -464,8 +488,15 @@ struct RowChangeStatementFactory {
                 deletedRowIndices: keyed.deletedRowIndices,
                 insertedRowIndices: keyed.insertedRowIndices,
                 context: rowWriteContext
-            ) else { return nil }
-            writes = generated
+            )
+            // A driver that writes its own rows never hands one back to the host, whose statements are not its engine's.
+            if let generated {
+                writes = generated
+            } else if pluginDriver.capabilities.contains(.rowWrites) {
+                writes = []
+            } else {
+                return nil
+            }
         } catch let refusal as PluginRowWriteRefusal {
             throw DataWriteError.changeRefused(
                 table: tableName, kind: keyed.writeKind(ofRowIndex: refusal.rowIndex), reason: refusal.reason
@@ -484,10 +515,12 @@ struct RowChangeStatementFactory {
         guard unwritten.isEmpty else {
             throw DataWriteError.changesNotWritable(table: tableName, unwritten: UnwrittenRowCounts(unwritten))
         }
-        return writes.map {
+        return writes.map { write in
             DriverWrittenStatement(
-                statement: ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map(\.asAny)),
-                keylessRowCount: keylessRowCount(of: $0, keyed: keyed)
+                statement: ParameterizedStatement(sql: write.statement, parameters: write.parameters.map(\.asAny)),
+                keylessRowCount: write.lookup == nil ? keylessRowCount(of: write, keyed: keyed) : nil,
+                kind: write.rowIndices.first.flatMap(keyed.writeKind(ofRowIndex:)),
+                lookup: write.lookup.map(RowLookup.init)
             )
         }
     }

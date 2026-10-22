@@ -209,6 +209,10 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             .cancelQuery,
             .materializedViews,
             .dataCompare,
+            .rowWrites,
+            .cellExpressions,
+            .uuidCellText,
+            .repeatingPrimaryKey,
         ]
     }
 
@@ -386,86 +390,76 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
 
     // MARK: - DML Statement Generation
 
-    func generateStatements(
+    func generateRowWrites(
         table: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        var statements: [(statement: String, parameters: [PluginCellValue])] = []
+    ) throws -> [PluginRowWrite]? {
+        try generateRowWrites(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices, context: PluginRowWriteContext()
+        )
+    }
 
-        for change in changes {
-            switch change.type {
-            case .insert:
-                guard insertedRowIndices.contains(change.rowIndex) else { continue }
-                if let values = insertedRowData[change.rowIndex] {
-                    if let stmt = generateClickHouseInsert(table: table, columns: columns, values: values) {
-                        statements.append(stmt)
-                    }
-                }
-            case .update:
-                if let stmt = generateClickHouseUpdate(table: table, columns: columns, change: change) {
-                    statements.append(stmt)
-                }
-            case .delete:
-                guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                if let stmt = generateClickHouseDelete(table: table, columns: columns, change: change) {
-                    statements.append(stmt)
-                }
+    // The sorting key repeats, so it never names a row: every write matches the whole row (ClickHouseRowWrites).
+    func generateRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
+        try ClickHouseRowWrites.writes(
+            table: table,
+            schema: schema,
+            columns: columns,
+            changes: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices,
+            context: context,
+            forms: rowWriteForms
+        )
+    }
+
+    // A lightweight UPDATE or DELETE when the user may not wait for a mutation: each finishes before it returns.
+    private var rowWriteForms: ClickHouseRowWrites.Forms {
+        ClickHouseRowWrites.Forms(
+            update: { [self] table, assignments, predicate in
+                rowUpdateStatement(table: table, assignments: assignments, predicate: predicate)
+                    ?? "UPDATE \(table) SET \(assignments) WHERE \(predicate)"
+            },
+            delete: { [self] table, predicate in
+                rowDeleteStatement(table: table, predicate: predicate) ?? "DELETE FROM \(table) WHERE \(predicate)"
             }
-        }
-
-        return statements.isEmpty ? nil : statements
+        )
     }
 
-    private func generateClickHouseInsert(
+    // No column is filled by the server unasked, so the row goes back with every value it had.
+    func generateIdentityPreservingInsert(
         table: String,
+        schema: String?,
         columns: [String],
-        values: [PluginCellValue]
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        var nonDefaultColumns: [String] = []
-        var parameters: [PluginCellValue] = []
-
-        for (index, value) in values.enumerated() {
-            if value.asText == "__DEFAULT__" { continue }
-            guard index < columns.count else { continue }
-            nonDefaultColumns.append(clickHouseQuotedIdentifier(columns[index]))
-            parameters.append(value)
+        primaryKeyColumns: [String],
+        rows: [[PluginCellValue]]
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        let target = ClickHouseRowWrites.qualified(table: table, schema: schema)
+        return rows.enumerated().map { index, row in
+            let write = ClickHouseRowWrites.insert(
+                into: target, columns: columns, values: row, expressions: [], rowIndex: index
+            )
+            return (write.statement, write.parameters)
         }
-
-        guard !nonDefaultColumns.isEmpty else { return nil }
-
-        let columnList = nonDefaultColumns.joined(separator: ", ")
-        let placeholders = parameters.map { _ in "?" }.joined(separator: ", ")
-        let sql = "INSERT INTO \(clickHouseQuotedIdentifier(table)) (\(columnList)) VALUES (\(placeholders))"
-        return (statement: sql, parameters: parameters)
-    }
-
-    private func generateClickHouseUpdate(
-        table: String,
-        columns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        guard !change.cellChanges.isEmpty else { return nil }
-
-        let escapedTable = clickHouseQuotedIdentifier(table)
-        var parameters: [PluginCellValue] = []
-
-        let setClauses = change.cellChanges.map { cellChange -> String in
-            let col = clickHouseQuotedIdentifier(cellChange.columnName)
-            parameters.append(cellChange.newValue)
-            return "\(col) = ?"
-        }.joined(separator: ", ")
-
-        guard let whereClause = buildWhereClause(
-            columns: columns, change: change, parameters: &parameters
-        ) else { return nil }
-
-        let sql = "ALTER TABLE \(escapedTable) UPDATE \(setClauses) WHERE \(whereClause)"
-        return (statement: sql, parameters: parameters)
     }
 
     // A plain UPDATE needs lightweight updates enabled on the table. A mutation returns before it applies unless
@@ -486,46 +480,6 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
 
     private var mutationWait: String? {
         serverProfile.allows(.mutationsSync, "1") ? " SETTINGS mutations_sync = 1" : nil
-    }
-
-    private func generateClickHouseDelete(
-        table: String,
-        columns: [String],
-        change: PluginRowChange
-    ) -> (statement: String, parameters: [PluginCellValue])? {
-        let escapedTable = clickHouseQuotedIdentifier(table)
-        var parameters: [PluginCellValue] = []
-
-        guard let whereClause = buildWhereClause(
-            columns: columns, change: change, parameters: &parameters
-        ) else { return nil }
-
-        let sql = "ALTER TABLE \(escapedTable) DELETE WHERE \(whereClause)"
-        return (statement: sql, parameters: parameters)
-    }
-
-    private func buildWhereClause(
-        columns: [String],
-        change: PluginRowChange,
-        parameters: inout [PluginCellValue]
-    ) -> String? {
-        guard let originalRow = change.originalRow else { return nil }
-
-        var conditions: [String] = []
-        for (index, columnName) in columns.enumerated() {
-            guard index < originalRow.count else { continue }
-            let col = clickHouseQuotedIdentifier(columnName)
-            let value = originalRow[index]
-            if value.isNull {
-                conditions.append("\(col) IS NULL")
-            } else {
-                parameters.append(value)
-                conditions.append("\(col) = ?")
-            }
-        }
-
-        guard !conditions.isEmpty else { return nil }
-        return conditions.joined(separator: " AND ")
     }
 
     func cancelQuery() throws {

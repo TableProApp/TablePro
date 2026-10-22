@@ -442,6 +442,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Access to the underlying plugin driver for query building dispatch
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { get }
 
+    // The driver row saves ask for statements. A plugin can write its rows without building its browse query.
+    var rowWritingPluginDriver: (any PluginDatabaseDriver)? { get }
+
+    var primaryKeyNamesOneRow: Bool { get }
+
     /// Quote an identifier (table or column name) using the driver's quoting style
     func quoteIdentifier(_ name: String) -> String
 
@@ -536,6 +541,10 @@ extension DatabaseDriver {
     }
 
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { nil }
+
+    var rowWritingPluginDriver: (any PluginDatabaseDriver)? { queryBuildingPluginDriver }
+
+    var primaryKeyNamesOneRow: Bool { true }
 
     func beginTransaction(mode: PluginTransactionAccessMode) async throws {
         try await beginTransaction()

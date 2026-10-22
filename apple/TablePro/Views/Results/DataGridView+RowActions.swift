@@ -215,7 +215,8 @@ extension TableViewCoordinator {
                 quoteIdentifier: driver?.quoteIdentifier,
                 escapeStringLiteral: driver?.escapeStringLiteral,
                 identifierSpelling: copiedIdentifierSpelling(for: databaseType),
-                rowUpdateStatement: driver?.rowUpdateStatement
+                rowUpdateStatement: driver?.rowUpdateStatement,
+                matchesEveryColumn: driver?.primaryKeyNamesOneRow == false
             )
             let rows = indices.sorted().compactMap { displayRow(at: $0).map(copiedSourceRow) }
             writeCopiedStatements(converter.generateUpdates(rows: rows))

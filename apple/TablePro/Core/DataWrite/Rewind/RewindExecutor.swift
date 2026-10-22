@@ -27,13 +27,17 @@ struct RewindExecutor {
     let connection: DatabaseConnection
     let scope: DatabaseScope
 
-    func plan(for record: RewindRecord, factory: RowChangeStatementFactory) async throws -> RewindPlan {
+    func plan(
+        for record: RewindRecord,
+        factory: RowChangeStatementFactory,
+        browseBuilder: (any PluginDatabaseDriver)?
+    ) async throws -> RewindPlan {
         let planner = RewindPlanner(
             record: record,
             factory: factory,
             queryBuilder: TableQueryBuilder(
                 databaseType: connection.type,
-                pluginDriver: factory.pluginDriver,
+                pluginDriver: browseBuilder,
                 dialect: PluginManager.shared.sqlDialect(for: connection.type),
                 pagination: PluginManager.shared.paginationCapability(for: connection.type)
             )
@@ -146,12 +150,13 @@ struct RewindExecutor {
         let writePlan = DataWritePlan(
             scope: scope,
             databaseType: connection.type,
-            steps: plan.statements.map {
+            steps: zip(plan.statements, plan.lookups).map { statement, lookup in
                 DataWriteStep(
                     kind: .rowWrite,
-                    statement: $0,
+                    statement: statement,
                     expectedRowCount: 1,
-                    tableName: plan.record.target.table
+                    tableName: plan.record.target.table,
+                    lookup: lookup
                 )
             },
             prologue: plan.prologue,

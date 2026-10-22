@@ -112,6 +112,13 @@ enum DataWriteExecutor {
         let steps = plan.steps.filter { !$0.statement.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         guard !steps.isEmpty || !plan.prologue.isEmpty else { return DataWriteRun(results: [], sideStatements: []) }
 
+        // A row a lookup cannot find on its own refuses the save before anything is written. Each step reads its
+        // lookup again right before it runs, since the steps ahead of it can move or change its rows.
+        for step in steps {
+            guard let lookup = step.lookup else { continue }
+            _ = try await rowsFound(by: lookup, for: step, on: driver)
+        }
+
         var sideStatements: [String] = []
 
         func drainEpilogue() async {
@@ -157,13 +164,23 @@ enum DataWriteExecutor {
 
             for step in steps {
                 let start = Date()
+                var statement = step.statement
+                if let lookup = step.lookup {
+                    let found = try await rowsFound(by: lookup, for: step, on: driver)
+                    if lookup.pinsRows {
+                        statement = ParameterizedStatement(
+                            sql: statement.sql,
+                            parameters: statement.parameters + found.flatMap { $0.map(\.asAny) }
+                        )
+                    }
+                }
                 let result: QueryResult
-                if step.statement.parameters.isEmpty {
-                    result = try await driver.execute(query: step.statement.sql)
+                if statement.parameters.isEmpty {
+                    result = try await driver.execute(query: statement.sql)
                 } else {
                     result = try await driver.executeParameterized(
-                        query: step.statement.sql,
-                        parameters: step.statement.parameters
+                        query: statement.sql,
+                        parameters: statement.parameters
                     )
                 }
 
@@ -177,9 +194,13 @@ enum DataWriteExecutor {
                     DataWriteStepResult(
                         executionTime: Date().timeIntervalSince(start),
                         rowsAffected: result.rowsAffected,
-                        wasVerified: step.expectedRowCount != nil
+                        wasVerified: step.expectedRowCount != nil || step.lookup != nil
                     )
                 )
+                // Counted as written: a check that fails cannot tell an unapplied write from a copy inserted since.
+                if let check = step.lookup?.check {
+                    try await confirmLanded(check, for: step, on: driver)
+                }
             }
 
             if owner.opensTransaction {
@@ -218,13 +239,69 @@ enum DataWriteExecutor {
         return DataWriteRun(results: results, sideStatements: sideStatements)
     }
 
+    private static func rowsFound(
+        by lookup: RowLookup,
+        for step: DataWriteStep,
+        on driver: DatabaseDriver
+    ) async throws -> [[PluginCellValue]] {
+        let table = step.tableName ?? ""
+        let rows: [[PluginCellValue]]
+        do {
+            rows = try await fetch(lookup.query, on: driver).rows
+        } catch {
+            throw DataWriteError.changeRefused(
+                table: table,
+                kind: step.rowKind,
+                reason: String(
+                    format: String(localized: "The row could not be looked up: %@"),
+                    error.localizedDescription
+                )
+            )
+        }
+        guard rows.count != lookup.rowCount else { return rows }
+        logger.error(
+            "Lookup on '\(table, privacy: .private(mask: .hash))' found \(rows.count, privacy: .public) rows, expected \(lookup.rowCount, privacy: .public)"
+        )
+        throw DataWriteError.changeRefused(
+            table: table,
+            kind: step.rowKind,
+            reason: rows.count < lookup.rowCount
+                ? String(localized: "No row holds the values it was loaded with. Another client may have changed or deleted it.")
+                : String(localized: "Other rows hold exactly the same values, so the change cannot reach this row alone.")
+        )
+    }
+
+    // The row may have moved between the lookup and the write, or another row may now hold its old values, so a save
+    // again could reach a row nobody edited.
+    private static func confirmLanded(
+        _ check: ParameterizedStatement,
+        for step: DataWriteStep,
+        on driver: DatabaseDriver
+    ) async throws {
+        guard try await !fetch(check, on: driver).rows.isEmpty else { return }
+        let table = step.tableName ?? ""
+        logger.error("Check on '\(table, privacy: .private(mask: .hash))' found the row unchanged after the write")
+        throw DataWriteError.changeRefused(
+            table: table,
+            kind: step.rowKind,
+            reason: String(localized: "A row still holds the values the change was made on. Refresh the table before saving again.")
+        )
+    }
+
+    private static func fetch(_ statement: ParameterizedStatement, on driver: DatabaseDriver) async throws -> QueryResult {
+        statement.parameters.isEmpty
+            ? try await driver.execute(query: statement.sql)
+            : try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
+    }
+
     private static func verify(
         _ step: DataWriteStep,
         rowsAffected: Int,
         owner: WriteTransactionOwner,
         countsAreMeaningful: Bool
     ) throws {
-        guard let expected = step.expectedRowCount else { return }
+        // A row inserted between a lookup without a pin and its write can still be reached, and a real count shows it.
+        guard let expected = step.expectedRowCount ?? step.lookup?.rowCount else { return }
         let table = step.tableName ?? ""
 
         if KeyedWriteVerification.exceedsExpectation(rowsAffected: rowsAffected, expected: expected) {

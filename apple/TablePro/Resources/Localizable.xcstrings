@@ -104,6 +104,10 @@
         }
       }
     },
+    "%@ holds values that cannot be compared, so the row cannot be found again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ is read-only, so rows cannot be added." : {
 
     },
@@ -135,6 +139,9 @@
 
     },
     "A name cannot be empty." : {
+
+    },
+    "A row still holds the values the change was made on. Refresh the table before saving again." : {
 
     },
     "A transaction is open on this connection. Commit or roll it back in TablePro, then run the shortcut again." : {
@@ -434,6 +441,9 @@
     "No foreign key links %@ to the tables before it, so it is cross joined." : {
 
     },
+    "No row holds the values it was loaded with. Another client may have changed or deleted it." : {
+
+    },
     "No tables picked" : {
 
     },
@@ -465,6 +475,9 @@
 
     },
     "Opens a database connection in TablePro" : {
+
+    },
+    "Other rows hold exactly the same values, so the change cannot reach this row alone." : {
 
     },
     "Pick the result to compare this one with." : {
@@ -645,6 +658,17 @@
     },
     "The right result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the left." : {
 
+    },
+    "The row could not be looked up: %@" : {
+
+    },
+    "The row has no loaded values to be found by." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The row's loaded values are missing, so it cannot be found again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The saved list could not be read. Adding a database replaces it." : {
 

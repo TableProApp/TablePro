@@ -50,6 +50,8 @@ internal struct SQLRowToStatementConverter {
     private let quoteIdentifierFn: (String) -> String
     private let escapeStringFn: (String) -> String
     private let rowUpdateFn: ((_ table: String, _ assignments: String, _ predicate: String) -> String?)?
+    // Rows can share the key, so the row is found by every column while the key still stays out of SET.
+    private let matchesEveryColumn: Bool
 
     private static let maxRows = 50_000
 
@@ -66,10 +68,12 @@ internal struct SQLRowToStatementConverter {
         quoteIdentifier: ((String) -> String)? = nil,
         escapeStringLiteral: ((String) -> String)? = nil,
         identifierSpelling: SQLIdentifierSpelling? = nil,
-        rowUpdateStatement: ((_ table: String, _ assignments: String, _ predicate: String) -> String?)? = nil
+        rowUpdateStatement: ((_ table: String, _ assignments: String, _ predicate: String) -> String?)? = nil,
+        matchesEveryColumn: Bool = false
     ) throws {
         self.tableName = tableName
         self.rowUpdateFn = rowUpdateStatement
+        self.matchesEveryColumn = matchesEveryColumn
         self.schemaName = schemaName
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
@@ -180,8 +184,8 @@ internal struct SQLRowToStatementConverter {
     }
 
     private func rowMatch(storedValues: [PluginCellValue]) -> String? {
-        guard primaryKeyColumns.isEmpty || keyColumnsPresent else { return nil }
-        if keyColumnsPresent {
+        guard primaryKeyColumns.isEmpty || keyColumnsPresent || matchesEveryColumn else { return nil }
+        if keyColumnsPresent, !matchesEveryColumn {
             let conditions = primaryKeyColumns.compactMap { key -> String? in
                 guard let index = columns.firstIndex(of: key), storedValues.indices.contains(index),
                       !storedValues[index].isNull else { return nil }

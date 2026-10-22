@@ -11,8 +11,6 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
     private let plugin: any PluginDatabaseDriver
     private let dialedHosts: [String]
     private let queryTimeoutSeconds: Int?
-    private let rowChangeSuffix: String
-    let rowPin: [String]
     private let readsOnly: @Sendable (String) -> Bool
     let rowIdentity: RowIdentity
 
@@ -20,16 +18,12 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         plugin: any PluginDatabaseDriver,
         dialedHosts: [String],
         queryTimeoutSeconds: Int? = nil,
-        rowChangeSuffix: String = "",
-        rowPin: [String] = [],
         rowIdentity: RowIdentity,
         readsOnly: @escaping @Sendable (String) -> Bool
     ) {
         self.plugin = plugin
         self.dialedHosts = dialedHosts
         self.queryTimeoutSeconds = queryTimeoutSeconds
-        self.rowChangeSuffix = rowChangeSuffix
-        self.rowPin = rowPin
         self.rowIdentity = rowIdentity
         self.readsOnly = readsOnly
     }
@@ -292,64 +286,40 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         )
     }
 
+    // A write with a lookup runs only on the rows the lookup finds, the way the Mac's DataWriteExecutor runs it.
     func run(_ writes: [PluginRowWrite]) async throws -> Int {
         var affected = 0
         for write in writes {
-            let result = write.parameters.isEmpty
-                ? try await plugin.execute(query: write.statement)
-                : try await plugin.executeParameterized(query: write.statement, parameters: write.parameters)
-            affected += max(result.rowsAffected, 0)
-        }
-        return affected
-    }
-
-    // A row inserted after the lookup lands outside the pinned part, so the write never reaches it. A part merged
-    // away before the write runs leaves the row as it was, which the check after an update reports.
-    func run(_ writes: [PluginRowWrite], changing target: RowTarget) async throws -> Int {
-        var pin = ""
-        var pinValues: [PluginCellValue] = []
-        if !rowPin.isEmpty {
-            let found = try await matchingRows(table: target.table, columns: target.columns, row: target.row)
-            guard found.count == 1, let position = found.first else {
-                throw found.isEmpty ? RowChangeRefusal.rowNotFound : RowChangeRefusal.identicalRows
+            var parameters = write.parameters
+            if let lookup = write.lookup {
+                let found = try await rows(lookup.query, lookup.parameters)
+                guard found.count == lookup.rowCount else {
+                    throw found.count < lookup.rowCount ? RowChangeRefusal.rowNotFound : RowChangeRefusal.identicalRows
+                }
+                if lookup.pinsRows {
+                    parameters += found.flatMap { $0 }
+                }
             }
-            guard position.count == rowPin.count else { throw Self.cannotWrite }
-            pin = rowPin.map { " AND \(plugin.quoteIdentifier($0)) = ?" }.joined()
-            pinValues = position
-        }
-        let affected = try await run(writes.map { write in
-            PluginRowWrite(
-                statement: write.statement + pin + rowChangeSuffix,
-                parameters: write.parameters + pinValues,
-                rowIndices: write.rowIndices
-            )
-        })
-        if !rowPin.isEmpty, let changes = target.changes {
-            try await confirmChanged(target, changes: changes)
+            let result = parameters.isEmpty
+                ? try await plugin.execute(query: write.statement)
+                : try await plugin.executeParameterized(query: write.statement, parameters: parameters)
+            affected += max(result.rowsAffected, 0)
+            if let check = write.lookup?.check, try await !rows(check, write.lookup?.checkParameters ?? []).isEmpty {
+                throw RowChangeRefusal.notApplied
+            }
         }
         return affected
     }
 
-    // A row still holding its old values was not changed, unless the new values read the same, such as 1.0 for 1.
-    // Generated columns change with their sources, so the row as saved is never predicted.
-    private func confirmChanged(_ target: RowTarget, changes: [(column: String, value: String?)]) async throws {
-        let unchanged = try await matchingRows(table: target.table, columns: target.columns, row: target.row)
-        guard !unchanged.isEmpty else { return }
-        let alreadySaved = try await matchingRows(
-            table: target.table,
-            columns: target.columns + changes.map(\.column),
-            row: target.row + changes.map(\.value)
-        )
-        guard alreadySaved.count == unchanged.count else { throw RowChangeRefusal.rowNotFound }
-    }
-
-    func matchingRowCount(table: String, schema: String?, columns: [String], row: [String?]) async throws -> Int {
-        try await matchingRows(table: table, columns: columns, row: row).count
+    private func rows(_ query: String, _ parameters: [PluginCellValue]) async throws -> [[PluginCellValue]] {
+        parameters.isEmpty
+            ? try await plugin.execute(query: query).rows
+            : try await plugin.executeParameterized(query: query, parameters: parameters).rows
     }
 
     // Unqualified and with the same predicates as the plugin's own row writes, so it finds the rows they would touch:
-    // at most two, each as its pin values.
-    private func matchingRows(table: String, columns: [String], row: [String?]) async throws -> [[PluginCellValue]] {
+    // at most two.
+    func matchingRowCount(table: String, schema: String?, columns: [String], row: [String?]) async throws -> Int {
         guard !columns.isEmpty, columns.count == row.count else { throw Self.cannotWrite }
         var parameters: [PluginCellValue] = []
         let conditions = zip(columns, row).map { column, value -> String in
@@ -358,9 +328,8 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
             parameters.append(.text(value))
             return "\(quoted) = ?"
         }
-        let selected = rowPin.isEmpty ? "1" : rowPin.map(plugin.quoteIdentifier).joined(separator: ", ")
-        let query = "SELECT \(selected) FROM \(plugin.quoteIdentifier(table)) WHERE \(conditions.joined(separator: " AND ")) LIMIT 2"
-        return try await plugin.executeParameterized(query: query, parameters: parameters).rows
+        let query = "SELECT 1 FROM \(plugin.quoteIdentifier(table)) WHERE \(conditions.joined(separator: " AND ")) LIMIT 2"
+        return try await plugin.executeParameterized(query: query, parameters: parameters).rows.count
     }
 
     private static var cannotWrite: DatabaseError {

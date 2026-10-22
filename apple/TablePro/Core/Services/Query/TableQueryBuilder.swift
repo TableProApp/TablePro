@@ -42,6 +42,10 @@ struct TableQueryBuilder {
         pluginDriver = driver
     }
 
+    func usesPluginDriver(_ driver: (any PluginDatabaseDriver)?) -> Bool {
+        pluginDriver === driver
+    }
+
     // MARK: - Identifier Quoting
 
     func quoteIdentifier(_ name: String) -> String {

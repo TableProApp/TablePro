@@ -11,7 +11,6 @@ struct ClickHouseOnIOSTests {
         return PluginBackedDriver(
             plugin: ClickHousePluginDriver(config: config),
             dialedHosts: [],
-            rowChangeSuffix: IOSDriverFactory.clickHouseWaitsForMutation,
             rowIdentity: .everyColumn,
             readsOnly: { _ in true }
         )
@@ -19,8 +18,8 @@ struct ClickHouseOnIOSTests {
 
     // The sorting key ClickHouse reports as its primary key is not unique: a key-only predicate deletes every row with
     // that key, and a plain UPDATE fails before 25.7 (measured on 25.8 without block numbers: NOT_IMPLEMENTED).
-    @Test("A row edit is a mutation matched on every column the row was read with")
-    func editIsAMutationOnTheWholeRow() throws {
+    @Test("A row edit matches every column the row was read with, pinned to the part its lookup finds")
+    func editMatchesTheWholeRow() throws {
         let writes = try driver().updateWrites(
             table: "events",
             schema: nil,
@@ -30,17 +29,19 @@ struct ClickHouseOnIOSTests {
         )
 
         let write = try #require(writes.first)
-        #expect(write.statement == "ALTER TABLE `events` UPDATE `name` = ? WHERE `id` = ? AND `name` = ? AND `note` IS NULL")
+        #expect(write.statement
+            == "UPDATE `events` SET `name` = ? WHERE `id` = ? AND `name` = ? AND `note` IS NULL AND _part IN (?)")
         #expect(write.parameters == ["purchase", "1", "signup"])
+        #expect(write.lookup?.query == "SELECT _part FROM `events` WHERE `id` = ? AND `name` = ? AND `note` IS NULL LIMIT 2")
     }
 
-    @Test("A row delete is a mutation matched on every column the row was read with")
-    func deleteIsAMutationOnTheWholeRow() throws {
+    @Test("A row delete matches every column the row was read with, pinned to the part its lookup finds")
+    func deleteMatchesTheWholeRow() throws {
         let writes = try driver().deleteWrites(
             table: "events", schema: nil, columns: ["id", "name"], originalRow: ["1", "signup"]
         )
 
-        #expect(writes.map(\.statement) == ["ALTER TABLE `events` DELETE WHERE `id` = ? AND `name` = ?"])
+        #expect(writes.map(\.statement) == ["DELETE FROM `events` WHERE `id` = ? AND `name` = ? AND _part IN (?)"])
     }
 
     @Test("A new row names only the columns it sets")
@@ -73,7 +74,6 @@ struct ClickHouseOnIOSTests {
 
         let writer = try #require(opened as? PluginBackedDriver)
         #expect(writer.rowIdentity == .everyColumn)
-        #expect(writer.rowPin == ["_part"])
         #expect(writer.supportsTransactions == false)
     }
 
