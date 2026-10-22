@@ -765,7 +765,57 @@
     [
       "tablepro-app",
       "--lib",
-      "ui::editor::dispatch_tests::dropping_an_editor_releases_its_source_view_and_buffer"
+      "ui::editor::dispatch_tests::run_scope_menu_executes_the_current_statement_and_blocks_overlap"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::transaction_buttons_close_only_the_idle_owned_session"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::a_transaction_action_refuses_a_changed_connection_identity"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::export_dialog::scope_presentation_tests::export_describes_the_row_scope_before_the_format"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::export_dialog::scope::tests::table_scope_cannot_enable_unqualified_snapshot_export"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::sidebar_row::columns_affordance_tests::a_table_has_a_separate_keyboard_reachable_columns_expander"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::sidebar_columns::tests::a_stale_column_reply_cannot_replace_newer_fields_or_retain_its_budget"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::app::sidebar_layout::tests::the_sidebar_resizes_when_docked_and_keeps_the_narrow_overlay"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::app::sidebar_state::explicit_reveal_tests::an_explicit_reveal_opens_the_sidebar_in_a_narrow_window"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::app::sidebar_layout::allocated_tests::an_allocated_divider_preserves_workspace_space_and_moves_through_the_breakpoint"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::sidebar_columns::structure_action_tests::the_structure_shortcut_activates_the_owning_row_action"
     ],
     [
       "tablepro-app",
@@ -776,6 +826,11 @@
       "tablepro-app",
       "--lib",
       "ui::grid::lifetime_tests::a_retired_grid_does_not_retain_its_inspector_through_selection_callback"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::dropping_an_editor_releases_its_source_view_and_buffer"
     ],
     [
       "tablepro-app",

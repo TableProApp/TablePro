@@ -1,4 +1,6 @@
 mod file;
+mod scope;
+pub(crate) use scope::ExportScope;
 
 use relm4::adw::prelude::*;
 use relm4::gtk::gio;
@@ -70,6 +72,7 @@ pub(crate) struct StreamExportRequest {
 }
 
 pub(crate) struct ExportRequest {
+    pub(crate) scope: ExportScope,
     pub(crate) paged: Option<PagedExport>,
     pub(crate) result: QueryResult,
     pub(crate) suggested_name: String,
@@ -184,7 +187,7 @@ fn format_subtitle(result: &QueryResult, paged: Option<&PagedExport>) -> String 
         None if result.truncated => {
             crate::tr!("{n} loaded rows (result truncated)").replace("{n}", &result.rows.len().to_string())
         }
-        None => crate::tr!("{n} loaded rows / current page").replace("{n}", &result.rows.len().to_string()),
+        None => crate::tr!("{n} loaded rows").replace("{n}", &result.rows.len().to_string()),
     }
 }
 
@@ -288,6 +291,7 @@ fn present_export(
     preferences: &PreferencesStore,
 ) {
     let ExportRequest {
+        scope,
         paged,
         result,
         suggested_name,
@@ -300,7 +304,9 @@ fn present_export(
     };
     let page = adw::PreferencesPage::new();
 
-    let format_group = adw::PreferencesGroup::new();
+    let (scope_group, scope_choice) = scope::build(scope, &result, paged.as_ref());
+    page.add(&scope_group);
+    let format_group = adw::PreferencesGroup::builder().title(crate::tr!("Format")).build();
     let formats = available_formats(&driver_id, paged.as_ref());
     let labels: Vec<&str> = formats.iter().map(|format| format.label()).collect();
     let format_row = adw::ComboRow::builder()
@@ -382,6 +388,10 @@ fn present_export(
 
     let export_button = gtk::Button::builder().label(crate::tr!("Export\u{2026}")).build();
     export_button.add_css_class("suggested-action");
+    if let Some(choice) = scope_choice.as_ref() {
+        let export_button = export_button.clone();
+        choice.connect_selected_notify(move |choice| export_button.set_sensitive(choice.selected() == 0));
+    }
 
     let footer = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -412,6 +422,9 @@ fn present_export(
     let include_header_for_export = include_header.clone();
     let null_marker_for_export = null_marker.clone();
     export_button.connect_clicked(move |_| {
+        if scope_choice.as_ref().is_some_and(|choice| choice.selected() != 0) {
+            return;
+        }
         let format = selected_format(&formats, format_row.selected());
         let include_header = include_header_for_export.is_active();
         dialog_for_export.close();
@@ -562,6 +575,7 @@ mod tests {
         let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let opened = calls.clone();
         let request = ExportRequest {
+            scope: ExportScope::TablePage { filtered: false },
             paged: Some(PagedExport {
                 mode: PagedExportMode::FullTable,
                 total_rows: Some(1),
@@ -707,5 +721,108 @@ mod tests {
         assert!(!available_formats("sqlite", Some(&unknown)).contains(&ExportFormat::Xlsx));
         assert!(available_formats("sqlite", Some(&known)).contains(&ExportFormat::Xlsx));
         assert!(available_formats("sqlite", None).contains(&ExportFormat::Xlsx));
+    }
+}
+
+#[cfg(test)]
+mod scope_presentation_tests {
+    use super::*;
+
+    fn group_titles(widget: &gtk::Widget, titles: &mut Vec<String>) {
+        if let Some(group) = widget.downcast_ref::<adw::PreferencesGroup>() {
+            titles.push(group.title().to_string());
+        }
+        let mut child = widget.first_child();
+        while let Some(current) = child {
+            child = current.next_sibling();
+            group_titles(&current, titles);
+        }
+    }
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn export_describes_the_row_scope_before_the_format() {
+        adw::init().unwrap();
+        let application = adw::Application::builder()
+            .application_id("com.tablepro.linux.scope-test")
+            .build();
+        application.register(None::<&gio::Cancellable>).unwrap();
+        let window = adw::ApplicationWindow::new(&application);
+        let toast = adw::ToastOverlay::new();
+        window.set_content(Some(&toast));
+        window.present();
+        present(
+            &window,
+            &toast,
+            ExportRequest {
+                scope: ExportScope::QueryResult,
+                paged: None,
+                result: QueryResult {
+                    columns: Vec::new(),
+                    rows: Vec::new(),
+                    truncated: false,
+                },
+                suggested_name: "join-result".into(),
+                driver_id: "postgres".into(),
+            },
+            &PreferencesStore::new(),
+        );
+        while glib::MainContext::default().iteration(false) {}
+        let dialog = window.visible_dialog().unwrap();
+        let mut titles = Vec::new();
+        group_titles(dialog.upcast_ref(), &mut titles);
+        assert_eq!(titles.first().map(String::as_str), Some("Scope"));
+        assert_eq!(titles.get(1).map(String::as_str), Some("Format"));
+        dialog.close();
+        present(
+            &window,
+            &toast,
+            ExportRequest {
+                scope: ExportScope::TablePage { filtered: true },
+                paged: None,
+                result: QueryResult {
+                    columns: Vec::new(),
+                    rows: Vec::new(),
+                    truncated: false,
+                },
+                suggested_name: "public.people".into(),
+                driver_id: "postgres".into(),
+            },
+            &PreferencesStore::new(),
+        );
+        while glib::MainContext::default().iteration(false) {}
+        let dialog = window.visible_dialog().unwrap();
+        let (choice, export) = scope_controls(dialog.upcast_ref());
+        let choice = choice.unwrap();
+        let export = export.unwrap();
+        assert!(export.is_sensitive());
+        choice.set_selected(1);
+        assert!(!export.is_sensitive());
+        export.emit_clicked();
+        while glib::MainContext::default().iteration(false) {}
+        assert_eq!(window.visible_dialog().as_ref(), Some(&dialog));
+        choice.set_selected(0);
+        assert!(export.is_sensitive());
+        dialog.close();
+        window.close();
+    }
+
+    fn scope_controls(widget: &gtk::Widget) -> (Option<adw::ComboRow>, Option<gtk::Button>) {
+        let mut choice = widget
+            .downcast_ref::<adw::ComboRow>()
+            .filter(|row| row.title() == "Rows to export")
+            .cloned();
+        let mut export = widget
+            .downcast_ref::<gtk::Button>()
+            .filter(|button| button.label().as_deref() == Some("Export…"))
+            .cloned();
+        let mut child = widget.first_child();
+        while let Some(current) = child {
+            child = current.next_sibling();
+            let (found_choice, found_export) = scope_controls(&current);
+            choice = choice.or(found_choice);
+            export = export.or(found_export);
+        }
+        (choice, export)
     }
 }

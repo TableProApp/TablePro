@@ -104,3 +104,13 @@ BookiE can let an AI assistant use saved connections through the Model Context P
 - No browser interface and no runtime driver plugins.
 - No database snapshots. The design is accepted in [ADR 0015](decisions/0015-database-snapshots.md) and the work is planned after 0.2.0.
 - Linux only ([platforms](platforms.md)).
+
+## Workspace controls
+
+- The Run menu exposes whole-script and current-statement execution, with shortcuts, plus labeled export choices for individual loaded result sets or a guarded stream rerun.
+- Owned editor sessions show transaction state and commit/rollback-and-close controls. Shared-connection transaction refusal and audit rules still apply.
+- The tables sidebar can be toggled at all widths, resized with a native divider when docked, and expanded for bounded field/type previews. Narrow windows keep the overlay closed after connection.
+- Grid headers retain exact engine type case. Their native details menu exposes key, nullability and comment metadata.
+- Export presents data scope before format and keeps unqualified full-table snapshot export unavailable.
+
+Behavior and limits are described in the [workspace spec](../specs/database-workspace/spec.md) and [user guide](user-guide.md).

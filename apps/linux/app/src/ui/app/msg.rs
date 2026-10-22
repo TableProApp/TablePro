@@ -154,6 +154,7 @@ pub enum AppMsg {
     ExportAllCsv,
     ExportAllJson,
     ExportResults {
+        scope: crate::ui::export_dialog::ExportScope,
         result: QueryResult,
         name: String,
     },

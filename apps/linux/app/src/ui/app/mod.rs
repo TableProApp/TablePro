@@ -23,6 +23,7 @@ mod row_ops;
 mod schema_index;
 mod session_teardown;
 mod shortcuts;
+mod sidebar_layout;
 mod sidebar_state;
 mod status_pages;
 mod structure;
@@ -460,6 +461,7 @@ impl SimpleComponent for App {
             mcp_bridge,
         } = init;
         let widgets = view_output!();
+        sidebar_layout::install(&widgets.split_view);
         widgets
             .table_search
             .update_property(&[gtk::accessible::Property::Label(&crate::tr!("Search tables"))]);
@@ -869,10 +871,11 @@ impl SimpleComponent for App {
             AppMsg::CloseWorkspaceTabsToRight(id) => self.close_workspace_tabs_to_right(id, sender),
             AppMsg::CloseActiveWorkspaceTab => self.close_active_workspace_tab(sender),
             AppMsg::ShowAlert { title, body } => self.show_error_alert(&title, &body),
-            AppMsg::ExportResults { result, name } => super::export_dialog::present(
+            AppMsg::ExportResults { result, name, scope } => super::export_dialog::present(
                 &self.window,
                 &self.toast_overlay,
                 super::export_dialog::ExportRequest {
+                    scope,
                     paged: None,
                     result,
                     suggested_name: name,

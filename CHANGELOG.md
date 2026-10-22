@@ -4,6 +4,9 @@
 
 ### Added
 
+- The query editor has visible run scopes and result-file export choices, plus commit-and-close and rollback-and-close controls for an owned session with an open transaction.
+- Tables and views expand to show bounded field/type previews, with a Structure shortcut; the docked sidebar has a native resize handle and its toggle stays available at every window width.
+
 - Run (Ctrl+Enter or the Run button) executes the selected text when something is selected, and the whole editor otherwise. It goes through the same guard, policy and audit path as any run.
 - The Columns dialog has a Reset button that forgets the column widths you set by dragging for that table.
 - The Session button shows how long its transaction has been open ("Session · transaction open · 12 min") once it passes a minute, so a forgotten transaction holding locks stands out.
@@ -17,6 +20,8 @@
 
 ### Changed
 
+- Export reviews the table-page, loaded-result or query-rerun scope before file format; all matching table rows remain unavailable until consistent snapshot export is qualified.
+- Grid headers preserve exact engine type case and keep comments, key and nullability metadata in a native column-details menu.
 - Oversized text and JSON cells use shorter visible previews to reduce text-layout work; full values remain available through View Value and Copy Value.
 - Editing rows with large values uses less temporary memory when verifying the row identity.
 
@@ -26,6 +31,7 @@
 
 ### Fixed
 
+- In a window narrower than 960 px the tables sidebar no longer opens over the workspace after connecting, where it swallowed the first click on Run and the other editor controls. A **Show tables** button in the header opens it on demand, and the sidebar returns by itself when the window is widened.
 - Removing a saved connection asks for confirmation once and preserves the database.
 
 - Saved connection names remain readable in narrow lists, with secondary actions available from a menu.
@@ -65,6 +71,7 @@
 - Streamed result pages wait until their first display frame before building a grid, avoiding work for discarded pages.
 - SQL query controls and secondary tools use separate rows to stay reachable in narrow editor panes.
 - SQL query controls and secondary tools use separate rows to stay reachable in narrow editor panes.
+- In a window narrower than 960 px the tables sidebar no longer opens over the workspace after connecting, where it swallowed the first click on Run and the other editor controls. A **Show tables** button in the header opens or closes it at any window width, and the sidebar returns by itself when the window is widened.
 - Discarding changes to a SQL file closes its tab without reopening the same save prompt.
 - PostgreSQL queries ending on a full result page complete without a false column-change error.
 

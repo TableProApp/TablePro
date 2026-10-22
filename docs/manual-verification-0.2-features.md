@@ -325,11 +325,16 @@ Use a keyed table with a nullable text column and values above 8 KiB. Include CR
 
 ## Result headers, selection statistics, error copy and connection strip
 
-- [ ] Browse a table: each column header shows its name, a key marker for primary and foreign keys, and the lower-case type beneath it, in light and dark. **2026-10-12 Hyprland dark:** name and type passed; key markers were missing before [#664](https://github.com/cozyGarage/BookiE/pull/664); no installed retest is recorded here.
+- [ ] Browse a table: each column header shows its name, a key marker for primary and foreign keys, and the exact engine type spelling beneath it, in light and dark. **2026-10-12 Hyprland dark:** name and type passed; key markers were missing before [#664](https://github.com/cozyGarage/BookiE/pull/664); no installed retest is recorded here.
 - [ ] Select several rows of a numeric column: the selection badge popover lists the column's count, sum, average, min and max, and Copy summary copies them. A text column is not listed. **2026-10-12 Hyprland dark:** passed; also covered by the installed GTK scenario `selection_statistics_summarise_the_selected_rows`.
 - [ ] Run a failing statement in the editor: Copy error places the exact error text on the clipboard. **2026-10-12 Hyprland dark:** passed.
 
 ## Sidebar tree
+
+Source follow-up [UI-43 / #1349](https://github.com/cozyGarage/BookiE/issues/1349) adds a persistent toggle, native docked divider and lazy field previews. The dated installed results below remain historical and do not qualify that branch.
+
+- [ ] Toggle navigation at wide and narrow widths; the first Run click works after connecting. Drag the docked divider and use its keyboard handle; the editor remains at least 600 pixels wide. Cross the collapse breakpoint both ways while a table is expanded.
+- [ ] Expand a table/view without opening a browse tab. Names and exact types are readable, keys have a visual cue, and Structure opens the correct object. Collapse while loading, refresh DDL metadata, switch connections, retry a failed request and exercise field limits; old replies never populate a replacement row.
 
 - [ ] After connecting, confirm the schema/table sidebar is visible; hide/show it from a discoverable control and resize it with pointer and keyboard. **2026-10-22 native Wayland, dark, installed 0.2.0:** failed visibility check. At 922×1150, the connected SQLite window showed the query editor with no sidebar and no visible show/hide control. The main menu's “Reveal Table in Sidebar” action (Ctrl+Shift+L) is table-specific and not a visibility toggle. The installed release source initializes the split view hidden and calls reveal after connection, but the live state remained hidden. The source configures a 220–280 px sidebar width and exposes no user resize affordance; resize was not testable while hidden. This conflicts with an earlier 922 px observation that recorded the sidebar open, so that earlier result is not accepted as proof. Screenshot: `/tmp/bookie-sidebar-live.png`; package and binary identity are at the top of the [installed Wayland evidence](evidence/installed-wayland-0.2.0-2026-10-22/README.md).
 - [ ] On a PostgreSQL connection with two schemas, the sidebar shows each schema with Tables and Views groups and a count. Click a group: its objects hide and the chevron points right; click again to restore. **2026-10-12 Hyprland dark:** groups and counts passed; collapsing not run.
@@ -391,3 +396,10 @@ Use a keyed table with a nullable text column and values above 8 KiB. Include CR
 - [ ] Press Cancel during a large backup: the window closes, nothing is written next to the chosen file, and `audit.jsonl` shows a Cancelled administrative outcome after its intent.
 - [ ] On a disposable database, start a large restore and press Cancel after `pg_restore` starts. `audit.jsonl` shows an Unknown outcome, and the affected connection refuses governed writes before and after reconnect while a separate connection remains available. There is no in-app action to reconcile the outcome; inspect the database before deciding how to proceed. A restore failure after `pg_restore` starts has the same unknown outcome.
 - [ ] Remove `pg_dump` from `/usr/bin` (or test on a host without it): the error names the missing tool and how to install it.
+
+## Native workflow follow-up
+
+- [ ] With an open owned-session transaction, check the separate active badge and commit/rollback-and-close buttons at narrow width and enlarged text. While a query runs they cannot dispatch; Commit on an aborted PostgreSQL transaction reports rollback. Session closure and connection replacement do not accept an old queued action.
+- [ ] Run All and Run Current through the menu match their shortcuts in both split panes. File output names the statement/result set; exporting loaded rows never reruns SQL. A stream rerun is clearly labeled.
+- [ ] Table toolbar and grid-menu export both show Scope before Format. All matching rows explains its snapshot refusal and cannot proceed; returning to Current page restores the action. A joined query exports its result columns and cannot be mistaken for a full source-table export.
+- [ ] Header names and types retain their case; Column details exposes complete null/key metadata and a bounded column comment without making every header taller. Test keyboard menus and light/dark/high-contrast themes.

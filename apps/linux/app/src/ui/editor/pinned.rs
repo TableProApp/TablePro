@@ -20,6 +20,10 @@ pub(super) struct PinnedResults {
 }
 
 impl PinnedResults {
+    pub(super) fn latest(&self) -> &[StatementOutcome] {
+        &self.last
+    }
+
     pub(super) fn is_pinned(&self) -> bool {
         !self.pins.is_empty()
     }
@@ -71,6 +75,7 @@ impl SqlEditor {
         self.pin_button.set_label(&label);
         self.pin_button
             .set_sensitive(self.pinned.is_pinned() || self.pinned.has_results());
+        self.refresh_result_exports();
     }
 
     pub(super) fn show_pins_above(&mut self, page: &impl IsA<gtk::Widget>) {

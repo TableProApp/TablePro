@@ -54,6 +54,8 @@ The [#1327](https://github.com/cozyGarage/BookiE/issues/1327) keyring prompt, [#
 
 ## 0.2.x features
 
+The approved native workflow improvements are tracked by [UI-44 / #1349](https://github.com/cozyGarage/BookiE/issues/1349): session transaction actions, visible run scopes, bounded sidebar fields and resizing, exact header metadata and scope-first export. The [workspace spec](../specs/database-workspace/spec.md) owns behavior; the issue and PR own implementation and acceptance. This does not duplicate the pending sidebar-overlay fix #1346.
+
 | Row | What | Notes |
 |---|---|---|
 | SNAP-2 to SNAP-4 | Database snapshots: PostgreSQL, SQL Server, then SQLite and DuckDB file copies | ADR 0015 records the accepted design; this is post-0.2.0 implementation work, not a release commitment; limit 5 snapshots per database |

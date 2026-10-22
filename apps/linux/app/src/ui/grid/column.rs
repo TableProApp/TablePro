@@ -20,7 +20,6 @@ const PENDING_CSS_CLASSES: &[&str] = &[
 ];
 
 const TOOLTIP_MIN_CHARS: usize = 40;
-const HEADER_COMMENT_MAX_CHARS: usize = 60;
 
 pub(super) fn header_column(column: &ColumnInfo, schema: Option<&ColumnInfo>) -> ColumnInfo {
     let mut header = column.clone();
@@ -42,19 +41,37 @@ fn column_header_title(info: &ColumnInfo, is_foreign_key: bool) -> String {
     }
     if !info.data_type.is_empty() {
         title.push('\n');
-        title.push_str(&info.data_type.to_lowercase());
-    }
-    if let Some(comment) = info
-        .comment
-        .as_deref()
-        .and_then(|text| text.lines().next())
-        .map(str::trim)
-        && !comment.is_empty()
-    {
-        title.push('\n');
-        title.extend(comment.chars().take(HEADER_COMMENT_MAX_CHARS));
+        title.push_str(&info.data_type);
     }
     title
+}
+
+fn header_details(info: &ColumnInfo, foreign_key: bool) -> gtk4::gio::Menu {
+    let details = gtk4::gio::Menu::new();
+    for text in [
+        crate::tr!("Column: {name}").replace("{name}", &info.name),
+        crate::tr!("Type: {type}").replace("{type}", &info.data_type),
+        if info.nullable {
+            crate::tr!("NULL allowed")
+        } else {
+            crate::tr!("NULL not allowed")
+        },
+    ] {
+        details.append(Some(&text), None);
+    }
+    if info.primary_key {
+        details.append(Some(&crate::tr!("Primary key")), None);
+    }
+    if foreign_key {
+        details.append(Some(&crate::tr!("Foreign key")), None);
+    }
+    if let Some(comment) = info.comment.as_deref().filter(|comment| !comment.trim().is_empty()) {
+        let text: String = comment.chars().take(1024).collect();
+        details.append(Some(&text), None);
+    }
+    let menu = gtk4::gio::Menu::new();
+    menu.append_section(Some(&crate::tr!("Column details")), &details);
+    menu
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -319,6 +336,10 @@ pub(super) fn build_column(
         .resizable(true)
         .expand(true)
         .build();
+    column.set_header_menu(Some(&header_details(
+        info,
+        tab_ctx.foreign_key_columns.contains(&info.name),
+    )));
     if sort_enabled {
         let dummy = gtk4::CustomSorter::new(|_, _| gtk4::Ordering::Equal);
         column.set_sorter(Some(&dummy));
@@ -486,8 +507,8 @@ mod tests {
     fn header_title_shows_type_and_key_markers() {
         let mut info = col("INTEGER", true);
         info.name = "id".into();
-        assert_eq!(column_header_title(&info, false), "id \u{1F511}\ninteger");
-        assert_eq!(column_header_title(&info, true), "id \u{1F511} \u{1F517}\ninteger");
+        assert_eq!(column_header_title(&info, false), "id \u{1F511}\nINTEGER");
+        assert_eq!(column_header_title(&info, true), "id \u{1F511} \u{1F517}\nINTEGER");
     }
 
     #[test]
@@ -503,15 +524,28 @@ mod tests {
     }
 
     #[test]
-    fn header_title_adds_the_first_line_of_the_column_comment() {
+    fn comments_are_in_column_details_without_growing_every_header() {
         let mut info = col("INTEGER", false);
         info.name = "id".into();
         info.comment = Some("Customer id\nsecond line".into());
-        assert_eq!(column_header_title(&info, false), "id\ninteger\nCustomer id");
-        info.comment = Some("x".repeat(100));
-        assert_eq!(column_header_title(&info, false).lines().last().map(str::len), Some(60));
-        info.comment = Some("  ".into());
-        assert_eq!(column_header_title(&info, false), "id\ninteger");
+        assert_eq!(column_header_title(&info, false), "id\nINTEGER");
+        let menu = header_details(&info, false);
+        let details = menu.item_link(0, "section").unwrap();
+        let comment = details
+            .item_attribute_value(3, "label", None)
+            .unwrap()
+            .get::<String>()
+            .unwrap();
+        assert_eq!(comment, "Customer id\nsecond line");
+        info.comment = Some("x".repeat(2000));
+        let menu = header_details(&info, false);
+        let details = menu.item_link(0, "section").unwrap();
+        let comment = details
+            .item_attribute_value(3, "label", None)
+            .unwrap()
+            .get::<String>()
+            .unwrap();
+        assert_eq!(comment.chars().count(), 1024);
     }
 
     #[test]
@@ -1047,5 +1081,28 @@ mod tests {
             cell.stop_editing(false);
         }
         window.close();
+    }
+}
+
+#[cfg(test)]
+mod metadata_presentation_tests {
+    use super::*;
+
+    #[test]
+    fn engine_type_identity_is_preserved_in_the_header() {
+        let info = ColumnInfo {
+            name: "value".into(),
+            data_type: "public.MixedCaseType".into(),
+            nullable: true,
+            primary_key: false,
+            is_auto_increment: false,
+            is_generated: false,
+            default_value: None,
+            comment: None,
+            collation: None,
+            enum_type: None,
+            domain_type: None,
+        };
+        assert_eq!(column_header_title(&info, false), "value\npublic.MixedCaseType");
     }
 }

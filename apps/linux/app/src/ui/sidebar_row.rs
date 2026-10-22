@@ -29,6 +29,7 @@ pub struct SidebarRowInit {
     pub kind: SidebarObjectKind,
     pub depth: u8,
     pub group: Option<GroupInit>,
+    pub column_source: Option<super::sidebar_columns::ColumnSource>,
 }
 
 fn chevron_icon(collapsed: bool) -> &'static str {
@@ -65,10 +66,12 @@ pub struct SidebarRow {
     /// "Finalizing widget, but it still has children left" whenever
     /// the sidebar rebuilds.
     popover: Option<gtk::PopoverMenu>,
+    columns: super::sidebar_columns::SidebarColumns,
 }
 
 #[derive(Debug)]
 pub enum SidebarRowMsg {
+    ToggleColumns(bool),
     Open,
     OpenInNewTab,
     EditStructure,
@@ -147,7 +150,7 @@ impl FactoryComponent for SidebarRow {
     type Init = SidebarRowInit;
     type Input = SidebarRowMsg;
     type Output = SidebarRowOutput;
-    type CommandOutput = ();
+    type CommandOutput = super::sidebar_columns::ColumnReply;
     type ParentWidget = gtk::ListBox;
 
     view! {
@@ -254,6 +257,7 @@ impl FactoryComponent for SidebarRow {
             csv_button: group_button("document-open-symbolic", csv_label),
             open_button,
             popover: None,
+            columns: super::sidebar_columns::SidebarColumns::new(init.column_source),
         }
     }
 
@@ -262,6 +266,7 @@ impl FactoryComponent for SidebarRow {
         // row is finalized — GTK warns about leftover children
         // otherwise. shutdown() runs on factory removal (sidebar
         // rebuild, disconnect, search filter), the natural hook.
+        self.columns.close();
         if let Some(popover) = self.popover.take() {
             popover.popdown();
             popover.unparent();
@@ -284,6 +289,7 @@ impl FactoryComponent for SidebarRow {
             }
             return widgets;
         }
+        self.columns.install(&root, &sender);
         let sender_for_open_button = sender.clone();
         self.open_button
             .connect_clicked(move |_| sender_for_open_button.input(SidebarRowMsg::Open));
@@ -445,6 +451,10 @@ impl FactoryComponent for SidebarRow {
         widgets
     }
 
+    fn update_cmd(&mut self, reply: Self::CommandOutput, _sender: FactorySender<Self>) {
+        self.columns.apply(reply);
+    }
+
     fn update(&mut self, msg: Self::Input, sender: FactorySender<Self>) {
         tracing::trace!(
             target: "tablepro_app::sidebar_row",
@@ -454,6 +464,7 @@ impl FactoryComponent for SidebarRow {
         );
         let (schema, name) = (self.info.schema.clone(), self.info.name.clone());
         let output = match msg {
+            SidebarRowMsg::ToggleColumns(active) => return self.columns.toggle(active, &self.info, sender),
             SidebarRowMsg::SetCollapsed(collapsed) => return self.apply_collapse(collapsed),
             SidebarRowMsg::Open => SidebarRowOutput::Open { schema, name },
             SidebarRowMsg::OpenInNewTab => SidebarRowOutput::OpenInNewTab { schema, name },
@@ -567,6 +578,7 @@ mod tests {
             },
             kind: SidebarObjectKind::Group,
             depth: 0,
+            column_source: None,
             group: Some(GroupInit {
                 label: "Tables".into(),
                 count: 3,
@@ -582,12 +594,11 @@ mod tests {
             kind: SidebarObjectKind::Table,
             depth: 1,
             group: None,
+            column_source: None,
         });
         pump();
         let chevron_of = |index: i32| {
-            let row = list.row_at_index(index).unwrap();
-            let body = row.child().unwrap();
-            let chevron = body.first_child().unwrap().downcast::<gtk::Image>().unwrap();
+            let chevron = &factory.get(index as usize).unwrap().chevron;
             (chevron.icon_name().map(|name| name.to_string()), chevron.is_visible())
         };
         assert_eq!(chevron_of(0), (Some("pan-down-symbolic".into()), true));
@@ -597,5 +608,49 @@ mod tests {
         pump();
 
         assert_eq!(chevron_of(0).0.as_deref(), Some("pan-end-symbolic"));
+    }
+}
+
+#[cfg(test)]
+mod columns_affordance_tests {
+    use super::*;
+    use relm4::factory::FactoryVecDeque;
+
+    fn expansion_button(widget: &gtk::Widget) -> Option<gtk::ToggleButton> {
+        if let Some(button) = widget.downcast_ref::<gtk::ToggleButton>() {
+            return Some(button.clone());
+        }
+        let mut child = widget.first_child();
+        while let Some(current) = child {
+            child = current.next_sibling();
+            if let Some(button) = expansion_button(&current) {
+                return Some(button);
+            }
+        }
+        None
+    }
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn a_table_has_a_separate_keyboard_reachable_columns_expander() {
+        relm4::adw::init().unwrap();
+        let list = gtk::ListBox::new();
+        let mut factory = FactoryVecDeque::<SidebarRow>::builder().launch(list.clone()).detach();
+        factory.guard().push_back(SidebarRowInit {
+            info: TableInfo {
+                schema: Some("public".into()),
+                name: "items".into(),
+            },
+            kind: SidebarObjectKind::Table,
+            depth: 1,
+            group: None,
+            column_source: None,
+        });
+        while glib::MainContext::default().iteration(false) {}
+        let row = list.row_at_index(0).unwrap();
+        let expander =
+            expansion_button(row.upcast_ref()).expect("table columns can be expanded without opening the table");
+        assert!(expander.is_focusable());
+        assert!(!expander.is_active());
     }
 }

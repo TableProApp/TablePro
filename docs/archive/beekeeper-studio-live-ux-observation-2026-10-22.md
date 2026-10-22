@@ -11,7 +11,7 @@ This is a visual product observation, not a source audit, correctness review or 
 - At the observed half-screen width, the navigation tree and grid remained usable. The grid showed the active connection, table, filter controls and rows while leaving the surrounding desktop visible through the translucent surface.
 - The query toolbar exposes transaction state and actions. When a transaction is active, it shows **Transaction active**, **Commit** and **Rollback**. The run menu separates **Run All**, **Run Current**, and their **to File** variants, with shortcuts shown beside each action. A separate mode control offers **Auto** and **Manual Commit**, and **Begin** is visible when manual transaction control is selected.
 
-## BookiE mapping
+## BookiE mapping at the original observation
 
 These observations do not mean BookiE lacks typed values. B3 protects value fidelity across decode, display, edit, bind and export. That contract is different from showing a declared/result type in the UI. BookiE already retains `ColumnInfo.data_type` and puts the type below the name in grid headers (`apps/linux/app/src/ui/grid/column.rs`); the live Beekeeper view makes the name/type hierarchy and type metadata in the tree more immediately legible. Improve that presentation without weakening or replacing the B3 contract.
 
@@ -43,3 +43,9 @@ BookiE currently places page/all-row CSV and JSON actions in the table paginator
 - Consider a visible run-scope menu for the whole script, the statement at the cursor, and file output. State whether file output uses loaded rows or reruns the query, and route every execution through the same policy and audit path.
 - Label export scope, loaded-row limits, active-filter behavior and query reruns before the user chooses a file format.
 - Recheck all of these in a tiled narrow window and keyboard/accessibility navigation before turning the observations into implementation work. This record does not create backlog acceptance or claim those checks passed.
+
+## Approved implementation follow-up
+
+[UI-43 / #1349](https://github.com/cozyGarage/BookiE/issues/1349) tracks the maintainer-approved six-part follow-up. The [workspace spec](../../specs/database-workspace/spec.md) describes the implementation; the [user guide](../user-guide.md) explains its controls. The toolbar rows from #1303 are now on `linux`; the sidebar-overlay correction #1346 is an explicit branch dependency until its gate and merge finish.
+
+The follow-up exposes existing run scopes and owned-session end actions, adds bounded sidebar field previews and native docked resizing, preserves exact type case, moves header comments to native details, and presents export scope before format. File output remains explicit loaded-result export or guarded query rerun; it does not claim arbitrary script execution directly into a file. The existing filter-mode discovery observation remains a separate candidate. Source tests, hosted checks and installed desktop acceptance are distinct, and the PR must report each.

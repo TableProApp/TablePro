@@ -27,6 +27,7 @@ mod row_object;
 mod row_store;
 mod saved_queries_dialog;
 pub(crate) mod shortcut;
+mod sidebar_columns;
 mod sidebar_row;
 mod ssh_prompt;
 mod ssh_section;

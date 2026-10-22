@@ -21,22 +21,23 @@ use crate::services::database_service::{ConnectionMetadata, DatabaseService, Rec
 
 struct PendingQuery {
     dedicated_session: bool,
+    sql: String,
     token: CancellationToken,
     parameters: Vec<Value>,
     release: oneshot::Sender<Result<QueryResultBatch, DriverError>>,
 }
 
 struct HeldConnection {
-    open_wait: Arc<std::sync::Mutex<Option<oneshot::Receiver<()>>>>,
     calls: Arc<AtomicUsize>,
     requests: mpsc::Sender<PendingQuery>,
+    sessions: Arc<SessionCounts>,
 }
 
 #[async_trait::async_trait]
 impl Connection for HeldConnection {
     async fn query_result_sets_controlled(
         &self,
-        _sql: &str,
+        sql: &str,
         parameters: &[Value],
         control: &OperationControl,
     ) -> Result<QueryResultBatch, DriverError> {
@@ -45,6 +46,7 @@ impl Connection for HeldConnection {
         self.requests
             .send(PendingQuery {
                 dedicated_session: false,
+                sql: sql.into(),
                 token: control.cancellation_token().clone(),
                 parameters: parameters.to_vec(),
                 release,
@@ -53,19 +55,21 @@ impl Connection for HeldConnection {
         wait.await.unwrap()
     }
 
+    fn supports_server_cancellation(&self) -> bool {
+        true
+    }
+
     async fn open_session(&self) -> Result<Box<dyn tablepro_core::Session>, DriverError> {
-        let wait = self.open_wait.lock().unwrap().take();
+        let wait = self.sessions.open_wait.lock().unwrap().take();
         if let Some(wait) = wait {
             wait.await.unwrap();
         }
         Ok(Box::new(HeldSession {
             calls: self.calls.clone(),
             requests: self.requests.clone(),
+            counts: self.sessions.clone(),
+            transaction_open: false,
         }))
-    }
-
-    fn supports_server_cancellation(&self) -> bool {
-        true
     }
 
     async fn list_tables(&self) -> Result<Vec<TableInfo>, DriverError> {
@@ -111,47 +115,12 @@ impl Connection for HeldConnection {
     }
 }
 
-struct HeldSession {
-    calls: Arc<AtomicUsize>,
-    requests: mpsc::Sender<PendingQuery>,
-}
-
-#[async_trait::async_trait]
-impl tablepro_core::Session for HeldSession {
-    async fn query_params_controlled(
-        &mut self,
-        _sql: &str,
-        parameters: &[Value],
-        control: &OperationControl,
-    ) -> Result<QueryResult, DriverError> {
-        let (release, wait) = oneshot::channel();
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        self.requests
-            .send(PendingQuery {
-                dedicated_session: true,
-                token: control.cancellation_token().clone(),
-                parameters: parameters.to_vec(),
-                release,
-            })
-            .unwrap();
-        Ok(wait.await.unwrap()?.result_sets.remove(0))
-    }
-
-    fn is_usable(&self) -> bool {
-        true
-    }
-
-    async fn close(self: Box<Self>) -> Result<(), DriverError> {
-        Ok(())
-    }
-}
-
 struct EditorFixture {
-    open_wait: Arc<std::sync::Mutex<Option<oneshot::Receiver<()>>>>,
     controller: Controller<SqlEditor>,
     database: Arc<DatabaseService>,
     connection_id: Uuid,
     calls: Arc<AtomicUsize>,
+    sessions: Arc<SessionCounts>,
     requests: mpsc::Receiver<PendingQuery>,
     outputs: mpsc::Receiver<super::SqlEditorOutput>,
     _runtime: tokio::runtime::Runtime,
@@ -166,7 +135,7 @@ impl EditorFixture {
         let connection_id = Uuid::new_v4();
         let (requests, incoming) = mpsc::channel();
         let calls = Arc::new(AtomicUsize::new(0));
-        let open_wait = Arc::new(std::sync::Mutex::new(None));
+        let sessions = Arc::new(SessionCounts::default());
         assert!(database.activate(
             connection_id,
             ConnectionMetadata {
@@ -179,9 +148,9 @@ impl EditorFixture {
                 query_timeout_secs: None,
             },
             Box::new(HeldConnection {
-                open_wait: open_wait.clone(),
                 calls: calls.clone(),
-                requests
+                requests,
+                sessions: sessions.clone(),
             }),
             None,
             false,
@@ -207,15 +176,30 @@ impl EditorFixture {
             });
         drop(_entered);
         Self {
-            open_wait,
             controller,
             database,
             connection_id,
             calls,
+            sessions,
             requests: incoming,
             outputs,
             _runtime: runtime,
         }
+    }
+
+    fn open_transaction(&self) -> Uuid {
+        spin_until(|| self.controller.model().session_button.is_sensitive());
+        self.controller.model().session_button.set_active(true);
+        spin_until(|| self.controller.model().session.is_some());
+        let session_id = self.controller.model().session.as_ref().unwrap().id;
+        self.controller.model().source_view.buffer().set_text("BEGIN;");
+        self.controller.sender().send(SqlEditorInput::Run).unwrap();
+        spin_until(|| {
+            self.controller.model().session_transaction_open() && self.controller.model().run_button.is_sensitive()
+        });
+        self.controller.model().source_view.buffer().set_text("SELECT 1;");
+        self.process_inputs();
+        session_id
     }
 
     fn next_query(&self) -> PendingQuery {
@@ -308,32 +292,6 @@ fn parameter_response() -> SqlEditorInput {
         },
         values: [("value".into(), Value::Int(2))].into(),
     }
-}
-
-#[test]
-#[ignore = "requires an isolated GTK display"]
-fn editor_waits_for_its_session_before_accepting_any_run_input() {
-    let fixture = EditorFixture::new();
-    let (release, wait) = oneshot::channel();
-    fixture.open_wait.lock().unwrap().replace(wait);
-    fixture.controller.model().session_button.set_active(true);
-    spin_until(|| fixture.controller.model().session_open_in_flight);
-    assert!(!fixture.controller.model().run_button.is_sensitive());
-    for secondary in [false, true] {
-        fixture.shortcut("<Primary>Return", secondary);
-        fixture.shortcut("<Primary><Shift>Return", secondary);
-    }
-    fixture.controller.sender().send(parameter_response()).unwrap();
-    fixture.process_inputs();
-    assert_eq!(fixture.calls.load(Ordering::SeqCst), 0);
-    assert!(fixture.requests.try_recv().is_err());
-    release.send(()).unwrap();
-    spin_until(|| fixture.controller.model().session.is_some() && fixture.controller.model().run_button.is_sensitive());
-    fixture.shortcut("<Primary>Return", false);
-    let running = fixture.next_query();
-    assert!(running.dedicated_session);
-    assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
-    fixture.finish(running, success());
 }
 
 #[test]
@@ -488,7 +446,14 @@ fn exposed_toolbar(fixture: &EditorFixture) -> ([gtk::Button; 3], [gtk::Widget; 
 fn editor_actions_fit_narrow_rows_with_running_and_retry_controls() {
     let fixture = EditorFixture::new();
     let root = fixture.controller.widget();
+    let transaction_id = fixture.open_transaction();
     let (buttons, bars) = exposed_toolbar(&fixture);
+    fixture
+        .controller
+        .model()
+        .transaction_actions
+        .row
+        .add_css_class("resource-toolbar");
     assert!(root.measure(gtk::Orientation::Horizontal, -1).0 <= 600);
     let window = gtk::Window::builder()
         .default_width(630)
@@ -533,11 +498,253 @@ fn editor_actions_fit_narrow_rows_with_running_and_retry_controls() {
                 assert!(bounds.y() + bounds.height() <= root.height() as f32 + 0.5);
                 assert!(button.is_visible());
             }
-            assert!(fixture.controller.model().source_view.height() > 0);
+            let model = fixture.controller.model();
+            assert_eq!(model.toolbar_transaction_id(), Some(transaction_id));
+            let mut extra: Vec<gtk::Widget> = vec![model.run_options.clone().upcast()];
+            for child in model
+                .transaction_actions
+                .row
+                .observe_children()
+                .iter::<gtk::glib::Object>()
+                .flatten()
+            {
+                if let Ok(child) = child.downcast::<gtk::FlowBoxChild>() {
+                    extra.push(child.child().unwrap());
+                }
+            }
+            for widget in extra {
+                let bounds = widget.compute_bounds(root).unwrap();
+                assert!(
+                    bounds.x() >= 0.0 && bounds.x() + bounds.width() <= root.width() as f32 + 0.5,
+                    "new action does not fit: {bounds:?}"
+                );
+                assert!(bounds.y() + bounds.height() <= root.height() as f32 + 0.5);
+            }
+            assert!(model.source_view.height() > 0);
         }
     }
     gtk::style_context_remove_provider_for_display(&root.display(), &css);
     window.close();
+}
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn run_scope_menu_executes_the_current_statement_and_blocks_overlap() {
+    let fixture = EditorFixture::new();
+    fixture
+        .controller
+        .model()
+        .source_view
+        .buffer()
+        .set_text("SELECT 1; SELECT 2;");
+    let buffer = fixture.controller.model().source_view.buffer();
+    buffer.place_cursor(&buffer.end_iter());
+    fixture
+        .controller
+        .widget()
+        .activate_action("editor-run.current", None)
+        .unwrap();
+    let running = fixture.next_query();
+    assert_eq!(running.sql.trim(), "SELECT 2");
+    fixture
+        .controller
+        .widget()
+        .activate_action("editor-run.all", None)
+        .unwrap();
+    fixture.process_inputs();
+    assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
+    fixture.finish(running, success());
+}
+
+#[derive(Default)]
+struct SessionCounts {
+    open_wait: std::sync::Mutex<Option<oneshot::Receiver<()>>>,
+    commits: AtomicUsize,
+    rollbacks: AtomicUsize,
+    closes: AtomicUsize,
+}
+
+struct HeldSession {
+    calls: Arc<AtomicUsize>,
+    requests: mpsc::Sender<PendingQuery>,
+    counts: Arc<SessionCounts>,
+    transaction_open: bool,
+}
+
+#[async_trait::async_trait]
+impl tablepro_core::Session for HeldSession {
+    async fn query_params_controlled(
+        &mut self,
+        sql: &str,
+        parameters: &[Value],
+        control: &OperationControl,
+    ) -> Result<QueryResult, DriverError> {
+        if sql.trim().trim_end_matches(';').eq_ignore_ascii_case("BEGIN") {
+            self.transaction_open = true;
+            return Ok(QueryResult {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                truncated: false,
+            });
+        }
+        if sql == "COMMIT" {
+            self.transaction_open = false;
+            self.counts.commits.fetch_add(1, Ordering::SeqCst);
+            return Ok(QueryResult {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                truncated: false,
+            });
+        }
+        if sql == "ROLLBACK" {
+            self.transaction_open = false;
+            self.counts.rollbacks.fetch_add(1, Ordering::SeqCst);
+            return Ok(QueryResult {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                truncated: false,
+            });
+        }
+        let (release, wait) = oneshot::channel();
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.requests
+            .send(PendingQuery {
+                dedicated_session: true,
+                sql: sql.into(),
+                token: control.cancellation_token().clone(),
+                parameters: parameters.to_vec(),
+                release,
+            })
+            .unwrap();
+        Ok(wait.await.unwrap()?.result_sets.remove(0))
+    }
+
+    fn is_usable(&self) -> bool {
+        true
+    }
+    fn transaction_open(&self) -> bool {
+        self.transaction_open
+    }
+    async fn close(self: Box<Self>) -> Result<(), DriverError> {
+        self.counts.closes.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn transaction_buttons_close_only_the_idle_owned_session() {
+    let fixture = EditorFixture::new();
+    let id = fixture.open_transaction();
+    assert!(fixture.controller.model().transaction_actions.row.is_visible());
+    fixture.shortcut("<Primary>Return", false);
+    let query = fixture.next_query();
+    fixture
+        .controller
+        .sender()
+        .send(SqlEditorInput::SessionAction {
+            session_id: id,
+            commit: true,
+        })
+        .unwrap();
+    fixture.process_inputs();
+    assert_eq!(fixture.sessions.commits.load(Ordering::SeqCst), 0);
+    assert!(!fixture.controller.model().transaction_actions.row.is_sensitive());
+    fixture.finish(query, success());
+    fixture.process_inputs();
+    assert!(fixture.controller.model().session_action_idle());
+    assert!(
+        fixture.controller.model().session.is_some(),
+        "session removed: {}",
+        fixture.controller.model().status.label()
+    );
+    assert!(
+        fixture.controller.model().session_transaction_open(),
+        "transaction cleared: {}",
+        fixture.controller.model().status.label()
+    );
+    assert_eq!(fixture.controller.model().toolbar_transaction_id(), Some(id));
+    let row = fixture.controller.model().transaction_actions.row.clone();
+    assert!(row.is_sensitive());
+    let commit = row
+        .child_at_index(1)
+        .unwrap()
+        .child()
+        .and_downcast::<gtk::Button>()
+        .unwrap();
+    assert_eq!(commit.label().as_deref(), Some("Commit & close session"));
+    commit.emit_clicked();
+    spin_until(|| fixture.controller.model().session.is_none());
+    spin_until(|| fixture.sessions.closes.load(Ordering::SeqCst) == 1);
+    assert_eq!(fixture.sessions.commits.load(Ordering::SeqCst), 1);
+    let replacement = fixture.open_transaction();
+    assert_ne!(replacement, id);
+    fixture
+        .controller
+        .sender()
+        .send(SqlEditorInput::SessionAction {
+            session_id: id,
+            commit: false,
+        })
+        .unwrap();
+    fixture.process_inputs();
+    assert_eq!(fixture.sessions.rollbacks.load(Ordering::SeqCst), 0);
+    let rollback = row
+        .child_at_index(2)
+        .unwrap()
+        .child()
+        .and_downcast::<gtk::Button>()
+        .unwrap();
+    rollback.emit_clicked();
+    spin_until(|| fixture.controller.model().session.is_none());
+    spin_until(|| fixture.sessions.closes.load(Ordering::SeqCst) == 2);
+    assert_eq!(fixture.sessions.rollbacks.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn a_transaction_action_refuses_a_changed_connection_identity() {
+    let fixture = EditorFixture::new();
+    let id = fixture.open_transaction();
+    fixture.database.close(fixture.connection_id);
+    fixture
+        .controller
+        .sender()
+        .send(SqlEditorInput::SessionAction {
+            session_id: id,
+            commit: true,
+        })
+        .unwrap();
+    fixture.process_inputs();
+    assert_eq!(fixture.sessions.commits.load(Ordering::SeqCst), 0);
+    assert!(fixture.controller.model().session.is_some());
+    assert!(!fixture.controller.model().transaction_actions.row.is_visible());
+}
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn editor_waits_for_its_session_before_accepting_any_run_input() {
+    let fixture = EditorFixture::new();
+    let (release, wait) = oneshot::channel();
+    fixture.sessions.open_wait.lock().unwrap().replace(wait);
+    fixture.controller.model().session_button.set_active(true);
+    spin_until(|| fixture.controller.model().session_open_in_flight);
+    assert!(!fixture.controller.model().run_button.is_sensitive());
+    for secondary in [false, true] {
+        fixture.shortcut("<Primary>Return", secondary);
+        fixture.shortcut("<Primary><Shift>Return", secondary);
+    }
+    fixture.controller.sender().send(parameter_response()).unwrap();
+    fixture.process_inputs();
+    assert_eq!(fixture.calls.load(Ordering::SeqCst), 0);
+    assert!(fixture.requests.try_recv().is_err());
+    release.send(()).unwrap();
+    spin_until(|| fixture.controller.model().session.is_some() && fixture.controller.model().run_button.is_sensitive());
+    fixture.shortcut("<Primary>Return", false);
+    let running = fixture.next_query();
+    assert!(running.dedicated_session);
+    assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
+    fixture.finish(running, success());
 }
 
 #[test]

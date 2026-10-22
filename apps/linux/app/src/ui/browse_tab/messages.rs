@@ -128,6 +128,7 @@ pub enum BrowseTabOutput {
     CopyToClipboard(String),
     ShowRowAsJson(String),
     ExportResults {
+        filtered: bool,
         result: QueryResult,
         name: String,
     },
