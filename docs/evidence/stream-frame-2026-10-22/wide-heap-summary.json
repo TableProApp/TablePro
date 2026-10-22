@@ -1,0 +1,63 @@
+{
+  "source": "bfe4c159d",
+  "binary_sha256": "876dcf853025d7f5cea6f5ba98196d78b4cbceab7be8f6a457c7c9289cd254ed",
+  "result": {
+    "pid": 1973644,
+    "command_exit": 0,
+    "aborted": null,
+    "elapsed_seconds": 61.247,
+    "profiler_exit": null
+  },
+  "shutdown": "win.quit followed by wrapper exit 0; no forced termination",
+  "alignment": "Approximate: phase monotonic times converted to wall time against application PID-file creation; +/- startup polling and clock conversion error.",
+  "tool_report": {
+    "peak_heap_decimal_mb": 368.26,
+    "peak_rss_including_overhead_decimal_mb": 571.96,
+    "outstanding_at_exit_decimal_mb": 43.57,
+    "allocation_calls": 17638593
+  },
+  "phase_samples": [
+    {
+      "phase": "connected-idle",
+      "heap_sample_seconds": 5.445,
+      "tracked_heap_mib": 42.77,
+      "rss_mib": 232.92
+    },
+    {
+      "phase": "cycle-1-50000rows-8193bytes-after-result",
+      "heap_sample_seconds": 15.94,
+      "tracked_heap_mib": 307.16,
+      "rss_mib": 534.0
+    },
+    {
+      "phase": "cycle-1-50000rows-8193bytes-after-close",
+      "heap_sample_seconds": 22.636,
+      "tracked_heap_mib": 41.92,
+      "rss_mib": 498.31
+    },
+    {
+      "phase": "cycle-2-50000rows-8193bytes-after-result",
+      "heap_sample_seconds": 33.413,
+      "tracked_heap_mib": 307.81,
+      "rss_mib": 545.46
+    },
+    {
+      "phase": "cycle-2-50000rows-8193bytes-after-close",
+      "heap_sample_seconds": 40.087,
+      "tracked_heap_mib": 42.57,
+      "rss_mib": 539.3
+    },
+    {
+      "phase": "cycle-3-50000rows-8193bytes-after-result",
+      "heap_sample_seconds": 50.797,
+      "tracked_heap_mib": 308.28,
+      "rss_mib": 543.17
+    },
+    {
+      "phase": "cycle-3-50000rows-8193bytes-after-close",
+      "heap_sample_seconds": 57.434,
+      "tracked_heap_mib": 43.14,
+      "rss_mib": 540.33
+    }
+  ]
+}

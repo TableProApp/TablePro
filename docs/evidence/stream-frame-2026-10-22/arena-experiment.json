@@ -1,0 +1,23 @@
+{
+  "experiment": "MALLOC_ARENA_MAX=2 for the child application only",
+  "source": "bfe4c159d",
+  "binary_sha256": "876dcf853025d7f5cea6f5ba98196d78b4cbceab7be8f6a457c7c9289cd254ed",
+  "result": {
+    "pid": 1975551,
+    "command_exit": 0,
+    "aborted": null,
+    "elapsed_seconds": 109.142,
+    "profiler_exit": -2
+  },
+  "peak_rss_mib": 480.18,
+  "process_cpu_seconds": 52.97,
+  "after_close_rss_mib": [
+    472.5,
+    478.74,
+    479.38,
+    474.37,
+    480.16,
+    474.37
+  ],
+  "decision": "No useful footprint reduction in this run. No product or desktop configuration change."
+}

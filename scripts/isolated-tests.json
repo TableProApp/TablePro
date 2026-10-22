@@ -711,6 +711,11 @@
       "tablepro-app",
       "--lib",
       "ui::editor::dispatch_tests::editor_actions_fit_narrow_rows_with_running_and_retry_controls"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::stream_view::tests::a_stream_page_retired_before_a_frame_does_not_build_a_grid"
     ]
   ],
   "keyring": [

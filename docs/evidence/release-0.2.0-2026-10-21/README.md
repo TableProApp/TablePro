@@ -57,4 +57,12 @@ A [minimal GTK reproducer](long-line-widget.py), with no BookiE code, reached 1,
 
 The script requires PyGObject, GTK4 and GtkSourceView5. Set `BOOKIE_PROBE_PIDFILE` to an owned temporary PID file and run under private D-Bus/Xvfb with argument `source-line`, `source-multiline` or `gtk-line`. It creates a synthetic buffer, presents it for seven seconds and destroys the window. Preflight was running concurrently, so CPU comparisons are excluded.
 
+### Long-line allocation follow-up
+
+A completed heaptrack capture of the same standalone GtkSourceView reproducer reported peak allocated heap 1.61 GB and peak RSS 1.37 GB. Unmerged allocation stacks include about 245.16 MB through HarfBuzz `hb_buffer_add_utf8` and `pango_shape_item`, plus approximately 201.33 MB stacks through Pango/Cairo glyph rendering. These stack peaks overlap and must not be added. The process exited normally; interpreter and GTK lifetime were not isolated enough to interpret the outstanding allocation total as a leak, and no BookiE code ran.
+
+A separate run explicitly reported `renderer=GskGLRenderer` under Xvfb. It peaked at 1136.62 MiB RSS / 1103.7 MiB PSS and exited normally. Thus the large single-line footprint also reproduces with an identified GL renderer in this environment; selecting another renderer alone is not an established mitigation. Xvfb reported no DRI3 device, so this is not native GPU or Wayland qualification. The reproducer now prints its selected renderer.
+
+The first follow-up captures inherited the user runtime directory and emitted failed GVfs cleanup messages. The identified-renderer run used an owned runtime directory and the local GIO backend. No desktop configuration changed. Raw traces and the unmerged heap report remain in the dated local artifact directory.
+
 The [terminal cursor metadata correction](../postgres-terminal-metadata-2026-10-22/README.md) records the failed shared-casing attempt and the cursor-local fix that preserves the existing zero-row contract.

@@ -17,6 +17,7 @@ scroll=Gtk.ScrolledWindow()
 scroll.set_child(view)
 window=Gtk.Window(default_width=1000,default_height=700,child=scroll)
 window.present()
+print("renderer=" + window.get_renderer().__gtype__.name, flush=True)
 loop=GLib.MainLoop()
 def finish():
     window.destroy()

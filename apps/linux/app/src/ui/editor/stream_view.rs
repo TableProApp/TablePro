@@ -104,6 +104,21 @@ mod tests {
     use std::sync::Arc;
     use tablepro_core::{ColumnInfo, QueryResult, Value};
 
+    fn wait_for_grid(root: &gtk::Widget) -> gtk::ColumnView {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if let Some(grid) = named::<gtk::ColumnView>(root, "GtkColumnView") {
+                return grid;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "selected page did not build its grid"
+            );
+            gtk::glib::MainContext::default().iteration(false);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+
     fn page(values: &[i64]) -> Arc<QueryResult> {
         Arc::new(QueryResult {
             columns: vec![ColumnInfo {
@@ -205,6 +220,39 @@ mod tests {
     }
     #[test]
     #[ignore = "requires an isolated GTK display"]
+    fn a_stream_page_retired_before_a_frame_does_not_build_a_grid() {
+        relm4::adw::init().unwrap();
+        let (sender, _receiver) = relm4::channel::<GridMsg>();
+        let result = page(&[1, 2]);
+        let retired = Arc::downgrade(&result);
+        let widget = build_stream_page_widget(
+            &result,
+            &sender,
+            None,
+            Arc::new(crate::services::database_service::DatabaseService::new_isolated()),
+            LocalResultSettingsStore::default(),
+            result_view_key(StatementIdentity::default(), 0),
+        );
+        let holder = widget.clone().downcast::<gtk::Box>().unwrap();
+        let window = gtk::Window::builder().default_width(900).default_height(600).build();
+        window.present();
+        let context = gtk::glib::MainContext::default();
+        while context.iteration(false) {}
+        window.set_child(Some(&holder));
+        assert!(holder.is_mapped());
+        window.set_child(gtk::Widget::NONE);
+        assert!(holder.first_child().is_none());
+        while context.iteration(false) {}
+        assert!(holder.first_child().is_none());
+        drop(result);
+        drop(widget);
+        drop(holder);
+        assert!(retired.upgrade().is_none());
+        window.destroy();
+    }
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
     fn hidden_stream_pages_build_their_grid_only_when_selected() {
         relm4::adw::init().unwrap();
         let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -233,7 +281,7 @@ mod tests {
         assert!(named::<gtk::ColumnView>(&first, "GtkColumnView").is_none());
         pages.set_current_page(Some(0));
         while context.iteration(false) {}
-        let grid = named::<gtk::ColumnView>(&first, "GtkColumnView").unwrap();
+        let grid = wait_for_grid(&first);
         pages.set_current_page(Some(1));
         pages.set_current_page(Some(0));
         while context.iteration(false) {}
@@ -272,7 +320,8 @@ mod tests {
         assert!(named::<gtk::ColumnView>(&data, "GtkColumnView").is_none());
         pages.set_current_page(Some(0));
         while context.iteration(false) {}
-        assert!(named::<gtk::ColumnView>(&data, "GtkColumnView").is_some());
+        let grid = wait_for_grid(&data);
+        assert_eq!(named::<gtk::ColumnView>(&data, "GtkColumnView"), Some(grid));
         window.destroy();
     }
 }

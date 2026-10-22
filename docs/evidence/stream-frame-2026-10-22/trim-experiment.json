@@ -1,0 +1,313 @@
+{
+  "profile": "wide-values-frame-trim-probe",
+  "binary_sha256": "876dcf853025d7f5cea6f5ba98196d78b4cbceab7be8f6a457c7c9289cd254ed",
+  "method": "Child-only LD_PRELOAD diagnostic shim calls malloc_trim(0) every five seconds, at most 24 calls. Not a production change.",
+  "result": {
+    "pid": 1976268,
+    "command_exit": 0,
+    "aborted": null,
+    "elapsed_seconds": 109.334,
+    "profiler_exit": -2
+  },
+  "peak_rss_mib": 495.62,
+  "cpu_seconds": 53.31,
+  "phases": [
+    {
+      "pid": 1976268,
+      "rss_kib": 176164,
+      "hwm_kib": 176164,
+      "pss_kib": 138161,
+      "private_kib": 123416,
+      "cpu_seconds": 0.71,
+      "available_kib": 27119112,
+      "phase": "connected-idle",
+      "monotonic": 110351.921324838
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 176164,
+      "hwm_kib": 176164,
+      "pss_kib": 138161,
+      "private_kib": 123416,
+      "cpu_seconds": 0.71,
+      "available_kib": 27119112,
+      "phase": "cycle-1-50000rows-8193bytes-before",
+      "monotonic": 110351.923226546
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 485820,
+      "hwm_kib": 485820,
+      "pss_kib": 447757,
+      "private_kib": 432760,
+      "cpu_seconds": 8.91,
+      "available_kib": 26606888,
+      "phase": "cycle-1-50000rows-8193bytes-after-result",
+      "monotonic": 110360.427583844
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 174652,
+      "hwm_kib": 484688,
+      "pss_kib": 136497,
+      "private_kib": 121588,
+      "cpu_seconds": 9.38,
+      "available_kib": 26952584,
+      "phase": "cycle-1-50000rows-8193bytes-after-replacement",
+      "monotonic": 110363.123891894
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 182392,
+      "hwm_kib": 484688,
+      "pss_kib": 143768,
+      "private_kib": 128392,
+      "cpu_seconds": 9.44,
+      "available_kib": 26990808,
+      "phase": "cycle-1-50000rows-8193bytes-after-close",
+      "monotonic": 110366.167293151
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 182460,
+      "hwm_kib": 484688,
+      "pss_kib": 143836,
+      "private_kib": 128460,
+      "cpu_seconds": 9.54,
+      "available_kib": 26990444,
+      "phase": "cycle-2-50000rows-8193bytes-before",
+      "monotonic": 110366.464025025
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 485144,
+      "hwm_kib": 488804,
+      "pss_kib": 446590,
+      "private_kib": 431148,
+      "cpu_seconds": 17.72,
+      "available_kib": 26533664,
+      "phase": "cycle-2-50000rows-8193bytes-after-result",
+      "monotonic": 110374.921164604
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 178656,
+      "hwm_kib": 488804,
+      "pss_kib": 140011,
+      "private_kib": 124648,
+      "cpu_seconds": 18.2,
+      "available_kib": 26806264,
+      "phase": "cycle-2-50000rows-8193bytes-after-replacement",
+      "monotonic": 110377.63222638
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 185424,
+      "hwm_kib": 488804,
+      "pss_kib": 146779,
+      "private_kib": 131416,
+      "cpu_seconds": 18.27,
+      "available_kib": 26852252,
+      "phase": "cycle-2-50000rows-8193bytes-after-close",
+      "monotonic": 110380.676450947
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 185480,
+      "hwm_kib": 488804,
+      "pss_kib": 146835,
+      "private_kib": 131472,
+      "cpu_seconds": 18.38,
+      "available_kib": 26863476,
+      "phase": "cycle-3-50000rows-8193bytes-before",
+      "monotonic": 110380.975399958
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 444292,
+      "hwm_kib": 488804,
+      "pss_kib": 405760,
+      "private_kib": 390296,
+      "cpu_seconds": 26.6,
+      "available_kib": 26576160,
+      "phase": "cycle-3-50000rows-8193bytes-after-result",
+      "monotonic": 110389.473161638
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 433296,
+      "hwm_kib": 488804,
+      "pss_kib": 394622,
+      "private_kib": 379228,
+      "cpu_seconds": 27.06,
+      "available_kib": 26640396,
+      "phase": "cycle-3-50000rows-8193bytes-after-replacement",
+      "monotonic": 110392.124538604
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 179356,
+      "hwm_kib": 488804,
+      "pss_kib": 140672,
+      "private_kib": 125268,
+      "cpu_seconds": 27.12,
+      "available_kib": 26942908,
+      "phase": "cycle-3-50000rows-8193bytes-after-close",
+      "monotonic": 110395.169004592
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 179420,
+      "hwm_kib": 488804,
+      "pss_kib": 140736,
+      "private_kib": 125332,
+      "cpu_seconds": 27.22,
+      "available_kib": 26948188,
+      "phase": "cycle-4-50000rows-8193bytes-before",
+      "monotonic": 110395.466569321
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 452684,
+      "hwm_kib": 496860,
+      "pss_kib": 414125,
+      "private_kib": 398668,
+      "cpu_seconds": 35.32,
+      "available_kib": 26658236,
+      "phase": "cycle-4-50000rows-8193bytes-after-result",
+      "monotonic": 110403.852522489
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 454072,
+      "hwm_kib": 496860,
+      "pss_kib": 415418,
+      "private_kib": 400036,
+      "cpu_seconds": 35.77,
+      "available_kib": 26650796,
+      "phase": "cycle-4-50000rows-8193bytes-after-replacement",
+      "monotonic": 110406.484578664
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 195892,
+      "hwm_kib": 496860,
+      "pss_kib": 157238,
+      "private_kib": 141856,
+      "cpu_seconds": 35.84,
+      "available_kib": 26958668,
+      "phase": "cycle-4-50000rows-8193bytes-after-close",
+      "monotonic": 110409.528475374
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 195964,
+      "hwm_kib": 496860,
+      "pss_kib": 157310,
+      "private_kib": 141928,
+      "cpu_seconds": 35.92,
+      "available_kib": 26965472,
+      "phase": "cycle-5-50000rows-8193bytes-before",
+      "monotonic": 110409.829314932
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 459392,
+      "hwm_kib": 503772,
+      "pss_kib": 420833,
+      "private_kib": 405376,
+      "cpu_seconds": 44.06,
+      "available_kib": 26442636,
+      "phase": "cycle-5-50000rows-8193bytes-after-result",
+      "monotonic": 110418.247802038
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 461104,
+      "hwm_kib": 503772,
+      "pss_kib": 422420,
+      "private_kib": 407008,
+      "cpu_seconds": 44.51,
+      "available_kib": 26533004,
+      "phase": "cycle-5-50000rows-8193bytes-after-replacement",
+      "monotonic": 110420.891895479
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 197244,
+      "hwm_kib": 503772,
+      "pss_kib": 158575,
+      "private_kib": 143148,
+      "cpu_seconds": 44.57,
+      "available_kib": 26867064,
+      "phase": "cycle-5-50000rows-8193bytes-after-close",
+      "monotonic": 110423.929142804
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 203308,
+      "hwm_kib": 503772,
+      "pss_kib": 164639,
+      "private_kib": 149212,
+      "cpu_seconds": 44.68,
+      "available_kib": 26868464,
+      "phase": "cycle-6-50000rows-8193bytes-before",
+      "monotonic": 110424.242656334
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 507952,
+      "hwm_kib": 507952,
+      "pss_kib": 469403,
+      "private_kib": 453936,
+      "cpu_seconds": 52.77,
+      "available_kib": 26578932,
+      "phase": "cycle-6-50000rows-8193bytes-after-result",
+      "monotonic": 110432.600576245
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 460908,
+      "hwm_kib": 506796,
+      "pss_kib": 422259,
+      "private_kib": 406864,
+      "cpu_seconds": 53.25,
+      "available_kib": 26634080,
+      "phase": "cycle-6-50000rows-8193bytes-after-replacement",
+      "monotonic": 110435.267149597
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 198672,
+      "hwm_kib": 506796,
+      "pss_kib": 160031,
+      "private_kib": 144628,
+      "cpu_seconds": 53.31,
+      "available_kib": 26899428,
+      "phase": "cycle-6-50000rows-8193bytes-after-close",
+      "monotonic": 110438.309392456
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 198672,
+      "hwm_kib": 506796,
+      "pss_kib": 160031,
+      "private_kib": 144628,
+      "cpu_seconds": 53.31,
+      "available_kib": 26899428,
+      "phase": "final-idle-before",
+      "monotonic": 110438.310965784
+    },
+    {
+      "pid": 1976268,
+      "rss_kib": 198396,
+      "hwm_kib": 506796,
+      "pss_kib": 159839,
+      "private_kib": 144380,
+      "cpu_seconds": 53.31,
+      "available_kib": 26920720,
+      "phase": "final-idle-after",
+      "monotonic": 110453.312744311
+    }
+  ]
+}

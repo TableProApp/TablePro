@@ -809,7 +809,7 @@ pub(super) fn build_stream_page_widget(
     holder.set_vexpand(true);
     let result = result.clone();
     let grid_sender = grid_sender.clone();
-    let build = std::cell::RefCell::new(Some(move || {
+    let build = std::rc::Rc::new(std::cell::RefCell::new(Some(move || {
         build_result_set_widget(
             &result,
             &grid_sender,
@@ -818,11 +818,21 @@ pub(super) fn build_stream_page_widget(
             settings_store,
             settings_key,
         )
-    }));
+    })));
+    let scheduled = std::rc::Rc::new(std::cell::Cell::new(false));
     holder.connect_map(move |holder| {
-        if let Some(build) = build.borrow_mut().take() {
-            holder.append(&build());
+        if build.borrow().is_none() || scheduled.replace(true) {
+            return;
         }
+        let build = build.clone();
+        let scheduled = scheduled.clone();
+        holder.add_tick_callback(move |holder, _| {
+            scheduled.set(false);
+            if let Some(build) = build.borrow_mut().take() {
+                holder.append(&build());
+            }
+            gtk::glib::ControlFlow::Break
+        });
     });
     holder.upcast()
 }

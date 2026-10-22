@@ -1138,5 +1138,23 @@
       },
       "scope": "Standalone Python GTK widget; no BookiE code. Concurrent preflight excludes CPU comparisons."
     }
-  ]
+  ],
+  "long_line_gl_identified": {
+    "renderer": "GskGLRenderer",
+    "peak_rss_mib": 1136.62,
+    "peak_pss_mib": 1103.7,
+    "result": {
+      "pid": 1969518,
+      "command_exit": 0,
+      "aborted": null,
+      "elapsed_seconds": 13.254,
+      "profiler_exit": null
+    }
+  },
+  "long_line_heaptrack": {
+    "tool_report_peak_heap": "1.61 GB",
+    "tool_report_peak_rss": "1.37 GB",
+    "scope": "Minimal GtkSourceView Python reproducer; normal exit; outstanding allocations do not establish a BookiE leak.",
+    "allocation_evidence": "Unmerged HarfBuzz hb_buffer_add_utf8 stack about 245.16 MB; Pango/Cairo glyph rendering stacks about 201.33 MB each. Stack peaks overlap and must not be added."
+  }
 }
