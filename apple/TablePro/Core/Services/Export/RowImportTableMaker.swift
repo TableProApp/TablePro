@@ -98,7 +98,8 @@ internal struct RowImportTableMaker {
                 tableName: tableName,
                 columns: [],
                 primaryKeyColumns: [],
-                databaseType: connection.type
+                databaseType: connection.type,
+                rowDeleteStatement: DatabaseManager.shared.driver(for: connection.id)?.rowDeleteStatement
             )
             return .clear(generator.deleteAllRowsStatement())
         case .nameTakenWithDifferentColumns:

@@ -123,6 +123,12 @@ extension SpannerPluginDriver {
         }
     }
 
+    // GoogleSQL takes no DELETE without WHERE.
+    func rowDeleteStatement(table: String, predicate: String?) -> String? {
+        guard predicate == nil, dialect == .googleSQL else { return nil }
+        return "DELETE FROM \(table) WHERE TRUE"
+    }
+
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
         let keyword = objectType.uppercased()
         guard ["TABLE", "VIEW", "INDEX"].contains(keyword) else { return nil }

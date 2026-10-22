@@ -81,8 +81,12 @@ nonisolated struct ClickHouseServerProfile: Sendable, Equatable {
 
     /// The URL item for `value`, or nil when this user may not set it to that.
     func queryItem(_ setting: ClickHouseURLSetting, _ value: String) -> URLQueryItem? {
-        guard settingLimits[setting]?.allows(value) == true else { return nil }
+        guard allows(setting, value) else { return nil }
         return URLQueryItem(name: setting.rawValue, value: value)
+    }
+
+    func allows(_ setting: ClickHouseURLSetting, _ value: String) -> Bool {
+        settingLimits[setting]?.allows(value) == true
     }
 
 
@@ -189,7 +193,8 @@ nonisolated struct ClickHouseSettingLimits: Sendable, Equatable {
     }
 }
 
-/// The URL settings the driver sends only when the server lets this user change them.
+/// The settings the driver sends only when the server lets this user change them, in the URL or, for
+/// `mutations_sync`, in the statement's SETTINGS clause.
 /// `max_execution_time` is not here: `applyQueryTimeout` sends it once and keeps it only when the
 /// server accepts it.
 nonisolated enum ClickHouseURLSetting: String, CaseIterable, Sendable {
@@ -198,6 +203,7 @@ nonisolated enum ClickHouseURLSetting: String, CaseIterable, Sendable {
     case maxResultRows = "max_result_rows"
     case resultOverflowMode = "result_overflow_mode"
     case cancelHTTPReadonlyQueriesOnClientClose = "cancel_http_readonly_queries_on_client_close"
+    case mutationsSync = "mutations_sync"
 }
 
 /// System catalog parts the metadata reads use that older servers lack, measured: 19.16 and 20.3

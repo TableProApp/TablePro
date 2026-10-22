@@ -27,6 +27,7 @@ internal enum ImportTransactionOutcome: Equatable, Sendable {
 final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     let databaseTypeId: String
     let targetTable: String?
+    private let targetSchema: String?
 
     private let driver: DatabaseDriver
     private let databaseType: DatabaseType
@@ -38,6 +39,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     private let rowGenerator: SQLStatementGenerator?
     private let rowWriting: ImportRowWriting
     private let tally: OSAllocatedUnfairLock<ImportRowTally>
+    private let immutableColumns = OSAllocatedUnfairLock<Set<String>?>(initialState: nil)
 
     /// Asked before every statement this sink sends, because one `insertRows` call is no longer one
     /// statement: a byte-heavy batch, or an Oracle target that takes one row per statement, splits
@@ -99,6 +101,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         self.tableEditDialect = TableEditDialect.of(databaseType)
         self.databaseTypeId = databaseType.rawValue
         self.targetTable = targetTable
+        self.targetSchema = targetSchema
         self.exactMapping = columnMapping
         self.sourceFields = sourceFields
         self.sourceFieldsPerFoldedName = Dictionary(sourceFields.map { ($0.lowercased(), 1) }, uniquingKeysWith: +)
@@ -110,7 +113,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
                 schemaName: targetSchema,
                 columns: [],
                 primaryKeyColumns: [],
-                databaseType: databaseType
+                databaseType: databaseType,
+                rowUpdateStatement: driver.rowUpdateStatement,
+                rowDeleteStatement: driver.rowDeleteStatement
             )
         } else {
             self.rowGenerator = nil
@@ -413,9 +418,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         try await insertGrouped(inserts, generator: generator)
     }
 
+    // A column the engine never lets an UPDATE assign keeps its value, and is written only for an inserted row.
     private func update(_ entry: KeyedRow, generator: SQLStatementGenerator) async throws {
-        let keyColumns = Set(rowWriting.keyColumns)
-        let assignments = zip(entry.row.columns, entry.row.values).filter { !keyColumns.contains($0.0) }
+        let kept = Set(rowWriting.keyColumns).union(try await columnsUpdateCannotSet())
+        let assignments = zip(entry.row.columns, entry.row.values).filter { !kept.contains($0.0) }
         guard !assignments.isEmpty else {
             tally.withLock { $0.existing += 1 }
             return
@@ -431,6 +437,14 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         }
         _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
         tally.withLock { $0.updated += 1 }
+    }
+
+    private func columnsUpdateCannotSet() async throws -> Set<String> {
+        if let known = immutableColumns.withLock({ $0 }) { return known }
+        guard let targetTable else { return [] }
+        let fetched = try await driver.fetchImmutableColumns(table: targetTable, schema: targetSchema)
+        immutableColumns.withLock { $0 = fetched }
+        return fetched
     }
 
     private static let keysPerProbe = 100

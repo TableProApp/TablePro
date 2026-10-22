@@ -104,6 +104,20 @@ nonisolated extension ClickHousePluginDriver {
         }
     }
 
+    // A mutation refuses any column of the sorting, primary or partition key, even set to the value it holds.
+    func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String> {
+        let result = try await execute(query: Self.immutableColumnsSQL(table: table, schema: schema))
+        return Set(result.rows.compactMap { $0[safe: 0]?.asText })
+    }
+
+    static func immutableColumnsSQL(table: String, schema: String?) -> String {
+        """
+        SELECT name FROM system.columns
+        WHERE database = \(databaseExpression(schema)) AND table = \(stringLiteral(table))
+        AND (is_in_sorting_key OR is_in_primary_key OR is_in_partition_key)
+        """
+    }
+
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         // Pre-fetch PK columns for all tables. Falls back to sorting_key when
         // primary_key is empty (MergeTree without explicit PRIMARY KEY clause).

@@ -171,6 +171,7 @@ protocol DatabaseDriver: AnyObject, Sendable {
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo]
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo]
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo]
+    func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String>
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
     func fetchTableDDL(table: String, schema: String?) async throws -> String
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String]
@@ -454,6 +455,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func foreignKeyDisableStatements() -> [String]?
     func foreignKeyEnableStatements() -> [String]?
+    func rowUpdateStatement(table: String, assignments: String, predicate: String) -> String?
+    func rowDeleteStatement(table: String, predicate: String?) -> String?
 
     // Definition SQL for clipboard copy
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String?
@@ -557,6 +560,8 @@ extension DatabaseDriver {
 
     func foreignKeyDisableStatements() -> [String]? { nil }
     func foreignKeyEnableStatements() -> [String]? { nil }
+    func rowUpdateStatement(table: String, assignments: String, predicate: String) -> String? { nil }
+    func rowDeleteStatement(table: String, predicate: String?) -> String? { nil }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? { nil }
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? { nil }
@@ -573,6 +578,8 @@ extension DatabaseDriver {
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
         try await fetchForeignKeys(table: table)
     }
+
+    func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String> { [] }
 
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo] {
         try await fetchCheckConstraints(table: table)

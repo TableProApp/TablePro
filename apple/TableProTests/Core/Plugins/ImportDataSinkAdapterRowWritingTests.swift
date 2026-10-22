@@ -16,6 +16,9 @@ private struct SQLiteTestError: Error {
 private final class InMemorySQLiteDriver: PluginDriverStub, @unchecked Sendable {
     private var handle: OpaquePointer?
     private(set) var statements: [String] = []
+    var updateForm: ((_ table: String, _ assignments: String, _ predicate: String) -> String?)?
+    var deleteForm: ((_ table: String, _ predicate: String?) -> String?)?
+    var immutable: Set<String> = []
 
     init(_ setup: String) throws {
         guard sqlite3_open(":memory:", &handle) == SQLITE_OK else { throw SQLiteTestError(message: "open") }
@@ -32,6 +35,18 @@ private final class InMemorySQLiteDriver: PluginDriverStub, @unchecked Sendable 
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         try run(query, parameters: parameters)
+    }
+
+    func rowUpdateStatement(table: String, assignments: String, predicate: String) -> String? {
+        updateForm?(table, assignments, predicate)
+    }
+
+    func rowDeleteStatement(table: String, predicate: String?) -> String? {
+        deleteForm?(table, predicate)
+    }
+
+    func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String> {
+        immutable
     }
 
     func rows(_ sql: String) throws -> [[String?]] {
@@ -126,6 +141,48 @@ struct ImportDataSinkAdapterRowWritingTests {
         expected.updated = 1
         expected.unmatched = 1
         #expect(sink.rowTally == expected)
+    }
+
+    @Test("A matched row is updated with the driver's own UPDATE form, its values bound in order")
+    func updateUsesDriverForm() async throws {
+        let driver = try InMemorySQLiteDriver(Self.people)
+        driver.updateForm = { table, assignments, predicate in
+            "UPDATE OR ABORT \(table) SET \(assignments) WHERE \(predicate)"
+        }
+        let sink = sink(on: driver, mode: .upsert)
+
+        try await sink.insertRows(Self.changedAndNew)
+
+        #expect(try people(driver) == [["1", "a", "n1"], ["2", "b2", "n2"], ["3", "c", "n3"], ["4", "d", "none"]])
+        #expect(driver.statements.contains("UPDATE OR ABORT `people` SET `name` = ? WHERE `id` = ?"))
+        #expect(!driver.statements.contains { $0.hasPrefix("UPDATE `") })
+    }
+
+    @Test("A column no UPDATE may assign keeps its value on a matched row and is written for a new one")
+    func immutableColumnIsLeftOutOfUpdates() async throws {
+        let driver = try InMemorySQLiteDriver(Self.people)
+        driver.immutable = ["note"]
+        let sink = sink(on: driver, mode: .upsert, mapping: ["id": "id", "name": "name", "note": "note"])
+
+        try await sink.insertRows([
+            ["id": .text("2"), "name": .text("b2"), "note": .text("changed")],
+            ["id": .text("4"), "name": .text("d"), "note": .text("n4")],
+        ])
+
+        #expect(try people(driver) == [["1", "a", "n1"], ["2", "b2", "n2"], ["3", "c", "n3"], ["4", "d", "n4"]])
+        #expect(sink.rowTally.updated == 1)
+    }
+
+    @Test("Delete existing rows empties the table with the driver's own statement")
+    func clearingUsesDriverForm() async throws {
+        let driver = try InMemorySQLiteDriver(Self.people)
+        driver.deleteForm = { table, predicate in predicate == nil ? "DELETE FROM \(table) WHERE 1" : nil }
+        let sink = sink(on: driver, mode: .insert)
+
+        try await sink.deleteAllRowsFromTargetTable()
+
+        #expect(try people(driver).isEmpty)
+        #expect(driver.statements.contains("DELETE FROM `people` WHERE 1"))
     }
 
     @Test("Insert or Update updates matched rows and inserts the rest")

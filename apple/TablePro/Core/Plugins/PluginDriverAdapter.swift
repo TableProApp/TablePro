@@ -594,6 +594,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         return pluginFKs.map(ForeignKeyInfo.init)
     }
 
+    func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String> {
+        try await pluginDriver.fetchImmutableColumns(table: table, schema: schema ?? pluginDriver.currentSchema)
+    }
+
     func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo] {
         try await fetchCheckConstraints(table: table, schema: nil)
     }
@@ -1156,6 +1160,14 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func foreignKeyEnableStatements() -> [String]? {
         pluginDriver.foreignKeyEnableStatements()
+    }
+
+    func rowUpdateStatement(table: String, assignments: String, predicate: String) -> String? {
+        pluginDriver.rowUpdateStatement(table: table, assignments: assignments, predicate: predicate)
+    }
+
+    func rowDeleteStatement(table: String, predicate: String?) -> String? {
+        pluginDriver.rowDeleteStatement(table: table, predicate: predicate)
     }
 
     // MARK: - Maintenance Operations

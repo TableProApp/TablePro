@@ -122,6 +122,11 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         return ["TRUNCATE TABLE \(qualifiedTable(table, schema: schema, projectId: projectId))"]
     }
 
+    // BigQuery takes no DELETE without WHERE.
+    func rowDeleteStatement(table: String, predicate: String?) -> String? {
+        predicate == nil ? "DELETE FROM \(table) WHERE TRUE" : nil
+    }
+
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
         guard let projectId, let keyword = Self.droppableObjectKeyword(objectType) else { return nil }
         return "DROP \(keyword) IF EXISTS \(qualifiedTable(name, schema: schema, projectId: projectId))"

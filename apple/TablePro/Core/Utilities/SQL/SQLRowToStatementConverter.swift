@@ -49,6 +49,7 @@ internal struct SQLRowToStatementConverter {
     private let settableColumns: [String]?
     private let quoteIdentifierFn: (String) -> String
     private let escapeStringFn: (String) -> String
+    private let rowUpdateFn: ((_ table: String, _ assignments: String, _ predicate: String) -> String?)?
 
     private static let maxRows = 50_000
 
@@ -64,9 +65,11 @@ internal struct SQLRowToStatementConverter {
         dialect: SQLDialectDescriptor? = nil,
         quoteIdentifier: ((String) -> String)? = nil,
         escapeStringLiteral: ((String) -> String)? = nil,
-        identifierSpelling: SQLIdentifierSpelling? = nil
+        identifierSpelling: SQLIdentifierSpelling? = nil,
+        rowUpdateStatement: ((_ table: String, _ assignments: String, _ predicate: String) -> String?)? = nil
     ) throws {
         self.tableName = tableName
+        self.rowUpdateFn = rowUpdateStatement
         self.schemaName = schemaName
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
@@ -149,9 +152,11 @@ internal struct SQLRowToStatementConverter {
     /// column out would let the statement change rows that differ only in it.
     private func updateStatement(row: SourceRow) -> String? {
         guard !row.isPendingInsert, let whereClause = rowMatch(storedValues: row.storedValues) else { return nil }
-        let assignments = assignments(for: row)
+        let assignments = assignments(for: row).joined(separator: ", ")
         guard !assignments.isEmpty else { return nil }
-        return "UPDATE \(qualifiedTable) SET \(assignments.joined(separator: ", ")) WHERE \(whereClause);"
+        let statement = rowUpdateFn?(qualifiedTable, assignments, whereClause)
+            ?? "UPDATE \(qualifiedTable) SET \(assignments) WHERE \(whereClause)"
+        return statement + ";"
     }
 
     private var keyColumnsPresent: Bool {

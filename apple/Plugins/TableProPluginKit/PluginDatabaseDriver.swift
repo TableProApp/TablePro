@@ -185,6 +185,8 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo]
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo]
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo]
+    /// The columns of `table` an UPDATE can never assign, even to the value they hold.
+    func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String>
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo]
     var providesBulkTriggerFetch: Bool { get }
     func fetchTriggerDDL(_ trigger: PluginTriggerInfo) async throws -> String
@@ -571,6 +573,13 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func foreignKeyDisableStatements() -> [String]?
     func foreignKeyEnableStatements() -> [String]?
 
+    /// `UPDATE <table> SET <assignments> WHERE <predicate>` in this engine's own form, or nil for that form. The host
+    /// quotes the table and renders both clauses; a placeholder in them binds in order, assignments first.
+    func rowUpdateStatement(table: String, assignments: String, predicate: String) -> String?
+    /// `DELETE FROM <table> WHERE <predicate>` in this engine's own form, or nil for that form. A nil predicate
+    /// removes every row.
+    func rowDeleteStatement(table: String, predicate: String?) -> String?
+
     /// Creates a schema, for a copy that has just created the database it goes in.
     ///
     /// A new database carries only whatever schema its engine gives it, so duplicating one that
@@ -737,6 +746,7 @@ public extension PluginDatabaseDriver {
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] { [] }
 
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] { [] }
+    func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String> { [] }
 
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] { [] }
 
@@ -1312,6 +1322,8 @@ public extension PluginDatabaseDriver {
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? { nil }
     func foreignKeyDisableStatements() -> [String]? { nil }
     func foreignKeyEnableStatements() -> [String]? { nil }
+    func rowUpdateStatement(table: String, assignments: String, predicate: String) -> String? { nil }
+    func rowDeleteStatement(table: String, predicate: String?) -> String? { nil }
     func createSchemaStatement(name: String) -> String? { nil }
 
     func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]? { nil }

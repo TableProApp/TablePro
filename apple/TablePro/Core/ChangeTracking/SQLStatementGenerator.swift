@@ -50,6 +50,8 @@ struct SQLStatementGenerator {
     /// for a `GENERATED ALWAYS` column unless the INSERT says so.
     let insertOverridesSystemValue: Bool
     private let quoteIdentifierFn: (String) -> String
+    private let rowUpdateFn: ((_ table: String, _ assignments: String, _ predicate: String) -> String?)?
+    private let rowDeleteFn: ((_ table: String, _ predicate: String?) -> String?)?
 
     init(
         tableName: String,
@@ -62,9 +64,13 @@ struct SQLStatementGenerator {
         parameterStyle: ParameterStyle? = nil,
         insertOverridesSystemValue: Bool = false,
         dialect: SQLDialectDescriptor? = nil,
-        quoteIdentifier: ((String) -> String)? = nil
+        quoteIdentifier: ((String) -> String)? = nil,
+        rowUpdateStatement: ((_ table: String, _ assignments: String, _ predicate: String) -> String?)? = nil,
+        rowDeleteStatement: ((_ table: String, _ predicate: String?) -> String?)? = nil
     ) throws {
         self.tableName = tableName
+        self.rowUpdateFn = rowUpdateStatement
+        self.rowDeleteFn = rowDeleteStatement
         self.schemaName = SchemaQualifiedName.explicitSchema(schemaName, databaseType: databaseType)
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
@@ -306,11 +312,10 @@ struct SQLStatementGenerator {
         }
         let assignments = zip(setColumns, values).map(bound).joined(separator: ", ")
         let conditions = zip(keyColumns, keyValues).map(bound).joined(separator: " AND ")
+        let sql = rowUpdateFn?(qualifiedTableName, assignments, conditions)
+            ?? "UPDATE \(qualifiedTableName) SET \(assignments) WHERE \(conditions)"
 
-        return ParameterizedStatement(
-            sql: "UPDATE \(qualifiedTableName) SET \(assignments) WHERE \(conditions)",
-            parameters: bindParameters
-        )
+        return ParameterizedStatement(sql: sql, parameters: bindParameters)
     }
 
     var maxBindParameters: Int {
@@ -322,7 +327,7 @@ struct SQLStatementGenerator {
     }
 
     func deleteAllRowsStatement() -> String {
-        "DELETE FROM \(qualifiedTableName)"
+        rowDeleteFn?(qualifiedTableName, nil) ?? "DELETE FROM \(qualifiedTableName)"
     }
 
     private func generateInsertSQLFromCellChanges(for change: RowChange) -> ParameterizedStatement?

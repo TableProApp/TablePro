@@ -468,6 +468,26 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         return (statement: sql, parameters: parameters)
     }
 
+    // A plain UPDATE needs lightweight updates enabled on the table. A mutation returns before it applies unless
+    // asked to wait, and only a waited one reports a failure instead of staying queued. A user who may not wait
+    // gets the plain form, which finishes before it returns or is refused.
+    func rowUpdateStatement(table: String, assignments: String, predicate: String) -> String? {
+        guard let wait = mutationWait else { return nil }
+        return "ALTER TABLE \(table) UPDATE \(assignments) WHERE \(predicate)\(wait)"
+    }
+
+    // DELETE needs a WHERE, and a lightweight DELETE is refused on a table with projections and on Memory, where the
+    // mutation works.
+    func rowDeleteStatement(table: String, predicate: String?) -> String? {
+        guard let predicate else { return "TRUNCATE TABLE \(table)" }
+        guard let wait = mutationWait else { return nil }
+        return "ALTER TABLE \(table) DELETE WHERE \(predicate)\(wait)"
+    }
+
+    private var mutationWait: String? {
+        serverProfile.allows(.mutationsSync, "1") ? " SETTINGS mutations_sync = 1" : nil
+    }
+
     private func generateClickHouseDelete(
         table: String,
         columns: [String],

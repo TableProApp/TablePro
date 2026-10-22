@@ -165,4 +165,50 @@ struct ClickHouseDMLStatementTests {
 
         #expect(statements == nil)
     }
+
+    @Test("A keyed update from an import or a sync is a mutation that waits for itself")
+    func rowUpdateWaitsForTheMutation() {
+        let driver = driver
+        driver.serverProfile = .testing(writableSettings: [.mutationsSync])
+
+        let statement = driver.rowUpdateStatement(table: "`db`.`users`", assignments: "`name` = ?", predicate: "`id` = ?")
+
+        #expect(statement == "ALTER TABLE `db`.`users` UPDATE `name` = ? WHERE `id` = ? SETTINGS mutations_sync = 1")
+    }
+
+    @Test("A user who may not change mutations_sync gets the plain UPDATE, which never runs in the background", arguments: [
+        ClickHouseServerProfile.testing(),
+        ClickHouseServerProfile(
+            version: nil,
+            settingLimits: [.mutationsSync: ClickHouseSettingLimits(max: 0)],
+            catalog: []
+        ),
+    ])
+    func rowUpdateWithoutTheSetting(profile: ClickHouseServerProfile) {
+        let driver = driver
+        driver.serverProfile = profile
+
+        #expect(driver.rowUpdateStatement(table: "`users`", assignments: "`name` = 'b'", predicate: "`id` = 1") == nil)
+        #expect(driver.rowDeleteStatement(table: "`users`", predicate: "`id` = 1") == nil)
+        #expect(driver.rowDeleteStatement(table: "`users`", predicate: nil) == "TRUNCATE TABLE `users`")
+    }
+
+    @Test("A keyed delete from a sync is a waited mutation, and emptying the table truncates it")
+    func rowDeleteForms() {
+        let driver = driver
+        driver.serverProfile = .testing(writableSettings: [.mutationsSync])
+
+        #expect(driver.rowDeleteStatement(table: "`users`", predicate: "`id` = 1")
+            == "ALTER TABLE `users` DELETE WHERE `id` = 1 SETTINGS mutations_sync = 1")
+        #expect(driver.rowDeleteStatement(table: "`db`.`users`", predicate: nil) == "TRUNCATE TABLE `db`.`users`")
+    }
+
+    @Test("The immutable columns are the ones in the sorting, primary or partition key")
+    func immutableColumnsQuery() {
+        #expect(ClickHousePluginDriver.immutableColumnsSQL(table: "events", schema: "logs") == """
+            SELECT name FROM system.columns
+            WHERE database = 'logs' AND table = 'events'
+            AND (is_in_sorting_key OR is_in_primary_key OR is_in_partition_key)
+            """)
+    }
 }
