@@ -29,3 +29,9 @@ Choosing all matching table rows displays the snapshot refusal and disables Expo
 ## Validation
 
 Regression selectors and local results belong to the PR and evidence. The registered GTK tier covers run-scope dispatch, busy/stale transaction actions, sidebar expansion, native divider transitions, stale metadata replies, field budgets, scope-first export and snapshot refusal. Installed Arch/Hyprland and accessibility acceptance remain separate from isolated GTK tests.
+
+## Editor bottom panel
+
+The existing vertical editor/result split has a persistent Results toggle, a result-set view action, an Errors view and maximize/restore controls. Ctrl+J is captured within the owning editor subtree, including its result grid. Hiding changes widget visibility only and never dispatches SQL or rebuilds the result. Native divider resizing retains a bounded desired panel height during the open editor lifetime; maximize/hide transitions preserve that height and restore SQL focus through a weak widget reference. App restart persistence is not provided.
+
+Errors reflect the latest accepted outcomes, including streamed failure and timeout. Existing terminal status and result rendering remain authoritative. This panel does not add server NOTICE/PRINT delivery, a shell terminal or clickable error locations. Their implementation and acceptance remain separate work.

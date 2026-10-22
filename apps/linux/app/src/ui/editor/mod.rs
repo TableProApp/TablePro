@@ -1,4 +1,5 @@
 use tablepro_app_services::{completion, completion_identifiers, completion_proposals};
+mod bottom_panel;
 mod completion_provider;
 mod diagnostics;
 mod error_location;
@@ -93,6 +94,7 @@ pub struct SqlEditor {
     result_view_settings: crate::ui::grid::local_filter::LocalResultSettingsStore,
     running_spinner: gtk::Spinner,
     results_holder: gtk::Box,
+    panel: bottom_panel::BottomPanel,
     status: gtk::Label,
     grid_sender: relm4::Sender<GridMsg>,
     cancel_token: Option<CancellationToken>,
@@ -168,6 +170,7 @@ pub enum SqlEditorInput {
     },
     Cancel,
     TogglePin,
+    Panel(bottom_panel::PanelAction),
     SplitToggled(bool),
     ShowOutcomes {
         generation: u64,
@@ -268,36 +271,8 @@ struct ExecutionContext {
     timeout_secs: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct DropRequest {
-    generation: u64,
-    revision: u64,
-}
-
-#[derive(Debug, Default)]
-struct DropGeneration {
-    generation: std::cell::Cell<u64>,
-    revision: std::cell::Cell<u64>,
-}
-
-impl DropGeneration {
-    fn changed(&self) {
-        self.revision.set(self.revision.get().wrapping_add(1));
-    }
-
-    fn begin(&self) -> DropRequest {
-        let generation = self.generation.get().wrapping_add(1);
-        self.generation.set(generation);
-        DropRequest {
-            generation,
-            revision: self.revision.get(),
-        }
-    }
-
-    fn accepts(&self, request: DropRequest) -> bool {
-        self.generation.get() == request.generation && self.revision.get() == request.revision
-    }
-}
+mod drop_request;
+use drop_request::{DropGeneration, DropRequest};
 
 #[relm4::component(pub)]
 impl SimpleComponent for SqlEditor {
@@ -448,6 +423,7 @@ impl SimpleComponent for SqlEditor {
                     },
 
                 #[wrap(Some)]
+                #[name = "results_paned"]
                 set_content = &gtk::Paned {
                     set_orientation: gtk::Orientation::Vertical,
                     set_position: 280,
@@ -600,6 +576,16 @@ impl SimpleComponent for SqlEditor {
         let grid_input = sender.input_sender().clone();
         relm4::spawn_local(grid_receiver.forward(grid_input, SqlEditorInput::Grid));
 
+        let panel = bottom_panel::BottomPanel::install(
+            &widgets.toolbar_view,
+            &widgets.results_paned,
+            &widgets.editor_holder,
+            &widgets.results_holder,
+            &sender,
+        );
+        panel.track_focus(&widgets.source_view);
+        panel.track_focus(split_view.secondary_view());
+        bottom_panel::BottomPanel::install_shortcut(&root, &sender);
         let model = SqlEditor {
             catalog_changes: Default::default(),
             catalog_origin: None,
@@ -636,6 +622,7 @@ impl SimpleComponent for SqlEditor {
             result_view_settings: Default::default(),
             running_spinner: widgets.running_spinner.clone(),
             results_holder: widgets.results_holder.clone(),
+            panel,
             status: widgets.status.clone(),
             grid_sender,
             cancel_token: None,
@@ -819,6 +806,7 @@ impl SimpleComponent for SqlEditor {
             }
 
             SqlEditorInput::TogglePin => self.toggle_pin(),
+            SqlEditorInput::Panel(action) => self.panel.apply(action),
 
             SqlEditorInput::ShowOutcomes { generation, outcomes } => {
                 let Some((terminal, context)) = self.finish_run(generation, &sender) else {
@@ -920,6 +908,7 @@ impl SimpleComponent for SqlEditor {
                     .vexpand(true)
                     .build();
                 self.show_pins_above(&page);
+                self.panel.show_timeout(&reason);
             }
 
             SqlEditorInput::InsertDroppedSql { request, text } => {

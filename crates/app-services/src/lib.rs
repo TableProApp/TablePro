@@ -6,6 +6,7 @@ pub mod completion_proposals;
 pub mod config_io;
 pub mod connection_identity;
 pub mod database_backup;
+pub mod editor_panel;
 pub mod filter_settings;
 pub mod ordered_refresh;
 pub mod preparation;

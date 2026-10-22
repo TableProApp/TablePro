@@ -1,0 +1,105 @@
+import sys, os, json, subprocess, tempfile, time, shutil
+from pathlib import Path
+sys.path.insert(0,str(Path.cwd()/'apps/linux/app/tests'))
+import gtk_safety as ui
+base=Path(tempfile.mkdtemp(prefix='bookie-panel-wayland-'))
+artifacts=Path('/tmp/bookie-panel-wayland-evidence')/os.environ.get('BOOKIE_PANEL_CASE','default');artifacts.mkdir(parents=True,exist_ok=True)
+process=None
+original=json.loads(subprocess.check_output(['hyprctl','activewindow','-j']))
+try:
+    database,environment=ui.write_fixture(base,environment='local')
+    preferences=base/'config'/'tablepro'/'preferences.json'
+    prefs=json.loads(preferences.read_text());prefs['color_scheme']=os.environ.get('BOOKIE_PANEL_THEME','dark')
+    prefs['editor_font_size']=int(os.environ.get('BOOKIE_PANEL_FONT','12'));prefs['query_timeout_secs']=1;preferences.write_text(json.dumps(prefs))
+    environment.update(GDK_BACKEND='wayland',GTK_A11Y='atspi',GIO_USE_VFS='local')
+    process=ui.start_application('/home/trung/Projects/bookie/target/debug/tablepro-app',environment)
+    clients=json.loads(subprocess.check_output(['hyprctl','clients','-j']))
+    own=next(c for c in clients if c['pid']==process.pid)
+    address='address:'+own['address']
+    subprocess.run(['hyprctl','dispatch','hl.dsp.window.move({workspace="9",window="'+address+'",follow=false})'],check=True,capture_output=True)
+    subprocess.run(['hyprctl','dispatch','hl.dsp.focus({workspace="9"})'],check=True,capture_output=True)
+    subprocess.run(['hyprctl','dispatch','hl.dsp.focus({window="'+address+'"})'],check=True,capture_output=True)
+    subprocess.run(['hyprctl','dispatch','hl.dsp.window.float({action="set",window="'+address+'"})'],check=True,capture_output=True)
+    width=int(os.environ.get('BOOKIE_PANEL_WIDTH','1200'))
+    subprocess.run(['hyprctl','dispatch','hl.dsp.window.resize({x='+str(width)+',y=760,relative=false,window="'+address+'"})'],check=True,capture_output=True)
+    subprocess.run(['hyprctl','dispatch','hl.dsp.window.move({x=80,y=100,relative=false,window="'+address+'"})'],check=True,capture_output=True)
+    time.sleep(.4)
+    ui.open_editor()
+    time.sleep(.5)
+    subprocess.run(['grim','-g',f'80,100 {width}x760',str(artifacts/'initial.png')],check=True)
+    ui.run_sql("SELECT 842 AS panel_marker;")
+    ui.wait_for_node(name='842')
+    def key_j():
+        subprocess.run(['wtype','-M','ctrl','-k','j','-m','ctrl'],check=True)
+        time.sleep(.3)
+    editor=ui.set_editor_text('SELECT 842 AS panel_marker;')
+    key_j();ui.wait_for_node(name='842',present=False)
+    key_j();ui.wait_for_node(name='842')
+    key_j();ui.wait_for_node(name='842',present=False)
+    key_j();ui.wait_for_node(name='842')
+    ui.invoke(ui.wait_for_node(name='Maximize results',role=ui.pyatspi.ROLE_PUSH_BUTTON))
+    ui.wait_for_node(name='Restore editor',role=ui.pyatspi.ROLE_PUSH_BUTTON)
+    subprocess.run(['grim','-g',f'80,100 {width}x760',str(artifacts/'maximized.png')],check=True)
+    ui.invoke(ui.wait_for_node(name='Restore editor',role=ui.pyatspi.ROLE_PUSH_BUTTON))
+    ui.wait_for_node(name='Maximize results',role=ui.pyatspi.ROLE_PUSH_BUTTON)
+    subprocess.run(['grim','-g',f'80,100 {width}x760',str(artifacts/'restored.png')],check=True)
+    if os.environ.get('BOOKIE_PANEL_POINTER') == '1':
+        before=editor.queryComponent().getExtents(ui.pyatspi.WINDOW_COORDS).height
+        subprocess.run(['/tmp/bookie-panel-pointer','850','576','850','640'],check=True)
+        time.sleep(.4)
+        after=editor.queryComponent().getExtents(ui.pyatspi.WINDOW_COORDS).height
+        assert after > before + 40, (before,after)
+        subprocess.run(['grim','-g',f'80,100 {width}x760',str(artifacts/'dragged.png')],check=True)
+        ui.invoke(ui.wait_for_node(name='Split',role=ui.pyatspi.ROLE_TOGGLE_BUTTON))
+        time.sleep(.3)
+        subprocess.run(['/tmp/bookie-panel-pointer','1000','320'],check=True)
+        sql_nodes=[n for n in ui.descendants(ui.application_node()) if ui.node_role(n)==ui.pyatspi.ROLE_TEXT]
+        secondary=sql_nodes[-1]
+        assert secondary.getState().contains(ui.pyatspi.STATE_FOCUSED), 'secondary editor must own actual pointer focus'
+        subprocess.run(['/tmp/bookie-panel-pointer','1257','837'],check=True)
+        ui.wait_for_node(name='Restore editor',role=ui.pyatspi.ROLE_PUSH_BUTTON)
+        subprocess.run(['/tmp/bookie-panel-pointer','1257','837'],check=True)
+        ui.wait_for_node(name='Maximize results',role=ui.pyatspi.ROLE_PUSH_BUTTON)
+        assert secondary.getState().contains(ui.pyatspi.STATE_FOCUSED), 'mouse restore must return to the secondary editor'
+        subprocess.run(['/tmp/bookie-panel-pointer','1257','837'],check=True)
+        ui.wait_for_node(name='Restore editor',role=ui.pyatspi.ROLE_PUSH_BUTTON)
+        subprocess.run(['/tmp/bookie-panel-pointer','395','837'],check=True)
+        ui.wait_for_node(name='842',present=False)
+        subprocess.run(['/tmp/bookie-panel-pointer','395','837'],check=True)
+        ui.wait_for_node(name='842')
+        assert editor.queryComponent().getExtents(ui.pyatspi.WINDOW_COORDS).height == after, 'hide-maximized must retain divider size'
+        ui.invoke_accessible_action('win.open-editor')
+        ui.run_sql('SELECT 843;');ui.wait_for_node(name='843')
+        subprocess.run(['wtype','-M','ctrl','-k','j','-m','ctrl'],check=True)
+        ui.wait_for_node(name='843',present=False)
+        ui.invoke_accessible_action('win.close-current')
+        ui.wait_for_node(name='842')
+        subprocess.run(['grim','-g',f'80,100 {width}x760',str(artifacts/'after-close-hidden.png')],check=True)
+        ui.invoke_accessible_action('win.open-editor')
+        ui.run_sql('WITH RECURSIVE loop(n) AS (VALUES(0) UNION ALL SELECT n+1 FROM loop WHERE n < 1000000000) SELECT sum(n) FROM loop;')
+        time.sleep(.1)
+        subprocess.run(['wtype','-M','ctrl','-k','j','-m','ctrl'],check=True)
+        ui.invoke_accessible_action('win.close-current')
+        ui.wait_for_node(name='842')
+        time.sleep(2)
+        ui.wait_for_node(name='842')
+        ui.wait_for_node(name='timed out',present=False)
+
+    ui.run_sql('SELECT * FROM bookie_missing_panel_table;')
+    ui.invoke(ui.wait_for_node(name='Errors (1)',role=ui.pyatspi.ROLE_PUSH_BUTTON))
+    ui.wait_for_node_containing('bookie_missing_panel_table')
+    subprocess.run(['grim','-g',f'80,100 {width}x760',str(artifacts/'errors.png')],check=True)
+    ui.run_sql('WITH RECURSIVE loop(n) AS (VALUES(0) UNION ALL SELECT n+1 FROM loop WHERE n < 1000000000) SELECT sum(n) FROM loop;')
+    ui.wait_for_node(name='timed out')
+    ui.invoke(ui.wait_for_node(name='Errors (1)',role=ui.pyatspi.ROLE_PUSH_BUTTON))
+    ui.wait_for_node_containing('Query exceeded the 1s query timeout.')
+    subprocess.run(['grim','-g',f'80,100 {width}x760',str(artifacts/'timeout.png')],check=True)
+    (artifacts/'accessibility.txt').write_text(ui.accessible_snapshot())
+    (artifacts/'result.json').write_text(json.dumps({'status':'passed','backend':'native Wayland','pid':process.pid,'xwayland':own['xwayland'],'steps':['real Ctrl+J hide/show from SQL and grid','maximize','restore','retained marker','Errors view'],'theme':prefs['color_scheme'],'requested_width':width,'editor_font':prefs['editor_font_size'],'pointer_and_close_hidden':os.environ.get('BOOKIE_PANEL_POINTER')=='1'},indent=2))
+    print('native Wayland panel acceptance passed',flush=True)
+finally:
+    if process:
+        (artifacts/'stderr.txt').write_text(ui.stop_application(process))
+    if original.get('address'):
+        subprocess.run(['hyprctl','dispatch','hl.dsp.focus({window="address:'+original['address']+'"})'],capture_output=True)
+    shutil.rmtree(base,ignore_errors=True)

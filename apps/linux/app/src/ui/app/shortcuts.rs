@@ -180,6 +180,7 @@ pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
         &crate::tr!("General"),
         &[
             ("<Primary>e", crate::tr!("Open SQL editor")),
+            ("<Primary>j", crate::tr!("Show or hide query results in the editor")),
             ("<Primary>o", crate::tr!("Open a SQL file in a new editor tab")),
             ("F5", crate::tr!("Refresh table")),
             ("<Primary>comma", crate::tr!("Open Preferences")),

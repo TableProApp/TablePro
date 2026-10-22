@@ -4,6 +4,8 @@
 
 ### Added
 
+- SQL editors have a hideable, resizable results panel with an Errors view, maximize/restore controls and Ctrl+J.
+
 - The query editor has visible run scopes and result-file export choices, plus commit-and-close and rollback-and-close controls for an owned session with an open transaction.
 - Tables and views expand to show bounded field/type previews, with a Structure shortcut; the docked sidebar has a native resize handle and its toggle stays available at every window width.
 

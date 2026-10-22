@@ -7,10 +7,6 @@ use super::init_sidebar::refresh_visible;
 use crate::services::sidebar_tree::{CollapseState, NodeKind, Reveal, build_nodes, reveal_target};
 use crate::ui::sidebar_row::{GroupInit, SidebarObjectKind, SidebarRowInit, SidebarRowMsg};
 
-pub(super) fn reveal_sidebar(split_view: &adw::OverlaySplitView, generation: &std::rc::Rc<std::cell::Cell<u32>>) {
-    reveal_with(split_view, generation, |split_view| split_view.set_show_sidebar(true));
-}
-
 fn reveal_sidebar_unless_overlay(split_view: &adw::OverlaySplitView, generation: &std::rc::Rc<std::cell::Cell<u32>>) {
     reveal_with(split_view, generation, show_unless_overlay);
 }

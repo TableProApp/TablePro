@@ -723,6 +723,59 @@ fn a_transaction_action_refuses_a_changed_connection_identity() {
 
 #[test]
 #[ignore = "requires an isolated GTK display"]
+fn the_results_panel_can_be_hidden_without_releasing_or_rerunning_its_result() {
+    let fixture = EditorFixture::new();
+    let window = gtk::Window::builder()
+        .default_width(1000)
+        .default_height(700)
+        .child(fixture.controller.widget())
+        .build();
+    window.present();
+    spin_until(|| fixture.controller.widget().height() > 0);
+    assert!(
+        fixture.controller.model().source_view.height() >= 160,
+        "the initial editor must have usable height"
+    );
+    let toggle = descendants(fixture.controller.widget().upcast_ref())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::ToggleButton>().ok())
+        .find(|button| button.label().as_deref() == Some("Results"))
+        .expect("the editor needs a persistent Results control");
+    fixture.controller.model().run_button.emit_clicked();
+    let query = fixture.next_query();
+    fixture.finish(query, success());
+    let result = fixture.controller.model().results_holder.first_child().unwrap();
+    toggle.emit_clicked();
+    spin_until(|| !result.is_mapped());
+    assert!(!toggle.is_active());
+    assert_eq!(
+        fixture.controller.model().results_holder.first_child(),
+        Some(result.clone())
+    );
+    toggle.emit_clicked();
+    spin_until(|| result.is_mapped());
+    assert!(toggle.is_active());
+    assert_eq!(fixture.controller.model().results_holder.first_child(), Some(result));
+    assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
+    assert!(fixture.requests.try_recv().is_err());
+    window.destroy();
+}
+
+fn descendants(root: &gtk::Widget) -> Vec<gtk::Widget> {
+    let mut result = vec![root.clone()];
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        result.extend(descendants(&widget));
+        child = widget.next_sibling();
+    }
+    result
+}
+
+#[path = "panel_tests.rs"]
+mod panel_tests;
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
 fn editor_waits_for_its_session_before_accepting_any_run_input() {
     let fixture = EditorFixture::new();
     let (release, wait) = oneshot::channel();

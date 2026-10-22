@@ -1,0 +1,109 @@
+{
+  "date": "2026-10-22",
+  "source_base": "95fe08658e9b9e6834b62ef03d68b5f74f779f62",
+  "binary_sha256": "491388b60f85944edd92ae48cb52408c83c434976efdd40ea84c928f22722b56",
+  "build": "cargo build --locked -p tablepro-app --bin tablepro-app (debug)",
+  "gtk": "4.24.1",
+  "libadwaita": "1.10.0",
+  "gtksourceview": "5.22.0",
+  "compositor": "Hyprland 0.56.2 efb50993780079460b0cbed1363e2166a2de1d9f",
+  "cases": [
+    {
+      "status": "passed",
+      "backend": "native Wayland",
+      "pid": 1162532,
+      "xwayland": false,
+      "steps": [
+        "real Ctrl+J hide/show from SQL and grid",
+        "maximize",
+        "restore",
+        "retained marker",
+        "Errors view"
+      ],
+      "theme": "dark",
+      "requested_width": 1200,
+      "editor_font": 12,
+      "pointer_and_close_hidden": true
+    },
+    {
+      "status": "passed",
+      "backend": "native Wayland",
+      "pid": 1165099,
+      "xwayland": false,
+      "steps": [
+        "real Ctrl+J hide/show from SQL and grid",
+        "maximize",
+        "restore",
+        "retained marker",
+        "Errors view"
+      ],
+      "theme": "dark",
+      "requested_width": 802,
+      "editor_font": 20,
+      "pointer_and_close_hidden": false
+    },
+    {
+      "status": "passed",
+      "backend": "native Wayland",
+      "pid": 1167736,
+      "xwayland": false,
+      "steps": [
+        "real Ctrl+J hide/show from SQL and grid",
+        "maximize",
+        "restore",
+        "retained marker",
+        "Errors view"
+      ],
+      "theme": "light",
+      "requested_width": 1200,
+      "editor_font": 12,
+      "pointer_and_close_hidden": false
+    },
+    {
+      "status": "passed",
+      "backend": "native Wayland",
+      "pid": 1169975,
+      "xwayland": false,
+      "steps": [
+        "real Ctrl+J hide/show from SQL and grid",
+        "maximize",
+        "restore",
+        "retained marker",
+        "Errors view"
+      ],
+      "theme": "light",
+      "requested_width": 802,
+      "editor_font": 20,
+      "pointer_and_close_hidden": false
+    }
+  ],
+  "release_package_acceptance": false,
+  "forgejo_run": null,
+  "source_files_sha256": {
+    "apps/linux/app/src/ui/app/shortcuts.rs": "d8c8d1eee9c5899dd87c3ff2ca702871088ccc9366a184c61eda161964e674a2",
+    "apps/linux/app/src/ui/app/sidebar_layout.rs": "61bbad6f860a83f235111cd9d063e4d997785b0144a0e46b73ef18a9a729327f",
+    "apps/linux/app/src/ui/editor/bottom_panel.rs": "50332a4138e5845624536408ab0a730d538ec69eeacc5c023e36ff2c69b0c14c",
+    "apps/linux/app/src/ui/editor/dispatch_tests.rs": "65041f7da8e6f93302fb8b72194d93893a34b45747e2033743369549cbc9fff9",
+    "apps/linux/app/src/ui/editor/drop_request.rs": "4cf5a8c6930b1530e4777289f96c6e152851036b683d7e80063697489a2b5758",
+    "apps/linux/app/src/ui/editor/mod.rs": "06ab337e51cc853f2e80269e2e896bde21ff3930aa8b7f4b5fa7f6b1baf86a52",
+    "apps/linux/app/src/ui/editor/panel_tests.rs": "fcc85eccb250058aa3d62b7061aebb3612d956fed88477b107fa15c0faf1652b",
+    "apps/linux/app/src/ui/editor/pinned.rs": "6e5f8534929a80f5379ec3e6cc3b772be9ebb12f40f72db5a8abf9989394e821",
+    "apps/linux/app/tests/gtk_editor_panel.py": "7390150e81d04349ff764818d361acf26887c5a52c95d3c148b35035d6774054",
+    "apps/linux/app/tests/gtk_safety.py": "a4c80bf912b8ac5820515b32ba49bfb8a3f83db4fef4bcd79c188d681c137294",
+    "crates/app-services/src/editor_panel.rs": "132e7cb8673dd6d69212728912ee7e52789074654f878d9116c50ec00ed8d062",
+    "crates/app-services/src/lib.rs": "9b1896cb4c3ca444b3f07dae8e026df610076b060f418f4d2db06abcfb5ff118",
+    "scripts/isolated-tests.json": "2da20e1c883ac6378d4d4e2db85617b6cd3c6f316edfb1b39aa0a5c5fabe585c"
+  },
+  "final_integration_commit": "4a787270c26f5a0ceab7b641defe31a70d24e340",
+  "final_checks": {
+    "gtk_widgets": 121,
+    "app_unit_passed": 725,
+    "strict_app_clippy": "passed",
+    "native_cases": 4,
+    "sqlite_no_rerun_scenario": "passed",
+    "preflight": "passed",
+    "non_gtk_unit_passed": 2056,
+    "sandbox_passed": 2057,
+    "redis_cancellation_passed": 1
+  }
+}

@@ -76,6 +76,7 @@ impl SqlEditor {
         self.pin_button
             .set_sensitive(self.pinned.is_pinned() || self.pinned.has_results());
         self.refresh_result_exports();
+        self.panel.refresh_errors(self.pinned.latest());
     }
 
     pub(super) fn show_pins_above(&mut self, page: &impl IsA<gtk::Widget>) {

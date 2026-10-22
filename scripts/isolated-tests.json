@@ -765,6 +765,26 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::dispatch_tests::dropping_an_editor_releases_its_source_view_and_buffer"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::stream_view::tests::a_stream_page_retired_before_a_frame_does_not_build_a_grid"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::lifetime_tests::a_retired_grid_does_not_retain_its_inspector_through_selection_callback"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::editor_waits_for_its_session_before_accepting_any_run_input"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::editor::dispatch_tests::run_scope_menu_executes_the_current_statement_and_blocks_overlap"
     ],
     [
@@ -820,57 +840,27 @@
     [
       "tablepro-app",
       "--lib",
-      "ui::editor::stream_view::tests::a_stream_page_retired_before_a_frame_does_not_build_a_grid"
+      "ui::editor::dispatch_tests::the_results_panel_can_be_hidden_without_releasing_or_rerunning_its_result"
     ],
     [
       "tablepro-app",
       "--lib",
-      "ui::grid::lifetime_tests::a_retired_grid_does_not_retain_its_inspector_through_selection_callback"
+      "ui::editor::dispatch_tests::panel_tests::maximizing_and_hiding_restore_the_split_editor_and_divider"
     ],
     [
       "tablepro-app",
       "--lib",
-      "ui::editor::dispatch_tests::dropping_an_editor_releases_its_source_view_and_buffer"
+      "ui::editor::dispatch_tests::panel_tests::the_error_view_retains_results_and_clears_failures_after_success"
     ],
     [
       "tablepro-app",
       "--lib",
-      "ui::editor::dispatch_tests::editor_waits_for_its_session_before_accepting_any_run_input"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
-      "ui::connection_row::tests::connection_actions_leave_room_for_text_in_a_narrow_row"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
-      "ui::connection_row::tests::connection_menu_dispatches_actions_for_its_own_record"
+      "ui::editor::dispatch_tests::panel_tests::hiding_results_falls_back_when_the_remembered_sql_split_was_closed"
     ],
     [
       "tablepro-app",
       "--lib",
       "ui::browse_tab::grid_render::selection_stats_tests::wide_selection_statistics_preserve_rows_and_selection"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
-      "ui::connection_row::tests::connection_actions_leave_room_for_text_in_a_narrow_row"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
-      "ui::connection_row::tests::connection_menu_dispatches_actions_for_its_own_record"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
-      "ui::editor::dispatch_tests::commenting_selected_lines_publishes_one_complete_query_change"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
-      "ui::editor::dispatch_tests::query_publication_waits_for_nested_actions_and_keeps_ordinary_edits_immediate"
     ]
   ],
   "keyring": [

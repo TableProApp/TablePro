@@ -79,9 +79,7 @@ impl SqlEditor {
         let id = self.toolbar_transaction_id();
         self.session_button.set_label(&crate::tr!("Session"));
         self.session_button
-            .update_property(&[gtk::accessible::Property::Label(&super::session_mode::session_label(
-                id.is_some(),
-            ))]);
+            .update_property(&[gtk::accessible::Property::Label(&crate::tr!("Session"))]);
         self.transaction_actions.id.set(id);
         self.transaction_actions.row.set_visible(id.is_some());
         self.transaction_actions.row.set_sensitive(self.session_action_idle());

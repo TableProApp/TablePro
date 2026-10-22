@@ -144,3 +144,9 @@ Press Ctrl+? for the full list. The most used:
 | Ctrl+Shift+] | Unfold all SQL blocks |
 | F5 | Refresh the table |
 | Ctrl+W | Close the tab |
+
+### Results panel
+
+Each SQL editor keeps its own bottom panel. **Results** or **Ctrl+J** hides or shows it from the SQL editor or result grid. Hiding preserves the loaded rows, selection and current result set; it does not run SQL. **Show result sets** returns from the Errors view to the existing result selector. **Errors** lists failures from the latest completed run, including streamed failures and timeouts; informational server messages are not implemented by this panel.
+
+Drag the divider to resize the panel. **Maximize results** hides the SQL area; **Restore editor** returns to the previous divider position and SQL focus. Hiding a maximized panel also restores the editor. Panel size is retained within the open editor, not across an application restart. Closing the query releases its panel with the rest of that editor.
