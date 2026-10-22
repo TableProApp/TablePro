@@ -270,6 +270,18 @@ struct SyncRecordEditTests {
         #expect(items == [["id": "1", "name": "a2"], ["id": "4", "name": "d"], ["id": "3", "name": "c"]])
     }
 
+    @Test("An item changed here and removed elsewhere stays, as any value both sides changed")
+    func itemEditedHereAndRemovedElsewhereStays() throws {
+        let merged = SyncJSONMerge.document(
+            base: json(#"[{"id":"1","name":"a"},{"id":"2","name":"b"}]"#),
+            local: json(#"[{"id":"1","name":"a2"},{"id":"2","name":"b"}]"#),
+            server: json(#"[{"id":"2","name":"b"}]"#)
+        )
+
+        let items = try parsed(merged) as? [[String: String]]
+        #expect(items == [["id": "2", "name": "b"], ["id": "1", "name": "a2"]])
+    }
+
     @Test("Options nested in an object merge one by one")
     func nestedObjectsMerge() throws {
         let merged = SyncJSONMerge.document(

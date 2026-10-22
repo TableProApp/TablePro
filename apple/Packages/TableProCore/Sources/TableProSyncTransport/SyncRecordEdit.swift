@@ -180,7 +180,8 @@ public enum SyncJSONMerge {
             guard let mine = localById[entry.id], !isEqual(mine, baseById[entry.id]) else { return entry.item }
             return merge(base: baseById[entry.id], local: mine, server: entry.item)
         }
-        for entry in localItems where !baseIds.contains(entry.id) && !serverIds.contains(entry.id) {
+        // Added here, or changed here while another device removed it.
+        for entry in localItems where !serverIds.contains(entry.id) && !isEqual(entry.item, baseById[entry.id]) {
             merged.append(entry.item)
         }
         return merged
