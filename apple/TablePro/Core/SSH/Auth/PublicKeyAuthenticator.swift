@@ -1,16 +1,8 @@
-//
-//  PublicKeyAuthenticator.swift
-//  TablePro
-//
-//  Pure libssh2 public key authenticator. Takes a path and passphrase,
-//  performs authentication. No UI, no Keychain, no prompts — those
-//  responsibilities belong to SSHPassphraseResolver at the factory level.
-//
-
 import Foundation
 
 import CLibSSH2
 import TableProSSHConfig
+import TableProSSHTransport
 
 internal struct PublicKeyAuthenticator: SSHAuthenticator {
     let privateKeyPath: String
@@ -54,6 +46,12 @@ internal struct PublicKeyAuthenticator: SSHAuthenticator {
             )
         }
 
+        if rc == LIBSSH2_ERROR_METHOD_NONE {
+            throw SSHTunnelError.negotiationFailed(
+                .keySignature(serverBanner: LibSSH2Handshake.banner(session)),
+                jumpHost: nil
+            )
+        }
         guard rc == 0 else {
             var msgPtr: UnsafeMutablePointer<CChar>?
             var msgLen: Int32 = 0

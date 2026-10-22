@@ -633,6 +633,14 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "TablePro and the SSH server have no signature algorithm in common for this key." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "TablePro signs RSA keys with rsa-sha2-256 or rsa-sha2-512, not with ssh-rsa, which uses SHA-1." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro supports these ciphers: %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -728,6 +736,22 @@
     },
     "The server refused a change. The changes before it were saved." : {
 
+    },
+    "The server offers only ciphers TablePro no longer supports: %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The server offers only host key types TablePro no longer supports: %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The server offers only key exchange methods TablePro no longer supports: %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The server offers only MAC algorithms TablePro no longer supports: %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The server runs %@." : {
       "extractionState" : "manual",

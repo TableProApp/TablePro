@@ -10,10 +10,12 @@
 # ssh-tunnel-matrix/build-ios-harness.sh for the simulator, where every cell runs through
 # `xcrun simctl spawn -s` with no booted device, and build-mac-harness.sh for this Mac, where cells
 # run with an empty home (CFFIXED_USER_HOME, so no ~/.ssh/config) and an ssh-agent started here.
-# A server limited to a method the harness's libssh2 lacks expects that app's named negotiation
+# A server limited to a method the app's libssh2 lacks expects that app's named negotiation
 # failure, and a connection once a later libssh2 offers the method: mlkem768x25519-sha256 on pq10
-# and pq9, sntrup761x25519-sha512 on kex10, 3des-cbc on cipher10. The servers come from
-# scripts/ssh-test-servers.sh. It is a probe, not a test, because no CI job has Docker.
+# and pq9, sntrup761x25519-sha512 on kex10, 3des-cbc on cipher10. sha1kex, rsahost, sha1mac and
+# rsasig allow only methods the bundled libssh2 no longer builds, and expect the failure to say so.
+# The servers come from scripts/ssh-test-servers.sh. It is a probe, not a test, because no CI job
+# has Docker.
 #
 # Usage:
 #   scripts/probes/check-ssh-tunnel-matrix.sh                  # every cell, then remove the servers
@@ -143,6 +145,7 @@ fi
 eval "$("$SERVERS" env)" || setup_failure "could not read the SSH test servers' settings"
 if wanted macos; then
     start_agent agent ed25519
+    start_agent rsa-agent rsa
     # More keys ahead of the right one than maxauth allows tries (#2601).
     # shellcheck disable=SC2086  # one key name per word
     start_agent crowded-agent $SSH_TEST_DECOY_KEYS ed25519
@@ -230,6 +233,11 @@ loss_cell() {
 KEX_TEXT="TablePro and the SSH server have no key exchange or host key method in common."
 CIPHER_TEXT="TablePro and the SSH server have no cipher in common."
 MAC_TEXT="TablePro and the SSH server have no MAC algorithm in common."
+SIGNATURE_TEXT="TablePro and the SSH server have no signature algorithm in common for this key."
+DROPPED_KEX="The server offers only key exchange methods TablePro no longer supports: "
+DROPPED_HOST_KEY="The server offers only host key types TablePro no longer supports: "
+DROPPED_CIPHER="The server offers only ciphers TablePro no longer supports: "
+DROPPED_MAC="The server offers only MAC algorithms TablePro no longer supports: "
 
 # Each app names any other failure in its own words. A key the Mac cannot use ends at the
 # passphrase prompt, which the macOS harness dismisses, as the user would to give up.
@@ -237,11 +245,13 @@ expectations() {
     case "$APP" in
         ios)
             HARNESS="$IOS_HARNESS"
+            LIBSSH2="$ROOT/Libs/ios/LibSSH2.xcframework/ios-arm64-simulator/libssh2.a"
             RUN=(xcrun simctl spawn -s "$UDID" "$HARNESS")
             KEY_SOURCES="file memory"
             KEX="ERROR negotiationFailed(*Stage.keyExchangeOrHostKey,*) | $KEX_TEXT*"
             CIPHER="ERROR negotiationFailed(*Stage.cipher,*) | $CIPHER_TEXT*"
             MAC="ERROR negotiationFailed(*Stage.mac,*) | $MAC_TEXT*"
+            SIGNATURE="ERROR negotiationFailed(*Stage.keySignature,*) | $SIGNATURE_TEXT*"
             SECURITY_KEY="ERROR securityKeyUnsupported |*"
             NO_PASSPHRASE="ERROR passphraseRequired |*"
             WRONG_PASSPHRASE="ERROR passphraseIncorrect |*"
@@ -250,11 +260,13 @@ expectations() {
             ;;
         macos)
             HARNESS="$MAC_HARNESS"
+            LIBSSH2="$ROOT/Libs/libssh2.a"
             RUN=(env "CFFIXED_USER_HOME=$WORK/home" "SSH_AUTH_SOCK=$WORK/agent.sock" "$HARNESS")
             KEY_SOURCES="file"
             KEX="ERROR negotiationFailed(*Stage.keyExchangeOrHostKey,*jumpHost: nil) | $KEX_TEXT*"
             CIPHER="ERROR negotiationFailed(*Stage.cipher,*jumpHost: nil) | $CIPHER_TEXT*"
             MAC="ERROR negotiationFailed(*Stage.mac,*jumpHost: nil) | $MAC_TEXT*"
+            SIGNATURE="ERROR negotiationFailed(*Stage.keySignature,*jumpHost: nil) | $SIGNATURE_TEXT*"
             SECURITY_KEY="ERROR authenticationFailed(reason: *securityKeyFile) |*"
             NO_PASSPHRASE="ERROR authenticationFailed(reason: *privateKey) |*"
             WRONG_PASSPHRASE="$NO_PASSPHRASE"
@@ -269,9 +281,10 @@ hop_kex() {
     echo "ERROR negotiationFailed(*Stage.keyExchangeOrHostKey,*jumpHost: Optional(\"$1\")) | Jump host $1 failed: $KEX_TEXT*"
 }
 
-# The expectation for a server limited to $1: a connection once the harness's libssh2 offers it.
+# The expectation for a server limited to $1: a connection once the app's libssh2 offers it. The
+# archive, not the harness, since the app's own code names the methods libssh2 dropped.
 lacking() {
-    if grep -a -q -- "$1" "$HARNESS"; then
+    if grep -a -q -- "$1" "$LIBSSH2"; then
         echo "CONNECTED"
     else
         echo "$2"
@@ -320,8 +333,15 @@ run_cells() {
     cell pq10/password "$(lacking mlkem768x25519-sha256 "$KEX")" "$SSH_TEST_PORT_PQ10" "${PASSWORD[@]}"
     cell pq9/password "$(lacking mlkem768x25519-sha256 "$KEX")" "$SSH_TEST_PORT_PQ9" "${PASSWORD[@]}"
     cell kex10/password "$(lacking sntrup761x25519-sha512 "$KEX")" "$SSH_TEST_PORT_KEX10" "${PASSWORD[@]}"
-    cell cipher10/password "$(lacking 3des-cbc "$CIPHER")" "$SSH_TEST_PORT_CIPHER10" "${PASSWORD[@]}"
+    cell cipher10/password "$(lacking 3des-cbc "$CIPHER$DROPPED_CIPHER*")" "$SSH_TEST_PORT_CIPHER10" "${PASSWORD[@]}"
     cell mac10/password "$MAC" "$SSH_TEST_PORT_MAC10" "${PASSWORD[@]}"
+    cell sha1kex/password "$KEX$DROPPED_KEX*" "$SSH_TEST_PORT_SHA1KEX" "${PASSWORD[@]}"
+    cell rsahost/password "$KEX$DROPPED_HOST_KEY*" "$SSH_TEST_PORT_RSAHOST" "${PASSWORD[@]}"
+    cell sha1mac/password "$MAC$DROPPED_MAC*" "$SSH_TEST_PORT_SHA1MAC" "${PASSWORD[@]}"
+    # An RSA key has no signature this server takes, and no passphrase would change that.
+    cell rsasig/rsa/file "$SIGNATURE" "$SSH_TEST_PORT_RSASIG" --auth key --key-file "$SSH_TEST_KEYS/rsa"
+    on ios && cell rsasig/rsa/memory "$SIGNATURE" "$SSH_TEST_PORT_RSASIG" --auth key --key-memory "$SSH_TEST_KEYS/rsa"
+    on macos && cell rsasig/rsa/agent "$SIGNATURE" "$SSH_TEST_PORT_RSASIG" --auth agent --agent-socket "$WORK/rsa-agent.sock"
 
     for source in $KEY_SOURCES; do
         flag="--key-$source"

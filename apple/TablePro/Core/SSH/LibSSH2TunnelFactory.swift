@@ -858,9 +858,8 @@ internal enum LibSSH2TunnelFactory {
         )
     }
 
-    /// Authenticator that resolves the passphrase at AUTH time (not build time),
-    /// then delegates to PublicKeyAuthenticator. Saves to Keychain and adds to
-    /// agent only after authentication succeeds.
+    // Resolves the passphrase at sign-in, not when the chain is built, and saves it or adds the key
+    // to the agent only once the server accepts the key.
     private struct KeyFileAuthenticator: SSHAuthenticator {
         let keyPath: String
         let providedPassphrase: String?
@@ -894,11 +893,14 @@ internal enum LibSSH2TunnelFactory {
                 return
             } catch {
                 // A wire-level rejection (or a partial success the server accepted as one
-                // factor of publickey,keyboard-interactive) reports AUTHENTICATION_FAILED, and a
-                // missing or unreadable file fails before libssh2 runs, leaving its errno stale.
-                // No passphrase can change either, so rethrow instead of prompting.
+                // factor of publickey,keyboard-interactive) reports AUTHENTICATION_FAILED, a key
+                // with no signature algorithm the server takes reports METHOD_NONE, and a missing
+                // or unreadable file fails before libssh2 runs, leaving its errno stale. No
+                // passphrase can change any of them, so rethrow instead of prompting.
+                let failure = libssh2_session_last_errno(session)
                 guard FileManager.default.isReadableFile(atPath: expandedPath),
-                      libssh2_session_last_errno(session) != LIBSSH2_ERROR_AUTHENTICATION_FAILED else {
+                      failure != LIBSSH2_ERROR_AUTHENTICATION_FAILED,
+                      failure != LIBSSH2_ERROR_METHOD_NONE else {
                     throw error
                 }
             }

@@ -16,6 +16,10 @@ nonisolated struct ClickHouseServerProfile: Sendable, Equatable {
     /// The settings this user may change, each with the bounds a settings constraint puts on it.
     let settingLimits: [ClickHouseURLSetting: ClickHouseSettingLimits]
     let catalog: Set<ClickHouseCatalogFeature>
+    // The bytes of a statement the parser reads. A value written into the statement counts; as a URL parameter it did not.
+    let maxQuerySize: Int
+
+    static let documentedMaxQuerySize = 262_144
 
     /// Before the probes answer, a request carries nothing the server could refuse, so a
     /// `readonly = 1` user can still connect.
@@ -43,22 +47,26 @@ nonisolated struct ClickHouseServerProfile: Sendable, Equatable {
     init(
         version: ClickHouseServerVersion?,
         settingLimits: [ClickHouseURLSetting: ClickHouseSettingLimits],
-        catalog: Set<ClickHouseCatalogFeature>
+        catalog: Set<ClickHouseCatalogFeature>,
+        maxQuerySize: Int = Self.documentedMaxQuerySize
     ) {
         self.version = version
         self.settingLimits = settingLimits
         self.catalog = catalog
+        self.maxQuerySize = maxQuerySize
     }
 
     init(
         version: ClickHouseServerVersion?,
         writableSettings: Set<ClickHouseURLSetting>,
-        catalog: Set<ClickHouseCatalogFeature>
+        catalog: Set<ClickHouseCatalogFeature>,
+        maxQuerySize: Int = Self.documentedMaxQuerySize
     ) {
         self.init(
             version: version,
             settingLimits: Dictionary(uniqueKeysWithValues: writableSettings.map { ($0, ClickHouseSettingLimits()) }),
-            catalog: catalog
+            catalog: catalog,
+            maxQuerySize: maxQuerySize
         )
     }
 
@@ -73,8 +81,18 @@ nonisolated struct ClickHouseServerProfile: Sendable, Equatable {
         self.init(
             version: versionText.flatMap(ClickHouseServerVersion.init),
             settingLimits: settings.map { Self.settingLimits(columns: $0.columns, rows: $0.rows) } ?? [:],
-            catalog: catalogRow.map(Self.catalog(row:)) ?? Set(ClickHouseCatalogFeature.allCases)
+            catalog: catalogRow.map(Self.catalog(row:)) ?? Set(ClickHouseCatalogFeature.allCases),
+            maxQuerySize: settings.flatMap { Self.maxQuerySize(columns: $0.columns, rows: $0.rows) }
+                ?? Self.documentedMaxQuerySize
         )
+    }
+
+    static func maxQuerySize(columns: [String], rows: [[PluginCellValue]]) -> Int? {
+        guard let nameIndex = columns.firstIndex(of: "name"), let valueIndex = columns.firstIndex(of: "value") else {
+            return nil
+        }
+        let row = rows.first { $0[safe: nameIndex]?.asText == ClickHouseURLSetting.maxQuerySize.rawValue }
+        return row?[safe: valueIndex]?.asText.flatMap { Int($0) }
     }
 
     var writableSettings: Set<ClickHouseURLSetting> { Set(settingLimits.keys) }
@@ -204,6 +222,7 @@ nonisolated enum ClickHouseURLSetting: String, CaseIterable, Sendable {
     case resultOverflowMode = "result_overflow_mode"
     case cancelHTTPReadonlyQueriesOnClientClose = "cancel_http_readonly_queries_on_client_close"
     case mutationsSync = "mutations_sync"
+    case maxQuerySize = "max_query_size"
 }
 
 /// System catalog parts the metadata reads use that older servers lack, measured: 19.16 and 20.3

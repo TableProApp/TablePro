@@ -158,18 +158,20 @@ nonisolated extension ClickHousePluginDriver {
         executionTimeLimit: Int?,
         shape: ClickHouseResponseShape
     ) throws -> URLRequest {
+        let body = Data(Self.withoutTrailingSemicolons(query).utf8)
         var components = URLComponents()
         components.scheme = config.ssl.isEnabled ? "https" : "http"
         components.host = config.host
         components.port = config.port
         components.path = "/"
-        components.queryItems = Self.queryItems(
+        components.percentEncodedQueryItems = Self.queryItems(
             database: database,
             queryId: queryId,
             executionTimeLimit: executionTimeLimit,
             shape: shape,
-            profile: serverProfile
-        )
+            profile: serverProfile,
+            statementBytes: body.count
+        ).map { URLQueryItem(name: Self.percentEncoded($0.name), value: $0.value.map(Self.percentEncoded)) }
 
         guard let url = components.url else {
             throw ClickHouseError(message: "Failed to construct request URL")
@@ -190,7 +192,7 @@ nonisolated extension ClickHousePluginDriver {
             request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         }
 
-        request.httpBody = Self.withoutTrailingSemicolons(query).data(using: .utf8)
+        request.httpBody = body
         return request
     }
 
@@ -199,7 +201,8 @@ nonisolated extension ClickHousePluginDriver {
         queryId: String?,
         executionTimeLimit: Int?,
         shape: ClickHouseResponseShape,
-        profile: ClickHouseServerProfile
+        profile: ClickHouseServerProfile,
+        statementBytes: Int = 0
     ) -> [URLQueryItem] {
         var items = [URLQueryItem]()
         if !database.isEmpty {
@@ -242,7 +245,36 @@ nonisolated extension ClickHousePluginDriver {
                 items.append(item)
             }
         }
+        // The server parses at most max_query_size bytes of a statement, and a long bound value is written into it.
+        if statementBytes > profile.maxQuerySize, let item = profile.queryItem(.maxQuerySize, String(statementBytes)) {
+            items.append(item)
+        }
         return items
+    }
+
+    // URLComponents leaves `+` as it is, and the server's form decoding reads it as a space: `a+b` arrived as `a b`.
+    static func percentEncoded(_ text: String) -> String {
+        let hex = Array("0123456789ABCDEF".utf8)
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(text.utf8.count)
+        for byte in text.utf8 {
+            if isUnreservedURLByte(byte) {
+                bytes.append(byte)
+            } else {
+                bytes.append(contentsOf: [UInt8(ascii: "%"), hex[Int(byte >> 4)], hex[Int(byte & 0x0F)]])
+            }
+        }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
+    static func isUnreservedURLByte(_ byte: UInt8) -> Bool {
+        switch byte {
+        case UInt8(ascii: "a")...UInt8(ascii: "z"), UInt8(ascii: "A")...UInt8(ascii: "Z"), UInt8(ascii: "0")...UInt8(ascii: "9"),
+             UInt8(ascii: "-"), UInt8(ascii: "."), UInt8(ascii: "_"), UInt8(ascii: "~"):
+            return true
+        default:
+            return false
+        }
     }
 
     static func withoutTrailingSemicolons(_ query: String) -> String {

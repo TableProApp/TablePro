@@ -1,8 +1,3 @@
-//
-//  SSHPrivateKeyTraits.swift
-//  TableProSSHTransport
-//
-
 import Foundation
 
 // openssh-key-v1 keeps the cipher name and the public key in the clear, so both read without the passphrase.
@@ -43,33 +38,5 @@ public struct SSHPrivateKeyTraits: Equatable, Sendable {
         else { return nil }
         var blob = SSHWireReader(Array(publicKey))
         return blob.string()
-    }
-}
-
-private struct SSHWireReader {
-    private let data: [UInt8]
-    private var offset = 0
-
-    init(_ data: [UInt8]) {
-        self.data = data
-    }
-
-    mutating func bytes(_ count: Int) -> ArraySlice<UInt8>? {
-        guard count >= 0, count <= data.count - offset else { return nil }
-        defer { offset += count }
-        return data[offset..<offset + count]
-    }
-
-    mutating func uint32() -> Int? {
-        bytes(4)?.reduce(0) { ($0 << 8) | Int($1) }
-    }
-
-    mutating func field() -> ArraySlice<UInt8>? {
-        guard let length = uint32() else { return nil }
-        return bytes(length)
-    }
-
-    mutating func string() -> String? {
-        field().flatMap { String(bytes: $0, encoding: .utf8) }
     }
 }
