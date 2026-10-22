@@ -107,13 +107,15 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         self.sourceFieldsPerFoldedName = Dictionary(sourceFields.map { ($0.lowercased(), 1) }, uniquingKeysWith: +)
         self.foldedMapping = Dictionary(grouping: columnMapping, by: { $0.key.lowercased() })
             .compactMapValues { $0.count == 1 ? $0.first?.value : nil }
-        if let targetTable {
+        // The driver's quoting, not the dialect's: ClickHouse reads a backslash escape inside backquotes.
+        if let targetTable, Self.canWriteRows(into: databaseType) {
             self.rowGenerator = try? SQLStatementGenerator(
                 tableName: targetTable,
                 schemaName: targetSchema,
                 columns: [],
                 primaryKeyColumns: [],
                 databaseType: databaseType,
+                quoteIdentifier: driver.quoteIdentifier,
                 rowUpdateStatement: driver.rowUpdateStatement,
                 rowDeleteStatement: driver.rowDeleteStatement
             )

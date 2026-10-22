@@ -94,12 +94,14 @@ internal struct RowImportTableMaker {
         case .create:
             return .create(table, statements: statements, sql: sql)
         case .reuseAfterClearing:
+            let driver = DatabaseManager.shared.driver(for: connection.id)
             let generator = try SQLStatementGenerator(
                 tableName: tableName,
                 columns: [],
                 primaryKeyColumns: [],
                 databaseType: connection.type,
-                rowDeleteStatement: DatabaseManager.shared.driver(for: connection.id)?.rowDeleteStatement
+                quoteIdentifier: driver?.quoteIdentifier,
+                rowDeleteStatement: driver?.rowDeleteStatement
             )
             return .clear(generator.deleteAllRowsStatement())
         case .nameTakenWithDifferentColumns:

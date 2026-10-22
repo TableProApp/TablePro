@@ -154,8 +154,8 @@ struct ImportDataSinkAdapterRowWritingTests {
         try await sink.insertRows(Self.changedAndNew)
 
         #expect(try people(driver) == [["1", "a", "n1"], ["2", "b2", "n2"], ["3", "c", "n3"], ["4", "d", "none"]])
-        #expect(driver.statements.contains("UPDATE OR ABORT `people` SET `name` = ? WHERE `id` = ?"))
-        #expect(!driver.statements.contains { $0.hasPrefix("UPDATE `") })
+        #expect(driver.statements.contains(#"UPDATE OR ABORT "people" SET "name" = ? WHERE "id" = ?"#))
+        #expect(!driver.statements.contains { $0.hasPrefix(#"UPDATE ""#) })
     }
 
     @Test("A column no UPDATE may assign keeps its value on a matched row and is written for a new one")
@@ -182,7 +182,7 @@ struct ImportDataSinkAdapterRowWritingTests {
         try await sink.deleteAllRowsFromTargetTable()
 
         #expect(try people(driver).isEmpty)
-        #expect(driver.statements.contains("DELETE FROM `people` WHERE 1"))
+        #expect(driver.statements.contains(#"DELETE FROM "people" WHERE 1"#))
     }
 
     @Test("Insert or Update updates matched rows and inserts the rest")
