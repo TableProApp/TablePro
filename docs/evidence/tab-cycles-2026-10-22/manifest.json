@@ -1,0 +1,9 @@
+{
+  "binary_sha256": "13b319c1e21179991ed1760e6d36d1bc2cf0b397c4b21c139ce992bd071894cc",
+  "source": "15c3a9f9f",
+  "cycles": 6,
+  "tabs_per_cycle": 4,
+  "queries": "small local SQLite SELECT statements",
+  "display": "isolated Xvfb 1280x1024, cairo renderer",
+  "native_desktop_interaction": false
+}
