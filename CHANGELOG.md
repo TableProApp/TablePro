@@ -12,6 +12,7 @@
 
 ### Fixed
 
+- Discarding changes to a SQL file closes its tab without reopening the same save prompt.
 - PostgreSQL queries ending on a full result page complete without a false column-change error.
 
 ## [0.2.0] - 2026-10-21

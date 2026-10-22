@@ -2094,6 +2094,56 @@ def closing_a_file_tab_with_save_writes_the_file_and_closes_the_tab(database, ba
     assert sql_file.read_text(encoding="utf-8").strip() == "SELECT 2;", "the file was not saved"
 
 
+def closing_a_dirty_file_with_discard_closes_without_writing(database, base, restart):
+    sql_file = base / "saved-query.sql"
+    sql_file.write_text("SELECT 1;\n", encoding="utf-8")
+
+    def seed_file_tab(environment):
+        environment["G_DEBUG"] = ""
+        path = Path(environment["XDG_CONFIG_HOME"]) / storage_dir_name() / "workspace_state.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "connections": {
+                        "d4f5e246-c40a-4a30-90f2-39e93e94d920": {
+                            "tabs": [
+                                {"kind": "editor", "query": "SELECT 7;", "draft_id": None},
+                                {"kind": "editor", "query": "", "draft_id": None, "file": str(sql_file)},
+                            ],
+                            "active_idx": 1,
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    restart(before_start=seed_file_tab, restored=True)
+    wait_for_node_containing("saved-query.sql", role=pyatspi.ROLE_PAGE_TAB)
+    set_editor_text("SELECT 2;")
+    wait_for_node(name="Close Tab", role=pyatspi.ROLE_PUSH_BUTTON)
+    close_buttons = [
+        node
+        for application in desktop_applications()
+        for node in descendants(application)
+        if node_name(node) == "Close Tab" and node_role(node) == pyatspi.ROLE_PUSH_BUTTON
+    ]
+    invoke(close_buttons[-1])
+    invoke(wait_for_node(name="Discard", role=pyatspi.ROLE_PUSH_BUTTON))
+    wait_for_node_containing("saved-query.sql", role=pyatspi.ROLE_PAGE_TAB, present=False)
+    assert sql_file.read_text(encoding="utf-8").strip() == "SELECT 1;", "discard changed the original file"
+    wait_for_node_containing("SELECT 7;", role=pyatspi.ROLE_PAGE_TAB)
+    invoke_accessible_action("win.close-current")
+    button = wait_for_node(name="Open SQL editor", role=pyatspi.ROLE_PUSH_BUTTON)
+    time.sleep(SETTLE_SECONDS / 3)
+    bounds = button.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+    assert bounds.width > 0 and bounds.height > 0, "the empty-state action has no usable allocation"
+    gtk_ux.x11_click(bounds.x + bounds.width // 2, bounds.y + bounds.height // 2, button=1)
+    wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON)
+    run_sql("SELECT 9 AS after_discard_close")
+    wait_for_node_containing("done in")
+
+
 def closing_a_clean_editor_tab_removes_it_and_keeps_the_other(database, base, restart):
     def seed_two_tabs(environment):
         environment["G_DEBUG"] = ""
@@ -2126,6 +2176,10 @@ def closing_a_clean_editor_tab_removes_it_and_keeps_the_other(database, base, re
     invoke(close_buttons[-1])
     wait_for_node_containing("SELECT 8;", role=pyatspi.ROLE_PAGE_TAB, present=False)
     wait_for_node_containing("SELECT 7;", role=pyatspi.ROLE_PAGE_TAB)
+
+
+closing_a_dirty_file_with_discard_closes_without_writing.environment = "local"
+closing_a_dirty_file_with_discard_closes_without_writing.needs_restart = True
 
 
 closing_a_clean_editor_tab_removes_it_and_keeps_the_other.environment = "local"
@@ -2370,6 +2424,7 @@ def main():
         switched_connection_keeps_workspace_tabs_after_debounce,
         replacing_a_preview_tab_removes_the_old_page,
         closing_a_file_tab_with_save_writes_the_file_and_closes_the_tab,
+        closing_a_dirty_file_with_discard_closes_without_writing,
         closing_a_clean_editor_tab_removes_it_and_keeps_the_other,
         switching_one_window_leaves_the_other_windows_edits,
         sidebar_tables_group_collapses_and_expands,

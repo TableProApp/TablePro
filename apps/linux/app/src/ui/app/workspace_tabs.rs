@@ -676,7 +676,7 @@ impl App {
                         if struct_dirty {
                             crate::services::structure_tracker::with_tab(id, |t| t.clear());
                         }
-                        sender_for_resp.input(AppMsg::WorkspaceTabClosed(id));
+                        sender_for_resp.input(AppMsg::CloseDiscardedWorkspaceTab(id));
                     }
                     "save" => {
                         // Mark the tab so SaveCompletedForTab will close
@@ -720,10 +720,19 @@ impl App {
             return;
         }
 
-        if self.confirm_close_with_open_transaction(id, &tab_view, sender.clone()) {
+        self.close_workspace_tab_after_pending(id, &tab_view, sender);
+    }
+
+    pub(super) fn close_workspace_tab_after_pending(
+        &mut self,
+        id: Uuid,
+        tab_view: &adw::TabView,
+        sender: ComponentSender<Self>,
+    ) {
+        if self.confirm_close_with_open_transaction(id, tab_view, sender.clone()) {
             return;
         }
-        self.finish_close_workspace_tab(id, &tab_view, sender);
+        self.finish_close_workspace_tab(id, tab_view, sender);
     }
 
     /// Tear down a tab without prompting. Internal helper called once

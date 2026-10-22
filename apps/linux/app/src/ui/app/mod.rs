@@ -837,6 +837,11 @@ impl SimpleComponent for App {
                     self.finish_close_workspace_tab(id, &tab_view, sender);
                 }
             }
+            AppMsg::CloseDiscardedWorkspaceTab(id) => {
+                if let Some(tab_view) = self.workspace_tab_view.clone() {
+                    self.close_workspace_tab_after_pending(id, &tab_view, sender);
+                }
+            }
             AppMsg::CloseOtherWorkspaceTabs(id) => self.close_other_workspace_tabs(id, sender),
             AppMsg::CloseWorkspaceTabsToRight(id) => self.close_workspace_tabs_to_right(id, sender),
             AppMsg::CloseActiveWorkspaceTab => self.close_active_workspace_tab(sender),
