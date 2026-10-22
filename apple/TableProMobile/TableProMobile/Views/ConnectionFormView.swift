@@ -3,6 +3,7 @@ import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
 import TableProOracleCore
+import TableProSSHTransport
 import UniformTypeIdentifiers
 
 struct ConnectionFormView: View {
@@ -18,6 +19,9 @@ struct ConnectionFormView: View {
     @State private var hapticError = false
     @State private var pasteTarget: CertificateRole?
     @State private var showPKCS12Password = false
+    @State private var pastingServiceAccountKey = false
+    @State private var pushedJumpHostId: UUID?
+    @State private var reconnectingConnectionName: String?
 
     var onSaved: (UUID) -> Void
 
@@ -27,6 +31,7 @@ struct ConnectionFormView: View {
         case sshKey
         case certificate(CertificateRole)
         case pkcs12
+        case serviceAccountKey
         var id: Int { hashValue }
     }
 
@@ -75,6 +80,13 @@ struct ConnectionFormView: View {
         )
     }
 
+    private var showServiceAccountKeyFileError: Binding<Bool> {
+        Binding(
+            get: { viewModel.iam.serviceAccountKeyFileError != nil },
+            set: { if !$0 { viewModel.dismissServiceAccountKeyFileError() } }
+        )
+    }
+
     var body: some View {
         @Bindable var viewModel = viewModel
         return NavigationStack {
@@ -94,24 +106,28 @@ struct ConnectionFormView: View {
                     oracleSection(viewModel: viewModel)
                 }
 
+                if viewModel.type == .mongodb {
+                    mongoSection(viewModel: viewModel)
+                }
+
                 if !viewModel.isFileBased {
                     Section {
                         if viewModel.type == .oracle {
                             Picker(String(localized: "SSL Mode"), selection: $viewModel.oracleSSLMode) {
-                                Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
-                                Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
+                                Text(String(localized: "Disabled")).tag(SSLModeChoice.disable)
+                                Text(String(localized: "Preferred")).tag(SSLModeChoice.preferred)
+                                Text(String(localized: "Required")).tag(SSLModeChoice.require)
                                 if viewModel.offersOracleVerifyCa {
-                                    Text(String(localized: "Verify CA")).tag(SSLConfiguration.SSLMode.verifyCa)
+                                    Text(String(localized: "Verify CA")).tag(SSLModeChoice.verifyCa)
                                 }
-                                Text(String(localized: "Verify Identity")).tag(SSLConfiguration.SSLMode.verifyFull)
+                                Text(String(localized: "Verify Identity")).tag(SSLModeChoice.verifyFull)
                             }
                         } else if viewModel.type == .mssql {
-                            // The iOS driver encrypts without checking the certificate, because this form collects
-                            // no CA file for FreeTDS, so only Disabled and Required are listed.
-                            // See Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift for the FreeTDS contract.
+                            // No verify modes: this form collects no CA file for FreeTDS, so the iOS driver checks no certificate.
                             Picker(String(localized: "SSL Mode"), selection: $viewModel.mssqlSSLMode) {
-                                Text(String(localized: "Disabled")).tag(SSLConfiguration.SSLMode.disable)
-                                Text(String(localized: "Required")).tag(SSLConfiguration.SSLMode.require)
+                                Text(String(localized: "Disabled")).tag(SSLModeChoice.disable)
+                                Text(String(localized: "Preferred")).tag(SSLModeChoice.preferred)
+                                Text(String(localized: "Required")).tag(SSLModeChoice.require)
                             }
                         }
                     } footer: {
@@ -130,7 +146,9 @@ struct ConnectionFormView: View {
                     sshSection(viewModel: viewModel)
                 }
 
-                testSection
+                if !MacOnlyConnection.isMacOnly(type: viewModel.type) {
+                    testSection
+                }
             }
             .scrollDismissesKeyboard(.interactively)
             .interactiveDismissDisabled(viewModel.hasChanges)
@@ -138,6 +156,9 @@ struct ConnectionFormView: View {
             .task {
                 viewModel.loadCertificateSummaries()
                 await viewModel.loadStoredCredentials(secureStore: appState.secureStore)
+            }
+            .task(id: viewModel.iam.identityCenter.request) {
+                await viewModel.runIdentityCenterRequest()
             }
             .navigationTitle(viewModel.isEditing ? String(localized: "Edit Connection") : String(localized: "New Connection"))
             .navigationBarTitleDisplayMode(.inline)
@@ -148,6 +169,17 @@ struct ConnectionFormView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     ConfirmButton(title: "Save", action: handleSave)
                         .disabled(!viewModel.canSave || viewModel.isSaving)
+                        .confirmationDialog(
+                            String(localized: "Reconnect and Roll Back?"),
+                            isPresented: confirmingReconnect,
+                            titleVisibility: .visible,
+                            presenting: reconnectingConnectionName
+                        ) { _ in
+                            Button(String(localized: "Save and Reconnect"), role: .destructive) { save() }
+                            Button(String(localized: "Cancel"), role: .cancel) {}
+                        } message: { name in
+                            Text(OpenTransactionWarning.reconnectingOnSave(connectionName: name))
+                        }
                 }
             }
             .fileImporter(
@@ -165,13 +197,20 @@ struct ConnectionFormView: View {
                 case .pkcs12:
                     viewModel.stagePKCS12(result)
                     showPKCS12Password = viewModel.pendingPKCS12 != nil
+                case .serviceAccountKey: viewModel.importServiceAccountKeyFile(result)
                 case nil: break
                 }
+            }
+            .navigationDestination(item: $pushedJumpHostId) { hopId in
+                JumpHostEditorView(viewModel: viewModel, hopId: hopId)
             }
             .connectionPrompts(viewModel.prompts)
             .onDisappear { viewModel.prompts.cancelAll() }
             .sheet(item: $pasteTarget) { role in
                 CertificatePasteSheet(viewModel: viewModel, role: role)
+            }
+            .sheet(isPresented: $pastingServiceAccountKey) {
+                ServiceAccountKeyPasteSheet(viewModel: viewModel)
             }
             .alert("Certificate Password", isPresented: $showPKCS12Password) {
                 SecureField("Password", text: $viewModel.pkcs12Password)
@@ -207,6 +246,11 @@ struct ConnectionFormView: View {
             } message: {
                 Text(viewModel.sshKeyFileError ?? "")
             }
+            .alert("Service Account Key", isPresented: showServiceAccountKeyFileError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(viewModel.iam.serviceAccountKeyFileError ?? "")
+            }
             .libraryWriteFailureAlert(
                 viewModel.saveFailure,
                 onDismiss: viewModel.dismissSaveFailure,
@@ -226,19 +270,23 @@ struct ConnectionFormView: View {
             TextField("Name", text: $viewModel.name)
                 .textInputAutocapitalization(.never)
 
-            Picker("Database Type", selection: $viewModel.type) {
-                ForEach(DatabaseType.mobileSupportedTypes, id: \.rawValue) { dbType in
-                    Label {
-                        Text(dbType.mobileDisplayName)
-                    } icon: {
-                        Image(dbType.iconName)
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 20, height: 20)
+            if DatabaseType.mobileSupportedTypes.contains(viewModel.type) {
+                Picker("Database Type", selection: $viewModel.type) {
+                    ForEach(DatabaseType.mobileSupportedTypes, id: \.rawValue) { dbType in
+                        Label {
+                            Text(dbType.mobileDisplayName)
+                        } icon: {
+                            Image(dbType.iconName)
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                        }
+                        .tag(dbType)
                     }
-                    .tag(dbType)
                 }
+            } else {
+                LabeledContent("Database Type", value: viewModel.type.mobileDisplayName)
             }
         }
     }
@@ -396,26 +444,70 @@ struct ConnectionFormView: View {
         }
     }
 
+    private func mongoSection(viewModel: ConnectionFormViewModel) -> some View {
+        @Bindable var viewModel = viewModel
+        return Section("MongoDB") {
+            TextField("Auth Database", text: $viewModel.mongoAuthSource)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.asciiCapable)
+            Picker("Auth Mechanism", selection: $viewModel.mongoAuthMechanism) {
+                Text("Default").tag("")
+                Text(verbatim: "SCRAM-SHA-1").tag("SCRAM-SHA-1")
+                Text(verbatim: "SCRAM-SHA-256").tag("SCRAM-SHA-256")
+                Text(verbatim: "X.509").tag("MONGODB-X509")
+                Text("AWS IAM").tag("MONGODB-AWS")
+            }
+            TextField("Replica Set", text: $viewModel.mongoReplicaSet)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.asciiCapable)
+            Toggle("Use SRV Record", isOn: $viewModel.mongoUsesSRV)
+        }
+    }
+
     @ViewBuilder
     private func serverSection(viewModel: ConnectionFormViewModel) -> some View {
         @Bindable var viewModel = viewModel
         Section {
-            TextField("Host", text: $viewModel.host)
-                .textInputAutocapitalization(.never)
-                .keyboardType(.URL)
-            TextField("Port", text: $viewModel.port)
-                .keyboardType(.numberPad)
+            if viewModel.type == .mongodb {
+                TextField("Hosts", text: $viewModel.mongoHosts)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+            } else {
+                TextField("Host", text: $viewModel.host)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                TextField("Port", text: $viewModel.port)
+                    .keyboardType(.numberPad)
+            }
             TextField("Username", text: $viewModel.username)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.asciiCapable)
-            SecureField("Password", text: $viewModel.password)
+            if !viewModel.signsInWithIAM {
+                SecureField("Password", text: $viewModel.password)
+            }
         } header: {
             Text("Server")
         } footer: {
             if viewModel.type == .redis {
                 Text("Username is for Redis 6 and later ACL users. Leave it empty for password-only servers.")
+            } else if viewModel.type == .mongodb {
+                if let issue = viewModel.mongoHostsIssue {
+                    Text(issue)
+                } else {
+                    Text("Separate the servers of a replica set with commas.")
+                }
             }
+        }
+        if viewModel.offersIAM {
+            ConnectionAuthenticationSection(
+                viewModel: viewModel,
+                onChooseKeyFile: { present(.serviceAccountKey) },
+                onPasteKey: { pastingServiceAccountKey = true }
+            )
         }
         Section("Database") {
             TextField("Database Name", text: $viewModel.database)
@@ -433,28 +525,100 @@ struct ConnectionFormView: View {
         }
 
         if viewModel.sshEnabled {
-            Section("SSH Server") {
-                TextField("SSH Host", text: $viewModel.sshHost)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                TextField("SSH Port", text: $viewModel.sshPort, prompt: Text(verbatim: "22"))
-                    .keyboardType(.numberPad)
-                TextField("SSH Username", text: $viewModel.sshUsername)
-                    .textInputAutocapitalization(.never)
+            Section {
+                Group {
+                    TextField("SSH Host", text: $viewModel.sshHost)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                    TextField("SSH Port", text: $viewModel.sshPort, prompt: Text(verbatim: "22"))
+                        .keyboardType(.numberPad)
+                    TextField("SSH Username", text: $viewModel.sshUsername)
+                        .textInputAutocapitalization(.never)
 
-                Picker("Auth Method", selection: $viewModel.sshAuthMethod) {
-                    Text("Password").tag(SSHConfiguration.SSHAuthMethod.password)
-                    Text("Private Key").tag(SSHConfiguration.SSHAuthMethod.privateKey)
+                    Picker("Auth Method", selection: $viewModel.sshAuthMethod) {
+                        Text("Password").tag(SSHConfiguration.SSHAuthMethod.password)
+                        Text("Private Key").tag(SSHConfiguration.SSHAuthMethod.privateKey)
+                        Text("Keyboard Interactive").tag(SSHConfiguration.SSHAuthMethod.keyboardInteractive)
+                    }
                 }
-                .pickerStyle(.segmented)
+                .disabled(viewModel.sshFollowsMacProfile)
+            } header: {
+                Text("SSH Server")
+            } footer: {
+                if viewModel.sshFollowsMacProfile {
+                    Text("This tunnel follows an SSH profile on your Mac. Change the server there.")
+                } else if let note = viewModel.sshAuthMethodNote {
+                    Text(note)
+                }
             }
 
             if viewModel.sshAuthMethod == .password {
                 Section("SSH Password") {
-                    SecureField("Password", text: $viewModel.sshPassword)
+                    if viewModel.sshFollowsMacProfile, viewModel.hasSSHProfilePassword {
+                        Text("Signs in with the SSH profile's password from iCloud Keychain.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        SecureField("Password", text: $viewModel.sshPassword)
+                    }
                 }
-            } else {
+            } else if viewModel.sshAuthMethod == .privateKey {
                 privateKeySection(viewModel: viewModel)
+            } else if viewModel.sshAuthMethod == .keyboardInteractive {
+                Section {
+                    SecureField("Password (optional)", text: $viewModel.sshPassword)
+                } header: {
+                    Text("SSH Password")
+                } footer: {
+                    Text("Answers the server's password prompt. TablePro asks you for anything else when you connect.")
+                }
+            }
+
+            if viewModel.offersTwoFactor {
+                twoFactorSection(viewModel: viewModel)
+            }
+
+            JumpHostsSection(viewModel: viewModel, isEditable: !viewModel.sshFollowsMacProfile) { pushedJumpHostId = $0 }
+
+            if let route = viewModel.macRoute {
+                MacRouteSection(viewModel: viewModel, route: route)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func twoFactorSection(viewModel: ConnectionFormViewModel) -> some View {
+        @Bindable var viewModel = viewModel
+        Section {
+            Picker("TOTP", selection: $viewModel.totpMode) {
+                ForEach(TOTPMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            if viewModel.totpMode == .autoGenerate {
+                SecureField("TOTP Secret", text: $viewModel.totpSecret)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                Picker("Algorithm", selection: $viewModel.totpAlgorithm) {
+                    ForEach(TOTPAlgorithm.allCases) { algorithm in
+                        Text(verbatim: algorithm.rawValue).tag(algorithm)
+                    }
+                }
+                Picker("Digits", selection: $viewModel.totpDigits) {
+                    Text(verbatim: "6").tag(6)
+                    Text(verbatim: "8").tag(8)
+                }
+                Picker("Period", selection: $viewModel.totpPeriod) {
+                    Text("30 seconds").tag(30)
+                    Text("60 seconds").tag(60)
+                }
+            }
+        } header: {
+            Text("Two-Factor Authentication")
+        } footer: {
+            if viewModel.totpMode == .autoGenerate {
+                Text("The Base32 secret from your authenticator setup. TablePro enters the code when the server asks.")
+            } else {
+                Text("If the SSH server asks for a verification code, TablePro asks you for it when you connect.")
             }
         }
     }
@@ -565,7 +729,25 @@ struct ConnectionFormView: View {
         }
     }
 
+    private var confirmingReconnect: Binding<Bool> {
+        Binding(
+            get: { reconnectingConnectionName != nil },
+            set: { if !$0 { reconnectingConnectionName = nil } }
+        )
+    }
+
+    // A save that redials drops the session, and the server rolls back the transaction it held.
     private func handleSave() {
+        let current = appState.connections.first { $0.id == viewModel.connectionId }
+        if let current, viewModel.redialsAfterSave(over: current),
+           appState.sessionTransactions.hold(for: current.id) != nil {
+            reconnectingConnectionName = current.name.isEmpty ? current.host : current.name
+            return
+        }
+        save()
+    }
+
+    private func save() {
         let reconnects = viewModel.reconnectsAfterSave
         Task {
             guard let savedId = await viewModel.save(appState: appState, secureStore: appState.secureStore) else {
@@ -586,6 +768,7 @@ struct ConnectionFormView: View {
         case .duckdbDatabase: return duckDBContentTypes
         case .certificate: return certificateContentTypes
         case .pkcs12: return pkcs12ContentTypes
+        case .serviceAccountKey: return [.json]
         default: return [.data]
         }
     }

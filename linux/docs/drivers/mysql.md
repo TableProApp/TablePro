@@ -73,7 +73,7 @@ A save or a schema change runs in the server's own zone, `@@GLOBAL.time_zone`, a
 
 ## Stops and timeouts
 
-A stop is `KILL QUERY <connection id>` on the control connection, which reaches the server over the same route as the connection it stops. The id comes from `CONNECTION_ID()` at login. It names the connection, not the statement: `StopDelivery::OutOfBand(StopScope::Connection)`. A pool connection goes back to the pool only when the server confirmed the stop (the statement ended with 1317, or with the server's own timeout after the `KILL` landed) and the `KILL` itself finished; a call stopped between statements also gives up its connection, since a `KILL` may be on its way to it. Error 1094 (no such thread) counts as delivered: there was nothing left to stop.
+A stop is `KILL QUERY <connection id>` on the control connection, which reaches the server over the same route as the connection it stops. The id comes from `CONNECTION_ID()` at login. It names the connection, not the statement: `StopDelivery::OutOfBand(StopScope::Connection)`. A pool connection goes back to the pool only when the server confirmed the stop (the statement ended with 1317, or with the server's own timeout after the `KILL` landed) and the `KILL` itself finished; a call stopped between statements also gives up its connection, since a `KILL` may be on its way to it. Error 1094 (no such thread) counts as delivered: there was nothing left to stop. A control connection the server closed since the last stop, at its `wait_timeout` or a restart, is replaced and the `KILL` sent again.
 
 | Server answer | Reported as |
 |---|---|
@@ -94,9 +94,9 @@ A call that timed out or lost its connection is checked before the link is decla
 
 ## Read-only
 
-`ReadOnlyEnforcement::SessionDefault`: `SET SESSION TRANSACTION READ ONLY` on every session. Saves are refused before anything is sent, and a write through generated SQL fails with 1792. In the editor, the user's own `SET TRANSACTION READ WRITE` or `SET SESSION TRANSACTION READ WRITE` lifts it. For a guarantee, connect with a login that has no write privileges.
+`ReadOnlyEnforcement::SessionDefault`: `SET SESSION TRANSACTION READ ONLY` on every session. Saves are refused before anything is sent, and a write through generated SQL fails with 1792. At Safe Mode Read-Only the app refuses every editor statement that does not read before it is sent, `SET TRANSACTION READ WRITE` included; a function a `SELECT` calls is the server's to refuse. For a guarantee, connect with a login that has no write privileges.
 
-An export, on any connection, runs in `START TRANSACTION READ ONLY` and refuses user SQL with a statement that does not start with `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC`, `EXPLAIN`, `TABLE` or a parenthesis.
+An export, on any connection, runs in `START TRANSACTION READ ONLY` and refuses user SQL that Safe Mode would not count as a read (`tablepro_core::sql_syntax::statement_access`), which reads the text of a `/*! */` comment as the code the server runs.
 
 ## Writes
 
@@ -118,9 +118,11 @@ Whether a write can be undone depends on the table's storage engine, not on the 
 
 ## Editor sessions
 
-- The editor sends one statement per run. Text with several statements runs as the server's own multi-statement batch over the text protocol, except that mysql-client `DELIMITER` lines split it where the client would, because the server does not know the directive.
+- The editor sends one statement per run. Text with several statements is split where the mysql client splits it, at each `;` or at the delimiter a `DELIMITER` line sets, and goes one statement per round trip. Sent whole, the server starts each next statement as soon as the last one's result is written, read or not, so a stop could not keep it from running. A `/*!` comment is code there, so it is sent.
+- Text without `DELIMITER` lines goes as written, as the server's own batch, when it holds one statement, or when only the server can tell where its statements end: a statement that does not open with a word known to start one with no body, such as a stored program or a compound statement, a `/*!` comment, or text the session's `sql_mode` reads its own way (a backslash in a string, `[name]`, `$$` quotes).
 - The row limit is `SET SESSION sql_select_limit = <limit + 1>`, sent when the limit changes. The server stops a plain `SELECT` there, and the set ends with `Truncation::ServerStopped` and no total. A `SELECT` with a `LIMIT` of its own, or one inside a routine, is read to its end: the rows past the limit are counted, never decoded, and the set ends with `Truncation::ReadPastLimit` and its total. A set that ends exactly one row past the limit reads as `ServerStopped` either way.
-- A stop sends `KILL QUERY` on the session's own control connection and gives the statement the cancel grace to end. A statement that has not ended by then ends the session, because its answer is still on the way.
-- When the grid stops reading, the run sends the same `KILL QUERY` and ends as cancelled. The batch already sent is read to its end, unshown, and no later batch is sent.
+- A stop sends `KILL QUERY` on the session's own control connection and gives the statement the cancel grace to end, and nothing after it is sent, whatever the `KILL` did. A statement that has not ended by then ends the session, because its answer is still on the way, and so does a `KILL` that has not answered, because it may still land on whatever runs next. The row limit's `SET` is watched the same way.
+- A run stopped at its deadline reads as `TimedOut { server_cancelled: true }` only when the statement ended with 1317 or the server's own timeout. A bare `SELECT SLEEP(n)` the `KILL` stopped returns 1 with no error, so it reads as `false`.
+- When the grid stops reading, the run sends the same `KILL QUERY` and ends as cancelled. The statement already sent is read to its end, unshown, and nothing after it is sent.
 - sqlx describes a result column by its type alone, with no fractional digits and no BIT length. A run shows a DATETIME(6) holding `12:00:00.5` as `12:00:00.5` and a BIT(1) in the whole byte it arrived in, `00000001`. A table tab and its export take both from the catalogue and show `12:00:00.500000` and `1`.
 - The transaction state after each run comes from `@@in_transaction` on MariaDB and from `performance_schema.events_transactions_current` on MySQL. On MySQL before 8.0.16, with `performance_schema` off, or for a login that cannot read it, the state is `Unknown`, and the tab's close guard warns instead of guessing.

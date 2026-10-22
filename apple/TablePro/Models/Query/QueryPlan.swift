@@ -29,6 +29,13 @@ struct QueryPlanNode: Identifiable, Sendable {
     /// Absent when the plan reports no cost anywhere, which is not the same as a share of zero.
     var costFraction: Double?
 
+    var warnings: [String] = []
+
+    // A plan that reports a total over every execution keeps it, since the per-execution value is rounded.
+    var reportedTotalActualRows: Int?
+
+    var missingIndexes: [QueryPlanMissingIndex] = []
+
     /// Exclusive cost (this node only, excluding children).
     var exclusiveCost: Double {
         let childCost = children.reduce(0.0) { $0 + ($1.estimatedTotalCost ?? 0) }
@@ -42,6 +49,11 @@ struct QueryPlanNode: Identifiable, Sendable {
         guard let startup = estimatedStartupCost else { return String(format: number, total) }
         return String(format: "\(number)..\(number)", startup, total)
     }
+}
+
+struct QueryPlanMissingIndex: Hashable, Sendable {
+    let impact: Double?
+    let createStatement: String
 }
 
 /// A parsed EXPLAIN query plan.

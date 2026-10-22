@@ -19,12 +19,14 @@ enum ImportFixtures {
     static func makeRules(
         maximumGroupDepth: Int = 3,
         supportsSavedQueries: Bool = true,
-        supportsCredentialProfiles: Bool = true
+        supportsCredentialProfiles: Bool = true,
+        readsJumpHostKeyFiles: Bool = true
     ) -> ImportRules {
         ImportRules(
             maximumGroupDepth: maximumGroupDepth,
             supportsSavedQueries: supportsSavedQueries,
-            supportsCredentialProfiles: supportsCredentialProfiles
+            supportsCredentialProfiles: supportsCredentialProfiles,
+            readsJumpHostKeyFiles: readsJumpHostKeyFiles
         )
     }
 

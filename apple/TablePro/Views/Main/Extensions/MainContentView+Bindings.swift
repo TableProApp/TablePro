@@ -256,10 +256,14 @@ struct PendingChangeTrigger: Equatable {
     let pendingTruncates: Set<DatabaseTreeTableRef>
     let pendingDeletes: Set<DatabaseTreeTableRef>
     let hasStructureChanges: Bool
+    // A diagram's edits are read from the selected tab's model, so a tab switch has to recompute too.
+    var diagramEditsRevision = 0
+    var selectedTabId: UUID?
     let isFileDirty: Bool
     let hasCreateTablePending: Bool
     /// The fifth source. Without it staging a principal edit changes nothing this value can see, so
     /// `updateToolbarPendingState()` is never re-run and the commit control stays dim however many
     /// changes the Users & Roles tab holds.
     let hasPrincipalChanges: Bool
+    let hasTypeChanges: Bool
 }

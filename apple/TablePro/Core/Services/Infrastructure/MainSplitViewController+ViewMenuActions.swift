@@ -135,34 +135,23 @@ extension MainSplitViewController {
         commandActions?.pinResultTab()
     }
 
+    @objc func compareResult(_ sender: Any?) {
+        commandActions?.compareResult()
+    }
+
     @objc func closeResultTab(_ sender: Any?) {
         commandActions?.closeResultTab()
     }
 }
 
-/// The window's answer when nothing nearer the focus zooms: a focused diagram's scroll view claims
-/// these first, so this is what Zoom In means everywhere else.
+// The window's answer when nothing nearer the focus zooms: a focused diagram or data grid claims these
+// first, so this is what Zoom In means everywhere else.
 extension MainSplitViewController: ZoomCommandResponding {
     @objc func zoomIn(_ sender: Any?) {
-        adjustEditorTextSize(by: 1)
+        FontSizeZoom.editor.zoom(by: 1)
     }
 
     @objc func zoomOut(_ sender: Any?) {
-        adjustEditorTextSize(by: -1)
-    }
-
-    /// Nil for any other command. The size is the app's setting, not this window's, so it is read
-    /// live instead of through the captured validation context.
-    static func zoomEnablement(_ action: Selector, typography: TypographySettings) -> Bool? {
-        if action == #selector(zoomIn(_:)) { return typography.editorFontSize(zoomedBy: 1) != nil }
-        if action == #selector(zoomOut(_:)) { return typography.editorFontSize(zoomedBy: -1) != nil }
-        return nil
-    }
-
-    private func adjustEditorTextSize(by delta: Int) {
-        var typography = AppSettingsManager.shared.typography
-        guard let size = typography.editorFontSize(zoomedBy: delta) else { return }
-        typography.editorFontSize = size
-        AppSettingsManager.shared.typography = typography
+        FontSizeZoom.editor.zoom(by: -1)
     }
 }

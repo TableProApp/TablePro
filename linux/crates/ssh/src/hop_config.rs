@@ -3,10 +3,11 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
-use tablepro_core::SshFailure;
+use tablepro_core::{SshFailure, SshRuntimeDirProblem};
 
 use crate::host_key_checking::HostKeyChecking;
 use crate::route::JumpHop;
+use crate::runtime::unsafe_dir;
 
 /// What OpenSSH reads after the user's file when it is given no `-F`
 /// (`process_config_files` in ssh.c).
@@ -52,8 +53,12 @@ fn render_over(hosts: &[impl AsRef<str>], base: Option<&Path>, system_config: &P
     text.extend_from_slice(b"Match all\n");
     match base {
         Some(base) => {
-            let contents = std::fs::read(base).map_err(|error| SshFailure::ConfigRejected {
-                detail: format!("{}: {error}", base.display()),
+            let contents = std::fs::read(base).map_err(|error| {
+                tracing::debug!(%error, path = %base.display(), "the ssh_config file could not be read");
+                SshFailure::ConfigUnreadable {
+                    path: base.to_owned(),
+                    kind: error.kind(),
+                }
             })?;
             text.extend_from_slice(&contents);
         }
@@ -76,14 +81,11 @@ fn render_over(hosts: &[impl AsRef<str>], base: Option<&Path>, system_config: &P
 /// than one plain shell word is refused rather than run.
 pub(crate) fn write(master_dir: &Path, contents: &[u8]) -> Result<PathBuf, SshFailure> {
     let path = master_dir.join(FILE_NAME);
-    let unsafe_dir = |detail: String| SshFailure::RuntimeDirUnsafe {
-        path: path.clone(),
-        detail,
-    };
     if !plain_shell_word(&path) {
-        return Err(unsafe_dir(
-            "a jump host's ssh cannot be given a path with spaces or shell characters".to_owned(),
-        ));
+        return Err(SshFailure::RuntimeDirUnsafe {
+            path,
+            problem: SshRuntimeDirProblem::NotAShellWord,
+        });
     }
     std::fs::OpenOptions::new()
         .write(true)
@@ -91,7 +93,7 @@ pub(crate) fn write(master_dir: &Path, contents: &[u8]) -> Result<PathBuf, SshFa
         .mode(0o600)
         .open(&path)
         .and_then(|mut file| file.write_all(contents))
-        .map_err(|error| unsafe_dir(error.to_string()))?;
+        .map_err(|error| unsafe_dir(&path, &error))?;
     Ok(path)
 }
 
@@ -163,10 +165,15 @@ mod tests {
     fn a_base_file_ssh_could_not_open_is_refused() {
         let dir = tempfile::tempdir().unwrap();
 
-        assert!(matches!(
-            render(&["j1"], Some(&dir.path().join("missing"))),
-            Err(SshFailure::ConfigRejected { .. })
-        ));
+        let missing = dir.path().join("missing");
+
+        assert_eq!(
+            render(&["j1"], Some(&missing)),
+            Err(SshFailure::ConfigUnreadable {
+                path: missing,
+                kind: std::io::ErrorKind::NotFound,
+            })
+        );
     }
 
     /// A system file anyone can write fails the owner check the way
@@ -220,10 +227,13 @@ mod tests {
         assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
         let spaced = dir.path().join("with space");
         std::fs::create_dir(&spaced).unwrap();
-        assert!(matches!(
+        assert_eq!(
             write(&spaced, b"Match all\n"),
-            Err(SshFailure::RuntimeDirUnsafe { .. })
-        ));
+            Err(SshFailure::RuntimeDirUnsafe {
+                path: spaced.join(FILE_NAME),
+                problem: SshRuntimeDirProblem::NotAShellWord,
+            })
+        );
         assert!(!plain_shell_word(Path::new("/run/user/1000/%d")));
         assert!(!plain_shell_word(Path::new("/run/user/1000/$(id)")));
         assert!(plain_shell_word(Path::new(

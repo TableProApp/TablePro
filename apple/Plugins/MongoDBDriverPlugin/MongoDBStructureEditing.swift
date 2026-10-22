@@ -12,7 +12,7 @@ import Foundation
 ///
 /// Kept apart from `MongoDBPlugin` so the app's curated copy of these flags can be compared with
 /// them in tests, which cannot compile the plugin class and the driver it creates.
-enum MongoDBStructureEditing {
+nonisolated enum MongoDBStructureEditing {
     static let supportsSchemaEditing = true
     static let supportsAddColumn = false
     static let supportsModifyColumn = true

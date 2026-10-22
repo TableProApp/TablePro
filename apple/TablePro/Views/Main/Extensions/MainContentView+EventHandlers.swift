@@ -208,6 +208,7 @@ extension MainContentView {
             rowIDs: selectedRows.map(\.id),
             allRows: stringRows,
             absentCells: selectedRows.map(\.absentColumns),
+            unloadedCells: selectedRows.map { Set($0.unloadedColumns.keys) },
             expressionCells: selectedRows.map { changeManager.expressionColumns(forRow: $0.id) },
             columns: tableRows.columns,
             columnTypes: columnTypes,

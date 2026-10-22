@@ -2,6 +2,9 @@
 //  DataChangeManagerClickHouseTests.swift
 //  TableProTests
 //
+//  Tests for ClickHouse-specific UPDATE statement validation in DataChangeManager.
+//  ClickHouse uses ALTER TABLE ... UPDATE syntax instead of standard UPDATE.
+//
 
 import Foundation
 import TableProPluginKit
@@ -10,8 +13,8 @@ import Testing
 
 @MainActor
 struct DataChangeManagerClickHouseTests {
-    @Test("A ClickHouse edit is refused and stays pending instead of keyed on the sorting key")
-    func clickHouseEditIsRefusedAndStaysPending() async {
+    @Test("ClickHouse ALTER TABLE UPDATE passes validation without throwing")
+    func alterTableUpdatePassesValidation() async {
         let manager = DataChangeManager()
         manager.configureForTable(
             tableName: "events",
@@ -30,10 +33,10 @@ struct DataChangeManagerClickHouseTests {
             originalRow: ["42", "pending"]
         )
 
-        #expect(throws: DataWriteError.self) {
+        // Should not throw — ALTER TABLE UPDATE must be recognized as valid
+        #expect(throws: Never.self) {
             _ = try manager.generateSQL()
         }
-        #expect(manager.hasChanges)
     }
 
     @Test("Standard UPDATE prefix is still detected for non-ClickHouse databases")

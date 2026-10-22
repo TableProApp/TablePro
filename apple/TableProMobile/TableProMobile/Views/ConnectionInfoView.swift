@@ -39,7 +39,7 @@ struct ConnectionInfoView: View {
             switch ConnectionInfoContent.section(for: connection, fileURL: databaseFileURL) {
             case .server:
                 serverSection
-                if connection.sshEnabled, let ssh = connection.sshConfiguration {
+                if connection.sshEnabled, let ssh = connection.sshConfigurationForDialing {
                     sshSection(ssh)
                 }
             case .file(let file):
@@ -102,12 +102,16 @@ struct ConnectionInfoView: View {
                     .textSelection(.enabled)
             }
             LabeledContent("SSH Username", value: ssh.username)
-            LabeledContent(
-                "Auth",
-                value: ssh.authMethod == .password
-                    ? String(localized: "Password")
-                    : String(localized: "Private Key")
-            )
+            LabeledContent("Auth", value: authLabel(ssh.authMethod.onDevice))
+        }
+    }
+
+    private func authLabel(_ method: SSHConfiguration.SSHAuthMethod) -> String {
+        switch method {
+        case .password: String(localized: "Password")
+        case .privateKey, .sshAgent: String(localized: "Private Key")
+        case .keyboardInteractive: String(localized: "Keyboard Interactive")
+        case .none: String(localized: "None")
         }
     }
 

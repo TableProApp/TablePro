@@ -26,6 +26,7 @@ mod mysql_temporal;
 mod mysql_timestamp_mode;
 mod mysql_wire_format;
 mod physical;
+mod script_split;
 mod server_zone;
 mod session_statements;
 mod standalone;

@@ -43,6 +43,7 @@ internal final class StructureEditingSession: ObservableObject {
     internal let connection: DatabaseConnection
     internal let databaseName: String
     internal let schemaName: String?
+    internal let isSessionBound: Bool
     internal let tableName: String
 
     /// What kind of object this session edits, which decides which edits it may offer at all. A tab
@@ -60,7 +61,9 @@ internal final class StructureEditingSession: ObservableObject {
     internal let wrappedChangeManager: AnyChangeManager
 
     internal var scope: DatabaseScope {
-        DatabaseScope(connectionId: connection.id, database: databaseName, schema: schemaName)
+        DatabaseScope(
+            connectionId: connection.id, database: databaseName, schema: schemaName, isSessionBound: isSessionBound
+        )
     }
 
     @Published internal var columns: [ColumnInfo] = []
@@ -149,6 +152,7 @@ internal final class StructureEditingSession: ObservableObject {
         connection: DatabaseConnection,
         databaseName: String,
         schemaName: String?,
+        isSessionBound: Bool = false,
         tableName: String,
         objectKind: TableInfo.TableType = .table,
         serverSupport: StructureServerSupport = .unrestricted
@@ -157,6 +161,7 @@ internal final class StructureEditingSession: ObservableObject {
         self.connection = connection
         self.databaseName = databaseName
         self.schemaName = schemaName
+        self.isSessionBound = isSessionBound
         self.tableName = tableName
         self.objectKind = objectKind
         self.serverSupport = serverSupport
@@ -169,6 +174,8 @@ internal final class StructureEditingSession: ObservableObject {
             coordinator: nil
         )
         gridDelegate.referenceMenus.schemaName = schemaName
+        gridDelegate.schemaName = schemaName
+        gridDelegate.isSessionBound = isSessionBound
         wrappedChangeManager = AnyChangeManager(changeManager)
     }
 

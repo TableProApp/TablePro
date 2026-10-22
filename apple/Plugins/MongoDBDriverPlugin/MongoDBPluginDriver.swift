@@ -8,7 +8,7 @@ import os
 import TableProLogRedaction
 import TableProPluginKit
 
-final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private(set) var mongoConnection: MongoDBConnection?
     private var scriptRuntime: MongoScriptRuntime?
@@ -16,9 +16,11 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let columnKindLock = NSLock()
     private let rawFilterNormalizer = MongoDBRawFilterNormalizer()
     private var columnKindsByCollection: [String: [String: BsonValueKind]] = [:]
-    private var fieldPathKindsByCollection: [String: [String: BsonValueKind]] = [:]
+    // What filters are typed by: top-level fields and nested paths. Kept apart from the kinds writes are typed by, since
+    // a filtered page leaves the fields it filtered on alone here and must still type the next write by what it read.
+    private var filterKindsByCollection: [String: [String: BsonValueKind]] = [:]
     private var declaredSchemasByCollection: [String: MongoDBCollectionSchema] = [:]
-    private var identityKindsByCollection: [String: BsonValueKind] = [:]
+    private var identityKindsByCollection: [String: Set<BsonValueKind>] = [:]
     private var binarySubtypesByCollection: [String: MongoDBBinarySubtypes] = [:]
     private var fieldKindsByCollection: [String: MongoDBFieldKinds] = [:]
 
@@ -242,7 +244,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         self.buildPluginResult(
                             from: documents, startTime: startTime,
                             isTruncated: isTruncated, collection: collection,
-                            declared: declared
+                            declared: declared,
+                            recordsKinds: outcome.returnsStoredDocuments(in: self.currentDb),
+                            filteredFields: outcome.find?.filteredFields ?? []
                         )
                     }
                 ),
@@ -259,8 +263,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// one never sees. Read again on a first page, so a refresh picks up a changed validator, and
     /// reused while paging.
     private func declaredColumns(for outcome: MongoScriptStatementResult) async throws -> MongoDBCollectionSchema {
-        guard outcome.producedDocuments,
-              let find = outcome.find, find.returnsWholeDocuments, find.database == currentDb,
+        guard outcome.producedDocuments, outcome.returnsStoredDocuments(in: currentDb), let find = outcome.find,
               let collection = outcome.collection, !collection.isEmpty,
               let conn = mongoConnection else {
             return .empty
@@ -372,6 +375,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             for: sampled, documents: docs, representation: uuidRepresentation
         )
         rememberColumnKinds(kinds, for: sampled, collection: table)
+        rememberFilterKinds(from: docs, columns: sampled, kinds: kinds, collection: table)
 
         let sampledColumns = sampled.enumerated().map { index, name in
             PluginColumnInfo(
@@ -515,14 +519,18 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         logicMode: String,
         background: Bool
     ) async throws -> Int? {
+        let filterJson = filterQueryBuilder(for: table)
+            .buildFilterDocument(from: filters, logicMode: logicMode)
+        return try await documentCount(table: table, filterDocument: filterJson, background: background)
+    }
+
+    func documentCount(table: String, filterDocument: String, background: Bool) async throws -> Int? {
         guard let conn = mongoConnection else {
             throw MongoDBPluginError.notConnected
         }
 
-        let filterJson = filterQueryBuilder(for: table)
-            .buildFilterDocument(from: filters, logicMode: logicMode)
         let count = try await conn.countDocuments(
-            database: currentDb, collection: table, filter: filterJson, background: background
+            database: currentDb, collection: table, filter: filterDocument, background: background
         )
         return Int(count)
     }
@@ -781,8 +789,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         columnKinds: [String: PluginColumnKind]
     ) -> String? {
         let builder = filterQueryBuilder(for: table)
-        return builder.buildFilteredQuery(
-            collection: table, queryFilters: queryFilters, logicMode: logicMode,
+        return builder.buildQuery(
+            collection: table,
+            filterDocument: builder.buildFilterDocument(from: queryFilters, logicMode: logicMode),
             sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
         )
     }
@@ -814,8 +823,30 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         writeGenerator(for: table, columns: columns).generateRestore(rows: rows, absentCells: absentCells)
     }
 
-    private func writeGenerator(for table: String, columns: [String]) -> MongoDBStatementGenerator {
-        let key = columnKindKey(table)
+    // The writes for a grid save, typed by what this driver learned of the collection in `database`, which a caller that
+    // runs them there names, since a script's `use` can have moved the shell meanwhile.
+    func generateRowWrites(
+        table: String,
+        columns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        database: String
+    ) throws -> [PluginRowWrite] {
+        try writeGenerator(for: table, columns: columns, database: database).generateRowWrites(
+            from: changes, insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        )
+    }
+
+    func identityFilter(table: String, idText: String, database: String? = nil) throws -> String {
+        try writeGenerator(for: table, columns: [MongoDBCollectionDDL.idField], database: database)
+            .identityFilter(forIdText: idText)
+    }
+
+    private func writeGenerator(for table: String, columns: [String], database: String? = nil) -> MongoDBStatementGenerator {
+        let key = columnKindKey(table, database: database)
         return columnKindLock.withLock {
             let declared = declaredSchemasByCollection[key] ?? .empty
             return MongoDBStatementGenerator(
@@ -823,7 +854,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 columns: columns,
                 columnKinds: columnKindsByCollection[key] ?? [:],
                 declaredKinds: declared.valueKinds,
-                identityKind: identityKindsByCollection[key],
+                identityKinds: identityKindsByCollection[key],
                 fieldKinds: fieldKindsByCollection[key] ?? .empty,
                 binarySubtypes: binarySubtypesByCollection[key] ?? .empty,
                 declaredBinaryFields: Self.binaryFields(declaredBy: declared),
@@ -941,7 +972,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             documents: { documents, collection, isTruncated in
                 self.buildPluginResult(
                     from: MongoReadDocuments(dictionaries: documents.dictionaries, texts: []), startTime: Date(),
-                    isTruncated: isTruncated, collection: collection
+                    isTruncated: isTruncated, collection: collection,
+                    recordsKinds: outcome.returnsStoredDocuments(in: self.currentDb),
+                    filteredFields: outcome.find?.filteredFields ?? []
                 )
             }
         )
@@ -963,7 +996,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         startTime: Date,
         isTruncated: Bool = false,
         collection: String = "",
-        declared: MongoDBCollectionSchema = .empty
+        declared: MongoDBCollectionSchema = .empty,
+        recordsKinds: Bool = false,
+        filteredFields: Set<String> = []
     ) -> PluginQueryResult {
         let documents = read.dictionaries
         if documents.isEmpty {
@@ -978,11 +1013,15 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let sampledKinds = BsonDocumentFlattener.columnKinds(
             for: sampled, documents: documents, representation: uuidRepresentation
         )
-        rememberColumnKinds(sampledKinds, for: sampled, collection: collection)
-        rememberIdentityKind(of: documents, collection: collection)
-        rememberFieldPathKinds(from: documents, collection: collection)
-        rememberBinarySubtypes(of: documents, collection: collection)
-        rememberFieldKinds(of: documents, collection: collection)
+        if recordsKinds {
+            rememberColumnKinds(sampledKinds, for: sampled, collection: collection)
+            rememberFilterKinds(
+                from: documents, columns: sampled, kinds: sampledKinds, collection: collection, keeping: filteredFields
+            )
+            rememberIdentityKinds(of: documents, collection: collection)
+            rememberBinarySubtypes(of: documents, collection: collection)
+            rememberFieldKinds(of: documents, collection: collection)
+        }
         let unseen = MongoDBCollectionShape.declaredColumnsMissing(from: sampled, schema: declared)
         let columns = sampled + unseen
         let kinds = sampledKinds + unseen.map { declared.field(named: $0)?.valueKind ?? .null }
@@ -1036,6 +1075,57 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         columnKindLock.withLock { columnKindsByCollection[key] = byName }
     }
 
+    /// Recorded from the documents a browse already fetched, on the session driver that will
+    /// build the filter. Sampling through `sampleFieldPaths` cannot do it: that call is routed
+    /// through `MetadataConnectionPool`, so it lands on a different driver instance whose cache
+    /// the filter path never reads.
+    private func rememberFilterKinds(
+        from documents: [[String: Any]],
+        columns: [String],
+        kinds: [BsonValueKind],
+        collection: String,
+        keeping filteredFields: Set<String> = []
+    ) {
+        guard !collection.isEmpty, !documents.isEmpty else { return }
+        let sampled = Array(documents.prefix(MongoStreamProjection.sampleSize))
+        var learned = BsonDocumentFlattener.fieldPathKinds(from: sampled, representation: uuidRepresentation)
+        for (index, name) in columns.enumerated() where index < kinds.count {
+            learned[name] = kinds[index]
+        }
+        let key = columnKindKey(collection)
+        columnKindLock.withLock {
+            filterKindsByCollection[key] = Self.kinds(
+                learned, keepingFrom: filterKindsByCollection[key] ?? [:], of: filteredFields
+            )
+        }
+    }
+
+    // A filtered page holds only the values its filter let through, so it says nothing about the fields it filtered
+    // on or the paths under them, which an `$elemMatch` names relative to its array: a field holding 1 and "1"
+    // filtered by `!= 1` returns only strings. Those keep what was known of them, an unknown kind included, or the
+    // page's count, typed again after the page, would count other documents.
+    static func kinds(
+        _ page: [String: BsonValueKind],
+        keepingFrom previous: [String: BsonValueKind],
+        of filteredFields: Set<String>
+    ) -> [String: BsonValueKind] {
+        guard !filteredFields.isEmpty else { return page }
+        var merged = page
+        for path in Set(page.keys).union(previous.keys) where isUnder(path, anyOf: filteredFields) {
+            merged[path] = previous[path]
+        }
+        return merged
+    }
+
+    private static func isUnder(_ path: String, anyOf fields: Set<String>) -> Bool {
+        var candidate = Substring(path)
+        while true {
+            if fields.contains(String(candidate)) { return true }
+            guard let dot = candidate.lastIndex(of: ".") else { return false }
+            candidate = candidate[..<dot]
+        }
+    }
+
     /// Added to rather than replaced, so a value keeps its subtype after another page or another tab
     /// of the same collection is read, and a value seen with two subtypes stays ambiguous. Past the
     /// cap the collection starts over from this page: a value no longer found is refused, not guessed.
@@ -1064,51 +1154,41 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func rememberIdentityKind(of documents: [[String: Any]], collection: String) {
+    // Added to rather than replaced: a row keeps the `_id` kinds every find of its collection held, so a later read of
+    // one document, a value lookup or another tab's, never types the `_id` of a row it did not return.
+    private func rememberIdentityKinds(of documents: [[String: Any]], collection: String) {
         guard !collection.isEmpty else { return }
-        let kind = BsonDocumentFlattener.uniformKind(
-            of: MongoDBCollectionDDL.idField, in: documents, representation: uuidRepresentation
-        )
+        let held = Set(documents.compactMap { $0[MongoDBCollectionDDL.idField] }.filter { !($0 is NSNull) }.map {
+            BsonDocumentFlattener.valueKind(for: $0, representation: uuidRepresentation)
+        })
+        guard !held.isEmpty else { return }
         let key = columnKindKey(collection)
-        columnKindLock.withLock { identityKindsByCollection[key] = kind }
-    }
-
-    /// Recorded from the documents a browse already fetched, on the session driver that will
-    /// build the filter. Sampling through `sampleFieldPaths` cannot do it: that call is routed
-    /// through `MetadataConnectionPool`, so it lands on a different driver instance whose cache
-    /// the filter path never reads.
-    private func rememberFieldPathKinds(from documents: [[String: Any]], collection: String) {
-        guard !collection.isEmpty, !documents.isEmpty else { return }
-        let sampled = Array(documents.prefix(MongoStreamProjection.sampleSize))
-        let kinds = BsonDocumentFlattener.fieldPathKinds(from: sampled, representation: uuidRepresentation)
-        guard !kinds.isEmpty else { return }
-        let key = columnKindKey(collection)
-        columnKindLock.withLock { fieldPathKindsByCollection[key] = kinds }
+        columnKindLock.withLock { identityKindsByCollection[key, default: []].formUnion(held) }
     }
 
     /// Kinds a filter can be typed against: the flat columns the grid shows, plus every nested
     /// path the picker offers. Without the nested half, a filter on a nested Date or ObjectId is
     /// compared as a string and MongoDB's type bracketing returns nothing.
-    private func filterKinds(for collection: String) -> [String: BsonValueKind] {
-        let key = columnKindKey(collection)
+    private func filterKinds(for collection: String, database: String?) -> [String: BsonValueKind] {
+        let key = columnKindKey(collection, database: database)
         return columnKindLock.withLock {
             (declaredSchemasByCollection[key]?.valueKinds ?? [:])
-                .merging(fieldPathKindsByCollection[key] ?? [:]) { _, sampled in sampled }
-                .merging(columnKindsByCollection[key] ?? [:]) { _, top in top }
+                .merging(filterKindsByCollection[key] ?? [:]) { _, sampled in sampled }
         }
     }
 
-    private func filterQueryBuilder(for collection: String) -> MongoDBQueryBuilder {
+    func filterQueryBuilder(for collection: String, database: String? = nil) -> MongoDBQueryBuilder {
         let normalizer = rawFilterNormalizer
         return MongoDBQueryBuilder(
-            columnKinds: filterKinds(for: collection),
-            rawFilterNormalizer: { normalizer.normalize($0) }
+            columnKinds: filterKinds(for: collection, database: database),
+            rawFilterNormalizer: { normalizer.normalize($0) },
+            matchesShownText: MongoDBCapabilities.parse(mongoConnection?.knownServerVersion).supportsRegexMatch
         )
     }
 
     /// Two databases can hold a collection of the same name with different field types.
-    private func columnKindKey(_ collection: String) -> String {
-        MongoCollectionCacheKey.key(database: currentDb, collection: collection)
+    private func columnKindKey(_ collection: String, database: String? = nil) -> String {
+        MongoCollectionCacheKey.key(database: database ?? currentDb, collection: collection)
     }
 
     /// A Structure save renamed or removed fields on another connection, so the fields and types
@@ -1119,7 +1199,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let isStale = { (key: String) in MongoCollectionCacheKey.names(key, collection: table) }
         columnKindLock.withLock {
             columnKindsByCollection = columnKindsByCollection.filter { !isStale($0.key) }
-            fieldPathKindsByCollection = fieldPathKindsByCollection.filter { !isStale($0.key) }
+            filterKindsByCollection = filterKindsByCollection.filter { !isStale($0.key) }
             declaredSchemasByCollection = declaredSchemasByCollection.filter { !isStale($0.key) }
             identityKindsByCollection = identityKindsByCollection.filter { !isStale($0.key) }
         }
@@ -1128,12 +1208,12 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
 // MARK: - Error
 
-enum MongoDBPluginError: Error {
+nonisolated enum MongoDBPluginError: Error {
     case notConnected
     case viewNotFound(String)
 }
 
-extension MongoDBPluginError: PluginDriverError {
+nonisolated extension MongoDBPluginError: PluginDriverError {
     var pluginErrorMessage: String {
         switch self {
         case .notConnected: return String(localized: "Not connected to MongoDB")
@@ -1142,7 +1222,7 @@ extension MongoDBPluginError: PluginDriverError {
     }
 }
 
-private extension MongoScriptAccess {
+nonisolated private extension MongoScriptAccess {
     init(_ context: PluginStatementContext) {
         self = context.readOnly ? .read : .readWrite
     }

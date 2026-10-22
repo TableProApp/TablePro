@@ -83,6 +83,7 @@ public struct ConnectionField: Codable, Sendable {
     public enum Content: String, Codable, Sendable {
         case plain
         case loadableExtensions
+        case attachedDatabases
     }
 
     public struct DropdownOption: Codable, Sendable, Equatable {

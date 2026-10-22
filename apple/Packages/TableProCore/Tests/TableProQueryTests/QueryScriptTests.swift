@@ -93,6 +93,16 @@ struct QueryScriptTests {
         #expect(script.requestCount == 4)
     }
 
+    @Test("A batch lists each statement it runs, and a statement unit only itself")
+    func batchStatements() {
+        let batches = plan("SELECT 1; ROLLBACK TRANSACTION;\nGO\nSELECT 2", .mssql, batches: true)
+        let statements = plan("SELECT 1; ROLLBACK", .postgresql, batches: false)
+
+        #expect(batches.statements(in: batches.units[0]) == ["SELECT 1", "ROLLBACK TRANSACTION"])
+        #expect(batches.statements(in: batches.units[1]) == ["SELECT 2"])
+        #expect(statements.statements(in: statements.units[1]) == ["ROLLBACK"])
+    }
+
     @Test("Without GO lines a batch driver sends the script as one batch")
     func oneBatchWithoutSeparators() {
         let script = plan("DECLARE @n int = 1; SELECT @n", .mssql, batches: true)
@@ -106,6 +116,8 @@ struct QueryScriptTests {
             ("SELECT ';'; DROP TABLE t", .postgresql, false),
             ("SELECT 1 -- ;\n; UPDATE t SET a = 1", .mysql, false),
             ("SELECT 1\nGO\nDELETE FROM t", .mssql, true),
+            ("GET a\nDEL b", .redis, false),
+            ("db.a.find({})\ndb.b.deleteMany({})", .mongodb, false),
             (Self.issue3399, .sqlite, false),
         ]
         for (text, type, batches) in scripts {
@@ -151,9 +163,35 @@ struct QueryScriptTests {
         #expect(QueryScript(units: script.units, unitKind: .statement).replanned(after: 0, session: noEscapes) == nil)
     }
 
-    @Test("Redis text is one command, as its driver reads it")
-    func redisIsOneCommand() {
-        #expect(plan("  SET k \"a;b\"; GET k \n", .redis).units == [QueryScript.Unit(sql: "SET k \"a;b\"; GET k")])
+    @Test("Redis text runs one command per line or per semicolon, a quoted value kept whole")
+    func redisSplitsIntoCommands() {
+        #expect(plan("RPUSH jobs a\nRPUSH jobs b", .redis).units == [
+            QueryScript.Unit(sql: "RPUSH jobs a"), QueryScript.Unit(sql: "RPUSH jobs b"),
+        ])
+        #expect(plan("  SET k \"a;b\"; GET k \n", .redis).units == [
+            QueryScript.Unit(sql: "SET k \"a;b\""), QueryScript.Unit(sql: "GET k"),
+        ])
+        #expect(plan("SET k \"a\nb\"", .redis).units == [QueryScript.Unit(sql: "SET k \"a\nb\"")])
         #expect(plan(" \n ", .redis).isEmpty)
+    }
+
+    @Test("MongoDB runs one unit per top-level JavaScript statement, a semicolon in a function body kept inside it")
+    func mongoSplitsIntoStatements() {
+        #expect(plan("db.a.find({})\ndb.b.find({x: 1})", .mongodb).units == [
+            QueryScript.Unit(sql: "db.a.find({})"), QueryScript.Unit(sql: "db.b.find({x: 1})"),
+        ])
+        let body = "db.a.find({}).forEach(function (d) { var x = d.n; print(x); });"
+        #expect(plan(body, .mongodb).units == [QueryScript.Unit(sql: body)])
+        #expect(plan("db.a.find({}); // done\n", .mongodb).units == [QueryScript.Unit(sql: "db.a.find({});")])
+        #expect(plan(" \n// note\n", .mongodb).isEmpty)
+        #expect(plan("db.a.find({})\ndb.b.find({})", .mongodb).replanned(after: 0, session: nil) == nil)
+    }
+
+    @Test("Trimming a Redis text keeps a last argument byte Foundation counts as whitespace")
+    func redisTrimKeepsTheLastArgumentByte() {
+        #expect(QueryScript.trimmed("DEL victim\u{0B} ", databaseType: .redis) == "DEL victim\u{0B}")
+        #expect(QueryScript.trimmed(" \nDEL victim\u{A0} ; GET other \n", databaseType: .redis) == "DEL victim\u{A0} ; GET other")
+        #expect(QueryScript.trimmed(" \n ; ", databaseType: .redis).isEmpty)
+        #expect(QueryScript.trimmed(" \nSELECT 1; \n", databaseType: .sqlite) == "SELECT 1;")
     }
 }

@@ -4,7 +4,8 @@ set -eo pipefail
 # Build static MariaDB Connector/C for macOS (arm64 + x86_64 + universal).
 #
 # Includes the mysql_clear_password client plugin (STATIC), required for AWS RDS
-# IAM authentication.
+# IAM authentication, and auth_gssapi_client (STATIC) against the GSS framework, for Kerberos.
+# The plugin links -framework GSS.
 #
 # Output (overwrites, since Libs/*.a are not in git):
 #   Libs/libmariadb_arm64.a  Libs/libmariadb_x86_64.a
@@ -45,6 +46,8 @@ curl -fSL "https://archive.mariadb.org/connector-c-$MARIADB_VERSION/mariadb-conn
 echo "$MARIADB_SHA256  $BUILD_DIR/mariadb.tar.gz" | shasum -a 256 -c -
 tar xzf "$BUILD_DIR/mariadb.tar.gz" -C "$BUILD_DIR"
 MARIADB_SRC="$BUILD_DIR/mariadb-connector-c-$MARIADB_VERSION-src"
+GSS_INCLUDE="$BUILD_DIR/gss-include"
+make_gss_include_dir "$GSS_INCLUDE"
 
 build_slice() {
     local ARCH=$1
@@ -69,7 +72,10 @@ build_slice() {
         -DOPENSSL_INCLUDE_DIR="$OPENSSL_ROOT/include" \
         -DWITH_UNIT_TESTS=OFF \
         -DWITH_CURL=OFF \
-        -DCLIENT_PLUGIN_AUTH_GSSAPI_CLIENT=OFF \
+        -DCLIENT_PLUGIN_AUTH_GSSAPI_CLIENT=STATIC \
+        -DGSSAPI_LIBS="-framework GSS" \
+        -DGSSAPI_FLAVOR=HEIMDAL \
+        -DGSSAPI_INCS="$GSS_INCLUDE" \
         -DCLIENT_PLUGIN_DIALOG=STATIC \
         -DCLIENT_PLUGIN_MYSQL_CLEAR_PASSWORD=STATIC \
         -DCLIENT_PLUGIN_CACHING_SHA2_PASSWORD=STATIC \
@@ -102,9 +108,18 @@ if [ "$(nm "$LIBS_DIR/libmariadb_arm64.a" 2>/dev/null | grep -c "clear_password_
     exit 1
 fi
 echo "   OK: mysql_clear_password_client_plugin present"
+
+# FindGSSAPI.cmake skips the plugin without a word when it finds no GSSAPI.
+for slice in arm64 x86_64; do
+    if ! nm "$LIBS_DIR/libmariadb_$slice.a" 2>/dev/null | grep ' [DS] _auth_gssapi_client_client_plugin$' > /dev/null; then
+        echo "ERROR: auth_gssapi_client_client_plugin is missing from libmariadb_$slice.a" >&2
+        exit 1
+    fi
+done
+echo "   OK: auth_gssapi_client_client_plugin present"
 lipo -info "$LIBS_DIR/libmariadb_universal.a"
 
 echo ""
-echo "Done. Libs/libmariadb*.a rebuilt with the cleartext plugin."
-echo "Next: rebuild the app and test MySQL IAM. When confirmed working, publish the libs:"
+echo "Done. Libs/libmariadb*.a rebuilt with the cleartext and GSSAPI plugins."
+echo "Next: rebuild the app and test MySQL IAM and MariaDB Kerberos. When confirmed working, publish the libs:"
 echo "  scripts/publish-libs.sh libmariadb_arm64.a libmariadb_x86_64.a libmariadb_universal.a libmariadb.a"

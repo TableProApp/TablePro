@@ -13,6 +13,11 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
     private let columns: [String]
     private let columnTypeNames: [String]
     private let rows: [[PluginCellValue]]
+    // Row index to the row, for rows holding values the page left on the server.
+    private let unloadedRows: [Int: Row]
+    private let fillUnloaded: UnloadedValueFill?
+
+    private static let filledChunkSize = 50
 
     /// How this engine quotes an identifier and escapes a literal, resolved once from the driver
     /// when there is one and from the engine's declared dialect when there is not. There is no
@@ -27,6 +32,8 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         columns: [String],
         columnTypeNames: [String],
         rows: [[PluginCellValue]],
+        unloadedRows: [Int: Row] = [:],
+        fillUnloaded: UnloadedValueFill? = nil,
         databaseTypeId: String,
         quoteIdentifier: @escaping (String) -> String,
         escapeStringLiteral: @escaping (String) -> String
@@ -35,16 +42,29 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         self.columns = columns
         self.columnTypeNames = columnTypeNames
         self.rows = rows
+        self.unloadedRows = unloadedRows
+        self.fillUnloaded = fillUnloaded
         self.quoteIdentifierFn = quoteIdentifier
         self.escapeStringFn = escapeStringLiteral
     }
 
-    convenience init(tableRows: TableRows, databaseType: DatabaseType, driver: DatabaseDriver?) {
+    convenience init(
+        tableRows: TableRows,
+        databaseType: DatabaseType,
+        driver: DatabaseDriver?,
+        fillUnloaded: UnloadedValueFill? = nil
+    ) {
         let quoting = Self.quoting(for: databaseType, driver: driver)
+        var unloadedRows: [Int: Row] = [:]
+        for (index, row) in tableRows.rows.enumerated() where row.hasUnloadedValues {
+            unloadedRows[index] = row
+        }
         self.init(
             columns: tableRows.columns,
             columnTypeNames: Self.columnTypeNames(of: tableRows),
             rows: tableRows.rows.map { Array($0.values) },
+            unloadedRows: unloadedRows,
+            fillUnloaded: fillUnloaded,
             databaseTypeId: databaseType.rawValue,
             quoteIdentifier: quoting.quoteIdentifier,
             escapeStringLiteral: quoting.escapeStringLiteral
@@ -91,6 +111,15 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         let columns = self.columns
         let columnTypeNames = self.columnTypeNames
         let snapshot = self.rows
+        if !unloadedRows.isEmpty {
+            guard let fillUnloaded else {
+                return AsyncThrowingStream { $0.finish(throwing: UnloadedValueError.rowsNotFound) }
+            }
+            return Self.streamFilling(
+                snapshot, unloadedRows: unloadedRows, fill: fillUnloaded,
+                header: PluginStreamHeader(columns: columns, columnTypeNames: columnTypeNames, estimatedRowCount: snapshot.count)
+            )
+        }
         return AsyncThrowingStream { continuation in
             continuation.yield(.header(PluginStreamHeader(
                 columns: columns,
@@ -102,6 +131,46 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
             }
             continuation.finish()
         }
+    }
+
+    // Pulled a chunk at a time, so a chunk is read only once the exporter has written the one before.
+    private static func streamFilling(
+        _ snapshot: [[PluginCellValue]],
+        unloadedRows: [Int: Row],
+        fill: @escaping UnloadedValueFill,
+        header: PluginStreamHeader
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let cursor = ExportChunkCursor()
+        return AsyncThrowingStream(unfolding: {
+            switch cursor.next(total: snapshot.count, chunkSize: filledChunkSize) {
+            case nil:
+                return nil
+            case .header:
+                return .header(header)
+            case .rows(let range):
+                return try await filledChunk(range, of: snapshot, unloadedRows: unloadedRows, fill: fill)
+            }
+        })
+    }
+
+    private static func filledChunk(
+        _ range: Range<Int>,
+        of snapshot: [[PluginCellValue]],
+        unloadedRows: [Int: Row],
+        fill: UnloadedValueFill
+    ) async throws -> PluginStreamElement {
+        var chunk = Array(snapshot[range])
+        let pending = range.compactMap { unloadedRows[$0] }
+        guard !pending.isEmpty else { return .rows(chunk) }
+        let filled = try await fill(pending)
+        for index in range {
+            guard let row = unloadedRows[index] else { continue }
+            for column in row.unloadedColumns.keys {
+                guard let value = filled[row.id]?[column] else { throw UnloadedValueError.rowsNotFound }
+                chunk[index - range.lowerBound][column] = value
+            }
+        }
+        return .rows(chunk)
     }
 
     func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? {
@@ -130,5 +199,30 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
 
     func fetchDependentTypes(table: String, databaseName: String) async throws -> [PluginEnumTypeInfo] {
         []
+    }
+}
+
+// Hands out the header first, then one row range per pull.
+private final class ExportChunkCursor: @unchecked Sendable {
+    enum Pull {
+        case header
+        case rows(Range<Int>)
+    }
+
+    private let lock = NSLock()
+    private var sentHeader = false
+    private var start = 0
+
+    func next(total: Int, chunkSize: Int) -> Pull? {
+        lock.withLock {
+            guard sentHeader else {
+                sentHeader = true
+                return .header
+            }
+            guard start < total else { return nil }
+            let range = start..<min(start + chunkSize, total)
+            start = range.upperBound
+            return .rows(range)
+        }
     }
 }

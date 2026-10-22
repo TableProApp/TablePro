@@ -197,7 +197,10 @@ internal struct FavoriteEditDialog: View {
             Text("Query")
         } footer: {
             Text(String(
-                format: String(localized: "Type %@ in the query to set where the cursor lands after keyword expansion."),
+                format: String(
+                    localized: "After keyword expansion, Tab moves through fields such as %1$@, and %2$@ marks where the cursor ends up."
+                ),
+                "${1:name}",
                 SQLSnippetMarker.token
             ))
             .font(.caption)

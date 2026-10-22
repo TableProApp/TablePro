@@ -9,6 +9,7 @@ import Combine
 import Foundation
 import SwiftUI
 import TableProPluginKit
+import TableProSQLGrammar
 
 extension TableStructureView {
     /// Whether a column may be dragged right now, and the reason shown on the row number when not.
@@ -21,7 +22,7 @@ extension TableStructureView {
             engineName: connection.type.displayName,
             isColumnsTab: selectedTab == .columns,
             kindRefusal: editGate.kindRefusal(.reorderColumns),
-            canEditSchema: connection.type.supportsSchemaEditing,
+            canEditSchema: editGate.canEditSchema,
             hasStagedChanges: structureChangeManager.hasChanges,
             isRearranged: !searchText.isEmpty || structureSortDescriptor != nil
         )

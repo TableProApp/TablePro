@@ -71,9 +71,17 @@ final class LibPQDriverCore: @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        let server = try Self.serverEndpoint(for: config)
+        let timeout = LibPQConnectTimeout(additionalFields: config.additionalFields)
+        let started = ContinuousClock.now
+        let kerberos = try await LibPQKerberosSignIn.resolve(
+            additionalFields: config.additionalFields,
+            timeoutMilliseconds: timeout.milliseconds
+        )
+        let elapsedMilliseconds = Int(started.duration(to: .now) / .milliseconds(1))
         let pqConn = LibPQPluginConnection(
-            host: config.host,
-            port: config.port,
+            host: server.host,
+            port: server.port,
             user: config.username,
             password: config.password.isEmpty ? nil : config.password,
             database: config.database,
@@ -83,7 +91,8 @@ final class LibPQDriverCore: @unchecked Sendable {
                 forPurpose: config.additionalFields["connectionPurpose"]
             ),
             suppressServerSideCancel: singleConnectionMode,
-            connectTimeout: LibPQConnectTimeout(additionalFields: config.additionalFields)
+            connectTimeout: LibPQConnectTimeout(milliseconds: timeout.milliseconds - elapsedMilliseconds),
+            kerberos: kerberos
         )
 
         do {
@@ -142,6 +151,17 @@ final class LibPQDriverCore: @unchecked Sendable {
     private func probeSchema(_ pqConn: LibPQPluginConnection, query: String) async -> PostgreSQLSchemaProbe {
         let result = try? await pqConn.executeQuery(query)
         return PostgreSQLSchemaQueries.probe(rows: result?.rows)
+    }
+
+    static func serverEndpoint(for config: DriverConnectionConfig) throws -> (host: String, port: Int) {
+        guard let path = PostgreSQLLocalSocket.path(in: config.additionalFields) else {
+            return (config.host, config.port)
+        }
+        let socket = PostgreSQLLocalSocket.endpoint(path: path, port: config.port)
+        if let issue = PostgreSQLLocalSocket.issue(for: socket) {
+            throw LibPQPluginError(message: issue.message, sqlState: nil, detail: nil)
+        }
+        return (socket.directory, socket.port)
     }
 
     func applySchema(_ schema: String) async throws {

@@ -279,6 +279,26 @@ struct ConnectionURLFormatterTests {
         #expect(!url.contains("sslmode"))
     }
 
+    @Test("A Trino or Presto URL writes the schema after the catalog and imports back to both", arguments: [
+        DatabaseType.trino, .presto,
+    ])
+    func catalogAndSchemaRoundTrip(type: DatabaseType) throws {
+        var connection = DatabaseConnection(
+            name: "", host: "coordinator.example.com", port: 8_080, database: "hive", username: "analyst", type: type
+        )
+        connection.additionalFields["trinoSchema"] = "web"
+        let url = ConnectionURLFormatter.format(connection, password: nil, sshPassword: nil)
+        #expect(url.hasPrefix("\(type == .trino ? "trino" : "presto")://analyst@coordinator.example.com/hive/web"))
+
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse")
+            return
+        }
+        #expect(parsed.type == type)
+        #expect(parsed.database == "hive")
+        #expect(parsed.additionalFields["trinoSchema"] == "web")
+    }
+
     @Test("SSL disabled is written out where the driver would otherwise pick another mode")
     func testSSLDisabledWrittenWhereNotTheDefault() {
         let postgres = DatabaseConnection(
@@ -612,6 +632,95 @@ struct ConnectionURLFormatterTests {
         #expect(url.contains("host1:27017,host2:27018,host3:27019"))
     }
 
+    @Test("An SRV connection copies as a mongodb+srv URL with no port, and opens as SRV again")
+    func mongoSrvRoundTrips() throws {
+        let conn = DatabaseConnection(
+            name: "", host: "cluster0.example.com", port: 27_017, database: "app",
+            username: "user", type: .mongodb, mongoUseSrv: true
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
+        #expect(url == "mongodb+srv://user:pass@cluster0.example.com/app")
+
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse")
+            return
+        }
+        #expect(TransientConnectionFactory.build(from: parsed).mongoUseSrv)
+    }
+
+    @Test("A copied MongoDB URL keeps every option, encoded, and an opened one maps the UUID encoding to its field")
+    func mongoOptionsRoundTrip() throws {
+        let conn = DatabaseConnection(
+            name: "", host: "host", port: 27_017, database: "app", username: "user", type: .mongodb,
+            additionalFields: [
+                "mongoAuthSource": "$external", "mongoReadPreference": "nearest", "mongoWriteConcern": "majority",
+                "mongoReplicaSet": "rs0", "mongoParam_appName": "My App+1;x", "mongoParam_REPLICASET": "other",
+                "mongoUuidRepresentation": "javaLegacy"
+            ]
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
+        #expect(url.contains("authSource=%24external"))
+        #expect(url.contains("readPreference=nearest"))
+        #expect(url.contains("w=majority"))
+        #expect(url.contains("appName=My%20App%2B1%3Bx"))
+        #expect(url.contains("replicaSet=rs0"))
+        #expect(!url.contains("REPLICASET"))
+        #expect(!url.contains("mongoUseSrv"))
+
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse")
+            return
+        }
+        let opened = TransientConnectionFactory.build(from: parsed)
+        #expect(opened.mongoAuthSource == "$external")
+        #expect(opened.additionalFields["mongoParam_appName"] == "My App+1;x")
+        #expect(opened.additionalFields["mongoUuidRepresentation"] == "javaLegacy")
+        #expect(opened.additionalFields["mongoParam_uuidRepresentation"] == nil)
+    }
+
+    @Test("A copied MongoDB URL leaves out a typed parameter the driver ignores beside a field")
+    func mongoIgnoredParametersAreNotCopied() {
+        let conn = DatabaseConnection(
+            name: "", host: "host", port: 27_017, database: "app", username: "user", type: .mongodb,
+            sslConfig: SSLConfiguration(mode: .verifyIdentity),
+            additionalFields: [
+                "mongoParam_AUTHSource": "other", "mongoParam_tls": "false", "mongoParam_sslAllowInvalidCertificates": "true",
+                "mongoParam_tlsInsecure": "true", "mongoParam_uuidRepresentation": "javaLegacy", "mongoParam_appName": "x"
+            ]
+        )
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        for ignored in ["AUTHSource", "tls=", "sslAllowInvalidCertificates", "tlsInsecure", "uuidRepresentation"] {
+            #expect(!url.contains(ignored), "\(url)")
+        }
+        #expect(url.contains("appName=x"))
+    }
+
+    @Test("A connection name with a plus copies and opens as itself")
+    func nameWithPlusRoundTrips() {
+        let conn = DatabaseConnection(
+            name: "C++ Shop & Co", host: "host", port: 5_432, database: "app", username: "user", type: .postgresql
+        )
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse")
+            return
+        }
+        #expect(parsed.connectionName == "C++ Shop & Co")
+    }
+
+    @Test("An SSH URL's MongoDB options are decoded once, as a standard URL's are")
+    func mongoSSHURLDecodesOptions() throws {
+        let url = "mongodb+ssh://me@bastion.example.com/u:p@10.0.0.5:27017/app"
+            + "?authSource=%24external&authMechanism=MONGODB-X509&appName=a%26b"
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse")
+            return
+        }
+        #expect(parsed.authSource == "$external")
+        #expect(parsed.mongoQueryParams["authMechanism"] == "MONGODB-X509")
+        #expect(parsed.mongoQueryParams["appName"] == "a&b")
+    }
+
     // MARK: - DuckDB
 
     @Test("DuckDB local mode formats a file URL from the file path field")
@@ -722,8 +831,8 @@ struct ConnectionURLFormatterTests {
 
     @Test("A socket field on an engine without a socket mode is not written")
     func socketOnOtherEngineIsNotWritten() {
-        let connection = socketConnection("/tmp/mysql.sock", type: .postgresql, host: "db.example.com", port: 5_432)
+        let connection = socketConnection("/tmp/mysql.sock", type: .redshift, host: "db.example.com", port: 5_439)
         let url = ConnectionURLFormatter.format(connection, password: nil, sshPassword: nil)
-        #expect(url == "postgresql://root@db.example.com/local")
+        #expect(url == "redshift://root@db.example.com/local")
     }
 }

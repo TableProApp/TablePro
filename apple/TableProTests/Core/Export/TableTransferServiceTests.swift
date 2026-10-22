@@ -27,6 +27,11 @@ private final class TransferStubDriver: PluginDriverStub, @unchecked Sendable {
         executedQueries.filter { $0.uppercased().hasPrefix("INSERT") }
     }
 
+    // Every destination here is MySQL, whose driver quotes with backticks.
+    func quoteIdentifier(_ name: String) -> String {
+        "`\(name.replacingOccurrences(of: "`", with: "``"))`"
+    }
+
     func defaultExportQuery(table: String, schema: String?) -> String? {
         "SELECT * FROM \(table)"
     }

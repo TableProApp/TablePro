@@ -5,7 +5,7 @@ import Foundation
 /// Gathered here rather than spelled at each throw site because the same wording has to reach the
 /// result pane, the diagnostics gutter and the log, and because a message built by interpolating
 /// into `String(localized:)` produces a key that never matches the catalog.
-enum MongoScriptText {
+nonisolated enum MongoScriptText {
     static func invalidDocument(_ text: String) -> String {
         String(format: String(localized: "This is not a document MongoDB can read: %@"), text)
     }

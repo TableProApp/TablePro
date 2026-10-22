@@ -114,7 +114,7 @@ pub(crate) fn build_column_view(
         column_view.append_column(&col);
         releases.push(ColumnRelease {
             column: col.downgrade(),
-            width_saver,
+            width_saver: Some(width_saver),
         });
         columns.push(col);
     }
@@ -216,7 +216,7 @@ struct ColumnInit<'a> {
     attributes: Rc<GridAttributes>,
 }
 
-fn build_column(init: ColumnInit<'_>) -> (gtk::ColumnViewColumn, Option<glib::SignalHandlerId>) {
+fn build_column(init: ColumnInit<'_>) -> (gtk::ColumnViewColumn, glib::SignalHandlerId) {
     let ColumnInit {
         info,
         idx,
@@ -353,31 +353,35 @@ fn bind_rows_to_cells(factory: &gtk::SignalListItemFactory) {
     });
 }
 
-/// The width the tab saved for the column, or `default_min_width`, and
-/// every later drag saved back.
 fn size_column(
     column: &gtk::ColumnViewColumn,
     name: &str,
     tab_ctx: &TabGridContext,
     default_min_width: Option<i32>,
-) -> Option<glib::SignalHandlerId> {
-    if let Some(widths) = tab_ctx.column_widths.clone() {
-        if let Some(saved) = widths.width(name) {
-            column.set_fixed_width(saved);
-        } else if let Some(min) = default_min_width {
-            column.set_fixed_width(min);
-        }
-        let column_name = name.to_owned();
-        Some(column.connect_fixed_width_notify(move |column| {
-            widths.record(&column_name, column.fixed_width());
-        }))
-    } else {
-        if let Some(min) = default_min_width {
-            // Editor results remember no widths, but can be just as wide.
-            column.set_fixed_width(min);
-        }
-        None
+) -> glib::SignalHandlerId {
+    let widths = tab_ctx.column_widths.clone();
+    if let Some(saved) = widths.as_ref().and_then(|widths| widths.width(name)) {
+        column.set_expand(false);
+        column.set_fixed_width(saved);
+    } else if let Some(min) = default_min_width {
+        // Set before the handler, so the floor keeps expanding.
+        column.set_fixed_width(min);
     }
+    let column_name = name.to_owned();
+    // An expanding column draws wider than its fixed width, so a width
+    // the user gives turns expand off, as GtkTreeView does. A header drag
+    // sets only the fixed width, and a double click on its handle clears it.
+    column.connect_fixed_width_notify(move |column| {
+        let width = column.fixed_width();
+        column.set_expand(width < 0);
+        if let Some(widths) = &widths {
+            if width < 0 {
+                widths.forget(&column_name);
+            } else {
+                widths.record(&column_name, width);
+            }
+        }
+    })
 }
 
 /// Every cell but a check box draws its value in an Inscription, which
@@ -1080,5 +1084,96 @@ mod tests {
         }
         assert!(column_takes_edits(&col("text", false), &identity, false));
         assert!(column_takes_edits(&col("integer", false), &identity, false));
+    }
+
+    mod widths {
+        use super::*;
+        use crate::ui::grid::column_resize::tests::{laid_out, shown_width};
+        use crate::ui::grid::column_resize::{ColumnResize, resize_column};
+        use crate::ui::grid::test_grid::{two_text_columns, two_text_values};
+
+        // The test window leaves the two columns room to spare, which an
+        // expanding column would take a share of.
+        fn reopened(widths: &ColumnWidthBinding) -> Grid {
+            laid_out(Grid::open_with_widths(
+                two_text_columns(),
+                two_text_values(),
+                widths.clone(),
+            ))
+        }
+
+        #[gtk4::test]
+        fn a_width_set_from_the_keyboard_comes_back_at_that_width() {
+            let runtime = crate::test_support::test_runtime();
+            let root = tempfile::tempdir().expect("tempdir");
+            let widths = width_binding(&runtime.tasks(), &root);
+            let first = reopened(&widths);
+            resize_column(&first.view, &first.cell_of(1, 1), ColumnResize::Wider);
+            let saved = widths.width("name").expect("the step's width saved");
+            drop(first);
+
+            let grid = reopened(&widths);
+
+            assert_eq!(grid.column(1).fixed_width(), saved);
+            assert!(!grid.column(1).expands(), "the column came back expanding");
+            wait_until(WAIT, || shown_width(&grid, 1) == saved).expect("the column drawn at its saved width");
+        }
+
+        // GtkColumnView's header drag sets the fixed width and nothing
+        // else, as this does.
+        #[gtk4::test]
+        fn a_header_drag_width_is_the_width_drawn_and_saved() {
+            let runtime = crate::test_support::test_runtime();
+            let root = tempfile::tempdir().expect("tempdir");
+            let widths = width_binding(&runtime.tasks(), &root);
+            let grid = reopened(&widths);
+
+            grid.column(1).set_fixed_width(200);
+
+            assert!(!grid.column(1).expands(), "the dragged column still expands");
+            assert_eq!(widths.width("name"), Some(200));
+            wait_until(WAIT, || shown_width(&grid, 1) == 200).expect("the column drawn at the dragged width");
+        }
+
+        #[gtk4::test]
+        fn a_header_drag_in_editor_results_is_the_width_drawn() {
+            let grid = laid_out(two_text_rows());
+
+            grid.column(1).set_fixed_width(200);
+
+            assert!(!grid.column(1).expands(), "the dragged column still expands");
+            wait_until(WAIT, || shown_width(&grid, 1) == 200).expect("the column drawn at the dragged width");
+        }
+
+        // A double click on the resize handle starts a drag with its first
+        // press, which saves a width, then clears it.
+        #[gtk4::test]
+        fn a_cleared_width_expands_again_and_is_forgotten() {
+            let runtime = crate::test_support::test_runtime();
+            let root = tempfile::tempdir().expect("tempdir");
+            let widths = width_binding(&runtime.tasks(), &root);
+            let grid = reopened(&widths);
+
+            grid.column(1).set_fixed_width(200);
+            grid.column(1).set_fixed_width(-1);
+
+            assert!(grid.column(1).expands(), "the column stayed at its natural width");
+            assert_eq!(widths.width("name"), None);
+            drop(grid);
+            assert!(reopened(&widths).column(1).expands());
+        }
+
+        #[gtk4::test]
+        fn a_wide_tables_floor_keeps_expanding() {
+            let columns: Vec<_> = (0..9)
+                .map(|index| named(&format!("c{index}"), "text", index == 0))
+                .collect();
+            let row = (0..9).map(|index| Value::Text(format!("v{index}"))).collect();
+
+            let grid = Grid::open(columns, vec![row]);
+
+            assert_eq!(grid.column(1).fixed_width(), super::super::MIN_COLUMN_WIDTH_PX);
+            assert!(grid.column(1).expands(), "the floor turned expand off");
+        }
     }
 }

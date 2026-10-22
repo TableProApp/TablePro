@@ -56,4 +56,49 @@ struct ConnectionListRowModelTests {
         #expect(row.title == "db.acme.io")
         #expect(!row.accessibilityLabel.contains("·"))
     }
+
+    @Test("A row whose session holds a transaction says so after Favorite, since its mark is not read on its own")
+    func transactionIsSpokenAfterFavorite() {
+        let connection = DatabaseConnection(name: "Prod", type: .postgresql, isFavorite: true)
+
+        let holding = ConnectionListRowModel(
+            connection: connection,
+            section: .connections,
+            tags: [],
+            groups: [],
+            holdsTransaction: true
+        )
+        let idle = ConnectionListRowModel(connection: connection, section: .connections, tags: [], groups: [])
+
+        #expect(holding.holdsTransaction)
+        #expect(holding.accessibilityLabel.hasSuffix(
+            [String(localized: "Favorite"), String(localized: "Transaction open")].joined(separator: ", ")
+        ))
+        #expect(!idle.holdsTransaction)
+        #expect(!idle.accessibilityLabel.contains(String(localized: "Transaction open")))
+    }
+
+    @Test("A row that opens only on a Mac is marked, and VoiceOver names the engine and the reason")
+    func macOnlyRowIsMarked() {
+        let cassandra = DatabaseConnection(name: "Events", type: .cassandra, host: "db.acme.io")
+        let socket = DatabaseConnection(
+            name: "Local",
+            type: .mysql,
+            host: "localhost",
+            additionalFields: [MySQLLocalSocket.fieldKey: "/tmp/mysql.sock"]
+        )
+        let postgres = DatabaseConnection(name: "Prod", type: .postgresql, host: "db.acme.io")
+
+        let cassandraRow = ConnectionListRowModel(connection: cassandra, section: .connections, tags: [], groups: [])
+        let socketRow = ConnectionListRowModel(connection: socket, section: .favorites, tags: [], groups: [])
+        let postgresRow = ConnectionListRowModel(connection: postgres, section: .connections, tags: [], groups: [])
+
+        #expect(cassandraRow.isMacOnly)
+        #expect(socketRow.isMacOnly)
+        #expect(postgresRow.isMacOnly == false)
+        #expect(cassandraRow.accessibilityLabel.contains("Cassandra"))
+        #expect(cassandraRow.accessibilityLabel.contains(MacOnlyConnection.status))
+        #expect(socketRow.accessibilityLabel.contains(MacOnlyConnection.status))
+        #expect(postgresRow.accessibilityLabel.contains(MacOnlyConnection.status) == false)
+    }
 }

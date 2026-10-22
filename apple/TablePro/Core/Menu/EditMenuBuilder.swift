@@ -124,6 +124,13 @@ enum EditMenuBuilder {
     private static func copySpecialSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {
         MenuItemFactory.submenu(String(localized: "Copy Special"), items: [
             MenuItemFactory.item(
+                String(localized: "Copy Cell Value"),
+                action: #selector(GridCopyCommandResponding.copyCellValue(_:)),
+                shortcut: .copyCellValue,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
                 String(localized: "Copy Rows"),
                 action: #selector(MainSplitViewController.copySelectedRows(_:)),
                 shortcut: .copyRowsExplicit,
@@ -139,6 +146,43 @@ enum EditMenuBuilder {
                 String(localized: "Copy as JSON"),
                 action: #selector(MainSplitViewController.copyRowsAsJson(_:)),
                 shortcut: .copyAsJson,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Copy as CSV"),
+                action: #selector(GridCopyCommandResponding.copyRowsAsCsv(_:)),
+                shortcut: .copyAsCsv,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Copy as CSV with Headers"),
+                action: #selector(GridCopyCommandResponding.copyRowsAsCsvWithHeaders(_:)),
+                shortcut: .copyAsCsvWithHeaders,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Copy as Markdown"),
+                action: #selector(GridCopyCommandResponding.copyRowsAsMarkdown(_:)),
+                shortcut: .copyAsMarkdown,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Copy as IN Clause"),
+                action: #selector(GridCopyCommandResponding.copyRowsAsInClause(_:)),
+                shortcut: .copyAsInClause,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Copy as INSERT Statements"),
+                action: #selector(GridCopyCommandResponding.copyRowsAsInsertStatements(_:)),
+                shortcut: .copyAsInsert,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Copy as UPDATE Statements"),
+                action: #selector(GridCopyCommandResponding.copyRowsAsUpdateStatements(_:)),
+                shortcut: .copyAsUpdate,
                 keyboard: keyboard
             )
         ])
@@ -176,6 +220,13 @@ enum EditMenuBuilder {
                 SetValueOptions.title(for: .uuid(.v7)),
                 action: #selector(SetValueCommandResponding.generateUUIDv7(_:)),
                 shortcut: .generateUUIDv7,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Set Cells to Value…"),
+                action: #selector(SetValueCommandResponding.setCellsToValue(_:)),
+                shortcut: .setCellsToValue,
                 keyboard: keyboard
             )
         ])
@@ -270,10 +321,6 @@ enum EditMenuBuilder {
             MenuItemFactory.item(
                 String(localized: "Fill Down"),
                 action: #selector(DataFileSplitViewController.dataFileFillDown(_:))
-            ),
-            MenuItemFactory.item(
-                String(localized: "Set Cells to Value…"),
-                action: #selector(DataFileSplitViewController.dataFileSetCellsToValue(_:))
             ),
             MenuItemFactory.item(
                 String(localized: "Trim Whitespace"),

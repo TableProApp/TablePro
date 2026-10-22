@@ -2,9 +2,8 @@
 
 Each app has its own runbook:
 
-- The macOS app, its registry plugins and the static libraries: [`apple/RELEASING.md`](apple/RELEASING.md), with the `release` skill (`.claude/skills/release/SKILL.md`).
+- The macOS app, its registry plugins, the static libraries and the manual iOS flow: [`apple/RELEASING.md`](apple/RELEASING.md), with the `release` skill (`.claude/skills/release/SKILL.md`).
 - The Linux app: [`linux/docs/releasing.md`](linux/docs/releasing.md).
-- The iOS app ships by hand.
 
 ## Notes
 

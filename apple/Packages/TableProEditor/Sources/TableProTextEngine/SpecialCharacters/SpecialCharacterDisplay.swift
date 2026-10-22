@@ -46,7 +46,11 @@ private extension SpecialCharacterDisplay {
             var index = 0
             while index < text.length {
                 guard marks.count < style.maximumMarksPerLine else { return index }
-                guard let classified = SpecialCharacter.classify(in: text, at: index) else {
+                guard let classified = SpecialCharacter.classify(
+                    in: text,
+                    at: index,
+                    marksLineBreaks: style.marksLineBreaks
+                ) else {
                     index += 1
                     continue
                 }

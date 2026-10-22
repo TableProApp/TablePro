@@ -60,12 +60,14 @@ A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a v
 | [0009](0009-crypto-provider-and-sources.md) | One crypto provider, upstream sources and dependency bans | Accepted; sources and the PostgreSQL and ClickHouse TLS setup superseded by 0016 | aws-lc-rs only; deny.toml enforces sources, licenses, bans and advisory ignores. |
 | [0010](0010-ddl-plans-and-table-definitions.md) | DDL plans against table definitions | Accepted | Each engine plans structure changes through its `DdlDialect` against the table's definition; the UI offers only what the plan accepts. |
 | [0012](0012-window-per-session.md) | One window per connection session, built from gtk-rs subclasses | Accepted | One `TableProApplication` per profile through D-Bus uniqueness; a window holds at most one session and returns to the picker on disconnect; the application, the window and its workspace are subclasses, not Relm4 components. |
-| [0013](0013-openssh-client-transport.md) | SSH through the system OpenSSH client | Accepted | ControlMaster per connection, Unix-socket forwards, prompts through an askpass helper. |
+| [0013](0013-openssh-client-transport.md) | SSH through the system OpenSSH client | Accepted; the forced options amended by 0019 | ControlMaster per connection, Unix-socket forwards, prompts through an askpass helper. |
 | [0014](0014-lossless-values-and-dialects.md) | Lossless values and engine dialects | Accepted | A value reaches the user and goes back without loss; every statement is spelled by the dialect of the connection that runs it. |
 | [0015](0015-gnome-50-platform-floor.md) | GNOME 50 platform floor | Accepted; the runtime row amended by 0018 | GTK 4.22, libadwaita 1.9, GtkSourceView 5.18, GLib 2.88; AdwShortcutsDialog replaces the shortcuts window. |
 | [0016](0016-driver-contract-v2.md) | Driver contract v2 | Accepted | Owned calls with engine stops, phase-aware write outcomes, server-side row limits; PostgreSQL on tokio-postgres; no forks. |
 | [0017](0017-distribution-channels.md) | Distribution channels | Superseded by 0018 | Flathub, a .deb for Ubuntu 26.04 on GitHub Releases built with rustup, and an .rpm for Fedora 44 on COPR, all from `meson install` and one vendor tarball; no AppImage. |
 | [0018](0018-ppa-copr-and-flathub-later.md) | A PPA and COPR first, Flathub later | Accepted | A Launchpad PPA built with `rustc-1.97` and a COPR project built on each release are the primary channels; Flathub follows as a submission a maintainer writes; Rust 1.97 is the MSRV. |
+| [0019](0019-ssh-key-file-identities-only.md) | A chosen SSH key file limits the keys ssh offers | Superseded by 0020 | A key file comes with `IdentitiesOnly=yes`, so the agent's other keys cannot use up `MaxAuthTries` first. |
+| [0020](0020-pin-only-a-key-file-the-agent-lacks.md) | Pin only a key file the agent does not hold | Accepted | `IdentitiesOnly=yes` only for a key file the agent lacks, so an agent-held certificate or encrypted PEM key still signs. |
 
 0011 is not used. It was reserved for the DDL decision, which was recorded as 0010, and docs cite ADRs by number, so the later ones keep theirs.
 

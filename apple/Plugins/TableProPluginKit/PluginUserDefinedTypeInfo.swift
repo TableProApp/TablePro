@@ -31,6 +31,9 @@ public enum PluginUserDefinedTypeKind: String, Codable, Sendable {
     /// SQL Server `CREATE TYPE x EXTERNAL NAME assembly.class`. Its definition lives in a .NET
     /// assembly, so no catalog read can produce its source.
     case clrType
+
+    // Cassandra `CREATE TYPE x (field type, ...)`: a composite's shape, under the name CQL gives it.
+    case udt
 }
 
 public struct PluginUserDefinedTypeField: Codable, Sendable, Hashable {
@@ -56,6 +59,24 @@ public struct PluginEnumLabelPlacement: Codable, Sendable, Hashable {
     public init(anchor: String, placesBefore: Bool) {
         self.anchor = anchor
         self.placesBefore = placesBefore
+    }
+}
+
+/// A domain constraint as the catalog reports it.
+public struct PluginUserDefinedTypeConstraint: Codable, Sendable, Hashable {
+    public let name: String
+
+    /// The engine's own spelling of the whole constraint, `CHECK ((VALUE > 0))` on PostgreSQL,
+    /// without any marker that it has not been validated.
+    public let definition: String
+
+    /// False for a check added without scanning the values already stored.
+    public let isValidated: Bool
+
+    public init(name: String, definition: String, isValidated: Bool = true) {
+        self.name = name
+        self.definition = definition
+        self.isValidated = isValidated
     }
 }
 
@@ -87,6 +108,52 @@ public struct PluginUserDefinedTypeInfo: Codable, Sendable {
 
     public let attributes: [PluginObjectAttribute]
 
+    public let comment: String?
+
+    /// A domain's default expression, as the engine prints it.
+    public let defaultValue: String?
+
+    /// Whether a domain refuses NULL.
+    public let isNotNull: Bool
+
+    /// A domain's check constraints, NOT NULL excluded.
+    public let constraints: [PluginUserDefinedTypeConstraint]
+
+    public init(
+        name: String,
+        kind: PluginUserDefinedTypeKind,
+        schema: String? = nil,
+        identity: String? = nil,
+        enumLabels: [String] = [],
+        fields: [PluginUserDefinedTypeField] = [],
+        baseType: String? = nil,
+        columnTypeSpelling: String? = nil,
+        definition: String? = nil,
+        attributes: [PluginObjectAttribute] = [],
+        comment: String? = nil,
+        defaultValue: String? = nil,
+        isNotNull: Bool = false,
+        constraints: [PluginUserDefinedTypeConstraint] = []
+    ) {
+        self.name = name
+        self.kind = kind
+        self.schema = schema
+        self.identity = identity
+        self.enumLabels = enumLabels
+        self.fields = fields
+        self.baseType = baseType
+        self.columnTypeSpelling = columnTypeSpelling
+        self.definition = definition
+        self.attributes = attributes
+        self.comment = comment
+        self.defaultValue = defaultValue
+        self.isNotNull = isNotNull
+        self.constraints = constraints
+    }
+
+    /// The initializer as it shipped before a type carried its comment and domain details. Its
+    /// mangled symbol is what plugins built against an earlier PluginKit call.
+    @_disfavoredOverload
     public init(
         name: String,
         kind: PluginUserDefinedTypeKind,
@@ -99,16 +166,19 @@ public struct PluginUserDefinedTypeInfo: Codable, Sendable {
         definition: String? = nil,
         attributes: [PluginObjectAttribute] = []
     ) {
-        self.name = name
-        self.kind = kind
-        self.schema = schema
-        self.identity = identity
-        self.enumLabels = enumLabels
-        self.fields = fields
-        self.baseType = baseType
-        self.columnTypeSpelling = columnTypeSpelling
-        self.definition = definition
-        self.attributes = attributes
+        self.init(
+            name: name,
+            kind: kind,
+            schema: schema,
+            identity: identity,
+            enumLabels: enumLabels,
+            fields: fields,
+            baseType: baseType,
+            columnTypeSpelling: columnTypeSpelling,
+            definition: definition,
+            attributes: attributes,
+            comment: nil
+        )
     }
 
     /// Fills in the schema the read was scoped to when the driver did not name one, so a type's
@@ -126,7 +196,11 @@ public struct PluginUserDefinedTypeInfo: Codable, Sendable {
             baseType: baseType,
             columnTypeSpelling: columnTypeSpelling,
             definition: definition,
-            attributes: attributes
+            attributes: attributes,
+            comment: comment,
+            defaultValue: defaultValue,
+            isNotNull: isNotNull,
+            constraints: constraints
         )
     }
 }

@@ -215,9 +215,11 @@ extension PluginManager {
 
     func driverPlugin(for databaseType: DatabaseType) -> (any DriverPlugin)? {
         let typeId = databaseType.pluginTypeId
-        if let driver = driverPlugins[typeId] { return driver }
-        activateDriver(databaseTypeId: typeId)
-        return driverPlugins[typeId]
+        if driverPlugins[typeId] == nil {
+            activateDriver(databaseTypeId: typeId)
+        }
+        // Keyed by the type itself: an installed plugin older than a variant serves only its primary.
+        return driverPlugins[databaseType.rawValue]
     }
 
     func exportPlugin(forFormat formatId: String) -> (any ExportFormatPlugin)? {
@@ -635,9 +637,17 @@ extension PluginManager {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?.schema.rowMatchTextTypePrefixes ?? []
     }
 
+    func binaryLengthFunction(for databaseType: DatabaseType) -> String? {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.binaryLengthFunction
+    }
+
     func supportsPrincipalConnectionLimit(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsPrincipalConnectionLimit ?? true
+    }
+
+    func supportsRoleLogin(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.supportsRoleLogin ?? true
     }
 
     func autoLimitStyle(for databaseType: DatabaseType) -> AutoLimitStyle {
@@ -692,6 +702,14 @@ extension PluginManager {
     ) -> Bool {
         guard connectionMode != .fileBased, supportsDatabaseSwitching else { return false }
         return grouping == .byDatabase || grouping == .bySchema
+    }
+
+    /// A file engine that attaches more files lists each as a schema of the one connection, the word
+    /// SQLite's own grammar uses for `auth` in `auth.users`, since there is no container to switch to.
+    /// DuckDB declares the same list but browses its attachments as databases.
+    func listsAttachedDatabases(for databaseType: DatabaseType) -> Bool {
+        guard databaseGroupingStrategy(for: databaseType) == .flat else { return false }
+        return additionalConnectionFields(for: databaseType).contains { $0.content == .attachedDatabases }
     }
 
     func defaultGroupName(for databaseType: DatabaseType) -> String {

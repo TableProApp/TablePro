@@ -22,7 +22,8 @@ extension MainContentCommandActions {
     }
 
     var canEditViewDefinition: Bool {
-        selectedObject?.type == .view
+        guard let ref = selectedObjectRef, ref.table.type == .view, let coordinator else { return false }
+        return !ref.isInAttachedDatabase(of: coordinator.connection.type)
     }
 
     func editViewDefinition() {
@@ -76,6 +77,32 @@ extension MainContentCommandActions {
         coordinator?.editComment(of: ref)
     }
 
+    var canSetSequenceNextValue: Bool {
+        DatabaseObjectToolEligibility.canSetSequenceValue(
+            selectedObject?.type,
+            support: objectToolSupport,
+            isReadOnly: isReadOnly
+        )
+    }
+
+    func setSequenceNextValue() {
+        guard let ref = selectedObjectRef, canSetSequenceNextValue else { return }
+        coordinator?.setSequenceNextValue(of: ref)
+    }
+
+    var canEditSequence: Bool {
+        DatabaseObjectToolEligibility.canEditSequence(
+            selectedObject?.type,
+            support: objectToolSupport,
+            isReadOnly: isReadOnly
+        )
+    }
+
+    func editSequence() {
+        guard let ref = selectedObjectRef, canEditSequence else { return }
+        coordinator?.editSequence(ref)
+    }
+
     private var objectToolSupport: DatabaseObjectToolEligibility.Support {
         guard let connectionId = coordinator?.connectionId else { return .none }
         return .of(DatabaseManager.shared.driver(for: connectionId))
@@ -119,6 +146,11 @@ extension MainContentCommandActions {
         )
     }
 
+    var canCreateSequence: Bool {
+        guard isConnected, !isReadOnly, let coordinator else { return false }
+        return DatabaseManager.shared.driver(for: coordinator.connection.id)?.createSequenceTemplate() != nil
+    }
+
     var canCreateSchema: Bool {
         guard isConnected, let coordinator else { return false }
         return SchemaEditEligibility.canCreate(context: coordinator.schemaEditContext)
@@ -154,6 +186,14 @@ extension MainContentCommandActions {
 
     func duplicateCurrentDatabase() {
         coordinator?.openCopyObjects(mode: .duplicateDatabase, database: nil, schema: nil, preselection: .wholeScope)
+    }
+
+    var canSearchDatabase: Bool {
+        isConnected && coordinator?.canSearchDatabase == true
+    }
+
+    func searchDatabase() {
+        coordinator?.openDatabaseSearch(database: nil, schema: nil)
     }
 }
 

@@ -6,24 +6,26 @@
 import Foundation
 import os
 
-/// Declares where a connection's password comes from when it is not stored in the Keychain.
-/// Resolved at connect time from a file, an environment variable, or the stdout of a shell command.
 enum PasswordSource: Codable, Hashable, Sendable {
     case file(path: String)
     case env(variable: String)
-    case command(shell: String)
+    case command(shell: String, reuseSeconds: Int? = nil)
     case onePassword(reference: String)
     case vault(path: String, field: String)
     case awsSecretsManager(secretId: String, jsonKey: String?)
+    // Signs in with the username and password of a fresh lease, so it answers for both.
+    case vaultDatabaseRole(VaultDatabaseRole)
+
+    static let reuseSecondsRange = 1 ... 86_400
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "PasswordSource")
 
     private enum CodingKeys: String, CodingKey {
-        case kind, path, variable, shell, reference, field, secretId, jsonKey
+        case kind, path, variable, shell, reuseSeconds, reference, field, secretId, jsonKey
     }
 
     private enum Kind: String {
-        case file, env, command, onePassword, vault, awsSecretsManager
+        case file, env, command, onePassword, vault, awsSecretsManager, vaultDatabaseRole
     }
 
     init(from decoder: Decoder) throws {
@@ -35,7 +37,10 @@ enum PasswordSource: Codable, Hashable, Sendable {
         case Kind.env.rawValue:
             self = .env(variable: try container.decode(String.self, forKey: .variable))
         case Kind.command.rawValue:
-            self = .command(shell: try container.decode(String.self, forKey: .shell))
+            self = .command(
+                shell: try container.decode(String.self, forKey: .shell),
+                reuseSeconds: Self.validReuseSeconds(try? container.decodeIfPresent(Int.self, forKey: .reuseSeconds))
+            )
         case Kind.onePassword.rawValue:
             self = .onePassword(reference: try container.decode(String.self, forKey: .reference))
         case Kind.vault.rawValue:
@@ -48,6 +53,8 @@ enum PasswordSource: Codable, Hashable, Sendable {
                 secretId: try container.decode(String.self, forKey: .secretId),
                 jsonKey: try container.decodeIfPresent(String.self, forKey: .jsonKey)
             )
+        case Kind.vaultDatabaseRole.rawValue:
+            self = .vaultDatabaseRole(try VaultDatabaseRole(from: decoder))
         default:
             throw DecodingError.dataCorruptedError(
                 forKey: .kind,
@@ -66,9 +73,10 @@ enum PasswordSource: Codable, Hashable, Sendable {
         case let .env(variable):
             try container.encode(Kind.env.rawValue, forKey: .kind)
             try container.encode(variable, forKey: .variable)
-        case let .command(shell):
+        case let .command(shell, reuseSeconds):
             try container.encode(Kind.command.rawValue, forKey: .kind)
             try container.encode(shell, forKey: .shell)
+            try container.encodeIfPresent(Self.validReuseSeconds(reuseSeconds), forKey: .reuseSeconds)
         case let .onePassword(reference):
             try container.encode(Kind.onePassword.rawValue, forKey: .kind)
             try container.encode(reference, forKey: .reference)
@@ -80,7 +88,24 @@ enum PasswordSource: Codable, Hashable, Sendable {
             try container.encode(Kind.awsSecretsManager.rawValue, forKey: .kind)
             try container.encode(secretId, forKey: .secretId)
             try container.encodeIfPresent(jsonKey, forKey: .jsonKey)
+        case let .vaultDatabaseRole(role):
+            try container.encode(Kind.vaultDatabaseRole.rawValue, forKey: .kind)
+            try role.encode(to: encoder)
         }
+    }
+
+    var vaultDatabaseRole: VaultDatabaseRole? {
+        guard case .vaultDatabaseRole(let role) = self else { return nil }
+        return role
+    }
+
+    static func validReuseSeconds(_ value: Int?) -> Int? {
+        value.flatMap { reuseSecondsRange.contains($0) ? $0 : nil }
+    }
+
+    var withoutReuse: PasswordSource {
+        guard case .command(let shell, _) = self else { return self }
+        return .command(shell: shell)
     }
 
     /// Decodes a password source from a connection container, treating a present-but-malformed

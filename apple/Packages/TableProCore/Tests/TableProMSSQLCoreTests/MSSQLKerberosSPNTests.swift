@@ -37,4 +37,10 @@ struct MSSQLKerberosSPNTests {
                 == "MSSQLSvc/sql.example.com:14330@R.COM"
         )
     }
+
+    @Test("Behind a tunnel the server's own host is named without a realm")
+    func unrealmedNamesTheServerHost() {
+        #expect(MSSQLKerberosSPN.unrealmed(host: " sql.example.com ", port: 1_433) == "MSSQLSvc/sql.example.com:1433")
+        #expect(MSSQLKerberosSPN.unrealmed(host: "  ", port: 1_433) == nil)
+    }
 }

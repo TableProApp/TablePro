@@ -22,9 +22,13 @@ enum NativeDumpPasswordExposure {
         window: NSWindow?
     ) async -> Bool {
         guard let descriptor = NativeDumpRegistry.descriptor(for: connection.type, formatId: formatId),
-              descriptor.exposesPasswordInArguments,
-              !connection.username.isEmpty
+              descriptor.exposesPasswordInArguments
         else { return true }
+        // Resolving a Vault role to look would create a database user just to answer; it always has a password.
+        if ConnectionCredentialResolver.signsInWithLease(connection) {
+            return await ask(window: window)
+        }
+        guard !connection.username.isEmpty else { return true }
 
         /// Asked the way the transfer itself asks. A keychain read alone answered "no password" for
         /// a connection whose password comes from a `PasswordSource` or `~/.pgpass`, so the warning

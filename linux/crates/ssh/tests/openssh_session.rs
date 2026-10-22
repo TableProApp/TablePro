@@ -137,6 +137,7 @@ async fn connect_with(
     match config(fixture, auth) {
         Ok(config) => SshSession::connect(&config, &fixture.services, liveness, interaction, cancel).await,
         Err(error) => Err(SshFailure::Protocol {
+            status: None,
             detail: error.to_string(),
         }
         .into()),

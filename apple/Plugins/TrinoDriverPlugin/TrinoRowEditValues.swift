@@ -30,6 +30,11 @@ enum TrinoRowEditValues {
         }
     }
 
+    static func writing(_ value: TrinoColumnValue, asExpression: Bool) -> TrinoColumnValue {
+        guard asExpression, case .text(let sql) = value.value else { return value }
+        return TrinoColumnValue(name: value.name, value: value.value, typeName: value.typeName, expression: sql)
+    }
+
     static func trinoValue(_ cell: PluginCellValue) -> TrinoValue {
         switch cell {
         case .null:

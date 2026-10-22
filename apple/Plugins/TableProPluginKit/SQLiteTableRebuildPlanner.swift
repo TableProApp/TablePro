@@ -295,7 +295,7 @@ public enum SQLiteTableRebuildPlanner {
     }
 
     internal static func escapeLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     /// Whether the copy names `rowid`, which every rowid table needs and no other table can accept.

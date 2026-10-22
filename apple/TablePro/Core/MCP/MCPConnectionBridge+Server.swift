@@ -2,6 +2,7 @@ import Foundation
 import os
 import TableProMCP
 import TableProPluginKit
+import TableProSQLGrammar
 
 extension MCPConnectionBridge {
     static let schemaResourceTableLimit = 100
@@ -103,7 +104,7 @@ extension MCPConnectionBridge {
                 )
             }
             let execute: (String) async throws -> QueryResult = { sql in
-                try await driver.execute(query: sql)
+                try await driver.executeRead(query: sql)
             }
             var result: [String: JsonValue] = [:]
             var failures: [String: String] = [:]

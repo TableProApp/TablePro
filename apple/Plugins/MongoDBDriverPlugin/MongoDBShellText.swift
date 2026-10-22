@@ -7,7 +7,7 @@ import TableProPluginKit
 /// A name reaches these statements from the server, and a person then runs them from an editor
 /// tab. A view named with a line feed in it ended its own `// View:` comment, and the text after
 /// the line feed ran as a statement of its own.
-enum MongoDBShellText {
+nonisolated enum MongoDBShellText {
     /// A line comment that ends where the line does. Every character that ends a line for
     /// JavaScript or for the editor's statement scanner, and every other control character, is
     /// written as its escape.

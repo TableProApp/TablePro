@@ -1,12 +1,6 @@
 import AppKit
 
-/// Renders table nodes with CoreGraphics into the current flipped drawing context.
-///
-/// This used to draw into a SwiftUI `Canvas`. A `Canvas` cannot be the drawing surface of a
-/// magnifying `NSScrollView`: below 50% magnification SwiftUI truncates the Canvas's own drawing
-/// region to `contentSize * magnification + 128` document points and paints nothing past it, which
-/// is what left the diagram half painted at its fit-to-window zoom (#2692). AppKit draws a plain
-/// view at every scale, so the diagram owns its pixels the way the data grid owns its cells.
+// AppKit draws a plain view at every magnification, which a SwiftUI `Canvas` did not (#2692).
 @MainActor
 enum ERDiagramNodeRenderer {
     private static var headerTextXOffset: CGFloat { 28 * ERDiagramLayout.typeScale }
@@ -15,7 +9,7 @@ enum ERDiagramNodeRenderer {
     private static var columnNameXOffset: CGFloat { 24 * ERDiagramLayout.typeScale }
     private static var typeRightMargin: CGFloat { 8 * ERDiagramLayout.typeScale }
     private static var nameTypeGap: CGFloat { 8 * ERDiagramLayout.typeScale }
-    /// How much of a type stays readable beside a long name: enough for "varchar" or "timestam".
+    // Enough of a type stays readable beside a long name: "varchar" or "timestam".
     private static let typeFloorCharacters = 8
     private static let maxTableNameChars = 24
     private static let cornerRadius: CGFloat = 6
@@ -46,50 +40,48 @@ enum ERDiagramNodeRenderer {
         isSelected: Bool,
         clusterColor: NSColor?,
         palette: ERDiagramPalette,
-        in context: CGContext
+        on canvas: some ERDiagramCanvas
     ) {
         let scale = ERDiagramLayout.typeScale
         let body = CGPath(roundedRect: rect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
 
-        context.addPath(body)
-        context.setFillColor(palette.nodeFill)
-        context.fillPath()
+        canvas.fill(body, color: palette.nodeFill)
 
         let headerHeight = ERDiagramLayout.headerHeight
-        let headerRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: headerHeight)
+        let headerRect = CGPath(
+            rect: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: headerHeight),
+            transform: nil
+        )
 
-        context.saveGState()
-        context.addPath(body)
-        context.clip()
-        if let headerFill = palette.headerFill {
-            context.setFillColor(headerFill)
-            context.fill(headerRect)
+        canvas.clip(to: body) {
+            if let headerFill = palette.headerFill {
+                canvas.fill(headerRect, color: headerFill)
+            }
+            // A cluster's hue groups related tables, so it still washes a themed header.
+            if palette.headerFill == nil || clusterColor != nil {
+                canvas.fill(headerRect, color: palette.headerWash(cluster: clusterColor))
+            }
         }
-        // A cluster's hue groups related tables, so it still washes a themed header.
-        if palette.headerFill == nil || clusterColor != nil {
-            context.setFillColor(palette.headerWash(cluster: clusterColor))
-            context.fill(headerRect)
-        }
-        context.restoreGState()
 
-        context.addPath(body)
-        context.setStrokeColor(isSelected ? palette.selectionRule : palette.rule)
-        context.setLineWidth(isSelected ? 2 : 1)
-        context.strokePath()
+        canvas.stroke(
+            body,
+            color: isSelected ? palette.selectionRule : palette.rule,
+            lineWidth: isSelected ? 2 : 1,
+            rounded: false
+        )
 
         let displayName = (node.tableName as NSString).length > maxTableNameChars
             ? String(node.tableName.prefix(maxTableNameChars)) + "\u{2026}"
             : node.tableName
-        ERDiagramTextRenderer.draw(
+        canvas.drawText(
             displayName,
             font: .monospacedSystemFont(ofSize: headerPointSize * scale, weight: .semibold),
             color: palette.headerText,
             at: CGPoint(x: rect.minX + headerTextXOffset, y: rect.minY + headerHeight / 2),
-            anchor: .leading,
-            in: context
+            anchor: .leading
         )
 
-        ERDiagramSymbolRenderer.draw(
+        canvas.drawSymbol(
             named: node.isJunctionTable ? "arrow.left.arrow.right" : "tablecells",
             pointSize: iconPointSize * scale,
             color: palette.secondaryText,
@@ -98,17 +90,14 @@ enum ERDiagramNodeRenderer {
         )
 
         let dividerY = rect.minY + headerHeight
-        context.setStrokeColor(palette.rule)
-        context.setLineWidth(0.5)
-        context.move(to: CGPoint(x: rect.minX, y: dividerY))
-        context.addLine(to: CGPoint(x: rect.maxX, y: dividerY))
-        context.strokePath()
+        let divider = CGMutablePath()
+        divider.move(to: CGPoint(x: rect.minX, y: dividerY))
+        divider.addLine(to: CGPoint(x: rect.maxX, y: dividerY))
+        canvas.stroke(divider, color: palette.rule, lineWidth: 0.5, rounded: false)
 
-        context.saveGState()
-        context.addPath(body)
-        context.clip()
-        drawColumns(node: node, rect: rect, dividerY: dividerY, scale: scale, palette: palette, in: context)
-        context.restoreGState()
+        canvas.clip(to: body) {
+            drawColumns(node: node, rect: rect, dividerY: dividerY, scale: scale, palette: palette, on: canvas)
+        }
     }
 
     private static func drawColumns(
@@ -117,7 +106,7 @@ enum ERDiagramNodeRenderer {
         dividerY: CGFloat,
         scale: CGFloat,
         palette: ERDiagramPalette,
-        in context: CGContext
+        on canvas: some ERDiagramCanvas
     ) {
         let rowHeight = ERDiagramLayout.columnRowHeight
         let nameFont = columnNameFont(scale: scale)
@@ -126,8 +115,13 @@ enum ERDiagramNodeRenderer {
         for (index, column) in node.displayColumns.enumerated() {
             let rowY = dividerY + CGFloat(index) * rowHeight + rowHeight / 2
 
+            if let fill = stagedFill(column.stagedEdit, palette: palette) {
+                let row = CGRect(x: rect.minX, y: dividerY + CGFloat(index) * rowHeight, width: rect.width, height: rowHeight)
+                canvas.fill(CGPath(rect: row, transform: nil), color: fill)
+            }
+
             if column.isPrimaryKey {
-                ERDiagramSymbolRenderer.draw(
+                canvas.drawSymbol(
                     named: "key.fill",
                     pointSize: badgePointSize * scale,
                     color: .systemYellow,
@@ -135,7 +129,7 @@ enum ERDiagramNodeRenderer {
                     anchor: .center
                 )
             } else if column.isForeignKey {
-                ERDiagramSymbolRenderer.draw(
+                canvas.drawSymbol(
                     named: "link",
                     pointSize: badgePointSize * scale,
                     color: .systemBlue,
@@ -145,25 +139,40 @@ enum ERDiagramNodeRenderer {
             }
 
             let widths = columnTextWidths(name: column.name, type: column.dataType, nodeWidth: rect.width)
-            ERDiagramTextRenderer.draw(
+            let isDropped = column.stagedEdit == .dropped
+            canvas.drawText(
                 column.name,
                 font: nameFont,
-                color: palette.text,
+                color: isDropped ? palette.deletedText : palette.text,
                 at: CGPoint(x: rect.minX + columnNameXOffset, y: rowY),
                 anchor: .leading,
-                maxWidth: widths.name,
-                in: context
+                maxWidth: widths.name
             )
+            // The strike says "dropped" where the row tint alone would rely on color.
+            if isDropped {
+                let strike = CGMutablePath()
+                strike.move(to: CGPoint(x: rect.minX + columnNameXOffset, y: rowY))
+                strike.addLine(to: CGPoint(x: rect.minX + columnNameXOffset + widths.name, y: rowY))
+                canvas.stroke(strike, color: palette.droppedEdge, lineWidth: 1, rounded: false)
+            }
 
-            ERDiagramTextRenderer.draw(
+            canvas.drawText(
                 column.dataType,
                 font: typeFont,
                 color: palette.secondaryText,
                 at: CGPoint(x: rect.maxX - typeRightMargin, y: rowY),
                 anchor: .trailing,
-                maxWidth: widths.type,
-                in: context
+                maxWidth: widths.type
             )
+        }
+    }
+
+    private static func stagedFill(_ edit: ERStagedEdit?, palette: ERDiagramPalette) -> CGColor? {
+        switch edit {
+        case .added: palette.insertedRow
+        case .modified: palette.modifiedRow
+        case .dropped: palette.deletedRow
+        case nil: nil
         }
     }
 
@@ -175,12 +184,7 @@ enum ERDiagramNodeRenderer {
         .monospacedSystemFont(ofSize: columnTypePointSize * scale, weight: .regular)
     }
 
-    /// The widths a column row draws its name and type at, measured in the fonts the row uses.
-    ///
-    /// The name is drawn from the leading edge and the type to the trailing edge, so nothing kept
-    /// the two apart: a long name ran under its type ("shipping_addr" over "character varying(…").
-    /// They now share the row. The name comes first, because it is what a reader is looking for,
-    /// but it leaves the type at least its first few characters; the type then takes what is left.
+    // The name comes first but leaves the type its first few characters.
     static func columnTextWidths(name: String, type: String, nodeWidth: CGFloat) -> ERColumnTextWidths {
         let scale = ERDiagramLayout.typeScale
         let typeFont = columnTypeFont(scale: scale)
@@ -197,9 +201,7 @@ enum ERDiagramNodeRenderer {
     }
 }
 
-/// How one column row shares its room between the name and the type. Each width is the most that
-/// text may draw at; neither ever exceeds the text's own width, and the two plus the gap between
-/// them never exceed the room.
+// Neither width exceeds its text's own width, and the two plus the gap never exceed the room.
 struct ERColumnTextWidths: Equatable {
     let name: CGFloat
     let type: CGFloat

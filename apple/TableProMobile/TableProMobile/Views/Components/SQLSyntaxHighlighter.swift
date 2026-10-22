@@ -1,7 +1,7 @@
 import UIKit
 
 enum SQLSyntaxHighlighter {
-    private static let maxHighlightLength = 10_000
+    static let maxHighlightLength = 10_000
 
     private static let defaultFont = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
 

@@ -86,7 +86,8 @@ public struct ToolsCallHandler: MCPMethodHandler {
                 principal: context.principal,
                 tool: toolName,
                 connectionId: connectionId,
-                sql: Self.sqlArgument(in: arguments)
+                sql: Self.sqlArgument(in: arguments),
+                readOnly: arguments["read_only"]?.boolValue == true
             )
         } catch let error as DatabaseAccessError {
             Self.audit(

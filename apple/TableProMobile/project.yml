@@ -67,6 +67,18 @@ targets:
       # through a socket.
       - ../Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
       - ../Plugins/Shared/PluginQueryTimeout.swift
+      # The ClickHouse plugin driver runs whole behind PluginBackedDriver, so every file of the plugin is compiled in.
+      - path: ../Plugins/ClickHouseDriverPlugin
+        excludes:
+          - Info.plist
+      - ../Plugins/Shared/PluginConnectTimeout.swift
+      # The MongoDB plugin driver runs behind PluginBackedDriver too; the iOS CLibMongoc bridge stands in for the
+      # plugin's own, and the principal class stays on the Mac.
+      - path: ../Plugins/MongoDBDriverPlugin
+        excludes:
+          - Info.plist
+          - MongoDBPlugin.swift
+          - CLibMongoc/**
       # The column default reading both apps show and the version floor that says which catalog
       # quotes its defaults. The DDL writers stay on macOS.
       - ../Plugins/MySQLDriverPlugin/MySQLCatalogDefault.swift
@@ -88,13 +100,18 @@ targets:
       # The read-write BEGIN both platforms open a write transaction with.
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLTransactionStatement.swift
       # The libssh2 half of the SSH transport, shared with the macOS app by file reference.
-      # The C-free half is the TableProSSHTransport package target; these three touch libssh2
+      # The C-free half is the TableProSSHTransport package target; these touch libssh2
       # and cannot be, because a manifest cannot express the slice-dependent header path the
       # iOS xcframework needs. Both CLibSSH2 shims declare the same module and the same four
       # tablepro_* wrappers, so `import CLibSSH2` resolves on either platform.
+      - ../TablePro/Core/SSH/LibSSH2ChannelFree.swift
       - ../TablePro/Core/SSH/LibSSH2ChannelIO.swift
       - ../TablePro/Core/SSH/LibSSH2ForwardChannel.swift
+      - ../TablePro/Core/SSH/LibSSH2JumpRelay.swift
+      - ../TablePro/Core/SSH/LibSSH2Handshake.swift
       - ../TablePro/Core/SSH/SSHKeepAliveResult.swift
+      # Shortcuts payload parsing and row planning, shared with the macOS app's App Intents.
+      - ../TablePro/Core/Shortcuts/Shared
       # License texts behind the Acknowledgements screen, copied whole so each keeps the
       # texts/ path Acknowledgements.json names it by.
       - path: ../TablePro/Resources/ThirdPartyLicenses/texts
@@ -113,23 +130,29 @@ targets:
       - package: TableProCore
         products:
           - TableProAnalytics
+          - TableProAutocomplete
           - TableProConnectionLibrary
           - TableProCoreTypes
           - TableProDatabase
           - TableProGeometry
+          - TableProGoogleCloud
           - TableProImport
+          - TableProLogRedaction
           - TableProModels
           - TableProMSSQLCore
           - TableProMySQLCore
+          - TableProNumberFormatting
           - TableProPluginKit
           - TableProPostgreSQLCore
           - TableProQuery
           - TableProRedisCore
           - TableProSQLGrammar
+          - TableProSQLVocabulary
           - TableProSSHTransport
           - TableProSync
           - TableProSyncTransport
           - TableProTabularIO
+          - TableProTLSClientIdentity
       - package: TableProOracle
         product: TableProOracleCore
       - framework: ../Libs/ios/DuckDB.xcframework
@@ -141,6 +164,10 @@ targets:
       - framework: ../Libs/ios/Hiredis.xcframework
         embed: false
       - framework: ../Libs/ios/LibPQ.xcframework
+        embed: false
+      - framework: ../Libs/ios/LibBson.xcframework
+        embed: false
+      - framework: ../Libs/ios/LibMongoc.xcframework
         embed: false
       - framework: ../Libs/ios/LibSSH2.xcframework
         embed: false
@@ -176,12 +203,13 @@ targets:
           - -lz
           - -liconv
           - -lc++
+          - -lresolv
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.TableProMobile
         PRODUCT_NAME: $(TARGET_NAME)
         SWIFT_APPROACHABLE_CONCURRENCY: YES
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
         SWIFT_EMIT_LOC_STRINGS: YES
-        SWIFT_INCLUDE_PATHS: $(SRCROOT)/TableProMobile/CBridges/CMariaDB $(SRCROOT)/TableProMobile/CBridges/CLibPQ $(SRCROOT)/TableProMobile/CBridges/CRedis $(SRCROOT)/TableProMobile/CBridges/CLibSSH2 $(SRCROOT)/TableProMobile/CBridges/CFreeTDS $(SRCROOT)/TableProMobile/CBridges/CDuckDB
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/TableProMobile/CBridges/CMariaDB $(SRCROOT)/TableProMobile/CBridges/CLibPQ $(SRCROOT)/TableProMobile/CBridges/CRedis $(SRCROOT)/TableProMobile/CBridges/CLibSSH2 $(SRCROOT)/TableProMobile/CBridges/CFreeTDS $(SRCROOT)/TableProMobile/CBridges/CDuckDB $(SRCROOT)/TableProMobile/CBridges/CLibMongoc
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
         TARGETED_DEVICE_FAMILY: "1,2"
 
@@ -239,7 +267,7 @@ targets:
         STRING_CATALOG_GENERATE_SYMBOLS: NO
         SWIFT_APPROACHABLE_CONCURRENCY: YES
         SWIFT_EMIT_LOC_STRINGS: NO
-        SWIFT_INCLUDE_PATHS: $(SRCROOT)/TableProMobile/CBridges/CMariaDB $(SRCROOT)/TableProMobile/CBridges/CLibPQ $(SRCROOT)/TableProMobile/CBridges/CRedis $(SRCROOT)/TableProMobile/CBridges/CLibSSH2 $(SRCROOT)/TableProMobile/CBridges/CFreeTDS $(SRCROOT)/TableProMobile/CBridges/CDuckDB
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/TableProMobile/CBridges/CMariaDB $(SRCROOT)/TableProMobile/CBridges/CLibPQ $(SRCROOT)/TableProMobile/CBridges/CRedis $(SRCROOT)/TableProMobile/CBridges/CLibSSH2 $(SRCROOT)/TableProMobile/CBridges/CFreeTDS $(SRCROOT)/TableProMobile/CBridges/CDuckDB $(SRCROOT)/TableProMobile/CBridges/CLibMongoc
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
         TARGETED_DEVICE_FAMILY: "1,2"
 

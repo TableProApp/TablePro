@@ -11,6 +11,7 @@ import os
 import TableProConnectionLibrary
 import TableProImport
 import TableProPluginKit
+import TableProSSHTransport
 import TableProSyncTransport
 
 @MainActor
@@ -21,6 +22,7 @@ final class ConnectionStorage {
     private let connectionsKey = "com.TablePro.connections"
     private let migratedToFileKey = "com.TablePro.connectionsMigratedToFile"
     private let defaults: UserDefaults
+    private static let sshRoutePublisherKey = "com.TablePro.sshRoutePublisherId"
     private let syncTracker: SyncChangeTracker
     private let appSettingsProvider: () -> AppSettingsStorage
 
@@ -120,19 +122,21 @@ final class ConnectionStorage {
     /// Callers that mutate dependent state (sync tracker, keychain entries) must abort on `false`:
     /// continuing can delete a password while the record stays on disk. Refuses while the file on
     /// disk could not be read, because every write replaces the whole list.
+    /// `byUser` false keeps a store that failed its integrity check untrusted, since a write the
+    /// app makes on its own (a sync pull, a route a connect recorded) is not the user re-saving it.
     @discardableResult
-    func saveConnections(_ connections: [DatabaseConnection]) -> Bool {
+    func saveConnections(_ connections: [DatabaseConnection], byUser: Bool = true) -> Bool {
         _ = loadConnections()
         guard !lastLoadFailed else {
             Self.logger.error("Refused to save over connections.json: it could not be read")
             return false
         }
-        return persist(connections)
+        return persist(connections, byUser: byUser)
     }
 
     @discardableResult
-    private func persist(_ connections: [DatabaseConnection]) -> Bool {
-        guard file.save(connections.map { StoredConnection(from: $0) }) else { return false }
+    private func persist(_ connections: [DatabaseConnection], byUser: Bool = true) -> Bool {
+        guard file.save(connections.map { StoredConnection(from: $0) }, byUser: byUser) else { return false }
         cachedConnections = nil
         return true
     }
@@ -161,8 +165,8 @@ final class ConnectionStorage {
         return true
     }
 
-    /// A replace keeps the stored row's device-local state, except a credential profile the import
-    /// created and a tunnel command the user agreed to import. A replace whose row is gone is not written.
+    // A replace keeps the stored row's device-local state, except a credential profile the import
+    // created and a tunnel command the user agreed to import. A replace whose row is gone is not written.
     func applyImport(adding: [DatabaseConnection], replacing: [DatabaseConnection]) -> ConnectionImportWrite? {
         var connections = loadConnections()
         guard !lastLoadFailed else {
@@ -181,6 +185,8 @@ final class ConnectionStorage {
             if incoming.isTunnelCommandEnabled {
                 updated.tunnelCommandMode = incoming.tunnelCommandMode
             }
+            // A file carries no route, and readers drop the stored one once it no longer describes the tunnel.
+            updated.sshRoute = stored.sshRoute
             updated.sortOrder = stored.groupId == updated.groupId
                 ? stored.sortOrder
                 : Self.nextSortOrder(in: connections, groupId: updated.groupId)
@@ -278,7 +284,11 @@ final class ConnectionStorage {
     }
 
     @discardableResult
-    func mutateConnections(ids: Set<UUID>, _ mutate: (inout DatabaseConnection) -> Void) -> Bool {
+    func mutateConnections(
+        ids: Set<UUID>,
+        byUser: Bool = true,
+        _ mutate: (inout DatabaseConnection) -> Void
+    ) -> Bool {
         guard !ids.isEmpty else { return true }
         var connections = loadConnections()
         var changed: [DatabaseConnection] = []
@@ -290,7 +300,7 @@ final class ConnectionStorage {
             }
         }
         guard !changed.isEmpty else { return true }
-        guard saveConnections(connections) else {
+        guard saveConnections(connections, byUser: byUser) else {
             Self.logger.error("Aborted mutateConnections: persistence failed for \(changed.count, privacy: .public) connection(s)")
             return false
         }
@@ -300,6 +310,32 @@ final class ConnectionStorage {
         syncTracker.markDirty(.connection, ids: dirtyIds)
         appEventsProvider().connectionUpdated.send(changed.count == 1 ? changed.first?.id : nil)
         return true
+    }
+
+    var sshRoutePublisherId: UUID {
+        if let stored = defaults.string(forKey: Self.sshRoutePublisherKey).flatMap(UUID.init(uuidString:)) {
+            return stored
+        }
+        let id = UUID()
+        defaults.set(id.uuidString, forKey: Self.sshRoutePublisherKey)
+        return id
+    }
+
+    // `refresh` brings a profile-linked connection up to its profile first, so the record carries
+    // the settings the route was dialed from even when the profile's own fan-out never landed.
+    @discardableResult
+    func recordDialedSSHRoute(
+        _ dialed: DialedSSHRoute,
+        for connectionId: UUID,
+        refresh: (DatabaseConnection) -> DatabaseConnection
+    ) -> Bool {
+        let publisher = sshRoutePublisherId
+        return mutateConnections(ids: [connectionId], byUser: false) { connection in
+            let current = refresh(connection)
+            guard current.resolvedSSHConfig.publishedRouteInput == dialed.input else { return }
+            connection = current
+            connection.sshRoute = dialed.routeToStore(replacing: connection.sshRoute, publisher: publisher)
+        }
     }
 
     @discardableResult
@@ -464,7 +500,7 @@ final class ConnectionStorage {
     func duplicateConnection(_ connection: DatabaseConnection) -> DatabaseConnection? {
         let newId = UUID()
 
-        let duplicate = DatabaseConnection(
+        var duplicate = DatabaseConnection(
             id: newId,
             name: String(format: String(localized: "%@ (Copy)"), connection.name),
             host: connection.host,
@@ -497,6 +533,7 @@ final class ConnectionStorage {
             passwordSource: connection.passwordSource,
             additionalFields: connection.additionalFields.isEmpty ? nil : connection.additionalFields
         )
+        duplicate.sshRoute = connection.sshRoute
 
         var connections = loadConnections()
         let siblings = LibrarySorting.sorted(connections.filter { $0.groupId == connection.groupId }, mode: .manual)

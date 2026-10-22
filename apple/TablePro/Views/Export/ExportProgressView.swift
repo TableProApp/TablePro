@@ -19,6 +19,7 @@ struct ExportProgressView: View {
     let processedRows: Int
     let totalRows: Int
     let statusMessage: String
+    var readsRows = true
     let onStop: () -> Void
 
     @State private var showStopConfirmation = false
@@ -58,14 +59,17 @@ struct ExportProgressView: View {
 
                     Spacer()
 
-                    if statusMessage.isEmpty {
+                    if statusMessage.isEmpty, readsRows {
                         Text(rowCountLabel)
                             .font(.system(.body, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                if statusMessage.isEmpty, hasRowTotal {
+                if statusMessage.isEmpty, !readsRows, totalTables > 0 {
+                    ProgressView(value: Double(min(tableIndex, totalTables)), total: Double(totalTables))
+                        .progressViewStyle(.linear)
+                } else if statusMessage.isEmpty, hasRowTotal {
                     ProgressView(value: progressValue)
                         .progressViewStyle(.linear)
                 } else {

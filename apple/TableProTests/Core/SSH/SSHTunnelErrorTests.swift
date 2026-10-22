@@ -1,14 +1,8 @@
-//
-//  SSHTunnelErrorTests.swift
-//  TableProTests
-//
-//  Tests for SSHTunnelError descriptions and isLocalPortBindFailure classification.
-//
-
 import Foundation
 import os
 @testable import TablePro
 import TableProPluginKit
+import TableProSSHTransport
 import TableProTestSupport
 import Testing
 
@@ -104,6 +98,67 @@ struct SSHTunnelErrorTests {
 
         #expect(error.errorDescription?.contains("db.internal:3306") == true)
         #expect(error.errorDescription?.contains("6") == true)
+    }
+
+    @Test("A failed negotiation reads as the shared explanation, with the jump host named when one failed")
+    func negotiationFailedDescription() {
+        let failure = SSHNegotiationFailure(
+            stage: .mac,
+            serverSoftware: "OpenSSH_10.3",
+            supported: ["hmac-sha2-256", "hmac-sha2-512"],
+            supportedHostKeys: []
+        )
+
+        let server = SSHTunnelError.negotiationFailed(failure, jumpHost: nil).errorDescription ?? ""
+        let hop = SSHTunnelError.negotiationFailed(failure, jumpHost: "bastion.example").errorDescription ?? ""
+
+        #expect(server == failure.explanation)
+        #expect(server.contains("OpenSSH_10.3"))
+        #expect(server.contains("hmac-sha2-512"))
+        #expect(hop.contains("bastion.example"))
+        #expect(hop.contains(failure.explanation))
+    }
+
+    @Test("A failed negotiation suggests asking for a supported method, and happened after dialing")
+    func negotiationFailedRecovery() {
+        let failure = SSHNegotiationFailure(stage: .cipher, serverSoftware: nil, supported: [], supportedHostKeys: [])
+        let error = SSHTunnelError.negotiationFailed(failure, jumpHost: nil)
+
+        #expect(error.recoverySuggestion == SSHNegotiationFailure.recoverySuggestion)
+        #expect((error as NSError).localizedRecoverySuggestion == SSHNegotiationFailure.recoverySuggestion)
+        #expect(SSHTunnelError.noAvailablePort.recoverySuggestion == nil)
+        #expect(!error.failedBeforeDialing)
+    }
+
+    @Test("A step on a jump host names the hop and keeps the step's words")
+    func attributedToJumpHost() {
+        let failure = SSHNegotiationFailure(stage: .keyExchangeOrHostKey, serverSoftware: nil, supported: [], supportedHostKeys: [])
+        let rejected = SSHTunnelError.authenticationFailed(reason: .privateKey)
+
+        #expect(SSHTunnelError.negotiationFailed(failure, jumpHost: nil).attributed(to: "bastion")
+            == .negotiationFailed(failure, jumpHost: "bastion"))
+        #expect(rejected.attributed(to: "bastion")
+            == .jumpHostFailed(host: "bastion", reason: rejected.errorDescription ?? ""))
+        #expect(SSHTunnelError.tunnelCreationFailed("SSH handshake failed: Failed getting banner").attributed(to: "bastion")
+            == .jumpHostFailed(host: "bastion", reason: "SSH handshake failed: Failed getting banner"))
+        #expect(SSHTunnelError.jumpHostFailed(host: "bastion", reason: "refused").errorDescription?
+            .contains("bastion") == true)
+    }
+
+    @Test(
+        "A cancelled sign-in, a host key answer and an error that names its host stay as they are",
+        arguments: [
+            SSHTunnelError.authenticationFailed(reason: .cancelled),
+            .hostKeyVerificationFailed,
+            .usernameMissing(host: "bastion"),
+            .negotiationFailed(
+                SSHNegotiationFailure(stage: .mac, serverSoftware: nil, supported: [], supportedHostKeys: []),
+                jumpHost: "first-hop"
+            ),
+        ]
+    )
+    func attributionKeepsItsOwnErrors(error: SSHTunnelError) {
+        #expect(error.attributed(to: "second-hop") == error)
     }
 
     @Test("A missing SSH username is plain text that names the host")
@@ -331,68 +386,5 @@ struct SSHTunnelErrorTests {
             }
         }
         #expect(!lateOperationRan.withLock { $0 })
-    }
-
-    @Test("ProxyJump cleanup waits until its relay no longer uses libssh2 handles")
-    func proxyJumpCleanupDrainsRelayBeforeFree() async throws {
-        let releaseRelay = DispatchSemaphore(value: 0)
-        let enteredRelay = OSAllocatedUnfairLock(initialState: false)
-        let relayFinished = OSAllocatedUnfairLock(initialState: false)
-        let cleanupObservedFinishedRelay = OSAllocatedUnfairLock(initialState: false)
-        let fence = SSHJumpRelayFence {
-            releaseRelay.signal()
-        }
-
-        Thread.detachNewThread {
-            enteredRelay.withLock { $0 = true }
-            releaseRelay.wait()
-            relayFinished.withLock { $0 = true }
-            fence.finish()
-        }
-
-        let entryDeadline = ContinuousClock.now + .seconds(1)
-        while !enteredRelay.withLock({ $0 }), ContinuousClock.now < entryDeadline {
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        guard enteredRelay.withLock({ $0 }) else {
-            releaseRelay.signal()
-            Issue.record("The ProxyJump relay did not start")
-            return
-        }
-
-        let teardown = await BoundedCall.resultOnItsOwnThread(
-            within: .seconds(2),
-            onDeadline: { releaseRelay.signal() },
-            of: {
-                fence.stop()
-                fence.wait()
-                cleanupObservedFinishedRelay.withLock { value in
-                    value = relayFinished.withLock { $0 }
-                }
-                return true
-            }
-        )
-
-        #expect(teardown == true)
-        #expect(cleanupObservedFinishedRelay.withLock { $0 })
-        #expect(!fence.isActive)
-    }
-
-    @Test("A completed ProxyJump relay disarms late descriptor interruption")
-    func proxyJumpCompletionDisarmsLateStop() {
-        let stopCount = OSAllocatedUnfairLock(initialState: 0)
-        let released = OSAllocatedUnfairLock(initialState: false)
-        let fence = SSHJumpRelayFence {
-            stopCount.withLock { $0 += 1 }
-        }
-
-        fence.finish {
-            released.withLock { $0 = true }
-        }
-        fence.stop()
-
-        #expect(released.withLock { $0 })
-        #expect(stopCount.withLock { $0 } == 0)
-        #expect(!fence.isActive)
     }
 }

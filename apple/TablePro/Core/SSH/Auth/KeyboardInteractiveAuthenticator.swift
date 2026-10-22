@@ -8,25 +8,10 @@ import os
 
 import CLibSSH2
 import TableProSSHConfig
+import TableProSSHTransport
 
-/// How a keyboard-interactive prompt should be answered without asking the user.
-///
-/// The classification is a fast-path hint only: it decides when a pre-known credential (the SSH
-/// password, an auto-generated TOTP code) can answer a prompt. Anything not claimed here defers to
-/// the interactive prompt, so a weak keyword match is a missed shortcut, not a wrong answer.
-internal enum KBDINTPromptType: Equatable {
-    case password
-    case totp
-    case unmatched
-}
-
-/// Context reached from the C callback through the libssh2 session abstract pointer.
-///
-/// TOTP codes and user prompts are resolved lazily inside the callback (not upfront) so that a
-/// generated code is still valid when PAM checks it, and so the server can re-prompt within one
-/// session (PAM defaults to 3 attempts) with each retry driving a fresh code or dialog. The C
-/// callback can't throw across the libssh2 boundary, so failures and cancellation are recorded here
-/// and surface after `libssh2_userauth_keyboard_interactive_ex` returns.
+// Codes and prompts resolve inside the callback, so a code is still valid when PAM checks it and each re-prompt gets a fresh one.
+// The C callback cannot throw, so errors and cancellation wait here until libssh2 returns.
 internal final class KeyboardInteractiveContext {
     let password: String?
     let totpProvider: (any TOTPProvider)?
@@ -47,9 +32,7 @@ internal final class KeyboardInteractiveContext {
         self.promptProvider = promptProvider
     }
 
-    /// What the rejection was about, named by whichever answer actually went to the server. A
-    /// server that issued no prompt at all never took a credential from this method, so the
-    /// failure says nothing about the user's own: it says keyboard-interactive was not on offer.
+    // A server that sent no prompt never took a credential, so the method was not on offer.
     var failureReason: AuthFailureReason {
         if interactiveAttemptCount > 0 { return .keyboardInteractive }
         if totpAttemptCount > 0 { return .verificationCode }
@@ -68,9 +51,7 @@ internal final class KeyboardInteractiveContext {
         }
     }
 
-    /// Resolve one response per prompt. Known prompts are answered from the password / TOTP
-    /// fast path; the rest go to the interactive prompt in a single dialog. Every index is filled
-    /// (empty string on cancel) so libssh2 never frees an unset response.
+    // Every slot gets a string, empty on cancel, since libssh2 frees each response.
     func responses(name: String, instruction: String, prompts: [KeyboardInteractivePrompt]) -> [String] {
         var results = [String?](repeating: nil, count: prompts.count)
         var pendingIndices: [Int] = []
@@ -117,10 +98,7 @@ internal final class KeyboardInteractiveContext {
     }
 }
 
-/// C-compatible callback for libssh2 keyboard-interactive authentication.
-///
-/// libssh2 invokes this synchronously for each challenge. Responses are allocated with `strdup`
-/// because libssh2 `free`s them, and every slot is filled even on cancel.
+// strdup because libssh2 frees each response.
 private let kbdintCallback: @convention(c) (
     UnsafePointer<CChar>?, Int32,
     UnsafePointer<CChar>?, Int32,
@@ -225,20 +203,7 @@ internal struct KeyboardInteractiveAuthenticator: SSHAuthenticator {
         Self.logger.info("Keyboard-interactive authentication succeeded")
     }
 
-    static func classify(_ promptText: String) -> KBDINTPromptType {
-        let lower = promptText.lowercased()
-
-        if lower.contains("verification") || lower.contains("code") ||
-            lower.contains("otp") || lower.contains("token") ||
-            lower.contains("totp") || lower.contains("2fa") ||
-            lower.contains("one-time") || lower.contains("factor") {
-            return .totp
-        }
-
-        if lower.contains("password") {
-            return .password
-        }
-
-        return .unmatched
+    static func classify(_ promptText: String) -> KeyboardInteractivePromptKind {
+        KeyboardInteractivePromptKind(promptText: promptText)
     }
 }

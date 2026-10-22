@@ -3,6 +3,8 @@ import TableProDatabase
 import TableProModels
 
 struct RowDetailView: View {
+    // Tracks writes and shows the transaction; `coordinator` is set only where a referenced table can be opened.
+    @Environment(ConnectionCoordinator.self) private var connectionCoordinator
     @State private var viewModel: RowDetailViewModel
     @State private var fkPreviewItem: FKPreviewItem?
     @State private var showShareSheet = false
@@ -11,6 +13,9 @@ struct RowDetailView: View {
     @State private var hapticError = false
     @State private var hapticSelection = 0
     @State private var showSaveConfirmation = false
+    @State private var jsonEditorField: IndexedRow<String>?
+    @State private var jsonViewerRoute: JSONValueViewer.Route?
+    private let coordinator: ConnectionCoordinator?
 
     init(
         columns: [ColumnInfo],
@@ -24,8 +29,10 @@ struct RowDetailView: View {
         safeModeLevel: @escaping () -> SafeModeLevel = { .off },
         foreignKeys: [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
-        loadFullValue: ((CellRef) async throws -> String?)? = nil
+        loadFullValue: ((CellRef) async throws -> String?)? = nil,
+        coordinator: ConnectionCoordinator? = nil
     ) {
+        self.coordinator = coordinator
         _viewModel = State(wrappedValue: RowDetailViewModel(
             columns: columns,
             rows: rows,
@@ -76,10 +83,16 @@ struct RowDetailView: View {
                 rowNavigator
             }
         }
+        .transactionBar(for: connectionCoordinator)
+        .leavesAfterRollBack(of: connectionCoordinator, isTableRow: viewModel.table != nil, isEditing: viewModel.isEditing)
         .navigationBarBackButtonHidden(viewModel.isEditing)
         .holdsScene(withUnsavedChanges: viewModel.hasUnsavedEdits)
         .navigationTitle(viewModel.table?.name ?? String(format: String(localized: "Row %d of %d"), viewModel.currentIndex + 1, viewModel.rows.count))
         .navigationBarTitleDisplayMode(.inline)
+        // A NavigationLink inside the paged TabView cannot reach the stack: it pushes a blank screen.
+        .navigationDestination(item: $jsonViewerRoute) { route in
+            JSONValueViewer(route: route)
+        }
         .toolbar { rowDetailToolbar }
         .sensoryFeedback(.success, trigger: hapticSuccess)
         .sensoryFeedback(.error, trigger: hapticError)
@@ -107,16 +120,21 @@ struct RowDetailView: View {
         } message: {
             Text(String(format: String(localized: "This will update a row in %@. Continue?"), viewModel.table?.name ?? ""))
         }
-        .sheet(item: $fkPreviewItem) { item in
-            FKPreviewView(
-                fk: item.fk,
-                value: item.value,
-                session: viewModel.session,
-                databaseType: viewModel.databaseType
-            )
-        }
+        .foreignKeyPreview(
+            item: $fkPreviewItem,
+            session: viewModel.session,
+            coordinator: coordinator,
+            databaseType: viewModel.databaseType,
+            allowsOpen: !viewModel.isEditing
+        )
         .sheet(isPresented: $showShareSheet) {
             ActivityViewController(items: [shareText])
+        }
+        .sheet(item: $jsonEditorField) { field in
+            JSONValueEditorSheet(title: viewModel.columns[field.id].name, text: field.values, onDone: { text in
+                guard text != field.values else { return }
+                viewModel.setEditedValue(text, at: field.id)
+            })
         }
     }
 
@@ -136,7 +154,7 @@ struct RowDetailView: View {
                     ConfirmButton(title: "Save", isInProgress: viewModel.isSaving) {
                         Task { await handleSave() }
                     }
-                    .disabled(viewModel.isSaving)
+                    .disabled(viewModel.isSaving || viewModel.hasInvalidJSONEdit)
                 } else {
                     Button { viewModel.startEditing() } label: {
                         Label("Edit", systemImage: "pencil")
@@ -175,13 +193,13 @@ struct RowDetailView: View {
     @ViewBuilder
     private var shareMenuContent: some View {
         Section("Share") {
-            ForEach(ExportFormat.allCases) { format in
+            ForEach(ExportFormat.offered(for: viewModel.databaseType)) { format in
                 Button {
-                    shareText = ClipboardExporter.exportRow(
-                        columns: viewModel.columns, row: viewModel.currentRow,
-                        format: format, tableName: viewModel.table?.name,
-                        databaseType: viewModel.databaseType, driver: viewModel.session?.driver
-                    )
+                    guard let text = viewModel.exportCurrentRow(as: format) else {
+                        hapticError.toggle()
+                        return
+                    }
+                    shareText = text
                     showShareSheet = true
                 } label: {
                     Label(format.rawValue, systemImage: "square.and.arrow.up")
@@ -189,13 +207,12 @@ struct RowDetailView: View {
             }
         }
         Section("Copy to Clipboard") {
-            ForEach(ExportFormat.allCases) { format in
+            ForEach(ExportFormat.offered(for: viewModel.databaseType)) { format in
                 Button {
-                    let text = ClipboardExporter.exportRow(
-                        columns: viewModel.columns, row: viewModel.currentRow,
-                        format: format, tableName: viewModel.table?.name,
-                        databaseType: viewModel.databaseType, driver: viewModel.session?.driver
-                    )
+                    guard let text = viewModel.exportCurrentRow(as: format) else {
+                        hapticError.toggle()
+                        return
+                    }
                     ClipboardExporter.copyToClipboard(text)
                 } label: {
                     Label(format.rawValue, systemImage: "doc.on.clipboard")
@@ -218,10 +235,14 @@ struct RowDetailView: View {
                 Section {
                     if takesEdits {
                         editableField(index: index, value: value)
+                        if viewModel.isJSON(at: index) {
+                            editJSONButton(index: index)
+                        }
                     } else {
-                        fieldContent(value: value)
+                        let jsonText = viewModel.jsonText(forRow: rowIndex, at: index)
+                        fieldContent(value: value, jsonPreview: viewModel.isJSON(at: index) ? jsonText : nil)
                             .contextMenu {
-                                if let value {
+                                if let value = viewModel.completeValue(forRow: rowIndex, at: index) {
                                     Button {
                                         ClipboardExporter.copyToClipboard(value)
                                     } label: {
@@ -234,13 +255,24 @@ struct RowDetailView: View {
                                     Label("Copy Column Name", systemImage: "textformat")
                                 }
                             }
+                        if let jsonText {
+                            Button {
+                                jsonViewerRoute = JSONValueViewer.Route(title: column.name, text: jsonText)
+                            } label: {
+                                Label("View as JSON", systemImage: "curlybraces")
+                            }
+                        }
                         if index < cells.count, cells[index].isLoadable,
                            !viewModel.hasOverride(forRow: rowIndex, cellIndex: index) {
                             lazyLoadButton(cell: cells[index], rowIndex: rowIndex, cellIndex: index)
                         }
-                        if let fk = viewModel.foreignKeys.first(where: { $0.column == column.name }), let value {
+                        if let fk = viewModel.foreignKeys.first(where: { $0.column == column.name }),
+                           let reference = ForeignKeyReference.make(
+                               forColumn: column.name, foreignKeys: viewModel.foreignKeys,
+                               columns: viewModel.columns, cells: cells, sourceSchema: viewModel.schema
+                           ) {
                             Button {
-                                fkPreviewItem = FKPreviewItem(fk: fk, value: value)
+                                fkPreviewItem = FKPreviewItem(reference: reference)
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "arrow.right.circle.fill")
@@ -320,9 +352,14 @@ struct RowDetailView: View {
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .italic()
+            } else if viewModel.isJSON(at: index) {
+                if let value, !value.isEmpty {
+                    JSONFieldPreview(text: value)
+                } else {
+                    Spacer(minLength: 0)
+                }
             } else {
-                TextField("Value", text: textBinding)
-                    .font(.body)
+                LiteralTextField("Value", text: textBinding)
             }
 
             if offersNull {
@@ -342,9 +379,20 @@ struct RowDetailView: View {
         }
     }
 
+    private func editJSONButton(index: Int) -> some View {
+        Button {
+            let text = index < viewModel.editedValues.count ? viewModel.editedValues[index] : nil
+            jsonEditorField = IndexedRow(id: index, values: text ?? "")
+        } label: {
+            Label("Edit JSON", systemImage: "pencil")
+        }
+    }
+
     @ViewBuilder
-    private func fieldContent(value: String?) -> some View {
-        if let value {
+    private func fieldContent(value: String?, jsonPreview: String? = nil) -> some View {
+        if let jsonPreview {
+            JSONFieldPreview(text: jsonPreview)
+        } else if let value {
             Text(verbatim: value)
                 .font(.body)
                 .textSelection(.enabled)
@@ -357,7 +405,9 @@ struct RowDetailView: View {
     }
 
     private func handleSave() async {
-        let success = await viewModel.saveChanges()
+        let success = await connectionCoordinator.track(failed: { _ in viewModel.operationError != nil }) {
+            await viewModel.saveChanges()
+        }
         if viewModel.pendingWriteConfirmation {
             showSaveConfirmation = true
             return
@@ -370,7 +420,9 @@ struct RowDetailView: View {
     }
 
     private func executePendingSave() async {
-        let success = await viewModel.executePendingSave()
+        let success = await connectionCoordinator.track(failed: { _ in viewModel.operationError != nil }) {
+            await viewModel.executePendingSave()
+        }
         if success {
             hapticSuccess.toggle()
         } else {

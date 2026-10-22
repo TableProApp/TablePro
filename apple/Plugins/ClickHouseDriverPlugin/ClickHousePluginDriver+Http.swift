@@ -7,7 +7,7 @@ import Foundation
 import os
 import TableProPluginKit
 
-extension ClickHousePluginDriver {
+nonisolated extension ClickHousePluginDriver {
     // MARK: - Private HTTP Layer
 
     var executionTimeLimit: Int? {
@@ -56,7 +56,16 @@ extension ClickHousePluginDriver {
             shape: .buffered(parameters: params)
         )
         request.timeoutInterval = requestTimeout ?? _queryTimeout.requestTimeoutInterval
-        return try await perform(request: request, session: session)
+        return try await killingOnCancel(queryId: queryId) {
+            try await perform(request: request, session: session)
+        }
+    }
+
+    // Two callers can share this driver, so a cancelled statement stops its own query, never the one sent last.
+    func killingOnCancel<T>(queryId: String?, _ operation: () async throws -> T) async throws -> T {
+        try await withTaskCancellationHandler(operation: operation) {
+            if let queryId { self.killQuery(queryId: queryId) }
+        }
     }
 
     static func executionTimeLimitItems(_ seconds: Int?) -> [URLQueryItem] {
@@ -66,8 +75,6 @@ extension ClickHousePluginDriver {
 
     private func perform(request: URLRequest, session: URLSession) async throws -> CHQueryResult {
         let (data, response) = try await send(request: request, session: session)
-
-        lock.withLock { currentTask = nil }
 
         let httpResponse = response as? HTTPURLResponse
         if let httpResponse, Self.isFailure(httpResponse) {
@@ -93,9 +100,15 @@ extension ClickHousePluginDriver {
     }
 
     private func send(request: URLRequest, session: URLSession) async throws -> (Data, URLResponse) {
-        try await withTaskCancellationHandler {
+        let ownTask = OSAllocatedUnfairLock<URLSessionDataTask?>(initialState: nil)
+        return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
                 let task = session.dataTask(with: request) { data, response, error in
+                    if let finished = ownTask.withLock({ $0 }) {
+                        self.lock.withLock {
+                            if self.currentTask === finished { self.currentTask = nil }
+                        }
+                    }
                     if let error {
                         continuation.resume(throwing: error)
                         return
@@ -107,17 +120,14 @@ extension ClickHousePluginDriver {
                     continuation.resume(returning: (data, response))
                 }
 
-                self.lock.lock()
-                self.currentTask = task
-                self.lock.unlock()
-
+                ownTask.withLock { $0 = task }
+                self.lock.withLock { self.currentTask = task }
                 task.resume()
+                // A cancel that came before the task existed found nothing to stop.
+                if Task.isCancelled { task.cancel() }
             }
         } onCancel: {
-            self.lock.lock()
-            self.currentTask?.cancel()
-            self.currentTask = nil
-            self.lock.unlock()
+            ownTask.withLock { $0 }?.cancel()
         }
     }
 
@@ -148,18 +158,20 @@ extension ClickHousePluginDriver {
         executionTimeLimit: Int?,
         shape: ClickHouseResponseShape
     ) throws -> URLRequest {
+        let body = Data(Self.withoutTrailingSemicolons(query).utf8)
         var components = URLComponents()
         components.scheme = config.ssl.isEnabled ? "https" : "http"
         components.host = config.host
         components.port = config.port
         components.path = "/"
-        components.queryItems = Self.queryItems(
+        components.percentEncodedQueryItems = Self.queryItems(
             database: database,
             queryId: queryId,
             executionTimeLimit: executionTimeLimit,
             shape: shape,
-            profile: serverProfile
-        )
+            profile: serverProfile,
+            statementBytes: body.count
+        ).map { URLQueryItem(name: Self.percentEncoded($0.name), value: $0.value.map(Self.percentEncoded)) }
 
         guard let url = components.url else {
             throw ClickHouseError(message: "Failed to construct request URL")
@@ -180,7 +192,7 @@ extension ClickHousePluginDriver {
             request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         }
 
-        request.httpBody = Self.withoutTrailingSemicolons(query).data(using: .utf8)
+        request.httpBody = body
         return request
     }
 
@@ -189,7 +201,8 @@ extension ClickHousePluginDriver {
         queryId: String?,
         executionTimeLimit: Int?,
         shape: ClickHouseResponseShape,
-        profile: ClickHouseServerProfile
+        profile: ClickHouseServerProfile,
+        statementBytes: Int = 0
     ) -> [URLQueryItem] {
         var items = [URLQueryItem]()
         if !database.isEmpty {
@@ -232,7 +245,36 @@ extension ClickHousePluginDriver {
                 items.append(item)
             }
         }
+        // The server parses at most max_query_size bytes of a statement, and a long bound value is written into it.
+        if statementBytes > profile.maxQuerySize, let item = profile.queryItem(.maxQuerySize, String(statementBytes)) {
+            items.append(item)
+        }
         return items
+    }
+
+    // URLComponents leaves `+` as it is, and the server's form decoding reads it as a space: `a+b` arrived as `a b`.
+    static func percentEncoded(_ text: String) -> String {
+        let hex = Array("0123456789ABCDEF".utf8)
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(text.utf8.count)
+        for byte in text.utf8 {
+            if isUnreservedURLByte(byte) {
+                bytes.append(byte)
+            } else {
+                bytes.append(contentsOf: [UInt8(ascii: "%"), hex[Int(byte >> 4)], hex[Int(byte & 0x0F)]])
+            }
+        }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
+    static func isUnreservedURLByte(_ byte: UInt8) -> Bool {
+        switch byte {
+        case UInt8(ascii: "a")...UInt8(ascii: "z"), UInt8(ascii: "A")...UInt8(ascii: "Z"), UInt8(ascii: "0")...UInt8(ascii: "9"),
+             UInt8(ascii: "-"), UInt8(ascii: "."), UInt8(ascii: "_"), UInt8(ascii: "~"):
+            return true
+        default:
+            return false
+        }
     }
 
     static func withoutTrailingSemicolons(_ query: String) -> String {
@@ -245,7 +287,7 @@ extension ClickHousePluginDriver {
 }
 
 /// How the server hands a result back.
-enum ClickHouseResponseShape: Equatable {
+nonisolated enum ClickHouseResponseShape: Equatable {
     /// The server holds the whole result until the query ends, so a failure is an HTTP status and
     /// `X-ClickHouse-Summary` carries the totals.
     case buffered(parameters: [String: String?]?)

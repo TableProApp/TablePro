@@ -43,6 +43,8 @@ public struct ColumnInfo: Sendable, Identifiable {
     /// The server refuses any value written to it, beyond what `isGenerated` says: SQL Server `IDENTITY`, which
     /// fails an UPDATE with Msg 8102, unlike a MySQL `AUTO_INCREMENT` that takes one.
     public let rejectsWrittenValues: Bool
+    // The labels of an enum column, where the driver read them apart from the type name.
+    public let allowedValues: [String]?
 
     /// Whether the app may send a value for the column at all.
     public var isServerOwned: Bool {
@@ -60,7 +62,8 @@ public struct ColumnInfo: Sendable, Identifiable {
         ordinalPosition: Int = 0,
         isAutoIncrement: Bool = false,
         isGenerated: Bool = false,
-        rejectsWrittenValues: Bool = false
+        rejectsWrittenValues: Bool = false,
+        allowedValues: [String]? = nil
     ) {
         self.name = name
         self.typeName = typeName
@@ -73,6 +76,16 @@ public struct ColumnInfo: Sendable, Identifiable {
         self.isAutoIncrement = isAutoIncrement
         self.isGenerated = isGenerated
         self.rejectsWrittenValues = rejectsWrittenValues
+        self.allowedValues = allowedValues
+    }
+
+    public func withAllowedValues(_ values: [String]?) -> ColumnInfo {
+        ColumnInfo(
+            name: name, typeName: typeName, isPrimaryKey: isPrimaryKey, isNullable: isNullable,
+            defaultValue: defaultValue, comment: comment, characterMaxLength: characterMaxLength,
+            ordinalPosition: ordinalPosition, isAutoIncrement: isAutoIncrement, isGenerated: isGenerated,
+            rejectsWrittenValues: rejectsWrittenValues, allowedValues: values
+        )
     }
 }
 

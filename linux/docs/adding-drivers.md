@@ -278,6 +278,7 @@ An editor tab holds one session for as long as it is open, because the state a u
 - `run(sql, options, sink)` takes `UserSql` as typed and `RunOptions`: `row_limit`, `deadline` and `cancel`. A caller stops a run through `RunOptions::cancel`.
 - A dropped caller is a cancel. The run goes on a task of its own, or an actor's, and `run` arms `options.cancel.clone().drop_guard()` until the outcome arrives, so the stop still goes out and the session settles to `Ready` or `Lost`. `MysqlEditorSession::run` is the shape to copy.
 - The app's editor splits a script with the engine's grammar and sends one statement per run, or one `GO` batch on SQL Server. A driver still runs whatever text it is given, a whole script included.
+- A stopped run sends nothing more, whether or not the stop reached the server: the statement running, or the batch the server runs as one (a `GO` batch on SQL Server, text MySQL has to send whole), is its last. `TimedOut { server_cancelled: true }` means the server said it stopped the statement, never only that the stop went out.
 - A statement the server refused ends the run with `RunEnd::Failed` in the `RunSummary`; an `Err` from `run` means the session itself failed.
 - `RunSummary` carries `elapsed`, the `RunEnd` (`Completed`, `Failed`, `Cancelled`, `TimedOut { server_cancelled }`) and the `TransactionState` after the run. `Unknown` is an answer of its own: the tab's close guard warns instead of guessing.
 - `close` stops a running statement, then closes the connection within `close_timeout`.

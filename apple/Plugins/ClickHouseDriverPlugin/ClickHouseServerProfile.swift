@@ -11,11 +11,15 @@ import TableProPluginKit
 /// only in 23.8.9, Altinity builds carry their own numbering, and a settings profile or a
 /// constraint makes a setting read-only for one user: none of that shows in the version. A setting
 /// the server does not know, or will not let this user change, fails the whole request.
-struct ClickHouseServerProfile: Sendable, Equatable {
+nonisolated struct ClickHouseServerProfile: Sendable, Equatable {
     let version: ClickHouseServerVersion?
     /// The settings this user may change, each with the bounds a settings constraint puts on it.
     let settingLimits: [ClickHouseURLSetting: ClickHouseSettingLimits]
     let catalog: Set<ClickHouseCatalogFeature>
+    // The bytes of a statement the parser reads. A value written into the statement counts; as a URL parameter it did not.
+    let maxQuerySize: Int
+
+    static let documentedMaxQuerySize = 262_144
 
     /// Before the probes answer, a request carries nothing the server could refuse, so a
     /// `readonly = 1` user can still connect.
@@ -43,22 +47,26 @@ struct ClickHouseServerProfile: Sendable, Equatable {
     init(
         version: ClickHouseServerVersion?,
         settingLimits: [ClickHouseURLSetting: ClickHouseSettingLimits],
-        catalog: Set<ClickHouseCatalogFeature>
+        catalog: Set<ClickHouseCatalogFeature>,
+        maxQuerySize: Int = Self.documentedMaxQuerySize
     ) {
         self.version = version
         self.settingLimits = settingLimits
         self.catalog = catalog
+        self.maxQuerySize = maxQuerySize
     }
 
     init(
         version: ClickHouseServerVersion?,
         writableSettings: Set<ClickHouseURLSetting>,
-        catalog: Set<ClickHouseCatalogFeature>
+        catalog: Set<ClickHouseCatalogFeature>,
+        maxQuerySize: Int = Self.documentedMaxQuerySize
     ) {
         self.init(
             version: version,
             settingLimits: Dictionary(uniqueKeysWithValues: writableSettings.map { ($0, ClickHouseSettingLimits()) }),
-            catalog: catalog
+            catalog: catalog,
+            maxQuerySize: maxQuerySize
         )
     }
 
@@ -73,16 +81,30 @@ struct ClickHouseServerProfile: Sendable, Equatable {
         self.init(
             version: versionText.flatMap(ClickHouseServerVersion.init),
             settingLimits: settings.map { Self.settingLimits(columns: $0.columns, rows: $0.rows) } ?? [:],
-            catalog: catalogRow.map(Self.catalog(row:)) ?? Set(ClickHouseCatalogFeature.allCases)
+            catalog: catalogRow.map(Self.catalog(row:)) ?? Set(ClickHouseCatalogFeature.allCases),
+            maxQuerySize: settings.flatMap { Self.maxQuerySize(columns: $0.columns, rows: $0.rows) }
+                ?? Self.documentedMaxQuerySize
         )
+    }
+
+    static func maxQuerySize(columns: [String], rows: [[PluginCellValue]]) -> Int? {
+        guard let nameIndex = columns.firstIndex(of: "name"), let valueIndex = columns.firstIndex(of: "value") else {
+            return nil
+        }
+        let row = rows.first { $0[safe: nameIndex]?.asText == ClickHouseURLSetting.maxQuerySize.rawValue }
+        return row?[safe: valueIndex]?.asText.flatMap { Int($0) }
     }
 
     var writableSettings: Set<ClickHouseURLSetting> { Set(settingLimits.keys) }
 
     /// The URL item for `value`, or nil when this user may not set it to that.
     func queryItem(_ setting: ClickHouseURLSetting, _ value: String) -> URLQueryItem? {
-        guard settingLimits[setting]?.allows(value) == true else { return nil }
+        guard allows(setting, value) else { return nil }
         return URLQueryItem(name: setting.rawValue, value: value)
+    }
+
+    func allows(_ setting: ClickHouseURLSetting, _ value: String) -> Bool {
+        settingLimits[setting]?.allows(value) == true
     }
 
 
@@ -140,7 +162,7 @@ struct ClickHouseServerProfile: Sendable, Equatable {
 
 /// The bounds a settings constraint puts on one setting (`system.settings` `min`, `max` and,
 /// from 25.x, `disallowed_values`). A writable setting can still refuse a value outside them.
-struct ClickHouseSettingLimits: Sendable, Equatable {
+nonisolated struct ClickHouseSettingLimits: Sendable, Equatable {
     var min: Double?
     var max: Double?
     var disallowed: [String] = []
@@ -189,15 +211,18 @@ struct ClickHouseSettingLimits: Sendable, Equatable {
     }
 }
 
-/// The URL settings the driver sends only when the server lets this user change them.
+/// The settings the driver sends only when the server lets this user change them, in the URL or, for
+/// `mutations_sync`, in the statement's SETTINGS clause.
 /// `max_execution_time` is not here: `applyQueryTimeout` sends it once and keeps it only when the
 /// server accepts it.
-enum ClickHouseURLSetting: String, CaseIterable, Sendable {
+nonisolated enum ClickHouseURLSetting: String, CaseIterable, Sendable {
     case sendProgressInHTTPHeaders = "send_progress_in_http_headers"
     case httpWriteExceptionInOutputFormat = "http_write_exception_in_output_format"
     case maxResultRows = "max_result_rows"
     case resultOverflowMode = "result_overflow_mode"
     case cancelHTTPReadonlyQueriesOnClientClose = "cancel_http_readonly_queries_on_client_close"
+    case mutationsSync = "mutations_sync"
+    case maxQuerySize = "max_query_size"
 }
 
 /// System catalog parts the metadata reads use that older servers lack, measured: 19.16 and 20.3
@@ -205,7 +230,7 @@ enum ClickHouseURLSetting: String, CaseIterable, Sendable {
 /// `as_select`, 21.10 no `system.functions.origin`, and `system.data_skipping_indices` first
 /// ships in 21.8. On 25.8's shipped config a user without system grants cannot read the
 /// skipping-index table, and `system.tables` does not list it to them either.
-enum ClickHouseCatalogFeature: String, CaseIterable, Sendable {
+nonisolated enum ClickHouseCatalogFeature: String, CaseIterable, Sendable {
     case tablesComment = "tables_comment"
     case tablesAsSelect = "tables_as_select"
     case tablesTotalRows = "tables_total_rows"
@@ -232,7 +257,7 @@ enum ClickHouseCatalogFeature: String, CaseIterable, Sendable {
 
 /// `version()` is four numbers on official and Cloud builds, and Altinity appends a fifth,
 /// non-numeric part (`24.8.14.10548.altinitystable`).
-struct ClickHouseServerVersion: Sendable, Equatable {
+nonisolated struct ClickHouseServerVersion: Sendable, Equatable {
     let components: [Int]
 
     init?(_ text: String) {

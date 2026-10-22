@@ -78,6 +78,9 @@ struct FieldEditState: Identifiable {
     /// The user asked for the field to be taken out of the row.
     var isPendingRemoval = false
 
+    // A selected row's value is still on the server, so the field shows no value and takes no edit.
+    var isUnloaded = false
+
     var hasEdit: Bool {
         pendingValue != nil || isPendingNull || isPendingDefault || isPendingRemoval
     }
@@ -151,6 +154,7 @@ final class MultiRowEditState: ObservableObject {
     @Published private(set) var allRows: [[String?]] = []
     /// The columns each row in `allRows` has no field for.
     @Published private(set) var absentCells: [Set<Int>] = []
+    @Published private(set) var unloadedCells: [Set<Int>] = []
     /// The columns each row in `allRows` holds staged SQL in.
     @Published private(set) var expressionCells: [Set<Int>] = []
     @Published private(set) var columns: [String] = []
@@ -163,6 +167,16 @@ final class MultiRowEditState: ObservableObject {
     private(set) var cellWriter: CellWriterSupport = .none
     private(set) var rowsAreInserted = false
 
+    private var revealsInvisibleCharacters: Bool
+    private var settingsCancellable: AnyCancellable?
+
+    init() {
+        revealsInvisibleCharacters = AppSettingsManager.shared.dataGrid.showInvisibleCharacters
+        settingsCancellable = AppEvents.shared.dataGridSettingsChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.adoptInvisibleCharacterSetting() }
+    }
+
     var hasEdits: Bool {
         fields.contains { $0.hasEdit }
     }
@@ -172,6 +186,7 @@ final class MultiRowEditState: ObservableObject {
         rowIDs: [RowID] = [],
         allRows: [[String?]],
         absentCells: [Set<Int>] = [],
+        unloadedCells: [Set<Int>] = [],
         expressionCells: [Set<Int>] = [],
         columns: [String],
         columnTypes: [ColumnType],
@@ -194,6 +209,7 @@ final class MultiRowEditState: ObservableObject {
         self.rowIDs = rowIDs
         self.allRows = allRows
         self.absentCells = absentCells
+        self.unloadedCells = unloadedCells
         self.expressionCells = expressionCells
         self.columns = columns
         self.columnTypes = columnTypes
@@ -221,6 +237,7 @@ final class MultiRowEditState: ObservableObject {
                 && expression.dropFirst().allSatisfy { $0 == expression.first }
             let hasMultipleValues = !allSame
             let isAbsent = !hasMultipleValues && absence.first == true
+            let isUnloaded = allRows.indices.contains { unloadedCells[safe: $0]?.contains(colIndex) == true }
 
             let originalValue: String?
             if hasMultipleValues {
@@ -240,7 +257,7 @@ final class MultiRowEditState: ObservableObject {
             if !columnsChanged, !selectionChanged, colIndex < fields.count {
                 let oldField = fields[colIndex]
                 if oldField.originalValue == originalValue && oldField.hasMultipleValues == hasMultipleValues
-                    && oldField.isAbsent == isAbsent {
+                    && oldField.isAbsent == isAbsent && oldField.isUnloaded == isUnloaded {
                     preservedId = oldField.id
                     pendingValue = oldField.pendingValue
                     isPendingNull = oldField.isPendingNull
@@ -281,7 +298,7 @@ final class MultiRowEditState: ObservableObject {
                 isBinaryValue: binaryColumns.contains(colIndex),
                 isPrimaryKey: primaryKeyColumns.contains(columnName),
                 isForeignKey: foreignKeyColumns.contains(columnName),
-                isServerOwned: serverOwnedColumns.contains(columnName),
+                isServerOwned: serverOwnedColumns.contains(columnName) || isUnloaded,
                 isNullable: !nonNullableColumns.contains(columnName),
                 serverAssignsValue: serverAssignedColumns.contains(columnName),
                 displayFormat: displayFormat,
@@ -297,6 +314,7 @@ final class MultiRowEditState: ObservableObject {
                 isAbsent: isAbsent,
                 isPendingRemoval: isPendingRemoval
             )
+            newField.isUnloaded = isUnloaded
             if let preservedId {
                 newField.id = preservedId
             }
@@ -309,7 +327,8 @@ final class MultiRowEditState: ObservableObject {
                 isLongText: isLongText,
                 originalValue: originalValue,
                 displayFormatOverride: displayFormat,
-                isBinaryValue: newField.isBinaryValue
+                isBinaryValue: newField.isBinaryValue,
+                revealsInvisibleCharacters: revealsInvisibleCharacters
             )
             newFields.append(newField)
         }
@@ -342,6 +361,28 @@ final class MultiRowEditState: ObservableObject {
         return Set(holdsBytes.indices.filter { holdsBytes[$0] && !holdsText[$0] })
     }
 
+    // A value holding an invisible character takes the text view only while marks are on, so a field
+    // shown when the setting changes is resolved again.
+    private func adoptInvisibleCharacterSetting() {
+        let reveals = AppSettingsManager.shared.dataGrid.showInvisibleCharacters
+        guard reveals != revealsInvisibleCharacters else { return }
+        revealsInvisibleCharacters = reveals
+        for index in fields.indices where !fields[index].isSchemaField && fields[index].editor == nil {
+            let field = fields[index]
+            let resolved = FieldEditorResolver.resolve(
+                for: field.columnTypeEnum,
+                isLongText: field.isLongText,
+                originalValue: field.originalValue,
+                displayFormatOverride: field.displayFormat,
+                isBinaryValue: field.isBinaryValue,
+                revealsInvisibleCharacters: reveals
+            )
+            if resolved != field.resolvedEditor {
+                fields[index].resolvedEditor = resolved
+            }
+        }
+    }
+
     /// Configure state for a single schema row supplied by the grid that owns the selection.
     /// Field ids survive a reconfigure of the same row so a commit does not rebuild the
     /// editors and drop focus while the user is still moving between fields.
@@ -352,6 +393,7 @@ final class MultiRowEditState: ObservableObject {
         selectedRowIndices = [displayRow]
         rowIDs = []
         absentCells = []
+        unloadedCells = []
         expressionCells = []
         databaseType = nil
         cellWriter = .none
@@ -665,6 +707,7 @@ final class MultiRowEditState: ObservableObject {
         rowIDs = []
         allRows = []
         absentCells = []
+        unloadedCells = []
         expressionCells = []
         columns = []
         columnTypes = []

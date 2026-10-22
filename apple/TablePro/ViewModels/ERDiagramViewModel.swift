@@ -3,6 +3,7 @@ import Combine
 import Foundation
 import os
 import SwiftUI
+import TableProPluginKit
 
 @MainActor
 final class ERDiagramViewModel: ObservableObject {
@@ -17,7 +18,7 @@ final class ERDiagramViewModel: ObservableObject {
 
     /// The diagram is bound to the database and the schema its tab was opened on, so moving
     /// the sidebar to another database or schema cannot repoint an open diagram.
-    private var scope: DatabaseScope? {
+    var scope: DatabaseScope? {
         services.databaseManager.resolvedScope(database: databaseName, schema: schemaName, for: connectionId)
     }
 
@@ -75,6 +76,8 @@ final class ERDiagramViewModel: ObservableObject {
     var hasJunctionTables: Bool { !fullGraph.junctionTableIds.isEmpty }
 
     private var fullGraph: ERDiagramGraph = .empty
+    // The bulk column read takes in views too, and a view is edited on the terms its own kind allows.
+    private(set) var objectKinds: [String: TableInfo.TableType] = [:]
 
     // MARK: - Canvas Viewport
 
@@ -86,8 +89,44 @@ final class ERDiagramViewModel: ObservableObject {
     /// back at 100% scrolled to the origin every time the user left the tab and returned.
     let viewport = DiagramViewportController()
 
-    /// Selection outlives the view for the same reason.
-    @Published var selectedNodeId: UUID?
+    // Outlives the view for the same reason, in pick order so a join starts at the first table.
+    @Published var selectedNodeIds: [UUID] = []
+
+    var selectedNodeId: UUID? {
+        get { selectedNodeIds.last }
+        set { selectedNodeIds = newValue.map { [$0] } ?? [] }
+    }
+
+    func toggleSelection(_ nodeId: UUID) {
+        selectedEdgeId = nil
+        if let index = selectedNodeIds.firstIndex(of: nodeId) {
+            selectedNodeIds.remove(at: index)
+        } else {
+            selectedNodeIds.append(nodeId)
+        }
+    }
+
+    var selectedTableNames: [String] {
+        selectedNodeIds.compactMap { id in graph.nodes.first { $0.id == id }?.tableName }
+    }
+
+    @Published var selectedEdgeId: UUID?
+
+    // MARK: - Editing
+
+    weak var coordinator: MainContentCoordinator?
+    var tabId: UUID?
+    @Published var editSheet: ERDiagramEditSheet?
+    @Published private(set) var hasStagedEdits = false
+    // An edit confirmed in a sheet is staged only once its table's baseline has loaded.
+    @Published private(set) var stagingCount = 0
+    private var stagingTasks: [UUID: Task<Void, Never>] = [:]
+    @Published private(set) var isRefreshing = false
+    private var refreshRequested = false
+    private var editsStorage: ERDiagramSchemaEdits?
+    private let connection: DatabaseConnection?
+    var pendingPlacement: ERDiagramPendingPlacement?
+    private var objectChangeCancellable: AnyCancellable?
 
     // MARK: - Drag State
 
@@ -114,7 +153,7 @@ final class ERDiagramViewModel: ObservableObject {
     private var columnCountByNodeId: [UUID: Int] = [:]
     private var nodeIdToName: [UUID: String] = [:]
 
-    private let services: AppServices
+    let services: AppServices
     private let autoPanClock: any Clock<Duration>
     private var loadTask: Task<Void, Never>?
 
@@ -124,6 +163,7 @@ final class ERDiagramViewModel: ObservableObject {
         connectionId: UUID,
         databaseName: String,
         schemaKey: String,
+        connection: DatabaseConnection? = nil,
         services: AppServices = .live,
         autoPanClock: any Clock<Duration> = ContinuousClock()
     ) {
@@ -131,8 +171,14 @@ final class ERDiagramViewModel: ObservableObject {
         self.databaseName = databaseName
         self.schemaKey = schemaKey
         self.schemaName = Self.resolveSchemaName(fromSchemaKey: schemaKey, databaseName: databaseName)
+        self.connection = connection
         self.services = services
         self.autoPanClock = autoPanClock
+        objectChangeCancellable = AppCommands.shared.objectChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] change in
+                self?.placeCreatedTable(change)
+            }
     }
 
     deinit {
@@ -175,20 +221,9 @@ final class ERDiagramViewModel: ObservableObject {
         }
 
         do {
-            let (columns, foreignKeys, indexes) = try await services.databaseManager.withMetadataDriver(
-                scope: scope, workload: .bulk
-            ) { driver in
-                let cols = try await driver.fetchAllColumns()
-                let fks = try await driver.fetchAllForeignKeys()
-                let idx = try await driver.fetchIndexes(forTables: Array(fks.keys))
-                return (cols, fks, idx)
-            }
-
-            fullGraph = ERDiagramGraphBuilder.build(
-                allColumns: columns,
-                allForeignKeys: foreignKeys,
-                allIndexes: indexes
-            )
+            let (fetched, kinds) = try await fetchGraph(in: scope)
+            fullGraph = fetched
+            objectKinds = kinds ?? [:]
 
             nodeIdToName = Dictionary(uniqueKeysWithValues: fullGraph.nodes.map { ($0.id, $0.tableName) })
             let visibleGraph = makeVisibleGraph()
@@ -208,6 +243,146 @@ final class ERDiagramViewModel: ObservableObject {
             Self.logger.error("Failed to load ER diagram: \(error.localizedDescription)")
             loadState = .failed(error.localizedDescription)
         }
+    }
+
+    private func isLocalKey(in scope: DatabaseScope) -> (ForeignKeyInfo) -> Bool {
+        guard let driver = services.databaseManager.driver(for: connectionId) else { return { _ in true } }
+        let slot = EngineNamespaceSlot(databaseType: driver.connection.type)
+        return { key in
+            ForeignKeyTargetScope.pointsWithin(
+                scope, referencedDatabase: key.referencedDatabase, referencedSchema: key.referencedSchema, slot: slot
+            )
+        }
+    }
+
+    private func fetchGraph(
+        in scope: DatabaseScope
+    ) async throws -> (ERDiagramGraph, [String: TableInfo.TableType]?) {
+        let (columns, foreignKeys, indexes, tables) = try await services.databaseManager.withMetadataDriver(
+            scope: scope, workload: .bulk
+        ) { driver in
+            let cols = try await driver.fetchAllColumns()
+            let fks = try await driver.fetchAllForeignKeys()
+            let idx = try await driver.fetchIndexes(forTables: Array(fks.keys))
+            // Nil keeps the kinds already known, so a failed read never turns a view into a table.
+            let tables: [TableInfo]?
+            do {
+                tables = try await driver.fetchTables()
+            } catch {
+                Self.logger.error("ER diagram could not read object kinds: \(error.localizedDescription)")
+                tables = nil
+            }
+            return (cols, fks, idx, tables)
+        }
+        let kinds = tables.map { Dictionary($0.map { ($0.name, $0.type) }, uniquingKeysWith: { first, _ in first }) }
+        return (
+            ERDiagramGraphBuilder.build(
+                allColumns: columns,
+                allForeignKeys: foreignKeys,
+                allIndexes: indexes,
+                isLocal: isLocalKey(in: scope)
+            ),
+            kinds
+        )
+    }
+
+    // MARK: - Refresh
+
+    // Fetched before anything is replaced, so a failed refresh leaves the diagram as it was.
+    func refresh() async {
+        guard loadState == .loaded else {
+            await loadDiagram()
+            return
+        }
+        guard !isRefreshing else {
+            refreshRequested = true
+            return
+        }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        repeat {
+            refreshRequested = false
+            await refetchKeepingLayout()
+        } while refreshRequested
+    }
+
+    private func refetchKeepingLayout() async {
+        guard let scope, services.databaseManager.driver(for: connectionId) != nil else {
+            presentRefreshFailure(String(localized: "No database connection"))
+            return
+        }
+        do {
+            let (fetched, kinds) = try await fetchGraph(in: scope)
+            fullGraph = fetched
+            if let kinds {
+                objectKinds = kinds
+            }
+            nodeIdToName = Dictionary(uniqueKeysWithValues: fetched.nodes.map { ($0.id, $0.tableName) })
+            editsStorage?.forgetUnedited()
+            let visibleGraph = makeVisibleGraph()
+            placeNewNodes(of: visibleGraph)
+            graph = visibleGraph
+            let visibleIds = Set(visibleGraph.nodes.map(\.id))
+            selectedNodeIds.removeAll { !visibleIds.contains($0) }
+            if let selected = selectedEdgeId, visibleGraph.edges.allSatisfy({ $0.id != selected }) {
+                selectedEdgeId = nil
+            }
+            invalidateCachedRects()
+            persistPositions()
+        } catch {
+            Self.logger.error("Failed to refresh ER diagram: \(error.localizedDescription)")
+            presentRefreshFailure(error.localizedDescription)
+        }
+    }
+
+    private func presentRefreshFailure(_ message: String) {
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Could Not Refresh the Diagram"),
+            message: message,
+            window: coordinator?.contentWindow
+        )
+    }
+
+    // A new table goes beside what is drawn, so nothing the user arranged moves.
+    private func placeNewNodes(of visibleGraph: ERDiagramGraph) {
+        let newNodes = visibleGraph.nodes.filter { computedLayout[$0.id] == nil && positionOverrides[$0.id] == nil }
+        guard !newNodes.isEmpty else { return }
+
+        let placed = cachedNodeRects.values
+        let originX = (placed.map(\.maxX).max() ?? 0) + ERDiagramLayout.horizontalGap
+        var nextY = placed.map(\.minY).min() ?? ERDiagramLayout.verticalGap
+        var layout = computedLayout
+        for node in newNodes {
+            let height = ERDiagramLayout.estimateHeight(columnCount: node.displayColumns.count)
+            if let placement = pendingPlacement, placement.tableName == node.tableName {
+                positionOverrides[node.id] = placement.point
+                pendingPlacement = nil
+                continue
+            }
+            layout[node.id] = CGPoint(x: originX + ERDiagramLayout.nodeWidth / 2, y: nextY + height / 2)
+            nextY += height + ERDiagramLayout.verticalGap
+        }
+        computedLayout = layout
+    }
+
+    // Create Table names the table it made in this notice, so the diagram can tell it from the rest.
+    private func placeCreatedTable(_ change: DatabaseObjectChange) {
+        guard var placement = pendingPlacement, placement.tableName == nil,
+              change.connectionId == connectionId,
+              loadState == .loaded,
+              fullGraph.nodeIndex[change.name] == nil,
+              change.scope.database == (scope?.database ?? databaseName),
+              change.scope.schema?.nilIfEmpty == scope?.schema?.nilIfEmpty
+        else { return }
+        switch change.kind {
+        case .dropped, .renamed:
+            return
+        case .rows, .structure, .comment:
+            break
+        }
+        placement.tableName = change.name
+        pendingPlacement = placement
+        Task { await refresh() }
     }
 
     private func waitForConnection() async {
@@ -320,7 +495,9 @@ final class ERDiagramViewModel: ObservableObject {
     // MARK: - Visible Graph (compact mode + junction collapse)
 
     private func makeVisibleGraph() -> ERDiagramGraph {
-        var projected = fullGraph.projected(collapseJunctions: collapseJunctions)
+        let staged = editsStorage?.tableEdits() ?? [:]
+        var projected = ERDiagramStagedOverlay.apply(staged, to: fullGraph)
+            .projected(collapseJunctions: collapseJunctions)
         projected.nodes = projected.nodes.map { node in
             var updated = node
             updated.displayColumns = isCompactMode
@@ -332,6 +509,22 @@ final class ERDiagramViewModel: ObservableObject {
             return updated
         }
         return projected
+    }
+
+    // No relayout: that would move every table the user has not dragged.
+    func refreshStagedOverlay() {
+        let staged = editsStorage?.hasChanges ?? false
+        if staged != hasStagedEdits {
+            hasStagedEdits = staged
+            coordinator?.toolbarState.diagramEditsRevision &+= 1
+            coordinator?.refreshUnsavedIndicator()
+        }
+        guard loadState == .loaded else { return }
+        graph = makeVisibleGraph()
+        if let selected = selectedEdgeId, graph.edges.allSatisfy({ $0.id != selected }) {
+            selectedEdgeId = nil
+        }
+        invalidateCachedRects()
     }
 
     private func rebuildVisibleGraph() {
@@ -347,6 +540,41 @@ final class ERDiagramViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
             computedLayout = layout
             invalidateCachedRects()
+        }
+    }
+
+    // MARK: - Edit Storage
+
+    var editsIfCreated: ERDiagramSchemaEdits? { editsStorage }
+
+    func adoptEdits(_ edits: ERDiagramSchemaEdits) {
+        editsStorage = edits
+    }
+
+    var editingConnection: DatabaseConnection? {
+        connection ?? services.databaseManager.session(for: connectionId)?.connection
+    }
+
+    var savedGraph: ERDiagramGraph { fullGraph }
+
+    // Unsaved work includes an edit still waiting on its baseline, or a close would drop it unasked.
+    var holdsUnsavedWork: Bool {
+        hasStagedEdits || stagingCount > 0
+    }
+
+    func track(_ task: Task<Void, Never>, id: UUID) {
+        stagingTasks[id] = task
+        stagingCount = stagingTasks.count
+    }
+
+    func finishStaging(_ id: UUID) {
+        stagingTasks.removeValue(forKey: id)
+        stagingCount = stagingTasks.count
+    }
+
+    func awaitPendingStaging() async {
+        while let task = stagingTasks.values.first {
+            await task.value
         }
     }
 

@@ -1,5 +1,6 @@
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import TableProTestSupport
 import Testing
 
@@ -185,6 +186,108 @@ struct PasswordSourceResolverTests {
         }
     }
 
+    @Test("A command's result is reused for as long as it says, and run again after")
+    func commandResultIsReusedForItsLifetime() async throws {
+        let counter = FileManager.default.temporaryDirectory.appendingPathComponent("tablepro-runs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: counter) }
+        let clockStart = ContinuousClock.now
+        let elapsed = LockedDuration()
+        let cache = PasswordCommandCache(now: { clockStart + elapsed.value })
+        let context = ConnectionScriptContext(
+            connectionId: UUID(), connectionName: "c", host: "h", port: 1, user: "u", database: "d"
+        )
+        let source = PasswordSource.command(
+            shell: "echo run >> '\(counter.path)'; wc -l < '\(counter.path)' | tr -d ' '",
+            reuseSeconds: 60
+        )
+
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "1")
+        elapsed.value = .seconds(59)
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "1")
+        elapsed.value = .seconds(61)
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "2")
+        cache.forget(connectionId: context.connectionId)
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "3")
+
+        let shorter = PasswordSource.command(
+            shell: "echo run >> '\(counter.path)'; wc -l < '\(counter.path)' | tr -d ' '",
+            reuseSeconds: 30
+        )
+        #expect(try await PasswordSourceResolver.resolve(shorter, for: context, cache: cache) == "4")
+    }
+
+    @MainActor
+    @Test("A sign-in the server rejects, pooled ones included, drops the reused output")
+    func rejectedSignInForgetsReusedOutput() async throws {
+        let counter = FileManager.default.temporaryDirectory.appendingPathComponent("tablepro-runs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: counter) }
+        let connection = DatabaseConnection(name: "Pooled", host: "db.example.com", type: .mysql)
+        let context = ConnectionScriptContext(connection: connection)
+        let source = PasswordSource.command(
+            shell: "echo run >> '\(counter.path)'; wc -l < '\(counter.path)' | tr -d ' '",
+            reuseSeconds: 600
+        )
+        #expect(try await PasswordSourceResolver.resolve(source, for: context) == "1")
+        #expect(try await PasswordSourceResolver.resolve(source, for: context) == "1")
+
+        let adapter = PluginDriverAdapter(
+            connection: connection,
+            pluginDriver: RejectingPluginDriver(),
+            deadline: ConnectionDeadline(configuredSeconds: 5),
+            timeoutEndpoint: .database("db.example.com")
+        )
+        await #expect(throws: (any Error).self) {
+            try await adapter.connect()
+        }
+
+        #expect(try await PasswordSourceResolver.resolve(source, for: context) == "2")
+        PasswordCommandCache.shared.forget(connectionId: connection.id)
+    }
+
+    @Test("A test runs the command now, whatever output a connect is reusing")
+    func testIgnoresTheReuseCache() async throws {
+        let counter = FileManager.default.temporaryDirectory.appendingPathComponent("tablepro-runs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: counter) }
+        let cache = PasswordCommandCache()
+        let context = ConnectionScriptContext(
+            connectionId: UUID(), connectionName: "c", host: "h", port: 1, user: "u", database: "d"
+        )
+        let source = PasswordSource.command(
+            shell: "echo run >> '\(counter.path)'; wc -l < '\(counter.path)' | tr -d ' '",
+            reuseSeconds: 600
+        )
+
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "1")
+        #expect(try await PasswordSourceResolver.test(source, for: context) == "2")
+        #expect(try await PasswordSourceResolver.test(source, for: context) == "3")
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "1")
+    }
+
+    @Test("A test fills in the connection's details like a connect does")
+    func testFillsConnectionDetails() async throws {
+        let context = ConnectionScriptContext(
+            connectionId: UUID(), connectionName: "c", host: "db.example.com", port: 5432, user: "u", database: "d"
+        )
+
+        let output = try await PasswordSourceResolver.test(.command(shell: "echo {host}:$TABLEPRO_PORT"), for: context)
+
+        #expect(output == "db.example.com:5432")
+    }
+
+    @Test("Without a lifetime the command runs on every connect")
+    func commandWithoutLifetimeRunsEachTime() async throws {
+        let counter = FileManager.default.temporaryDirectory.appendingPathComponent("tablepro-runs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: counter) }
+        let cache = PasswordCommandCache()
+        let context = ConnectionScriptContext(
+            connectionId: UUID(), connectionName: "c", host: "h", port: 1, user: "u", database: "d"
+        )
+        let source = PasswordSource.command(shell: "echo run >> '\(counter.path)'; wc -l < '\(counter.path)' | tr -d ' '")
+
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "1")
+        #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "2")
+    }
+
     @Test("Large stdout drains in full while stderr is also draining")
     func drainsLargeStdoutWithoutTruncation() async throws {
         let shell = """
@@ -281,5 +384,23 @@ struct PasswordSourceResolverTests {
 
     private func uniqueEnvName() -> String {
         "TABLEPRO_PWTEST_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+    }
+}
+
+private final class LockedDuration: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Duration = .zero
+
+    var value: Duration {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
+    }
+}
+
+private final class RejectingPluginDriver: PluginDriverStub, @unchecked Sendable {
+    struct Rejected: Error {}
+
+    func connect() async throws {
+        throw Rejected()
     }
 }

@@ -115,7 +115,8 @@ internal struct AgentResultRowsView: View {
                 databaseType: connection?.type,
                 showRowNumbers: true,
                 supportsColumnCommands: false,
-                supportsValueFilter: false
+                supportsValueFilter: false,
+                appliesRowCopyFormat: true
             ),
             delegate: gridDelegate,
             selectedRowIndices: $selectedRows,

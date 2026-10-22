@@ -14,7 +14,7 @@ public enum RedisServerMode: String, Sendable {
 }
 
 public enum RedisServerInfo {
-    static func value(_ key: String, in info: String) -> String? {
+    public static func value(_ key: String, in info: String) -> String? {
         for line in info.components(separatedBy: .newlines) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard trimmed.hasPrefix("\(key):") else { continue }

@@ -416,6 +416,22 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.classifyTier("DEBUG SEGFAULT", databaseType: .redis) == .destructive)
     }
 
+    @Test("Every Redis command in a text is tiered, a line break ending one as a semicolon does")
+    func redisEveryCommandIsTiered() {
+        #expect(QueryClassifier.classifyTier("GET a\nFLUSHALL", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("GET a; DEL b", databaseType: .redis) == .write)
+        #expect(QueryClassifier.classifyTier("GET a\nGET b;", databaseType: .redis) == .safe)
+        #expect(QueryClassifier.classifyTier("GET \"a\nFLUSHALL\"", databaseType: .redis) == .safe)
+        #expect(QueryClassifier.isMultiStatement("GET a\nGET b", databaseType: .redis))
+        #expect(!QueryClassifier.isMultiStatement("SET k \"a\nb\"", databaseType: .redis))
+    }
+
+    @Test("A Redis line that looks like a SQL comment is a command, so it never hides the next one")
+    func redisCommentLookalikesHideNothing() {
+        #expect(QueryClassifier.classifyTier("/*\nFLUSHALL\n*/ GET a", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("-- note\nGET a", databaseType: .redis) == .write)
+    }
+
     @Test("Redis CONFIG splits on the subcommand")
     func redisConfigSplitsOnSubcommand() {
         #expect(QueryClassifier.classifyTier("CONFIG GET maxmemory", databaseType: .redis) == .safe)
@@ -432,6 +448,18 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.isWriteQuery("DB 3 SET key value", databaseType: .redis))
         #expect(QueryClassifier.reachesFilesystemOrExecutesCode("DB 1 EVAL \"return 1\" 0", databaseType: .redis))
         #expect(QueryClassifier.isWriteQuery("DB 3", databaseType: .redis))
+    }
+
+    /// `OUTSIDEBLOCK` is the Server Dashboard's prefix for a command held out of the user's MULTI
+    /// block. Read as the bare word, `OUTSIDEBLOCK FLUSHALL` passed as an ordinary write.
+    @Test("Redis OUTSIDEBLOCK prefix is classified by the command it wraps")
+    func redisOutsideBlockPrefix() {
+        #expect(QueryClassifier.classifyTier("OUTSIDEBLOCK FLUSHALL", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("outsideblock DB 0 FLUSHDB", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.classifyTier("DB 0 OUTSIDEBLOCK FLUSHDB", databaseType: .redis) == .destructive)
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode("OUTSIDEBLOCK EVAL \"return 1\" 0", databaseType: .redis))
+        #expect(!QueryClassifier.isWriteQuery("OUTSIDEBLOCK GET key", databaseType: .redis))
+        #expect(QueryClassifier.isWriteQuery("OUTSIDEBLOCK", databaseType: .redis))
     }
 
     /// The driver strips redis-cli quoting before it sends, so a quoted command runs as the bare

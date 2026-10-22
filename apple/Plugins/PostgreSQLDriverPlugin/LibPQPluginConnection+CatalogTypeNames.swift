@@ -73,7 +73,8 @@ internal extension LibPQPluginConnection {
         return ColumnMetadata(
             columns: metadata.columns,
             columnOids: metadata.columnOids,
-            columnTypeNames: metadata.columnOids.map(typeNames.name(for:))
+            columnTypeModifiers: metadata.columnTypeModifiers,
+            columnTypeNames: zip(metadata.columnOids, metadata.columnTypeModifiers).map(typeNames.name(for:modifier:))
         )
     }
 }

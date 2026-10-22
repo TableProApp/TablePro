@@ -30,17 +30,20 @@ internal struct DataSyncScriptBuilder {
     private let options: DataCompareOptions
     private let plan: DataComparePlan
     private let targetTypes: [String: ColumnType]
+    private let immutableColumns: Set<String>
 
     internal init(
         targetDriver: any PluginDatabaseDriver,
         targetDatabaseType: DatabaseType,
         options: DataCompareOptions,
-        plan: DataComparePlan
+        plan: DataComparePlan,
+        immutableColumns: Set<String> = []
     ) {
         self.targetDriver = targetDriver
         self.targetDatabaseType = targetDatabaseType
         self.options = options
         self.plan = plan
+        self.immutableColumns = Set(immutableColumns.map { $0.lowercased() })
         var types: [String: ColumnType] = [:]
         for column in plan.columns {
             guard let type = column.targetColumnType else { continue }
@@ -142,13 +145,18 @@ internal struct DataSyncScriptBuilder {
     private func updateStatement(source: DataRow, target: DataRow, entry: RowDiffEntry) -> SyncStatement? {
         let updatable = plan.updatableColumns
         let changedKeys = updatable.filter { plan.isKeyColumn($0) && entry.differs(in: $0) }
-        let assignable = updatable.filter { !plan.isKeyColumn($0) } + changedKeys
+        // The target refuses any assignment of an immutable column, so only a differing one is sent, to be refused.
+        let assignable = updatable.filter {
+            !plan.isKeyColumn($0) && (!immutableColumns.contains($0.lowercased()) || entry.differs(in: $0))
+        } + changedKeys
         guard !assignable.isEmpty, let predicate = keyPredicate(row: target) else { return nil }
         let assignments = assignable
             .map { "\(targetDriver.quoteIdentifier($0)) = \(literal(source.value(for: $0), column: $0))" }
             .joined(separator: ", ")
+        let table = qualifiedTable
         return SyncStatement(
-            sql: "UPDATE \(qualifiedTable) SET \(assignments) WHERE \(predicate)",
+            sql: targetDriver.rowUpdateStatement(table: table, assignments: assignments, predicate: predicate)
+                ?? "UPDATE \(table) SET \(assignments) WHERE \(predicate)",
             objectName: plan.id,
             summary: String(format: String(localized: "Update row %@ in %@"), entry.keyDescription, plan.table),
             expectedRowCount: 1
@@ -157,8 +165,10 @@ internal struct DataSyncScriptBuilder {
 
     private func deleteStatement(row: DataRow, entry: RowDiffEntry) -> SyncStatement? {
         guard let predicate = keyPredicate(row: row) else { return nil }
+        let table = qualifiedTable
         return SyncStatement(
-            sql: "DELETE FROM \(qualifiedTable) WHERE \(predicate)",
+            sql: targetDriver.rowDeleteStatement(table: table, predicate: predicate)
+                ?? "DELETE FROM \(table) WHERE \(predicate)",
             objectName: plan.id,
             summary: String(format: String(localized: "Delete row %@ from %@"), entry.keyDescription, plan.table),
             hazards: [SyncHazard(

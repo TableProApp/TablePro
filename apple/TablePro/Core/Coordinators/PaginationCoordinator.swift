@@ -251,7 +251,7 @@ final class PaginationCoordinator: ObservableObject {
         countSQL: String?
     ) async -> Result<Int?, Error> {
         do {
-            let count = try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
+            let count = try await DatabaseManager.shared.withRowCountDriver(scope: scope, filtered: !filters.isEmpty) { driver in
                 if let browseFilters {
                     return try await driver.fetchExactRowCount(table: tableName, browseFilters: browseFilters)
                 }
@@ -332,6 +332,7 @@ final class PaginationCoordinator: ObservableObject {
         let owner = TabQueryTaskOwner.unclaimedWork(tabId: tabId, token: workToken)
         let lease = DriverLeaseOwner()
         let isTableTab = parent.tabManager.tabs[idx].tabType == .table
+        let lengthColumns = isTableTab ? parent.unloadedValueLengthColumns(for: parent.tabManager.tabs[idx]) : []
 
         let startedAt = ContinuousClock.Instant.now
         /// Both releases belong to the whole task rather than to its exits: the cancelled path used
@@ -352,11 +353,12 @@ final class PaginationCoordinator: ObservableObject {
                     isTableTab: isTableTab,
                     lease: lease
                 ) { driver in
-                    try await driver.executeUserQuery(
+                    let result = try await driver.executeUserQuery(
                         query: baseQuery,
                         rowCap: nil,
                         parameters: storedParamValues.map { $0.map { $0 as Any? } }
                     )
+                    return result.foldingUnloadedValues(lengthColumns: lengthColumns)
                 }
                 let fetchTime = CFAbsoluteTimeGetCurrent() - start
                 progressLog.info("[fetchAll] rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s")
@@ -387,7 +389,12 @@ final class PaginationCoordinator: ObservableObject {
                     guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
                     let replaceDelta = parent.mutateActiveTableRows(for: tabId) { rows in
-                        rows.replace(rows: result.rows, rowLocators: isTableTab ? result.rowLocators : nil, absentCells: result.absentCells)
+                        rows.replace(
+                            rows: result.rows,
+                            rowLocators: isTableTab ? result.rowLocators : nil,
+                            absentCells: result.absentCells,
+                            unloadedCells: result.unloadedCells
+                        )
                     }
                     parent.tabManager.mutate(at: idx) { tab in
                         tab.execution.executionTime = result.executionTime

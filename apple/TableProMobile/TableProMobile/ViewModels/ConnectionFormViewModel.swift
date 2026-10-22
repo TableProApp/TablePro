@@ -4,6 +4,7 @@ import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
 import TableProOracleCore
+import TableProSSHTransport
 
 @MainActor
 @Observable
@@ -46,9 +47,9 @@ final class ConnectionFormViewModel {
     var password = ""
     var database = ""
     var sslEnabled = false
-    var sslMode: SSLConfiguration.SSLMode = .disable
-    var mssqlSSLMode: SSLConfiguration.SSLMode = .disable
-    var oracleSSLMode: SSLConfiguration.SSLMode = .disable
+    var sslMode: SSLModeChoice = .disable
+    var mssqlSSLMode: SSLModeChoice = .disable
+    var oracleSSLMode: SSLModeChoice = .disable
 
     // Client certificates
     var certificateSummaries: [CertificateRole: String] = [:]
@@ -65,6 +66,12 @@ final class ConnectionFormViewModel {
     var oracleSID = ""
     var oracleRole: OracleConnectionOptions.Role = .normal
     var oracleNetworkEncryption: OracleConnectionOptions.NetworkEncryption = .accepted
+    var mongoHosts = ""
+    var mongoAuthSource = ""
+    var mongoAuthMechanism = ""
+    var mongoReplicaSet = ""
+    var mongoUsesSRV = false
+    var iam = ConnectionIAMFormState()
 
     // Organization
     var groupId: UUID?
@@ -83,6 +90,20 @@ final class ConnectionFormViewModel {
     var sshKeyContent = ""
     var sshKeyPassphrase = ""
     var sshKeyInputMode: KeyInputMode = .file
+
+    // Two-factor sign-in, in the Mac's settings
+    var totpMode: TOTPMode = .none
+    var totpSecret = ""
+    var totpAlgorithm: TOTPAlgorithm = .sha1
+    var totpDigits = 6
+    var totpPeriod = 30
+
+    // Jump hosts
+    var jumpHosts: [JumpHostDraft] = []
+    // Hops only the Mac's ~/.ssh/config names, from the route it published. Host fields are the Mac's.
+    var routeHops: [JumpHostDraft] = []
+    var jumpHostKeyFileError: String?
+    private(set) var jumpHostCredentialsUnreadable = false
 
     // File picker output
     var selectedFileURL: URL?
@@ -108,6 +129,8 @@ final class ConnectionFormViewModel {
     @ObservationIgnored let connectionId: UUID
     @ObservationIgnored private var createdFileURL: URL?
     @ObservationIgnored private var addedNewConnection = false
+    @ObservationIgnored private var loadedStoredCredentials = false
+    @ObservationIgnored private var sshProfileSecrets: [String: String] = [:]
     private(set) var baseline: ConnectionFormSnapshot?
     private(set) var storedSecrets = ConnectionFormSecrets()
     private let localFiles: LocalDatabaseFileLocator
@@ -139,17 +162,22 @@ final class ConnectionFormViewModel {
         username = conn.username
         database = conn.database
         sslEnabled = conn.sslEnabled
-        // Coerce verify modes to .require: the iOS driver encrypts without checking the certificate
-        // (DriverSSLConfiguration maps verify* to "require"). Matches what the driver actually does.
-        let storedMode = conn.sslConfiguration?.mode ?? .disable
+        let storedMode = conn.sslConfiguration.map { SSLModeChoice($0) } ?? (conn.sslEnabled ? .require : .disable)
+        // The iOS SQL Server driver checks no certificate, so a verify mode runs as Required.
         mssqlSSLMode = (storedMode == .verifyCa || storedMode == .verifyFull) ? .require : storedMode
         oracleSSLMode = storedMode
-        sslMode = conn.sslConfiguration?.mode ?? (conn.sslEnabled ? .require : .disable)
+        sslMode = storedMode
         oracleConnectionType = OracleConnectionOptions.identifierMode(from: conn.additionalFields)
         oracleServiceName = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] ?? ""
         oracleSID = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? ""
         oracleRole = OracleConnectionOptions.role(from: conn.additionalFields)
         oracleNetworkEncryption = OracleConnectionOptions.networkEncryption(from: conn.additionalFields)
+        mongoHosts = Self.mongoHosts(of: conn)
+        mongoAuthSource = conn.additionalFields[MongoDBDialPlan.authSourceField] ?? ""
+        mongoAuthMechanism = conn.additionalFields[MongoDBDialPlan.authMechanismField] ?? ""
+        mongoReplicaSet = conn.additionalFields[MongoDBDialPlan.replicaSetField] ?? ""
+        mongoUsesSRV = conn.additionalFields[MongoDBDialPlan.srvField] == "true"
+        iam = ConnectionIAMFormState(connection: conn)
         sshEnabled = conn.sshEnabled
         groupId = conn.groupId
         tagId = conn.tagId
@@ -159,11 +187,20 @@ final class ConnectionFormViewModel {
             sshHost = ssh.host
             sshPort = ssh.port.map(String.init) ?? ""
             sshUsername = ssh.username
-            sshAuthMethod = ssh.authMethod
+            sshAuthMethod = ssh.authMethod.onDevice
             sshKeyPath = ssh.privateKeyPath ?? ""
-            if ssh.authMethod == .privateKey, sshKeyPath.isEmpty {
+            if sshAuthMethod == .privateKey, sshKeyPath.isEmpty {
                 sshKeyInputMode = .paste
             }
+            jumpHosts = ssh.jumpHosts.map(JumpHostDraft.init(hop:))
+            totpMode = ssh.totpMode.flatMap(TOTPMode.init(rawValue:)) ?? .none
+            totpAlgorithm = ssh.totpAlgorithm.flatMap(TOTPAlgorithm.init(rawValue:)) ?? .sha1
+            totpDigits = ssh.totpDigits ?? 6
+            totpPeriod = ssh.totpPeriod ?? 30
+            let typedHopIds = Set(ssh.jumpHosts.map(\.id))
+            routeHops = (conn.sshRoute?.hops ?? [])
+                .filter { !typedHopIds.contains($0.id) }
+                .map(JumpHostDraft.init(routeHop:))
         }
         hydrateDatabaseFile(from: conn)
     }
@@ -190,7 +227,32 @@ final class ConnectionFormViewModel {
         if type == .duckdb {
             return duckDBInMemory || !database.isEmpty
         }
-        return !host.isEmpty
+        if type == .mongodb {
+            return mongoHostsIssue == nil && !hasJumpHostWithoutHost
+        }
+        return !host.isEmpty && !hasJumpHostWithoutHost
+    }
+
+    // The Mac's MongoDB form keeps the seed list in place of Host and Port, and stores its first entry there too.
+    static func mongoHosts(of connection: DatabaseConnection) -> String {
+        if let listed = connection.additionalFields[MongoDBDialPlan.hostsField], !listed.isEmpty { return listed }
+        guard !connection.host.isEmpty else { return "" }
+        let port = connection.port > 0 ? connection.port : Self.mongoDefaultPort
+        return HostListEndpoint(host: connection.host, port: port).entry
+    }
+
+    private static let mongoDefaultPort = 27_017
+
+    private var mongoEndpoints: [HostListEndpoint] {
+        HostListEndpoint.parseList(mongoHosts, defaultPort: Self.mongoDefaultPort)
+    }
+
+    var mongoHostsIssue: String? {
+        let entries = mongoHosts.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        if entries.isEmpty { return String(localized: "Enter at least one host.") }
+        guard let invalid = entries.first(where: { HostListEndpoint.parse($0, defaultPort: Self.mongoDefaultPort) == nil })
+        else { return nil }
+        return String(format: String(localized: "“%@” is not a host or host:port"), invalid)
     }
 
     var isFileBased: Bool {
@@ -200,17 +262,33 @@ final class ConnectionFormViewModel {
     var isEditing: Bool { existingConnection != nil }
 
     var pastedPrivateKey: String? {
-        guard sshEnabled, sshAuthMethod == .privateKey, sshKeyInputMode == .paste,
+        guard sshEnabled, sshAuthMethod.onDevice == .privateKey, sshKeyInputMode == .paste,
               !sshKeyContent.isEmpty else { return nil }
         return sshKeyContent
     }
 
+    // A Mac SSH profile owns its two-factor settings, as it owns the server.
+    var offersTwoFactor: Bool {
+        sshAuthMethod != .none && !sshFollowsMacProfile
+    }
+
+    var sshAuthMethodNote: String? {
+        switch sshAuthMethod {
+        case .privateKey where existingConnection?.sshConfiguration?.authMethod == .sshAgent:
+            String(localized: "Set to SSH Agent on the Mac. iPhone and iPad sign in with a private key.")
+        default:
+            nil
+        }
+    }
+
     var edits: ConnectionFormEdits {
-        ConnectionFormEdits(
-            name: name.isEmpty ? (selectedFileURL?.lastPathComponent ?? host) : name,
+        let primary = type == .mongodb ? mongoEndpoints.first : nil
+        let dialedHost = primary?.host ?? self.host
+        return ConnectionFormEdits(
+            name: name.isEmpty ? (selectedFileURL?.lastPathComponent ?? dialedHost) : name,
             type: type,
-            host: host,
-            port: Int(port) ?? 3_306,
+            host: dialedHost,
+            port: primary?.port ?? Int(port) ?? Int(type.defaultPort) ?? 0,
             username: username,
             database: database,
             groupId: groupId,
@@ -219,7 +297,9 @@ final class ConnectionFormViewModel {
             safeModeLevel: safeModeLevel,
             sslMode: effectiveSSLMode,
             sshTunnel: sshTunnel,
-            oracle: oracleOptions
+            oracle: oracleOptions,
+            mongo: mongoOptions,
+            iam: iamOptions
         )
     }
 
@@ -227,12 +307,44 @@ final class ConnectionFormViewModel {
         existingConnection?.sslConfiguration?.mode == .verifyCa
     }
 
+    static let oraclePreferredPlaintextMessage = String(
+        localized: "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database."
+    )
+
     var oracleSSLModeNote: String? {
-        guard type == .oracle, oracleSSLMode == .verifyCa else { return nil }
-        return DriverSSLConfiguration.oracleVerifyCaUnavailableMessage
+        guard type == .oracle else { return nil }
+        switch oracleSSLMode {
+        case .verifyCa: return DriverSSLConfiguration.oracleVerifyCaUnavailableMessage
+        case .preferred: return Self.oraclePreferredPlaintextMessage
+        case .disable, .require, .verifyFull: return nil
+        }
     }
 
-    private var effectiveSSLMode: SSLConfiguration.SSLMode? {
+    static let redisPreferredForcesTLSMessage = String(localized: """
+        Redis driver has no TLS fallback. Preferred and Required both force TLS. \
+        Use Required for Redis Cloud, Upstash, and AWS ElastiCache encrypted endpoints.
+        """)
+
+    static let mongoPreferredForcesTLSMessage = String(
+        localized: "The MongoDB driver has no TLS fallback, so Preferred connects with TLS, as Required does."
+    )
+
+    var sslModeNote: String? {
+        if type == .mongodb {
+            switch sslMode {
+            case .verifyCa, .verifyFull:
+                return hasCertificate(.certificateAuthority) ? nil : MongoDBDialPlan.verifyNeedsCAMessage
+            case .preferred:
+                return Self.mongoPreferredForcesTLSMessage
+            case .disable, .require:
+                return nil
+            }
+        }
+        guard type == .redis, sslMode == .preferred else { return nil }
+        return Self.redisPreferredForcesTLSMessage
+    }
+
+    private var effectiveSSLMode: SSLModeChoice? {
         switch type {
         case .sqlite, .duckdb: nil
         case .mssql: mssqlSSLMode
@@ -247,8 +359,35 @@ final class ConnectionFormViewModel {
             host: sshHost,
             port: Int(sshPort),
             username: sshUsername,
-            authMethod: sshAuthMethod,
-            privateKeyPath: sshKeyPath.isEmpty ? nil : sshKeyPath
+            authMethod: sshAuthMethodToStore,
+            privateKeyPath: sshKeyPath.isEmpty ? nil : sshKeyPath,
+            jumpHosts: jumpHosts.map(\.edit),
+            totp: ConnectionFormEdits.TOTPSettings(
+                mode: totpMode.rawValue,
+                algorithm: totpAlgorithm.rawValue,
+                digits: totpDigits,
+                period: totpPeriod
+            )
+        )
+    }
+
+    // The picker shows how this device signs in. Left as it opened, the method goes back as the Mac
+    // stored it, which matters when a switched-off tunnel is turned on and every field is written.
+    private var sshAuthMethodToStore: SSHConfiguration.SSHAuthMethod {
+        guard let stored = existingConnection?.sshConfiguration?.authMethod, stored.onDevice == sshAuthMethod else {
+            return sshAuthMethod
+        }
+        return stored
+    }
+
+    private var mongoOptions: ConnectionFormEdits.MongoOptions? {
+        guard type == .mongodb else { return nil }
+        return ConnectionFormEdits.MongoOptions(
+            hosts: mongoEndpoints.map(\.entry).joined(separator: ","),
+            authSource: mongoAuthSource.trimmingCharacters(in: .whitespaces),
+            authMechanism: mongoAuthMechanism,
+            replicaSet: mongoReplicaSet.trimmingCharacters(in: .whitespaces),
+            usesSRV: mongoUsesSRV
         )
     }
 
@@ -265,8 +404,10 @@ final class ConnectionFormViewModel {
 
     // MARK: - Credential Hydration
 
+    // The form's `.task` runs again whenever a pushed screen pops, and a second load would overwrite edits.
     func loadStoredCredentials(secureStore: any SecureStore) async {
-        guard let conn = existingConnection else { return }
+        guard let conn = existingConnection, !loadedStoredCredentials else { return }
+        loadedStoredCredentials = true
         if let stored = Self.storedSecret(.password, for: conn.id, in: secureStore) {
             password = stored
             storedSecrets.password = stored
@@ -284,7 +425,52 @@ final class ConnectionFormViewModel {
             storedSecrets.privateKey = privateKey
             sshKeyInputMode = .paste
         }
-        baseline?.secrets = snapshot.secrets
+        if let secret = Self.storedSecret(.totpSecret, for: conn.id, in: secureStore) {
+            totpSecret = secret
+            storedSecrets.totpSecret = secret
+        }
+        loadJumpHostCredentials(for: conn, in: secureStore)
+        if let profileId = conn.sshProfileId {
+            for kind in SSHProfileSecretKind.allCases {
+                let account = kind.account(for: profileId)
+                guard let value = try? secureStore.retrieve(forKey: account), !value.isEmpty else { continue }
+                sshProfileSecrets[account] = value
+            }
+        }
+        let iamSecrets = ConnectionIAMSecrets.stored(for: conn.id, in: secureStore)
+        iam.secrets = iamSecrets
+        storedSecrets.iam = iamSecrets
+        // Read first: `snapshot` reads `baseline`, which an in-place write would already hold.
+        let loaded = snapshot.secrets
+        baseline?.secrets = loaded
+    }
+
+    var hasSSHProfilePassword: Bool {
+        guard let profileId = existingConnection?.sshProfileId else { return false }
+        return sshProfileSecrets[SSHProfileSecretKind.password.account(for: profileId)] != nil
+    }
+
+    private func loadJumpHostCredentials(for connection: DatabaseConnection, in secureStore: any SecureStore) {
+        guard connection.sshConfiguration?.jumpHosts.isEmpty == false || !routeHops.isEmpty else { return }
+        let loaded: [UUID: JumpHostCredential]
+        do {
+            loaded = try JumpHostCredentialStore.load(for: connection.id, in: secureStore)
+        } catch {
+            Self.logger.error("Failed to read jump host keys: \(error.localizedDescription, privacy: .private)")
+            jumpHostCredentialsUnreadable = true
+            credentialError = Self.jumpHostKeysUnreadableMessage
+            return
+        }
+        let shown = jumpHostIdsShown
+        storedSecrets.jumpHostCredentials = loaded.filter { shown.contains($0.key) }
+        for index in jumpHosts.indices {
+            guard let credential = loaded[jumpHosts[index].id] else { continue }
+            jumpHosts[index].adopt(credential)
+        }
+        for index in routeHops.indices {
+            guard let credential = loaded[routeHops[index].id] else { continue }
+            routeHops[index].adopt(credential)
+        }
     }
 
     private static func storedSecret(
@@ -301,7 +487,11 @@ final class ConnectionFormViewModel {
 
     private func onTypeChange(from oldType: DatabaseType) {
         guard oldType != type else { return }
+        iam.keepMethodOffered(for: type)
         updateDefaultPort()
+        if type == .mongodb, mongoHosts.isEmpty, !host.isEmpty {
+            mongoHosts = HostListEndpoint(host: host, port: Self.mongoDefaultPort).entry
+        }
         selectedFileURL = nil
         database = ""
         pendingFile = nil
@@ -441,6 +631,7 @@ final class ConnectionFormViewModel {
         if !password.isEmpty {
             secrets[ConnectionSecretKind.password.account(for: connectionId)] = password
         }
+        secrets.merge(iamTestSecrets(for: connectionId)) { _, iamSecret in iamSecret }
         guard sshEnabled else { return secrets }
         if !sshPassword.isEmpty {
             secrets[ConnectionSecretKind.sshPassword.account(for: connectionId)] = sshPassword
@@ -450,6 +641,18 @@ final class ConnectionFormViewModel {
         }
         if let pastedPrivateKey {
             secrets[ConnectionSecretKind.sshPrivateKey.account(for: connectionId)] = pastedPrivateKey
+        }
+        if !totpSecret.isEmpty {
+            secrets[ConnectionSecretKind.totpSecret.account(for: connectionId)] = totpSecret
+        }
+        secrets.merge(sshProfileSecrets) { own, _ in own }
+        let hopCredentials = jumpHostCredentials
+        guard !hopCredentials.isEmpty else { return secrets }
+        do {
+            secrets[ConnectionSecretKind.jumpHostKeys.account(for: connectionId)] =
+                try JumpHostCredentialStore.encode(hopCredentials)
+        } catch {
+            Self.logger.error("Failed to encode jump host keys: \(error.localizedDescription, privacy: .private)")
         }
         return secrets
     }
@@ -498,7 +701,8 @@ final class ConnectionFormViewModel {
                 operation: "testConnection",
                 databaseType: type,
                 host: host,
-                sshEnabled: sshEnabled
+                sshEnabled: sshEnabled,
+                signsInWithIAM: testConn.iamSignIn != nil
             )
             let classified = ErrorClassifier.classify(error, context: context)
             testResult = TestResult(
@@ -658,11 +862,31 @@ final class ConnectionFormViewModel {
                 storageFailed = true
             }
         }
+        if let changed = writes.totpSecret {
+            do {
+                try secureStore.store(changed, forKey: ConnectionSecretKind.totpSecret.account(for: connectionId))
+                storedSecrets.totpSecret = changed
+            } catch {
+                Self.logger.error("Failed to store TOTP secret: \(error.localizedDescription, privacy: .public)")
+                storageFailed = true
+            }
+        }
+
+        if !storedSecrets.iam.persist(writes.iam, for: connectionId, in: secureStore) {
+            storageFailed = true
+        }
 
         do {
             try persistPrivateKey(secureStore: secureStore)
         } catch {
             Self.logger.error("Failed to store SSH private key: \(error.localizedDescription, privacy: .public)")
+            storageFailed = true
+        }
+
+        do {
+            try persistJumpHostCredentials(secureStore: secureStore)
+        } catch {
+            Self.logger.error("Failed to store jump host keys: \(error.localizedDescription, privacy: .private)")
             storageFailed = true
         }
 
@@ -692,6 +916,23 @@ final class ConnectionFormViewModel {
             try secureStore.delete(forKey: account)
         }
         storedSecrets.privateKey = key
+    }
+
+    // The item is synced to every device, which may have changed it while the form was open, so it
+    // is re-read and only the entries this form changed are written. An item that could not be read
+    // when the form opened is never written; a failed re-read throws, and the next Save tries again.
+    func persistJumpHostCredentials(secureStore: any SecureStore) throws {
+        guard !jumpHostCredentialsUnreadable else { return }
+        let credentials = jumpHostCredentials
+        let loaded = storedSecrets.jumpHostCredentials
+        guard credentials != loaded else { return }
+        var stored = try JumpHostCredentialStore.load(for: connectionId, in: secureStore)
+        let kept = Set(jumpHosts.map(\.id) + routeHops.map(\.id))
+        for hopId in jumpHostIdsShown where !kept.contains(hopId) || credentials[hopId] != loaded[hopId] {
+            stored[hopId] = credentials[hopId]
+        }
+        try JumpHostCredentialStore.save(sshEnabled ? stored : [:], for: connectionId, in: secureStore)
+        storedSecrets.jumpHostCredentials = credentials
     }
 
     func dismissCredentialError() {

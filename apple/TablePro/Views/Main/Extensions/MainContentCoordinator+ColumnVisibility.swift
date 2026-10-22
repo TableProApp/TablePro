@@ -96,7 +96,7 @@ extension MainContentCoordinator {
     func clearColumnLayout(_ target: ColumnLayoutClearTarget) {
         if tabManager.selectedTabId == target.tabId,
            dataTabDelegate?.tableViewCoordinator?.columnLayoutKey == target.tableKey {
-            dataTabDelegate?.tableViewCoordinator?.resetColumnWidthOwnership()
+            dataTabDelegate?.tableViewCoordinator?.resetColumnGeometry()
         }
         FileColumnLayoutPersister.shared.clearGeometry(for: target.tableKey)
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == target.tabId }),
@@ -118,7 +118,7 @@ extension MainContentCoordinator {
 
     private func applyColumnReset() {
         guard let index = tabManager.selectedTabIndex else { return }
-        dataTabDelegate?.tableViewCoordinator?.resetColumnWidthOwnership()
+        dataTabDelegate?.tableViewCoordinator?.resetColumnGeometry()
         let tab = tabManager.tabs[index]
         if let key = columnLayoutTableKey(for: tab) {
             FileColumnLayoutPersister.shared.clear(for: key)
@@ -127,8 +127,11 @@ extension MainContentCoordinator {
         requeryWithColumnScope(debounced: false)
     }
 
+    // A temporary table's layout is not kept: the key would be the permanent table's of the same name.
     private func columnLayoutTableKey(for tab: QueryTab) -> ColumnLayoutTableKey? {
-        guard let tableName = tab.tableContext.tableName, !tableName.isEmpty else { return nil }
+        guard !tab.tableContext.isTemporary, let tableName = tab.tableContext.tableName, !tableName.isEmpty else {
+            return nil
+        }
         return ColumnLayoutTableKey(
             connectionId: connectionId,
             databaseName: tab.tableContext.databaseName,

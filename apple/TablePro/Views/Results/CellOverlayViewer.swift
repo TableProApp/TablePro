@@ -16,7 +16,7 @@ final class CellOverlayViewer: CellOverlayBase, NSTextViewDelegate {
     ) {
         removeOverlay()
 
-        let cellFrame = tableView.frameOfCell(atColumn: column, row: row)
+        let cellFrame = Self.displayedCellFrame(in: tableView, column: column, row: row)
         guard !cellFrame.isEmpty else { return }
         guard let window = tableView.window else { return }
 
@@ -34,6 +34,7 @@ final class CellOverlayViewer: CellOverlayBase, NSTextViewDelegate {
         textView.backgroundColor = .textBackgroundColor
         applyTheme(to: textView, scope: scope)
         Self.applyCellTextLayout(to: textView)
+        markInvisibleCharacters(in: textView)
         textView.delegate = self
         textView.string = value
         textView.selectAll(nil)

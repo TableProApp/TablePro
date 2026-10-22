@@ -119,7 +119,11 @@ internal extension MainSplitViewController {
         let manager = sessionState.tabManager
         let target = workspace.connection.flatMap { PluginManager.shared.containerSwitchTarget(for: $0.type) }
         interaction.commands = EditorTabCommands(
-            activate: { [weak manager] id in manager?.selectedTabId = id },
+            activate: { [weak manager] id in
+                guard let manager, manager.selectedTabId != id else { return }
+                TabSwitchTracer.shared.requestSwitch(.tabStrip, to: id)
+                manager.selectedTabId = id
+            },
             keepOpen: { [weak manager] id in
                 manager?.promotePreviewTab(id: id)
                 if #available(macOS 14.0, *) {
@@ -127,14 +131,22 @@ internal extension MainSplitViewController {
                 }
             },
             canKeepOpen: { [weak manager] id in manager?.canPromotePreviewTab(id: id) ?? false },
+            isPinned: { [weak manager] id in manager?.isPinned(id: id) ?? false },
+            setPinned: { [weak manager] id, pinned in manager?.setPinned(pinned, id: id) },
             close: { [weak workspace] id in
                 workspace?.sessionState?.coordinator.commandActions?.closeTab(id: id)
             },
             closeOthers: { [weak workspace] id in
                 workspace?.sessionState?.coordinator.commandActions?.closeOtherTabs(anchoredOn: id)
             },
+            canCloseOthers: { [weak workspace] id in
+                workspace?.sessionState?.coordinator.commandActions?.canCloseOtherTabs(anchoredOn: id) ?? false
+            },
             closeAll: { [weak workspace] in
                 workspace?.sessionState?.coordinator.commandActions?.closeAllTabs()
+            },
+            canCloseAll: { [weak workspace] in
+                workspace?.sessionState?.coordinator.commandActions?.canCloseAllTabs ?? false
             },
             moveTab: { [weak manager] id, destination in manager?.moveTab(id: id, to: destination) },
             canMove: { [weak manager] id, offset in manager?.canMoveTab(id: id, by: offset) ?? false },

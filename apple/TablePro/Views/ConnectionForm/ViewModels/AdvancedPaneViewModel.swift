@@ -13,6 +13,8 @@ final class AdvancedPaneViewModel: ObservableObject {
     @Published var additionalFieldValues: [String: String] = [:]
     @Published var startupCommands: String = ""
     @Published var preConnectScript: String = ""
+    @Published var postDisconnectScript: String = ""
+    @Published var scriptTimeoutSeconds: Int?
     @Published var externalAccess: ExternalAccessLevel = .readOnly
     @Published var localOnly: Bool = false
     @Published var aiPolicy: AIConnectionPolicy?
@@ -33,6 +35,10 @@ final class AdvancedPaneViewModel: ObservableObject {
         allAdvancedFields.first { $0.content == .loadableExtensions && isFieldVisible($0) }
     }
 
+    var attachedDatabaseListField: ConnectionField? {
+        allAdvancedFields.first { $0.content == .attachedDatabases && isFieldVisible($0) }
+    }
+
     var editedExtensions: [LoadableExtension] {
         let initial = Set(initialExtensions)
         return currentExtensions.filter { !initial.contains($0) }
@@ -50,6 +56,12 @@ final class AdvancedPaneViewModel: ObservableObject {
         if let extensionIssue {
             issues.append(extensionIssue)
         }
+        if let attachedDatabaseIssue {
+            issues.append(attachedDatabaseIssue)
+        }
+        if let scriptTimeoutSeconds, !ConnectionScriptRunner.timeoutSecondsRange.contains(scriptTimeoutSeconds) {
+            issues.append(String(localized: "Script timeout must be between 1 and 300 seconds."))
+        }
         return issues
     }
 
@@ -62,6 +74,18 @@ final class AdvancedPaneViewModel: ObservableObject {
     private var currentExtensions: [LoadableExtension] {
         guard let field = extensionListField else { return [] }
         return (try? LoadableExtensionList.decode(additionalFieldValues[field.id])) ?? []
+    }
+
+    private var attachedDatabaseIssue: String? {
+        guard let field = attachedDatabaseListField else { return nil }
+        do {
+            try AttachedDatabaseList.validate(AttachedDatabaseList.decode(additionalFieldValues[field.id]))
+            return nil
+        } catch let error as AttachedDatabaseError {
+            return error.failureReason
+        } catch {
+            return error.localizedDescription
+        }
     }
 
     private var extensionIssue: String? {
@@ -112,6 +136,8 @@ final class AdvancedPaneViewModel: ObservableObject {
             .flatMap { (try? LoadableExtensionList.decode(connection.additionalFields[$0.id])) ?? [] }
         startupCommands = connection.startupCommands ?? ""
         preConnectScript = connection.preConnectScript ?? ""
+        postDisconnectScript = connection.postDisconnectScript ?? ""
+        scriptTimeoutSeconds = connection.scriptTimeoutSeconds
         aiPolicy = connection.aiPolicy
         externalAccess = connection.externalAccess
         localOnly = connection.localOnly

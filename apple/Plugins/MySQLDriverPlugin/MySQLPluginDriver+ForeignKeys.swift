@@ -23,6 +23,9 @@ extension MySQLPluginDriver {
             banner: identity.banner,
             flavor: identity.flavor
         )
+        guard await !resolvesToTemporaryTable(table, schema: schema) else {
+            return try await ddlForeignKeys(table: table, database: database, omittedAction: omittedAction)
+        }
         let byTable = try await catalogOrShow(
             database: database,
             catalogExists: hasForeignKeyCatalog,

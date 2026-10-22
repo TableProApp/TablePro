@@ -17,6 +17,64 @@ struct ExplainAuthorizationTests {
         id: "analyze", label: "EXPLAIN ANALYZE", sqlPrefix: "EXPLAIN (ANALYZE, FORMAT JSON)", format: .postgresJson
     )
 
+    private static let estimatedDriverPlan = ExplainVariant.driverPlan(
+        id: "estimated", label: "Estimated Plan", format: .sqlServerShowplanXML, runsStatement: false
+    )
+    private static let actualDriverPlan = ExplainVariant.driverPlan(
+        id: "actual", label: "Actual Plan", format: .sqlServerShowplanXML, runsStatement: true
+    )
+
+    @Test("An actual driver plan of a DELETE on a Read-Only connection is refused and never reaches the driver")
+    func actualDriverPlanOfAWriteOnReadOnlyIsRefused() async {
+        let harness = Harness(level: .readOnly, query: "DELETE FROM t", confirming: StubConfirming(answer: true))
+        defer { harness.tearDown() }
+
+        await harness.explain(Self.actualDriverPlan)
+
+        let requests = await harness.gate.requests
+        let decisions = await harness.gate.decisions
+        #expect(requests.first?.sql == "DELETE FROM t")
+        #expect(requests.first?.kind.declaresWrite == true)
+        #expect(decisions.first?.isAuthorized == false)
+        #expect(harness.driver.explainedPlans.isEmpty)
+        #expect(harness.driver.sentStatements.isEmpty)
+    }
+
+    @Test("An actual driver plan of a DELETE under Alert asks first, and a Cancel sends nothing")
+    func actualDriverPlanOfAWriteUnderAlertAsksFirst() async {
+        let confirming = StubConfirming(answer: false)
+        let harness = Harness(level: .alert, query: "DELETE FROM t", confirming: confirming)
+        defer { harness.tearDown() }
+
+        await harness.explain(Self.actualDriverPlan)
+
+        #expect(confirming.callCount == 1)
+        #expect(harness.driver.explainedPlans.isEmpty)
+        #expect(harness.errorMessage == nil)
+    }
+
+    @Test(
+        "An estimated driver plan of a DELETE only plans it, so it runs through the driver without a prompt",
+        arguments: [SafeModeLevel.silent, .alert, .safeMode, .readOnly]
+    )
+    func estimatedDriverPlanRunsWithoutAPrompt(level: SafeModeLevel) async {
+        let confirming = StubConfirming(answer: false)
+        let harness = Harness(level: level, query: "DELETE FROM t", confirming: confirming)
+        defer { harness.tearDown() }
+
+        await harness.explain(Self.estimatedDriverPlan)
+
+        let requests = await harness.gate.requests
+        let decisions = await harness.gate.decisions
+        #expect(requests.first?.kind == .readQuery)
+        #expect(requests.first?.sql == "EXPLAIN DELETE FROM t")
+        #expect(decisions.first?.isAuthorized == true)
+        #expect(confirming.callCount == 0)
+        #expect(harness.driver.explainedPlans == [.init(statement: "DELETE FROM t", variantId: "estimated")])
+        #expect(harness.driver.sentStatements.isEmpty)
+        #expect(harness.errorMessage == nil)
+    }
+
     @Test("Explain Analyze of a DELETE on a Read-Only connection is refused and never reaches the driver")
     func analyzeOfAWriteOnReadOnlyIsRefused() async {
         let harness = Harness(level: .readOnly, query: "DELETE FROM t", confirming: StubConfirming(answer: true))

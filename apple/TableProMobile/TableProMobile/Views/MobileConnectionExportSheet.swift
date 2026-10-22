@@ -1,4 +1,5 @@
 import SwiftUI
+import TableProImport
 import TableProModels
 
 struct IdentifiableURL: Identifiable {
@@ -13,6 +14,8 @@ struct MobileConnectionExportSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var includePasswords = false
+    @State private var includeSavedQueries = true
+    @State private var includeGlobalSavedQueries = false
     @State private var passphrase = ""
     @State private var confirmPassphrase = ""
     @State private var error: String?
@@ -25,6 +28,10 @@ struct MobileConnectionExportSheet: View {
         return !passphrase.isEmpty && passphrase == confirmPassphrase
     }
 
+    private var savedQueryCounts: SavedQueryCounts? {
+        IOSConnectionExportService.savedQueryCounts(for: connections, appState: appState)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -32,6 +39,8 @@ struct MobileConnectionExportSheet: View {
                     Text(connectionCountLabel)
                         .foregroundStyle(.secondary)
                 }
+
+                savedQueriesSection(savedQueryCounts)
 
                 Section {
                     Toggle(String(localized: "Include passwords"), isOn: $includePasswords)
@@ -90,6 +99,47 @@ struct MobileConnectionExportSheet: View {
         }
     }
 
+    // Unreadable counts keep the toggle, so the export fails with a reason instead of dropping the queries.
+    private static func offersSavedQueries(_ counts: SavedQueryCounts?) -> Bool {
+        counts.map { $0.connectionScoped + $0.global > 0 } ?? true
+    }
+
+    @ViewBuilder
+    private func savedQueriesSection(_ counts: SavedQueryCounts?) -> some View {
+        if Self.offersSavedQueries(counts) {
+            Section {
+                Toggle(String(localized: "Include Saved Queries"), isOn: $includeSavedQueries)
+                if let counts, counts.global > 0 {
+                    Toggle(String(localized: "Also include global saved queries"), isOn: $includeGlobalSavedQueries)
+                        .disabled(!includeSavedQueries)
+                }
+            } footer: {
+                if let counts {
+                    Text(Self.savedQueriesFooter(counts))
+                }
+            }
+        }
+    }
+
+    private static func savedQueriesFooter(_ counts: SavedQueryCounts) -> String {
+        var sentences: [String] = []
+        if counts.connectionScoped == 1 {
+            sentences.append(String(localized: "1 saved query that belongs to these connections, with its folder and keyword."))
+        } else if counts.connectionScoped > 1 {
+            sentences.append(String(
+                format: String(localized: "%d saved queries that belong to these connections, with their folders and keywords."),
+                counts.connectionScoped
+            ))
+        }
+        if counts.global == 1 {
+            sentences.append(String(localized: "1 saved query that every connection shows."))
+        } else if counts.global > 1 {
+            sentences.append(String(format: String(localized: "%d saved queries that every connection shows."), counts.global))
+        }
+        sentences.append(String(localized: "Saved queries are written as readable text unless the file is encrypted."))
+        return sentences.joined(separator: " ")
+    }
+
     private var connectionCountLabel: String {
         connections.count == 1
             ? String(localized: "1 connection will be exported.")
@@ -99,10 +149,13 @@ struct MobileConnectionExportSheet: View {
     private func export() async {
         error = nil
         do {
+            let includesSavedQueries = Self.offersSavedQueries(savedQueryCounts) && includeSavedQueries
             let data = try await IOSConnectionExportService.exportData(
                 connections: connections,
                 appState: appState,
                 includeCredentials: includePasswords,
+                includeSavedQueries: includesSavedQueries,
+                includeGlobalSavedQueries: includesSavedQueries && includeGlobalSavedQueries,
                 passphrase: includePasswords ? passphrase : nil
             )
             try Task.checkCancellation()

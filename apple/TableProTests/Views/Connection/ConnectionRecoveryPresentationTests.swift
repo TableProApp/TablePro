@@ -19,7 +19,8 @@ struct ConnectionRecoveryPresentationTests {
         let expected: [(ConnectionRecoveryAction, String)] = [
             (.installPlugin, String(localized: "Install Plugin…")),
             (.openPluginSettings(pluginId: nil), String(localized: "Open Plugin Settings")),
-            (.editConnection, String(localized: "Edit Connection…"))
+            (.editConnection, String(localized: "Edit Connection…")),
+            (.openLocalNetworkSettings, String(localized: "Open System Settings"))
         ]
 
         for (action, title) in expected {
@@ -37,8 +38,23 @@ struct ConnectionRecoveryPresentationTests {
     @Test("Only a fix made in Settings offers a separate retry")
     func onlySettingsOffersRetry() {
         #expect(ConnectionUnavailableView.offersRetry(for: .actionRequired(Self.failure, .openPluginSettings(pluginId: nil))))
+        #expect(ConnectionUnavailableView.offersRetry(for: .actionRequired(Self.failure, .openLocalNetworkSettings)))
         #expect(!ConnectionUnavailableView.offersRetry(for: .actionRequired(Self.failure, .installPlugin)))
         #expect(!ConnectionUnavailableView.offersRetry(for: .actionRequired(Self.failure, .editConnection)))
+    }
+
+    @Test("A failure that names its cause heads the pane with it")
+    func namedCauseIsTheHeadline() {
+        let named = ConnectionFailureInfo(title: "Local Network Access Required", message: "Cannot reach 192.168.1.9.")
+
+        #expect(
+            ConnectionUnavailableView.headline(for: .actionRequired(named, .openLocalNetworkSettings), connectionName: "Prod")
+                == "Local Network Access Required"
+        )
+        #expect(
+            ConnectionUnavailableView.headline(for: .failed(Self.failure), connectionName: "Prod")
+                == String(format: String(localized: "Could not connect to %@"), "Prod")
+        )
     }
 
     @Test("A request to show a plugin is answered once")

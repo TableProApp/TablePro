@@ -7,7 +7,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
-import TableProUtilities
+import TableProSQLGrammar
 
 // The header an MQL dump writes for a collection whose name holds a line terminator, as FormatPluginTests'
 // MQLExportHelpersTests holds the plugin to writing it: the terminator escaped, the comment on one line.

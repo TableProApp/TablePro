@@ -39,7 +39,10 @@ struct DashboardProviderSQLTests {
         ServerRelease(databaseType: .mysql, version: "4.1.22-standard")
     ]
 
-    private static let callerExclusions = ["pg_backend_pid()", "CONNECTION_ID()", "@@SPID", "queryID()"]
+    private static let callerExclusions = [
+        "pg_backend_pid()", "CONNECTION_ID()", "@@SPID", "queryID()", "SYS_CONTEXT('USERENV', 'SID')",
+        "command.currentOp", "CLIENT ID",
+    ]
 
     private static func labeledProvider(_ databaseType: DatabaseType, serverVersion: String?) -> LabeledProvider? {
         ServerDashboardQueryProviderFactory.provider(for: databaseType, serverVersion: serverVersion).map {

@@ -1,17 +1,15 @@
 name: Repo Hygiene
 
 # Checks that need no Mac: workflows, shell, release tooling and repo invariants. Ubuntu minutes are
-# free on a public repo, so it runs on every pull request and needs no change filter.
+# free on a public repo, so CI runs it on every change.
 
 on:
-  pull_request:
-  push:
-    branches: [main, 'release/**']
-  workflow_dispatch:
-
-concurrency:
-  group: repo-hygiene-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  workflow_call:
+    inputs:
+      hana:
+        description: Also check the SAP HANA helper.
+        type: boolean
+        required: true
 
 permissions:
   contents: read
@@ -119,18 +117,13 @@ jobs:
       - name: Check every test target is in its test plan
         run: python3 apple/scripts/ci/check-test-plans.py
 
-      - name: Decide whether the SAP HANA helper changed
-        id: native
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          REF: ${{ github.ref }}
-        run: |
-          set -euo pipefail
-          hana=$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" hana)
-          echo "hana=$hana" >> "$GITHUB_OUTPUT"
+      # The corpora run by hand against servers (scripts/probes/check-column-type-corpus.sh), so a type a driver
+      # starts listing is caught here.
+      - name: Check every listed column type has a corpus column
+        run: python3 apple/scripts/ci/check-column-type-corpus.py
 
       - name: Set up Go
-        if: steps.native.outputs.hana == 'true'
+        if: inputs.hana
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: apple/Native/HanaBridge/go.mod
@@ -138,7 +131,7 @@ jobs:
 
       # The helper is pure Go, so Linux analyses it as well as the Mac that builds it.
       - name: Check the SAP HANA helper
-        if: steps.native.outputs.hana == 'true'
+        if: inputs.hana
         working-directory: apple/Native/HanaBridge
         run: |
           set -euo pipefail

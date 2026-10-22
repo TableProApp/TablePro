@@ -79,43 +79,22 @@ package extension TextSelectionManager {
         )
     }
 
-    /// Extends the selection to the nearest line vertically.
-    ///
-    /// If moving up and the offset is in the middle of the line, it first extends it to the beginning of the line.
-    /// On the second call, it will extend it to the beginning of the previous line. When moving down, the
-    /// same thing will happen in the opposite direction.
-    ///
-    /// - Parameters:
-    ///   - offset: The offset to extend from.
-    ///   - up: Set to true if extending up.
-    ///   - suggestedXPos: The suggested x position to stick to.
-    /// - Returns: The range of the extended selection.
+    // Paragraph start or end, staying put once there, as `NSTextView` and Emacs's C-a and C-e do.
     private func extendSelectionVerticalLine(
         from offset: Int,
         up: Bool
     ) -> NSRange {
-        // Important distinction here, when moving up/down on a line and in the middle of the line, we move to the
-        // beginning/end of the *entire* line, not the line fragment.
+        // The whole line, not the line fragment, when the line wraps.
         guard let line = layoutManager?.textLineForOffset(offset) else {
             return NSRange(location: offset, length: 0)
         }
-        if up && line.range.location != offset {
-            return NSRange(location: line.range.location, length: offset - line.index)
-        } else if !up && line.range.max - (layoutManager?.detectedLineEnding.length ?? 0) != offset {
-            return NSRange(
-                location: offset,
-                length: line.range.max - offset - (layoutManager?.detectedLineEnding.length ?? 0)
-            )
-        } else {
-            let nextQueryIndex = up ? max(line.range.location - 1, 0) : min(line.range.max, (textStorage?.length ?? 0))
-            guard let nextLine = layoutManager?.textLineForOffset(nextQueryIndex) else {
-                return NSRange(location: offset, length: 0)
-            }
-            return NSRange(
-                start: up ? nextLine.range.location : offset,
-                end: up ? offset : nextLine.range.max - (layoutManager?.detectedLineEnding.length ?? 0)
-            )
+        if up {
+            return NSRange(start: line.range.location, end: max(offset, line.range.location))
         }
+        let lineEndingLength = textStorage
+            .flatMap { $0.substring(from: line.range) }
+            .flatMap(LineEnding.init(line:))?.length ?? 0
+        return NSRange(start: offset, end: max(offset, line.range.max - lineEndingLength))
     }
 
     /// Extends a selection one "page" long.

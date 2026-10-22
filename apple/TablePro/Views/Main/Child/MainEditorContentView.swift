@@ -75,7 +75,6 @@ struct MainEditorContentView: View {
     let onGoToPage: (Int) -> Void
 
     @State private var cachedChangeManager: AnyChangeManager?
-    @State private var erDiagramViewModels: [UUID: ERDiagramViewModel] = [:]
     @State private var queryPlanViewStates = QueryPlanViewStateStore()
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
     @State private var usersRolesViewModels: [UUID: UsersRolesViewModel] = [:]
@@ -187,7 +186,6 @@ struct MainEditorContentView: View {
         .onChange(of: tabManager.tabStructureVersion) { _ in
             let openTabIds = Set(tabManager.tabIds)
             coordinator.cleanupTabCaches(openTabIds: openTabIds)
-            erDiagramViewModels = erDiagramViewModels.filter { openTabIds.contains($0.key) }
             queryPlanViewStates.retainTabs(openTabIds)
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
             usersRolesViewModels = usersRolesViewModels.filter { openTabIds.contains($0.key) }
@@ -312,7 +310,9 @@ struct MainEditorContentView: View {
 
     @ViewBuilder
     private func objectSourceContent(tab: QueryTab) -> some View {
-        if let objectRef = tab.display.objectRef {
+        if let objectRef = tab.display.objectRef, objectRef.kind == .userType {
+            userTypeContent(tab: tab, objectRef: objectRef)
+        } else if let objectRef = tab.display.objectRef {
             ObjectSourceTabView(
                 connectionId: connection.id,
                 databaseType: connection.type,
@@ -402,23 +402,34 @@ struct MainEditorContentView: View {
     @ViewBuilder
     private func erDiagramContent(tab: QueryTab) -> some View {
         Group {
-            if let vm = erDiagramViewModels[tab.id] {
-                ERDiagramView(viewModel: vm)
+            if let vm = coordinator.erDiagramModels[tab.id] {
+                ERDiagramView(viewModel: vm, onBuildJoinQuery: buildJoinQuery(from: vm))
             } else {
                 ProgressView(String(localized: "Loading schema…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onAppear {
-                        guard erDiagramViewModels[tab.id] == nil else { return }
+                        guard coordinator.erDiagramModels[tab.id] == nil else { return }
                         let vm = ERDiagramViewModel(
                             connectionId: connection.id,
                             databaseName: tab.tableContext.databaseName,
-                            schemaKey: tab.display.erDiagramSchemaKey ?? tab.tableContext.databaseName
+                            schemaKey: tab.display.erDiagramSchemaKey ?? tab.tableContext.databaseName,
+                            connection: connection
                         )
-                        erDiagramViewModels[tab.id] = vm
+                        vm.coordinator = coordinator
+                        vm.tabId = tab.id
+                        coordinator.erDiagramModels[tab.id] = vm
                     }
             }
         }
         .id(tab.id)
+    }
+
+    private func buildJoinQuery(from diagram: ERDiagramViewModel) -> (([String]) -> Void)? {
+        guard coordinator.canBuildJoinQuery else { return nil }
+        let coordinator = coordinator
+        return { tables in
+            coordinator.openJoinBuilder(database: diagram.databaseName, schema: diagram.schemaName, tables: tables)
+        }
     }
 
     // MARK: - Per-tab container picker
@@ -524,6 +535,7 @@ struct MainEditorContentView: View {
                         databaseScope: queryScope,
                         connectionId: coordinator.connection.id,
                         tabID: tab.id,
+                        sourceFileURL: tab.content.sourceFileURL,
                         claimFocusOnAppear: claimFocus,
                         onFocusClaimed: {
                             if coordinator.tabManager.pendingFocusTabId == tab.id {
@@ -717,7 +729,8 @@ struct MainEditorContentView: View {
     @ViewBuilder
     private func structureContent(tab: QueryTab, tableName: String) -> some View {
         let scope = structureScope(for: tab)
-        let identity = "\(scope?.qualifiedDescription ?? "").\(tableName)"
+        let binding = scope?.isSessionBound == true ? "#session" : ""
+        let identity = "\(scope?.qualifiedDescription ?? "").\(tableName)\(binding)"
         Group {
             if let session = coordinator.structureSessions[tab.id], session.identity == identity {
                 TableStructureView(
@@ -738,6 +751,7 @@ struct MainEditorContentView: View {
                             connection: connection,
                             databaseName: scope?.database ?? "",
                             schemaName: scope?.schema,
+                            isSessionBound: scope?.isSessionBound ?? false,
                             tableName: tableName,
                             objectKind: tab.tableContext.resolvedObjectKind(),
                             serverSupport: StructureServerSupport.forConnection(connection.id)
@@ -1011,6 +1025,7 @@ struct MainEditorContentView: View {
                 showRowNumbers: settingsManager.dataGrid.showRowNumbers,
                 hiddenColumns: tab.columnLayout.hiddenColumns,
                 appliesRowSortPreferences: true,
+                appliesRowCopyFormat: true,
                 supportsColumnSort: tab.tabType != .table
                     || PluginManager.shared.supportsColumnSort(for: connection.type),
                 editRefusalMessage: refusal?.message
@@ -1119,7 +1134,8 @@ struct MainEditorContentView: View {
             hasStructureActions: structureFooter.isActive,
             isQueryPlan: tab.display.activeExplainResult != nil,
             paginationCapability: coordinator.paginationCapability,
-            hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true)
+            hasServerOutput: !(tab.display.activeResultSet?.serverOutput.isEmpty ?? true),
+            activeResultStatusMessage: tab.display.activeResultSet?.statusMessage
         )
         return ResultStatusBar(
             model: ResultStatusModel(
@@ -1176,6 +1192,7 @@ struct MainEditorContentView: View {
             resultSetMenu: resultSetMenuModel(for: tab),
             onActivateResultSet: { coordinator.switchActiveResultSet(to: $0, in: tab.id) },
             onToggleResultSetPin: { coordinator.togglePinResultSet(id: $0) },
+            onCompareResultSet: { coordinator.compareResultSet(id: $0) },
             onCloseResultSet: { coordinator.closeResultSet(id: $0) },
             onCloseOtherResultSets: { keptId in
                 for other in tab.display.resultSets where other.id != keptId && !other.isPinned {
@@ -1210,39 +1227,14 @@ struct MainEditorContentView: View {
                 label: resultSet.label,
                 isPinned: resultSet.isPinned,
                 isActive: resultSet.id == activeId,
-                ordinal: index + 1
+                ordinal: index + 1,
+                isComparable: coordinator.isComparable(resultSet, in: tab)
             )
         }
         return ResultSetMenuModel(
             entries: entries,
             activeOrdinal: entries.first(where: \.isActive)?.ordinal ?? entries.count,
             total: entries.count
-        )
-    }
-
-    private func scopeBarModel(for tab: QueryTab) -> QueryScopeBarModel {
-        QueryScopeBarModel(
-            containers: containerDatabases(for: tab),
-            selectedName: containerName(for: tab),
-            entityName: containerEntityName,
-            isReadOnly: isContainerSwitchReadOnly,
-            schemaName: containerSchemaName(for: tab)
-        )
-    }
-
-    private func commandAvailability(for tab: QueryTab) -> QueryCommandAvailability {
-        QueryCommandAvailability(
-            isConnected: MainWindowToolbar.hasLiveSession(coordinator.toolbarState.connectionState),
-            hasQueryText: tab.hasQueryText,
-            isExecuting: coordinator.tabExecution.isExecuting(tab.id),
-            isStoppable: coordinator.tabExecution.isStoppable(tab.id),
-            hasResults: coordinator.canClearActiveQueryResults,
-            explainVariants: coordinator.connection.type.explainVariants,
-            supportsFormatting: QueryFormatterFactory.supportsFormatting(coordinator.connection.type),
-            aiActions: coordinator.aiQueryActionAvailability(for: tab),
-            shortcutHint: { label, action in
-                settingsManager.keyboard.shortcutHint(label, for: action)
-            }
         )
     }
 
@@ -1322,5 +1314,67 @@ struct MainEditorContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// The toolbar models, kept out of the view body's type so it stays under the length limit.
+extension MainEditorContentView {
+    private func scopeBarModel(for tab: QueryTab) -> QueryScopeBarModel {
+        QueryScopeBarModel(
+            containers: containerDatabases(for: tab),
+            selectedName: containerName(for: tab),
+            entityName: containerEntityName,
+            isReadOnly: isContainerSwitchReadOnly,
+            schemaName: containerSchemaName(for: tab)
+        )
+    }
+
+    private func commandAvailability(for tab: QueryTab) -> QueryCommandAvailability {
+        QueryCommandAvailability(
+            isConnected: MainWindowToolbar.hasLiveSession(coordinator.toolbarState.connectionState),
+            hasQueryText: tab.hasQueryText,
+            isExecuting: coordinator.tabExecution.isExecuting(tab.id),
+            isStoppable: coordinator.tabExecution.isStoppable(tab.id),
+            hasResults: coordinator.canClearActiveQueryResults,
+            explainVariants: coordinator.connection.type.explainVariants,
+            supportsFormatting: QueryFormatterFactory.supportsFormatting(coordinator.connection.type),
+            aiActions: coordinator.aiQueryActionAvailability(for: tab),
+            shortcutHint: { label, action in
+                settingsManager.keyboard.shortcutHint(label, for: action)
+            }
+        )
+    }
+}
+
+fileprivate extension MainEditorContentView {
+    /// The editor is kept per tab on the coordinator, keyed by the tab's id rather than the type's
+    /// name, so a rename that retitles the tab keeps its queue.
+    @ViewBuilder
+    func userTypeContent(tab: QueryTab, objectRef: DatabaseObjectRef) -> some View {
+        Group {
+            if let model = coordinator.userTypeEditors[tab.id] {
+                UserTypeTabView(
+                    model: model,
+                    databaseType: connection.type,
+                    isReadOnly: coordinator.safeModeLevel.blocksAllWrites,
+                    onOpenInEditor: { source in
+                        coordinator.openObjectSourceInEditor(model.objectRef, source: source)
+                    },
+                    onChangeStateChanged: { hasChanges in
+                        coordinator.publishUserTypeEditorState(tabId: tab.id, hasChanges: hasChanges)
+                    },
+                    onLeave: { coordinator.releaseUserTypeEditorState(tabId: tab.id) },
+                    onPreviewSQL: { coordinator.previewUserTypeChanges(tabId: tab.id) },
+                    onSave: { coordinator.saveUserTypeChanges(tabId: tab.id) }
+                )
+            } else {
+                Color.clear
+                    .onAppear {
+                        guard coordinator.userTypeEditors[tab.id] == nil else { return }
+                        coordinator.userTypeEditors[tab.id] = coordinator.makeUserTypeEditor(for: objectRef, tabId: tab.id)
+                    }
+            }
+        }
+        .id(tab.id)
     }
 }

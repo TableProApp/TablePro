@@ -90,6 +90,21 @@ struct TabObjectKindTests {
         #expect(QueryTab(from: persisted, defaultPageSize: 1_000).tableContext.objectType == .materializedView)
     }
 
+    @Test("A tab on a temporary table stays one through the persisted tab, and an older file reads as not one")
+    func temporaryFlagRoundTrips() throws {
+        var tab = tableTab()
+        tab.tableContext.isTemporary = true
+
+        let persisted = tab.toPersistedTab()
+        #expect(persisted.isTemporary)
+        #expect(QueryTab(from: persisted, defaultPageSize: 1_000).tableContext.isTemporary)
+
+        var object = try jsonObject(of: persisted)
+        object.removeValue(forKey: "isTemporary")
+        let older = try JSONDecoder().decode(PersistedTab.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(!older.isTemporary)
+    }
+
     /// A tab saved before this shipped has no key at all. It must still decode, and it must fall back
     /// to what the Bool beside it can still say, because the alternative is a thrown error that takes
     /// every tab in the aggregate with it.

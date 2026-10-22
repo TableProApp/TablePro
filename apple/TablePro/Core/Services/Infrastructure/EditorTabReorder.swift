@@ -21,11 +21,13 @@ internal struct EditorTabReorder: Equatable {
     internal let originalOrder: [UUID]
     /// The order the strip draws right now.
     internal private(set) var order: [UUID]
+    internal let pinnedIds: Set<UUID>
 
-    internal init(draggedId: UUID, order: [UUID]) {
+    internal init(draggedId: UUID, order: [UUID], pinnedIds: Set<UUID>) {
         self.draggedId = draggedId
         originalOrder = order
         self.order = order
+        self.pinnedIds = pinnedIds
     }
 
     internal var movedFromOriginal: Bool {
@@ -39,7 +41,11 @@ internal struct EditorTabReorder: Equatable {
     /// Moves the dragged tab to `destination`, or leaves the order alone when it is already there.
     internal mutating func move(to destination: Int) {
         guard let source = order.firstIndex(of: draggedId) else { return }
-        let clamped = min(max(destination, 0), order.count - 1)
+        // A pinned tab stays among the pinned ones, and any other tab stays out of them.
+        let isPinned = pinnedIds.contains(draggedId)
+        let peers = order.indices.filter { pinnedIds.contains(order[$0]) == isPinned }
+        guard let lowest = peers.first, let highest = peers.last else { return }
+        let clamped = min(max(destination, lowest), highest)
         guard clamped != source else { return }
         order.insert(order.remove(at: source), at: clamped)
     }

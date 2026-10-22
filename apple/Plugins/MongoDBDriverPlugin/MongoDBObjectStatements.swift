@@ -7,7 +7,7 @@ import Foundation
 /// backslash just before a quote ended the string and the rest of the name ran as statements. The
 /// others escaped one `Character` at a time, which reads a carriage return and line feed as a
 /// single line feed, so Drop on `a\r\nb` dropped `a\nb`.
-enum MongoDBObjectStatements {
+nonisolated enum MongoDBObjectStatements {
     static func drop(_ name: String) -> String {
         "\(MongoDBShellText.namedCollection(name)).drop()"
     }

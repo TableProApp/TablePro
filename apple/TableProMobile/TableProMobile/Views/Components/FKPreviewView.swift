@@ -1,99 +1,69 @@
-import os
 import SwiftUI
 import TableProDatabase
 import TableProModels
 
 struct FKPreviewItem: Identifiable {
     let id = UUID()
-    let fk: ForeignKeyInfo
-    let value: String
+    let reference: ForeignKeyReference
 }
 
 struct FKPreviewView: View {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "FKPreviewView")
-
     @Environment(\.dismiss) private var dismiss
-    let fk: ForeignKeyInfo
-    let value: String
+
+    let reference: ForeignKeyReference
     let session: ConnectionSession?
     let databaseType: DatabaseType
+    let currentSchema: String?
+    let allowsOpen: Bool
+    let refreshTransaction: () async -> Void
+    let onOpen: ((ForeignKeyReference) -> Void)?
 
-    @State private var columns: [ColumnInfo] = []
-    @State private var row: [String?]?
-    @State private var isLoading = true
-    @State private var errorMessage: String?
+    init(
+        reference: ForeignKeyReference,
+        session: ConnectionSession?,
+        databaseType: DatabaseType,
+        currentSchema: String? = nil,
+        allowsOpen: Bool = true,
+        refreshTransaction: @escaping () async -> Void,
+        onOpen: ((ForeignKeyReference) -> Void)? = nil
+    ) {
+        self.reference = reference
+        self.session = session
+        self.databaseType = databaseType
+        self.currentSchema = currentSchema
+        self.allowsOpen = allowsOpen
+        self.refreshTransaction = refreshTransaction
+        self.onOpen = onOpen
+    }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let row {
-                    List {
-                        ForEach(Array(zip(columns, row).enumerated()), id: \.offset) { _, pair in
-                            LabeledContent {
-                                Text(verbatim: pair.1 ?? "NULL")
-                                    .foregroundStyle(pair.1 == nil ? .secondary : .primary)
-                                    .textSelection(.enabled)
-                            } label: {
-                                Text(pair.0.name)
-                            }
-                        }
-                    }
-                    .listStyle(.insetGrouped)
-                } else if let errorMessage {
-                    ContentUnavailableView(
-                        "Could Not Load the Referenced Row",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text(verbatim: errorMessage)
-                    )
-                } else {
-                    ContentUnavailableView(
-                        "No Referenced Row",
-                        systemImage: "arrow.right.circle",
-                        description: Text("No row found in \(fk.referencedTable) where \(fk.referencedColumn) = '\(value)'")
-                    )
+            page(for: reference)
+                .navigationDestination(for: ForeignKeyReference.self) { next in
+                    page(for: next)
                 }
-            }
-            .navigationTitle(fk.referencedTable)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    CloseButton { dismiss() }
-                }
-            }
-            .task { await loadReferencedRow() }
         }
     }
 
-    private func loadReferencedRow() async {
-        guard let session else {
-            isLoading = false
-            return
-        }
+    // A pushed page's own dismiss pops it, so every page closes the sheet through this view's.
+    private func page(for reference: ForeignKeyReference) -> some View {
+        ForeignKeyPreviewPage(
+            reference: reference,
+            session: session,
+            databaseType: databaseType,
+            currentSchema: currentSchema,
+            allowsOpen: allowsOpen,
+            refreshTransaction: refreshTransaction,
+            onOpen: openAndClose,
+            close: { dismiss() }
+        )
+    }
 
-        do {
-            /// SQL Server and Oracle reject `LIMIT`, so the whole statement comes from the shared
-            /// builder rather than being written out here. Hardcoding the clause made every preview
-            /// on those two engines fail, and the failure looked exactly like a key with no
-            /// matching row; escaping the value by hand let one break out of its literal.
-            let query = SQLBuilder.buildSingleRowLookup(
-                table: fk.referencedTable,
-                schema: fk.referencedSchema,
-                column: fk.referencedColumn,
-                value: value,
-                type: databaseType,
-                driver: session.driver
-            )
-            let result = try await session.driver.execute(query: query)
-            columns = result.columns
-            row = result.rows.first
-        } catch {
-            Self.logger.warning("FK preview failed: \(error.localizedDescription, privacy: .public)")
-            row = nil
-            errorMessage = error.localizedDescription
+    private var openAndClose: ((ForeignKeyReference) -> Void)? {
+        guard let onOpen else { return nil }
+        return { reference in
+            onOpen(reference)
+            dismiss()
         }
-        isLoading = false
     }
 }

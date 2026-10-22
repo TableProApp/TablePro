@@ -27,6 +27,7 @@ extension MainContentCoordinator {
         return AIQueryActionAvailability(
             aiEnabled: settings.enabled,
             hasActiveProvider: settings.hasActiveProvider,
+            appleIntelligence: settings.useAppleIntelligence ? SystemOnDeviceLanguageModel().availability : nil,
             connectionPolicy: policy,
             isQueryTab: tab?.tabType == .query,
             isConnected: MainWindowToolbar.hasLiveSession(toolbarState.connectionState),

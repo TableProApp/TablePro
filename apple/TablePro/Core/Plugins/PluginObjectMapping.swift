@@ -204,6 +204,7 @@ extension UserDefinedTypeInfo.Kind {
         case .aliasType:   self = .aliasType
         case .tableType:   self = .tableType
         case .clrType:     self = .clrType
+        case .udt:         self = .udt
         @unknown default:  self = .other
         }
     }
@@ -217,6 +218,7 @@ extension UserDefinedTypeInfo.Kind {
         case .aliasType:   return .aliasType
         case .tableType:   return .tableType
         case .clrType:     return .clrType
+        case .udt:         return .udt
         case .other:       return nil
         }
     }
@@ -232,6 +234,16 @@ extension UserDefinedTypeInfo.Field {
     }
 }
 
+extension UserDefinedTypeInfo.Constraint {
+    init(_ constraint: PluginUserDefinedTypeConstraint) {
+        self.init(name: constraint.name, definition: constraint.definition, isValidated: constraint.isValidated)
+    }
+
+    var pluginConstraint: PluginUserDefinedTypeConstraint {
+        PluginUserDefinedTypeConstraint(name: name, definition: definition, isValidated: isValidated)
+    }
+}
+
 extension UserDefinedTypeInfo {
     init(_ type: PluginUserDefinedTypeInfo) {
         self.init(
@@ -244,7 +256,11 @@ extension UserDefinedTypeInfo {
             baseType: type.baseType,
             columnTypeSpelling: type.columnTypeSpelling,
             definition: type.definition,
-            attributes: type.attributes.map(ObjectAttribute.init)
+            attributes: type.attributes.map(ObjectAttribute.init),
+            comment: type.comment,
+            defaultValue: type.defaultValue,
+            isNotNull: type.isNotNull,
+            constraints: type.constraints.map(Constraint.init)
         )
     }
 
@@ -262,7 +278,11 @@ extension UserDefinedTypeInfo {
             baseType: baseType,
             columnTypeSpelling: columnTypeSpelling,
             definition: definition,
-            attributes: attributes.map(\.pluginAttribute)
+            attributes: attributes.map(\.pluginAttribute),
+            comment: comment,
+            defaultValue: defaultValue,
+            isNotNull: isNotNull,
+            constraints: constraints.map(\.pluginConstraint)
         )
     }
 }

@@ -4,14 +4,23 @@ import os
 
 import TableProConnectionLibrary
 import TableProModels
+import TableProSSHTransport
 import TableProSyncTransport
 
 public enum SyncRecordMapper {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncRecordMapper")
-    private static let encoder = JSONEncoder()
+    // Two encodes of one dictionary can order its keys differently, and an edit compares bytes.
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return encoder
+    }()
     private static let decoder = JSONDecoder()
 
     private static let schemaVersion: Int64 = 1
+
+    // RedisDatabaseIndex.fieldName, which this module does not link.
+    private static let redisDatabaseFieldKey = "redisDatabase"
 
     // MARK: - Record Name Helpers
 
@@ -23,8 +32,13 @@ public enum SyncRecordMapper {
         SyncRecordType.parse(recordName: recordName)
     }
 
-    /// Reads the colour from the field both platforms now write, falling back to the hex `colorTag`
-    /// that iOS wrote before they converged.
+    private static func record(type: SyncRecordType, id: String, in zone: CKRecordZone.ID, base: CKRecord?) -> CKRecord {
+        let recordID = recordID(type: type, id: id, in: zone)
+        if let base, base.recordID == recordID { return base }
+        return CKRecord(recordType: type.rawValue, recordID: recordID)
+    }
+
+    // iOS wrote hex to `colorTag` before both apps converged on `color`.
     private static func color(from fields: SyncRecordFields<ConnectionSyncField>) -> ConnectionColor {
         if let stored = fields[.color] as? String {
             return ConnectionColor(storedValue: stored)
@@ -37,9 +51,7 @@ public enum SyncRecordMapper {
 
     // MARK: - Connection -> CKRecord
 
-    /// Builds the whole record from the model, which is also how a connection whose cached record
-    /// is gone gets pushed. Under `.changedKeys` only a named key reaches the server, so every field
-    /// `updateRecord` would clear is named here too, or a cleared group, tag or icon comes back.
+    // Only a named key reaches the server, so every field `updateRecord` would clear is named here too.
     public static func toRecord(_ connection: DatabaseConnection, zoneID: CKRecordZone.ID) -> CKRecord {
         let id = recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
         let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: id)
@@ -67,7 +79,7 @@ public enum SyncRecordMapper {
         fields[.tagId] = tagIdStrings.first as CKRecordValue?
         fields[.queryTimeoutSeconds] = validQueryTimeout(connection.queryTimeoutSeconds).map { Int64($0) } as CKRecordValue?
 
-        if let sshConfig = connection.sshConfiguration {
+        if let sshConfig = macSSHConfiguration(of: connection) {
             do {
                 let data = try encoder.encode(sshConfig)
                 fields[.sshConfigJson] = data as CKRecordValue
@@ -76,6 +88,12 @@ public enum SyncRecordMapper {
             }
         } else {
             fields[.sshConfigJson] = nil
+        }
+        // A record built from scratch (an Upload Again) carries the link this copy knows of.
+        if let profileId = connection.sshProfileId {
+            fields[.sshProfileId] = profileId.uuidString as CKRecordValue
+        } else {
+            clearSSHProfileLinkIfUnlinked(fields, connection)
         }
 
         if let sslConfig = connection.sslConfiguration {
@@ -145,16 +163,12 @@ public enum SyncRecordMapper {
             sshConfig = try? decoder.decode(SSHConfiguration.self, from: sshData)
         }
 
-        // macOS stores SSH enabled inside sshConfigJson ("enabled" field),
-        // not as a top-level CKRecord field. Fall back to checking the JSON.
+        // Only iOS writes the top-level switches, so one stays behind after a Mac edit; the configurations decide below.
         let sshEnabled: Bool
         if let explicit = fields[.sshEnabled] as? Int64 {
             sshEnabled = explicit != 0
-        } else if let sshData = fields[.sshConfigJson] as? Data,
-                  let json = try? JSONSerialization.jsonObject(with: sshData) as? [String: Any] {
-            sshEnabled = json["enabled"] as? Bool ?? (sshConfig != nil && !(sshConfig?.host.isEmpty ?? true))
         } else {
-            sshEnabled = false
+            sshEnabled = sshConfig.map { !$0.host.isEmpty } ?? false
         }
 
         let sslEnabled = (fields[.sslEnabled] as? Int64 ?? 0) != 0
@@ -167,6 +181,11 @@ public enum SyncRecordMapper {
         var additionalFields: [String: String] = [:]
         if let fieldsData = fields[.additionalFieldsJson] as? Data {
             additionalFields = (try? decoder.decode([String: String].self, from: fieldsData)) ?? [:]
+        }
+        // The Mac falls back to this field when the additional field is unset, so copying it in opens the same database.
+        if DatabaseType(rawValue: typeRaw) == .redis, additionalFields[redisDatabaseFieldKey] == nil,
+           let redisDatabase = fields[.redisDatabase] as? Int64 {
+            additionalFields[redisDatabaseFieldKey] = String(redisDatabase)
         }
         let legacyConnectTimeout = additionalFields
             .removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
@@ -199,7 +218,23 @@ public enum SyncRecordMapper {
             isFavorite: isFavorite
         )
         connection.connectTimeoutSeconds = validConnectTimeout(legacyConnectTimeout)
+        connection.adoptConfigurationSwitches()
+        connection.sshProfileId = (fields[.sshProfileId] as? String).flatMap { UUID(uuidString: $0) }
+        // Only the Mac writes the route, from its ~/.ssh/config.
+        connection.sshRoute = (fields[.sshRouteJson] as? Data).flatMap(PublishedSSHRoute.decoded(from:))
         return connection
+    }
+
+    // The Mac rebuilds a profile tunnel from `sshProfileId` alone, so a tunnel switched off here has
+    // to drop the link too, and so does one switched off and on again before it synced. Otherwise
+    // the field is the Mac's, and an older local copy that never read it would clear a link it never saw.
+    private static func clearSSHProfileLinkIfUnlinked(
+        _ fields: SyncRecordFields<ConnectionSyncField>,
+        _ connection: DatabaseConnection
+    ) {
+        let tunnelOff = !connection.sshEnabled && connection.sshConfiguration?.macEnabled != true
+        guard tunnelOff || connection.clearsSSHProfileLink else { return }
+        fields[.sshProfileId] = nil
     }
 
     private static func storedSafeModeLevel(in fields: SyncRecordFields<ConnectionSyncField>) -> SafeModeLevel {
@@ -244,16 +279,18 @@ public enum SyncRecordMapper {
 
         fields[.queryTimeoutSeconds] = validQueryTimeout(connection.queryTimeoutSeconds).map { Int64($0) } as CKRecordValue?
 
-        if let sshConfig = connection.sshConfiguration {
+        if let sshConfig = macSSHConfiguration(of: connection) {
             if let data = try? encoder.encode(sshConfig) {
                 fields[.sshConfigJson] = data as CKRecordValue
             }
         } else {
             fields[.sshConfigJson] = nil
         }
+        clearSSHProfileLinkIfUnlinked(fields, connection)
 
         if let sslConfig = connection.sslConfiguration {
-            if let data = try? encoder.encode(sslConfig) {
+            if !serverSSLMatches(fields[.sslConfigJson] as? Data, sslConfig),
+               let data = try? encoder.encode(sslConfig) {
                 fields[.sslConfigJson] = data as CKRecordValue
             }
         } else {
@@ -270,6 +307,28 @@ public enum SyncRecordMapper {
         }
 
         fields[.modifiedAtLocal] = Date() as CKRecordValue
+    }
+
+    private static func serverSSLMatches(_ data: Data?, _ local: SSLConfiguration) -> Bool {
+        guard let server = serverSSL(in: data) else { return false }
+        return local.agrees(withServer: server)
+    }
+
+    // Nil for a blob an older iOS build wrote ("require", nil paths omitted): the Mac cannot read it, so it is rewritten.
+    private static func serverSSL(in data: Data?) -> SSLConfiguration? {
+        guard let data, SSLConfiguration.isMacWireForm(data) else { return nil }
+        return try? decoder.decode(SSLConfiguration.self, from: data)
+    }
+
+    public static func serverSSL(in record: CKRecord) -> SSLConfiguration? {
+        serverSSL(in: record.fields(ConnectionSyncField.self)[.sslConfigJson] as? Data)
+    }
+
+    // The Mac reads a missing `enabled` as off, and an import or an older iOS build leaves it out.
+    private static func macSSHConfiguration(of connection: DatabaseConnection) -> SSHConfiguration? {
+        guard var sshConfig = connection.sshConfiguration else { return nil }
+        sshConfig.macEnabled = connection.sshEnabled
+        return sshConfig
     }
 
     private static func syncedAdditionalFields(for connection: DatabaseConnection) -> [String: String] {
@@ -297,7 +356,7 @@ public enum SyncRecordMapper {
         let record = CKRecord(recordType: SyncRecordType.group.rawValue, recordID: id)
 
         // Built whole from the local group, so an empty parent or icon is the user's choice and has
-        // to reach the server, which keeps any key a `.changedKeys` push leaves unnamed.
+        // to reach the server, which keeps any key a push leaves unnamed.
         let fields = record.fields(ConnectionGroupSyncField.self, absentValues: .clear)
         fields[.groupId] = group.id.uuidString
         fields[.name] = group.name
@@ -395,5 +454,167 @@ public enum SyncRecordMapper {
         fields[.isPreset] = Int64(tag.isPreset ? 1 : 0)
         fields[.color] = tag.color.rawValue
         fields[.modifiedAtLocal] = Date()
+    }
+
+    // MARK: - Saved Query -> CKRecord
+
+    // A record built whole names an emptied keyword, folder or connection, so the server clears it.
+    public static func toRecord(_ query: SavedQuery, zoneID: CKRecordZone.ID, base: CKRecord? = nil) -> CKRecord {
+        let record = record(type: .favorite, id: query.id.uuidString, in: zoneID, base: base)
+
+        let fields = record.fields(SQLFavoriteSyncField.self, absentValues: record === base ? .leave : .clear)
+        fields[.favoriteId] = query.id.uuidString
+        fields[.name] = query.name
+        fields[.query] = query.query
+        fields[.keyword] = query.keyword
+        fields[.folderId] = query.folderId?.uuidString
+        fields[.connectionId] = query.connectionId?.uuidString
+        fields[.sortOrder] = Int64(query.sortOrder)
+        fields[.createdAt] = query.createdAt
+        fields[.updatedAt] = query.updatedAt
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
+
+        return record
+    }
+
+    // MARK: - CKRecord -> Saved Query
+
+    public static func toSavedQuery(_ record: CKRecord) -> SavedQuery? {
+        let fields = record.fields(SQLFavoriteSyncField.self)
+        guard let idString = fields[.favoriteId] as? String,
+              let id = UUID(uuidString: idString),
+              let name = fields[.name] as? String,
+              let query = fields[.query] as? String
+        else {
+            logger.warning("Failed to decode saved query from CKRecord: missing required fields")
+            return nil
+        }
+
+        return SavedQuery(
+            id: id,
+            name: name,
+            query: query,
+            keyword: fields[.keyword] as? String,
+            folderId: (fields[.folderId] as? String).flatMap(UUID.init(uuidString:)),
+            connectionId: (fields[.connectionId] as? String).flatMap(UUID.init(uuidString:)),
+            sortOrder: Int(fields[.sortOrder] as? Int64 ?? 0),
+            createdAt: fields[.createdAt] as? Date,
+            updatedAt: fields[.updatedAt] as? Date
+        )
+    }
+
+    // MARK: - Saved Query Folder -> CKRecord
+
+    public static func toRecord(_ folder: SavedQueryFolder, zoneID: CKRecordZone.ID, base: CKRecord? = nil) -> CKRecord {
+        let record = record(type: .favoriteFolder, id: folder.id.uuidString, in: zoneID, base: base)
+
+        let fields = record.fields(SQLFavoriteFolderSyncField.self, absentValues: record === base ? .leave : .clear)
+        fields[.folderId] = folder.id.uuidString
+        fields[.name] = folder.name
+        fields[.parentId] = folder.parentId?.uuidString
+        fields[.connectionId] = folder.connectionId?.uuidString
+        fields[.sortOrder] = Int64(folder.sortOrder)
+        fields[.createdAt] = folder.createdAt
+        fields[.updatedAt] = folder.updatedAt
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
+
+        return record
+    }
+
+    // MARK: - CKRecord -> Saved Query Folder
+
+    public static func toSavedQueryFolder(_ record: CKRecord) -> SavedQueryFolder? {
+        let fields = record.fields(SQLFavoriteFolderSyncField.self)
+        guard let idString = fields[.folderId] as? String,
+              let id = UUID(uuidString: idString),
+              let name = fields[.name] as? String
+        else {
+            logger.warning("Failed to decode saved query folder from CKRecord: missing required fields")
+            return nil
+        }
+
+        return SavedQueryFolder(
+            id: id,
+            name: name,
+            parentId: (fields[.parentId] as? String).flatMap(UUID.init(uuidString:)),
+            connectionId: (fields[.connectionId] as? String).flatMap(UUID.init(uuidString:)),
+            sortOrder: Int(fields[.sortOrder] as? Int64 ?? 0),
+            createdAt: fields[.createdAt] as? Date,
+            updatedAt: fields[.updatedAt] as? Date
+        )
+    }
+
+    // MARK: - Edits
+
+    // What a push of each local copy changes on the cached server record. The base is read and written
+    // again here, so a value only the Mac spells differently is not part of the edit.
+    public static func edit(_ connection: DatabaseConnection, base: CKRecord?, zoneID: CKRecordZone.ID) -> SyncRecordEdit {
+        edit(ConnectionSyncField.self, base: base) {
+            updateRecord($0, with: connection)
+        } build: {
+            toRecord(connection, zoneID: zoneID)
+        } reread: {
+            toConnection($0).map { toRecord($0, zoneID: zoneID) }
+        }
+    }
+
+    public static func edit(_ group: ConnectionGroup, base: CKRecord?, zoneID: CKRecordZone.ID) -> SyncRecordEdit {
+        edit(ConnectionGroupSyncField.self, base: base) {
+            updateRecord($0, with: group)
+        } build: {
+            toRecord(group, zoneID: zoneID)
+        } reread: {
+            toGroup($0).map { toRecord($0, zoneID: zoneID) }
+        }
+    }
+
+    public static func edit(_ tag: ConnectionTag, base: CKRecord?, zoneID: CKRecordZone.ID) -> SyncRecordEdit {
+        edit(ConnectionTagSyncField.self, base: base) {
+            updateRecord($0, with: tag)
+        } build: {
+            toRecord(tag, zoneID: zoneID)
+        } reread: {
+            toTag($0).map { toRecord($0, zoneID: zoneID) }
+        }
+    }
+
+    public static func edit(_ query: SavedQuery, base: CKRecord?, zoneID: CKRecordZone.ID) -> SyncRecordEdit {
+        edit(SQLFavoriteSyncField.self, base: base) {
+            _ = toRecord(query, zoneID: $0.recordID.zoneID, base: $0)
+        } build: {
+            toRecord(query, zoneID: zoneID)
+        } reread: {
+            toSavedQuery($0).map { toRecord($0, zoneID: zoneID) }
+        }
+    }
+
+    public static func edit(_ folder: SavedQueryFolder, base: CKRecord?, zoneID: CKRecordZone.ID) -> SyncRecordEdit {
+        edit(SQLFavoriteFolderSyncField.self, base: base) {
+            _ = toRecord(folder, zoneID: $0.recordID.zoneID, base: $0)
+        } build: {
+            toRecord(folder, zoneID: zoneID)
+        } reread: {
+            toSavedQueryFolder($0).map { toRecord($0, zoneID: zoneID) }
+        }
+    }
+
+    // Written into a copy, so `base` stays what the server last held.
+    private static func edit<Field: SyncSchemaField>(
+        _ field: Field.Type,
+        base: CKRecord?,
+        update: (CKRecord) -> Void,
+        build: () -> CKRecord,
+        reread: (CKRecord) -> CKRecord?
+    ) -> SyncRecordEdit {
+        let record: CKRecord
+        if let copy = base?.copy() as? CKRecord {
+            update(copy)
+            record = copy
+        } else {
+            record = build()
+        }
+        return SyncRecordEdit(field, record: record, base: base, baseAsWritten: base.flatMap(reread))
     }
 }

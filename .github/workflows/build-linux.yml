@@ -1,19 +1,19 @@
 name: Build Linux
 
+# CI calls it. Its own schedule and a manual run of it also take the nightly jobs.
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_call:
+    inputs:
+      docs-only:
+        description: Run only the docs links job.
+        type: boolean
+        required: true
   schedule:
     - cron: "13 14 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: build-linux-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_ABOUT_VERSION: 0.9.2
@@ -25,27 +25,31 @@ env:
   LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
 
 jobs:
-  changes:
-    name: Changes (Linux)
+  docs:
+    name: Documentation links
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      run: ${{ steps.decide.outputs.run }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - name: Decide whether the Linux jobs run
-        id: decide
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: echo "run=$(scripts/ci/detect-changed-paths.sh --base "$BASE" linux)" >> "$GITHUB_OUTPUT"
+      - name: Install lychee
+        run: |
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/lychee.tar.gz" \
+            "https://github.com/lycheeverse/lychee/releases/download/lychee-v$LYCHEE_VERSION/lychee-x86_64-unknown-linux-gnu.tar.gz"
+          echo "$LYCHEE_SHA256  $RUNNER_TEMP/lychee.tar.gz" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/lychee"
+          tar -xzf "$RUNNER_TEMP/lychee.tar.gz" -C "$RUNNER_TEMP/lychee" --strip-components=1 \
+            lychee-x86_64-unknown-linux-gnu/lychee
+          echo "$RUNNER_TEMP/lychee" >> "$GITHUB_PATH"
+      - name: Links and anchors in the Linux docs resolve
+        # Offline, so only links to files and headings in the tree are
+        # checked: the ones a rename or a move breaks.
+        run: lychee --offline --include-fragments --no-progress 'linux/**/*.md'
 
   fast:
     name: Fast checks
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
+    if: ${{ !inputs.docs-only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     # The host runner ships GLib 2.80, below the GNOME 50 floor.
@@ -105,22 +109,6 @@ jobs:
             xvfb \
             xauth \
             dbus-daemon
-      # On the bare checkout: the glob ignores .gitignore, so once Cargo
-      # fills _build it would read every crate's Markdown too.
-      - name: Install lychee
-        run: |
-          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/lychee.tar.gz" \
-            "https://github.com/lycheeverse/lychee/releases/download/lychee-v$LYCHEE_VERSION/lychee-x86_64-unknown-linux-gnu.tar.gz"
-          echo "$LYCHEE_SHA256  $RUNNER_TEMP/lychee.tar.gz" | sha256sum --check --strict
-          mkdir "$RUNNER_TEMP/lychee"
-          tar -xzf "$RUNNER_TEMP/lychee.tar.gz" -C "$RUNNER_TEMP/lychee" --strip-components=1 \
-            lychee-x86_64-unknown-linux-gnu/lychee
-          echo "$RUNNER_TEMP/lychee" >> "$GITHUB_PATH"
-      - name: Links and anchors in the Linux docs resolve
-        # Offline, so only links to files and headings in the tree are
-        # checked: the ones a rename or a move breaks.
-        working-directory: .
-        run: lychee --offline --include-fragments --no-progress 'linux/**/*.md'
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
@@ -231,8 +219,9 @@ jobs:
   # compiler and not with rustup's.
   msrv:
     name: Minimum Rust version
-    # Nightly and by hand only, to keep a pull request under GitHub Free's 20 concurrent jobs.
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    # Only in this workflow's own nightly or manual run, to keep a CI run under GitHub Free's 20
+    # concurrent jobs. A called workflow sees the caller's github context, so from CI this is "CI".
+    if: ${{ github.workflow == 'Build Linux' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     container:
@@ -266,8 +255,7 @@ jobs:
 
   supply-chain:
     name: Supply chain
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
+    if: ${{ !inputs.docs-only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
@@ -306,14 +294,14 @@ jobs:
         working-directory: .
         run: |
           zizmor --offline --format=github --min-severity=medium \
+            .github/workflows/ci.yml \
             .github/workflows/build-linux.yml \
             .github/workflows/linux-packages.yml \
             .github/workflows/release-linux.yml
 
   i18n:
     name: Translations
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
+    if: ${{ !inputs.docs-only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # ubuntu:26.10 ships gettext 1.0, the first release whose xgettext
@@ -355,11 +343,27 @@ jobs:
       - name: Configure
         # Fatal, so an xgettext older than 1.0 fails here.
         run: meson setup _build --fatal-meson-warnings
+      - name: Generate tablepro.pot
+        run: meson compile -C _build tablepro-pot
+      # The fast job's gettext 0.23 skips the {name} placeholders that 1.0
+      # checks in every rust-format entry.
+      - name: Check the catalogues
+        run: meson test -C _build --no-rebuild --suite po --print-errorlogs
+      # Translators start from this template (po/README.md), since few
+      # distributions ship gettext 1.0 yet.
+      - name: Publish tablepro.pot
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tablepro-pot
+          path: linux/po/tablepro.pot
+          if-no-files-found: error
 
   flatpak-devel:
     name: Flatpak Devel (${{ matrix.arch }})
-    # Nightly and by hand only, to keep a pull request under GitHub Free's 20 concurrent jobs.
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    # Only in this workflow's own nightly or manual run, to keep a CI run under GitHub Free's 20
+    # concurrent jobs. A called workflow sees the caller's github context, so from CI this is "CI".
+    if: ${{ github.workflow == 'Build Linux' }}
     strategy:
       fail-fast: false
       matrix:
@@ -397,8 +401,8 @@ jobs:
 
   integration:
     name: Docker tests (${{ matrix.package }}${{ matrix.release != 'default' && format(', {0}', matrix.release) || '' }})
-    needs: [changes, fast]
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.fast.result == 'success' }}
+    needs: fast
+    if: ${{ !cancelled() && needs.fast.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -421,6 +425,10 @@ jobs:
           - package: tablepro-ssh
             apt: openssh-client
           - package: tablepro-test-fixtures
+            apt: openssh-client
+          - package: tablepro-ssh
+            release: openssh-9.9
+            openssh: "9.9"
             apt: openssh-client
           - package: tablepro-driver-postgres
             release: postgres-14
@@ -482,6 +490,7 @@ jobs:
           TABLEPRO_TEST_MARIADB: ${{ matrix.mariadb }}
           TABLEPRO_TEST_MSSQL: ${{ matrix.mssql }}
           TABLEPRO_TEST_CLICKHOUSE: ${{ matrix.clickhouse }}
+          TABLEPRO_TEST_OPENSSH: ${{ matrix.openssh }}
         run: cargo nextest run --locked --profile ci -p "$PACKAGE" --run-ignored only
       - name: Upload JUnit report
         if: always()
@@ -497,8 +506,8 @@ jobs:
     # is mounted; testcontainers sees /.dockerenv and reaches the
     # containers it starts through the bridge gateway.
     name: Docker tests (tablepro-session)
-    needs: [changes, fast]
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.fast.result == 'success' }}
+    needs: fast
+    if: ${{ !cancelled() && needs.fast.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:
@@ -558,10 +567,11 @@ jobs:
     # The app links GTK 4.22 and libadwaita 1.9, which the host runner
     # cannot build, so this runs in the fast job's image like the
     # session job. Only the named test targets run: the app's startup
-    # test needs Meson and the fast job already covers it.
+    # test needs Meson and the fast job already covers it. The library's
+    # Docker tests put widgets on screen, so they run under Xvfb.
     name: Docker tests (tablepro)
-    needs: [changes, fast]
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.fast.result == 'success' }}
+    needs: fast
+    if: ${{ !cancelled() && needs.fast.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:
@@ -583,19 +593,24 @@ jobs:
         with:
           persist-credentials: false
       - name: Install system dependencies
-        # The -dev packages the app links, as in the fast job.
+        # The -dev packages the app links, as in the fast job, and the
+        # display and session bus its widget tests run on.
         run: |
           apt-get install -y --no-install-recommends \
             build-essential \
             curl \
             pkgconf \
+            libglib2.0-bin \
             libgtk-4-dev \
             libadwaita-1-dev \
             libgtksourceview-5-dev \
             libsqlite3-dev \
             libkrb5-dev \
             clang \
-            libclang-dev
+            libclang-dev \
+            xvfb \
+            xauth \
+            dbus-daemon
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
@@ -610,29 +625,17 @@ jobs:
         # No Docker CLI in the image; the API answers on the socket.
         run: curl --fail --silent --show-error --unix-socket /var/run/docker.sock http://localhost/_ping
       - name: Docker tests
-        run: cargo nextest run --locked --profile ci -p tablepro --test tracker_save_postgres --run-ignored only
+        # The gtk suite's environment (docs/testing.md, Unit tests).
+        env:
+          GSK_RENDERER: cairo
+          GTK_A11Y: test
+          GDK_BACKEND: x11
+        run: |
+          xvfb-run -a dbus-run-session -- \
+            cargo nextest run --locked --profile ci -p tablepro --lib --test tracker_save_postgres --run-ignored only
       - name: Upload JUnit report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: junit-tablepro
           path: linux/target/nextest/ci/junit.xml
-
-  # The one check a branch rule requires: a job skipped by a path or event
-  # decision reports success, and this fails when any Linux job failed or was
-  # cancelled.
-  linux:
-    name: Linux
-    needs: [changes, fast, msrv, supply-chain, i18n, flatpak-devel, integration, integration-session, integration-app]
-    if: always()
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Every Linux job passed or was skipped
-        env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
-        run: |
-          echo "$RESULTS"
-          case " $RESULTS " in
-            *" failure "* | *" cancelled "*) exit 1 ;;
-          esac

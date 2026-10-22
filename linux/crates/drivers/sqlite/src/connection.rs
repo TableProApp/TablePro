@@ -392,7 +392,7 @@ impl Connection for SqliteConnection {
                                 run_bound(held.connection(), statement, sink.as_mut()).await
                             }
                             ReadStatement::User(sql) => {
-                                run_script(held.connection(), sql.as_str(), None, sink.as_mut()).await
+                                run_script(held.connection(), sql.as_str(), None, sink.as_mut(), || false).await
                             }
                         },
                         Err(error) => Err(error),

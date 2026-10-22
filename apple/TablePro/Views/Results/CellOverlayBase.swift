@@ -25,9 +25,11 @@ class CellOverlayBase: NSObject {
     private var appResignObserver: NSObjectProtocol?
     private var windowResignKeyObserver: NSObjectProtocol?
     private var outsideClickMonitor: Any?
+    private var isFollowingGrid = false
     /// Held for the life of the open overlay: its subscription is what repaints the text on a theme
     /// change.
     private var textStyle: ThemeTextViewStyle?
+    private var invisibleCharacters: InvisibleCharacterTextDisplay?
     var onRemove: (() -> Void)?
 
     private(set) var row: Int = -1
@@ -50,7 +52,7 @@ class CellOverlayBase: NSObject {
         self.row = row
         self.column = column
         self.columnIndex = columnIndex
-        Self.mount(container, over: tableView, in: scrollView)
+        Self.mount(container, over: tableView, in: scrollView, column: column)
         self.container = container
         setOverlayCell(CellPosition(row: row, column: columnIndex), in: tableView)
         selectionOverlay(in: tableView)?.needsDisplay = true
@@ -60,10 +62,26 @@ class CellOverlayBase: NSObject {
     private static func mount(
         _ container: CellOverlayContainerView,
         over tableView: NSTableView,
-        in scrollView: NSScrollView
+        in scrollView: NSScrollView,
+        column: Int
     ) {
         container.frame = scrollView.convert(container.frame, from: tableView)
-        scrollView.addSubview(container, positioned: .above, relativeTo: scrollView.contentView)
+        scrollView.addSubview(container, positioned: .above, relativeTo: layer(for: column, of: tableView, in: scrollView))
+    }
+
+    // Above AppKit's floating container only for a frozen cell, which the band would otherwise cover.
+    private static func layer(for column: Int, of tableView: NSTableView, in scrollView: NSScrollView) -> NSView {
+        guard let coordinator = (tableView as? KeyHandlingTableView)?.coordinator,
+              coordinator.freezingBand()?.pins(column) == true,
+              let container = coordinator.rowGutter?.superview,
+              container.superview === scrollView else { return scrollView.contentView }
+        return container
+    }
+
+    // Where the cell is on screen, which for a frozen column is the pinned band, not its home.
+    static func displayedCellFrame(in tableView: NSTableView, column: Int, row: Int) -> NSRect {
+        let frame = tableView.frameOfCell(atColumn: column, row: row)
+        return (tableView as? KeyHandlingTableView)?.coordinator?.freezingBand()?.displayed(frame, ofColumn: column) ?? frame
     }
 
     /// The cell under the overlay draws no text of its own behind it. A drawn cell has no view to
@@ -90,17 +108,37 @@ class CellOverlayBase: NSObject {
         activeContainer.removeFromSuperview()
         container = nil
         textStyle = nil
+        invisibleCharacters = nil
         if let hostTableView {
             hostTableView.window?.makeFirstResponder(hostTableView)
         }
         onRemove?()
     }
 
+    // A zoom resizes the value and moves its cell, so the overlay follows instead of ending the edit as a
+    // column resize or a scroll would.
+    func followGrid(through change: () -> Void) {
+        isFollowingGrid = true
+        defer { isFollowingGrid = false }
+        change()
+        guard let container, let hostTableView, let scrollView = hostTableView.enclosingScrollView,
+              let textView = (container.subviews.first as? NSScrollView)?.documentView as? NSTextView else { return }
+        hostTableView.scrollRowToVisible(row)
+        textView.font = ThemeEngine.shared.valueFont
+        let cellFrame = Self.displayedCellFrame(in: hostTableView, column: column, row: row)
+        container.frame = scrollView.convert(Self.overlayFrame(for: cellFrame, value: textView.string), from: hostTableView)
+    }
+
     static func overlayFrame(for cellFrame: NSRect, value: String) -> NSRect {
         let lineHeight = ThemeEngine.shared.dataGridFonts.regular.boundingRectForFont.height + 4
+        // A CR on its own breaks the line in the text view as LF does; CRLF is one break.
         var newlineCount = 0
-        for scalar in value.unicodeScalars where scalar == "\n" {
-            newlineCount += 1
+        var previous: Unicode.Scalar?
+        for scalar in value.unicodeScalars {
+            if scalar == "\r" || (scalar == "\n" && previous != "\r") {
+                newlineCount += 1
+            }
+            previous = scalar
         }
         let lineCount = CGFloat(newlineCount + 1)
         let contentHeight = max(lineCount * lineHeight + 8, cellFrame.height)
@@ -128,6 +166,14 @@ class CellOverlayBase: NSObject {
     /// way the inspector and the pop-out editor show the same value.
     func applyTheme(to textView: NSTextView, scope: ThemeScope) {
         textStyle = ThemeTextViewStyle(textView: textView, scope: scope)
+    }
+
+    // Before the text is set, so the value is laid out once.
+    func markInvisibleCharacters(in textView: NSTextView) {
+        invisibleCharacters = InvisibleCharacterTextDisplay.install(
+            on: textView,
+            isEnabled: AppSettingsManager.shared.dataGrid.showInvisibleCharacters
+        )
     }
 
     /// Lays a text view out the way an inline cell overlay needs.
@@ -174,6 +220,7 @@ class CellOverlayBase: NSObject {
                 queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
+                    guard self?.isFollowingGrid == false else { return }
                     self?.handleDismiss(reason: .scroll)
                 }
             }
@@ -185,6 +232,7 @@ class CellOverlayBase: NSObject {
         ].map { name in
             NotificationCenter.default.addObserver(forName: name, object: hostTableView, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
+                    guard self?.isFollowingGrid == false else { return }
                     self?.handleDismiss(reason: .columnGeometry)
                 }
             }

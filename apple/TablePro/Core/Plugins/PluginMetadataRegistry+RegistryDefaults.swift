@@ -12,6 +12,11 @@ extension PluginMetadataRegistry {
     /// the cast to `varbinary(max)` compares without an implicit conversion back to the type.
     static let mssqlRowMatchTextTypePrefixes = ["NTEXT", "TEXT", "XML", "IMAGE", "GEOGRAPHY", "GEOMETRY", "HIERARCHYID"]
 
+    // Measured on ClickHouse 25.8: a JSON value or a NaN never equals the text it was read as, and concat() of it does.
+    static let clickhouseRowMatchTextTypePrefixes = [
+        "JSON", "OBJECT(", "DYNAMIC", "FLOAT", "BFLOAT16", "NULLABLE(FLOAT", "NULLABLE(BFLOAT16",
+    ]
+
     /// `sql_variant` refuses `=` too (Msg 206), and no cast keeps its base type: the integer `1` and the string `N'1'`
     /// cast to the same text, so a keyless match on it could pick either row.
     static let mssqlRowMatchExcludedTypePrefixes = ["SQL_VARIANT"]
@@ -67,7 +72,9 @@ extension PluginMetadataRegistry {
                     supportsDropIndex: false,
                     supportsOpportunisticTLS: false,
                     authenticationIsDatabaseScoped: true,
-                    columnsAreSampled: true
+                    columnsAreSampled: true,
+                    patternFiltersReadAnyColumn: true,
+                    filtersTypedByReadRows: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -284,7 +291,9 @@ extension PluginMetadataRegistry {
                     supportsDropSchema: true,
                     supportsRenameColumn: true,
                     defaultSSLMode: .preferred,
-                    supportsPerConnectionCertificatePaths: false
+                    supportsPerConnectionCertificatePaths: false,
+                    supportsPrincipalConnectionLimit: false,
+                    supportsRoleLogin: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "dbo",
@@ -426,135 +435,6 @@ extension PluginMetadataRegistry {
                     tagline: String(localized: "Teradata Vantage data warehouse")
                 )
             )),
-            ("Trino", PluginMetadataSnapshot(
-                displayName: "Trino", iconName: "trino-icon", defaultPort: 8_080,
-                requiresAuthentication: false, supportsForeignKeys: false, supportsSchemaEditing: true,
-                isDownloadable: true, primaryUrlScheme: "trino", parameterStyle: .questionMark,
-                navigationModel: .standard,
-                explainVariants: [
-                    ExplainVariant(id: "logical", label: "Explain (Logical)", sqlPrefix: "EXPLAIN"),
-                    ExplainVariant(id: "distributed", label: "Explain (Distributed)", sqlPrefix: "EXPLAIN (TYPE DISTRIBUTED)"),
-                    ExplainVariant(id: "io", label: "Explain (IO)", sqlPrefix: "EXPLAIN (TYPE IO)"),
-                    ExplainVariant(id: "validate", label: "Explain (Validate)", sqlPrefix: "EXPLAIN (TYPE VALIDATE)"),
-                    ExplainVariant(id: "analyze", label: "Explain Analyze", sqlPrefix: "EXPLAIN ANALYZE"),
-                ],
-                pathFieldRole: .database,
-                supportsHealthMonitor: true, urlSchemes: ["trino"],
-                postConnectActions: [.selectSchemaFromLastSession],
-                brandColorHex: "#DD5F3B",
-                queryLanguageName: "SQL", editorLanguage: .sql,
-                connectionMode: .network, supportsDatabaseSwitching: true,
-                capabilities: PluginMetadataSnapshot.CapabilityFlags(
-                    supportsSchemaSwitching: true,
-                    supportsImport: false,
-                    supportsExport: true,
-                    supportsSSH: true,
-                    supportsSSL: true,
-                    supportsCascadeDrop: false,
-                    supportsForeignKeyDisable: false,
-                    supportsReadOnlyMode: true,
-                    supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: false,
-                    supportsRenameColumn: false,
-                    defaultSSLMode: .disabled,
-                    supportsOpportunisticTLS: false,
-                    tlsImpliedPorts: [443],
-                    verifiesServerWithSystemTrust: true
-                ),
-                schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "",
-                    defaultGroupName: "default",
-                    tableEntityName: "Tables",
-                    containerEntityName: "Catalog",
-                    defaultPrimaryKeyColumn: nil,
-                    immutableColumns: [],
-                    systemDatabaseNames: [],
-                    systemSchemaNames: ["information_schema"],
-                    fileExtensions: [],
-                    databaseGroupingStrategy: .hierarchicalSchema,
-                    structureColumnFields: [.name, .type, .nullable, .comment]
-                ),
-                editor: PluginMetadataSnapshot.EditorConfig(
-                    sqlDialect: SQLDialectDescriptor(
-                        identifierQuote: "\"",
-                        keywords: [
-                            "SELECT", "FROM", "WHERE", "GROUP", "BY", "HAVING", "ORDER", "LIMIT", "OFFSET",
-                            "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "ON", "USING", "AND", "OR", "NOT",
-                            "IN", "LIKE", "BETWEEN", "AS", "DISTINCT", "UNION", "INTERSECT", "EXCEPT", "WITH",
-                            "INSERT", "INTO", "UPDATE", "SET", "DELETE", "CREATE", "ALTER", "DROP", "TABLE",
-                            "VIEW", "SCHEMA", "CATALOG", "CASE", "WHEN", "THEN", "ELSE", "END", "CAST", "TRY_CAST",
-                            "SHOW", "CATALOGS", "SCHEMAS", "TABLES", "COLUMNS", "DESCRIBE", "EXPLAIN", "ANALYZE",
-                            "USE", "UNNEST", "OVER", "PARTITION", "QUALIFY",
-                        ],
-                        functions: [
-                            "COUNT", "SUM", "AVG", "MIN", "MAX", "ARRAY_AGG", "APPROX_DISTINCT", "CARDINALITY",
-                            "ELEMENT_AT", "JSON_EXTRACT", "JSON_EXTRACT_SCALAR", "REGEXP_LIKE", "REGEXP_REPLACE",
-                            "SUBSTR", "LENGTH", "LOWER", "UPPER", "TRIM", "SPLIT", "CONCAT", "COALESCE",
-                            "DATE_TRUNC", "DATE_DIFF", "DATE_FORMAT", "FROM_UNIXTIME", "TO_UNIXTIME",
-                            "ROW_NUMBER", "RANK", "DENSE_RANK", "LAG", "LEAD",
-                        ],
-                        dataTypes: [
-                            "BOOLEAN", "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "REAL", "DOUBLE", "DECIMAL",
-                            "VARCHAR", "CHAR", "VARBINARY", "JSON", "DATE", "TIME", "TIMESTAMP", "INTERVAL",
-                            "ARRAY", "MAP", "ROW", "IPADDRESS", "UUID",
-                        ],
-                        regexSyntax: .regexpLike,
-                        booleanLiteralStyle: .truefalse,
-                        likeEscapeStyle: .explicit,
-                        paginationStyle: .offsetFetch,
-                        offsetFetchOrderBy: "",
-                        caseSensitivityStyle: .regexFlag
-                    ),
-                    statementCompletions: [],
-                    columnTypesByCategory: [
-                        "Boolean": ["boolean"],
-                        "Integer": ["tinyint", "smallint", "integer", "bigint"],
-                        "Floating": ["real", "double", "decimal"],
-                        "String": ["varchar", "char"],
-                        "Binary": ["varbinary"],
-                        "Date/Time": ["date", "time", "timestamp"],
-                        "Complex": ["array", "map", "row", "json"],
-                    ]
-                ),
-                connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [
-                        ConnectionField(
-                            id: "trinoAuthMethod",
-                            label: String(localized: "Auth Method"),
-                            defaultValue: "password",
-                            fieldType: .dropdown(options: [
-                                .init(value: "password", label: "Username & Password"),
-                                .init(value: "jwt", label: "JWT Access Token"),
-                            ]),
-                            section: .authentication
-                        ),
-                        ConnectionField(
-                            id: "trinoJwtToken",
-                            label: String(localized: "Access Token"),
-                            placeholder: "JWT bearer token",
-                            fieldType: .secure,
-                            section: .authentication,
-                            hidesPassword: true,
-                            visibleWhen: FieldVisibilityRule(fieldId: "trinoAuthMethod", values: ["jwt"])
-                        ),
-                        ConnectionField(
-                            id: "trinoSchema",
-                            label: String(localized: "Schema"),
-                            placeholder: "Default schema (optional)",
-                            section: .connection
-                        ),
-                        ConnectionField(
-                            id: "trinoTimeZone",
-                            label: String(localized: "Time Zone"),
-                            placeholder: "Optional (e.g. America/New_York)",
-                            section: .advanced
-                        ),
-                    ],
-                    category: .analytical,
-                    tagline: String(localized: "Distributed SQL query engine for data lakes")
-                )
-            )),
             ("Oracle", PluginMetadataSnapshot(
                 displayName: "Oracle", iconName: "oracle-icon", defaultPort: 1_521,
                 requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
@@ -579,7 +459,9 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsRenameColumn: true,
-                    supportsOpportunisticTLS: false
+                    supportsOpportunisticTLS: false,
+                    supportsPrincipalConnectionLimit: false,
+                    supportsRoleLogin: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",
@@ -593,7 +475,8 @@ extension PluginMetadataRegistry {
                     fileExtensions: [],
                     databaseGroupingStrategy: .hierarchicalSchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment],
-                    rowMatchExcludedTypePrefixes: Self.oracleRowMatchExcludedTypePrefixes
+                    rowMatchExcludedTypePrefixes: Self.oracleRowMatchExcludedTypePrefixes,
+                    identifierRules: .oracle
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: oracleDialect,
@@ -715,7 +598,8 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .comment],
+                    rowMatchTextTypePrefixes: Self.clickhouseRowMatchTextTypePrefixes
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: clickhouseDialect,
@@ -857,7 +741,7 @@ extension PluginMetadataRegistry {
                             placeholder: "/path/to/ca-cert.pem",
                             section: .advanced
                         )
-                    ],
+                    ] + cassandraConsistencyFields(),
                     category: .wideColumn,
                     tagline: String(localized: "Distributed wide-column store")
                 )
@@ -903,7 +787,7 @@ extension PluginMetadataRegistry {
                             placeholder: "/path/to/ca-cert.pem",
                             section: .advanced
                         )
-                    ],
+                    ] + cassandraConsistencyFields(),
                     category: .wideColumn,
                     tagline: String(localized: "C++ rewrite of Cassandra, faster")
                 )
@@ -1139,6 +1023,7 @@ extension PluginMetadataRegistry {
                             section: .authentication,
                             visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"])
                         ),
+                        .attachedDatabases(visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"])),
                         .loadableExtensions(visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["local"]))
                     ],
                     category: .cloud,
@@ -1150,6 +1035,29 @@ extension PluginMetadataRegistry {
             + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
             + kafkaPluginDefaults() + typesensePluginDefaults() + r2SQLPluginDefaults()
             + weaviatePluginDefaults() + hanaPluginDefaults() + firebasePluginDefaults() + bigtablePluginDefaults()
+            + trinoPluginDefaults()
     }
     // swiftlint:enable function_body_length
+}
+
+// Kept identical to CassandraConsistency.connectionFields in the plugin. ScyllaDB's form shows this list even once the
+// plugin is loaded (registerVariant).
+private func cassandraConsistencyFields() -> [ConnectionField] {
+    let levels = ["LOCAL_ONE", "ONE", "TWO", "THREE", "QUORUM", "LOCAL_QUORUM", "EACH_QUORUM", "ALL", "ANY"]
+    let serialLevels = ["SERIAL", "LOCAL_SERIAL"]
+    let unset = ConnectionField.DropdownOption(value: "", label: String(localized: "Default"))
+    return [
+        ConnectionField(
+            id: "cassandraConsistency",
+            label: String(localized: "Consistency"),
+            fieldType: .dropdown(options: [unset] + levels.map { .init(value: $0, label: $0) }),
+            section: .advanced
+        ),
+        ConnectionField(
+            id: "cassandraSerialConsistency",
+            label: String(localized: "Serial Consistency"),
+            fieldType: .dropdown(options: [unset] + serialLevels.map { .init(value: $0, label: $0) }),
+            section: .advanced
+        ),
+    ]
 }

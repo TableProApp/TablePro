@@ -366,6 +366,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// `NSSplitViewItem` remembers, rather than depending on a second restore.
         workspaces.onSelectionChange = { [weak self] _ in
             self?.applySelectedWorkspace()
+            SessionRecoveryTracker.sync()
         }
 
         /// A connection joining or leaving the window changes what every rail in the app lists,
@@ -374,6 +375,8 @@ internal final class MainSplitViewController: NSSplitViewController {
         workspaces.onMembershipChange = { [weak self] in
             self?.recentTabSwitcher.cancel()
             AppEvents.shared.connectionWindowsChanged.send()
+            // A Not Connected entry joins or leaves without a phase transition to record it.
+            SessionRecoveryTracker.sync()
         }
 
         splitView.autosaveName = splitAutosaveName
@@ -809,14 +812,6 @@ internal final class MainSplitViewController: NSSplitViewController {
             workspace.phase = ConnectionWindowPhaseMachine.onWindowClosing(phase: workspace.phase)
         }
         applyPhase()
-    }
-
-    internal var retainsRestoreIntent: Bool {
-        workspaces.workspaces.contains { $0.retainsRestoreIntent }
-    }
-
-    internal var connectionIdsRetainingRestoreIntent: [UUID] {
-        workspaces.workspaces.filter(\.retainsRestoreIntent).map(\.connectionId)
     }
 
     // MARK: - Pane Construction

@@ -16,6 +16,7 @@ internal struct DatabaseTreeRenameSession: Equatable {
         case container(DatabaseContainerRef)
         /// A folder's name lives only in TablePro, so committing it never reaches the database.
         case folder(TableFolder)
+        case userType(DatabaseTreeUserTypeRef)
     }
 
     internal let target: Target

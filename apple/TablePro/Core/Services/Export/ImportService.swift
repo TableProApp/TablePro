@@ -19,6 +19,10 @@ struct ImportState {
     var statusMessage: String = ""
     var errorMessage: String?
     var transactionOutcome: ImportTransactionOutcome = .untracked
+    var rowTally: ImportRowTally?
+    var fileCount: Int = 0
+    var fileIndex: Int = 0
+    var fileName: String = ""
 }
 
 // MARK: - Import Service
@@ -33,6 +37,9 @@ final class ImportService: ObservableObject {
     private let historyRecorder: QueryHistoryRecording
     private let gate: ExecutionGate
     @Published private var currentProgress: PluginImportProgress?
+    /// A Stop pressed before a file's progress exists, while a table is created or between two files, which
+    /// cancelling the progress alone would drop. A service runs one import, so it is never reset.
+    private var isStopRequested = false
 
     init(
         connection: DatabaseConnection,
@@ -47,6 +54,7 @@ final class ImportService: ObservableObject {
     // MARK: - Cancellation
 
     func cancelImport() {
+        isStopRequested = true
         currentProgress?.cancel()
     }
 
@@ -67,6 +75,7 @@ final class ImportService: ObservableObject {
         targetTable: String? = nil,
         columnMapping: [String: String] = [:],
         sourceFields: Set<String> = [],
+        rowWriting: ImportRowWriting = .insert,
         authorization: OperationReceipt? = nil
     ) async throws -> PluginImportResult {
         guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else {
@@ -95,6 +104,7 @@ final class ImportService: ObservableObject {
             )
         }
         defer { source.cleanup() }
+        guard !isStopRequested else { throw PluginImportCancellationError() }
 
         let historyName = sourceName ?? url.lastPathComponent
         /// After the source exists, so a refusal still removes the decompressed copy it was handed.
@@ -106,29 +116,8 @@ final class ImportService: ObservableObject {
             state.estimatedTotalStatements = Int(initialTotal)
         }
         currentProgress = progress
-
-        let observation = nsProgress.observe(\.completedUnitCount) { [weak self] observed, _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                let processed = Int(observed.completedUnitCount)
-                let total = Int(observed.totalUnitCount)
-                self.state.processedStatements = processed
-                self.state.estimatedTotalStatements = total
-                if total > 0 {
-                    self.state.progress = min(1.0, Double(processed) / Double(total))
-                }
-            }
-        }
-        defer { observation.invalidate() }
-
-        let statusObservation = nsProgress.observe(\.localizedAdditionalDescription) { [weak self] observed, _ in
-            let status = observed.localizedAdditionalDescription ?? ""
-            Task { @MainActor [weak self] in
-                guard let self, !status.isEmpty else { return }
-                self.state.statusMessage = status
-            }
-        }
-        defer { statusObservation.invalidate() }
+        let observations = track(nsProgress)
+        defer { observations.forEach { $0.invalidate() } }
 
         let result: PluginImportResult
         let startedAt = Date()
@@ -153,7 +142,8 @@ final class ImportService: ObservableObject {
                     progress: progress,
                     targetTable: targetTable,
                     columnMapping: columnMapping,
-                    sourceFields: sourceFields
+                    sourceFields: sourceFields,
+                    rowWriting: rowWriting
                 )
             }
         } catch {
@@ -214,6 +204,276 @@ final class ImportService: ObservableObject {
         return result
     }
 
+    private func track(_ nsProgress: Progress) -> [NSKeyValueObservation] {
+        let counts = nsProgress.observe(\.completedUnitCount) { [weak self] observed, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let processed = Int(observed.completedUnitCount)
+                let total = Int(observed.totalUnitCount)
+                self.state.processedStatements = processed
+                self.state.estimatedTotalStatements = total
+                if total > 0 {
+                    self.state.progress = min(1.0, Double(processed) / Double(total))
+                }
+            }
+        }
+        let status = nsProgress.observe(\.localizedAdditionalDescription) { [weak self] observed, _ in
+            let status = observed.localizedAdditionalDescription ?? ""
+            Task { @MainActor [weak self] in
+                guard let self, !status.isEmpty else { return }
+                self.state.statusMessage = status
+            }
+        }
+        return [counts, status]
+    }
+
+    // MARK: - Several files
+
+    /// Imports each file into its own table in one lease, one session scope and, unless the policy turns it off,
+    /// one transaction, so a failure in any file takes back every file under Stop and Rollback. A failure or a Stop
+    /// is in the report rather than thrown, because the report says what became of the files before it.
+    func importFiles(
+        _ files: [RowImportRunItem],
+        scope: DatabaseScope,
+        policy: RowImportBatchPolicy,
+        authorization: OperationReceipt? = nil
+    ) async throws -> RowImportBatchReport {
+        let plugins: [any ImportFormatPlugin] = try files.map { file in
+            guard let plugin = PluginManager.shared.importPlugin(forFormat: file.formatId) else {
+                throw PluginImportError.importFailed("Import format '\(file.formatId)' not found")
+            }
+            return plugin
+        }
+
+        let route = DatabaseManager.shared.executionRoute(for: scope)
+        state = ImportState(isImporting: true)
+        state.fileCount = files.count
+        defer {
+            state.isImporting = false
+            currentProgress = nil
+        }
+        guard !isStopRequested else {
+            return RowImportBatchReport(
+                files: files,
+                outcomes: files.map { _ in .notRun },
+                ending: .stopped(file: 0),
+                transaction: .untracked,
+                executionTime: 0
+            )
+        }
+
+        try await authorizeRun(named: Self.batchName(fileCount: files.count), given: authorization)
+        let operationStart = ContinuousClock.Instant.now
+        let report = try await DatabaseManager.shared.withScopedDriver(
+            scope: scope,
+            route: route,
+            workload: .bulk,
+            cancellation: .protectedWrite
+        ) { driver in
+            try await self.runFiles(files, plugins: plugins, driver: driver, policy: policy)
+        }
+        state.transactionOutcome = report.transaction
+
+        await recordHistory(of: report, in: scope)
+        switch report.ending {
+        case .completed:
+            reportImportFinished(
+                .succeeded(OperationSummary(statementCount: report.importedRowCount)),
+                in: scope,
+                startedAt: operationStart
+            )
+        case .failed:
+            let reason = report.failure?.localizedDescription ?? String(localized: "Unknown error")
+            reportImportFinished(.failed(reason: reason), in: scope, startedAt: operationStart)
+        case .stopped:
+            break
+        }
+        return report
+    }
+
+    internal static func batchName(fileCount: Int) -> String {
+        fileCount == 1
+            ? String(localized: "1 file")
+            : String(format: String(localized: "%lld files"), Int64(fileCount))
+    }
+
+    @MainActor
+    private func runFiles(
+        _ files: [RowImportRunItem],
+        plugins: [any ImportFormatPlugin],
+        driver: DatabaseDriver,
+        policy: RowImportBatchPolicy
+    ) async throws -> RowImportBatchReport {
+        let started = Date()
+        let owner = ImportDataSinkAdapter(driver: driver, databaseType: connection.type)
+        let sessionScope = await openPreservingScope(on: driver)
+        if policy.usesTransaction {
+            do {
+                try await owner.beginTransaction()
+            } catch {
+                await closePreservingScope(sessionScope, on: driver)
+                throw error
+            }
+        }
+
+        var outcomes = [RowImportBatchReport.FileOutcome](repeating: .notRun, count: files.count)
+        var ending = RowImportBatchReport.Ending.completed
+        for (index, file) in files.enumerated() {
+            guard !isStopRequested, !Task.isCancelled else {
+                outcomes[index] = .stopped(rowsBefore: 0)
+                ending = .stopped(file: index)
+                break
+            }
+            switch await runFile(file, plugin: plugins[index], index: index, driver: driver, policy: policy) {
+            case .imported(let result):
+                outcomes[index] = .imported(result)
+            case .stopped(let rows):
+                outcomes[index] = .stopped(rowsBefore: rows)
+                ending = .stopped(file: index)
+            case .failed(let error, let rows):
+                outcomes[index] = .failed(error, rowsBefore: rows)
+                if policy.errorHandling != .skipAndContinue {
+                    ending = .failed(file: index)
+                }
+            case .notRun:
+                break
+            }
+            guard ending == .completed else { break }
+        }
+
+        if policy.usesTransaction {
+            do {
+                try await endTransaction(owner, after: ending, policy: policy)
+            } catch {
+                await closePreservingScope(sessionScope, on: driver)
+                throw error
+            }
+        }
+        await closePreservingScope(sessionScope, on: driver)
+        return RowImportBatchReport(
+            files: files,
+            outcomes: outcomes,
+            ending: ending,
+            transaction: owner.transactionOutcome,
+            executionTime: Date().timeIntervalSince(started)
+        )
+    }
+
+    @MainActor
+    private func runFile(
+        _ file: RowImportRunItem,
+        plugin: any ImportFormatPlugin,
+        index: Int,
+        driver: DatabaseDriver,
+        policy: RowImportBatchPolicy
+    ) async -> RowImportBatchReport.FileOutcome {
+        state.fileIndex = index
+        state.fileName = file.sourceName
+        state.processedStatements = 0
+        state.estimatedTotalStatements = 0
+        state.progress = 0
+        state.statusMessage = ""
+
+        let nsProgress = Progress(totalUnitCount: 0)
+        let progress = PluginImportProgress(progress: nsProgress)
+        currentProgress = progress
+        let observations = track(nsProgress)
+        defer { observations.forEach { $0.invalidate() } }
+
+        let source = PlainFileImportSource(url: file.url)
+        defer { source.cleanup() }
+        let sink = ImportDataSinkAdapter(
+            driver: driver,
+            databaseType: connection.type,
+            targetTable: file.targetTable,
+            columnMapping: file.columnMapping,
+            sourceFields: file.sourceFields,
+            joinsTransaction: policy.usesTransaction,
+            isCancelled: { progress.isCancelled }
+        )
+        do {
+            return .imported(try await plugin.performImport(source: source, sink: sink, progress: progress))
+        } catch is PluginImportCancellationError {
+            return .stopped(rowsBefore: progress.processedStatements)
+        } catch is CancellationError {
+            return .stopped(rowsBefore: progress.processedStatements)
+        } catch {
+            return .failed(error, rowsBefore: progress.processedStatements)
+        }
+    }
+
+    /// Stop and Commit keeps what ran before the failure, as one file's import does. A failure under Stop and
+    /// Rollback, and a Stop under any policy, take back every file.
+    @MainActor
+    private func endTransaction(
+        _ owner: ImportDataSinkAdapter,
+        after ending: RowImportBatchReport.Ending,
+        policy: RowImportBatchPolicy
+    ) async throws {
+        switch ending {
+        case .completed:
+            do {
+                try await owner.commitTransaction()
+            } catch {
+                try? await owner.rollbackTransaction()
+                throw error
+            }
+        case .failed where policy.errorHandling == .stopAndCommit:
+            do {
+                try await owner.commitTransaction()
+            } catch {
+                Self.logger.warning("Commit of a partial import failed: \(error.publicLogShape, privacy: .public)")
+            }
+        case .failed, .stopped:
+            do {
+                try await owner.rollbackTransaction()
+            } catch {
+                Self.logger.warning("Rollback of a failed import failed: \(error.publicLogShape, privacy: .public)")
+            }
+        }
+    }
+
+    /// A file's row is recorded only while its rows are still there, so a rolled-back run records the failure alone.
+    private func recordHistory(of report: RowImportBatchReport, in scope: DatabaseScope) async {
+        for (file, outcome) in zip(report.files, report.outcomes) {
+            switch outcome {
+            case .imported(let result) where report.rowsKept:
+                await recordImport(of: file.sourceName, statements: result.executedStatements,
+                                   executionTime: result.executionTime, error: nil, in: scope)
+            case .failed(let error, let rows):
+                await recordImport(of: file.sourceName, statements: rows,
+                                   executionTime: 0, error: error, in: scope)
+            case .imported, .stopped, .notRun:
+                break
+            }
+        }
+    }
+
+    private func recordImport(
+        of fileName: String,
+        statements: Int,
+        executionTime: TimeInterval,
+        error: (any Error)?,
+        in scope: DatabaseScope
+    ) async {
+        let query = error == nil
+            ? "-- Import from \(fileName) (\(statements) statements)"
+            : "-- Import from \(fileName) (\(statements) statements before failure)"
+        await historyRecorder.record(
+            QueryHistoryRecordRequest(
+                query: query,
+                connectionId: connection.id,
+                databaseName: scope.database,
+                databaseType: connection.type,
+                source: .dataImport,
+                executionTime: executionTime,
+                rowCount: -1,
+                wasSuccessful: error == nil,
+                errorMessage: error?.localizedDescription
+            )
+        )
+    }
+
     /// Before the lease, because a confirmation or a Touch ID prompt answered while it is held keeps
     /// every other tab on this connection waiting on the person.
     private func authorizeRun(named fileName: String, given authorization: OperationReceipt?) async throws {
@@ -244,7 +504,8 @@ final class ImportService: ObservableObject {
         progress: PluginImportProgress,
         targetTable: String?,
         columnMapping: [String: String],
-        sourceFields: Set<String>
+        sourceFields: Set<String>,
+        rowWriting: ImportRowWriting
     ) async throws -> PluginImportResult {
         let sink = ImportDataSinkAdapter(
             driver: driver,
@@ -252,11 +513,13 @@ final class ImportService: ObservableObject {
             targetTable: targetTable,
             columnMapping: columnMapping,
             sourceFields: sourceFields,
+            rowWriting: rowWriting,
             isCancelled: { progress.isCancelled }
         )
         defer {
             reportNameHazards(sink.nameHazardStatements)
             state.transactionOutcome = sink.transactionOutcome
+            state.rowTally = targetTable == nil ? nil : sink.rowTally
         }
         let sessionScope = await openPreservingScope(on: driver)
         let result: PluginImportResult

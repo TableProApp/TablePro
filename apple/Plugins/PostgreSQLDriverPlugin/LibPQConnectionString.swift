@@ -95,13 +95,24 @@ internal enum LibPQConnectionString {
         sslConfig: SSLConfiguration,
         options: String?,
         applicationName: String? = nil,
-        connectTimeoutSeconds: Int? = nil
+        connectTimeoutSeconds: Int? = nil,
+        kerberos: LibPQKerberosSignIn? = nil
     ) -> String {
-        var parameters: [(String, String)] = [
-            ("host", host),
+        var parameters: [(String, String)] = []
+        if let serviceHost = kerberos?.serviceHost, isAddressLiteral(host) {
+            // GSS names the service after host, and hostaddr is where the tunnel listens.
+            parameters.append(contentsOf: [("host", serviceHost), ("hostaddr", host)])
+        } else {
+            parameters.append(("host", host))
+        }
+        if host.hasPrefix("/") {
+            // An inherited PGHOSTADDR would otherwise send a socket connection over TCP.
+            parameters.append(("hostaddr", ""))
+        }
+        parameters.append(contentsOf: [
             ("port", String(port)),
             ("dbname", database)
-        ]
+        ])
 
         if !user.isEmpty {
             parameters.append(("user", user))
@@ -115,6 +126,14 @@ internal enum LibPQConnectionString {
         parameters.append(contentsOf: keepaliveParameters)
 
         parameters.append(("sslmode", LibPQSSLMapping.sslmode(for: sslConfig.mode)))
+        if let kerberos {
+            parameters.append(("gssencmode", kerberos.gssEncryptionMode))
+        } else {
+            // libpq defaults to prefer, and the macOS GSS framework reports a credential even with
+            // no ticket, so every other sign-in would first try GSS encryption. It also refuses GSS
+            // authentication, which could pick up the ticket another connect is signing in with.
+            parameters.append(contentsOf: [("gssencmode", "disable"), ("require_auth", "!gss")])
+        }
         if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
             parameters.append(("sslrootcert", sslConfig.caCertificatePath))
         }
@@ -136,6 +155,12 @@ internal enum LibPQConnectionString {
         return parameters
             .map { "\($0.0)='\(escape($0.1))'" }
             .joined(separator: " ")
+    }
+
+    private static func isAddressLiteral(_ host: String) -> Bool {
+        var ipv4 = in_addr()
+        var ipv6 = in6_addr()
+        return inet_pton(AF_INET, host, &ipv4) == 1 || inet_pton(AF_INET6, host, &ipv6) == 1
     }
 
     static func applicationName(forPurpose purpose: String?) -> String {

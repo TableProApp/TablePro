@@ -1,3 +1,4 @@
+use tablepro_core::SafeModeLevel;
 use tablepro_core::credentials::SecretKind;
 use tablepro_session::SessionKey;
 use tablepro_storage::{ConnectionColor, ConnectionGroupName, SavedConnection};
@@ -53,6 +54,11 @@ pub(crate) enum SessionWindowInput {
     Disconnect,
     /// The prompts approved the disconnect.
     TeardownApproved,
+    /// The main menu's Safe Mode level for the session on screen.
+    SetSafeMode(SafeModeLevel),
+    /// The prompts approved connecting the saved connection again at the
+    /// level it was just given.
+    ReopenApproved(Uuid),
     /// Close the workspace's current tab, or the window when it shows
     /// no tab.
     CloseCurrent,

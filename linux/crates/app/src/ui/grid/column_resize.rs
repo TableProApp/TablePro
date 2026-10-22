@@ -157,6 +157,7 @@ pub(super) mod tests {
         let grid = two_text_rows();
         grid.column(1).set_resizable(false);
         grid.column(1).set_fixed_width(300);
+        grid.column(1).set_expand(true);
 
         resize_column(&grid.view, &grid.cell_of(1, 1), ColumnResize::Wider);
 

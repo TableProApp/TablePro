@@ -11,7 +11,7 @@ import Foundation
 /// a request with `JSONSerialization` and a document rebuilt from a Swift dictionary comes back
 /// with its fields reordered. BSON field order decides how an embedded document compares and where
 /// `_id` sits, so `__ejson` is used for every payload that carries one.
-enum MongoScriptPrelude {
+nonisolated enum MongoScriptPrelude {
     static let source = [
         core, values, cursor, collection, database, serialization, output
     ].joined(separator: "\n")

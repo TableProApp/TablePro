@@ -7,6 +7,7 @@ import CSQLite
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLVocabulary
 
 final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "SQLite Driver"
@@ -48,7 +49,7 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let supportsCheckConstraints = true
 
-    static let additionalConnectionFields: [ConnectionField] = [.loadableExtensions()]
+    static let additionalConnectionFields: [ConnectionField] = [.attachedDatabases(), .loadableExtensions()]
 
     /// ALTER TABLE ... ADD/DROP CONSTRAINT arrived in SQLite 3.53.0 (2026-04-09). The plugin links
     /// its own SQLite (scripts/build-sqlite.sh), so this follows the version pinned there rather
@@ -83,36 +84,35 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
             "REPLACE", "ABORT", "FAIL", "IGNORE", "ROLLBACK",
             "TEMP", "TEMPORARY", "VACUUM", "EXPLAIN", "QUERY", "PLAN"
         ],
-        functions: [
-            "COUNT", "SUM", "AVG", "MAX", "MIN", "GROUP_CONCAT", "TOTAL",
-            "LENGTH", "SUBSTR", "SUBSTRING", "LOWER", "UPPER", "TRIM", "LTRIM", "RTRIM",
-            "REPLACE", "INSTR", "PRINTF",
-            "DATE", "TIME", "DATETIME", "JULIANDAY", "STRFTIME",
-            "ABS", "ROUND", "RANDOM",
-            "CAST", "TYPEOF",
-            "COALESCE", "IFNULL", "NULLIF", "HEX", "QUOTE"
-        ],
-        dataTypes: [
-            "INTEGER", "REAL", "TEXT", "BLOB", "NUMERIC",
-            "INT", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT",
-            "UNSIGNED", "BIG", "INT2", "INT8",
-            "CHARACTER", "VARCHAR", "VARYING", "NCHAR", "NATIVE",
-            "NVARCHAR", "CLOB",
-            "DOUBLE", "PRECISION", "FLOAT",
-            "DECIMAL", "BOOLEAN", "DATE", "DATETIME"
-        ],
-        tableOptions: [
-            "WITHOUT ROWID", "STRICT"
-        ],
+        functions: SQLEngineVocabulary.sqlite.functions,
+        dataTypes: SQLEngineVocabulary.sqlite.dataTypes,
+        tableOptions: SQLEngineVocabulary.sqlite.tableOptions,
         regexSyntax: .unsupported,
         booleanLiteralStyle: .numeric,
         likeEscapeStyle: .explicit,
         paginationStyle: .limit,
-        caseSensitivityStyle: .collationDefined
+        caseSensitivityStyle: .collationDefined,
+        operators: SQLEngineVocabulary.sqlite.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
+        textCastTypeName: nil,
+        functionNamesAreCaseInsensitive: SQLEngineVocabulary.sqlite.functionNamesAreCaseInsensitive
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         SQLitePluginDriver(config: config)
+    }
+}
+
+private extension SQLOperatorDescriptor {
+    init?(vocabulary entry: SQLEngineVocabulary.Operator) {
+        guard let category = Category(rawValue: entry.category),
+              let placement = Placement(rawValue: entry.placement) else { return nil }
+        self.init(
+            symbol: entry.symbol,
+            summary: entry.summary,
+            category: category,
+            placement: placement,
+            appliesToTypes: entry.appliesToTypes
+        )
     }
 }
 
@@ -121,8 +121,11 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
 final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private let backend: any SQLiteExecutionBackend
+    private let attachmentWarning = OSAllocatedUnfairLock<String?>(initialState: nil)
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLitePluginDriver")
+
+    var connectionWarning: String? { attachmentWarning.withLock { $0 } }
 
     var currentSchema: String? { nil }
     var serverVersion: String? { backend.resolvedServerVersion }
@@ -144,6 +147,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .batchExecute,
             .schemaCompare,
             .dataCompare,
+            .temporaryTables,
         ]
     }
 
@@ -178,11 +182,24 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func connect() async throws {
         let extensions = try LoadableExtensionList.decode(config.additionalFields[LoadableExtensionList.fieldId])
+        let attachments = try AttachedDatabaseList.decode(config.additionalFields[AttachedDatabaseList.fieldId])
+        // The paths name files on this Mac; the agent would open whatever sits at them on the server.
+        if !attachments.isEmpty, backend is SQLiteAgentBackend {
+            throw AttachedDatabaseError.remoteSession
+        }
         try await withTaskCancellationHandler {
             try await backend.open(loading: extensions)
         } onCancel: {
             backend.abortConnect()
         }
+        let backend = self.backend
+        let failures = await AttachedDatabaseAttacher.attach(attachments) { database in
+            _ = try await backend.executeParameterizedQuery(
+                "ATTACH DATABASE ? AS ?",
+                parameters: [.text(database.expandedPath), .text(database.name)]
+            )
+        }
+        attachmentWarning.withLock { $0 = AttachedDatabaseAttacher.warning(for: failures) }
     }
 
     func disconnect() {
@@ -248,7 +265,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]? {
-        SQLiteMaintenance.statements(operation: operation, table: table)
+        SQLiteMaintenance.statements(operation: operation, table: table, schema: schema)
     }
 
     // MARK: - View Templates
@@ -319,18 +336,35 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Schema Operations
 
+    /// The databases attached beside the opened file. The app lists each as a schema, the word SQLite's
+    /// own grammar uses for the `auth` in `auth.users`.
+    func fetchSchemas() async throws -> [String] {
+        let result = try await execute(query: SQLiteMasterQueries.attachedDatabasesQuery)
+        return result.rows.compactMap { $0[safe: 0]?.asText }
+    }
+
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let query = """
-            SELECT name, type FROM sqlite_master
+            SELECT name, type FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
             WHERE type IN ('table', 'view')
-            AND name NOT LIKE 'sqlite_%'
+            AND name NOT GLOB 'sqlite_*'
             ORDER BY name
         """
         let result = try await execute(query: query)
+        let attached = SQLiteMasterQueries.attachedSchema(schema)
         return result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText else { return nil }
             let typeString = row[safe: 1]?.asText ?? "table"
             let tableType = typeString.lowercased() == "view" ? "VIEW" : "TABLE"
+            return PluginTableInfo(name: name, type: tableType, schema: attached)
+        }
+    }
+
+    func fetchTemporaryTables() async throws -> [PluginTableInfo] {
+        let result = try await execute(query: SQLiteTemporarySchema.tablesQuery)
+        return result.rows.compactMap { row in
+            guard let name = row[safe: 0]?.asText else { return nil }
+            let tableType = row[safe: 1]?.asText?.lowercased() == "view" ? "VIEW" : "TABLE"
             return PluginTableInfo(name: name, type: tableType)
         }
     }
@@ -339,10 +373,10 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let safeTable = escapeStringLiteral(table)
         // table_xinfo rather than table_info: table_info omits generated columns entirely, so they
         // were invisible to the structure editor and to every write path that reads this list.
-        let query = "PRAGMA table_xinfo('\(safeTable)')"
+        let query = "SELECT * FROM pragma_table_xinfo('\(safeTable)'\(SQLiteMasterQueries.pragmaSchemaArgument(schema)))"
         let result = try await execute(query: query)
         let generationExpressions = SQLiteCheckConstraintParser.generationExpressions(
-            inCreateStatement: try await createStatement(forTable: table) ?? ""
+            inCreateStatement: try await createStatement(forTable: table, schema: schema) ?? ""
         )
 
         return result.rows.compactMap { row in
@@ -377,14 +411,14 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    private func createStatement(forTable table: String) async throws -> String? {
-        let query = "SELECT sql FROM sqlite_master WHERE type='table' AND name='\(escapeStringLiteral(table))'"
+    private func createStatement(forTable table: String, schema: String?) async throws -> String? {
+        let query = SQLiteTemporarySchema.definitionQuery(name: table, types: ["table"], schema: schema)
         let result = try await execute(query: query)
-        return result.rows.first?[safe: 0]?.asText
+        return result.rows.first?[safe: 1]?.asText
     }
 
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
-        guard let statement = try await createStatement(forTable: table) else { return [] }
+        guard let statement = try await createStatement(forTable: table, schema: schema) else { return [] }
         return SQLiteCheckConstraintParser.constraints(inCreateStatement: statement).map { parsed in
             PluginCheckConstraintInfo(name: parsed.name, expression: parsed.expression)
         }
@@ -402,8 +436,9 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let query = """
             SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk,
                    p.hidden, m.sql
-            FROM sqlite_master m, pragma_table_xinfo(m.name) p
-            WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'
+            FROM \(SQLiteMasterQueries.catalogTable(schema: schema)) m,
+                 pragma_table_xinfo(m.name\(SQLiteMasterQueries.pragmaSchemaArgument(schema))) p
+            WHERE m.type = 'table' AND m.name NOT GLOB 'sqlite_*'
             ORDER BY m.name, p.cid
             """
         let result = try await execute(query: query)
@@ -459,109 +494,33 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        /// Selected in `PRAGMA foreign_key_list`'s own column order, behind the table name, so the
-        /// rows can be handed to the same grouping the single-table read uses.
-        let query = """
-            SELECT m.name AS table_name, p.id, p.seq, p."table", p."from", p."to",
-                   p.on_update, p.on_delete
-            FROM sqlite_master m, pragma_foreign_key_list(m.name) p
-            WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'
-            ORDER BY m.name, p.id, p.seq
-            """
-        let result = try await execute(query: query)
-
-        var pragmaRowsByTable: [String: [[PluginCellValue]]] = [:]
-        for row in result.rows {
-            guard row.count >= 8, let tableName = row[0].asText else { continue }
-            pragmaRowsByTable[tableName, default: []].append(Array(row.dropFirst()))
-        }
-        guard !pragmaRowsByTable.isEmpty else { return [:] }
-
-        let createStatements = try await createTableStatements()
-        /// One query for every parent the whole database references, rather than one per table.
-        /// Omitting it made a shorthand `REFERENCES parent` resolve to the child's own column name.
-        let primaryKeysByTable = try await primaryKeys(
-            ofTablesReferencedIn: SQLiteForeignKeyParents.referencedTables(in: pragmaRowsByTable)
+        let result = try await execute(
+            query: SQLiteForeignKeyGrouping.schemaForeignKeysQuery(schema: schema, excludingTableGlob: nil)
         )
-        return pragmaRowsByTable.reduce(into: [:]) { foreignKeys, entry in
-            foreignKeys[entry.key] = SQLiteForeignKeyGrouping.infos(
-                table: entry.key,
-                pragmaRows: entry.value,
-                createTableSQL: createStatements[entry.key],
-                primaryKeysByTable: primaryKeysByTable
-            )
-        }
-    }
-
-    /// The stored `CREATE TABLE` text for every ordinary table, keyed by name. Read in one query so
-    /// recovering constraint names costs one round trip rather than one per table.
-    private func createTableStatements() async throws -> [String: String] {
-        let rows = try await execute(query: """
-            SELECT name, sql FROM sqlite_master
-            WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL
-            """).rows
-        return rows.reduce(into: [:]) { statements, row in
-            guard let name = row[safe: 0]?.asText, let sql = row[safe: 1]?.asText else { return }
-            statements[name] = sql
-        }
+        return SQLiteForeignKeyGrouping.foreignKeysByTable(schema: schema, fromRows: result.rows)
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let result = try await execute(query: SQLiteIndexCatalog.indexesQuery(table: table))
+        let result = try await execute(query: SQLiteTemporarySchema.indexesQuery(table: table, schema: schema))
         return SQLiteIndexCatalog.indexes(fromRows: result.rows)
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        let safeTable = escapeStringLiteral(table)
-        let pragmaRows = try await execute(query: "PRAGMA foreign_key_list('\(safeTable)')").rows
-        guard !pragmaRows.isEmpty else { return [] }
-
-        let createTableSQL = try await execute(query: """
-            SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '\(safeTable)'
-            """).rows.first?[safe: 0]?.asText
-
-        return SQLiteForeignKeyGrouping.infos(
-            table: table,
-            pragmaRows: pragmaRows,
-            createTableSQL: createTableSQL,
-            primaryKeysByTable: try await primaryKeys(
-                ofTablesReferencedIn: SQLiteForeignKeyParents.referencedTables(in: pragmaRows)
-            )
-        )
-    }
-
-    /// The primary key columns of each named table, in key order, keyed by lower-cased table name.
-    ///
-    /// A foreign key written `REFERENCES parent` with no column list points at the parent's primary
-    /// key, and `PRAGMA foreign_key_list` reports null rather than resolving it, so the parent has
-    /// to be asked. One query covers every parent a table references.
-    private func primaryKeys(ofTablesReferencedIn tables: [String]) async throws -> [String: [String]] {
-        let names = Set(tables.map { $0.lowercased() })
-        guard !names.isEmpty else { return [:] }
-        let literals = names.map { "'\(escapeStringLiteral($0))'" }.joined(separator: ", ")
-
-        let rows = try await execute(query: """
-            SELECT m.name, i.name
-            FROM sqlite_master m, pragma_table_info(m.name) i
-            WHERE m.type = 'table' AND lower(m.name) IN (\(literals)) AND i.pk > 0
-            ORDER BY m.name, i.pk
-            """).rows
-
-        return rows.reduce(into: [:]) { keys, row in
-            guard let table = row[safe: 0]?.asText, let column = row[safe: 1]?.asText else { return }
-            keys[table.lowercased(), default: []].append(column)
-        }
+        let result = try await execute(query: SQLiteForeignKeyGrouping.foreignKeysQuery(table: table, schema: schema))
+        return SQLiteForeignKeyGrouping.foreignKeys(table: table, schema: schema, fromRows: result.rows)
     }
 
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
-        try await sqliteTriggerList(table: table)
+        try await sqliteTriggerList(table: table, schema: schema)
     }
 
     var supportsTransactionalDDL: Bool { true }
 
+    /// The trigger's name carries the schema, because an unqualified `CREATE TRIGGER` lands in the
+    /// main database and fails there for a table that lives in an attached one.
     func createTriggerTemplate(table: String, schema: String?) -> String? {
         """
-        CREATE TRIGGER \(quoteIdentifier("trigger_name"))
+        CREATE TRIGGER \(SQLiteMasterQueries.qualifiedTable("trigger_name", schema: schema, quote: quoteIdentifier))
         AFTER INSERT ON \(quoteIdentifier(table))
         BEGIN
             -- INSERT INTO audit ...;
@@ -570,18 +529,14 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        "DROP TRIGGER IF EXISTS \(quoteIdentifier(name))"
+        "DROP TRIGGER IF EXISTS \(SQLiteMasterQueries.qualifiedTable(name, schema: schema, quote: quoteIdentifier))"
     }
 
     /// A view's `CREATE VIEW` sits in `sqlite_master` beside the tables, so one read answers both.
     /// The view goes back exactly as it was written: SQLite keeps a trailing comment in it, which a
     /// `;` appended here would land inside.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let safeTable = escapeStringLiteral(table)
-        let query = """
-            SELECT type, sql FROM sqlite_master
-            WHERE type IN ('table', 'view') AND name = '\(safeTable)'
-            """
+        let query = SQLiteTemporarySchema.definitionQuery(name: table, types: ["table", "view"], schema: schema)
         let result = try await execute(query: query)
 
         guard let firstRow = result.rows.first,
@@ -600,20 +555,16 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// KEY constraint has a null `sql`, so testing for that is what keeps `sqlite_autoindex_*` out
     /// of the dump: those come back with the constraint inside `CREATE TABLE`.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
-        let result = try await execute(query: """
-            SELECT sql FROM sqlite_master
-            WHERE type = 'index'
-              AND tbl_name = '\(escapeStringLiteral(table))'
-              AND sql IS NOT NULL
-            ORDER BY name
-            """)
+        let result = try await execute(
+            query: SQLiteTemporarySchema.indexDefinitionsQuery(table: table, schema: schema)
+        )
         return result.rows.compactMap { $0[safe: 0]?.asText }
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let safeView = escapeStringLiteral(view)
         let query = """
-            SELECT sql FROM sqlite_master
+            SELECT sql FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
             WHERE type = 'view' AND name = '\(safeView)'
             """
         let result = try await execute(query: query)
@@ -627,8 +578,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        let safeTableName = table.replacingOccurrences(of: "\"", with: "\"\"")
-        let countQuery = "SELECT COUNT(*) FROM (SELECT 1 FROM \"\(safeTableName)\" LIMIT 100001)"
+        let qualified = SQLiteMasterQueries.qualifiedTable(table, schema: schema, quote: SQLiteMasterQueries.quoteIdentifier)
+        let countQuery = "SELECT COUNT(*) FROM (SELECT 1 FROM \(qualified) LIMIT 100001)"
         let countResult = try await execute(query: countQuery)
         let rowCount: Int64? = {
             guard let row = countResult.rows.first, let firstCell = row.first else { return nil }
@@ -655,7 +606,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func allTablesMetadataSQL(schema: String?) -> String? {
         """
         SELECT
-            '' as schema,
+            '\(escapeStringLiteral(SQLiteMasterQueries.attachedSchema(schema) ?? ""))' as schema,
             name,
             type as kind,
             '' as charset,
@@ -665,9 +616,9 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             '' as data_size,
             '' as index_size,
             '' as comment
-        FROM sqlite_master
+        FROM \(SQLiteMasterQueries.catalogTable(schema: schema))
         WHERE type IN ('table', 'view')
-        AND name NOT LIKE 'sqlite_%'
+        AND name NOT GLOB 'sqlite_*'
         ORDER BY name
         """
     }
@@ -713,9 +664,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard objectType.uppercased() == "TABLE" else {
             throw PluginDriverUnsupportedOperation.renameTable
         }
-        _ = try await execute(
-            query: "ALTER TABLE \(quoteIdentifier(name)) RENAME TO \(quoteIdentifier(newName))"
-        )
+        let table = SQLiteMasterQueries.qualifiedTable(name, schema: schema, quote: quoteIdentifier)
+        _ = try await execute(query: "ALTER TABLE \(table) RENAME TO \(quoteIdentifier(newName))")
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
@@ -766,7 +716,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         columns: [PluginColumnDefinition],
         desiredOrder: [String]
     ) async throws -> PluginColumnReorderPlan? {
-        try await SQLiteColumnReorderPlanner.plan(
+        try Self.requireMainDatabase(schema)
+        return try await SQLiteColumnReorderPlanner.plan(
             tableName: table,
             desiredOrder: desiredOrder,
             isRunnable: true,
@@ -775,7 +726,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? {
-        try await SQLiteColumnReorderPlanner.schemaFingerprint(
+        try Self.requireMainDatabase(schema)
+        return try await SQLiteColumnReorderPlanner.schemaFingerprint(
             tableName: table,
             execute: { try await self.execute(query: $0) }
         )
@@ -803,6 +755,14 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
         "DROP INDEX \(quoteIdentifier(indexName))"
+    }
+
+    /// The rebuild and reorder planners read the main database's catalog and write unqualified
+    /// statements, so a table in an attached database is refused rather than rebuilt in the wrong file.
+    static func requireMainDatabase(_ schema: String?) throws {
+        guard SQLiteMasterQueries.attachedSchema(schema) == nil else {
+            throw SQLitePluginError.attachedDatabaseStructure
+        }
     }
 
     private func formatDDL(_ ddl: String) -> String {
@@ -865,6 +825,7 @@ enum SQLitePluginError: Error {
     case notConnected
     case queryFailed(String)
     case unsupportedOperation
+    case attachedDatabaseStructure
 }
 
 extension SQLitePluginError: PluginDriverError {
@@ -874,6 +835,8 @@ extension SQLitePluginError: PluginDriverError {
         case .notConnected: return String(localized: "Not connected to database")
         case .queryFailed(let msg): return msg
         case .unsupportedOperation: return String(localized: "Operation not supported")
+        case .attachedDatabaseStructure:
+            return String(localized: "The structure of a table in an attached database cannot be changed here.")
         }
     }
 }

@@ -10,7 +10,7 @@ import TableProPluginKit
 ///
 /// The statement is what the execution gate shows and query history keeps. The write itself goes
 /// to libmongoc with the same documents, so the two cannot disagree about what was sent.
-struct MongoDocumentWritePlan: Equatable, Sendable {
+nonisolated struct MongoDocumentWritePlan: Equatable, Sendable {
     enum Write: Equatable, Sendable {
         case insert(document: String)
         case replace(filter: String, replacement: String)

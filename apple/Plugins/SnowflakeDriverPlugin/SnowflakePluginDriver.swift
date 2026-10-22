@@ -41,6 +41,8 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .alterTableDDL,
             .schemaCompare,
             .dataCompare,
+            .rowWrites,
+            .cellExpressions,
         ]
     }
 

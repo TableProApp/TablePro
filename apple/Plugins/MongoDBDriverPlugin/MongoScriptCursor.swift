@@ -7,7 +7,7 @@ import Foundation
 /// `.sort().limit()` reach MongoDB as one query, and it is also what lets a statement whose value
 /// is a cursor skip JavaScript entirely: nothing has been marshalled yet, so the driver can drain
 /// it straight into the result grid.
-final class MongoScriptCursor {
+nonisolated final class MongoScriptCursor {
     enum Kind {
         case find(filter: String)
         case aggregate(pipeline: String)
@@ -110,7 +110,7 @@ final class MongoScriptCursor {
 }
 
 /// The cursors one script run has open, keyed by the handle JavaScript holds.
-final class MongoScriptCursorRegistry {
+nonisolated final class MongoScriptCursorRegistry {
     private var cursors: [Int: MongoScriptCursor] = [:]
     private var nextHandle = 1
 

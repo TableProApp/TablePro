@@ -46,7 +46,7 @@ struct SQLBuilderPaginationTests {
 
     @Test("Every SQL type iOS ships produces a clause the engine can parse")
     func everyShippedTypeProducesAUsableClause() {
-        for type in IOSDriverFactory().supportedTypes() where type != .redis {
+        for type in IOSDriverFactory().supportedTypes() where type.speaksSQL {
             let clause = SQLBuilder.paginationClause(orderBy: "", limit: 1, offset: 0, for: type)
             #expect(!clause.isEmpty, "\(type.rawValue) produced no pagination clause")
             if type == .mssql || type == .oracle {

@@ -47,6 +47,10 @@ struct ParsedConnectionURL {
         MySQLLocalSocket.path(in: additionalFields)
     }
 
+    var localSocketFile: String? {
+        localSocketPath.map { LocalSocketEndpoint(path: $0, port: resolvedPort, type: type).socketFile }
+    }
+
     var suggestedName: String {
         if let connectionName, !connectionName.isEmpty {
             return connectionName
@@ -71,6 +75,7 @@ enum ConnectionURLParseError: Error, LocalizedError, Equatable {
     case missingHost
     case invalidRedisDatabaseIndex(String)
     case invalidSocketPath(MySQLLocalSocket.PathIssue)
+    case invalidPostgreSQLSocketPath(PostgreSQLLocalSocket.PathIssue)
 
     var errorDescription: String? {
         switch self {
@@ -85,6 +90,8 @@ enum ConnectionURLParseError: Error, LocalizedError, Equatable {
         case .invalidRedisDatabaseIndex(let path):
             return String(format: String(localized: "%@ is not a Redis database index."), path)
         case .invalidSocketPath(let issue):
+            return issue.message
+        case .invalidPostgreSQLSocketPath(let issue):
             return issue.message
         }
     }
@@ -180,15 +187,15 @@ struct ConnectionURLParser {
             return .failure(.invalidURL)
         }
 
-        let endpoint: (host: String, socketFields: [String: String])
+        let endpoint: Endpoint
         switch resolveEndpoint(components, type: dbType) {
         case .success(let resolved): endpoint = resolved
         case .failure(let error): return .failure(error)
         }
 
-        var ext = parseQueryItems(components.queryItems, dbType: dbType)
+        var ext = parseQueryItems(components.percentEncodedQueryItems, dbType: dbType)
 
-        let rawPort = components.port
+        let rawPort = endpoint.port ?? components.port
         var sslMode = ext.resolvedSSLMode(for: dbType, port: rawPort ?? dbType.defaultPort)
         let port = significantPort(rawPort, for: dbType, sslMode: sslMode)
         let username = components.percentEncodedUser.flatMap {
@@ -198,10 +205,8 @@ struct ConnectionURLParser {
             $0.removingPercentEncoding
         } ?? ext.password ?? ""
 
-        var database = components.path
-        if database.hasPrefix("/") {
-            database = String(database.dropFirst())
-        }
+        let catalogPath = databasePath(components.path, type: dbType)
+        var database = catalogPath.database
         // Redis-specific: parse database index from path and handle TLS scheme
         var redisDatabase: Int?
         if dbType == .redis {
@@ -273,22 +278,89 @@ struct ConnectionURLParser {
             mongoQueryParams: ext.mongoQueryParams,
             multiHost: nil,
             additionalFields: tls.additionalFields.merging(endpoint.socketFields) { _, socket in socket }
+                .merging(catalogPath.fields) { current, _ in current }
         ))
     }
+
+    // Trino and Presto read the path as /catalog/schema, as their JDBC drivers do. An SSH URL's
+    // path arrives still percent-encoded, so its two names are decoded after the split.
+    private static func databasePath(
+        _ rawPath: String,
+        type: DatabaseType,
+        percentEncoded: Bool = false
+    ) -> (database: String, fields: [String: String]) {
+        let path = rawPath.hasPrefix("/") ? String(rawPath.dropFirst()) : rawPath
+        guard type.pluginTypeId == DatabaseType.trino.rawValue, let slash = path.firstIndex(of: "/") else {
+            return (path, [:])
+        }
+        let decode: (String) -> String = { percentEncoded ? ($0.removingPercentEncoding ?? $0) : $0 }
+        let schema = decode(String(path[path.index(after: slash)...]))
+        return (decode(String(path[..<slash])), schema.isEmpty ? [:] : ["trinoSchema": schema])
+    }
+
+    private typealias Endpoint = (host: String, socketFields: [String: String], port: Int?)
 
     private static func resolveEndpoint(
         _ components: URLComponents,
         type: DatabaseType
-    ) -> Result<(host: String, socketFields: [String: String]), ConnectionURLParseError> {
-        localSocketPath(in: components, type: type).flatMap { socketPath in
+    ) -> Result<Endpoint, ConnectionURLParseError> {
+        if type.localSocketIsDirectory {
+            return libpqEndpoint(in: components, type: type)
+        }
+        return localSocketPath(in: components, type: type).flatMap { socketPath in
             if let socketPath {
-                return .success(("localhost", [MySQLLocalSocket.fieldKey: socketPath]))
+                return .success(("localhost", [MySQLLocalSocket.fieldKey: socketPath], nil))
             }
             guard let host = components.host, !host.isEmpty else {
                 return .failure(.missingHost)
             }
-            return .success((host, [:]))
+            return .success((host, [:], nil))
         }
+    }
+
+    // libpq's rules: query `host` and `port` win, and a host starting with `/` is the socket directory.
+    private static func libpqEndpoint(
+        in components: URLComponents,
+        type: DatabaseType
+    ) -> Result<Endpoint, ConnectionURLParseError> {
+        let items = components.percentEncodedQueryItems ?? []
+        // nil when absent; an empty value is present and means libpq's default.
+        func queryValue(_ name: String) -> String?? {
+            guard let item = items.last(where: { $0.name.lowercased() == name }) else { return nil }
+            return .some((item.value ?? "").removingPercentEncoding?.trimmingCharacters(in: .whitespaces))
+        }
+        let port: Int?
+        switch queryValue("port") {
+        case .none:
+            port = components.port
+        case .some(.none):
+            return .failure(.invalidURL)
+        case .some(.some(let raw)):
+            guard !raw.isEmpty else {
+                port = nil
+                break
+            }
+            guard let value = Int(raw), (1...65_535).contains(value) else { return .failure(.invalidURL) }
+            port = value
+        }
+        let host: String
+        switch queryValue("host") {
+        case .none:
+            host = components.host ?? ""
+        case .some(.none):
+            return .failure(.invalidURL)
+        case .some(.some(let raw)):
+            host = raw
+        }
+        guard host.hasPrefix("/") else {
+            guard !host.isEmpty else { return .failure(.missingHost) }
+            return .success((host, [:], port ?? type.defaultPort))
+        }
+        let socket = PostgreSQLLocalSocket.endpoint(path: host, port: port ?? type.defaultPort)
+        if let issue = PostgreSQLLocalSocket.issue(for: socket) {
+            return .failure(.invalidPostgreSQLSocketPath(issue))
+        }
+        return .success(("localhost", [MySQLLocalSocket.fieldKey: socket.directory], socket.port))
     }
 
     private static let socketParameterNames = ["socket", "unix_socket"]
@@ -463,6 +535,8 @@ struct ConnectionURLParser {
         let sslMode = ext.resolvedSSLMode(for: dbType, port: port ?? dbType.defaultPort)
         port = significantPort(port, for: dbType, sslMode: sslMode)
         let tls = ImportedTLS(sslMode: sslMode, disablesTLS: ext.disablesTLS, type: dbType)
+        let catalogPath = databasePath(database, type: dbType, percentEncoded: true)
+        database = catalogPath.database
 
         // Oracle-specific: path component is the service name, not the database name
         var oracleServiceName: String?
@@ -516,7 +590,7 @@ struct ConnectionURLParser {
             useSrv: ext.useSrv,
             mongoQueryParams: ext.mongoQueryParams,
             multiHost: nil,
-            additionalFields: tls.additionalFields
+            additionalFields: tls.additionalFields.merging(catalogPath.fields) { current, _ in current }
         ))
     }
 
@@ -575,9 +649,7 @@ struct ConnectionURLParser {
         if let qs = queryString {
             queryItems = qs.split(separator: "&").map { param in
                 let kv = param.split(separator: "=", maxSplits: 1)
-                let key = String(kv[0])
-                let val = kv.count > 1 ? (String(kv[1]).removingPercentEncoding ?? String(kv[1])) : ""
-                return URLQueryItem(name: key, value: val)
+                return URLQueryItem(name: String(kv[0]), value: kv.count > 1 ? String(kv[1]) : "")
             }
         }
 
@@ -679,6 +751,7 @@ struct ConnectionURLParser {
         }
     }
 
+    // Takes the items still percent-encoded, as every path hands them over, so applyQueryParam decodes each once.
     private static func parseQueryItems(_ queryItems: [URLQueryItem]?, dbType: DatabaseType? = nil) -> ExtendedParams {
         var ext = ExtendedParams()
         guard let queryItems else { return ext }
@@ -695,10 +768,10 @@ struct ConnectionURLParser {
         let params = queryString.split(separator: "&", omittingEmptySubsequences: true)
         for param in params {
             let parts = param.split(separator: "=", maxSplits: 1)
-            guard let key = parts.first else { continue }
-            let value = parts.count > 1 ? String(parts[1]) : nil
-            guard let value else { continue }
-            let keyStr = String(key).lowercased()
+            guard let encodedKey = parts.first, parts.count > 1 else { continue }
+            let key = String(encodedKey)
+            let value = String(parts[1])
+            let keyStr = (key.removingPercentEncoding ?? key).lowercased()
             if keyStr == "useprivatekey" {
                 ext.usePrivateKey = value.lowercased() == "true"
                 continue
@@ -715,13 +788,18 @@ struct ConnectionURLParser {
                 ext.agentSocket = value.removingPercentEncoding ?? value
                 continue
             }
-            applyQueryParam(key: String(key), value: value, to: &ext, dbType: dbType)
+            applyQueryParam(key: key, value: value, to: &ext, dbType: dbType)
         }
         return ext
     }
 
-    private static func applyQueryParam(key rawKey: String, value: String, to ext: inout ExtendedParams, dbType: DatabaseType? = nil) {
+    // `key` and `encoded` arrive percent-encoded and are decoded here once. A value the app writes form-style reads `+`
+    // as a space, so a literal `+` in it is `%2B`.
+    private static func applyQueryParam(key encodedKey: String, value encoded: String, to ext: inout ExtendedParams, dbType: DatabaseType? = nil) {
+        let rawKey = encodedKey.removingPercentEncoding ?? encodedKey
         let key = rawKey.lowercased()
+        let value = encoded.removingPercentEncoding ?? encoded
+        let formValue = encoded.replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? value
         switch key {
         case "sslmode":
             if let mode = parseSSLMode(value) {
@@ -742,29 +820,24 @@ struct ConnectionURLParser {
         case "statuscolor":
             ext.statusColor = value
         case "env", "enviroment", "environment":
-            ext.envTag = value.removingPercentEncoding ?? value
+            ext.envTag = formValue
         case "schema":
             ext.schema = value
         case "table":
-            ext.tableName = value.replacingOccurrences(of: "+", with: " ")
-                .removingPercentEncoding ?? value
+            ext.tableName = formValue
         case "name":
-            ext.connectionName = value.replacingOccurrences(of: "+", with: " ")
-                .removingPercentEncoding ?? value
+            ext.connectionName = formValue
         case "view":
-            ext.tableName = value.replacingOccurrences(of: "+", with: " ")
-                .removingPercentEncoding ?? value
+            ext.tableName = formValue
             ext.isView = true
         case "column":
             ext.filterColumn = value
         case "operation", "operator":
             ext.filterOperation = value
         case "value":
-            ext.filterValue = value.replacingOccurrences(of: "+", with: " ")
-                .removingPercentEncoding ?? value
+            ext.filterValue = formValue
         case "condition", "raw", "query":
-            ext.filterCondition = value.replacingOccurrences(of: "+", with: " ")
-                .removingPercentEncoding ?? value
+            ext.filterCondition = formValue
         case "tlsmode":
             if ext.sslMode == nil, let intValue = Int(value) {
                 ext.sslMode = parseTlsModeInteger(intValue)

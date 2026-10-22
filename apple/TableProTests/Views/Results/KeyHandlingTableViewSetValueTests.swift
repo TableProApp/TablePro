@@ -99,6 +99,7 @@ struct KeyHandlingTableViewSetValueTests {
     private static let defaultValue = #selector(SetValueCommandResponding.setValueDefault(_:))
     private static let uuidV4 = #selector(SetValueCommandResponding.generateUUIDv4(_:))
     private static let uuidV7 = #selector(SetValueCommandResponding.generateUUIDv7(_:))
+    private static let cellsToValue = #selector(SetValueCommandResponding.setCellsToValue(_:))
 
     @Test("On the focused uuid key only the UUID items are enabled")
     func focusedUUIDKey() {
@@ -112,13 +113,14 @@ struct KeyHandlingTableViewSetValueTests {
         #expect(!isEnabled(Self.defaultValue, in: sut))
     }
 
-    @Test("On a focused nullable text cell Empty and NULL are enabled and the UUIDs are not")
+    @Test("On a focused nullable text cell Empty, NULL and Set Cells to Value are enabled and the UUIDs are not")
     func focusedTextCell() {
         let sut = makeSUT()
         focus(sut, row: 0, dataColumn: Self.note)
 
         #expect(isEnabled(Self.empty, in: sut))
         #expect(isEnabled(Self.null, in: sut))
+        #expect(isEnabled(Self.cellsToValue, in: sut))
         #expect(!isEnabled(Self.uuidV4, in: sut))
     }
 
@@ -126,7 +128,7 @@ struct KeyHandlingTableViewSetValueTests {
     func nothingFocused() {
         let sut = makeSUT()
 
-        for selector in [Self.empty, Self.null, Self.defaultValue, Self.uuidV4, Self.uuidV7] {
+        for selector in [Self.empty, Self.null, Self.defaultValue, Self.uuidV4, Self.uuidV7, Self.cellsToValue] {
             #expect(!isEnabled(selector, in: sut))
         }
     }
@@ -138,6 +140,7 @@ struct KeyHandlingTableViewSetValueTests {
 
         #expect(!isEnabled(Self.null, in: sut))
         #expect(!isEnabled(Self.empty, in: sut))
+        #expect(!isEnabled(Self.cellsToValue, in: sut))
     }
 
     @Test("A selection across both columns enables what either one takes, and writes each only where it fits")

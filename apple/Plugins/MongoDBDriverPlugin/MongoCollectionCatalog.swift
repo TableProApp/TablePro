@@ -10,7 +10,7 @@ import Foundation
 /// The validator is kept as the exact text the server sent, because it is written back verbatim: in
 /// a `collMod` when a rename has to carry it along, and in the aggregation that tries the change
 /// against it before anything is written.
-struct MongoCollectionInfo: Equatable, Sendable {
+nonisolated struct MongoCollectionInfo: Equatable, Sendable {
     enum Kind: Equatable, Sendable {
         case missing
         case collection
@@ -96,7 +96,7 @@ struct MongoCollectionInfo: Equatable, Sendable {
     }
 }
 
-struct MongoIndexSpec {
+nonisolated struct MongoIndexSpec {
     let name: String
     let spec: [String: Any]
 
@@ -114,7 +114,7 @@ struct MongoIndexSpec {
 /// An Atlas Search or Vector Search index as `$listSearchIndexes` lists it. `listIndexes` never
 /// returns one, because `mongot` holds them, so a rename that checked `listIndexes` alone left a
 /// search index pointing at a path no document has.
-struct MongoSearchIndex {
+nonisolated struct MongoSearchIndex {
     static let listingPipelineJson = "[{\"$listSearchIndexes\": {}}]"
 
     /// Asked of a server that does not know `$listSearchIndexes`, to learn whether it runs search at
@@ -192,7 +192,7 @@ struct MongoSearchIndex {
 }
 
 /// A view as `listCollections` describes it: the collection or view it reads, and its pipeline.
-struct MongoViewDefinition {
+nonisolated struct MongoViewDefinition {
     let name: String
     let viewOn: String
     let pipeline: [Any]
@@ -267,7 +267,7 @@ struct MongoViewDefinition {
 /// How the driver keys what it learned about a collection's documents: by database and collection,
 /// because two databases can hold a collection of the same name with different field types. Neither
 /// name can hold a NUL, so the one in the key separates them.
-enum MongoCollectionCacheKey {
+nonisolated enum MongoCollectionCacheKey {
     static func key(database: String, collection: String) -> String {
         "\(database)\u{0}\(collection)"
     }

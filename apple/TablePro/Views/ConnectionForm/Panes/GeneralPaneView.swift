@@ -33,6 +33,9 @@ struct GeneralPaneView: View {
         }
         .formStyle(.grouped)
         .defaultFocus($nameFocused, true)
+        .task(id: coordinator.auth.pgpassLookup) {
+            coordinator.auth.updatePgpassStatus()
+        }
     }
 
     // MARK: - Identity
@@ -99,6 +102,9 @@ struct GeneralPaneView: View {
                 }
                 if coordinator.network.usesLocalSocket {
                     LocalSocketPathField(coordinator: coordinator)
+                    if coordinator.network.localSocketIsDirectory {
+                        portField
+                    }
                 } else {
                     hostFieldsView
                 }
@@ -113,7 +119,11 @@ struct GeneralPaneView: View {
                 Text(String(localized: "Connection"))
             } footer: {
                 if coordinator.network.usesLocalSocket {
-                    LocalSocketFooter(status: coordinator.network.localSocketFileStatus)
+                    LocalSocketFooter(
+                        status: coordinator.network.localSocketFileStatus,
+                        socketFile: coordinator.network.resolvedLocalSocketEndpoint?.socketFile,
+                        isDirectory: coordinator.network.localSocketIsDirectory
+                    )
                 } else if usesForwardSocket {
                     Text(String(localized: """
                     Host and Port are unused. The SSH tunnel forwards to the socket path set \
@@ -157,13 +167,8 @@ struct GeneralPaneView: View {
             )
             .accessibilityIdentifier("connection-form-host")
             .disabled(usesForwardSocket)
-            TextField(
-                String(localized: "Port"),
-                text: portBinding,
-                prompt: Text(defaultPortString)
-            )
-            .accessibilityIdentifier("connection-form-port")
-            .disabled(usesForwardSocket)
+            portField
+                .disabled(usesForwardSocket)
             portTLSNotice
         }
         ForEach(connectionFields, id: \.id) { field in
@@ -174,6 +179,15 @@ struct GeneralPaneView: View {
                 )
             }
         }
+    }
+
+    private var portField: some View {
+        TextField(
+            String(localized: "Port"),
+            text: portBinding,
+            prompt: Text(defaultPortString)
+        )
+        .accessibilityIdentifier("connection-form-port")
     }
 
     private var usesForwardSocket: Bool {
@@ -249,12 +263,7 @@ struct GeneralPaneView: View {
                         authFieldRow(field)
                     }
                     if !coordinator.auth.hidesPassword {
-                        PasswordPromptToggle(
-                            type: type,
-                            promptForPassword: $coordinator.auth.promptForPassword,
-                            password: $coordinator.auth.password,
-                            additionalFieldValues: $coordinator.auth.additionalFieldValues
-                        )
+                        PasswordPromptToggle(coordinator: coordinator)
                     }
                     ForEach(authFields.rest, id: \.id) { field in
                         authFieldRow(field)
@@ -329,23 +338,31 @@ struct GeneralPaneView: View {
 
     @ViewBuilder
     private var kerberosCaption: some View {
-        if type.pluginTypeId == "SQL Server",
-           coordinator.auth.additionalFieldValues["mssqlAuthMethod"] == "windows" {
+        if usesWindowsAuthentication || KerberosAuthFields.isSelected(in: coordinator.auth.additionalFieldValues) {
             Label(
                 String(localized: "Leave the principal and password blank to use your existing Kerberos ticket. Run kinit user@REALM.COM in Terminal first if you don't have one."),
                 systemImage: "info.circle"
             )
             .font(.caption)
             .foregroundStyle(.secondary)
-            if hostIsIPAddress {
-                Label(
-                    String(localized: "Windows Authentication needs the server's hostname, not an IP address. Kerberos service principals aren't registered against IP addresses."),
-                    systemImage: "exclamationmark.triangle.fill"
-                )
-                .font(.caption)
-                .foregroundStyle(.yellow)
+            // MariaDB's server names its own principal, so only these two take it from the host.
+            if hostIsIPAddress, usesWindowsAuthentication || type.pluginTypeId == "PostgreSQL" {
+                Label(kerberosHostWarning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.yellow)
             }
         }
+    }
+
+    private var kerberosHostWarning: String {
+        if usesWindowsAuthentication {
+            return String(localized: "Windows Authentication needs the server's hostname, not an IP address. Kerberos service principals aren't registered against IP addresses.")
+        }
+        return String(localized: "Kerberos needs the server's hostname, not an IP address. Service principals aren't registered against IP addresses.")
+    }
+
+    private var usesWindowsAuthentication: Bool {
+        type.pluginTypeId == "SQL Server" && coordinator.auth.additionalFieldValues["mssqlAuthMethod"] == "windows"
     }
 
     private var hostIsIPAddress: Bool {

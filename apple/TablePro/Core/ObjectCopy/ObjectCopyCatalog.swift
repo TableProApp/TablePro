@@ -73,7 +73,7 @@ internal struct ObjectCopyCatalog {
         var found: [ObjectCopySelection] = []
 
         let tables = try await plugin.fetchTables(schema: schema)
-        for table in tables where !CompareTableKindClassifier.isForeign(table) {
+        for table in tables where !CompareTableKindClassifier.isForeign(table) && !CompareTableKindClassifier.isSequence(table) {
             found.append(ObjectCopySelection(
                 kind: CompareTableKindClassifier.kind(of: table),
                 name: table.name,

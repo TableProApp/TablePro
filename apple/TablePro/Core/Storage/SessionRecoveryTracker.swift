@@ -9,48 +9,44 @@ import Foundation
 enum SessionRecoveryTracker {
     private static let storage: LastOpenConnectionsStorage? = AppStorageEnvironment.shared.isUnitTestHost ? nil : .shared
 
-    /// Connections eligible for "Reopen Last Session": one the user actually worked in,
-    /// or one whose window is still holding the intent to reach it. A cancelled attempt
-    /// and a closing window are both excluded, so neither is replayed on the next launch.
-    /// A connection that merely failed to reach its server is kept, because a database
-    /// that was down is not a user who gave up.
-    static func connectionIds() -> [UUID] {
-        let activated = MainContentCoordinator.activeCoordinators.values.map {
+    static func lastSession() -> LastSession {
+        let activated = Set(
+            MainContentCoordinator.activeCoordinators.values.filter(\.isActivated).map(\.connectionId)
+        )
+        let candidates = WindowManager.shared.hostedWorkspaces().map {
             RecoveryCandidate(
                 connectionId: $0.connectionId,
-                isActivated: $0.isActivated,
-                retainsRestoreIntent: false
+                openedAt: $0.openedAt,
+                phase: $0.phase,
+                isActivated: activated.contains($0.connectionId)
             )
         }
-        let pending = WindowManager.shared.connectionIdsRetainingRestoreIntent().map {
-            RecoveryCandidate(connectionId: $0, isActivated: false, retainsRestoreIntent: true)
-        }
-        return RecoveryConnectionList.connectionIds(from: activated + pending)
-            .filter { !wasEndedByUser($0) }
+        return RecoveryConnectionList.lastSession(
+            from: candidates,
+            endedByUser: wasEndedByUser,
+            shownConnectionId: WindowManager.shared.shownConnectionId()
+        )
     }
 
-    /// A connection the user disconnected is never replayed, whatever its windows still report. A
-    /// window subscribes to session changes only while it is on screen, so a native tab that AppKit
-    /// joined but never displayed sits frozen at the phase it was born with and would otherwise vote
-    /// to reopen a session the user deliberately ended. The flag clears when a fresh connect begins.
+    // A native tab AppKit joined but never displayed keeps the phase it was born with, so a stale
+    // `.connected` there must not redial a session the user ended. The flag clears on the next connect.
     private static func wasEndedByUser(_ connectionId: UUID) -> Bool {
         guard DatabaseManager.shared.wasDisconnectedByUser(connectionId) else { return false }
         return DatabaseManager.shared.activeSessions[connectionId] == nil
     }
 
-    /// Rewrite the recovery list from the live window set. Called whenever that set
-    /// changes so the file stays correct after a crash or a force quit, neither of
-    /// which runs `applicationWillTerminate`.
+    // Kept current on every change because a crash or force quit never runs `applicationWillTerminate`.
     static func sync() {
         guard !MainContentCoordinator.isAppTerminating, let storage else { return }
-        storage.save(connectionIds: connectionIds())
+        storage.save(lastSession())
     }
 
     static func saveOnQuit() {
-        let ids = connectionIds()
-        guard let storage,
-              RecoveryConnectionList.shouldSaveOnQuit(ids, origin: AppActivationPolicyController.shared.origin)
-        else { return }
-        storage.save(connectionIds: ids)
+        guard let storage else { return }
+        let session = lastSession()
+        if RecoveryConnectionList.shouldSaveOnQuit(session, origin: AppActivationPolicyController.shared.origin) {
+            storage.save(session)
+        }
+        storage.seal()
     }
 }

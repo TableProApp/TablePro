@@ -23,21 +23,28 @@ pub(crate) enum ReviewDecision {
 }
 
 /// Cancel is the default, so Enter never applies a change that loses
-/// data.
+/// data. `asks_first` names a connection whose Safe Mode asks before
+/// every write, which is why a save that loses nothing is reviewed too.
 pub(crate) async fn confirm(
     parent: &gtk::Widget,
     table: &str,
     review: &ChangeReview,
     engine: &EngineProfile,
+    asks_first: Option<&str>,
 ) -> ReviewDecision {
-    let dialog = build(table, review, engine);
+    let dialog = build(table, review, engine, asks_first);
     match crate::workspace::respond(&dialog, parent).await.as_str() {
         APPLY => ReviewDecision::Apply,
         _ => ReviewDecision::Cancel,
     }
 }
 
-pub(crate) fn build(table: &str, review: &ChangeReview, engine: &EngineProfile) -> adw::AlertDialog {
+pub(crate) fn build(
+    table: &str,
+    review: &ChangeReview,
+    engine: &EngineProfile,
+    asks_first: Option<&str>,
+) -> adw::AlertDialog {
     let count = review.operations;
     let heading = crate::i18n::ngettext_f(
         "Apply {count} Change to “{table}”?",
@@ -45,7 +52,7 @@ pub(crate) fn build(table: &str, review: &ChangeReview, engine: &EngineProfile) 
         u32::try_from(count).unwrap_or(u32::MAX),
         &[("count", &count.to_string()), ("table", table)],
     );
-    let dialog = adw::AlertDialog::new(Some(&heading), Some(&body(review, engine)));
+    let dialog = adw::AlertDialog::new(Some(&heading), Some(&body(review, engine, asks_first)));
     // A table or column name is never markup.
     dialog.set_heading_use_markup(false);
     dialog.set_body_use_markup(false);
@@ -63,8 +70,12 @@ pub(crate) fn build(table: &str, review: &ChangeReview, engine: &EngineProfile) 
     dialog
 }
 
-fn body(review: &ChangeReview, engine: &EngineProfile) -> String {
-    let mut lines: Vec<String> = review.destructive.iter().map(destructive_text).collect();
+fn body(review: &ChangeReview, engine: &EngineProfile, asks_first: Option<&str>) -> String {
+    let mut lines: Vec<String> = asks_first
+        .map(crate::ui::write_confirmation::asks_before_writes)
+        .into_iter()
+        .collect();
+    lines.extend(review.destructive.iter().map(destructive_text));
     if engine.ddl_writes == WriteAtomicity::StatementByStatement && review.statements.len() > 1 {
         lines.push(crate::i18n::gettext_f(
             "{engine} applies each statement separately. If one fails, the statements before it stay applied.",
@@ -127,7 +138,7 @@ fn object_text(object: &RecreatedObject) -> String {
     }
 }
 
-fn sql_view(sql: &str, dialog: &adw::AlertDialog) -> gtk::ScrolledWindow {
+pub(crate) fn sql_view(sql: &str, dialog: &adw::AlertDialog) -> gtk::ScrolledWindow {
     let buffer = match sourceview5::LanguageManager::default().language("sql") {
         Some(language) => sourceview5::Buffer::with_language(&language),
         None => sourceview5::Buffer::new(None),
@@ -213,7 +224,7 @@ mod tests {
         );
         reviewed.operations = 1;
 
-        let dialog = build("<b>a & b</b>", &reviewed, &engine(WriteAtomicity::Transactional));
+        let dialog = build("<b>a & b</b>", &reviewed, &engine(WriteAtomicity::Transactional), None);
 
         assert_eq!(dialog.heading().as_deref(), Some("Apply 1 Change to “<b>a & b</b>”?"));
         assert!(!dialog.is_heading_use_markup());
@@ -231,8 +242,8 @@ mod tests {
         adw::init().expect("libadwaita initialises under the test backend");
         let reviewed = review(&["ALTER TABLE a", "CREATE INDEX b ON a (c)"], Vec::new());
 
-        let separately = build("a", &reviewed, &engine(WriteAtomicity::StatementByStatement));
-        let atomic = build("a", &reviewed, &engine(WriteAtomicity::Transactional));
+        let separately = build("a", &reviewed, &engine(WriteAtomicity::StatementByStatement), None);
+        let atomic = build("a", &reviewed, &engine(WriteAtomicity::Transactional), None);
 
         assert_eq!(
             separately.body(),
@@ -243,6 +254,20 @@ mod tests {
             adw::ResponseAppearance::Suggested
         );
         assert_eq!(atomic.body(), "");
+    }
+
+    #[gtk4::test]
+    fn a_connection_that_asks_before_writes_is_named_first() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let reviewed = review(&["CREATE INDEX b ON a (c)"], Vec::new());
+
+        let dialog = build("a", &reviewed, &engine(WriteAtomicity::Transactional), Some("Prod"));
+
+        assert_eq!(
+            dialog.body(),
+            "Safe Mode on “Prod” asks before every change to the database."
+        );
+        assert_eq!(dialog.default_response().as_deref(), Some(CANCEL));
     }
 
     #[test]

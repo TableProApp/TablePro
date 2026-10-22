@@ -25,12 +25,14 @@ struct RawSQLFilterCompletions {
 final class RawSQLFilterCompletionProvider {
     private let engine: CompletionEngine
     private let tableName: String
+    private let connectionId: UUID?
 
     init(
         schemaProvider: SQLSchemaProvider,
         databaseType: DatabaseType,
         tableName: String,
-        profile: QueryCompletionProfile? = nil
+        profile: QueryCompletionProfile? = nil,
+        connectionId: UUID? = nil
     ) {
         let dialect = profile?.resolvedDialect ?? PluginManager.shared.sqlDialect(for: databaseType)
         let statementCompletions = profile?.statementCompletions
@@ -42,6 +44,7 @@ final class RawSQLFilterCompletionProvider {
             statementCompletions: statementCompletions
         )
         self.tableName = tableName
+        self.connectionId = connectionId
     }
 
     func completions(fieldText: String, cursor: Int) async -> RawSQLFilterCompletions? {
@@ -49,7 +52,8 @@ final class RawSQLFilterCompletionProvider {
             fragment: fieldText,
             cursorPosition: cursor,
             tableName: tableName,
-            keywordCase: AppSettingsManager.shared.editor.keywordCase
+            keywordCase: AppSettingsManager.shared.editor.keywordCase,
+            identifierCase: SQLIdentifierCase.stored(for: connectionId)
         ) else {
             return nil
         }

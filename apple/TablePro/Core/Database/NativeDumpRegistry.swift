@@ -137,8 +137,12 @@ enum NativeDumpRegistry {
         }
     }
 
+    // A socket goes to `-h` as its directory, the way libpq reads a host starting with `/`.
     private static func connectionFlags(_ request: NativeDumpDescriptor.Request) -> [String] {
-        var flags = ["--no-password", "-h", request.host, "-p", String(request.connection.port)]
+        let socket = request.connection.type.localSocketIsDirectory ? request.connection.localSocketEndpoint : nil
+        let host = socket?.path ?? request.host
+        let port = socket?.port ?? request.connection.port
+        var flags = ["--no-password", "-h", host, "-p", String(port)]
         if !request.connection.username.isEmpty {
             flags.append(contentsOf: ["-U", request.connection.username])
         }
@@ -213,6 +217,12 @@ enum NativeDumpRegistry {
                     environment: { request in
                         guard let password = request.password, !password.isEmpty else { return [:] }
                         return ["MYSQL_PWD": password]
+                    },
+                    prepare: { request, resolved in
+                        try await mysqlPrepare(request, resolved)
+                    },
+                    clientPluginFolder: { request, resolved in
+                        try mysqlPluginFolder(request, resolved)
                     }
                 )
             ),
@@ -241,6 +251,85 @@ enum NativeDumpRegistry {
         ["--", request.database] + request.scope.objects.map(\.name)
     }
 
+    private static func mysqlPrepare(
+        _ request: NativeDumpDescriptor.Request,
+        _ resolved: NativeDumpResolvedTool
+    ) async throws -> NativeDumpDescriptor.Request {
+        var request = request
+        request.serverOffersTLS = try await mysqlServerOffersTLS(request, resolved)
+        let hidesPlugins = MySQLClientArguments.hidesPlaintextPasswordPlugins(
+            request.connection,
+            flavor: resolved.flavor,
+            serverOffersTLS: request.serverOffersTLS
+        )
+        guard hidesPlugins else { return request }
+        switch await MariaDBBuiltInPlaintextCheck.verdict(toolPath: resolved.path) {
+        case .refusesPlaintext:
+            break
+        case .sendsPlaintext:
+            throw NativeDumpError.incompatibleTool(
+                message: String(
+                    format: String(
+                        localized: """
+                            %@ sends the password in plain text when a server asks, even without TLS, and TablePro \
+                            cannot turn that off. Set SSL Mode to Required, or install another build of the client tools.
+                            """
+                    ),
+                    resolved.path
+                )
+            )
+        case .unknown:
+            throw NativeDumpError.incompatibleTool(
+                message: String(
+                    format: String(
+                        localized: """
+                            TablePro could not check whether %@ sends the password in plain text without TLS. Try \
+                            again, or set SSL Mode to Required.
+                            """
+                    ),
+                    resolved.path
+                )
+            )
+        }
+        return request
+    }
+
+    // Unreadable fails the run: guessing no TLS would dump in plaintext from a server that has it, and guessing TLS
+    // brings back the fallback that sends the typed password.
+    private static func mysqlServerOffersTLS(
+        _ request: NativeDumpDescriptor.Request,
+        _ resolved: NativeDumpResolvedTool
+    ) async throws -> Bool? {
+        guard MySQLClientArguments.needsServerGreeting(request.connection, flavor: resolved.flavor) else { return nil }
+        switch await MySQLServerGreeting.read(host: request.host, port: request.connection.port) {
+        case .offersTLS(let offered):
+            return offered
+        case .serverError(let message):
+            throw NativeDumpError.unreachableServer(message: message)
+        case .unreadable:
+            throw NativeDumpError.unreachableServer(
+                message: String(
+                    format: String(
+                        localized: "TablePro could not reach %@ to see whether it offers TLS. Check that the server is running and reachable, then try again."
+                    ),
+                    "\(request.host):\(request.connection.port)"
+                )
+            )
+        }
+    }
+
+    private static func mysqlPluginFolder(
+        _ request: NativeDumpDescriptor.Request,
+        _ resolved: NativeDumpResolvedTool
+    ) throws -> MariaDBClientPluginFolder? {
+        guard MySQLClientArguments.hidesPlaintextPasswordPlugins(
+            request.connection,
+            flavor: resolved.flavor,
+            serverOffersTLS: request.serverOffersTLS
+        ) else { return nil }
+        return try MariaDBClientPluginFolder.make(from: MariaDBClientPluginFolder.pluginDirectory(forTool: resolved.path))
+    }
+
     private static func mysqlConnectionFlags(
         _ request: NativeDumpDescriptor.Request,
         _ resolved: NativeDumpResolvedTool
@@ -257,11 +346,15 @@ enum NativeDumpRegistry {
             contentsOf: try MySQLClientArguments.tls(
                 request.connection.transportSSLConfiguration,
                 flavor: resolved.flavor,
-                toolPath: resolved.path
+                toolPath: resolved.path,
+                serverOffersTLS: request.serverOffersTLS
             )
         )
         if request.connection.usesIAMToken {
             flags.append(contentsOf: MySQLClientArguments.cleartextAuthentication(flavor: resolved.flavor))
+        }
+        if let folder = request.clientPluginFolder {
+            flags.append(contentsOf: MySQLClientArguments.pluginDirectory(folder.url))
         }
         return flags
     }

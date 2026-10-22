@@ -88,7 +88,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func ping() async throws -> Bool {
-        _ = try await actor.execute("SELECT 1")
+        try await actor.ping()
         return true
     }
 
@@ -133,9 +133,12 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
             let task = Task {
                 do {
                     switch try await actor.beginStream(query: query, id: id, readsOnly: readsOnly) {
-                    case .commandOk(let affectedRows):
+                    case .commandOk(let affectedRows, let statusMessage):
                         if affectedRows != 0 {
                             continuation.yield(.rowsAffected(affectedRows))
+                        }
+                        if let statusMessage {
+                            continuation.yield(.statusMessage(statusMessage))
                         }
                     case .tuples(let columns):
                         continuation.yield(.columns(columns))
@@ -258,15 +261,45 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
 }
 
 nonisolated enum PostgreSQLSessionTransaction {
-    static func state(from status: PGTransactionStatusType) -> DriverTransactionState {
+    static func state(
+        from status: PGTransactionStatusType,
+        statusAtSend: PGTransactionStatusType? = nil
+    ) -> DriverTransactionState {
         switch status {
         case PQTRANS_IDLE:
             return .idle
-        case PQTRANS_INTRANS, PQTRANS_INERROR, PQTRANS_ACTIVE:
+        case PQTRANS_INTRANS:
             return .explicitTransaction
+        case PQTRANS_INERROR:
+            return .abortedTransaction
+        // A statement still in flight says nothing about the transaction around it; the status before it went out does.
+        case PQTRANS_ACTIVE:
+            guard let statusAtSend, statusAtSend != PQTRANS_ACTIVE else { return .unknown }
+            return state(from: statusAtSend)
         default:
             return .unknown
         }
+    }
+
+    // An aborted block refuses SELECT 1 on a live session, an open one takes its snapshot from it, and a stream would end.
+    static func pingSendsStatement(in status: PGTransactionStatusType) -> Bool {
+        status == PQTRANS_IDLE
+    }
+
+    // A COMMIT in an aborted block answers the tag ROLLBACK with no error, so it would read as a success.
+    static func statusMessage(
+        statusAtSend: PGTransactionStatusType,
+        commandTag: String,
+        statusAfter: PGTransactionStatusType
+    ) -> String? {
+        guard statusAtSend == PQTRANS_INERROR, commandTag == "ROLLBACK", statusAfter == PQTRANS_IDLE else {
+            return nil
+        }
+        return failedTransactionRolledBackMessage
+    }
+
+    static var failedTransactionRolledBackMessage: String {
+        String(localized: "The failed transaction was rolled back. None of its changes were kept.")
     }
 }
 
@@ -373,7 +406,31 @@ private actor PostgreSQLActor {
 
     func transactionState() -> DriverTransactionState {
         guard let conn else { return .unknown }
-        return PostgreSQLSessionTransaction.state(from: PQtransactionStatus(conn))
+        return PostgreSQLSessionTransaction.state(
+            from: PQtransactionStatus(conn),
+            statusAtSend: stream?.transactionStatusAtSend
+        )
+    }
+
+    func ping() throws {
+        guard let conn else { throw PostgreSQLError.notConnected }
+        guard PostgreSQLSessionTransaction.pingSendsStatement(in: PQtransactionStatus(conn)) else {
+            try checkSocket(conn)
+            return
+        }
+        _ = try execute("SELECT 1")
+    }
+
+    // Measured on the Mac driver: one read leaves a closed session CONNECTION_OK, the second turns it CONNECTION_BAD.
+    private func checkSocket(_ conn: OpaquePointer) throws {
+        if PQstatus(conn) == CONNECTION_OK {
+            _ = PQconsumeInput(conn)
+            _ = PQisBusy(conn)
+            _ = PQconsumeInput(conn)
+        }
+        guard PQstatus(conn) == CONNECTION_OK else {
+            throw PostgreSQLError.connectionFailed(Self.message(from: conn))
+        }
     }
 
     /// libpq keeps the value the server last reported in a `ParameterStatus`, so a `SET` the user ran is already in it.
@@ -494,7 +551,8 @@ private actor PostgreSQLActor {
         let state = PostgreSQLStreamState(
             id: id,
             cancelsAbandonedOutput: cancelsOutput,
-            cancelsUnreadRows: cancelsOutput && readsOnly
+            cancelsUnreadRows: cancelsOutput && readsOnly,
+            transactionStatusAtSend: PQtransactionStatus(conn)
         )
         try send(query, id: id, on: conn)
         guard PQsetSingleRowMode(conn) == 1 else {
@@ -503,7 +561,7 @@ private actor PostgreSQLActor {
         }
         guard let firstResult = PQgetResult(conn) else {
             markDrained(state)
-            return .commandOk(affectedRows: 0)
+            return .commandOk(affectedRows: 0, statusMessage: nil)
         }
 
         switch PQresultStatus(firstResult) {
@@ -519,13 +577,21 @@ private actor PostgreSQLActor {
             return .tuples(columns)
         case PGRES_COMMAND_OK:
             let affected = Int(String(cString: PQcmdTuples(firstResult))) ?? 0
+            let commandTag = String(cString: PQcmdStatus(firstResult))
             PQclear(firstResult)
             if let error = drain(state).error { throw error }
-            return .commandOk(affectedRows: affected)
+            return .commandOk(
+                affectedRows: affected,
+                statusMessage: PostgreSQLSessionTransaction.statusMessage(
+                    statusAtSend: state.transactionStatusAtSend,
+                    commandTag: commandTag,
+                    statusAfter: self.conn.map { PQtransactionStatus($0) } ?? PQTRANS_UNKNOWN
+                )
+            )
         default:
             state.pendingResult = firstResult
             if let error = drain(state).error { throw error }
-            return .commandOk(affectedRows: 0)
+            return .commandOk(affectedRows: 0, statusMessage: nil)
         }
     }
 
@@ -746,7 +812,7 @@ private actor PostgreSQLActor {
 
 nonisolated enum PGBeginStreamResult: Sendable {
     case tuples([ColumnInfo])
-    case commandOk(affectedRows: Int)
+    case commandOk(affectedRows: Int, statusMessage: String?)
 }
 
 /// Confined to `PostgreSQLActor`, which owns the connection the stream reads.
@@ -757,14 +823,21 @@ nonisolated private final class PostgreSQLStreamState {
     /// A cancel rolls back the whole statement, so rows nobody will read are cut short only for a read: an
     /// `UPDATE ... RETURNING` past the row cap has to finish, or its write is undone.
     let cancelsUnreadRows: Bool
+    let transactionStatusAtSend: PGTransactionStatusType
     /// A result read before its turn: the first row, or what the row-cap check took off the wire.
     var pendingResult: OpaquePointer?
     var isDrained = false
 
-    init(id: UInt64, cancelsAbandonedOutput: Bool, cancelsUnreadRows: Bool) {
+    init(
+        id: UInt64,
+        cancelsAbandonedOutput: Bool,
+        cancelsUnreadRows: Bool,
+        transactionStatusAtSend: PGTransactionStatusType
+    ) {
         self.id = id
         self.cancelsAbandonedOutput = cancelsAbandonedOutput
         self.cancelsUnreadRows = cancelsUnreadRows
+        self.transactionStatusAtSend = transactionStatusAtSend
     }
 }
 

@@ -25,6 +25,7 @@ final class AppSettingsStorage: Sendable {
         static let appearance = "com.TablePro.settings.appearance"
         static let appearanceMode = "com.TablePro.settings.appearanceMode"
         static let editor = "com.TablePro.settings.editor"
+        static let formatter = "com.TablePro.settings.formatter"
         static let dataGrid = "com.TablePro.settings.dataGrid"
         static let history = "com.TablePro.settings.history"
         static let tabs = "com.TablePro.settings.tabs"
@@ -164,6 +165,16 @@ final class AppSettingsStorage: Sendable {
         save(settings, key: Keys.editor)
     }
 
+    // MARK: - Formatter Settings
+
+    func loadFormatter() -> SQLFormatterSettings {
+        load(key: Keys.formatter, default: .default)
+    }
+
+    func saveFormatter(_ settings: SQLFormatterSettings) {
+        save(settings, key: Keys.formatter)
+    }
+
     // MARK: - Data Grid Settings
 
     func loadDataGrid() -> DataGridSettings {
@@ -289,6 +300,7 @@ final class AppSettingsStorage: Sendable {
         saveAppearance(.default)
         saveAppearanceMode(.auto)
         saveEditor(.default)
+        saveFormatter(.default)
         saveDataGrid(.default)
         saveHistory(.default)
         saveTabs(.default)

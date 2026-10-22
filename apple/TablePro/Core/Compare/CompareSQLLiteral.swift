@@ -45,6 +45,11 @@ internal enum CompareSQLLiteral {
         if let columnType, ColumnTypeSQLQuoting.isNumericLiteral(text, for: columnType) {
             return text
         }
+        // ClickHouse reads backslash escapes in every literal. The default left them single, so `C:\new` synced as a
+        // newline and a value ending in `\'` closed the literal early (#3777).
+        if databaseType == .clickhouse {
+            return "'\(driver.escapeStringLiteral(text))'"
+        }
         let rendered = driver.sqlLiteral(for: .text(text))
         /// A driver that passed the value through unquoted answered for a number, so the value holds
         /// no quote to escape. Escaping anyway is what keeps that true if a driver ever renders a

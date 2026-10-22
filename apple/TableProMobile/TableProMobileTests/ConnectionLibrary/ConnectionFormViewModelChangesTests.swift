@@ -325,6 +325,24 @@ struct ConnectionFormViewModelChangesTests {
         #expect(viewModel.changesSecrets)
     }
 
+    @Test("Loading certificates again, as returning from a jump host does, keeps a removed one removed")
+    func reloadKeepsRemovedCertificate() throws {
+        let connection = postgres()
+        try certificates.store(
+            PEMDocument.encode(Data([1, 2, 3]), as: .certificate),
+            role: .certificateAuthority,
+            for: connection.id
+        )
+        let viewModel = form(editing: connection)
+        viewModel.loadCertificateSummaries()
+
+        viewModel.removeCertificate(.certificateAuthority)
+        viewModel.loadCertificateSummaries()
+
+        #expect(viewModel.hasCertificate(.certificateAuthority) == false)
+        #expect(viewModel.hasChanges)
+    }
+
     @Test("Saving a rename writes no secret back, so secrets changed on another device survive")
     func renameLeavesChangedSecretsAlone() async throws {
         let tunnelled = try #require(existingConnections().first { $0.sshEnabled })
@@ -434,5 +452,29 @@ struct ConnectionFormViewModelChangesTests {
         created.password = "secret"
         #expect(created.changesSecrets)
         #expect(created.reconnectsAfterSave == false)
+    }
+
+    @Test("A save redials when it changes a secret or a field the connection dials by, and not for a rename")
+    func redialFollowsDialingFields() async {
+        let connection = postgres()
+
+        let renamed = form(editing: connection)
+        await renamed.loadStoredCredentials(secureStore: seededStore(for: connection))
+        renamed.name = "Renamed"
+        #expect(renamed.redialsAfterSave(over: connection) == false)
+
+        let moved = form(editing: connection)
+        await moved.loadStoredCredentials(secureStore: seededStore(for: connection))
+        moved.host = "replica.example.com"
+        #expect(moved.redialsAfterSave(over: connection))
+
+        let rotated = form(editing: connection)
+        await rotated.loadStoredCredentials(secureStore: seededStore(for: connection))
+        rotated.password = "rotated"
+        #expect(rotated.redialsAfterSave(over: connection))
+
+        let created = form()
+        created.host = "elsewhere"
+        #expect(created.redialsAfterSave(over: connection) == false)
     }
 }

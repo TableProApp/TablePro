@@ -7,6 +7,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProUtilities
 
 enum ExplainResultRouter {
@@ -34,7 +35,7 @@ enum ExplainResultRouter {
         let text = ExplainPlanTextFlattener.flatten(rows: rows)
         guard !text.isEmpty else { return nil }
 
-        let explainSQL = QueryClassifier.strippingLeadingComments(sql)
+        let explainSQL = SQLLeadingComments.stripping(sql)
         let variant = ExplainFormatResolver.matchingVariant(
             sql: explainSQL, declaredVariants: declaredVariants
         )
@@ -56,6 +57,26 @@ enum ExplainResultRouter {
                 declaredVariants: declaredVariants,
                 matched: variant
             ),
+            subjectSQL: subjectSQL
+        )
+    }
+
+    static func routeDriverPlan(
+        rows: [[PluginCellValue]],
+        subjectSQL: String,
+        variantId: String,
+        databaseType: DatabaseType,
+        declaredVariants: [ExplainVariant]
+    ) -> RoutedPlan? {
+        let text = ExplainPlanTextFlattener.flatten(rows: rows)
+        guard !text.isEmpty else { return nil }
+        let declared = declaredVariants.first { $0.id == variantId }?.format ?? .plainText
+        let format = ExplainFormatResolver.resolve(declared: declared, databaseType: databaseType)
+        return RoutedPlan(
+            rawText: text,
+            plan: ExplainPlanParserRegistry.plan(from: text, format: format),
+            format: format,
+            variantKey: .declared(variantId),
             subjectSQL: subjectSQL
         )
     }

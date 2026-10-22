@@ -91,11 +91,49 @@ struct ServerDashboardViewModelTests {
         #expect(!vm.isSupported)
     }
 
-    @Test("Redis returns no provider and an empty dashboard")
-    func redisHasNoDashboard() {
+    @Test("Oracle, MongoDB and Redis show sessions, metrics, and slow queries", arguments: [
+        DatabaseType.oracle, .mongodb, .redis,
+    ])
+    func documentAndKeyValueEnginesHaveADashboard(_ databaseType: DatabaseType) {
+        let vm = makeViewModel(databaseType: databaseType)
+        #expect(vm.supportedPanels == [.activeSessions, .serverMetrics, .slowQueries])
+        #expect(vm.isSupported)
+    }
+
+    @Test("Redis terminates any client and cancels only a blocked one", arguments: [("N", false), ("b", true)])
+    func redisCancelsOnlyABlockedClient(flags: String, cancellable: Bool) async throws {
         let vm = makeViewModel(databaseType: .redis)
-        #expect(vm.supportedPanels.isEmpty)
-        #expect(!vm.isSupported)
+        let session = try await session(
+            from: vm,
+            columns: ["result"],
+            row: ["id=21 addr=10.0.0.4:51022 idle=4 flags=\(flags) db=0 cmd=blpop user=default"]
+        )
+        #expect(vm.canKill(session))
+        #expect(vm.canCancel(session) == cancellable)
+    }
+
+    @Test("MongoDB cancels a running operation and has no connection to terminate")
+    func mongoCancelsOnly() async throws {
+        let vm = makeViewModel(databaseType: .mongodb)
+        let session = try await session(
+            from: vm,
+            columns: ["active", "connection", "opid", "secs"],
+            row: ["true", "conn12", "31745", "3"]
+        )
+        #expect(!vm.canKill(session))
+        #expect(vm.canCancel(session))
+    }
+
+    @Test("Oracle terminates and cancels a session named by SID and serial number")
+    func oracleKillsAndCancels() async throws {
+        let vm = makeViewModel(databaseType: .oracle)
+        let session = try await session(
+            from: vm,
+            columns: ["SESSION_ID", "USERNAME", "SCHEMANAME", "STATUS", "LAST_CALL_ET", "SQL_TEXT"],
+            row: ["55,59756", "APP", "APP", "ACTIVE", "3", "SELECT 1 FROM DUAL"]
+        )
+        #expect(vm.canKill(session))
+        #expect(vm.canCancel(session))
     }
 
     @Test("MySQL supports both kill session and cancel query")

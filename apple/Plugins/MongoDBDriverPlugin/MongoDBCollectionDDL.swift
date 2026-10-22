@@ -1,7 +1,7 @@
 import Foundation
 import TableProPluginKit
 
-enum MongoDBCollectionDDL {
+nonisolated enum MongoDBCollectionDDL {
     static let idField = "_id"
     static let unsupportedIndexTypes: Set<String> = ["GIN", "GIST", "BRIN", "SPGIST"]
 

@@ -1,7 +1,7 @@
 import Foundation
 import TableProPluginKit
 
-struct MongoFieldCensus {
+nonisolated struct MongoFieldCensus {
     struct Tally {
         let field: String
         let documents: Int64

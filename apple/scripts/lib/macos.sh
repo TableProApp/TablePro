@@ -84,4 +84,17 @@ make_build_dir() {
     trap 'rm -rf "$BUILD_DIR"' EXIT
 }
 
+# The SDK answers <gssapi.h> and <gssapi/gssapi.h> with the Kerberos.framework header, whose name
+# types are data symbols of Kerberos.framework. Both point at the GSS framework's header here, so
+# every GSS reference in the archive resolves against `-framework GSS`. Its guard keeps out
+# gssapi_apple.h: neither library uses those extensions, and the CoreFoundation they pull in
+# typedefs a Size that clashes with PostgreSQL's.
+make_gss_include_dir() {
+    local dir="$1" shim
+    shim=$'#define __gssapi_apple_h__\n#include <GSS/gssapi.h>\n'
+    mkdir -p "$dir/gssapi"
+    printf '%s' "$shim" > "$dir/gssapi.h"
+    printf '%s' "$shim" > "$dir/gssapi/gssapi.h"
+}
+
 NCPU="$(sysctl -n hw.ncpu)"

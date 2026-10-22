@@ -40,7 +40,7 @@ struct SettingsFieldDecodingTests {
         #expect(settings.tabWidth == EditorSettings.default.tabWidth)
         #expect(settings.jsonViewerPreferredMode == EditorSettings.default.jsonViewerPreferredMode)
         #expect(settings.wordWrap == true)
-        #expect(settings.vimModeEnabled == true)
+        #expect(settings.keyBindings == .vim)
     }
 
     @Test("A bad Data Grid value falls back alone")
@@ -49,6 +49,21 @@ struct SettingsFieldDecodingTests {
         #expect(settings.rowHeight == DataGridSettings.default.rowHeight)
         #expect(settings.nullDisplay == "(null)")
         #expect(settings.showRowNumbers == false)
+    }
+
+    @Test("Data Grid settings saved before the copy format copy rows as TSV, and an unknown format falls back alone")
+    func rowCopyFormatFallsBack() throws {
+        let legacy = try decode(DataGridSettings.self, #"{"showRowNumbers":false}"#)
+        #expect(legacy.rowCopyFormat == .rows)
+
+        let unknown = try decode(DataGridSettings.self, #"{"rowCopyFormat":"xml","showRowNumbers":false}"#)
+        #expect(unknown.rowCopyFormat == .rows)
+        #expect(unknown.showRowNumbers == false)
+
+        var chosen = DataGridSettings.default
+        chosen.rowCopyFormat = .csvWithHeaders
+        let decoded = try decode(DataGridSettings.self, String(decoding: try JSONEncoder().encode(chosen), as: UTF8.self))
+        #expect(decoded.rowCopyFormat == .csvWithHeaders)
     }
 
     @Test("A bad MCP value falls back alone and keeps the secure default")

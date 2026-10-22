@@ -19,6 +19,7 @@ struct CellPosition: Hashable {
 enum DataGridChangeVocabulary: Equatable {
     case pendingEdit
     case comparison
+    case resultComparison
 }
 
 struct RowVisualState: Equatable {
@@ -148,7 +149,7 @@ struct DataGridView: NSViewRepresentable {
     // MARK: - NSViewRepresentable
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
+        let scrollView = DataGridScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
@@ -172,7 +173,7 @@ struct DataGridView: NSViewRepresentable {
         tableView.columnAutoresizingStyle = .noColumnAutoresizing
         tableView.gridStyleMask = []
         tableView.intercellSpacing = NSSize(width: 1, height: 0)
-        tableView.rowHeight = CGFloat(settings.rowHeight.rawValue)
+        tableView.rowHeight = DataGridMetrics.rowHeight(settings.rowHeight, font: ThemeEngine.shared.dataGridFonts.regular)
         tableView.usesAutomaticRowHeights = false
         DataGridBodyChrome.applyThemeColors(to: tableView, scope: context.coordinator.themeScope)
 
@@ -236,6 +237,8 @@ struct DataGridView: NSViewRepresentable {
         )
         coordinator.isRebuildingColumns = false
         coordinator.updateColumnPresentations(from: initialRows)
+        coordinator.frozenColumnCount = storedInitialLayout?.frozenColumnCount ?? 0
+        coordinator.lastBoundFrozenColumnCount = columnLayout.frozenColumnCount
 
         coordinator.rowReorder = rowReorder
         if rowReorder.isEnabled {
@@ -269,6 +272,11 @@ struct DataGridView: NSViewRepresentable {
         coordinator.paginationOffsetProvider = paginationOffsetProvider
         coordinator.changeManager = changeManager
         coordinator.selectionSummaryTracker.attach(selectionSummary)
+        // Only a change on the owner's side: Reset Columns, or a tab pointed at another table.
+        if columnLayout.frozenColumnCount != coordinator.lastBoundFrozenColumnCount {
+            coordinator.lastBoundFrozenColumnCount = columnLayout.frozenColumnCount
+            coordinator.frozenColumnCount = columnLayout.frozenColumnCount
+        }
 
         // The owner can change the filter while the grid is unmounted, so adopt and re-resolve
         // before the snapshot is built. A snapshot taken from the stale order would report no
@@ -287,7 +295,7 @@ struct DataGridView: NSViewRepresentable {
         let rowDisplayCount = coordinator.valueFilteredIDs?.count ?? latestRows.count
         let columnCount = latestRows.columns.count
         let settings = AppSettingsManager.shared.dataGrid
-        let rowHeight = CGFloat(settings.rowHeight.rawValue)
+        let rowHeight = DataGridMetrics.rowHeight(settings.rowHeight, font: ThemeEngine.shared.dataGridFonts.regular)
         let alternatingRows = settings.showAlternateRows
         let columnComments = Self.effectiveColumnComments(for: latestRows)
 
@@ -383,10 +391,7 @@ struct DataGridView: NSViewRepresentable {
             }
         }
 
-        if tableView.rowHeight != rowHeight {
-            tableView.rowHeight = rowHeight
-            coordinator.repaintRowGutter()
-        }
+        coordinator.applyRowHeight(rowHeight)
         if tableView.usesAlternatingRowBackgroundColors != alternatingRows {
             tableView.usesAlternatingRowBackgroundColors = alternatingRows
             coordinator.repaintRowGutter()
@@ -457,6 +462,7 @@ struct DataGridView: NSViewRepresentable {
         )
         coordinator.isRebuildingColumns = false
         coordinator.invalidateColumnIndexCache()
+        coordinator.frozenColumnCount = storedLayout?.frozenColumnCount ?? 0
         coordinator.applyAccessoryWidthChanges(presentationChanges, tableRows: latestRows)
 
         coordinator.updateValueFilterHeaderIndicators()

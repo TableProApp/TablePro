@@ -203,6 +203,7 @@ internal struct StructureListGrid<ID: Hashable>: View {
                 databaseType: databaseType,
                 supportsColumnCommands: false,
                 supportsValueFilter: false,
+                appliesRowCopyFormat: true,
                 supportsColumnSort: sortState != nil,
                 columnMinimumWidths: Self.minimumWidths(minimumWidths, columns: columns)
             ),

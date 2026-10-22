@@ -49,6 +49,9 @@ extension TableViewCoordinator {
     /// A target that does not take the command, such as NULL on a NOT NULL column or a deleted row, is skipped.
     func applySetValue(_ command: SetValueCommand, to targets: [SetValueTarget]) {
         guard !targets.isEmpty else { return }
+        guard unloadedValuesAreLoaded(targets: targets, retry: { [weak self] in
+            self?.applySetValue(command, to: targets)
+        }) else { return }
         var resolver = SetValueResolver(coordinator: self)
         let undoManager = tableView?.window?.undoManager
         undoManager?.beginUndoGrouping()

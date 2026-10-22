@@ -15,7 +15,8 @@ enum IAMSignInMethod: Equatable, Sendable {
     /// The Authentication picker keeps the `awsAuth` id it had before it offered Google Cloud, so
     /// this is the one place that tells its values apart.
     init?(pickerValue: String?) {
-        guard let pickerValue, !pickerValue.isEmpty, pickerValue != "off" else { return nil }
+        guard let pickerValue, !pickerValue.isEmpty, pickerValue != "off",
+              pickerValue != KerberosAuthFields.method else { return nil }
         switch pickerValue {
         case GoogleCloudSQLAuthFields.applicationDefault:
             self = .googleCloud(.applicationDefault)
@@ -59,6 +60,7 @@ extension DatabaseConnection {
     /// never sent in plaintext: TLS is raised to Required. The Cloud SQL Auth Proxy is the exception,
     /// because its loopback listener has no TLS and the proxy encrypts the hop to the instance.
     var transportSSLConfiguration: SSLConfiguration {
+        guard !localSocketSkipsTLS else { return SSLConfiguration() }
         var ssl = sslConfig
         guard usesIAMToken, !tunnelSecuresTransport, ssl.mode == .disabled || ssl.mode == .preferred else {
             return ssl

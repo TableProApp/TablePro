@@ -101,6 +101,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// rest of the fetch, which for some drivers cancels the statement on the server.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult?
 
+    /// Runs a statement the app wrote to read, telling the driver it may only read. A driver that
+    /// evaluates statements in a scripting engine with state refuses any write the script reaches,
+    /// whatever an earlier statement redefined.
+    func executeRead(query: String) async throws -> QueryResult
+
     /// Whether ``executeBatch(query:rowCap:parameters:)`` sends a text to the server whole and answers with every
     /// result set it produced.
     var supportsResultSetBatches: Bool { get }
@@ -108,6 +113,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Send `query` as one batch and read it to the end. Returns nil when the driver cannot, and the caller runs the
     /// text statement by statement instead. A server error inside the batch is part of the answer, not a throw.
     func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult?
+
+    func explainPlan(statement: String, variantId: String) async throws -> QueryResult
 
     // MARK: - Schema Operations
 
@@ -123,6 +130,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// What `fetchTables(schema:)` lists for each named schema, in one call, each row with its own
     /// schema and ordered by schema then name. Nil means the caller asks each schema itself.
     func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]?
+
+    var listsTemporaryTables: Bool { get }
+
+    // Only the session driver can answer: a pooled connection is another session.
+    func fetchTemporaryTables() async throws -> [TableInfo]
 
     /// Fetch the direct partitions of one partitioned table, with each one's bound, position and
     /// row estimate. A partition is not a table on every engine, so this cannot answer `TableInfo`:
@@ -159,6 +171,7 @@ protocol DatabaseDriver: AnyObject, Sendable {
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo]
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo]
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo]
+    func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String>
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
     func fetchTableDDL(table: String, schema: String?) async throws -> String
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String]
@@ -166,6 +179,7 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Fetch triggers for a specific table
     func fetchTriggers(table: String) async throws -> [TriggerInfo]
+    func fetchTriggers(table: String, schema: String?) async throws -> [TriggerInfo]
     func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo]
 
     /// Trigger editing hooks (optional — nil when unsupported)
@@ -208,6 +222,7 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch foreign keys for all tables in the current database/schema in bulk.
     /// Default implementation falls back to per-table fetchForeignKeys.
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]]
+    func fetchAllForeignKeys(schema: String?) async throws -> [String: [ForeignKeyInfo]]
 
     /// Whether `fetchAllForeignKeys` is a single query. False means it degrades to one round trip
     /// per table, which is too expensive to run ahead of the user.
@@ -257,6 +272,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Fetch table metadata (size, comment, engine, etc.)
     func fetchTableMetadata(tableName: String) async throws -> TableMetadata
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata
+
+    // The comment alone, which some engines answer without the row probe their metadata runs.
+    func fetchObjectComment(tableName: String) async throws -> String?
 
     /// Fetch list of all databases on the server
     func fetchDatabases() async throws -> [String]
@@ -287,6 +306,18 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Read one type again, definition and labels included. The type must be one this driver
     /// listed, because its `identity` is the driver's own key for finding it again.
     func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo
+
+    /// `cascade` also drops what depends on the type; nil when the driver has no such drop.
+    func generateDropTypeSQL(type: UserDefinedTypeInfo, cascade: Bool) -> String?
+
+    /// Mirrors `PluginDatabaseDriver.createUserDefinedTypeStatements(_:)`.
+    func createUserDefinedTypeStatements(_ definition: PluginUserDefinedTypeDefinition) -> [String]?
+
+    /// Mirrors `PluginDatabaseDriver.alterUserDefinedTypeStatements(type:change:)`.
+    func alterUserDefinedTypeStatements(type: UserDefinedTypeInfo, change: PluginUserDefinedTypeChange) -> [String]?
+
+    /// Mirrors `PluginDatabaseDriver.userDefinedTypeChangeRunsOutsideTransaction(_:)`.
+    func userDefinedTypeChangeRunsOutsideTransaction(_ change: PluginUserDefinedTypeChange) -> Bool
 
     /// Fetch every trigger in the given schema, across all its tables.
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo]
@@ -373,6 +404,12 @@ protocol DatabaseDriver: AnyObject, Sendable {
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability?
 
+    // MARK: - Sequences
+
+    func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails?
+    func sequenceNextValueStatement(for sequence: PluginSequenceDetails, nextValue: PluginSequenceNextValue) -> String?
+    func alterSequenceStatement(for sequence: PluginSequenceDetails, settings: PluginSequenceSettings) -> String?
+
     // MARK: - Query Cancellation
 
     /// Cancel the currently running query, if any.
@@ -405,6 +442,11 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Access to the underlying plugin driver for query building dispatch
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { get }
 
+    // The driver row saves ask for statements. A plugin can write its rows without building its browse query.
+    var rowWritingPluginDriver: (any PluginDatabaseDriver)? { get }
+
+    var primaryKeyNamesOneRow: Bool { get }
+
     /// Quote an identifier (table or column name) using the driver's quoting style
     func quoteIdentifier(_ name: String) -> String
 
@@ -413,10 +455,13 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func createViewTemplate() -> String?
     func editViewFallbackTemplate(viewName: String) -> String?
+    func createSequenceTemplate() -> String?
     func castColumnToText(_ column: String) -> String
 
     func foreignKeyDisableStatements() -> [String]?
     func foreignKeyEnableStatements() -> [String]?
+    func rowUpdateStatement(table: String, assignments: String, predicate: String) -> String?
+    func rowDeleteStatement(table: String, predicate: String?) -> String?
 
     // Definition SQL for clipboard copy
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String?
@@ -468,13 +513,25 @@ extension DatabaseDriver {
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? { nil }
 
+    func executeRead(query: String) async throws -> QueryResult {
+        try await execute(query: query)
+    }
+
     var supportsResultSetBatches: Bool { false }
 
     func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult? { nil }
 
+    func explainPlan(statement: String, variantId: String) async throws -> QueryResult {
+        throw PluginDriverUnsupportedOperation.explainPlan
+    }
+
     func fetchIndexDDL(table: String) async throws -> [String] { [] }
 
     func fetchCommentDDL(table: String) async throws -> [String] { [] }
+
+    func fetchObjectComment(tableName: String) async throws -> String? {
+        try await fetchTableMetadata(tableName: tableName).comment
+    }
 
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
@@ -484,6 +541,10 @@ extension DatabaseDriver {
     }
 
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { nil }
+
+    var rowWritingPluginDriver: (any PluginDatabaseDriver)? { queryBuildingPluginDriver }
+
+    var primaryKeyNamesOneRow: Bool { true }
 
     func beginTransaction(mode: PluginTransactionAccessMode) async throws {
         try await beginTransaction()
@@ -503,10 +564,13 @@ extension DatabaseDriver {
 
     func createViewTemplate() -> String? { nil }
     func editViewFallbackTemplate(viewName: String) -> String? { nil }
+    func createSequenceTemplate() -> String? { nil }
     func castColumnToText(_ column: String) -> String { column }
 
     func foreignKeyDisableStatements() -> [String]? { nil }
     func foreignKeyEnableStatements() -> [String]? { nil }
+    func rowUpdateStatement(table: String, assignments: String, predicate: String) -> String? { nil }
+    func rowDeleteStatement(table: String, predicate: String?) -> String? { nil }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? { nil }
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? { nil }
@@ -523,6 +587,8 @@ extension DatabaseDriver {
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
         try await fetchForeignKeys(table: table)
     }
+
+    func fetchImmutableColumns(table: String, schema: String?) async throws -> Set<String> { [] }
 
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo] {
         try await fetchCheckConstraints(table: table)
@@ -547,6 +613,14 @@ extension DatabaseDriver {
     func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo] { [] }
 
     func fetchTriggers(table: String) async throws -> [TriggerInfo] { [] }
+
+    func fetchTriggers(table: String, schema: String?) async throws -> [TriggerInfo] {
+        try await fetchTriggers(table: table)
+    }
+
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
+        try await fetchTableMetadata(tableName: tableName)
+    }
 
     func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo] { [] }
 
@@ -685,6 +759,10 @@ extension DatabaseDriver {
 
     var providesBulkForeignKeyFetch: Bool { false }
 
+    func fetchAllForeignKeys(schema: String?) async throws -> [String: [ForeignKeyInfo]] {
+        try await fetchAllForeignKeys()
+    }
+
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
         let allTables = try await fetchTables()
         var result: [String: [ForeignKeyInfo]] = [:]
@@ -811,6 +889,16 @@ extension DatabaseDriver {
         nil
     }
 
+    func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails? { nil }
+
+    func sequenceNextValueStatement(for sequence: PluginSequenceDetails, nextValue: PluginSequenceNextValue) -> String? {
+        nil
+    }
+
+    func alterSequenceStatement(for sequence: PluginSequenceDetails, settings: PluginSequenceSettings) -> String? {
+        nil
+    }
+
     /// Default: no schema support (MySQL/SQLite don't use schemas in the same way)
     func fetchSchemas() async throws -> [String] { [] }
 
@@ -823,6 +911,10 @@ extension DatabaseDriver {
     func fetchTablesInAllSchemas() async throws -> [TableInfo]? { nil }
 
     func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? { nil }
+
+    var listsTemporaryTables: Bool { false }
+
+    func fetchTemporaryTables() async throws -> [TableInfo] { [] }
 
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] { [] }
 
@@ -840,6 +932,16 @@ extension DatabaseDriver {
         }
         return type
     }
+
+    func generateDropTypeSQL(type: UserDefinedTypeInfo, cascade: Bool) -> String? { nil }
+
+    func createUserDefinedTypeStatements(_ definition: PluginUserDefinedTypeDefinition) -> [String]? { nil }
+
+    func alterUserDefinedTypeStatements(type: UserDefinedTypeInfo, change: PluginUserDefinedTypeChange) -> [String]? {
+        nil
+    }
+
+    func userDefinedTypeChangeRunsOutsideTransaction(_ change: PluginUserDefinedTypeChange) -> Bool { false }
 
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] { [] }
 
@@ -981,13 +1083,13 @@ enum DatabaseDriverFactory {
         )
         let credentialFields = additionalFields
         let passwordMinter = ConnectionCredentialResolver.iamPasswordMinter(for: connection, fields: credentialFields)
-        let password: String
+        let signIn: ResolvedSignIn
         if requiresHostDeadline {
-            password = try await resolvePasswordWithinDeadline(
+            signIn = try await resolvePasswordWithinDeadline(
                 deadline: deadline,
                 endpoint: timeoutEndpoint
             ) {
-                try await ConnectionCredentialResolver.resolvePassword(
+                try await ConnectionCredentialResolver.resolveSignIn(
                     for: connection,
                     fields: credentialFields,
                     override: passwordOverride,
@@ -995,7 +1097,7 @@ enum DatabaseDriverFactory {
                 )
             }
         } else {
-            password = try await ConnectionCredentialResolver.resolvePassword(
+            signIn = try await ConnectionCredentialResolver.resolveSignIn(
                 for: connection,
                 fields: credentialFields,
                 override: passwordOverride,
@@ -1022,8 +1124,8 @@ enum DatabaseDriverFactory {
         let config = DriverConnectionConfig(
             host: connection.host,
             port: connection.port,
-            username: preparedConfiguration.username,
-            password: password,
+            username: signIn.username ?? preparedConfiguration.username,
+            password: signIn.password,
             database: connection.database,
             ssl: connection.transportSSLConfiguration,
             additionalFields: additionalFields,
@@ -1036,7 +1138,8 @@ enum DatabaseDriverFactory {
             deadline: deadline,
             timeoutEndpoint: timeoutEndpoint,
             effectiveQueryTimeoutSeconds: queryTimeoutSeconds,
-            requiresHostDeadline: requiresHostDeadline
+            requiresHostDeadline: requiresHostDeadline,
+            credentialLease: signIn.lease
         )
     }
 
@@ -1076,13 +1179,13 @@ enum DatabaseDriverFactory {
         return fields
     }
 
-    static func resolvePasswordWithinDeadline(
+    static func resolvePasswordWithinDeadline<Value: Sendable>(
         deadline: ConnectionDeadline,
         endpoint: ConnectionTimeoutEndpoint,
-        resolver: @escaping @MainActor @Sendable () async throws -> String
-    ) async throws -> String {
+        resolver: @escaping @MainActor @Sendable () async throws -> Value
+    ) async throws -> Value {
         try deadline.check(endpoint: endpoint)
-        let gate = ConnectionSingleResumeGate<String>()
+        let gate = ConnectionSingleResumeGate<Value>()
         let operation = Task { @MainActor in
             do {
                 gate.resume(with: .success(try await resolver()))

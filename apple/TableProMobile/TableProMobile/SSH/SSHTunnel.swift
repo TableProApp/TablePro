@@ -23,6 +23,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     private let session: OpaquePointer
     private let socketFD: Int32
     private let listenFD: Int32
+    private let jumpHops: [SSHJumpHop]
 
     /// Serial: every libssh2 call on this session. libssh2 is not thread-safe per session.
     private let sessionQueue: DispatchQueue
@@ -34,6 +35,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     private let acceptQueue: DispatchQueue
 
     private let aliveLatch = TeardownLatch()
+    private let deathNotice = SSHTunnelDeathNotice()
 
     /// The relays still running, so teardown frees the session only once none of them can touch
     /// it. A group rather than a collection of tasks: a relay leaves it by finishing, which is the
@@ -53,7 +55,6 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
     /// Held strictly below every iOS driver's connect timeout so the reason reaches the log
     /// before the driver reports its own timeout, which names no cause.
     static let channelOpenDeadlineSeconds: TimeInterval = 6
-    private static let channelOpenPollTimeoutMs: Int32 = 5_000
 
     /// How long the accept loop waits per poll before rechecking the latch. Small enough that
     /// noticing a client the kernel already accepted costs a slim part of the margin above.
@@ -66,13 +67,15 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
         socketFD: Int32,
         listenFD: Int32,
         localPort: Int,
-        sessionQueue: DispatchQueue
+        sessionQueue: DispatchQueue,
+        jumpHops: [SSHJumpHop] = []
     ) {
         self.session = session
         self.socketFD = socketFD
         self.listenFD = listenFD
         self.localPort = localPort
         self.sessionQueue = sessionQueue
+        self.jumpHops = jumpHops
         let label = UUID().uuidString
         self.relayQueue = DispatchQueue(label: "com.TablePro.ssh.relay.\(label)", qos: .utility, attributes: .concurrent)
         self.acceptQueue = DispatchQueue(label: "com.TablePro.ssh.accept.\(label)", qos: .utility)
@@ -148,20 +151,21 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
         performTeardown()
     }
 
+    // A tunnel that stops on its own, unlike close(), which its owner asked for.
+    func onDeath(_ handler: @escaping @Sendable () -> Void) {
+        deathNotice.onDeath(handler)
+    }
+
     private func markDead() {
         guard aliveLatch.claim() else { return }
         performTeardown()
+        deathNotice.died()
     }
 
-    /// Breaks every blocking wait first, then frees the session and the descriptors only once
-    /// every task that could still be polling them has exited. `shutdown` unblocks a poll at
-    /// once without releasing the descriptor number, which another thread would otherwise be
-    /// free to receive from the kernel and poll by mistake. `shutdown` does not wake a poll on a
-    /// listening socket on Darwin, so the accept loop ends on the latch instead, inside one
-    /// `acceptPollTimeoutMs`, and its descriptor closes once it has.
-    ///
-    /// The relays are waited on after the accept loop, not alongside it, because the accept loop
-    /// is the only thing that starts one: once it has ended, the group can only empty.
+    // shutdown wakes every poll on the transport but keeps the number, so no other socket can take it mid-poll.
+    // Darwin's shutdown does not wake a poll on a listening socket, so the accept loop ends on the latch instead.
+    // The relays are awaited after the accept loop, the only thing that starts one, so the group can only empty.
+    // The hops go last, in the Mac's order.
     private func performTeardown() {
         forwardingTask?.cancel()
         keepAliveTask?.cancel()
@@ -174,6 +178,7 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
         let session = self.session
         let socketFD = self.socketFD
         let listenFD = self.listenFD
+        let jumpHops = self.jumpHops
         let localPort = self.localPort
         let forwardingTask = self.forwardingTask
         let keepAliveTask = self.keepAliveTask
@@ -184,13 +189,15 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
                 clientRelays.notify(queue: relayQueue) { continuation.resume() }
             }
 
+            // Free before close: a closed number can go to the next tunnel's socket, and this session's DISCONNECT would land in it.
             sessionQueue.sync {
-                Darwin.close(listenFD)
-                Darwin.close(socketFD)
                 libssh2_session_set_blocking(session, 1)
                 tablepro_libssh2_session_disconnect(session, "Closing tunnel")
                 libssh2_session_free(session)
+                Darwin.close(socketFD)
+                Darwin.close(listenFD)
             }
+            await SSHJumpChain.tearDown(jumpHops)
 
             Self.logger.info("Tunnel closed (local port \(localPort))")
         }
@@ -248,11 +255,8 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
             deadline: acceptedAt.addingTimeInterval(Self.channelOpenDeadlineSeconds),
             pollForReadiness: { [weak self] directions in
                 guard let self else { return false }
-                return pollReady(
-                    fd: self.socketFD,
-                    directions: directions,
-                    timeoutMs: Self.channelOpenPollTimeoutMs
-                )
+                _ = pollReady(fd: self.socketFD, directions: directions, timeoutMs: LibSSH2ForwardChannel.openPollTimeoutMs)
+                return true
             }
         )
 
@@ -302,13 +306,26 @@ nonisolated final class SSHTunnel: @unchecked Sendable {
         Darwin.close(clientFD)
         guard isRunning else { return }
 
-        sessionQueue.sync {
-            libssh2_channel_close(channel)
-            libssh2_channel_free(channel)
-        }
+        freeChannel(channel)
 
         if termination == .transportHangup {
             Self.logger.info("SSH transport hung up, marking tunnel dead on port \(self.localPort)")
+            markDead()
+        }
+    }
+
+    private func freeChannel(_ channel: OpaquePointer) {
+        let outcome = LibSSH2ChannelFree.run(
+            channel: channel,
+            session: session,
+            sessionQueue: sessionQueue,
+            transportFD: socketFD,
+            isActive: { [weak self] in self?.isRunning ?? false }
+        )
+        if outcome == .timedOut {
+            Self.logger.warning(
+                "Channel on port \(self.localPort) did not close within \(Int(LibSSH2ChannelFree.deadlineSeconds))s, marking tunnel dead"
+            )
             markDead()
         }
     }

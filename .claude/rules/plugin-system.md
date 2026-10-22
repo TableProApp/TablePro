@@ -28,7 +28,7 @@ TableProPluginKit is built with Library Evolution, so an already-built plugin ke
 - The build stamps that value into `TableProPluginKitVersion` of the app and of every plugin. A plugin's `Info.plist` holds `<integer>TABLEPRO_PLUGINKIT_VERSION</integer>` and is preprocessed, because every shipped app reads the key with `as? Int`; the source file therefore fails `plutil -lint`.
 - After an additive change, built plugins keep loading, and the bump makes an older app refuse a plugin rebuilt against the new API instead of failing its load.
 - A breaking change also raises `TABLEPRO_PLUGINKIT_MINIMUM_VERSION`. Every tag ships every registry plugin built against its own kit, so the release that carries the change carries plugins in its range.
-- `apple/scripts/check-pluginkit-abi.sh [--frozen] [base]` (`verify.sh abi [base]`) builds PluginKit at the base, by default the newest `v*` tag reachable from HEAD, and at HEAD with Xcode's ABI checker (`RUN_SWIFT_ABI_CHECKER_TOOL`). When CI runs it: `.claude/rules/ci.md`, macOS Tests.
+- `apple/scripts/check-pluginkit-abi.sh [--frozen] [base]` (`verify.sh abi [base]`) builds PluginKit at the base, by default the newest `v*` tag reachable from HEAD, and at HEAD with Xcode's ABI checker (`RUN_SWIFT_ABI_CHECKER_TOOL`). CI runs it in `.github/workflows/macos-tests.yml` when the `plugins` suite is true, `--frozen` on a PR into `release/*`.
 - A checker error is a breaking change: the kit and the minimum must both be one past the base's kit, so the host refuses every plugin built before it. A baseline that changed with no error needs the kit one past the base's and the base's minimum; an identical one needs the base's kit and minimum. `--frozen` fails on any ABI change.
 - The checker reports breakage only; an additive change shows as a changed baseline. Its errors are in the log `verify.sh abi` prints.
 - Mark a public enum `@frozen` only when its case set is closed. `PluginCapability` and the transfer structs stay non-frozen so they can grow.
@@ -54,6 +54,12 @@ TableProPluginKit is built with Library Evolution, so an already-built plugin ke
 
 - The `TablePro` scheme builds only the bundled plugins, and a registry plugin's compile error still ends in `BUILD SUCCEEDED`. Run `verify.sh plugins` (the `AllPlugins` aggregate) after any change under `apple/Plugins/`.
 - `apple/scripts/ci/verify-plugin-loads.sh <dir>...` dlopens every built `.tableplugin` and names any that will not load. It does not instantiate the principal class.
+
+## Column type corpus
+
+- PostgreSQL, MySQL, MariaDB, ClickHouse, DuckDB, SQL Server, Oracle and SQLite each have a corpus in `apple/Plugins/ColumnTypeCorpus/Corpus/`: a column per type the driver lists, its values and the cell each reads as. A type added to `columnTypesByCategory` needs a column there; Repo Hygiene checks it.
+- After changing how one of those drivers reads, writes or exports a value, run `apple/scripts/probes/check-column-type-corpus.sh <engine>`. SQLite's corpus runs in `SQLiteDriverTests`.
+- A wrong cell is fixed in the driver, never in the corpus. A defect left for later is a `known` entry naming it, which fails the run once it passes.
 
 ## Structure
 

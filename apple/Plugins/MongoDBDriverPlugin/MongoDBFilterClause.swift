@@ -9,7 +9,7 @@ import Foundation
 /// several of them can see when two would claim the same key. A JSON object cannot hold a key
 /// twice, and several operators emit `$or` or `$nor` at the top level, so merging them blindly
 /// drops every clause but the last.
-struct MongoDBFilterClause {
+nonisolated struct MongoDBFilterClause {
     let key: String
     let body: String
 

@@ -52,8 +52,8 @@ impl EngineStop for MssqlStop {
         Ok(())
     }
 
-    /// The work returns `Cancelled` only once the server has confirmed
-    /// the attention, or once a stop arrived before anything was sent.
+    /// The work returns `Cancelled` once the server has confirmed the
+    /// attention, and for a cancel that found nothing left to stop.
     fn acknowledged(&self, error: &DriverError) -> bool {
         matches!(error, DriverError::Cancelled)
     }

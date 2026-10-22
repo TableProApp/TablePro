@@ -78,8 +78,8 @@ struct ConnectionImportLinkSocketTests {
     @Test("An engine without a socket mode drops the socket and still needs a host")
     func otherEngineDropsSocket() throws {
         let url = try importLink([
-            URLQueryItem(name: "type", value: "PostgreSQL"),
-            URLQueryItem(name: "socket", value: "/tmp/.s.PGSQL.5432")
+            URLQueryItem(name: "type", value: "Redshift"),
+            URLQueryItem(name: "socket", value: "/tmp/.s.PGSQL.5439")
         ])
         guard case .failure(let error) = DeeplinkParser.parse(url) else {
             Issue.record("Expected failure"); return
@@ -87,7 +87,7 @@ struct ConnectionImportLinkSocketTests {
         #expect(error == .missingRequiredParam("host"))
 
         let withHost = try imported([
-            URLQueryItem(name: "type", value: "PostgreSQL"),
+            URLQueryItem(name: "type", value: "Redshift"),
             URLQueryItem(name: "host", value: "db.example.com"),
             URLQueryItem(name: "af_localSocketPath", value: "/tmp/mysql.sock")
         ])

@@ -10,7 +10,7 @@ import Foundation
 ///
 /// A command sent through `mongoc_client_command_simple` takes no write concern from the client, so
 /// the statements a Structure save writes name it themselves, where SQL Preview shows it.
-struct MongoWriteConcern: Equatable, Sendable {
+nonisolated struct MongoWriteConcern: Equatable, Sendable {
     enum Acknowledgement: Equatable, Sendable {
         case members(Int32)
         case majority

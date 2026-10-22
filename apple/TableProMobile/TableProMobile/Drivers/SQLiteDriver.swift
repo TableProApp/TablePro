@@ -2,6 +2,7 @@ import Foundation
 import SQLite3
 import TableProDatabase
 import TableProModels
+import TableProPluginKit
 
 nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     private let source: LocalDatabaseFileSource
@@ -135,7 +136,7 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     func fetchTables(schema: String?) async throws -> [TableInfo] {
         let raw = try await actor.execute("""
             SELECT name, type FROM sqlite_master
-            WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'
+            WHERE type IN ('table', 'view') AND name NOT GLOB 'sqlite_*'
             ORDER BY name
             """)
 
@@ -224,22 +225,16 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
-        let safe = table.replacingOccurrences(of: "'", with: "''")
-        let raw = try await actor.execute("PRAGMA foreign_key_list('\(safe)')")
-
-        return raw.rows.compactMap { row in
-            guard row.count >= 5,
-                  let refTable = row[2],
-                  let fromCol = row[3],
-                  let toCol = row[4] else { return nil }
-
-            return ForeignKeyInfo(
-                name: "fk_\(table)_\(row[0] ?? "0")",
-                column: fromCol,
-                referencedTable: refTable,
-                referencedColumn: toCol,
-                onDelete: row.count >= 7 ? (row[6] ?? "NO ACTION") : "NO ACTION",
-                onUpdate: row.count >= 6 ? (row[5] ?? "NO ACTION") : "NO ACTION"
+        let raw = try await actor.execute(SQLiteForeignKeyGrouping.foreignKeysQuery(table: table))
+        let rows = raw.rows.map { $0.map(PluginCellValue.fromOptional) }
+        return SQLiteForeignKeyGrouping.foreignKeys(table: table, fromRows: rows).map { key in
+            ForeignKeyInfo(
+                name: key.name,
+                column: key.column,
+                referencedTable: key.referencedTable,
+                referencedColumn: key.referencedColumn,
+                onDelete: key.onDelete,
+                onUpdate: key.onUpdate
             )
         }
     }
@@ -396,20 +391,25 @@ private actor SQLiteActor {
 
         var rows: [[String?]] = []
         let maxRows = 100_000
+        var storageClasses = Array(repeating: Set<Int32>(), count: Int(colCount))
 
         let totalChangesBefore = sqlite3_total_changes64(db)
         var stepResult = sqlite3_step(stmt)
         while stepResult == SQLITE_ROW {
             if rows.count >= maxRows {
-                return RawResult(columns: columns, columnTypes: columnTypes, rows: rows,
+                return RawResult(columns: columns, columnTypes: Self.reportedTypes(columnTypes, storageClasses), rows: rows,
                                  rowsAffected: 0, executionTime: Date().timeIntervalSince(start), isTruncated: true)
             }
 
             var row: [String?] = []
             for i in 0..<colCount {
-                if sqlite3_column_type(stmt, i) == SQLITE_NULL {
+                let storageClass = sqlite3_column_type(stmt, i)
+                if storageClass == SQLITE_NULL {
                     row.append(nil)
-                } else if sqlite3_column_type(stmt, i) == SQLITE_BLOB {
+                    continue
+                }
+                storageClasses[Int(i)].insert(storageClass)
+                if storageClass == SQLITE_BLOB {
                     let bytes = Int(sqlite3_column_bytes(stmt, i))
                     if bytes > 0, let ptr = sqlite3_column_blob(stmt, i) {
                         row.append(Data(bytes: ptr, count: bytes).base64EncodedString())
@@ -430,8 +430,16 @@ private actor SQLiteActor {
         }
 
         let affected = columns.isEmpty ? changes(of: db, sinceTotal: totalChangesBefore) : 0
-        return RawResult(columns: columns, columnTypes: columnTypes, rows: rows,
+        return RawResult(columns: columns, columnTypes: Self.reportedTypes(columnTypes, storageClasses), rows: rows,
                          rowsAffected: affected, executionTime: Date().timeIntervalSince(start), isTruncated: false)
+    }
+
+    // A blob reaches the caller as base64 text, so a column with no declared type says BLOB when every value in it is one.
+    private static func reportedTypes(_ declared: [String], _ storageClasses: [Set<Int32>]) -> [String] {
+        declared.enumerated().map { index, type in
+            guard type.isEmpty, index < storageClasses.count, storageClasses[index] == [SQLITE_BLOB] else { return type }
+            return "BLOB"
+        }
     }
 
     /// `sqlite3_changes64` keeps the count of the last INSERT, UPDATE or DELETE, so a statement that

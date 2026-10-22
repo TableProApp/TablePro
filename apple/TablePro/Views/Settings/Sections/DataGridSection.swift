@@ -37,6 +37,8 @@ struct DataGridSection: View {
             Toggle("Show row numbers", isOn: $settings.showRowNumbers)
             Toggle("Auto-show inspector on row select", isOn: $settings.autoShowInspector)
             Toggle("Smart value detection", isOn: $settings.enableSmartValueDetection)
+            Toggle("Show invisible characters", isOn: $settings.showInvisibleCharacters)
+                .help(String(localized: "Mark zero-width, control and special space characters in cells and value fields"))
 
             Picker("Default row sort:", selection: $settings.defaultSortBehavior) {
                 ForEach(DefaultSortBehavior.allCases) { behavior in
@@ -53,6 +55,18 @@ struct DataGridSection: View {
             Text("Data Grid")
         } footer: {
             Text("Default row sort is applied when a table first opens. Sort direction also sets which way the first click on a column header sorts.")
+        }
+
+        Section {
+            Picker("Copy rows as:", selection: $settings.rowCopyFormat) {
+                ForEach(RowCopyFormat.allCases) { format in
+                    Text(format.displayName).tag(format)
+                }
+            }
+        } header: {
+            Text("Copying")
+        } footer: {
+            Text("Copy uses this format for selected rows. A single cell still copies its value, and Edit > Copy Special offers every format.")
         }
 
         Section("Pagination") {

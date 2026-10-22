@@ -38,6 +38,7 @@ SPEC_ENTRY = re.compile(r"^\*\s+(\w{3}\s+\w{3}\s+\d{1,2}\s+\d{4})\s.*\s-\s(\S+)\
 FIRST_PACKAGE_RELEASE = "1%{?dist}"
 MAN_TITLE = re.compile(r'^\.TH\s+\S+\s+\S+\s+"?([^"\s]*)"?\s+"TablePro ([^"]*)"', re.MULTILINE)
 FIND_LANG = re.compile(r"^%find_lang\b", re.MULTILINE)
+FILES_LANG = re.compile(r"^%files\s+-f\s+%\{name\}\.lang\s*$", re.MULTILINE)
 CONTROL_TOOLCHAIN = re.compile(r"\b(cargo|rustc)-(\d+\.\d+)\b")
 RULES_TOOLCHAIN = re.compile(r"/usr/lib/rust-(\d+\.\d+)/bin\b")
 
@@ -219,7 +220,8 @@ def problems(root, version, tag=None, tag_date=None):
     elif title[1] != version:
         found.append(f"{MAN} names version {title[1] or 'nothing'}, not {version}")
 
-    if bool(linguas(root / LINGUAS)) != bool(FIND_LANG.search(spec)):
+    languages = bool(linguas(root / LINGUAS))
+    if any(languages != bool(pattern.search(spec)) for pattern in (FIND_LANG, FILES_LANG)):
         found.append(
             f"{SPEC} must run %find_lang and list %{{name}}.lang exactly when {LINGUAS} names a language"
         )

@@ -139,6 +139,15 @@ extension QueryExecutionCoordinator {
             return
         }
 
+        // The footer reads the active result's own message, so the batch's notice goes on every result it produced.
+        if let sessionNotice {
+            for resultSet in newResultSets {
+                resultSet.statusMessage = [resultSet.statusMessage, sessionNotice]
+                    .compactMap { $0?.isEmpty == false ? $0 : nil }
+                    .joined(separator: " ")
+            }
+        }
+
         let currentTab = parent.tabManager.tabs[idx]
         let activeResult = newResultSets.last
         let activeOrigin = activeResult?.origin

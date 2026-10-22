@@ -17,42 +17,7 @@ import TableProSQLGrammar
 /// of a stored procedure is: a write whose effect the text does not show.
 extension QueryClassifier {
     static func runsPLSQL(_ sql: String, databaseType: DatabaseType) -> Bool {
-        runsPLSQL(sql, grammar: databaseType.lexicalGrammar)
-    }
-
-    /// Whether `sql` is a PL/SQL unit to a grammar that has them. Its leading comments are read by that grammar, so a
-    /// block after a comment is found wherever the comment ends.
-    static func runsPLSQL(_ sql: String, grammar: SQLLexicalGrammar) -> Bool {
-        guard grammar.contains(.plsqlBlocks) else { return false }
-        return startsPLSQL(SQLCodeProjection.code(of: sql, grammar: grammar))
-    }
-
-    static func runsSQLScriptBlock(_ sql: String, grammar: SQLLexicalGrammar) -> Bool {
-        guard grammar.contains(.sqlScriptBlocks) else { return false }
-        return leadingCodeKeyword(SQLCodeProjection.code(of: sql, grammar: grammar)) == "DO"
-    }
-
-    static func runsProceduralBlock(_ sql: String, grammar: SQLLexicalGrammar) -> Bool {
-        runsPLSQL(sql, grammar: grammar) || runsSQLScriptBlock(sql, grammar: grammar)
-    }
-
-    /// An anonymous block opens with `DECLARE` or `BEGIN`, after any number of `<<label>>` prefixes and comments. A
-    /// query runs PL/SQL when its `WITH` clause opens with a `FUNCTION` or `PROCEDURE` declaration.
-    static func startsPLSQL(_ sql: String) -> Bool {
-        var head = strippingLeadingComments(sql)
-        while head.hasPrefix("<<") {
-            guard let close = head.range(of: ">>") else { return false }
-            head = strippingLeadingComments(String(head[close.upperBound...]))
-        }
-        let keyword = leadingWord(of: head)
-        if keyword == "DECLARE" || keyword == "BEGIN" { return true }
-        guard keyword == "WITH" else { return false }
-        let declaration = leadingWord(of: strippingLeadingComments(String(head.dropFirst(keyword.count))))
-        return declaration == "FUNCTION" || declaration == "PROCEDURE"
-    }
-
-    private static func leadingWord(of text: String) -> String {
-        text.prefix { $0.isLetter || $0.isNumber || $0 == "_" }.uppercased()
+        SQLProceduralBlock.runsPLSQL(sql, grammar: databaseType.lexicalGrammar)
     }
 
     static func proceduralBlockClassification(

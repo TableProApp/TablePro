@@ -1,49 +1,22 @@
 name: iOS and Package Tests
 
 on:
-  pull_request:
-  push:
-    branches: [main, 'release/**']
-  workflow_dispatch:
-
-concurrency:
-  group: ios-tests-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  workflow_call:
+    inputs:
+      oracle:
+        description: Also run the TableProOracle package tests.
+        type: boolean
+        required: true
 
 permissions:
   contents: read
 
 jobs:
-  changes:
-    name: Changes (iOS)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      run: ${{ steps.decide.outputs.run }}
-      oracle: ${{ steps.decide.outputs.oracle }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Decide which suites run
-        id: decide
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          REF: ${{ github.ref }}
-        run: |
-          set -euo pipefail
-          run=$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" ios)
-          oracle=$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" oracle)
-          { echo "run=$run"; echo "oracle=$oracle"; } >> "$GITHUB_OUTPUT"
-
-  # The required check, with no gate job: see macos-tests.yml. TableProCore and TableProOracle run
-  # here under swift test, never in an Xcode test plan: a plan target that depends on the package
-  # TableProPluginKit makes the app and plugins compile against its module, not the framework.
+  # TableProCore and TableProOracle run here under swift test, never in an Xcode test plan: a plan
+  # target that depends on the package TableProPluginKit makes the app and plugins compile against
+  # its module, not the framework.
   ios:
     name: iOS and Package Tests
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     runs-on: xcode-27
     timeout-minutes: 50
     env:
@@ -86,6 +59,11 @@ jobs:
             CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO COMPILATION_CACHE_ENABLE_CACHING=NO \
             | xcbeautify --renderer github-actions
 
+      # Only Xcode adds a new string to the catalog. A command-line build extracts it and moves on.
+      - name: Check the app's strings reach its catalog
+        if: ${{ !cancelled() }}
+        run: python3 scripts/localization.py extracted --target ios
+
       # --parallel is what makes swift test write the XCTest xunit file. Without it only the Swift
       # Testing one appears, and TableProOracle's cases are all XCTest.
       - name: Run the TableProCore package tests
@@ -94,7 +72,7 @@ jobs:
 
       # Pinned to the tracked Package.resolved, so a manifest bump that forgets the lockfile fails.
       - name: Run the TableProOracle package tests
-        if: ${{ !cancelled() && needs.changes.outputs.oracle != 'false' }}
+        if: ${{ !cancelled() && inputs.oracle }}
         run: swift test --package-path Packages/TableProOracle --force-resolved-versions --parallel --xunit-output Oracle.xml
 
       # Fails the job when a bundle or a package ran zero tests, which both tools report as success.

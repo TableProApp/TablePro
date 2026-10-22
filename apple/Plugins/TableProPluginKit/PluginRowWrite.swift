@@ -18,11 +18,46 @@ public struct PluginRowWrite: Sendable {
     public let statement: String
     public let parameters: [PluginCellValue]
     public let rowIndices: [Int]
+    public let lookup: PluginRowLookup?
 
+    @_disfavoredOverload
     public init(statement: String, parameters: [PluginCellValue] = [], rowIndices: [Int]) {
+        self.init(statement: statement, parameters: parameters, rowIndices: rowIndices, lookup: nil)
+    }
+
+    public init(statement: String, parameters: [PluginCellValue] = [], rowIndices: [Int], lookup: PluginRowLookup? = nil) {
         self.statement = statement
         self.parameters = parameters
         self.rowIndices = rowIndices
+        self.lookup = lookup
+    }
+}
+
+// For an engine with no key that names one row. The host runs `query` right before the write and refuses it unless
+// exactly `rowCount` rows come back; with `pinsRows` their values are bound after the write's own parameters, row by
+// row. Right after the write, a row back from `check` means it did not land.
+public struct PluginRowLookup: Sendable, Equatable {
+    public let query: String
+    public let parameters: [PluginCellValue]
+    public let rowCount: Int
+    public let pinsRows: Bool
+    public let check: String?
+    public let checkParameters: [PluginCellValue]
+
+    public init(
+        query: String,
+        parameters: [PluginCellValue],
+        rowCount: Int,
+        pinsRows: Bool,
+        check: String? = nil,
+        checkParameters: [PluginCellValue] = []
+    ) {
+        self.query = query
+        self.parameters = parameters
+        self.rowCount = rowCount
+        self.pinsRows = pinsRows
+        self.check = check
+        self.checkParameters = checkParameters
     }
 }
 

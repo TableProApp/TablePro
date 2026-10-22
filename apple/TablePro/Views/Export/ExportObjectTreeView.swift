@@ -329,7 +329,7 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
             return AnyView(
                 ExportTreeObjectRow(
                     object: object,
-                    offersRowScope: object.offersRowScope(on: owner.databaseType),
+                    offersRowScope: object.offersRowScope(on: owner.databaseType) && formatReadsRows,
                     optionColumns: optionColumns,
                     supportsOption: supportsOption,
                     setSelected: { [weak self] isSelected in
@@ -362,6 +362,11 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
 
     private var plugin: (any ExportFormatPlugin)? {
         PluginManager.shared.exportPlugin(forFormat: formatId)
+    }
+
+    // A format that writes structure alone ignores a row scope, so it offers none.
+    private var formatReadsRows: Bool {
+        plugin.map { !ExportFormatCatalog.writesStructureOnly($0) } ?? true
     }
 
     private var optionColumns: [PluginExportOptionColumn] {

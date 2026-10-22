@@ -6,14 +6,15 @@ import TableProPluginKit
 /// The find a statement's documents came from. A find with no projection returns whole
 /// documents, so its columns can include what the collection declares; a projection or a pipeline
 /// chose its own shape.
-struct MongoScriptFindShape: Equatable, Sendable {
+nonisolated struct MongoScriptFindShape: Equatable, Sendable {
     let database: String
     let returnsWholeDocuments: Bool
     let skip: Int
+    var filteredFields: Set<String> = []
 }
 
 /// What one statement of a script evaluated to.
-struct MongoScriptStatementResult: Sendable {
+nonisolated struct MongoScriptStatementResult: Sendable {
     var documents = MongoScriptDocumentBatch.empty
     var collection: String?
     var find: MongoScriptFindShape?
@@ -22,6 +23,14 @@ struct MongoScriptStatementResult: Sendable {
     var databaseSwitch: String?
     var producedDocuments = false
     var rowsAffected = 0
+
+    // Only a find in the session's database with no projection returns the collection's documents as stored. A
+    // pipeline's `_id` is often a group key and a projection can compute any field, so learning kinds from either would
+    // type the table tab's next write or filter by a value no document holds.
+    func returnsStoredDocuments(in currentDatabase: String) -> Bool {
+        guard let find else { return false }
+        return find.returnsWholeDocuments && find.database == currentDatabase
+    }
 }
 
 /// Runs mongosh-shaped JavaScript against the connection.
@@ -35,7 +44,7 @@ struct MongoScriptStatementResult: Sendable {
 /// is private and absent from the SDK headers, measured. Cancellation therefore happens at host
 /// call granularity, which covers every script that touches the database, and a script that spins
 /// without one is abandoned along with its queue rather than left able to block the next run.
-final class MongoScriptRuntime: @unchecked Sendable {
+nonisolated final class MongoScriptRuntime: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoScriptRuntime")
 
     /// How long a script may go without reaching the host before it is abandoned.
@@ -406,7 +415,7 @@ final class MongoScriptRuntime: @unchecked Sendable {
 }
 
 /// Resumes a continuation exactly once, whichever of the script and the deadline gets there first.
-private final class MongoScriptResumeGate: @unchecked Sendable {
+nonisolated private final class MongoScriptResumeGate: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<MongoScriptStatementResult, Error>?
     private var finished = false

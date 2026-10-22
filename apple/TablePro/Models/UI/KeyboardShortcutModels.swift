@@ -70,6 +70,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case openFile
     case saveChanges
     case saveAs
+    case copyPath
+    case copyRelativePath
     case executeQuery
     case executeAllStatements
     case executeQueryWithoutLimit
@@ -98,9 +100,16 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case redo
     case cut
     case copy
+    case copyCellValue
     case copyRowsExplicit
     case copyWithHeaders
     case copyAsJson
+    case copyAsCsv
+    case copyAsCsvWithHeaders
+    case copyAsMarkdown
+    case copyAsInClause
+    case copyAsInsert
+    case copyAsUpdate
     case paste
     case delete
     case selectAll
@@ -112,6 +121,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case setValueDefault
     case generateUUIDv4
     case generateUUIDv7
+    case setCellsToValue
     case restorePreviousValues
     case truncateTable
     case toggleHeaderRow
@@ -135,6 +145,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case closeTabsForOtherDatabases
     case closeAllTabs
     case reopenClosedTab
+    case pinTab
     case quickSwitcher
     case toggleTableBrowser
     case showTablesList
@@ -176,23 +187,24 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .manageConnections, .newConnection, .openDatabase, .switchConnection, .moveTabToConnection:
             return .connections
-        case .openFile, .saveChanges, .saveAs, .executeQuery, .executeAllStatements,
-             .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
+        case .openFile, .saveChanges, .saveAs, .copyPath, .copyRelativePath,
+             .executeQuery, .executeAllStatements, .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
              .removeInvisibleCharacters, .foldAll, .unfoldAll, .toggleFold,
              .previousStatement, .nextStatement, .runStatementAndAdvance,
              .previewSQL, .find, .findAndReplace, .findNext, .findPrevious, .useSelectionForFind,
              .aiReviewQuery, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
-        case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
+        case .undo, .redo, .cut, .copy, .copyCellValue, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
+             .copyAsCsv, .copyAsCsvWithHeaders, .copyAsMarkdown, .copyAsInClause, .copyAsInsert, .copyAsUpdate,
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
-             .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7,
+             .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7, .setCellsToValue,
              .restorePreviousValues,
              .truncateTable, .toggleHeaderRow, .previewFKReference, .saveAsFavorite, .previousPage,
              .nextPage, .firstPage, .lastPage, .refresh, .export, .importData, .jumpToColumn:
             return .dataGrid
         case .navigateBack, .navigateForward,
              .newTab, .closeTab, .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs,
-             .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
+             .reopenClosedTab, .pinTab, .quickSwitcher, .toggleTableBrowser,
              .showTablesList, .showFavoritesList,
              .toggleInspector, .toggleAssistant, .toggleAgentMode, .toggleFilters, .toggleHistory, .toggleResults,
              .newAgentSession, .openAgentSession, .closeAgentSession, .deleteAgentSession, .newAIConversation,
@@ -219,9 +231,11 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .previewSQL, .aiReviewQuery, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .previousPage, .nextPage, .firstPage, .lastPage, .addRow, .duplicateRow,
-             .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7,
+             .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7, .setCellsToValue,
              .delete, .truncateTable, .previewFKReference, .saveAsFavorite,
              .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .toggleFilters, .jumpToColumn,
+             .copyCellValue, .copyAsCsv, .copyAsCsvWithHeaders, .copyAsMarkdown, .copyAsInClause,
+             .copyAsInsert, .copyAsUpdate,
              /// Named rather than left to the `default:` below. It reverses a row the grid is
              /// showing, so it belongs in the grid's context the way Add Row and Delete do, and
              /// inheriting `.global` would let the recorder call a grid combo free for it.
@@ -262,12 +276,15 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .moveTabToConnection: return String(localized: "Move Tab to Connection")
         case .saveChanges: return String(localized: "Save Changes")
         case .saveAs: return String(localized: "Save As")
+        case .copyPath: return String(localized: "Copy Path")
+        case .copyRelativePath: return String(localized: "Copy Relative Path")
         case .previewSQL: return String(localized: "Preview SQL")
         case .closeTab: return String(localized: "Close Tab")
         case .closeOtherTabs: return String(localized: "Close Other Tabs")
         case .closeTabsForOtherDatabases: return String(localized: "Close Tabs for Other Databases")
         case .closeAllTabs: return String(localized: "Close All Tabs")
         case .reopenClosedTab: return String(localized: "Reopen Closed Tab")
+        case .pinTab: return String(localized: "Pin Tab")
         case .refresh: return String(localized: "Refresh")
         case .explainQuery: return String(localized: "Explain Query")
         case .formatQuery: return String(localized: "Format Query")
@@ -298,6 +315,13 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .copyRowsExplicit: return String(localized: "Copy Rows")
         case .copyWithHeaders: return String(localized: "Copy with Headers")
         case .copyAsJson: return String(localized: "Copy as JSON")
+        case .copyCellValue: return String(localized: "Copy Cell Value")
+        case .copyAsCsv: return String(localized: "Copy as CSV")
+        case .copyAsCsvWithHeaders: return String(localized: "Copy as CSV with Headers")
+        case .copyAsMarkdown: return String(localized: "Copy as Markdown")
+        case .copyAsInClause: return String(localized: "Copy as IN Clause")
+        case .copyAsInsert: return String(localized: "Copy as INSERT Statements")
+        case .copyAsUpdate: return String(localized: "Copy as UPDATE Statements")
         case .paste: return String(localized: "Paste")
         case .delete: return String(localized: "Delete")
         case .selectAll: return String(localized: "Select All")
@@ -309,6 +333,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .setValueDefault: return String(localized: "Set Value to Default")
         case .generateUUIDv4: return SetValueOptions.title(for: .uuid(.v4))
         case .generateUUIDv7: return SetValueOptions.title(for: .uuid(.v7))
+        case .setCellsToValue: return String(localized: "Set Cells to Value")
         case .restorePreviousValues: return String(localized: "Restore Previous Values")
         case .truncateTable: return String(localized: "Truncate Table")
         case .toggleHeaderRow: return String(localized: "Switch First Row Between Header/Data")
@@ -598,6 +623,8 @@ struct KeyboardSettings: Codable, Equatable {
         .openFile: .character("o", command: true),
         .saveChanges: .character("s", command: true),
         .saveAs: .character("s", command: true, shift: true),
+        // Not Finder's Option-Command-C, which is Copy with Headers. Copy Relative Path has no default.
+        .copyPath: .character("c", command: true, shift: true, option: true),
         .executeQuery: .special(.return, command: true),
         .executeAllStatements: .special(.return, command: true, shift: true),
         .executeQueryWithoutLimit: .special(.return, command: true, option: true),

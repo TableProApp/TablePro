@@ -120,6 +120,35 @@ struct SQLWriteClassifierTests {
         #expect(isWrite("SOMETHINGNEW key", .redis))
     }
 
+    @Test("a Redis write on any line or after any semicolon makes the text a write")
+    func redisWriteInALaterCommand() {
+        #expect(isWrite("GET a\nDEL b", .redis))
+        #expect(isWrite("GET a; DEL b", .redis))
+        #expect(isWrite("GET a\r\nFLUSHALL", .redis))
+        #expect(!isWrite("GET a\nGET b", .redis))
+        #expect(!isWrite("GET a; GET b;\n", .redis))
+        #expect(!isWrite("GET \"a\nDEL b\"", .redis))
+        #expect(!isWrite(" \n ; ", .redis))
+    }
+
+    @Test("a Redis verb is read the way the driver reads it")
+    func redisVerbAsTheDriverReadsIt() {
+        #expect(!isWrite("\"GET\" k", .redis))
+        #expect(!isWrite("'config' 'get' maxmemory", .redis))
+        #expect(isWrite("/* GET */ FLUSHALL", .redis))
+        #expect(isWrite("\"FLUSHALL", .redis))
+    }
+
+    @Test("A MongoDB statement is a read only when the read grammar accepts all of it")
+    func mongoStatements() {
+        #expect(!isWrite(#"db.users.find({status: "open"})"#, .mongodb))
+        #expect(!isWrite("show collections", .mongodb))
+        #expect(!isWrite("db.a.find({})\ndb.b.countDocuments({})", .mongodb))
+        #expect(isWrite("db.users.deleteMany({})", .mongodb))
+        #expect(isWrite(#"db.c.find(db.c[("delete" + "Many")]({}))"#, .mongodb))
+        #expect(isWrite("db.a.find({})\ndb.b.insertOne({a: 1})", .mongodb))
+    }
+
     @Test("empty and comment-only input is not a write")
     func emptyInput() {
         #expect(!isWrite(""))

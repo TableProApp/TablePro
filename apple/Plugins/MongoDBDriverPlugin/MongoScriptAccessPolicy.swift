@@ -1,7 +1,7 @@
 import Foundation
 
 /// What the host lets one statement do on the server.
-enum MongoScriptAccess: Sendable, Equatable {
+nonisolated enum MongoScriptAccess: Sendable, Equatable {
     case read
     case readWrite
 }
@@ -11,7 +11,7 @@ enum MongoScriptAccess: Sendable, Equatable {
 /// The shell keeps its globals from one statement to the next, so a read's text proves nothing about
 /// the code it runs: an earlier statement can have pointed `find` at `deleteMany`. A read is held to
 /// what the unmodified prelude sends for a statement the app's grammar proves a read.
-enum MongoScriptAccessPolicy {
+nonisolated enum MongoScriptAccessPolicy {
     static let readOperations: Set<String> = [
         "currentDatabase", "useDatabase", "listCollections", "listIndexes", "countDocuments",
         "estimatedDocumentCount", "distinct", "collectionStats", "openCursor", "cursorConfigure",
@@ -67,7 +67,7 @@ enum MongoScriptAccessPolicy {
 
 /// Reads object keys the way libbson does. `JSONSerialization` keeps only the first of two equal keys
 /// while libbson keeps and sends both, so a duplicate could hide a stage from it.
-private struct StrictJsonKeys {
+nonisolated private struct StrictJsonKeys {
     private struct Malformed: Error {}
 
     /// libbson's own JSON reader stops at 100 levels, so nothing it would send is refused here.

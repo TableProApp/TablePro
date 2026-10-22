@@ -42,9 +42,14 @@ extension SidebarMenuCommand: SidebarMenuShortcutProviding {
 }
 
 extension FavoritesMenuCommand: SidebarMenuShortcutProviding {
-    /// The Favorites list shares no command with the menu bar that carries a binding. Declared all
-    /// the same so one builder serves both menus.
     internal var shortcutAction: ShortcutAction? {
-        nil
+        switch self {
+        case .copyPath:
+            return .copyPath
+        case .copyRelativePath:
+            return .copyRelativePath
+        default:
+            return nil
+        }
     }
 }

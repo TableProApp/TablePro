@@ -43,13 +43,14 @@ internal enum FavoritesTreeFilter {
                     return .linkedFolder(folder, children: filteredChildren)
                 }
                 return nil
-            case .linkedSubfolder(let folderId, let displayName, let pathPrefix):
+            case .linkedSubfolder(let folderId, let displayName, let pathPrefix, let url):
                 let filteredChildren = filterTree(node.children ?? [], searchText: searchText)
                 if !filteredChildren.isEmpty || displayName.localizedCaseInsensitiveContains(searchText) {
                     return .linkedSubfolder(
                         folderId: folderId,
                         displayName: displayName,
                         pathPrefix: pathPrefix,
+                        url: url,
                         children: filteredChildren
                     )
                 }

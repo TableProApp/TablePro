@@ -133,7 +133,8 @@ extension MainContentCoordinator {
         source: ResultSourceChange = .newSource,
         serverOutput: PluginServerOutput = .none,
         rowLocators: [String?]? = nil,
-        absentCells: [Int: Set<Int>] = [:]
+        absentCells: [Int: Set<Int>] = [:],
+        unloadedCells: [Int: [Int: Int]] = [:]
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -158,7 +159,8 @@ extension MainContentCoordinator {
             source: source,
             serverOutput: serverOutput,
             rowLocators: rowLocators,
-            absentCells: absentCells
+            absentCells: absentCells,
+            unloadedCells: unloadedCells
         )
     }
 

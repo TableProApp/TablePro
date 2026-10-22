@@ -113,6 +113,7 @@ crates/app/src/test_support/mod.rs
 crates/app/src/test_support/owned_window.rs
 crates/app/src/test_support/shortcut_keys.rs
 crates/app/src/test_support/signal_log.rs
+crates/app/src/test_support/stall_probe.rs
 crates/app/src/test_support/tests.rs
 crates/app/src/test_support/unlabelled_widget.rs
 crates/app/src/test_support/wait_timed_out.rs
@@ -180,7 +181,6 @@ crates/app/src/ui/connect_dialog/form_field.rs
 crates/app/src/ui/connect_dialog/imp.rs
 crates/app/src/ui/connect_dialog/mod.rs
 crates/app/src/ui/connect_dialog/pem_validation.rs
-crates/app/src/ui/connect_dialog/read_only_row.rs
 crates/app/src/ui/connect_dialog/row_problem.rs
 crates/app/src/ui/connect_dialog/sqlite_file_row.rs
 crates/app/src/ui/connect_dialog/tests.rs
@@ -200,6 +200,8 @@ crates/app/src/ui/editor/completion/completion_scope.rs
 crates/app/src/ui/editor/completion/fuzzy.rs
 crates/app/src/ui/editor/completion/mod.rs
 crates/app/src/ui/editor/completion/proposal_kind.rs
+crates/app/src/ui/editor/completion/proposal_list.rs
+crates/app/src/ui/editor/completion/proposal_list_imp.rs
 crates/app/src/ui/editor/completion/sql_completion_provider.rs
 crates/app/src/ui/editor/completion/sql_completion_provider_imp.rs
 crates/app/src/ui/editor/completion/sql_proposal.rs
@@ -219,6 +221,7 @@ crates/app/src/ui/editor/results_pane.rs
 crates/app/src/ui/editor/run_history.rs
 crates/app/src/ui/editor/run_log.rs
 crates/app/src/ui/editor/run_scope.rs
+crates/app/src/ui/editor/safe_mode_gate.rs
 crates/app/src/ui/editor/script_runner.rs
 crates/app/src/ui/editor/sidebar_policy.rs
 crates/app/src/ui/editor/significant_tokens.rs
@@ -365,6 +368,7 @@ crates/app/src/ui/result_pane/mod.rs
 crates/app/src/ui/result_pane/result_limit_banner.rs
 crates/app/src/ui/result_pane/result_set_view.rs
 crates/app/src/ui/result_pane/result_summary.rs
+crates/app/src/ui/safe_mode.rs
 crates/app/src/ui/saved_queries_dialog.rs
 crates/app/src/ui/session_window/application_notification_sink.rs
 crates/app/src/ui/session_window/connect_failed_page.rs
@@ -464,6 +468,9 @@ crates/app/src/ui/workspace/sidebar/object_key.rs
 crates/app/src/ui/workspace/sidebar/sidebar_affordances.rs
 crates/app/src/ui/workspace/sidebar/sidebar_event.rs
 crates/app/src/ui/workspace/sidebar/sidebar_header_factory.rs
+crates/app/src/ui/workspace/sidebar/sidebar_index.rs
+crates/app/src/ui/workspace/sidebar/sidebar_list.rs
+crates/app/src/ui/workspace/sidebar/sidebar_list_imp.rs
 crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
 crates/app/src/ui/workspace/sidebar/sidebar_model.rs
 crates/app/src/ui/workspace/sidebar/sidebar_object.rs
@@ -481,8 +488,10 @@ crates/app/src/ui/workspace/tab_spec.rs
 crates/app/src/ui/workspace/tab_title.rs
 crates/app/src/ui/workspace/table_naming.rs
 crates/app/src/ui/workspace/tests/close_tab.rs
+crates/app/src/ui/workspace/tests/large_catalog.rs
 crates/app/src/ui/workspace/tests/mod.rs
 crates/app/src/ui/workspace/tests/tab_title.rs
+crates/app/src/ui/workspace/transaction_banner.rs
 crates/app/src/ui/workspace/unsaved_icon.rs
 crates/app/src/ui/workspace/window_tabs.rs
 crates/app/src/ui/workspace/window_title.rs
@@ -490,6 +499,7 @@ crates/app/src/ui/workspace/workspace_actions.rs
 crates/app/src/ui/workspace/workspace_persistence.rs
 crates/app/src/ui/workspace/workspace_tab_view.rs
 crates/app/src/ui/workspace/workspace_tabs.rs
+crates/app/src/ui/write_confirmation.rs
 crates/app/src/workspace/close_blocker.rs
 crates/app/src/workspace/close_blocker_dialog.rs
 crates/app/src/workspace/close_decision.rs

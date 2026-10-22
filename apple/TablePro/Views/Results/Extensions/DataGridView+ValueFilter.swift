@@ -136,6 +136,23 @@ extension TableViewCoordinator {
     func presentValueFilterPopover(forColumn dataIndex: Int, anchor rect: NSRect, in view: NSView) {
         let tableRows = tableRowsProvider()
         guard dataIndex >= 0, dataIndex < tableRows.columns.count else { return }
+        // The values are listed and matched as loaded, so a value still on the server loads first.
+        let unloaded = tableRows.rows.filter { $0.unloadedByteCount(dataIndex) != nil }.map(\.id)
+        if !unloaded.isEmpty {
+            guard let delegate else {
+                NSSound.beep()
+                return
+            }
+            let reopen: @MainActor (Bool) -> Void = { [weak self, weak view] loaded in
+                guard let self, let view, loaded else {
+                    NSSound.beep()
+                    return
+                }
+                self.presentValueFilterPopover(forColumn: dataIndex, anchor: rect, in: view)
+            }
+            delegate.dataGridLoadUnloadedValues(rowIDs: unloaded, columns: IndexSet(integer: dataIndex), completion: reopen)
+            return
+        }
         let columnName = tableRows.columns[dataIndex]
         let values = distinctValues(forColumn: dataIndex)
         let initialFilter = valueFilterState.filter(forColumn: dataIndex)

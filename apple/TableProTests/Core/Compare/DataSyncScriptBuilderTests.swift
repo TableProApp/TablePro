@@ -28,6 +28,18 @@ private final class PlanQuotingDriver: PluginDriverStub, @unchecked Sendable {
     }
 }
 
+private final class MutationUpdateDriver: PluginDriverStub, @unchecked Sendable {
+    func quoteIdentifier(_ name: String) -> String { "`\(name)`" }
+
+    func rowUpdateStatement(table: String, assignments: String, predicate: String) -> String? {
+        "ALTER TABLE \(table) UPDATE \(assignments) WHERE \(predicate) SETTINGS mutations_sync = 1"
+    }
+
+    func rowDeleteStatement(table: String, predicate: String?) -> String? {
+        predicate.map { "ALTER TABLE \(table) DELETE WHERE \($0) SETTINGS mutations_sync = 1" }
+    }
+}
+
 private enum PlanSyncFixture {
     static let defaultColumns = [
         CompareColumn(name: "id", sourceType: "INTEGER", targetType: "INTEGER"),
@@ -172,6 +184,62 @@ final class DataSyncScriptBuilderTests: XCTestCase {
         let statements = PlanSyncFixture.build([entry])
 
         XCTAssertEqual(statements.map(\.sql), ["UPDATE `users` SET `name` = 'new' WHERE `id` = 1"])
+    }
+
+    func testUpdateAndDeleteTakeTheTargetDriversOwnForm() {
+        let entry = PlanSyncFixture.updateEntry(
+            source: ["id": .text("1"), "name": .text("new")],
+            target: ["id": .text("1"), "name": .text("old")],
+            changed: ["name"]
+        )
+        let builder = DataSyncScriptBuilder(
+            targetDriver: MutationUpdateDriver(),
+            targetDatabaseType: .clickhouse,
+            options: PlanSyncFixture.makeOptions(),
+            plan: PlanSyncFixture.makePlan()
+        )
+
+        let statements = builder.build(entries: [
+            entry,
+            PlanSyncFixture.deleteEntry(["id": .text("2"), "name": .text("gone")], key: "2"),
+        ])
+
+        XCTAssertEqual(statements.map(\.sql), [
+            "ALTER TABLE `users` UPDATE `name` = 'new' WHERE `id` = 1 SETTINGS mutations_sync = 1",
+            "ALTER TABLE `users` DELETE WHERE `id` = 2 SETTINGS mutations_sync = 1",
+        ])
+        XCTAssertTrue(statements[1].isRefusedByDefault)
+    }
+
+    func testUpdateLeavesOutAnUnchangedImmutableColumnAndKeepsAChangedOne() {
+        let plan = PlanSyncFixture.makePlan(columns: [
+            CompareColumn(name: "id", targetType: "UInt32"),
+            CompareColumn(name: "ts", targetType: "UInt32"),
+            CompareColumn(name: "name", targetType: "String")
+        ])
+        let builder = DataSyncScriptBuilder(
+            targetDriver: MutationUpdateDriver(),
+            targetDatabaseType: .clickhouse,
+            options: PlanSyncFixture.makeOptions(),
+            plan: plan,
+            immutableColumns: ["TS"]
+        )
+        let unchanged = PlanSyncFixture.updateEntry(
+            source: ["id": .text("1"), "ts": .text("5"), "name": .text("new")],
+            target: ["id": .text("1"), "ts": .text("5"), "name": .text("old")],
+            changed: ["name"]
+        )
+        let changed = PlanSyncFixture.updateEntry(
+            source: ["id": .text("2"), "ts": .text("6"), "name": .text("same")],
+            target: ["id": .text("2"), "ts": .text("7"), "name": .text("same")],
+            changed: ["ts"],
+            key: "2"
+        )
+
+        XCTAssertEqual(builder.build(entries: [unchanged, changed]).map(\.sql), [
+            "ALTER TABLE `users` UPDATE `name` = 'new' WHERE `id` = 1 SETTINGS mutations_sync = 1",
+            "ALTER TABLE `users` UPDATE `ts` = 6, `name` = 'same' WHERE `id` = 2 SETTINGS mutations_sync = 1",
+        ])
     }
 
     func testUpdateIsSkippedWhenEveryColumnIsAnUnchangedKey() {

@@ -25,6 +25,7 @@ on:
       - "linux/crates/**/meson.build"
       - "linux/data/**/meson.build"
       - "linux/po/meson.build"
+      - "linux/po/LINGUAS"
       - ".github/workflows/linux-packages.yml"
   # Nightly on main, so a failure only one distribution's build shows turns
   # up before tag time. Three hours after build-linux.yml's nightly, so the
@@ -172,9 +173,16 @@ jobs:
       - name: Install, start and validate in a fresh container
         env:
           SERIES: ${{ matrix.series }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
         run: |
+          set -- "$(find _packages/deb -name 'tablepro_*.deb')"
+          # A published release's tarballs may ship other languages than
+          # this checkout's LINGUAS names.
+          if [ -z "$RELEASE_TAG" ]; then
+            set -- "$@" linux/po/LINGUAS
+          fi
           docker run --rm -v "$PWD:$PWD" -w "$PWD" "ubuntu:$SERIES" \
-            linux/build-aux/packaging/smoke-test.sh "$(find _packages/deb -name 'tablepro_*.deb')"
+            linux/build-aux/packaging/smoke-test.sh "$@"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: linux-deb-${{ matrix.series }}-${{ runner.arch }}
@@ -240,4 +248,6 @@ jobs:
           name: linux-rpm-${{ runner.arch }}
           path: _packages/rpm
       - name: Install, start and validate
-        run: linux/build-aux/packaging/smoke-test.sh "$(find _packages/rpm -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')"
+        run: |
+          linux/build-aux/packaging/smoke-test.sh \
+            "$(find _packages/rpm -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')" linux/po/LINGUAS

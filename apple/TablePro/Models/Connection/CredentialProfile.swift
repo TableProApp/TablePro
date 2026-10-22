@@ -129,6 +129,7 @@ extension CredentialPasswordMode {
         case .stored: String(localized: "Saved password")
         case .prompt: String(localized: "Ask every time")
         case .pgpass: String(localized: "~/.pgpass")
+        case .source(.vaultDatabaseRole): String(localized: "Vault database role")
         case .source: String(localized: "Password source")
         }
     }

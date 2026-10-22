@@ -1,6 +1,7 @@
 import Foundation
 @testable import TableProDatabase
 @testable import TableProModels
+import TableProSSHTransport
 import TableProTestSupport
 import Testing
 
@@ -26,6 +27,23 @@ struct ConnectionManagerTests {
 
         let retrieved = manager.session(for: connection.id)
         #expect(retrieved != nil)
+    }
+
+    @Test("A connection naming no database takes the one the driver opened, and a named one keeps its name")
+    func sessionTakesTheDriversDatabase() async throws {
+        let factory = MockDriverFactory()
+        let driver = MockDatabaseDriver()
+        driver.currentDatabase = "app"
+        factory.drivers["mock"] = driver
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
+
+        let unnamed = try await manager.connect(DatabaseConnection(name: "A", type: DatabaseType(rawValue: "mock")))
+        let named = try await manager.connect(
+            DatabaseConnection(name: "B", type: DatabaseType(rawValue: "mock"), database: "reports")
+        )
+
+        #expect(unnamed.activeDatabase == "app")
+        #expect(named.activeDatabase == "reports")
     }
 
     @Test("Disconnect removes session")
@@ -87,6 +105,62 @@ struct ConnectionManagerTests {
         }
     }
 
+    @Test("A type the factory cannot open is refused before any tunnel opens")
+    func unsupportedTypeIsRefusedBeforeTheTunnel() async throws {
+        let factory = MockDriverFactory()
+        factory.drivers["mock"] = MockDatabaseDriver()
+        let ssh = MockSSHProvider()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            sshProvider: ssh
+        )
+        let connection = DatabaseConnection(
+            name: "Mac only",
+            type: .mongodb,
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "jump.example.com")
+        )
+
+        await #expect(throws: ConnectionError.driverNotFound("MongoDB")) {
+            _ = try await manager.connect(connection)
+        }
+
+        #expect(ssh.tunnelledConnectionIds.isEmpty)
+        #expect(ssh.openedTunnelIds.isEmpty)
+        #expect(manager.session(for: connection.id) == nil)
+    }
+
+    @Test("Connect dials the Mac's route, forwards to its socket and names its SSH profile")
+    func connectDialsTheMacRoute() async throws {
+        let factory = MockDriverFactory()
+        factory.drivers["mock"] = MockDatabaseDriver()
+        let ssh = MockSSHProvider()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore(), sshProvider: ssh)
+        var connection = DatabaseConnection(name: "Alias", type: DatabaseType(rawValue: "mock"))
+        connection.sshEnabled = true
+        connection.sshConfiguration = SSHConfiguration(host: "db", username: "")
+        connection.sshProfileId = UUID()
+        connection.sslEnabled = true
+        connection.sslConfiguration = SSLConfiguration(mode: .require)
+        connection.additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey] = "/run/db.sock"
+        connection.sshRoute = PublishedSSHRoute(
+            publisher: UUID(),
+            input: try #require(connection.sshConfiguration).publishedRouteInput,
+            hops: [.init(id: UUID(), alias: "bastion", host: "b.example", port: 22, username: "jump")],
+            target: .init(alias: "db", host: "10.0.0.5", port: 22, username: "deploy")
+        )
+
+        _ = try await manager.connect(connection)
+        await manager.disconnect(connection.id)
+
+        #expect(ssh.receivedConfigs.first?.host == "10.0.0.5")
+        #expect(ssh.receivedConfigs.first?.jumpHosts.map(\.host) == ["b.example"])
+        #expect(ssh.receivedDestinations.first == .unixSocket(path: "/run/db.sock"))
+        #expect(ssh.receivedProfileIds.first == connection.sshProfileId)
+        #expect(factory.receivedConnections.first?.sslEnabled == false)
+    }
+
     @Test("Connect with SSH but no provider throws error")
     func connectSSHNoProvider() async throws {
         let factory = MockDriverFactory()
@@ -126,6 +200,40 @@ struct ConnectionManagerTests {
 
         #expect(ssh.receivedPrompters.count == 1)
         #expect(ssh.receivedPrompters.first.map { $0 is StubPrompter } == true)
+    }
+
+    @Test("A tunnelled driver dials the local forward and is told the server's own host name")
+    func tunnelledDriverKeepsTheServerHostName() async throws {
+        let factory = MockDriverFactory()
+        factory.drivers["mock"] = MockDatabaseDriver()
+        let manager = ConnectionManager(
+            driverFactory: factory,
+            secureStore: MockSecureStore(),
+            sshProvider: MockSSHProvider()
+        )
+        var connection = DatabaseConnection(name: "Tunnelled", type: DatabaseType(rawValue: "mock"), host: "db.internal")
+        connection.sshEnabled = true
+        connection.sshConfiguration = SSHConfiguration(host: "jump.example.com")
+
+        _ = try await manager.connect(connection)
+        await manager.disconnect(connection.id)
+
+        let dialed = try #require(factory.receivedConnections.first)
+        #expect(dialed.host == "127.0.0.1")
+        #expect(factory.receivedPreTunnelHosts == ["db.internal"])
+    }
+
+    @Test("A direct connection carries no pre-tunnel host name")
+    func directDriverHasNoPreTunnelHost() async throws {
+        let factory = MockDriverFactory()
+        factory.drivers["mock"] = MockDatabaseDriver()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
+        let connection = DatabaseConnection(name: "Direct", type: DatabaseType(rawValue: "mock"), host: "db.internal")
+
+        _ = try await manager.connect(connection)
+        await manager.disconnect(connection.id)
+
+        #expect(factory.receivedPreTunnelHosts == [nil])
     }
 
     @Test("SSH tunnel cleanup on connect failure")
@@ -543,5 +651,73 @@ struct ConnectionManagerTests {
         _ = try await manager.connect(connection)
 
         #expect(ssh.tunnelledConnectionIds == [connection.id])
+    }
+
+    @Test("A replaced or disconnected session reaches the observer with the driver it ended")
+    func sessionEndsReachTheObserver() async throws {
+        let factory = MockDriverFactory()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
+        let connection = DatabaseConnection(name: "Test", type: DatabaseType(rawValue: "mock"))
+        let ended = EndedSessions()
+        manager.observeSessionEnds { id, driver in
+            ended.record(id, driver, stillListed: false)
+        }
+
+        let first = MockDatabaseDriver()
+        factory.drivers["mock"] = first
+        _ = try await manager.connect(connection)
+        #expect(ended.records.isEmpty)
+
+        let second = MockDatabaseDriver()
+        factory.drivers["mock"] = second
+        _ = try await manager.connect(connection)
+        await manager.disconnect(connection.id)
+
+        let records = ended.records
+        let endedIds = records.map { $0.id }
+        #expect(endedIds == [connection.id, connection.id])
+        #expect(records.first?.driver === first)
+        #expect(records.last?.driver === second)
+    }
+
+    @Test("An observer that reads the manager back runs after the session is gone, outside the lock")
+    func observerCanReadTheManager() async throws {
+        let factory = MockDriverFactory()
+        factory.drivers["mock"] = MockDatabaseDriver()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
+        let connection = DatabaseConnection(name: "Test", type: DatabaseType(rawValue: "mock"))
+        let ended = EndedSessions()
+        manager.observeSessionEnds { id, driver in
+            ended.record(id, driver, stillListed: manager.session(for: id) != nil)
+        }
+
+        _ = try await manager.connect(connection)
+        await manager.disconnect(connection.id)
+
+        let stillListed = ended.records.map { $0.stillListed }
+        #expect(stillListed == [false])
+    }
+}
+
+private final class EndedSessions: @unchecked Sendable {
+    struct Record {
+        let id: UUID
+        let driver: any DatabaseDriver
+        let stillListed: Bool
+    }
+
+    private let lock = NSLock()
+    private var recorded: [Record] = []
+
+    var records: [Record] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
+
+    func record(_ id: UUID, _ driver: any DatabaseDriver, stillListed: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        recorded.append(Record(id: id, driver: driver, stillListed: stillListed))
     }
 }

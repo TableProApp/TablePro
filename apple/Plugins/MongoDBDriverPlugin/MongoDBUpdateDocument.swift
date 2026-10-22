@@ -17,7 +17,7 @@ import Foundation
 /// of `tags` rather than the second one, and still reports success. So a pipeline only ever writes
 /// whole top-level fields, and every value in it is wrapped in `$literal`, which keeps a string
 /// such as `"$price"` or an object shaped like an operator from being evaluated.
-enum MongoDBUpdateDocument {
+nonisolated enum MongoDBUpdateDocument {
     enum FieldWrite: Equatable {
         case set(field: String, json: String)
         case remove(field: String)

@@ -98,9 +98,16 @@ internal struct CompareRowService {
             target: target, targetConnection: targetConnection,
             plan: plan, options: options
         ) { engine, sides in
+            let immutableColumns = try await sides.targetDriver.fetchImmutableColumns(
+                table: plan.table, schema: plan.targetSchema
+            )
             let collector = SyncStatementCollector(
                 builder: DataSyncScriptBuilder(
-                    targetDriver: sides.targetDriver, targetDatabaseType: targetType, options: options, plan: plan
+                    targetDriver: sides.targetDriver,
+                    targetDatabaseType: targetType,
+                    options: options,
+                    plan: plan,
+                    immutableColumns: immutableColumns
                 )
             )
             let summary = try await engine.compare(

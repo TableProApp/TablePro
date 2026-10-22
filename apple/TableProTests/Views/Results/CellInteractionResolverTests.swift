@@ -222,6 +222,50 @@ struct CellInteractionResolverBinaryTests {
         )
         #expect(resolver.resolve(context) == .blocked)
     }
+
+    @Test(
+        "A binary decoder format opens the decoded viewer, read-only, on an editable table too",
+        arguments: [
+            (ValueDisplayFormat.messagePack, BinaryValueFormat.messagePack),
+            (.protobuf, .protobuf),
+        ]
+    )
+    func decoderFormatOpensDecodedViewer(format: ValueDisplayFormat, expected: BinaryValueFormat) {
+        for isTableEditable in [false, true] {
+            let context = ContextFactory.make(
+                value: nil, columnType: .blob(rawType: "BLOB"), isTableEditable: isTableEditable,
+                isBinaryValue: true, displayFormatOverride: format
+            )
+            #expect(resolver.resolve(context) == .viewBinaryValue(expected))
+        }
+    }
+
+    @Test("A NULL under a decoder format keeps the hex editor, which is how bytes get into it")
+    func nullUnderDecoderFormatKeepsHexEditor() {
+        let context = ContextFactory.make(
+            value: nil, columnType: .blob(rawType: "BLOB"), isTableEditable: true, displayFormatOverride: .messagePack
+        )
+        #expect(resolver.resolve(context) == .editBlob)
+    }
+
+    @Test("Text and both UUID formats keep the hex editor on a binary cell")
+    func characterFormatsKeepHexEditor() {
+        for format in [ValueDisplayFormat.text, .uuid, .uuidSwappedTime] {
+            let context = ContextFactory.make(
+                value: nil, columnType: .blob(rawType: "BINARY(16)"), isTableEditable: true,
+                isBinaryValue: true, displayFormatOverride: format
+            )
+            #expect(resolver.resolve(context) == .editBlob)
+        }
+    }
+
+    @Test("A decoder format left on a text column edits as text")
+    func decoderFormatOnTextColumn() {
+        let context = ContextFactory.make(
+            value: "hello", columnType: .text(rawType: "TEXT"), isTableEditable: true, displayFormatOverride: .messagePack
+        )
+        #expect(resolver.resolve(context) == .editInline(value: "hello"))
+    }
 }
 
 struct CellInteractionResolverForeignKeyTests {
@@ -408,5 +452,41 @@ struct CellInteractionResolverImageTests {
             detectedContent: .image(.svg)
         )
         #expect(resolver.resolve(context) == .blocked)
+    }
+}
+
+struct CellInteractionResolverVectorTests {
+    private let resolver = CellInteractionResolver()
+    private let vector = ColumnType.vector(rawType: "vector(3)")
+
+    @Test("A vector opens the vector viewer, editable where the cell is")
+    func vectorOpensViewer() {
+        #expect(resolver.resolve(ContextFactory.make(value: "[1,2,3]", columnType: vector, isTableEditable: true)) == .editVector)
+        #expect(resolver.resolve(ContextFactory.make(value: "[1,2,3]", columnType: vector)) == .viewVector)
+        #expect(
+            resolver.resolve(ContextFactory.make(value: "{1:2}/3", columnType: .vector(rawType: "sparsevec(3)"))) == .viewVector
+        )
+    }
+
+    @Test("NULL and text the viewer cannot list keep the text editor")
+    func unreadableValueKeepsTextEditor() {
+        #expect(resolver.resolve(ContextFactory.make(value: nil, columnType: vector, isTableEditable: true)) == .editInline(value: ""))
+        #expect(
+            resolver.resolve(ContextFactory.make(value: "oops", columnType: vector, isTableEditable: true)) == .editInline(value: "oops")
+        )
+    }
+
+    @Test("A display format left from the column's text days does not take the viewer away")
+    func staleFormatIgnored() {
+        let context = ContextFactory.make(
+            value: "[1,2,3]", columnType: vector, isTableEditable: true, displayFormatOverride: .json
+        )
+        #expect(resolver.resolve(context) == .editVector)
+    }
+
+    @Test("A bracketed value in a column that is no vector keeps the text editor")
+    func textColumnUnchanged() {
+        let context = ContextFactory.make(value: "[1,2,3]", columnType: .text(rawType: "text"), isTableEditable: true)
+        #expect(resolver.resolve(context) == .editInline(value: "[1,2,3]"))
     }
 }

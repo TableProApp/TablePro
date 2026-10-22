@@ -12,6 +12,7 @@ struct ExportDialog: View {
     @Binding var isPresented: Bool
     let mode: ExportMode
     var sidebarTables: [TableInfo] = []
+    var initialFormatId: String?
 
     // MARK: - State
 
@@ -88,7 +89,7 @@ struct ExportDialog: View {
 
     private var singleResultRowCount: Int? {
         switch mode {
-        case .queryResults(_, let tableRows, _):
+        case .queryResults(_, let tableRows, _, _):
             return tableRows.count
         case .dataSource:
             return selectedDataSourceScope?.rowCount
@@ -138,8 +139,10 @@ struct ExportDialog: View {
         }
         .onAppear {
             let available = availableFormats
-            if let lastFormatId = TransferDialogStorage.shared.loadLastExportFormatId(),
-               available.contains(where: { type(of: $0).formatId == lastFormatId }) {
+            if let initialFormatId, available.contains(where: { type(of: $0).formatId == initialFormatId }) {
+                config.formatId = initialFormatId
+            } else if let lastFormatId = TransferDialogStorage.shared.loadLastExportFormatId(),
+                      available.contains(where: { type(of: $0).formatId == lastFormatId }) {
                 config.formatId = lastFormatId
             } else if !available.contains(where: { type(of: $0).formatId == config.formatId }),
                       let first = available.first {
@@ -206,7 +209,9 @@ struct ExportDialog: View {
     private var availableFormats: [any ExportFormatPlugin] {
         ExportFormatCatalog.available(
             pluginManager.allExportPlugins(),
-            forDatabaseTypeId: mode.formatDatabaseTypeId
+            forDatabaseTypeId: mode.formatDatabaseTypeId,
+            listsDatabaseObjects: mode.listsDatabaseObjects,
+            columnsAreSampled: databaseType.columnsAreSampled
         )
     }
 
@@ -737,7 +742,8 @@ struct ExportDialog: View {
         /// snapshot it leaves is keyed by bare container name, so a database and a schema that
         /// share one, `app` and `app`, then restore that stale answer over the real preselection.
         guard preselection.scope(covers: .database(dbName)) else { return }
-        let objectItems = sidebarTables.map { table in
+        // Sequences arrive with the tree, as sequences where the format writes them.
+        let objectItems = sidebarTables.filter { $0.type != .sequence }.map { table in
             let kind = PluginExportObjectKind.from(tableType: table.type.rawValue)
             return ExportObjectItem(
                 name: table.name,
@@ -1030,13 +1036,15 @@ struct ExportDialog: View {
                 ) { driver in
                     try await runStreamingExport(on: driver, databaseType: connection.type, query: query, to: url)
                 }
-            case .queryResults(let connection, let tableRows, _):
+            case .queryResults(let connection, let tableRows, _, let fillUnloaded):
                 let service = ExportService(
                     queryResultsDriver: DatabaseManager.shared.driver(for: connection.id),
                     databaseType: connection.type
                 )
                 exportService = service
-                try await service.exportQueryResults(tableRows: tableRows, config: config, to: url)
+                try await service.exportQueryResults(
+                    tableRows: tableRows, fillUnloaded: fillUnloaded, config: config, to: url
+                )
             case .dataSource:
                 guard let scope = selectedDataSourceScope else { throw ExportError.noTablesSelected }
                 let service = ExportService()
@@ -1105,6 +1113,7 @@ private struct ExportProgressSheet: View {
             processedRows: service.state.processedRows,
             totalRows: service.state.totalRows,
             statusMessage: service.state.statusMessage,
+            readsRows: service.state.readsRows,
             onStop: onStop
         )
     }

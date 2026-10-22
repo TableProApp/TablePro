@@ -2,9 +2,8 @@
 //  RecoveryConnectionListTests.swift
 //  TableProTests
 //
-//  Pins #1358: "Reopen Last Session" must not replay a connection whose attempt the
-//  user cancelled. It must still replay one whose server was merely unreachable,
-//  which a failed restore used to erase from the list as if the user had given up.
+//  Every connection on the strip comes back after a relaunch (#3658), but one whose connect the
+//  user canceled or ended never dials again (#1358).
 //
 
 import Foundation
@@ -12,95 +11,166 @@ import Foundation
 import Testing
 
 struct RecoveryConnectionListTests {
-    @Test("A connected window is restored")
-    func activatedWindowIsRestored() {
+    private static let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
+
+    private static let failure = ConnectionFailureInfo(
+        message: "Could not connect to the server.",
+        failureReason: "The server refused the connection.",
+        recoverySuggestion: "Make sure the database server is running."
+    )
+
+    private static func candidate(
+        _ id: UUID,
+        openedAt offset: TimeInterval = 0,
+        phase: ConnectionWindowPhase,
+        isActivated: Bool = false
+    ) -> RecoveryCandidate {
+        RecoveryCandidate(
+            connectionId: id,
+            openedAt: start.addingTimeInterval(offset),
+            phase: phase,
+            isActivated: isActivated
+        )
+    }
+
+    private static func session(
+        _ candidates: [RecoveryCandidate],
+        endedByUser: Set<UUID> = [],
+        shown: UUID? = nil
+    ) -> LastSession {
+        RecoveryConnectionList.lastSession(
+            from: candidates,
+            endedByUser: { endedByUser.contains($0) },
+            shownConnectionId: shown
+        )
+    }
+
+    @Test("A connected connection reconnects")
+    func connectedReconnects() {
         let id = UUID()
 
-        let ids = RecoveryConnectionList.connectionIds(
-            from: [RecoveryCandidate(connectionId: id, isActivated: true, retainsRestoreIntent: false)]
+        let session = Self.session([Self.candidate(id, phase: .connected, isActivated: true)])
+
+        #expect(session.connections == [LastSession.Connection(id: id, reconnects: true)])
+    }
+
+    @Test("A canceled connect comes back without dialing")
+    func canceledComesBackNotConnected() {
+        let id = UUID()
+
+        let session = Self.session([Self.candidate(id, phase: .unavailable(.cancelled))])
+
+        #expect(session.connections == [LastSession.Connection(id: id, reconnects: false)])
+    }
+
+    @Test("A connection the user disconnected comes back without dialing")
+    func disconnectedComesBackNotConnected() {
+        let id = UUID()
+
+        let session = Self.session([Self.candidate(id, phase: .unavailable(.disconnectedByUser))])
+
+        #expect(session.connections == [LastSession.Connection(id: id, reconnects: false)])
+    }
+
+    @Test("A connection that never dialed comes back without dialing")
+    func idleComesBackNotConnected() {
+        let id = UUID()
+
+        let session = Self.session([Self.candidate(id, phase: .idle)])
+
+        #expect(session.connections == [LastSession.Connection(id: id, reconnects: false)])
+    }
+
+    @Test("A connection whose server was unreachable still reconnects")
+    func failedConnectionReconnects() {
+        let failed = UUID()
+        let dropped = UUID()
+
+        let session = Self.session([
+            Self.candidate(failed, openedAt: 0, phase: .unavailable(.failed(Self.failure))),
+            Self.candidate(dropped, openedAt: 1, phase: .unavailable(.disconnected(nil))),
+        ])
+
+        #expect(session.reconnectingIds == [failed, dropped])
+    }
+
+    @Test("A connection the user ended never redials, whatever a stale window still reports")
+    func endedByUserOverridesAStalePhase() {
+        let id = UUID()
+
+        let session = Self.session(
+            [Self.candidate(id, phase: .connected, isActivated: true)],
+            endedByUser: [id]
         )
 
-        #expect(ids == [id])
+        #expect(session.connections == [LastSession.Connection(id: id, reconnects: false)])
     }
 
-    @Test("A cancelled connection attempt is not restored")
-    func cancelledAttemptIsNotRestored() {
-        let ids = RecoveryConnectionList.connectionIds(
-            from: [RecoveryCandidate(connectionId: UUID(), isActivated: false, retainsRestoreIntent: false)]
-        )
+    @Test("A connection in a closing window is left out")
+    func closingWindowIsLeftOut() {
+        let session = Self.session([Self.candidate(UUID(), phase: .closing, isActivated: true)])
 
-        #expect(ids.isEmpty)
+        #expect(session.connections.isEmpty)
     }
 
-    @Test("A window whose server was unreachable is still restored")
-    func failedConnectionIsStillRestored() {
-        let id = UUID()
+    @Test("Connections come back in the order they joined the app")
+    func orderFollowsOpenedAt() {
+        let first = UUID()
+        let second = UUID()
+        let third = UUID()
 
-        let ids = RecoveryConnectionList.connectionIds(
-            from: [RecoveryCandidate(connectionId: id, isActivated: false, retainsRestoreIntent: true)]
-        )
-
-        #expect(ids == [id])
-    }
-
-    @Test("Cancelling one connection leaves the other connected windows restorable")
-    func cancelledAttemptDoesNotDropConnectedWindows() {
-        let connected = UUID()
-        let cancelled = UUID()
-
-        let ids = RecoveryConnectionList.connectionIds(from: [
-            RecoveryCandidate(connectionId: connected, isActivated: true, retainsRestoreIntent: false),
-            RecoveryCandidate(connectionId: cancelled, isActivated: false, retainsRestoreIntent: false),
+        let session = Self.session([
+            Self.candidate(third, openedAt: 30, phase: .connected, isActivated: true),
+            Self.candidate(first, openedAt: 10, phase: .unavailable(.cancelled)),
+            Self.candidate(second, openedAt: 20, phase: .connecting),
         ])
 
-        #expect(ids == [connected])
+        #expect(session.connections.map { $0.id } == [first, second, third])
     }
 
-    @Test("A connection with several windows is listed once")
-    func duplicateConnectionIsListedOnce() {
-        let id = UUID()
+    @Test("Connections that joined at the same moment keep one order across launches")
+    func sameOpenedAtOrdersByIdentifier() {
+        let ids = (0..<4).map { _ in UUID() }
 
-        let ids = RecoveryConnectionList.connectionIds(from: [
-            RecoveryCandidate(connectionId: id, isActivated: true, retainsRestoreIntent: false),
-            RecoveryCandidate(connectionId: id, isActivated: true, retainsRestoreIntent: false),
+        let session = Self.session(ids.map { Self.candidate($0, phase: .connected, isActivated: true) })
+
+        #expect(session.connections.map { $0.id } == ids.sorted { $0.uuidString < $1.uuidString })
+    }
+
+    @Test("A connection hosted by two windows is listed once, at its earliest place")
+    func connectionInTwoWindowsIsListedOnce() {
+        let shared = UUID()
+        let other = UUID()
+
+        let session = Self.session([
+            Self.candidate(other, openedAt: 5, phase: .connected, isActivated: true),
+            Self.candidate(shared, openedAt: 9, phase: .unavailable(.cancelled)),
+            Self.candidate(shared, openedAt: 1, phase: .connecting),
         ])
 
-        #expect(ids == [id])
-    }
-
-    @Test("An activated window and a still-pending one list the connection once")
-    func activatedAndPendingListOnce() {
-        let id = UUID()
-
-        let ids = RecoveryConnectionList.connectionIds(from: [
-            RecoveryCandidate(connectionId: id, isActivated: true, retainsRestoreIntent: false),
-            RecoveryCandidate(connectionId: id, isActivated: false, retainsRestoreIntent: true),
+        #expect(session.connections == [
+            LastSession.Connection(id: shared, reconnects: true),
+            LastSession.Connection(id: other, reconnects: true),
         ])
-
-        #expect(ids == [id])
     }
 
-    @Test("A connection stays restorable while any of its windows is connected")
-    func connectionSurvivesWhenOneWindowIsStillConnecting() {
-        let id = UUID()
+    @Test("The connection on screen is kept only while it is listed")
+    func shownConnectionMustBeListed() {
+        let listed = UUID()
 
-        let ids = RecoveryConnectionList.connectionIds(from: [
-            RecoveryCandidate(connectionId: id, isActivated: false, retainsRestoreIntent: false),
-            RecoveryCandidate(connectionId: id, isActivated: true, retainsRestoreIntent: false),
-        ])
+        let kept = Self.session([Self.candidate(listed, phase: .idle)], shown: listed)
+        let dropped = Self.session([Self.candidate(listed, phase: .idle)], shown: UUID())
 
-        #expect(ids == [id])
-    }
-
-    @Test("No windows means nothing to restore")
-    func emptyCandidatesRestoreNothing() {
-        #expect(RecoveryConnectionList.connectionIds(from: []).isEmpty)
+        #expect(kept.shownConnectionId == listed)
+        #expect(dropped.shownConnectionId == nil)
     }
 
     @Test("Quitting a client-launched session with nothing open keeps the last session")
     func machineSessionWithNothingOpenKeepsTheList() {
-        #expect(!RecoveryConnectionList.shouldSaveOnQuit([], origin: .machine))
-        #expect(RecoveryConnectionList.shouldSaveOnQuit([UUID()], origin: .machine))
-        #expect(RecoveryConnectionList.shouldSaveOnQuit([], origin: .user))
+        let one = LastSession(connections: [LastSession.Connection(id: UUID(), reconnects: false)])
+
+        #expect(!RecoveryConnectionList.shouldSaveOnQuit(.empty, origin: .machine))
+        #expect(RecoveryConnectionList.shouldSaveOnQuit(one, origin: .machine))
+        #expect(RecoveryConnectionList.shouldSaveOnQuit(.empty, origin: .user))
     }
 }

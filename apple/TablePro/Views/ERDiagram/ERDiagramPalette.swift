@@ -16,6 +16,11 @@ internal struct ERDiagramPalette {
     internal let text: NSColor
     internal let headerText: NSColor
     internal let secondaryText: NSColor
+    internal let insertedRow: CGColor
+    internal let modifiedRow: CGColor
+    internal let deletedRow: CGColor
+    internal let deletedText: NSColor
+    internal let droppedEdge: CGColor
 
     private let accentWash: CGColor
     private let clusterWashes: [NSColor: CGColor]
@@ -42,6 +47,11 @@ internal struct ERDiagramPalette {
         text = color(.gridText, otherwise: .labelColor)
         headerText = color(.gridHeaderText, otherwise: .labelColor)
         secondaryText = .secondaryLabelColor
+        insertedRow = Self.bake(color(.gridInserted, otherwise: NativeThemeColors.insertedRow), in: appearance)
+        modifiedRow = Self.bake(color(.gridModified, otherwise: NativeThemeColors.modifiedRow), in: appearance)
+        deletedRow = Self.bake(color(.gridDeleted, otherwise: NativeThemeColors.deletedRow), in: appearance)
+        deletedText = color(.gridDeletedText, otherwise: NativeThemeColors.deletedText)
+        droppedEdge = Self.bake(deletedText, in: appearance)
 
         accentWash = Self.wash(.controlAccentColor, alpha: Self.accentWashAlpha, in: appearance)
         var washes: [NSColor: CGColor] = [:]

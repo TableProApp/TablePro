@@ -11,7 +11,7 @@ import TableProPluginKit
 /// Each one used to be left out of the statement, or written as something else, while the save
 /// reported success. The generator throws it instead, and it reaches the user as the reason the
 /// save was refused.
-enum MongoDBWriteRefusal: Error, Equatable {
+nonisolated enum MongoDBWriteRefusal: Error, Equatable {
     case binarySubtypeUnknown(field: String)
     case binaryNeedsBytes(field: String)
     case truncatedValue(field: String)
@@ -27,6 +27,7 @@ enum MongoDBWriteRefusal: Error, Equatable {
     case identityChanged
     case missingIdentity
     case identitySubtypeUnknown
+    case ambiguousIdentity
 
     var reason: String {
         switch self {
@@ -90,6 +91,8 @@ enum MongoDBWriteRefusal: Error, Equatable {
             return String(localized: "This row has no _id, so TablePro cannot tell which document to change.")
         case .identitySubtypeUnknown:
             return String(localized: "This row's _id is binary data whose subtype is not known, so TablePro cannot tell which document it names.")
+        case .ambiguousIdentity:
+            return String(localized: "This _id reads as more than one value type in this collection, such as text and an ObjectId, so TablePro cannot tell which document the row names. Use a query.")
         }
     }
 

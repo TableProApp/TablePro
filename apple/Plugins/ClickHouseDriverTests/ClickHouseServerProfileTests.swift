@@ -128,6 +128,20 @@ struct ClickHouseServerProfileTests {
         #expect(ClickHouseServerProfile.writableSettings(columns: columns, rows: rows).isEmpty)
     }
 
+    @Test("max_query_size is read from the settings probe, and the documented default stands without it")
+    func maxQuerySizeIsProbed() {
+        let columns = ClickHouseSettingsRows.columns20
+        let rows: [[PluginCellValue]] = [
+            [.text("max_query_size"), .text("1048576"), .text("1"), .text(""), .null, .null, .text("0")],
+        ]
+        let probed = ClickHouseServerProfile(versionText: "25.8.33.6", settings: (columns, rows), catalogRow: nil)
+        let unanswered = ClickHouseServerProfile(versionText: "25.8.33.6", settings: nil, catalogRow: nil)
+        #expect(probed.maxQuerySize == 1_048_576)
+        #expect(probed.writableSettings.contains(.maxQuerySize))
+        #expect(unanswered.maxQuerySize == 262_144)
+        #expect(ClickHouseServerProfile.bootstrap.maxQuerySize == 262_144)
+    }
+
     @Test("A settings answer with no name column yields nothing")
     func settingsWithoutNameColumn() {
         #expect(ClickHouseServerProfile.writableSettings(columns: ["value"], rows: [[.text("0")]]).isEmpty)

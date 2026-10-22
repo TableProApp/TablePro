@@ -16,8 +16,10 @@ public enum ConnectionBundleCodec {
         let json: Data
         do {
             json = try await ConnectionExportCrypto.decrypt(data: data, passphrase: passphrase)
+        } catch ConnectionExportCryptoError.invalidPassphrase {
+            throw ConnectionBundleError.decryptionFailed(ConnectionExportCryptoError.invalidPassphrase.localizedDescription)
         } catch {
-            throw ConnectionBundleError.decryptionFailed(error.localizedDescription)
+            throw ConnectionBundleError.decodingFailed(error.localizedDescription)
         }
         return try decodeJSON(json)
     }
@@ -50,7 +52,7 @@ public enum ConnectionBundleCodec {
         guard probe.formatVersion <= ConnectionBundle.formatVersion else {
             throw ConnectionBundleError.unsupportedVersion(probe.formatVersion)
         }
-        if probe.formatVersion == 1 {
+        if probe.formatVersion == ConnectionBundleV1.formatVersion {
             let envelope = try decodeBody(ConnectionBundleV1.Envelope.self, from: data)
             return try envelope.upgraded().sanitizedForImport()
         }
@@ -68,11 +70,15 @@ public enum ConnectionBundleCodec {
         }
     }
 
+    /// Format 2 only when the bundle needs it, so a file without saved queries or nested groups opens in older builds.
     private static func encodeJSON(_ bundle: ConnectionBundle) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         do {
+            if let envelope = ConnectionBundleV1.Envelope(bundle) {
+                return try encoder.encode(envelope)
+            }
             return try encoder.encode(bundle)
         } catch {
             throw ConnectionBundleError.encodingFailed

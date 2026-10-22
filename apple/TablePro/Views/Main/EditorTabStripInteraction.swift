@@ -123,7 +123,8 @@ internal final class EditorTabStripInteraction: ObservableObject {
 
     internal func beginReorder(of id: UUID) {
         guard reorder == nil else { return }
-        reorder = EditorTabReorder(draggedId: id, order: tabIds)
+        let pinnedIds = Set(tabIds.filter { commands?.isPinned($0) ?? false })
+        reorder = EditorTabReorder(draggedId: id, order: tabIds, pinnedIds: pinnedIds)
     }
 
     /// Moves the dragged tab as the pointer passes each neighbour's centre. Returns true when the
@@ -139,6 +140,7 @@ internal final class EditorTabStripInteraction: ObservableObject {
         )
         guard let destination else { return false }
         live.move(to: destination)
+        guard live != reorder else { return false }
         reorder = live
         return true
     }
@@ -192,9 +194,13 @@ internal struct EditorTabCommands {
     internal let activate: (UUID) -> Void
     internal let keepOpen: (UUID) -> Void
     internal let canKeepOpen: (UUID) -> Bool
+    internal let isPinned: (UUID) -> Bool
+    internal let setPinned: (UUID, Bool) -> Void
     internal let close: (UUID) -> Void
     internal let closeOthers: (UUID) -> Void
+    internal let canCloseOthers: (UUID) -> Bool
     internal let closeAll: () -> Void
+    internal let canCloseAll: () -> Bool
     internal let moveTab: (UUID, Int) -> Void
     internal let canMove: (UUID, Int) -> Bool
     internal let moveBy: (UUID, Int) -> Void

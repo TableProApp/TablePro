@@ -89,7 +89,11 @@ extension TableViewCoordinator {
             content: DataGridCellContent(
                 displayText: formattedValue ?? "",
                 rawValue: rawValue.asText,
-                placeholder: DataGridCellContent.placeholder(for: rawValue, isAbsent: displayRow.isAbsent(columnIndex))
+                placeholder: DataGridCellContent.placeholder(
+                    for: rawValue,
+                    isAbsent: displayRow.isAbsent(columnIndex),
+                    unloadedByteCount: displayRow.unloadedByteCount(columnIndex)
+                )
             ),
             state: DataGridCellState(
                 visualState: visualState(of: displayRow, atDisplayRow: row),
@@ -105,7 +109,8 @@ extension TableViewCoordinator {
             onEmphasizedSelection: onEmphasizedSelection,
             hasOverlay: overlayCell == CellPosition(row: row, column: columnIndex),
             checkboxMark: checkboxMark(row: row, columnIndex: columnIndex),
-            textTone: delegate?.dataGridTextTone(row: row, column: columnIndex)
+            textTone: delegate?.dataGridTextTone(row: row, column: columnIndex),
+            revealsInvisibleCharacters: cellRegistry.showsInvisibleCharacters
         )
     }
 
@@ -126,15 +131,27 @@ extension TableViewCoordinator {
             rawValue: rawValue,
             columnType: columnType
         ) ?? ""
-        guard text.isEmpty else { return text }
+        guard text.isEmpty else { return spokenText(of: text) }
 
-        switch DataGridCellContent.placeholder(for: rawValue, isAbsent: displayRow.isAbsent(columnIndex)) {
+        switch DataGridCellContent.placeholder(
+            for: rawValue,
+            isAbsent: displayRow.isAbsent(columnIndex),
+            unloadedByteCount: displayRow.unloadedByteCount(columnIndex)
+        ) {
         case .null: return String(localized: "NULL")
         case .empty: return String(localized: "Empty")
         case .defaultMarker: return String(localized: "DEFAULT")
         case .absent: return DataGridCellContent.absentFieldText
+        case .unloaded(let byteCount): return DataGridCellContent.unloadedSpokenText(byteCount: byteCount)
         case .none: return text
         }
+    }
+
+    // A mark drawn in the cell is read by its name, or VoiceOver says nothing for it.
+    private func spokenText(of text: String) -> String {
+        guard cellRegistry.showsInvisibleCharacters else { return text }
+        let revealed = RevealedText(text, marksLineBreaks: true)
+        return revealed.revealsAnyCharacter ? revealed.spokenText : text
     }
 
     func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {

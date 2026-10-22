@@ -21,6 +21,7 @@ internal struct TextValueEditor: NSViewRepresentable {
     var movesFocusOnTab: Bool = false
     var textContainerInset = NSSize(width: 4, height: 6)
     var style: Style = .plain
+    var marksInvisibleCharacters = false
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
@@ -93,6 +94,15 @@ internal struct TextValueEditor: NSViewRepresentable {
             textView.isSelectable = true
         }
         applyStyle(to: textView, coordinator: coordinator)
+        applyInvisibleCharacterMarks(to: textView, coordinator: coordinator)
+    }
+
+    private func applyInvisibleCharacterMarks(to textView: NSTextView, coordinator: Coordinator) {
+        if let display = coordinator.invisibleCharacters {
+            display.isEnabled = marksInvisibleCharacters
+        } else if marksInvisibleCharacters {
+            coordinator.invisibleCharacters = InvisibleCharacterTextDisplay.install(on: textView, isEnabled: true)
+        }
     }
 
     private func applyStyle(to textView: NSTextView, coordinator: Coordinator) {
@@ -114,6 +124,7 @@ internal struct TextValueEditor: NSViewRepresentable {
         /// would run on every SwiftUI update pass.
         var lastAppliedText: String = ""
         var themeStyle: ThemeTextViewStyle?
+        var invisibleCharacters: InvisibleCharacterTextDisplay?
 
         init(text: Binding<String>, movesFocusOnTab: Bool) {
             self.text = text

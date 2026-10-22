@@ -1,0 +1,323 @@
+import Foundation
+
+public enum SQLCompletionKind: String, CaseIterable, Sendable {
+    case keyword
+    case table
+    case view
+    case column
+    case function
+    case schema
+    case alias
+    case `operator`
+    case favorite   // Saved SQL favorite (keyword expansion)
+
+    public var iconName: String {
+        switch self {
+        case .keyword: return "k.circle.fill"
+        case .table: return "t.circle.fill"
+        case .view: return "v.circle.fill"
+        case .column: return "c.circle.fill"
+        case .function: return "f.circle.fill"
+        case .schema: return "s.circle.fill"
+        case .alias: return "a.circle.fill"
+        case .operator: return "equal.circle.fill"
+        case .favorite: return "star.circle.fill"
+        }
+    }
+
+    /// Lower sorts first within the same context.
+    public var basePriority: Int {
+        switch self {
+        case .favorite: return 50
+        case .column: return 100
+        case .table: return 200
+        case .view: return 210
+        case .function: return 300
+        case .keyword: return 400
+        case .alias: return 150
+        case .schema: return 500
+        case .operator: return 350
+        }
+    }
+}
+
+public struct SQLCompletionItem: Identifiable, Hashable, Sendable {
+    public let id: UUID
+    public let label: String
+    public let kind: SQLCompletionKind
+    public let insertText: String      // May differ from label
+    public let detail: String?         // Type info, e.g., "VARCHAR(255)"
+    public let documentation: String?
+    public var sortPriority: Int       // Lower ranks first
+    public let filterText: String
+    /// Whether `label` and `insertText` may follow the typed prefix. Defaults to `.fixed`, so a
+    /// vocabulary opts in rather than having to remember to opt out: the kinds carry more than
+    /// language keywords, including value literals and `table.*`, and re-casing those is a
+    /// correctness bug rather than a style choice.
+    public let caseFolding: SQLCompletionCaseFolding
+    // Set on a name the catalog stores, so the connection's identifier rules can spell it.
+    public let identifier: SQLCompletionIdentifier?
+    public var matchedRanges: [Range<Int>] = []
+    public var fuzzyPenalty: Int = 0
+    // `o.total` names a table and a column; a column literally named `order.total` is one name.
+    public var isQualifiedReference = false
+
+    public init(
+        label: String,
+        kind: SQLCompletionKind,
+        insertText: String? = nil,
+        detail: String? = nil,
+        documentation: String? = nil,
+        sortPriority: Int? = nil,
+        filterText: String? = nil,
+        caseFolding: SQLCompletionCaseFolding = .fixed,
+        identifier: SQLCompletionIdentifier? = nil
+    ) {
+        self.id = UUID()
+        self.label = label
+        self.kind = kind
+        self.insertText = insertText ?? label
+        self.detail = detail
+        self.documentation = documentation
+        self.sortPriority = sortPriority ?? kind.basePriority
+        self.filterText = filterText ?? label.lowercased()
+        self.caseFolding = caseFolding
+        self.identifier = identifier
+    }
+
+    private init(recasing item: SQLCompletionItem, label: String, insertText: String) {
+        self.id = item.id
+        self.label = label
+        self.kind = item.kind
+        self.insertText = insertText
+        self.detail = item.detail
+        self.documentation = item.documentation
+        self.sortPriority = item.sortPriority
+        self.filterText = item.filterText
+        self.caseFolding = item.caseFolding
+        self.identifier = item.identifier
+        self.matchedRanges = item.matchedRanges
+        self.fuzzyPenalty = item.fuzzyPenalty
+        self.isQualifiedReference = item.isQualifiedReference
+    }
+
+    /// The same suggestion, spelled differently. `filterText` and `matchedRanges` are carried over
+    /// untouched because they describe the canonical lowercase form the matcher works in.
+    func recased(label: String, insertText: String) -> SQLCompletionItem {
+        SQLCompletionItem(recasing: self, label: label, insertText: insertText)
+    }
+
+    // MARK: - Hashable
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(label)
+        hasher.combine(kind)
+    }
+
+    public static func == (lhs: SQLCompletionItem, rhs: SQLCompletionItem) -> Bool {
+        lhs.label == rhs.label && lhs.kind == rhs.kind
+    }
+}
+
+// MARK: - Factory Methods
+
+public extension SQLCompletionItem {
+    private static let keywordDocs: [String: String] = [
+        "SELECT": "Retrieve data from one or more tables",
+        "FROM": "Specify tables to query data from",
+        "WHERE": "Filter rows based on conditions",
+        "JOIN": "Combine rows from two or more tables",
+        "LEFT JOIN": "Return all rows from left table with matching rows from right",
+        "RIGHT JOIN": "Return all rows from right table with matching rows from left",
+        "INNER JOIN": "Return rows with matches in both tables",
+        "FULL JOIN": "Return all rows when there is a match in either table",
+        "CROSS JOIN": "Return Cartesian product of both tables",
+        "INSERT": "Add new rows to a table",
+        "UPDATE": "Modify existing rows in a table",
+        "DELETE": "Remove rows from a table",
+        "CREATE": "Create database objects (tables, views, indexes)",
+        "ALTER": "Modify database object structure",
+        "DROP": "Remove database objects",
+        "GROUP BY": "Group rows by column values",
+        "ORDER BY": "Sort result set by columns",
+        "HAVING": "Filter groups based on conditions",
+        "LIMIT": "Restrict number of returned rows",
+        "OFFSET": "Skip a number of rows before returning results",
+        "DISTINCT": "Return only unique rows",
+        "UNION": "Combine results of multiple SELECT statements",
+        "INTERSECT": "Return rows common to multiple SELECT statements",
+        "EXCEPT": "Return rows from first SELECT not in second",
+        "AND": "Combine conditions (all must be true)",
+        "OR": "Combine conditions (any must be true)",
+        "NOT": "Negate a condition",
+        "AS": "Create an alias for a table or column",
+        "IN": "Match against a list of values",
+        "BETWEEN": "Match values within a range",
+        "LIKE": "Pattern matching with wildcards",
+        "ILIKE": "Case-insensitive pattern matching (PostgreSQL)",
+        "IS NULL": "Check for null values",
+        "IS NOT NULL": "Check for non-null values",
+        "EXISTS": "Check if subquery returns rows",
+        "NOT EXISTS": "Check if subquery returns no rows",
+        "CASE": "Conditional expression",
+        "WHEN": "Specify condition in CASE expression",
+        "THEN": "Specify result for CASE condition",
+        "ELSE": "Default result in CASE expression",
+        "END": "End CASE expression",
+        "RETURNING": "Return affected rows (PostgreSQL)",
+        "WITH": "Define common table expressions (CTEs)",
+        "VALUES": "Specify row data for INSERT",
+        "SET": "Assign values to columns in UPDATE",
+        "ON": "Specify join condition",
+        "USING": "Specify join columns with matching names",
+        "ASC": "Sort in ascending order",
+        "DESC": "Sort in descending order",
+        "NULL": "Represents a missing or unknown value",
+        "DEFAULT": "Use column default value",
+        "TRUE": "Boolean true value",
+        "FALSE": "Boolean false value",
+        "PRIMARY KEY": "Uniquely identifies each row in a table",
+        "FOREIGN KEY": "References a primary key in another table",
+        "REFERENCES": "Define foreign key reference to another table",
+        "UNIQUE": "Ensure all values in a column are distinct",
+        "CHECK": "Ensure values satisfy a condition",
+        "CONSTRAINT": "Define a named table constraint",
+        "INDEX": "Create an index for faster lookups",
+        "CASCADE": "Propagate action to dependent rows",
+        "RESTRICT": "Prevent action if dependent rows exist",
+        "IF NOT EXISTS": "Only execute if object does not already exist",
+        "IF EXISTS": "Only execute if object exists",
+        "ON DELETE": "Action when referenced row is deleted",
+        "ON UPDATE": "Action when referenced row is updated",
+        "ENGINE": "Specify storage engine (MySQL)",
+        "AUTO_INCREMENT": "Auto-generate sequential values",
+        "PARTITION BY": "Divide window into partitions",
+        "NULLS FIRST": "Sort null values before non-null values",
+        "NULLS LAST": "Sort null values after non-null values",
+        "ON CONFLICT": "Handle unique constraint violations (PostgreSQL)",
+        "ON DUPLICATE KEY UPDATE": "Handle duplicate key on insert (MySQL)",
+    ]
+
+    /// The canonical spelling is whatever the caller passes, which every SQL caller writes in
+    /// uppercase. It is no longer uppercased here, because the case a keyword is presented and
+    /// inserted in belongs to `SQLCompletionCasing` and the typed prefix, neither of which exists
+    /// at construction.
+    static func keyword(
+        _ keyword: String,
+        documentation: String? = nil,
+        caseFolding: SQLCompletionCaseFolding = .caseInsensitive
+    ) -> SQLCompletionItem {
+        let doc = documentation ?? keywordDocs[keyword.uppercased()]
+        return SQLCompletionItem(
+            label: keyword,
+            kind: .keyword,
+            insertText: keyword,
+            documentation: doc,
+            caseFolding: caseFolding
+        )
+    }
+
+    static func table(_ name: String, isView: Bool = false) -> SQLCompletionItem {
+        SQLCompletionItem(
+            label: name,
+            kind: isView ? .view : .table,
+            insertText: name,
+            detail: isView ? "View" : "Table",
+            identifier: .catalog(name)
+        )
+    }
+
+    static func schemaName(_ name: String) -> SQLCompletionItem {
+        SQLCompletionItem(
+            label: name,
+            kind: .schema,
+            insertText: name,
+            detail: String(localized: "Schema"),
+            identifier: .catalog(name)
+        )
+    }
+
+    static func databaseName(_ name: String) -> SQLCompletionItem {
+        SQLCompletionItem(
+            label: name,
+            kind: .schema,
+            insertText: name,
+            detail: String(localized: "Database"),
+            identifier: .catalog(name)
+        )
+    }
+
+    static func column(
+        _ name: String,
+        dataType: String?,
+        tableName: String? = nil,
+        isPrimaryKey: Bool = false,
+        isNullable: Bool = true,
+        defaultValue: String? = nil,
+        comment: String? = nil,
+        identifier: SQLCompletionIdentifier? = nil
+    ) -> SQLCompletionItem {
+        var detailParts: [String] = []
+        if isPrimaryKey { detailParts.append("PK") }
+        if !isNullable { detailParts.append("NOT NULL") }
+        if let dataType { detailParts.append(dataType) }
+        let detail = detailParts.isEmpty ? nil : detailParts.joined(separator: ", ")
+
+        var docParts: [String] = []
+        if let tableName { docParts.append("Column from \(tableName)") }
+        if let defaultValue { docParts.append("Default: \(defaultValue)") }
+        if let comment { docParts.append(comment) }
+        let documentation = docParts.isEmpty ? nil : docParts.joined(separator: "\n")
+
+        return SQLCompletionItem(
+            label: name,
+            kind: .column,
+            insertText: name,
+            detail: detail,
+            documentation: documentation,
+            identifier: identifier
+        )
+    }
+
+    static func function(
+        _ name: String,
+        signature: String? = nil,
+        documentation: String? = nil,
+        caseFolding: SQLCompletionCaseFolding = .caseInsensitive
+    ) -> SQLCompletionItem {
+        // A signature with no parentheses, such as CURRENT_TIMESTAMP, is written bare.
+        let insertText = signature?.contains("(") == true ? "\(name)()" : name
+        return SQLCompletionItem(
+            label: name,
+            kind: .function,
+            insertText: insertText,
+            detail: signature,
+            documentation: documentation,
+            caseFolding: caseFolding
+        )
+    }
+
+    static func `operator`(
+        _ op: String,
+        documentation: String? = nil,
+        caseFolding: SQLCompletionCaseFolding = .caseInsensitive
+    ) -> SQLCompletionItem {
+        SQLCompletionItem(
+            label: op,
+            kind: .operator,
+            insertText: op,
+            documentation: documentation,
+            caseFolding: caseFolding
+        )
+    }
+
+    static func favorite(keyword: String, name: String, query: String) -> SQLCompletionItem {
+        SQLCompletionItem(
+            label: keyword,
+            kind: .favorite,
+            insertText: query,
+            detail: name,
+            documentation: String(query.prefix(200))
+        )
+    }
+}

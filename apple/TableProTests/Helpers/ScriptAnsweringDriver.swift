@@ -26,6 +26,12 @@ final class ScriptAnsweringDriver: DatabaseDriver, @unchecked Sendable {
     private let lock = NSLock()
     private var batches: [SentBatch] = []
     private var statements: [String] = []
+    private var plans: [ExplainedPlan] = []
+
+    struct ExplainedPlan: Equatable {
+        let statement: String
+        let variantId: String
+    }
 
     init(
         connection: DatabaseConnection,
@@ -49,6 +55,10 @@ final class ScriptAnsweringDriver: DatabaseDriver, @unchecked Sendable {
         lock.withLock { statements }
     }
 
+    var explainedPlans: [ExplainedPlan] {
+        lock.withLock { plans }
+    }
+
     var supportsResultSetBatches: Bool { sendsBatchesWhole }
 
     func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult? {
@@ -67,6 +77,11 @@ final class ScriptAnsweringDriver: DatabaseDriver, @unchecked Sendable {
     private func record(_ query: String) -> QueryResult {
         lock.withLock { statements.append(query) }
         return Self.resultSet(columns: ["n"], rows: [["1"]])
+    }
+
+    func explainPlan(statement: String, variantId: String) async throws -> QueryResult {
+        lock.withLock { plans.append(ExplainedPlan(statement: statement, variantId: variantId)) }
+        return Self.resultSet(columns: ["PLAN"], rows: [["[]"]])
     }
 
     func execute(query: String) async throws -> QueryResult { record(query) }

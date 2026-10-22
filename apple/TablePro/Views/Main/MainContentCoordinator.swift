@@ -53,6 +53,8 @@ enum ActiveSheet: Identifiable {
     case exportDialog
     case importDialog(formatId: String)
     case rowImport(formatId: String)
+    /// Several files, or a folder, each imported as rows into its own table. The files are in `importBatch`.
+    case rowImportBatch
     case exportQueryResults
     /// The tables the user right-clicked travel with the request, because the object browser may be
     /// pointed somewhere else by the time the sheet appears.
@@ -81,6 +83,8 @@ enum ActiveSheet: Identifiable {
     /// carries them: the comment is written to the object the user right-clicked, not to a
     /// same-named one wherever the browser points by the time Save is pressed.
     case editObjectComment(DatabaseObjectTarget)
+    case setSequenceNextValue(DatabaseObjectTarget)
+    case editSequence(DatabaseObjectTarget)
     /// Copying carries the whole launch request, because the source database, the source schema
     /// and the objects the user right-clicked are all part of what the sheet opens onto, and the
     /// object browser may be pointed somewhere else by the time the sheet appears.
@@ -91,6 +95,11 @@ enum ActiveSheet: Identifiable {
     /// carries its scope: the document is written where it was read, not wherever the object
     /// browser points by the time Save is pressed.
     case documentEditor(DocumentEditorRequest)
+    /// The database and schema the Types section was right-clicked in travel with the request.
+    case createUserType(database: String?, schema: String?)
+    case searchDatabase(DatabaseSearchSession)
+    case joinBuilder(JoinBuilderLaunchRequest)
+    case generateRows(RowGenerationSession)
 
     var id: String {
         switch self {
@@ -98,6 +107,7 @@ enum ActiveSheet: Identifiable {
         case .exportDialog: "exportDialog"
         case .importDialog(let formatId): "importDialog-\(formatId)"
         case .rowImport(let formatId): "rowImport-\(formatId)"
+        case .rowImportBatch: "rowImportBatch"
         case .exportQueryResults: "exportQueryResults"
         case .transferTables(let tables, let schema):
             "transferTables-\(schema ?? "")-\(tables.sorted().joined(separator: ","))"
@@ -110,10 +120,18 @@ enum ActiveSheet: Identifiable {
         case .editSchema(let container): "editSchema-\(container.id)"
         case .editObjectComment(let target):
             "editObjectComment-\(target.scope.database)-\(target.scope.schema ?? "")-\(target.name)"
+        case .setSequenceNextValue(let target):
+            "setSequenceNextValue-\(target.scope.database)-\(target.scope.schema ?? "")-\(target.name)"
+        case .editSequence(let target):
+            "editSequence-\(target.scope.database)-\(target.scope.schema ?? "")-\(target.name)"
         case .copyObjects(let launch): "copyObjects-\(launch.id)"
         case .rewind: "rewind"
         case .tableRebuildReview: "tableRebuildReview"
         case .documentEditor(let request): "documentEditor-\(request.id.uuidString)"
+        case .createUserType(let database, let schema): "createUserType-\(database ?? "")-\(schema ?? "")"
+        case .searchDatabase(let session): "searchDatabase-\(session.id.uuidString)"
+        case .joinBuilder(let launch): "joinBuilder-\(launch.id.uuidString)"
+        case .generateRows(let session): "generateRows-\(session.id.uuidString)"
         }
     }
 }
@@ -215,6 +233,10 @@ final class MainContentCoordinator: ObservableObject {
     /// not currently looking at.
     @Published var structureSessions: [UUID: StructureEditingSession] = [:]
     @Published var createTableDrafts: [UUID: CreateTableDraft] = [:]
+    /// A type tab's queued changes, kept here for the same two reasons.
+    @Published var userTypeEditors: [UUID: UserTypeEditorModel] = [:]
+    // Held here for the same reason: the diagram stages schema edits that Save and the close gate reach.
+    @Published var erDiagramModels: [UUID: ERDiagramViewModel] = [:]
 
     /// Tabs holding staged principal changes. `usersRolesActions` is nilled the moment the tab is
     /// deselected, but the view model behind it is cached per tab id and keeps the staged work, so
@@ -308,7 +330,11 @@ final class MainContentCoordinator: ObservableObject {
     @Published var sessionContexts: [PluginSessionContext] = []
     @Published var containerDropRequest: DatabaseDropRequest?
     @Published var importFile: ImportFileHandoff?
+    @Published var importBatch: ImportBatchFiles.Resolution?
     @Published var exportPreselection: ExportPreselection?
+    @Published var exportFormatId: String?
+    // Kept after the sheet closes, so reopening Search Database after opening a result shows the results again.
+    var databaseSearchSession: DatabaseSearchSession?
     @Published var pendingLoadTrigger: TableLoadTrigger?
     var deferredRestoreLoadTabId: UUID?
 
@@ -869,15 +895,17 @@ final class MainContentCoordinator: ObservableObject {
         trailingPaneProxy?.showInspector()
     }
 
-    /// Set up the plugin driver for query building dispatch on the query builder and change manager.
     internal func setupPluginDriver() {
         guard let driver = services.databaseManager.driver(for: connectionId) else { return }
-        let pluginDriver = driver.queryBuildingPluginDriver
-        /// `pluginDriver` is published, so writing the same driver back on every appearance
-        /// re-evaluated every view that reads the change manager for nothing.
-        guard pluginDriver !== changeManager.pluginDriver else { return }
-        queryBuilder.setPluginDriver(pluginDriver)
-        changeManager.pluginDriver = pluginDriver
+        // Both are published: writing the same driver back on every appearance re-evaluates every view that reads them.
+        let browseBuilder = driver.queryBuildingPluginDriver
+        if !queryBuilder.usesPluginDriver(browseBuilder) {
+            queryBuilder.setPluginDriver(browseBuilder)
+        }
+        let rowWriter = driver.rowWritingPluginDriver
+        if rowWriter !== changeManager.pluginDriver {
+            changeManager.pluginDriver = rowWriter
+        }
     }
 
     func markTeardownScheduled() {
@@ -1002,6 +1030,8 @@ final class MainContentCoordinator: ObservableObject {
         draftSaveTask = nil
         redisDatabaseSwitchTask?.cancel()
         redisDatabaseSwitchTask = nil
+        databaseSearchSession?.stop()
+        databaseSearchSession = nil
 
         dataTabDelegate?.tableViewCoordinator?.releaseData()
 
@@ -1012,6 +1042,8 @@ final class MainContentCoordinator: ObservableObject {
         for session in structureSessions.values { session.releaseViewWiring() }
         structureSessions.removeAll()
         createTableDrafts.removeAll()
+        userTypeEditors.removeAll()
+        erDiagramModels.removeAll()
         displayFormatsCache.removeAll()
         displayOrderCache.removeAll()
         displayStateCache.removeAll()
@@ -1375,7 +1407,7 @@ final class MainContentCoordinator: ObservableObject {
             return
         }
         let isTableTab = tab.tabType == .table
-        let grammar = lexicalGrammar
+        let (grammar, lengthColumns) = (lexicalGrammar, unloadedValueLengthColumns(for: tab))
 
         let failureOutput = ServerOutputBox()
         let queryTask = Task { [weak self] in
@@ -1405,7 +1437,7 @@ final class MainContentCoordinator: ObservableObject {
                     let edits = isAutoLoad ? nil : await SucceededStatements.single(
                         statement.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
                     )
-                    return (fetched, edits)
+                    return (fetched.foldingUnloadedValues(lengthColumns: lengthColumns), edits)
                 }
                 let fetchEndedAt = ContinuousClock.now
                 if !isAutoLoad { Self.postStatementRan(statement.sql, on: conn, succeeded: tableEdits) }
@@ -1470,7 +1502,8 @@ final class MainContentCoordinator: ObservableObject {
                         source: source,
                         serverOutput: fetchResult.serverOutput,
                         rowLocators: isTableTab ? fetchResult.rowLocators : nil,
-                        absentCells: fetchResult.absentCells
+                        absentCells: fetchResult.absentCells,
+                        unloadedCells: fetchResult.unloadedCells
                     )
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)
@@ -1538,12 +1571,13 @@ final class MainContentCoordinator: ObservableObject {
         let editorLanguage = services.pluginManager.editorLanguage(for: connection.type)
         let pluginBuildsBrowse = (services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter)?
             .queryBuildingPluginDriver != nil
-        /// A SQL engine whose plugin writes its own browse gets no table from a query's text, and the name a
-        /// query tab carries came from an earlier result or an older build, so it can name another table.
-        if tab.tabType != .table, editorLanguage == .sql, pluginBuildsBrowse {
+        /// An engine whose plugin writes its own browse, or whose language is not SQL, gets no table from a query's
+        /// text, and the name a query tab carries came from an earlier result or an older build, so it can name
+        /// another collection. A pipeline's `_id` can also be a group key that names an unrelated document.
+        let usesNoSQLBrowsing = editorLanguage != .sql || pluginBuildsBrowse
+        if tab.tabType != .table, usesNoSQLBrowsing {
             return (nil, false)
         }
-        let usesNoSQLBrowsing = editorLanguage != .sql || pluginBuildsBrowse
         if usesNoSQLBrowsing {
             let name = tab.tableContext.tableName
             return (name, name != nil)
@@ -1571,7 +1605,7 @@ final class MainContentCoordinator: ObservableObject {
         if result.isEmpty,
            let scope = selectedTabScope,
            let createSQL = try? await services.databaseManager.withMetadataDriver(scope: scope, { driver in
-               try await driver.fetchTableDDL(table: tableName)
+               try await driver.fetchTableDDL(table: tableName, schema: scope.schema)
            }) {
             for col in columnInfo {
                 if let values = QuerySqlParser.parseSQLiteCheckConstraintValues(

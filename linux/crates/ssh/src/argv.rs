@@ -46,6 +46,7 @@ pub(crate) fn master_args(
     liveness: &LivenessPolicy,
     host_keys: Option<HostKeyChecking>,
     config_file: Option<&Path>,
+    identities_only: bool,
 ) -> Vec<OsString> {
     let mut args: Vec<OsString> = Vec::new();
     if let Some(config_file) = config_file {
@@ -86,6 +87,10 @@ pub(crate) fn master_args(
             if let Some(path) = path {
                 args.push("-i".into());
                 args.push(path.as_os_str().to_owned());
+                // ssh offers the agent's other keys before a file-only key; MaxAuthTries can end the login first.
+                if identities_only {
+                    push_option(&mut args, "IdentitiesOnly=yes".into());
+                }
             }
         }
         SshAuth::Password { .. } => {
@@ -183,6 +188,7 @@ mod tests {
             &LivenessPolicy::DESKTOP,
             None,
             None,
+            false,
         );
         assert_eq!(
             strings(&args),
@@ -260,6 +266,7 @@ mod tests {
                     &LivenessPolicy::DESKTOP,
                     host_keys,
                     None,
+                    false,
                 );
                 let strict: Vec<&str> = strings(&args)
                     .into_iter()
@@ -279,6 +286,7 @@ mod tests {
             &LivenessPolicy::DESKTOP,
             None,
             None,
+            false,
         ))
         .join(" ");
         assert!(!without.contains(" -p ") && !without.contains(" -l "));
@@ -288,6 +296,7 @@ mod tests {
             &LivenessPolicy::DESKTOP,
             None,
             None,
+            false,
         );
         assert_eq!(
             strings(&with[with.len() - 6..]),
@@ -305,6 +314,7 @@ mod tests {
             &LivenessPolicy::DESKTOP,
             None,
             None,
+            false,
         );
         let args = strings(&args);
         assert_eq!(args.iter().filter(|arg| **arg == "-J").count(), 1);
@@ -320,6 +330,7 @@ mod tests {
             &LivenessPolicy::DESKTOP,
             None,
             Some(Path::new("/run/user/1000/m/ssh_config")),
+            false,
         );
 
         assert_eq!(strings(&args)[..3], ["-F", "/run/user/1000/m/ssh_config", "-M"]);
@@ -328,21 +339,30 @@ mod tests {
 
     #[test]
     fn private_key_path_adds_minus_i() {
-        let auth = SshAuth::PrivateKey {
-            path: Some(PathBuf::from("/home/deploy/.ssh/id_ed25519")),
-            passphrase: None,
+        let key_file = |identities_only| {
+            let auth = SshAuth::PrivateKey {
+                path: Some(PathBuf::from("/home/deploy/.ssh/id_ed25519")),
+                passphrase: None,
+            };
+            let args = master_args(
+                &config(None, None, auth),
+                Path::new("/tmp/control"),
+                &LivenessPolicy::DESKTOP,
+                None,
+                None,
+                identities_only,
+            );
+            strings(&args).join(" ")
         };
-        let args = master_args(
-            &config(None, None, auth),
-            Path::new("/tmp/control"),
-            &LivenessPolicy::DESKTOP,
-            None,
-            None,
-        );
-        let joined = strings(&args).join(" ");
+        let pinned = key_file(true);
+        let unpinned = key_file(false);
         assert!(
-            joined.contains(" -i /home/deploy/.ssh/id_ed25519 -- db-bastion"),
-            "{joined}"
+            pinned.contains(" -i /home/deploy/.ssh/id_ed25519 -o IdentitiesOnly=yes -- db-bastion"),
+            "{pinned}"
+        );
+        assert!(
+            unpinned.contains(" -i /home/deploy/.ssh/id_ed25519 -- db-bastion"),
+            "{unpinned}"
         );
 
         let without_path = SshAuth::PrivateKey {
@@ -355,8 +375,10 @@ mod tests {
             &LivenessPolicy::DESKTOP,
             None,
             None,
+            true,
         );
         assert!(!strings(&args).contains(&"-i"));
+        assert!(!strings(&args).contains(&"IdentitiesOnly=yes"));
     }
 
     #[test]
@@ -381,6 +403,7 @@ mod tests {
                 &LivenessPolicy::DESKTOP,
                 None,
                 None,
+                false,
             );
             let preferred = strings(&args)
                 .into_iter()

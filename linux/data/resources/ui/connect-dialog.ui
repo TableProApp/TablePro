@@ -123,8 +123,11 @@
                   <object class="AdwPreferencesGroup">
                     <property name="title" translatable="yes">Options</property>
                     <child>
-                      <object class="AdwSwitchRow" id="read_only_row">
-                        <property name="title" translatable="yes">Read-Only Mode</property>
+                      <object class="AdwComboRow" id="safe_mode_row">
+                        <property name="title" translatable="yes">Safe Mode</property>
+                        <property name="model">
+                          <object class="GtkStringList" id="safe_mode_names"/>
+                        </property>
                       </object>
                     </child>
                   </object>

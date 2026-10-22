@@ -12,8 +12,6 @@ use futures_util::TryStreamExt;
 use sqlx::mysql::{MySqlConnection, MySqlRow};
 use sqlx::{AssertSqlSafe, Either, Executor as _, Row as _};
 use tablepro_core::column::ResultColumn;
-use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
 use tablepro_core::{DriverError, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation, Value};
 use tokio_util::sync::CancellationToken;
 
@@ -23,6 +21,7 @@ use crate::errors::map_error;
 use crate::flavour::MySqlFlavour;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
 use crate::mysql_wire_format::MySqlWireFormat;
+use crate::script_split;
 
 /// How many rows travel in one `Rows` event.
 const ROWS_PER_EVENT: usize = 256;
@@ -31,34 +30,23 @@ const ROWS_PER_EVENT: usize = 256;
 pub(crate) struct RunOutcome {
     /// The sink stopped reading, so the run was cut short.
     pub consumer_gone: bool,
+    /// A stop came between two statements, so the rest was not sent.
+    pub halted: bool,
 }
 
-/// The texts to send. A script with mysql-client DELIMITER lines is
-/// split where the client would split it, since the server does not
-/// know the directive; anything else goes whole, and the server runs it
-/// as one multi-statement batch.
-pub(crate) fn batches(sql: &str) -> Vec<&str> {
-    let plan = ScriptPlan::build(sql, SqlGrammar::MySql, LexicalSettings::default_for(SqlGrammar::MySql));
-    let directives = plan
-        .tokens(0..sql.len())
-        .any(|token| token.kind == ScriptTokenKind::Directive);
-    if !directives || !plan.diagnostics().is_empty() {
-        return vec![sql];
-    }
-    plan.statements().iter().map(|statement| statement.text(sql)).collect()
-}
-
-/// Run the script. When the sink stops reading, `consumer_gone` is
-/// cancelled so the caller can stop the server. The batch already sent
-/// is still read to its end, unshown, since only that frees the
-/// connection, and no later batch is sent.
+/// Run the script one text per round trip (`script_split`), sending the
+/// next only while `halt` says no stop has come. When the sink stops
+/// reading, `stopped` is cancelled so the caller can stop the server.
+/// The text already sent is still read to its end, unshown, since only
+/// that frees the connection.
 pub(crate) async fn run_script(
     connection: &mut MySqlConnection,
     flavour: MySqlFlavour,
     sql: &str,
     limit: RowLimit,
     sink: &mut dyn ResultSink,
-    consumer_gone: &CancellationToken,
+    stopped: &CancellationToken,
+    halt: impl Fn() -> bool,
 ) -> Result<RunOutcome, DriverError> {
     let mut emitter = Emitter {
         sink,
@@ -67,8 +55,13 @@ pub(crate) async fn run_script(
         sets: 0,
         gone: false,
     };
-    for text in batches(sql) {
+    let mut halted = false;
+    for text in script_split::texts(sql) {
         if emitter.gone {
+            break;
+        }
+        if stopped.is_cancelled() || halt() {
+            halted = true;
             break;
         }
         let results = connection.fetch_many(sqlx::raw_sql(AssertSqlSafe(text.to_owned())));
@@ -79,12 +72,13 @@ pub(crate) async fn run_script(
                 Either::Left(done) => emitter.done(done.rows_affected()).await,
             }
             if emitter.gone {
-                consumer_gone.cancel();
+                stopped.cancel();
             }
         }
     }
     Ok(RunOutcome {
         consumer_gone: emitter.gone,
+        halted,
     })
 }
 
@@ -194,18 +188,5 @@ mod tests {
         assert_eq!(truncation(100, 100), (Truncation::Complete, Some(100)));
         assert_eq!(truncation(101, 100), (Truncation::ServerStopped, None));
         assert_eq!(truncation(150_000, 100), (Truncation::ReadPastLimit, Some(150_000)));
-    }
-
-    #[test]
-    fn delimiter_scripts_split_where_the_client_would() {
-        let script = "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END//\nDELIMITER ;\nCALL p();";
-
-        let split = batches(script);
-
-        assert_eq!(split.len(), 2, "{split:?}");
-        assert!(split[0].starts_with("CREATE PROCEDURE"), "{split:?}");
-        assert!(split[0].ends_with("END"), "{split:?}");
-        assert!(split[1].starts_with("CALL p()"), "{split:?}");
-        assert_eq!(batches("SELECT 1; SELECT 2"), ["SELECT 1; SELECT 2"]);
     }
 }

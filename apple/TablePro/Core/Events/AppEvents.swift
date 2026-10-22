@@ -49,6 +49,9 @@ final class AppEvents {
 
     let connectionStatusChanged = PassthroughSubject<ConnectionStatusChange, Never>()
 
+    // A driver's Vault lease can no longer be renewed, so the driver has to sign in again.
+    let credentialLeaseEnding = PassthroughSubject<CredentialLeaseEnding, Never>()
+
     /// The step a connection attempt is currently on. Presentational detail inside the
     /// connecting phase, never a second source of truth for which pane a window shows.
     let connectionStageChanged = PassthroughSubject<ConnectionStageChange, Never>()
@@ -92,6 +95,9 @@ final class AppEvents {
 
     /// A window put another connections-strip entry in front, so the strip's highlight moves.
     let visibleContainerChanged = PassthroughSubject<Void, Never>()
+
+    /// A session connection started or stopped holding a transaction. Payload is the connection's id.
+    let sessionTransactionsChanged = PassthroughSubject<UUID, Never>()
 
     // MARK: - Data Sources
 
@@ -149,6 +155,13 @@ final class AppEvents {
 struct ConnectionStatusChange: Sendable {
     let connectionId: UUID
     let status: ConnectionStatus
+}
+
+struct CredentialLeaseEnding: Sendable, Equatable {
+    let connectionId: UUID
+    let driver: ObjectIdentifier
+    // How long the database user has left.
+    let remaining: Duration
 }
 
 struct ConnectionStageChange: Sendable {
