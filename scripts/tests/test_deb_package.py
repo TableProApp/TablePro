@@ -13,7 +13,14 @@ def _write_executable(path: Path, body: str) -> None:
 
 
 def _stage_package(
-    source: Path, root: Path, *, include_aliases: bool, include_schema: bool = True, include_askpass: bool = True
+    source: Path,
+    root: Path,
+    *,
+    include_aliases: bool,
+    include_schema: bool = True,
+    include_askpass: bool = True,
+    package_name: str = "bookie",
+    include_relations: bool = True,
 ) -> Path:
     version = tomllib.loads((source / "Cargo.toml").read_text())["workspace"]["package"]["version"] + "-1"
     stage = root / "stage"
@@ -22,7 +29,7 @@ def _stage_package(
         stage / "usr/share/applications",
         stage / "usr/share/metainfo",
         stage / "usr/share/icons/hicolor/scalable/apps",
-        stage / "usr/share/doc/tablepro",
+        stage / "usr/share/doc/bookie",
         stage / "usr/share/glib-2.0/schemas",
         stage / "DEBIAN",
     ):
@@ -51,22 +58,23 @@ def _stage_package(
             source / "apps/linux/data/com.tablepro.linux.gschema.xml",
             stage / "usr/share/glib-2.0/schemas/com.tablepro.linux.gschema.xml",
         )
-    (stage / "usr/share/doc/tablepro/LICENSE.md").write_text((source / "LICENSE.md").read_text())
-    (stage / "usr/share/doc/tablepro/policy.example.toml").write_text(
+    (stage / "usr/share/doc/bookie/LICENSE.md").write_text((source / "LICENSE.md").read_text())
+    (stage / "usr/share/doc/bookie/policy.example.toml").write_text(
         (source / "apps/linux/packaging/policy.example.toml").read_text()
     )
     (stage / "DEBIAN/control").write_text(
-        "Package: tablepro\n"
+        f"Package: {package_name}\n"
         f"Version: {version}\n"
         "Section: database\n"
         "Priority: optional\n"
         "Architecture: amd64\n"
         "Maintainer: BookiE Contributors <noreply@tablepro.app>\n"
         "Homepage: https://github.com/cozyGarage/BookiE\n"
-        "Description: Native Linux database client\n"
+        + ("Replaces: tablepro\nConflicts: tablepro\nProvides: tablepro\n" if include_relations else "")
+        + "Description: Native Linux database client\n"
         " BookiE test fixture\n"
     )
-    package = root / f"tablepro_{version}_amd64.deb"
+    package = root / f"{package_name}_{version}_amd64.deb"
     subprocess.run(
         ["dpkg-deb", "--root-owner-group", "--build", str(stage), str(package)],
         check=True,
@@ -130,6 +138,14 @@ def main() -> None:
         result = subprocess.run(["bash", str(validator), str(missing_schema)], capture_output=True, text=True)
         assert result.returncode != 0
         assert "package is missing /usr/share/glib-2.0/schemas/com.tablepro.linux.gschema.xml" in result.stderr, result.stderr
+        old_name = _stage_package(source, root / "old-name", include_aliases=True, package_name="tablepro")
+        result = subprocess.run(["bash", str(validator), str(old_name)], capture_output=True, text=True)
+        assert result.returncode != 0
+        assert "Debian package name must be bookie" in result.stderr, result.stderr
+        no_relations = _stage_package(source, root / "no-relations", include_aliases=True, include_relations=False)
+        result = subprocess.run(["bash", str(validator), str(no_relations)], capture_output=True, text=True)
+        assert result.returncode != 0
+        assert "must declare Replaces: tablepro" in result.stderr, result.stderr
     print("Debian package symlink validation passed")
 
 

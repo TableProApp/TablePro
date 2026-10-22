@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The Debian package is named `bookie` (`bookie_X.Y.Z-1_amd64.deb`). It replaces an installed `tablepro` package and keeps your settings, saved connections and credentials. The `tablepro` commands remain as aliases.
+
 ### Fixed
 
 - PostgreSQL queries ending on a full result page complete without a false column-change error.

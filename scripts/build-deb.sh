@@ -7,7 +7,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${DEB_OUT:-$ROOT/apps/linux/packaging/out}"
 VERSION="${DEB_VERSION:-$(python3 "$ROOT/scripts/check-release-version.py" --print)-1}"
 ARCH="${DEB_ARCH:-amd64}"
-PKG_NAME="tablepro_${VERSION}_${ARCH}"
+PKG_NAME="bookie_${VERSION}_${ARCH}"
 mkdir -p "$OUT"
 
 # Force on-disk target dir: agent environments may point CARGO_TARGET_DIR
@@ -47,12 +47,12 @@ install -Dm644 apps/linux/flatpak/com.tablepro.linux.metainfo.xml "$STAGE/usr/sh
 install -Dm644 apps/linux/data/com.tablepro.linux.gschema.xml "$STAGE/usr/share/glib-2.0/schemas/com.tablepro.linux.gschema.xml"
 install -Dm644 apps/linux/flatpak/icons/scalable/com.tablepro.linux.svg \
   "$STAGE/usr/share/icons/hicolor/scalable/apps/com.tablepro.linux.svg"
-install -Dm644 apps/linux/packaging/policy.example.toml "$STAGE/usr/share/doc/tablepro/policy.example.toml"
-install -Dm644 LICENSE.md "$STAGE/usr/share/doc/tablepro/LICENSE.md"
+install -Dm644 apps/linux/packaging/policy.example.toml "$STAGE/usr/share/doc/bookie/policy.example.toml"
+install -Dm644 LICENSE.md "$STAGE/usr/share/doc/bookie/LICENSE.md"
 
 mkdir -p "$STAGE/DEBIAN"
 cat >"$STAGE/DEBIAN/control" <<EOF
-Package: tablepro
+Package: bookie
 Version: ${VERSION}
 Section: database
 Priority: optional
@@ -60,6 +60,9 @@ Architecture: ${ARCH}
 Maintainer: BookiE Contributors <noreply@tablepro.app>
 Homepage: https://github.com/cozyGarage/BookiE
 Depends: libgtk-4-1, libadwaita-1-0, libgtksourceview-5-0, libsecret-1-0, libgssapi-krb5-2, libkrb5-3, libsqlite3-0
+Replaces: tablepro
+Conflicts: tablepro
+Provides: tablepro
 Description: Native Linux database client
  BookiE is a native GTK4 / libadwaita database client. It installs
  bookie and bookie-agentd, with tablepro aliases.

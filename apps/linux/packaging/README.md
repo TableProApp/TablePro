@@ -33,7 +33,7 @@ The Debian builder and validator use the workspace release version with Debian r
 
 ```bash
 DEB_VERSION=0.2.0-1 ./scripts/build-deb.sh
-sudo apt install ./apps/linux/packaging/out/tablepro_0.2.0-1_amd64.deb
+sudo apt install ./apps/linux/packaging/out/bookie_0.2.0-1_amd64.deb
 ```
 
 The package name stays `tablepro`. It installs `/usr/bin/bookie`, `/usr/bin/bookie-agentd`, and `/usr/bin/tablepro-askpass`, with legacy `tablepro` / `tablepro-agentd` aliases. It does not install or enable a user service.

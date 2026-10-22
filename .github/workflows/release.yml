@@ -8,6 +8,8 @@ on:
     paths:
       - ".github/workflows/release.yml"
       - "scripts/build-appimage.sh"
+      - "scripts/build-deb.sh"
+      - "scripts/validate-deb-package.sh"
       - "scripts/release-notes.py"
   workflow_dispatch:
     inputs:

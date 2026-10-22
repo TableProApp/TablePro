@@ -27,7 +27,7 @@ fetch "$GTK_PLUGIN_URL" "$GTK_PLUGIN_SHA256" "$TOOLS/linuxdeploy-plugin-gtk.sh"
 
 DEB_OUT="$OUT/stage" "$ROOT/scripts/build-deb.sh"
 APPDIR="$OUT/BookiE.AppDir"
-cp -a "$OUT/stage/tablepro_${VERSION}-1_amd64" "$APPDIR"
+cp -a "$OUT/stage/bookie_${VERSION}-1_amd64" "$APPDIR"
 rm -rf "$APPDIR/DEBIAN"
 
 cd "$OUT"

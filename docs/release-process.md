@@ -6,7 +6,7 @@ A release is a git tag named `linux-vX.Y.Z` on the `linux` branch. Pushing the t
 
 | File | Built by | Install |
 |---|---|---|
-| `tablepro_X.Y.Z-1_amd64.deb` | `scripts/build-deb.sh` on Debian testing | `sudo apt install ./tablepro_X.Y.Z-1_amd64.deb` |
+| `bookie_X.Y.Z-1_amd64.deb` | `scripts/build-deb.sh` on Debian testing | `sudo apt install ./bookie_X.Y.Z-1_amd64.deb` |
 | `bookie-X.Y.Z-1-x86_64.pkg.tar.zst` | `scripts/build-arch-rc.sh` in an Arch container | `sudo pacman -U bookie-X.Y.Z-1-x86_64.pkg.tar.zst` |
 | `bookie.flatpak` | `flatpak-builder` from `apps/linux/flatpak` | `flatpak install --user bookie.flatpak` |
 | `BookiE-X.Y.Z-x86_64.AppImage` | `scripts/build-appimage.sh` (linuxdeploy with the GTK plugin) | `chmod +x` and run |

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
-  echo "usage: $0 /path/to/tablepro.deb" >&2
+  echo "usage: $0 /path/to/bookie.deb" >&2
   exit 2
 fi
 package="$1"
@@ -14,10 +14,16 @@ fi
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 expected_version="${DEB_VERSION:-$(python3 "$root/scripts/check-release-version.py" --print)-1}"
 control="$(dpkg-deb -I "$package")"
-if ! grep -Eq '^[[:space:]]*Package: tablepro$' <<<"$control"; then
-  echo "Debian package name must remain tablepro" >&2
+if ! grep -Eq '^[[:space:]]*Package: bookie$' <<<"$control"; then
+  echo "Debian package name must be bookie" >&2
   exit 1
 fi
+for relation in Replaces Conflicts Provides; do
+  if [[ "$(dpkg-deb -f "$package" "$relation")" != tablepro ]]; then
+    echo "the Debian package must declare $relation: tablepro so it takes over from the old package name" >&2
+    exit 1
+  fi
+done
 if [[ "$(dpkg-deb -f "$package" Version)" != "$expected_version" ]]; then
   echo "Debian package version must be $expected_version" >&2
   exit 1
@@ -42,8 +48,8 @@ for required in \
   usr/share/metainfo/com.tablepro.linux.metainfo.xml \
   usr/share/icons/hicolor/scalable/apps/com.tablepro.linux.svg \
   usr/share/glib-2.0/schemas/com.tablepro.linux.gschema.xml \
-  usr/share/doc/tablepro/LICENSE.md \
-  usr/share/doc/tablepro/policy.example.toml; do
+  usr/share/doc/bookie/LICENSE.md \
+  usr/share/doc/bookie/policy.example.toml; do
   if [[ ! -e "$stage/$required" ]]; then
     echo "package is missing /$required" >&2
     exit 1

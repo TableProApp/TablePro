@@ -40,7 +40,7 @@ for base in "${images[@]}"; do
       cd /work
       DEB_OUT=/work/out bash scripts/build-deb.sh >/tmp/build.log 2>&1 || { tail -40 /tmp/build.log; exit 1; }
       tail -3 /tmp/build.log
-      deb=$(ls /work/out/tablepro_*.deb)
+      deb=$(ls /work/out/bookie_*.deb)
     fi
     dpkg-deb --info "$deb" | sed -n "1,12p"
     mkdir -p ~/.config/tablepro ~/.local/share/tablepro
@@ -51,9 +51,9 @@ for base in "${images[@]}"; do
     newer_version="${older_version}+bookietest1"
     dpkg-deb -R "$older" /work/repack
     sed -i "s/^Version: .*/Version: $newer_version/" /work/repack/DEBIAN/control
-    newer="/work/out/tablepro_${newer_version}_amd64.deb"
+    newer="/work/out/bookie_${newer_version}_amd64.deb"
     dpkg-deb --root-owner-group --build /work/repack "$newer" >/dev/null
-    installed_version() { dpkg-query -W -f="\${Version}" tablepro; }
+    installed_version() { dpkg-query -W -f="\${Version}" bookie; }
     keeps_user_data() {
       test "$(cat ~/.config/tablepro/connections.json)" = keep
       test "$(cat ~/.local/share/tablepro/history.db)" = keep
@@ -71,17 +71,22 @@ for base in "${images[@]}"; do
     bash /src/scripts/check-installed-deb.sh
     keeps_user_data
     if [ -n "${PREVIOUS_DEB_NAME:-}" ]; then
-      apt-get purge -y -qq tablepro >/dev/null
+      apt-get purge -y -qq bookie >/dev/null
       apt-get install -y -qq "/previous/$PREVIOUS_DEB_NAME" >/dev/null
-      test "$(installed_version)" = "$(dpkg-deb -f "/previous/$PREVIOUS_DEB_NAME" Version)"
+      previous_package=$(dpkg-deb -f "/previous/$PREVIOUS_DEB_NAME" Package)
+      test "$(dpkg-query -W -f="\${Version}" "$previous_package")" = "$(dpkg-deb -f "/previous/$PREVIOUS_DEB_NAME" Version)"
       keeps_user_data
       apt-get install -y -qq "$newer" >/dev/null
       test "$(installed_version)" = "$newer_version"
+      if [ "$previous_package" != bookie ]; then
+        old_state=$(dpkg-query -W -f="\${db:Status-Abbrev}" "$previous_package" 2>/dev/null || true)
+        case "$old_state" in ii*) echo "the old $previous_package package is still installed"; exit 1 ;; esac
+      fi
       bash /src/scripts/check-installed-deb.sh
       keeps_user_data
       echo "an upgrade from the released package keeps the user data"
     fi
-    apt-get purge -y -qq tablepro >/dev/null
+    apt-get purge -y -qq bookie >/dev/null
     test ! -e /usr/bin/bookie
     keeps_user_data
     echo "install, reinstall, upgrade, downgrade and purge keep the user data under the tablepro paths"

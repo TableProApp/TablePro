@@ -23,6 +23,8 @@ The package artifacts recorded below are from [`linux-v0.1.5`](https://github.co
 
 The v0.1.5 release did not publish Fedora, AUR, Flathub, 32-bit or ARM packages.
 
+Builds from the `linux` branch after 0.2.0 name the Debian package `bookie` (`bookie_X.Y.Z-1_amd64.deb`). It declares `Replaces`, `Conflicts` and `Provides` for `tablepro`, so installing it replaces an installed `tablepro` package and keeps settings and credentials. The 0.2.0 Debian package is still named `tablepro`.
+
 ## Rust toolchain
 
 Rust 1.98 is the minimum supported version, declared in `rust-toolchain.toml`, `Cargo.toml` and `clippy.toml`. CI compiles and lints with 1.98, and a weekly job lints with current stable.
