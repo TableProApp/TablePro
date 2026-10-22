@@ -36,7 +36,17 @@ teardown() {
 
 bash "$FIXTURE/generate-materials.sh" --force
 compose down --volumes --remove-orphans >/dev/null 2>&1 || true
-compose up -d --build --wait
+if compose up -d --build --wait; then
+  :
+else
+  startup_status=$?
+  compose ps --all || true
+  for container in $(compose ps --all --quiet); do
+    docker inspect --format '{{json .State.Health}}' "$container" || true
+  done
+  compose logs --no-color --tail 50 || true
+  exit "$startup_status"
+fi
 
 export TABLEPRO_FIXTURE_DRIVER_TLS=1
 export TABLEPRO_DRIVER_TLS_MATERIALS="$FIXTURE/materials"
