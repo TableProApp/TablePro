@@ -448,10 +448,17 @@ nonisolated struct MongoDBStatementGenerator {
         }
     }
 
+    // The validator's `_id` kind, else the last read's when its `_id`s shared one, else the one kind every read held.
+    private var uniformIdentityKind: BsonValueKind? {
+        if let kind = declaredKinds[MongoDBCollectionDDL.idField] ?? identityKind { return kind }
+        guard let held = fieldKinds.kinds(of: MongoDBCollectionDDL.idField), held.count == 1 else { return nil }
+        return held.first
+    }
+
     /// An embedded document compares field by field in order, so a document `_id` has to be sent in
     /// the order it is stored, which is the order the grid now shows.
     private func documentIdJson(_ text: String) throws -> String? {
-        guard (declaredKinds[MongoDBCollectionDDL.idField] ?? identityKind) == .document,
+        guard uniformIdentityKind == .document,
               let parsed = try? MongoDocumentText.Value(parsing: text), case .object = parsed else {
             return nil
         }
@@ -465,7 +472,7 @@ nonisolated struct MongoDBStatementGenerator {
         if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(idValue) {
             return binary
         }
-        let idKind = declaredKinds["_id"] ?? identityKind
+        let idKind = uniformIdentityKind
         if idKind == nil, let held = fieldKinds.kinds(of: MongoDBCollectionDDL.idField), held.count > 1,
            let reading = try heldIdentityJson(idValue, held: held) {
             return reading
@@ -489,30 +496,50 @@ nonisolated struct MongoDBStatementGenerator {
         return "\"\(escapeJsonString(idValue))\""
     }
 
-    // The `_id` kinds the documents held, when they differ: the value this text reads as among them. Numbers of any
-    // width name one key, since the `_id` index compares them by value. Text two kinds can read refuses the write.
+    // The `_id` kinds the documents held, when they differ: the one value this text reads as among them. Text that
+    // reads as two values refuses the write. The `_id` index matches numbers by value, so the kinds an integer text
+    // reads as exactly are one value, written in the narrowest of them.
     private func heldIdentityJson(_ text: String, held: Set<BsonValueKind>) throws -> String? {
-        var readings: [String: String] = [:]
-        for kind in held {
-            let reading: (group: String, json: String?)
-            switch kind {
-            case .string:
-                reading = ("string", "\"\(escapeJsonString(text))\"")
-            case .int32, .int64, .double, .decimal128:
-                reading = ("number", typedJson(text, kind: kind))
-            case .objectId, .date:
-                reading = (String(describing: kind), typedJson(text, kind: kind))
-            case .boolean:
-                reading = ("boolean", text == "true" || text == "false" ? text : nil)
-            default:
-                continue
-            }
-            if let json = reading.json, readings[reading.group] == nil {
-                readings[reading.group] = json
-            }
+        var readings: [IdentityValue: String] = [:]
+        for kind in Self.identityReadingOrder where held.contains(kind) {
+            guard let (value, json) = identityReading(text, as: kind), readings[value] == nil else { continue }
+            readings[value] = json
         }
         guard readings.count <= 1 else { throw MongoDBWriteRefusal.ambiguousIdentity }
         return readings.values.first
+    }
+
+    private enum IdentityValue: Hashable {
+        case string, objectId, date, boolean, integer, double, decimal
+    }
+
+    private static let identityReadingOrder: [BsonValueKind] = [
+        .string, .objectId, .date, .boolean, .int32, .int64, .decimal128, .double
+    ]
+
+    private func identityReading(_ text: String, as kind: BsonValueKind) -> (IdentityValue, String)? {
+        let isInteger = Int64(text) != nil
+        switch kind {
+        case .string:
+            return (.string, "\"\(escapeJsonString(text))\"")
+        case .objectId:
+            return typedJson(text, kind: kind).map { (.objectId, $0) }
+        case .date:
+            return typedJson(text, kind: kind).map { (.date, $0) }
+        case .boolean:
+            return text == "true" || text == "false" ? (.boolean, text) : nil
+        case .int32, .int64:
+            return typedJson(text, kind: kind).map { (.integer, $0) }
+        case .decimal128:
+            return typedJson(text, kind: kind).map { (isInteger ? .integer : .decimal, $0) }
+        case .double:
+            // A double shows its shortest text, so text that parses to a double showing other text came from no double.
+            guard let json = typedJson(text, kind: kind), let parsed = Double(text),
+                  NumberText.text(for: parsed) == text else { return nil }
+            return (isInteger ? .integer : .double, json)
+        default:
+            return nil
+        }
     }
 
     private func kind(of field: String) -> BsonValueKind? {

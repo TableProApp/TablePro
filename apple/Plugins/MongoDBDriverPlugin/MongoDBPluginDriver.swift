@@ -242,7 +242,8 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
                         self.buildPluginResult(
                             from: documents, startTime: startTime,
                             isTruncated: isTruncated, collection: collection,
-                            declared: declared
+                            declared: declared,
+                            typesIdentity: self.readsCollectionIdentities(outcome)
                         )
                     }
                 ),
@@ -971,7 +972,8 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         startTime: Date,
         isTruncated: Bool = false,
         collection: String = "",
-        declared: MongoDBCollectionSchema = .empty
+        declared: MongoDBCollectionSchema = .empty,
+        typesIdentity: Bool = false
     ) -> PluginQueryResult {
         let documents = read.dictionaries
         if documents.isEmpty {
@@ -987,7 +989,9 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             for: sampled, documents: documents, representation: uuidRepresentation
         )
         rememberColumnKinds(sampledKinds, for: sampled, collection: collection)
-        rememberIdentityKind(of: documents, collection: collection)
+        if typesIdentity {
+            rememberIdentityKind(of: documents, collection: collection)
+        }
         rememberFieldPathKinds(from: documents, collection: collection)
         rememberBinarySubtypes(of: documents, collection: collection)
         rememberFieldKinds(of: documents, collection: collection)
@@ -1070,6 +1074,12 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         columnKindLock.withLock {
             fieldKindsByCollection[key] = (fieldKindsByCollection[key] ?? .empty).merging(page)
         }
+    }
+
+    // A find in this database returns the collection's own `_id`s. A pipeline's `_id` is often a group key, and typing
+    // a grid row's `_id` by it aims the row's write at another document or at none.
+    private func readsCollectionIdentities(_ outcome: MongoScriptStatementResult) -> Bool {
+        outcome.find?.database == currentDb
     }
 
     private func rememberIdentityKind(of documents: [[String: Any]], collection: String) {

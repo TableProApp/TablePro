@@ -277,8 +277,15 @@ nonisolated struct BsonDocumentFlattener {
 
     private static let iso8601Formatter = OSAllocatedUnfairLock(uncheckedState: ISO8601DateFormatter())
 
+    // A BSON date holds milliseconds. Text without them names another instant, which an `_id` filter or a
+    // value written back would then match or store.
     private static func iso8601Text(for date: Date) -> String {
-        iso8601Formatter.withLockUnchecked { $0.string(from: date) }
+        let milliseconds = Int64((date.timeIntervalSince1970 * 1_000).rounded())
+        let fraction = ((milliseconds % 1_000) + 1_000) % 1_000
+        let whole = Date(timeIntervalSince1970: TimeInterval(milliseconds - fraction) / 1_000)
+        let text = iso8601Formatter.withLockUnchecked { $0.string(from: whole) }
+        guard fraction != 0, text.hasSuffix("Z") else { return text }
+        return String(text.dropLast()) + String(format: ".%03lldZ", fraction)
     }
 
     private static func displayString(for num: NSNumber) -> String {

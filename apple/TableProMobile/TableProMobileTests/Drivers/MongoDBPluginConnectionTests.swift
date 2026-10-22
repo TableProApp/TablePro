@@ -194,6 +194,60 @@ struct MongoDBAmbiguousIdentityTests {
         #expect(!number.statement.contains(#""5""#))
     }
 
+    @Test("A number past 2^53 names the integer, never the double it rounds to")
+    func largeIntegerKeepsItsValue() throws {
+        for idKinds: Set<BsonValueKind> in [[.int32, .double], [.int64, .double]] {
+            let write = try #require(try generator(idKinds: idKinds).generateRowWrites(
+                from: [update(id: "9007199254740993")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+            ).first)
+
+            #expect(write.statement.contains(#"{"_id": {"$numberLong": "9007199254740993"}}"#))
+            #expect(!write.statement.contains("$numberDouble"))
+        }
+    }
+
+    @Test("A fraction held as a double and as a decimal names two values, so it is refused")
+    func doubleAndDecimalFractionIsRefused() {
+        #expect(throws: PluginRowWriteRefusal.self) {
+            try generator(idKinds: [.double, .decimal128]).generateRowWrites(
+                from: [update(id: "0.1")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+            )
+        }
+    }
+
+    @Test("An integer held as a double and as a decimal is one value")
+    func doubleAndDecimalIntegerWrites() throws {
+        let write = try #require(try generator(idKinds: [.double, .decimal128]).generateRowWrites(
+            from: [update(id: "5")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        ).first)
+        #expect(write.statement.contains(#"{"_id": {"$numberDecimal": "5"}}"#))
+    }
+
+    @Test("Every read holding one _id kind types the text by it, not by its shape")
+    func singleHeldKindTypesTheText() throws {
+        let hex = "64b7f0c2a1b2c3d4e5f60718"
+        let write = try #require(try generator(idKinds: [.string]).generateRowWrites(
+            from: [update(id: hex)], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        ).first)
+        #expect(write.statement.contains(#"{"_id": "\#(hex)"}"#))
+    }
+
+    @Test("A date _id keeps its milliseconds from the cell to the filter")
+    func dateIdentityKeepsMilliseconds() throws {
+        let stored = Date(timeIntervalSince1970: 1_704_110_400.5)
+        let text = try #require(BsonDocumentFlattener.stringValue(for: stored, representation: .unspecified))
+        #expect(text == "2024-01-01T12:00:00.500Z")
+        #expect(BsonDocumentFlattener.stringValue(
+            for: Date(timeIntervalSince1970: 1_704_110_400), representation: .unspecified
+        ) == "2024-01-01T12:00:00Z")
+
+        let dated = MongoDBStatementGenerator(collectionName: "events", columns: ["_id", "name"], identityKind: .date)
+        let write = try #require(try dated.generateRowWrites(
+            from: [update(id: text)], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        ).first)
+        #expect(write.statement.contains(#""$numberLong": "1704110400500""#))
+    }
+
     @Test("Text that cannot be an ObjectId, or a collection of one _id kind, still writes")
     func unambiguousIdentityWrites() throws {
         let mixed = try generator(idKinds: [.objectId, .string]).generateRowWrites(
