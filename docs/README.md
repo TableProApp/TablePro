@@ -153,4 +153,5 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 - [Arch wrapper release date, October 22](evidence/arch-wrapper-date-2026-10-22/README.md): mandatory-date forwarding, boundary regressions and real isolated package upgrade/removal evidence.
 - [Dedicated-session opening guard, October 22](evidence/session-opening-guard-2026-10-22/README.md): standalone held-open regression and current-Linux source checks.
 
+- [Completion popup initialization, October 22](evidence/completion-popup-initialization-2026-10-22/README.md): reproduced missing GtkSourceView initialization, independent probe and startup regression.
 - [Owned GTK process checks, October 22](evidence/owned-gtk-process-2026-10-22/README.md): fixture PID/lifetime ownership for memory sampling and second launch, with two-process regressions and targeted GTK acceptance.

@@ -560,6 +560,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::completion_provider::tests::populated_completion_is_presented_after_the_editor_is_rooted"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::editor::completion_provider::tests::proposals_preserve_aliases_and_replace_only_the_identifier"
     ],
     [

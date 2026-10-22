@@ -1,0 +1,81 @@
+{
+  "base": "f22a4905ddfe4cff74fd37247d4d028ac9c534e3",
+  "scope": "GtkSourceView initialization before application component construction",
+  "source_sha256": {
+    "apps/linux/app/src/lib.rs": "77b1b98fea74f942d48fd922b1bec81e57ee8d3abf8ffc607182195045418d19",
+    "apps/linux/app/src/ui/editor/completion_provider/tests.rs": "8acd2dce1afcbfe1738cb015fa302cef444c1d9c7181d0d95d095a8c3f4fde41",
+    "scripts/isolated-tests.json": "e940fa9583815b8a1997a9db5b15011e9e794780cf80bed4206a125a81df1809"
+  },
+  "test_binary_sha256": "8ed3d59fa047bdb5388b121244f481b4c0a03d81bdfcb9ef81299d52c66bbb10",
+  "checks": {
+    "preflight": {
+      "status": "passed",
+      "harness": 345,
+      "unit": 2056,
+      "sandbox": 2059,
+      "redis_cancellation": 1
+    },
+    "gtk_widgets": {
+      "status": "passed",
+      "registered": 107,
+      "executed": 107,
+      "selectors_verified": true
+    },
+    "app_units": {
+      "status": "passed",
+      "passed": 728,
+      "ignored": 145
+    },
+    "app_clippy": {
+      "status": "passed",
+      "all_targets": true,
+      "warnings_denied": true
+    },
+    "doc_links": "passed",
+    "known_issues": "passed",
+    "ignored_registration": "passed"
+  },
+  "reproduction": {
+    "actual_provider_before_fix": "exit134; width > 0 critical",
+    "actual_provider_after_fix": "pass; visible/hidden popup state, allocated dimensions; separate provider activation",
+    "independent_C_initialized": {
+      "passed": 3,
+      "runs": 3
+    },
+    "independent_C_uninitialized": {
+      "aborted_with_width_critical": 3,
+      "runs": 3
+    },
+    "eager_model_diagnostic": "3/3 fail; diagnostic reverted"
+  },
+  "host": {
+    "GTK": "4.24.1",
+    "GtkSourceView": "5.22.0",
+    "libadwaita": "1.10.0",
+    "display": "isolated X11/Xvfb"
+  },
+  "pending": [
+    "GitHub exact-head checks",
+    "maintainer Forgejo",
+    "native Wayland and installed package acceptance"
+  ],
+  "artifacts_sha256": {
+    "README.md": "5b9fb050ca092551e6548d6fe295f768c8a11441835a3e92b1626000f75a4103",
+    "app-units.log.gz": "da16f92d2f38bf53ec9df9c9916a7dfbc2c22700a06bdeffd2169f3fb1c68731",
+    "clippy.log.gz": "8ab90312604eca97618720f75922d91446abf4d0405ac3b245b7fc54de15369b",
+    "gtk-widgets.log.gz": "38b783f73171dcae118cd3f55a58172367c2b1b922c5f51e6bdc0786e32ec148",
+    "ignored-test-inventory.txt.gz": "7ca0b4b160310e1bd7536625ce5b413ca0964f2af77449ccf33abdfe46f7927d",
+    "initialization-ab-results.json": "7bcec03fe8180229b978ac53008a0191449d6ebbf49400f5909a675b1c22b7a3",
+    "preflight.log.gz": "0c6bbdeb8b5c4de0888b8b09be3f4e5b0f9ed825cafecf37404bb0faca6a6e9d",
+    "probe-iteration-1.log.gz": "ac7b49e675168f91fdc0b79c177aeae95d92446bce83ca3e5298109f6cae3df7",
+    "probe-iteration-2.log.gz": "6c7c46194f30f7c9be5930f979730bd2a4681af9bd1c9d6a247a027d84e565c5",
+    "probe-iteration-3.log.gz": "9a7ab609486b216d9493facb86152fc93352b9f3ae2c16f51fe91a508444c824",
+    "probe-no-source-init-1.log.gz": "f561a34cbedf85f4241fc881c7d3258b969dfbc29b40156482a0612c17dedde7",
+    "probe-no-source-init-2.log.gz": "38f35abf58834de2ebbbfc58b0293d47b00fb81aefcee834dc9248867f00d1db",
+    "probe-no-source-init-3.log.gz": "2a2dcb7e62f7ba8bfa738ec870798a89e63ef967535739ea6cbc7cf902a69340",
+    "probe-without-init.c": "ccb1538b6e8764733937ec07886e92e6af67b3e4603ac4034f4b5dad10645854",
+    "probe.c": "c30730df912e8046e8df0ce651c2318ba31174748ed85f1182b1072236a5e330",
+    "regression-after.log.gz": "3532633c85e62062d61040660f98cf5e87a67101ebb4375ea6f0687af62ad268",
+    "regression-before.log.gz": "7a264de094fcb8ecb5025a637ee3b3d93db5fb0d9aedf01355bddd3f4a28d6a0"
+  }
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "probe": "probe-iteration",
+    "run": 1,
+    "exit": 0,
+    "width_assert": false
+  },
+  {
+    "probe": "probe-iteration",
+    "run": 2,
+    "exit": 0,
+    "width_assert": false
+  },
+  {
+    "probe": "probe-iteration",
+    "run": 3,
+    "exit": 0,
+    "width_assert": false
+  },
+  {
+    "probe": "probe-no-source-init",
+    "run": 1,
+    "exit": 134,
+    "width_assert": true
+  },
+  {
+    "probe": "probe-no-source-init",
+    "run": 2,
+    "exit": 134,
+    "width_assert": true
+  },
+  {
+    "probe": "probe-no-source-init",
+    "run": 3,
+    "exit": 134,
+    "width_assert": true
+  }
+]

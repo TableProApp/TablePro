@@ -203,3 +203,72 @@ fn completion_resumes_after_a_large_buffer_is_replaced_with_a_small_query() {
     assert!(provider.model(&context).n_items() > 0);
     assert_eq!(activate(&provider, &context, "users"), "SELECT * FROM users");
 }
+
+fn completion_frame() {
+    let ready = Rc::new(std::cell::Cell::new(false));
+    let done = ready.clone();
+    glib::timeout_add_local_once(std::time::Duration::from_millis(250), move || done.set(true));
+    let context = glib::MainContext::default();
+    while !ready.get() {
+        context.iteration(true);
+    }
+}
+
+fn completion_popup(widget: &gtk::Widget) -> Option<gtk::Widget> {
+    if widget.is::<gtk::Popover>() && widget.has_css_class("completion") {
+        return Some(widget.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        if let Some(popup) = completion_popup(&current) {
+            return Some(popup);
+        }
+        child = current.next_sibling();
+    }
+    None
+}
+
+fn presented_completion(view: &sourceview5::View, visible: bool) -> gtk::Widget {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        completion_frame();
+        if let Some(popup) = completion_popup(view.upcast_ref())
+            && popup.is_visible() == visible
+            && (!visible || (popup.width() > 0 && popup.height() > 0))
+        {
+            return popup;
+        }
+        assert!(std::time::Instant::now() < deadline);
+    }
+}
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn populated_completion_is_presented_after_the_editor_is_rooted() {
+    let _application = crate::initialize_ui();
+    let index = Rc::new(RefCell::new(SchemaIndex::default()));
+    index.borrow_mut().grammar = Some(SqlGrammar::PostgreSql);
+    let (view, provider, context) = fixture("", 0, index);
+    let window = gtk::Window::builder()
+        .default_width(802)
+        .default_height(600)
+        .child(&view)
+        .build();
+    window.present();
+    view.grab_focus();
+    completion_frame();
+    for text in ["do s", "do so", "sel", "do s"] {
+        view.buffer().set_text(text);
+        view.completion().show();
+        let popup = presented_completion(&view, text != "do so");
+        if text == "do so" {
+            assert!(!popup.is_visible());
+            continue;
+        }
+        assert!(popup.is_visible());
+        assert!(popup.width() > 0);
+        assert!(popup.height() > 0);
+    }
+    assert_eq!(activate(&provider, &context, "SELECT"), "do SELECT");
+    window.close();
+}

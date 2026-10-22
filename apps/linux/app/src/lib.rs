@@ -96,18 +96,8 @@ pub fn run() {
     enable_system_openssh(database.clone());
     let history = history_open.and_then(|task| runtime.as_ref()?.block_on(task).ok().flatten());
 
-    {
-        use gtk4::prelude::*;
-        relm4::main_application().set_flags(gtk4::gio::ApplicationFlags::HANDLES_OPEN);
-        relm4::main_application().connect_activate(|app| {
-            if let Some(window) = app.active_window() {
-                tracing::info!("main window activated");
-                window.present();
-            }
-        });
-    }
+    let app = initialize_ui();
     services::ui_stall::install_from_env();
-    let app = RelmApp::new(config::APP_ID);
     app.run::<ui::App>(ui::AppInit {
         registry,
         persistence: persistence.clone(),
@@ -131,6 +121,22 @@ pub fn run() {
     if let Some(runtime) = runtime {
         runtime.shutdown_timeout(std::time::Duration::from_secs(2));
     }
+}
+
+fn initialize_ui() -> RelmApp<<ui::App as relm4::Component>::Input> {
+    use gtk4::prelude::*;
+
+    let app = RelmApp::new(config::APP_ID);
+    sourceview5::init();
+    let application = relm4::main_application();
+    application.set_flags(gtk4::gio::ApplicationFlags::HANDLES_OPEN);
+    application.connect_activate(|app| {
+        if let Some(window) = app.active_window() {
+            tracing::info!("main window activated");
+            window.present();
+        }
+    });
+    app
 }
 
 fn build_registry() -> DriverRegistry {
