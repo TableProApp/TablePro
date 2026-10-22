@@ -193,7 +193,7 @@ struct ConnectionURLParser {
         case .failure(let error): return .failure(error)
         }
 
-        var ext = parseQueryItems(components.queryItems, dbType: dbType)
+        var ext = parseQueryItems(components.percentEncodedQueryItems, dbType: dbType)
 
         let rawPort = endpoint.port ?? components.port
         var sslMode = ext.resolvedSSLMode(for: dbType, port: rawPort ?? dbType.defaultPort)
@@ -649,9 +649,7 @@ struct ConnectionURLParser {
         if let qs = queryString {
             queryItems = qs.split(separator: "&").map { param in
                 let kv = param.split(separator: "=", maxSplits: 1)
-                let key = String(kv[0])
-                let val = kv.count > 1 ? (String(kv[1]).removingPercentEncoding ?? String(kv[1])) : ""
-                return URLQueryItem(name: key, value: val)
+                return URLQueryItem(name: String(kv[0]), value: kv.count > 1 ? String(kv[1]) : "")
             }
         }
 
@@ -753,6 +751,7 @@ struct ConnectionURLParser {
         }
     }
 
+    // Takes the items still percent-encoded, as every path hands them over, so applyQueryParam decodes each once.
     private static func parseQueryItems(_ queryItems: [URLQueryItem]?, dbType: DatabaseType? = nil) -> ExtendedParams {
         var ext = ExtendedParams()
         guard let queryItems else { return ext }
@@ -769,10 +768,10 @@ struct ConnectionURLParser {
         let params = queryString.split(separator: "&", omittingEmptySubsequences: true)
         for param in params {
             let parts = param.split(separator: "=", maxSplits: 1)
-            guard let key = parts.first else { continue }
-            let value = parts.count > 1 ? String(parts[1]) : nil
-            guard let value else { continue }
-            let keyStr = String(key).lowercased()
+            guard let encodedKey = parts.first, parts.count > 1 else { continue }
+            let key = String(encodedKey)
+            let value = String(parts[1])
+            let keyStr = (key.removingPercentEncoding ?? key).lowercased()
             if keyStr == "useprivatekey" {
                 ext.usePrivateKey = value.lowercased() == "true"
                 continue
@@ -789,13 +788,18 @@ struct ConnectionURLParser {
                 ext.agentSocket = value.removingPercentEncoding ?? value
                 continue
             }
-            applyQueryParam(key: String(key), value: value, to: &ext, dbType: dbType)
+            applyQueryParam(key: key, value: value, to: &ext, dbType: dbType)
         }
         return ext
     }
 
-    private static func applyQueryParam(key rawKey: String, value: String, to ext: inout ExtendedParams, dbType: DatabaseType? = nil) {
+    // `key` and `encoded` arrive percent-encoded and are decoded here once. A value the app writes form-style reads `+`
+    // as a space, so a literal `+` in it is `%2B`.
+    private static func applyQueryParam(key encodedKey: String, value encoded: String, to ext: inout ExtendedParams, dbType: DatabaseType? = nil) {
+        let rawKey = encodedKey.removingPercentEncoding ?? encodedKey
         let key = rawKey.lowercased()
+        let value = encoded.removingPercentEncoding ?? encoded
+        let formValue = encoded.replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? value
         switch key {
         case "sslmode":
             if let mode = parseSSLMode(value) {
@@ -816,29 +820,24 @@ struct ConnectionURLParser {
         case "statuscolor":
             ext.statusColor = value
         case "env", "enviroment", "environment":
-            ext.envTag = value.removingPercentEncoding ?? value
+            ext.envTag = formValue
         case "schema":
             ext.schema = value
         case "table":
-            ext.tableName = value.replacingOccurrences(of: "+", with: " ")
-                .removingPercentEncoding ?? value
+            ext.tableName = formValue
         case "name":
-            ext.connectionName = value.replacingOccurrences(of: "+", with: " ")
-                .removingPercentEncoding ?? value
+            ext.connectionName = formValue
         case "view":
-            ext.tableName = value.replacingOccurrences(of: "+", with: " ")
-                .removingPercentEncoding ?? value
+            ext.tableName = formValue
             ext.isView = true
         case "column":
             ext.filterColumn = value
         case "operation", "operator":
             ext.filterOperation = value
         case "value":
-            ext.filterValue = value.replacingOccurrences(of: "+", with: " ")
-                .removingPercentEncoding ?? value
+            ext.filterValue = formValue
         case "condition", "raw", "query":
-            ext.filterCondition = value.replacingOccurrences(of: "+", with: " ")
-                .removingPercentEncoding ?? value
+            ext.filterCondition = formValue
         case "tlsmode":
             if ext.sslMode == nil, let intValue = Int(value) {
                 ext.sslMode = parseTlsModeInteger(intValue)

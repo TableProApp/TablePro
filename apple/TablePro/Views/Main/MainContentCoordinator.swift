@@ -895,15 +895,17 @@ final class MainContentCoordinator: ObservableObject {
         trailingPaneProxy?.showInspector()
     }
 
-    /// Set up the plugin driver for query building dispatch on the query builder and change manager.
     internal func setupPluginDriver() {
         guard let driver = services.databaseManager.driver(for: connectionId) else { return }
-        let pluginDriver = driver.queryBuildingPluginDriver
-        /// `pluginDriver` is published, so writing the same driver back on every appearance
-        /// re-evaluated every view that reads the change manager for nothing.
-        guard pluginDriver !== changeManager.pluginDriver else { return }
-        queryBuilder.setPluginDriver(pluginDriver)
-        changeManager.pluginDriver = pluginDriver
+        // Both are published: writing the same driver back on every appearance re-evaluates every view that reads them.
+        let browseBuilder = driver.queryBuildingPluginDriver
+        if !queryBuilder.usesPluginDriver(browseBuilder) {
+            queryBuilder.setPluginDriver(browseBuilder)
+        }
+        let rowWriter = driver.rowWritingPluginDriver
+        if rowWriter !== changeManager.pluginDriver {
+            changeManager.pluginDriver = rowWriter
+        }
     }
 
     func markTeardownScheduled() {
@@ -1569,12 +1571,13 @@ final class MainContentCoordinator: ObservableObject {
         let editorLanguage = services.pluginManager.editorLanguage(for: connection.type)
         let pluginBuildsBrowse = (services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter)?
             .queryBuildingPluginDriver != nil
-        /// A SQL engine whose plugin writes its own browse gets no table from a query's text, and the name a
-        /// query tab carries came from an earlier result or an older build, so it can name another table.
-        if tab.tabType != .table, editorLanguage == .sql, pluginBuildsBrowse {
+        /// An engine whose plugin writes its own browse, or whose language is not SQL, gets no table from a query's
+        /// text, and the name a query tab carries came from an earlier result or an older build, so it can name
+        /// another collection. A pipeline's `_id` can also be a group key that names an unrelated document.
+        let usesNoSQLBrowsing = editorLanguage != .sql || pluginBuildsBrowse
+        if tab.tabType != .table, usesNoSQLBrowsing {
             return (nil, false)
         }
-        let usesNoSQLBrowsing = editorLanguage != .sql || pluginBuildsBrowse
         if usesNoSQLBrowsing {
             let name = tab.tableContext.tableName
             return (name, name != nil)

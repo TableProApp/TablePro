@@ -33,7 +33,7 @@ nonisolated enum LibSSH2Handshake {
         case (LIBSSH2_ERROR_KEX_FAILURE, .closed?):
             return .failed(String(localized: "The SSH server closed the connection during the handshake."))
         case (LIBSSH2_ERROR_KEX_FAILURE, nil):
-            return .negotiation(negotiation(session))
+            return .negotiation(negotiation(session, proposal: SSHServerProposal(received: watch.received)))
         case (LIBSSH2_ERROR_TIMEOUT, _):
             return .timedOut
         default:
@@ -41,7 +41,7 @@ nonisolated enum LibSSH2Handshake {
         }
     }
 
-    private static func negotiation(_ session: OpaquePointer) -> SSHNegotiationFailure {
+    private static func negotiation(_ session: OpaquePointer, proposal: SSHServerProposal?) -> SSHNegotiationFailure {
         let stage = SSHNegotiationFailure.stage(
             kex: method(session, LIBSSH2_METHOD_KEX),
             cipher: agreed(session, LIBSSH2_METHOD_CRYPT_CS, LIBSSH2_METHOD_CRYPT_SC),
@@ -52,13 +52,13 @@ nonisolated enum LibSSH2Handshake {
         var supportedHostKeys: [String] = []
         switch stage {
         case .keyExchangeOrHostKey:
-            supported = SSHNegotiationFailure.clientMethods(algorithms(session, LIBSSH2_METHOD_KEX))
+            supported = SSHNegotiationFailure.withoutPseudoMethods(algorithms(session, LIBSSH2_METHOD_KEX))
             supportedHostKeys = algorithms(session, LIBSSH2_METHOD_HOSTKEY)
         case .cipher:
             supported = algorithms(session, LIBSSH2_METHOD_CRYPT_CS)
         case .mac:
             supported = algorithms(session, LIBSSH2_METHOD_MAC_CS)
-        case .undetermined:
+        case .keySignature, .undetermined:
             break
         }
 
@@ -66,7 +66,8 @@ nonisolated enum LibSSH2Handshake {
             stage: stage,
             serverSoftware: SSHNegotiationFailure.serverSoftware(banner: banner(session)),
             supported: supported,
-            supportedHostKeys: supportedHostKeys
+            supportedHostKeys: supportedHostKeys,
+            proposal: proposal
         )
     }
 
@@ -91,7 +92,7 @@ nonisolated enum LibSSH2Handshake {
         return (0 ..< Int(count)).compactMap { index in names[index].map { String(cString: $0) } }
     }
 
-    private static func banner(_ session: OpaquePointer) -> String? {
+    static func banner(_ session: OpaquePointer) -> String? {
         guard let banner = libssh2_session_banner_get(session) else { return nil }
         return String(cString: banner)
     }
@@ -134,6 +135,10 @@ nonisolated private final class TransportWatch {
     fileprivate let recv: LibSSH2Recv?
     fileprivate let send: LibSSH2Send?
     fileprivate var end: TransportEnd?
+    // Holds the server's KEXINIT, so a failed negotiation can name what the server offered.
+    fileprivate private(set) var received: [UInt8] = []
+    // Well past the size of a KEXINIT, and a stop for a server that keeps sending.
+    private static let receivedLimit = 262_144
 
     init(_ session: OpaquePointer) {
         self.session = session
@@ -168,6 +173,12 @@ nonisolated private final class TransportWatch {
         if end == nil { end = .closed }
     }
 
+    fileprivate func noteReceived(_ buffer: UnsafeMutableRawPointer?, count: Int) {
+        guard let buffer, count > 0, received.count < Self.receivedLimit else { return }
+        let kept = min(count, Self.receivedLimit - received.count)
+        received.append(contentsOf: UnsafeRawBufferPointer(start: buffer, count: kept))
+    }
+
     fileprivate static func of(_ abstract: UnsafeMutablePointer<UnsafeMutableRawPointer?>?) -> TransportWatch? {
         guard let pointer = abstract?.pointee else { return nil }
         return Unmanaged<TransportWatch>.fromOpaque(pointer).takeUnretainedValue()
@@ -186,6 +197,7 @@ nonisolated private func watchedRecv(
     if received == 0 || (received < 0 && received != -Int(EAGAIN)) {
         watch.noteClosed()
     }
+    watch.noteReceived(buffer, count: received)
     return received
 }
 

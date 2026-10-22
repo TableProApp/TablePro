@@ -10,6 +10,7 @@ nonisolated struct MongoScriptFindShape: Equatable, Sendable {
     let database: String
     let returnsWholeDocuments: Bool
     let skip: Int
+    var filteredFields: Set<String> = []
 }
 
 /// What one statement of a script evaluated to.
@@ -22,6 +23,14 @@ nonisolated struct MongoScriptStatementResult: Sendable {
     var databaseSwitch: String?
     var producedDocuments = false
     var rowsAffected = 0
+
+    // Only a find in the session's database with no projection returns the collection's documents as stored. A
+    // pipeline's `_id` is often a group key and a projection can compute any field, so learning kinds from either would
+    // type the table tab's next write or filter by a value no document holds.
+    func returnsStoredDocuments(in currentDatabase: String) -> Bool {
+        guard let find else { return false }
+        return find.returnsWholeDocuments && find.database == currentDatabase
+    }
 }
 
 /// Runs mongosh-shaped JavaScript against the connection.

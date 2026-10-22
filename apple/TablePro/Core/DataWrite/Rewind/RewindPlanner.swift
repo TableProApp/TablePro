@@ -77,6 +77,7 @@ struct RewindPlanner {
             record: record,
             rows: rows,
             statements: inverse.statements,
+            lookups: inverse.lookups,
             prologue: inverse.prologue,
             epilogue: inverse.epilogue
         )
@@ -205,15 +206,17 @@ struct RewindPlanner {
     /// one operation at a time.
     private func statements(for operations: [RowWriteOperation]) throws -> RestoreStatements {
         var statements: [ParameterizedStatement] = []
+        var lookups: [RowLookup?] = []
         var prologue: [String] = []
         var epilogue: [String] = []
         for operation in operations.reversed() {
             let inverse = try inverseStatements(for: operation)
             statements.append(contentsOf: inverse.statements)
+            lookups.append(contentsOf: inverse.lookups)
             prologue.append(contentsOf: inverse.prologue.filter { !prologue.contains($0) })
             epilogue.append(contentsOf: inverse.epilogue.filter { !epilogue.contains($0) })
         }
-        return RestoreStatements(statements: statements, prologue: prologue, epilogue: epilogue)
+        return RestoreStatements(statements: statements, lookups: lookups, prologue: prologue, epilogue: epilogue)
     }
 
     private func inverseStatements(for operation: RowWriteOperation) throws -> RestoreStatements {
@@ -235,21 +238,21 @@ struct RewindPlanner {
                 )
             }
             guard !cellChanges.isEmpty else { return RestoreStatements(statements: []) }
-            return RestoreStatements(statements: try factory.statements(
+            return try factory.lookedUpStatements(
                 for: [RowChange(
                     rowID: .existing(0), type: .update, cellChanges: cellChanges,
                     originalRow: postImage, absentColumns: absentAfter
                 )]
-            ))
+            )
         case .delete:
             guard let preImage = operation.preImage else { return RestoreStatements(statements: []) }
             return try factory.restoreStatements(rows: [preImage], absentCells: [0: operation.absentColumnsBeforeWrite])
         case .insert:
             guard let postImage = operation.postImage else { return RestoreStatements(statements: []) }
-            return RestoreStatements(statements: try factory.statements(
+            return try factory.lookedUpStatements(
                 for: [RowChange(rowID: .existing(0), type: .delete, cellChanges: [], originalRow: postImage)],
                 deletedRowIDs: [.existing(0)]
-            ))
+            )
         }
     }
 

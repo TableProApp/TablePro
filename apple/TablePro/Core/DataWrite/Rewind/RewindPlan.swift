@@ -82,6 +82,8 @@ struct RewindPlan: Sendable {
     let record: RewindRecord
     let rows: [RewindRowPlan]
     let statements: [ParameterizedStatement]
+    // One per statement.
+    let lookups: [RowLookup?]
     /// Run outside the transaction around the statements: SQL Server's `IDENTITY_INSERT`, which a restored row with
     /// its old identity needs.
     let prologue: [String]
@@ -91,12 +93,14 @@ struct RewindPlan: Sendable {
         record: RewindRecord,
         rows: [RewindRowPlan],
         statements: [ParameterizedStatement],
+        lookups: [RowLookup?]? = nil,
         prologue: [String] = [],
         epilogue: [String] = []
     ) {
         self.record = record
         self.rows = rows
         self.statements = statements
+        self.lookups = lookups ?? Array(repeating: nil, count: statements.count)
         self.prologue = prologue
         self.epilogue = epilogue
     }
@@ -104,7 +108,12 @@ struct RewindPlan: Sendable {
     /// Everything the plan sends, with the bound values written in, in the order it runs.
     var displayStatements: [String] {
         prologue
-            + statements.map { SQLParameterInliner.inline($0, databaseType: record.databaseType) }
+            + zip(statements, lookups).flatMap { statement, lookup in
+                SQLParameterInliner.inline(
+                    DataWriteStep(kind: .rowWrite, statement: statement, lookup: lookup),
+                    databaseType: record.databaseType
+                )
+            }
             + epilogue
     }
 

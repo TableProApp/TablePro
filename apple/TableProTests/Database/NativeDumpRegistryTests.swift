@@ -243,8 +243,76 @@ struct NativeDumpRegistryTests {
         let built = try command(.mongodb, connection: secured)
         let uri = try configurationValue("uri", in: configuration(of: built))
         #expect(uri.contains("tls=true&tlsInsecure=true"))
-        #expect(uri.contains("tlsCertificateKeyFile=/certs/client.pem"))
+        #expect(uri.contains("tlsCertificateKeyFile=%2Fcerts%2Fclient.pem"))
         #expect(!built.arguments.contains("--ssl"))
+    }
+
+    @Test("Every option value reaches the tool encoded, so a `&`, `;` or `+` in it never starts another option")
+    func mongoOptionValuesAreEncoded() throws {
+        var secured = connection(type: .mongodb, sslMode: .verifyCa, sslEnabled: true)
+        secured.sslConfig.caCertificatePath = "/Users/me/R&D/My Certs/c+a;b.pem"
+        secured.mongoReplicaSet = "rs;tlsInsecure=true"
+        secured.mongoAuthSource = "a&b"
+        let uri = try configurationValue("uri", in: configuration(of: command(.mongodb, connection: secured)))
+        #expect(uri.contains("replicaSet=rs%3BtlsInsecure%3Dtrue"))
+        #expect(uri.contains("authSource=a%26b"))
+        #expect(uri.contains("tlsCAFile=%2FUsers%2Fme%2FR%26D%2FMy%20Certs%2Fc%2Ba%3Bb.pem"))
+        #expect(!uri.contains("tlsInsecure=true"))
+    }
+
+    @Test("A typed parameter named like a field's key in another case never overrides the field")
+    func mongoTypedParameterKeysCompareWithoutCase() throws {
+        var replicaSet = connection(type: .mongodb)
+        replicaSet.mongoReplicaSet = "rs0"
+        replicaSet.additionalFields["mongoParam_REPLICASET"] = "other"
+        replicaSet.additionalFields["mongoParam_appName"] = "Table Pro"
+        let uri = try configurationValue("uri", in: configuration(of: command(.mongodb, connection: replicaSet)))
+        #expect(uri.contains("replicaSet=rs0"))
+        #expect(!uri.contains("REPLICASET"))
+        #expect(uri.contains("appName=Table%20Pro"))
+    }
+
+    @Test("X.509 and AWS authenticate against $external, which the tools' driver requires", arguments: [
+        "MONGODB-X509", "MONGODB-AWS"
+    ])
+    func mongoExternalMechanismsUseExternal(mechanism: String) throws {
+        var external = connection(type: .mongodb, sslMode: .required, sslEnabled: true)
+        external.mongoAuthMechanism = mechanism
+        let uri = try configurationValue("uri", in: configuration(of: command(.mongodb, connection: external)))
+        #expect(uri.contains("authSource=%24external"))
+    }
+
+    @Test("A typed TLS parameter never overrides the SSL mode or sits beside the tlsInsecure it implies")
+    func mongoTypedTLSParametersYieldToTheSSLMode() throws {
+        var insecure = connection(type: .mongodb, sslMode: .required, sslEnabled: true)
+        insecure.additionalFields["mongoParam_tlsDisableOCSPEndpointCheck"] = "true"
+        let relaxed = try configurationValue("uri", in: configuration(of: command(.mongodb, connection: insecure)))
+        #expect(relaxed.contains("tlsInsecure=true"))
+        #expect(!relaxed.contains("tlsDisableOCSPEndpointCheck"))
+
+        var verified = connection(type: .mongodb, sslMode: .verifyIdentity, sslEnabled: true)
+        verified.additionalFields["mongoParam_tlsInsecure"] = "true"
+        verified.additionalFields["mongoParam_sslInsecure"] = "true"
+        verified.additionalFields["mongoParam_sslCertificateAuthorityFile"] = "/tmp/other.pem"
+        let strict = try configurationValue("uri", in: configuration(of: command(.mongodb, connection: verified)))
+        #expect(!strict.contains("tlsInsecure"))
+        #expect(!strict.contains("sslInsecure"))
+        #expect(!strict.contains("sslCertificateAuthorityFile"))
+    }
+
+    @Test("A bare IPv6 host reaches the tool in brackets")
+    func mongoBareIPv6HostIsBracketed() throws {
+        let local = connection(type: .mongodb, host: "fd00::5", port: 27_017)
+        let uri = try configurationValue("uri", in: configuration(of: command(.mongodb, connection: local)))
+        #expect(uri.hasPrefix("mongodb://alice@[fd00::5]:27017/"))
+    }
+
+    @Test("A port typed into a host list is encoded, so it cannot open the options")
+    func mongoHostListPortIsEncoded() throws {
+        var replicaSet = connection(type: .mongodb, host: "a.example.com", port: 27_017)
+        replicaSet.additionalFields["mongoHosts"] = "a.example.com:27017,b.example.com:1/?tlsInsecure=true"
+        let uri = try configurationValue("uri", in: configuration(of: command(.mongodb, connection: replicaSet)))
+        #expect(uri.hasPrefix("mongodb://alice@a.example.com:27017,b.example.com:1%2F%3FtlsInsecure%3Dtrue/"))
     }
 
     @Test("MongoDB names the database on backup and renames the archive into the target on restore")

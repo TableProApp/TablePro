@@ -232,6 +232,27 @@ struct SQLRowToStatementConverterTests {
             """)
     }
 
+    @Test("Where rows share the key, the row is found by every column and the unchanged key stays out of SET")
+    func repeatingKeyMatchesTheWholeRow() throws {
+        let converter = try SQLRowToStatementConverter(
+            tableName: "events",
+            columns: ["d", "id", "doc"],
+            primaryKeyColumns: ["d"],
+            databaseType: .clickhouse,
+            rowMatchPolicy: RowMatchPolicy(textColumns: ["doc"]),
+            dialect: Self.clickhouseDialect,
+            rowUpdateStatement: { table, assignments, predicate in
+                "ALTER TABLE \(table) UPDATE \(assignments) WHERE \(predicate) SETTINGS mutations_sync = 1"
+            },
+            matchesEveryColumn: true
+        )
+        let result = converter.generateUpdates(rows: plain([["2026-01-01", "1", "{}"]]))
+        #expect(result == """
+            ALTER TABLE `events` UPDATE `id` = '1', `doc` = '{}' WHERE `d` = '2026-01-01' AND `id` = '1' AND CONCAT(`doc`) = '{}' \
+            SETTINGS mutations_sync = 1;
+            """)
+    }
+
     /// The `N` is not decoration: a plain `'…'` is a `varchar` literal, so pasting these
     /// statements into a database with a non-Unicode collation stores `?` for every character
     /// outside its code page, whatever the column type is.

@@ -184,10 +184,7 @@
     {
       "type": "JSON",
       "values": [{"sql": "'{\"a\": 1, \"b\": {\"c\": \"x\"}}'", "cell": "{\"a\":1,\"b\":{\"c\":\"x\"}}"}],
-      "edit": {"text": "{\"k\": \"v\"}", "cell": "{\"k\":\"v\"}"},
-      "known": {
-        "edit": {"defect": "the save matches the row on every column, and a JSON value never equals the text it was read as, so the save changes nothing", "matches": "row 1 reads back"}
-      }
+      "edit": {"text": "{\"k\": \"v\"}", "cell": "{\"k\":\"v\"}"}
     },
     {
       "type": "UUID",

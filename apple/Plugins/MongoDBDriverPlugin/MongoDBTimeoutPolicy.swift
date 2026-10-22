@@ -19,10 +19,10 @@ nonisolated struct MongoDBConnectTimeout: Equatable, Sendable {
         self.milliseconds = Int32(min(max(milliseconds, 1), Self.maximumMilliseconds))
     }
 
-    var uriParameters: [String] {
+    var uriOptions: [MongoDBURIOption] {
         [
-            "connectTimeoutMS=\(milliseconds)",
-            "serverSelectionTimeoutMS=\(milliseconds)"
+            MongoDBURIOption(key: "connectTimeoutMS", value: String(milliseconds)),
+            MongoDBURIOption(key: "serverSelectionTimeoutMS", value: String(milliseconds))
         ]
     }
 

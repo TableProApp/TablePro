@@ -18,20 +18,29 @@ struct SQLParameterInliner {
     ///   - statement: The parameterized statement containing SQL with placeholders and bound values.
     ///   - databaseType: The database type, which determines placeholder style (`?` vs `$N`).
     /// - Returns: A SQL string with placeholders replaced by formatted literal values.
-    static func inline(_ statement: ParameterizedStatement, databaseType: DatabaseType) -> String {
+    static func inline(_ statement: ParameterizedStatement, databaseType: DatabaseType, unbound: String? = nil) -> String {
         let style = PluginMetadataRegistry.shared.snapshot(for: databaseType)?.parameterStyle ?? .questionMark
         if style == .dollar {
             return inlineDollarPlaceholders(statement.sql, parameters: statement.parameters)
         } else {
-            return inlineQuestionMarkPlaceholders(statement.sql, parameters: statement.parameters)
+            return inlineQuestionMarkPlaceholders(statement.sql, parameters: statement.parameters, unbound: unbound)
         }
+    }
+
+    // A write pinned by its lookup is shown after the lookup, with the values it binds at save time named.
+    static func inline(_ step: DataWriteStep, databaseType: DatabaseType) -> [String] {
+        guard let lookup = step.lookup, lookup.pinsRows else { return [inline(step.statement, databaseType: databaseType)] }
+        return [
+            inline(lookup.query, databaseType: databaseType),
+            inline(step.statement, databaseType: databaseType, unbound: "/* found by the query above */"),
+        ]
     }
 
     // MARK: - Private Helpers
 
     /// Replaces `?` placeholders sequentially with formatted parameter values.
     /// Skips `?` characters inside single-quoted SQL string literals.
-    private static func inlineQuestionMarkPlaceholders(_ sql: String, parameters: [Any?]) -> String {
+    private static func inlineQuestionMarkPlaceholders(_ sql: String, parameters: [Any?], unbound: String? = nil) -> String {
         var result = ""
         var paramIndex = 0
         var inString = false
@@ -64,12 +73,12 @@ struct SQLParameterInliner {
                     inString = false
                     previousWasQuote = false
                 }
-                if ch == questionMark && !inString && paramIndex < parameters.count {
+                if ch == questionMark && !inString && (paramIndex < parameters.count || unbound != nil) {
                     // Flush accumulated characters before the placeholder
                     if rangeStart < i {
                         result += nsSQL.substring(with: NSRange(location: rangeStart, length: i - rangeStart))
                     }
-                    result += formatValue(parameters[paramIndex])
+                    result += paramIndex < parameters.count ? formatValue(parameters[paramIndex]) : (unbound ?? "?")
                     paramIndex += 1
                     i += 1
                     rangeStart = i

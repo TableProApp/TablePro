@@ -10,26 +10,69 @@ import Foundation
 import TableProPluginKit
 
 extension SnowflakePluginDriver {
-    func generateStatements(
+    func generateRowWrites(
         table: String,
+        schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
         changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let generator = SnowflakeStatementGenerator(
-            qualifiedTable: qualifiedName(table: table, schema: nil),
-            columns: columns,
-            columnTypeNames: columnTypeNames(for: table, columns: columns),
-            primaryKeyColumns: primaryKeyColumns
+    ) throws -> [PluginRowWrite]? {
+        try generateRowWrites(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, changes: changes,
+            insertedRowData: insertedRowData, deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices, context: PluginRowWriteContext()
         )
-        return generator.generateStatements(
-            from: changes,
-            insertedRowData: insertedRowData,
-            deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
+    }
+
+    // The host read the types on whichever connection loaded the table; this driver's cache may never have seen it.
+    func generateRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        context: PluginRowWriteContext
+    ) throws -> [PluginRowWrite]? {
+        try generator(table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, context: context)
+            .rowWrites(
+                from: changes,
+                insertedRowData: insertedRowData,
+                deletedRowIndices: deletedRowIndices,
+                insertedRowIndices: insertedRowIndices
+            )
+    }
+
+    func generateIdentityPreservingInsert(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        rows: [[PluginCellValue]]
+    ) -> [(statement: String, parameters: [PluginCellValue])]? {
+        generator(table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, context: nil)
+            .restoreStatements(rows: rows)
+    }
+
+    private func generator(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        context: PluginRowWriteContext?
+    ) -> SnowflakeStatementGenerator {
+        let cached = columnTypeNames(for: table, columns: columns)
+        let read = context?.columnTypeNames ?? [:]
+        return SnowflakeStatementGenerator(
+            qualifiedTable: qualifiedName(table: table, schema: schema),
+            columns: columns,
+            columnTypeNames: zip(columns, cached).map { read[$0] ?? $1 },
+            primaryKeyColumns: primaryKeyColumns
         )
     }
 

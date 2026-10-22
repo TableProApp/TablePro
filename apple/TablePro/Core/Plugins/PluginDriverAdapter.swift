@@ -69,6 +69,15 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         }
         return pluginDriver
     }
+
+    var rowWritingPluginDriver: (any PluginDatabaseDriver)? {
+        pluginDriver.capabilities.contains(.rowWrites) ? pluginDriver : queryBuildingPluginDriver
+    }
+
+    var primaryKeyNamesOneRow: Bool {
+        !pluginDriver.capabilities.contains(.repeatingPrimaryKey)
+    }
+
     var currentSchema: String? {
         guard pluginDriver.supportsSchemas else { return nil }
         return pluginDriver.currentSchema

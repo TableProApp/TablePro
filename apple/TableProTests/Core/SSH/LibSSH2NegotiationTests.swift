@@ -40,6 +40,37 @@ struct LibSSH2NegotiationTests {
         #expect(failure.supported.contains("hmac-sha2-256"))
     }
 
+    @Test(
+        "A server that offers only methods TablePro dropped is told so, at the stage that failed",
+        arguments: [
+            (
+                ServerKexInit(kex: "diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,ext-info-s"),
+                SSHNegotiationFailure.Stage.keyExchangeOrHostKey,
+                "The server offers only key exchange methods TablePro no longer supports: ",
+                ["diffie-hellman-group14-sha1", "diffie-hellman-group1-sha1"]
+            ),
+            (
+                ServerKexInit(hostKey: "ssh-rsa"),
+                .keyExchangeOrHostKey,
+                "The server offers only host key types TablePro no longer supports: ",
+                ["ssh-rsa"]
+            ),
+            (ServerKexInit(cipher: "3des-cbc"), .cipher, "The server offers only ciphers TablePro no longer supports: ", ["3des-cbc"]),
+            (
+                ServerKexInit(mac: "hmac-sha1,hmac-md5"),
+                .mac,
+                "The server offers only MAC algorithms TablePro no longer supports: ",
+                ["hmac-sha1", "hmac-md5"]
+            ),
+        ]
+    )
+    func retiredOffer(kexInit: ServerKexInit, stage: SSHNegotiationFailure.Stage, sentence: String, offered: [String]) throws {
+        let failure = try negotiationFailure(offering: kexInit)
+
+        #expect(failure.stage == stage)
+        #expect(failure.explanation.contains(sentence + offered.formatted(.list(type: .and)) + "."))
+    }
+
     @Test("A server that hangs up after its banner is not a negotiation failure")
     func hangUpAfterBannerIsNotANegotiation() throws {
         let error = try handshakeError(serverWrites: Self.banner, thenHangsUp: true)
@@ -146,7 +177,7 @@ private enum SSHPacket {
 }
 
 // RFC 4253, 7.1.
-private struct ServerKexInit {
+struct ServerKexInit: Sendable {
     var kex = "curve25519-sha256"
     var hostKey = "ssh-ed25519"
     var cipher = "aes128-ctr"

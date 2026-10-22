@@ -477,6 +477,16 @@ final class DataBrowserViewModel {
 
     // MARK: - Row Operations
 
+    private static var rowNotDeleted: AppError {
+        AppError(
+            category: .query,
+            title: String(localized: "Row Not Deleted"),
+            message: String(localized: "The row is still in the table. A trigger, rule or row security policy may have stopped the delete."),
+            recovery: nil,
+            underlying: nil
+        )
+    }
+
     func deleteRow(_ locator: RowLocator) async -> Bool {
         guard let session, let table else { return false }
         let schema = schema
@@ -518,19 +528,17 @@ final class DataBrowserViewModel {
             }
             await load()
             guard isGone else {
-                operationError = AppError(
-                    category: .query,
-                    title: String(localized: "Row Not Deleted"),
-                    message: String(localized: "The row is still in the table. A trigger, rule or row security policy may have stopped the delete."),
-                    recovery: nil,
-                    underlying: nil
-                )
+                operationError = Self.rowNotDeleted
                 return false
             }
             return true
         } catch RowChangeRefusal.rowNotFound {
             await load()
             return true
+        } catch RowChangeRefusal.notApplied {
+            await load()
+            operationError = Self.rowNotDeleted
+            return false
         } catch let refusal as RowChangeRefusal {
             operationError = SharedRowKey.error(for: refusal)
             return false

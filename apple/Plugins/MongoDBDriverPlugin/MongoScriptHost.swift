@@ -224,7 +224,8 @@ nonisolated final class MongoScriptHost {
         let shape = MongoScriptFindShape(
             database: cursor.database,
             returnsWholeDocuments: cursor.options.projection == nil,
-            skip: cursor.options.skip ?? 0
+            skip: cursor.options.skip ?? 0,
+            filteredFields: MongoFilterFields.named(in: cursor.filterJson)
         )
         return (cursor.collection, shape)
     }

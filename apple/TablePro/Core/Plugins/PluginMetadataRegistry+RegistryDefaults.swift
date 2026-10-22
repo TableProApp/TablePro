@@ -12,6 +12,11 @@ extension PluginMetadataRegistry {
     /// the cast to `varbinary(max)` compares without an implicit conversion back to the type.
     static let mssqlRowMatchTextTypePrefixes = ["NTEXT", "TEXT", "XML", "IMAGE", "GEOGRAPHY", "GEOMETRY", "HIERARCHYID"]
 
+    // Measured on ClickHouse 25.8: a JSON value or a NaN never equals the text it was read as, and concat() of it does.
+    static let clickhouseRowMatchTextTypePrefixes = [
+        "JSON", "OBJECT(", "DYNAMIC", "FLOAT", "BFLOAT16", "NULLABLE(FLOAT", "NULLABLE(BFLOAT16",
+    ]
+
     /// `sql_variant` refuses `=` too (Msg 206), and no cast keeps its base type: the integer `1` and the string `N'1'`
     /// cast to the same text, so a keyless match on it could pick either row.
     static let mssqlRowMatchExcludedTypePrefixes = ["SQL_VARIANT"]
@@ -67,7 +72,9 @@ extension PluginMetadataRegistry {
                     supportsDropIndex: false,
                     supportsOpportunisticTLS: false,
                     authenticationIsDatabaseScoped: true,
-                    columnsAreSampled: true
+                    columnsAreSampled: true,
+                    patternFiltersReadAnyColumn: true,
+                    filtersTypedByReadRows: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -591,7 +598,8 @@ extension PluginMetadataRegistry {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .comment],
+                    rowMatchTextTypePrefixes: Self.clickhouseRowMatchTextTypePrefixes
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: clickhouseDialect,
