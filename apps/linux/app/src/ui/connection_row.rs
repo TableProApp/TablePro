@@ -19,7 +19,7 @@ pub struct ConnectionRowInit {
 pub struct ConnectionRow {
     saved: SavedConnection,
     organization: ConnectionOrganization,
-    group_tags_button: gtk::Button,
+    actions_button: gtk::MenuButton,
     /// AdwActionRow root widget. Cached so the trash button's
     /// confirmation dialog can `present()` against it (the dialog
     /// walks up to find the GtkWindow, but it needs *some* widget
@@ -27,7 +27,7 @@ pub struct ConnectionRow {
     root: Option<gtk::Widget>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ConnectionRowMsg {
     Open,
     ToggleFavorite,
@@ -62,6 +62,10 @@ impl FactoryComponent for ConnectionRow {
     view! {
         adw::ActionRow {
             set_title: &self.saved.name,
+            set_use_markup: false,
+            set_title_lines: 1,
+            set_subtitle_lines: 1,
+            set_tooltip_text: Some(format!("{}\n{}", self.saved.name, subtitle_for(&self.saved, &self.organization)).as_str()),
             set_subtitle: &subtitle_for(&self.saved, &self.organization),
             set_activatable: true,
             connect_activated => ConnectionRowMsg::Open,
@@ -100,23 +104,7 @@ impl FactoryComponent for ConnectionRow {
                 connect_clicked => ConnectionRowMsg::ToggleFavorite,
             },
 
-            add_suffix = &self.group_tags_button.clone(),
-
-            add_suffix = &gtk::Button {
-                set_icon_name: "document-edit-symbolic",
-                set_valign: gtk::Align::Center,
-                set_tooltip_text: Some(crate::tr!("Edit connection").as_str()),
-                add_css_class: "flat",
-                connect_clicked => ConnectionRowMsg::Edit,
-            },
-
-            add_suffix = &gtk::Button {
-                set_icon_name: "edit-copy-symbolic",
-                set_valign: gtk::Align::Center,
-                set_tooltip_text: Some(crate::tr!("Duplicate connection").as_str()),
-                add_css_class: "flat",
-                connect_clicked => ConnectionRowMsg::Duplicate,
-            },
+            add_suffix = &self.actions_button.clone(),
 
             add_suffix = &gtk::Button {
                 set_icon_name: "go-next-symbolic",
@@ -125,31 +113,14 @@ impl FactoryComponent for ConnectionRow {
                 add_css_class: "flat",
                 connect_clicked => ConnectionRowMsg::Open,
             },
-
-            add_suffix = &gtk::Button {
-                set_icon_name: "user-trash-symbolic",
-                set_valign: gtk::Align::Center,
-                set_tooltip_text: Some(crate::tr!("Remove connection").as_str()),
-                add_css_class: "flat",
-                add_css_class: "destructive-action",
-                connect_clicked => ConnectionRowMsg::RequestDelete,
-            },
         }
     }
 
-    fn init_model(init: Self::Init, _index: &DynamicIndex, _sender: FactorySender<Self>) -> Self {
-        let group_tags_label = crate::tr!("Group and tags");
-        let group_tags_button = gtk::Button::builder()
-            .icon_name("view-list-bullet-symbolic")
-            .valign(gtk::Align::Center)
-            .tooltip_text(&group_tags_label)
-            .css_classes(["flat"])
-            .build();
-        group_tags_button.update_property(&[gtk::accessible::Property::Label(&group_tags_label)]);
+    fn init_model(init: Self::Init, _index: &DynamicIndex, sender: FactorySender<Self>) -> Self {
         Self {
             saved: init.saved,
             organization: init.organization,
-            group_tags_button,
+            actions_button: connection_actions(sender),
             root: None,
         }
     }
@@ -162,10 +133,6 @@ impl FactoryComponent for ConnectionRow {
         sender: FactorySender<Self>,
     ) -> Self::Widgets {
         let widgets = view_output!();
-        let sender_for_group_tags = sender.clone();
-        self.group_tags_button
-            .connect_clicked(move |_| sender_for_group_tags.input(ConnectionRowMsg::Organize));
-        // Stash for the destructive-confirm dialog in update().
         self.root = Some(root.clone().upcast::<gtk::Widget>());
         widgets
     }
@@ -218,6 +185,39 @@ impl FactoryComponent for ConnectionRow {
             }
         }
     }
+}
+
+fn connection_actions(sender: FactorySender<ConnectionRow>) -> gtk::MenuButton {
+    let button = gtk::MenuButton::builder()
+        .icon_name("view-more-symbolic")
+        .valign(gtk::Align::Center)
+        .tooltip_text(crate::tr!("Connection actions"))
+        .css_classes(["flat"])
+        .build();
+    button.update_property(&[gtk::accessible::Property::Label(&crate::tr!("Connection actions"))]);
+    let popover = gtk::Popover::new();
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    for (label, message) in [
+        (crate::tr!("Group and tags"), ConnectionRowMsg::Organize),
+        (crate::tr!("Edit connection"), ConnectionRowMsg::Edit),
+        (crate::tr!("Duplicate connection"), ConnectionRowMsg::Duplicate),
+        (crate::tr!("Remove connection"), ConnectionRowMsg::RequestDelete),
+    ] {
+        let action = gtk::Button::with_label(&label);
+        action.add_css_class("flat");
+        let sender = sender.clone();
+        let popover = popover.downgrade();
+        action.connect_clicked(move |_| {
+            if let Some(popover) = popover.upgrade() {
+                popover.popdown();
+            }
+            sender.input(message.clone());
+        });
+        content.append(&action);
+    }
+    popover.set_child(Some(&content));
+    button.set_popover(Some(&popover));
+    button
 }
 
 /// The palette class for a row's colour tag, or `None` when it has no
@@ -313,6 +313,103 @@ mod tests {
 
     fn plain() -> ConnectionOrganization {
         ConnectionOrganization::default()
+    }
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn connection_actions_leave_room_for_text_in_a_narrow_row() {
+        adw::init().unwrap();
+        let list = gtk::ListBox::new();
+        let mut factory = relm4::factory::FactoryVecDeque::<ConnectionRow>::builder()
+            .launch(list.clone())
+            .detach();
+        let mut connection = saved("analyst", AuthMode::Password);
+        connection.name = "Production analytics connection 東京".into();
+        factory.guard().push_back(ConnectionRowInit {
+            saved: connection,
+            organization: plain(),
+        });
+        let context = gtk::glib::MainContext::default();
+        while context.iteration(false) {}
+        let provider = gtk::CssProvider::new();
+        provider.load_from_string("* { font-size: 20px; }");
+        gtk::style_context_add_provider_for_display(
+            &gtk::gdk::Display::default().unwrap(),
+            &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+        let minimum = list.measure(gtk::Orientation::Horizontal, -1).0;
+        list.allocate(320, 200, -1, None);
+        let mut pending = vec![list.clone().upcast::<gtk::Widget>()];
+        let mut title_width = None;
+        while let Some(widget) = pending.pop() {
+            if let Some(label) = widget.downcast_ref::<gtk::Label>()
+                && label.text() == "Production analytics connection 東京"
+            {
+                title_width = Some(label.width());
+            }
+            let mut child = widget.first_child();
+            while let Some(widget) = child {
+                child = widget.next_sibling();
+                pending.push(widget);
+            }
+        }
+        gtk::style_context_remove_provider_for_display(&gtk::gdk::Display::default().unwrap(), &provider);
+        assert!(
+            minimum <= 320,
+            "connection row requires {minimum}px at larger text size"
+        );
+        assert!(
+            title_width.unwrap() >= 120,
+            "connection name only receives {title_width:?} pixels"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn connection_menu_dispatches_actions_for_its_own_record() {
+        adw::init().unwrap();
+        let (sender, _receiver) = relm4::channel::<()>();
+        let (observed, outputs) = std::sync::mpsc::channel();
+        let mut factory = relm4::factory::FactoryVecDeque::<ConnectionRow>::builder()
+            .launch(gtk::ListBox::new())
+            .forward(&sender, move |output| observed.send(output).unwrap());
+        let connection = saved("analyst", AuthMode::Password);
+        let id = connection.id;
+        factory.guard().push_back(ConnectionRowInit {
+            saved: connection,
+            organization: plain(),
+        });
+        let context = gtk::glib::MainContext::default();
+        while context.iteration(false) {}
+        let button = factory.guard().get(0).unwrap().actions_button.clone();
+        let content = button.popover().unwrap().child().unwrap();
+        let mut actions = Vec::new();
+        let mut child = content.first_child();
+        while let Some(widget) = child {
+            child = widget.next_sibling();
+            actions.push(widget.downcast::<gtk::Button>().unwrap());
+        }
+        assert_eq!(actions.len(), 4);
+        for (expected, action) in actions.iter().take(3).enumerate() {
+            action.emit_clicked();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+            let output = loop {
+                while context.iteration(false) {}
+                if let Ok(output) = outputs.try_recv() {
+                    break output;
+                }
+                assert!(std::time::Instant::now() < deadline, "connection action did not arrive");
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            };
+            match (expected, output) {
+                (0, ConnectionRowOutput::Organize(saved)) | (1, ConnectionRowOutput::Edit(saved)) => {
+                    assert_eq!(saved.id, id);
+                }
+                (2, ConnectionRowOutput::Duplicate(actual)) => assert_eq!(actual, id),
+                (_, other) => panic!("unexpected connection action: {other:?}"),
+            }
+        }
     }
 
     #[test]

@@ -17,6 +17,7 @@
 
 ### Fixed
 
+- Saved connection names remain readable in narrow lists, with secondary actions available from a menu.
 - Multi-line SQL edits update workspace query state once per undoable action, reducing repeated full-script copying.
 
 - Closing SQL editors releases their retained query text and search state.

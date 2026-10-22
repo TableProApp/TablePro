@@ -1,0 +1,24 @@
+{
+  "head": "e67b1b68a67a6152b11bde98bf2706c3dc9dbcc3",
+  "linux_base": "6caa27f18c8ffd2e661967d61e3e88309fe0984a",
+  "binary_sha256": "15a954c77bb9fdc93c0f025aeca2825c3006df735910a0f67e7c107ff45bfd18",
+  "binary_profile": "dev",
+  "runtime_source_note": "Built before the Linux documentation, packaging and branding merge. git diff 86a6d7681 HEAD -- apps/linux/app crates scripts/isolated-tests.json is empty.",
+  "installed_cases": [
+    {
+      "scenario": "editing_a_saved_connection_prefills_it_and_saves_the_new_name",
+      "status": "passed",
+      "error": null
+    },
+    {
+      "scenario": "connection_colour_chooser_has_an_accessible_button",
+      "status": "passed",
+      "error": null
+    }
+  ],
+  "removal_observation": {
+    "scenario": "removing_a_saved_connection_prompts_twice",
+    "status": "passed",
+    "error": null
+  }
+}
