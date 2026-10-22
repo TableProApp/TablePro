@@ -89,6 +89,8 @@ The exact driver list and supplementary targets are owned by [`ci-local.sh::run_
 
 To find UI-thread stalls while profiling or testing by hand, set `TABLEPRO_UI_STALL_MS=50` (any positive number of milliseconds). The app then logs a `UI thread stalled` warning with the stall length whenever the GTK main loop is late by at least that long. It is off by default and logs no content. It reports that a stall happened, not its cause; pair it with a profiler.
 
+Every clickable control on the SQL editor screen must have a registered keyboard path in `apps/linux/app/tests/keyboard_paths.py`: a shortcut, a menu entry, a tab stop, or a `gap:` entry naming what is missing. The GTK scenario `sql_editor_clickables_all_have_a_keyboard_path` fails when a new button appears without an entry. Add an entry rather than widening a pattern.
+
 The Forgejo driver matrix sets `TABLEPRO_TEST_RUN_ID` and runs each complete integration binary serially. PostgreSQL, MySQL and MariaDB fixtures reuse one primary server per engine and recreate the `test` database before each test; filtered and exact selectors start their own server. Deliberate restart tests also start a separate server. So a full-suite runtime estimate should count those cases rather than multiply every test by a database startup.
 
 Disposable PostgreSQL fixtures use tmpfs and disable `fsync`, `synchronous_commit` and `full_page_writes`. MySQL and MariaDB use tmpfs and disable transaction-log, doublewrite and binlog syncing; SQL Server uses tmpfs with writable permissions for its non-root service account. Lost-ack, crash and restart cases use durable containers so they still exercise persistent storage. The Docker tests assert the database settings and mounted filesystem.

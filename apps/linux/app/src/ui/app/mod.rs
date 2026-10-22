@@ -345,6 +345,7 @@ impl SimpleComponent for App {
                     pack_end = &gtk::MenuButton {
                         set_icon_name: "open-menu-symbolic",
                         set_tooltip_text: Some(crate::tr!("Main menu").as_str()),
+                        set_primary: true,
                     },
                 },
 
