@@ -293,6 +293,41 @@ struct SyncRecordEditTests {
         #expect(try options(merged) == ["shortcuts": ["x": 2, "y": 3]])
     }
 
+    @Test("A shortcut both sides rebound is one option, so neither side's keys mix into a third")
+    func shortcutIsOneOption() throws {
+        let merged = SyncJSONMerge.document(
+            base: json(#"{"shortcuts":{"copy":{"key":"a","modifiers":["cmd"]},"paste":{"key":"v","modifiers":["cmd"]}}}"#),
+            local: json(#"{"shortcuts":{"copy":{"key":"a","modifiers":["cmd","shift"]},"paste":{"key":"v","modifiers":["cmd"]}}}"#),
+            server: json(#"{"shortcuts":{"copy":{"key":"b","modifiers":["cmd"]},"paste":{"key":"p","modifiers":["cmd"]}}}"#)
+        )
+
+        #expect(try options(merged) == [
+            "shortcuts": [
+                "copy": ["key": "a", "modifiers": ["cmd", "shift"]],
+                "paste": ["key": "p", "modifiers": ["cmd"]]
+            ]
+        ])
+    }
+
+    @Test("An item both sides changed is taken whole from this device")
+    func itemChangedOnBothSidesIsTakenWhole() throws {
+        let merged = SyncJSONMerge.document(
+            base: json(#"[{"id":"1","name":"a","prompt":"p"}]"#),
+            local: json(#"[{"id":"1","name":"a2","prompt":"p"}]"#),
+            server: json(#"[{"id":"1","name":"a","prompt":"p3"}]"#)
+        )
+
+        let items = try parsed(merged) as? [[String: String]]
+        #expect(items == [["id": "1", "name": "a2", "prompt": "p"]])
+    }
+
+    @Test("Two spellings of one document are the same document")
+    func respellingIsTheSameDocument() {
+        #expect(SyncJSONMerge.sameDocument(json(#"{"a":1,"b":[2]}"#), json(#"{"b":[2],"a":1}"#)))
+        #expect(!SyncJSONMerge.sameDocument(json(#"{"a":1}"#), json(#"{"a":2}"#)))
+        #expect(!SyncJSONMerge.sameDocument(nil, json(#"{"a":1}"#)))
+    }
+
     @Test("An edit of only the stamps every push writes changes no content")
     func stampsAreNotContent() throws {
         let base = serverRecord([.name: "Production", .modifiedAtLocal: Date(timeIntervalSince1970: 1)])

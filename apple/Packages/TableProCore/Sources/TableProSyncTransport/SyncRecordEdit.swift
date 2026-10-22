@@ -129,24 +129,33 @@ public enum SyncConflictRebase {
 }
 
 // Settings are JSON documents of independent options, so two devices changing different options keep
-// both: what this device changed since `base` lands on the server's document, objects merged key by key
-// and lists of objects with an `id` item by item. Where both changed one value, this device's wins.
+// both: what this device changed since `base` lands on the server's document. The document and the objects
+// directly in it merge key by key, lists of objects with an `id` item by item. Anything deeper is one option
+// (a shortcut, a command, a provider), and where both changed one option, this device's wins.
 public enum SyncJSONMerge {
+    private static let objectDepth = 2
+
     public static func document(base: Data?, local: Data?, server: Data?) -> Data? {
         guard let base = parse(base), let local = parse(local), let serverData = server, let server = parse(server)
         else { return nil }
         if isEqual(local, base) { return serverData }
         return try? JSONSerialization.data(
-            withJSONObject: merge(base: base, local: local, server: server),
+            withJSONObject: merge(base: base, local: local, server: server, depth: 0),
             options: [.sortedKeys, .fragmentsAllowed]
         )
     }
 
-    private static func merge(base: Any?, local: Any, server: Any) -> Any {
+    public static func sameDocument(_ lhs: Data?, _ rhs: Data?) -> Bool {
+        guard let lhs = parse(lhs), let rhs = parse(rhs) else { return false }
+        return isEqual(lhs, rhs)
+    }
+
+    private static func merge(base: Any?, local: Any, server: Any, depth: Int) -> Any {
         if isEqual(local, base) { return server }
         if isEqual(server, base) { return local }
+        guard depth < objectDepth else { return local }
         if let base = base as? [String: Any], let local = local as? [String: Any], let server = server as? [String: Any] {
-            return mergeObjects(base: base, local: local, server: server)
+            return mergeObjects(base: base, local: local, server: server, depth: depth)
         }
         if let base = base as? [Any], let local = local as? [Any], let server = server as? [Any],
            let merged = mergeLists(base: base, local: local, server: server) {
@@ -155,14 +164,14 @@ public enum SyncJSONMerge {
         return local
     }
 
-    private static func mergeObjects(base: [String: Any], local: [String: Any], server: [String: Any]) -> [String: Any] {
+    private static func mergeObjects(base: [String: Any], local: [String: Any], server: [String: Any], depth: Int) -> [String: Any] {
         var merged = server
         for key in Set(local.keys).union(base.keys) where !isEqual(local[key], base[key]) {
             guard let value = local[key] else {
                 merged.removeValue(forKey: key)
                 continue
             }
-            merged[key] = server[key].map { merge(base: base[key], local: value, server: $0) } ?? value
+            merged[key] = server[key].map { merge(base: base[key], local: value, server: $0, depth: depth + 1) } ?? value
         }
         return merged
     }
@@ -178,7 +187,7 @@ public enum SyncJSONMerge {
         var merged: [Any] = serverItems.compactMap { entry in
             guard !(baseIds.contains(entry.id) && !localIds.contains(entry.id)) else { return nil }
             guard let mine = localById[entry.id], !isEqual(mine, baseById[entry.id]) else { return entry.item }
-            return merge(base: baseById[entry.id], local: mine, server: entry.item)
+            return mine
         }
         // Added here, or changed here while another device removed it.
         for entry in localItems where !serverIds.contains(entry.id) && !isEqual(entry.item, baseById[entry.id]) {

@@ -476,7 +476,9 @@ struct SyncRecordMapper {
     ) -> SyncRecordEdit {
         let record = toCKRecord(category: category, settingsData: settingsData, in: zone, base: base?.copy() as? CKRecord)
         let baseData = base.flatMap(Self.settingsData(from:))
-        return SyncRecordEdit(AppSettingsSyncField.self, record: record, base: base) { merged, server in
+        // A base an older build wrote in another key order holds the same options, which is no edit.
+        let baseAsWritten = SyncJSONMerge.sameDocument(baseData, settingsData) ? record : nil
+        return SyncRecordEdit(AppSettingsSyncField.self, record: record, base: base, baseAsWritten: baseAsWritten) { merged, server in
             guard let document = SyncJSONMerge.document(
                 base: baseData,
                 local: settingsData,

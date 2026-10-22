@@ -195,6 +195,20 @@ struct SyncConflictRebaseTests {
         #expect(document == ["a": 2, "b": 2])
     }
 
+    @Test("A settings category an older build cached in another key order is no pending edit")
+    func respelledSettingsAreNoEdit() {
+        let base = SyncRecordMapper.toCKRecord(category: "dataGrid", settingsData: Data(#"{"b":1,"a":2}"#.utf8), in: Self.zoneID)
+
+        let edit = SyncRecordMapper.settingsEdit(
+            category: "dataGrid",
+            settingsData: Data(#"{"a":2,"b":1}"#.utf8),
+            in: Self.zoneID,
+            base: base
+        )
+
+        #expect(edit.changesContent == false)
+    }
+
     @Test("Slash commands two Macs added under one name both stay, the later one under a free name")
     func mergedSlashCommandsKeepDistinctNames() throws {
         let shared = CustomSlashCommand(name: "explain", promptTemplate: "Explain {{query}}")
