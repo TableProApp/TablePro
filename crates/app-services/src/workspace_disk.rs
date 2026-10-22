@@ -37,7 +37,7 @@ pub fn load(path: &Path, drafts: &Path) -> std::io::Result<WorkspaceState> {
     Ok(state)
 }
 
-pub fn save(path: &Path, drafts: &Path, state: &WorkspaceState) -> std::io::Result<()> {
+pub fn save(path: &Path, drafts: &Path, mut state: WorkspaceState) -> std::io::Result<()> {
     let existing = match std::fs::read(path) {
         Ok(bytes) => Some(bytes),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
@@ -57,8 +57,7 @@ pub fn save(path: &Path, drafts: &Path, state: &WorkspaceState) -> std::io::Resu
             }
         }
     }
-    let mut snapshot = state.clone();
-    for (connection, workspace) in &mut snapshot.connections {
+    for (connection, workspace) in &mut state.connections {
         let connection = Uuid::parse_str(connection).map_err(std::io::Error::other)?;
         for tab in &mut workspace.tabs {
             if let WorkspaceTabRecord::Editor { query, draft_id, .. } = tab {
@@ -71,7 +70,7 @@ pub fn save(path: &Path, drafts: &Path, state: &WorkspaceState) -> std::io::Resu
             }
         }
     }
-    atomic_write_json(path, &snapshot)
+    atomic_write_json(path, &state)
 }
 
 #[cfg(test)]
@@ -101,7 +100,7 @@ mod tests {
         );
         atomic_write_json(&path, &state).unwrap();
         let legacy = std::fs::read(&path).unwrap();
-        save(&path, &drafts, &load(&path, &drafts).unwrap()).unwrap();
+        save(&path, &drafts, load(&path, &drafts).unwrap()).unwrap();
         assert_eq!(
             std::fs::read(path.with_extension("before-drafts.json")).unwrap(),
             legacy
@@ -111,7 +110,7 @@ mod tests {
         assert!(
             matches!(&loaded.connections[&id].tabs[0], WorkspaceTabRecord::Editor { query: text, draft_id: Some(_), .. } if text == &query)
         );
-        save(&path, &drafts, &loaded).unwrap();
+        save(&path, &drafts, loaded).unwrap();
         assert_eq!(
             std::fs::read(path.with_extension("before-drafts.json")).unwrap(),
             legacy
@@ -191,10 +190,10 @@ mod tests {
         atomic_write_json(&path, &state).unwrap();
         let original = std::fs::read(&path).unwrap();
         std::fs::write(&drafts, "not a directory").unwrap();
-        assert!(save(&path, &drafts, &state).is_err());
+        assert!(save(&path, &drafts, state.clone()).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), original);
         std::fs::write(&path, "broken").unwrap();
-        assert!(save(&path, &drafts, &state).is_err());
+        assert!(save(&path, &drafts, state.clone()).is_err());
         assert_eq!(std::fs::read(path).unwrap(), b"broken");
     }
 }

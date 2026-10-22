@@ -1,0 +1,68 @@
+{
+  "source_head": "9015604f49c550725d60084b0c546708cf233c0a",
+  "uncommitted_test_diff": "diff --git i/crates/app-services/tests/workspace_persistence.rs w/crates/app-services/tests/workspace_persistence.rs\nindex b48450383..f63b37b36 100644\n--- i/crates/app-services/tests/workspace_persistence.rs\n+++ w/crates/app-services/tests/workspace_persistence.rs\n@@ -174,13 +174,12 @@ fn startup_preview_cleanup_preserves_the_selected_kept_tab_on_disk() {\n     assert!(matches!(&state.tabs[0], WorkspaceTabRecord::Table { table, preview: false, .. } if table == \"kept\"));\n }\n \n-#[test]\n-fn repeated_large_draft_saves_preserve_other_connections_and_unicode_text() {\n+fn repeated_large_draft_saves(connection_count: usize) {\n     let dir = tempfile::tempdir().unwrap();\n     let path = dir.path().join(\"workspace_state.json\");\n     let drafts = dir.path().join(\"drafts\");\n     let store = WorkspaceStore::new(Some(path.clone()), drafts.clone());\n-    let ids: Vec<_> = (0..4).map(|_| Uuid::new_v4()).collect();\n+    let ids: Vec<_> = (0..connection_count).map(|_| Uuid::new_v4()).collect();\n     let original = \"SELECT '\u6771\u4eac\u00e9';\\n\".repeat(65_536);\n     let record = |query: String| ConnectionWorkspaceState {\n         tabs: vec![WorkspaceTabRecord::Editor {\n@@ -209,3 +208,13 @@ fn repeated_large_draft_saves_preserve_other_connections_and_unicode_text() {\n         assert!(matches!(&state.tabs[0], WorkspaceTabRecord::Editor { query, .. } if query == expected));\n     }\n }\n+\n+#[test]\n+fn repeated_large_draft_saves_preserve_other_connections_and_unicode_text() {\n+    repeated_large_draft_saves(4);\n+}\n+\n+#[test]\n+fn repeated_large_draft_saves_preserve_one_connections_unicode_text() {\n+    repeated_large_draft_saves(1);\n+}\n",
+  "binary_sha256": "2b3b18be47a5dadd86917ee514d15a9232476e9a24b7820dd71ad7edaa4c94cc",
+  "functional_exit": 0,
+  "cases": {
+    "one": {
+      "connections": 1,
+      "draft_bytes_each": 1245184,
+      "peak_heap": "10.05M",
+      "instrumented_peak_rss": "21.42M",
+      "trace_sha256": "a50c8ee2fe7a95e29aeb96c557d950203be7bf875092e730ebae2e3d9959621b",
+      "status": "passed"
+    },
+    "four": {
+      "connections": 4,
+      "draft_bytes_each": 1245184,
+      "peak_heap": "25.00M",
+      "instrumented_peak_rss": "37.91M",
+      "trace_sha256": "2e57aa7cf6a218ad9582945a0279ef2cb639cf50914b4fb27e67e60a3c4acf06",
+      "status": "passed"
+    }
+  },
+  "candidate": {
+    "source_head": "89774528ade0d46629a30aea9a5e72cc9f81b221",
+    "binary_sha256": "34dbd70f06f88cf842ffa47db44a58c0b10f24e60abd329ebee089117d3fefdb",
+    "integration_tests_passed": 8,
+    "workspace_unit_tests_passed": 40
+  },
+  "repeated_four_connection_profiles": [
+    {
+      "variant": "before",
+      "repeat": 1,
+      "peak_heap": "25.00M",
+      "trace_sha256": "fa5107ab9259eccf3e0d3ebcd6f2ad0bbefd173adbcf7eb6b48f61c1f3c342d4"
+    },
+    {
+      "variant": "before",
+      "repeat": 2,
+      "peak_heap": "25.00M",
+      "trace_sha256": "3787dd69bcfc1b2426abde9bc2533ff81dd4402365a43b6a7982910a9e7c99e6"
+    },
+    {
+      "variant": "before",
+      "repeat": 3,
+      "peak_heap": "25.00M",
+      "trace_sha256": "0dccbb5a73ec819ffd32311300cdd97b77bd56648233a57d76688a88fb883e01"
+    },
+    {
+      "variant": "after",
+      "repeat": 1,
+      "peak_heap": "18.77M",
+      "trace_sha256": "447bee64ce25e072c043488d0157c5c6c03102efc9d85207170a58926ee48849"
+    },
+    {
+      "variant": "after",
+      "repeat": 2,
+      "peak_heap": "18.77M",
+      "trace_sha256": "75583edc073ff20daa4f544b8213bdd2d075f0ba94c059315600524736fca3fb"
+    },
+    {
+      "variant": "after",
+      "repeat": 3,
+      "peak_heap": "18.77M",
+      "trace_sha256": "69f0be76897c7f735f741ea731312f1fed9945ac65b530398f25f049f4f63047"
+    }
+  ]
+}

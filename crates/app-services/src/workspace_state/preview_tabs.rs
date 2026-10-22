@@ -10,7 +10,7 @@ impl WorkspaceStore {
         let Ok(mut state) = load_locked(&self.inner.paths) else {
             return;
         };
-        if drop_preview_tabs(&mut state) && save_locked(&self.inner.paths, &state).is_err() {
+        if drop_preview_tabs(&mut state) && save_locked(&self.inner.paths, state).is_err() {
             tracing::warn!("preview tabs could not be discarded from the saved workspace");
         }
     }

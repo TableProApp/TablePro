@@ -173,3 +173,48 @@ fn startup_preview_cleanup_preserves_the_selected_kept_tab_on_disk() {
     assert_eq!(state.tabs.len(), 1);
     assert!(matches!(&state.tabs[0], WorkspaceTabRecord::Table { table, preview: false, .. } if table == "kept"));
 }
+
+fn repeated_large_draft_saves(connection_count: usize) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("workspace_state.json");
+    let drafts = dir.path().join("drafts");
+    let store = WorkspaceStore::new(Some(path.clone()), drafts.clone());
+    let ids: Vec<_> = (0..connection_count).map(|_| Uuid::new_v4()).collect();
+    let original = "SELECT '東京é';\n".repeat(65_536);
+    let record = |query: String| ConnectionWorkspaceState {
+        tabs: vec![WorkspaceTabRecord::Editor {
+            query,
+            draft_id: None,
+            file: None,
+        }],
+        ..Default::default()
+    };
+    for id in &ids {
+        store.save_connection(*id, record(original.clone()));
+    }
+    assert_eq!(flush(&store), Ok(()));
+    let mut latest = original.clone();
+    for revision in 0..3 {
+        latest = format!("{original}SELECT {revision};\n");
+        store.save_connection(ids[0], record(latest.clone()));
+        assert_eq!(flush(&store), Ok(()));
+    }
+    let restored = WorkspaceStore::new(Some(path), drafts);
+    restored.prefetch_connections(&ids).unwrap();
+    for (index, id) in ids.iter().enumerate() {
+        let expected = if index == 0 { &latest } else { &original };
+        let state = restored.load_connection(*id).unwrap();
+        assert_eq!(state.tabs.len(), 1);
+        assert!(matches!(&state.tabs[0], WorkspaceTabRecord::Editor { query, .. } if query == expected));
+    }
+}
+
+#[test]
+fn repeated_large_draft_saves_preserve_other_connections_and_unicode_text() {
+    repeated_large_draft_saves(4);
+}
+
+#[test]
+fn repeated_large_draft_saves_preserve_one_connections_unicode_text() {
+    repeated_large_draft_saves(1);
+}

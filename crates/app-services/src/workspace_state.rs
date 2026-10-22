@@ -282,11 +282,10 @@ fn load_locked(paths: &WorkspacePaths) -> Result<WorkspaceState, WorkspaceFlushE
     Ok(state)
 }
 
-fn save_locked(paths: &WorkspacePaths, state: &WorkspaceState) -> Result<(), WorkspaceFlushError> {
+fn save_locked(paths: &WorkspacePaths, mut state: WorkspaceState) -> Result<(), WorkspaceFlushError> {
     let path = paths.state.as_deref().ok_or(WorkspaceFlushError::WriteFailed)?;
-    let mut snapshot = state.clone();
-    clamp(&mut snapshot);
-    workspace_disk::save(path, &paths.drafts, &snapshot).map_err(|error| {
+    clamp(&mut state);
+    workspace_disk::save(path, &paths.drafts, state).map_err(|error| {
         tracing::warn!(%error, "workspace could not be saved");
         WorkspaceFlushError::WriteFailed
     })
@@ -369,7 +368,7 @@ impl WorkspaceStore {
             match load_locked(&self.inner.paths) {
                 Ok(mut state) => {
                     if state.connections.remove(&id.to_string()).is_some()
-                        && let Err(error) = save_locked(&self.inner.paths, &state)
+                        && let Err(error) = save_locked(&self.inner.paths, state)
                     {
                         tracing::warn!(%id, ?error, "could not remove deleted connection from workspace state");
                     }
@@ -474,7 +473,7 @@ fn run_writer(
                 for (id, entry) in &pending {
                     state.connections.insert(id.to_string(), entry.state.clone());
                 }
-                save_locked(&paths, &state)
+                save_locked(&paths, state)
             })
         };
         let mut queue = queue.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
