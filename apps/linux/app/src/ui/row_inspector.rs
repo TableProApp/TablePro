@@ -13,37 +13,48 @@ pub(crate) struct InspectorField {
     pub is_null: bool,
 }
 
-pub(crate) fn inspector_fields(columns: &[ColumnInfo], cells: &[Value]) -> Vec<InspectorField> {
+#[cfg(test)]
+fn inspector_fields(columns: &[ColumnInfo], cells: &[Value]) -> Vec<InspectorField> {
     columns
         .iter()
         .enumerate()
-        .map(|(index, column)| {
-            let value = cells.get(index);
-            InspectorField {
-                name: column.name.clone(),
-                data_type: column.data_type.clone(),
-                text: match value {
-                    None => crate::tr!("Not fetched"),
-                    Some(Value::Undecodable(kind)) if kind == "not fetched" => crate::tr!("Not fetched"),
-                    Some(value) => value_to_display_text(value),
-                },
-                is_null: matches!(value, Some(Value::Null)),
-            }
-        })
+        .map(|(index, column)| inspector_field(column, cells.get(index)))
         .collect()
+}
+
+fn inspector_field(column: &ColumnInfo, value: Option<&Value>) -> InspectorField {
+    InspectorField {
+        name: column.name.clone(),
+        data_type: column.data_type.clone(),
+        text: match value {
+            None => crate::tr!("Not fetched"),
+            Some(Value::Undecodable(kind)) if kind == "not fetched" => crate::tr!("Not fetched"),
+            Some(value) => value_to_display_text(value),
+        },
+        is_null: matches!(value, Some(Value::Null)),
+    }
 }
 
 pub(crate) fn inspector_fields_for_row(
     columns: &[ColumnInfo],
     row: &crate::ui::row_object::RowObject,
 ) -> Vec<InspectorField> {
-    let mut fields = inspector_fields(columns, &row.cells_clone());
-    for (index, field) in fields.iter_mut().enumerate() {
-        if let Some(preview) = row.cell_preview(index) {
-            field.text = crate::ui::grid::preview_to_display_text(&preview);
-        }
-    }
-    fields
+    columns
+        .iter()
+        .enumerate()
+        .map(|(index, column)| {
+            if let Some(preview) = row.cell_preview(index) {
+                return InspectorField {
+                    name: column.name.clone(),
+                    data_type: column.data_type.clone(),
+                    text: crate::ui::grid::preview_to_display_text(&preview),
+                    is_null: false,
+                };
+            }
+            row.with_cell_value(index, |value| inspector_field(column, Some(value)))
+                .unwrap_or_else(|| inspector_field(column, None))
+        })
+        .collect()
 }
 
 #[derive(Clone)]
@@ -211,6 +222,49 @@ mod tests {
         let fields = inspector_fields_for_row(&columns, &row);
         assert!(fields[1].text.starts_with(&"a".repeat(8192)));
         assert!(fields[1].text.ends_with("9000 bytes total)"));
+    }
+
+    #[test]
+    fn wide_row_fields_preserve_previews_nulls_missing_cells_and_source_values() {
+        let columns = [
+            column("id", "int"),
+            column("text", "text"),
+            column("blob", "bytea"),
+            column("null", "text"),
+            column("missing", "text"),
+        ];
+        let row = crate::ui::row_object::RowObject::new_projected(
+            vec![
+                Value::Int(7),
+                Value::Text("x".repeat(8 * 1024 * 1024)),
+                Value::Bytes(vec![42; 8 * 1024 * 1024]),
+                Value::Null,
+            ],
+            &[0, 1, 2, 3],
+            5,
+        )
+        .unwrap();
+        row.preview_long_values(&[0]);
+        for _ in 0..8 {
+            let fields = inspector_fields_for_row(&columns, &row);
+            assert_eq!(fields[0].text, "7");
+            for index in [1, 2] {
+                assert_eq!(
+                    fields[index].text,
+                    crate::ui::grid::preview_to_display_text(&row.cell_preview(index).unwrap())
+                );
+            }
+            assert!(fields[3].is_null);
+            assert!(!fields[4].is_null);
+            assert_eq!(fields[4].text, crate::tr!("Not fetched"));
+        }
+        assert_eq!(
+            row.with_cell_value(1, |value| match value {
+                Value::Text(text) => text.len(),
+                _ => 0,
+            }),
+            Some(8 * 1024 * 1024)
+        );
     }
 
     #[test]

@@ -24,7 +24,8 @@ impl App {
         let pending: Vec<crate::ui::editor::SchemaRequest> = {
             let mut index = self.schema_index.borrow_mut();
             if index.sync_connection(&identity) {
-                self.reset_schema_fetches();
+                index.invalidate_columns();
+                self.cancel_schema_fetches();
             }
             let mut requested = self.requested_columns.borrow_mut();
             tables
@@ -68,6 +69,10 @@ impl App {
 
     pub(super) fn reset_schema_fetches(&self) {
         self.schema_index.borrow_mut().invalidate_columns();
+        self.cancel_schema_fetches();
+    }
+
+    fn cancel_schema_fetches(&self) {
         self.requested_columns.borrow_mut().clear();
         crate::services::request_generation::replace_in_flight(&self.schema_fetch_cancel);
     }
@@ -85,7 +90,8 @@ impl App {
         };
         let mut index = self.schema_index.borrow_mut();
         if index.sync_connection(&identity) {
-            self.reset_schema_fetches();
+            index.invalidate_columns();
+            self.cancel_schema_fetches();
         }
         if !index.accepts(&request) {
             return;

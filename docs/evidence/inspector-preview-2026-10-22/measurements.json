@@ -1,0 +1,25 @@
+{
+  "baseline": "0da889efd0180baab4ca2fba16799d98a5e570da",
+  "build": "Rust 1.98 Cargo test debug profile, same target, sequential builds",
+  "fixture": "integer key, 8 MiB text, 8 MiB binary, null, unfetched cell, eight inspector field refreshes",
+  "candidate_source_sha256": "fcd2cde16180eb0c569007c1ea81456cc71c9bdd4e202e1d650afdc68d4cd04e",
+  "baseline_source_sha256": "c91fa068da706773e22f6f660cf1ecb8f2782830ffaff6a4b1a6905b3563b741",
+  "results": {
+    "baseline": {
+      "peak_heap_MB": 33.86,
+      "peak_RSS_MB_including_profiler": 85.44,
+      "instrumented_total_seconds": 0.21,
+      "binary_sha256": "56889e5e9919b2fffd40b0b30bfb03e3c1d21e08952722430e6b19c89f814642",
+      "trace_sha256": "b6917ef4fcf2f19a8ebf8398c7c72d246bafbc226470ad01276258bc7389a613",
+      "report_sha256": "59a3d7d8b71b2ad6513a5fb8a96fb574569f95c1e3c913054f1c36778efcf09e"
+    },
+    "candidate": {
+      "peak_heap_MB": 17.08,
+      "peak_RSS_MB_including_profiler": 65.73,
+      "instrumented_total_seconds": 0.05,
+      "binary_sha256": "d4ee59f0cc860c49c4edcf0332c88be374185a5c81e5d22814bab324ad0cb9c4",
+      "trace_sha256": "c983ec4c675da1f71660770bc645fc8583d77f0fce92de25f1d02a657eae896d",
+      "report_sha256": "314df6227c240753e20a057d8242b8af13f1ca5a4191478de7c0ede6dc3862e0"
+    }
+  }
+}

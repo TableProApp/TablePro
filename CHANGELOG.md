@@ -17,6 +17,8 @@
 
 ### Fixed
 
+- Large JSON previews use less temporary memory.
+- Inspecting a row with oversized cell previews avoids copying the full row contents.
 - Saved connection names remain readable in narrow lists, with secondary actions available from a menu.
 - Multi-line SQL edits update workspace query state once per undoable action, reducing repeated full-script copying.
 

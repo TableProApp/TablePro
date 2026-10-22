@@ -1,0 +1,39 @@
+{
+  "preflight": {
+    "result": "passed",
+    "log_sha256": "6ea5b9c01d58270c775224517b040587d548ec1c09213140d0551bb16d251ada"
+  },
+  "focused_inspector_tests": {
+    "result": "3 passed, 1 display test ignored in this command",
+    "log_sha256": "3614ff016bbe2020101c36cc1570d9effced7b0dcfa1a5fb0190bceaf8173844"
+  },
+  "widgets": {
+    "result": "passed",
+    "log_sha256": "5dd0af1cf619d33c007843833f33f687d96f233df82ef077ed49fb764da23e66"
+  },
+  "app-unit": {
+    "result": "passed",
+    "log_sha256": "87f467a2b58b67af2c3bbf02f75100e6ac5f65269ab059e0e23e619e328920ae"
+  },
+  "clippy": {
+    "result": "passed",
+    "log_sha256": "c095365adef290199791a42e573af900754016bb30aaa7493ed01afcc2ad0b28"
+  },
+  "linux_refresh": {
+    "base": "ad9bb1447163c848919616773ab0971c5a2d2135",
+    "source_commit": "76fe7316b2065977fdd396037aba358507dfb013",
+    "preflight": {
+      "result": "2054 passed, 64 skipped",
+      "log_sha256": "0678d9cda1902559020350f8560b41c8f561ac6000d483e7e4ab454f2314055f"
+    },
+    "gtk_widgets": {
+      "result": "105 passed",
+      "log_sha256": "e15a037a47f74a4a32ab6b46325d8b0a56641a4de08b19433d1165567cca9093"
+    },
+    "app_clippy": {
+      "result": "passed",
+      "log_sha256": "149ec0ee795cb1ad1ada34d851059bbac220cc0cabaf14951dfc25557d5c8233"
+    },
+    "documentation_checks": "passed"
+  }
+}
