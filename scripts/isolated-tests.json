@@ -675,6 +675,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::mcp_preferences::copy_tests::the_copy_button_puts_the_token_on_the_clipboard_and_keeps_the_dialog_open"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::editor::completion_provider::tests::completion_resumes_after_a_large_buffer_is_replaced_with_a_small_query"
     ],
     [

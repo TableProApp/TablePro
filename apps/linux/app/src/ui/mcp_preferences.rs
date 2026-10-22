@@ -201,13 +201,33 @@ fn permissions_label(p: TokenPermissions) -> &'static str {
 }
 
 fn show_issued_token(parent: &impl IsA<gtk::Widget>, plaintext: &str, keyring_saved: bool) {
+    issued_token_dialog(plaintext, keyring_saved).present(Some(parent));
+}
+
+fn issued_token_dialog(plaintext: &str, keyring_saved: bool) -> adw::AlertDialog {
     let alert = adw::AlertDialog::new(
         Some(&tr!("Token issued")),
         Some(&issued_token_message(plaintext, keyring_saved)),
     );
     alert.add_response("ok", &tr!("Done"));
     alert.set_default_response(Some("ok"));
-    alert.present(Some(parent));
+    alert.set_close_response("ok");
+    alert.set_extra_child(Some(&copy_token_button(plaintext)));
+    alert
+}
+
+fn copy_token_button(plaintext: &str) -> gtk::Button {
+    let button = gtk::Button::builder()
+        .label(tr!("Copy Token"))
+        .halign(gtk::Align::Center)
+        .css_classes(["pill"])
+        .build();
+    let token = plaintext.to_owned();
+    button.connect_clicked(move |button| {
+        button.clipboard().set_text(&token);
+        button.set_label(&tr!("Copied"));
+    });
+    button
 }
 
 fn issued_token_message(plaintext: &str, keyring_saved: bool) -> String {
@@ -225,4 +245,27 @@ fn issued_token_message(plaintext: &str, keyring_saved: bool) -> String {
         tr!("Endpoint: http://127.0.0.1:17432/mcp"),
         storage_notice,
     )
+}
+
+#[cfg(test)]
+mod copy_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn the_copy_button_puts_the_token_on_the_clipboard_and_keeps_the_dialog_open() {
+        adw::init().unwrap();
+        let button = copy_token_button("tok-abc-123");
+        button.emit_clicked();
+        let content = button.clipboard().content().unwrap();
+        let value = content.value(gtk::glib::Type::STRING).unwrap();
+        assert_eq!(value.get::<String>().unwrap(), "tok-abc-123");
+        assert_eq!(button.label().as_deref(), Some("Copied"));
+        let dialog = issued_token_dialog("tok-abc-123", true);
+        assert!(
+            dialog.extra_child().is_some(),
+            "the button lives in the dialog body, so copying does not dismiss it"
+        );
+        assert!(!dialog.has_response("copy"));
+    }
 }
