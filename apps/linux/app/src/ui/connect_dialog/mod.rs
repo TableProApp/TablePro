@@ -840,9 +840,9 @@ impl ConnectDialog {
             (String::new(), String::new())
         };
         ConnectOptions {
-            host: self.host.text().to_string(),
+            host: self.host.text().trim().to_string(),
             port: self.port.value() as u16,
-            database: self.database.text().to_string(),
+            database: form::typed_database(&self.database.text(), self.form.file_based),
             auth_source: auth_source::value(&self.auth_source),
             username,
             password: SecretString::new(password.into()),

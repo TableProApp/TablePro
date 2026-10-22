@@ -361,3 +361,22 @@ mod tests {
         );
     }
 }
+
+pub(super) fn typed_database(text: &str, file_based: bool) -> String {
+    if file_based {
+        text.to_string()
+    } else {
+        text.trim().to_string()
+    }
+}
+
+#[cfg(test)]
+mod typed_database_tests {
+    use super::typed_database;
+
+    #[test]
+    fn a_pasted_database_name_loses_surrounding_spaces_but_a_file_path_is_kept() {
+        assert_eq!(typed_database("  shop \n", false), "shop");
+        assert_eq!(typed_database(" /data/my file.db ", true), " /data/my file.db ");
+    }
+}
