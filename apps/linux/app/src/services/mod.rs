@@ -15,6 +15,7 @@ pub mod export_pages;
 pub mod gtk_approval;
 pub mod mcp_service;
 pub mod named_filter_presets;
+pub mod open_request;
 pub mod operation_control;
 pub mod persistence_stores;
 pub mod preferences;

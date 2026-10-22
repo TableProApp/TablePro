@@ -12,6 +12,7 @@ For MySQL and MariaDB, choose a local socket file instead of a host to connect t
 
 Passwords are kept in your desktop keyring, never in BookiE's own files.
 
+- **From the file manager or a terminal**: choose BookiE in **Open With** for a SQLite file, or run `bookie books.db` (SQLite or DuckDB) or `bookie postgres://user@host:5432/database`. A file must exist and be a database of the engine its extension names (`.sqlite`, `.sqlite3`, `.db`, `.db3`, `.s3db` or `.duckdb`, `.ddb`). A URL opens a dialog to confirm before it is saved and connected. If BookiE is already running, the running window handles the request. Avoid putting a password in a URL on the command line, because other users on the machine can see it in the process list.
 - **SSH**: the form configures one SSH host. The built-in transport can use saved multi-hop routes, but the form cannot edit them yet. System OpenSSH uses jump hosts from your SSH configuration. BookiE asks before trusting an unknown host key, including keys presented by a jump host.
 - **TLS**: choose how strictly the server certificate is checked. "Verify full" checks both the certificate authority and the host name.
 - **Environment and read-only**: mark a connection as production, staging or local, and tick **Read-only** to refuse every change on it. A production connection shows a red **Production** badge, a tinted header bar and `[Production]` at the start of its window title, so it stands out in the taskbar and Alt-Tab.

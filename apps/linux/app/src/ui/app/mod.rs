@@ -14,6 +14,7 @@ mod init_sidebar;
 mod init_window;
 mod init_workspace;
 mod msg;
+mod open_request;
 mod organization;
 mod ran_statements;
 mod referenced_row;
@@ -596,6 +597,7 @@ impl SimpleComponent for App {
             poll_health_source: None,
             history_prune_source: None,
         };
+        open_request::forward_open_signal(sender.input_sender());
         sender.input(AppMsg::ReloadConnections);
         model.content_holder.set_content(Some(&model.history_paned));
         model.show_welcome_page(sender.clone());
@@ -1080,7 +1082,8 @@ impl SimpleComponent for App {
             }
             AppMsg::ConnectionOrganizationRejected => self.on_connection_organization_rejected(),
             AppMsg::ImportConnectionUrl => self.on_import_connection_url(sender),
-            AppMsg::ImportConnectionUrlText(url) => self.on_import_connection_url_text(url, sender),
+            AppMsg::ImportConnectionUrlText(url, connect) => self.on_import_connection_url_text(url, connect, sender),
+            AppMsg::OpenLaunchArguments(arguments) => self.on_open_launch_arguments(arguments, sender),
             AppMsg::ImportConnectionUrlSucceeded(name) => self.on_import_connection_url_succeeded(name),
             AppMsg::ImportConnectionUrlFailed => self.on_import_connection_url_failed(),
             AppMsg::OpenSaved(saved) => self.on_open_saved(saved, sender),

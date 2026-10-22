@@ -69,8 +69,12 @@ if [[ "$(readlink "$stage/usr/bin/tablepro-agentd")" != bookie-agentd ]]; then
   echo "usr/bin/tablepro-agentd must be a symlink to bookie-agentd" >&2
   exit 1
 fi
-if ! grep -Fxq 'Exec=bookie' "$stage/usr/share/applications/com.tablepro.linux.desktop"; then
-  echo "desktop file must launch bookie" >&2
+if ! grep -Fxq 'Exec=bookie %U' "$stage/usr/share/applications/com.tablepro.linux.desktop"; then
+  echo "desktop file must launch bookie with launch arguments" >&2
+  exit 1
+fi
+if ! grep -Eq '^MimeType=.*application/vnd\.sqlite3' "$stage/usr/share/applications/com.tablepro.linux.desktop"; then
+  echo "desktop file must offer BookiE for SQLite files" >&2
   exit 1
 fi
 agent_help="$("$stage/usr/bin/bookie-agentd" --help)"

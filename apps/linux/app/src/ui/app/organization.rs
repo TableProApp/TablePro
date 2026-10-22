@@ -133,13 +133,30 @@ impl App {
     }
 
     pub(super) fn on_import_connection_url(&self, sender: ComponentSender<Self>) {
-        let dialog = adw::AlertDialog::new(
-            Some(&crate::tr!("Import from URL")),
-            Some(&crate::tr!(
-                "Paste a connection URL such as postgres://user@host:5432/database. A password in the URL is stored in the system keyring, never in the connection file."
-            )),
-        );
+        self.present_connection_url_dialog(sender, None);
+    }
+
+    pub(super) fn present_connection_url_dialog(&self, sender: ComponentSender<Self>, launched: Option<&str>) {
+        let (title, body) = if launched.is_some() {
+            (
+                crate::tr!("Connect from URL"),
+                crate::tr!(
+                    "BookiE was started with this connection URL. Check it, then import and connect. A password in the URL is stored in the system keyring, never in the connection file."
+                ),
+            )
+        } else {
+            (
+                crate::tr!("Import from URL"),
+                crate::tr!(
+                    "Paste a connection URL such as postgres://user@host:5432/database. A password in the URL is stored in the system keyring, never in the connection file."
+                ),
+            )
+        };
+        let dialog = adw::AlertDialog::new(Some(&title), Some(&body));
         let url_row = adw::EntryRow::builder().title(crate::tr!("Connection URL")).build();
+        if let Some(url) = launched {
+            url_row.set_text(url);
+        }
         let list = gtk::ListBox::builder()
             .selection_mode(gtk::SelectionMode::None)
             .css_classes(["boxed-list"])
@@ -147,7 +164,13 @@ impl App {
         list.append(&url_row);
         dialog.set_extra_child(Some(&list));
         dialog.add_response("cancel", &crate::tr!("Cancel"));
-        dialog.add_response("import", &crate::tr!("Import"));
+        let connect = launched.is_some();
+        let import_label = if connect {
+            crate::tr!("Import and Connect")
+        } else {
+            crate::tr!("Import")
+        };
+        dialog.add_response("import", &import_label);
         dialog.set_response_appearance("import", adw::ResponseAppearance::Suggested);
         dialog.set_default_response(Some("import"));
         dialog.set_close_response("cancel");
@@ -158,7 +181,7 @@ impl App {
             if response != "import" {
                 return;
             }
-            let _ = input_sender.send(AppMsg::ImportConnectionUrlText(url_row.text().to_string()));
+            let _ = input_sender.send(AppMsg::ImportConnectionUrlText(url_row.text().to_string(), connect));
         });
         dialog.present(Some(&self.window));
     }
@@ -166,7 +189,7 @@ impl App {
     /// Parse the pasted URL, then persist off the GTK thread. The parse
     /// itself is synchronous and lives in `tablepro-storage`; only the
     /// file write and the keyring call need a command.
-    pub(super) fn on_import_connection_url_text(&self, url: String, sender: ComponentSender<Self>) {
+    pub(super) fn on_import_connection_url_text(&self, url: String, connect: bool, sender: ComponentSender<Self>) {
         let parsed = match tablepro_storage::parse_connection_url(&url) {
             Ok(parsed) => parsed,
             Err(error) => {
@@ -204,6 +227,9 @@ impl App {
                         }
                         sender_clone.input(AppMsg::ImportConnectionUrlSucceeded(label));
                         sender_clone.input(AppMsg::ReloadConnections);
+                        if connect {
+                            sender_clone.input(AppMsg::OpenSaved(connection));
+                        }
                     })
                     .await;
                 })

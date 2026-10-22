@@ -2,7 +2,8 @@
 Name=BookiE
 GenericName=Database Client
 Comment=Native Linux database client
-Exec=bookie
+Exec=bookie %U
+MimeType=application/vnd.sqlite3;application/x-sqlite3;
 Icon=com.tablepro.linux
 Terminal=false
 Type=Application

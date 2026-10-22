@@ -98,6 +98,7 @@ pub fn run() {
 
     {
         use gtk4::prelude::*;
+        relm4::main_application().set_flags(gtk4::gio::ApplicationFlags::HANDLES_OPEN);
         relm4::main_application().connect_activate(|app| {
             if let Some(window) = app.active_window() {
                 tracing::info!("main window activated");
