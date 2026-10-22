@@ -360,6 +360,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::catalog_dialog::tests::choosing_a_longer_kind_does_not_change_the_dropdown_width"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::grid::full_value_editor::tests::applying_empty_text_stages_empty_text_without_converting_it_to_null"
     ],
     [

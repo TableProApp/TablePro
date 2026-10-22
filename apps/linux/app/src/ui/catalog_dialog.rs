@@ -45,8 +45,7 @@ pub fn present(
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&adw::HeaderBar::new());
     let labels: Vec<String> = CatalogObjectKind::ALL.iter().map(|kind| kind_label(*kind)).collect();
-    let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-    let kinds = gtk::DropDown::from_strings(&label_refs);
+    let kinds = steady_width_dropdown(&labels);
     let schema = gtk::SearchEntry::builder()
         .placeholder_text(tr!("All schemas"))
         .hexpand(true)
@@ -84,6 +83,22 @@ pub fn present(
     let in_flight = source.in_flight.clone();
     dialog.connect_closed(move |_| in_flight.borrow().cancel());
     dialog.present(Some(parent));
+}
+
+fn steady_width_dropdown(labels: &[String]) -> gtk::DropDown {
+    let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+    let dropdown = gtk::DropDown::from_strings(&label_refs);
+    let labels = labels.to_vec();
+    dropdown.connect_realize(move |dropdown| {
+        let text_width = |text: &str| dropdown.create_pango_layout(Some(text)).pixel_size().0;
+        let selected = labels
+            .get(dropdown.selected() as usize)
+            .map_or(0, |label| text_width(label));
+        let widest = labels.iter().map(|label| text_width(label)).max().unwrap_or(0);
+        let natural = dropdown.measure(gtk::Orientation::Horizontal, -1).1;
+        dropdown.set_width_request(natural - selected + widest);
+    });
+    dropdown
 }
 
 fn catalog_layout(
@@ -223,6 +238,24 @@ mod tests {
             assert!(texts.iter().skip(index + 1).all(|other| other != text), "{texts:?}");
         }
         assert!(texts[1].contains("triggers"), "{}", texts[1]);
+    }
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn choosing_a_longer_kind_does_not_change_the_dropdown_width() {
+        gtk::init().unwrap();
+        let labels: Vec<String> = CatalogObjectKind::ALL.iter().map(|kind| kind_label(*kind)).collect();
+        let dropdown = steady_width_dropdown(&labels);
+        let window = gtk::Window::builder().child(&dropdown).build();
+        window.present();
+        let natural_width = |index: usize| {
+            dropdown.set_selected(index as u32);
+            while gtk::glib::MainContext::default().iteration(false) {}
+            dropdown.measure(gtk::Orientation::Horizontal, -1).1
+        };
+        let widths: Vec<i32> = (0..labels.len()).map(natural_width).collect();
+        assert!(widths.iter().all(|width| *width == widths[0]), "{labels:?} {widths:?}");
+        window.close();
     }
 
     #[test]
