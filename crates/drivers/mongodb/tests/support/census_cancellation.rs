@@ -14,6 +14,7 @@ async fn cancelling_a_blocked_mongodb_metadata_census_leaves_the_client_usable()
     let container = Mongo::default()
         .with_tag(super::MONGO_TAG)
         .with_cmd(["mongod", "--setParameter", "enableTestCommands=1", "--bind_ip_all"])
+        .with_startup_timeout(std::time::Duration::from_secs(180))
         .start()
         .await
         .expect("start MongoDB with test failpoints enabled");

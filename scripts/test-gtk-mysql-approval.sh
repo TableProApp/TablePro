@@ -41,6 +41,7 @@ for command_name in docker dbus-run-session gnome-keyring-daemon secret-tool; do
 done
 
 container="$(docker run --rm --detach --publish 127.0.0.1::3306 \
+  --tmpfs /var/lib/mysql \
   --env MYSQL_ROOT_PASSWORD=tablepro_test \
   --env MYSQL_ROOT_HOST=% \
   --env MYSQL_DATABASE=bookie_test \
@@ -56,7 +57,7 @@ attempt=0
 until docker exec "$container" mysql --user=root --password=tablepro_test --batch --skip-column-names \
   --execute='SELECT 1' >/dev/null 2>&1; do
   attempt=$((attempt + 1))
-  if (( attempt >= 90 )); then
+  if (( attempt >= 180 )); then
     docker logs "$container" >&2
     echo "MySQL fixture did not become ready" >&2
     exit 1

@@ -106,7 +106,11 @@ async fn create_server(durable: bool) -> (ContainerAsync<Postgres>, Server) {
         Ok(run_id) => image.with_label("com.tablepro.test-run", run_id),
         Err(_) => image,
     };
-    let container = image.start().await.expect("start postgres container");
+    let container = image
+        .with_startup_timeout(std::time::Duration::from_secs(180))
+        .start()
+        .await
+        .expect("start postgres container");
     let options = ConnectOptions {
         host: container.get_host().await.expect("host").to_string(),
         port: container.get_host_port_ipv4(5432).await.expect("port"),

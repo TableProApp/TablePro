@@ -53,7 +53,7 @@ attempt=0
 until docker exec "$container" pg_isready --host=127.0.0.1 --username=postgres --dbname=bookie_test >/dev/null 2>&1 \
   && docker exec "$container" psql --host=127.0.0.1 --username=postgres --dbname=bookie_test --command='SELECT 1' >/dev/null 2>&1; do
   attempt=$((attempt + 1))
-  if (( attempt >= 90 )); then
+  if (( attempt >= 180 )); then
     docker logs "$container" >&2
     echo "PostgreSQL fixture did not become ready" >&2
     exit 1

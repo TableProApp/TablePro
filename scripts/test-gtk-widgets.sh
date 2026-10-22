@@ -2,7 +2,7 @@
 # Widget tests do not use AT-SPI. Installed accessibility flows have their own tier.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-widget_root="$(mktemp -d)"
+widget_root="$(mktemp -d /tmp/tablepro.XXXXXX)"
 cleanup_widget_root() {
   if command -v fusermount3 >/dev/null 2>&1; then
     for widget_mount in "$widget_root/runtime/doc" "$widget_root/runtime/gvfs"; do

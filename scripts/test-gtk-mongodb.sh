@@ -52,7 +52,7 @@ port="${port##*:}"
 attempt=0
 until docker exec "$container" mongosh --quiet --eval 'db.adminCommand("ping").ok' | rg -q '^1$'; do
   attempt=$((attempt + 1))
-  if (( attempt >= 90 )); then
+  if (( attempt >= 180 )); then
     docker logs "$container" >&2
     echo "MongoDB fixture did not become ready" >&2
     exit 1

@@ -25,6 +25,7 @@ const MONGO_TAG: &str = "7";
 async fn start_mongo() -> (ContainerAsync<Mongo>, String, u16) {
     let container = Mongo::default()
         .with_tag(MONGO_TAG)
+        .with_startup_timeout(std::time::Duration::from_secs(180))
         .start()
         .await
         .expect("start mongo container");
@@ -65,6 +66,7 @@ async fn wrong_mongodb_credentials_are_classified_as_auth_failed() {
         .with_tag(MONGO_TAG)
         .with_env_var("MONGO_INITDB_ROOT_USERNAME", "tablepro")
         .with_env_var("MONGO_INITDB_ROOT_PASSWORD", "correct-password")
+        .with_startup_timeout(std::time::Duration::from_secs(180))
         .start()
         .await
         .expect("start authenticated MongoDB");
@@ -107,6 +109,7 @@ async fn a_lost_mongodb_server_is_reported_as_disconnected() {
     let container = Mongo::default()
         .with_tag(MONGO_TAG)
         .with_mapped_port(port, 27017.tcp())
+        .with_startup_timeout(std::time::Duration::from_secs(180))
         .start()
         .await
         .expect("start MongoDB on a stable host port");
@@ -150,6 +153,7 @@ async fn connection_loss_during_cursor_get_more_fails_the_whole_query() {
     let container = Mongo::default()
         .with_tag(MONGO_TAG)
         .with_cmd(["mongod", "--setParameter", "enableTestCommands=1", "--bind_ip_all"])
+        .with_startup_timeout(std::time::Duration::from_secs(180))
         .start()
         .await
         .expect("start MongoDB with test failpoints enabled");
@@ -199,6 +203,7 @@ async fn a_cancelled_mongodb_read_leaves_the_client_usable() {
     let container = Mongo::default()
         .with_tag(MONGO_TAG)
         .with_cmd(["mongod", "--setParameter", "enableTestCommands=1", "--bind_ip_all"])
+        .with_startup_timeout(std::time::Duration::from_secs(180))
         .start()
         .await
         .expect("start MongoDB with test failpoints enabled");

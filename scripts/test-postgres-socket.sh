@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-work_root="$(mktemp -d)"
+work_root="$(mktemp -d /tmp/tablepro.XXXXXX)"
 socket_root="$work_root/socket"
 config_root="$work_root/config"
 secret_root="$work_root/secret"
