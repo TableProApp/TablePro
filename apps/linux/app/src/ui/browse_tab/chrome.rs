@@ -438,34 +438,7 @@ impl BrowseTab {
             self.set_paginator_text("");
             return;
         };
-        let n_rows = result.rows.len();
-        if n_rows == 0 {
-            // Reachable when the user navigated past the end of a
-            // table that shrank in another session, before
-            // RowCountLoaded clamps the offset back. Human
-            // wording — the previous "No rows at offset N" read as
-            // a bug message.
-            self.set_paginator_text(&crate::tr!("No rows on this page"));
-            return;
-        }
-        let start = self.current_offset + 1;
-        let end = self.current_offset + n_rows as u64;
-        // Match the page-size dropdown's thousands grouping.
-        // "Rows 10,001 – 10,100 of 5,000,000" is faster to read than
-        // "Rows 10001 – 10100 of 5000000" and matches GNOME File's
-        // "1,234 items" idiom.
-        let start_s = format_thousands(start);
-        let end_s = format_thousands(end);
-        let label = match self.current_total_rows {
-            Some(total) => crate::tr!("Rows {start} – {end} of {total}")
-                .replace("{start}", &start_s)
-                .replace("{end}", &end_s)
-                .replace("{total}", &format_thousands(total)),
-            None => crate::tr!("Rows {start} – {end}")
-                .replace("{start}", &start_s)
-                .replace("{end}", &end_s),
-        };
-        self.set_paginator_text(&label);
+        self.set_paginator_text(&paginator_summary(result, self.current_offset, self.current_total_rows));
     }
 
     pub(super) fn replace_status_child(&self, name: &str, child: &impl IsA<gtk::Widget>) {
@@ -501,6 +474,30 @@ impl BrowseTab {
             .description(message)
             .build();
         self.replace_status_child("error", &page);
+    }
+}
+
+fn paginator_summary(result: &QueryResult, offset: u64, total: Option<u64>) -> String {
+    let n_rows = result.rows.len();
+    let label = if n_rows == 0 {
+        crate::tr!("No rows on this page")
+    } else {
+        let start = format_thousands(offset + 1);
+        let end = format_thousands(offset + n_rows as u64);
+        match total {
+            Some(total) => crate::tr!("Rows {start} – {end} of {total}")
+                .replace("{start}", &start)
+                .replace("{end}", &end)
+                .replace("{total}", &format_thousands(total)),
+            None => crate::tr!("Rows {start} – {end}")
+                .replace("{start}", &start)
+                .replace("{end}", &end),
+        }
+    };
+    if result.truncated {
+        format!("{label} ({})", crate::tr!("result truncated"))
+    } else {
+        label
     }
 }
 
@@ -616,7 +613,7 @@ pub(super) fn bind_inspector(
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_first_keyset_cursor, extract_keyset_cursor, format_thousands};
+    use super::{extract_first_keyset_cursor, extract_keyset_cursor, format_thousands, paginator_summary};
     use tablepro_core::{ColumnInfo, QueryResult, Value};
 
     #[test]
@@ -665,6 +662,32 @@ mod tests {
         assert_eq!(format_thousands(5_000), "5,000");
         assert_eq!(format_thousands(10_000), "10,000");
         assert_eq!(format_thousands(1_000_000), "1,000,000");
+    }
+
+    #[test]
+    fn truncated_browse_pages_disclose_the_result_limit() {
+        let result = QueryResult {
+            columns: vec![column("payload", false)],
+            rows: vec![vec![Value::Text("large".into())]],
+            truncated: true,
+        };
+
+        let summary = paginator_summary(&result, 0, Some(5_000));
+
+        assert!(summary.contains(&crate::tr!("result truncated")));
+    }
+
+    #[test]
+    fn a_truncated_browse_page_without_rows_still_discloses_the_result_limit() {
+        let result = QueryResult {
+            columns: vec![column("payload", false)],
+            rows: Vec::new(),
+            truncated: true,
+        };
+
+        let summary = paginator_summary(&result, 0, Some(5_000));
+
+        assert!(summary.contains(&crate::tr!("result truncated")));
     }
 
     #[test]
