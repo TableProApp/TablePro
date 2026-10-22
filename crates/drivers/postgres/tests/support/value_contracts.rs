@@ -273,6 +273,15 @@ async fn value_contract_geometric_types_keep_native_oracles_when_projection_is_r
 
 #[tokio::test]
 #[ignore = "requires docker"]
+async fn value_contract_void_result_is_empty_text_not_undecodable() {
+    let (_container, opts) = start_pg().await;
+    let connection = connect(opts).await;
+    let result = connection.query("SELECT pg_sleep(0) AS slept").await.unwrap();
+    assert_eq!(result.rows[0][0], Value::Text(String::new()));
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
 async fn value_contract_scalar_types_with_server_text_are_read_as_text() {
     let (_container, opts) = start_pg().await;
     let connection = connect(opts).await;

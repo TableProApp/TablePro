@@ -497,6 +497,9 @@ fn extract_value(row: &PgRow, idx: usize, type_name: &str) -> Result<Value, Driv
     if raw.is_null() {
         return Ok(Value::Null);
     }
+    if type_name == "VOID" {
+        return Ok(Value::Text(String::new()));
+    }
     Ok(extract_non_null_value(row, idx, type_name, &raw))
 }
 
