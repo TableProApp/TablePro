@@ -138,7 +138,7 @@ mod tests {
             id.clone(),
             ConnectionWorkspaceState::with_database(Some(sales), "hr", editor("SELECT 'hr'")),
         );
-        save(&path, &drafts, &state).unwrap();
+        save(&path, &drafts, state).unwrap();
         let on_disk = std::fs::read_to_string(&path).unwrap();
         assert!(
             !on_disk.contains("SELECT"),
