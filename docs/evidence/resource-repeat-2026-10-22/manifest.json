@@ -1,0 +1,9 @@
+{
+  "baseline_source": "aebdadea6cf2ebbf7179286d7d61ed4bccdff023",
+  "candidate_build_started_source": "08cf1aa9ca98473dbb899d8eb2365954ffa94fb6",
+  "baseline_sha256": "15acd92f33cacfdf17781ae80b88a0fcf38317005713a26b9f0d75ef35912783",
+  "candidate_sha256": "6c6976c3e0df28a503bf4f7ac0b99c5e781ac690c39607b44f0329bd563ea079",
+  "fixture": "PostgreSQL 17, synthetic data, private D-Bus/Xvfb, Cairo",
+  "fixture_stopped": true,
+  "runtime_source_unchanged_in_fresh_train": "644b8e496"
+}

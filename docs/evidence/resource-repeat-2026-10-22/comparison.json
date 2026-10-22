@@ -1,0 +1,456 @@
+{
+  "scenario": "six 50000-row queries with 8193-byte text payload; replacement, tab close and final 15-second idle",
+  "order": [
+    "baseline",
+    "candidate"
+  ],
+  "cases": {
+    "baseline": {
+      "profile_name": "resource-repeat-baseline",
+      "result": {
+        "pid": 2604436,
+        "command_exit": 0,
+        "aborted": null,
+        "elapsed_seconds": 112.009,
+        "profiler_exit": -2
+      },
+      "peak_rss_mib": 482.2890625,
+      "peak_pss_mib": 444.498046875,
+      "cpu_seconds": 55.67,
+      "after_close_rss_mib": [
+        474.01171875,
+        480.5859375,
+        480.625,
+        480.8359375,
+        481.46875,
+        482.2890625
+      ],
+      "final_idle_cpu_seconds": [
+        55.67,
+        55.67
+      ],
+      "cycles": [
+        {
+          "case": "cycle-1-50000rows-8193bytes",
+          "statuses": [
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 30001-50000. Earlier rows are no longer available.",
+            "done in 7494 ms"
+          ],
+          "labels": [
+            "BookiE",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 88",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 30001-50000. Earlier rows are no longer available.",
+            "Rows 45001-50000",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "The query will run again through a guarded cursor.",
+            "Unfold all",
+            "done in 7494 ms",
+            "payload\ntext",
+            "resource_probe\nint4"
+          ]
+        },
+        {
+          "case": "cycle-2-50000rows-8193bytes",
+          "statuses": [
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 30001-50000. Earlier rows are no longer available.",
+            "done in 7199 ms"
+          ],
+          "labels": [
+            "BookiE",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 88",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 30001-50000. Earlier rows are no longer available.",
+            "Rows 45001-50000",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "The query will run again through a guarded cursor.",
+            "Unfold all",
+            "done in 7199 ms",
+            "payload\ntext",
+            "resource_probe\nint4"
+          ]
+        },
+        {
+          "case": "cycle-3-50000rows-8193bytes",
+          "statuses": [
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 30001-50000. Earlier rows are no longer available.",
+            "done in 7112 ms"
+          ],
+          "labels": [
+            "BookiE",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 88",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 30001-50000. Earlier rows are no longer available.",
+            "Rows 45001-50000",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "The query will run again through a guarded cursor.",
+            "Unfold all",
+            "done in 7112 ms",
+            "payload\ntext",
+            "resource_probe\nint4"
+          ]
+        },
+        {
+          "case": "cycle-4-50000rows-8193bytes",
+          "statuses": [
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 30001-50000. Earlier rows are no longer available.",
+            "done in 7218 ms"
+          ],
+          "labels": [
+            "BookiE",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 88",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 30001-50000. Earlier rows are no longer available.",
+            "Rows 45001-50000",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "The query will run again through a guarded cursor.",
+            "Unfold all",
+            "done in 7218 ms",
+            "payload\ntext",
+            "resource_probe\nint4"
+          ]
+        },
+        {
+          "case": "cycle-5-50000rows-8193bytes",
+          "statuses": [
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 30001-50000. Earlier rows are no longer available.",
+            "done in 7429 ms"
+          ],
+          "labels": [
+            "BookiE",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 88",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 30001-50000. Earlier rows are no longer available.",
+            "Rows 45001-50000",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "The query will run again through a guarded cursor.",
+            "Unfold all",
+            "done in 7429 ms",
+            "payload\ntext",
+            "resource_probe\nint4"
+          ]
+        },
+        {
+          "case": "cycle-6-50000rows-8193bytes",
+          "statuses": [
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 30001-50000. Earlier rows are no longer available.",
+            "done in 7443 ms"
+          ],
+          "labels": [
+            "BookiE",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 88",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 30001-50000. Earlier rows are no longer available.",
+            "Rows 45001-50000",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "The query will run again through a guarded cursor.",
+            "Unfold all",
+            "done in 7443 ms",
+            "payload\ntext",
+            "resource_probe\nint4"
+          ]
+        }
+      ]
+    },
+    "candidate": {
+      "profile_name": "resource-repeat-candidate",
+      "result": {
+        "pid": 2613553,
+        "command_exit": 0,
+        "aborted": null,
+        "elapsed_seconds": 80.29,
+        "profiler_exit": -2
+      },
+      "peak_rss_mib": 296.73828125,
+      "peak_pss_mib": 258.9462890625,
+      "cpu_seconds": 18.15,
+      "after_close_rss_mib": [
+        278.95703125,
+        282.13671875,
+        292.09765625,
+        295.10546875,
+        296.0,
+        296.73046875
+      ],
+      "final_idle_cpu_seconds": [
+        18.15,
+        18.15
+      ],
+      "cycles": [
+        {
+          "case": "cycle-1-50000rows-8193bytes",
+          "statuses": [
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+            "done in 1391 ms"
+          ],
+          "labels": [
+            "BookiE",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 88",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+            "Rows 45001-50000",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "The query will run again through a guarded cursor.",
+            "Unfold all",
+            "done in 1391 ms",
+            "payload\ntext",
+            "resource_probe\nint4"
+          ]
+        },
+        {
+          "case": "cycle-2-50000rows-8193bytes",
+          "statuses": [
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+            "done in 1438 ms"
+          ],
+          "labels": [
+            "BookiE",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 88",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+            "Rows 45001-50000",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "The query will run again through a guarded cursor.",
+            "Unfold all",
+            "done in 1438 ms",
+            "payload\ntext",
+            "resource_probe\nint4"
+          ]
+        },
+        {
+          "case": "cycle-3-50000rows-8193bytes",
+          "statuses": [
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+            "done in 1410 ms"
+          ],
+          "labels": [
+            "BookiE",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 88",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+            "Rows 45001-50000",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "The query will run again through a guarded cursor.",
+            "Unfold all",
+            "done in 1410 ms",
+            "payload\ntext",
+            "resource_probe\nint4"
+          ]
+        },
+        {
+          "case": "cycle-4-50000rows-8193bytes",
+          "statuses": [
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+            "done in 1342 ms"
+          ],
+          "labels": [
+            "BookiE",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 88",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+            "Rows 45001-50000",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "The query will run again through a guarded cursor.",
+            "Unfold all",
+            "done in 1342 ms",
+            "payload\ntext",
+            "resource_probe\nint4"
+          ]
+        },
+        {
+          "case": "cycle-5-50000rows-8193bytes",
+          "statuses": [
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+            "done in 1319 ms"
+          ],
+          "labels": [
+            "BookiE",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 88",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+            "Rows 45001-50000",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "The query will run again through a guarded cursor.",
+            "Unfold all",
+            "done in 1319 ms",
+            "payload\ntext",
+            "resource_probe\nint4"
+          ]
+        },
+        {
+          "case": "cycle-6-50000rows-8193bytes",
+          "statuses": [
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+            "done in 2728 ms"
+          ],
+          "labels": [
+            "BookiE",
+            "Explain",
+            "Export all rows\u2026",
+            "Fold block",
+            "Ln 1, Col 88",
+            "Next page",
+            "No tables",
+            "Nothing matches the current search, or this connection has no tables yet.",
+            "Pin results",
+            "Previous page",
+            "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+            "Rows 45001-50000",
+            "Run",
+            "SELECT g AS resource_probe, re\u2026",
+            "Safety PostgreSQL",
+            "Safety PostgreSQL \u00b7 Local \u00b7 PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2)",
+            "Session",
+            "Split",
+            "The query will run again through a guarded cursor.",
+            "Unfold all",
+            "done in 2728 ms",
+            "payload\ntext",
+            "resource_probe\nint4"
+          ]
+        }
+      ]
+    }
+  },
+  "rss_reduction_percent": 38.47,
+  "cpu_reduction_percent": 67.4,
+  "limits": [
+    "One sequential comparison on a shared host; not statistical significance or native visual qualification.",
+    "An unrelated container was sampled at 11.38 percent CPU during the baseline and was absent late in the candidate. It was not stopped by this work.",
+    "No local Cargo build or test was active during either capture.",
+    "Perf exited -2; CPU totals use process accounting.",
+    "No long-duration leak-free or whole-process memory-ceiling claim."
+  ]
+}
