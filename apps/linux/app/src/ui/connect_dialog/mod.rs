@@ -842,7 +842,7 @@ impl ConnectDialog {
         ConnectOptions {
             host: self.host.text().trim().to_string(),
             port: self.port.value() as u16,
-            database: form::typed_database(&self.database.text(), self.form.file_based),
+            database: form::typed_database(&self.database.text()),
             auth_source: auth_source::value(&self.auth_source),
             username,
             password: SecretString::new(password.into()),
