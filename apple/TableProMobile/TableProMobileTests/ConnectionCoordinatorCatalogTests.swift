@@ -231,6 +231,28 @@ struct ConnectionCoordinatorCatalogTests {
         #expect(coordinator.schemas == ["public", "sales"])
     }
 
+    @Test("A database a stopped run already moved to still moves the picker and the table list")
+    func followsTheSessionDatabaseAfterAStop() async {
+        let plugin = StubPluginDriver()
+        let session = UsedDatabaseDriver(
+            plugin: plugin, dialedHosts: [], rowIdentity: .keyColumns, readsOnly: { _ in true },
+            cancelsRunningRequest: { try? plugin.cancelQuery() }
+        )
+        factory.queue(session)
+        let coordinator = ConnectionCoordinator(connection: connection, appState: appState)
+        await coordinator.connect()
+        session.used = "archive"
+
+        let stopped = Task { @MainActor in
+            withUnsafeCurrentTask { $0?.cancel() }
+            await coordinator.followSessionDatabase()
+        }
+        await stopped.value
+
+        #expect(coordinator.activeDatabase == "archive")
+        #expect(!coordinator.showFailureAlert)
+    }
+
     @Test("After a USE or a SET ROLE in the editor completion reads the session, a database switch included")
     func useKeepsCompletionOnTheSession() async {
         let session = driver(tables: ["orders"])
@@ -248,3 +270,8 @@ struct ConnectionCoordinatorCatalogTests {
     }
 }
 
+
+private final class UsedDatabaseDriver: PluginBackedDriver, @unchecked Sendable {
+    var used: String?
+    override var currentDatabase: String? { used }
+}

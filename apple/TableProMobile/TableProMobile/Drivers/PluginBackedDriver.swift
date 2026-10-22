@@ -258,9 +258,10 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
         return try await exclusively { try await plugin.fetchDatabases() }
     }
 
+    // A switch repoints the plugin and reads nothing, so it skips the line: the run a Stop cancelled can still adopt
+    // the `use` it made.
     func switchDatabase(to name: String) async throws {
-        let plugin = plugin
-        try await exclusively { try await plugin.switchDatabase(to: name) }
+        try await plugin.switchDatabase(to: name)
     }
 
     var supportsSchemas: Bool { plugin.supportsSchemas }
@@ -271,8 +272,7 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
     }
 
     func switchSchema(to name: String) async throws {
-        let plugin = plugin
-        try await exclusively { try await plugin.switchSchema(to: name) }
+        try await plugin.switchSchema(to: name)
     }
 
     var currentSchema: String? { plugin.currentSchema }

@@ -73,6 +73,8 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return scriptedResult
     }
 
+    func switchDatabase(to database: String) async throws {}
+
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         await onFetchTables?()
         return []
