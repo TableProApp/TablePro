@@ -293,21 +293,6 @@ async fn continue_next_batch_policy_still_runs_statements_after_an_error() {
 }
 
 #[test]
-#[ignore = "requires an isolated GTK display"]
-fn a_failed_statement_offers_a_copy_button() {
-    use relm4::gtk::prelude::*;
-    relm4::adw::init().unwrap();
-    let page = super::error_page(0, "syntax error at position 8");
-    let actions = page.child().unwrap();
-    let button = actions.first_child().unwrap().downcast::<relm4::gtk::Button>().unwrap();
-    assert_eq!(button.label().as_deref(), Some("Copy error"));
-    let audit = actions.last_child().unwrap().downcast::<relm4::gtk::Button>().unwrap();
-    assert_eq!(audit.label().as_deref(), Some("View in Audit Log"));
-    assert_eq!(audit.action_name().as_deref(), Some("win.show-audit"));
-    assert_eq!(page.description().as_deref(), Some("syntax error at position 8"));
-}
-
-#[test]
 fn a_pinned_result_is_named_by_its_statement_without_a_run_number() {
     let outcome = super::StatementOutcome {
         identity: StatementIdentity::default(),
@@ -706,12 +691,8 @@ fn streamed_result_widgets_keep_pages_visible_during_loading_and_terminal_states
     assert_eq!(failed.current_page(), Some(1));
     assert_eq!(streamed_page_tab_label(&failed, 0), "Rows 1-1");
     assert_eq!(streamed_page_tab_label(&failed, 1), "Status");
-    let status = failed
-        .nth_page(Some(1))
-        .unwrap()
-        .downcast::<relm4::adw::StatusPage>()
-        .unwrap();
-    assert_eq!(status.description().as_deref(), Some("later page failed"));
+    let status = failed.nth_page(Some(1)).unwrap();
+    assert!(contains_label(&status, "later page failed"));
 
     let cancelled = streamed_result_notebook(
         vec![std::sync::Arc::new(cursor_page(&[5], true).result)],
@@ -1185,3 +1166,7 @@ async fn a_select_that_calls_a_writing_function_runs_outside_a_read_only_cursor(
 
 #[path = "fetch_errors.rs"]
 mod fetch_errors;
+
+#[path = "error_view_tests.rs"]
+mod error_view_tests;
+use error_view_tests::contains_label;

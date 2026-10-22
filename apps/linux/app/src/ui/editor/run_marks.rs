@@ -8,7 +8,29 @@ const OK_CATEGORY: &str = "tp-run-ok";
 const ERROR_CATEGORY: &str = "tp-run-error";
 const MARK_PRIORITY: i32 = 10;
 
-pub(super) fn statement_start_lines(text: &str, statements: &[String]) -> Vec<Option<u32>> {
+pub(super) fn statement_start_lines(text: &str, planned: &super::PlannedStatements) -> Vec<Option<u32>> {
+    if planned.source_ranges.len() != planned.statements.len() {
+        return fallback_start_lines(text, &planned.statements);
+    }
+    let mut cursor = Some((0, 0));
+    planned
+        .source_ranges
+        .iter()
+        .map(|range| {
+            let (from, line) = cursor.take()?;
+            let line = line
+                + text
+                    .get(from..range.start)?
+                    .bytes()
+                    .filter(|byte| *byte == b'\n')
+                    .count() as u32;
+            cursor = Some((range.start, line));
+            Some(line)
+        })
+        .collect()
+}
+
+fn fallback_start_lines(text: &str, statements: &[String]) -> Vec<Option<u32>> {
     let mut from = 0;
     statements
         .iter()
@@ -93,7 +115,7 @@ fn mark_outcomes<'a>(
     }
     let leading_lines = text[..text.len() - text.trim_start().len()].matches('\n').count() as u32;
     clear(buffer);
-    for (line, outcome) in statement_start_lines(sql, &planned.statements).iter().zip(outcomes) {
+    for (line, outcome) in statement_start_lines(sql, &planned).iter().zip(outcomes) {
         let (Some(line), Some(category)) = (line, category_of(outcome)) else {
             continue;
         };
@@ -111,26 +133,32 @@ mod tests {
     #[test]
     fn each_statement_is_placed_on_the_line_where_it_starts() {
         let text = "SELECT 1;\nSELECT 2;\n\nSELECT 3;";
-        let statements = vec!["SELECT 1".to_string(), "SELECT 2".to_string(), "SELECT 3".to_string()];
-        assert_eq!(
-            statement_start_lines(text, &statements),
-            vec![Some(0), Some(1), Some(3)]
-        );
+        let planned = script_statements(text, "postgres").unwrap();
+        assert_eq!(statement_start_lines(text, &planned), vec![Some(0), Some(1), Some(3)]);
     }
 
     #[test]
     fn a_repeated_statement_is_matched_in_order() {
-        let statements = vec!["SELECT 1".to_string(), "SELECT 1".to_string()];
+        let text = "SELECT 1;\nSELECT 1;";
+        let planned = script_statements(text, "postgres").unwrap();
+        assert_eq!(statement_start_lines(text, &planned), vec![Some(0), Some(1)]);
+    }
+
+    #[test]
+    fn sql_inside_a_comment_does_not_receive_the_statement_mark() {
         assert_eq!(
-            statement_start_lines("SELECT 1;\nSELECT 1;", &statements),
-            vec![Some(0), Some(1)]
+            statement_start_lines(
+                "-- SELECT broken\nSELECT broken;",
+                &script_statements("-- SELECT broken\nSELECT broken;", "postgres").unwrap(),
+            ),
+            vec![Some(1)]
         );
     }
 
     #[test]
     fn a_statement_missing_from_the_text_has_no_line() {
         let statements = vec!["SELECT 1".to_string(), "DROP x".to_string()];
-        assert_eq!(statement_start_lines("SELECT 1;", &statements), vec![Some(0), None]);
+        assert_eq!(fallback_start_lines("SELECT 1;", &statements), vec![Some(0), None]);
     }
 
     #[test]

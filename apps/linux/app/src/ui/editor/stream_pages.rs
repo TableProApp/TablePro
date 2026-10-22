@@ -18,7 +18,7 @@ pub enum StreamTerminal {
     Complete,
     Cancelled,
     TimedOut,
-    Failed(String),
+    Failed(super::StatementFailure),
 }
 
 #[derive(Debug, Clone)]

@@ -4,6 +4,7 @@
 
 ### Added
 
+- Positioned SQL errors offer Go to error in the result and Errors views, restoring the editor and placing the caret in the original statement; changed queries and connections require a fresh run.
 - SQL editors have a hideable, resizable results panel with an Errors view, maximize/restore controls and Ctrl+J.
 
 - The query editor has visible run scopes and result-file export choices, plus commit-and-close and rollback-and-close controls for an owned session with an open transaction.
@@ -22,6 +23,7 @@
 
 ### Changed
 
+- SQL execution marks follow statement boundaries, so SQL text inside comments is not marked as executed.
 - Export reviews the table-page, loaded-result or query-rerun scope before file format; all matching table rows remain unavailable until consistent snapshot export is qualified.
 - Grid headers preserve exact engine type case and keep comments, key and nullability metadata in a native column-details menu.
 - Oversized text and JSON cells use shorter visible previews to reduce text-layout work; full values remain available through View Value and Copy Value.

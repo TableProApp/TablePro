@@ -350,22 +350,12 @@
     [
       "tablepro-app",
       "--lib",
-      "ui::grid::column_visibility::tests::resetting_widths_forgets_the_saved_widths_and_frees_the_columns"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
       "ui::grid::display::tests::typed_widget_slots_round_trip_and_keep_same_value_types_apart"
     ],
     [
       "tablepro-app",
       "--lib",
       "ui::grid::value_viewer::tests::the_viewer_dialog_builds_and_shows_the_full_value"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
-      "ui::catalog_dialog::tests::choosing_a_longer_kind_does_not_change_the_dropdown_width"
     ],
     [
       "tablepro-app",
@@ -500,11 +490,6 @@
     [
       "tablepro-app",
       "--lib",
-      "ui::editor::outcomes::tests::a_failed_statement_offers_a_copy_button"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
       "ui::editor::outcomes::tests::exporting_after_partial_view_uses_the_guarded_query_and_its_bind_values"
     ],
     [
@@ -570,11 +555,6 @@
     [
       "tablepro-app",
       "--lib",
-      "ui::editor::completion_provider::tests::populated_completion_is_presented_after_the_editor_is_rooted"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
       "ui::editor::completion_provider::tests::proposals_preserve_aliases_and_replace_only_the_identifier"
     ],
     [
@@ -610,37 +590,7 @@
     [
       "tablepro-app",
       "--lib",
-      "ui::editor::sql_text::tests::run_uses_the_selection_when_there_is_one_and_the_whole_buffer_otherwise"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
       "ui::app::environment_marker::tests::the_badge_and_header_tint_follow_the_connection_environment"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
-      "ui::connection_row::tests::connection_actions_leave_room_for_text_in_a_narrow_row"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
-      "ui::connection_row::tests::connection_menu_dispatches_actions_for_its_own_record"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
-      "ui::editor::dispatch_tests::commenting_selected_lines_publishes_one_complete_query_change"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
-      "ui::editor::dispatch_tests::query_publication_waits_for_nested_actions_and_keeps_ordinary_edits_immediate"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
-      "ui::app::sidebar_state::tests::the_sidebar_stays_closed_in_a_narrow_window_and_never_opens_empty"
     ],
     [
       "tablepro-app",
@@ -715,11 +665,6 @@
     [
       "tablepro-app",
       "--lib",
-      "ui::mcp_preferences::copy_tests::the_copy_button_puts_the_token_on_the_clipboard_and_keeps_the_dialog_open"
-    ],
-    [
-      "tablepro-app",
-      "--lib",
       "ui::editor::completion_provider::tests::completion_resumes_after_a_large_buffer_is_replaced_with_a_small_query"
     ],
     [
@@ -781,6 +726,21 @@
       "tablepro-app",
       "--lib",
       "ui::editor::dispatch_tests::editor_waits_for_its_session_before_accepting_any_run_input"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::commenting_selected_lines_publishes_one_complete_query_change"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::query_publication_waits_for_nested_actions_and_keeps_ordinary_edits_immediate"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::outcomes::tests::error_view_tests::a_failed_statement_offers_a_copy_button"
     ],
     [
       "tablepro-app",
@@ -860,7 +820,82 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::dispatch_tests::error_navigation_tests::a_server_error_navigates_to_its_original_unicode_statement"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::error_navigation_tests::run_current_locates_the_second_identical_statement_and_restores_the_editor"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::error_navigation_tests::editing_the_query_disables_an_existing_error_navigation_action"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::error_navigation_tests::a_new_run_disables_the_previous_error_navigation_action"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::error_navigation_tests::closing_the_connection_disables_its_error_navigation_action"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::error_navigation_tests::error_navigation_does_not_mistake_a_comment_for_the_executed_statement"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::app::sidebar_state::tests::the_sidebar_stays_closed_in_a_narrow_window_and_never_opens_empty"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::column_visibility::tests::resetting_widths_forgets_the_saved_widths_and_frees_the_columns"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::catalog_dialog::tests::choosing_a_longer_kind_does_not_change_the_dropdown_width"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::completion_provider::tests::populated_completion_is_presented_after_the_editor_is_rooted"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::sql_text::tests::run_uses_the_selection_when_there_is_one_and_the_whole_buffer_otherwise"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::connection_row::tests::connection_actions_leave_room_for_text_in_a_narrow_row"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::connection_row::tests::connection_menu_dispatches_actions_for_its_own_record"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::mcp_preferences::copy_tests::the_copy_button_puts_the_token_on_the_clipboard_and_keeps_the_dialog_open"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::browse_tab::grid_render::selection_stats_tests::wide_selection_statistics_preserve_rows_and_selection"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::error_navigation_tests::a_selected_query_error_keeps_its_original_unicode_offset"
     ]
   ],
   "keyring": [

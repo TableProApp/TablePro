@@ -1,0 +1,13 @@
+---- ui::editor::dispatch_tests::error_navigation_tests::error_navigation_does_not_mistake_a_comment_for_the_executed_statement stdout ----
+
+thread 'ui::editor::dispatch_tests::error_navigation_tests::error_navigation_does_not_mistake_a_comment_for_the_executed_statement' (2059271) panicked at apps/linux/app/src/ui/editor/error_navigation_tests.rs:194:5:
+assertion `left == right` failed
+  left: 10
+ right: 24
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    ui::editor::dispatch_tests::error_navigation_tests::error_navigation_does_not_mistake_a_comment_for_the_executed_statement
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 893 filtered out; finished in 0.27s

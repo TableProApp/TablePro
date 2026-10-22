@@ -54,17 +54,37 @@ impl SqlEditor {
         let buffer = self.source_view.buffer();
         let (start, end) = buffer.bounds();
         let sql = buffer.text(&start, &end, true).to_string();
-        let text = if current {
+        if current
+            && self
+                .metadata()
+                .is_some_and(|metadata| super::grammar_for(&metadata.driver_id).is_none())
+        {
+            let cursor = super::cursor_byte_offset(&sql, buffer.cursor_position() as usize);
+            let driver = self.metadata().map(|metadata| metadata.driver_id).unwrap_or_default();
+            if let Some(text) = super::statement_at_cursor(&sql, self.lexing(&driver), cursor) {
+                self.begin_run(text, None, true, sender);
+            } else {
+                self.status.set_label(&crate::tr!("No statement to run"));
+            }
+            return;
+        }
+        let range = if current {
             let cursor = super::cursor_byte_offset(&sql, buffer.iter_at_mark(&buffer.get_insert()).offset() as usize);
             let driver = self.metadata().map(|metadata| metadata.driver_id).unwrap_or_default();
-            super::statement_at_cursor(&sql, self.lexing(&driver), cursor)
+            super::statement_cursor::statement_range_at(&sql, self.lexing(&driver), cursor)
         } else {
-            (!sql.trim().is_empty()).then(|| sql.trim().to_string())
+            let start = sql.len() - sql.trim_start().len();
+            (!sql.trim().is_empty()).then_some(start..start + sql.trim().len())
         };
-        match text {
-            Some(text) => self.begin_run(text, current, sender),
-            None => self.status.set_label(&crate::tr!("No statement to run")),
-        }
+        let Some(range) = range else {
+            self.status.set_label(&crate::tr!("No statement to run"));
+            return;
+        };
+        let anchor = super::SourceAnchor {
+            revision: self.drop_generation.revision(),
+            start: sql[..range.start].chars().count(),
+        };
+        self.begin_run(sql[range].to_string(), Some(anchor), current, sender);
     }
 
     pub(super) fn session_action_idle(&self) -> bool {

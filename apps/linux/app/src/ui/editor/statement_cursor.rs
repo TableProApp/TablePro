@@ -43,6 +43,7 @@ pub fn cursor_byte_offset(text: &str, character_offset: usize) -> usize {
 #[derive(Debug, Clone)]
 pub struct PlannedStatements {
     pub statements: Vec<String>,
+    pub source_ranges: Vec<std::ops::Range<usize>>,
     pub error_policy: BatchErrorPolicy,
     pub settings_check: Option<LexicalSettings>,
 }
@@ -52,6 +53,7 @@ pub fn script_statements<'a>(text: &str, lexing: impl Into<Lexing<'a>>) -> Resul
     let Some(grammar) = grammar_for(lexing.driver) else {
         return Ok(PlannedStatements {
             statements: tablepro_core::sql_lex::split_statements(text, lexing.driver),
+            source_ranges: Vec::new(),
             error_policy: BatchErrorPolicy::StopScript,
             settings_check: None,
         });
@@ -66,18 +68,25 @@ pub fn script_statements<'a>(text: &str, lexing: impl Into<Lexing<'a>>) -> Resul
             "GO repetition is not supported. Expand repeated batches explicitly before running."
         ));
     }
-    let statements: Vec<String> = plan
-        .statements()
-        .iter()
-        .map(|statement| statement.text(text).trim().to_owned())
-        .filter(|statement| !statement.is_empty())
-        .collect();
+    let mut statements = Vec::new();
+    let mut source_ranges = Vec::new();
+    for statement in plan.statements() {
+        let original = statement.text(text);
+        let trimmed = original.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let start = statement.range.start + original.len() - original.trim_start().len();
+        source_ranges.push(start..start + trimmed.len());
+        statements.push(trimmed.to_string());
+    }
     let settings_dependent = statements.len() > 1
         && LexicalSettings::ALL
             .iter()
             .any(|other| ScriptPlan::build(text, grammar, *other).statements() != plan.statements());
     Ok(PlannedStatements {
         statements,
+        source_ranges,
         error_policy: plan.batch_error_policy(),
         settings_check: settings_dependent.then_some(settings),
     })

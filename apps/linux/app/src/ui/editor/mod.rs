@@ -3,6 +3,10 @@ mod bottom_panel;
 mod completion_provider;
 mod diagnostics;
 mod error_location;
+mod error_navigation;
+mod statement_failure;
+use error_navigation::{ExecutionSource, SourceAnchor};
+use statement_failure::StatementFailure;
 mod find_bar;
 mod finish_notice;
 mod folding;
@@ -68,6 +72,7 @@ fn show_cancel_button(running: bool, supports_server_cancellation: bool) -> bool
 pub struct SqlEditor {
     catalog_changes: crate::services::catalog::CatalogChanges,
     catalog_origin: Option<crate::services::catalog::CatalogOrigin>,
+    navigation_origin: Option<crate::services::catalog::CatalogOrigin>,
     diagnostics: diagnostics::Diagnostics,
     source_view: sourceview5::View,
     split_view: split_view::SplitEditorView,
@@ -138,7 +143,7 @@ pub struct StatementIdentity {
 pub enum StatementOutcomeKind {
     Rows(Vec<std::sync::Arc<QueryResult>>),
     Streamed(Box<StreamedResult>),
-    Error(String),
+    Error(StatementFailure),
     NotRun,
 }
 
@@ -156,12 +161,14 @@ pub enum SqlEditorInput {
     },
     RunWithParameters {
         sql: String,
+        anchor: Option<SourceAnchor>,
         planned: PlannedStatements,
         values: std::collections::HashMap<String, tablepro_core::Value>,
     },
     LexingRead {
         source: session_lexing::LexingSource,
         sql: String,
+        anchor: Option<SourceAnchor>,
         result: Result<Option<tablepro_core::sql_syntax::script::LexicalSettings>, String>,
     },
     LexingRefreshed {
@@ -170,6 +177,7 @@ pub enum SqlEditorInput {
     },
     Cancel,
     TogglePin,
+    NavigateError(error_navigation::ErrorTarget),
     Panel(bottom_panel::PanelAction),
     SplitToggled(bool),
     ShowOutcomes {
@@ -265,6 +273,7 @@ pub(super) const MAX_SQL_FILE_BYTES: u64 = 8 * 1024 * 1024;
 #[derive(Debug)]
 struct ExecutionContext {
     sql: String,
+    source: Option<ExecutionSource>,
     lexical: Option<tablepro_core::sql_syntax::script::LexicalSettings>,
     metadata: ConnectionMetadata,
     started_at: SystemTime,
@@ -586,9 +595,11 @@ impl SimpleComponent for SqlEditor {
         panel.track_focus(&widgets.source_view);
         panel.track_focus(split_view.secondary_view());
         bottom_panel::BottomPanel::install_shortcut(&root, &sender);
+        error_navigation::install(&root, &sender);
         let model = SqlEditor {
             catalog_changes: Default::default(),
             catalog_origin: None,
+            navigation_origin: None,
             database: init.database.clone(),
             preferences: init.preferences.clone(),
             diagnostics: diagnostics::Diagnostics::install(
@@ -717,16 +728,35 @@ impl SimpleComponent for SqlEditor {
                     self.status.set_label(&crate::tr!("empty query"));
                     return;
                 }
-                self.begin_run(trimmed, false, sender);
+                let buffer = self.source_view.buffer();
+                let start = buffer
+                    .selection_bounds()
+                    .filter(|(start, end)| !buffer.text(start, end, true).trim().is_empty())
+                    .map_or(0, |(start, _)| start.offset() as usize);
+                let anchor = SourceAnchor {
+                    revision: self.drop_generation.revision(),
+                    start: start + sql.chars().take_while(|character| character.is_whitespace()).count(),
+                };
+                self.begin_run(trimmed, Some(anchor), false, sender);
             }
             SqlEditorInput::SessionAction { session_id, commit } => {
                 self.on_session_toolbar_action(session_id, commit, &sender);
             }
-            SqlEditorInput::RunWithParameters { sql, planned, values } => {
-                self.execute_sql(sql, planned, values, sender);
+            SqlEditorInput::RunWithParameters {
+                sql,
+                anchor,
+                planned,
+                values,
+            } => {
+                self.execute_sql(sql, anchor, planned, values, sender);
             }
 
-            SqlEditorInput::LexingRead { source, sql, result } => self.on_lexing_read(source, sql, result, sender),
+            SqlEditorInput::LexingRead {
+                source,
+                sql,
+                anchor,
+                result,
+            } => self.on_lexing_read(source, sql, anchor, result, sender),
             SqlEditorInput::LexingRefreshed { source, settings } => self.on_lexing_refreshed(source, settings),
 
             SqlEditorInput::ToggleLineComment => {
@@ -794,7 +824,7 @@ impl SimpleComponent for SqlEditor {
                     return;
                 };
                 self.longer_timeout_button.set_visible(false);
-                self.begin_run(sql, false, sender);
+                self.begin_run(sql, None, false, sender);
             }
 
             SqlEditorInput::Cancel => {
@@ -807,39 +837,9 @@ impl SimpleComponent for SqlEditor {
 
             SqlEditorInput::TogglePin => self.toggle_pin(),
             SqlEditorInput::Panel(action) => self.panel.apply(action),
+            SqlEditorInput::NavigateError(target) => self.navigate_error(target),
 
-            SqlEditorInput::ShowOutcomes { generation, outcomes } => {
-                let Some((terminal, context)) = self.finish_run(generation, &sender) else {
-                    return;
-                };
-                if terminal.replace_ui {
-                    self.cancel_token = None;
-                }
-                let totals = outcomes::RunTotals::of(&outcomes);
-                self.mark_statements(&context, terminal.replace_ui, &outcomes);
-                self.record_history(
-                    context,
-                    totals.elapsed_ms as i64,
-                    totals.history_rows(),
-                    totals.history_outcome(),
-                );
-                if !terminal.replace_ui {
-                    return;
-                }
-
-                self.status.set_label(&totals.summary());
-                let shown = self.pinned.show(outcomes);
-                self.refresh_pin_button();
-                clear_results_box(&self.results_holder);
-                render_outcomes(
-                    &self.results_holder,
-                    &shown,
-                    &self.grid_sender,
-                    self.connection_id,
-                    self.database.clone(),
-                    self.result_view_settings.clone(),
-                );
-            }
+            SqlEditorInput::ShowOutcomes { generation, outcomes } => self.on_outcomes(generation, outcomes, &sender),
 
             SqlEditorInput::StreamStarted {
                 generation,
@@ -969,6 +969,7 @@ impl SqlEditor {
     pub(super) fn execute_sql(
         &mut self,
         trimmed: String,
+        anchor: Option<SourceAnchor>,
         planned: PlannedStatements,
         parameter_values: std::collections::HashMap<String, tablepro_core::Value>,
         sender: ComponentSender<Self>,
@@ -993,6 +994,7 @@ impl SqlEditor {
             return;
         };
 
+        self.navigation_origin = origin.clone();
         if let Some(prev) = self.cancel_token.take() {
             prev.cancel();
         }
@@ -1014,6 +1016,7 @@ impl SqlEditor {
             generation,
             ExecutionContext {
                 sql: trimmed.clone(),
+                source: anchor.map(|anchor| ExecutionSource::new(anchor, &trimmed, &planned)),
                 lexical: self.lexing(&metadata.driver_id).settings,
                 metadata,
                 started_at: SystemTime::now(),

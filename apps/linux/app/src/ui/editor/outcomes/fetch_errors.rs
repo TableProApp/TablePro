@@ -1,6 +1,9 @@
 use super::*;
 
-async fn fetch_failure(sql: &str, parameters: &std::collections::HashMap<String, tablepro_core::Value>) -> String {
+async fn fetch_failure(
+    sql: &str,
+    parameters: &std::collections::HashMap<String, tablepro_core::Value>,
+) -> super::super::super::StatementFailure {
     let error = tablepro_core::DriverError::Query {
         message: "division by zero".into(),
         sqlstate: Some("22012".into()),
@@ -30,11 +33,13 @@ async fn fetch_failure(sql: &str, parameters: &std::collections::HashMap<String,
 async fn a_fetch_error_is_located_only_when_the_sent_sql_is_the_written_sql() {
     let plain = fetch_failure("SELECT 1 / id FROM items", &Default::default()).await;
     assert!(plain.contains("Line 1, column 8"), "{plain}");
+    assert_eq!(plain.position, Some(8));
 
     let parameters = [("id".to_string(), tablepro_core::Value::Int(1))].into();
     let bound = fetch_failure("SELECT 1 / id FROM items WHERE id = :id", &parameters).await;
     assert!(bound.contains("division by zero"), "{bound}");
     assert!(!bound.contains("Line "), "{bound}");
+    assert_eq!(bound.position, None);
 }
 
 #[test]

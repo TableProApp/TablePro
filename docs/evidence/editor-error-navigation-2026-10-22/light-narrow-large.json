@@ -1,0 +1,19 @@
+{
+  "status": "passed",
+  "binary_sha256": "1eda692e9157df02e8f3d2af52977d0bdff3d36a4237d53a5fa956a2cefb7cb3",
+  "backend": "native Wayland",
+  "xwayland": false,
+  "width": 802,
+  "theme": "light",
+  "sql_font": 20,
+  "checks": [
+    "Unicode third statement",
+    "pointer navigation",
+    "restore maximized editor",
+    "repeated current statement via real shortcut",
+    "Errors view navigation",
+    "edited buffer refusal",
+    "comment-safe statement origin",
+    "no SQL rerun"
+  ]
+}

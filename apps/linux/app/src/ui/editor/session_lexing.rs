@@ -6,7 +6,7 @@ use tablepro_core::sql_syntax::script::LexicalSettings;
 use uuid::Uuid;
 
 use super::statement_cursor::Lexing;
-use super::{SqlEditor, SqlEditorInput};
+use super::{SourceAnchor, SqlEditor, SqlEditorInput};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LexingSource {
@@ -53,7 +53,12 @@ impl SqlEditor {
         }
     }
 
-    pub(super) fn read_lexing_then_run(&mut self, sql: String, sender: ComponentSender<Self>) {
+    pub(super) fn read_lexing_then_run(
+        &mut self,
+        sql: String,
+        anchor: Option<SourceAnchor>,
+        sender: ComponentSender<Self>,
+    ) {
         if self.reading_lexing {
             return;
         }
@@ -76,7 +81,12 @@ impl SqlEditor {
                         .lexical_settings(&control)
                         .await
                         .map_err(|error| crate::services::error_text::driver_message(&error));
-                    reply.input(SqlEditorInput::LexingRead { source, sql, result });
+                    reply.input(SqlEditorInput::LexingRead {
+                        source,
+                        sql,
+                        anchor,
+                        result,
+                    });
                 })
                 .drop_on_shutdown()
         });
@@ -86,6 +96,7 @@ impl SqlEditor {
         &mut self,
         source: LexingSource,
         sql: String,
+        anchor: Option<SourceAnchor>,
         result: Result<Option<LexicalSettings>, String>,
         sender: ComponentSender<Self>,
     ) {
@@ -99,7 +110,7 @@ impl SqlEditor {
         match result {
             Ok(settings) => {
                 self.known_lexing.remember(source, settings);
-                self.plan_and_run(sql, sender);
+                self.plan_and_run(sql, anchor, sender);
             }
             Err(message) => self.status.set_label(
                 &crate::tr!("Could not read the session's string settings: {message}").replace("{message}", &message),

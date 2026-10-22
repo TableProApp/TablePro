@@ -1,0 +1,182 @@
+{
+  "date": "2026-10-22",
+  "scope": "editor error navigation and authoritative statement source ranges",
+  "base_commit": "a25b1b9c16250980467d04c4c8b92a93a2c2a4dc",
+  "implementation_commit": "219d2bd1ddfd73a5a1df08a8e28fea955eb66f72",
+  "binary": {
+    "path": "target/debug/tablepro-app",
+    "sha256": "1eda692e9157df02e8f3d2af52977d0bdff3d36a4237d53a5fa956a2cefb7cb3",
+    "method": "source-built debug executable; not package installation"
+  },
+  "source_sha256": {
+    "apps/linux/app/src/ui/editor/bottom_panel.rs": "5e8e79f654c3cbce6fb67678794fc3a641164cb67418c402454c79d533282a5b",
+    "apps/linux/app/src/ui/editor/dispatch_tests.rs": "f58bdff132b25e9027c0ed465b9ef29beb6be95a39ffd00acc02ffe23aeca6dc",
+    "apps/linux/app/src/ui/editor/drop_request.rs": "3717b9b487d2988b5d84f7bdb5de1e285a37c703b1b8722b8642f663ed8faaa2",
+    "apps/linux/app/src/ui/editor/error_navigation.rs": "04f2001f1dd8dc28c0b65b027e65523be8ed07bcb7e27889ae51c559333c20b1",
+    "apps/linux/app/src/ui/editor/error_navigation_tests.rs": "14275289dd757fa6ddcbeee3ceb519ad9f6559baed28fe61e5bc637c1a85e36a",
+    "apps/linux/app/src/ui/editor/mod.rs": "64d043f67fe459fda2da3a2081d1122ba5359db5b640649915eecc69cbea32f3",
+    "apps/linux/app/src/ui/editor/outcomes.rs": "c648279ff6530f21d7147592338459d682d6d1e62fac06cb3db3ea557b16f9c8",
+    "apps/linux/app/src/ui/editor/outcomes/error_view_tests.rs": "c0f0bff7d07c8d3f8ae519b847ede8db2f82c93cc1f7657890866000e085cd36",
+    "apps/linux/app/src/ui/editor/outcomes/fetch_errors.rs": "db7f34dd0cb78cee53aaec2aab2687769d092681c4b0164f40c7070a8090aa94",
+    "apps/linux/app/src/ui/editor/outcomes/tests.rs": "b86c7cbb916510b9c28aa37516189855d98996b21dbaedd4f3c81edd69229e79",
+    "apps/linux/app/src/ui/editor/run_generation.rs": "4abc182ae9983c715ec2ae92051fbf1ef1b62674719ad373add0b369a9a7f621",
+    "apps/linux/app/src/ui/editor/run_lifecycle.rs": "024111165a5d9b715495c69a94bdd124cdc9222ddd8db043c8ee3620093fd3f6",
+    "apps/linux/app/src/ui/editor/run_marks.rs": "77ece4c2afabdf2b3a90e5accf9fa6d3d82cedddf11f232ee2da28bb03eaaa5e",
+    "apps/linux/app/src/ui/editor/session_lexing.rs": "8fabfa07f327bf1e1c705e2f1b2ce23b095905df8caeed49b8b20d6ec3810db1",
+    "apps/linux/app/src/ui/editor/statement_cursor.rs": "6f2086cd5b76a68db92b87c158b8b227d686176c74d24129647ec560a6c2a6d2",
+    "apps/linux/app/src/ui/editor/statement_failure.rs": "bb880327e9e6178fe9b4de2129b0548a3dbaf2526feab7c4eaa438ec4819d7b7",
+    "apps/linux/app/src/ui/editor/stream_pages.rs": "93ecbac8bee3fd5fde091a6953a66770b6e905b7ccafe82c44182e88c18d21fa",
+    "apps/linux/app/src/ui/editor/streaming.rs": "9b96319eed550452388358700147c67a83687cd6220637cf6bf8a7c55e1426ea",
+    "apps/linux/app/src/ui/editor/toolbar_actions.rs": "d1717f104acb01f94cf00adb7e98cae5d2d7ef55a512c5d79bd4230554d1cdad",
+    "scripts/isolated-tests.json": "f430a0e4d32387fd10d4b34fb58d54947dd5f08672030eb240e1a651648af344"
+  },
+  "checks": {
+    "app_units": {
+      "status": "passed",
+      "executed": 730,
+      "ignored": 166,
+      "command": "cargo test --locked -p tablepro-app --lib"
+    },
+    "strict_app_clippy": {
+      "status": "passed",
+      "warnings_denied": true,
+      "command": "cargo clippy --locked -p tablepro-app --all-targets -- -D warnings"
+    },
+    "preflight": {
+      "status": "passed",
+      "command": "bash scripts/preflight.sh",
+      "unit": {
+        "passed": 2056,
+        "skipped": 15
+      },
+      "sandbox": {
+        "passed": 2057,
+        "skipped": 64
+      },
+      "redis_cancellation": {
+        "passed": 1
+      }
+    },
+    "gtk_widgets": {
+      "status": "passed",
+      "command": "bash scripts/test-gtk-widgets.sh",
+      "executed": 128,
+      "registered": 128
+    },
+    "documentation": {
+      "status": "passed",
+      "commands": [
+        "python3 scripts/check-doc-links.py",
+        "python3 scripts/check-known-issues.py",
+        "python3 scripts/inventory-ignored-tests.py --check"
+      ]
+    }
+  },
+  "native": [
+    {
+      "status": "passed",
+      "binary_sha256": "1eda692e9157df02e8f3d2af52977d0bdff3d36a4237d53a5fa956a2cefb7cb3",
+      "backend": "native Wayland",
+      "xwayland": false,
+      "width": 1200,
+      "theme": "dark",
+      "sql_font": 12,
+      "checks": [
+        "Unicode third statement",
+        "pointer navigation",
+        "restore maximized editor",
+        "repeated current statement via real shortcut",
+        "Errors view navigation",
+        "edited buffer refusal",
+        "comment-safe statement origin",
+        "no SQL rerun"
+      ]
+    },
+    {
+      "status": "passed",
+      "binary_sha256": "1eda692e9157df02e8f3d2af52977d0bdff3d36a4237d53a5fa956a2cefb7cb3",
+      "backend": "native Wayland",
+      "xwayland": false,
+      "width": 802,
+      "theme": "light",
+      "sql_font": 20,
+      "checks": [
+        "Unicode third statement",
+        "pointer navigation",
+        "restore maximized editor",
+        "repeated current statement via real shortcut",
+        "Errors view navigation",
+        "edited buffer refusal",
+        "comment-safe statement origin",
+        "no SQL rerun"
+      ]
+    }
+  ],
+  "independent_review": {
+    "method": "read-only source review",
+    "result": "comment-origin defect reproduced and fixed; planner-based navigation and related gutter correction reviewed with no further product findings; remaining test caller mismatch fixed and verified locally"
+  },
+  "unrun": [
+    "maintainer Forgejo gate",
+    "release-package installation",
+    "distro-floor acceptance",
+    "Orca qualification"
+  ],
+  "resources": {
+    "owned_postgres_container": "removed after native acceptance",
+    "existing_manual_database_containers": "preserved",
+    "application_profile_keyring": "temporary and removed by probe"
+  },
+  "host": {
+    "distribution": "Arch Linux",
+    "desktop": "Hyprland 0.56.2",
+    "display": "native Wayland; xwayland=false",
+    "gtk": "4.24.1",
+    "libadwaita": "1.10.0",
+    "gtksourceview": "5.22.0",
+    "database": "PostgreSQL 17.11, postgres:17-alpine fixture"
+  },
+  "logs": {
+    "preflight.log.gz": {
+      "sha256": "8018147b3e324688f560014382cf5cffe11bfa15737b1b74ccf04b62f393259b",
+      "decoded_sha256": "9948331dd0a9188040f5bf1f5955f21b6ca96e1182030252b1a479b0ca7b5d19"
+    },
+    "gtk-widgets.log.gz": {
+      "sha256": "6146e3eb1c32e378e9fc658a7718b1610dcddd6aa0552a42e456924df5419e5e",
+      "decoded_sha256": "37d3d0362c8e6622156efc8767dfde51068b66d50fce7895fb2fc37c43a1e3e7"
+    },
+    "app-unit.log.gz": {
+      "sha256": "ffbb29cae4dbc8159f54f9d961d38076e519ddd610d4f76ad8b9b43f8fc55b71",
+      "decoded_sha256": "5ad988d98ba6198a83f3e7b1c17aa6bad7d9d4bf62c97b11efb56ba82d15d008"
+    },
+    "clippy.log.gz": {
+      "sha256": "4c3659e5324d8857a00f374e06d0d4289d29f4877c7edc0fec673f6b751ddbf7",
+      "decoded_sha256": "60b5f8e887fce3d2bca7e507eea9d5b2ce1c255b03eb51dd02bfe6372a54c0c1"
+    },
+    "native-dark.log.gz": {
+      "sha256": "a0e669bd6a3b35840070dda043ff15f870a7aa06ca91d88103f406ac15990120",
+      "decoded_sha256": "092896523a87fa444c9cad590b45abc22f4aa405aba2f6bca00f697e128de675"
+    },
+    "native-light.log.gz": {
+      "sha256": "242ef2cbd34519097e4c13758a75234d10fbc62ab50f2709803926485dc69814",
+      "decoded_sha256": "899a7435d8e355388e0c4fefaf0d1a3de086432b9e123438d1c63d4d08b35b7d"
+    }
+  },
+  "artifacts_sha256": {
+    "app-unit.log.gz": "ffbb29cae4dbc8159f54f9d961d38076e519ddd610d4f76ad8b9b43f8fc55b71",
+    "clipped-before.txt": "417e71edb8d82606c843f7ff4931cd41f6851842898a432abd62fd849fa2eef4",
+    "clippy.log.gz": "4c3659e5324d8857a00f374e06d0d4289d29f4877c7edc0fec673f6b751ddbf7",
+    "comment-before.txt": "a2c7a6465587afa88de1440d2fcca57d8eef1a789e6fa6225281fe14f4e4fe27",
+    "dark-wide.json": "ac9b3287aecbc831f1f5c3b6be5c6a89cf6c65690d327a892fad69dcb3748245",
+    "dark-wide.png": "62e300eb42329cdb306a0de8d8e8056494af2480b395c4b7488d1d3a8b08250c",
+    "gtk-widgets.log.gz": "6146e3eb1c32e378e9fc658a7718b1610dcddd6aa0552a42e456924df5419e5e",
+    "gutter-comment-before.txt": "40793030d79e2c5dac1e44afb6ea9055f8ca6f6eb0d0f6038dcc75d4a90cb226",
+    "light-comment-origin.png": "45d4d7eb71bf7a8ab70f8fcf85aea4113cfd8a3263954dde14cd21f99c7beca5",
+    "light-narrow-large.json": "c88b6ecbb9c46fca3a92b4a9d1d2336aed5d143a0f0eea1bb8cb7d5b9c10ae9f",
+    "light-narrow-large.png": "ab9dd5cdc093357637eb090f4e0c531ef74beaa5ed024182813af00f8e3feea3",
+    "native-acceptance.py": "ae38046c0b0ce5ba9b42bed142310a7a7166850149d089ac54c99ebbdd258e7b",
+    "native-dark.log.gz": "a0e669bd6a3b35840070dda043ff15f870a7aa06ca91d88103f406ac15990120",
+    "native-light.log.gz": "242ef2cbd34519097e4c13758a75234d10fbc62ab50f2709803926485dc69814",
+    "preflight.log.gz": "8018147b3e324688f560014382cf5cffe11bfa15737b1b74ccf04b62f393259b"
+  }
+}

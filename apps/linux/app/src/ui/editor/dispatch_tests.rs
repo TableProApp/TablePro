@@ -285,13 +285,41 @@ fn success() -> Result<QueryResultBatch, DriverError> {
 fn parameter_response() -> SqlEditorInput {
     SqlEditorInput::RunWithParameters {
         sql: "SELECT :value;".into(),
+        anchor: None,
         planned: super::PlannedStatements {
             statements: vec!["SELECT :value;".into()],
+            source_ranges: std::iter::once(0.."SELECT :value;".len()).collect(),
             error_policy: tablepro_core::sql_syntax::script::BatchErrorPolicy::StopScript,
             settings_check: None,
         },
         values: [("value".into(), Value::Int(2))].into(),
     }
+}
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn editor_waits_for_its_session_before_accepting_any_run_input() {
+    let fixture = EditorFixture::new();
+    let (release, wait) = oneshot::channel();
+    fixture.sessions.open_wait.lock().unwrap().replace(wait);
+    fixture.controller.model().session_button.set_active(true);
+    spin_until(|| fixture.controller.model().session_open_in_flight);
+    assert!(!fixture.controller.model().run_button.is_sensitive());
+    for secondary in [false, true] {
+        fixture.shortcut("<Primary>Return", secondary);
+        fixture.shortcut("<Primary><Shift>Return", secondary);
+    }
+    fixture.controller.sender().send(parameter_response()).unwrap();
+    fixture.process_inputs();
+    assert_eq!(fixture.calls.load(Ordering::SeqCst), 0);
+    assert!(fixture.requests.try_recv().is_err());
+    release.send(()).unwrap();
+    spin_until(|| fixture.controller.model().session.is_some() && fixture.controller.model().run_button.is_sensitive());
+    fixture.shortcut("<Primary>Return", false);
+    let running = fixture.next_query();
+    assert!(running.dedicated_session);
+    assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
+    fixture.finish(running, success());
 }
 
 #[test]
@@ -774,31 +802,8 @@ fn descendants(root: &gtk::Widget) -> Vec<gtk::Widget> {
 #[path = "panel_tests.rs"]
 mod panel_tests;
 
-#[test]
-#[ignore = "requires an isolated GTK display"]
-fn editor_waits_for_its_session_before_accepting_any_run_input() {
-    let fixture = EditorFixture::new();
-    let (release, wait) = oneshot::channel();
-    fixture.sessions.open_wait.lock().unwrap().replace(wait);
-    fixture.controller.model().session_button.set_active(true);
-    spin_until(|| fixture.controller.model().session_open_in_flight);
-    assert!(!fixture.controller.model().run_button.is_sensitive());
-    for secondary in [false, true] {
-        fixture.shortcut("<Primary>Return", secondary);
-        fixture.shortcut("<Primary><Shift>Return", secondary);
-    }
-    fixture.controller.sender().send(parameter_response()).unwrap();
-    fixture.process_inputs();
-    assert_eq!(fixture.calls.load(Ordering::SeqCst), 0);
-    assert!(fixture.requests.try_recv().is_err());
-    release.send(()).unwrap();
-    spin_until(|| fixture.controller.model().session.is_some() && fixture.controller.model().run_button.is_sensitive());
-    fixture.shortcut("<Primary>Return", false);
-    let running = fixture.next_query();
-    assert!(running.dedicated_session);
-    assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
-    fixture.finish(running, success());
-}
+#[path = "error_navigation_tests.rs"]
+mod error_navigation_tests;
 
 #[test]
 #[ignore = "requires an isolated GTK display"]

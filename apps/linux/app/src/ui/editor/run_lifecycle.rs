@@ -25,38 +25,51 @@ impl SqlEditor {
         self.database.metadata(self.connection_id?)
     }
 
-    pub(super) fn begin_run(&mut self, sql: String, single_statement: bool, sender: ComponentSender<Self>) {
+    pub(super) fn begin_run(
+        &mut self,
+        sql: String,
+        anchor: Option<SourceAnchor>,
+        single_statement: bool,
+        sender: ComponentSender<Self>,
+    ) {
         if !self.can_start_run() {
             return;
         }
         if single_statement {
             let planned = PlannedStatements {
                 statements: vec![sql.clone()],
+                source_ranges: std::iter::once(0..sql.len()).collect(),
                 error_policy: tablepro_core::sql_syntax::script::BatchErrorPolicy::StopScript,
                 settings_check: None,
             };
-            self.run_planned(sql, planned, sender);
+            self.run_planned(sql, anchor, planned, sender);
         } else {
-            self.read_lexing_then_run(sql, sender);
+            self.read_lexing_then_run(sql, anchor, sender);
         }
     }
 
-    pub(super) fn plan_and_run(&mut self, sql: String, sender: ComponentSender<Self>) {
+    pub(super) fn plan_and_run(&mut self, sql: String, anchor: Option<SourceAnchor>, sender: ComponentSender<Self>) {
         if !self.can_start_run() {
             return;
         }
         let driver_id = self.metadata().map(|metadata| metadata.driver_id).unwrap_or_default();
         match script_statements(&sql, self.lexing(&driver_id)) {
-            Ok(planned) => self.run_planned(sql, planned, sender),
+            Ok(planned) => self.run_planned(sql, anchor, planned, sender),
             Err(message) => self.status.set_label(&message),
         }
     }
 
-    fn run_planned(&mut self, sql: String, planned: PlannedStatements, sender: ComponentSender<Self>) {
+    fn run_planned(
+        &mut self,
+        sql: String,
+        anchor: Option<SourceAnchor>,
+        planned: PlannedStatements,
+        sender: ComponentSender<Self>,
+    ) {
         let driver_id = self.metadata().map(|metadata| metadata.driver_id).unwrap_or_default();
         let names = crate::services::query_parameters::statement_names(&sql, &driver_id);
         if names.is_empty() {
-            self.execute_sql(sql, planned, std::collections::HashMap::new(), sender);
+            self.execute_sql(sql, anchor, planned, std::collections::HashMap::new(), sender);
             return;
         }
         let Some(window) = self
@@ -71,6 +84,7 @@ impl SqlEditor {
         crate::ui::parameters_dialog::present(&window, &names, move |values| {
             sender.input(SqlEditorInput::RunWithParameters {
                 sql: sql.clone(),
+                anchor,
                 planned: planned.clone(),
                 values,
             });
@@ -122,6 +136,45 @@ impl SqlEditor {
             self.try_start_session_teardown(sender);
         }
         Some((terminal, context))
+    }
+
+    pub(super) fn on_outcomes(
+        &mut self,
+        generation: u64,
+        mut outcomes: Vec<StatementOutcome>,
+        sender: &ComponentSender<Self>,
+    ) {
+        let Some((terminal, context)) = self.finish_run(generation, sender) else {
+            return;
+        };
+        if terminal.replace_ui {
+            self.cancel_token = None;
+        }
+        error_navigation::locate(generation, &context, &mut outcomes);
+        let totals = outcomes::RunTotals::of(&outcomes);
+        self.mark_statements(&context, terminal.replace_ui, &outcomes);
+        self.record_history(
+            context,
+            totals.elapsed_ms as i64,
+            totals.history_rows(),
+            totals.history_outcome(),
+        );
+        if !terminal.replace_ui {
+            return;
+        }
+
+        self.status.set_label(&totals.summary());
+        let shown = self.pinned.show(outcomes);
+        self.refresh_pin_button();
+        clear_results_box(&self.results_holder);
+        render_outcomes(
+            &self.results_holder,
+            &shown,
+            &self.grid_sender,
+            self.connection_id,
+            self.database.clone(),
+            self.result_view_settings.clone(),
+        );
     }
 
     pub(super) fn record_history(

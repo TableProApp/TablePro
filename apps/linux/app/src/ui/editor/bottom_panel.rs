@@ -135,6 +135,12 @@ impl BottomPanel {
         }
     }
 
+    pub(super) fn reveal_editor(&self) {
+        if self.state.get().mode() == PanelMode::Maximized {
+            self.apply(PanelAction::Maximize);
+        }
+    }
+
     fn remember_focus(&self) {
         let focus = self.editor.root().and_then(|root| root.focus());
         if let Some(focus) = focus.filter(|focus| focus.is_ancestor(&self.editor)) {
@@ -208,6 +214,9 @@ impl BottomPanel {
                     .xalign(0.0)
                     .build();
                 self.errors.append(&label);
+                if let Some(button) = message.navigation_button() {
+                    self.errors.append(&button);
+                }
             }
         }
         self.error_button
@@ -280,12 +289,12 @@ fn track_divider(paned: &gtk::Paned, state: &Rc<Cell<EditorPanel>>, applying: &R
     });
 }
 
-fn outcome_error(outcome: &StatementOutcome) -> Option<String> {
+fn outcome_error(outcome: &StatementOutcome) -> Option<super::StatementFailure> {
     match &outcome.kind {
         StatementOutcomeKind::Error(message) => Some(message.clone()),
         StatementOutcomeKind::Streamed(result) => match &result.terminal {
             super::StreamTerminal::Failed(message) => Some(message.clone()),
-            super::StreamTerminal::TimedOut => Some(crate::tr!("Query timed out")),
+            super::StreamTerminal::TimedOut => Some(crate::tr!("Query timed out").into()),
             _ => None,
         },
         _ => None,

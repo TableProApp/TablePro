@@ -1,0 +1,13 @@
+---- ui::editor::run_marks::tests::sql_inside_a_comment_does_not_receive_the_statement_mark stdout ----
+
+thread 'ui::editor::run_marks::tests::sql_inside_a_comment_does_not_receive_the_statement_mark' (2088547) panicked at apps/linux/app/src/ui/editor/run_marks.rs:132:9:
+assertion `left == right` failed
+  left: [Some(0)]
+ right: [Some(1)]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    ui::editor::run_marks::tests::sql_inside_a_comment_does_not_receive_the_statement_mark
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 895 filtered out; finished in 0.00s

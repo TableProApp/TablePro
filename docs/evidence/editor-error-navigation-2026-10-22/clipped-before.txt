@@ -1,0 +1,11 @@
+---- ui::editor::dispatch_tests::error_navigation_tests::a_server_error_navigates_to_its_original_unicode_statement stdout ----
+
+thread 'ui::editor::dispatch_tests::error_navigation_tests::a_server_error_navigates_to_its_original_unicode_statement' (2013469) panicked at apps/linux/app/src/ui/editor/error_navigation_tests.rs:36:5:
+assertion failed: bounds.y() >= 0.0 && bounds.y() + bounds.height() <= holder.height() as f32
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    ui::editor::dispatch_tests::error_navigation_tests::a_server_error_navigates_to_its_original_unicode_statement
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 892 filtered out; finished in 0.39s

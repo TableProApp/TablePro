@@ -144,7 +144,7 @@ impl SqlEditor {
         let terminal = stream
             .as_ref()
             .and_then(|stream| stream.error.clone())
-            .map_or(terminal, StreamTerminal::Failed);
+            .map_or(terminal, |message| StreamTerminal::Failed(message.into()));
         let rows = stream.as_ref().map(|stream| stream.cache.total_rows() as i64);
         let outcome = stream.map(|stream| {
             let mut outcome = stream.outcome(terminal.clone());
@@ -155,10 +155,11 @@ impl SqlEditor {
             StreamTerminal::Complete => Outcome::Success,
             StreamTerminal::Cancelled => Outcome::Cancelled,
             StreamTerminal::TimedOut => Outcome::Error(crate::tr!("Query timed out")),
-            StreamTerminal::Failed(message) => Outcome::Error(message.clone()),
+            StreamTerminal::Failed(message) => Outcome::Error(message.to_string()),
             StreamTerminal::Loading => Outcome::Error(crate::tr!("Stream ended before completion")),
         };
-        let outcomes = outcome.into_iter().collect::<Vec<_>>();
+        let mut outcomes = outcome.into_iter().collect::<Vec<_>>();
+        super::error_navigation::locate(generation, &context, &mut outcomes);
         self.mark_statements(&context, run_terminal.replace_ui, &outcomes);
         self.record_history(context, elapsed, rows.filter(|rows| *rows > 0), history_outcome);
         if !run_terminal.replace_ui {

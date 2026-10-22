@@ -415,3 +415,12 @@ Source follow-up [UI-43 / #1349](https://github.com/cozyGarage/BookiE/issues/134
 Source tests and native acceptance for this change are recorded in its PR and linked evidence; the checklist is not automatically satisfied by Xvfb.
 
 The [October 22 source-built desktop matrix](evidence/editor-bottom-panel-2026-10-22/README.md) covers these panel interactions on Arch/Hyprland. Packaged acceptance and broader accessibility qualification remain separate.
+
+## Editor error navigation
+
+- [x] On native Wayland with PostgreSQL, run a script whose third statement fails after a Unicode value. Go to error in the result restores a maximized editor and places the caret at the failed statement's exact character position.
+- [x] Run Current with two identical statements through real Ctrl+Shift+Enter. Go to error moves the caret to the second occurrence. SQL inside a leading comment is not used as a navigation target or marked as executed.
+- [x] Use Go to error from the Errors view. Edit the query and retry the old action; the caret stays put and a fresh run is requested. A unique database row confirms navigation never reruns the script.
+- [x] Reach the action by mouse in a 1,200 px dark window and an 802 px light window with 20-point SQL text. Error controls remain visible above scrollable text.
+
+The [source-built acceptance record](evidence/editor-error-navigation-2026-10-22/README.md) pins the executable and screenshots. New-run and closed/replaced-connection refusal, invalid positions and rewritten parameters have separate source regressions. Release packages, distro-floor runs and Orca remain separate acceptance.

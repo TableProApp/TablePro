@@ -41,3 +41,5 @@ A local shell terminal is a separate later product decision. GTK VTE is a candid
 ## Completion boundary
 
 The review and candidate handoff are done. The next implementation should be one focused PR for the existing results/error panel, followed by structured error navigation. Keep independently useful fixes separate. Merge latest Linux into each branch, preserve existing tests, write failing-first regressions and update user documentation with behavior changes. GitHub cheap checks, maintainer Forgejo acceptance and native desktop evidence remain separate gates.
+
+Subsequent source-built implementation and desktop acceptance are recorded in the [bottom-panel evidence](../evidence/editor-bottom-panel-2026-10-22/README.md) and [error-navigation evidence](../evidence/editor-error-navigation-2026-10-22/README.md). Issue #552 owns their current PR and merge status. This dated research record remains complete; the other adoption candidates remain on their linked issues.

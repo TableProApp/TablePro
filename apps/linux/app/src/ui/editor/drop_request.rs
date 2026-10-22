@@ -11,6 +11,10 @@ pub(super) struct DropGeneration {
 }
 
 impl DropGeneration {
+    pub(super) fn revision(&self) -> u64 {
+        self.revision.get()
+    }
+
     pub(super) fn changed(&self) {
         self.revision.set(self.revision.get().wrapping_add(1));
     }

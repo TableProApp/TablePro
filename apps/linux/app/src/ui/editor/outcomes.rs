@@ -64,9 +64,9 @@ impl RunTotals {
                 })
                 .count(),
             first_error: outcomes.iter().find_map(|outcome| match &outcome.kind {
-                StatementOutcomeKind::Error(message) => Some(message.clone()),
+                StatementOutcomeKind::Error(message) => Some(message.to_string()),
                 StatementOutcomeKind::Streamed(result) => match &result.terminal {
-                    StreamTerminal::Failed(message) => Some(message.clone()),
+                    StreamTerminal::Failed(message) => Some(message.to_string()),
                     StreamTerminal::TimedOut => Some(crate::tr!("Query timed out")),
                     StreamTerminal::Loading | StreamTerminal::Complete | StreamTerminal::Cancelled => None,
                 },
@@ -214,7 +214,7 @@ where
 fn skipped_outcome(identity: StatementIdentity, preview: String, reason: Option<String>) -> StatementOutcome {
     match reason {
         Some(reason) => StatementOutcome {
-            kind: StatementOutcomeKind::Error(reason),
+            kind: StatementOutcomeKind::Error(reason.into()),
             ..not_run_outcome(identity, preview)
         },
         None => not_run_outcome(identity, preview),
@@ -320,7 +320,7 @@ fn bind_statement_for_run(
             identity,
             sql_preview: preview,
             elapsed_ms: 0,
-            kind: StatementOutcomeKind::Error(reason),
+            kind: StatementOutcomeKind::Error(reason.into()),
             pinned: false,
         })
     })
@@ -500,15 +500,15 @@ where
         sequence = sequence.saturating_add(1);
         if truncated {
             finish_stream_cursor(cursor, true).await;
-            return ScriptRunResult::Streamed(StreamTerminal::Failed(crate::tr!(
-                "A result page exceeded the query result limit. The result is incomplete."
-            )));
+            return ScriptRunResult::Streamed(StreamTerminal::Failed(
+                crate::tr!("A result page exceeded the query result limit. The result is incomplete.").into(),
+            ));
         }
         if !has_next_page {
             if let Err(error) = cursor.finish(true).await {
-                return ScriptRunResult::Streamed(StreamTerminal::Failed(crate::services::error_text::driver_message(
-                    &error,
-                )));
+                return ScriptRunResult::Streamed(StreamTerminal::Failed(
+                    crate::services::error_text::driver_message(&error).into(),
+                ));
             }
             succeeded(sql);
             return ScriptRunResult::Streamed(StreamTerminal::Complete);
@@ -533,13 +533,8 @@ fn statement_identity(statement_index: usize, sql: &str) -> StatementIdentity {
     }
 }
 
-fn failure_message(error: &DriverError, written: &str, sent: &str) -> String {
-    let position = match error {
-        DriverError::Query { position, .. } if sent == written => *position,
-        _ => None,
-    };
-    let message = crate::services::error_text::driver_message(error);
-    super::error_location::located_message(&message, sent, position)
+fn failure_message(error: &DriverError, written: &str, sent: &str) -> super::StatementFailure {
+    super::StatementFailure::located(error, written, sent)
 }
 
 fn sql_preview(sql: &str) -> String {
@@ -780,29 +775,60 @@ fn build_multi_result_widget(
     holder.upcast()
 }
 
-fn error_page(idx: usize, message: &str) -> adw::StatusPage {
-    let copy = gtk::Button::builder()
-        .label(crate::tr!("Copy error"))
-        .halign(gtk::Align::Center)
-        .css_classes(["pill"])
+fn error_page(idx: usize, message: &super::StatementFailure) -> gtk::Box {
+    let holder = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(8)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
+        .vexpand(true)
         .build();
+    let title = gtk::Label::builder()
+        .label(crate::tr!("Statement {n} failed").replace("{n}", &(idx + 1).to_string()))
+        .css_classes(["title-3"])
+        .xalign(0.0)
+        .wrap(true)
+        .build();
+    let actions = gtk::FlowBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .halign(gtk::Align::Start)
+        .min_children_per_line(1)
+        .max_children_per_line(2)
+        .column_spacing(6)
+        .row_spacing(4)
+        .build();
+    let copy = gtk::Button::with_label(&crate::tr!("Copy error"));
     let text = message.to_string();
     copy.connect_clicked(move |button| button.clipboard().set_text(&text));
+    actions.insert(&copy, -1);
     let audit = gtk::Button::builder()
         .label(crate::tr!("View in Audit Log"))
         .action_name("win.show-audit")
         .css_classes(["pill", "flat"])
         .build();
-    let actions = gtk::Box::builder().spacing(12).halign(gtk::Align::Center).build();
-    actions.append(&copy);
-    actions.append(&audit);
-    adw::StatusPage::builder()
-        .title(crate::tr!("Statement {n} failed").replace("{n}", &(idx + 1).to_string()))
-        .description(message)
-        .icon_name("dialog-error-symbolic")
-        .child(&actions)
+    actions.insert(&audit, -1);
+    if let Some(button) = message.navigation_button() {
+        actions.insert(&button, -1);
+    }
+    let description = gtk::Label::builder()
+        .label(message.as_ref())
+        .selectable(true)
+        .wrap(true)
+        .wrap_mode(gtk::pango::WrapMode::WordChar)
+        .xalign(0.0)
+        .yalign(0.0)
+        .build();
+    let scroll = gtk::ScrolledWindow::builder()
+        .child(&description)
+        .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
-        .build()
+        .build();
+    holder.append(&title);
+    holder.append(&actions);
+    holder.append(&scroll);
+    holder
 }
 
 pub(super) fn build_stream_page_widget(

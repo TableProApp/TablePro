@@ -26,6 +26,10 @@ impl RunGeneration {
         self.next
     }
 
+    pub(super) fn is_current(&self, generation: u64) -> bool {
+        self.current == Some(generation)
+    }
+
     pub(super) fn accepts(&self, generation: u64) -> bool {
         self.current == Some(generation) && self.active.contains(&generation)
     }

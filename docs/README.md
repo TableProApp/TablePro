@@ -147,12 +147,14 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 - [Selection statistics resource investigation, October 22](evidence/selection-statistics-2026-10-22/README.md): borrowed-cell computation, numeric behavior tests and matched headless heap profiles.
 - [Inspector preview resource investigation, October 22](evidence/inspector-preview-2026-10-22/README.md): borrowed-cell previews, preserved field semantics and matched headless heap/timing measurements.
 - [Browse inspector callback lifetime, October 22](evidence/inspector-cycle-2026-10-22/README.md): failing then passing GTK weak-reference regression for a selection-to-inspector ownership cycle.
+- [Editor error navigation, October 22](evidence/editor-error-navigation-2026-10-22/README.md): structured positions, exact statement origins, stale-action refusal and native PostgreSQL pointer/keyboard acceptance.
 
 - [Query row decoding budget, October 22](evidence/query-row-budget-2026-10-22/README.md): pre-decode row checks, measured PostgreSQL client RSS reduction and remaining allocation limits.
 - [Borrowed row identity checks, October 22](evidence/row-key-borrowing-2026-10-22/README.md): reduced copying during stale-edit validation, with key contract tests and allocation measurements.
 
 - [Linux follow-up review, October 22](archive/linux-follow-up-review-2026-10-22.md): merged result-memory fixes, corrected evidence status and nonduplicating UI acceptance order.
 
+- [Session opening and SQL execution ordering, October 22](evidence/session-opening-run-order-2026-10-22/README.md): held-open regression and shared execution readiness checks.
 - [Arch wrapper release date, October 22](evidence/arch-wrapper-date-2026-10-22/README.md): mandatory-date forwarding, boundary regressions and real isolated package upgrade/removal evidence.
 - [Dedicated-session opening guard, October 22](evidence/session-opening-guard-2026-10-22/README.md): standalone held-open regression and current-Linux source checks.
 
