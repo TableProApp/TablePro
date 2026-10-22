@@ -600,6 +600,26 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::connection_row::tests::connection_actions_leave_room_for_text_in_a_narrow_row"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::connection_row::tests::connection_menu_dispatches_actions_for_its_own_record"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::commenting_selected_lines_publishes_one_complete_query_change"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::query_publication_waits_for_nested_actions_and_keeps_ordinary_edits_immediate"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::app::sidebar_state::tests::the_sidebar_stays_closed_in_a_narrow_window_and_never_opens_empty"
     ],
     [
