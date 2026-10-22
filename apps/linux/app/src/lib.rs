@@ -106,6 +106,7 @@ pub fn run() {
             }
         });
     }
+    services::ui_stall::install_from_env();
     let app = RelmApp::new(config::APP_ID);
     app.run::<ui::App>(ui::AppInit {
         registry,
