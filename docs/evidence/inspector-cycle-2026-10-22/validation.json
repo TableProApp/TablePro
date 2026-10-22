@@ -1,0 +1,31 @@
+{
+  "initial_fix": {
+    "source_commit": "71dd3cd82bdda422b74a72d14f8d34dd9f46d8aa",
+    "regression_before_fix": "failed: retired grid remains alive",
+    "regression_after_fix": "passed; view, selection, inspector and result Arc were released",
+    "preflight": {
+      "result": "2054 passed, 64 skipped",
+      "log_sha256": "8b6ddcd3ed8c204eb9f431835f09c633406685e9ec8c9df5f2077f73dad38539"
+    },
+    "gtk_widgets": {
+      "result": "106 passed",
+      "log_sha256": "c776f05a46b9751869bcd1bacd33d9a5e1ccd1ed41947d58172008cf3a08e902"
+    }
+  },
+  "production_dead_code_fix": {
+    "source_commit": "e7953c82d140fae86971c6c3284c3942c7aaed26",
+    "initial_github_fast_check": "failed because the strong show_row helper was unused in the production build",
+    "preflight": {
+      "result": "2054 passed, 64 skipped",
+      "log_sha256": "a09781a83963bb9f3d4321afcab32dc49d41d68d16cff6b01d7a63f9062c96ad"
+    },
+    "app_clippy": {
+      "result": "passed",
+      "log_sha256": "4624787676edb8643c2c1f3d2e515a5ca24330d4c804bdea0b56f158d9e03352"
+    },
+    "gtk_widgets": {
+      "result": "106 passed",
+      "log_sha256": "809c59e9c659e42b1ccf3f02fbb65d70d99528a37fd6d97df71aaa676312d0fa"
+    }
+  }
+}

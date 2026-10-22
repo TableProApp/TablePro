@@ -100,18 +100,16 @@ impl RowInspector {
         self.split.shows_sidebar()
     }
 
+    pub(crate) fn downgrade(&self) -> WeakRowInspector {
+        WeakRowInspector {
+            list: self.list.downgrade(),
+            stack: self.stack.downgrade(),
+        }
+    }
+
+    #[cfg(test)]
     pub(crate) fn show_row(&self, fields: Option<Vec<InspectorField>>) {
-        while let Some(child) = self.list.first_child() {
-            self.list.remove(&child);
-        }
-        let Some(fields) = fields else {
-            self.stack.set_visible_child_name("empty");
-            return;
-        };
-        for field in fields {
-            self.list.append(&field_row(&field));
-        }
-        self.stack.set_visible_child_name("fields");
+        show_row(&self.list, &self.stack, fields);
     }
 
     #[cfg(test)]
@@ -129,6 +127,33 @@ impl RowInspector {
     fn showing_placeholder(&self) -> bool {
         self.stack.visible_child_name().as_deref() == Some("empty")
     }
+}
+
+pub(crate) struct WeakRowInspector {
+    list: gtk::glib::WeakRef<gtk::ListBox>,
+    stack: gtk::glib::WeakRef<gtk::Stack>,
+}
+
+impl WeakRowInspector {
+    pub(crate) fn show_row(&self, fields: Option<Vec<InspectorField>>) {
+        let Some(list) = self.list.upgrade() else { return };
+        let Some(stack) = self.stack.upgrade() else { return };
+        show_row(&list, &stack, fields);
+    }
+}
+
+fn show_row(list: &gtk::ListBox, stack: &gtk::Stack, fields: Option<Vec<InspectorField>>) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+    let Some(fields) = fields else {
+        stack.set_visible_child_name("empty");
+        return;
+    };
+    for field in fields {
+        list.append(&field_row(&field));
+    }
+    stack.set_visible_child_name("fields");
 }
 
 fn field_row(field: &InspectorField) -> adw::ActionRow {

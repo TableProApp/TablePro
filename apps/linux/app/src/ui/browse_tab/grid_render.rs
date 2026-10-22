@@ -274,7 +274,7 @@ impl BrowseTab {
         let selection_count_label_for_signal = self.selection_count_label.clone();
         let selection_details_label_for_signal = self.selection_details_label.clone();
         if let Some(sel) = self.current_selection.as_ref() {
-            let inspector = self.inspector.clone();
+            let inspector = self.inspector.downgrade();
             let columns = self.current_columns.clone();
             sel.connect_selection_changed(move |sel, _, _| {
                 let n = sel.selection().size() as u32;

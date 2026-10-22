@@ -192,3 +192,58 @@ fn a_menu_context_does_not_keep_a_removed_cell_alive() {
     assert!(weak.upgrade().is_none());
     assert!(context.snapshot().is_none());
 }
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn a_retired_grid_does_not_retain_its_inspector_through_selection_callback() {
+    gtk4::init().unwrap();
+    let column = ColumnInfo {
+        name: "value".into(),
+        data_type: "TEXT".into(),
+        nullable: true,
+        primary_key: false,
+        is_auto_increment: false,
+        default_value: None,
+        is_generated: false,
+        comment: None,
+        collation: None,
+        enum_type: None,
+        domain_type: None,
+    };
+    let result = Arc::new(QueryResult {
+        columns: vec![column.clone()],
+        rows: vec![vec![Value::Text("value".into())]],
+        truncated: false,
+    });
+    let weak_result = Arc::downgrade(&result);
+    let (view, selection) = build_column_view(
+        &result,
+        &[column],
+        "items",
+        None,
+        None,
+        None,
+        None,
+        None,
+        TabGridContext::default(),
+        None,
+        Arc::new(DatabaseService::new()),
+    );
+    let inspector = crate::ui::row_inspector::RowInspector::new(&view);
+    let weak_view = view.downgrade();
+    let weak_selection = selection.downgrade();
+    let weak_inspector = inspector.widget().downgrade();
+    selection.connect_selection_changed({
+        let inspector = inspector.downgrade();
+        move |_, _, _| inspector.show_row(None)
+    });
+    drop(inspector);
+    drop(view);
+    drop(selection);
+    drop(result);
+    drain();
+    assert!(weak_view.upgrade().is_none(), "retired grid remains alive");
+    assert!(weak_selection.upgrade().is_none(), "retired selection remains alive");
+    assert!(weak_inspector.upgrade().is_none(), "retired inspector remains alive");
+    assert!(weak_result.upgrade().is_none(), "retired result page remains alive");
+}

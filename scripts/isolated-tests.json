@@ -716,6 +716,11 @@
       "tablepro-app",
       "--lib",
       "ui::editor::stream_view::tests::a_stream_page_retired_before_a_frame_does_not_build_a_grid"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::lifetime_tests::a_retired_grid_does_not_retain_its_inspector_through_selection_callback"
     ]
   ],
   "keyring": [

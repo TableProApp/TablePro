@@ -139,3 +139,5 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 - [Zed editor and panel review, October 22](archive/zed-editor-panel-review-2026-10-22.md): completed research, existing PR dependencies and issue-owned results/error/message panel follow-ups.
 - [GPUI client review, October 22](archive/gpui-client-review-2026-10-22.md): completed source research including dbdelve; open adoption proposals remain on their issues.
+
+- [Browse inspector callback lifetime, October 22](evidence/inspector-cycle-2026-10-22/README.md): failing then passing GTK weak-reference regression for a selection-to-inspector ownership cycle.
