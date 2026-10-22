@@ -104,10 +104,21 @@ fn filter_text(value: &Value, column_type: &ColumnType) -> Option<String> {
             Some(format!("0x{}", crate::hex::encode_lower(bytes)))
         }
         Value::Bytes(_) => None,
+        // A key can point at a key of another numeric type, such as an
+        // integer at a numeric(10,2), and the other column parses the
+        // text: the zeros the scale pads with would make it refuse 1.00.
+        Value::Decimal(decimal) if decimal.is_finite() => Some(without_trailing_zeros(decimal.to_string())),
         other => match edit_text(other, column_type) {
             EditText::Editable(text) => Some(text),
             EditText::ReadOnly(_) => None,
         },
+    }
+}
+
+fn without_trailing_zeros(text: String) -> String {
+    match text.contains('.') {
+        true => text.trim_end_matches('0').trim_end_matches('.').to_owned(),
+        false => text,
     }
 }
 
@@ -237,6 +248,30 @@ mod tests {
                 column: "code".to_owned()
             }
         );
+    }
+
+    #[test]
+    fn a_decimal_key_is_written_without_the_zeros_of_its_scale() {
+        let columns = [typed(
+            "amount",
+            ColumnKind::Decimal {
+                precision: Some(10),
+                scale: Some(2),
+            },
+        )];
+        let key = key(&["amount"], Some("sales"), &["id"]);
+        let text_of = |mantissa| {
+            let value = Value::Decimal(crate::value::SqlDecimal::from_scaled_i128(mantissa, 2));
+            RowReference::referenced(&orders(), &key, &columns, &[value])
+                .expect("a decimal key")
+                .filter
+                .rules
+        };
+
+        assert_eq!(text_of(100), vec![eq("id", "1")]);
+        assert_eq!(text_of(150), vec![eq("id", "1.5")]);
+        assert_eq!(text_of(-1000), vec![eq("id", "-10")]);
+        assert_eq!(text_of(0), vec![eq("id", "0")]);
     }
 
     #[test]
