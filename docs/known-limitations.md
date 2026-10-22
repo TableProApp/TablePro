@@ -80,6 +80,7 @@ Documented application limits, behavior differences and known defects. Entries l
 - Native Debian and Ubuntu GNOME desktop acceptance is tracked under the later PKG-2 phase, although the packages build and the installed test suite passes in containers.
 - Flatpak is not offered. Flathub submission and screenshots are tracked under PKG-4 and PKG-8; the earlier manual install and launch checks are recorded in the [platform guide](platforms.md#flathub).
 - Windows and macOS are not supported; the application is built for Linux with GTK 4 and libadwaita.
+- **A single SQL completion proposal is not shown on GTK 4.18 under X11** ([#1445](https://github.com/cozyGarage/BookiE/issues/1445)). GTK 4.18 gives the popup a surface 3 px shorter than its natural height and pops down any popup that cannot shrink, which is the case for a one-row completion list. Two or more proposals are shown normally. GTK 4.14 and 4.24 are not affected; Wayland is unverified.
 
 ## Known bugs and unresolved outcomes
 
