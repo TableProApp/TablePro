@@ -10,4 +10,7 @@ pub(crate) enum BrowseRequestKind {
     Estimate,
     /// The exact total, which can scan the whole table.
     Count,
+    /// The table's foreign keys both ways, which the grid follows. Read
+    /// with each read of the columns, and never in the way of the rows.
+    Keys,
 }

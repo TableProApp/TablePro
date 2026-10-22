@@ -75,3 +75,28 @@ async fn contains_and_equals_on_json_jsonb_xml_and_enum() {
     );
     assert_eq!(ids_where(connection.as_ref(), "m", FilterOp::Eq, "calm").await, first());
 }
+
+/// A binary key followed from another table arrives as its hex text.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn equals_on_bytea_takes_the_hex_form() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE docs (id int PRIMARY KEY, b bytea)",
+            "INSERT INTO docs VALUES (1, '\\x0aff'), (2, '\\x0a')",
+        ],
+    )
+    .await;
+
+    assert_eq!(
+        ids_where(connection.as_ref(), "b", FilterOp::Eq, "0x0AFF").await,
+        vec![Value::Int(1)]
+    );
+    assert_eq!(
+        ids_where(connection.as_ref(), "b", FilterOp::NotEq, "0x0aff").await,
+        vec![Value::Int(2)]
+    );
+}

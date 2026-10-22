@@ -39,6 +39,7 @@ mod tests {
             table: name.to_owned(),
             offset: 0,
             page_size: 1_000,
+            filter: None,
             sort: None,
         }
     }

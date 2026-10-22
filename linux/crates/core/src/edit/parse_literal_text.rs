@@ -427,15 +427,24 @@ fn parse_bits(input: &str) -> Result<Value, EditParseError> {
 /// takes one here.
 pub fn parse_filter_text(input: &str, column: &ColumnType) -> Result<Value, EditParseError> {
     match column.kind {
+        // The form an export and a copy write a blob in.
+        ColumnKind::Bytes { .. } => parse_hex_bytes(input.trim()),
         // A filter on a column with no editable text form compares text
         // the user typed; the dialect decides what that means.
-        ColumnKind::Bytes { .. }
-        | ColumnKind::Spatial
-        | ColumnKind::Array { .. }
-        | ColumnKind::Variant
-        | ColumnKind::Composite => Ok(Value::Text(input.to_owned())),
+        ColumnKind::Spatial | ColumnKind::Array { .. } | ColumnKind::Variant | ColumnKind::Composite => {
+            Ok(Value::Text(input.to_owned()))
+        }
         _ => parse(input, column, Purpose::Compare),
     }
+}
+
+fn parse_hex_bytes(input: &str) -> Result<Value, EditParseError> {
+    input
+        .strip_prefix("0x")
+        .or_else(|| input.strip_prefix("0X"))
+        .and_then(crate::hex::decode)
+        .map(Value::Bytes)
+        .ok_or(EditParseError::InvalidBytes)
 }
 
 /// A `TimeTz` from text, for the engines that have one.
@@ -810,14 +819,21 @@ mod tests {
     }
 
     #[test]
-    fn a_filter_on_a_binary_column_compares_text() {
+    fn a_filter_on_a_binary_column_reads_the_hex_form_an_export_writes() {
         let binary = column(bytes(), false);
 
         assert_eq!(
-            parse_filter_text("0xff", &binary),
-            Ok(Value::Text("0xff".to_owned())),
-            "a filter could not be typed against a binary column"
+            parse_filter_text(" 0x0aFF ", &binary),
+            Ok(Value::Bytes(vec![0x0a, 0xff]))
         );
+        assert_eq!(parse_filter_text("0X", &binary), Ok(Value::Bytes(Vec::new())));
+        for text in ["ff", "0xf", "0xzz", ""] {
+            assert_eq!(
+                parse_filter_text(text, &binary),
+                Err(EditParseError::InvalidBytes),
+                "{text:?}"
+            );
+        }
     }
 
     #[test]

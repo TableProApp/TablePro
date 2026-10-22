@@ -94,3 +94,41 @@ async fn a_decimal_filter_keeps_the_digits_it_was_given() {
         assert_eq!(rows, expected, "{column} {op:?} {text}");
     }
 }
+
+/// A binary key followed from another table arrives as its hex text.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn equals_on_varbinary_takes_the_hex_form() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE dbo.keys (id int PRIMARY KEY, k varbinary(16))",
+            "INSERT INTO dbo.keys VALUES (1, 0x0AFF), (2, 0x0A)",
+        ],
+    )
+    .await;
+    let table = dbo("keys");
+    let columns = columns(connection.as_ref(), &table).await;
+    let dialect = connection.dialect();
+    let mut builder = StatementBuilder::new();
+    builder.push_sql(&format!("SELECT id FROM {} WHERE ", dialect.qualify(&table)));
+    let filter = FilterSet {
+        rules: vec![FilterRule {
+            column: "k".to_owned(),
+            op: FilterOp::Eq,
+            value: Some(FilterValue::Single("0x0aff".to_owned())),
+        }],
+        ..FilterSet::default()
+    };
+    build_filter(&mut builder, dialect.as_ref(), &columns, &filter).expect("a filter");
+
+    let rows = connection
+        .query_bound(&builder.finish(), RowLimit::EDITOR_DEFAULT, within(CALL))
+        .await
+        .expect("the filtered rows")
+        .rows;
+
+    assert_eq!(rows, vec![vec![Value::Int(1)]]);
+}

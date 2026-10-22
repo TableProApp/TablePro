@@ -1,3 +1,5 @@
+use tablepro_core::browse::RowReference;
+
 use crate::ui::clipboard::{CopyRequest, InClauseRows};
 use crate::ui::export::ExportSource;
 use crate::ui::grid::{RowJsonRequest, RowObject};
@@ -16,4 +18,5 @@ pub(crate) enum ClipboardInput {
     PasteNotSupported,
     GridShowRowJson(RowJsonRequest),
     GridShowToast(String),
+    GridFollowReference(RowReference),
 }

@@ -367,6 +367,16 @@ mod tests {
     }
 
     #[test]
+    fn a_blob_compares_equal_to_its_hex_form_as_bound_bytes() {
+        let statement = built(&single("photo", FilterOp::Eq, "0x00Ff"));
+
+        assert_eq!(statement.sql(), r#""photo" = $1"#);
+        assert_eq!(statement.params()[0].value(), &Value::Bytes(vec![0x00, 0xff]));
+        let error = build(&single("photo", FilterOp::Eq, "00ff")).expect_err("hex without 0x");
+        assert!(matches!(error, BuildFilterError::Parse { .. }), "{error:?}");
+    }
+
+    #[test]
     fn a_value_that_is_not_of_the_columns_type_is_reported_before_the_server_sees_it() {
         let error = build(&single("age", FilterOp::Eq, "seven")).expect_err("text in a number column");
 

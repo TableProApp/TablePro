@@ -321,6 +321,90 @@ async fn fetch_table_definition_reports_pk_name_collation_comment_and_inbound_ke
     assert!(definition.source.is_none());
 }
 
+/// A key to or from a partitioned table has a clone per partition,
+/// which the server makes and drops with it and refuses to drop alone.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn partition_clones_of_a_key_are_not_listed_as_keys() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE customers (id int, region text, PRIMARY KEY (id, region)) PARTITION BY LIST (region)",
+            "CREATE TABLE customers_eu PARTITION OF customers FOR VALUES IN ('eu')",
+            "CREATE TABLE customers_us PARTITION OF customers FOR VALUES IN ('us')",
+            "CREATE TABLE orders (id int PRIMARY KEY, customer_id int, region text, \
+             CONSTRAINT orders_to_customers FOREIGN KEY (customer_id, region) REFERENCES customers (id, region))",
+            "CREATE TABLE accounts (id int PRIMARY KEY)",
+            "CREATE TABLE events (id int, at int, account_id int REFERENCES accounts (id), PRIMARY KEY (id, at)) \
+             PARTITION BY RANGE (at)",
+            "CREATE TABLE events_2025 PARTITION OF events FOR VALUES FROM (2025) TO (2026)",
+            "CREATE TABLE events_2026 PARTITION OF events FOR VALUES FROM (2026) TO (2027)",
+        ],
+    )
+    .await;
+
+    let outbound = connection
+        .fetch_foreign_keys(&table("orders"), within(CALL))
+        .await
+        .expect("the keys of orders");
+    let inbound = connection
+        .fetch_inbound_foreign_keys(&table("accounts"), within(CALL))
+        .await
+        .expect("the keys pointing at accounts");
+    let partition = connection
+        .fetch_foreign_keys(&table("events_2025"), within(CALL))
+        .await
+        .expect("the keys of a partition");
+    let definition = connection
+        .fetch_table_definition(&table("accounts"), within(CALL))
+        .await
+        .expect("the definition of accounts");
+
+    let referenced: Vec<(&str, &str)> = outbound
+        .iter()
+        .map(|key| (key.name.as_str(), key.ref_table.as_str()))
+        .collect();
+    assert_eq!(referenced, [("orders_to_customers", "customers")]);
+    assert_eq!(outbound[0].ref_columns, ["id", "region"]);
+    let referencing: Vec<&TableRef> = inbound.iter().map(|key| &key.table).collect();
+    assert_eq!(referencing, [&table("events")]);
+    assert_eq!(definition.inbound_foreign_keys, inbound);
+    assert_eq!(
+        partition.iter().map(|key| key.ref_table.as_str()).collect::<Vec<_>>(),
+        ["accounts"],
+        "a partition still has the key it inherited"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn inbound_keys_name_the_referencing_schema_and_pair_their_columns() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE SCHEMA sales",
+            "CREATE TABLE customers (id int, region text, PRIMARY KEY (id, region))",
+            "CREATE TABLE sales.orders (id int PRIMARY KEY, buyer int, buyer_region text, \
+             FOREIGN KEY (buyer_region, buyer) REFERENCES customers (region, id))",
+        ],
+    )
+    .await;
+
+    let inbound = connection
+        .fetch_inbound_foreign_keys(&table("customers"), within(CALL))
+        .await
+        .expect("the keys pointing at customers");
+
+    assert_eq!(inbound.len(), 1);
+    assert_eq!(inbound[0].table, TableRef::new(Some("sales".to_owned()), "orders"));
+    assert_eq!(inbound[0].columns, ["buyer_region", "buyer"]);
+    assert_eq!(inbound[0].referenced_columns, ["region", "id"]);
+}
+
 const CATALOG_TABLE: &[&str] = &[
     "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')",
     "CREATE DOMAIN positive AS int4 CHECK (VALUE > 0)",

@@ -3,7 +3,7 @@
 //! which resolves an unqualified name in the login's default schema the
 //! way the server does everywhere else.
 
-use tablepro_core::ddl::{ReferentialAction, TableDefinition};
+use tablepro_core::ddl::{InboundForeignKey, ReferentialAction, TableDefinition};
 use tablepro_core::meta::{
     IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo, TableEstimate,
     TableRef,
@@ -281,16 +281,25 @@ pub(crate) async fn fetch_table_definition(
     let primary = catalogue_rows(client, watch, PRIMARY_KEY_SQL, &[text_param(relation)]).await?;
     let indexes = fetch_indexes(client, watch, relation).await?;
     let foreign_keys = fetch_foreign_keys(client, watch, relation).await?;
-    let inbound = catalogue_rows(client, watch, INBOUND_FOREIGN_KEYS_SQL, &[text_param(relation)]).await?;
+    let inbound_foreign_keys = fetch_inbound_foreign_keys(client, watch, relation).await?;
     Ok(TableDefinition {
         table: table.clone(),
         columns: columns.iter().map(column_definition).collect(),
         primary_key: primary_key(&primary)?,
         indexes,
         foreign_keys,
-        inbound_foreign_keys: inbound_foreign_keys(&inbound)?,
+        inbound_foreign_keys,
         source: None,
     })
+}
+
+pub(crate) async fn fetch_inbound_foreign_keys(
+    client: &mut MssqlClient,
+    watch: &Watch,
+    relation: &str,
+) -> Result<Vec<InboundForeignKey>, Interrupt> {
+    let rows = catalogue_rows(client, watch, INBOUND_FOREIGN_KEYS_SQL, &[text_param(relation)]).await?;
+    Ok(inbound_foreign_keys(&rows)?)
 }
 
 #[cfg(test)]

@@ -285,6 +285,7 @@ impl WorkspaceModel {
                 self.open_tab(TabSpec::Table {
                     table: TableRef::new(schema.clone(), name.clone()),
                     page: TablePage::first(page_size),
+                    filter: crate::ui::browse_tab::TableFilter::Remembered,
                 });
                 self.input.deliver(WorkspaceInput::SchemaChanged {
                     schema,

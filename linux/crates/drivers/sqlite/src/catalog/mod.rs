@@ -35,6 +35,10 @@ pub(crate) const TABLE_XINFO_SQL: &str = "SELECT cid, name, type, \"notnull\", d
 /// `table_list` takes no schema argument, so the schema is a filter.
 pub(crate) const TABLE_LIST_SQL: &str = "SELECT type, wr, strict FROM pragma_table_list(?1) WHERE schema = ?2";
 
+/// The table's name as declared. `table_list` matches its argument
+/// without regard to case, as every SQLite name lookup does.
+pub(crate) const DECLARED_TABLE_NAME_SQL: &str = "SELECT name FROM pragma_table_list(?1) WHERE schema = ?2";
+
 pub(crate) const INDEX_LIST_SQL: &str =
     "SELECT name, \"unique\", origin, partial FROM pragma_index_list(?1, ?2) ORDER BY name";
 
