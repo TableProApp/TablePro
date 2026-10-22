@@ -19,6 +19,7 @@
 
 ### Fixed
 
+- Selecting rows with large text or binary cells no longer copies their contents to calculate numeric summaries.
 - In a window narrower than 960 px the tables sidebar no longer opens over the workspace after connecting, where it swallowed the first click on Run and the other editor controls. A **Show tables** button in the header opens it on demand, and the sidebar returns by itself when the window is widened.
 - Large JSON previews use less temporary memory.
 - Inspecting a row with oversized cell previews avoids copying the full row contents.

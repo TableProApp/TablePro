@@ -112,14 +112,17 @@ fn describe(total: Total) -> Option<(String, String)> {
     }
 }
 
-pub(in crate::ui::browse_tab) fn column_stats(columns: &[ColumnInfo], rows: &[Vec<Value>]) -> Vec<ColumnStats> {
+pub(in crate::ui::browse_tab) fn column_stats(
+    columns: &[ColumnInfo],
+    rows: &[crate::ui::row_object::RowObject],
+) -> Vec<ColumnStats> {
     columns
         .iter()
         .enumerate()
         .filter_map(|(index, column)| {
             let mut total = None;
             for row in rows {
-                total = add(total, row.get(index)?)?;
+                total = row.with_cell_value(index, |value| add(total, value))??;
             }
             let total = total?;
             let (sum, average) = describe(total)?;
@@ -168,6 +171,15 @@ pub(in crate::ui::browse_tab) fn tooltip(stats: &[ColumnStats]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn column_stats(columns: &[ColumnInfo], rows: &[Vec<Value>]) -> Vec<ColumnStats> {
+        let rows = rows
+            .iter()
+            .cloned()
+            .map(crate::ui::row_object::RowObject::new)
+            .collect::<Vec<_>>();
+        super::column_stats(columns, &rows)
+    }
 
     fn column(name: &str) -> ColumnInfo {
         ColumnInfo {
@@ -231,5 +243,34 @@ mod tests {
     #[test]
     fn an_all_null_column_has_no_stats() {
         assert!(column_stats(&[column("n")], &[vec![Value::Null]]).is_empty());
+    }
+    #[test]
+    fn wide_non_numeric_cells_do_not_change_exact_statistics() {
+        let rows = vec![
+            vec![Value::Int(9), Value::Text("x".repeat(1024 * 1024))],
+            vec![Value::Null, Value::Bytes(vec![7; 1024 * 1024])],
+            vec![Value::Int(3), Value::Text("y".repeat(1024 * 1024))],
+        ];
+        let stats = column_stats(&[column("number"), column("payload")], &rows);
+        assert_eq!(stats.len(), 1);
+        assert_eq!(stats[0].count, 2);
+        assert_eq!(stats[0].sum, "12");
+        assert_eq!(stats[0].average, "6");
+        assert_eq!(stats[0].minimum, "3");
+        assert_eq!(stats[0].maximum, "9");
+    }
+    #[test]
+    fn unfetched_cells_omit_only_the_affected_column() {
+        let rows = [crate::ui::row_object::RowObject::new_projected(vec![Value::Int(7)], &[0], 2).unwrap()];
+        let stats = super::column_stats(&[column("fetched"), column("unfetched")], &rows);
+        assert_eq!(stats.len(), 1);
+        assert_eq!(stats[0].column, "fetched");
+        assert_eq!(stats[0].sum, "7");
+    }
+
+    #[test]
+    fn overflowing_decimal_summaries_are_omitted() {
+        let rows = [vec![Value::Decimal(Decimal::MAX)], vec![Value::Decimal(Decimal::ONE)]];
+        assert!(column_stats(&[column("n")], &rows).is_empty());
     }
 }

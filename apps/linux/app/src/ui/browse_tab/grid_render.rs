@@ -478,15 +478,63 @@ fn inspected_row(
 fn selection_tooltip(selection: &gtk::MultiSelection, columns: &[ColumnInfo]) -> Option<String> {
     let model = selection.model()?;
     let bits = selection.selection();
-    let rows: Vec<Vec<tablepro_core::Value>> = (0..bits.size())
+    let rows: Vec<crate::ui::row_object::RowObject> = (0..bits.size())
         .filter_map(|i| {
-            let row = model
+            model
                 .item(bits.nth(i as u32))?
                 .downcast::<crate::ui::row_object::RowObject>()
-                .ok()?;
-            Some(row.with_cells(|cells| cells.to_vec()))
+                .ok()
         })
         .collect();
     let stats = super::selection::stats::column_stats(columns, &rows);
     Some(super::selection::stats::tooltip(&stats))
+}
+
+#[cfg(test)]
+mod selection_stats_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn wide_selection_statistics_preserve_rows_and_selection() {
+        adw::init().unwrap();
+        let store = gtk::gio::ListStore::new::<crate::ui::row_object::RowObject>();
+        for number in 0..64 {
+            store.append(&crate::ui::row_object::RowObject::new(vec![
+                tablepro_core::Value::Int(number),
+                tablepro_core::Value::Text("x".repeat(512 * 1024)),
+            ]));
+        }
+        let columns = ["number", "payload"].map(|name| ColumnInfo {
+            name: name.into(),
+            data_type: String::new(),
+            nullable: true,
+            primary_key: false,
+            is_auto_increment: false,
+            default_value: None,
+            is_generated: false,
+            comment: None,
+            collation: None,
+            enum_type: None,
+            domain_type: None,
+        });
+        let selection = gtk::MultiSelection::new(Some(store.clone()));
+        selection.select_all();
+        for _ in 0..8 {
+            assert!(!selection_tooltip(&selection, &columns).unwrap().is_empty());
+        }
+        assert_eq!(selection.selection().size(), 64);
+        let row = store
+            .item(0)
+            .unwrap()
+            .downcast::<crate::ui::row_object::RowObject>()
+            .unwrap();
+        assert_eq!(
+            row.with_cell_value(1, |value| match value {
+                tablepro_core::Value::Text(text) => text.len(),
+                _ => 0,
+            }),
+            Some(512 * 1024)
+        );
+    }
 }

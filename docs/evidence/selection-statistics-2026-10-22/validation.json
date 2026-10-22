@@ -1,0 +1,18 @@
+{
+  "preflight": {
+    "sha256": "1b05e07ab0d8fd143e48c36e29186d0c45c7017470b24eb310b52925169de806",
+    "result": "passed"
+  },
+  "widgets": {
+    "sha256": "34c467e3918954435f39a09a20646afb5ef495f73a953df459a656b8614784fb",
+    "result": "passed"
+  },
+  "app-unit": {
+    "sha256": "452fd9c4b93ea70ac29129ac9434dae1cb06ff6260dfa9f308e022a5d54c0980",
+    "result": "passed"
+  },
+  "clippy": {
+    "sha256": "be5344bdafb17b3710e15f0cb5da0b76c77bd196ef8ad018698bfefdb0dba459",
+    "result": "passed"
+  }
+}

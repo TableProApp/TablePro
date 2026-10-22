@@ -1,0 +1,28 @@
+{
+  "baseline": "2277e7b73921fdec1db270ffc6b5fb43336d637c",
+  "build": "Cargo test debug profile, Rust 1.98, same shared target, sequential builds",
+  "fixture": "64 rows, integer plus 512 KiB text, eight tooltip computations",
+  "headless": "private XDG directories, D-Bus session and Xvfb; x11/cairo; no accessibility",
+  "results": {
+    "baseline": {
+      "peak_heap_MB": 100.56,
+      "peak_RSS_MB_including_profiler": 226.63,
+      "instrumented_total_seconds": 0.66,
+      "binary_sha256": "8e27913bbf9003e9d68bc6dd7f71d6a36b3c1df56f8c04df96653b28f8e8f208",
+      "trace_sha256": "3fc6f85d1f9000ec88b200721b6dd99a3c6ad533e0b73b13253b6ce67e8204ed",
+      "report_sha256": "b8ac9ba1f7f93322e0c2cbcecfbe946a06aaf119f69503868bf0739a05a25d74"
+    },
+    "candidate": {
+      "peak_heap_MB": 66.47,
+      "peak_RSS_MB_including_profiler": 207.43,
+      "instrumented_total_seconds": 1.5,
+      "binary_sha256": "b08032fcd362b7a46631d311946974c1ca32460e1cb4b976aa1f9a7805db1b2e",
+      "trace_sha256": "cc14aa24f7d70d475ce4d423ffcfe4c41c4ef2f7e3d0969adf3dd40bf10372c3",
+      "report_sha256": "775ea3d53fa2e9af1e4fa256a8e0c7a3c2e770acd7927e8b140c5233acde1ad4"
+    }
+  },
+  "candidate_source_sha256": {
+    "apps/linux/app/src/ui/browse_tab/grid_render.rs": "d00b84574f2b3963142f184c49dc57d02aa05fbf3e7b74a777573a66bd7a5c05",
+    "apps/linux/app/src/ui/browse_tab/selection/stats.rs": "44ba3d77e5c877957c741e97b51e4805c23a2cd762f72f061795c67de56c800a"
+  }
+}
