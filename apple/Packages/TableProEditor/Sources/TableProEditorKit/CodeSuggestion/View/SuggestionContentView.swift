@@ -56,9 +56,10 @@ struct SuggestionContentView: View {
             }
             .padding(.vertical, SuggestionController.windowPadding)
             .frame(height: listMaxHeight)
+            // Scrolls only as far as the row needs, so a clicked row stays under the pointer for the second click.
             .onChange(of: model.selectedIndex) { newIndex in
                 withAnimation(.easeInOut(duration: 0.1)) {
-                    proxy.scrollTo(newIndex, anchor: .center)
+                    proxy.scrollTo(newIndex)
                 }
             }
         }
@@ -82,18 +83,18 @@ struct SuggestionContentView: View {
                 .padding(.horizontal, SuggestionController.windowPadding)
         )
         .contentShape(Rectangle())
-        .onTapGesture(count: 1) {
+        // A count-2 tap gesture holds every single click for the double-click interval.
+        .onTapGesture {
+            let event = NSApp.currentEvent
+            let completesDoubleClick = event?.type == .leftMouseUp && event?.clickCount == 2
+                && model.selectedIndex == index
             model.selectedIndex = index
-        }
-        .onTapGesture(count: 2) {
-            model.selectedIndex = index
-            if let selectedItem = model.selectedItem {
+            if completesDoubleClick, let selectedItem = model.selectedItem {
                 model.applySelectedItem(item: selectedItem)
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(index == model.selectedIndex ? .isSelected : [])
-        .id(index)
     }
 
     private var contentWidth: CGFloat {

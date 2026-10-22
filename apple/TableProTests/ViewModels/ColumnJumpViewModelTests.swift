@@ -82,6 +82,26 @@ struct ColumnJumpViewModelTests {
         #expect(viewModel.selectedId == viewModel.matches.first?.id)
     }
 
+    @Test("A new query bumps the search generation even when its best match is the selected column")
+    func newQueryBumpsSearchGeneration() {
+        let viewModel = ColumnJumpViewModel(
+            entries: [
+                entry("id", dataIndex: 0, position: 1),
+                entry("email", dataIndex: 1, position: 2),
+                entry("name", dataIndex: 2, position: 3)
+            ],
+            cursorColumnIndex: 1
+        )
+        let generation = viewModel.searchGeneration
+
+        viewModel.searchText = "email"
+        #expect(viewModel.selectedId == "column-1")
+        #expect(viewModel.searchGeneration == generation + 1)
+
+        viewModel.searchText = "email "
+        #expect(viewModel.searchGeneration == generation + 1, "the same ranked query is not a new search")
+    }
+
     @Test("Moving the selection clamps to the list")
     func moveSelectionClamps() {
         let viewModel = ColumnJumpViewModel(entries: [
