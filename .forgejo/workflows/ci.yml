@@ -104,7 +104,7 @@ jobs:
           cd src && bash scripts/test-sandbox.sh
 
   widgets:
-    runs-on: debian-host
+    runs-on: any-host
     steps:
       - name: Check out
         env:
@@ -204,7 +204,7 @@ jobs:
           cargo test --locked -p tablepro-driver-${{ matrix.driver }} --test integration -- --include-ignored --test-threads=1
 
   e2e:
-    runs-on: debian-host
+    runs-on: any-host
     needs: [guards, clippy, unit, sandbox, widgets]
     if: github.event_name != 'pull_request'
     timeout-minutes: 45
@@ -239,7 +239,7 @@ jobs:
           cd src && bash scripts/test-gtk-${{ matrix.server }}.sh
 
   consumers:
-    runs-on: debian-host
+    runs-on: any-host
     needs: [guards, clippy, unit, sandbox, widgets]
     if: github.event_name != 'pull_request'
     timeout-minutes: 45
@@ -271,7 +271,7 @@ jobs:
           cd src && python3 scripts/run-isolated-tests.py app-server
 
   gtk:
-    runs-on: debian-host
+    runs-on: any-host
     needs: [guards, clippy, unit, sandbox, widgets]
     if: github.event_name != 'pull_request'
     timeout-minutes: 60
@@ -302,7 +302,7 @@ jobs:
           cd src && TABLEPRO_GTK_SHARD=${{ matrix.shard }}/3 bash scripts/test-gtk-safety.sh
 
   duckdb:
-    runs-on: debian-host
+    runs-on: any-host
     needs: [guards, clippy, unit, sandbox, widgets]
     if: github.event_name != 'pull_request'
     timeout-minutes: 90
@@ -329,7 +329,7 @@ jobs:
           cargo test --locked -p tablepro-driver-duckdb -- --include-ignored
           cargo build --locked -p tablepro-app --features duckdb
   pg-release:
-    runs-on: debian-host
+    runs-on: any-host
     needs: [guards, clippy, unit, sandbox, widgets]
     if: github.event_name != 'pull_request'
     timeout-minutes: 45
@@ -356,7 +356,7 @@ jobs:
           cd src && ./scripts/test-postgres-release.sh
 
   pg-dump:
-    runs-on: debian-host
+    runs-on: any-host
     needs: [guards, clippy, unit, sandbox, widgets]
     if: github.event_name != 'pull_request'
     timeout-minutes: 30
@@ -380,7 +380,7 @@ jobs:
         run: cd src && ./scripts/test-pg-dump.sh
 
   socket-ssh:
-    runs-on: debian-host
+    runs-on: any-host
     needs: [guards, clippy, unit, sandbox, widgets]
     if: github.event_name != 'pull_request'
     timeout-minutes: 45
@@ -407,7 +407,7 @@ jobs:
           bash ./scripts/test-ssh.sh
 
   gtk-server:
-    runs-on: debian-host
+    runs-on: any-host
     needs: [guards, clippy, unit, sandbox, widgets]
     if: github.event_name != 'pull_request'
     timeout-minutes: 60
@@ -443,7 +443,7 @@ jobs:
         run: |
           cd src && bash scripts/test-gtk-${{ matrix.server }}.sh
   driver-tls:
-    runs-on: debian-host
+    runs-on: any-host
     needs: [guards, clippy, unit, sandbox, widgets]
     if: github.event_name != 'pull_request'
     timeout-minutes: 45
@@ -470,7 +470,7 @@ jobs:
           cd src && ./scripts/test-driver-tls.sh
 
   keyring:
-    runs-on: debian-host
+    runs-on: any-host
     needs: [guards, clippy, unit, sandbox, widgets]
     if: github.event_name != 'pull_request'
     timeout-minutes: 30

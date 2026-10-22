@@ -23,7 +23,7 @@ env:
 
 jobs:
   coverage:
-    runs-on: debian-host
+    runs-on: any-host
     timeout-minutes: 90
     env:
       CARGO_TARGET_DIR: /var/cache/ci/target/nightly-coverage
@@ -48,7 +48,7 @@ jobs:
           python3 scripts/check-coverage-floor.py /tmp/coverage.json
 
   docker-coverage:
-    runs-on: debian-host
+    runs-on: any-host
     needs: coverage
     if: ${{ !cancelled() }}
     timeout-minutes: 120
@@ -90,7 +90,7 @@ jobs:
           python3 scripts/check-crate-coverage-floors.py /tmp/coverage-${{ matrix.driver }}.json --only "crates/drivers/${{ matrix.driver }}"
 
   mutation:
-    runs-on: debian-host
+    runs-on: any-host
     needs: coverage
     if: ${{ !cancelled() }}
     timeout-minutes: 150
@@ -144,7 +144,7 @@ jobs:
           python3 scripts/check-mutants-baseline.py "${{ matrix.package }}" "/tmp/mutants-${{ matrix.label }}" "$status" "${partial[@]}"
 
   gtk-soak:
-    runs-on: debian-host
+    runs-on: any-host
     needs: [docker-coverage, mutation]
     if: ${{ !cancelled() }}
     timeout-minutes: 120
@@ -181,7 +181,7 @@ jobs:
           done
 
   arch-package:
-    runs-on: debian-host
+    runs-on: any-host
     needs: [docker-coverage, mutation]
     if: ${{ !cancelled() }}
     timeout-minutes: 120
@@ -198,7 +198,7 @@ jobs:
         run: |
           cd src && bash scripts/test-arch-package-container.sh
   values:
-    runs-on: debian-host
+    runs-on: any-host
     needs: [docker-coverage, mutation]
     if: ${{ !cancelled() }}
     timeout-minutes: 120
