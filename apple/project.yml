@@ -177,6 +177,8 @@ targetTemplates:
           - -lcrypto.3
           - -liconv
           - -lz
+          - -framework
+          - GSS
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/MySQLDriverPlugin/CMariaDB
 
   PostgreSQLLinkage:
@@ -205,6 +207,8 @@ targetTemplates:
           - -lssl.3
           - -lcrypto.3
           - -lz
+          - -framework
+          - GSS
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/PostgreSQLDriverPlugin/CLibPQ
 
   RedisLinkage:
