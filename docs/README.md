@@ -119,7 +119,7 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 - [TablePro and dbx deep review, October 20](archive/tablepro-dbx-review-2026-10-20/README.md): full feature, architecture and fix-commit mapping of TablePro `3222542a4` and dbx `d1e88ab4b` against BookiE `7c4cb3929`, with Wave 0 defects to confirm and a ranked roadmap of candidates.
 - [Upstream main analysis, October 20](archive/upstream-main-analysis-2026-10-20.md): pinned Linux and Apple changes, current adoption status, transferable regression cases and integration costs.
 
-- [Linux code adoption and development workflow](archive/upstream-linux-adoption-2026-10-18.md), with the [source movement audit](archive/upstream-linux-movement-2026-10-18.md): code, CI, conventions and post-0.2.0 tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149).
+- [Linux code adoption and development workflow](archive/upstream-linux-adoption-2026-10-18.md), with the [source movement audit](archive/upstream-linux-movement-2026-10-18.md): code, CI, conventions and closed post-0.2.0 tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149).
 - [0.2.0 completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md): maintainer completion statement, publication boundary and previous scope/sprint snapshots.
 
 - [Code and UI audit, October 18](archive/code-and-ui-audit-2026-10-18.md): dated source evidence for pending-state cues, high contrast and responsiveness.

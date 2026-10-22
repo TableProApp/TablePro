@@ -130,7 +130,7 @@ These are the choices that have been made more than once. They are settled. If y
 
 | Question | Settled answer | Recorded |
 | --- | --- | --- |
-| Where should a driver panic be caught? | At the `PolicyGuard` consumer boundary; known internal direct-call gaps are tracked in [#880](https://github.com/cozyGarage/BookiE/issues/880) | [ADR 0006](decisions/0006-driver-panic-containment.md) |
+| Where should a driver panic be caught? | At the `PolicyGuard` consumer boundary; the direct-call gaps reported in [#880](https://github.com/cozyGarage/BookiE/issues/880) are closed | [ADR 0006](decisions/0006-driver-panic-containment.md) |
 | How does a service reach a component? | An `Arc`-shared service handle, not a global | [state-management](state-management.md) |
 | Whole-value state versus per-key state | `StateFile<T>` for whole documents, `WorkspaceStore` for per-connection merge | [state-management](state-management.md) |
 | Is a comment allowed? | Only for behaviour outside this repository | `AGENTS.md` |
