@@ -86,6 +86,7 @@ pub enum BrowseTabInput {
     Undo,
     Redo,
     CommitSave,
+    PreviewSql,
     DiscardAll,
     PendingCountChanged(usize),
     ChangedRows(Vec<crate::services::change_tracker::RowKey>),

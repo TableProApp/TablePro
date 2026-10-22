@@ -194,6 +194,7 @@ mod grid_messages;
 mod grid_render;
 mod messages;
 mod paste;
+mod preview;
 pub(crate) mod reference;
 mod requests;
 mod row_ops;
@@ -1039,6 +1040,7 @@ impl SimpleComponent for BrowseTab {
             BrowseTabInput::GoToFirstRow => self.handle_go_to_first_row(),
             BrowseTabInput::GoToLastRow => self.handle_go_to_last_row(),
             BrowseTabInput::CommitSave => self.handle_commit_save(sender),
+            BrowseTabInput::PreviewSql => self.handle_preview_sql(&sender),
             BrowseTabInput::DiscardAll => self.handle_discard_all(sender),
             BrowseTabInput::PendingCountChanged(n) => self.handle_pending_count_changed(n, sender),
             BrowseTabInput::ChangedRows(keys) => self.handle_changed_rows(keys),

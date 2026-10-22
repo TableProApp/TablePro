@@ -4,6 +4,7 @@
 
 ### Added
 
+- A Preview SQL button in the unsaved-changes bar of a table tab shows the statements and values Save would run, without running them.
 - While a query result is locally filtered, its menu also offers **Export All Loaded Rows…** next to **Export Visible Rows…**, so the full loaded result can still be exported. Neither runs the query again.
 - The "Token issued" dialog for MCP has a **Copy Token** button, so the token (shown only once) no longer has to be selected by hand.
 - Preferences has a **Theme** choice: Default, Ledger (the BookiE brand colours), Catppuccin, Tokyo Night and Gruvbox, each with a light and a dark variant that follows the Appearance setting. The SQL editor, the Structure tab's SQL preview and the JSON cell editor follow the theme too.

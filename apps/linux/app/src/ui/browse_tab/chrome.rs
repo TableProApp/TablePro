@@ -244,6 +244,7 @@ impl BrowseTab {
             .tooltip_text(crate::tr!("Discard all pending edits"))
             .build();
         let sender_for_discard = sender.clone();
+        let sender_for_discard_preview = sender.clone();
         discard_button.connect_clicked(move |_| sender_for_discard.input(BrowseTabInput::DiscardAll));
 
         let save_button = gtk::Button::builder()
@@ -254,10 +255,18 @@ impl BrowseTab {
         let sender_for_save = sender;
         save_button.connect_clicked(move |_| sender_for_save.input(BrowseTabInput::CommitSave));
 
+        let preview_button = gtk::Button::builder()
+            .label(crate::tr!("Preview SQL"))
+            .tooltip_text(crate::tr!("Show the statements Save would run"))
+            .build();
+        let sender_for_preview = sender_for_discard_preview;
+        preview_button.connect_clicked(move |_| sender_for_preview.input(BrowseTabInput::PreviewSql));
+
         let bar = gtk::ActionBar::new();
         bar.pack_start(&pending_label);
         bar.pack_end(&save_button);
         bar.pack_end(&discard_button);
+        bar.pack_end(&preview_button);
 
         let revealer = gtk::Revealer::builder()
             .transition_type(gtk::RevealerTransitionType::SlideUp)

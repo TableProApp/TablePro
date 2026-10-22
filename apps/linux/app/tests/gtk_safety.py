@@ -2003,6 +2003,35 @@ def pending_edits_gate_a_connection_switch(database, base):
 pending_edits_gate_a_connection_switch.environment = "local"
 
 
+def preview_sql_shows_the_pending_statement_without_saving(database, _base):
+    invoke_named_action_within("safety_items", "Open safety_items")
+    wait_for_node(name="No rows on this page")
+    invoke(wait_for_node(name="Insert row", role=pyatspi.ROLE_PUSH_BUTTON))
+    wait_for_node(name="1 unsaved change")
+    invoke(wait_for_node(name="Preview SQL", role=pyatspi.ROLE_PUSH_BUTTON))
+    def shown_statement():
+        return any(
+            "INSERT INTO" in node.queryText().getText(0, -1)
+            for node in descendants(application_node())
+            if "Text" in node.get_interfaces()
+        )
+
+    deadline = time.monotonic() + WAIT_SECONDS
+    while not shown_statement():
+        assert time.monotonic() < deadline, accessible_snapshot()
+        time.sleep(POLL_SECONDS)
+    press_x11_key("Escape")
+    deadline = time.monotonic() + WAIT_SECONDS
+    while shown_statement():
+        assert time.monotonic() < deadline, "the preview did not close"
+        time.sleep(POLL_SECONDS)
+    wait_for_node(name="1 unsaved change")
+    assert_database_count_stable(database, 0)
+
+
+preview_sql_shows_the_pending_statement_without_saving.environment = "local"
+
+
 def a_browse_tab_reads_the_new_connection_after_a_switch(database, base):
     database_b = base / "safety-b.sqlite"
     with sqlite3.connect(database) as connection:
@@ -2443,6 +2472,7 @@ def main():
         current_page_json_export_preserves_values,
         restart_restores_active_editor_and_connection,
         pending_edits_gate_a_connection_switch,
+        preview_sql_shows_the_pending_statement_without_saving,
         a_browse_tab_reads_the_new_connection_after_a_switch,
         two_windows_hold_two_connections,
         switched_connection_keeps_workspace_tabs_after_debounce,
