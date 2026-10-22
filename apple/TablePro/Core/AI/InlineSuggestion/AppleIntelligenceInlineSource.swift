@@ -45,7 +45,11 @@ final class AppleIntelligenceInlineSource: InlineSuggestionSource {
 
         var candidates: [OnDeviceRequest] = []
         if settings.includeSchema, let provider = schemaProvider,
-           let schema = await provider.buildSchemaContextForAI(settings: settings), !schema.isEmpty {
+           let schema = await provider.buildSchemaContextForAI(
+               settings: settings,
+               editorText: context.fullText,
+               cursorOffset: context.cursorOffset
+           ), !schema.isEmpty {
             candidates.append(OnDeviceRequest(
                 instructions: AIPromptTemplates.inlineSuggestSystemPrompt(schemaContext: schema),
                 prompt: prompt

@@ -106,6 +106,41 @@ mod tests {
     }
 
     #[test]
+    fn a_mysql_executable_comment_is_sent_and_read_as_the_server_reads_it() {
+        // MySQL 8.0 skips the second comment past its nested `/* */` and
+        // runs the DROP after it.
+        let script = "/*!40103 SET TIME_ZONE='+00:00' */;\nSELECT 1 /*!99999 /* */ ' */ ; DROP TABLE orders; -- '";
+
+        let off = gated(script, SqlGrammar::MySql, SafeModeLevel::Off);
+        let read_only = gated(script, SqlGrammar::MySql, SafeModeLevel::ReadOnly);
+
+        let texts: Vec<&str> = off.batches.iter().map(|batch| batch.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            [
+                "/*!40103 SET TIME_ZONE='+00:00' */",
+                "SELECT 1 /*!99999 /* */ ' */ ; DROP TABLE orders; -- '"
+            ]
+        );
+        assert_eq!(off.confirm, ["SELECT 1 /*!99999 /* */ ' */ ; DROP TABLE orders; -- '"]);
+        assert!(off.destructive);
+        assert!(read_only.batches.iter().all(|batch| batch.refused));
+    }
+
+    #[test]
+    fn a_batch_the_driver_splits_again_is_read_piece_by_piece() {
+        // The driver reads the batch's second line as a DELIMITER line and
+        // sends the last line alone, where MySQL 8.0 runs the DROP.
+        let script = "DELIMITER //\nSELECT 1;\nDELIMITER ; /*!99999 '*/ `' */\n\
+                      SELECT 1 /*!99999 ' */ ; DROP TABLE t; -- ` ' */\n//";
+
+        let run = gated(script, SqlGrammar::MySql, SafeModeLevel::Off);
+
+        assert_eq!(run.batches.len(), 1);
+        assert!(run.destructive);
+    }
+
+    #[test]
     fn read_only_keeps_back_every_write_and_asks_nothing() {
         let run = gated(
             "SELECT 1\nGO\nUPDATE t SET a = 1 WHERE id = 1\nGO\nSELECT 2",

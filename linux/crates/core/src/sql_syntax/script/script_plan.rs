@@ -6,8 +6,10 @@ use crate::sql_syntax::script::compound_tracker::CompoundTracker;
 use crate::sql_syntax::script::directive_scan::{delimiter_line, go_line};
 use crate::sql_syntax::script::lexer::{LexedToken, Lexer};
 use crate::sql_syntax::script::script_rules::{Boundary, ScriptRules, rules_for};
+use crate::sql_syntax::script::server_reading::{self, ServerReading};
 use crate::sql_syntax::script::{
-    BatchErrorPolicy, LexicalSettings, ScriptBatch, ScriptDiagnostic, ScriptStatement, ScriptToken, ScriptTokenKind,
+    BatchErrorPolicy, LexicalSettings, OpenConstruct, ScriptBatch, ScriptDiagnostic, ScriptStatement, ScriptToken,
+    ScriptTokenKind,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,7 +23,43 @@ pub struct ScriptPlan {
 
 impl ScriptPlan {
     pub fn build(text: &str, grammar: SqlGrammar, settings: LexicalSettings) -> ScriptPlan {
-        Builder::new(text, rules_for(grammar), settings).run()
+        Self::read_as(text, grammar, settings, ServerReading::Client)
+    }
+
+    pub(crate) fn read_as(
+        text: &str,
+        grammar: SqlGrammar,
+        settings: LexicalSettings,
+        reading: ServerReading,
+    ) -> ScriptPlan {
+        Builder::new(text, rules_for(grammar), settings, reading).run()
+    }
+
+    /// Every plan the client or a server may make of `text`: as the client
+    /// splits it and, on MySQL, as each server reads what it is sent, at
+    /// each version its executable comments name. Each with backslash
+    /// escapes on and off, since a session setting decides. Built one at a
+    /// time. `None` when the text names too many versions to try.
+    pub fn server_readings(text: &str, grammar: SqlGrammar) -> Option<impl Iterator<Item = ScriptPlan> + '_> {
+        let readings = server_reading::server_readings(text, grammar)?;
+        Some(readings.into_iter().flat_map(move |reading| {
+            [false, true]
+                .map(|backslash_escapes| Self::read_as(text, grammar, LexicalSettings { backslash_escapes }, reading))
+        }))
+    }
+
+    /// The pieces a client sends one at a time when a `DELIMITER` or `GO`
+    /// line splits `text`, each of which a server reads anew. Empty when
+    /// no such line does.
+    pub(crate) fn client_pieces(text: &str, grammar: SqlGrammar) -> Vec<&str> {
+        let plan = Self::build(text, grammar, LexicalSettings::default_for(grammar));
+        if !plan.tokens.iter().any(|token| token.kind == ScriptTokenKind::Directive) {
+            return Vec::new();
+        }
+        plan.statements
+            .iter()
+            .filter_map(|statement| text.get(statement.range.clone()))
+            .collect()
     }
 
     pub fn batches(&self) -> &[ScriptBatch] {
@@ -62,6 +100,7 @@ struct Builder<'a> {
     text: &'a str,
     rules: &'static ScriptRules,
     lexer: Lexer<'a>,
+    reads_directives: bool,
     tracker: CompoundTracker,
     delimiter: &'a str,
     open: Option<Range<usize>>,
@@ -72,11 +111,12 @@ struct Builder<'a> {
 }
 
 impl<'a> Builder<'a> {
-    fn new(text: &'a str, rules: &'static ScriptRules, settings: LexicalSettings) -> Self {
+    fn new(text: &'a str, rules: &'static ScriptRules, settings: LexicalSettings, reading: ServerReading) -> Self {
         Self {
             text,
             rules,
-            lexer: Lexer::new(text, &rules.syntax, settings),
+            lexer: Lexer::new(text, &rules.syntax, settings, reading),
+            reads_directives: reading.reads_directives(),
             tracker: CompoundTracker::new(rules.compound, rules.parens_hold_semicolons),
             delimiter: ";",
             open: None,
@@ -89,7 +129,7 @@ impl<'a> Builder<'a> {
 
     fn run(mut self) -> ScriptPlan {
         while self.lexer.position() < self.text.len() {
-            if self.lexer.at_line_start() && self.accept_directive() {
+            if self.reads_directives && self.lexer.at_line_start() && self.accept_directive() {
                 continue;
             }
             let delimiter = (self.rules.boundary == Boundary::DelimiterDirectives).then_some(self.delimiter);
@@ -97,6 +137,14 @@ impl<'a> Builder<'a> {
                 break;
             };
             self.accept(token);
+        }
+        if let Some(start) = self.lexer.open_executable_comment()
+            && self.diagnostics.is_empty()
+        {
+            self.diagnostics.push(ScriptDiagnostic::Unterminated {
+                construct: OpenConstruct::BlockComment,
+                start,
+            });
         }
         self.finish_statement(None, NonZeroU32::MIN);
         self.extend_extents();

@@ -19,6 +19,8 @@ final class ColumnJumpViewModel: ObservableObject {
     let entries: [GridColumnEntry]
     @Published private(set) var matches: [Match] = []
     @Published var selectedId: String?
+    /// Bumped for each new query, which can keep the selected column while the list scrolled away from it.
+    @Published private(set) var searchGeneration = 0
     @Published var searchText: String {
         didSet { refilter() }
     }
@@ -67,6 +69,7 @@ final class ColumnJumpViewModel: ObservableObject {
         rankedQuery = query
         matches = Self.rank(entries, query: query)
         selectedId = matches.first?.id
+        searchGeneration += 1
     }
 
     private static func rank(_ entries: [GridColumnEntry], query: String) -> [Match] {

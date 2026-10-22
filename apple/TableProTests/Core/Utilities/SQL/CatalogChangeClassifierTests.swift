@@ -69,6 +69,12 @@ struct CatalogChangeClassifierTests {
         #expect(kinds("/*!40101 SET NAMES utf8mb4 */", .mysql).isEmpty)
     }
 
+    @Test("a DROP a server runs past a comment it skips still refreshes the tables")
+    func skippedExecutableCommentDoesNotHideADrop() {
+        #expect(kinds("/*!99999 ' */ DROP TABLE orders -- '", .mysql).contains(.tables))
+        #expect(kinds("/*m! ' */ DROP TABLE orders -- '", .mysql).contains(.tables))
+    }
+
     @Test("a SQL Server batch is read past its first command")
     func sqlServerBatchIsReadPastItsFirstCommand() {
         let cases: [(sql: String, expected: SQLCatalogObjectKinds)] = [

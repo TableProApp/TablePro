@@ -63,9 +63,10 @@ pub fn analyze(text: &str, cursor: usize, grammar: SqlGrammar, settings: Lexical
             tables_in_statement: Vec::new(),
         });
     };
+    // What a MySQL executable comment holds is code, its markers are not.
     let lexemes: Vec<Lexeme<'_>> = plan
         .tokens(statement)
-        .filter(|token| !token.kind.is_trivia())
+        .filter(|token| !token.kind.is_trivia() && token.kind != ScriptTokenKind::ExecutableMarker)
         .filter_map(|token| Lexeme::new(text, token))
         .collect();
     let tables = TableMap::collect(&lexemes, grammar);
@@ -359,7 +360,8 @@ fn encloses(token: &ScriptToken, text: &str, cursor: usize) -> bool {
         ScriptTokenKind::StringLiteral
         | ScriptTokenKind::QuotedIdentifier
         | ScriptTokenKind::DollarQuoted
-        | ScriptTokenKind::BlockComment => inside,
+        | ScriptTokenKind::BlockComment
+        | ScriptTokenKind::ExecutableMarker => inside,
         _ => false,
     }
 }
@@ -575,6 +577,15 @@ mod tests {
             scope("CREATE FUNCTION f() RETURNS int AS $body$ SELECT * FROM | $body$ LANGUAGE sql"),
             None
         );
+    }
+
+    #[test]
+    fn a_mysql_executable_comment_is_code() {
+        assert_eq!(
+            scope_in(SqlGrammar::MySql, "SELECT * FROM orders /*! AS */ o WHERE o.|"),
+            columns(vec![table(None, "orders")])
+        );
+        assert_eq!(scope_in(SqlGrammar::MySql, "SELECT /*!40|1 x */ 1"), None);
     }
 
     #[test]

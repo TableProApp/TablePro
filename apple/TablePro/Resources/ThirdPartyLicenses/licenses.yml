@@ -215,20 +215,20 @@
     ships.'
 - id: go
   name: Go (runtime and standard library)
-  version: 1.27.2
+  version: 1.27.3
   spdx: BSD-3-Clause
   copyrights:
   - Copyright 2009 The Go Authors
   homepageURL: https://go.dev
-  licenseTextURL: https://github.com/golang/go/blob/go1.27.2/LICENSE
+  licenseTextURL: https://github.com/golang/go/blob/go1.27.3/LICENSE
   textFile: texts/go.txt
   source: manual
   patched: false
-  notes: 'The toolchain line of Native/HanaBridge/go.mod pins go1.27.2. scripts/build-hana.sh builds
+  notes: 'The toolchain line of Native/HanaBridge/go.mod pins go1.27.3. scripts/build-hana.sh builds
     the bridge into tablepro-hana-helper, a CGO_ENABLED=0 executable the SAP HANA plugin carries in
     Contents/MacOS and runs as a separate process, so the Go runtime and every standard library package
     the helper reaches are linked into that executable. The standard
-    library vendors golang.org/x/crypto, x/net, x/sys and x/text (src/vendor/modules.txt at go1.27.2),
+    library vendors golang.org/x/crypto, x/net, x/sys and x/text (src/vendor/modules.txt at go1.27.3),
     all under this same BSD-3-Clause notice from The Go Authors. PATENTS beside LICENSE is an extra
     patent grant from Google and adds no notice duty. source is manual because the pin lives in go.mod,
     not in a build-*.sh variable, so scripts/ci/check-license-inventory.py does not check this version.

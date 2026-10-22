@@ -530,8 +530,13 @@ struct RowChangeStatementFactory {
         guard PluginManager.shared.editorLanguage(for: databaseType) == .sql else { return }
         let readings = databaseType.lexicalReadings
         for sql in statements {
-            for grammar in readings.distinct(for: sql) {
-                guard let write = SQLUnfilteredWrite.writes(in: sql, grammar: grammar).first else { continue }
+            // A driver writes no executable comments, so one that set too many to read is read as written.
+            let lexings = readings.lexings(of: sql).map { Array($0) }
+                ?? readings.distinct(for: sql).map { SQLLexing(grammar: $0, text: sql) }
+            for lexing in lexings {
+                guard let write = SQLUnfilteredWrite.writes(in: lexing.text, grammar: lexing.grammar).first else {
+                    continue
+                }
                 throw DataWriteError.changeRefused(table: tableName, kind: write.kind, reason: write.reason)
             }
         }

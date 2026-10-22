@@ -77,6 +77,23 @@ struct SQLStatementSplittingTests {
         )
     }
 
+    @Test("A run version-gated comment lexes its body as code, and a lowercase /*m! is a plain comment")
+    func executableCommentBodyIsCode() {
+        let mySQL: SQLLexicalFeatures = [.executableComments, .hashLineComments, .dashCommentsNeedWhitespace]
+        #expect(
+            SQLStatementSplitting.statements(in: "/*! /* ' */ SELECT 1 */; SELECT 2", lexicalFeatures: mySQL)
+                == ["/*! /* ' */ SELECT 1 */", "SELECT 2"]
+        )
+        #expect(
+            SQLStatementSplitting.statements(in: "/*! SELECT 1 # '\n */; SELECT 2", lexicalFeatures: mySQL)
+                == ["/*! SELECT 1 # '\n */", "SELECT 2"]
+        )
+        #expect(
+            SQLStatementSplitting.statements(in: "/*m! note */ CREATE TEMPORARY TABLE t (a INT)", lexicalFeatures: mySQL)
+                == ["CREATE TEMPORARY TABLE t (a INT)"]
+        )
+    }
+
     /// Keeping it must not make it read as a transaction statement here. The keyword is no longer
     /// the first word of the statement, and closing already requires the whole statement to be
     /// one. `MySQLSessionFootprint` reads the body itself, because MySQL does run it; every other

@@ -143,7 +143,8 @@ struct SQLFeatureLexer {
         return cursor
     }
 
-    /// The server lexes an executable comment's body as SQL, so a `*/` inside a quoted string does not close it.
+    // The server lexes a run body as code, comments included, and a nested opener opens no second level: the first
+    // `*/` read as code closes the comment. Measured on MySQL 8.0 and 8.4 and MariaDB 10.11 and 11.4.
     private func executableCommentEnd(from index: Int) -> Int {
         var cursor = index + 2
         while cursor < units.count {
@@ -151,8 +152,14 @@ struct SQLFeatureLexer {
             if unit == Self.star, unitAt(cursor + 1) == Self.slash {
                 return cursor + 2
             }
-            if unit == Self.singleQuote || unit == Self.doubleQuote || unit == Self.backtick {
-                cursor = quotedEnd(from: cursor + 1, quote: unit, backslashEscapes: backslashEscapes(inQuote: unit))
+            if unit == Self.slash, unitAt(cursor + 1) == Self.star {
+                cursor = isExecutableCommentOpener(at: cursor)
+                    ? cursor + 2
+                    : blockCommentEnd(from: cursor, nests: features.contains(.nestedBlockComments))
+                continue
+            }
+            if let inner = span(at: cursor) {
+                cursor = max(inner.end, cursor + 1)
                 continue
             }
             cursor += 1
@@ -160,9 +167,10 @@ struct SQLFeatureLexer {
         return cursor
     }
 
+    // Both servers read a lowercase `/*m!` as a plain comment.
     private func isExecutableCommentOpener(at index: Int) -> Bool {
         var cursor = index + 2
-        if unitAt(cursor) == 0x4D || unitAt(cursor) == 0x6D {
+        if unitAt(cursor) == 0x4D {
             cursor += 1
         }
         return unitAt(cursor) == Self.exclamationMark

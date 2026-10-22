@@ -236,8 +236,10 @@ script lexer:
   only with a given word (`GRANT ... IDENTIFIED`), and functions or engines
   that take a password (`dblink`, `OPENROWSET`, `s3`). A routine body is
   read for the statements inside it, whether dollar-quoted or, on
-  PostgreSQL, a plain string after `DO` or `AS`. So is a MySQL `/*!`
-  comment, which the server runs.
+  PostgreSQL, a plain string after `DO` or `AS`. The text is read every
+  way the server may read it: with and without backslash escapes, and
+  with each MySQL `/*!` comment run or skipped as each server version
+  would.
 - A string, quoted name or comment that never closes withholds it too, since
   what is inside a literal is then a guess.
 

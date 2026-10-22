@@ -11,6 +11,7 @@ mod script_rules;
 mod script_statement;
 mod script_token;
 mod script_token_kind;
+pub(crate) mod server_reading;
 pub mod text_offsets;
 
 pub use batch_error_policy::BatchErrorPolicy;

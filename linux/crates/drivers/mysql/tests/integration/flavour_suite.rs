@@ -3,6 +3,8 @@
 
 use std::time::Duration;
 
+use tablepro_core::sql_syntax::SqlGrammar;
+use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan};
 use tablepro_core::{
     DriverError, ReadOnlyRefusal, RowLimit, RunEnd, RunOptions, TimeoutPhase, Value, WorkspaceSettings, WriteKind,
 };
@@ -164,6 +166,60 @@ async fn create_trigger_and_procedure_in_session() {
         );
         let events = run_ok(editor.as_ref(), "CALL twice()").await;
         assert_eq!(events.started(), 2, "{flavour:?}");
+        editor.close().await;
+        connection.close().await.expect("a close");
+    }
+}
+
+/// A mysqldump file run as the editor splits it: each `/*!` line on its
+/// own, a trigger under `DELIMITER ;;` as one statement, a partition
+/// clause with its table, and a comment the server's version skips as a
+/// statement that does nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_dump_runs_its_executable_comments() {
+    const DUMP: &str = "/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;\n\
+        /*!40103 SET TIME_ZONE='+00:00' */;\n\
+        /*!99999 SET @never = 1 */;\n\
+        CREATE TABLE orders (id int) /*!50100 PARTITION BY HASH (id) PARTITIONS 2 */;\n\
+        CREATE TABLE audit (id int);\n\
+        DELIMITER ;;\n\
+        /*!50003 CREATE*/ /*!50003 TRIGGER trg AFTER INSERT ON orders FOR EACH ROW \
+        BEGIN INSERT INTO audit VALUES (NEW.id); INSERT INTO audit VALUES (NEW.id + 100); END */;;\n\
+        DELIMITER ;\n\
+        /*!50001 CREATE ALGORITHM=UNDEFINED */ /*!50001 VIEW v AS SELECT id FROM orders */;\n\
+        INSERT INTO orders VALUES (1);";
+    let grammar = SqlGrammar::MySql;
+    let plan = ScriptPlan::build(DUMP, grammar, LexicalSettings::default_for(grammar));
+    let statements: Vec<&str> = plan
+        .batches()
+        .iter()
+        .filter_map(|batch| DUMP.get(batch.range.clone()))
+        .collect();
+    assert_eq!(statements.len(), 8);
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        let editor = session(connection.as_ref()).await;
+
+        for statement in &statements {
+            run_ok(editor.as_ref(), statement).await;
+        }
+
+        let scalar = async |sql: &str| session_scalar(editor.as_ref(), sql).await;
+        assert_eq!(scalar("SELECT @@session.time_zone").await, "+00:00", "{flavour:?}");
+        assert_eq!(scalar("SELECT @never IS NULL").await, "1", "{flavour:?}");
+        assert_eq!(
+            scalar(
+                "SELECT COUNT(*) FROM information_schema.PARTITIONS \
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders'"
+            )
+            .await,
+            "2",
+            "{flavour:?}"
+        );
+        assert_eq!(scalar("SELECT COUNT(*) FROM audit").await, "2", "{flavour:?}");
+        assert_eq!(scalar("SELECT COUNT(*) FROM v").await, "1", "{flavour:?}");
         editor.close().await;
         connection.close().await.expect("a close");
     }

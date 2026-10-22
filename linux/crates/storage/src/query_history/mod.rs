@@ -37,7 +37,7 @@ use export::{history_csv, history_sql};
 use history_query::TermMatch;
 use search_fold::fold;
 
-const MAX_QUERY_BYTES: usize = 1024 * 1024;
+pub const MAX_QUERY_BYTES: usize = 1024 * 1024;
 
 /// Unpinned entries kept regardless of the retention window. History is
 /// a convenience, not an archive, and an unbounded table makes every

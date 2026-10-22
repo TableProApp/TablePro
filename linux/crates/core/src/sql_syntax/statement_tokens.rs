@@ -51,11 +51,14 @@ pub(crate) struct LexedScript<'a> {
 }
 
 pub(crate) fn lex_statements(sql: &str, grammar: SqlGrammar) -> LexedScript<'_> {
-    let plan = ScriptPlan::build(sql, grammar, LexicalSettings::default_for(grammar));
-    // Split at the terminators rather than taken statement by statement,
-    // so a comment the plan leaves outside every statement still counts:
-    // MySQL runs a `/*!` comment with whatever stands between the same
-    // two terminators, and the history keeps the whole text.
+    statements_of(
+        sql,
+        &ScriptPlan::build(sql, grammar, LexicalSettings::default_for(grammar)),
+    )
+}
+
+/// The statements of `sql` as `plan` reads them.
+pub(crate) fn statements_of<'a>(sql: &'a str, plan: &ScriptPlan) -> LexedScript<'a> {
     let mut statements = Vec::new();
     let mut current = Vec::new();
     for token in plan.tokens(0..sql.len()) {
@@ -72,7 +75,7 @@ pub(crate) fn lex_statements(sql: &str, grammar: SqlGrammar) -> LexedScript<'_> 
             }
             continue;
         }
-        push_significant(sql, grammar, token.kind, token.range, &mut current);
+        push_significant(sql, token.kind, token.range, &mut current);
     }
     if !current.is_empty() {
         statements.push(current);
@@ -85,22 +88,17 @@ pub(crate) fn lex_statements(sql: &str, grammar: SqlGrammar) -> LexedScript<'_> 
 
 fn push_significant<'a>(
     sql: &'a str,
-    grammar: SqlGrammar,
     kind: ScriptTokenKind,
     range: Range<usize>,
     tokens: &mut Vec<StatementToken<'a>>,
 ) {
     let text = sql.get(range).unwrap_or_default();
     let token = match kind {
-        ScriptTokenKind::BlockComment => {
-            // MySQL and MariaDB run what a `/*!` comment holds as part of
-            // the statement around it.
-            if let Some(inner) = executable_comment(grammar, text) {
-                tokens.extend(lex_statements(inner, grammar).statements.into_iter().flatten());
-            }
-            return;
-        }
-        ScriptTokenKind::Whitespace | ScriptTokenKind::LineComment | ScriptTokenKind::Directive => return,
+        ScriptTokenKind::Whitespace
+        | ScriptTokenKind::LineComment
+        | ScriptTokenKind::BlockComment
+        | ScriptTokenKind::Directive
+        | ScriptTokenKind::ExecutableMarker => return,
         ScriptTokenKind::Word => StatementToken::Word(text),
         ScriptTokenKind::QuotedIdentifier => StatementToken::QuotedName(unquoted(text)),
         ScriptTokenKind::DollarQuoted => StatementToken::DollarBody(dollar_body(text)),
@@ -111,16 +109,6 @@ fn push_significant<'a>(
         ScriptTokenKind::Number | ScriptTokenKind::CloseParen | ScriptTokenKind::Unterminated => StatementToken::Other,
     };
     tokens.push(token);
-}
-
-/// `/*!50100 text */` or MariaDB's `/*M!100100 text */` gives `text`.
-fn executable_comment(grammar: SqlGrammar, text: &str) -> Option<&str> {
-    if grammar != SqlGrammar::MySql {
-        return None;
-    }
-    let body = text.strip_prefix("/*!").or_else(|| text.strip_prefix("/*M!"))?;
-    let body = body.strip_suffix("*/")?;
-    Some(body.trim_start_matches(|c: char| c.is_ascii_digit()))
 }
 
 /// Every quote the lexer accepts for a name (`"`, `` ` ``, `[` and `]`)

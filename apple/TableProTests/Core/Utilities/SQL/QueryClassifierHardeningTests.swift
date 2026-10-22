@@ -807,3 +807,120 @@ struct QueryClassifierNonSqlTests {
         )
     }
 }
+
+struct QueryClassifierExecutableCommentTests {
+    // One per form a MySQL or MariaDB server runs a DROP from while every other reading hides it.
+    static let hiddenDrops = [
+        "/*!99999 ' */ DROP TABLE orders -- '",
+        "/*!99999 /* */ ' */ DROP TABLE orders -- '",
+        "/*!50700 ' */ DROP TABLE orders -- '",
+        "/*!800000 ' */ DROP TABLE orders -- '",
+        "/*!8000000 ' */ DROP TABLE orders -- '",
+        "/*M!999999 ' */ DROP TABLE orders -- '",
+        "/*M! ' */ DROP TABLE orders -- '",
+        "/*m! ' */ DROP TABLE orders -- '",
+        "/*! /* ' */ DROP TABLE orders */",
+        "/*! DROP TABLE orders # */ '\n */",
+        "SELECT /*!50000 \"*/\", */ 1; /*!99999 ' */ DROP TABLE orders -- '",
+        "SELECT /*!80000 \"*/\", */ 1; /*!80100 ' */ DROP TABLE orders -- '",
+        "SELECT 1--/*!99999 ' */1; DROP TABLE orders -- '",
+        "ALTER TABLE orders ALTER COLUMN note SET DEFAULT (1 --/*!99999 ' */ 1), DROP COLUMN total -- '",
+        "/*T! DROP TABLE orders */",
+        "/*! SELECT 1 /*!99999 ' */ */; DROP TABLE orders -- '",
+        "ALTER TABLE orders ADD COLUMN c\u{600}/*!99999 ' */ INT, DROP COLUMN total -- '",
+    ]
+
+    static let engines: [DatabaseType] = [.mysql, .mariadb]
+
+    @Test("A DROP TiDB runs from its own comment is destructive", arguments: [
+        "/*T! DROP TABLE orders */",
+        "/*T![clustered_index] DROP TABLE orders */",
+        "/*T![no_such_feature] ' */ DROP TABLE orders -- '",
+    ])
+    func tiDBCommentDropIsDestructive(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .tidb) == .destructive)
+    }
+
+    @Test("A DROP a server runs from behind an executable comment is destructive", arguments: hiddenDrops, engines)
+    func hiddenDropIsDestructive(sql: String, databaseType: DatabaseType) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: databaseType) == .destructive)
+        #expect(QueryClassifier.isDangerousQuery(sql, databaseType: databaseType))
+    }
+
+    @Test("A TRUNCATE a server runs past a skipped comment is destructive", arguments: engines)
+    func hiddenTruncateIsDestructive(databaseType: DatabaseType) {
+        let sql = "/*!99999 ' */ TRUNCATE orders -- '"
+        #expect(QueryClassifier.classifyTier(sql, databaseType: databaseType) == .destructive)
+        #expect(QueryClassifier.classifyTier("ALTER TABLE p TRUNCATE PARTITION ALL", databaseType: databaseType)
+            == .destructive)
+    }
+
+    @Test(
+        "A DELETE with no WHERE that a server runs from an executable comment deletes every row",
+        arguments: [
+            "/*!99999 ' */ DELETE FROM orders -- '",
+            "/*! DELETE FROM orders */",
+            "/*M! DELETE FROM orders */",
+            "/*! -- '\n */ DELETE FROM orders -- '",
+            "WITH c AS (SELECT 1) /*m! ' */ DELETE FROM orders -- '",
+            "DELETE FROM orders a\u{600}/*!99999 '*/#' */ WHERE id = 1",
+        ],
+        engines
+    )
+    func hiddenDeleteDeletesEverything(sql: String, databaseType: DatabaseType) {
+        #expect(QueryClassifier.isDangerousQuery(sql, databaseType: databaseType))
+    }
+
+    @Test(
+        "A write past a comment one server reads as plain is never a read",
+        arguments: [
+            "WITH c AS (SELECT 1) /*m! ' */ DELETE FROM orders -- '",
+            "WITH c AS (SELECT 1) /*!99999 ' */ DELETE FROM orders -- '",
+            "SELECT * FROM orders /*m! ' */ INTO OUTFILE '/tmp/x' -- '",
+            "SELECT * FROM orders /*!99999 ' */ INTO OUTFILE '/tmp/x' -- '",
+        ],
+        engines
+    )
+    func hiddenWriteIsNotARead(sql: String, databaseType: DatabaseType) {
+        #expect(QueryClassifier.isWriteQuery(sql, databaseType: databaseType))
+    }
+
+    @Test(
+        "A file written past an executable comment reaches the file system",
+        arguments: [
+            "SELECT * FROM orders /*m! ' */ INTO OUTFILE '/tmp/x' -- '",
+            "SELECT * FROM orders /*!99999 ' */ INTO OUTFILE '/tmp/x' -- '",
+            "SELECT 1--/*!99999 ' */1 INTO OUTFILE '/tmp/x' -- '",
+            "SELECT 1 a\u{600}/*!99999 ' */ INTO OUTFILE '/tmp/x' -- '",
+            "SELECT 1 INTO/**/OUTFILE '/tmp/x'",
+            "SELECT LOAD_FILE ('/etc/hosts')",
+            "SELECT LOAD_FILE/**/('/etc/hosts')",
+        ]
+    )
+    func hiddenOutfileReachesTheFileSystem(sql: String) {
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(sql, databaseType: .mysql))
+    }
+
+    @Test(
+        "A second statement past a skipped comment is counted",
+        arguments: ["/*!99999 ' */ DROP TABLE a; DROP TABLE b -- '", "SELECT 1--/*!99999 ' */1; DROP TABLE b -- '"],
+        engines
+    )
+    func hiddenSecondStatementIsCounted(sql: String, databaseType: DatabaseType) {
+        #expect(QueryClassifier.isMultiStatement(sql, databaseType: databaseType))
+    }
+
+    @Test("A text that sets more versions than a gate reads is treated as the worst statement")
+    func tooManyVersionsFailClosed() {
+        let sql = "SELECT " + (0..<40).map { "'/*!\(50_000 + $0) x */'" }.joined(separator: ", ")
+        #expect(QueryClassifier.classify(sql, databaseType: .mysql).tier == .destructive)
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(sql, databaseType: .mysql))
+        #expect(QueryClassifier.isMultiStatement(sql, databaseType: .mysql))
+    }
+
+    @Test("A read whose comment every server runs or skips alike stays a read once the floor is kept")
+    func plainReadsKeepTheirTier() {
+        #expect(QueryClassifier.classifyTier("SELECT 1 /*m! note */", databaseType: .mysql) == .safe)
+        #expect(QueryClassifier.classifyTier("SELECT /*!40001 SQL_NO_CACHE */ 1", databaseType: .mysql) == .write)
+    }
+}

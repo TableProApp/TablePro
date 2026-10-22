@@ -201,6 +201,33 @@ struct MySQLSessionFootprintTests {
         #expect(footprint(after: "/*! SET SESSION sql_mode = 'ANSI' */").hasSessionSettings)
     }
 
+    /// A server older than the version skips the comment, and both servers read `/*m!` as a plain
+    /// comment, so what follows it is the statement that runs.
+    @Test("A statement behind a comment the server skips is seen", arguments: [
+        "/*!99999 note */ CREATE TEMPORARY TABLE t (a INT)",
+        "/*m! note */ CREATE TEMPORARY TABLE t (a INT)",
+        "/*M! note */ CREATE TEMPORARY TABLE t (a INT)",
+    ])
+    func statementBehindSkippedCommentIsSeen(sql: String) {
+        #expect(footprint(after: sql).hasTemporaryTables)
+        #expect(footprint(after: sql.replacingOccurrences(of: "CREATE TEMPORARY TABLE t (a INT)", with: "LOCK TABLES t WRITE"))
+            .hasLockedTables)
+    }
+
+    @Test("A statement a skipped comment's line comment hid from the split is still seen")
+    func statementsInsideASkippedCommentReadingAreSeen() {
+        let sql = "/*!99999 # */ BEGIN NOT ATOMIC DO 1; CREATE TEMPORARY TABLE t (id INT); END"
+        #expect(footprint(after: sql).hasTemporaryTables)
+    }
+
+    @Test("A release one server runs and another skips does not release")
+    func ambiguousReleaseKeepsTheLock() {
+        #expect(footprint(after: "LOCK TABLES t WRITE", "/*!99999 note */ UNLOCK TABLES").hasLockedTables)
+        #expect(footprint(after: "LOCK TABLES t WRITE", "/*!99999 UNLOCK TABLES */").hasLockedTables)
+        #expect(!footprint(after: "LOCK TABLES t WRITE", "/*!40101 UNLOCK TABLES */").hasLockedTables)
+        #expect(!footprint(after: "LOCK TABLES t WRITE", "UNLOCK TABLES").hasLockedTables)
+    }
+
     /// Only a statement that is entirely one of them. A version-gated comment inside a `CREATE
     /// TABLE`, which is how mysqldump writes a partition clause, is part of that statement.
     @Test("A version-gated comment inside another statement is left alone")

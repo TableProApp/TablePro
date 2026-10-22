@@ -110,6 +110,32 @@ struct SQLNonCodeSpanTests {
         #expect(end(text, .ansi) == 14)
     }
 
+    @Test(
+        "A run executable comment lexes its body as code, comments included",
+        arguments: [
+            ("/*! /* ' */ DROP TABLE t */ x", 27),
+            ("/*! DROP TABLE t # */ '\n */ x", 27),
+            ("/*! DROP TABLE t -- */ '\n */ x", 28),
+            ("/*! DROP TABLE /*! t */ x", 23),
+            ("/*!40101 SET @a = '*/' */ x", 25),
+        ]
+    )
+    func executableCommentBodyIsCode(text: String, end: Int) {
+        let grammar: SQLLexicalGrammar = [.executableComments, .hashLineComments, .dashCommentsNeedWhitespace]
+        let span = SQLNonCodeSpan.span(at: 0, in: text as NSString, grammar: grammar)
+        #expect(span?.kind == .executableComment)
+        #expect(span?.end == end)
+        #expect(span?.isTerminated == true)
+    }
+
+    @Test("A lowercase /*m! is a plain comment, as MySQL and MariaDB read it")
+    func lowercaseMarkerIsAPlainComment() {
+        let text = "/*m! ' */ DROP TABLE t -- '" as NSString
+        let span = SQLNonCodeSpan.span(at: 0, in: text, grammar: [.executableComments])
+        #expect(span?.kind == .blockComment)
+        #expect(span?.end == 9)
+    }
+
     @Test("A span the text ends inside is reported unterminated")
     func unterminatedSpans() {
         let grammar: SQLLexicalGrammar = [.taggedDollarQuotes, .bracketQuotedIdentifiers]
