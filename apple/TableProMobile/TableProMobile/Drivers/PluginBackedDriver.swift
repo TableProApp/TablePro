@@ -73,6 +73,11 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
         }
     }
 
+    // The database the plugin is on once every request queued before this one has returned.
+    func settledCurrentDatabase() async throws -> String? {
+        try await exclusively { currentDatabase }
+    }
+
     func statementContext(_ query: String) -> PluginStatementContext {
         var context = PluginStatementContext()
         context.readOnly = provesReads && readsOnly(query)

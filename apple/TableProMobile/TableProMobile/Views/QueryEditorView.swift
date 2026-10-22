@@ -834,7 +834,8 @@ struct QueryEditorView: View {
         // Released before the change posts, so the reload it starts can open a catalog connection again.
         if holdsCatalog { appState.connectionManager.releaseCatalogConnections(for: connectionId) }
         postCatalogChanges(on: session)
-        await coordinator.followSessionDatabase()
+        // Waits for a request Stop ended to return, which the run's end must not.
+        Task { await coordinator.followSessionDatabase() }
         let phase = viewModel.phase
         let outcome = QueryExecutionOutcome(phase: phase)
 
