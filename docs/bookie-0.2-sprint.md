@@ -2,7 +2,7 @@
 
 ## Delivery status
 
-On 2026-10-18, the maintainer confirmed that **0.2.0 delivery work was complete while release publication was pending**. Check the [release page](https://github.com/cozyGarage/BookiE/releases) for current publication status. Delivery branch: `linux`. The app and agentd manifests identify source version `0.2.0`; tag creation and release publication are separate actions.
+On 2026-10-18, the maintainer confirmed that **0.2.0 delivery work was complete while release publication was pending**. Check the [release page](https://github.com/cozyGarage/BookiE/releases) for current publication status. Delivery branch: `linux`. The app and agentd manifests identify source version `0.2.0`. Tag `linux-v0.2.0` (commit `bd31a1d8b`) exists and a draft release holds its seven assets; as of 2026-10-22 it is not published. The draft's Debian asset is still named `tablepro_0.2.0-1_amd64.deb`; the `bookie` Debian package name landed after the tag. Publishing stays a maintainer action.
 
 The [0.2.0 scope](0.2.0-scope.md) records the completed delivery boundary. The previous scope and sprint checklists are preserved in the [completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md). Their historical open rows do not reopen 0.2.0. This status records the maintainer's decision, not a new run of the package, driver or desktop checks.
 
@@ -10,7 +10,7 @@ The [0.2.0 scope](0.2.0-scope.md) records the completed delivery boundary. The p
 
 The [post-0.2.0 backlog](backlog.md) owns selected development order. [Project #3](https://github.com/users/cozyGarage/projects/3) owns issue status and Lane; the [ledger index](known-issues.md) maps IDs to issues. Existing open correctness, qualification and infrastructure issues keep their evidence and follow-up scope. They are not silently closed by a milestone-status change.
 
-The Linux code-adoption tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149) selects driver investigations, shared conformance and development-tooling improvements. The selected packets #1140 through #1148 are closed. Follow the backlog's current correctness and security order for subsequent work. The [dated audit](archive/upstream-linux-adoption-2026-10-18.md) records candidate behavior, existing coverage and choices that need a separate decision.
+The Linux code-adoption tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149) and its selected packets #1140 through #1148 are closed. Follow the backlog's current correctness and security order for subsequent work. The [dated audit](archive/upstream-linux-adoption-2026-10-18.md) records candidate behavior, existing coverage and choices that need a separate decision.
 
 ## Standing decisions
 

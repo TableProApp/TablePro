@@ -4,7 +4,7 @@ The [completion and continuation page](docs/bookie-0.2-sprint.md) records milest
 
 ## Current milestone
 
-On 2026-10-18, the maintainer recorded that BookiE 0.2.0 delivery work was complete while release publication was pending. Check the [release page](https://github.com/cozyGarage/BookiE/releases) for current publication status. The [completion handoff](docs/archive/bookie-0.2-completion-handoff-2026-10-18.md) preserves prior scope and acceptance records; new development follows the backlog and Project #3.
+On 2026-10-18, the maintainer recorded that BookiE 0.2.0 delivery work was complete while release publication was pending. Tag `linux-v0.2.0` exists and its GitHub release is still a draft (checked 2026-10-22); see the [release page](https://github.com/cozyGarage/BookiE/releases) for current status. The [completion handoff](docs/archive/bookie-0.2-completion-handoff-2026-10-18.md) preserves prior scope and acceptance records; new development follows the backlog and Project #3.
 
 ## Repository layout
 
@@ -12,7 +12,7 @@ The Cargo workspace already lives at the repository root (`crates/`, `apps/linux
 
 ## After 0.2.0
 
-The [backlog](docs/backlog.md) owns selected work after 0.2.0, including upstream Linux adoption [#1149](https://github.com/cozyGarage/BookiE/issues/1149). The [development-process audit](docs/archive/upstream-linux-adoption-2026-10-18.md) covers code reuse, infrastructure, CI, conventions and release tooling. The [feature comparison](docs/0.2-feature-comparison.md) records parity candidates, including current-source dispositions for reported gaps and upstream bug fixes; candidates are not release commitments. The [October 20 TablePro and dbx deep review](docs/archive/tablepro-dbx-review-2026-10-20/README.md) ranks the latest candidate waves and defects to confirm. The [external audit and improvement plan](docs/archive/external-audit-2026-10-06.md) remains the dated reference for backend ownership checks, GitHub/test tooling, docs/examples/evidence synchronization, performance measurement and optional driver reuse. None of these documents extends the active sprint.
+The [backlog](docs/backlog.md) owns selected work after 0.2.0, after the closed upstream Linux adoption tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149). The [development-process audit](docs/archive/upstream-linux-adoption-2026-10-18.md) covers code reuse, infrastructure, CI, conventions and release tooling. The [feature comparison](docs/0.2-feature-comparison.md) records parity candidates, including current-source dispositions for reported gaps and upstream bug fixes; candidates are not release commitments. The [October 20 TablePro and dbx deep review](docs/archive/tablepro-dbx-review-2026-10-20/README.md) ranks the latest candidate waves and defects to confirm. The [external audit and improvement plan](docs/archive/external-audit-2026-10-06.md) remains the dated reference for backend ownership checks, GitHub/test tooling, docs/examples/evidence synchronization, performance measurement and optional driver reuse. None of these documents extends the active sprint.
 
 ## Status rules
 

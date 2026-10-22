@@ -6,4 +6,4 @@ This file is retained as a stable repository entry point. Older capability lists
 
 For contributor setup and workspace checks, see the [root README](README.md) and [validation playbook](docs/validation-playbook.md). The Cargo workspace is already at the repository root; [ARCHITECTURE.md](ARCHITECTURE.md#repository-layout) has the map.
 
-The [external audit and improvement plan](docs/archive/external-audit-2026-10-06.md) is historical research, not a current task list. The [backlog](docs/backlog.md) and Project #3 own subsequent sequencing and acceptance; upstream adoption is tracked in #1149.
+The [external audit and improvement plan](docs/archive/external-audit-2026-10-06.md) is historical research, not a current task list. The [backlog](docs/backlog.md) and Project #3 own subsequent sequencing and acceptance; the upstream adoption tracker #1149 is closed.
