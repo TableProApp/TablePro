@@ -1,5 +1,9 @@
 # GPUI database-client lessons, October 22, 2026
 
+## Research completion
+
+Status: research complete and archived. Implementation and runtime acceptance remain open on the linked issues. The dbdelve cancellation/session scenarios are tracked by [#1316](https://github.com/cozyGarage/BookiE/issues/1316). Other review handoffs are [#1315](https://github.com/cozyGarage/BookiE/issues/1315), [#1317](https://github.com/cozyGarage/BookiE/issues/1317), [#1318](https://github.com/cozyGarage/BookiE/issues/1318), [#1319](https://github.com/cozyGarage/BookiE/issues/1319), [#1320](https://github.com/cozyGarage/BookiE/issues/1320) and [#1321](https://github.com/cozyGarage/BookiE/issues/1321). These proposals do not establish reproduced BookiE defects.
+
 ## Scope and conclusion
 
 Source inspection of eight suggested repositories found useful rendering, scheduling and PostgreSQL regression patterns. These patterns can be implemented within the existing GTK architecture. Framework selection alone does not establish bounded memory, correct cancellation or low CPU usage. No framework change is proposed.
