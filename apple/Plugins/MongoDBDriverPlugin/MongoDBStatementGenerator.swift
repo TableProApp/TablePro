@@ -444,12 +444,7 @@ nonisolated struct MongoDBStatementGenerator {
             if let document = try documentIdJson(text) {
                 return document
             }
-            if declaredKinds[MongoDBCollectionDDL.idField] == nil,
-               let held = fieldKinds.kinds(of: MongoDBCollectionDDL.idField),
-               held.contains(.objectId), held.contains(.string), isObjectIdString(text) {
-                throw MongoDBWriteRefusal.ambiguousIdentity
-            }
-            return idValueJson(text)
+            return try idValueJson(text)
         }
     }
 
@@ -466,11 +461,15 @@ nonisolated struct MongoDBStatementGenerator {
     /// An `_id` is matched by value and type together, so a string `_id` of `1001` written as a
     /// number matches no document. The column's own kind decides when it is known; the text's
     /// shape is only the fallback.
-    private func idValueJson(_ idValue: String) -> String {
+    private func idValueJson(_ idValue: String) throws -> String {
         if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(idValue) {
             return binary
         }
         let idKind = declaredKinds["_id"] ?? identityKind
+        if idKind == nil, let held = fieldKinds.kinds(of: MongoDBCollectionDDL.idField), held.count > 1,
+           let reading = try heldIdentityJson(idValue, held: held) {
+            return reading
+        }
         switch idKind {
         case .string:
             return "\"\(escapeJsonString(idValue))\""
@@ -488,6 +487,32 @@ nonisolated struct MongoDBStatementGenerator {
             return integerJson(idValue)
         }
         return "\"\(escapeJsonString(idValue))\""
+    }
+
+    // The `_id` kinds the documents held, when they differ: the value this text reads as among them. Numbers of any
+    // width name one key, since the `_id` index compares them by value. Text two kinds can read refuses the write.
+    private func heldIdentityJson(_ text: String, held: Set<BsonValueKind>) throws -> String? {
+        var readings: [String: String] = [:]
+        for kind in held {
+            let reading: (group: String, json: String?)
+            switch kind {
+            case .string:
+                reading = ("string", "\"\(escapeJsonString(text))\"")
+            case .int32, .int64, .double, .decimal128:
+                reading = ("number", typedJson(text, kind: kind))
+            case .objectId, .date:
+                reading = (String(describing: kind), typedJson(text, kind: kind))
+            case .boolean:
+                reading = ("boolean", text == "true" || text == "false" ? text : nil)
+            default:
+                continue
+            }
+            if let json = reading.json, readings[reading.group] == nil {
+                readings[reading.group] = json
+            }
+        }
+        guard readings.count <= 1 else { throw MongoDBWriteRefusal.ambiguousIdentity }
+        return readings.values.first
     }
 
     private func kind(of field: String) -> BsonValueKind? {

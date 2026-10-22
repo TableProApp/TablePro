@@ -45,14 +45,31 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
         self.cancelsRunningRequest = cancelsRunningRequest
     }
 
+    // A cancel that lands before the plugin has started the request is cleared when it starts, so it is sent again
+    // until the request has returned.
     func exclusively<T: Sendable>(_ request: () async throws -> T) async throws -> T {
         guard let cancel = cancelsRunningRequest else { return try await request() }
         try await requestGate.acquire()
         defer { requestGate.release() }
+        let finished = OSAllocatedUnfairLock(initialState: false)
+        defer { finished.withLock { $0 = true } }
         return try await withTaskCancellationHandler {
-            try await request()
+            try Task.checkCancellation()
+            return try await request()
         } onCancel: {
-            cancel()
+            // Under the lock, so no cancel lands once the gate has passed to the next request.
+            let cancelUnlessFinished: @Sendable () -> Bool = {
+                finished.withLock { done in
+                    if !done { cancel() }
+                    return done
+                }
+            }
+            guard !cancelUnlessFinished() else { return }
+            Task.detached {
+                repeat {
+                    try? await Task.sleep(for: .milliseconds(100))
+                } while !cancelUnlessFinished()
+            }
         }
     }
 

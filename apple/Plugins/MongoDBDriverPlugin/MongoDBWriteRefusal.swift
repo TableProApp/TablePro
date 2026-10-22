@@ -92,7 +92,7 @@ nonisolated enum MongoDBWriteRefusal: Error, Equatable {
         case .identitySubtypeUnknown:
             return String(localized: "This row's _id is binary data whose subtype is not known, so TablePro cannot tell which document it names.")
         case .ambiguousIdentity:
-            return String(localized: "This collection holds this _id both as an ObjectId and as text, so TablePro cannot tell which document the row names. Use a query.")
+            return String(localized: "This _id reads as more than one value type in this collection, such as text and an ObjectId, so TablePro cannot tell which document the row names. Use a query.")
         }
     }
 

@@ -691,7 +691,7 @@
     "This change does not apply to this kind of type." : {
 
     },
-    "This collection holds this _id both as an ObjectId and as text, so TablePro cannot tell which document the row names. Use a query." : {
+    "This _id reads as more than one value type in this collection, such as text and an ObjectId, so TablePro cannot tell which document the row names. Use a query." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },

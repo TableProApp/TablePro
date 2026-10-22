@@ -172,6 +172,28 @@ struct MongoDBAmbiguousIdentityTests {
         }
     }
 
+    @Test("An _id held as a number and as text with the same digits is refused too")
+    func numberAndTextIdentityIsRefused() {
+        #expect(throws: PluginRowWriteRefusal.self) {
+            try generator(idKinds: [.int32, .string]).generateRowWrites(
+                from: [update(id: "1")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+            )
+        }
+    }
+
+    @Test("Mixed _id kinds type the text as the one kind it can be: text, or a number of any width")
+    func mixedKindsTypeTheText() throws {
+        let text = try #require(try generator(idKinds: [.objectId, .string]).generateRowWrites(
+            from: [update(id: "5")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        ).first)
+        let number = try #require(try generator(idKinds: [.int32, .int64]).generateRowWrites(
+            from: [update(id: "5")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        ).first)
+
+        #expect(text.statement.contains(#"{"_id": "5"}"#))
+        #expect(!number.statement.contains(#""5""#))
+    }
+
     @Test("Text that cannot be an ObjectId, or a collection of one _id kind, still writes")
     func unambiguousIdentityWrites() throws {
         let mixed = try generator(idKinds: [.objectId, .string]).generateRowWrites(

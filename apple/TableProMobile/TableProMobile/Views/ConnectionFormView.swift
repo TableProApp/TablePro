@@ -447,7 +447,7 @@ struct ConnectionFormView: View {
     private func mongoSection(viewModel: ConnectionFormViewModel) -> some View {
         @Bindable var viewModel = viewModel
         return Section("MongoDB") {
-            TextField("Auth Database", text: $viewModel.mongoAuthSource, prompt: Text(verbatim: "admin"))
+            TextField("Auth Database", text: $viewModel.mongoAuthSource)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.asciiCapable)
@@ -471,7 +471,7 @@ struct ConnectionFormView: View {
         @Bindable var viewModel = viewModel
         Section {
             if viewModel.type == .mongodb {
-                TextField("Hosts", text: $viewModel.mongoHosts, prompt: Text(verbatim: "localhost:27017"))
+                TextField("Hosts", text: $viewModel.mongoHosts)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
