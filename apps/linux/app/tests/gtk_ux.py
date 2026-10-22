@@ -743,17 +743,24 @@ GLib.MainLoop().run()
             time.sleep(0.3)
             ui.press_x11_key("Return")
             ui.wait_for_node(name="Search columns", present=False)
-            header = cell = None
-            deadline = time.monotonic() + ui.WAIT_SECONDS
-            while time.monotonic() < deadline:
+            frame = next(
+                node for node in ui.descendants(ui.application_node()) if ui.node_role(node) == pyatspi.ROLE_FRAME
+            )
+            window_width = frame.queryComponent().getExtents(pyatspi.WINDOW_COORDS).width
+
+            def aligned_in_view():
                 header = ui.find_node_containing(f"c{index}\n", role=pyatspi.ROLE_LABEL)
                 cell = ui.find_node(name=str(1000 + index), role=pyatspi.ROLE_LABEL)
-                if showing(header) and showing(cell):
-                    break
+                if not (showing(header) and showing(cell)):
+                    return None
+                header_x, cell_x = left_edge(header), left_edge(cell)
+                in_view = 0 <= header_x < window_width and 0 <= cell_x < window_width
+                return (header_x, cell_x) if in_view and abs(header_x - cell_x) <= 12 else None
+
+            deadline = time.monotonic() + ui.WAIT_SECONDS
+            while aligned_in_view() is None:
+                assert time.monotonic() < deadline, f"c{index} did not scroll into view over its header"
                 time.sleep(ui.POLL_SECONDS)
-            assert showing(header) and showing(cell), f"c{index} was not scrolled into view:\n{ui.accessible_snapshot()}"
-            offset = abs(left_edge(header) - left_edge(cell))
-            assert offset <= 12, f"c{index}: header at {left_edge(header)}, cell at {left_edge(cell)}"
 
     def narrow_window_keeps_main_and_editor_toolbar_actions_reachable(database, base):
         ui.open_saved_connection(ui.CONNECTION_NAME)

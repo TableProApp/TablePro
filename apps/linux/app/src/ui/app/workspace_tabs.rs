@@ -195,12 +195,7 @@ impl App {
                     SqlEditorOutput::ExportStreamedResults(request) => AppMsg::ExportStreamedResults(request),
                 });
             let page = tab_view_for_create.append(editor.widget());
-            let editor_count = workspace_tabs_for_create
-                .borrow()
-                .values()
-                .filter(|t| matches!(t, WorkspaceTab::Editor(_)))
-                .count();
-            let label = default_editor_tab_label(editor_count + 1);
+            let label = first_free_editor_label(editor_titles(&workspace_tabs_for_create.borrow()));
             page.set_title(&label);
             // Empty query → no tooltip; tooltip will be set on first edit
             // via on_editor_tab_query_changed.
@@ -566,7 +561,7 @@ impl App {
             });
         let page = tab_view.append(editor.widget());
         let label = match query.trim().is_empty() {
-            true => default_editor_tab_label(self.editor_tab_count() + 1),
+            true => first_free_editor_label(editor_titles(&self.workspace_tabs.borrow())),
             false => derive_tab_label(&query),
         };
         page.set_title(&label);
@@ -988,14 +983,6 @@ impl App {
         }
         self.append_editor_tab(Some(text), sender);
     }
-
-    fn editor_tab_count(&self) -> usize {
-        self.workspace_tabs
-            .borrow()
-            .values()
-            .filter(|t| matches!(t, WorkspaceTab::Editor(_)))
-            .count()
-    }
 }
 
 pub(super) fn qualified_browse_tab_label(schemas_count: usize, schema: Option<&str>, table: &str) -> String {
@@ -1015,6 +1002,23 @@ pub(super) fn structure_tab_title(schemas_count: usize, schema: Option<&str>, ta
 
 fn default_editor_tab_label(n: usize) -> String {
     crate::tr!("Query {n}").replace("{n}", &n.to_string())
+}
+
+fn editor_titles(tabs: &tablepro_app_services::workspace::WorkspaceTabs<WorkspaceTab>) -> Vec<String> {
+    tabs.values()
+        .filter_map(|tab| match tab {
+            WorkspaceTab::Editor(slot) => Some(slot.page.title().to_string()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn first_free_editor_label(titles: Vec<String>) -> String {
+    let fallback = titles.len() + 1;
+    (1..=fallback)
+        .map(default_editor_tab_label)
+        .find(|label| !titles.contains(label))
+        .unwrap_or_else(|| default_editor_tab_label(fallback))
 }
 
 /// Returns a tooltip for a Browse tab, but only when it would add info
@@ -1142,5 +1146,25 @@ mod structure_title_tests {
             structure_tab_title(2, Some("sales"), "orders"),
             "sales.orders · Structure"
         );
+    }
+}
+
+#[cfg(test)]
+mod default_label_tests {
+    use super::*;
+
+    fn titles(numbers: &[usize]) -> Vec<String> {
+        numbers.iter().map(|n| default_editor_tab_label(*n)).collect()
+    }
+
+    #[test]
+    fn a_new_tab_never_repeats_a_title_that_is_still_open() {
+        assert_eq!(first_free_editor_label(titles(&[])), "Query 1");
+        assert_eq!(first_free_editor_label(titles(&[1, 2])), "Query 3");
+        assert_eq!(first_free_editor_label(titles(&[2])), "Query 1");
+        assert_eq!(first_free_editor_label(titles(&[1, 3])), "Query 2");
+        let mut with_named = titles(&[1]);
+        with_named.push("SELECT orders".into());
+        assert_eq!(first_free_editor_label(with_named), "Query 2");
     }
 }
