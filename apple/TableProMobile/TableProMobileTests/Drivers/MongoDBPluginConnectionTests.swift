@@ -248,6 +248,14 @@ struct MongoDBAmbiguousIdentityTests {
         #expect(write.statement.contains(#""$numberLong": "1704110400500""#))
     }
 
+    @Test("A date at either end of the BSON range still shows")
+    func extremeDatesShow() {
+        for milliseconds in [Int64.max, Int64.min] {
+            let date = Date(timeIntervalSince1970: Double(milliseconds) / 1_000)
+            #expect(BsonDocumentFlattener.stringValue(for: date, representation: .unspecified) != nil)
+        }
+    }
+
     @Test("Text that cannot be an ObjectId, or a collection of one _id kind, still writes")
     func unambiguousIdentityWrites() throws {
         let mixed = try generator(idKinds: [.objectId, .string]).generateRowWrites(

@@ -280,7 +280,11 @@ nonisolated struct BsonDocumentFlattener {
     // A BSON date holds milliseconds. Text without them names another instant, which an `_id` filter or a
     // value written back would then match or store.
     private static func iso8601Text(for date: Date) -> String {
-        let milliseconds = Int64((date.timeIntervalSince1970 * 1_000).rounded())
+        // A BSON date can hold any Int64, and one near either end reads back from `Date` past what Int64 holds.
+        guard let milliseconds = Int64(exactly: (date.timeIntervalSince1970 * 1_000).rounded()),
+              milliseconds.magnitude < 1 << 62 else {
+            return iso8601Formatter.withLockUnchecked { $0.string(from: date) }
+        }
         let fraction = ((milliseconds % 1_000) + 1_000) % 1_000
         let whole = Date(timeIntervalSince1970: TimeInterval(milliseconds - fraction) / 1_000)
         let text = iso8601Formatter.withLockUnchecked { $0.string(from: whole) }
