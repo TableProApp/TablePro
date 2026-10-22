@@ -64,6 +64,7 @@ fn rule_sql(
 ) -> Result<String, BuildFilterError> {
     let column_sql = dialect.quote_identifier(&column.name);
     let text_sql = dialect.text_operand(column).unwrap_or_else(|| column_sql.clone());
+    let compared_sql = dialect.compared_operand(column).unwrap_or_else(|| column_sql.clone());
     let equality_as_text = dialect.equality_as_text(column);
     match rule.op {
         // A null test has no value to bind, so it never takes a marker.
@@ -75,7 +76,7 @@ fn rule_sql(
         }
         FilterOp::Eq | FilterOp::NotEq | FilterOp::Lt | FilterOp::LtEq | FilterOp::Gt | FilterOp::GtEq => {
             let marker = bind_typed(builder, dialect, column, require_single(rule)?)?;
-            Ok(format!("{column_sql} {} {marker}", comparison_operator(rule.op)))
+            Ok(format!("{compared_sql} {} {marker}", comparison_operator(rule.op)))
         }
         FilterOp::Contains | FilterOp::StartsWith | FilterOp::EndsWith => {
             // The app is building the pattern, so what the user typed
@@ -119,7 +120,7 @@ fn rule_sql(
             };
             let operand = match equality_as_text {
                 true => &text_sql,
-                false => &column_sql,
+                false => &compared_sql,
             };
             Ok(format!("{operand} {keyword} ({})", markers.join(", ")))
         }
@@ -127,7 +128,7 @@ fn rule_sql(
             let (low, high) = require_pair(rule)?;
             let low = bind_typed(builder, dialect, column, low)?;
             let high = bind_typed(builder, dialect, column, high)?;
-            Ok(format!("{column_sql} BETWEEN {low} AND {high}"))
+            Ok(format!("{compared_sql} BETWEEN {low} AND {high}"))
         }
     }
 }

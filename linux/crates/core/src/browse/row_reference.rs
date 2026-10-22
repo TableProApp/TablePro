@@ -108,6 +108,10 @@ fn filter_text(value: &Value, column_type: &ColumnType) -> Option<String> {
         // integer at a numeric(10,2), and the other column parses the
         // text: the zeros the scale pads with would make it refuse 1.00.
         Value::Decimal(decimal) if decimal.is_finite() => Some(without_trailing_zeros(decimal.to_string())),
+        // A real key can point at a double one, which holds the real's
+        // exact value; the real's shortest text would parse as another
+        // double. A real column reads the long text back as the same real.
+        Value::Float32(value) => Some(f64::from(*value).to_string()),
         other => match edit_text(other, column_type) {
             EditText::Editable(text) => Some(text),
             EditText::ReadOnly(_) => None,
@@ -272,6 +276,19 @@ mod tests {
         assert_eq!(text_of(150), vec![eq("id", "1.5")]);
         assert_eq!(text_of(-1000), vec![eq("id", "-10")]);
         assert_eq!(text_of(0), vec![eq("id", "0")]);
+    }
+
+    #[test]
+    fn a_single_precision_key_is_written_as_the_double_it_widens_to() {
+        let columns = [typed("weight", ColumnKind::Float(crate::column::FloatWidth::F32))];
+        let key = key(&["weight"], Some("sales"), &["weight"]);
+
+        let reference =
+            RowReference::referenced(&orders(), &key, &columns, &[Value::Float32(0.1)]).expect("a real key");
+
+        assert_eq!(reference.filter.rules, vec![eq("weight", "0.10000000149011612")]);
+        let parsed: f32 = "0.10000000149011612".parse().expect("a real");
+        assert_eq!(parsed, 0.1_f32, "a real column reads the text back as another value");
     }
 
     #[test]
