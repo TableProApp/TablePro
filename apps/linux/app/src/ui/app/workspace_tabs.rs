@@ -230,7 +230,11 @@ impl App {
 
     /// Restore workspace tabs from disk for the just-connected database.
     pub(super) fn restore_workspace_tabs(&mut self, connection_id: Uuid, sender: ComponentSender<Self>) {
-        let Some(saved) = self.workspace.load_connection(connection_id) else {
+        let saved = self
+            .connected_database
+            .as_deref()
+            .and_then(|database| self.workspace.load_database(connection_id, database));
+        let Some(saved) = saved else {
             self.workspace_outer_stack.set_visible_child_name("empty");
             return;
         };

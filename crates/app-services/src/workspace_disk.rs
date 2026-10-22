@@ -14,7 +14,7 @@ pub fn load(path: &Path, drafts: &Path) -> std::io::Result<WorkspaceState> {
     let mut state: WorkspaceState = serde_json::from_slice(&bytes).map_err(std::io::Error::other)?;
     for (connection, workspace) in &mut state.connections {
         let connection = Uuid::parse_str(connection).map_err(std::io::Error::other)?;
-        for tab in &mut workspace.tabs {
+        for tab in workspace.all_tabs_mut() {
             if let WorkspaceTabRecord::Editor { query, draft_id, .. } = tab
                 && let Some(id) = *draft_id
             {
@@ -59,7 +59,7 @@ pub fn save(path: &Path, drafts: &Path, mut state: WorkspaceState) -> std::io::R
     }
     for (connection, workspace) in &mut state.connections {
         let connection = Uuid::parse_str(connection).map_err(std::io::Error::other)?;
-        for tab in &mut workspace.tabs {
+        for tab in workspace.all_tabs_mut() {
             if let WorkspaceTabRecord::Editor { query, draft_id, .. } = tab {
                 let id = *draft_id.get_or_insert_with(Uuid::new_v4);
                 atomic_write_bytes(
@@ -116,6 +116,44 @@ mod tests {
             legacy
         );
         assert_eq!(std::fs::read_dir(drafts.join(&id)).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn editor_text_of_a_database_that_is_not_current_survives_a_save_and_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("workspace.json");
+        let drafts = dir.path().join("drafts");
+        let id = Uuid::new_v4().to_string();
+        let editor = |query: &str| ConnectionWorkspaceState {
+            tabs: vec![WorkspaceTabRecord::Editor {
+                query: query.into(),
+                draft_id: None,
+                file: None,
+            }],
+            ..Default::default()
+        };
+        let sales = ConnectionWorkspaceState::with_database(None, "sales", editor("SELECT 'sales'"));
+        let mut state = WorkspaceState::default();
+        state.connections.insert(
+            id.clone(),
+            ConnectionWorkspaceState::with_database(Some(sales), "hr", editor("SELECT 'hr'")),
+        );
+        save(&path, &drafts, &state).unwrap();
+        let on_disk = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !on_disk.contains("SELECT"),
+            "editor text lives in draft files, not the state file"
+        );
+        let loaded = load(&path, &drafts).unwrap();
+        let query = |workspace: Option<ConnectionWorkspaceState>| match &workspace.unwrap().tabs[0] {
+            WorkspaceTabRecord::Editor { query, .. } => query.clone(),
+            _ => String::new(),
+        };
+        assert_eq!(
+            query(loaded.connections[&id].clone().for_database("sales")),
+            "SELECT 'sales'"
+        );
+        assert_eq!(query(loaded.connections[&id].clone().for_database("hr")), "SELECT 'hr'");
     }
 
     #[test]

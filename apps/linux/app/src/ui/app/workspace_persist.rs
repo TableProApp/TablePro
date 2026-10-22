@@ -25,7 +25,7 @@ impl App {
         let current_generation = self.persist_generation.clone();
         let workspace_tabs = self.workspace_tabs.clone();
         let tab_view = self.workspace_tab_view.clone();
-        let connection_id = self.connection_id;
+        let target = self.workspace_target();
         let workspace = self.workspace.clone();
         let collapsed = self.sidebar_collapsed.clone();
         let hidden_schemas = self.sidebar_hidden_schemas.clone();
@@ -37,7 +37,7 @@ impl App {
             }
             do_persist_workspace_state(
                 &workspace,
-                connection_id,
+                target,
                 &workspace_tabs,
                 tab_view.as_ref(),
                 collapsed.borrow().keys(),
@@ -56,12 +56,16 @@ impl App {
         self.cancel_persist_timer();
         do_persist_workspace_state(
             &self.workspace,
-            self.connection_id,
+            self.workspace_target(),
             &self.workspace_tabs,
             self.workspace_tab_view.as_ref(),
             self.sidebar_collapsed.borrow().keys(),
             sorted_hidden_schemas(&self.sidebar_hidden_schemas.borrow()),
         );
+    }
+
+    pub(super) fn workspace_target(&self) -> Option<(Uuid, String)> {
+        Some((self.connection_id?, self.connected_database.clone()?))
     }
 
     fn replace_persist_timer(&self) {
@@ -75,13 +79,13 @@ impl App {
 
 fn do_persist_workspace_state(
     workspace: &workspace_state::WorkspaceStore,
-    connection_id: Option<Uuid>,
+    target: Option<(Uuid, String)>,
     workspace_tabs: &std::rc::Rc<std::cell::RefCell<WorkspaceTabs<WorkspaceTab>>>,
     tab_view: Option<&relm4::adw::TabView>,
     collapsed_groups: Vec<String>,
     hidden_schemas: Vec<String>,
 ) {
-    let Some(connection_id) = connection_id else {
+    let Some((connection_id, database)) = target else {
         return;
     };
     let tabs = workspace_tabs.borrow();
@@ -120,13 +124,15 @@ fn do_persist_workspace_state(
         }
     }
     let active_idx = active_idx_among_kept(&kept, active_raw_index);
-    workspace.save_connection(
+    workspace.save_database(
         connection_id,
+        &database,
         ConnectionWorkspaceState {
             tabs: tab_records,
             active_idx,
             collapsed_groups,
             hidden_schemas,
+            ..Default::default()
         },
     );
 }

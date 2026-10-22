@@ -41,6 +41,7 @@ pub struct ActivatedConnection {
     pub tables: Vec<tablepro_core::TableInfo>,
     pub views: Vec<tablepro_core::TableInfo>,
     pub driver_id: String,
+    pub database: String,
 }
 
 impl PreparedConnection {
@@ -83,6 +84,7 @@ impl PreparedConnection {
     /// refusal here never needs to be rolled back.
     pub fn activate(self, database: &DatabaseService) -> Option<ActivatedConnection> {
         let id = self.id;
+        let database_name = self.params.opts.database.clone();
         let activated = database.activate_shared(
             id,
             self.metadata,
@@ -99,6 +101,7 @@ impl PreparedConnection {
             tables: self.tables,
             views: self.views,
             driver_id: self.driver_id,
+            database: database_name,
         })
     }
 }

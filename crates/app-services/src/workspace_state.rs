@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, mpsc};
 
 use serde::{Deserialize, Serialize};
@@ -117,6 +117,7 @@ impl WorkspaceQueue {
 }
 
 const MAX_TABS_PER_CONNECTION: usize = 32;
+const MAX_OTHER_DATABASES: usize = 16;
 const MAX_TABLE_NAME_BYTES: usize = 256;
 const MAX_COLLAPSED_GROUPS: usize = 256;
 const MAX_COLLAPSED_KEY_BYTES: usize = 600;
@@ -141,6 +142,44 @@ pub struct ConnectionWorkspaceState {
     pub collapsed_groups: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hidden_schemas: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub other_databases: BTreeMap<String, ConnectionWorkspaceState>,
+}
+
+impl ConnectionWorkspaceState {
+    pub fn for_database(mut self, database: &str) -> Option<Self> {
+        match self.database.as_deref() {
+            None => Some(self),
+            Some(saved) if saved == database => Some(self),
+            Some(_) => self.other_databases.remove(database),
+        }
+    }
+
+    pub fn with_database(existing: Option<Self>, database: &str, mut current: Self) -> Self {
+        let mut others = BTreeMap::new();
+        if let Some(mut previous) = existing {
+            others = std::mem::take(&mut previous.other_databases);
+            if let Some(name) = previous.database.clone()
+                && name != database
+            {
+                others.insert(name, previous);
+            }
+        }
+        others.remove(database);
+        current.database = Some(database.to_owned());
+        current.other_databases = others;
+        current
+    }
+
+    pub fn all_tabs_mut(&mut self) -> impl Iterator<Item = &mut WorkspaceTabRecord> {
+        let nested = self
+            .other_databases
+            .values_mut()
+            .flat_map(|other| other.tabs.iter_mut());
+        self.tabs.iter_mut().chain(nested)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -343,6 +382,34 @@ impl WorkspaceStore {
             .flatten()
     }
 
+    pub fn load_database(&self, id: Uuid, database: &str) -> Option<ConnectionWorkspaceState> {
+        self.load_connection(id)?.for_database(database)
+    }
+
+    pub fn save_database(&self, id: Uuid, database: &str, conn_state: ConnectionWorkspaceState) {
+        let merged = ConnectionWorkspaceState::with_database(self.saved_record(id), database, conn_state);
+        self.save_connection(id, merged);
+    }
+
+    fn saved_record(&self, id: Uuid) -> Option<ConnectionWorkspaceState> {
+        if let Some(cached) = self
+            .inner
+            .memory
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .cache
+            .get(&id)
+        {
+            return cached.clone();
+        }
+        let _guard = self
+            .inner
+            .file_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        load_locked(&self.inner.paths).ok()?.connections.remove(&id.to_string())
+    }
+
     pub fn save_connection(&self, id: Uuid, mut conn_state: ConnectionWorkspaceState) {
         clamp_connection(&mut conn_state);
         save_connection_coordinated(&self.inner.memory, &self.inner.writer.queue, id, conn_state);
@@ -491,6 +558,11 @@ fn clamp(state: &mut WorkspaceState) {
 }
 
 fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
+    for other in conn.other_databases.values_mut() {
+        other.other_databases.clear();
+        clamp_connection(other);
+    }
+    drop_table_only_databases_over_limit(conn);
     conn.collapsed_groups.retain(|key| key.len() <= MAX_COLLAPSED_KEY_BYTES);
     conn.collapsed_groups.truncate(MAX_COLLAPSED_GROUPS);
     conn.hidden_schemas
@@ -506,6 +578,25 @@ fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
     }
     if (conn.active_idx as usize) >= conn.tabs.len() {
         conn.active_idx = 0;
+    }
+}
+
+fn drop_table_only_databases_over_limit(conn: &mut ConnectionWorkspaceState) {
+    while conn.other_databases.len() > MAX_OTHER_DATABASES {
+        let Some(name) = conn
+            .other_databases
+            .iter()
+            .find(|(_, other)| {
+                !other
+                    .tabs
+                    .iter()
+                    .any(|tab| matches!(tab, WorkspaceTabRecord::Editor { .. }))
+            })
+            .map(|(name, _)| name.clone())
+        else {
+            return;
+        };
+        conn.other_databases.remove(&name);
     }
 }
 

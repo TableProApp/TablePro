@@ -592,3 +592,88 @@ fn an_older_workspace_defaults_to_no_hidden_schemas() {
     let older: ConnectionWorkspaceState = serde_json::from_str(r#"{"tabs":[],"active_idx":0}"#).unwrap();
     assert!(older.hidden_schemas.is_empty());
 }
+
+fn tabs_for(table: &str) -> ConnectionWorkspaceState {
+    ConnectionWorkspaceState {
+        tabs: vec![browse(table)],
+        ..Default::default()
+    }
+}
+
+fn table_of(state: &ConnectionWorkspaceState) -> &str {
+    match &state.tabs[0] {
+        WorkspaceTabRecord::Browse { table, .. } | WorkspaceTabRecord::Table { table, .. } => table,
+        _ => "",
+    }
+}
+
+#[test]
+fn switching_databases_keeps_each_databases_own_workspace() {
+    let first = ConnectionWorkspaceState::with_database(None, "sales", tabs_for("sales_orders"));
+    let both = ConnectionWorkspaceState::with_database(Some(first), "hr", tabs_for("hr_people"));
+    assert_eq!(table_of(&both.clone().for_database("hr").unwrap()), "hr_people");
+    assert_eq!(table_of(&both.clone().for_database("sales").unwrap()), "sales_orders");
+    assert!(both.clone().for_database("billing").is_none());
+
+    let back = ConnectionWorkspaceState::with_database(Some(both), "sales", tabs_for("sales_refunds"));
+    assert_eq!(table_of(&back.clone().for_database("sales").unwrap()), "sales_refunds");
+    assert_eq!(table_of(&back.clone().for_database("hr").unwrap()), "hr_people");
+    assert_eq!(
+        back.other_databases.len(),
+        1,
+        "the current database is never stored twice"
+    );
+}
+
+#[test]
+fn a_workspace_saved_before_per_database_state_restores_for_the_current_database() {
+    let legacy = tabs_for("orders");
+    assert_eq!(table_of(&legacy.clone().for_database("anything").unwrap()), "orders");
+    let json = serde_json::to_string(&legacy).unwrap();
+    assert!(
+        !json.contains("database"),
+        "an untagged record keeps its old file shape"
+    );
+}
+
+#[test]
+fn set_aside_databases_are_clamped_and_capped_without_dropping_editor_text() {
+    let mut conn = ConnectionWorkspaceState::default();
+    for index in 0..40 {
+        let mut other = tabs_for(&format!("t{index}"));
+        if index < 3 {
+            other.tabs.push(editor("SELECT kept"));
+        }
+        other.other_databases.insert("nested".into(), tabs_for("deeper"));
+        conn.other_databases.insert(format!("db{index:02}"), other);
+    }
+    clamp_connection(&mut conn);
+    assert_eq!(conn.other_databases.len(), MAX_OTHER_DATABASES);
+    for kept in ["db00", "db01", "db02"] {
+        assert!(conn.other_databases.contains_key(kept), "{kept} holds editor text");
+    }
+    assert!(
+        conn.other_databases
+            .values()
+            .all(|other| other.other_databases.is_empty())
+    );
+}
+
+#[test]
+fn saving_with_a_cold_cache_keeps_the_other_databases_on_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = dir.path().join("workspace.json");
+    let drafts = dir.path().join("drafts");
+    let id = Uuid::new_v4();
+    let first = WorkspaceStore::new(Some(state.clone()), drafts.clone());
+    first.save_database(id, "sales", tabs_for("sales_orders"));
+    first.save_database(id, "hr", tabs_for("hr_people"));
+    assert!(matches!(first.flush().recv(), Ok(Ok(()))));
+
+    let restarted = WorkspaceStore::new(Some(state), drafts);
+    restarted.save_database(id, "hr", tabs_for("hr_payroll"));
+    assert!(matches!(restarted.flush().recv(), Ok(Ok(()))));
+    restarted.prefetch_connections(&[id]).unwrap();
+    assert_eq!(table_of(&restarted.load_database(id, "sales").unwrap()), "sales_orders");
+    assert_eq!(table_of(&restarted.load_database(id, "hr").unwrap()), "hr_payroll");
+}
