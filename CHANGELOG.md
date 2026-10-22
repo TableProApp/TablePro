@@ -17,6 +17,7 @@
 
 ### Fixed
 
+- Large JSON previews use less temporary memory.
 - Saving workspaces with large SQL drafts uses less temporary memory.
 
 - Closing SQL editors releases their retained query text and search state.

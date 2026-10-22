@@ -6,6 +6,8 @@ use gtk4::subclass::prelude::*;
 
 use tablepro_core::{QueryResult, Value};
 
+const PREVIEW_BYTES: usize = 8 * 1024;
+
 #[derive(Clone)]
 pub struct SharedRow {
     result: Weak<QueryResult>,
@@ -244,19 +246,12 @@ impl RowObject {
 }
 
 fn preview_value(value: &Value) -> Option<CellPreview> {
-    const PREVIEW_BYTES: usize = 8 * 1024;
     match value {
         Value::Text(text) if text.len() > PREVIEW_BYTES => Some(CellPreview {
             value: Value::Text(text[..text.floor_char_boundary(PREVIEW_BYTES)].to_owned()),
             byte_count: text.len(),
         }),
-        Value::Json(json) if json_exceeds(json, PREVIEW_BYTES) => {
-            let text = json.to_string();
-            Some(CellPreview {
-                value: Value::Text(text[..text.floor_char_boundary(PREVIEW_BYTES)].to_owned()),
-                byte_count: text.len(),
-            })
-        }
+        Value::Json(json) if json_exceeds(json, PREVIEW_BYTES) => json_preview(json),
         Value::JsonText(json) if json.len() > PREVIEW_BYTES => Some(CellPreview {
             value: Value::JsonText(json[..json.floor_char_boundary(PREVIEW_BYTES)].to_owned()),
             byte_count: json.len(),
@@ -267,6 +262,41 @@ fn preview_value(value: &Value) -> Option<CellPreview> {
         }),
         _ => None,
     }
+}
+
+struct JsonPreviewWriter {
+    prefix: Vec<u8>,
+    byte_count: usize,
+}
+
+impl std::io::Write for JsonPreviewWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.byte_count = self
+            .byte_count
+            .checked_add(bytes.len())
+            .ok_or(std::io::ErrorKind::InvalidData)?;
+        let retained = bytes.len().min(PREVIEW_BYTES.saturating_sub(self.prefix.len()));
+        self.prefix.extend_from_slice(&bytes[..retained]);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn json_preview(json: &serde_json::Value) -> Option<CellPreview> {
+    let mut writer = JsonPreviewWriter {
+        prefix: Vec::with_capacity(PREVIEW_BYTES),
+        byte_count: 0,
+    };
+    serde_json::to_writer(&mut writer, json).ok()?;
+    let end = std::str::from_utf8(&writer.prefix).map_or_else(|error| error.valid_up_to(), str::len);
+    writer.prefix.truncate(end);
+    Some(CellPreview {
+        value: Value::Text(String::from_utf8(writer.prefix).ok()?),
+        byte_count: writer.byte_count,
+    })
 }
 
 fn json_exceeds(json: &serde_json::Value, limit: usize) -> bool {
@@ -290,6 +320,58 @@ mod tests {
     use gtk4::prelude::ListModelExt;
     use std::sync::Arc;
     use tablepro_core::{ColumnInfo, QueryResult};
+
+    #[test]
+    fn json_preview_writer_counts_all_bytes_without_growing_past_its_sample() {
+        let mut writer = JsonPreviewWriter {
+            prefix: Vec::with_capacity(PREVIEW_BYTES),
+            byte_count: 0,
+        };
+        let chunk = vec![b'x'; PREVIEW_BYTES * 8];
+        std::io::Write::write_all(&mut writer, &chunk).unwrap();
+        std::io::Write::write_all(&mut writer, &chunk).unwrap();
+        assert_eq!(writer.byte_count, PREVIEW_BYTES * 16);
+        assert_eq!(writer.prefix, vec![b'x'; PREVIEW_BYTES]);
+        assert_eq!(writer.prefix.capacity(), PREVIEW_BYTES);
+    }
+
+    #[test]
+    fn json_preview_writer_refuses_an_overflowing_byte_count() {
+        let mut writer = JsonPreviewWriter {
+            prefix: Vec::new(),
+            byte_count: usize::MAX,
+        };
+        let error = std::io::Write::write(&mut writer, b"x").unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(writer.byte_count, usize::MAX);
+        assert!(writer.prefix.is_empty());
+    }
+
+    #[test]
+    fn a_large_parsed_json_preview_keeps_its_sample_and_exact_serialized_byte_count() {
+        let value = Value::Json(serde_json::Value::String("x".repeat(8 * 1024 * 1024)));
+        let preview = preview_value(&value).unwrap();
+        assert_eq!(preview.byte_count, 8 * 1024 * 1024 + 2);
+        assert_eq!(preview.value, Value::Text(format!("\"{}", "x".repeat(8191))));
+        assert!(matches!(value, Value::Json(serde_json::Value::String(text)) if text.len() == 8 * 1024 * 1024));
+    }
+
+    #[test]
+    fn parsed_json_preview_matches_serialized_escapes_and_utf8_boundaries() {
+        let json = serde_json::json!({"payload": "é😀\0\\\"".repeat(2000)});
+        let serialized = json.to_string();
+        let preview = preview_value(&Value::Json(json)).unwrap();
+        let end = serialized.floor_char_boundary(8192);
+        assert_eq!(preview.byte_count, serialized.len());
+        assert_eq!(preview.value, Value::Text(serialized[..end].to_owned()));
+    }
+
+    #[test]
+    fn parsed_json_uses_its_serialized_size_at_the_preview_boundary() {
+        assert!(preview_value(&Value::Json(serde_json::Value::String("x".repeat(8190)))).is_none());
+        let preview = preview_value(&Value::Json(serde_json::Value::String("x".repeat(8191)))).unwrap();
+        assert_eq!(preview.byte_count, 8193);
+    }
 
     #[test]
     fn a_json_value_is_measured_without_serialising_small_documents_twice() {

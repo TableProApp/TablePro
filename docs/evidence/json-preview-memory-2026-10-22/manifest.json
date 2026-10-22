@@ -1,0 +1,18 @@
+{
+  "production_base": "1fddf5fbe84d999b46054433af49cfa5c16c2f1c",
+  "dependency": "PR #1330; not independently accepted",
+  "test": "ui::row_object::tests::a_large_parsed_json_preview_keeps_its_sample_and_exact_serialized_byte_count",
+  "input_bytes": 8388608,
+  "serialized_byte_count": 8388610,
+  "preview_limit_bytes": 8192,
+  "before_source_sha256": "c73865f111d2e4cab68b3e9e4486be63a480575796fedff729c237ae07803b11",
+  "after_source_sha256": "740e2a9df1db49805312168a9678ffcd67f10c970b780f1fdc1090e3ba562db8",
+  "before_binary_sha256": "f09c7bb2083b0166a6d200856e4b2808edf87d7037196ed184aa519628c69100",
+  "after_binary_sha256": "030c106eb467c03a96676ca59ecdf0eb655876082b8fd7b948225ef05cb44ebe",
+  "before_peak_heap_display": "25.42 MB",
+  "after_peak_heap_display": "8.66 MB",
+  "before_peak_rss_with_profiler_display": "61.73 MB",
+  "after_peak_rss_with_profiler_display": "63.55 MB",
+  "after_preview_path_peak_display": "8.19 KB",
+  "profiling_scope": "one isolated debug test per process with heaptrack; allocation evidence, not an app CPU or RSS benchmark"
+}
