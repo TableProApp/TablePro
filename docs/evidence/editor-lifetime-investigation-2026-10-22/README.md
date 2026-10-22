@@ -17,3 +17,20 @@ All interaction used isolated displays. No native desktop input or capture occur
 A further control created a plain GTK TextView and a plain GtkSourceView in turn, placed each in an 800-by-600 window, presented it on an isolated 1280-by-1024 Xvfb display, pumped the main context, detached the child, destroyed the window and dropped the strong local references. After another second of main-context processing, weak upgrades still succeeded for both controls. Neither control used BookiE editor callbacks.
 
 This strengthens the limitation of the current lifetime test: even a realized native widget fails its expected release assertion. It does not establish a GTK defect, because the test environment and native lifecycle assumptions remain unverified. No disposal workaround or application change is justified by this test alone. The experimental control is preserved locally, not registered as a passing contract or proposed as a product fix.
+
+
+## Allocation tracing of editor cycles
+
+The optimized binary identified in the six-cycle manifest was traced with `heaptrack --record-only`. Both a one-cycle control (four editor opens, queries and closes) and six cycles (24 editors) passed the same empty-state reopen and final-query checks, then quit gracefully. The comparison and artifact hashes are in [heaptrack-comparison.json](heaptrack-comparison.json).
+
+| Measurement | One cycle | Six cycles |
+| --- | ---: | ---: |
+| Peak tracked heap | 53.60 MB | 58.67 MB |
+| Peak RSS including profiler overhead | 258.43 MB | 268.48 MB |
+| Outstanding tracked allocations at exit | 44.39 MB | 49.29 MB |
+| Allocation calls | 5,265,108 | 22,581,160 |
+| Instrumented runtime | 13.39 s | 47.68 s |
+
+The additional five cycles left about 4.90 MB more tracked memory outstanding at exit. This supports further retention investigation, but does not identify an application leak. Heaptrack labels all outstanding allocations as leaked, including native libraries and process-lifetime caches. The largest six-cycle outstanding allocation group was 25.14 MB from an unresolved allocator with Mesa Gallium frames. Many allocation calls came from GLib/D-Bus accessibility traffic. The automated accessibility workload and profiler overhead therefore prevent interpreting these figures as ordinary user CPU cost or native desktop RSS.
+
+The initial tracing attempt failed before application interaction because AT-SPI selected a broker requiring a systemd service unavailable on the private session bus. Repeating with the existing harness setting `ATSPI_DBUS_IMPLEMENTATION=dbus-daemon` passed. No product code changed to accommodate the setup. Raw traces, reports, exact scripts and failure logs remain under the persistent local `bookie-test/tab-cycle-heaptrack*` directories. Next: compare longer runs and attribute retained application allocations separately from rendering and accessibility caches before proposing a lifetime fix.

@@ -1,0 +1,107 @@
+{
+  "source": "15c3a9f9f303d4598672a11b5c062e3abe9f80dc",
+  "binary_sha256": "13b319c1e21179991ed1760e6d36d1bc2cf0b397c4b21c139ce992bd071894cc",
+  "display": "isolated Xvfb 1280x1024, X11, Cairo, private D-Bus; no native desktop input",
+  "runs": [
+    {
+      "cycles": 1,
+      "editors_opened_and_closed": 4,
+      "result": {
+        "scenario": "repeated_editor_close_cycles",
+        "status": "passed",
+        "error": null
+      },
+      "heaptrack_summary": "13.39s.\ncalls to allocation functions: 5265108 (393153/s)\ntemporary memory allocations: 654607 (48880/s)\npeak heap memory consumption: 53.60M\npeak RSS (including heaptrack overhead): 258.43M\ntotal memory leaked: 44.39M\nsuppressed leaks: 1.30K",
+      "report_sha256": "6b2786e32d39864d276a3188e668c49c74b3e682fc1c405c555db09b1f1280de",
+      "trace_sha256": "0fd1b9e1c304d0ac82d56abb75a349b12510725f590dce04be37f7216717b953",
+      "phase_samples": [
+        {
+          "phase": "initial",
+          "elapsed_monotonic": 122070.182139811
+        },
+        {
+          "phase": "cycle-0-four-tabs",
+          "elapsed_monotonic": 122074.286492024
+        },
+        {
+          "phase": "cycle-0-closed",
+          "elapsed_monotonic": 122076.15315429
+        },
+        {
+          "phase": "final",
+          "elapsed_monotonic": 122080.455320153
+        }
+      ]
+    },
+    {
+      "cycles": 6,
+      "editors_opened_and_closed": 24,
+      "result": {
+        "scenario": "repeated_editor_close_cycles",
+        "status": "passed",
+        "error": null
+      },
+      "heaptrack_summary": "47.68s.\ncalls to allocation functions: 22581160 (473637/s)\ntemporary memory allocations: 2843083 (59633/s)\npeak heap memory consumption: 58.67M\npeak RSS (including heaptrack overhead): 268.48M\ntotal memory leaked: 49.29M\nsuppressed leaks: 1.30K",
+      "report_sha256": "87ff7b8d2d5ee884153ca56b59fa2855cc42ec5e54a6062862592008b383a605",
+      "trace_sha256": "ee976af3dd7bff54fdac45521af1ca1e0c8d25ceb9652491cfd959ec64a63b45",
+      "phase_samples": [
+        {
+          "phase": "initial",
+          "elapsed_monotonic": 121998.288907271
+        },
+        {
+          "phase": "cycle-0-four-tabs",
+          "elapsed_monotonic": 122001.571165416
+        },
+        {
+          "phase": "cycle-0-closed",
+          "elapsed_monotonic": 122003.44405044
+        },
+        {
+          "phase": "cycle-1-four-tabs",
+          "elapsed_monotonic": 122007.135461094
+        },
+        {
+          "phase": "cycle-1-closed",
+          "elapsed_monotonic": 122009.007935593
+        },
+        {
+          "phase": "cycle-2-four-tabs",
+          "elapsed_monotonic": 122012.742439934
+        },
+        {
+          "phase": "cycle-2-closed",
+          "elapsed_monotonic": 122014.647466033
+        },
+        {
+          "phase": "cycle-3-four-tabs",
+          "elapsed_monotonic": 122020.965595073
+        },
+        {
+          "phase": "cycle-3-closed",
+          "elapsed_monotonic": 122022.881828626
+        },
+        {
+          "phase": "cycle-4-four-tabs",
+          "elapsed_monotonic": 122028.869406881
+        },
+        {
+          "phase": "cycle-4-closed",
+          "elapsed_monotonic": 122030.792990396
+        },
+        {
+          "phase": "cycle-5-four-tabs",
+          "elapsed_monotonic": 122037.063065521
+        },
+        {
+          "phase": "cycle-5-closed",
+          "elapsed_monotonic": 122038.954470541
+        },
+        {
+          "phase": "final",
+          "elapsed_monotonic": 122043.628919716
+        }
+      ]
+    }
+  ]
+}
