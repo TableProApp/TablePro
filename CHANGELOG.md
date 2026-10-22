@@ -37,6 +37,7 @@
 
 ### Fixed
 
+- Copying rows and pasting them back into the grid keeps NULL, empty text and text such as `\N` unchanged. Previously empty text pasted as `""`, and a cell holding `\N` could swap with a NULL.
 - Undoing or redoing a cell edit on a saved row no longer replaces the row's stored value with an unsaved one, so a later edit is no longer lost or rejected as a conflict when saved.
 - Closing a table browse tab releases its widgets and loaded rows.
 - PostgreSQL: a table named without its schema is found through the whole `search_path`, as PostgreSQL itself resolves it. Before, only the first schema on the path was searched, so SQL completion showed no columns (and structure lookups found nothing) for a table that lives in a later schema.

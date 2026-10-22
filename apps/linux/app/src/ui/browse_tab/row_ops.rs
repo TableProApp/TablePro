@@ -306,7 +306,17 @@ impl BrowseTab {
                 return false;
             }
         };
-        if let Some(row_obj) = &row_obj
+        self.stage_grid_cell_value(row_position, col_index, new, &sender)
+    }
+
+    pub(super) fn stage_grid_cell_value(
+        &mut self,
+        row_position: u32,
+        col_index: usize,
+        new: Value,
+        sender: &ComponentSender<Self>,
+    ) -> bool {
+        if let Some(row_obj) = &self.row_object_at(row_position)
             && let Some(draft_id) = row_obj.draft_id()
         {
             // Draft row — mutate the tracker's draft buffer
@@ -320,7 +330,7 @@ impl BrowseTab {
             return true;
         }
         let Some((key, row)) = self.row_key_at(row_position) else {
-            self.report_unreadable_row_key(row_position, &sender);
+            self.report_unreadable_row_key(row_position, sender);
             return false;
         };
         let original = row[col_index].clone();

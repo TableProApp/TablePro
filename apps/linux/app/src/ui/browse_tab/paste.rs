@@ -1,7 +1,7 @@
 use relm4::ComponentSender;
 use relm4::gtk::{self, gdk, glib};
 
-use super::value_parse::parse_grid_cell_input;
+use super::value_parse::parse_pasted_cell;
 use super::*;
 
 const MAX_PASTE_CELLS: usize = 5_000;
@@ -80,33 +80,37 @@ fn is_spreadsheet_quoted_cell(after_open: &[char]) -> bool {
     false
 }
 
-const COPIED_NULL_MARKER: &str = "\\N";
-
-fn undo_copy_markers(cell: String) -> String {
-    if cell == COPIED_NULL_MARKER {
-        return String::new();
+fn undo_copy_markers(cell: String) -> Option<String> {
+    let is_marker = |text: &str| {
+        text.strip_prefix("\\N")
+            .is_some_and(|rest| rest.bytes().all(|b| b == b'N'))
+    };
+    if is_marker(&cell) {
+        return None;
     }
-    let guarded = cell
-        .strip_prefix("\"'")
-        .and_then(|rest| rest.strip_suffix('"'))
+    let inner = cell.strip_prefix('"').and_then(|rest| rest.strip_suffix('"'));
+    if let Some(inner) = inner.filter(|inner| inner.is_empty() || is_marker(inner)) {
+        return Some(inner.to_string());
+    }
+    let guarded = inner
+        .and_then(|inner| inner.strip_prefix('\''))
         .filter(|inner| inner.starts_with(['=', '+', '-', '@', '\t', '\r']) && !inner.contains('"'));
-    guarded.map_or(cell.clone(), str::to_string)
+    Some(guarded.map_or(cell.clone(), str::to_string))
 }
 
-pub(super) fn parse_clipboard_grid(text: &str) -> Vec<Vec<String>> {
-    let mut rows = split_clipboard_grid(text);
-    rows.iter_mut()
-        .flatten()
-        .for_each(|cell| *cell = undo_copy_markers(std::mem::take(cell)));
-    rows
-}
-
-fn split_clipboard_grid(text: &str) -> Vec<Vec<String>> {
+pub(super) fn parse_clipboard_grid(text: &str) -> Vec<Vec<Option<String>>> {
     let mut rows = Vec::new();
     let mut row = Vec::new();
     let mut cell = String::new();
     let mut quoted = false;
     let mut was_quoted = false;
+    let finish = |cell: String, was_quoted: bool| {
+        if was_quoted {
+            Some(cell)
+        } else {
+            undo_copy_markers(cell)
+        }
+    };
     let chars: Vec<char> = text.chars().collect();
     let mut index = 0;
     while let Some(&c) = chars.get(index) {
@@ -122,12 +126,12 @@ fn split_clipboard_grid(text: &str) -> Vec<Vec<String>> {
                 was_quoted = true;
             }
             '\t' if !quoted => {
-                row.push(std::mem::take(&mut cell));
+                row.push(finish(std::mem::take(&mut cell), was_quoted));
                 was_quoted = false;
             }
             '\r' if !quoted && chars.get(index) == Some(&'\n') => {}
             '\n' if !quoted => {
-                row.push(std::mem::take(&mut cell));
+                row.push(finish(std::mem::take(&mut cell), was_quoted));
                 rows.push(std::mem::take(&mut row));
                 was_quoted = false;
             }
@@ -135,7 +139,7 @@ fn split_clipboard_grid(text: &str) -> Vec<Vec<String>> {
         }
     }
     if !cell.is_empty() || !row.is_empty() || was_quoted {
-        row.push(cell);
+        row.push(finish(cell, was_quoted));
         rows.push(row);
     }
     rows
@@ -145,13 +149,13 @@ fn split_clipboard_grid(text: &str) -> Vec<Vec<String>> {
 pub(super) struct PasteCell {
     pub(super) row: u32,
     pub(super) col: usize,
-    pub(super) text: String,
+    pub(super) text: Option<String>,
 }
 
 pub(super) fn paste_plan(
     anchor_row: u32,
     anchor_col: usize,
-    grid: &[Vec<String>],
+    grid: &[Vec<Option<String>>],
     loaded_rows: u32,
     displayed: &[usize],
 ) -> Result<Vec<PasteCell>, String> {
@@ -237,7 +241,7 @@ impl BrowseTab {
         });
     }
 
-    fn check_paste_cell(&self, cell: &PasteCell) -> Result<(), String> {
+    fn check_paste_cell(&self, cell: &PasteCell) -> Result<Value, String> {
         let column = self.current_columns.get(cell.col);
         let row = self.row_object_at(cell.row);
         let allowed = column
@@ -252,14 +256,12 @@ impl BrowseTab {
             );
         }
         let current = row.as_ref().map(|row| row.cell_value(cell.col));
-        parse_grid_cell_input(&cell.text, column, &self.driver_id, current.as_ref())
-            .map(|_| ())
-            .map_err(|message| {
-                crate::tr!("{column} on row {row}: {message}. Nothing was pasted.")
-                    .replace("{column}", name)
-                    .replace("{row}", &(cell.row + 1).to_string())
-                    .replace("{message}", &message)
-            })
+        parse_pasted_cell(cell.text.as_deref(), column, &self.driver_id, current.as_ref()).map_err(|message| {
+            crate::tr!("{column} on row {row}: {message}. Nothing was pasted.")
+                .replace("{column}", name)
+                .replace("{row}", &(cell.row + 1).to_string())
+                .replace("{message}", &message)
+        })
     }
 
     pub(super) fn handle_paste_text(&mut self, input: PasteTextInput, sender: ComponentSender<Self>) {
@@ -296,12 +298,19 @@ impl BrowseTab {
             )));
             return;
         }
-        if let Some(message) = cells.iter().find_map(|cell| self.check_paste_cell(cell).err()) {
-            let _ = sender.output(BrowseTabOutput::ShowToast(message));
-            return;
-        }
-        for cell in cells {
-            self.handle_grid_cell_edited(cell.row, cell.col, cell.text, Vec::new(), sender.clone());
+        let values = match cells
+            .iter()
+            .map(|cell| self.check_paste_cell(cell))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(values) => values,
+            Err(message) => {
+                let _ = sender.output(BrowseTabOutput::ShowToast(message));
+                return;
+            }
+        };
+        for (cell, value) in cells.iter().zip(values) {
+            self.stage_grid_cell_value(cell.row, cell.col, value, &sender);
         }
     }
 
@@ -331,9 +340,9 @@ impl BrowseTab {
 mod tests {
     use super::*;
 
-    fn grid(rows: &[&[&str]]) -> Vec<Vec<String>> {
+    fn grid(rows: &[&[&str]]) -> Vec<Vec<Option<String>>> {
         rows.iter()
-            .map(|row| row.iter().map(|cell| cell.to_string()).collect())
+            .map(|row| row.iter().map(|cell| Some(cell.to_string())).collect())
             .collect()
     }
 
@@ -342,8 +351,52 @@ mod tests {
         let copied = "\"'-5\"\t\"'=1+1\"\t\\N\tplain\t'quoted\n";
         assert_eq!(
             parse_clipboard_grid(copied),
-            grid(&[&["-5", "=1+1", "", "plain", "'quoted"]])
+            vec![vec![
+                Some("-5".into()),
+                Some("=1+1".into()),
+                None,
+                Some("plain".into()),
+                Some("'quoted".into())
+            ]]
         );
+    }
+
+    #[test]
+    fn copied_rows_paste_back_with_null_empty_text_and_marker_text_unchanged() {
+        use tablepro_core::Value;
+
+        let texts = [
+            "",
+            "\\N",
+            "\\NN",
+            "\"\"",
+            "\"\\N\"",
+            "plain",
+            "a\tb",
+            "line1\nline2",
+            "say \"hi\"",
+            "'x",
+            "NULL",
+        ];
+        let mut rows: Vec<Vec<Value>> = texts
+            .iter()
+            .map(|text| vec![Value::Text((*text).into()), Value::Null])
+            .collect();
+        rows.push(vec![Value::Null, Value::Text(String::new())]);
+        let expected: Vec<Vec<Option<String>>> = rows
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(|value| match value {
+                        Value::Text(text) => Some(text.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .collect();
+
+        let copied = tablepro_core::export::render_tsv(&[], &rows, false);
+        assert_eq!(parse_clipboard_grid(&copied), expected, "{copied:?}");
     }
 
     #[test]
@@ -369,14 +422,17 @@ mod tests {
         assert_eq!(parse_clipboard_grid("\"abc\""), grid(&[&["\"abc\""]]));
         assert_eq!(parse_clipboard_grid("\"a\", \"b\"\tx"), grid(&[&["\"a\", \"b\"", "x"]]));
         assert_eq!(parse_clipboard_grid("\"abc\tdef"), grid(&[&["\"abc", "def"]]));
-        assert_eq!(parse_clipboard_grid("\"\"\n\"x\""), grid(&[&["\"\""], &["\"x\""]]));
+        assert_eq!(parse_clipboard_grid("\"\"\n\"x\""), grid(&[&[""], &["\"x\""]]));
         assert_eq!(parse_clipboard_grid("\"a\tb\"x"), grid(&[&["\"a", "b\"x"]]));
     }
 
     #[test]
     fn a_plan_places_every_cell_from_the_anchor_and_refuses_to_run_off_the_grid() {
         let plan = paste_plan(2, 1, &grid(&[&["a", "b"], &["c", "d"]]), 10, &[0, 1, 2, 3, 4]).unwrap();
-        let places: Vec<(u32, usize, &str)> = plan.iter().map(|c| (c.row, c.col, c.text.as_str())).collect();
+        let places: Vec<(u32, usize, &str)> = plan
+            .iter()
+            .map(|c| (c.row, c.col, c.text.as_deref().unwrap()))
+            .collect();
         assert_eq!(places, [(2, 1, "a"), (2, 2, "b"), (3, 1, "c"), (3, 2, "d")]);
         assert!(paste_plan(9, 0, &grid(&[&["a"], &["b"]]), 10, &[0, 1, 2, 3, 4]).is_err());
         assert!(paste_plan(0, 4, &grid(&[&["a", "b"]]), 10, &[0, 1, 2, 3, 4]).is_err());
@@ -386,14 +442,14 @@ mod tests {
     #[test]
     fn a_plan_follows_the_displayed_column_order() {
         let plan = paste_plan(0, 0, &grid(&[&["A", "B"]]), 1, &[0, 2, 1]).unwrap();
-        let places: Vec<(usize, &str)> = plan.iter().map(|c| (c.col, c.text.as_str())).collect();
+        let places: Vec<(usize, &str)> = plan.iter().map(|c| (c.col, c.text.as_deref().unwrap())).collect();
         assert_eq!(places, [(0, "A"), (2, "B")]);
     }
 
     #[test]
     fn a_plan_skips_hidden_columns_and_refuses_a_hidden_anchor() {
         let plan = paste_plan(0, 0, &grid(&[&["A", "B"]]), 1, &[0, 2]).unwrap();
-        let places: Vec<(usize, &str)> = plan.iter().map(|c| (c.col, c.text.as_str())).collect();
+        let places: Vec<(usize, &str)> = plan.iter().map(|c| (c.col, c.text.as_deref().unwrap())).collect();
         assert_eq!(places, [(0, "A"), (2, "B")]);
         assert!(paste_plan(0, 1, &grid(&[&["A"]]), 1, &[0, 2]).is_err());
         assert!(paste_plan(0, 2, &grid(&[&["A", "B"]]), 1, &[0, 2]).is_err());
@@ -401,7 +457,7 @@ mod tests {
 
     #[test]
     fn a_huge_paste_is_refused_before_any_cell_is_touched() {
-        let big = vec![vec!["x".to_string(); 100]; 100];
+        let big = vec![vec![Some("x".to_string()); 100]; 100];
         assert!(paste_plan(0, 0, &big, 20_000, &(0..200).collect::<Vec<_>>()).is_err());
     }
 
@@ -441,7 +497,14 @@ mod tests {
 
 #[cfg(test)]
 mod roundtrip_tests {
-    use super::parse_clipboard_grid;
+    use super::parse_clipboard_grid as parse_with_nulls;
+
+    fn parse_clipboard_grid(text: &str) -> Vec<Vec<String>> {
+        parse_with_nulls(text)
+            .into_iter()
+            .map(|row| row.into_iter().map(Option::unwrap).collect())
+            .collect()
+    }
 
     fn spreadsheet_encode(rows: &[Vec<String>]) -> String {
         rows.iter()

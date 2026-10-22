@@ -1,6 +1,6 @@
 use super::grid_render::column_layout_matches;
 use super::paste::parse_clipboard_grid;
-use super::value_parse::parse_grid_cell_input;
+use super::value_parse::{parse_grid_cell_input, parse_pasted_cell};
 use super::{
     BrowsePageRequest, BrowseTab, BrowseTabInit, BrowseTabInput, BrowseTabOutput, PageRequestTracker,
     RowCountRequestTracker, columns_for_browse_page, next_page_offset, previous_page_offset,
@@ -362,12 +362,38 @@ fn sqlite_grid_parses_unknown_numeric_affinity_values_without_losing_precision()
 }
 
 #[test]
+fn pasted_null_and_empty_text_stay_distinct() {
+    let nullable_text = column("value", "text", false);
+    let required_text = column("value", "text", true);
+    let count = column("count", "integer", false);
+    assert_eq!(
+        parse_pasted_cell(None, Some(&nullable_text), "postgres", None),
+        Ok(Value::Null)
+    );
+    assert_eq!(
+        parse_pasted_cell(Some(""), Some(&nullable_text), "postgres", None),
+        Ok(Value::Text(String::new()))
+    );
+    assert!(parse_pasted_cell(None, Some(&required_text), "postgres", None).is_err());
+    assert_eq!(
+        parse_pasted_cell(Some(""), Some(&count), "postgres", None),
+        Ok(Value::Null)
+    );
+    let required_count = column("count", "integer", true);
+    assert!(parse_pasted_cell(Some(""), Some(&required_count), "postgres", None).is_err());
+    assert_eq!(
+        parse_pasted_cell(Some("7"), Some(&count), "postgres", None),
+        Ok(Value::Int(7))
+    );
+}
+
+#[test]
 fn grid_text_input_preserves_lf_and_crlf() {
     let text_column = column("value", "text", false);
     for clipboard in ["\"line1\nline2\"", "\"line1\r\nline2\""] {
-        let value = &parse_clipboard_grid(clipboard)[0][0];
+        let value = parse_clipboard_grid(clipboard)[0][0].clone().unwrap();
         assert_eq!(
-            parse_grid_cell_input(value, Some(&text_column), "postgres", None),
+            parse_grid_cell_input(&value, Some(&text_column), "postgres", None),
             Ok(Value::Text(value.clone()))
         );
     }
@@ -407,7 +433,13 @@ async fn grid_text_paste_stores_line_breaks_and_leaves_sibling_rows_unchanged() 
     let value_index = columns.iter().position(|column| column.name == "value").unwrap();
     let pasted = parse_clipboard_grid("\"line1\nline2\"\n\"line3\r\nline4\"");
     for (index, id) in [1, 3].into_iter().enumerate() {
-        let value = parse_grid_cell_input(&pasted[index][0], Some(&columns[value_index]), "sqlite", None).unwrap();
+        let value = parse_grid_cell_input(
+            pasted[index][0].as_deref().unwrap(),
+            Some(&columns[value_index]),
+            "sqlite",
+            None,
+        )
+        .unwrap();
         let update = tablepro_core::sql_dialect::build_keyed_update(
             "sqlite",
             None,

@@ -314,6 +314,31 @@ pub(super) fn parse_grid_cell_input(
     parse_input_for_grid_cell(text, col, driver_id, current_value)
 }
 
+pub(super) fn parse_pasted_cell(
+    text: Option<&str>,
+    col: Option<&ColumnInfo>,
+    driver_id: &str,
+    current_value: Option<&Value>,
+) -> Result<Value, String> {
+    match text {
+        None if col.is_none_or(|column| column.nullable) => Ok(Value::Null),
+        None => Err(crate::tr!("Field is required")),
+        Some("")
+            if col.is_none_or(|column| {
+                column.enum_type.is_none() && is_character_type(&column.data_type.to_ascii_lowercase())
+            }) =>
+        {
+            let required = col.map(|column| ColumnInfo {
+                nullable: false,
+                default_value: None,
+                ..column.clone()
+            });
+            parse_grid_cell_input("", required.as_ref(), driver_id, current_value)
+        }
+        Some(text) => parse_grid_cell_input(text, col, driver_id, current_value),
+    }
+}
+
 fn parse_sql_single_quoted_string(text: &str) -> Option<String> {
     if text.len() < 2 {
         return None;
