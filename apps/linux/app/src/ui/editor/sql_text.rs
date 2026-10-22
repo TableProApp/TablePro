@@ -1,6 +1,17 @@
 use relm4::gtk;
 use relm4::gtk::prelude::*;
 
+pub(crate) fn text_to_run(buffer: &gtk::TextBuffer) -> String {
+    if let Some((start, end)) = buffer.selection_bounds() {
+        let selected = buffer.text(&start, &end, true).to_string();
+        if !selected.trim().is_empty() {
+            return selected;
+        }
+    }
+    let (start, end) = buffer.bounds();
+    buffer.text(&start, &end, true).to_string()
+}
+
 pub(crate) fn toggle_line_comment(buffer: &gtk::TextBuffer) {
     let (sel_start, sel_end) = buffer.selection_bounds().unwrap_or_else(|| {
         let i = buffer.iter_at_mark(&buffer.get_insert());
@@ -102,6 +113,27 @@ pub(super) fn export_name_for_query(query: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn run_uses_the_selection_when_there_is_one_and_the_whole_buffer_otherwise() {
+        gtk::init().unwrap();
+        let buffer = gtk::TextBuffer::new(None);
+        buffer.set_text("SELECT 1;\nSELECT 2;");
+        assert_eq!(text_to_run(&buffer), "SELECT 1;\nSELECT 2;");
+        buffer.select_range(&buffer.iter_at_line(1).unwrap(), &buffer.end_iter());
+        assert_eq!(text_to_run(&buffer), "SELECT 2;");
+        buffer.set_text("SELECT 1;\n   \nSELECT 2;");
+        let blank = buffer.iter_at_line(1).unwrap();
+        let mut blank_end = blank;
+        blank_end.forward_to_line_end();
+        buffer.select_range(&blank, &blank_end);
+        assert_eq!(
+            text_to_run(&buffer),
+            "SELECT 1;\n   \nSELECT 2;",
+            "a blank selection falls back to the whole script"
+        );
+    }
 
     #[test]
     #[ignore = "requires an isolated GTK display"]

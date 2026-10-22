@@ -4,6 +4,7 @@
 
 ### Added
 
+- Run (Ctrl+Enter or the Run button) executes the selected text when something is selected, and the whole editor otherwise. It goes through the same guard, policy and audit path as any run.
 - The Columns dialog has a Reset button that forgets the column widths you set by dragging for that table.
 - The Session button shows how long its transaction has been open ("Session · transaction open · 12 min") once it passes a minute, so a forgotten transaction holding locks stands out.
 - F10 opens the main menu, as in other GNOME applications.

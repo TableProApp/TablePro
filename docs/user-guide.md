@@ -56,7 +56,7 @@ Use **Split** in the editor toolbar to show the same query in a second side-by-s
 
 To collapse a multiline SQL block, place the cursor inside it and press **Ctrl+Shift+[**. Click its gutter marker to unfold it, or choose **Unfold all** in the toolbar. **Ctrl+Shift+]** also unfolds every block. Folding hides lines in the editor without changing the SQL that runs. Editing the query clears folds so hidden text cannot be mistaken for the current query.
 
-- Ctrl+Enter runs the whole script; Ctrl+Shift+Enter runs the statement under the cursor (shaded). Escape cancels a running query when the server supports it.
+- Ctrl+Enter (and the Run button) runs the selected text when something other than blank space is selected, otherwise the whole script (a find match left selected counts as a selection); Ctrl+Shift+Enter runs the statement under the cursor (shaded). Escape cancels a running query when the server supports it.
 - Each statement has a result view. SQL Server statements that return multiple result sets show those sets in order within that view. More than five statement results collapse into a drop-down. **Pin results** keeps the current results above the next run.
 - After a run, the gutter marks each statement with a tick or a cross.
 - A failed statement shows the error, with **Copy error**, and on PostgreSQL the line and column of the error inside that statement.
@@ -124,7 +124,7 @@ Press Ctrl+? for the full list. The most used:
 | Keys | Action |
 |---|---|
 | Ctrl+E / Ctrl+T | New SQL editor tab |
-| Ctrl+Enter | Run the script |
+| Ctrl+Enter | Run the selection, or the script when nothing is selected |
 | Ctrl+Shift+Enter | Run the statement at the cursor |
 | Ctrl+S | Save pending changes (or the SQL file) |
 | Ctrl+Z / Ctrl+Y | Undo / redo a pending change |

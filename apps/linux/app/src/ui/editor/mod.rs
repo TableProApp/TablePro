@@ -54,7 +54,7 @@ pub use statement_cursor::grammar_for;
 use outcomes::{ScriptRunResult, StatementRun, StreamUpdate, clear_box, render_outcomes, run_statements_with_stream};
 use run_generation::{RunGeneration, RunTerminal};
 use schema::{apply_editor_preferences, apply_editor_scheme};
-use sql_text::{export_name_for_query, read_sql_text, toggle_line_comment};
+use sql_text::{export_name_for_query, read_sql_text, text_to_run, toggle_line_comment};
 use statement_cursor::{
     PlannedStatements, adjacent_statement_start, cursor_byte_offset, script_statements, statement_at_cursor,
 };
@@ -708,9 +708,7 @@ impl SimpleComponent for SqlEditor {
             SqlEditorInput::SessionTeardownFinished(result) => self.finish_session_teardown(result),
             SqlEditorInput::Run => {
                 self.timeout_retry.clear_override();
-                let buffer = self.source_view.buffer();
-                let (start, end) = buffer.bounds();
-                let sql = buffer.text(&start, &end, true).to_string();
+                let sql = text_to_run(&self.source_view.buffer());
                 let trimmed = sql.trim().to_string();
                 if trimmed.is_empty() {
                     self.status.set_label(&crate::tr!("empty query"));
