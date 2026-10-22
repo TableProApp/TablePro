@@ -760,7 +760,7 @@ impl BrowseTab {
     }
 
     pub(super) fn handle_undo(&mut self) {
-        use crate::services::change_tracker::UndoOp;
+        use crate::services::change_tracker::{RowKey, UndoOp};
         let op = match crate::services::change_tracker::with_tab(self.tab_id, |t| t.undo()) {
             Some(Some(op)) => op,
             _ => return,
@@ -772,18 +772,8 @@ impl BrowseTab {
                 prev_value,
                 ..
             } => {
-                // Drafts hold the post-edit value in
-                // RowObject.cells (mirrored at edit time);
-                // reverting the visible value requires
-                // mutating the cell back. Persisted rows
-                // never mutate RowObject — the tracker is
-                // the single source of truth and
-                // connect_bind queries
-                // `current_cell_value` to overlay the
-                // pending edit. set_cell on a persisted
-                // row is a harmless no-op (the cell
-                // already holds the original).
-                if let Some(pos) = self.find_row_position_by_key(&row_key)
+                if matches!(row_key, RowKey::Draft(_))
+                    && let Some(pos) = self.find_row_position_by_key(&row_key)
                     && let Some(row_obj) = self.row_object_at(pos)
                 {
                     row_obj.set_cell(col, prev_value);
@@ -824,7 +814,7 @@ impl BrowseTab {
     }
 
     pub(super) fn handle_redo(&mut self) {
-        use crate::services::change_tracker::UndoOp;
+        use crate::services::change_tracker::{RowKey, UndoOp};
         let op = match crate::services::change_tracker::with_tab(self.tab_id, |t| t.redo()) {
             Some(Some(op)) => op,
             _ => return,
@@ -836,7 +826,8 @@ impl BrowseTab {
                 new_value,
                 ..
             } => {
-                if let Some(pos) = self.find_row_position_by_key(&row_key)
+                if matches!(row_key, RowKey::Draft(_))
+                    && let Some(pos) = self.find_row_position_by_key(&row_key)
                     && let Some(row_obj) = self.row_object_at(pos)
                 {
                     row_obj.set_cell(col, new_value);

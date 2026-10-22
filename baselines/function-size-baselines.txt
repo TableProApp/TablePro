@@ -20,7 +20,7 @@ apps/linux/app/src/ui/app/workspace_tabs.rs 3
 apps/linux/app/src/ui/browse_tab/chrome.rs 1
 apps/linux/app/src/ui/browse_tab/grid_render.rs 1
 apps/linux/app/src/ui/browse_tab/mod.rs 2
-apps/linux/app/src/ui/browse_tab/row_ops.rs 3
+apps/linux/app/src/ui/browse_tab/row_ops.rs 2
 apps/linux/app/src/ui/connect_dialog/mod.rs 3
 apps/linux/app/src/ui/editor/diagnostics.rs 1
 apps/linux/app/src/ui/editor/mod.rs 3

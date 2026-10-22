@@ -1170,3 +1170,30 @@ fn copy_as_insert_reads_the_live_row_under_a_prepended_draft_with_its_unsaved_ed
     );
     controller.detach_runtime();
 }
+
+#[test]
+#[ignore = "requires isolated GTK display"]
+fn undoing_a_second_edit_keeps_the_persisted_original_for_later_edits_and_the_saved_update() {
+    relm4::gtk::init().unwrap();
+    let (mut controller, observed) = launch(Uuid::new_v4());
+    load_two_rows(&controller, &observed);
+    edit(&controller, 1, "b");
+    edit(&controller, 1, "c");
+    controller.sender().send(BrowseTabInput::Undo).unwrap();
+    pump(&observed);
+    let row = controller.model().row_object_at(0).expect("loaded row");
+    assert_eq!(row.cell_value(1), Value::Text("a".into()));
+    edit(&controller, 1, "a");
+    edit(&controller, 1, "d");
+    controller.sender().send(BrowseTabInput::CommitSave).unwrap();
+    let outputs = pump(&observed);
+    let Some(BrowseTabOutput::ExecuteTransaction { statements, .. }) = outputs
+        .iter()
+        .find(|output| matches!(output, BrowseTabOutput::ExecuteTransaction { .. }))
+    else {
+        panic!("save dispatches a transaction");
+    };
+    assert!(statements[0].1.contains(&Value::Text("a".into())));
+    assert!(!statements[0].1.contains(&Value::Text("b".into())));
+    controller.detach_runtime();
+}
