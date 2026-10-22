@@ -47,8 +47,7 @@ struct SyncRecordMapperConnectionTests {
         "aiRules",
         "aiAlwaysAllowedTools",
         "redisDatabase",
-        "startupCommands",
-        "sshRouteJson"
+        "startupCommands"
     ]
 
     private static let keptFromThisMac: Set<String> = [
@@ -286,7 +285,6 @@ struct SyncRecordMapperConnectionTests {
         connection.aiAlwaysAllowedTools = []
         connection.redisDatabase = nil
         connection.startupCommands = nil
-        connection.sshRoute = nil
 
         let updated = SyncRecordMapper.toCKRecord(connection, in: zoneID, base: base)
 

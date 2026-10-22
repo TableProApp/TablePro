@@ -131,8 +131,9 @@ struct SyncRecordMapper {
         fields[.redisDatabase] = connection.redisDatabase.map { Int64($0) }
         fields[.startupCommands] = connection.startupCommands.flatMap { $0.isEmpty ? nil : $0 }
         fields[.sshProfileId] = connection.sshProfileId?.uuidString
-        // A route another build wrote and this one cannot read stays as it is.
-        if record !== base || connection.sshRoute != Self.sshRoute(in: fields) {
+        // Only a change is written: a route another build wrote stays, and a record built without the
+        // server's copy names no route, so a push after the cache was dropped cannot clear another Mac's.
+        if connection.sshRoute != Self.sshRoute(in: fields) {
             fields[.sshRouteJson] = connection.sshRoute?.encoded()
         }
 

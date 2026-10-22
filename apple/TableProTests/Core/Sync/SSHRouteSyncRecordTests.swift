@@ -69,6 +69,16 @@ struct SSHRouteSyncRecordTests {
         #expect(Set(updated.changedKeys()).contains(routeKey))
     }
 
+    @Test("A record built without the server's copy says nothing about a route this Mac has not got")
+    func freshRecordLeavesTheRouteAlone() {
+        var connection = tunnelled()
+        connection.sshRoute = nil
+
+        let record = SyncRecordMapper.toCKRecord(connection, in: zoneID)
+
+        #expect(!Set(record.changedKeys()).contains(routeKey))
+    }
+
     @Test("A route this build cannot read survives this Mac saving another change")
     func unreadableRouteSurvivesPush() throws {
         let base = SyncRecordMapper.toCKRecord(tunnelled(), in: zoneID)
