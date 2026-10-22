@@ -1,14 +1,8 @@
-//
-//  SSHTunnelErrorTests.swift
-//  TableProTests
-//
-//  Tests for SSHTunnelError descriptions and isLocalPortBindFailure classification.
-//
-
 import Foundation
 import os
 @testable import TablePro
 import TableProPluginKit
+import TableProSSHTransport
 import TableProTestSupport
 import Testing
 
@@ -104,6 +98,67 @@ struct SSHTunnelErrorTests {
 
         #expect(error.errorDescription?.contains("db.internal:3306") == true)
         #expect(error.errorDescription?.contains("6") == true)
+    }
+
+    @Test("A failed negotiation reads as the shared explanation, with the jump host named when one failed")
+    func negotiationFailedDescription() {
+        let failure = SSHNegotiationFailure(
+            stage: .mac,
+            serverSoftware: "OpenSSH_10.3",
+            supported: ["hmac-sha2-256", "hmac-sha2-512"],
+            supportedHostKeys: []
+        )
+
+        let server = SSHTunnelError.negotiationFailed(failure, jumpHost: nil).errorDescription ?? ""
+        let hop = SSHTunnelError.negotiationFailed(failure, jumpHost: "bastion.example").errorDescription ?? ""
+
+        #expect(server == failure.explanation)
+        #expect(server.contains("OpenSSH_10.3"))
+        #expect(server.contains("hmac-sha2-512"))
+        #expect(hop.contains("bastion.example"))
+        #expect(hop.contains(failure.explanation))
+    }
+
+    @Test("A failed negotiation suggests asking for a supported method, and happened after dialing")
+    func negotiationFailedRecovery() {
+        let failure = SSHNegotiationFailure(stage: .cipher, serverSoftware: nil, supported: [], supportedHostKeys: [])
+        let error = SSHTunnelError.negotiationFailed(failure, jumpHost: nil)
+
+        #expect(error.recoverySuggestion == SSHNegotiationFailure.recoverySuggestion)
+        #expect((error as NSError).localizedRecoverySuggestion == SSHNegotiationFailure.recoverySuggestion)
+        #expect(SSHTunnelError.noAvailablePort.recoverySuggestion == nil)
+        #expect(!error.failedBeforeDialing)
+    }
+
+    @Test("A step on a jump host names the hop and keeps the step's words")
+    func attributedToJumpHost() {
+        let failure = SSHNegotiationFailure(stage: .keyExchangeOrHostKey, serverSoftware: nil, supported: [], supportedHostKeys: [])
+        let rejected = SSHTunnelError.authenticationFailed(reason: .privateKey)
+
+        #expect(SSHTunnelError.negotiationFailed(failure, jumpHost: nil).attributed(to: "bastion")
+            == .negotiationFailed(failure, jumpHost: "bastion"))
+        #expect(rejected.attributed(to: "bastion")
+            == .jumpHostFailed(host: "bastion", reason: rejected.errorDescription ?? ""))
+        #expect(SSHTunnelError.tunnelCreationFailed("SSH handshake failed: Failed getting banner").attributed(to: "bastion")
+            == .jumpHostFailed(host: "bastion", reason: "SSH handshake failed: Failed getting banner"))
+        #expect(SSHTunnelError.jumpHostFailed(host: "bastion", reason: "refused").errorDescription?
+            .contains("bastion") == true)
+    }
+
+    @Test(
+        "A cancelled sign-in, a host key answer and an error that names its host stay as they are",
+        arguments: [
+            SSHTunnelError.authenticationFailed(reason: .cancelled),
+            .hostKeyVerificationFailed,
+            .usernameMissing(host: "bastion"),
+            .negotiationFailed(
+                SSHNegotiationFailure(stage: .mac, serverSoftware: nil, supported: [], supportedHostKeys: []),
+                jumpHost: "first-hop"
+            ),
+        ]
+    )
+    func attributionKeepsItsOwnErrors(error: SSHTunnelError) {
+        #expect(error.attributed(to: "second-hop") == error)
     }
 
     @Test("A missing SSH username is plain text that names the host")

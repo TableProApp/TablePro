@@ -230,52 +230,47 @@ internal enum LibSSH2TunnelFactory {
             attempt: attempt
         )
 
+        let firstJump = resolved.jumps.first?.target.originalHost
         do {
-            let session = try createSession(
-                socketFD: socketFD,
-                endpoint: firstEndpoint,
-                deadline: deadline,
-                attempt: attempt
-            )
+            let session = try await onHop(firstJump) {
+                try createSession(socketFD: socketFD, endpoint: firstEndpoint, deadline: deadline, attempt: attempt)
+            }
             var jumpHops: [AuthenticatedChain.HopInfo] = []
             var currentSession = session
             var currentSocketFD = socketFD
 
             do {
-                try await verifyHostKey(
-                    session: session,
-                    hostname: firstHop.host,
-                    port: firstHop.port,
-                    attempt: attempt
-                )
-
-                try authenticateFirstHop(
-                    config: config,
-                    credentials: credentials,
-                    resolved: resolved,
-                    session: session,
-                    socketFD: socketFD,
-                    endpoint: firstEndpoint,
-                    deadline: deadline,
-                    attempt: attempt
-                )
+                try await onHop(firstJump) {
+                    try await verifyHostKey(session: session, hostname: firstHop.host, port: firstHop.port, attempt: attempt)
+                    try authenticateFirstHop(
+                        config: config,
+                        credentials: credentials,
+                        resolved: resolved,
+                        session: session,
+                        socketFD: socketFD,
+                        endpoint: firstEndpoint,
+                        deadline: deadline,
+                        attempt: attempt
+                    )
+                }
 
                 if !resolvedJumps.isEmpty {
                     for jumpIndex in 0..<resolvedJumps.count {
-                        let nextResolved: ResolvedSSHTarget = jumpIndex + 1 < resolvedJumps.count
-                            ? resolvedJumps[jumpIndex + 1]
-                            : resolvedPrimary
+                        let nextJump = jumpIndex + 1 < resolvedJumps.count ? resolvedJumps[jumpIndex + 1] : nil
+                        let nextResolved = nextJump ?? resolvedPrimary
                         let nextEndpoint = timeoutEndpoint(host: nextResolved.host, port: nextResolved.port)
 
-                        let channel = try openChannel(
-                            session: currentSession,
-                            socketFD: currentSocketFD,
-                            remoteHost: nextResolved.host,
-                            remotePort: nextResolved.port,
-                            endpoint: nextEndpoint,
-                            deadline: deadline,
-                            attempt: attempt
-                        )
+                        let channel = try await onHop(resolvedJumps[jumpIndex].originalHost) {
+                            try openChannel(
+                                session: currentSession,
+                                socketFD: currentSocketFD,
+                                remoteHost: nextResolved.host,
+                                remotePort: nextResolved.port,
+                                endpoint: nextEndpoint,
+                                deadline: deadline,
+                                attempt: attempt
+                            )
+                        }
 
                         var fds: [Int32] = [0, 0]
                         guard socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) == 0 else {
@@ -306,12 +301,9 @@ internal enum LibSSH2TunnelFactory {
 
                         let nextSession: OpaquePointer
                         do {
-                            nextSession = try createSession(
-                                socketFD: fds[1],
-                                endpoint: nextEndpoint,
-                                deadline: deadline,
-                                attempt: attempt
-                            )
+                            nextSession = try await onHop(nextJump?.originalHost) {
+                                try createSession(socketFD: fds[1], endpoint: nextEndpoint, deadline: deadline, attempt: attempt)
+                            }
                         } catch {
                             Darwin.close(fds[1])
                             relay.stop()
@@ -319,17 +311,19 @@ internal enum LibSSH2TunnelFactory {
                         }
 
                         do {
-                            try await authenticateNextHop(
-                                jumpIndex: jumpIndex,
-                                config: config,
-                                credentials: credentials,
-                                resolved: resolved,
-                                session: nextSession,
-                                socketFD: fds[1],
-                                endpoint: nextEndpoint,
-                                deadline: deadline,
-                                attempt: attempt
-                            )
+                            try await onHop(nextJump?.originalHost) {
+                                try await authenticateNextHop(
+                                    jumpIndex: jumpIndex,
+                                    config: config,
+                                    credentials: credentials,
+                                    resolved: resolved,
+                                    session: nextSession,
+                                    socketFD: fds[1],
+                                    endpoint: nextEndpoint,
+                                    deadline: deadline,
+                                    attempt: attempt
+                                )
+                            }
                         } catch {
                             // Clean up nextSession and fds[1]; relay task owns fds[0]
                             tablepro_libssh2_session_disconnect(nextSession, "Error")
@@ -392,6 +386,15 @@ internal enum LibSSH2TunnelFactory {
             attempt.clearTransportInterrupt()
             Darwin.close(socketFD)
             throw error
+        }
+    }
+
+    private static func onHop<T>(_ jumpHost: String?, _ step: () async throws -> T) async throws -> T {
+        guard let jumpHost else { return try await step() }
+        do {
+            return try await step()
+        } catch let error as SSHTunnelError {
+            throw error.attributed(to: jumpHost)
         }
     }
 
@@ -606,7 +609,7 @@ internal enum LibSSH2TunnelFactory {
 
     // MARK: - Session
 
-    private static func createSession(
+    internal static func createSession(
         socketFD: Int32,
         endpoint: ConnectionTimeoutEndpoint,
         deadline: ConnectionDeadline,
@@ -623,22 +626,17 @@ internal enum LibSSH2TunnelFactory {
         libssh2_session_set_blocking(session, 1)
         libssh2_session_set_timeout(session, max(1, deadline.remainingMilliseconds))
 
-        let rc = libssh2_session_handshake(session, socketFD)
-        if rc != 0 {
-            var msgPtr: UnsafeMutablePointer<CChar>?
-            var msgLen: Int32 = 0
-            libssh2_session_last_error(session, &msgPtr, &msgLen, 0)
-            let detail = msgPtr.map { String(cString: $0) } ?? "Unknown error"
+        if let failure = LibSSH2Handshake.perform(session, socket: socketFD) {
             libssh2_session_free(session)
-            do {
-                try attempt.check(for: endpoint)
-            } catch {
-                throw error
-            }
-            if rc == LIBSSH2_ERROR_TIMEOUT {
+            try attempt.check(for: endpoint)
+            switch failure {
+            case .negotiation(let negotiation):
+                throw SSHTunnelError.negotiationFailed(negotiation, jumpHost: nil)
+            case .timedOut:
                 throw deadline.timeoutError(for: endpoint)
+            case .failed(let detail):
+                throw SSHTunnelError.tunnelCreationFailed("SSH handshake failed: \(detail)")
             }
-            throw SSHTunnelError.tunnelCreationFailed("SSH handshake failed: \(detail)")
         }
 
         do {
@@ -896,10 +894,11 @@ internal enum LibSSH2TunnelFactory {
                 return
             } catch {
                 // A wire-level rejection (or a partial success the server accepted as one
-                // factor of publickey,keyboard-interactive) reports AUTHENTICATION_FAILED. No
-                // passphrase can change that, so rethrow instead of prompting; any other errno
-                // means the local key file needs a passphrase we don't have yet.
-                guard libssh2_session_last_errno(session) != LIBSSH2_ERROR_AUTHENTICATION_FAILED else {
+                // factor of publickey,keyboard-interactive) reports AUTHENTICATION_FAILED, and a
+                // missing or unreadable file fails before libssh2 runs, leaving its errno stale.
+                // No passphrase can change either, so rethrow instead of prompting.
+                guard FileManager.default.isReadableFile(atPath: expandedPath),
+                      libssh2_session_last_errno(session) != LIBSSH2_ERROR_AUTHENTICATION_FAILED else {
                     throw error
                 }
             }
@@ -1124,7 +1123,8 @@ internal enum LibSSH2TunnelFactory {
             if libssh2_session_last_errno(session) == LIBSSH2_ERROR_TIMEOUT {
                 throw deadline.timeoutError(for: endpoint)
             }
-            throw SSHTunnelError.channelOpenFailed
+            let reason = LibSSH2ForwardChannel.lastErrorMessage(session: session)
+            throw SSHTunnelError.tunnelCreationFailed("Could not open a channel to \(remoteHost):\(remotePort): \(reason)")
         }
 
         do {

@@ -2,16 +2,17 @@
 #
 # Opens the iOS and the macOS app's SSH tunnel against real OpenSSH servers and sends a Redis PING
 # through it, once per cell: server version, key type and format, key source, auth method, agent,
-# verification code, key exchange, many clients and many tunnels, and a server that dies
-# mid-session. A cell passes when it connects or ends with the error it names in that app's own
-# words; anything else fails the run. Cell names start with the app, ios/ or macos/.
+# verification code, key exchange, cipher and MAC negotiation, many clients and many tunnels, and a
+# server that dies mid-session. A cell passes when it connects or ends with the error it names in
+# that app's own words; anything else fails the run. Cell names start with the app, ios/ or macos/.
 #
 # Each harness is its app's own tunnel code, compiled with the libssh2 that app ships:
 # ssh-tunnel-matrix/build-ios-harness.sh for the simulator, where every cell runs through
 # `xcrun simctl spawn -s` with no booted device, and build-mac-harness.sh for this Mac, where cells
 # run with an empty home (CFFIXED_USER_HOME, so no ~/.ssh/config) and an ssh-agent started here.
-# The post-quantum cells expect a connection when that harness's libssh2 has
-# mlkem768x25519-sha256, and the app's key exchange error when it does not. The servers come from
+# A server limited to a method the harness's libssh2 lacks expects that app's named negotiation
+# failure, and a connection once a later libssh2 offers the method: mlkem768x25519-sha256 on pq10
+# and pq9, sntrup761x25519-sha512 on kex10, 3des-cbc on cipher10. The servers come from
 # scripts/ssh-test-servers.sh. It is a probe, not a test, because no CI job has Docker.
 #
 # Usage:
@@ -225,18 +226,22 @@ loss_cell() {
     report "$name" "$expected" "$result" "$verdict"
 }
 
-# Each app names a failure in its own words. The Mac reports every failed handshake as one
-# tunnelCreationFailed, and a key it cannot use ends at the passphrase prompt, which the macOS
-# harness dismisses, as the user would to give up.
+# Both apps word a negotiation failure the same way (TableProSSHTransport).
+KEX_TEXT="TablePro and the SSH server have no key exchange or host key method in common."
+CIPHER_TEXT="TablePro and the SSH server have no cipher in common."
+MAC_TEXT="TablePro and the SSH server have no MAC algorithm in common."
+
+# Each app names any other failure in its own words. A key the Mac cannot use ends at the
+# passphrase prompt, which the macOS harness dismisses, as the user would to give up.
 expectations() {
     case "$APP" in
         ios)
             HARNESS="$IOS_HARNESS"
             RUN=(xcrun simctl spawn -s "$UDID" "$HARNESS")
             KEY_SOURCES="file memory"
-            KEX="ERROR negotiationFailed(*Stage.keyExchangeOrHostKey*"
-            MAC="ERROR negotiationFailed(*Stage.mac,*"
-            HOP_KEX="ERROR jumpHostFailed(*no key exchange or host key method in common*"
+            KEX="ERROR negotiationFailed(*Stage.keyExchangeOrHostKey,*) | $KEX_TEXT*"
+            CIPHER="ERROR negotiationFailed(*Stage.cipher,*) | $CIPHER_TEXT*"
+            MAC="ERROR negotiationFailed(*Stage.mac,*) | $MAC_TEXT*"
             SECURITY_KEY="ERROR securityKeyUnsupported |*"
             NO_PASSPHRASE="ERROR passphraseRequired |*"
             WRONG_PASSPHRASE="ERROR passphraseIncorrect |*"
@@ -247,9 +252,9 @@ expectations() {
             HARNESS="$MAC_HARNESS"
             RUN=(env "CFFIXED_USER_HOME=$WORK/home" "SSH_AUTH_SOCK=$WORK/agent.sock" "$HARNESS")
             KEY_SOURCES="file"
-            KEX="ERROR tunnelCreationFailed(\"SSH handshake failed: *"
-            MAC="$KEX"
-            HOP_KEX="$KEX"
+            KEX="ERROR negotiationFailed(*Stage.keyExchangeOrHostKey,*jumpHost: nil) | $KEX_TEXT*"
+            CIPHER="ERROR negotiationFailed(*Stage.cipher,*jumpHost: nil) | $CIPHER_TEXT*"
+            MAC="ERROR negotiationFailed(*Stage.mac,*jumpHost: nil) | $MAC_TEXT*"
             SECURITY_KEY="ERROR authenticationFailed(reason: *securityKeyFile) |*"
             NO_PASSPHRASE="ERROR authenticationFailed(reason: *privateKey) |*"
             WRONG_PASSPHRASE="$NO_PASSPHRASE"
@@ -257,18 +262,27 @@ expectations() {
             NO_CODE="ERROR authenticationFailed(reason: *keyboardInteractive) |*"
             ;;
     esac
-    PQ="$KEX"
-    PQ_HOP="$HOP_KEX"
-    if grep -a -q 'mlkem768x25519-sha256' "$HARNESS"; then
-        PQ="CONNECTED"
-        PQ_HOP="CONNECTED"
+}
+
+# A jump host that fails key exchange is named, whichever hop of the chain it is.
+hop_kex() {
+    echo "ERROR negotiationFailed(*Stage.keyExchangeOrHostKey,*jumpHost: Optional(\"$1\")) | Jump host $1 failed: $KEX_TEXT*"
+}
+
+# The expectation for a server limited to $1: a connection once the harness's libssh2 offers it.
+lacking() {
+    if grep -a -q -- "$1" "$HARNESS"; then
+        echo "CONNECTED"
+    else
+        echo "$2"
     fi
 }
 
 PASSWORD=(--auth password --password "$SSH_TEST_PASSWORD")
 TOTP=(--totp-secret "$SSH_TEST_TOTP_SECRET")
 CONNECTED="CONNECTED"
-# hop2 is reachable only from the other servers, under its network alias.
+# hop2 is reachable only from the other servers, under its network alias. Every server listens on
+# hop2's port inside that network.
 HOP2=(--host "${SSH_TEST_HOP2%:*}")
 HOP2_PORT="${SSH_TEST_HOP2##*:}"
 HOP1=(--jump "$SSH_TEST_HOST:$SSH_TEST_PORT_HOP1")
@@ -303,8 +317,10 @@ run_cells() {
     on macos && cell kbdpass/keyboard-interactive "$CONNECTED" "$SSH_TEST_PORT_KBDPASS" \
         --auth kbdint --password "$SSH_TEST_PASSWORD"
 
-    cell pq10/password "$PQ" "$SSH_TEST_PORT_PQ10" "${PASSWORD[@]}"
-    cell pq9/password "$PQ" "$SSH_TEST_PORT_PQ9" "${PASSWORD[@]}"
+    cell pq10/password "$(lacking mlkem768x25519-sha256 "$KEX")" "$SSH_TEST_PORT_PQ10" "${PASSWORD[@]}"
+    cell pq9/password "$(lacking mlkem768x25519-sha256 "$KEX")" "$SSH_TEST_PORT_PQ9" "${PASSWORD[@]}"
+    cell kex10/password "$(lacking sntrup761x25519-sha512 "$KEX")" "$SSH_TEST_PORT_KEX10" "${PASSWORD[@]}"
+    cell cipher10/password "$(lacking 3des-cbc "$CIPHER")" "$SSH_TEST_PORT_CIPHER10" "${PASSWORD[@]}"
     cell mac10/password "$MAC" "$SSH_TEST_PORT_MAC10" "${PASSWORD[@]}"
 
     for source in $KEY_SOURCES; do
@@ -347,6 +363,10 @@ run_cells() {
             --auth kbdint --kbdint-answer "$(totp_code)"
         cell totp/keyboard-interactive/wrong-code "$NO_CODE" "$SSH_TEST_PORT_TOTP" \
             --auth kbdint --kbdint-answer 000000
+        # A key file that is not there asks for no passphrase; the prompt's stand-in would end it
+        # as a rejected key.
+        cell v10/missing-key/file "ERROR tunnelCreationFailed(\"Private key file not found at: *" "$SSH_TEST_PORT_V10" \
+            --auth key --key-file "$SSH_TEST_KEYS/no-such-key"
     fi
 
     cell two-hops/password "$CONNECTED" "$HOP2_PORT" "${HOP2[@]}" "${HOP1[@]}" --jump-key "$SSH_TEST_KEYS/ed25519" \
@@ -360,11 +380,19 @@ run_cells() {
     else
         cell two-hops/hop-agent "$CONNECTED" "$HOP2_PORT" "${HOP2[@]}" "${HOP1[@]}" --jump-key agent "${PASSWORD[@]}"
         # A Mac jump host has no passphrase field, so its key's passphrase comes from the prompt.
-        cell two-hops/hop-passphrase-key "$NO_PASSPHRASE" "$HOP2_PORT" "${HOP2[@]}" "${HOP1[@]}" \
-            --jump-key "$SSH_TEST_KEYS/ed25519-pass" "${PASSWORD[@]}"
+        cell two-hops/hop-passphrase-key \
+            "ERROR jumpHostFailed(host: \"$SSH_TEST_HOST\", reason: *) | Jump host $SSH_TEST_HOST failed: SSH private key rejected*" \
+            "$HOP2_PORT" "${HOP2[@]}" "${HOP1[@]}" --jump-key "$SSH_TEST_KEYS/ed25519-pass" "${PASSWORD[@]}"
     fi
-    cell two-hops/pq-hop "$PQ_HOP" "$HOP2_PORT" "${HOP2[@]}" --jump "$SSH_TEST_HOST:$SSH_TEST_PORT_PQ10" \
+    cell two-hops/pq-hop "$(lacking mlkem768x25519-sha256 "$(hop_kex "$SSH_TEST_HOST")")" "$HOP2_PORT" "${HOP2[@]}" \
+        --jump "$SSH_TEST_HOST:$SSH_TEST_PORT_PQ10" --jump-key "$SSH_TEST_KEYS/ed25519" "${PASSWORD[@]}"
+    # Key exchange fails on the first hop, on the server behind a hop, and on the second of two hops.
+    cell two-hops/kex-hop "$(lacking sntrup761x25519-sha512 "$(hop_kex "$SSH_TEST_HOST")")" "$HOP2_PORT" "${HOP2[@]}" \
+        --jump "$SSH_TEST_HOST:$SSH_TEST_PORT_KEX10" --jump-key "$SSH_TEST_KEYS/ed25519" "${PASSWORD[@]}"
+    cell two-hops/kex-server "$(lacking sntrup761x25519-sha512 "$KEX")" "$HOP2_PORT" --host kex10 "${HOP1[@]}" \
         --jump-key "$SSH_TEST_KEYS/ed25519" "${PASSWORD[@]}"
+    cell three-hops/kex-second-hop "$(lacking sntrup761x25519-sha512 "$(hop_kex kex10)")" "$HOP2_PORT" "${HOP2[@]}" \
+        "${HOP1[@]}" --jump "kex10:$HOP2_PORT" --jump-key "$SSH_TEST_KEYS/ed25519" "${PASSWORD[@]}"
     cell two-hops/30-clients-one-tunnel "CONNECTED clients=30" "$HOP2_PORT" "${HOP2[@]}" "${HOP1[@]}" \
         --jump-key "$SSH_TEST_KEYS/ed25519" --mode clients --count 30 "${PASSWORD[@]}"
 

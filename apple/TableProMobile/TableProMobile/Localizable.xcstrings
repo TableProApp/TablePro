@@ -3173,7 +3173,8 @@
       }
     },
     "Ask the SSH server's administrator to turn on a method TablePro supports." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Atom" : {
       "extractionState" : "manual",
@@ -12315,7 +12316,8 @@
       }
     },
     "It supports these host key types: %@." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Its connection is not imported." : {
 
@@ -13273,6 +13275,12 @@
           }
         }
       }
+    },
+    "The SSH server closed the connection during the handshake." : {
+
+    },
+    "The SSH server ended the connection during the handshake: %@" : {
+
     },
     "TOTP" : {
 
@@ -22426,16 +22434,20 @@
       }
     },
     "TablePro and the SSH server could not agree on how to encrypt the connection." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro and the SSH server have no cipher in common." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro and the SSH server have no key exchange or host key method in common." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro and the SSH server have no MAC algorithm in common." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro can't open “%@”." : {
       "localizations" : {
@@ -22800,13 +22812,16 @@
       "generatesSymbol" : false
     },
     "TablePro supports these ciphers: %@." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro supports these key exchange methods: %@." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro supports these MAC algorithms: %@." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro will re-download every connection, group, and tag from your iCloud account. Local data on this device is not deleted." : {
       "extractionState" : "stale",
@@ -25331,7 +25346,8 @@
       }
     },
     "The server runs %@." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The server sent an unexpected message and the connection was reset. Run the query again." : {
       "extractionState" : "manual",

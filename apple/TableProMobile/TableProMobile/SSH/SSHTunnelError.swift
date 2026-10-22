@@ -15,7 +15,8 @@ nonisolated enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
     case jumpHostFailed(host: String, reason: String)
     case jumpHostKeysUnreadable(String)
     case tunnelClosed
-    case negotiationFailed(SSHNegotiationFailure)
+    // jumpHost is nil when the SSH server itself failed.
+    case negotiationFailed(SSHNegotiationFailure, jumpHost: String?)
     case securityKeyUnsupported
     case passphraseRequired
     case passphraseIncorrect
@@ -46,8 +47,9 @@ nonisolated enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
         case .jumpHostKeysUnreadable(let reason):
             return String(format: String(localized: "The jump host keys on this device could not be read: %@"), reason)
         case .tunnelClosed: return "SSH tunnel is closed"
-        case .negotiationFailed(let failure):
-            return Self.describe(failure)
+        case .negotiationFailed(let failure, let jumpHost):
+            guard let jumpHost else { return failure.explanation }
+            return String(format: String(localized: "Jump host %1$@ failed: %2$@"), jumpHost, failure.explanation)
         case .securityKeyUnsupported:
             return String(
                 localized: "This SSH private key belongs to a security key (FIDO), which TablePro on iPhone and iPad cannot sign with."
@@ -71,47 +73,5 @@ nonisolated enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
         case .verificationCodeRejected:
             return String(localized: "The SSH server did not accept the verification code.")
         }
-    }
-
-    private static func describe(_ failure: SSHNegotiationFailure) -> String {
-        var sentences: [String] = []
-
-        switch failure.stage {
-        case .keyExchangeOrHostKey:
-            sentences.append(String(localized: "TablePro and the SSH server have no key exchange or host key method in common."))
-        case .cipher:
-            sentences.append(String(localized: "TablePro and the SSH server have no cipher in common."))
-        case .mac:
-            sentences.append(String(localized: "TablePro and the SSH server have no MAC algorithm in common."))
-        case .undetermined:
-            sentences.append(String(localized: "TablePro and the SSH server could not agree on how to encrypt the connection."))
-        }
-
-        if let software = failure.serverSoftware {
-            sentences.append(String(format: String(localized: "The server runs %@."), software))
-        }
-
-        if !failure.supported.isEmpty {
-            let list = failure.supported.formatted(.list(type: .and))
-            switch failure.stage {
-            case .keyExchangeOrHostKey:
-                sentences.append(String(format: String(localized: "TablePro supports these key exchange methods: %@."), list))
-            case .cipher:
-                sentences.append(String(format: String(localized: "TablePro supports these ciphers: %@."), list))
-            case .mac:
-                sentences.append(String(format: String(localized: "TablePro supports these MAC algorithms: %@."), list))
-            case .undetermined:
-                break
-            }
-        }
-
-        if !failure.supportedHostKeys.isEmpty {
-            sentences.append(String(
-                format: String(localized: "It supports these host key types: %@."),
-                failure.supportedHostKeys.formatted(.list(type: .and))
-            ))
-        }
-
-        return sentences.joined(separator: " ")
     }
 }

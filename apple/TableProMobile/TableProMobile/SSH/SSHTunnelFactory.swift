@@ -185,8 +185,9 @@ nonisolated enum SSHTunnelFactory {
         }
     }
 
-    // A hop's failure names the hop. A host key question already names its host and port, and
-    // anything that is not an SSH error, such as a cancellation, passes through as it is.
+    // A hop's failure names the hop. A failed negotiation keeps its own case, whose advice holds on
+    // any hop. A host key question already names its host and port, and anything that is not an
+    // SSH error, such as a cancellation, passes through as it is.
     private static func failing(as target: Target, _ step: () async throws -> Void) async throws {
         guard case .jumpHost = target.role else {
             try await step()
@@ -196,12 +197,14 @@ nonisolated enum SSHTunnelFactory {
             try await step()
         } catch let error as SSHTunnelError {
             switch error {
+            case .negotiationFailed(let failure, nil):
+                throw SSHTunnelError.negotiationFailed(failure, jumpHost: target.host)
             case .connectionFailed, .handshakeFailed, .authenticationFailed, .noAvailablePort,
-                 .channelOpenFailed, .tunnelClosed, .negotiationFailed,
+                 .channelOpenFailed, .tunnelClosed,
                  .securityKeyUnsupported, .passphraseRequired, .passphraseIncorrect,
                  .additionalFactorRequired, .promptUnanswerable, .verificationCodeRejected:
                 throw SSHTunnelError.jumpHostFailed(host: target.host, reason: error.localizedDescription)
-            case .hostKeyRejected, .hostKeyUnverified, .usernameMissing, .jumpHostNeedsKey,
+            case .negotiationFailed, .hostKeyRejected, .hostKeyUnverified, .usernameMissing, .jumpHostNeedsKey,
                  .jumpHostSharedKeyMissing, .jumpHostFailed, .jumpHostKeysUnreadable:
                 throw error
             }

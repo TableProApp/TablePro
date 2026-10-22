@@ -28,7 +28,7 @@ struct SSHTunnelErrorClassifierTests {
             supportedHostKeys: ["ssh-ed25519", "rsa-sha2-512"]
         )
 
-        let error = ErrorClassifier.classify(SSHTunnelError.negotiationFailed(failure), context: Self.context)
+        let error = ErrorClassifier.classify(SSHTunnelError.negotiationFailed(failure, jumpHost: nil), context: Self.context)
 
         #expect(error.category == .ssh)
         #expect(error.recovery == String(localized: "Ask the SSH server's administrator to turn on a method TablePro supports."))
@@ -36,6 +36,20 @@ struct SSHTunnelErrorClassifierTests {
         #expect(error.message.contains("OpenSSH_10.3"))
         #expect(error.message.contains("curve25519-sha256"))
         #expect(error.message.contains("rsa-sha2-512"))
+    }
+
+    @Test("A jump host that fails negotiation gets the negotiation recovery and is named")
+    func jumpHostNegotiationFailureIsNotAnAddressProblem() {
+        let failure = SSHNegotiationFailure(stage: .mac, serverSoftware: nil, supported: ["hmac-sha2-256"], supportedHostKeys: [])
+
+        let error = ErrorClassifier.classify(
+            SSHTunnelError.negotiationFailed(failure, jumpHost: "bastion.internal"),
+            context: Self.context
+        )
+
+        #expect(error.recovery == SSHNegotiationFailure.recoverySuggestion)
+        #expect(error.message.contains("bastion.internal"))
+        #expect(error.message.contains(failure.explanation))
     }
 
     @Test("An SSH connect that timed out keeps the Local Network recovery")

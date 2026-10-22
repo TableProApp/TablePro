@@ -3,10 +3,10 @@ import TableProSSHConfig
 import TableProSSHTransport
 
 // Compiled into one module with the macOS app's tunnel sources (build-mac-harness.sh) to reach the
-// internal LibSSH2TunnelFactory. The app files it leaves out open UI, so the stand-ins below take
-// their place: every host key is trusted, a passphrase prompt is dismissed, and a
-// keyboard-interactive prompt gets --kbdint-answer or an empty answer. The modes live in
-// harness-common.swift.
+// internal LibSSH2TunnelFactory. The app files it leaves out open UI or reach past the tunnel, so
+// the stand-ins below take their place: every host key is trusted, a passphrase prompt is
+// dismissed, and a keyboard-interactive prompt gets --kbdint-answer or an empty answer. The modes
+// live in harness-common.swift.
 
 nonisolated enum MacHarness {
     static let options = TunnelHarness.options()
@@ -20,6 +20,10 @@ nonisolated struct AppStorageEnvironment: Sendable {
 
     let applicationSupportRoot: URL
     let isIsolated: Bool
+}
+
+nonisolated protocol ConnectionPreflightReporting {
+    var failedBeforeDialing: Bool { get }
 }
 
 nonisolated enum HostKeyVerifier {

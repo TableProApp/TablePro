@@ -383,25 +383,38 @@ struct SSHTunnelFactoryTests {
 
     @Test(
         "A named failure at a hop names the hop and keeps its words",
-        arguments: zip(
-            [SpyTunnelStages.Step.handshake, .authenticatePrivateKey, .authenticatePrivateKey, .authenticatePrivateKey],
-            [
-                SSHTunnelError.negotiationFailed(SSHNegotiationFailure(
-                    stage: .keyExchangeOrHostKey,
-                    serverSoftware: "OpenSSH_10.3",
-                    supported: ["curve25519-sha256"],
-                    supportedHostKeys: ["ssh-ed25519"]
-                )),
-                .passphraseIncorrect,
-                .securityKeyUnsupported,
-                .additionalFactorRequired(["keyboard-interactive"]),
-            ]
-        )
+        arguments: [
+            SSHTunnelError.passphraseIncorrect,
+            .securityKeyUnsupported,
+            .additionalFactorRequired(["keyboard-interactive"]),
+        ]
     )
-    func namedHopFailureNamesTheHop(step: SpyTunnelStages.Step, failure: SSHTunnelError) async {
-        let stages = SpyTunnelStages(failingAt: step, with: failure)
+    func namedHopFailureNamesTheHop(failure: SSHTunnelError) async {
+        let stages = SpyTunnelStages(failingAt: .authenticatePrivateKey, with: failure)
 
         await #expect(throws: SSHTunnelError.jumpHostFailed(host: Self.bastion.host, reason: failure.localizedDescription)) {
+            try await Self.create(
+                stages: stages,
+                authMethod: .password,
+                jumpHosts: [Self.bastion],
+                jumpHostCredentials: [Self.bastion.id: .privateKey(key: "HOP KEY", passphrase: nil)]
+            )
+        }
+
+        #expect(stages.discardCount == 1)
+    }
+
+    @Test("A hop that fails negotiation keeps the negotiation case and names the hop")
+    func hopNegotiationFailureKeepsItsCase() async {
+        let negotiation = SSHNegotiationFailure(
+            stage: .keyExchangeOrHostKey,
+            serverSoftware: "OpenSSH_10.3",
+            supported: ["curve25519-sha256"],
+            supportedHostKeys: ["ssh-ed25519"]
+        )
+        let stages = SpyTunnelStages(failingAt: .handshake, with: SSHTunnelError.negotiationFailed(negotiation, jumpHost: nil))
+
+        await #expect(throws: SSHTunnelError.negotiationFailed(negotiation, jumpHost: Self.bastion.host)) {
             try await Self.create(
                 stages: stages,
                 authMethod: .password,

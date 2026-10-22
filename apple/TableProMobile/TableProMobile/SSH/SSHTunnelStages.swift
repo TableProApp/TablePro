@@ -360,11 +360,18 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
         libssh2_session_set_blocking(session, 1)
         libssh2_session_set_timeout(session, blockingCallTimeoutMilliseconds)
 
-        let rc = libssh2_session_handshake(session, socketFD)
-        guard rc == 0 else {
-            let failure = LibSSH2HandshakeFailure.error(session: session, rc: rc)
+        if let failure = LibSSH2Handshake.perform(session, socket: socketFD) {
             libssh2_session_free(session)
-            throw failure
+            switch failure {
+            case .negotiation(let negotiation):
+                throw SSHTunnelError.negotiationFailed(negotiation, jumpHost: nil)
+            case .timedOut:
+                // libssh2 says "Timed out waiting on socket", which reads as blocked Local Network access,
+                // but the TCP connect already succeeded.
+                throw SSHTunnelError.handshakeFailed(String(localized: "The SSH server did not answer in time."))
+            case .failed(let detail):
+                throw SSHTunnelError.handshakeFailed(detail)
+            }
         }
 
         return session
