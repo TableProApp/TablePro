@@ -39,7 +39,9 @@ async fn value_contract_stale_grid_delete_preserves_concurrent_document_change()
         before
             .rows
             .iter()
-            .find(|row| row[key_index] == Value::Json(mongodb::bson::Bson::ObjectId(id).into_canonical_extjson()))
+            .find(|row| {
+                row[key_index] == Value::Json(Box::new(mongodb::bson::Bson::ObjectId(id).into_canonical_extjson()))
+            })
             .expect("find row by complete native key")
             .clone()
     };

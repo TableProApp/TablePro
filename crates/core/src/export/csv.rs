@@ -493,12 +493,12 @@ mod tests {
             vec![
                 Value::Bool(true),
                 Value::Uuid("550e8400-e29b-41d4-a716-446655440000".parse().unwrap()),
-                Value::Json(serde_json::json!({"ok": true, "n": 1})),
+                Value::Json(Box::new(serde_json::json!({"ok": true, "n": 1}))),
             ],
             vec![
                 Value::Bool(false),
                 Value::Uuid("00000000-0000-4000-8000-000000000000".parse().unwrap()),
-                Value::Json(serde_json::json!([null, "a,b", {"x": 2}])),
+                Value::Json(Box::new(serde_json::json!([null, "a,b", {"x": 2}]))),
             ],
             vec![Value::Null, Value::Null, Value::Null],
         ];

@@ -560,7 +560,7 @@ async fn value_roundtrip_all_types() {
         Value::DateTime(dt),
         Value::TimestampTz(tz),
         Value::Uuid(uuid),
-        Value::Json(json_val.clone()),
+        Value::Json(Box::new(json_val.clone())),
         Value::Null,
     ];
 
@@ -616,7 +616,7 @@ async fn value_roundtrip_all_types() {
         v => panic!("expected uuid as text, got {v:?}"),
     }
     match &row[14] {
-        Value::Json(v) => assert_eq!(v, &json_val),
+        Value::Json(v) => assert_eq!(v.as_ref(), &json_val),
         v => panic!("expected json, got {v:?}"),
     }
     assert_eq!(row[15], Value::Null);

@@ -757,7 +757,7 @@ async fn streamed_cursor_pages_preserve_native_values_across_page_boundaries() {
         Value::Bool(true),
         Value::Bytes(vec![0, 255]),
         Value::Decimal(rust_decimal::Decimal::new(12345, 2)),
-        Value::Json(serde_json::json!({"kind": "native"})),
+        Value::Json(Box::new(serde_json::json!({"kind": "native"}))),
         Value::Undecodable("custom_type".into()),
     ];
     let second = vec![

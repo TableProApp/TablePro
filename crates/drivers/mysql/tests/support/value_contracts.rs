@@ -947,7 +947,7 @@ async fn assert_text_exports_survive_sql_mode(options: &ConnectOptions, mode: &s
             &[
                 Value::Int(id as i64),
                 Value::Text((*label).into()),
-                Value::Json(doc.clone()),
+                Value::Json(Box::new(doc.clone())),
             ],
         )
         .await

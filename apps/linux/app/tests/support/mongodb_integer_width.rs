@@ -23,7 +23,7 @@ fn value_contract_mongodb_integer_parser_preserves_int32_and_int64_widths() {
     for value in [i32::MIN, i32::MAX] {
         assert_eq!(
             parse_input_for_driver(&value.to_string(), Some(&int32), "mongodb").unwrap(),
-            Value::Json(serde_json::json!({"$numberInt": value.to_string()}))
+            Value::Json(Box::new(serde_json::json!({"$numberInt": value.to_string()})))
         );
     }
     for value in [i64::from(i32::MIN) - 1, i64::from(i32::MAX) + 1] {

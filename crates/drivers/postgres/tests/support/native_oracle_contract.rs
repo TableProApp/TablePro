@@ -116,7 +116,7 @@ async fn value_contract_json_and_jsonb_match_native_type_oracles() {
             Value::JsonText("{ \"b\": 2, \"a\": [null, true] }".into()),
             Value::Text("{ \"b\": 2, \"a\": [null, true] }".into()),
             Value::Text("object".into()),
-            Value::Json(json!({"a": [null, true], "b": 2})),
+            Value::Json(Box::new(json!({"a": [null, true], "b": 2}))),
             Value::Text("object".into()),
             Value::Bool(true),
         ]

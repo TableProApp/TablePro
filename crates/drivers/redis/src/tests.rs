@@ -298,7 +298,9 @@ fn redis_value_to_result_maps_an_array_to_one_row_per_item() {
 
 #[test]
 fn redis_value_to_result_truncates_an_array_at_a_shared_budget() {
-    let items = (0..MAX_QUERY_ROWS + 1).map(|i| RedisValue::Int(i as i64)).collect();
+    let items = (0..MAX_QUERY_RESULT_BYTES / 1024 + 1024)
+        .map(|_| RedisValue::BulkString(vec![b'x'; 1024]))
+        .collect();
     let result = redis_value_to_result(RedisValue::Array(items));
     assert!(!result.rows.is_empty());
     assert!(result.rows.len() < MAX_QUERY_ROWS);
@@ -362,12 +364,12 @@ fn redis_nested_replies_keep_structure_and_binary_bytes() {
     assert_eq!(
         result.rows,
         vec![
-            vec![Value::Json(serde_json::json!([{"$redisBytes": "ff00"}]))],
-            vec![Value::Json(serde_json::json!({"$redisMap": [["score", 9]]}))],
-            vec![Value::Json(serde_json::json!({"$redisSet": ["member"]}))],
-            vec![Value::Json(
+            vec![Value::Json(Box::new(serde_json::json!([{"$redisBytes": "ff00"}])))],
+            vec![Value::Json(Box::new(serde_json::json!({"$redisMap": [["score", 9]]})))],
+            vec![Value::Json(Box::new(serde_json::json!({"$redisSet": ["member"]})))],
+            vec![Value::Json(Box::new(
                 serde_json::json!([{"$redisBigNumber": "18446744073709551616"}])
-            )],
+            ))],
         ]
     );
     assert_eq!(
@@ -398,12 +400,12 @@ fn redis_resp3_attribute_and_push_keep_their_protocol_markers() {
     });
     assert_eq!(
         attribute,
-        Value::Json(serde_json::json!({
+        Value::Json(Box::new(serde_json::json!({
             "$redisAttribute": {
                 "data": "payload",
                 "attributes": [["ttl", 3]]
             }
-        }))
+        })))
     );
 
     let push = redis_scalar(RedisValue::Push {
@@ -415,12 +417,12 @@ fn redis_resp3_attribute_and_push_keep_their_protocol_markers() {
     });
     assert_eq!(
         push,
-        Value::Json(serde_json::json!({
+        Value::Json(Box::new(serde_json::json!({
             "$redisPush": {
                 "kind": "Message",
                 "data": ["updates", {"$redisBytes": "ff"}]
             }
-        }))
+        })))
     );
 }
 

@@ -61,7 +61,7 @@ async fn value_contract_mongodb_nested_document_edit_preserves_extended_bson_and
     let row = result
         .rows
         .iter()
-        .find(|row| row[id_index] == Value::Json(serde_json::json!({ "$oid": row_id.to_hex() })))
+        .find(|row| row[id_index] == Value::Json(Box::new(serde_json::json!({ "$oid": row_id.to_hex() }))))
         .expect("target document is present");
     let Value::Json(displayed) = &row[payload_index] else {
         panic!(
@@ -69,7 +69,7 @@ async fn value_contract_mongodb_nested_document_edit_preserves_extended_bson_and
             row[payload_index]
         );
     };
-    assert_eq!(*displayed, Bson::Document(before).into_canonical_extjson());
+    assert_eq!(**displayed, Bson::Document(before).into_canonical_extjson());
 
     let input = r#"{"profile":{"name":"after","visits":{"$numberLong":"9007199254740993"}},"amount":{"$numberDecimal":"12.3400"},"owner":{"$oid":"00112233445566778899aabb"},"labels":["edited","shape"]}"#;
     let edited = parse_input_for_driver(input, Some(&result.columns[payload_index]), "mongodb").unwrap();

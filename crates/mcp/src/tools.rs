@@ -410,7 +410,7 @@ mod tests {
             serde_json::from_str("[9007199254740993,-9007199254740993,{\"fraction\":1.234567890123456789}]").unwrap();
 
         assert_eq!(
-            value_to_json(&tablepro_core::Value::Json(value)),
+            value_to_json(&tablepro_core::Value::Json(Box::new(value))),
             json!({
                 "$type": "json",
                 "value": {
@@ -481,7 +481,7 @@ mod tests {
             "when": {"$date": {"$numberLong": "9223372036854775807"}},
         });
         assert_eq!(
-            value_to_json(&tablepro_core::Value::Json(extended.clone())),
+            value_to_json(&tablepro_core::Value::Json(Box::new(extended.clone()))),
             json!({
                 "$type": "json",
                 "value": json_value_to_tagged(&extended)

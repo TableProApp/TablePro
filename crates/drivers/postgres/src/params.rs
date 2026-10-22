@@ -858,7 +858,7 @@ mod tests {
             Value::TimestampTz(chrono::DateTime::<chrono::Utc>::default()),
             Value::Decimal(rust_decimal::Decimal::new(15, 1)),
             Value::Uuid(uuid::Uuid::nil()),
-            Value::Json(serde_json::json!({"a": 1})),
+            Value::Json(Box::new(serde_json::json!({"a": 1}))),
             Value::Undecodable("MONEY".into()),
         ];
         let names: Vec<String> = pg_parameter_type_infos(&values)

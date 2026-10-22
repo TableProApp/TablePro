@@ -643,7 +643,7 @@ fn json_to_value(raw: serde_json::Value, type_name: &str) -> Value {
             .and_then(|s| s.parse::<uuid::Uuid>().ok())
             .map(Value::Uuid)
             .unwrap_or_else(|| fallback_text(&raw)),
-        "Array" | "Map" | "Tuple" | "Nested" | "JSON" | "Object" | "Variant" | "Dynamic" => Value::Json(raw),
+        "Array" | "Map" | "Tuple" | "Nested" | "JSON" | "Object" | "Variant" | "Dynamic" => Value::Json(Box::new(raw)),
         _ => fallback_text(&raw),
     }
 }

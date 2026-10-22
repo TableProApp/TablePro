@@ -222,7 +222,10 @@ async fn value_contract_mongodb_decimal128_grid_edit_preserves_wide_precision() 
     assert_eq!(before.rows[0][amount_index], Value::Text(initial.to_string()));
 
     let edited = parse_input_for_driver(wide, Some(&before.columns[amount_index]), "mongodb").unwrap();
-    assert_eq!(edited, Value::Json(serde_json::json!({"$numberDecimal": wide})));
+    assert_eq!(
+        edited,
+        Value::Json(Box::new(serde_json::json!({"$numberDecimal": wide})))
+    );
     let update = tablepro_core::sql_dialect::build_keyed_update(
         "mongodb",
         Some("appdb"),
@@ -795,7 +798,7 @@ fn mongodb_binary_subtype_edits_parse_as_extended_json() {
     );
     assert_eq!(
         parse_input_for_driver(input, Some(&column), "mongodb").unwrap(),
-        Value::Json(expected)
+        Value::Json(Box::new(expected))
     );
 }
 
@@ -806,14 +809,14 @@ fn value_contract_mongodb_decimal128_parser_preserves_wide_precision() {
     assert!(parse_decimal_value(wide_integer).is_err());
     assert_eq!(
         parse_input_for_driver(wide_integer, Some(&column), "mongodb").unwrap(),
-        Value::Json(serde_json::json!({"$numberDecimal": wide_integer})),
+        Value::Json(Box::new(serde_json::json!({"$numberDecimal": wide_integer}))),
         "34-digit Decimal128 values must not be rejected by rust_decimal's narrower range"
     );
 
     let wide_fraction = "0.1234567890123456789012345678901234";
     assert_eq!(
         parse_input_for_driver(wide_fraction, Some(&column), "mongodb").unwrap(),
-        Value::Json(serde_json::json!({"$numberDecimal": wide_fraction}))
+        Value::Json(Box::new(serde_json::json!({"$numberDecimal": wide_fraction})))
     );
     let over_precision = "12345678901234567890123456789012345";
     assert!(
@@ -1019,15 +1022,15 @@ fn parses_uuid_json_date_time_datetime_timestamptz() {
     .unwrap();
     assert_eq!(
         mongo_object,
-        Value::Json(serde_json::json!({"amount": {"$numberDecimal": "12.3400"}}))
+        Value::Json(Box::new(serde_json::json!({"amount": {"$numberDecimal": "12.3400"}})))
     );
     assert_eq!(
         parse_input_for_column(r#"{"$oid":"507f1f77bcf86cd799439011"}"#, Some(&col("ObjectId", false))).unwrap(),
-        Value::Json(serde_json::json!({"$oid": "507f1f77bcf86cd799439011"}))
+        Value::Json(Box::new(serde_json::json!({"$oid": "507f1f77bcf86cd799439011"})))
     );
     assert_eq!(
         parse_input_for_column(r#"[{"ordinal":{"$numberLong":"7"}}]"#, Some(&col("array", false))).unwrap(),
-        Value::Json(serde_json::json!([{"ordinal": {"$numberLong": "7"}}]))
+        Value::Json(Box::new(serde_json::json!([{"ordinal": {"$numberLong": "7"}}])))
     );
 
     let date = parse_input_for_column("2024-01-15", Some(&col("date", false))).unwrap();

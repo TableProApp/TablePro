@@ -99,7 +99,7 @@ pub enum Value {
     TimestampTz(DateTime<Utc>),
     Decimal(Decimal),
     Uuid(Uuid),
-    Json(serde_json::Value),
+    Json(Box<serde_json::Value>),
     JsonText(String),
     /// A non-NULL cell the driver could not decode (e.g. a wide NUMERIC
     /// sqlx cannot represent). Carries the driver's column type name so the
@@ -181,7 +181,7 @@ fn value_size(value: &Value) -> usize {
     match value {
         Value::Text(text) | Value::JsonText(text) | Value::Undecodable(text) => text.capacity(),
         Value::Bytes(bytes) => bytes.capacity(),
-        Value::Json(value) => json_heap_size(value),
+        Value::Json(value) => std::mem::size_of::<serde_json::Value>().saturating_add(json_heap_size(value)),
         _ => 0,
     }
 }
@@ -311,6 +311,27 @@ mod tests {
     }
 
     #[test]
+    fn result_cells_stay_within_four_machine_words() {
+        assert!(std::mem::size_of::<Value>() <= 32);
+    }
+
+    #[test]
+    fn result_budget_counts_json_document_storage() {
+        let scalar = QueryResult {
+            columns: Vec::new(),
+            rows: vec![vec![Value::Int(1)]],
+            truncated: false,
+        };
+        let json = QueryResult {
+            columns: Vec::new(),
+            rows: vec![vec![Value::Json(serde_json::Value::Bool(true).into())]],
+            truncated: false,
+        };
+
+        assert!(json.estimated_row_bytes() >= scalar.estimated_row_bytes() + std::mem::size_of::<serde_json::Value>());
+    }
+
+    #[test]
     fn result_budget_rejects_raw_row_before_value_decode() {
         let mut budget = QueryResultBudget::default();
         let mut decoded = false;
@@ -388,7 +409,7 @@ mod tests {
         }
         for value in [&json_string, &json_array, &json_object] {
             assert!(super::json_heap_size(value) > 1);
-            assert!(super::value_size(&Value::Json(value.clone())) > 1);
+            assert!(super::value_size(&Value::Json(Box::new(value.clone()))) > 1);
         }
 
         let empty_row = super::row_size(&[]);
@@ -448,8 +469,8 @@ mod tests {
         let json_string = String::with_capacity(48);
         let json_capacity = json_string.capacity();
         assert_eq!(
-            super::value_size(&Value::Json(serde_json::Value::String(json_string))),
-            json_capacity
+            super::value_size(&Value::Json(Box::new(serde_json::Value::String(json_string)))),
+            std::mem::size_of::<serde_json::Value>() + json_capacity
         );
 
         let json_text = String::with_capacity(48);

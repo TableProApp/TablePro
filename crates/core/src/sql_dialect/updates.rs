@@ -320,7 +320,7 @@ pub fn build_mongodb_keyed_delete(
         .map(|(column, _)| serde_json::Value::String(column.name.clone()))
         .collect();
     where_clauses.push("tablepro_mongodb_exact_field_set(?)".into());
-    params.push(Value::Json(serde_json::Value::Array(snapshot_fields)));
+    params.push(Value::Json(Box::new(serde_json::Value::Array(snapshot_fields))));
     let qualified = qualified_table(driver_id, schema, table);
     Ok((
         format!("DELETE FROM {qualified} WHERE {}", where_clauses.join(" AND ")),
@@ -402,11 +402,11 @@ mod tests {
             "records",
             &columns,
             &[
-                Value::Json(serde_json::Value::String("id-1".into())),
+                Value::Json(Box::new(serde_json::Value::String("id-1".into()))),
                 Value::Null,
                 Value::Undecodable("missing BSON field".into()),
             ],
-            &[Value::Json(serde_json::Value::String("id-1".into()))],
+            &[Value::Json(Box::new(serde_json::Value::String("id-1".into())))],
         )
         .unwrap();
         assert_eq!(
@@ -416,10 +416,10 @@ mod tests {
         assert_eq!(
             params,
             vec![
-                Value::Json(serde_json::Value::String("id-1".into())),
+                Value::Json(Box::new(serde_json::Value::String("id-1".into()))),
                 Value::Null,
                 Value::Undecodable("missing BSON field".into()),
-                Value::Json(serde_json::json!(["_id", "nullable"]))
+                Value::Json(Box::new(serde_json::json!(["_id", "nullable"])))
             ]
         );
     }

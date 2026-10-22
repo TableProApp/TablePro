@@ -562,7 +562,7 @@ fn redis_scalar(value: RedisValue) -> Value {
         | RedisValue::Set(_)
         | RedisValue::Attribute { .. }
         | RedisValue::Push { .. }
-        | RedisValue::ServerError(_) => Value::Json(redis_value_to_json(value)),
+        | RedisValue::ServerError(_) => Value::Json(Box::new(redis_value_to_json(value))),
         RedisValue::BigNumber(value) => Value::Text(value.to_string()),
         _ => Value::Undecodable("unknown Redis reply kind".into()),
     }

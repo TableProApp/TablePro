@@ -469,7 +469,11 @@ fn parse_mongodb_integer_input(text: &str, col: Option<&ColumnInfo>, driver_id: 
     match column.data_type.trim().to_ascii_lowercase().as_str() {
         "int" => Some(text.parse::<i32>().map_or_else(
             |_| Err(crate::tr!("Integer is outside the supported MongoDB Int32 range")),
-            |value| Ok(Value::Json(serde_json::json!({"$numberInt": value.to_string()}))),
+            |value| {
+                Ok(Value::Json(Box::new(
+                    serde_json::json!({"$numberInt": value.to_string()}),
+                )))
+            },
         )),
         "long" => Some(parse_int_value(text)),
         _ => None,
@@ -486,7 +490,7 @@ fn parse_mongodb_decimal_input(text: &str, col: Option<&ColumnInfo>, driver_id: 
     }
     Some(
         drivers_mongodb::canonical_decimal128_text(text)
-            .map(|canonical| Value::Json(serde_json::json!({"$numberDecimal": canonical})))
+            .map(|canonical| Value::Json(Box::new(serde_json::json!({"$numberDecimal": canonical}))))
             .map_err(|_| crate::tr!("Invalid decimal")),
     )
 }
@@ -858,6 +862,7 @@ pub(super) fn parse_uuid_value(text: &str) -> Result<Value, String> {
 
 pub(super) fn parse_json_value(text: &str) -> Result<Value, String> {
     serde_json::from_str::<serde_json::Value>(text)
+        .map(Box::new)
         .map(Value::Json)
         .map_err(|e| crate::tr!("Invalid JSON: {error}").replace("{error}", &e.to_string()))
 }

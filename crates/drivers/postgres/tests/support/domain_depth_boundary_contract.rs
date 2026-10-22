@@ -64,7 +64,7 @@ async fn assert_incompatible_enum_assignments_refused(connection: &dyn tablepro_
             Value::Uuid(uuid::Uuid::nil()),
             "'00000000-0000-0000-0000-000000000000'::uuid",
         ),
-        (Value::Json(serde_json::json!({})), "'{}'::jsonb"),
+        (Value::Json(Box::new(serde_json::json!({}))), "'{}'::jsonb"),
     ];
     let sqlstate = |error: tablepro_core::DriverError| match error {
         tablepro_core::DriverError::Query {

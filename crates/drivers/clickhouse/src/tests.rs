@@ -243,7 +243,7 @@ fn json_to_value_maps_common_types() {
     );
     assert_eq!(
         json_to_value(serde_json::json!([1, 2]), "Array(UInt8)"),
-        Value::Json(serde_json::json!([1, 2]))
+        Value::Json(Box::new(serde_json::json!([1, 2])))
     );
 }
 

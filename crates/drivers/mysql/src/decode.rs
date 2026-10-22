@@ -66,7 +66,7 @@ fn decode_by_type(row: &MySqlRow, idx: usize, type_name: &str) -> Option<Value> 
             .try_get::<chrono::DateTime<chrono::Utc>, _>(idx)
             .map(Value::TimestampTz)
             .ok(),
-        "JSON" => row.try_get::<serde_json::Value, _>(idx).map(Value::Json).ok(),
+        "JSON" => row.try_get::<serde_json::Value, _>(idx).map(json_value).ok(),
         "BLOB" | "TINYBLOB" | "MEDIUMBLOB" | "LONGBLOB" | "VARBINARY" | "BINARY" => {
             row.try_get::<Vec<u8>, _>(idx).map(Value::Bytes).ok()
         }
@@ -115,6 +115,10 @@ fn tiny_flag(stored: i64) -> Value {
         1 => Value::Bool(true),
         other => Value::Int(other),
     }
+}
+
+fn json_value(json: serde_json::Value) -> Value {
+    Value::Json(Box::new(json))
 }
 
 #[cfg(test)]

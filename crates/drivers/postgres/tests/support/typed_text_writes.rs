@@ -39,7 +39,7 @@ async fn native_text_decoded_types_survive_insert_edit_and_delete_through_the_bu
     }
     draft.push(Value::Text("<a/>".into()));
     draft.push(Value::Text("'a' 'b'".into()));
-    draft.push(Value::Json(serde_json::json!({"a": 1})));
+    draft.push(Value::Json(Box::new(serde_json::json!({"a": 1}))));
     let (insert, params) = build_insert_from_draft("postgres", Some("public"), "tw", &columns, &draft).unwrap();
     let inserted = conn.execute_params(&insert, &params).await;
     assert!(inserted.is_ok(), "{insert}\n{inserted:?}");
@@ -52,7 +52,11 @@ async fn native_text_decoded_types_survive_insert_edit_and_delete_through_the_bu
         edits.push((index + 1, old, Value::Text((*second).into())));
     }
     let old_json = read_row(conn.as_ref(), "SELECT j FROM tw WHERE id = 1").await.remove(0);
-    edits.push((columns.len() - 1, old_json, Value::Json(serde_json::json!({"a": 2}))));
+    edits.push((
+        columns.len() - 1,
+        old_json,
+        Value::Json(Box::new(serde_json::json!({"a": 2}))),
+    ));
     for edit in edits {
         let name = columns[edit.0].name.clone();
         let (update, params) =

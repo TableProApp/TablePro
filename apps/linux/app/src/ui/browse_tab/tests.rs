@@ -499,7 +499,7 @@ fn mongodb_page_schema_updates_late_fields_and_mixed_types_before_grid_editing()
         columns: page_columns.clone(),
         rows: vec![vec![
             Value::Uuid(Uuid::new_v4()),
-            Value::Json(serde_json::json!({"$numberDecimal": "1.25"})),
+            Value::Json(Box::new(serde_json::json!({"$numberDecimal": "1.25"}))),
             Value::Text("late".into()),
         ]],
         truncated: false,
@@ -564,7 +564,7 @@ async fn value_contract_mongodb_collection_wide_mixed_metadata_refuses_edit() {
     assert_eq!(later_page.rows[0][later_id_index], Value::Int(50));
     assert_eq!(
         later_page.rows[0][later_value_index],
-        Value::Json(serde_json::json!({"$numberDecimal": decimal.to_string()}))
+        Value::Json(Box::new(serde_json::json!({"$numberDecimal": decimal.to_string()})))
     );
     assert_eq!(later_columns[later_value_index].data_type, "mixed");
     assert!(column_layout_matches(&loaded_columns, &later_columns));
@@ -781,7 +781,7 @@ async fn value_contract_mongodb_run_find_merges_page_types_and_exports_materiali
     assert_eq!(result.columns[value_index].data_type, "mixed");
     assert_eq!(
         result.rows[0][value_index],
-        Value::Json(serde_json::json!({ "$numberDecimal": decimal.to_string() }))
+        Value::Json(Box::new(serde_json::json!({ "$numberDecimal": decimal.to_string() })))
     );
 
     assert_decimal_export_formats(&result, &decimal.to_string());
@@ -887,10 +887,13 @@ fn assert_mongodb_census_race_page(page: &QueryResult) {
     let sibling_row = page.rows.iter().find(|row| row[id_index] == Value::Int(1)).unwrap();
     assert_eq!(
         first_row[value_index],
-        Value::Json(serde_json::json!("before")),
+        Value::Json(Box::new(serde_json::json!("before"))),
         "the page row must retain the value read from the cursor"
     );
-    assert_eq!(sibling_row[value_index], Value::Json(serde_json::json!("sibling")));
+    assert_eq!(
+        sibling_row[value_index],
+        Value::Json(Box::new(serde_json::json!("sibling")))
+    );
     assert_eq!(page.columns[value_index].data_type, "mixed");
     assert_cell_read_only(&page.columns[value_index], &first_row[value_index]);
 }

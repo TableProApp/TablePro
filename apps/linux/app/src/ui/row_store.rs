@@ -724,7 +724,7 @@ mod tests {
                 Value::Int(7),
                 Value::Text("x".repeat(9000)),
                 Value::Bytes(bytes.clone()),
-                Value::Json(json.clone()),
+                Value::Json(Box::new(json.clone())),
             ]],
             truncated: false,
         });
@@ -737,14 +737,14 @@ mod tests {
         assert!(row.cell_preview(3).unwrap().byte_count > 9000);
         assert_eq!(store.source_value_at(0, 1), Some(Value::Text("x".repeat(9000))));
         assert_eq!(store.source_value_at(0, 2), Some(Value::Bytes(bytes)));
-        assert_eq!(store.source_value_at(0, 3), Some(Value::Json(json.clone())));
+        assert_eq!(store.source_value_at(0, 3), Some(Value::Json(Box::new(json.clone()))));
         assert_eq!(
             row.complete_cells(),
             Some(vec![
                 Value::Int(7),
                 Value::Text("x".repeat(9000)),
                 Value::Bytes(vec![7; 9000]),
-                Value::Json(json)
+                Value::Json(Box::new(json))
             ]),
             "copy, export and row JSON read the full values"
         );

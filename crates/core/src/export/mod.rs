@@ -302,7 +302,7 @@ mod tests {
         assert_eq!(value_to_text(&Value::Bytes(vec![0xde, 0xad])), Some("\\xdead".into()));
         assert_eq!(value_to_text(&Value::Null), None);
         assert_eq!(
-            value_to_text(&Value::Json(serde_json::json!({"a": 1}))),
+            value_to_text(&Value::Json(Box::new(serde_json::json!({"a": 1})))),
             Some("{\"a\":1}".into())
         );
     }

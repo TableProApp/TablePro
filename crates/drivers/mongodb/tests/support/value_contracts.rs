@@ -41,7 +41,7 @@ async fn value_contract_preserves_numbers_and_text_through_json_commands() {
                 Value::Text(value) => mongodb::bson::Bson::String(value.clone()),
                 value => panic!("unexpected value-contract case: {value:?}"),
             };
-            Value::Json(bson.into_canonical_extjson())
+            Value::Json(Box::new(bson.into_canonical_extjson()))
         } else {
             expected
         };
@@ -148,7 +148,9 @@ async fn nested_bson_special_values_keep_exact_extended_json_types() {
         let name = if millis < 0 { "date_min" } else { "date_max" };
         assert_eq!(
             result.rows[0][column(name)],
-            Value::Json(serde_json::json!({"$date": {"$numberLong": millis.to_string()}}))
+            Value::Json(Box::new(
+                serde_json::json!({"$date": {"$numberLong": millis.to_string()}})
+            ))
         );
     }
     for (name, expected) in [
@@ -161,18 +163,18 @@ async fn nested_bson_special_values_keep_exact_extended_json_types() {
             serde_json::json!({"$binary": {"base64": "AP9B", "subType": "80"}}),
         ),
     ] {
-        assert_eq!(result.rows[0][column(name)], Value::Json(expected));
+        assert_eq!(result.rows[0][column(name)], Value::Json(Box::new(expected)));
     }
     assert_eq!(
         result.rows[0][nested],
-        Value::Json(serde_json::json!({
+        Value::Json(Box::new(serde_json::json!({
             "amount": {"$numberDecimal": "1234567890123456789.123456789012345"},
             "blob": {"$binary": {"base64": "AP9B", "subType": "00"}},
             "when": {"$date": {"$numberLong": "1234567890123"}},
             "large_integer": {"$numberLong": "9007199254740993"},
             "explicit_null": null,
             "unicode": "数据库🙂 — café",
-        }))
+        })))
     );
 
     let exported: serde_json::Value =
@@ -313,10 +315,16 @@ fn write_nested_xlsx(nested: serde_json::Value) -> (tempfile::TempDir, std::path
             .map(json_column)
             .collect(),
         rows: vec![vec![
-            Value::Json(serde_json::json!({"$date": {"$numberLong": i64::MAX.to_string()}})),
-            Value::Json(serde_json::json!({"$binary": {"base64": "AAECAwQFBgcICQoLDA0ODw==", "subType": "04"}})),
-            Value::Json(serde_json::json!({"$binary": {"base64": "AP9B", "subType": "80"}})),
-            Value::Json(nested),
+            Value::Json(Box::new(
+                serde_json::json!({"$date": {"$numberLong": i64::MAX.to_string()}}),
+            )),
+            Value::Json(Box::new(
+                serde_json::json!({"$binary": {"base64": "AAECAwQFBgcICQoLDA0ODw==", "subType": "04"}}),
+            )),
+            Value::Json(Box::new(
+                serde_json::json!({"$binary": {"base64": "AP9B", "subType": "80"}}),
+            )),
+            Value::Json(Box::new(nested)),
         ]],
         truncated: false,
     };
@@ -503,15 +511,15 @@ async fn a_nested_and_max_key_grid_edit_writes_extended_json_back_as_native_bson
         "nested_edits",
         &before.columns,
         &[
-            (payload_index, Value::Json(edited.clone())),
-            (items_index, Value::Json(edited_items.clone())),
-            (timestamp_index, Value::Json(edited_timestamp)),
-            (regex_index, Value::Json(edited_regex)),
-            (script_index, Value::Json(edited_script.clone())),
-            (symbol_index, Value::Json(edited_symbol.clone())),
-            (min_key_index, Value::Json(edited_min_key)),
-            (max_key_index, Value::Json(edited_max_key)),
-            (uuid_binary_index, Value::Json(edited_uuid_binary.clone())),
+            (payload_index, Value::Json(Box::new(edited.clone()))),
+            (items_index, Value::Json(Box::new(edited_items.clone()))),
+            (timestamp_index, Value::Json(Box::new(edited_timestamp))),
+            (regex_index, Value::Json(Box::new(edited_regex))),
+            (script_index, Value::Json(Box::new(edited_script.clone()))),
+            (symbol_index, Value::Json(Box::new(edited_symbol.clone()))),
+            (min_key_index, Value::Json(Box::new(edited_min_key))),
+            (max_key_index, Value::Json(Box::new(edited_max_key))),
+            (uuid_binary_index, Value::Json(Box::new(edited_uuid_binary.clone()))),
         ],
         &[before.rows[0][id_index].clone()],
     )
@@ -525,11 +533,14 @@ async fn a_nested_and_max_key_grid_edit_writes_extended_json_back_as_native_bson
         .query("db.nested_edits.find({})")
         .await
         .expect("read after edit");
-    assert_eq!(after.rows[0][payload_index], Value::Json(edited));
-    assert_eq!(after.rows[0][items_index], Value::Json(edited_items));
-    assert_eq!(after.rows[0][script_index], Value::Json(edited_script));
-    assert_eq!(after.rows[0][symbol_index], Value::Json(edited_symbol));
-    assert_eq!(after.rows[0][uuid_binary_index], Value::Json(edited_uuid_binary));
+    assert_eq!(after.rows[0][payload_index], Value::Json(Box::new(edited)));
+    assert_eq!(after.rows[0][items_index], Value::Json(Box::new(edited_items)));
+    assert_eq!(after.rows[0][script_index], Value::Json(Box::new(edited_script)));
+    assert_eq!(after.rows[0][symbol_index], Value::Json(Box::new(edited_symbol)));
+    assert_eq!(
+        after.rows[0][uuid_binary_index],
+        Value::Json(Box::new(edited_uuid_binary))
+    );
 
     let persisted = client
         .database("appdb")
@@ -615,7 +626,7 @@ async fn value_contract_undefined_grid_edit_preserves_native_bson() {
     let id_index = before.columns.iter().position(|column| column.name == "_id").unwrap();
     let value_index = before.columns.iter().position(|column| column.name == "value").unwrap();
     assert_eq!(before.columns[value_index].data_type, "undefined");
-    let marker = Value::Json(serde_json::json!({ "$undefined": true }));
+    let marker = Value::Json(Box::new(serde_json::json!({ "$undefined": true })));
     assert_eq!(before.rows[0][value_index], marker);
 
     let (statement, params) = tablepro_core::sql_dialect::build_keyed_update(
@@ -675,10 +686,10 @@ async fn value_contract_javascript_code_grid_edit_preserves_native_bson() {
     let id_index = before.columns.iter().position(|column| column.name == "_id").unwrap();
     let value_index = before.columns.iter().position(|column| column.name == "value").unwrap();
     assert_eq!(before.columns[value_index].data_type, "javascript");
-    let marker = Value::Json(serde_json::json!({ "$code": "return after;" }));
+    let marker = Value::Json(Box::new(serde_json::json!({ "$code": "return after;" })));
     assert_eq!(
         before.rows[0][value_index],
-        Value::Json(serde_json::json!({ "$code": "return before;" }))
+        Value::Json(Box::new(serde_json::json!({ "$code": "return before;" })))
     );
 
     let (statement, params) = tablepro_core::sql_dialect::build_keyed_update(
@@ -752,7 +763,7 @@ async fn value_contract_db_pointer_grid_edit_preserves_native_bson() {
     assert_eq!(before.columns[value_index].data_type, "dbpointer");
     assert_eq!(
         before.rows[0][value_index],
-        Value::Json(
+        Value::Json(Box::new(
             Bson::try_from(serde_json::json!({
                 "$dbPointer": {
                     "$ref": "legacy.before",
@@ -761,10 +772,10 @@ async fn value_contract_db_pointer_grid_edit_preserves_native_bson() {
             }))
             .unwrap()
             .into_canonical_extjson()
-        )
+        ))
     );
 
-    let edited_marker = Value::Json(after_pointer.clone().into_canonical_extjson());
+    let edited_marker = Value::Json(Box::new(after_pointer.clone().into_canonical_extjson()));
     let (statement, params) = tablepro_core::sql_dialect::build_keyed_update(
         "mongodb",
         Some("appdb"),
@@ -923,9 +934,9 @@ async fn value_contract_binary_subtypes_survive_native_grid_edits() {
             let value = if *subtype == BinarySubtype::Generic {
                 Value::Bytes(edited_bytes.clone())
             } else {
-                Value::Json(serde_json::json!({
+                Value::Json(Box::new(serde_json::json!({
                     "$binary": { "base64": "AP9B", "subType": code }
-                }))
+                })))
             };
             (index, value)
         })
@@ -958,9 +969,9 @@ async fn value_contract_binary_subtypes_survive_native_grid_edits() {
         let expected = if subtype == BinarySubtype::Generic {
             Value::Bytes(edited_bytes.clone())
         } else {
-            Value::Json(serde_json::json!({
+            Value::Json(Box::new(serde_json::json!({
                 "$binary": { "base64": "AP9B", "subType": code }
-            }))
+            })))
         };
         assert_eq!(after.rows[0][index], expected, "driver result for {field}");
         assert_eq!(
@@ -1054,7 +1065,7 @@ async fn value_contract_server_generated_bson_column_survives_grid_edit() {
         Some("appdb"),
         "column_grid_edits",
         &before.columns,
-        &[(payload_index, Value::Json(edited_marker.clone()))],
+        &[(payload_index, Value::Json(Box::new(edited_marker.clone())))],
         &[before.rows[0][id_index].clone()],
     )
     .expect("build BSONColumn grid update");
@@ -1067,7 +1078,7 @@ async fn value_contract_server_generated_bson_column_survives_grid_edit() {
         .query("db.column_grid_edits.find({})")
         .await
         .expect("read edited BSONColumn");
-    assert_eq!(after.rows[0][payload_index], Value::Json(edited_marker));
+    assert_eq!(after.rows[0][payload_index], Value::Json(Box::new(edited_marker)));
     let persisted = collection
         .find_one(doc! { "_id": row_id })
         .await
@@ -1110,10 +1121,10 @@ async fn value_contract_object_id_grid_edit_preserves_native_bson() {
     assert_eq!(before.columns[value_index].data_type, "ObjectId");
     assert_eq!(
         before.rows[0][value_index],
-        Value::Json(serde_json::json!({"$oid": before_value.to_hex()}))
+        Value::Json(Box::new(serde_json::json!({"$oid": before_value.to_hex()})))
     );
 
-    let edited = Value::Json(serde_json::json!({"$oid": after_value.to_hex()}));
+    let edited = Value::Json(Box::new(serde_json::json!({"$oid": after_value.to_hex()})));
     let (statement, params) = tablepro_core::sql_dialect::build_keyed_update(
         "mongodb",
         Some("appdb"),

@@ -147,7 +147,7 @@ fn an_equality_rule_parses_back_to_the_value_it_was_built_from() {
 #[test]
 fn a_null_cell_filters_with_is_null_and_unfilterable_cells_offer_nothing() {
     assert_eq!(equality_rule("c", &Value::Null).unwrap().op, FilterOp::IsNull);
-    assert!(equality_rule("c", &Value::Json(serde_json::json!({"a": 1}))).is_none());
+    assert!(equality_rule("c", &Value::Json(Box::new(serde_json::json!({"a": 1})))).is_none());
     assert!(equality_rule("c", &Value::Bytes(vec![1])).is_none());
     assert!(equality_rule("c", &Value::Undecodable("xml".into())).is_none());
 }

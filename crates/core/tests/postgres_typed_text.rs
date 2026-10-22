@@ -77,8 +77,8 @@ fn an_insert_draft_casts_a_native_text_decoded_value() {
 fn a_json_column_is_compared_through_jsonb_because_json_has_no_equality() {
     let sql = update_sql(
         "json",
-        Value::Json(serde_json::json!({"a": 1})),
-        Value::Json(serde_json::json!({"a": 2})),
+        Value::Json(Box::new(serde_json::json!({"a": 1}))),
+        Value::Json(Box::new(serde_json::json!({"a": 2}))),
     );
     assert!(sql.contains("\"v\"::jsonb IS NOT DISTINCT FROM $3::jsonb"), "{sql}");
 }

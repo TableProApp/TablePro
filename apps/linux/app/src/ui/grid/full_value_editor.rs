@@ -493,8 +493,8 @@ mod tests {
         assert!(can_stage_full_value(&column, &original, &edited));
         assert!(can_stage_full_value(
             &column,
-            &Value::Json(serde_json::json!({"before": 1})),
-            &Value::Json(serde_json::json!({"after": 2}))
+            &Value::Json(Box::new(serde_json::json!({"before": 1}))),
+            &Value::Json(Box::new(serde_json::json!({"after": 2})))
         ));
         assert!(can_stage_full_value(
             &column,
@@ -523,7 +523,7 @@ mod tests {
             Some(FullValueKind::JsonText)
         );
         assert_eq!(
-            edit_kind("jsonb", &Value::Json(serde_json::json!({}))),
+            edit_kind("jsonb", &Value::Json(Box::new(serde_json::json!({})))),
             Some(FullValueKind::Json)
         );
         assert_eq!(edit_kind("json", &Value::Null), Some(FullValueKind::JsonText));

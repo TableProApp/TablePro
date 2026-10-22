@@ -128,7 +128,7 @@ fn value_to_json(value: &Value) -> serde_json::Value {
             Ok(value) => serde_json::Value::Number(value),
             Err(_) => serde_json::Value::String(value.to_string()),
         },
-        Value::Json(value) => value.clone(),
+        Value::Json(value) => value.as_ref().clone(),
         _ => value_to_text(value).map_or(serde_json::Value::Null, serde_json::Value::String),
     }
 }
@@ -205,7 +205,9 @@ mod tests {
         let columns = vec![column("id"), column("payload"), column("enabled"), column("note")];
         let row = vec![
             Value::Int(9_007_199_254_740_993),
-            Value::Json(serde_json::json!({"$numberDecimal": "1234567890123456789.123456789012345"})),
+            Value::Json(Box::new(
+                serde_json::json!({"$numberDecimal": "1234567890123456789.123456789012345"}),
+            )),
             Value::Bool(true),
             Value::Null,
         ];
@@ -315,7 +317,7 @@ mod tests {
                 Value::Int(7),
                 Value::Float(1.5),
                 Value::Decimal("12.30".parse().unwrap()),
-                Value::Json(serde_json::json!({"ok": true})),
+                Value::Json(Box::new(serde_json::json!({"ok": true}))),
             ],
             vec![Value::Int(8)],
         ];

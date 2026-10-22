@@ -93,7 +93,7 @@ async fn run_find_marks_a_page_mixed_when_a_bson_type_changes_after_census() {
         page.rows,
         vec![vec![
             Value::Int(1),
-            Value::Json(serde_json::json!({"$numberDecimal": decimal_text})),
+            Value::Json(Box::new(serde_json::json!({"$numberDecimal": decimal_text}))),
         ]]
     );
     assert_eq!(

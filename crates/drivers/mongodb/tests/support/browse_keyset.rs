@@ -168,7 +168,7 @@ async fn filtered_offset_pages_keep_filters_with_and_without_parameters() {
     let not_in_with_null = connection
         .query_params(
             "SELECT * FROM \"appdb\".\"filtered_offset\" WHERE \"rank\" NOT IN (?, ?) LIMIT 2 OFFSET 0",
-            &[Value::Int(2), Value::Json(serde_json::Value::Null)],
+            &[Value::Int(2), Value::Json(Box::new(serde_json::Value::Null))],
         )
         .await
         .unwrap();
@@ -195,9 +195,15 @@ async fn filtered_offset_pages_keep_filters_with_and_without_parameters() {
     let value_index = nulls.columns.iter().position(|column| column.name == "value").unwrap();
     assert_eq!(nulls.rows.len(), 2);
     assert_eq!(nulls.rows[0][0], Value::Int(1));
-    assert_eq!(nulls.rows[0][value_index], Value::Json(serde_json::Value::Null));
+    assert_eq!(
+        nulls.rows[0][value_index],
+        Value::Json(Box::new(serde_json::Value::Null))
+    );
     assert_eq!(nulls.rows[1][0], Value::Int(3));
-    assert_eq!(nulls.rows[1][value_index], Value::Json(serde_json::Value::Null));
+    assert_eq!(
+        nulls.rows[1][value_index],
+        Value::Json(Box::new(serde_json::Value::Null))
+    );
 
     let present = connection
         .query_params(
@@ -213,7 +219,10 @@ async fn filtered_offset_pages_keep_filters_with_and_without_parameters() {
         .unwrap();
     assert_eq!(present.rows.len(), 1);
     assert_eq!(present.rows[0][0], Value::Int(4));
-    assert_eq!(present.rows[0][value_index], Value::Json(serde_json::json!("present")));
+    assert_eq!(
+        present.rows[0][value_index],
+        Value::Json(Box::new(serde_json::json!("present")))
+    );
 }
 
 #[tokio::test]
@@ -469,7 +478,7 @@ async fn keyset_page_query_binds_object_id_cursor_values() {
     let page = connection
         .query_params(
             "SELECT * FROM \"appdb\".\"keyset_oid\" WHERE \"_id\" > ? LIMIT 1 OFFSET 0",
-            &[Value::Json(Bson::ObjectId(first).into_canonical_extjson())],
+            &[Value::Json(Box::new(Bson::ObjectId(first).into_canonical_extjson()))],
         )
         .await
         .unwrap();
@@ -477,7 +486,7 @@ async fn keyset_page_query_binds_object_id_cursor_values() {
     assert_eq!(page.rows.len(), 1);
     assert_eq!(
         page.rows[0][0],
-        Value::Json(Bson::ObjectId(second).into_canonical_extjson())
+        Value::Json(Box::new(Bson::ObjectId(second).into_canonical_extjson()))
     );
 }
 
@@ -526,19 +535,21 @@ async fn keyset_page_query_keeps_mixed_bson_id_types_in_sort_order() {
     assert_eq!(page.rows.len(), 1);
     assert_eq!(
         page.rows[0][0],
-        Value::Json(Bson::String("middle".into()).into_canonical_extjson())
+        Value::Json(Box::new(Bson::String("middle".into()).into_canonical_extjson()))
     );
     let next_page = connection
         .query_params(
             "SELECT * FROM \"appdb\".\"keyset_mixed_ids\" WHERE \"_id\" > ? LIMIT 1 OFFSET 0",
-            &[Value::Json(Bson::String("middle".into()).into_canonical_extjson())],
+            &[Value::Json(Box::new(
+                Bson::String("middle".into()).into_canonical_extjson(),
+            ))],
         )
         .await
         .unwrap();
     assert_eq!(next_page.rows.len(), 1);
     assert_eq!(
         next_page.rows[0][0],
-        Value::Json(Bson::ObjectId(object_id).into_canonical_extjson())
+        Value::Json(Box::new(Bson::ObjectId(object_id).into_canonical_extjson()))
     );
 }
 
@@ -576,7 +587,7 @@ async fn keyset_page_query_binds_binary_uuid_cursor_values() {
     let page = connection
         .query_params(
             "SELECT * FROM \"appdb\".\"keyset_uuid\" WHERE \"_id\" > ? LIMIT 1 OFFSET 0",
-            &[Value::Json(Bson::Binary(first).into_canonical_extjson())],
+            &[Value::Json(Box::new(Bson::Binary(first).into_canonical_extjson()))],
         )
         .await
         .unwrap();
@@ -584,6 +595,6 @@ async fn keyset_page_query_binds_binary_uuid_cursor_values() {
     assert_eq!(page.rows.len(), 1);
     assert_eq!(
         page.rows[0][0],
-        Value::Json(Bson::Binary(second).into_canonical_extjson())
+        Value::Json(Box::new(Bson::Binary(second).into_canonical_extjson()))
     );
 }

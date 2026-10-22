@@ -357,11 +357,11 @@ mod tests {
 
     #[test]
     fn value_contract_workbook_preserves_nested_extended_json_as_exact_text() {
-        let value = Value::Json(serde_json::json!({
+        let value = Value::Json(Box::new(serde_json::json!({
             "decimal": {"$numberDecimal": "9.999999999999999999999999999999999E+6144"},
             "binary": {"$binary": {"base64": "AQID", "subType": "80"}},
             "date": {"$date": {"$numberLong": "9223372036854775807"}},
-        }));
+        })));
         let expected = value_to_text(&value).unwrap();
         let (sheet, strings) = workbook_parts(&[value]);
 

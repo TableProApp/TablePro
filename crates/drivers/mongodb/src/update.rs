@@ -821,7 +821,7 @@ mod value_select_tests {
         let id = "0123456789abcdef01234567";
         let parsed = parse_keyed_value_select(
             "SELECT \"payload\" FROM \"appdb\".\"records\" WHERE \"_id\" = ?",
-            &[Value::Json(serde_json::json!({"$oid": id}))],
+            &[Value::Json(Box::new(serde_json::json!({"$oid": id})))],
             "appdb",
         )
         .unwrap()
@@ -943,11 +943,11 @@ mod keyset_page_tests {
     #[test]
     fn comparison_filters_refuse_null_parameters() {
         for (predicate, params) in [
-            ("value != ?", vec![Value::Json(serde_json::Value::Null)]),
-            ("value > ?", vec![Value::Json(serde_json::Value::Null)]),
+            ("value != ?", vec![Value::Json(Box::new(serde_json::Value::Null))]),
+            ("value > ?", vec![Value::Json(Box::new(serde_json::Value::Null))]),
             (
                 "value BETWEEN ? AND ?",
-                vec![Value::Json(serde_json::Value::Null), Value::Int(7)],
+                vec![Value::Json(Box::new(serde_json::Value::Null)), Value::Int(7)],
             ),
         ] {
             assert!(matches!(
@@ -998,7 +998,11 @@ mod keyset_page_tests {
         for (predicate, params, expected) in [
             (
                 "value IN (?, ?, ?)",
-                vec![Value::Int(4), Value::Json(serde_json::Value::Null), Value::Int(8)],
+                vec![
+                    Value::Int(4),
+                    Value::Json(Box::new(serde_json::Value::Null)),
+                    Value::Int(8),
+                ],
                 doc! { "value": { "$in": [Bson::Int64(4), Bson::Int64(8)] } },
             ),
             (
@@ -1008,7 +1012,7 @@ mod keyset_page_tests {
             ),
             (
                 "value NOT IN (?, ?)",
-                vec![Value::Int(4), Value::Json(serde_json::Value::Null)],
+                vec![Value::Int(4), Value::Json(Box::new(serde_json::Value::Null))],
                 doc! { "_id": { "$in": [] } },
             ),
         ] {

@@ -550,7 +550,7 @@ mod tests {
         );
 
         let json = serde_json::json!({"a": 1, "b": [2, 3]});
-        let text = value_to_display_text(&Value::Json(json));
+        let text = value_to_display_text(&Value::Json(Box::new(json)));
         assert!(text.contains("\"a\":1"));
     }
 

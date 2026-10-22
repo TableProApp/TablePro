@@ -558,12 +558,12 @@ mod tests {
         assert_eq!(
             render_sql_literal(
                 "clickhouse",
-                &Value::Json(serde_json::json!(["18446744073709551616", null]))
+                &Value::Json(Box::new(serde_json::json!(["18446744073709551616", null])))
             ),
             Err(LiteralError::Unsupported)
         );
         assert_eq!(
-            render_sql_literal("postgres", &Value::Json(serde_json::json!({"a": 1}))).unwrap(),
+            render_sql_literal("postgres", &Value::Json(Box::new(serde_json::json!({"a": 1})))).unwrap(),
             "'{\"a\":1}'"
         );
     }

@@ -34,7 +34,7 @@ async fn the_full_value_of_one_field_is_refetched_by_its_native_id() {
         .unwrap();
     let connection = MongodbDriver.connect(super::opts(&host, port, "appdb")).await.unwrap();
     let query = "SELECT \"payload\" FROM \"appdb\".\"records\" WHERE \"_id\" = ?";
-    let key = |id: ObjectId| Value::Json(serde_json::json!({ "$oid": id.to_hex() }));
+    let key = |id: ObjectId| Value::Json(Box::new(serde_json::json!({ "$oid": id.to_hex() })));
 
     let found = connection.query_params(query, &[key(with_payload)]).await.unwrap();
     assert_eq!(

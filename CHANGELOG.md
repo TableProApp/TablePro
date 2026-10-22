@@ -26,6 +26,8 @@
 - Grid headers preserve exact engine type case and keep comments, key and nullability metadata in a native column-details menu.
 - Oversized text and JSON cells use shorter visible previews to reduce text-layout work; full values remain available through View Value and Copy Value.
 - Editing rows with large values uses less temporary memory when verifying the row identity.
+- Query results hold each cell in less than half the memory, so large results use less memory and more rows fit within the result size limit.
+
 - Large streamed results discard older wide pages sooner to limit retained row memory, while keeping the newest page and showing the retained range.
 - Oversized streamed result rows are rejected before value decoding, reducing memory spikes.
 - The Debian package is named `bookie` (`bookie_X.Y.Z-1_amd64.deb`). It replaces an installed `tablepro` package and keeps your settings, saved connections and credentials. The `tablepro` commands remain as aliases.

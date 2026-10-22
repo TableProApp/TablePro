@@ -98,7 +98,7 @@ async fn query_cursor_returns_ordered_pages_and_an_empty_final_page() {
             } else {
                 Value::Text(source.to_string())
             },
-            Value::Json(serde_json::json!({"n": source})),
+            Value::Json(Box::new(serde_json::json!({"n": source}))),
             Value::Bytes(vec![0, 255]),
         ];
         assert_eq!(row, &expected, "row index {index}");

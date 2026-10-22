@@ -238,12 +238,12 @@ async fn value_contract_resp3_attribute_wire_frame_survives_the_request_response
     let result = connection.query("PING").await.expect("read attributed reply");
     assert_eq!(
         result.rows,
-        vec![vec![Value::Json(serde_json::json!({
+        vec![vec![Value::Json(Box::new(serde_json::json!({
             "$redisAttribute": {
                 "data": "PONG",
                 "attributes": [["ttl", 3600]]
             }
-        }))]],
+        })))]],
         "RESP3 attribute framing must survive the actual socket decoder"
     );
 

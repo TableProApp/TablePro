@@ -36,7 +36,7 @@ pub(super) fn value_to_bson(value: &Value) -> Result<Bson, DriverError> {
             subtype: BinarySubtype::Uuid,
             bytes: value.as_bytes().to_vec(),
         }),
-        Value::Json(value) => Bson::try_from(value.clone()).map_err(|_| unsupported())?,
+        Value::Json(value) => Bson::try_from(value.as_ref().clone()).map_err(|_| unsupported())?,
         Value::DateTime(_) | Value::TimestampTz(_) | Value::JsonText(_) | Value::Undecodable(_) => {
             return Err(unsupported());
         }
@@ -116,7 +116,7 @@ pub(super) fn document_to_row(doc: &Document, columns: &[ColumnInfo]) -> Vec<Val
     columns
         .iter()
         .map(|c| match doc.get(&c.name) {
-            Some(b) if c.data_type == "mixed" => Value::Json(b.clone().into_canonical_extjson()),
+            Some(b) if c.data_type == "mixed" => Value::Json(Box::new(b.clone().into_canonical_extjson())),
             Some(b) => bson_to_value(b),
             None => Value::Undecodable("missing BSON field".into()),
         })
@@ -131,24 +131,24 @@ pub(super) fn bson_to_value(b: &Bson) -> Value {
         Bson::Int64(v) => Value::Int(*v),
         Bson::Double(v) => Value::Float(*v),
         Bson::String(v) => Value::Text(v.clone()),
-        Bson::ObjectId(v) => Value::Json(serde_json::json!({"$oid": v.to_hex()})),
+        Bson::ObjectId(v) => Value::Json(Box::new(serde_json::json!({"$oid": v.to_hex()}))),
         Bson::DateTime(v) => v.try_to_rfc3339_string().map_or_else(
-            |_| Value::Json(Bson::DateTime(*v).into_canonical_extjson()),
+            |_| Value::Json(Box::new(Bson::DateTime(*v).into_canonical_extjson())),
             Value::Text,
         ),
         Bson::Binary(bin) if bin.subtype == mongodb::bson::spec::BinarySubtype::Generic => {
             Value::Bytes(bin.bytes.clone())
         }
-        Bson::Binary(bin) => Value::Json(Bson::Binary(bin.clone()).into_canonical_extjson()),
+        Bson::Binary(bin) => Value::Json(Box::new(Bson::Binary(bin.clone()).into_canonical_extjson())),
         Bson::Decimal128(d) => Value::Text(d.to_string()),
         // Plain JSON strings cannot retain BSON-only kinds such as Decimal128,
         // binary subtype, ObjectId or the full BSON date representation.
-        Bson::Document(d) => Value::Json(Bson::Document(d.clone()).into_canonical_extjson()),
-        Bson::Array(a) => Value::Json(Bson::Array(a.clone()).into_canonical_extjson()),
+        Bson::Document(d) => Value::Json(Box::new(Bson::Document(d.clone()).into_canonical_extjson())),
+        Bson::Array(a) => Value::Json(Box::new(Bson::Array(a.clone()).into_canonical_extjson())),
         // Preserve BSON-only top-level kinds as Extended JSON instead of a
         // display string that looks editable but cannot be written back as
         // the original BSON type.
-        other => Value::Json(other.clone().into_canonical_extjson()),
+        other => Value::Json(Box::new(other.clone().into_canonical_extjson())),
     }
 }
 
@@ -316,8 +316,10 @@ mod tests {
         assert_eq!(
             rows.iter().map(|row| row[0].clone()).collect::<Vec<_>>(),
             vec![
-                Value::Json(serde_json::json!("12345678901234567890.1234567890123")),
-                Value::Json(serde_json::json!({"$numberDecimal": "12345678901234567890.1234567890123"})),
+                Value::Json(Box::new(serde_json::json!("12345678901234567890.1234567890123"))),
+                Value::Json(Box::new(
+                    serde_json::json!({"$numberDecimal": "12345678901234567890.1234567890123"})
+                )),
             ]
         );
 
@@ -361,7 +363,9 @@ mod tests {
         assert_eq!(columns[0].data_type, "mixed");
         assert_eq!(
             document_to_row(&page, &columns),
-            vec![Value::Json(serde_json::json!({"$numberDecimal": decimal_text}))]
+            vec![Value::Json(Box::new(
+                serde_json::json!({"$numberDecimal": decimal_text})
+            ))]
         );
     }
 
@@ -423,19 +427,19 @@ mod tests {
 
         assert_eq!(
             bson_to_value(&Bson::Document(document)),
-            Value::Json(serde_json::json!({
+            Value::Json(Box::new(serde_json::json!({
                 "amount": {"$numberDecimal": "1234567890123456789.123456789012345"},
                 "blob": {"$binary": {"base64": "AP9B", "subType": "00"}},
                 "when": {"$date": {"$numberLong": "1234567890123"}},
-            }))
+            })))
         );
         assert_eq!(
             bson_to_value(&Bson::Array(vec![Bson::Decimal128(
                 "1234567890123456789.123456789012345".parse().unwrap()
             )])),
-            Value::Json(serde_json::json!([
+            Value::Json(Box::new(serde_json::json!([
                 {"$numberDecimal": "1234567890123456789.123456789012345"}
-            ]))
+            ])))
         );
     }
 
@@ -451,7 +455,9 @@ mod tests {
         for millis in [i64::MIN, i64::MAX] {
             assert_eq!(
                 bson_to_value(&Bson::DateTime(DateTime::from_millis(millis))),
-                Value::Json(serde_json::json!({"$date": {"$numberLong": millis.to_string()}}))
+                Value::Json(Box::new(
+                    serde_json::json!({"$date": {"$numberLong": millis.to_string()}})
+                ))
             );
         }
     }
@@ -479,9 +485,9 @@ mod tests {
             });
             assert_eq!(
                 bson_to_value(&value),
-                Value::Json(serde_json::json!({
+                Value::Json(Box::new(serde_json::json!({
                     "$binary": {"base64": "AP9B", "subType": expected}
-                })),
+                }))),
                 "subtype {expected}"
             );
         }
@@ -537,7 +543,7 @@ mod tests {
                 panic!("{bson:?} must retain its BSON kind");
             };
             assert!(json.to_string().contains(marker), "{bson:?}: {json}");
-            assert_eq!(json, bson.clone().into_canonical_extjson(), "{marker}");
+            assert_eq!(*json, bson.clone().into_canonical_extjson(), "{marker}");
             assert_eq!(
                 value_to_bson(&Value::Json(json)).unwrap(),
                 bson,

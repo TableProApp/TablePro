@@ -35,7 +35,9 @@ async fn value_contract_mongodb_grid_value_comparison_does_not_detect_aba() {
         before
             .rows
             .iter()
-            .find(|row| row[key_index] == Value::Json(mongodb::bson::Bson::ObjectId(id).into_canonical_extjson()))
+            .find(|row| {
+                row[key_index] == Value::Json(Box::new(mongodb::bson::Bson::ObjectId(id).into_canonical_extjson()))
+            })
             .expect("find row by complete native key")
             .clone()
     };
@@ -140,26 +142,39 @@ async fn value_contract_stale_grid_edit_does_not_overwrite_concurrent_document_c
     let row = before
         .rows
         .iter()
-        .find(|row| row[key_index] == Value::Json(mongodb::bson::Bson::ObjectId(row_id).into_canonical_extjson()))
+        .find(|row| {
+            row[key_index] == Value::Json(Box::new(mongodb::bson::Bson::ObjectId(row_id).into_canonical_extjson()))
+        })
         .expect("find the target row by its complete native key");
     assert_eq!(
         row[payload_index],
-        Value::Json(serde_json::Value::String("before".into()))
+        Value::Json(Box::new(serde_json::Value::String("before".into())))
     );
     let null_row = before
         .rows
         .iter()
-        .find(|row| row[key_index] == Value::Json(mongodb::bson::Bson::ObjectId(null_row_id).into_canonical_extjson()))
+        .find(|row| {
+            row[key_index]
+                == Value::Json(Box::new(
+                    mongodb::bson::Bson::ObjectId(null_row_id).into_canonical_extjson(),
+                ))
+        })
         .expect("find the explicit-NULL row by its complete native key");
-    assert_eq!(null_row[payload_index], Value::Json(serde_json::Value::Null));
+    assert_eq!(null_row[payload_index], Value::Json(Box::new(serde_json::Value::Null)));
     let null_array_row = before
         .rows
         .iter()
         .find(|row| {
-            row[key_index] == Value::Json(mongodb::bson::Bson::ObjectId(null_array_row_id).into_canonical_extjson())
+            row[key_index]
+                == Value::Json(Box::new(
+                    mongodb::bson::Bson::ObjectId(null_array_row_id).into_canonical_extjson(),
+                ))
         })
         .expect("find the explicit-NULL row for the array-change case by its complete native key");
-    assert_eq!(null_array_row[payload_index], Value::Json(serde_json::Value::Null));
+    assert_eq!(
+        null_array_row[payload_index],
+        Value::Json(Box::new(serde_json::Value::Null))
+    );
 
     collection
         .update_one(doc! { "_id": row_id }, doc! { "$set": { "payload": "concurrent" } })

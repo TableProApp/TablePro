@@ -144,7 +144,10 @@ mod tests {
 
     #[test]
     fn a_json_value_is_pretty_printed() {
-        assert_eq!(body(&Value::Json(serde_json::json!([1, 2]))), "[\n  1,\n  2\n]");
+        assert_eq!(
+            body(&Value::Json(Box::new(serde_json::json!([1, 2])))),
+            "[\n  1,\n  2\n]"
+        );
     }
 
     #[test]

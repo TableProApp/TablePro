@@ -58,7 +58,7 @@ async fn mongodb_guarded_refetch_preserves_long_text_and_binary_values() {
         .fetch_columns_controlled(Some("appdb"), "value_preview_records", &control)
         .await
         .unwrap();
-    let key = Value::Json(Bson::ObjectId(id).into_canonical_extjson());
+    let key = Value::Json(Box::new(Bson::ObjectId(id).into_canonical_extjson()));
     let target = BrowseTarget {
         driver_id: "mongodb",
         schema: Some("appdb"),
@@ -91,7 +91,7 @@ async fn mongodb_guarded_refetch_preserves_long_text_and_binary_values() {
         &control,
         &key,
         "structured",
-        Value::Json(Bson::Document(structured.clone()).into_canonical_extjson()),
+        Value::Json(Box::new(Bson::Document(structured.clone()).into_canonical_extjson())),
     )
     .await;
 

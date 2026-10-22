@@ -141,7 +141,7 @@ async fn value_contract_nested_collections_keep_exact_json_and_refuse_lossy_cons
         let oracle: serde_json::Value = serde_json::from_str(exact_json).unwrap();
         assert_eq!(
             source.rows[0][0],
-            Value::Json(oracle.clone()),
+            Value::Json(Box::new(oracle.clone())),
             "nested {expected_type} value differs from the native server JSON oracle"
         );
         let json_output: serde_json::Value =

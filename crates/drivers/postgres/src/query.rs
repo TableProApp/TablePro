@@ -559,7 +559,7 @@ fn extract_non_null_value(row: &PgRow, idx: usize, type_name: &str, raw: &sqlx::
             .try_get::<chrono::DateTime<chrono::Utc>, _>(idx)
             .map(Value::TimestampTz),
         "UUID" => row.try_get::<uuid::Uuid, _>(idx).map(Value::Uuid),
-        "JSONB" => row.try_get::<serde_json::Value, _>(idx).map(Value::Json),
+        "JSONB" => row.try_get::<serde_json::Value, _>(idx).map(Box::new).map(Value::Json),
         "BYTEA" => row.try_get::<Vec<u8>, _>(idx).map(Value::Bytes),
         _ => extract_fallback_text(row, idx, raw),
     };

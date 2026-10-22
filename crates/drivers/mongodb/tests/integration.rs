@@ -782,7 +782,7 @@ async fn bounded_metadata_sample_merges_types_from_the_requested_page() {
     assert_eq!(late_page.columns[late_value_index].data_type, "mixed");
     assert_eq!(
         late_page.rows[0][late_value_index],
-        Value::Json(serde_json::json!({"$numberDecimal": decimal_text}))
+        Value::Json(Box::new(serde_json::json!({"$numberDecimal": decimal_text})))
     );
 
     let late_query = connection
@@ -796,7 +796,7 @@ async fn bounded_metadata_sample_merges_types_from_the_requested_page() {
         .unwrap();
     assert_eq!(
         late_query.rows[0][late_query_value_index],
-        Value::Json(serde_json::json!({"$numberDecimal": decimal_text}))
+        Value::Json(Box::new(serde_json::json!({"$numberDecimal": decimal_text})))
     );
 
     let persisted = collection

@@ -344,11 +344,11 @@ mod tests {
 
     #[test]
     fn local_value_filter_distinguishes_sql_null_from_json_null() {
-        let result = result(vec![Value::Null, Value::Json(serde_json::Value::Null)]);
+        let result = result(vec![Value::Null, Value::Json(Box::new(serde_json::Value::Null))]);
 
         assert_eq!(matching_source_indices(&result, 0, &Value::Null), vec![0]);
         assert_eq!(
-            matching_source_indices(&result, 0, &Value::Json(serde_json::Value::Null)),
+            matching_source_indices(&result, 0, &Value::Json(Box::new(serde_json::Value::Null))),
             vec![1]
         );
     }

@@ -225,7 +225,7 @@ fn mongodb_materialize_guards_deletes_with_the_complete_original_row() {
             Value::Text("id-1".into()),
             Value::Null,
             Value::Undecodable("missing BSON field".into()),
-            Value::Json(serde_json::json!(["_id", "nullable"]))
+            Value::Json(Box::new(serde_json::json!(["_id", "nullable"])))
         ]
     );
 }

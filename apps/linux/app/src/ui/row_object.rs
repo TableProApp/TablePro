@@ -349,18 +349,20 @@ mod tests {
 
     #[test]
     fn a_large_parsed_json_preview_keeps_its_sample_and_exact_serialized_byte_count() {
-        let value = Value::Json(serde_json::Value::String("x".repeat(8 * 1024 * 1024)));
+        let value = Value::Json(Box::new(serde_json::Value::String("x".repeat(8 * 1024 * 1024))));
         let preview = preview_value(&value).unwrap();
         assert_eq!(preview.byte_count, 8 * 1024 * 1024 + 2);
         assert_eq!(preview.value, Value::Text(format!("\"{}", "x".repeat(8191))));
-        assert!(matches!(value, Value::Json(serde_json::Value::String(text)) if text.len() == 8 * 1024 * 1024));
+        assert!(
+            matches!(&value, Value::Json(json) if matches!(json.as_ref(), serde_json::Value::String(text) if text.len() == 8 * 1024 * 1024))
+        );
     }
 
     #[test]
     fn parsed_json_preview_matches_serialized_escapes_and_utf8_boundaries() {
         let json = serde_json::json!({"payload": "é😀\0\\\"".repeat(2000)});
         let serialized = json.to_string();
-        let preview = preview_value(&Value::Json(json)).unwrap();
+        let preview = preview_value(&Value::Json(Box::new(json))).unwrap();
         let end = serialized.floor_char_boundary(8192);
         assert_eq!(preview.byte_count, serialized.len());
         assert_eq!(preview.value, Value::Text(serialized[..end].to_owned()));
@@ -368,8 +370,8 @@ mod tests {
 
     #[test]
     fn parsed_json_uses_its_serialized_size_at_the_preview_boundary() {
-        assert!(preview_value(&Value::Json(serde_json::Value::String("x".repeat(8190)))).is_none());
-        let preview = preview_value(&Value::Json(serde_json::Value::String("x".repeat(8191)))).unwrap();
+        assert!(preview_value(&Value::Json(Box::new(serde_json::Value::String("x".repeat(8190))))).is_none());
+        let preview = preview_value(&Value::Json(Box::new(serde_json::Value::String("x".repeat(8191))))).unwrap();
         assert_eq!(preview.byte_count, 8193);
     }
 
@@ -470,7 +472,7 @@ mod tests {
         let row = RowObject::new(vec![
             Value::Int(1),
             Value::Bytes(bytes.clone()),
-            Value::Json(serde_json::json!("x".repeat(8192))),
+            Value::Json(Box::new(serde_json::json!("x".repeat(8192)))),
         ]);
         row.preview_long_values(&[0]);
         assert_eq!(row.cell_preview(1).unwrap().value, Value::Bytes(bytes[..8192].to_vec()));

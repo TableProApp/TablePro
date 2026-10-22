@@ -70,7 +70,10 @@ mod tests {
     #[test]
     fn nested_json_cell_edits_refuse_values_without_native_type_metadata() {
         assert!(matches!(
-            literal(&Value::Json(serde_json::json!(["18446744073709551616", null]))),
+            literal(&Value::Json(Box::new(serde_json::json!([
+                "18446744073709551616",
+                null
+            ])))),
             Err(DriverError::Unsupported(_))
         ));
     }

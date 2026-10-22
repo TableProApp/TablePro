@@ -654,7 +654,7 @@ async fn value_contract_jsonb_domain_keeps_json_null_distinct_from_sql_null() {
     assert_eq!(
         result.rows[0],
         vec![
-            Value::Json(serde_json::Value::Null),
+            Value::Json(Box::new(serde_json::Value::Null)),
             Value::Null,
             Value::Text("value_contract_jsonb_domain".into()),
             Value::Text("null".into()),
@@ -663,13 +663,16 @@ async fn value_contract_jsonb_domain_keeps_json_null_distinct_from_sql_null() {
         ]
     );
 
-    let json_null = Value::Json(serde_json::Value::Null);
+    let json_null = Value::Json(Box::new(serde_json::Value::Null));
     let literal = tablepro_core::sql_literal::render_sql_literal("postgres", &json_null).unwrap();
     let literal_result = connection
         .query(&format!("SELECT {literal}::value_contract_jsonb_domain::jsonb"))
         .await
         .unwrap();
-    assert_eq!(literal_result.rows, vec![vec![Value::Json(serde_json::Value::Null)]]);
+    assert_eq!(
+        literal_result.rows,
+        vec![vec![Value::Json(Box::new(serde_json::Value::Null))]]
+    );
 
     let bound_json = connection
         .query_params(
@@ -678,7 +681,10 @@ async fn value_contract_jsonb_domain_keeps_json_null_distinct_from_sql_null() {
         )
         .await
         .unwrap();
-    assert_eq!(bound_json.rows, vec![vec![Value::Json(serde_json::Value::Null)]]);
+    assert_eq!(
+        bound_json.rows,
+        vec![vec![Value::Json(Box::new(serde_json::Value::Null))]]
+    );
     let bound_sql_null = connection
         .query_params("SELECT $1::value_contract_jsonb_domain", &[Value::Null])
         .await
