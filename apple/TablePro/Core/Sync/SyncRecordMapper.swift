@@ -482,8 +482,17 @@ struct SyncRecordMapper {
                 local: settingsData,
                 server: Self.settingsData(from: server)
             ) else { return }
-            merged.fields(AppSettingsSyncField.self)[.settingsJson] = document
+            merged.fields(AppSettingsSyncField.self)[.settingsJson] = category == CustomSlashCommandStorage.syncCategory
+                ? Self.renamingCommandCollisions(in: document)
+                : document
         }
+    }
+
+    private static func renamingCommandCollisions(in document: Data) -> Data {
+        guard let commands = try? decoder.decode([CustomSlashCommand].self, from: document),
+              let renamed = try? encoder.encode(CustomSlashCommandStorage.renamingCollisions(commands))
+        else { return document }
+        return renamed
     }
 
     static func settingsCategory(from record: CKRecord) -> String? {

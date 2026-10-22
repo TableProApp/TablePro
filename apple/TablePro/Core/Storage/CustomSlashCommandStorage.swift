@@ -26,7 +26,7 @@ enum CustomSlashCommandError: LocalizedError, Equatable {
 final class CustomSlashCommandStorage: ObservableObject {
     static let shared = CustomSlashCommandStorage()
 
-    static let syncCategory = "customSlashCommands"
+    nonisolated static let syncCategory = "customSlashCommands"
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CustomSlashCommandStorage")
     private static let defaultsKey = "ai.customSlashCommands.v1"
@@ -45,6 +45,20 @@ final class CustomSlashCommandStorage: ObservableObject {
     func applyRemote(_ commands: [CustomSlashCommand]) {
         self.commands = commands
         persist(markDirty: false)
+    }
+
+    // Two Macs can each add a command under one name before they sync, and a name picks one command, so a later one takes a free name.
+    nonisolated static func renamingCollisions(_ commands: [CustomSlashCommand]) -> [CustomSlashCommand] {
+        var taken: Set<String> = []
+        return commands.map { command in
+            var named = command
+            var suffix = 2
+            while !taken.insert(named.name.lowercased()).inserted {
+                named.name = "\(command.name)-\(suffix)"
+                suffix += 1
+            }
+            return named
+        }
     }
 
     func isDuplicate(_ name: String, excluding id: UUID? = nil) -> Bool {

@@ -397,11 +397,13 @@ final class IOSSyncCoordinator {
         let heldDownload: SyncStepFailure? = applied == .saved ? nil : .pullNotSaved
 
         guard admission == .full else { return RunResult(admission: admission, failure: heldDownload) }
-        guard let pushFailure = await push(using: transport) else {
-            return RunResult(admission: admission, failure: heldDownload)
+        let pushed = await push(using: transport)
+        let download = heldDownload ?? (pushed.adoptedMergedSaves ? nil : .pullNotSaved)
+        guard let pushFailure = pushed.failure else {
+            return RunResult(admission: admission, failure: download)
         }
         let upload = await refined(pushFailure, using: transport)
-        return RunResult(admission: admission, failure: SyncStepFailure.decisive(upload: upload, download: heldDownload))
+        return RunResult(admission: admission, failure: SyncStepFailure.decisive(upload: upload, download: download))
     }
 
     private func fetchChanges(using transport: any IOSSyncTransport) async throws -> PullResult {
@@ -688,14 +690,20 @@ final class IOSSyncCoordinator {
 
     // MARK: - Push
 
+    private struct PushResult {
+        var failure: SyncStepFailure?
+        // False when a merged save could not be written here, which holds the run like a pull that was not saved.
+        var adoptedMergedSaves = true
+    }
+
     /// Whatever went through is settled even when a later batch threw, so a saved record is not
     /// sent again and a cached record does not stand in with a stale change tag.
-    private func push(using transport: any IOSSyncTransport) async -> SyncStepFailure? {
+    private func push(using transport: any IOSSyncTransport) async -> PushResult {
         let zoneID = await transport.currentZoneID
-        guard let state = getCurrentState?() else { return nil }
+        guard let state = getCurrentState?() else { return PushResult() }
         let generationsAtPush = editGenerations
         let batch = pushBatch(from: state, savedQueries: getSavedQueries?(), in: zoneID)
-        guard !batch.edits.isEmpty || !batch.deletions.isEmpty else { return nil }
+        guard !batch.edits.isEmpty || !batch.deletions.isEmpty else { return PushResult() }
 
         let edits = Dictionary(batch.edits.map { ($0.recordID, $0) }, uniquingKeysWith: { _, last in last })
         var outcome: PushOutcome
@@ -715,25 +723,26 @@ final class IOSSyncCoordinator {
             interruption = interrupted.cause
         } catch {
             Self.logger.error("Push failed: \(error.localizedDescription, privacy: .private)")
-            return SyncStepFailure(error)
+            return PushResult(failure: SyncStepFailure(error))
         }
         outcome.acceptMissingDeletions(of: batch.deletions)
-        settle(outcome, edits: edits, generationsAtPush: generationsAtPush)
+        let adopted = settle(outcome, edits: edits, generationsAtPush: generationsAtPush)
 
         let itemFailure = SyncStepFailure(outcome)
         if let interruption {
             Self.logger.error("Push stopped part way: \(interruption.localizedDescription, privacy: .private)")
             /// A blocker an earlier batch hit explains the interruption too; anything less does not.
-            return itemFailure.flatMap { $0.failure.stopsUpload ? $0 : nil } ?? SyncStepFailure(interruption)
+            let failure = itemFailure.flatMap { $0.failure.stopsUpload ? $0 : nil } ?? SyncStepFailure(interruption)
+            return PushResult(failure: failure, adoptedMergedSaves: adopted)
         }
         if let itemFailure {
             let pending = outcome.failures.count
             Self.logger.error("Push left \(pending, privacy: .public) items pending: \(String(describing: itemFailure.failure), privacy: .public)")
         }
-        return itemFailure
+        return PushResult(failure: itemFailure, adoptedMergedSaves: adopted)
     }
 
-    private func settle(_ outcome: PushOutcome, edits: [CKRecord.ID: SyncRecordEdit], generationsAtPush: [EditKey: Int]) {
+    private func settle(_ outcome: PushOutcome, edits: [CKRecord.ID: SyncRecordEdit], generationsAtPush: [EditKey: Int]) -> Bool {
         recordCache.store(outcome.savedBases(pushed: edits))
         recordCache.remove(Array(outcome.deletedRecordIDs))
 
@@ -750,21 +759,22 @@ final class IOSSyncCoordinator {
             metadata.removeTombstone(parsed.id, type: parsed.type)
         }
 
-        adoptRebasedSaves(outcome)
+        return adoptRebasedSaves(outcome)
     }
 
     // A rebased save holds another device's change too, which the local copy takes as from a pull.
-    private func adoptRebasedSaves(_ outcome: PushOutcome) {
+    private func adoptRebasedSaves(_ outcome: PushOutcome) -> Bool {
         let rebased = outcome.savedRecords.filter { outcome.rebasedRecordIDs.contains($0.key) }.map(\.value)
-        guard !rebased.isEmpty else { return }
+        guard !rebased.isEmpty else { return true }
         let keptEdits = pendingEditRecordNames()
         let pulled = PullResult(changedRecords: rebased, deletedRecordIDs: [], newToken: nil)
         let applied = applyRemoteChanges(PullChanges(pulled))
         guard applied != .notSaved else {
             Self.logger.error("A merged save was not applied here, so the next pull brings it")
-            return
+            return false
         }
         cacheRecords(rebased, takenBy: applied, keptEdits: keptEdits)
+        return applied == .saved
     }
 
     // The cache holds only what the local copy holds: a copy that kept its edit keeps the record the edit

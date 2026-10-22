@@ -1504,6 +1504,27 @@ struct IOSSyncCoordinatorTests {
         #expect(box.connections.first?.name == "Production (Mac)")
     }
 
+    @Test("A merged save this device could not store holds the run like a pull that was not saved")
+    func unstoredMergedSaveIsReported() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Production", type: .postgresql, host: "db", port: 5_432)
+        box.connections = [local]
+        let cached = SyncRecordMapper.toRecord(local, zoneID: zoneID)
+        SyncRecordCache(directory: cacheDirectory, defaults: nil).store([cached])
+        let server = try copy(cached)
+        server.fields(ConnectionSyncField.self)[.name] = "Production (Mac)"
+        let transport = FakeSyncTransport(remoteRecords: [server], box: box)
+        await transport.holdNewerCopy(server)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        box.connections[0].port = 6_543
+        coordinator.markDirty(local.id)
+        box.duringPush = { box.saves = false }
+
+        await coordinator.sync()
+
+        #expect(coordinator.status == .error(.pullNotSaved))
+    }
+
     @Test("A saved query edited here keeps the name another device gave it")
     func dirtySavedQueryKeepsAnotherDevicesName() async throws {
         let box = LibraryStateBox()

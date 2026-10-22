@@ -195,6 +195,31 @@ struct SyncConflictRebaseTests {
         #expect(document == ["a": 2, "b": 2])
     }
 
+    @Test("Slash commands two Macs added under one name both stay, the later one under a free name")
+    func mergedSlashCommandsKeepDistinctNames() throws {
+        let shared = CustomSlashCommand(name: "explain", promptTemplate: "Explain {{query}}")
+        let mine = CustomSlashCommand(name: "summarize", promptTemplate: "Summarize mine")
+        let theirs = CustomSlashCommand(name: "Summarize", promptTemplate: "Summarize theirs")
+        let encoder = JSONEncoder()
+        let category = CustomSlashCommandStorage.syncCategory
+        let base = SyncRecordMapper.toCKRecord(category: category, settingsData: try encoder.encode([shared]), in: Self.zoneID)
+        let server = try copy(base)
+        server.fields(AppSettingsSyncField.self)[.settingsJson] = try encoder.encode([shared, theirs])
+
+        let edit = SyncRecordMapper.settingsEdit(
+            category: category,
+            settingsData: try encoder.encode([shared, mine]),
+            in: Self.zoneID,
+            base: base
+        )
+
+        let merged = try #require(edit.rebased(onto: server))
+        let blob = try #require(SyncRecordMapper.settingsData(from: merged))
+        let commands = try JSONDecoder().decode([CustomSlashCommand].self, from: blob)
+        #expect(commands.map(\.name) == ["explain", "Summarize", "summarize-2"])
+        #expect(commands.map(\.id) == [shared.id, theirs.id, mine.id])
+    }
+
     @Test("A pulled record of a category this Mac does not sync is not cached")
     func unsyncedCategoryStaysOutOfTheCache() async throws {
         let tag = ConnectionTag(name: "prod", color: .red)
