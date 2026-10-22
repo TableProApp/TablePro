@@ -430,34 +430,10 @@ GLib.MainLoop().run()
         assert ui.database_ids(database_b) == [55], "switch after cancellation used the wrong database"
 
     def app_memory_kb():
-        import glob
-        for status in glob.glob("/proc/[0-9]*/status"):
-            try:
-                executable = os.readlink(status.replace("status", "exe"))
-                text = open(status).read()
-            except OSError:
-                continue
-            if not executable.endswith(("/usr/bin/tablepro", "/usr/bin/bookie")):
-                continue
-            fields = dict(line.split(":", 1) for line in text.splitlines() if ":" in line)
-            return int(fields["VmRSS"].split()[0]), int(fields["VmHWM"].split()[0])
-        raise AssertionError("application process not found")
+        return ui.owned_application().memory_kb()
 
     def a_second_launch_raises_the_window_and_exits_cleanly(database, base):
-        import glob
-        import subprocess
-        for status in glob.glob("/proc/[0-9]*/status"):
-            try:
-                executable = os.readlink(status.replace("status", "exe"))
-                raw_environment = open(status.replace("status", "environ"), "rb").read()
-            except OSError:
-                continue
-            if executable.endswith(("/usr/bin/tablepro", "/usr/bin/bookie")):
-                break
-        else:
-            raise AssertionError("application process not found")
-        environment = dict(item.split("=", 1) for item in raw_environment.decode().split("\0") if "=" in item)
-        result = subprocess.run([executable], env=environment, capture_output=True, text=True, timeout=30)
+        result = ui.owned_application().launch_again()
         assert result.returncode == 0, (result.returncode, result.stderr)
         assert "did not unregister" not in result.stderr, result.stderr
         assert "asked it to show its window" in result.stderr, result.stderr
@@ -487,6 +463,7 @@ GLib.MainLoop().run()
         )
         with open(os.environ["TABLEPRO_PROFILE_OUT"], "a") as out:
             out.write(json.dumps({
+                **ui.owned_application().identity(),
                 "profile_mode": "table-browse",
                 "rows_requested": rows,
                 "cell_payload_bytes": payload_bytes,
@@ -585,6 +562,7 @@ GLib.MainLoop().run()
             if any(word in ui.node_name(node).lower() for word in ("done in", "truncat"))
         })
         line = json.dumps({
+            **ui.owned_application().identity(),
             "rows_requested": rows,
             "cell_payload_bytes": payload_bytes,
             "repetition": int(os.environ.get("TABLEPRO_PROFILE_REPETITION", "1")),

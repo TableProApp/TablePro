@@ -1,0 +1,55 @@
+{
+  "base": "f22a4905ddfe4cff74fd37247d4d028ac9c534e3",
+  "source_sha256": {
+    "apps/linux/app/tests/gtk_process.py": "f6ae543bff61db54e11d68383b6332f94ab3adba8a88b4f3c6bd7da29d5e4dcc",
+    "apps/linux/app/tests/gtk_safety.py": "dc8aee89e6718ebdec2da970dbcfa96b608cbff4682728b5cce236a378e0a966",
+    "apps/linux/app/tests/gtk_ux.py": "bbada0098dac66902d33588f45dd69cc291dc5f8bb2f7ba251bc8ff34d4653c1",
+    "scripts/tests/test_gtk_owned_process.py": "f839f208edecbe69427aa02281203eeddfbdf442accb9294c883c619dc8e73d3",
+    "scripts/tests/test_gtk_process_capture.py": "2b7a95d2e6748e01eb1ccb48b48af29f7dc3cec6ca287c06907dbb1a38b25a69"
+  },
+  "checks": {
+    "focused_process_tests": 18,
+    "optimized_ownership_tests": 14,
+    "preflight": {
+      "status": "passed",
+      "harness": 359,
+      "unit": 2056,
+      "sandbox": 2059,
+      "redis_cancellation": 1
+    },
+    "targeted_gtk_scenarios": {
+      "executed": 3,
+      "status": "passed",
+      "display": "isolated X11/Xvfb/Cairo",
+      "binary": "source-built debug snapshot",
+      "sqlite_rows": 1000,
+      "scroll_steps": 4
+    }
+  },
+  "binary": {
+    "rust_source_base": "f22a4905ddfe4cff74fd37247d4d028ac9c534e3",
+    "binary_sha256": "5ea362f20ada7f7c1fc8dd98029c761f3559e947494c5c74102833b572b9fcda",
+    "method": "source-built debug executable copied immediately after successful Cargo build to an owned immutable acceptance path"
+  },
+  "review": "separate self-review; not independent",
+  "pending": [
+    "GitHub exact-head checks",
+    "maintainer Forgejo",
+    "full installed GTK tier",
+    "native Wayland/package acceptance"
+  ],
+  "artifacts_sha256": {
+    "README.md": "480ddd5cf8c65a2512458c4518e3a690fd04294eed2e718422821f5cd3861974",
+    "a_second_launch_raises_the_window_and_exits_cleanly-result.json": "63290fc7d13bde832adc594c0b1313e1742a67dcd7d3ab45f6fbb051bbdf8c7a",
+    "before.log.gz": "c2ce84f1bdf6121f724cd1e37db02260b10c120260fbcce77996520a42e48f6c",
+    "binary.json": "133996023de814b78f8c242cfcc8bc1664644c2bedaa72f4bcf4f9ed50be0373",
+    "final-preflight.log.gz": "5d9fb7b68f6505a8641408dbce4e1e2ab818d8b52ea118fca20a037c4f7020d6",
+    "focused.log.gz": "0f6e82db6b350deb68ecd2d33ea497ea972e553c2fb3ec3676e53a3e05da24b8",
+    "optimized.log.gz": "83d5f3bf23e2cb575927d87caf4346b2583e3f54aef13d7570437db5b4f4f8a0",
+    "profile_large_result_in_the_grid-result.json": "f4ed3c501cf3ca8263ad1c40bb20a2e20954b2da553f8f41c427ec5806744519",
+    "restart_with_an_untouched_editor_restores_without_layout_criticals-result.json": "c367cbef11e0de5b675043e3f8ba2ad9432749f63f4083473d41d981443f0c48",
+    "verified-build.log.gz": "d1a5d35bccf72327b752f9ac05e05a97bc82026e38c8c2b590278e5dc92f4b6a",
+    "verified-gtk.log.gz": "cf16d3f183b13ef6a33e285dc4e3b51a1de715a6b1b3dee70850174200284194",
+    "verified-profile.jsonl": "04464d46dc7c4a2becb586bc3b749a25fd35520be60c1fda42a09376f520ce58"
+  }
+}

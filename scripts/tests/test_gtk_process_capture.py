@@ -1,4 +1,5 @@
 import ast
+import importlib.util
 import os
 from pathlib import Path
 import signal
@@ -9,6 +10,12 @@ import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+
+
+PROCESS_PATH = Path(__file__).resolve().parents[2] / "apps/linux/app/tests/gtk_process.py"
+PROCESS_SPEC = importlib.util.spec_from_file_location("gtk_process", PROCESS_PATH)
+gtk_process = importlib.util.module_from_spec(PROCESS_SPEC)
+PROCESS_SPEC.loader.exec_module(gtk_process)
 
 
 class GtkProcessCaptureTests(unittest.TestCase):
@@ -26,7 +33,7 @@ class GtkProcessCaptureTests(unittest.TestCase):
                 time.sleep(0.01)
             raise AssertionError("the child did not finish writing its diagnostics")
 
-        namespace = dict(subprocess=subprocess, signal=signal, tempfile=tempfile,
+        namespace = dict(subprocess=subprocess, signal=signal, tempfile=tempfile, gtk_process=gtk_process, _owned_application=None,
                          wait_for_node=wait_for_window, CONNECTION_NAME="fixture", pyatspi=SimpleNamespace(ROLE_FRAME=1))
         exec(compile(ast.Module(body=functions, type_ignores=[]), str(source), "exec"), namespace)
         return namespace
@@ -52,9 +59,11 @@ class GtkProcessCaptureTests(unittest.TestCase):
             process = harness["start_application"](
                 self.application(root, 0), {**os.environ, "CAPTURE_MARKER": str(marker)}, restored="empty"
             )
+            self.assertIs(harness["_owned_application"].process, process)
             process.wait(timeout=3)
             self.assertEqual(harness["stop_application"](process), "x" * (256 * 1024))
             self.assertTrue(process.stderr.closed)
+            self.assertIsNone(harness["_owned_application"])
 
     def test_nonzero_exit_keeps_diagnostics_and_closes_capture(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -1,0 +1,5 @@
+{
+  "rust_source_base": "f22a4905ddfe4cff74fd37247d4d028ac9c534e3",
+  "binary_sha256": "5ea362f20ada7f7c1fc8dd98029c761f3559e947494c5c74102833b572b9fcda",
+  "method": "source-built debug executable copied immediately after successful Cargo build to an owned immutable acceptance path"
+}

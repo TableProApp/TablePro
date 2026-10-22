@@ -24,6 +24,9 @@ import gtk_csv_refresh
 import gtk_input
 import gtk_runner
 import gtk_shard
+import gtk_process
+
+_owned_application = None
 
 APP_NAME = "BookiE"
 CONNECTION_NAME = "Safety SQLite"
@@ -928,7 +931,13 @@ def write_fixture(base, audit_available=True, environment="prod", mcp_token=Fals
     return database, environment
 
 
+def owned_application():
+    assert _owned_application is not None, "no owned application is running"
+    return _owned_application
+
+
 def start_application(binary, environment, restored=False):
+    global _owned_application
     environment.setdefault("G_DEBUG", "fatal-criticals")
     stderr_capture = tempfile.TemporaryFile(mode="w+", encoding="utf-8")
     try:
@@ -944,6 +953,7 @@ def start_application(binary, environment, restored=False):
         raise
     process.stderr = stderr_capture
     try:
+        _owned_application = gtk_process.OwnedApplication(process, binary, environment)
         if restored == "empty":
             wait_for_node(name="BookiE", role=pyatspi.ROLE_FRAME)
         elif restored == "welcome":
@@ -960,6 +970,7 @@ def start_application(binary, environment, restored=False):
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
+        _owned_application = None
         stderr = read_application_stderr(process)
         raise AssertionError(f"application did not expose its expected window: {stderr}")
 
@@ -973,6 +984,9 @@ def read_application_stderr(process):
 
 
 def stop_application(process):
+    global _owned_application
+    if _owned_application is not None and _owned_application.process is process:
+        _owned_application = None
     if process.poll() is None:
         process.send_signal(signal.SIGTERM)
         try:
