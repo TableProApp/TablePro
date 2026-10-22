@@ -46,7 +46,7 @@ From the 2026-10-22 dbflux review and the audit of closed issues. Each is an iss
 | PERF-11 / [#580](https://github.com/cozyGarage/BookiE/issues/580) | Reopened: catalog scoping, many-schema performance, restricted-role metadata | UX |
 | DBF-1 / [#1355](https://github.com/cozyGarage/BookiE/issues/1355) | In-app audit viewer, then error toasts carrying the operation id | UX |
 | DBF-2 to DBF-4 / [#1356](https://github.com/cozyGarage/BookiE/issues/1356), [#1357](https://github.com/cozyGarage/BookiE/issues/1357), [#1358](https://github.com/cozyGarage/BookiE/issues/1358) | Measure PostgreSQL row-cap drain, SQLite early cancel, verify-ca hostname per engine | B3 / B4 |
-| DBF-5, DBF-6 / [#1359](https://github.com/cozyGarage/BookiE/issues/1359), [#1360](https://github.com/cozyGarage/BookiE/issues/1360) | Lone BEGIN/COMMIT in the editor; keyboard-path coverage registry | UX |
+| DBF-6 / [#1360](https://github.com/cozyGarage/BookiE/issues/1360) | Keyboard-path coverage registry | UX |
 | B4-24 / [#1365](https://github.com/cozyGarage/BookiE/issues/1365) | Decide the TLS fingerprint pin | B4 |
 | UI-43 / [#1366](https://github.com/cozyGarage/BookiE/issues/1366) | Completion through the session search_path | UX |
 
