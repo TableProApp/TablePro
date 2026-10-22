@@ -20,6 +20,8 @@ mod shared_container;
 #[path = "support/wire_round_trip.rs"]
 mod wire_round_trip;
 
+#[path = "support/catalog_lookups.rs"]
+mod catalog_lookups;
 #[path = "support/connection_contracts.rs"]
 mod connection_contracts;
 #[path = "support/connection_paths.rs"]
@@ -269,30 +271,6 @@ async fn a_bare_begin_does_not_leave_a_pooled_session_inside_a_transaction() {
         .await
         .unwrap();
     assert_eq!(idle_in_transaction.rows, vec![vec![Value::Int(0)]]);
-}
-
-#[tokio::test]
-#[ignore = "requires docker"]
-async fn a_column_collation_is_read_and_survives_a_type_change() {
-    let (_c, opts) = start_pg().await;
-    let conn = connect(opts).await;
-    conn.execute("CREATE TABLE collated (label varchar(40) COLLATE \"C\", plain text)")
-        .await
-        .unwrap();
-
-    let columns = conn.fetch_columns(None, "collated").await.unwrap();
-    assert_eq!(columns[0].collation.as_deref(), Some("C"));
-    assert_eq!(columns[1].collation, None);
-
-    let mut draft = tablepro_core::sql_ddl::DraftColumn::from_info(columns[0].clone());
-    draft.data_type = "character varying(80)".into();
-    for statement in tablepro_core::sql_ddl::build_alter_column("postgres", None, "collated", &draft).unwrap() {
-        conn.execute(&statement).await.unwrap();
-    }
-
-    let altered = conn.fetch_columns(None, "collated").await.unwrap();
-    assert_eq!(altered[0].data_type, "character varying(80)");
-    assert_eq!(altered[0].collation.as_deref(), Some("C"));
 }
 
 #[tokio::test]

@@ -296,8 +296,8 @@ impl Connection for PgConnection {
              LEFT JOIN pg_catalog.pg_collation co ON co.oid = a.attcollation
              LEFT JOIN pg_catalog.pg_attrdef d
                  ON d.adrelid = a.attrelid AND d.adnum = a.attnum
-             WHERE n.nspname = COALESCE($2, current_schema())
-               AND t.relname = $1
+             WHERE (($2::text IS NULL AND t.oid = (SELECT c.oid FROM unnest(pg_catalog.current_schemas(false)) WITH ORDINALITY AS path(name, position) JOIN pg_catalog.pg_namespace ns ON ns.nspname = path.name JOIN pg_catalog.pg_class c ON c.relnamespace = ns.oid AND c.relname = $1 ORDER BY path.position LIMIT 1))
+                  OR (n.nspname = $2 AND t.relname = $1))
                AND a.attnum > 0
                AND NOT a.attisdropped
              ORDER BY a.attnum",
@@ -502,8 +502,8 @@ impl Connection for PgConnection {
             JOIN pg_catalog.pg_namespace n ON t.relnamespace = n.oid
             JOIN pg_catalog.pg_index ix ON ix.indrelid = t.oid
             JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid
-            WHERE n.nspname = COALESCE($2, current_schema())
-              AND t.relname = $1
+            WHERE (($2::text IS NULL AND t.oid = (SELECT c.oid FROM unnest(pg_catalog.current_schemas(false)) WITH ORDINALITY AS path(name, position) JOIN pg_catalog.pg_namespace ns ON ns.nspname = path.name JOIN pg_catalog.pg_class c ON c.relnamespace = ns.oid AND c.relname = $1 ORDER BY path.position LIMIT 1))
+                 OR (n.nspname = $2 AND t.relname = $1))
             ORDER BY i.relname",
         )
         .bind(table)
@@ -569,8 +569,8 @@ impl Connection for PgConnection {
                 ON kfr.ordinality = kf.ordinality
             JOIN pg_catalog.pg_attribute fa ON fa.attrelid = c.confrelid AND fa.attnum = kfr.attnum
             WHERE c.contype = 'f'
-              AND n.nspname = COALESCE($2, current_schema())
-              AND t.relname = $1
+              AND (($2::text IS NULL AND t.oid = (SELECT c.oid FROM unnest(pg_catalog.current_schemas(false)) WITH ORDINALITY AS path(name, position) JOIN pg_catalog.pg_namespace ns ON ns.nspname = path.name JOIN pg_catalog.pg_class c ON c.relnamespace = ns.oid AND c.relname = $1 ORDER BY path.position LIMIT 1))
+                 OR (n.nspname = $2 AND t.relname = $1))
             GROUP BY c.conname, fn_class.relname, fn_ns.nspname, c.confdeltype, c.confupdtype
             ORDER BY c.conname",
         )
