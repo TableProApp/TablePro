@@ -25,4 +25,6 @@ An external issue or pull request is provenance, not evidence that the behavior 
 | Resolve deeply nested PostgreSQL domains and enum types | PostgreSQL driver | Local decoder regression cases |
 | Preserve MySQL `ENUM` and `SET` text under binary collation | MySQL driver | [SQLx report](https://github.com/launchbadge/sqlx/issues/4453); ADR 0007 |
 
+The MongoDB SCRAM change merged upstream as [#1833](https://github.com/mongodb/mongo-rust-driver/pull/1833) on 2026-10-21, after release 3.9.1; drop that hunk when a release contains it. SQLx [#4451](https://github.com/transact-rs/sqlx/issues/4451), [#4452](https://github.com/transact-rs/sqlx/issues/4452) and [#4453](https://github.com/transact-rs/sqlx/issues/4453) were open on 2026-10-22 with no sqlx release since 0.9.0.
+
 The links preserve issue provenance only. Current release status, patch contents, dependency versions and test selectors must be checked before changing `vendor/`.

@@ -72,5 +72,16 @@ This page is an index of ledger IDs to issues. Do not track evidence, owners or 
 | SNAP-2 | [#547](https://github.com/cozyGarage/BookiE/issues/547) | UX |
 | SNAP-3 | [#547](https://github.com/cozyGarage/BookiE/issues/547) | UX |
 | SNAP-4 | [#547](https://github.com/cozyGarage/BookiE/issues/547) | UX |
+| RV-12 | [#1354](https://github.com/cozyGarage/BookiE/issues/1354) | B3 |
+| RV-13 | [#1364](https://github.com/cozyGarage/BookiE/issues/1364) | B3 |
+| DBF-1 | [#1355](https://github.com/cozyGarage/BookiE/issues/1355) | UX |
+| DBF-2 | [#1356](https://github.com/cozyGarage/BookiE/issues/1356) | B3 |
+| DBF-3 | [#1357](https://github.com/cozyGarage/BookiE/issues/1357) | B3 |
+| DBF-4 | [#1358](https://github.com/cozyGarage/BookiE/issues/1358) | B4 |
+| DBF-5 | [#1359](https://github.com/cozyGarage/BookiE/issues/1359) | UX |
+| DBF-6 | [#1360](https://github.com/cozyGarage/BookiE/issues/1360) | UX |
+| B4-24 | [#1365](https://github.com/cozyGarage/BookiE/issues/1365) | B4 |
+| UI-43 | [#1366](https://github.com/cozyGarage/BookiE/issues/1366) | UX |
+| PERF-11 | [#580](https://github.com/cozyGarage/BookiE/issues/580) | UX |
 
 When you finish a row, close or move the GitHub issue on the project. Remove its index line in the same docs change. When you move work between lanes, change the project **Lane** field (and `lane:*` label) and update the Lane column here in the same commit.
