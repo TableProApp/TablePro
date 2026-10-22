@@ -20,11 +20,6 @@ pub struct ConnectionRow {
     saved: SavedConnection,
     organization: ConnectionOrganization,
     actions_button: gtk::MenuButton,
-    /// AdwActionRow root widget. Cached so the trash button's
-    /// confirmation dialog can `present()` against it (the dialog
-    /// walks up to find the GtkWindow, but it needs *some* widget
-    /// in the tree to start from).
-    root: Option<gtk::Widget>,
 }
 
 #[derive(Debug, Clone)]
@@ -121,7 +116,6 @@ impl FactoryComponent for ConnectionRow {
             saved: init.saved,
             organization: init.organization,
             actions_button: connection_actions(sender),
-            root: None,
         }
     }
 
@@ -133,7 +127,6 @@ impl FactoryComponent for ConnectionRow {
         sender: FactorySender<Self>,
     ) -> Self::Widgets {
         let widgets = view_output!();
-        self.root = Some(root.clone().upcast::<gtk::Widget>());
         widgets
     }
 
@@ -155,33 +148,7 @@ impl FactoryComponent for ConnectionRow {
                 let _ = sender.output(ConnectionRowOutput::Duplicate(self.saved.id));
             }
             ConnectionRowMsg::RequestDelete => {
-                // GNOME HIG: destructive actions need explicit
-                // confirmation. AdwAlertDialog with a destructive-
-                // appearance Remove button is the documented pattern;
-                // the Cancel default + Esc-cancellable close response
-                // make a misclick a no-op. Body copy spells out the
-                // blast radius so the user knows what's actually lost.
-                let dialog = adw::AlertDialog::new(None, None);
-                dialog.set_heading(Some(
-                    &crate::tr!("Remove “{name}”?").replace("{name}", &self.saved.name),
-                ));
-                dialog.set_body(&crate::tr!(
-                    "The saved credentials and SSH settings will be deleted from this device. The database itself is unaffected."
-                ));
-                dialog.add_response("cancel", &crate::tr!("Cancel"));
-                dialog.add_response("remove", &crate::tr!("Remove"));
-                dialog.set_response_appearance("remove", adw::ResponseAppearance::Destructive);
-                dialog.set_default_response(Some("cancel"));
-                dialog.set_close_response("cancel");
-                let id = self.saved.id;
-                let output = sender.output_sender().clone();
-                dialog.connect_response(None, move |dlg, response| {
-                    dlg.close();
-                    if response == "remove" {
-                        let _ = output.send(ConnectionRowOutput::Delete(id));
-                    }
-                });
-                dialog.present(self.root.as_ref());
+                let _ = sender.output(ConnectionRowOutput::Delete(self.saved.id));
             }
         }
     }

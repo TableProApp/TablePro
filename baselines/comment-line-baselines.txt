@@ -43,7 +43,7 @@ apps/linux/app/src/ui/connect_dialog/mod.rs 16
 apps/linux/app/src/ui/connection_bundle/export.rs 3
 apps/linux/app/src/ui/connection_bundle/import.rs 7
 apps/linux/app/src/ui/connection_bundle/mod.rs 8
-apps/linux/app/src/ui/connection_row.rs 19
+apps/linux/app/src/ui/connection_row.rs 8
 apps/linux/app/src/ui/editor/mod.rs 5
 apps/linux/app/src/ui/editor/schema.rs 3
 apps/linux/app/src/ui/explain_dialog.rs 3

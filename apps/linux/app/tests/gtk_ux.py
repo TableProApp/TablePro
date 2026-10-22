@@ -356,6 +356,38 @@ GLib.MainLoop().run()
             stored = psql("SELECT COUNT(*) FROM public.session_commit_probe")
             assert stored == count, (recover, stored, count)
 
+    def check_saved_connection_removal(database, base, welcome):
+        before = saved_connections(base)
+        target = next(record for record in before if record["name"] == ui.CONNECTION_B_NAME)
+        database_file = Path(target["database"])
+        database_before = database_file.read_bytes()
+        if welcome:
+            ui.invoke_accessible_action("win.disconnect")
+        heading = f"Delete {ui.CONNECTION_B_NAME}?"
+        for cancel in (True, False):
+            if ui.find_node(name=ui.CONNECTION_B_NAME, role=pyatspi.ROLE_LIST_ITEM) is None:
+                ui.invoke(ui.wait_for_node(name="Open saved connection", role=pyatspi.ROLE_TOGGLE_BUTTON))
+            ui.wait_for_node(name=ui.CONNECTION_B_NAME, role=pyatspi.ROLE_LIST_ITEM)
+            saved_connection_action(ui.CONNECTION_B_NAME, "Remove connection")
+            ui.wait_for_node(name=heading)
+            ui.invoke(ui.wait_for_node(name="Cancel" if cancel else "Delete", role=pyatspi.ROLE_PUSH_BUTTON))
+            ui.wait_for_node(name=heading, present=False)
+            if cancel:
+                assert saved_connections(base) == before
+                continue
+            expected = [record for record in before if record["id"] != target["id"]]
+            deadline = time.monotonic() + ui.WAIT_SECONDS
+            while saved_connections(base) != expected and time.monotonic() < deadline:
+                time.sleep(ui.POLL_SECONDS)
+            assert saved_connections(base) == expected
+        assert database_file.read_bytes() == database_before
+
+    def workspace_connection_removal_confirms_once_and_preserves_the_database(database, base):
+        check_saved_connection_removal(database, base, False)
+
+    def welcome_connection_removal_confirms_once_and_preserves_the_database(database, base):
+        check_saved_connection_removal(database, base, True)
+
     def editing_a_saved_connection_prefills_it_and_saves_the_new_name(database, base):
         before = saved_connections(base)
         ui.invoke(ui.wait_for_node(name="Open saved connection", role=pyatspi.ROLE_TOGGLE_BUTTON))
@@ -1723,6 +1755,8 @@ GLib.MainLoop().run()
     result = [
         sqlite_grid_context_menu_columns_action_is_reachable_via_atspi,
         editing_a_saved_connection_prefills_it_and_saves_the_new_name,
+        workspace_connection_removal_confirms_once_and_preserves_the_database,
+        welcome_connection_removal_confirms_once_and_preserves_the_database,
         find_bar_replaces_every_match_in_the_editor,
         view_value_opens_the_whole_cell_with_pretty_json,
         explain_plan_window_closes_on_escape,
