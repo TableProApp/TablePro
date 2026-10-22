@@ -18,12 +18,47 @@ pub const DEFAULT_SENSITIVE_PATTERNS: &[&str] = &[
 
 const REDACTED: &str = "***REDACTED***";
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SensitivePatterns(Vec<glob::Pattern>);
+
+impl SensitivePatterns {
+    pub(crate) fn new(patterns: &[String]) -> Self {
+        Self(
+            patterns
+                .iter()
+                .filter_map(|pattern| glob::Pattern::new(&pattern.to_lowercase()).ok())
+                .collect(),
+        )
+    }
+
+    pub(crate) fn matches(&self, column_name: &str) -> bool {
+        let name = column_name.to_lowercase();
+        self.0.iter().any(|pattern| pattern.matches(&name))
+    }
+
+    pub(crate) fn mask(&self, mut result: QueryResult, sensitive_positions: Option<&[bool]>) -> QueryResult {
+        let sensitive: Vec<bool> = result
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| self.matches(&c.name) || sensitive_positions.and_then(|s| s.get(i)).copied().unwrap_or(false))
+            .collect();
+        if !sensitive.iter().any(|s| *s) {
+            return result;
+        }
+        for row in &mut result.rows {
+            for (i, cell) in row.iter_mut().enumerate() {
+                if sensitive.get(i).copied().unwrap_or(false) && !matches!(cell, Value::Null) {
+                    *cell = Value::Text(REDACTED.into());
+                }
+            }
+        }
+        result
+    }
+}
+
 pub fn column_is_sensitive(column_name: &str, patterns: &[String]) -> bool {
-    let name = column_name.to_lowercase();
-    patterns.iter().any(|pat| {
-        let p = pat.to_lowercase();
-        glob::Pattern::new(&p).map(|g| g.matches(&name)).unwrap_or(false)
-    })
+    SensitivePatterns::new(patterns).matches(column_name)
 }
 
 /// Mask sensitive columns in a result set. Non-null values become the
@@ -35,31 +70,8 @@ pub fn column_is_sensitive(column_name: &str, patterns: &[String]) -> bool {
 /// so an alias or expression that hides the source column name still gets
 /// masked. `patterns` is the caller's fully effective pattern list; this
 /// function performs no defaulting of its own.
-pub fn apply_masking(
-    mut result: QueryResult,
-    patterns: &[String],
-    sensitive_positions: Option<&[bool]>,
-) -> QueryResult {
-    let sensitive: Vec<bool> = result
-        .columns
-        .iter()
-        .enumerate()
-        .map(|(i, c)| {
-            column_is_sensitive(&c.name, patterns)
-                || sensitive_positions.and_then(|s| s.get(i)).copied().unwrap_or(false)
-        })
-        .collect();
-    if !sensitive.iter().any(|s| *s) {
-        return result;
-    }
-    for row in &mut result.rows {
-        for (i, cell) in row.iter_mut().enumerate() {
-            if sensitive.get(i).copied().unwrap_or(false) && !matches!(cell, Value::Null) {
-                *cell = Value::Text(REDACTED.into());
-            }
-        }
-    }
-    result
+pub fn apply_masking(result: QueryResult, patterns: &[String], sensitive_positions: Option<&[bool]>) -> QueryResult {
+    SensitivePatterns::new(patterns).mask(result, sensitive_positions)
 }
 
 #[cfg(test)]

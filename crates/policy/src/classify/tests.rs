@@ -10,13 +10,13 @@ fn select_is_read() {
 
 #[test]
 fn guard_analysis_supplies_classification_masking_and_blast_radius_from_one_parse() {
-    let patterns = vec!["pan".to_owned()];
-    let read = analyze_statement("SELECT pan AS p FROM cards", "postgres", &patterns);
+    let patterns = crate::mask::SensitivePatterns::new(&["pan".to_owned()]);
+    let read = analyze_statement("SELECT pan AS p FROM cards", "postgres", Some(&patterns));
     assert!(read.facts.effects.contains(Effects::READS));
     assert_eq!(read.sensitive_positions, Some(vec![true]));
     assert!(read.blast_radius.is_none());
 
-    let mutation = analyze_statement("UPDATE cards SET pan = 'x' WHERE id = 1", "postgres", &patterns);
+    let mutation = analyze_statement("UPDATE cards SET pan = 'x' WHERE id = 1", "postgres", Some(&patterns));
     assert!(mutation.facts.effects.contains(Effects::WRITES_ROWS));
     assert!(mutation.sensitive_positions.is_none());
     assert!(matches!(
@@ -25,7 +25,7 @@ fn guard_analysis_supplies_classification_masking_and_blast_radius_from_one_pars
     ));
     assert_eq!(mutation.known_statement_rows, vec![None]);
 
-    let insert = analyze_statement("INSERT INTO cards (pan) VALUES ('x')", "postgres", &patterns);
+    let insert = analyze_statement("INSERT INTO cards (pan) VALUES ('x')", "postgres", Some(&patterns));
     assert_eq!(insert.known_statement_rows, vec![Some(1)]);
     assert_eq!(insert.blast_radius, Some(blast_radius::BlastRadiusRewrite::Known(1)));
 }

@@ -20,7 +20,7 @@ use crate::blast_radius::BlastRadiusRewrite;
 use crate::classify::{StatementAnalysis, StatementClass, StatementFacts, analyze_statement};
 use crate::config::PolicyConfig;
 use crate::effects::Effects;
-use crate::mask::apply_masking;
+use crate::mask::SensitivePatterns;
 use crate::principal::Principal;
 use crate::rules::{
     Decision, evaluate_categorical, evaluate_eligible_write, evaluate_with_effects, interactive_transaction_decision,
@@ -55,6 +55,7 @@ pub struct PolicyGuard {
     inner: Arc<dyn Connection>,
     ctx: GuardContext,
     fault: Option<Arc<dyn ConnectionFaultSink>>,
+    mask_patterns: Option<Arc<SensitivePatterns>>,
 }
 
 struct PolicyTransaction {
@@ -97,10 +98,18 @@ struct AuditOutcome {
 
 impl PolicyGuard {
     pub fn new(inner: Arc<dyn Connection>, ctx: GuardContext) -> Self {
+        let masks_results = ctx.principal.is_agent()
+            && ctx
+                .policy
+                .for_connection(&ctx.connection_id.to_string(), ctx.environment)
+                .mask_agent_results;
+        let mask_patterns =
+            masks_results.then(|| Arc::new(SensitivePatterns::new(&ctx.policy.effective_mask_patterns())));
         Self {
             inner,
             ctx,
             fault: None,
+            mask_patterns,
         }
     }
 
@@ -115,8 +124,7 @@ impl PolicyGuard {
     }
 
     fn analyze_statement(&self, sql: &str) -> StatementAnalysis {
-        let patterns = self.ctx.policy.effective_mask_patterns();
-        analyze_statement(sql, &self.ctx.driver_id, &patterns)
+        analyze_statement(sql, &self.ctx.driver_id, self.mask_patterns.as_deref())
     }
 
     async fn authorize(
@@ -704,12 +712,7 @@ impl PolicyGuard {
     }
 
     fn should_mask(&self) -> bool {
-        self.ctx.principal.is_agent()
-            && self
-                .ctx
-                .policy
-                .for_connection(&self.ctx.connection_id.to_string(), self.ctx.environment)
-                .mask_agent_results
+        self.mask_patterns.is_some()
     }
 
     fn mask_result(&self, result: QueryResult) -> QueryResult {
@@ -720,10 +723,9 @@ impl PolicyGuard {
     /// parsed statement's projection so an alias or wrapping expression
     /// cannot hide a sensitive source column from the result-set-name match.
     fn mask_result_for_analysis(&self, analysis: Option<&StatementAnalysis>, result: QueryResult) -> QueryResult {
-        if !self.should_mask() {
+        let Some(patterns) = self.mask_patterns.as_deref() else {
             return result;
-        }
-        let patterns = self.ctx.policy.effective_mask_patterns();
+        };
         let sensitive_positions = analysis.map(|analysis| {
             analysis
                 .sensitive_positions
@@ -732,7 +734,7 @@ impl PolicyGuard {
                 .cloned()
                 .unwrap_or_else(|| vec![true; result.columns.len()])
         });
-        apply_masking(result, &patterns, sensitive_positions.as_deref())
+        patterns.mask(result, sensitive_positions.as_deref())
     }
 
     fn mask_result_batch_for_analysis(

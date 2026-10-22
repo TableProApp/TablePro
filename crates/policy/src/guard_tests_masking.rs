@@ -139,3 +139,14 @@ async fn a_human_sees_the_full_driver_text_of_a_nested_error() {
         );
     }
 }
+
+#[test]
+fn only_a_guard_that_masks_results_analyzes_their_projection() {
+    let sql = "SELECT password AS shown FROM users";
+
+    let human = guard_for(Principal::human_gui(), leak).analyze_statement(sql);
+    assert_eq!(human.sensitive_positions, None);
+
+    let agent = guard_for(agent(), leak).analyze_statement(sql);
+    assert_eq!(agent.sensitive_positions, Some(vec![true]));
+}

@@ -12,7 +12,7 @@ use crate::effects::Effects;
 use crate::effects_classification::{merge_script_class, sql_effects_from_tokens, statement_effects, truncate_facts};
 use crate::explain_options::analyze_option_enabled;
 use crate::select_writes::select_writes;
-use crate::{blast_radius, sensitive_projection};
+use crate::{blast_radius, mask::SensitivePatterns, sensitive_projection};
 
 /// Coarse statement class used by policy rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -99,17 +99,17 @@ pub fn statement_requires_write_capability(sql: &str, driver_id: &str) -> bool {
 }
 
 pub fn classify(sql: &str, driver_id: &str) -> StatementFacts {
-    analyze_statement_inner(sql, driver_id, &[], false).facts
+    analyze_statement_inner(sql, driver_id, None, false).facts
 }
 
-pub(crate) fn analyze_statement(sql: &str, driver_id: &str, patterns: &[String]) -> StatementAnalysis {
-    analyze_statement_inner(sql, driver_id, patterns, true)
+pub(crate) fn analyze_statement(sql: &str, driver_id: &str, masks: Option<&SensitivePatterns>) -> StatementAnalysis {
+    analyze_statement_inner(sql, driver_id, masks, true)
 }
 
 fn analyze_statement_inner(
     sql: &str,
     driver_id: &str,
-    patterns: &[String],
+    mask_patterns: Option<&SensitivePatterns>,
     include_execution_plans: bool,
 ) -> StatementAnalysis {
     let dialect = dialect_for(driver_id);
@@ -141,7 +141,7 @@ fn analyze_statement_inner(
         let (blast_radius, known_statement_rows) = blast_radius::analyze_blast_radius(&statements, driver_id);
         (
             blast_radius,
-            sensitive_projection::projection_from_statements(&statements, patterns),
+            mask_patterns.and_then(|patterns| sensitive_projection::projection_from_statements(&statements, patterns)),
             known_statement_rows,
         )
     } else {

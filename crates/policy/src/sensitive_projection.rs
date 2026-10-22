@@ -4,7 +4,7 @@ use sqlparser::parser::Parser;
 
 #[cfg(test)]
 use crate::classify::dialect_for;
-use crate::mask::column_is_sensitive;
+use crate::mask::SensitivePatterns;
 
 #[path = "projection_sources.rs"]
 mod projection_sources;
@@ -16,19 +16,19 @@ pub fn sensitive_projection(sql: &str, driver_id: &str, patterns: &[String], out
     let Ok(statements) = Parser::parse_sql(dialect.as_ref(), trimmed) else {
         return vec![true; output_columns];
     };
-    projection_from_statements(&statements, patterns)
+    projection_from_statements(&statements, &SensitivePatterns::new(patterns))
         .filter(|positions| positions.len() == output_columns)
         .unwrap_or_else(|| vec![true; output_columns])
 }
 
-pub(crate) fn projection_from_statements(statements: &[Statement], patterns: &[String]) -> Option<Vec<bool>> {
+pub(crate) fn projection_from_statements(statements: &[Statement], patterns: &SensitivePatterns) -> Option<Vec<bool>> {
     let [Statement::Query(query)] = statements else {
         return None;
     };
     select_projection_sensitivity(query, patterns)
 }
 
-fn select_projection_sensitivity(query: &Query, patterns: &[String]) -> Option<Vec<bool>> {
+fn select_projection_sensitivity(query: &Query, patterns: &SensitivePatterns) -> Option<Vec<bool>> {
     if query.with.is_some() {
         return None;
     }
@@ -66,11 +66,10 @@ fn select_projection_sensitivity(query: &Query, patterns: &[String]) -> Option<V
     Some(sensitive)
 }
 
-fn expr_references_sensitive(expr: &Expr, patterns: &[String]) -> bool {
+fn expr_references_sensitive(expr: &Expr, patterns: &SensitivePatterns) -> bool {
     let rendered = expr.to_string();
     let lowered = rendered.to_ascii_lowercase();
-    record_serialization_constructor(&lowered)
-        || text_identifiers(&rendered).any(|ident| column_is_sensitive(ident, patterns))
+    record_serialization_constructor(&lowered) || text_identifiers(&rendered).any(|ident| patterns.matches(ident))
 }
 
 fn record_serialization_constructor(lowered: &str) -> bool {
