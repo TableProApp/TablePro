@@ -80,11 +80,6 @@ This page is an index of ledger IDs to issues. Do not track evidence, owners or 
 | UI-43 | [#1366](https://github.com/cozyGarage/BookiE/issues/1366) | UX |
 | PERF-11 | [#580](https://github.com/cozyGarage/BookiE/issues/580) | UX |
 | PERF-1387 | [#1387](https://github.com/cozyGarage/BookiE/issues/1387) | UX |
-| RV-18 | [#1431](https://github.com/cozyGarage/BookiE/issues/1431) | UX |
-| RV-17 | [#1430](https://github.com/cozyGarage/BookiE/issues/1430) | UX |
-| RV-19 | [#1432](https://github.com/cozyGarage/BookiE/issues/1432) | UX |
-| RV-18 | [#1431](https://github.com/cozyGarage/BookiE/issues/1431) | UX |
-| RV-20 | [#1433](https://github.com/cozyGarage/BookiE/issues/1433) | UX |
 | RV-21 | [#1434](https://github.com/cozyGarage/BookiE/issues/1434) | UX |
 | RV-22 | [#1435](https://github.com/cozyGarage/BookiE/issues/1435) | UX |
 
