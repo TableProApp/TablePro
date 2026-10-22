@@ -43,7 +43,7 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
     }
 
     func pageQuery(_ request: TableReadRequest, limit: Int, offset: Int) -> String {
-        let builder = mongo.filterQueryBuilder(for: request.table)
+        let builder = mongo.filterQueryBuilder(for: request.table, database: pinnedDatabase)
         let sorted = request.sortState.columns
         return builder.buildQuery(
             collection: request.table,
@@ -55,13 +55,28 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
         )
     }
 
+    // Typed by what was learned of the collection in the picker's database, where the writes run.
+    override func pluginRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        changes: [PluginRowChange],
+        inserted: [Int: [PluginCellValue]],
+        deleted: Set<Int>
+    ) throws -> [PluginRowWrite]? {
+        try mongo.generateRowWrites(
+            table: table, columns: columns, changes: changes, insertedRowData: inserted,
+            deletedRowIndices: deleted, insertedRowIndices: Set(inserted.keys), database: pinnedDatabase ?? mongo.currentDb
+        )
+    }
+
     func pageRows(_ query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
         stream(query: query, options: options, bindsToSession: true)
     }
 
     // Bounded like the Mac's background count, so a slow count never holds the session the next page needs.
     func rowCount(_ request: TableReadRequest) async throws -> Int? {
-        let builder = mongo.filterQueryBuilder(for: request.table)
+        let builder = mongo.filterQueryBuilder(for: request.table, database: pinnedDatabase)
         let filter = Self.filterDocument(for: request, builder: builder, matchesShownText: matchesShownText)
         let mongo = mongo
         return try await inSessionDatabase {
@@ -75,11 +90,11 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
         column: String,
         key: [(column: String, value: String)]
     ) async throws -> String? {
-        let builder = mongo.filterQueryBuilder(for: table)
+        let builder = mongo.filterQueryBuilder(for: table, database: pinnedDatabase)
         let filter: String
         if key.count == 1, let id = key.first, id.column == MongoDBCollectionDDL.idField {
             do {
-                filter = try mongo.identityFilter(table: table, idText: id.value)
+                filter = try mongo.identityFilter(table: table, idText: id.value, database: pinnedDatabase)
             } catch let refusal as MongoDBWriteRefusal {
                 throw DatabaseError(message: refusal.reason)
             }

@@ -79,6 +79,11 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
         try await exclusively { currentDatabase }
     }
 
+    // The database the picker names, which the app's own requests run in.
+    var pinnedDatabase: String? {
+        sessionDatabase.withLock { $0 }
+    }
+
     // A request the app makes for the database the picker names. A script's `use` can move the shell between its
     // statements, so the request runs back there and leaves the shell where the script put it.
     func inSessionDatabase<T: Sendable>(_ request: () async throws -> T) async throws -> T {
@@ -482,7 +487,23 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
         inserted: [Int: [PluginCellValue]] = [:],
         deleted: Set<Int> = []
     ) throws -> [PluginRowWrite] {
-        guard let writes = try plugin.generateRowWrites(
+        guard let writes = try pluginRowWrites(
+            table: table, schema: schema, columns: columns, changes: changes, inserted: inserted, deleted: deleted
+        ) else {
+            throw Self.cannotWrite
+        }
+        return writes
+    }
+
+    func pluginRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        changes: [PluginRowChange],
+        inserted: [Int: [PluginCellValue]],
+        deleted: Set<Int>
+    ) throws -> [PluginRowWrite]? {
+        try plugin.generateRowWrites(
             table: table,
             schema: schema,
             columns: columns,
@@ -492,10 +513,7 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
             deletedRowIndices: deleted,
             insertedRowIndices: Set(inserted.keys),
             context: PluginRowWriteContext()
-        ) else {
-            throw Self.cannotWrite
-        }
-        return writes
+        )
     }
 }
 

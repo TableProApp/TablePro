@@ -819,12 +819,30 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         writeGenerator(for: table, columns: columns).generateRestore(rows: rows, absentCells: absentCells)
     }
 
-    func identityFilter(table: String, idText: String) throws -> String {
-        try writeGenerator(for: table, columns: [MongoDBCollectionDDL.idField]).identityFilter(forIdText: idText)
+    // The writes for a grid save, typed by what this driver learned of the collection in `database`, which a caller that
+    // runs them there names, since a script's `use` can have moved the shell meanwhile.
+    func generateRowWrites(
+        table: String,
+        columns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>,
+        database: String
+    ) throws -> [PluginRowWrite] {
+        try writeGenerator(for: table, columns: columns, database: database).generateRowWrites(
+            from: changes, insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices, insertedRowIndices: insertedRowIndices
+        )
     }
 
-    private func writeGenerator(for table: String, columns: [String]) -> MongoDBStatementGenerator {
-        let key = columnKindKey(table)
+    func identityFilter(table: String, idText: String, database: String? = nil) throws -> String {
+        try writeGenerator(for: table, columns: [MongoDBCollectionDDL.idField], database: database)
+            .identityFilter(forIdText: idText)
+    }
+
+    private func writeGenerator(for table: String, columns: [String], database: String? = nil) -> MongoDBStatementGenerator {
+        let key = columnKindKey(table, database: database)
         return columnKindLock.withLock {
             let declared = declaredSchemasByCollection[key] ?? .empty
             return MongoDBStatementGenerator(
@@ -1110,8 +1128,8 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     /// Kinds a filter can be typed against: the flat columns the grid shows, plus every nested
     /// path the picker offers. Without the nested half, a filter on a nested Date or ObjectId is
     /// compared as a string and MongoDB's type bracketing returns nothing.
-    private func filterKinds(for collection: String) -> [String: BsonValueKind] {
-        let key = columnKindKey(collection)
+    private func filterKinds(for collection: String, database: String?) -> [String: BsonValueKind] {
+        let key = columnKindKey(collection, database: database)
         return columnKindLock.withLock {
             (declaredSchemasByCollection[key]?.valueKinds ?? [:])
                 .merging(fieldPathKindsByCollection[key] ?? [:]) { _, sampled in sampled }
@@ -1119,17 +1137,17 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         }
     }
 
-    func filterQueryBuilder(for collection: String) -> MongoDBQueryBuilder {
+    func filterQueryBuilder(for collection: String, database: String? = nil) -> MongoDBQueryBuilder {
         let normalizer = rawFilterNormalizer
         return MongoDBQueryBuilder(
-            columnKinds: filterKinds(for: collection),
+            columnKinds: filterKinds(for: collection, database: database),
             rawFilterNormalizer: { normalizer.normalize($0) }
         )
     }
 
     /// Two databases can hold a collection of the same name with different field types.
-    private func columnKindKey(_ collection: String) -> String {
-        MongoCollectionCacheKey.key(database: currentDb, collection: collection)
+    private func columnKindKey(_ collection: String, database: String? = nil) -> String {
+        MongoCollectionCacheKey.key(database: database ?? currentDb, collection: collection)
     }
 
     /// A Structure save renamed or removed fields on another connection, so the fields and types
