@@ -13,7 +13,8 @@ import TableProSQLGrammar
 ///
 /// The batch is split into statements the way its engine lexes it, by the grammar the Mac reads
 /// too, and under every reading the engine could be using: the run splits by one reading, and a
-/// `DELETE` hidden behind a quote that only another reading closes still reaches the server. On an
+/// `DELETE` hidden behind a quote that only another reading closes still reaches the server. Each
+/// MySQL server version that skips a different set of `/*!` comments is one more reading. On an
 /// engine that needs no `;`, every statement that begins inside one is read as well, because SQL
 /// Server runs `SELECT 1` followed by `DROP TABLE t` as two statements.
 public enum SQLWriteClassifier {
@@ -43,10 +44,13 @@ public enum SQLWriteClassifier {
             return verdict.tier != .read
         }
         let readings = SQLLexicalReadings.resolve(databaseTypeId: databaseType.rawValue, declared: nil, session: nil)
-        return readings.distinct(for: sql).contains { grammar in
-            SQLStatementScanner.executableStatements(in: sql, grammar: grammar).contains { statement in
-                SQLUnterminatedStatements.runnable(in: statement.sql, grammar: grammar).contains { runnable in
-                    statementWrites(runnable, grammar: grammar)
+        guard let lexings = readings.lexings(of: sql) else { return true }
+        var seen: Set<SQLLexing> = []
+        return lexings.contains { lexing in
+            SQLStatementScanner.executableStatements(in: lexing.text, grammar: lexing.grammar).contains { statement in
+                SQLUnterminatedStatements.runnable(in: statement.sql, grammar: lexing.grammar).contains { runnable in
+                    seen.insert(SQLLexing(grammar: lexing.grammar, text: runnable)).inserted
+                        && statementWrites(runnable, grammar: lexing.grammar)
                 }
             }
         }

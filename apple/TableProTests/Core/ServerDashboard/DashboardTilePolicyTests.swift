@@ -30,6 +30,15 @@ struct DashboardTilePolicyTests {
         )
     }
 
+    @Test("A write behind an executable comment is refused", arguments: [
+        "WITH c AS (SELECT 1) /*m! ' */ DELETE FROM orders -- '",
+        "WITH c AS (SELECT 1) /*!99999 ' */ DELETE FROM orders -- '",
+        "SELECT * FROM orders /*m! ' */ INTO OUTFILE '/tmp/x' -- '",
+    ])
+    func hiddenWriteIsRefused(sql: String) {
+        #expect(DashboardTilePolicy.refusal(for: sql, databaseType: .mysql, forcesWrite: false) != nil)
+    }
+
     @Test("Two statements are refused, even when both read")
     func multipleStatementsAreRefused() {
         #expect(

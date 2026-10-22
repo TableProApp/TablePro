@@ -82,8 +82,9 @@ enum TableEditStatementParser {
     /// may create still counts as a hazard, since counting one that never ran only skips more.
     static func parse(_ sql: String, dialect: TableEditDialect, grammar: SQLLexicalGrammar) -> TableEditStatement {
         let statement = read(sql, dialect: dialect, grammar: grammar)
-        guard statement.editsTable, grammar.contains(.executableComments),
-              sql.contains("/*!") || sql.contains("/*M!") else { return statement }
+        guard statement.editsTable, SQLExecutableCommentReadings.holdsExecutableComment(sql, grammar: grammar) else {
+            return statement
+        }
         return .other
     }
 

@@ -56,7 +56,15 @@ public enum SQLCatalogEffectClassifier {
         }
     }
 
+    // A `DROP` that only a server skipping a `/*!` comment runs still changes the catalog.
     public static func effect(of sql: String, grammar: SQLLexicalGrammar) -> SQLCatalogEffect {
+        guard let texts = SQLExecutableCommentReadings.texts(of: sql, grammar: grammar) else { return .opaque }
+        return texts.reduce(SQLCatalogEffect.none) { partial, text in
+            partial.union(textEffect(of: text, grammar: grammar))
+        }
+    }
+
+    private static func textEffect(of sql: String, grammar: SQLLexicalGrammar) -> SQLCatalogEffect {
         let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql))
         guard !trimmed.isEmpty else { return .none }
         if SQLProceduralBlock.runs(trimmed, grammar: grammar) {
@@ -201,9 +209,9 @@ public enum SQLCatalogEffectClassifier {
     ]
 }
 
-// A MySQL executable comment (/*! and /*M!) is code, so it is never skipped.
+// A MySQL executable comment (/*! and /*M!) is code, and so is TiDB's /*T!, so it is never skipped.
 public enum SQLLeadingComments {
-    public static let conditionalCommentOpeners: [String] = ["/*!", "/*M!"]
+    public static let conditionalCommentOpeners: [String] = ["/*!", "/*M!", "/*T!"]
 
     public static let lineCommentTerminators: Set<Character> = ["\n", "\r", "\r\n"]
 

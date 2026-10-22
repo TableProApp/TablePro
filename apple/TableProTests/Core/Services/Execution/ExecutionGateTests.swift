@@ -860,3 +860,62 @@ struct ExecutionGateTests {
         }
     }
 }
+
+// The editor's request for a text the gate must tier by what the server runs, behind each executable comment form.
+@MainActor
+struct ExecutionGateExecutableCommentTests {
+    nonisolated static let hiddenDrops: [(String, DatabaseType)] = QueryClassifierExecutableCommentTests.hiddenDrops.flatMap { sql in
+        QueryClassifierExecutableCommentTests.engines.map { (sql, $0) }
+    }
+
+    private func authorize(_ sql: String, on databaseType: DatabaseType, at level: SafeModeLevel) async
+        -> (decision: OperationDecision, confirm: StubConfirming)
+    {
+        let confirm = StubConfirming(answer: true)
+        let gate = DefaultExecutionGate(
+            confirming: confirm,
+            authenticating: StubAuthenticating(answer: true),
+            safeModeLevelResolver: { _ in level },
+            forcesWriteResolver: { _ in false }
+        )
+        let request = OperationRequest(
+            connectionId: UUID(),
+            databaseType: databaseType,
+            sql: sql,
+            kind: OperationKind.worst(of: [sql], databaseType: databaseType),
+            caller: .userInterface,
+            capabilities: .interactiveUser,
+            operationDescription: "Execute Query"
+        )
+        return (await gate.authorize(request), confirm)
+    }
+
+    @Test(
+        "A DROP behind an executable comment is refused in Read-Only and asked about as destructive elsewhere",
+        arguments: hiddenDrops, SafeModeLevel.allCases
+    )
+    func hiddenDropAtEveryLevel(text: (String, DatabaseType), level: SafeModeLevel) async {
+        let (decision, confirm) = await authorize(text.0, on: text.1, at: level)
+        if level == .readOnly {
+            #expect(!decision.isAuthorized)
+            #expect(confirm.callCount == 0)
+        } else {
+            #expect(decision.isAuthorized)
+            #expect(confirm.callCount == 1)
+            #expect(confirm.lastDestructive)
+        }
+    }
+
+    @Test(
+        "A write behind a comment a server reads as plain is refused in Read-Only",
+        arguments: [
+            "WITH c AS (SELECT 1) /*m! ' */ DELETE FROM orders -- '",
+            "SELECT * FROM orders /*m! ' */ INTO OUTFILE '/tmp/x' -- '",
+            "SELECT * FROM orders /*!99999 ' */ INTO OUTFILE '/tmp/x' -- '",
+        ]
+    )
+    func hiddenWriteIsRefusedInReadOnly(sql: String) async {
+        let (decision, _) = await authorize(sql, on: .mysql, at: .readOnly)
+        #expect(!decision.isAuthorized)
+    }
+}

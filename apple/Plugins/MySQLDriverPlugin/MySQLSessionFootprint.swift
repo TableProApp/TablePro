@@ -102,11 +102,48 @@ struct MySQLSessionFootprint: Equatable {
     /// `NO_BACKSLASH_ESCAPES` closes early is split where the server splits it.
     mutating func observe(_ sql: String, lexicalFeatures: SQLLexicalFeatures) {
         for statement in SQLStatementSplitting.statements(in: sql, lexicalFeatures: lexicalFeatures) {
-            let body = Self.executableBody(of: statement)
+            let readings = Self.executableBodies(of: statement).map { body in
+                var reading = self
+                reading.observeReading(body, lexicalFeatures: lexicalFeatures)
+                return reading
+            }
+            self = readings.dropFirst().reduce(readings[0]) { $0.holding($1) }
+        }
+    }
+
+    // A reading can hold statements the split above kept inside the comment, as one whose `#` hid a `*/` does when
+    // the server skips it, so each is split again.
+    private mutating func observeReading(_ body: String, lexicalFeatures: SQLLexicalFeatures) {
+        let statements = SQLStatementSplitting.statements(in: body, lexicalFeatures: lexicalFeatures)
+        guard statements.count > 1 else {
             observeTransaction(body, lexicalFeatures: lexicalFeatures)
             observeStatement(body)
             observeTemporaryTableNames(body)
+            return
         }
+        for statement in statements {
+            observe(statement, lexicalFeatures: lexicalFeatures)
+        }
+    }
+
+    // Holds what either holds, so a reading that clears a flag never clears it for a server that ran the other one.
+    private func holding(_ other: MySQLSessionFootprint) -> MySQLSessionFootprint {
+        var merged = self
+        merged.hasOpenTransaction = hasOpenTransaction || other.hasOpenTransaction
+        merged.hasTemporaryTables = hasTemporaryTables || other.hasTemporaryTables
+        merged.hasUserVariables = hasUserVariables || other.hasUserVariables
+        merged.hasPreparedStatements = hasPreparedStatements || other.hasPreparedStatements
+        merged.hasAdvisoryLocks = hasAdvisoryLocks || other.hasAdvisoryLocks
+        merged.hasLockedTables = hasLockedTables || other.hasLockedTables
+        merged.hasOpenHandlers = hasOpenHandlers || other.hasOpenHandlers
+        merged.hasSessionSettings = hasSessionSettings || other.hasSessionSettings
+        merged.hasChangedDatabase = hasChangedDatabase || other.hasChangedDatabase
+        merged.ranOpaqueRoutine = ranOpaqueRoutine || other.ranOpaqueRoutine
+        merged.heldSessionScopes = max(heldSessionScopes, other.heldSessionScopes)
+        for name in other.temporaryTableNames where !merged.temporaryTableNames.contains(name) {
+            merged.temporaryTableNames.append(name)
+        }
+        return merged
     }
 
     /// The server's own answer, taken from the status flags in its last reply, which is exact
@@ -136,8 +173,10 @@ struct MySQLSessionFootprint: Equatable {
     mutating func observeFailure(of sql: String, lexicalFeatures: SQLLexicalFeatures) {
         let statements = SQLStatementSplitting.statements(in: sql, lexicalFeatures: lexicalFeatures)
         guard statements.count == 1, let failed = statements.first else { return }
-        let head = Self.collapsedHead(of: Self.executableBody(of: failed).uppercased())
-        guard head.hasPrefix("LOCK TABLE") else { return }
+        let refusedLock = Self.executableBodies(of: failed).allSatisfy { body in
+            Self.collapsedHead(of: body.uppercased()).hasPrefix("LOCK TABLE")
+        }
+        guard refusedLock else { return }
         hasLockedTables = false
     }
 
@@ -279,21 +318,24 @@ struct MySQLSessionFootprint: Equatable {
     /// because only the engine that executes the body can say what it is.
     ///
     /// Whatever follows the comment is kept, so a line that carries a note after it, or a second
-    /// version-gated block, is still classified by the first thing the server would run. The
-    /// version number itself is not checked against the server: counting a statement the server
-    /// is too old to run holds a connection that is in fact clean, which is the safe direction.
-    private static func executableBody(of statement: String) -> String {
-        guard statement.hasPrefix("/*!") || statement.hasPrefix("/*M!") else { return statement }
-        guard let close = statement.range(of: "*/") else { return statement }
+    /// version-gated block, is still classified by the first thing the server would run. A server
+    /// older than a version after 40101 skips the body, and MySQL reads `/*M!` as a plain comment,
+    /// so for those what follows is also read on its own.
+    private static func executableBodies(of statement: String) -> [String] {
+        let isMariaDBMarker = statement.hasPrefix("/*M!")
+        guard statement.hasPrefix("/*!") || isMariaDBMarker else { return [statement] }
+        guard let close = statement.range(of: "*/") else { return [statement] }
         let marked = statement[statement.index(statement.startIndex, offsetBy: 2)..<close.lowerBound]
-        let body = marked
-            .drop(while: { $0 == "M" })
-            .dropFirst()
+        let afterMarker = marked.drop(while: { $0 == "M" }).dropFirst()
+        let digits = afterMarker.prefix(while: { $0.isASCII && $0.isNumber })
+        let version = digits.count >= 5 ? Int(digits.prefix(5)) : nil
+        let body = afterMarker
             .drop(while: { $0.isNumber })
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let remainder = statement[close.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !remainder.isEmpty else { return body }
-        return body.isEmpty ? remainder : "\(body) \(remainder)"
+        let run = remainder.isEmpty ? body : body.isEmpty ? remainder : "\(body) \(remainder)"
+        let maySkip = isMariaDBMarker || (version ?? 0) > 40_101
+        return maySkip ? [run] + executableBodies(of: remainder) : [run]
     }
 
     /// The statement's opening words with each run of whitespace collapsed, which is what the

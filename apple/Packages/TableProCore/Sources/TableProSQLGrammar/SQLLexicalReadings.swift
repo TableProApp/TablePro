@@ -73,6 +73,20 @@ public struct SQLLexicalReadings: Sendable, Hashable {
         return Self.deduplicated(all.map { $0.intersection(relevant) })
     }
 
+    /// Every text a gate reads for `text`: under each reading in ``distinct(for:)``, each text a server may run from
+    /// it, as ``SQLExecutableCommentReadings`` gives them. Lazy, so a gate that has its answer stops early. Nil when the
+    /// text sets more versions than a gate reads, which the gate answers as its worst case.
+    public func lexings(of text: String) -> AnySequence<SQLLexing>? {
+        var readings: [(grammar: SQLLexicalGrammar, texts: SQLExecutableCommentReadings.Texts)] = []
+        for grammar in distinct(for: text) {
+            guard let texts = SQLExecutableCommentReadings.texts(of: text, grammar: grammar) else { return nil }
+            readings.append((grammar, texts))
+        }
+        return AnySequence(readings.lazy.flatMap { reading in
+            reading.texts.lazy.map { SQLLexing(grammar: reading.grammar, text: $0) }
+        })
+    }
+
     private static func baseReadings(databaseTypeId: String, declared: SQLLexicalGrammar?) -> SQLLexicalReadings {
         if let profile = SQLLexicalProfile.curated(forDatabaseTypeId: databaseTypeId) {
             return SQLLexicalReadings(execution: profile.grammar, all: profile.readings)
@@ -86,6 +100,17 @@ public struct SQLLexicalReadings: Sendable, Hashable {
     private static func deduplicated(_ grammars: [SQLLexicalGrammar]) -> [SQLLexicalGrammar] {
         var seen: Set<SQLLexicalGrammar> = []
         return grammars.filter { seen.insert($0).inserted }
+    }
+}
+
+/// A text read by one grammar.
+public struct SQLLexing: Sendable, Hashable {
+    public let grammar: SQLLexicalGrammar
+    public let text: String
+
+    public init(grammar: SQLLexicalGrammar, text: String) {
+        self.grammar = grammar
+        self.text = text
     }
 }
 

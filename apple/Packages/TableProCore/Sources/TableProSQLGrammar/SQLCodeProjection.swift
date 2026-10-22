@@ -6,8 +6,8 @@ import Foundation
 /// a string that ended where the engine ends it always does. Each blanked UTF-16 unit becomes a space and each line
 /// feed stays, so an offset into the projection is an offset into the original text.
 public enum SQLCodeProjection {
-    /// - Parameter revealingExecutableComments: whether a MySQL `/*! ... */` body is kept as code. A gate reveals it
-    ///   whatever the grammar says, because the only cost of reading an ignored comment as code is a stricter tier.
+    /// - Parameter revealingExecutableComments: whether a MySQL `/*! ... */` body is kept as code, as a server that runs
+    ///   it reads it. What a server that skips it runs is ``SQLExecutableCommentReadings``'s question.
     public static func code(
         of text: String,
         grammar: SQLLexicalGrammar,

@@ -81,6 +81,11 @@ struct SQLLexicalFeatureMappingTests {
         "SELECT $a('); DROP TABLE t; --'",
         "SELECT '''it's'''; DROP TABLE t; SELECT 'x'",
         "SELECT 1 /*! , '*/' */; SELECT 2",
+        "/*! /* ' */ SELECT 1 */; SELECT 2",
+        "/*! SELECT 1 # '\n */; SELECT 2",
+        "/*! SELECT 1 -- '\n */; SELECT 2",
+        "/*! SELECT /*! 1 */; SELECT 2",
+        "/*m! ' */ SELECT 1; SELECT 2 -- '",
     ]
 
     static let engines: [DatabaseType] = [

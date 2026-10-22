@@ -254,11 +254,12 @@ public enum SqlLexer {
         return cursor
     }
 
-    /// The length of a MySQL `/*!NNNNN` or MariaDB `/*M!NNNNN` opener at `offset`, or nil when none starts there.
+    /// The length of a MySQL `/*!NNNNN` or MariaDB `/*M!NNNNN` opener at `offset`, or nil when none starts there. Both
+    /// servers read a lowercase `/*m!` as a plain comment.
     public static func executableCommentOpenerLength(_ text: NSString, at offset: Int, length: Int) -> Int? {
         guard startsBlockComment(text, at: offset, length: length) else { return nil }
         var cursor = offset + 2
-        if cursor < length, text.character(at: cursor) == capitalM || text.character(at: cursor) == smallM {
+        if cursor < length, text.character(at: cursor) == capitalM {
             cursor += 1
         }
         guard cursor < length, text.character(at: cursor) == exclamationMark else { return nil }
@@ -365,43 +366,6 @@ public enum SqlLexer {
         return Span(next: length, newlines: 0, isClosed: false)
     }
 
-    /// Runs past a MySQL executable comment whose opener is `openerLength` long. The server lexes the body as SQL, so
-    /// a `*/` inside a quoted string does not close it, measured on 8.4 and 11.8 with `/*! , '*/' */`.
-    public static func skipExecutableComment(
-        _ text: NSString,
-        from offset: Int,
-        openerLength: Int,
-        length: Int,
-        backslashEscapes: (UInt16) -> Bool
-    ) -> Span {
-        var cursor = offset + openerLength
-        var newlines = 0
-        while cursor < length {
-            let character = text.character(at: cursor)
-            if character == newline {
-                newlines += 1
-            }
-            if character == star, cursor + 1 < length, text.character(at: cursor + 1) == slash {
-                return Span(next: cursor + 2, newlines: newlines)
-            }
-            if character == singleQuote || character == doubleQuote || character == backtick {
-                let quoted = skipQuotedString(
-                    text,
-                    from: cursor,
-                    quote: character,
-                    length: length,
-                    backslashEscapes: backslashEscapes(character)
-                )
-                newlines += quoted.newlines
-                cursor = quoted.next
-                continue
-            }
-            cursor += 1
-        }
-        return Span(next: length, newlines: newlines, isClosed: false)
-    }
-
-    private static let smallM = UInt16(UnicodeScalar("m").value)
     private static let capitalM = UInt16(UnicodeScalar("M").value)
     private static let digitZero = UInt16(UnicodeScalar("0").value)
     private static let digitNine = UInt16(UnicodeScalar("9").value)

@@ -267,6 +267,44 @@ struct SQLFileParserTests {
         #expect(stmts == [Self.merge, "SELECT 1"])
     }
 
+    @Test("MySQL: a run executable comment's body is read as code, quotes and comments included", arguments: [
+        ("/*!40101 SET @a = '*/' */;\nSELECT 1;", ["/*!40101 SET @a = '*/' */", "SELECT 1"]),
+        ("/*! SELECT 1 /* ' */ */;\nSELECT 2;", ["/*! SELECT 1 /* ' */ */", "SELECT 2"]),
+        ("/*! SELECT 1 # */ '\n */;\nSELECT 2;", ["/*! SELECT 1 # */ '\n */", "SELECT 2"]),
+        ("/*m! ' */ SELECT 1;\nSELECT 2;", ["SELECT 1", "SELECT 2"]),
+    ])
+    func mysqlExecutableCommentBodyIsCode(sql: String, expected: [String]) async throws {
+        #expect(try await Self.parse(sql, grammar: TestGrammar.mysql) == expected)
+    }
+
+    @Test("MySQL: a DELIMITER line ends at its line break, so mysqldump's DELIMITER ;; is read")
+    func mysqlDelimiterOfSemicolons() async throws {
+        let sql = "DELIMITER ;;\nSELECT 1;;\nDELIMITER ;\nSELECT 2;\n"
+        #expect(try await Self.parse(sql, grammar: TestGrammar.mysql) == ["SELECT 1", "SELECT 2"])
+    }
+
+    @Test("MySQL: a dumped trigger inside version comments arrives whole")
+    func mysqlDumpedTriggerArrivesWhole() async throws {
+        let trigger = """
+        /*!50003 CREATE*/ /*!50017 DEFINER=`root`@`%`*/ /*!50003 TRIGGER `trg` BEFORE INSERT ON `t` FOR EACH ROW BEGIN
+        SET NEW.a = 'x;y */';
+        END */
+        """
+        let sql = "DELIMITER ;;\n\(trigger);;\nDELIMITER ;\nSELECT 1;\n"
+        #expect(try await Self.parse(sql, grammar: TestGrammar.mysql) == [trigger, "SELECT 1"])
+    }
+
+    @Test("MySQL: an executable opener a read chunk splits is still read as one")
+    func mysqlExecutableOpenerAcrossChunkBoundary() async throws {
+        let script = "/*M!100301 SET NAMES utf8mb4 */;\nSELECT 1;"
+        let chunkSize = 65_536
+        for boundary in 0..<8 {
+            let padding = "-- " + String(repeating: "x", count: chunkSize - boundary - 4) + "\n"
+            let statements = try await Self.parse(padding + script, grammar: TestGrammar.mysql)
+            #expect(statements == ["/*M!100301 SET NAMES utf8mb4 */", "SELECT 1"], "boundary at \(boundary)")
+        }
+    }
+
     @Test("Multi-byte UTF-8 char straddling 64KB chunk boundary parses correctly")
     func multibyte_utf8_at_chunk_boundary() async throws {
         let chunkSize = 65_536

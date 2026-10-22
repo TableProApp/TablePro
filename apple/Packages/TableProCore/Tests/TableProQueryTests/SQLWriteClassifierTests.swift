@@ -271,4 +271,22 @@ struct SQLWriteClassifierTests {
     func executableCommentIsAWrite() {
         #expect(isWrite("/*!40101 DELETE FROM t */", .mysql))
     }
+
+    @Test(
+        "a write a server runs past a comment it skips or reads as plain is a write",
+        arguments: [
+            "WITH c AS (SELECT 1) /*m! ' */ DELETE FROM orders -- '",
+            "WITH c AS (SELECT 1) /*!99999 ' */ DELETE FROM orders -- '",
+            "SELECT * FROM orders /*m! ' */ INTO OUTFILE '/tmp/x' -- '",
+            "SELECT * FROM orders /*!99999 ' */ INTO OUTFILE '/tmp/x' -- '",
+            "SELECT /*!50000 \"*/\", */ 1; /*!99999 ' */ DROP TABLE orders -- '",
+            "SELECT 1--/*!99999 ' */1 INTO OUTFILE '/tmp/x' -- '",
+            "/*T! DELETE FROM orders */",
+            "SELECT 1 a\u{600}/*!99999 ' */ INTO OUTFILE '/tmp/x' -- '",
+        ],
+        [DatabaseType.mysql, .mariadb]
+    )
+    func hiddenWriteIsAWrite(sql: String, databaseType: DatabaseType) {
+        #expect(isWrite(sql, databaseType))
+    }
 }
