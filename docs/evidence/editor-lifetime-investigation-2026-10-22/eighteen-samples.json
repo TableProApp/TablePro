@@ -1,0 +1,192 @@
+[
+  {
+    "phase": "initial",
+    "rss_kib": 165268,
+    "high_water_kib": 165268
+  },
+  {
+    "phase": "cycle-0-four-tabs",
+    "rss_kib": 175568,
+    "high_water_kib": 175568
+  },
+  {
+    "phase": "cycle-0-closed",
+    "rss_kib": 181828,
+    "high_water_kib": 181828
+  },
+  {
+    "phase": "cycle-1-four-tabs",
+    "rss_kib": 181876,
+    "high_water_kib": 181876
+  },
+  {
+    "phase": "cycle-1-closed",
+    "rss_kib": 183832,
+    "high_water_kib": 183832
+  },
+  {
+    "phase": "cycle-2-four-tabs",
+    "rss_kib": 183856,
+    "high_water_kib": 183856
+  },
+  {
+    "phase": "cycle-2-closed",
+    "rss_kib": 184412,
+    "high_water_kib": 184412
+  },
+  {
+    "phase": "cycle-3-four-tabs",
+    "rss_kib": 184452,
+    "high_water_kib": 184452
+  },
+  {
+    "phase": "cycle-3-closed",
+    "rss_kib": 185504,
+    "high_water_kib": 185504
+  },
+  {
+    "phase": "cycle-4-four-tabs",
+    "rss_kib": 185524,
+    "high_water_kib": 185524
+  },
+  {
+    "phase": "cycle-4-closed",
+    "rss_kib": 186604,
+    "high_water_kib": 186604
+  },
+  {
+    "phase": "cycle-5-four-tabs",
+    "rss_kib": 186620,
+    "high_water_kib": 186620
+  },
+  {
+    "phase": "cycle-5-closed",
+    "rss_kib": 187652,
+    "high_water_kib": 187652
+  },
+  {
+    "phase": "cycle-6-four-tabs",
+    "rss_kib": 187664,
+    "high_water_kib": 187664
+  },
+  {
+    "phase": "cycle-6-closed",
+    "rss_kib": 188812,
+    "high_water_kib": 188812
+  },
+  {
+    "phase": "cycle-7-four-tabs",
+    "rss_kib": 188832,
+    "high_water_kib": 188832
+  },
+  {
+    "phase": "cycle-7-closed",
+    "rss_kib": 190600,
+    "high_water_kib": 190600
+  },
+  {
+    "phase": "cycle-8-four-tabs",
+    "rss_kib": 190612,
+    "high_water_kib": 190612
+  },
+  {
+    "phase": "cycle-8-closed",
+    "rss_kib": 192416,
+    "high_water_kib": 192416
+  },
+  {
+    "phase": "cycle-9-four-tabs",
+    "rss_kib": 192432,
+    "high_water_kib": 192432
+  },
+  {
+    "phase": "cycle-9-closed",
+    "rss_kib": 192440,
+    "high_water_kib": 192440
+  },
+  {
+    "phase": "cycle-10-four-tabs",
+    "rss_kib": 192456,
+    "high_water_kib": 192456
+  },
+  {
+    "phase": "cycle-10-closed",
+    "rss_kib": 193140,
+    "high_water_kib": 193140
+  },
+  {
+    "phase": "cycle-11-four-tabs",
+    "rss_kib": 193168,
+    "high_water_kib": 193168
+  },
+  {
+    "phase": "cycle-11-closed",
+    "rss_kib": 194588,
+    "high_water_kib": 194588
+  },
+  {
+    "phase": "cycle-12-four-tabs",
+    "rss_kib": 194604,
+    "high_water_kib": 194604
+  },
+  {
+    "phase": "cycle-12-closed",
+    "rss_kib": 195640,
+    "high_water_kib": 195640
+  },
+  {
+    "phase": "cycle-13-four-tabs",
+    "rss_kib": 195660,
+    "high_water_kib": 195660
+  },
+  {
+    "phase": "cycle-13-closed",
+    "rss_kib": 196704,
+    "high_water_kib": 196704
+  },
+  {
+    "phase": "cycle-14-four-tabs",
+    "rss_kib": 196716,
+    "high_water_kib": 196716
+  },
+  {
+    "phase": "cycle-14-closed",
+    "rss_kib": 197716,
+    "high_water_kib": 197716
+  },
+  {
+    "phase": "cycle-15-four-tabs",
+    "rss_kib": 197724,
+    "high_water_kib": 197724
+  },
+  {
+    "phase": "cycle-15-closed",
+    "rss_kib": 198792,
+    "high_water_kib": 198792
+  },
+  {
+    "phase": "cycle-16-four-tabs",
+    "rss_kib": 198816,
+    "high_water_kib": 198816
+  },
+  {
+    "phase": "cycle-16-closed",
+    "rss_kib": 200540,
+    "high_water_kib": 200540
+  },
+  {
+    "phase": "cycle-17-four-tabs",
+    "rss_kib": 200560,
+    "high_water_kib": 200560
+  },
+  {
+    "phase": "cycle-17-closed",
+    "rss_kib": 202364,
+    "high_water_kib": 202364
+  },
+  {
+    "phase": "final",
+    "rss_kib": 202364,
+    "high_water_kib": 202364
+  }
+]
