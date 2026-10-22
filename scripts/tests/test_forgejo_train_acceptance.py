@@ -46,6 +46,53 @@ class TrainAcceptanceTests(unittest.TestCase):
                 TRAIN.check_gate({**run, field: value}, 42, 'a' * 40)
 
 
+class DispatchedCheckTests(unittest.TestCase):
+    def setUp(self):
+        self.head = 'a' * 40
+        self.pr = {'number': 7, 'headRefOid': self.head, 'state': 'OPEN', 'isDraft': False,
+                   'baseRefName': 'linux', 'reviewDecision': '', 'mergeable': 'MERGEABLE'}
+        self.checks = [{'name': name, 'state': 'SUCCESS', 'workflow': ''}
+                       for name in TRAIN.REQUIRED_CHECKS - {'harness', 'workflow-lint'}]
+        self.runs = [{'id': index, 'name': name, 'head_sha': self.head, 'status': 'completed',
+                      'conclusion': 'success', 'app': {'slug': 'github-actions'}}
+                     for index, name in enumerate(('harness', 'workflow-lint'), start=1)]
+
+    def validate(self, runs=None, checks=None):
+        result = subprocess.CompletedProcess([], 0, json.dumps(self.checks if checks is None else checks))
+        pages = [{'check_runs': [run]} for run in (self.runs if runs is None else runs)]
+        with patch.object(TRAIN.subprocess, 'run', return_value=result), \
+                patch.object(TRAIN, 'command', return_value=json.dumps(pages)):
+            TRAIN.check_open(self.pr)
+
+    def test_successful_dispatched_checks_at_the_pinned_commit_complete_the_required_checks(self):
+        self.validate()
+
+    def test_another_commit_or_check_provider_cannot_supply_a_required_success(self):
+        for field, value in [('head_sha', 'b' * 40), ('app', {'slug': 'other-app'})]:
+            runs = [{**run, field: value} for run in self.runs]
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                self.validate(runs=runs)
+
+    def test_a_newer_failure_or_pending_run_cannot_be_hidden_by_an_older_success(self):
+        for status, conclusion in [('completed', 'failure'), ('in_progress', None), ('completed', 'skipped')]:
+            newer = {**self.runs[0], 'id': 10, 'status': status, 'conclusion': conclusion}
+            with self.subTest(status=status, conclusion=conclusion), self.assertRaises(ValueError):
+                self.validate(runs=[newer, *self.runs])
+
+    def test_dispatched_success_does_not_replace_an_existing_pull_request_failure_or_pending_check(self):
+        for state in ('FAILURE', 'PENDING'):
+            checks = self.checks + [{'name': 'harness', 'state': state, 'workflow': ''}]
+            with self.subTest(state=state), self.assertRaises(ValueError):
+                self.validate(checks=checks)
+
+    def test_check_discovery_fails_when_the_commit_check_api_is_unavailable(self):
+        result = subprocess.CompletedProcess([], 0, json.dumps(self.checks))
+        with patch.object(TRAIN.subprocess, 'run', return_value=result), \
+                patch.object(TRAIN, 'command', side_effect=subprocess.CalledProcessError(1, ['gh', 'api'])), \
+                self.assertRaises(subprocess.CalledProcessError):
+            TRAIN.check_open(self.pr)
+
+
 class TrainIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

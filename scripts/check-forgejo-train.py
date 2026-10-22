@@ -64,11 +64,26 @@ def pull_request(number):
                               'number,headRefOid,baseRefName,state,isDraft,reviewDecision,mergeCommit,mergeable'))
 
 
-def github_checks(number):
+def github_checks(number, head):
     result = subprocess.run(['gh', 'pr', 'checks', str(number), '--repo', REPOSITORY,
                              '--json', 'name,state,workflow'], text=True, capture_output=True)
     require(result.returncode in {0, 1, 8}, 'could not read GitHub checks')
-    return json.loads(result.stdout)
+    checks = json.loads(result.stdout)
+    present = {check['name'] for check in checks}
+    if REQUIRED_CHECKS <= present:
+        return checks
+    endpoint = f'repos/{REPOSITORY}/commits/{head}/check-runs?filter=latest&per_page=100'
+    pages = json.loads(command('gh', 'api', '--paginate', '--slurp', endpoint))
+    runs = [run for page in pages for run in page['check_runs']]
+    for run in sorted(runs, key=lambda item: item['id'], reverse=True):
+        name = run['name']
+        if name in present or name not in REQUIRED_CHECKS or run.get('app', {}).get('slug') != 'github-actions':
+            continue
+        require(run.get('head_sha') == head, 'commit check does not match pinned PR head')
+        state = (run.get('conclusion') or 'pending').upper() if run['status'] == 'completed' else 'PENDING'
+        checks.append({'name': name, 'state': state, 'workflow': 'GitHub Actions'})
+        present.add(name)
+    return checks
 
 
 def fetch_head(remote, pr):
@@ -81,7 +96,7 @@ def check_open(pr):
     require(pr['baseRefName'] == 'linux', 'constituent and aggregate PRs must target linux')
     require(pr['reviewDecision'] != 'CHANGES_REQUESTED', f"PR #{pr['number']} has requested changes")
     require(pr['mergeable'] == 'MERGEABLE', f"PR #{pr['number']} is not confirmed mergeable")
-    check_results(github_checks(pr['number']))
+    check_results(github_checks(pr['number'], pr['headRefOid']))
 
 
 def check_integration(base, head, members):
