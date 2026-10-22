@@ -646,6 +646,7 @@ fn referenced_primary_key_switch_is_insensitive_with_foreign_key_names() {
         indexes: Vec::new(),
         foreign_keys: Vec::new(),
         inbound_foreign_keys: vec![InboundForeignKey {
+            child_compares_alike: true,
             name: "orders_user_fk".to_owned(),
             table: TableRef::unqualified("orders"),
             columns: vec!["user_id".to_owned()],

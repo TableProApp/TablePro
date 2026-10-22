@@ -24,7 +24,7 @@ use tablepro_core::statement::{Statement, StatementBuilder};
 use tablepro_core::{ForeignKeyInfo, Value};
 
 use self::create_table_source::CreateTableSource;
-pub(crate) use self::create_table_source::{declared_descending_key, declared_foreign_key_names};
+pub(crate) use self::create_table_source::{declared_comparison, declared_descending_key, declared_foreign_key_names};
 use self::declared_shape::readable;
 use crate::catalog::MAIN_SCHEMA;
 use crate::dialect::SqliteDialect;

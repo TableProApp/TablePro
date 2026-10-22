@@ -125,6 +125,39 @@ pub(crate) fn declared_column_type(declared: &str, strict: bool) -> ColumnType {
     }
 }
 
+/// How SQLite compares a column's values: by its affinity, numeric ones
+/// alike, and by its collation, named in lower case.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Comparison {
+    numeric: bool,
+    affinity: Affinity,
+    collation: String,
+}
+
+impl Comparison {
+    /// `declared` and `collation` as a CREATE TABLE spells them; a
+    /// column with no COLLATE compares as BINARY.
+    pub(crate) fn of(declared: &str, collation: Option<&str>) -> Self {
+        let affinity = affinity(declared);
+        Self {
+            numeric: matches!(affinity, Affinity::Integer | Affinity::Real | Affinity::Numeric),
+            affinity,
+            collation: collation.unwrap_or("binary").to_ascii_lowercase(),
+        }
+    }
+
+    /// Whether `=` on a column compared like `self` finds what a key
+    /// compared like `key` matches. Numeric affinities compare numbers
+    /// alike.
+    pub(crate) fn finds_as(&self, key: &Self) -> bool {
+        let affinity = match self.numeric {
+            true => key.numeric,
+            false => self.affinity == key.affinity,
+        };
+        affinity && self.collation == key.collation
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Affinity {
     Integer,

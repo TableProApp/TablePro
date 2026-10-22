@@ -15,6 +15,10 @@ pub fn reference_message(error: &ReferenceError) -> String {
         ReferenceError::NoFilterText { column } => {
             gettext_f("Can't filter {column} on this value", &[("column", column)])
         }
+        ReferenceError::ComparedOtherwise { table } => gettext_f(
+            "Can't filter {table} the way its key compares values",
+            &[("table", table)],
+        ),
     }
 }
 
@@ -40,6 +44,9 @@ mod tests {
             ReferenceError::NoFilterText {
                 column: "outline".to_owned(),
             },
+            ReferenceError::ComparedOtherwise {
+                table: "orders".to_owned(),
+            },
         ];
 
         let messages: Vec<String> = errors.iter().map(reference_message).collect();
@@ -50,5 +57,6 @@ mod tests {
         assert!(messages[2].contains("fk_notes_0"), "{messages:?}");
         assert!(messages[3].contains("customers"), "{messages:?}");
         assert!(messages[4].contains("outline"), "{messages:?}");
+        assert!(messages[5].contains("orders"), "{messages:?}");
     }
 }

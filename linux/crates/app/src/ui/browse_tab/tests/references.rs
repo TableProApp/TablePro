@@ -30,6 +30,7 @@ fn name_key() -> ForeignKeyInfo {
 
 fn orders_key() -> InboundForeignKey {
     InboundForeignKey {
+        child_compares_alike: true,
         name: "orders_user_id_fkey".to_owned(),
         table: TableRef::unqualified("orders"),
         columns: vec!["user_id".to_owned()],

@@ -333,6 +333,7 @@ mod tests {
     /// a definition built elsewhere; the rule still holds.
     fn referenced(table: &mut TableDefinition, column: &str) {
         table.inbound_foreign_keys = vec![tablepro_core::ddl::InboundForeignKey {
+            child_compares_alike: true,
             name: "visits_event_fk".to_owned(),
             table: TableRef::new(Some("analytics".to_owned()), "visits"),
             columns: vec!["event_id".to_owned()],

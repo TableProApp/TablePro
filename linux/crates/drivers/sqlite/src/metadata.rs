@@ -2,8 +2,8 @@
 //!
 //! `catalog` owns the SQL and what the rows mean. This runs it.
 
-use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, HashMap};
 
 use sqlx::sqlite::{SqliteConnection as SqlxConnection, SqliteRow};
 use sqlx::{AssertSqlSafe, Row};
@@ -22,7 +22,7 @@ use crate::catalog::{
     self, InboundKeyRow, MAIN_SCHEMA, SchemaRow, SqliteColumnRow, TableFacts, foreign_key_names, generated_expressions,
     inbound_foreign_keys, select_dependents,
 };
-use crate::ddl::{declared_descending_key, declared_foreign_key_names};
+use crate::ddl::{declared_comparison, declared_descending_key, declared_foreign_key_names};
 use crate::errors::{SQLITE_ERROR, map_error};
 use crate::index_sql::read_index_sql;
 
@@ -294,13 +294,41 @@ async fn inbound_keys(
             })
         })
         .collect::<Result<Vec<_>, DriverError>>()?;
+    let child_sql: HashMap<String, Option<String>> = rows
+        .iter()
+        .map(|row| (row.child.clone(), row.child_sql.clone()))
+        .collect();
+    let parent_sql = match rows.is_empty() {
+        true => None,
+        false => create_statement(connection, table).await?,
+    };
     let mut keys = inbound_foreign_keys(table.schema.as_deref(), rows, &shape.primary_key());
     for key in &mut keys {
         for column in &mut key.referenced_columns {
             *column = declared_spelling(column, shape.columns.iter().map(|declared| declared.name.as_str()));
         }
+        let child = child_sql.get(&key.table.name).and_then(Option::as_deref);
+        key.child_compares_alike = compares_alike(parent_sql.as_deref(), child, key);
     }
     Ok(keys)
+}
+
+/// SQLite compares a key under the parent columns' affinity and
+/// collation, so `=` on a child column declared otherwise finds other
+/// rows than the key matches. Text that does not read is taken at its
+/// word: nothing says the two sides differ.
+fn compares_alike(parent_sql: Option<&str>, child_sql: Option<&str>, key: &InboundForeignKey) -> bool {
+    key.columns
+        .iter()
+        .zip(&key.referenced_columns)
+        .all(|(child_column, parent_column)| {
+            let child = child_sql.and_then(|sql| declared_comparison(sql, child_column));
+            let parent = parent_sql.and_then(|sql| declared_comparison(sql, parent_column));
+            match (child, parent) {
+                (Some(child), Some(parent)) => child.finds_as(&parent),
+                _ => true,
+            }
+        })
 }
 
 /// How a row can be named again: the primary key, else a unique index

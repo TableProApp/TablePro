@@ -42,6 +42,11 @@ impl RowReference {
         let cells = key_cells(&key.referenced_columns, columns, values)?;
         let filter = key_filter(&key.name, cells, &key.columns)?;
         let table = target(source, key.table.schema.as_deref(), &key.table.name)?;
+        if !key.child_compares_alike {
+            return Err(ReferenceError::ComparedOtherwise {
+                table: key.table.name.clone(),
+            });
+        }
         Ok(Self { table, filter })
     }
 }
@@ -351,11 +356,35 @@ mod tests {
     }
 
     #[test]
+    fn rows_a_key_compares_otherwise_than_their_columns_are_refused() {
+        let customers = TableRef::new(None, "customers".to_owned());
+        let inbound = InboundForeignKey {
+            child_compares_alike: false,
+            name: "orders_customer_fkey".to_owned(),
+            table: TableRef::new(None, "orders".to_owned()),
+            columns: vec!["customer_code".to_owned()],
+            referenced_columns: vec!["code".to_owned()],
+        };
+
+        let error = RowReference::referencing(&customers, &inbound, &[text_column("code")], &[Value::Int(1)])
+            .expect_err("a NOCASE parent and a BINARY child");
+
+        assert_eq!(
+            error,
+            ReferenceError::ComparedOtherwise {
+                table: "orders".to_owned()
+            }
+        );
+        assert!(!error.leaves_nothing_to_follow());
+    }
+
+    #[test]
     fn referencing_rows_filter_the_other_table_on_its_own_columns() {
         let customers = TableRef::new(Some("crm".to_owned()), "customers".to_owned());
         let columns = [text_column("id"), text_column("region")];
         let values = [Value::Int(42), Value::Text("eu".to_owned())];
         let inbound = InboundForeignKey {
+            child_compares_alike: true,
             name: "orders_customer_fkey".to_owned(),
             table: orders(),
             columns: vec!["customer_id".to_owned(), "customer_region".to_owned()],

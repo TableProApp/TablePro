@@ -455,6 +455,7 @@ pub(super) mod tests {
                 table: public("customers"),
                 outbound: Vec::new(),
                 inbound: vec![InboundForeignKey {
+                    child_compares_alike: true,
                     name: "orders_customer_id_fkey".to_owned(),
                     table: orders.clone(),
                     columns: vec!["customer_id".to_owned()],

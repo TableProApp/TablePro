@@ -45,6 +45,7 @@ pub(crate) fn inbound_foreign_key(row: &Row) -> Result<InboundForeignKey, Driver
     let schema: String = row.try_get(1).map_err(field)?;
     let table: String = row.try_get(2).map_err(field)?;
     Ok(InboundForeignKey {
+        child_compares_alike: true,
         name: row.try_get(0).map_err(field)?,
         table: TableRef::new(Some(schema), table),
         columns: row.try_get(3).map_err(field)?,

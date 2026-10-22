@@ -216,6 +216,41 @@ async fn a_key_to_a_missing_table_leaves_the_tables_other_keys_readable() {
     connection.close().await.unwrap();
 }
 
+/// SQLite matches a key under the parent column's affinity and
+/// collation, which `=` on a child column declared otherwise does not.
+#[tokio::test]
+async fn an_inbound_key_says_whether_its_columns_compare_as_it_does() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE users (email TEXT PRIMARY KEY COLLATE NOCASE, id INTEGER UNIQUE)",
+            "CREATE TABLE posts (id INTEGER PRIMARY KEY, author TEXT REFERENCES users (email))",
+            "CREATE TABLE notes (id INTEGER PRIMARY KEY, author TEXT COLLATE \"NoCase\" REFERENCES users (email))",
+            "CREATE TABLE logs (id INTEGER PRIMARY KEY, user_id TEXT REFERENCES users (id))",
+            "CREATE TABLE visits (id INTEGER PRIMARY KEY, user_id INT REFERENCES users (id))",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let inbound = connection
+        .fetch_inbound_foreign_keys(&TableRef::unqualified("users"), call())
+        .await
+        .unwrap();
+
+    let alike: Vec<(&str, bool)> = inbound
+        .iter()
+        .map(|key| (key.table.name.as_str(), key.child_compares_alike))
+        .collect();
+    assert_eq!(
+        alike,
+        [("logs", false), ("notes", true), ("posts", false), ("visits", true)]
+    );
+    connection.close().await.unwrap();
+}
+
 #[tokio::test]
 async fn inbound_keys_read_alone_are_the_definitions() {
     let file = TestFile::new().await;
