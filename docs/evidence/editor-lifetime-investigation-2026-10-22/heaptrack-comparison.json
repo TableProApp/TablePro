@@ -102,6 +102,243 @@
           "elapsed_monotonic": 122043.628919716
         }
       ]
+    },
+    {
+      "cycles": 18,
+      "editors_opened_and_closed": 72,
+      "result": {
+        "scenario": "repeated_editor_close_cycles",
+        "status": "passed",
+        "error": null
+      },
+      "heaptrack_summary": "115.19s.\ncalls to allocation functions: 64805580 (562611/s)\ntemporary memory allocations: 8178915 (71005/s)\npeak heap memory consumption: 70.02M\npeak RSS (including heaptrack overhead): 279.64M\ntotal memory leaked: 60.31M\nsuppressed leaks: 1.36K",
+      "report_sha256": "e9142c940704f090a533c6b69b4d390277b1a875a8521fabe3eae824235c530a",
+      "trace_sha256": "40cb1c84f28e716b4b1c837f04da272fafec4a8270ac31a8bde6d8425b3728a3",
+      "phase_samples": [
+        {
+          "phase": "initial",
+          "elapsed_monotonic": 122189.65693272
+        },
+        {
+          "phase": "cycle-0-four-tabs",
+          "elapsed_monotonic": 122194.365224586
+        },
+        {
+          "phase": "cycle-0-closed",
+          "elapsed_monotonic": 122196.244488283
+        },
+        {
+          "phase": "cycle-1-four-tabs",
+          "elapsed_monotonic": 122200.075567654
+        },
+        {
+          "phase": "cycle-1-closed",
+          "elapsed_monotonic": 122201.944143325
+        },
+        {
+          "phase": "cycle-2-four-tabs",
+          "elapsed_monotonic": 122205.549077687
+        },
+        {
+          "phase": "cycle-2-closed",
+          "elapsed_monotonic": 122207.419577265
+        },
+        {
+          "phase": "cycle-3-four-tabs",
+          "elapsed_monotonic": 122212.658813304
+        },
+        {
+          "phase": "cycle-3-closed",
+          "elapsed_monotonic": 122214.603842632
+        },
+        {
+          "phase": "cycle-4-four-tabs",
+          "elapsed_monotonic": 122220.676515228
+        },
+        {
+          "phase": "cycle-4-closed",
+          "elapsed_monotonic": 122222.610037774
+        },
+        {
+          "phase": "cycle-5-four-tabs",
+          "elapsed_monotonic": 122228.480809192
+        },
+        {
+          "phase": "cycle-5-closed",
+          "elapsed_monotonic": 122230.359805261
+        },
+        {
+          "phase": "cycle-6-four-tabs",
+          "elapsed_monotonic": 122234.618868637
+        },
+        {
+          "phase": "cycle-6-closed",
+          "elapsed_monotonic": 122236.48976776
+        },
+        {
+          "phase": "cycle-7-four-tabs",
+          "elapsed_monotonic": 122240.082177469
+        },
+        {
+          "phase": "cycle-7-closed",
+          "elapsed_monotonic": 122241.955724296
+        },
+        {
+          "phase": "cycle-8-four-tabs",
+          "elapsed_monotonic": 122245.74824695
+        },
+        {
+          "phase": "cycle-8-closed",
+          "elapsed_monotonic": 122247.617493653
+        },
+        {
+          "phase": "cycle-9-four-tabs",
+          "elapsed_monotonic": 122251.231541637
+        },
+        {
+          "phase": "cycle-9-closed",
+          "elapsed_monotonic": 122253.103444173
+        },
+        {
+          "phase": "cycle-10-four-tabs",
+          "elapsed_monotonic": 122257.170675816
+        },
+        {
+          "phase": "cycle-10-closed",
+          "elapsed_monotonic": 122259.04006617
+        },
+        {
+          "phase": "cycle-11-four-tabs",
+          "elapsed_monotonic": 122262.767132639
+        },
+        {
+          "phase": "cycle-11-closed",
+          "elapsed_monotonic": 122264.631459474
+        },
+        {
+          "phase": "cycle-12-four-tabs",
+          "elapsed_monotonic": 122268.31397176
+        },
+        {
+          "phase": "cycle-12-closed",
+          "elapsed_monotonic": 122270.184351503
+        },
+        {
+          "phase": "cycle-13-four-tabs",
+          "elapsed_monotonic": 122274.033825224
+        },
+        {
+          "phase": "cycle-13-closed",
+          "elapsed_monotonic": 122275.900489648
+        },
+        {
+          "phase": "cycle-14-four-tabs",
+          "elapsed_monotonic": 122279.633863354
+        },
+        {
+          "phase": "cycle-14-closed",
+          "elapsed_monotonic": 122281.499994031
+        },
+        {
+          "phase": "cycle-15-four-tabs",
+          "elapsed_monotonic": 122285.062730223
+        },
+        {
+          "phase": "cycle-15-closed",
+          "elapsed_monotonic": 122286.930461019
+        },
+        {
+          "phase": "cycle-16-four-tabs",
+          "elapsed_monotonic": 122290.421428648
+        },
+        {
+          "phase": "cycle-16-closed",
+          "elapsed_monotonic": 122292.288129951
+        },
+        {
+          "phase": "cycle-17-four-tabs",
+          "elapsed_monotonic": 122295.781790094
+        },
+        {
+          "phase": "cycle-17-closed",
+          "elapsed_monotonic": 122297.653372491
+        },
+        {
+          "phase": "final",
+          "elapsed_monotonic": 122301.789896873
+        }
+      ]
+    },
+    {
+      "cycles": 6,
+      "mode": "reuse one editor; same 25 queries; no empty-state click or tab actions",
+      "editors_opened_and_closed": 0,
+      "result": {
+        "scenario": "repeated_editor_close_cycles",
+        "status": "passed",
+        "error": null
+      },
+      "heaptrack_summary": "36.94s.\ncalls to allocation functions: 15074635 (408040/s)\ntemporary memory allocations: 1894283 (51274/s)\npeak heap memory consumption: 49.30M\npeak RSS (including heaptrack overhead): 246.03M\ntotal memory leaked: 43.80M\nsuppressed leaks: 1.30K",
+      "report_sha256": "efd65336e786df3b4684815a616335a4cb3fb10cd4bc20b01917954dbc0fe068",
+      "trace_sha256": "ca51273a103d2f892dff9b9667796921abf596d9dae46ab3dbc38353ecb11b2c",
+      "phase_samples": [
+        {
+          "phase": "initial",
+          "elapsed_monotonic": 122349.531461151
+        },
+        {
+          "phase": "cycle-0-four-tabs",
+          "elapsed_monotonic": 122353.049089654
+        },
+        {
+          "phase": "cycle-0-reused",
+          "elapsed_monotonic": 122354.849172154
+        },
+        {
+          "phase": "cycle-1-four-tabs",
+          "elapsed_monotonic": 122358.178563499
+        },
+        {
+          "phase": "cycle-1-reused",
+          "elapsed_monotonic": 122359.978647977
+        },
+        {
+          "phase": "cycle-2-four-tabs",
+          "elapsed_monotonic": 122363.431188197
+        },
+        {
+          "phase": "cycle-2-reused",
+          "elapsed_monotonic": 122365.231274448
+        },
+        {
+          "phase": "cycle-3-four-tabs",
+          "elapsed_monotonic": 122368.667317671
+        },
+        {
+          "phase": "cycle-3-reused",
+          "elapsed_monotonic": 122370.467396163
+        },
+        {
+          "phase": "cycle-4-four-tabs",
+          "elapsed_monotonic": 122374.190165441
+        },
+        {
+          "phase": "cycle-4-reused",
+          "elapsed_monotonic": 122375.990243569
+        },
+        {
+          "phase": "cycle-5-four-tabs",
+          "elapsed_monotonic": 122379.051424148
+        },
+        {
+          "phase": "cycle-5-reused",
+          "elapsed_monotonic": 122380.851528326
+        },
+        {
+          "phase": "final",
+          "elapsed_monotonic": 122384.263338249
+        }
+      ]
     }
   ]
 }

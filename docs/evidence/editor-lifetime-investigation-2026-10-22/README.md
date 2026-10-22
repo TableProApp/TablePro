@@ -34,3 +34,15 @@ The optimized binary identified in the six-cycle manifest was traced with `heapt
 The additional five cycles left about 4.90 MB more tracked memory outstanding at exit. This supports further retention investigation, but does not identify an application leak. Heaptrack labels all outstanding allocations as leaked, including native libraries and process-lifetime caches. The largest six-cycle outstanding allocation group was 25.14 MB from an unresolved allocator with Mesa Gallium frames. Many allocation calls came from GLib/D-Bus accessibility traffic. The automated accessibility workload and profiler overhead therefore prevent interpreting these figures as ordinary user CPU cost or native desktop RSS.
 
 The initial tracing attempt failed before application interaction because AT-SPI selected a broker requiring a systemd service unavailable on the private session bus. Repeating with the existing harness setting `ATSPI_DBUS_IMPLEMENTATION=dbus-daemon` passed. No product code changed to accommodate the setup. Raw traces, reports, exact scripts and failure logs remain under the persistent local `bookie-test/tab-cycle-heaptrack*` directories. Next: compare longer runs and attribute retained application allocations separately from rendering and accessibility caches before proposing a lifetime fix.
+
+
+### Longer-run follow-up
+
+The same optimized binary completed 18 cycles, with 72 editors opened, queried and closed, successful empty-state reopening, a final query and graceful quit. Heaptrack recorded 70.02 MB peak heap, 279.64 MB peak instrumented RSS and 60.31 MB outstanding at exit over 115.19 seconds. This is 11.02 MB more outstanding memory than six cycles. Retention did not plateau within these runs. Attribution remains unproven; a matched query workload reusing one editor is the next control. This source predates later branding and file-open changes; it is not a profile of the current Linux tip.
+
+
+### Reusing one editor
+
+A six-cycle control reused one editor for the same 25 queries and retained the same per-cycle idle allowance. It omitted tab open/close actions and empty-state pointer clicks. It passed and quit gracefully. Peak tracked heap was 49.30 MB, peak instrumented RSS 246.03 MB and outstanding allocations at exit 43.80 MB. Compared with 24 editor lifecycles, outstanding memory was 5.49 MB lower. This points toward tab lifecycle work for further investigation, but does not isolate one retaining object or remove the accessibility-action difference between the workloads.
+
+A separate Python/GObject control reproduced the native weak-reference observation without Rust or BookiE: realized GTK TextView and GtkSourceView objects still upgraded after detaching, destroying the window, dropping local references, garbage collection and two seconds of main-context processing. This rules out treating the earlier Rust weak-reference test as application-specific evidence; lifecycle and test assumptions remain to be established. Its result and exact script remain in the persistent local `bookie-test/native-widget-python-control` directory. No production lifetime change is justified by these controls alone.
