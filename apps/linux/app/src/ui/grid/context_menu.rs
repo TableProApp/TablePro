@@ -24,6 +24,7 @@ pub(super) struct GridMenus {
     edit_action: gio::SimpleAction,
     edit_full_value_action: gio::SimpleAction,
     reference_action: gio::SimpleAction,
+    export_loaded: Option<(gio::SimpleAction, LocalResultView)>,
     foreign_key_columns: Rc<std::collections::HashSet<String>>,
 }
 
@@ -360,6 +361,17 @@ pub(super) fn install_grid_context_menus(
             })
             .build()
     };
+    let export_loaded = options.local_result_view.clone().map(|local_result_view| {
+        let action = gio::SimpleAction::new("export-loaded", None);
+        let sender = sender.clone();
+        let view = local_result_view.clone();
+        action.connect_activate(move |_, _| {
+            sender
+                .send(GridMsg::ExportResults(view.loaded_result().as_ref().clone()))
+                .ok();
+        });
+        (action, local_result_view)
+    });
     let filter_action = filter_by_value_action(
         context.clone(),
         sender.clone(),
@@ -390,6 +402,9 @@ pub(super) fn install_grid_context_menus(
             .build()
     };
     group.add_action(&edit_action);
+    if let Some((action, _)) = &export_loaded {
+        group.add_action(action);
+    }
     group.add_action(&edit_full_value_action);
     group.add_action_entries([
         copy_value_action,
@@ -461,6 +476,7 @@ pub(super) fn install_grid_context_menus(
         edit_action,
         edit_full_value_action,
         reference_action,
+        export_loaded,
         foreign_key_columns: Rc::new(options.foreign_key_columns),
     }
 }
@@ -472,6 +488,12 @@ fn empty_grid_menu(row_mutations_allowed: bool) -> gio::Menu {
     }
     menu.append(Some(&crate::tr!("Jump to Column…")), Some("grid.jump-column"));
     menu
+}
+
+fn export_loaded_item() -> gio::MenuItem {
+    let item = gio::MenuItem::new(Some(&crate::tr!("Export All Loaded Rows…")), Some("cell.export-loaded"));
+    item.set_attribute_value("hidden-when", Some(&"action-disabled".to_variant()));
+    item
 }
 
 fn build_menu(
@@ -527,6 +549,9 @@ fn build_menu(
         crate::tr!("Export Results…")
     };
     actions.append(Some(&export_label), Some("cell.export"));
+    if local_result {
+        actions.append_item(&export_loaded_item());
+    }
     actions.append(Some(&crate::tr!("Columns…")), Some("grid.columns"));
     actions.append(Some(&crate::tr!("Jump to Column…")), Some("grid.jump-column"));
     actions.append(Some(&crate::tr!("Find in Loaded Rows…")), Some("grid.find-row"));
@@ -672,6 +697,7 @@ pub(super) fn attach_cell_gesture(
     let view = column_view.downgrade();
     let context = menus.context.clone();
     let edit_action = menus.edit_action.clone();
+    let export_loaded = menus.export_loaded.clone();
     let edit_full_value_action = menus.edit_full_value_action.clone();
     let reference_action = menus.reference_action.clone();
     let foreign_key_columns = menus.foreign_key_columns.clone();
@@ -689,6 +715,9 @@ pub(super) fn attach_cell_gesture(
         select_row_for_menu(&view, POSITION_SLOT.get(&gesture_widget).unwrap_or(0));
         context.set(&gesture_widget, idx, gesture_name.clone());
         edit_action.set_enabled(edit_enabled_for(&gesture_widget, is_text_editable));
+        if let Some((action, local_result_view)) = &export_loaded {
+            action.set_enabled(local_result_view.has_filter());
+        }
         edit_full_value_action.set_enabled(
             supports_full_value
                 && row_has_full_text_value(
@@ -959,6 +988,23 @@ mod tests {
         let menu = build_menu(true, false, true, true, false);
         let actions = menu.item_link(3, gio::MENU_LINK_SECTION).expect("actions section");
         assert_eq!(actions.n_items(), 4);
+    }
+
+    #[test]
+    fn a_local_result_menu_offers_visible_and_all_loaded_row_exports() {
+        let export_targets = |local_result| {
+            let menu = build_menu(false, false, true, false, local_result);
+            let actions = menu
+                .item_link(menu.n_items() - 1, gio::MENU_LINK_SECTION)
+                .expect("actions section");
+            (0..actions.n_items())
+                .filter_map(|index| actions.item_attribute_value(index, "action", None))
+                .filter_map(|value| value.get::<String>())
+                .filter(|action| action.starts_with("cell.export"))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(export_targets(true), ["cell.export", "cell.export-loaded"]);
+        assert_eq!(export_targets(false), ["cell.export"]);
     }
 
     #[test]
