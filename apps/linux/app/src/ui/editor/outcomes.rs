@@ -788,11 +788,19 @@ fn error_page(idx: usize, message: &str) -> adw::StatusPage {
         .build();
     let text = message.to_string();
     copy.connect_clicked(move |button| button.clipboard().set_text(&text));
+    let audit = gtk::Button::builder()
+        .label(crate::tr!("View in Audit Log"))
+        .action_name("win.show-audit")
+        .css_classes(["pill", "flat"])
+        .build();
+    let actions = gtk::Box::builder().spacing(12).halign(gtk::Align::Center).build();
+    actions.append(&copy);
+    actions.append(&audit);
     adw::StatusPage::builder()
         .title(crate::tr!("Statement {n} failed").replace("{n}", &(idx + 1).to_string()))
         .description(message)
         .icon_name("dialog-error-symbolic")
-        .child(&copy)
+        .child(&actions)
         .vexpand(true)
         .build()
 }

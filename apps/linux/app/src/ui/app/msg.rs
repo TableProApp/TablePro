@@ -137,6 +137,7 @@ pub enum AppMsg {
     ShowShortcuts,
     ShowAbout,
     ShowActivity,
+    ShowAuditLog,
     ShowCatalog,
     ExplainActiveQuery,
     ShowPreferences,

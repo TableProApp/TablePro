@@ -298,8 +298,12 @@ fn a_failed_statement_offers_a_copy_button() {
     use relm4::gtk::prelude::*;
     relm4::adw::init().unwrap();
     let page = super::error_page(0, "syntax error at position 8");
-    let button = page.child().unwrap().downcast::<relm4::gtk::Button>().unwrap();
+    let actions = page.child().unwrap();
+    let button = actions.first_child().unwrap().downcast::<relm4::gtk::Button>().unwrap();
     assert_eq!(button.label().as_deref(), Some("Copy error"));
+    let audit = actions.last_child().unwrap().downcast::<relm4::gtk::Button>().unwrap();
+    assert_eq!(audit.label().as_deref(), Some("View in Audit Log"));
+    assert_eq!(audit.action_name().as_deref(), Some("win.show-audit"));
     assert_eq!(page.description().as_deref(), Some("syntax error at position 8"));
 }
 

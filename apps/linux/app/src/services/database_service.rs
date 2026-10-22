@@ -139,6 +139,7 @@ impl tablepro_policy::ConnectionFaultSink for EntryFaultSink {
 
 struct AuditRuntime {
     sink: Arc<dyn tablepro_policy::AuditSink>,
+    journal: Option<Arc<AuditJournal>>,
     available: bool,
     state: Arc<AuditState>,
     unresolved_connection_ids: Arc<HashSet<Uuid>>,
@@ -173,8 +174,10 @@ impl AuditRuntime {
                 } else {
                     AuditState::new()
                 };
+                let journal = Arc::new(journal);
                 Self {
-                    sink: Arc::new(journal),
+                    sink: journal.clone(),
+                    journal: Some(journal),
                     available: true,
                     state: Arc::new(state),
                     unresolved_connection_ids: Arc::new(unresolved_connection_ids),
@@ -190,6 +193,7 @@ impl AuditRuntime {
     fn unavailable() -> Self {
         Self {
             sink: Arc::new(NullAuditSink),
+            journal: None,
             available: false,
             state: Arc::new(AuditState::with_governed_writes_disabled()),
             unresolved_connection_ids: Arc::new(HashSet::new()),
@@ -201,6 +205,7 @@ pub struct DatabaseService {
     connections: Mutex<HashMap<Uuid, Entry>>,
     policy: Mutex<Arc<PolicyConfig>>,
     audit: Arc<dyn tablepro_policy::AuditSink>,
+    audit_journal: Option<Arc<AuditJournal>>,
     audit_available: bool,
     policy_available: bool,
     audit_state: Arc<AuditState>,
@@ -212,6 +217,14 @@ pub struct DatabaseService {
 }
 
 impl DatabaseService {
+    pub async fn recent_audit(&self, limit: usize) -> Result<Vec<tablepro_policy::AuditEvent>, String> {
+        let journal = self
+            .audit_journal
+            .clone()
+            .ok_or_else(|| "the audit journal is unavailable".to_string())?;
+        journal.recent(limit).await.map_err(|error| error.to_string())
+    }
+
     pub fn new() -> Self {
         let audit = AuditRuntime::open_default();
         Self::with_audit(
@@ -243,6 +256,7 @@ impl DatabaseService {
             connections: Mutex::new(HashMap::new()),
             policy: Mutex::new(policy),
             audit: audit.sink,
+            audit_journal: audit.journal,
             audit_available: audit.available,
             policy_available,
             audit_state: audit.state,

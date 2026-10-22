@@ -997,6 +997,9 @@ impl SimpleComponent for App {
             AppMsg::RefreshPage => self.on_refresh_active_tab(),
             AppMsg::ShowShortcuts => self.on_show_shortcuts(),
             AppMsg::ShowAbout => self.on_show_about(),
+            AppMsg::ShowAuditLog => {
+                crate::ui::audit_dialog::present(self.window.upcast_ref::<gtk::Window>(), &self.database)
+            }
             AppMsg::ShowActivity => {
                 crate::ui::activity_dialog::present(
                     self.window.upcast_ref::<gtk::Window>(),

@@ -3,6 +3,7 @@ pub use tablepro_app_services::{
     request_generation, single_flight, state_file, structure_tracker,
 };
 pub mod approval_router;
+pub mod audit_view;
 pub mod catalog;
 pub mod change_tracker;
 pub mod connection_monitor;

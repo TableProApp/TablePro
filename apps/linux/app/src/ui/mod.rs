@@ -1,5 +1,6 @@
 mod activity_dialog;
 mod app;
+mod audit_dialog;
 mod browse_tab;
 mod catalog_dialog;
 mod cell_editor;

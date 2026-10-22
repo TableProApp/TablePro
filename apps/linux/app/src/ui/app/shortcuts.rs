@@ -25,6 +25,7 @@ pub(super) fn primary_menu_model() -> gio::Menu {
     let history_section = gio::Menu::new();
     history_section.append(Some(&crate::tr!("Query History")), Some("win.show-history"));
     history_section.append(Some(&crate::tr!("Server activity")), Some("win.show-activity"));
+    history_section.append(Some(&crate::tr!("Audit Log")), Some("win.show-audit"));
     history_section.append(Some(&crate::tr!("Catalog")), Some("win.show-catalog"));
     history_section.append(Some(&crate::tr!("Explain query")), Some("win.explain-query"));
     menu.append_section(None, &history_section);
@@ -69,6 +70,7 @@ pub(super) fn install_window_actions(
         input_action!("new-window", AppMsg::NewWindow),
         input_action!("show-history", AppMsg::ShowHistory),
         input_action!("show-activity", AppMsg::ShowActivity),
+        input_action!("show-audit", AppMsg::ShowAuditLog),
         input_action!("show-catalog", AppMsg::ShowCatalog),
         input_action!("explain-query", AppMsg::ExplainActiveQuery),
         input_action!("refresh-page", AppMsg::RefreshPage),
